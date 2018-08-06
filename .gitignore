@@ -1,0 +1,16 @@
+Backup/
+Cache/
+DSData/
+RiskData/
+StrategyLib/
+Lib/
+QuantStudio.bat
+QuantStudio.sh
+__*/
+_eric*/
+*.bak
+*.dat
+*.dir
+*.json
+*.wpr
+*.wpu
