@@ -5,7 +5,7 @@ from copy import deepcopy
 
 import pandas as pd
 import numpy as np
-from traits.api import Enum, Either, List, ListStr, Int, Float, Str, Bool, Dict, Instance, on_trait_change
+from traits.api import Enum, Either, List, ListStr, Int, Float, Str, Bool, Dict, Instance, on_trait_change, HasTraits
 
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.Tools.IDFun import testIDFilterStr
@@ -100,12 +100,12 @@ class _BarFactorMap(__QS_Object__):
 # TODO: 加入交易状态, 涨跌停信息
 class TimeBarAccount(Account):
     """基于 Bar 数据的股票账户"""
-    Delay = Bool(True, arg_type="Bool", label="交易延迟", order=0)
-    TargetIDs = ListStr(arg_type="IDList", label="目标ID", order=1)
-    BuyLimit = Instance(_TradeLimit, arg_type="ArgObject", label="买入限制", order=2)
-    SellLimit = Instance(_TradeLimit, arg_type="ArgObject", label="卖出限制", order=3)
-    MarketFactorMap = Instance(_BarFactorMap, arg_type="ArgObject", label="行情因子", order=4)
-    AdjustFactorMap = Instance(_AdjustFactorMap, arg_type="ArgObject", label="复权因子", order=5)
+    Delay = Bool(True, arg_type="Bool", label="交易延迟", order=2)
+    TargetIDs = ListStr(arg_type="IDList", label="目标ID", order=3)
+    BuyLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="买入限制", order=4)
+    SellLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="卖出限制", order=5)
+    MarketFactorMap = Instance(_BarFactorMap, arg_type="ArgObject", label="行情因子", order=6)
+    AdjustFactorMap = Instance(_AdjustFactorMap, arg_type="ArgObject", label="复权因子", order=7)
     def __init__(self, market_ft, adjust_ft=None, sys_args={}, **kwargs):
         # 继承自 Account 的属性
         #self._Cash = np.array([])# 剩余现金, 等于时间点长度+1, >=0
@@ -113,6 +113,7 @@ class TimeBarAccount(Account):
         #self._CashRecord = pd.DataFrame(columns=["时间点", "现金流"])# 现金流记录, pd.DataFrame(columns=["日期", "时间点", "现金流"]), 现金流入为正, 现金流出为负
         #self._DebtRecord = pd.DataFrame(columns=["时间点", "融资"])# 融资记录, pd.DataFrame(columns=["日期", "时间点", "融资"]), 增加负债为正, 减少负债为负
         #self._TradingRecord = pd.DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])# 交易记录
+        
         self._IDs = []# 本账户支持交易的证券 ID, []
         self._Position = np.array([])# 仓位, array(index=dts+1, columns=self._IDs)
         self._PositionAmount = np.array([])# 持仓金额, array(index=dts+1, columns=self._IDs)
@@ -533,7 +534,7 @@ class _TickFactorMap(_BarFactorMap):
 class TickAccount(TimeBarAccount):
     """基于 Tick 数据的股票账户"""
     def __QS_initArgs__(self):
-        self.add_trait("MarketFactorMap", Instance(_TickFactorMap, arg_type="ArgObject", label="行情因子", order=4))
+        self.add_trait("MarketFactorMap", Instance(_TickFactorMap, arg_type="ArgObject", label="行情因子", order=6))
         self.MarketFactorMap = _TickFactorMap(self._MarketFT)
         self.AdjustFactorMap = _AdjustFactorMap(self._AdjustFT)
         self.BuyLimit = _TradeLimit(direction="Buy")
@@ -607,3 +608,7 @@ class TickAccount(TimeBarAccount):
         TradingRecord = list(zip([idt]*BuyNums.shape[0], BuyNums.index, BuyNums, BuyAmounts/BuyNums, BuyFees, -(BuyAmounts+BuyFees), ["open"]*BuyNums.shape[0]))
         if TradingRecord: self._updateAccount(CashChanged, Position)
         return TradingRecord
+
+if __name__=="__main__":
+    testC = _TradeLimit(direction="Buy")
+    testC.setArgs()

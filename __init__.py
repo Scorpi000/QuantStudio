@@ -51,14 +51,18 @@ class __QS_Object__(HasTraits):
         self.__QS_initArgs__()
         for iArgName, iArgVal in sys_args.items():
             self[iArgName] = iArgVal
+        self.trait_view(name="QSView", view_element=View(*self.getViewItems()[0], buttons=[OKButton, CancelButton], resizable=True, title=getattr(self, "Name", "设置参数")))
     @property
     def ArgNames(self):
         return tuple(self._ArgOrder.index)
     def getViewItems(self, context_name=""):
         Prefix = (context_name+"." if context_name else "")
-        return [Item(Prefix+self._LabelTrait[iLabel]) for iLabel in self._ArgOrder.index]
+        Context = ({} if not Prefix else {context_name:self})
+        return ([Item(Prefix+self._LabelTrait[iLabel]) for iLabel in self._ArgOrder.index], Context)
     def setArgs(self):
-        return self.configure_traits(view=View(*self.getViewItems(), buttons=[OKButton, CancelButton], resizable=True, title=getattr(self, "Name", "设置参数")))
+        Items, Context = self.getViewItems()
+        if Context: return self.configure_traits(view=View(*Items, buttons=[OKButton, CancelButton], resizable=True, title=getattr(self, "Name", "设置参数")), context=Context)
+        return self.configure_traits(view=View(*Items, buttons=[OKButton, CancelButton], resizable=True, title=getattr(self, "Name", "设置参数")))
     def add_trait(self, name, *trait):
         if name in self.visible_traits(): return super().add_trait(name, *trait)
         Rslt = super().add_trait(name, *trait)

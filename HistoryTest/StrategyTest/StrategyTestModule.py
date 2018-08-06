@@ -5,7 +5,7 @@ import shutil
 import numpy as np
 import pandas as pd
 from traits.api import ListStr, Enum, List, Int, Float, Str, Instance, Dict, on_trait_change
-from traitsui.api import Item
+from traitsui.api import Item, Group, View
 
 from QuantStudio import __QS_Error__
 from QuantStudio.HistoryTest.HistoryTestModel import BaseModule
@@ -251,7 +251,14 @@ class Strategy(BaseModule):
         xlBook.save()
         xlBook.app.quit()
         return 0
-
+    def getViewItems(self, context_name=""):
+        Prefix = (context_name+"." if context_name else "")
+        Groups, Context = [], {}
+        for j, jAccount in enumerate(self.Accounts):
+            jItems, jContext = jAccount.getViewItems(context_name=context_name+"_Account"+str(j))
+            Groups.append(Group(*jItems, label=str(j)+"-"+jAccount.Name))
+            Context.update(jContext)
+        return ([Group(*Groups, orientation='horizontal', layout='tabbed', springy=True)], Context)
 # 策略报告基类, TODO: 完善各种统计指标
 class Report(BaseModule):
     """策略报告基类"""

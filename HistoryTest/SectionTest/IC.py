@@ -42,9 +42,9 @@ class IC(BaseModule):
     def _on_TestFactors_changed(self, obj, name, old, new):
         self.FactorOrder = {iFactorName:self.FactorOrder.get(iFactorName, "降序") for iFactorName in self.TestFactors}
     def getViewItems(self, context_name=""):
-        Items = super().getViewItems(context_name=context_name)
+        Items, Context = super().getViewItems(context_name=context_name)
         Items[0].editor = SetEditor(values=self.trait("TestFactors").option_range)
-        return Items
+        return (Items, Context)
     def __QS_start__(self, mdl, dts=None, dates=None, times=None):
         super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
         self._Output = {}

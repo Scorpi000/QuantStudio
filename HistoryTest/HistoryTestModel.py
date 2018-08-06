@@ -6,7 +6,7 @@ import datetime as dt
 
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
+from tqdm import tqdm, tqdm_notebook
 from traits.api import List, Instance, Str
 from traitsui.api import View, Item, Group
 from traitsui.menu import OKButton, CancelButton
@@ -68,15 +68,13 @@ class HistoryTestModel(__QS_Object__):
         return self._TestDateIndex
     def getViewItems(self, context_name=""):
         Prefix = (context_name+"." if context_name else "")
-        Groups = []
+        Groups, Context = [], {}
         for j, jModule in enumerate(self.Modules):
-            jItems = jModule.getViewItems(context_name=Prefix+"Module"+str(j))
+            jItems, jContext = jModule.getViewItems(context_name=Prefix+"Module"+str(j))
             Groups.append(Group(*jItems, label=str(j)+"-"+jModule.Name))
-        return Groups
-    def setArgs(self):
-        Context = {"Module"+str(j):jModule for j, jModule in enumerate(self.Modules)}
-        CompView = View(*self.getViewItems(), buttons=[OKButton, CancelButton], resizable=True, title="历史回测模型")
-        return self.configure_traits(view=CompView, context=Context)
+            Context.update(jContext)
+            Context[Prefix+"Module"+str(j)] = jModule
+        return (Groups, Context)
     # 运行模型
     def run(self, test_dts=None, test_dates=None, test_times=None):
         if test_dts is not None:
