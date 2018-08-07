@@ -19,7 +19,7 @@ if __name__=='__main__':
     MainDB = HDF5DB()
     MainDB.connect()
     
-    # 创建自定义因子库
+    # 创建自定义因子表
     MainFT = FactorCacheFT("MainFT")
     FT = MainDB.getTable("ElementaryFactor")
     MainFT.addFactors(factor_table=FT, factor_names=["复权收盘价", "流通市值"], args={})

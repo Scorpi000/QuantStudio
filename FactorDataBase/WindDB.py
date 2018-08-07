@@ -43,7 +43,7 @@ class _DBTable(FactorTable):
     @property
     def FactorNames(self):
         FactorInfo = self.FactorDB._FactorInfo.ix[self.Name]
-        return tuple(FactorInfo[FactorInfo["isFactor"]==1].index)
+        return FactorInfo[FactorInfo["isFactor"]==1].index.tolist()
     def getFactorMetaData(self, factor_names=None, key=None):
         if factor_names is None:
             factor_names = self.FactorNames
@@ -81,7 +81,7 @@ class _MarketTable(_DBTable):
         if idt is not None:
             SQLStr += "WHERE "+DBTableName+"."+FieldDict["日期"]+"='"+idt.strftime("%Y%m%d")+"' "
         SQLStr += "ORDER BY "+IDTable+".f1_0001"
-        return np.array(self.FactorDB.fetchall(SQLStr)).squeeze()
+        return [iRslt[0] for iRslt in self.FactorDB.fetchall(SQLStr)]
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         DBTableName = self.FactorDB.TablePrefix+self.FactorDB.TableName2DBTableName([self.Name])[self.Name]
         FieldDict = self.FactorDB.FieldName2DBFieldName(table=self.Name, fields=["日期", "证券ID"])
@@ -97,7 +97,7 @@ class _MarketTable(_DBTable):
         if end_dt is not None:
             SQLStr += "AND "+DBTableName+"."+FieldDict["日期"]+"<='"+end_dt.strftime("%Y%m%d")+"' "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict["日期"]
-        return np.array(tuple(map(lambda x: dt.datetime(int(x[0][:4]), int(x[0][4:6]), int(x[0][6:8]), 23, 59, 59, 999999), self.FactorDB.fetchall(SQLStr))))
+        return list(map(lambda x: dt.datetime(int(x[0][:4]), int(x[0][4:6]), int(x[0][6:8]), 23, 59, 59, 999999), self.FactorDB.fetchall(SQLStr)))
      # 时间点默认是当天, ID 默认是 [000001.SH], 特别参数: 回溯天数
     def _getRawData(self, fields, ids=None, start_date=None, end_date=None, args={}):
         DBTableName = self.FactorDB.TablePrefix+self.FactorDB.TableName2DBTableName([self.Name])[self.Name]
@@ -130,7 +130,7 @@ class _MarketTable(_DBTable):
         if FillNa:
             StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
         if factor_names is None:
-            factor_names = self.FactorNames.tolist()
+            factor_names = self.FactorNames
         RawData = self._getRawData(factor_names, ids, StartDate, EndDate, args=args)
         RawData = RawData.set_index(["日期", "ID"])
         DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
@@ -165,7 +165,7 @@ class _ConstituentTable(_DBTable):
             SQLStr += "ORDER BY "+IDTable+".f1_0001"
             self._IndexIDs = pd.DataFrame(np.array(self.FactorDB.fetchall(SQLStr)), columns=["指数 ID", "指数证券 ID"])
             self._IndexIDs.set_index(["指数 ID"], inplace=True)
-        return tuple(self._IndexIDs.index)
+        return self._IndexIDs.index.tolist()
     # 返回指数为 ifactor_name 在给定时点 idt 的所有成份股
     # 如果 idt 为 None, 将返回指数 ifactor_name 的所有历史成份股
     # 如果 ifactor_name 为 None, 将返回表里所有成份股 ID
@@ -184,7 +184,7 @@ class _ConstituentTable(_DBTable):
             SQLStr += "AND (("+DBTableName+"."+FieldDict["剔除日期"]+">'"+idt.strftime("%Y%m%d")+"') "
             SQLStr += "OR ("+DBTableName+"."+FieldDict["最新标志"]+"=1)) "
         SQLStr += "ORDER BY "+IDTable+".f1_0001"
-        return np.array(self.FactorDB.fetchall(SQLStr)).squeeze()
+        return [iRslt[0] for iRslt in self.FactorDB.fetchall(SQLStr)]
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         DBTableName = self.FactorDB.TablePrefix+self.FactorDB.TableName2DBTableName([self.Name])[self.Name]
         FieldDict = self.FactorDB.FieldName2DBFieldName(table=self.Name, fields=['证券ID','指数ID','纳入日期','剔除日期','最新标志'])
@@ -212,7 +212,7 @@ class _ConstituentTable(_DBTable):
             if iEndDate is None:
                 iEndDT = (dt.datetime.now() if end_dt is None else end_dt)
             DateTimes = DateTimes.union(set(getDateTimeSeries(start_dt=iStartDT, end_dt=iEndDT, timedelta=dt.timedelta(1))))
-        return np.array(sorted(DateTimes))
+        return sorted(DateTimes)
     def readData(self, factor_names=None, ids=None, dts=None, start_dt=None, end_dt=None, args={}):
         StartDate, EndDate = _genStartEndDate(dts, start_dt, end_dt)
         if factor_names is None:
@@ -373,10 +373,8 @@ class WindDB(FactorDB):
     # -------------------------------表的操作---------------------------------
     @property
     def TableNames(self):
-        if self._TableInfo is not None:
-            return tuple(self._TableInfo.index)
-        else:
-            return ()
+        if self._TableInfo is not None: return self._TableInfo.index.tolist()
+        else: return []
     def getTable(self, table_name):
         TableClass = self._TableInfo.loc[table_name, "TableClass"]
         FT = eval("_"+TableClass+"('"+table_name+"')")
@@ -396,7 +394,7 @@ class WindDB(FactorDB):
         SQLStr += 'AND F1_1010>=\'{StartDate}\' '
         SQLStr += 'ORDER BY F1_1010'
         Dates = self.fetchall(SQLStr.format(Prefix=self.TablePrefix,StartDate=start_date.strftime("%Y%m%d"),EndDate=end_date.strftime("%Y%m%d")))
-        return np.array(list(map(lambda x: dt.date(int(x[0][:4]), int(x[0][4:6]), int(x[0][6:8])), Dates)))
+        return list(map(lambda x: dt.date(int(x[0][:4]), int(x[0][4:6]), int(x[0][6:8])), Dates))
     # 获取指定日当前在市或者历史上出现过的全体 A 股 ID
     def _getAllAStock(self, date, is_current=True):
         SQLStr = 'SELECT {Prefix}tb_object_0001.f1_0001 FROM {Prefix}tb_object_0001 INNER JOIN {Prefix}tb_object_1090 ON ({Prefix}tb_object_0001.f16_0001={Prefix}tb_object_1090.f2_1090) '
@@ -404,7 +402,7 @@ class WindDB(FactorDB):
             SQLStr += 'WHERE {Prefix}tb_object_1090.f21_1090=1 AND {Prefix}tb_object_1090.F4_1090=\'A\' AND ({Prefix}tb_object_1090.F18_1090 is NULL OR {Prefix}tb_object_1090.F18_1090>\'{Date}\') AND {Prefix}tb_object_1090.F17_1090<=\'{Date}\' ORDER BY {Prefix}tb_object_0001.f1_0001'
         else:
             SQLStr += 'WHERE {Prefix}tb_object_1090.f21_1090=1 AND {Prefix}tb_object_1090.F4_1090=\'A\' AND {Prefix}tb_object_1090.F17_1090<=\'{Date}\' ORDER BY {Prefix}tb_object_0001.f1_0001'
-        return np.array([iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d")))])
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d")))]
     # 给定指数名称和ID，获取指定日当前或历史上的指数中的股票ID，is_current=True:获取指定日当天的ID，False:获取截止指定日历史上出现的ID
     def getID(self, index_id="全体A股", date=None, is_current=True):
         if date is None:
@@ -422,7 +420,7 @@ class WindDB(FactorDB):
         if is_current:
             SQLStr += 'AND ({Prefix}tb_object_1402.F5_1402=1 OR {Prefix}tb_object_1402.F4_1402>\'{Date}\') '# 剔除日期在date之后
         SQLStr += 'ORDER BY {Prefix}tb_object_0001.f1_0001'
-        return np.array([iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, IndexEquityID=IndexEquityID, Date=date.strftime("%Y%m%d")))])
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, IndexEquityID=IndexEquityID, Date=date.strftime("%Y%m%d")))]
     # --------------------------------------------信息转换-----------------------------------
     # 将表名转换成数据库内部表名
     def TableName2DBTableName(self, table_names):

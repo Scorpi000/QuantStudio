@@ -33,7 +33,7 @@ class _FactorTable(FactorTable):
             return readNestedDictFromHDF5(self.FactorDB.MainDir+os.sep+self.Name+os.sep+"_TableInfo.h5", "/"+("" if key is None else key))
     @property
     def FactorNames(self):
-        return tuple(self._DataType.index)
+        return self._DataType.index.tolist()
     def getFactorMetaData(self, factor_names=None, key=None):
         if factor_names is None:
             factor_names = self.FactorNames
@@ -55,21 +55,19 @@ class _FactorTable(FactorTable):
         if ifactor_name is not None:
             with self.FactorDB._DataLock:
                 with h5py.File(self.FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix) as ijFile:
-                    return ijFile["ID"][...]
+                    return sorted(ijFile["ID"][...])
         else:
             IDs = set()
             for iFactorName in self.FactorNames:
                 IDs = IDs.union(set(self.getID(iFactorName)))
-        return np.array(list(IDs))
+        return sorted(IDs)
     def getDateTime(self, ifactor_name, iid=None, start_dt=None, end_dt=None):
         with self.FactorDB._DataLock:
             with h5py.File(self.FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix) as ijFile:
                 Timestamps = ijFile["DateTime"][...]
-        if start_dt is not None:
-            Timestamps = Timestamps[Timestamps>=start_dt.timestamp()]
-        if end_dt is not None:
-            Timestamps = Timestamps[Timestamps<=end_dt.timestamp()]
-        return [dt.datetime.fromtimestamp(iTimestamp) for iTimestamp in Timestamps]
+        if start_dt is not None: Timestamps = Timestamps[Timestamps>=start_dt.timestamp()]
+        if end_dt is not None: Timestamps = Timestamps[Timestamps<=end_dt.timestamp()]
+        return sorted(dt.datetime.fromtimestamp(iTimestamp) for iTimestamp in Timestamps)
     def readData(self, factor_names=None, ids=None, dts=None, start_dt=None, end_dt=None, args={}):
         if factor_names is None:
             factor_names = self.FactorNames
@@ -197,7 +195,7 @@ class HDF5DB(WritableFactorDB):
     # -------------------------------表的操作---------------------------------
     @property
     def TableNames(self):
-        return tuple(self._TableFactorDict)
+        return list(self._TableFactorDict)
     def getTable(self, table_name, args={}):
         if table_name not in self._TableFactorDict:
             raise __QS_Error__("表 '%s' 不存在!" % table_name)
@@ -373,7 +371,7 @@ if __name__=="__main__":
     print(HDB.TableNames)
     print(HDB.getTable("ElementaryFactor").FactorNames)
     Data = HDB.getTable("ElementaryFactor").readData(factor_names=["复权收盘价"])
-    HDB.writeData(Data, "TestTable")
+    #HDB.writeData(Data, "TestTable")
     
     ## 功能测试
     #FT = HDB.getTable("ElementaryFactor")

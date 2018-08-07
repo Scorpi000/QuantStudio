@@ -16,7 +16,6 @@ from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
 # 自定义因子库
 class CustomDB(FactorDB):
     """自定义因子库"""
-    ChangeEvent = Event()
     def __init__(self, name, sys_args={}, **kwargs):
         super().__init__(sys_args=sys_args, **kwargs)
         self.Name = name
@@ -25,7 +24,7 @@ class CustomDB(FactorDB):
     # 表名, 返回: array([表名])
     @property
     def TableNames(self):
-        return tuple(self._FTs.keys())
+        return sorted(self._FTs.keys())
     # 返回因子表对象
     def getTable(self, table_name, args={}):
         return self._FTs[table_name]
@@ -37,30 +36,15 @@ class CustomDB(FactorDB):
     def popFactorTable(self, table_name):
         if table_name not in self._FTs: return None
         return self._FTs.pop(table_name)
-    # ------------------------------------遍历模式操作------------------------------------
-    # 启动遍历模式, dts: 遍历的时间点序列, dates: 遍历的日期序列, times: 遍历的时间序列
-    def start(self, dts=None, dates=None, times=None):
-        for iFT in self._FTs.values(): iFT.start(dts=dts, dates=dates, times=times)
-        return 0
-    # 时间点向前移动, idt: 时间点, datetime.dateime
-    def move(self, idt, *args, **kwargs):
-        for iFT in self._FTs.values(): iFT.move(idt=idt, *args, **kwargs)
-        return 0
-    # 结束遍历模式
-    def end(self):
-        for iFT in self._FTs.values(): iFT.end()
-        return 0
-
 
 # 自定义因子表
 class CustomFT(FactorTable):
     """自定义因子表"""
-    def __init__(self, name, fdb=None, sys_args={}, **kwargs):
+    def __init__(self, name, sys_args={}, **kwargs):
         super().__init__(sys_args=sys_args, **kwargs)
         self.Name = name# 因子表名称
-        self.FactorDB = fdb
-        self._DateTimes = np.array([])# 数据源可提取的最长时点序列，[datetime.datetime]
-        self._IDs = np.array([])# 数据源可提取的最长ID序列，['600000.SH']
+        self._DateTimes = []# 数据源可提取的最长时点序列，[datetime.datetime]
+        self._IDs = []# 数据源可提取的最长ID序列，['600000.SH']
         self._FactorDict = pd.DataFrame(columns=["FTID", "ArgIndex", "NameInFT", "DataType"], dtype=np.dtype("O"))# 数据源中因子的来源信息
         self._TableArgDict = {}# 数据源中的表和参数信息, {FTID : (FT, [args]), None : ([Factor,] [args])}
         self._IDFilterStr = None# ID 过滤条件字符串, "@收益率>0", 给定日期, 数据源的 getID 将返回过滤后的 ID 序列
@@ -69,7 +53,7 @@ class CustomFT(FactorTable):
         return
     @property
     def FactorNames(self):
-        return self._FactorDict.index.values
+        return self._FactorDict.index.tolist()
     def getFactorMetaData(self, factor_names=None, key=None):
         if factor_names is None:
             factor_names = self.FactorNames
@@ -149,6 +133,7 @@ class CustomFT(FactorTable):
                 iData.items = iFactorNames
                 Data.update(dict(iData))
         return pd.Panel(Data).loc[factor_names, :, :]
+    # -----------遍历模式操作----------
     def start(self, dts=None, dates=None, times=None):
         self._isStarted = True
         return 0
@@ -233,14 +218,10 @@ class CustomFT(FactorTable):
         return 0
     # 设置时间点序列
     def setDateTime(self, dts):
-        self._DateTimes = np.array(dts)
-        self._DateTimes.sort()
-        return 0
+        self._DateTimes = sorted(dts)
     # 设置 ID 序列
     def setID(self, ids):
-        self._IDs = np.array(ids)
-        self._IDs.sort()
-        return 0
+        self._IDs = sorted(ids)
     # ID 过滤条件
     @property
     def IDFilterStr(self):
@@ -334,8 +315,8 @@ def _prepareMMAPCacheData(arg):
 class CacheFT(CustomFT):
     ForwardPeriod = Int(600, arg_type="Integer", label="向前缓冲时点数", order=0)
     BackwardPeriod = Int(1, arg_type="Integer", label="向后缓冲时点数", order=1)
-    def __init__(self, name, fdb=None, sys_args={}, **kwargs):
-        super().__init__(name=name, fdb=fdb, sys_args=sys_args)
+    def __init__(self, name, sys_args={}, **kwargs):
+        super().__init__(name=name, sys_args=sys_args)
         # 遍历模式变量
         self._isErgodicState = False
         self._CurInd = -1# 当前日期在self.Dates中的位置, 以此作为缓冲数据的依据
@@ -372,7 +353,7 @@ class CacheFT(CustomFT):
         return 0
     def move(self, idt, *args, **kwargs):
         PreInd = self._CurInd
-        self._CurInd = PreInd+1+self._DateTimes[PreInd+1:].searchsorted(idt)
+        self._CurInd = PreInd+1+self._DateTimes[PreInd+1:].index(idt)
         if (self._CurInd>-1) and ((self._CacheDates.shape[0]==0) or (self._DateTimes[self._CurInd]>self._CacheDates[-1])):# 需要读入缓冲区的数据
             self._Queue2SubProcess.put((None,None))
             DataLen,Msg = self._Queue2MainProcess.get()
@@ -399,8 +380,7 @@ class CacheFT(CustomFT):
         self._isErgodicState = False
         return super().end()
     def readData(self, factor_names=None, ids=None, dts=None, start_dt=None, end_dt=None, args={}):
-        if factor_names is None:
-            factor_names = self.FactorNames
+        if factor_names is None: factor_names = self.FactorNames
         if not self._isErgodicState:# 非遍历模式, 或者未开启缓存, 或者无缓存机制
             return super().readData(factor_names=factor_names, ids=ids, dts=dts, start_dt=start_dt, end_dt=end_dt, args=args)
         else:# 检查是否超出缓存区
@@ -527,8 +507,8 @@ class FactorCacheFT(CustomFT):
     ForwardPeriod = Int(600, arg_type="Integer", label="向前缓冲时点数", order=0)
     BackwardPeriod = Int(1, arg_type="Integer", label="向后缓冲时点数", order=1)
     FactorCacheNum = Int(60, arg_type="Integer", label="最大缓冲因子数", order=2)
-    def __init__(self, name, fdb=None, sys_args={}):
-        super().__init__(name=name, fdb=fdb, sys_args=sys_args)
+    def __init__(self, name, sys_args={}):
+        super().__init__(name=name, sys_args=sys_args)
         # 遍历模式变量
         self._isErgodicState = False
         self._CurInd = -1# 当前日期在self.Dates中的位置, 以此作为缓冲数据的依据
@@ -569,7 +549,7 @@ class FactorCacheFT(CustomFT):
         return 0
     def move(self, idt, *args, **kwargs):
         PreInd = self._CurInd
-        self._CurInd = PreInd+1+self._DateTimes[PreInd+1:].searchsorted(idt)
+        self._CurInd = PreInd+1+self._DateTimes[PreInd+1:].index(idt)
         if (self._CurInd>-1) and ((self._CacheDates.shape[0]==0) or (self._DateTimes[self._CurInd]>self._CacheDates[-1])):# 需要读入缓冲区的数据
             self._Queue2SubProcess.put((None, None))
             DataLen,Msg = self._Queue2MainProcess.get()
@@ -581,7 +561,7 @@ class FactorCacheFT(CustomFT):
                 self._Queue2SubProcess.put((self._CurInd,None))
                 self._CacheDates = self._DateTimes[max((0,self._CurInd-self.BackwardPeriod)):min((self._DateNum,self._CurInd+self.ForwardPeriod+1))]
             else:# 出现了跳跃
-                LastCacheInd = (self._DateTimes.index(self._CacheDates[-1]) if self._CacheDates!=[] else self._CurInd-1)
+                LastCacheInd = (self._DateTimes.index(self._CacheDates[-1]) if self._CacheDates else self._CurInd-1)
                 self._Queue2SubProcess.put((LastCacheInd+1,None))
                 self._CacheDates = self._DateTimes[max((0,LastCacheInd+1-self.BackwardPeriod)):min((self._DateNum,LastCacheInd+1+self.ForwardPeriod+1))]
             MMAPCacheData.seek(0)
@@ -759,8 +739,8 @@ class IDCacheFT(CustomFT):
     ForwardPeriod = Int(600, arg_type="Integer", label="向前缓冲时点数", order=0)
     BackwardPeriod = Int(1, arg_type="Integer", label="向后缓冲时点数", order=1)
     IDCacheNum = Int(60, arg_type="Integer", label="最大缓冲ID数", order=2)
-    def __init__(self, name, fdb=None, sys_args={}):
-        super().__init__(name=name, fdb=fdb, sys_args=sys_args)
+    def __init__(self, name, sys_args={}):
+        super().__init__(name=name, sys_args=sys_args)
         # 遍历模式变量
         self._isErgodicState = False
         self._CurInd = -1# 当前日期在self.Dates中的位置, 以此作为缓冲数据的依据
@@ -800,7 +780,7 @@ class IDCacheFT(CustomFT):
         return 0
     def move(self, idt, *args, **kwargs):
         PreInd = self._CurInd
-        self._CurInd = PreInd+1+self._DateTimes[PreInd+1:].searchsorted(idt)
+        self._CurInd = PreInd+1+self._DateTimes[PreInd+1:].index(idt)
         if (self._CurInd>-1) and ((self._CacheDates.shape[0]==0) or (self._DateTimes[self._CurInd]>self._CacheDates[-1])):# 需要读入缓冲区的数据
             self._Queue2SubProcess.put((None,None))
             DataLen,Msg = self._Queue2MainProcess.get()
@@ -812,7 +792,7 @@ class IDCacheFT(CustomFT):
                 self._Queue2SubProcess.put((self._CurInd,None))
                 self._CacheDates = self._DateTimes[max((0,self._CurInd-self.BackwardPeriod)):min((self._DateNum, self._CurInd+self.ForwardPeriod+1))]
             else:# 出现了跳跃
-                LastCacheInd = (self._DateTimes.searchsorted(self._CacheDates[-1]) if self._CacheDates!=[] else self._CurInd-1)
+                LastCacheInd = (self._DateTimes.index(self._CacheDates[-1]) if self._CacheDates else self._CurInd-1)
                 self._Queue2SubProcess.put((LastCacheInd+1,None))
                 self._CacheDates = self._DateTimes[max((0,LastCacheInd+1-self.BackwardPeriod)):min((self._DateNum, LastCacheInd+1+self.ForwardPeriod+1))]
             MMAPCacheData.seek(0)

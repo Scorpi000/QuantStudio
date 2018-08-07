@@ -6,7 +6,7 @@ import datetime as dt
 
 import numpy as np
 import pandas as pd
-from traits.api import File, List, Float, Int, Bool
+from traits.api import File, List, Float, Int, Bool, Enum, Str, Range, Password
 
 from QuantStudio import __QS_Error__, __QS_LibPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable, _adjustDateTime, _genStartEndDate
@@ -22,23 +22,19 @@ class _TickTable(FactorTable):
     def __init__(self, name, sys_args={}, **kwargs):
         super().__init__(sys_args=sys_args, **kwargs)
         self.Name = name
-        self._FactorNames = np.array(["lst","vol","amt","mid","bid","bsz","ask","asz","wmp","oin",
-                                      "buyVolume","sellVolume","bidSizeChange","askSizeChange",
-                                      "crossBidVolume","crossAskVolume","vi","ofi"], dtype=np.dtype("O"))
+        self._FactorNames = ["lst","vol","amt","mid","bid","bsz","ask","asz","wmp","oin",
+                             "buyVolume","sellVolume","bidSizeChange","askSizeChange",
+                             "crossBidVolume","crossAskVolume","vi","ofi"]
         self._PriceFactors = {"lst", "amt", "mid", "bid", "ask", "wmp"}
     @property
     def FactorNames(self):
         return self._FactorNames
     def getFactorMetaData(self, factor_names=None, key=None):
-        if factor_names is None:
-            factor_names = self.FactorNames
+        if factor_names is None: factor_names = self.FactorNames
         MetaData = pd.DataFrame("double", index=factor_names, columns=["DataType"], dtype=np.dtype("O"))
-        if key is None:
-            return MetaData
-        elif key in MetaData:
-            return MetaData.ix[:, key]
-        else:
-            return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
+        if key is None: return MetaData
+        elif key in MetaData: return MetaData.ix[:, key]
+        else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
      # 时间点默认是当天, ID 默认是 [000001.SH], 特别参数: 时间间隔: 以秒为单位, 默认是 3 秒
     def readData(self, factor_names=None, ids=None, dts=None, start_dt=None, end_dt=None, args={}):
         if factor_names is None:
@@ -47,7 +43,7 @@ class _TickTable(FactorTable):
             raise __QS_Error__("请指定提取数据的 ID 序列!")
         StartDate, EndDate = _genStartEndDate(dts, start_dt, end_dt)
         SecDef = self.FactorDB.createSecDef(ids)
-        tms_intv=args.get("时间间隔", self.TmsIntv)*1000
+        tms_intv = int(args.get("时间间隔", self.TmsIntv)*1000)
         StartDate = StartDate.strftime("%Y-%m-%d")
         EndDate = (EndDate + dt.timedelta(1)).strftime("%Y-%m-%d")
         if self._PriceFactors.intersection(set(factor_names)):
@@ -165,6 +161,9 @@ class CloverDB(FactorDB):
         self._jConn = None# epsilon 数据库连接
         self._ExchangeDict = {"上海证券交易所":"SHFE", "深圳证券交易所":"SZSE"}
         return
+    def __QS_initArgs__(self):
+        self.JVMPath = "C:\\Program Files\\Java\\jdk1.8.0_172\\jre\\bin\\server\\jvm.dll"
+        self.JavaPckg.append("X:/java_lib/model-jar-with-dependencies.jar")
     def __getstate__(self):
         state = self.__dict__.copy()
         # Remove the unpicklable entries.
@@ -181,8 +180,8 @@ class CloverDB(FactorDB):
         if self._jpype is None:
             if not (os.path.isfile(self.JVMPath)):
                 raise __QS_Error__("Java 虚拟机的设置有误!")
-            import _jpype
-            self._jpype = _jpype
+            import jpype
+            self._jpype = jpype
         if not self._jpype.isJVMStarted():
             JOption = ["-Xmx64g", "-Xms16g"]
             if self.JavaPckg: JOption.append("-Djava.class.path="+";".join(self.JavaPckg))
@@ -203,7 +202,7 @@ class CloverDB(FactorDB):
             return False
     @property
     def TableNames(self):
-        return np.array(("Tick 数据", "Time Bar 数据", "证券特征"), dtype=np.dtype("O"))
+        return ["Tick 数据", "Time Bar 数据", "证券特征"]
     def getTable(self, table_name, args={}):
         if table_name=="Tick 数据":
             FT = _TickTable(table_name, sys_args=args)
@@ -363,4 +362,4 @@ if __name__=="__main__":
     #FT = CDB.getTable("Time Bar 数据")
     ##print(FT.FactorNames)
     #Data = FT.readData(factor_names=["mid", "amt"], ids=IDs, start_dt=dt.datetime(2017,1,1), end_dt=dt.datetime(2017,1,2,23,59,59,999999), args={"时间间隔":60, "动态证券ID":False})
-    pass
+    CDB.disconnect()
