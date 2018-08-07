@@ -21,8 +21,9 @@ class _BarTable(FactorTable):
     @property
     def FactorNames(self):
         return ["open", "low", "high", "close", "volume"]
-    def readIDData(self, iid, factor_names=None, dts=None, start_dt=None, end_dt=None, args={}):
-        StartDate, EndDate = _genStartEndDate(dts, start_dt, end_dt)
+    def _readIDData(self, iid, factor_names=None, dts=None, args={}):
+        if dts: StartDate, EndDate = dts[0].date(), dts[-1].date()
+        else: StartDate, EndDate = dt.date.today()-dt.timedelta(365), dt.date.today()
         FillNa = args.get("缺失填充", self.FillNa)
         if FillNa: StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
         if factor_names is None: factor_names = self.FactorNames
@@ -38,14 +39,14 @@ class _BarTable(FactorTable):
             Data.index = [dt.datetime.combine(dt.datetime.strptime(iDate, "%Y-%m-%d").date(), iTime) for iDate in Data.index]
         else:
             Data.index = [dt.datetime.strptime(iDate, "%Y-%m-%d %H:%M") for iDate in Data.index]
-        return _adjustDateTime(Data.ix[:, factor_names], dts, start_dt, end_dt, fillna=FillNa, method="pad")
+        return _adjustDateTime(Data.ix[:, factor_names], dts, fillna=FillNa, method="pad")
      # 时间点默认是当天, ID 默认是 [000001.SH], 特别参数: 回溯天数
-    def readData(self, factor_names=None, ids=None, dts=None, start_dt=None, end_dt=None, args={}):
+    def __QS_readData__(self, factor_names=None, ids=None, dts=None, args={}):
         if ids is None:
             ids = ["000001.SH"]
             args["是否指数"] = True
         if factor_names is None: factor_names = self.FactorNames
-        Data = pd.Panel({iID:self.readIDData(iID, factor_names=factor_names, dts=dts, start_dt=start_dt, end_dt=end_dt, args=args) for iID in ids})
+        Data = pd.Panel({iID:self._readIDData(iID, factor_names=factor_names, dts=dts, args=args) for iID in ids})
         return Data.swapaxes(0, 2)
 
 class TushareDB(FactorDB):

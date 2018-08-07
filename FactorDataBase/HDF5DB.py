@@ -68,12 +68,12 @@ class _FactorTable(FactorTable):
         if start_dt is not None: Timestamps = Timestamps[Timestamps>=start_dt.timestamp()]
         if end_dt is not None: Timestamps = Timestamps[Timestamps<=end_dt.timestamp()]
         return sorted(dt.datetime.fromtimestamp(iTimestamp) for iTimestamp in Timestamps)
-    def readData(self, factor_names=None, ids=None, dts=None, start_dt=None, end_dt=None, args={}):
+    def readData(self, factor_names=None, ids=None, dts=None, args={}):
         if factor_names is None:
             factor_names = self.FactorNames
-        Data = {iFactor: self.readFactorData(ifactor_name=iFactor, ids=ids, dts=dts, start_dt=start_dt, end_dt=end_dt, args=args) for iFactor in factor_names}
+        Data = {iFactor: self.readFactorData(ifactor_name=iFactor, ids=ids, dts=dts, args=args) for iFactor in factor_names}
         return pd.Panel(Data)
-    def readFactorData(self, ifactor_name, ids=None, dts=None, start_dt=None, end_dt=None, args={}):
+    def readFactorData(self, ifactor_name, ids=None, dts=None, args={}):
         if ifactor_name not in self.FactorNames:
             raise __QS_Error__("因子: '%s' 不存在!" % ifactor_name)
         with self.FactorDB._DataLock:
@@ -81,7 +81,7 @@ class _FactorTable(FactorTable):
                 DataType = DataFile.attrs["DataType"]
                 DateTimes = DataFile["DateTime"][...]
                 IDs = DataFile["ID"][...]
-                if (dts is None) and (start_dt is None) and (end_dt is None):
+                if dts is None:
                     if (ids is None):
                         Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs)
                     else:
@@ -93,25 +93,14 @@ class _FactorTable(FactorTable):
                         else:
                             Rslt = pd.DataFrame(DataFile["Data"][:, CrossedIDPos], index=DateTimes, columns=CrossedIDs).ix[:, ids]
                 else:
-                    if dts is None:
-                        start_dt = (DateTimes[0] if start_dt is None else start_dt.timestamp())
-                        end_dt = (DateTimes[-1] if end_dt is None else end_dt.timestamp())
-                        Mask = (DateTimes>=start_dt) & (DateTimes<=end_dt)
-                        nDT = Mask.sum()
-                        DateTimes = DateTimes[Mask]
-                    else:
-                        dts = np.array([idt.timestamp() for idt in dts])
-                        if start_dt is not None:
-                            dts = dts[dts>=start_dt.timestamp()]
-                        if end_dt is not None:
-                            dts = dts[dts<=end_dt.timestamp()]
-                        DateTimes = pd.Series(np.arange(0, DateTimes.shape[0]), index=DateTimes)
-                        DateTimes = DateTimes.ix[dts]
-                        DateTimes = DateTimes[pd.notnull(DateTimes)].astype('int')
-                        nDT = DateTimes.shape[0]
-                        DateTimes = DateTimes.sort_values()
-                        Mask = DateTimes.tolist()
-                        DateTimes = DateTimes.index.values
+                    dts = np.array([idt.timestamp() for idt in dts])
+                    DateTimes = pd.Series(np.arange(0, DateTimes.shape[0]), index=DateTimes)
+                    DateTimes = DateTimes.ix[dts]
+                    DateTimes = DateTimes[pd.notnull(DateTimes)].astype('int')
+                    nDT = DateTimes.shape[0]
+                    DateTimes = DateTimes.sort_values()
+                    Mask = DateTimes.tolist()
+                    DateTimes = DateTimes.index.values
                     if nDT>0:
                         if ids is None:
                             Rslt = pd.DataFrame(DataFile["Data"][Mask, :], index=DateTimes, columns=IDs)
@@ -375,14 +364,15 @@ if __name__=="__main__":
     
     ## 功能测试
     #FT = HDB.getTable("ElementaryFactor")
+    DTs = FT.getDateTime(start_dt=dt.datetime(2017,1,1), end_dt=dt.datetime(2017,12,31,23,59,59,999999))
     ## 单 ID, 多个因子, 多时间点读取
     #StartT = time.clock()
-    #IDData = FT.readData(ids=["000001.SZ"], start_dt=dt.datetime(2017,1,1), end_dt=dt.datetime(2017,12,31,23,59,59,999999)).iloc[:, :, 0]
+    #IDData = FT.readData(ids=["000001.SZ"], dts=DTs).iloc[:, :, 0]
     #print("单 ID, 多因子, 多时间点读取: "+str(time.clock()-StartT))
     
     ## 单因子, 多个 ID, 多时间点读取
     #StartT = time.clock()
-    #FactorData = FT.readData(factor_names=["复权收盘价"], start_dt=dt.datetime(2017,1,1), end_dt=dt.datetime(2017,12,31,23,59,59,999999)).iloc[0]
+    #FactorData = FT.readData(factor_names=["复权收盘价"], dts=DTs).iloc[0]
     #print("单因子, 多 ID, 多时间点读取: "+str(time.clock()-StartT))
     
     ## 单时间点, 多因子, 多 ID
@@ -392,6 +382,6 @@ if __name__=="__main__":
     
     ## 多因子, 多 ID, 多时间点读取
     #StartT = time.clock()
-    #Data = FT.readData(ids=["000001.SZ","000002.SZ"], start_dt=dt.datetime(2017,1,1), end_dt=dt.datetime(2017,12,31,23,59,59,999999))
+    #Data = FT.readData(ids=["000001.SZ","000002.SZ"], dts=DTs)
     #print("多因子, 多 ID, 多时间点读取: "+str(time.clock()-StartT))
     pass

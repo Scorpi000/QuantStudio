@@ -3,6 +3,7 @@ import os
 import sys
 import operator
 import warnings
+warnings.filterwarnings("ignore")
 
 import numpy as np
 import pandas as pd

@@ -12,7 +12,7 @@ from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDic
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
 from QuantStudio.Tools.FileFun import readJSONFile
 from QuantStudio import __QS_Error__, __QS_LibPath__
-from QuantStudio.FactorDataBase.WindDB import WindDB, _DBTable, _genStartEndDate, _adjustDateTime
+from QuantStudio.FactorDataBase.WindDB import WindDB, _DBTable, _adjustDateTime
 from QuantStudio.FactorDataBase.WindDB import _MarketTable as WindMarketTable
 
 class _CalendarTable(_DBTable):
@@ -53,10 +53,8 @@ class _CalendarTable(_DBTable):
             SQLStr += "AND "+DBTableName+"."+FieldDict["日期"]+"<='"+end_dt.strftime("%Y%m%d")+"' "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict["日期"]
         return list(map(lambda x: dt.datetime(int(x[0][:4]), int(x[0][4:6]), int(x[0][6:8]), 23, 59, 59, 999999), self.FactorDB.fetchall(SQLStr)))
-    def readData(self, factor_names=None, ids=None, dts=None, start_dt=None, end_dt=None, args={}):
-        StartDate, EndDate = _genStartEndDate(dts, start_dt, end_dt)
-        if factor_names is None:
-            factor_names = self.FactorNames
+    def __QS_readData__(self, factor_names=None, ids=None, dts=None, args={}):
+        if factor_names is None: factor_names = self.FactorNames
         DBTableName = self.FactorDB.TablePrefix+self.FactorDB.TableName2DBTableName([self.Name])[self.Name]
         FieldDict = self.FactorDB.FieldName2DBFieldName(table=self.Name, fields=["日期", "交易所"])
         SQLStr = "SELECT "+DBTableName+"."+FieldDict["日期"]+", "
@@ -66,10 +64,9 @@ class _CalendarTable(_DBTable):
             SQLStr += "WHERE ("+genSQLInCondition(DBTableName+"."+FieldDict["交易所"], ids, is_str=True, max_num=1000)+") "
         else:
             SQLStr += "WHERE "+DBTableName+"."+FieldDict["交易所"]+" IS NOT NULL "
-        if StartDate is not None:
-            SQLStr += "AND "+DBTableName+"."+FieldDict["日期"]+">='"+StartDate.strftime("%Y%m%d")+"' "
-        if EndDate is not None:
-            SQLStr += "AND "+DBTableName+"."+FieldDict["日期"]+"<='"+EndDate.strftime("%Y%m%d")+"' "
+        if dts:
+            SQLStr += "AND "+DBTableName+"."+FieldDict["日期"]+">='"+dts[0].strftime("%Y%m%d")+"' "
+            SQLStr += "AND "+DBTableName+"."+FieldDict["日期"]+"<='"+dts[-1].strftime("%Y%m%d")+"' "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict["交易所"]+", "
         SQLStr += DBTableName+"."+FieldDict["日期"]
         RawData = self.FactorDB.fetchall(SQLStr)
@@ -80,7 +77,7 @@ class _CalendarTable(_DBTable):
         RawData["交易日"] = 1
         Data = pd.Panel({"交易日":RawData.set_index(["日期", "ID"])["交易日"].unstack()}).loc[factor_names]
         Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
-        return _adjustDateTime(Data, dts, start_dt, end_dt, fillna=True, value=0)
+        return _adjustDateTime(Data, dts, fillna=True, value=0)
 
 class _MarketTable(WindMarketTable):
     """行情因子表"""
@@ -92,8 +89,7 @@ class _MarketTable(WindMarketTable):
         FieldDict = self.FactorDB.FieldName2DBFieldName(table=self.Name, fields=["交易日期", "Wind代码"])
         SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict["Wind代码"]+" "# ID
         SQLStr += "FROM "+DBTableName+" "
-        if idt is not None:
-            SQLStr += "WHERE "+DBTableName+"."+FieldDict["交易日期"]+"='"+idt.strftime("%Y%m%d")+"' "
+        if idt is not None: SQLStr += "WHERE "+DBTableName+"."+FieldDict["交易日期"]+"='"+idt.strftime("%Y%m%d")+"' "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict["Wind代码"]
         return [iRslt[0] for iRslt in self.FactorDB.fetchall(SQLStr)]
     # 返回在给定 ID iid 的有数据记录的时间点
@@ -241,15 +237,12 @@ class _ConstituentTable(_DBTable):
         else:
             RawData = pd.DataFrame(np.array(RawData), columns=["指数ID", 'ID', '纳入日期', '剔除日期', '最新标志'])
         return RawData
-    def readData(self, factor_names=None, ids=None, dts=None, start_dt=None, end_dt=None, args={}):
-        StartDate, EndDate = _genStartEndDate(dts, start_dt, end_dt)
-        if factor_names is None:
-            factor_names = self.FactorNames
+    def __QS_readData__(self, factor_names=None, ids=None, dts=None, args={}):
+        if dts: StartDate, EndDate = dts[0].date(), dts[-1].date()
+        else: StartDate, EndDate = None, dt.date.today()
+        if factor_names is None: factor_names = self.FactorNames
         RawData = self._getRawData(factor_names, ids, StartDate, EndDate, args=args)
-        if StartDate is None:
-            StartDate = dt.datetime.strptime(RawData["纳入日期"].min(), "%Y%m%d").date()
-        if EndDate is None:
-            EndDate = dt.date.today()
+        if StartDate is None: StartDate = dt.datetime.strptime(RawData["纳入日期"].min(), "%Y%m%d").date()
         DateSeries = getDateSeries(StartDate, EndDate)
         Data = {}
         for iIndexID in factor_names:
@@ -265,7 +258,7 @@ class _ConstituentTable(_DBTable):
         Data = pd.Panel(Data).ix[factor_names]
         Data.major_axis = [dt.datetime.combine(iDate, dt.time(23, 59, 59, 999999)) for iDate in Data.major_axis]
         Data.fillna(value=0, inplace=True)
-        return _adjustDateTime(Data, dts, start_dt, end_dt, fillna=True, method="bfill")
+        return _adjustDateTime(Data, dts, fillna=True, method="bfill")
 
 class _ETFPCFTable(WindMarketTable):
     """ETF 申购赎回成份因子表"""
@@ -403,8 +396,9 @@ class _DividendTable(_DBTable):
         else:
             RawData = pd.DataFrame(np.array(RawData), columns=["日期","ID"]+fields)
         return RawData
-    def readData(self, factor_names=None, ids=None, dts=None, start_dt=None, end_dt=None, args={}):
-        StartDate, EndDate = _genStartEndDate(dts, start_dt, end_dt)
+    def __QS_readData__(self, factor_names=None, ids=None, dts=None, args={}):
+        if dts: StartDate, EndDate = dts[0].date(), dts[-1].date()
+        else: StartDate, EndDate = None, dt.date.today()
         if factor_names is None: factor_names = self.FactorNames
         RawData = self._getRawData(factor_names, ids, StartDate, EndDate, args=args)
         RawData.set_index(["日期", "ID"], inplace=True)
@@ -416,7 +410,7 @@ class _DividendTable(_DBTable):
                 Data[iFactorName] = Data[iFactorName].astype("float")
         Data = pd.Panel(Data).loc[factor_names]
         Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
-        Data = _adjustDateTime(Data, dts, start_dt, end_dt, fillna=False)
+        Data = _adjustDateTime(Data, dts, fillna=False)
         if ids is not None: Data = Data.ix[:, :, ids]
         return Data
 
@@ -476,8 +470,9 @@ class _MappingTable(_DBTable):
         SQLStr += DBTableName+'.'+FieldDict['起始日期']
         RawData = self.FactorDB.fetchall(SQLStr)
         return pd.DataFrame((np.array(RawData) if RawData else RawData), columns=["ID", '起始日期', '截止日期']+fields)
-    def readData(self, factor_names=None, ids=None, dts=None, start_dt=None, end_dt=None, args={}):
-        StartDate, EndDate = _genStartEndDate(dts, start_dt, end_dt)
+    def __QS_readData__(self, factor_names=None, ids=None, dts=None, start_dt=None, end_dt=None, args={}):
+        if dts: StartDate, EndDate = dts[0].date(), dts[-1].date()
+        else: StartDate, EndDate = None, dt.date.today()
         if factor_names is None: factor_names = self.FactorNames
         RawData = self._getRawData(factor_names, ids, StartDate, EndDate, args=args)
         if RawData.shape[0]==0: return None
@@ -495,7 +490,7 @@ class _MappingTable(_DBTable):
             Data[iFactorName].loc[iData.index, iData.columns] = iData
             Data[iFactorName].fillna(method="bfill", inplace=True)
         Data = pd.Panel(Data)
-        return _adjustDateTime(Data, dts, start_dt, end_dt, fillna=True, method="bfill").loc[factor_names]
+        return _adjustDateTime(Data, dts, fillna=True, method="bfill").loc[factor_names]
 
 class _FeatureTable(_DBTable):
     """特征因子表"""
@@ -529,15 +524,13 @@ class _FeatureTable(_DBTable):
         else:
             RawData = pd.DataFrame(np.array(RawData), columns=["ID"]+fields)
         return RawData
-    def readData(self, factor_names=None, ids=None, dts=None, start_dt=None, end_dt=None, args={}):
-        if factor_names is None:
-            factor_names = self.FactorNames
+    def __QS_readData__(self, factor_names=None, ids=None, dts=None, args={}):
+        if factor_names is None: factor_names = self.FactorNames
         RawData = self._getRawData(factor_names, ids, args=args)
         RawData = RawData.set_index(["ID"])
         Data = pd.Panel({dt.datetime.today(): RawData.T}).swapaxes(0, 1)
-        Data = _adjustDateTime(Data, dts, start_dt, end_dt, fillna=True, method="bfill")
-        if ids is not None:
-            Data = Data.ix[:, :, ids]
+        Data = _adjustDateTime(Data, dts, fillna=True, method="bfill")
+        if ids is not None: Data = Data.ix[:, :, ids]
         return Data
 
 class WindDB2(WindDB):
@@ -626,6 +619,8 @@ class WindDB2(WindDB):
             return None
 
 if __name__=="__main__":
+    import time
+    
     # 功能测试
     WDB = WindDB2()
     WDB.connect()
@@ -634,56 +629,16 @@ if __name__=="__main__":
     # 导入数据库信息
     #from QuantStudio import __QS_MainPath__
     #WDB.importInfo(__QS_MainPath__+os.sep+"Resource\\WindDB2Info.xlsx")
+
+    MainFT = WDB.getTable("中国A股日行情")
+    DTs = MainFT.getDateTime(start_dt=dt.datetime(2014,1,1), end_dt=dt.datetime(2018,1,1))
+    StartT = time.process_time()
+    MainFT.start(dts=DTs, ids=["000001.SZ", "600000.SH"])
+    for iDateTime in DTs:
+        MainFT.move(iDateTime)
+        iData = MainFT.readData(factor_names=["复权收盘价"], dts=[iDateTime]).iloc[:, 0, :]
+        print(iDateTime)
+    MainFT.end()
+    print(time.process_time()-StartT)
     
-    ## 交易日
-    #FT = WDB.getTable("中国期货交易日历")
-    #print(FT.FactorNames)
-    #IDs = FT.getID()
-    #DateTimes = FT.getDateTime(iid="CFFEX")
-    #TradeDayData = FT.readData(factor_names=["交易日"], ids=["INE", "CFFEX"], start_dt=dt.datetime(2018,1,1))
-    
-    ## 日行情
-    #FT = WDB.getTable("货币市场日行情")
-    #print(FT.FactorNames)
-    ##print(FT.getID())
-    #MarketData = FT.readData(factor_names=["收盘利率"], ids=["IBO007.IB"], start_dt=dt.datetime(2018,4,26), end_dt=dt.datetime(2018,4,27,23,59,59,999999))
-    
-    # 指数成份
-    #FT = WDB.getTable("中国A股指数成份股")
-    #print(FT.FactorNames)
-    #IDs = FT.readData(factor_names=["000016.SH"], ids=None, start_dt=dt.datetime(2018,4,26), end_dt=dt.datetime(2018,4,27,23,59,59,999999))
-    #ConstituentData = FT.readData(factor_names=["000016.SH"], ids=None, start_dt=dt.datetime(2018,4,26), end_dt=dt.datetime(2018,4,27,23,59,59,999999))
-    
-    ## ETF
-    #FT = WDB.getTable("中国ETF申购赎回清单")
-    #print(FT.FactorNames)
-    #PCFData = FT.readData(ids=["510050.SH"], start_dt=dt.datetime(2018,4,26), end_dt=dt.datetime(2018,4,27,23,59,59,999999))
-    #FT = WDB.getTable("中国ETF申购赎回成份")
-    #print(FT.FactorNames)
-    #PCFData = FT.readData(factor_names=["股票数量", "现金替代标志"], start_dt=dt.datetime(2017,6,1), end_dt=dt.datetime(2017,6,30,23,59,59,999999), args={"基金ID":"510050.SH"})
-    
-    # 分红, 配股
-    FT = WDB.getTable("中国A股分红")
-    print(FT.FactorNames)
-    DividendData = FT.readData(factor_names=["每股派息(税前)", "每股送股比例", "每股转增比例"], ids=["600000.SH", "000001.SZ"], start_dt=dt.datetime(2017,1,1))
-    #FT = WDB.getTable("中国A股配股")
-    #print(FT.FactorNames)
-    #RightIssueData = FT.readData(factor_names=["配股价格", "配股比例"], ids=["600000.SH", "300110.SZ"], start_dt=dt.datetime(2017,1,1))
-    #FT = WDB.getTable("中国共同基金分红")
-    #print(FT.FactorNames)
-    #FundDividendData = FT.readData(factor_names=["每股派息(元)", "可分配收益(元)", "收益分配金额(元)", "基准基金份额(万份)"], ids=["510050.SH"], start_dt=dt.datetime(2017,1,1))
-    
-    # 映射
-    #FT = WDB.getTable("中国期货连续(主力)合约和月合约映射表")
-    #print(FT.FactorNames)
-    ##IDs = FT.getID()
-    #Data = FT.readData(factor_names=["映射月合约Wind代码"], ids=["T00.CFE", "T.CFE"], start_dt=dt.datetime(2017,1,1), end_dt=dt.datetime(2017,12,31,23,59,59,999999))
-    #FT = WDB.getTable("中国共同基金被动型基金跟踪指数")
-    #print(FT.FactorNames)
-    #Data = FT.readData(factor_names=["跟踪指数Wind代码"], ids=["510050.SH", "510680.SH"], start_dt=dt.datetime(2018,1,1))
-    
-    ## 特征
-    #FT = WDB.getTable("中国A股指数基本资料")
-    #print(FT.FactorNames)
-    #Data = FT.readData(factor_names=["发布方", "发布日期"], ids=["000001.SH", "000016.SH"]).iloc[:, 0]
     WDB.disconnect()

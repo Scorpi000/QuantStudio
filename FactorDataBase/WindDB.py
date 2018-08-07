@@ -16,19 +16,6 @@ from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable, _adjustDa
 
 os.environ['NLS_LANG'] = 'SIMPLIFIED CHINESE_CHINA.UTF8'
 
-def _genStartEndDate(dts=None, start_dt=None, end_dt=None):
-    if dts is not None:
-        StartDate = dts[0].date()
-        EndDate = dts[-1].date()
-        if start_dt is not None:
-            StartDate = max((StartDate, start_dt.date()))
-        if end_dt is not None:
-            EndDate = min((EndDate, end_dt.date()))
-    else:
-        StartDate = (None if start_dt is None else start_dt.date())
-        EndDate = (None if end_dt is None else end_dt.date())
-    return (StartDate, EndDate)
-
 class _DBTable(FactorTable):
     def __init__(self, name, sys_args={}, **kwargs):
         super().__init__(sys_args=sys_args, **kwargs)
@@ -124,13 +111,12 @@ class _MarketTable(_DBTable):
         else:
             RawData = pd.DataFrame(np.array(RawData), columns=['日期','ID']+fields)
         return RawData
-    def readData(self, factor_names=None, ids=None, dts=None, start_dt=None, end_dt=None, args={}):
-        StartDate, EndDate = _genStartEndDate(dts, start_dt, end_dt)
+    def __QS_readData__(self, factor_names=None, ids=None, dts=None, args={}):
+        if dts: StartDate, EndDate = dts[0].date(), dts[-1].date()
+        else: StartDate, EndDate = None, None
         FillNa = args.get("缺失填充", self.FillNa)
-        if FillNa:
-            StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
-        if factor_names is None:
-            factor_names = self.FactorNames
+        if FillNa: StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
+        if factor_names is None: factor_names = self.FactorNames
         RawData = self._getRawData(factor_names, ids, StartDate, EndDate, args=args)
         RawData = RawData.set_index(["日期", "ID"])
         DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
@@ -142,9 +128,8 @@ class _MarketTable(_DBTable):
             Data[iFactorName] = iRawData
         Data = pd.Panel(Data).loc[factor_names]
         Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
-        Data = _adjustDateTime(Data, dts, start_dt, end_dt, fillna=FillNa, method="pad")
-        if ids is not None:
-            Data = Data.ix[:, :, ids]
+        Data = _adjustDateTime(Data, dts, fillna=FillNa, method="pad")
+        if ids is not None: Data = Data.ix[:, :, ids]
         return Data
 
 class _ConstituentTable(_DBTable):
@@ -209,16 +194,20 @@ class _ConstituentTable(_DBTable):
         DateTimes = set()
         for iStartDate, iEndDate in Data:
             iStartDT = dt.datetime.strptime(iStartDate, "%Y%m%d") + TimeDelta
-            if iEndDate is None:
-                iEndDT = (dt.datetime.now() if end_dt is None else end_dt)
+            if iEndDate is None: iEndDT = (dt.datetime.now() if end_dt is None else end_dt)
+                
             DateTimes = DateTimes.union(set(getDateTimeSeries(start_dt=iStartDT, end_dt=iEndDT, timedelta=dt.timedelta(1))))
         return sorted(DateTimes)
-    def readData(self, factor_names=None, ids=None, dts=None, start_dt=None, end_dt=None, args={}):
-        StartDate, EndDate = _genStartEndDate(dts, start_dt, end_dt)
-        if factor_names is None:
-            factor_names = self.FactorNames.tolist()
-        RawData = self._getRawData(factor_names, ids, StartDate, EndDate, args=args)
-        DateSeries = getDateSeries(StartDate, EndDate)
+    def __QS_readData__(self, factor_names=None, ids=None, dts=None, args={}):
+        if dts: StartDate, EndDate = dts[0].date(), dts[-1].date()
+        else: StartDate, EndDate = None, None
+        if factor_names is None: factor_names = self.FactorNames
+        RawData = self._getRawData(factor_names, ids, start_date=StartDate, end_date=EndDate, args=args)
+        if StartDate is None:
+            StartDate = dt.datetime.strptime(np.min(RawData["纳入日期"].values), "%Y%m%d").date()
+            DateSeries = getDateSeries(StartDate, dt.date.today())
+        else:
+            DateSeries = getDateSeries(dts[0].date(), dts[-1].date())
         Data = {}
         for iIndexID in factor_names:
             iRawData = RawData[RawData["指数ID"]==iIndexID].set_index(["ID"])
@@ -233,7 +222,7 @@ class _ConstituentTable(_DBTable):
         Data = pd.Panel(Data).ix[factor_names]
         Data.major_axis = [dt.datetime.combine(iDate, dt.time(23, 59, 59, 999999)) for iDate in Data.major_axis]
         Data.fillna(value=0, inplace=True)
-        return _adjustDateTime(Data, dts, start_dt, end_dt, fillna=True, method="bfill")
+        return _adjustDateTime(Data, dts, fillna=True, method="bfill")
     def _getRawData(self, fields, ids=None, start_date=None, end_date=None, args={}):
         IndexEquityID = self.FactorDB.ID2EquityID(fields)
         DBTableName = self.FactorDB.TablePrefix+self.FactorDB.TableName2DBTableName([self.Name])[self.Name]
@@ -250,11 +239,11 @@ class _ConstituentTable(_DBTable):
         SQLStr += "AND ("+genSQLInCondition(DBTableName+'.'+FieldDict['指数ID'], list(IndexEquityID.values), is_str=True, max_num=1000)+") "
         if ids is not None:
             SQLStr += 'AND ('+genSQLInCondition(IDTable+'.f1_0001', ids, is_str=True, max_num=1000)+') '
-        if start_dt is not None:
-            SQLStr += "AND (("+DBTableName+"."+FieldDict["剔除日期"]+">'"+start_dt.strftime("%Y%m%d")+"') "
+        if start_date is not None:
+            SQLStr += "AND (("+DBTableName+"."+FieldDict["剔除日期"]+">'"+start_date.strftime("%Y%m%d")+"') "
             SQLStr += "OR ("+DBTableName+"."+FieldDict["剔除日期"]+" IS NULL))"
-        if end_dt is not None:
-            SQLStr += "AND "+DBTableName+"."+FieldDict["纳入日期"]+"<='"+end_dt.strftime("%Y%m%d")+"' "
+        if end_date is not None:
+            SQLStr += "AND "+DBTableName+"."+FieldDict["纳入日期"]+"<='"+end_date.strftime("%Y%m%d")+"' "
         else:
             SQLStr += "AND "+DBTableName+"."+FieldDict["纳入日期"]+" IS NOT NULL "
         SQLStr += 'ORDER BY '+DBTableName+'.'+FieldDict['指数ID']+", "+IDTable+'.f1_0001, '+DBTableName+'.'+FieldDict['纳入日期']

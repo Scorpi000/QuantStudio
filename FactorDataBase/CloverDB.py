@@ -9,7 +9,7 @@ import pandas as pd
 from traits.api import File, List, Float, Int, Bool, Enum, Str, Range, Password
 
 from QuantStudio import __QS_Error__, __QS_LibPath__
-from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable, _adjustDateTime, _genStartEndDate
+from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable, _adjustDateTime
 
 # tms: 时间戳, 单位: 毫秒; date: 日期; update: 最新的采样区间内有多少个行情点;
 # lst: 最新价; vol: 最新成交量; amt: 最新成交额; oin: 最新持仓量;
@@ -36,12 +36,11 @@ class _TickTable(FactorTable):
         elif key in MetaData: return MetaData.ix[:, key]
         else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
      # 时间点默认是当天, ID 默认是 [000001.SH], 特别参数: 时间间隔: 以秒为单位, 默认是 3 秒
-    def readData(self, factor_names=None, ids=None, dts=None, start_dt=None, end_dt=None, args={}):
-        if factor_names is None:
-            factor_names = self.FactorNames
-        if ids is None:
-            raise __QS_Error__("请指定提取数据的 ID 序列!")
-        StartDate, EndDate = _genStartEndDate(dts, start_dt, end_dt)
+    def __QS_readData__(self, factor_names=None, ids=None, dts=None, args={}):
+        if factor_names is None: factor_names = self.FactorNames
+        if ids is None: raise __QS_Error__("请指定提取数据的 ID 序列!")
+        if dts: StartDate, EndDate = dts[0].date(), dts[-1].date()
+        else: StartDate, EndDate = dt.date.today()-dt.timedelta(365), dt.date.today()
         SecDef = self.FactorDB.createSecDef(ids)
         tms_intv = int(args.get("时间间隔", self.TmsIntv)*1000)
         StartDate = StartDate.strftime("%Y-%m-%d")
@@ -69,7 +68,7 @@ class _TickTable(FactorTable):
                 iData = iData * PriceMultiplier
             Data[iField] = iData
         Data = pd.Panel(Data, major_axis=tms, minor_axis=ids).loc[factor_names]
-        return _adjustDateTime(Data, dts=dts, start_dt=start_dt, end_dt=end_dt)
+        return _adjustDateTime(Data, dts=dts)
 
 class _TimeBarTable(FactorTable):
     """Clover Time Bar 因子表"""
@@ -98,46 +97,41 @@ class _TimeBarTable(FactorTable):
         else:
             return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
      # 时间点默认是当天, ID 默认是 [000001.SH], 特别参数: 时间间隔: 以秒为单位, 默认是 3 秒
-    def readData(self, factor_names=None, ids=None, dts=None, start_dt=None, end_dt=None, args={}):
-        if ids is None:
-            raise __QS_Error__("请指定提取数据的 ID 序列!")
-        StartDate, EndDate = _genStartEndDate(dts, start_dt, end_dt)
-        if factor_names is None:
-            factor_names = self.FactorNames
+    def __QS_readData__(self, factor_names=None, ids=None, dts=None, args={}):
+        if ids is None: raise __QS_Error__("请指定提取数据的 ID 序列!")
+        if dts: StartDate, EndDate = dts[0].date(), dts[-1].date()
+        else: StartDate, EndDate = dt.date.today()-dt.timedelta(1), dt.date.today()
+        if factor_names is None: factor_names = self.FactorNames
         TBs, AllSecurityIDs, SecurityIDs, PriceMultiplier = self.FactorDB.getTimeBar(ids, StartDate, EndDate, 
-                                                                                     tms_intv=args.get("时间间隔", self.TmsIntv)*1000, 
-                                                                                     depth=args.get("深度", self.Depth), 
-                                                                                     dynamic_security_id=args.get("动态证券ID", self.DynamicSecID))
+                                                                                      tms_intv=args.get("时间间隔", self.TmsIntv)*1000, 
+                                                                                      depth=args.get("深度", self.Depth), 
+                                                                                      dynamic_security_id=args.get("动态证券ID", self.DynamicSecID))
         Data = self.FactorDB.fetchTimeBarData(factor_names, TBs, AllSecurityIDs, SecurityIDs, PriceMultiplier)
-        return _adjustDateTime(Data, dts=dts, start_dt=start_dt, end_dt=end_dt)
+        return _adjustDateTime(Data, dts=dts)
 
 class _FeatureTable(FactorTable):
     """特征因子表"""
     @property
     def FactorNames(self):
-        return np.array(['Symbol', 'SecurityID', 'SecurityType', 'SecurityExchange', 'MinTradeVol', 'RoundLot', 'MinPriceIncrement', 'Currency', 'TimeZone', 'MaturityMonthYear', 'ContractMultiplier', 'UnderlyingSecurityID', 'TrdSessLstGrp'], dtype=np.dtype("O"))
+        return ['Symbol', 'SecurityID', 'SecurityType', 'SecurityExchange', 'MinTradeVol', 'RoundLot', 'MinPriceIncrement', 'Currency', 'TimeZone',
+                'MaturityMonthYear', 'ContractMultiplier', 'UnderlyingSecurityID', 'TrdSessLstGrp']
     def getFactorMetaData(self, factor_names=None, key=None):
-        if factor_names is None:
-            factor_names = self.FactorNames
+        if factor_names is None: factor_names = self.FactorNames
         MetaData = pd.DataFrame("string", index=factor_names, columns=["DataType"], dtype=np.dtype("O"))
-        if key is None:
-            return MetaData
-        elif key in MetaData:
-            return MetaData.ix[:, key]
-        else:
-            return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
-    def readData(self, factor_names=None, ids=None, dts=None, start_dt=None, end_dt=None, args={}):
-        if factor_names is None:
-            factor_names = self.FactorNames.tolist()
-        if ids is None:
-            ids = ["000001.SH"]
-        StartDate, EndDate = _genStartEndDate(dts, start_dt, end_dt)
+        if key is None: return MetaData
+        elif key in MetaData: return MetaData.ix[:, key]
+        else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
+    def __QS_readData__(self, factor_names=None, ids=None, dts=None, args={}):
+        if factor_names is None: factor_names = self.FactorNames
+        if ids is None: ids = ["000001.SH"]
+        if dts: StartDate, EndDate = dts[0].date(), dts[-1].date()
+        else: StartDate, EndDate = dt.date.today()-dt.timedelta(365), dt.date.today()
         Data = {}
         for i in range((EndDate-StartDate).days):
             iDT = dt.datetime.combine(StartDate + dt.timedelta(i), dt.time(23, 59, 59, 999999))
             Data[iDT] = pd.DataFrame(self.FactorDB.getSecurityInfo(ids, idt=iDT), index=ids).ix[:, factor_names].T
         Data = pd.Panel(Data).swapaxes(0, 1)
-        Data = _adjustDateTime(Data, dts, start_dt, end_dt, fillna=True, method="bfill")
+        Data = _adjustDateTime(Data, dts, fillna=True, method="bfill")
         return Data
 
 class CloverDB(FactorDB):
@@ -357,9 +351,9 @@ if __name__=="__main__":
     
     FT = CDB.getTable("Tick 数据")
     print(FT.FactorNames)
-    Data = FT.readData(factor_names=["lst"], ids=["510050.SH"], start_dt=dt.datetime(2018,4,26), end_dt=dt.datetime(2018,4,26,23,59,59,999999))
+    Data = FT.readData(factor_names=["lst"], ids=["510050.SH"])
     
     #FT = CDB.getTable("Time Bar 数据")
     ##print(FT.FactorNames)
-    #Data = FT.readData(factor_names=["mid", "amt"], ids=IDs, start_dt=dt.datetime(2017,1,1), end_dt=dt.datetime(2017,1,2,23,59,59,999999), args={"时间间隔":60, "动态证券ID":False})
+    #Data = FT.readData(factor_names=["mid", "amt"], ids=IDs, args={"时间间隔":60, "动态证券ID":False})
     CDB.disconnect()
