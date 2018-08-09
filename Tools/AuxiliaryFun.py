@@ -1,5 +1,6 @@
 # coding=utf-8
 """常用的辅助函数"""
+from multiprocessing import Lock, Process, cpu_count, Queue
 import numpy as np
 import pandas as pd
 
@@ -166,6 +167,31 @@ def allocateDim(n, n_dim=2):
         DimAllocation[i] = DimAllocation[i] + 1
         i = i+1
     return DimAllocation
+
+# 以多进程的方式运行程序, target_fun:目标函数, 参数为(arg); main2sub_queue(sub2main_queue)可取值: None, Single, Multiple
+def startMultiProcess(pid="0", n_prc=cpu_count(), target_fun=None, arg={}, 
+                      partition_arg=None, n_partition_head=0, n_partition_tail=0, 
+                      main2sub_queue="None", sub2main_queue="None", daemon=None):
+    PIDs = [pid+"-"+str(i) for i in range(n_prc)]
+    if main2sub_queue=='Single': Main2SubQueue = Queue()
+    elif main2sub_queue=='Multiple': Main2SubQueue = {iPID:Queue() for iPID in PIDs}
+    else: Main2SubQueue = None
+    if sub2main_queue=='Single': Sub2MainQueue = Queue()
+    elif sub2main_queue=='Multiple': Sub2MainQueue = {iPID:Queue() for iPID in PIDs}
+    else: Sub2MainQueue = None
+    if (partition_arg is not None) and (n_prc>0): ArgPartition = partitionList(arg[partition_arg], n_prc, n_partition_head, n_partition_tail)
+    Procs = {}
+    for i, iPID in enumerate(PIDs):
+        iArg = arg
+        iArg["PID"] = iPID
+        if partition_arg is not None: iArg[partition_arg] = ArgPartition[i]
+        if sub2main_queue=='Single': iArg["Sub2MainQueue"] = Sub2MainQueue
+        elif sub2main_queue=='Multiple': iArg["Sub2MainQueue"] = Sub2MainQueue[iPID]
+        if main2sub_queue=='Single': iArg["Main2SubQueue"] = Main2SubQueue
+        elif main2sub_queue=='Multiple': iArg["Main2SubQueue"] = Main2SubQueue[iPID]
+        Procs[iPID] = Process(target=target_fun, args=(iArg,), daemon=daemon)
+        Procs[iPID].start()
+    return (Procs, Main2SubQueue, Sub2MainQueue)
 
 if __name__=="__main__":
     print(allocateDim(13))

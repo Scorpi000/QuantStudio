@@ -88,7 +88,7 @@ def prepareRegressData(Y, X=None, x_varnames=None, has_constant=False, dummy_dat
         else:
             X = X.reshape((0,X.shape[1]+1))
         x_varnames = ["constant"]+x_varnames
-    return (NotNAMask,x_varnames,Y,X)
+    return (NotNAMask, x_varnames, Y, X)
 # Z-Score 标准化
 # data: 待标准化的数据, array; cat_data: 分类数据, array
 # avg_statistics: 平均统计量, 可选: 平均值, 中位数; dispersion_statistics: 离散统计量, 可选: 标准差, MAD

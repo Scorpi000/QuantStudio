@@ -8,10 +8,10 @@ from multiprocessing import Process, Queue
 
 import pandas as pd
 import numpy as np
-from traits.api import Int, Event
+from traits.api import Int, Event, Enum, Any
 
 from QuantStudio import __QS_Error__
-from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
+from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable, Factor
 
 # 自定义因子库
 class CustomDB(FactorDB):

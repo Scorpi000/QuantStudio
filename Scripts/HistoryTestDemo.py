@@ -8,7 +8,7 @@ if __name__=='__main__':
     from QuantStudio.Tools.DateTimeFun import getMonthLastDateTime
     from QuantStudio.Tools.QtGUI.QtGUIFun import showOutput
     from QuantStudio.FactorDataBase.HDF5DB import HDF5DB
-    from QuantStudio.FactorDataBase.CustomDB import CustomDB, FactorCacheFT
+    from QuantStudio.FactorDataBase.CustomDB import CustomFT
     from QuantStudio.HistoryTest.HistoryTestModel import HistoryTestModel
     from QuantStudio.HistoryTest.SectionTest.IC import IC
     from QuantStudio.HistoryTest.SectionTest.Portfolio import QuantilePortfolio
@@ -20,7 +20,7 @@ if __name__=='__main__':
     MainDB.connect()
     
     # 创建自定义因子表
-    MainFT = FactorCacheFT("MainFT")
+    MainFT = CustomFT("MainFT")
     FT = MainDB.getTable("ElementaryFactor")
     MainFT.addFactors(factor_table=FT, factor_names=["复权收盘价", "流通市值"], args={})
     MainFT.setDateTime(FT.getDateTime(ifactor_name="复权收盘价", start_dt=dt.datetime(2017, 1, 1), end_dt=dt.datetime(2018, 1, 1)))

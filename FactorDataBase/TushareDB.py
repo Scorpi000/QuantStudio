@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from traits.api import Enum, Bool, Int
 
-from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable, _adjustDateTime, _genStartEndDate
+from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable, _adjustDateTime
 
 class _BarTable(FactorTable):
     """Bar 线因子表"""

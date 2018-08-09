@@ -82,7 +82,7 @@ class DateTimeList(__QS_Object__):
     #DateFreq = Enum(None, "月底日", "周末日", arg_type="SingleOption", label="日期频率", order=6)
     #DateList = List(Date, arg_type="SingleOption", label="日期序列", order=7)
     #TimeList = List(Time, arg_type="SingleOption", label="时间序列", order=8)
-    Obj = List(dt.datetime, label="设置", arg_type="DateList", order=9)
+    Obj = List(label="设置", arg_type="DateList", order=9)
     
 Args = DateTimeList()
 Rslt = Args.setArgs()

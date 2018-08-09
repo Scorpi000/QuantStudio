@@ -79,8 +79,10 @@ class _CalendarTable(_DBTable):
         Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
         return _adjustDateTime(Data, dts, fillna=True, value=0)
 
-class _MarketTable(WindMarketTable):
+class _MarketTable(_DBTable):
     """行情因子表"""
+    FillNa = Bool(True, arg_type="Bool", label="缺失填充", order=0)
+    LookBack = Int(0, arg_type="Integer", label="回溯天数", order=1)
     # 返回在给定时点 idt 的有数据记录的 ID
     # 如果 idt 为 None, 将返回所有有历史数据记录的 ID
     # 忽略 ifactor_name
@@ -110,30 +112,45 @@ class _MarketTable(WindMarketTable):
             SQLStr += "AND "+DBTableName+"."+FieldDict["交易日期"]+"<='"+end_dt.strftime("%Y%m%d")+"' "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict["交易日期"]
         return list(map(lambda x: dt.datetime(int(x[0][:4]), int(x[0][4:6]), int(x[0][6:8]), 23, 59, 59, 999999), self.FactorDB.fetchall(SQLStr)))
-    def _getRawData(self, fields, ids=None, start_date=None, end_date=None, args={}):
-        FieldDict = self.FactorDB.FieldName2DBFieldName(table=self.Name, fields=["交易日期","Wind代码"]+fields)
+     # 时间点默认是当天, ID 默认是 [000001.SH], 特别参数: 回溯天数
+    def __QS_prepareRawData__(self, factor_names, ids=None, dts=None, args={}):
+        if dts: StartDate, EndDate = dts[0].date(), dts[-1].date()
+        else: StartDate, EndDate = None, None
+        if args.get("缺失填充", self.FillNa): StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
+        FieldDict = self.FactorDB.FieldName2DBFieldName(table=self.Name, fields=["交易日期", "Wind代码"]+factor_names)
         DBTableName = self.FactorDB.TablePrefix+self.FactorDB.TableName2DBTableName([self.Name])[self.Name]
         # 形成SQL语句, 日期, ID, 因子数据
         SQLStr = "SELECT "+DBTableName+"."+FieldDict["交易日期"]+", "
         SQLStr += DBTableName+"."+FieldDict["Wind代码"]+", "
-        for iField in fields:
-            SQLStr += DBTableName+"."+FieldDict[iField]+", "
+        for iField in factor_names: SQLStr += DBTableName+"."+FieldDict[iField]+", "
         SQLStr = SQLStr[:-2]+" FROM "+DBTableName+" "
         if ids is not None:
             SQLStr += "WHERE ("+genSQLInCondition(DBTableName+"."+FieldDict["Wind代码"],ids,is_str=True,max_num=1000)+") "
         else:
             SQLStr += "WHERE "+DBTableName+"."+FieldDict["Wind代码"]+" IS NOT NULL "
-        if start_date is not None:
-            SQLStr += "AND "+DBTableName+"."+FieldDict["交易日期"]+">='"+start_date.strftime("%Y%m%d")+"' "
-        if end_date is not None:
-            SQLStr += "AND "+DBTableName+"."+FieldDict["交易日期"]+"<='"+end_date.strftime("%Y%m%d")+"' "
+        if StartDate is not None: SQLStr += "AND "+DBTableName+"."+FieldDict["交易日期"]+">='"+StartDate.strftime("%Y%m%d")+"' "
+        if EndDate is not None: SQLStr += "AND "+DBTableName+"."+FieldDict["交易日期"]+"<='"+EndDate.strftime("%Y%m%d")+"' "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict["Wind代码"]+", "+DBTableName+"."+FieldDict["交易日期"]
         RawData = self.FactorDB.fetchall(SQLStr)
-        if RawData==[]:
-            RawData = pd.DataFrame(columns=["日期","ID"]+fields)
-        else:
-            RawData = pd.DataFrame(np.array(RawData), columns=["日期","ID"]+fields)
-        return RawData
+        if not RawData: return pd.DataFrame(columns=["日期", "ID"]+factor_names)
+        return pd.DataFrame(np.array(RawData), columns=["日期", "ID"]+factor_names)
+    def __QS_readData__(self, factor_names=None, ids=None, dts=None, args={}):
+        if factor_names is None: factor_names = self.FactorNames
+        RawData = self.__QS_prepareRawData__(factor_names, ids, dts, args=args)
+        RawData = RawData.set_index(["日期", "ID"])
+        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
+        Data = {}
+        for iFactorName in RawData.columns:
+            iRawData = RawData[iFactorName].unstack()
+            if DataType[iFactorName]=="double":
+                iRawData = iRawData.astype("float")
+            Data[iFactorName] = iRawData
+        Data = pd.Panel(Data).loc[factor_names]
+        Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
+        Data = _adjustDateTime(Data, dts, fillna=args.get("缺失填充", self.FillNa), method="pad")
+        if ids is not None: Data = Data.ix[:, :, ids]
+        return Data
+
 
 class _ConstituentTable(_DBTable):
     """成份因子表"""

@@ -4,6 +4,7 @@ import sys
 import operator
 import warnings
 warnings.filterwarnings("ignore")
+from multiprocessing import Lock
 
 import numpy as np
 import pandas as pd
@@ -14,6 +15,7 @@ from traitsui.menu import OKButton, CancelButton
 __QS_MainPath__ = os.path.split(os.path.realpath(__file__))[0]
 __QS_CachePath__ = __QS_MainPath__+os.sep+"Cache"
 __QS_LibPath__ = __QS_MainPath__+os.sep+"Lib"
+__QS_CacheLock__ = Lock()
 
 
 for iFileName in os.listdir(path=__QS_CachePath__):
@@ -55,7 +57,10 @@ class __QS_Object__(HasTraits):
         self.trait_view(name="QSView", view_element=View(*self.getViewItems()[0], buttons=[OKButton, CancelButton], resizable=True, title=getattr(self, "Name", "设置参数")))
     @property
     def ArgNames(self):
-        return tuple(self._ArgOrder.index)
+        return self._ArgOrder.index.tolist()
+    @property
+    def Args(self):
+        return {iArgName:self[iArgName] for iArgName in self.ArgNames}
     def getViewItems(self, context_name=""):
         Prefix = (context_name+"." if context_name else "")
         Context = ({} if not Prefix else {context_name:self})
@@ -64,6 +69,8 @@ class __QS_Object__(HasTraits):
         Items, Context = self.getViewItems()
         if Context: return self.configure_traits(view=View(*Items, buttons=[OKButton, CancelButton], resizable=True, title=getattr(self, "Name", "设置参数")), context=Context)
         return self.configure_traits(view=View(*Items, buttons=[OKButton, CancelButton], resizable=True, title=getattr(self, "Name", "设置参数")))
+    def getTrait(self, arg_name):
+        return (self._LabelTrait[arg_name], self.trait(self._LabelTrait[arg_name]))
     def add_trait(self, name, *trait):
         if name in self.visible_traits(): return super().add_trait(name, *trait)
         Rslt = super().add_trait(name, *trait)

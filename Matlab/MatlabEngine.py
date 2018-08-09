@@ -18,19 +18,15 @@ class MatlabEngine(__QS_Object__):
     def __getstate__(self):
         # Remove the unpicklable entries.
         state = self.__dict__.copy()
-        EngineName = self.checkEngine()
-        if EngineName is not None:
-            state["_Engine"] = {"name":EngineName,"exclusive_mode":(not self._Engine.matlab.engine.isEngineShared())}
-        else:
-            state["_Engine"] = None
+        state["_Engine"] = self.EngineName
     def __setstate__(self, state):
+        self._Engine = None
         if state["_Engine"] is not None:
-            self._Engine = None
-            if state["_Engine"]["exclusive_mode"]:
+            if self.ExclusiveMode:
+                self.connect(engine_name=None)
                 self._EngineLock = Lock()
-                self.connect(engine_name=None,exclusive_mode=True)
             else:
-                self.connect(engine_name=state["_Engine"]["name"],exclusive_mode=False)
+                self.connect(engine_name=state["_Engine"])
     @property
     def EngineName(self):
         if (self._Engine is not None) and (self._Engine._check_matlab()):# 当前已经链接到一个引擎

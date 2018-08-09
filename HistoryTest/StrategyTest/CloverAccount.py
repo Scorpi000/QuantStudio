@@ -4,8 +4,8 @@ import datetime as dt
 import pandas as pd
 import numpy as np
 
-from QuantStudio import QSError, QSArgs, QSObject
-from QuantStudio.StrategyTest.StrategyTestModel import Account, cutDateTime
+from QuantStudio import __QS_Error__
+from QuantStudio.HistoryTest.StrategyTest.StrategyTestModule import Account, cutDateTime
 
 class TimeBarAccount(Account):
     """Time Bar 账户"""
