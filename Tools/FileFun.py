@@ -278,6 +278,5 @@ def readJSONFile(file_path):
     if os.path.isfile(file_path):
         with open(file_path, "r", encoding="utf-8") as File:
             FileStr = File.read()
-        if FileStr!="":
-            return json.loads(FileStr)
+        if FileStr!="": return json.loads(FileStr)
     return {}

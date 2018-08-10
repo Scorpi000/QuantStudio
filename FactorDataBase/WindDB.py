@@ -9,17 +9,19 @@ import pandas as pd
 from traits.api import Enum, Int, Str, Range, Password, Bool
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
+from QuantStudio.Tools.FileFun import readJSONFile
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
 from QuantStudio.Tools.DateTimeFun import getDateSeries, getDateTimeSeries
-from QuantStudio import __QS_Error__
+from QuantStudio import __QS_Error__, __QS_MainPath__, __QS_LibPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable, _adjustDateTime
 
 os.environ['NLS_LANG'] = 'SIMPLIFIED CHINESE_CHINA.UTF8'
 
 class _DBTable(FactorTable):
-    def __init__(self, name, sys_args={}, **kwargs):
-        super().__init__(sys_args=sys_args, **kwargs)
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        self.FactorDB = fdb
         self.Name = name
+        super().__init__(sys_args=sys_args, **kwargs)
         return
     def getMetaData(self, key=None):
         TableInfo = self.FactorDB._TableInfo.ix[self.Name]
@@ -134,12 +136,9 @@ class _MarketTable(_DBTable):
 
 class _ConstituentTable(_DBTable):
     """成份因子表"""
-    def __init__(self, name, sys_args={}, **kwargs):
-        super().__init__(name=name, sys_args=sys_args, **kwargs)
-        self._IndexIDs = None# DataFrame(证券ID, index=[指数ID])
     @property
     def FactorNames(self):
-        if self._IndexIDs is None:
+        if not hasattr(self, "_IndexIDs"):# DataFrame(证券ID, index=[指数ID])
             DBTableName = self.FactorDB.TablePrefix+self.FactorDB.TableName2DBTableName([self.Name])[self.Name]
             IDTable = self.FactorDB.TablePrefix+"tb_object_0001"
             FieldDict = self.FactorDB.FieldName2DBFieldName(table=self.Name, fields=["指数ID"])
@@ -270,13 +269,12 @@ class WindDB(FactorDB):
     Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
     def __init__(self, sys_args={}, **kwargs):
         self._Connection = None# 数据库链接
-        self._InfoFilePath = None# 数据库信息文件路径
         self._TableInfo = None# 数据库中的表信息
         self._FactorInfo = None# 数据库中的表字段信息
-        super().__init__(sys_args=sys_args, **kwargs)
-        # 继承来的属性
-        self.Name = "WindDB"
+        self._InfoFilePath = None# 数据库信息文件路径
         self._AllTables = []# 数据库中的所有表名, 用于查询时解决大小写敏感问题
+        super().__init__(sys_args=sys_args, **kwargs)
+        self.Name = "WindDB"
         return
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -290,11 +288,17 @@ class WindDB(FactorDB):
         else:
             self._Connection = None
     def __QS_initArgs__(self):
-        Config = readJSONFile(__QS_LibPath__+os.sep+"WindDBConfig.json")
+        ConfigFilePath = __QS_LibPath__+os.sep+"WindDBConfig.json"# 配置文件路径
+        self._InfoFilePath = __QS_LibPath__+os.sep+"WindDBInfo.hdf5"# 数据库信息文件路径
+        Config = readJSONFile(ConfigFilePath)
         ArgNames = self.ArgNames
         for iArgName, iArgVal in Config.items():
             if iArgName in ArgNames: self[iArgName] = iArgVal
-        self._InfoFilePath = __QS_LibPath__+os.sep+"WindDBInfo.hdf5"
+        if not os.path.isfile(self._InfoFilePath):
+            InfoResourcePath = __QS_MainPath__+os.sep+"Rescource"+os.sep+"WindDBInfo.xlsx"# 数据库信息源文件路径
+            print("缺失数据库信息文件: '%s', 尝试从 '%s' 中导入信息." % (self._InfoFilePath, InfoResourcePath))
+            if not os.path.isfile(InfoResourcePath): raise __QS_Error__("缺失数据库信息文件: %s" % InfoResourcePath)
+            self.importInfo(InfoResourcePath)
         self._TableInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/TableInfo")
         self._FactorInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/FactorInfo")
     # -------------------------------------------数据库相关---------------------------
@@ -366,9 +370,7 @@ class WindDB(FactorDB):
         else: return []
     def getTable(self, table_name):
         TableClass = self._TableInfo.loc[table_name, "TableClass"]
-        FT = eval("_"+TableClass+"('"+table_name+"')")
-        FT.FactorDB = self
-        return FT
+        return eval("_"+TableClass+"(name='"+table_name+"', fdb=self)")
     # -----------------------------------------数据提取---------------------------------
     # 给定起始日期和结束日期, 获取交易所交易日期, 目前仅支持："上海证券交易所", "深圳证券交易所"
     def getTradeDay(self, start_date=None, end_date=None, exchange="上海证券交易所"):

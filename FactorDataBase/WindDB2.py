@@ -17,9 +17,6 @@ from QuantStudio.FactorDataBase.WindDB import _MarketTable as WindMarketTable
 
 class _CalendarTable(_DBTable):
     """交易日历因子表"""
-    def __init__(self, name, sys_args={}, **kwargs):
-        super().__init__(name=name, sys_args=sys_args, **kwargs)
-        self._Exchanges = None# array([交易所])
     @property
     def FactorNames(self):
         return ["交易日"]
@@ -134,14 +131,13 @@ class _MarketTable(_DBTable):
         RawData = self.FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["日期", "ID"]+factor_names)
         return pd.DataFrame(np.array(RawData), columns=["日期", "ID"]+factor_names)
-    def __QS_readData__(self, factor_names=None, ids=None, dts=None, args={}):
+    def __QS_calcData__(self, raw_data, factor_names=None, ids=None, dts=None, args={}):
         if factor_names is None: factor_names = self.FactorNames
-        RawData = self.__QS_prepareRawData__(factor_names, ids, dts, args=args)
-        RawData = RawData.set_index(["日期", "ID"])
+        raw_data = raw_data.set_index(["日期", "ID"])
         DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
         Data = {}
-        for iFactorName in RawData.columns:
-            iRawData = RawData[iFactorName].unstack()
+        for iFactorName in raw_data.columns:
+            iRawData = raw_data[iFactorName].unstack()
             if DataType[iFactorName]=="double":
                 iRawData = iRawData.astype("float")
             Data[iFactorName] = iRawData
@@ -154,12 +150,9 @@ class _MarketTable(_DBTable):
 
 class _ConstituentTable(_DBTable):
     """成份因子表"""
-    def __init__(self, name, sys_args={}, **kwargs):
-        super().__init__(name=name, sys_args=sys_args, **kwargs)
-        self._IndexIDs = None# (指数 ID)
     @property
     def FactorNames(self):
-        if self._IndexIDs is None:
+        if not hasattr(self, "_IndexIDs"):# [指数 ID]
             DBTableName = self.FactorDB.TablePrefix+self.FactorDB.TableName2DBTableName([self.Name])[self.Name]
             FieldDict = self.FactorDB.FieldName2DBFieldName(table=self.Name, fields=["指数Wind代码"])
             SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict["指数Wind代码"]+" "# 指数 ID
@@ -556,16 +549,22 @@ class WindDB2(WindDB):
         super().__init__(sys_args, **kwargs)
         self.Name = "WindDB2"
     def __QS_initArgs__(self):
-        Config = readJSONFile(__QS_LibPath__+os.sep+"WindDB2Config.json")
-        for iArgName, iArgVal in Config.items(): self[iArgName] = iArgVal
-        self._InfoFilePath = __QS_LibPath__+os.sep+"WindDB2Info.hdf5"
+        ConfigFilePath = __QS_LibPath__+os.sep+"WindDB2Config.json"# 配置文件路径
+        self._InfoFilePath = __QS_LibPath__+os.sep+"WindDB2Info.hdf5"# 数据库信息文件路径
+        Config = readJSONFile(ConfigFilePath)
+        ArgNames = self.ArgNames
+        for iArgName, iArgVal in Config.items():
+            if iArgName in ArgNames: self[iArgName] = iArgVal
+        if not os.path.isfile(self._InfoFilePath):
+            InfoResourcePath = __QS_MainPath__+os.sep+"Rescource"+os.sep+"WindDB2Info.xlsx"# 数据库信息源文件路径
+            print("缺失数据库信息文件: '%s', 尝试从 '%s' 中导入信息." % (self._InfoFilePath, InfoResourcePath))
+            if not os.path.isfile(InfoResourcePath): raise __QS_Error__("缺失数据库信息文件: %s" % InfoResourcePath)
+            self.importInfo(InfoResourcePath)
         self._TableInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/TableInfo")
         self._FactorInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/FactorInfo")
     def getTable(self, table_name):
         TableClass = self._TableInfo.loc[table_name, "TableClass"]
-        FT = eval("_"+TableClass+"('"+table_name+"')")
-        FT.FactorDB = self
-        return FT
+        return eval("_"+TableClass+"(name='"+table_name+"', fdb=self)")
     # -----------------------------------------数据提取---------------------------------
     # 给定起始日期和结束日期，获取交易所交易日期, 目前仅支持："上海证券交易所", "深圳证券交易所", "香港交易所"
     def getTradeDay(self, start_date=None, end_date=None, exchange="上海证券交易所"):
