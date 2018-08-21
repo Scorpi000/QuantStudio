@@ -52,8 +52,7 @@ class __QS_Object__(HasTraits):
             self._ArgOrder[iLabel] = iOrder
         self._ArgOrder.sort_values(inplace=True)
         self.__QS_initArgs__()
-        for iArgName, iArgVal in sys_args.items():
-            self[iArgName] = iArgVal
+        for iArgName, iArgVal in sys_args.items(): self[iArgName] = iArgVal
         self.trait_view(name="QSView", view_element=View(*self.getViewItems()[0], buttons=[OKButton, CancelButton], resizable=True, title=getattr(self, "Name", "设置参数")))
     @property
     def ArgNames(self):

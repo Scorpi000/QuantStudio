@@ -22,15 +22,13 @@ def _identifyDataType(dtypes):
 
 class _FactorTable(FactorTable):
     """HDF5DB 因子表"""
-    def __init__(self, name, sys_args={}, **kwargs):
-        super().__init__(sys_args=sys_args, **kwargs)
-        self.Name = name
+    def __init__(self, name, fdb, data_type, sys_args={}, **kwargs):
         self._Suffix = "hdf5"# 文件后缀名
-        self._DataType = None
-        return
+        self._DataType = data_type
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
     def getMetaData(self, key=None):
-        with self.FactorDB._DataLock:
-            return readNestedDictFromHDF5(self.FactorDB.MainDir+os.sep+self.Name+os.sep+"_TableInfo.h5", "/"+("" if key is None else key))
+        with self._FactorDB._DataLock:
+            return readNestedDictFromHDF5(self._FactorDB.MainDir+os.sep+self.Name+os.sep+"_TableInfo.h5", "/"+("" if key is None else key))
     @property
     def FactorNames(self):
         return self._DataType.index.tolist()
@@ -39,10 +37,10 @@ class _FactorTable(FactorTable):
             factor_names = self.FactorNames
         if key=="DataType":
             return self._DataType.ix[factor_names]
-        with self.FactorDB._DataLock:
+        with self._FactorDB._DataLock:
             MetaData = {}
             for iFactorName in factor_names:
-                with h5py.File(self.FactorDB.MainDir+os.sep+self.Name+os.sep+iFactorName+"."+self._Suffix) as File:
+                with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+iFactorName+"."+self._Suffix) as File:
                     if key is None:
                         MetaData[iFactorName] = pd.Series(File.attrs)
                     elif key in File.attrs:
@@ -53,8 +51,8 @@ class _FactorTable(FactorTable):
             return pd.Series(MetaData)
     def getID(self, ifactor_name=None, idt=None):
         if ifactor_name is not None:
-            with self.FactorDB._DataLock:
-                with h5py.File(self.FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix) as ijFile:
+            with self._FactorDB._DataLock:
+                with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix) as ijFile:
                     return sorted(ijFile["ID"][...])
         else:
             IDs = set()
@@ -62,22 +60,21 @@ class _FactorTable(FactorTable):
                 IDs = IDs.union(set(self.getID(iFactorName)))
         return sorted(IDs)
     def getDateTime(self, ifactor_name, iid=None, start_dt=None, end_dt=None):
-        with self.FactorDB._DataLock:
-            with h5py.File(self.FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix) as ijFile:
+        with self._FactorDB._DataLock:
+            with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix) as ijFile:
                 Timestamps = ijFile["DateTime"][...]
         if start_dt is not None: Timestamps = Timestamps[Timestamps>=start_dt.timestamp()]
         if end_dt is not None: Timestamps = Timestamps[Timestamps<=end_dt.timestamp()]
         return sorted(dt.datetime.fromtimestamp(iTimestamp) for iTimestamp in Timestamps)
-    def readData(self, factor_names=None, ids=None, dts=None, args={}):
-        if factor_names is None:
-            factor_names = self.FactorNames
+    def __QS_calcData__(self, raw_data, factor_names=None, ids=None, dts=None, args={}):
+        if factor_names is None: factor_names = self.FactorNames
         Data = {iFactor: self.readFactorData(ifactor_name=iFactor, ids=ids, dts=dts, args=args) for iFactor in factor_names}
         return pd.Panel(Data)
     def readFactorData(self, ifactor_name, ids=None, dts=None, args={}):
         if ifactor_name not in self.FactorNames:
             raise __QS_Error__("因子: '%s' 不存在!" % ifactor_name)
-        with self.FactorDB._DataLock:
-            with h5py.File(self.FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix) as DataFile:
+        with self._FactorDB._DataLock:
+            with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix) as DataFile:
                 DataType = DataFile.attrs["DataType"]
                 DateTimes = DataFile["DateTime"][...]
                 IDs = DataFile["ID"][...]
@@ -186,12 +183,8 @@ class HDF5DB(WritableFactorDB):
     def TableNames(self):
         return list(self._TableFactorDict)
     def getTable(self, table_name, args={}):
-        if table_name not in self._TableFactorDict:
-            raise __QS_Error__("表 '%s' 不存在!" % table_name)
-        FT = _FactorTable(table_name, sys_args=args)
-        FT.FactorDB = self
-        FT._DataType = self._TableFactorDict[table_name]
-        return FT
+        if table_name not in self._TableFactorDict: raise __QS_Error__("表 '%s' 不存在!" % table_name)
+        return _FactorTable(name=table_name, fdb=self, data_type=self._TableFactorDict[table_name], sys_args=args)
     def renameTable(self, old_table_name, new_table_name):
         if old_table_name not in self._TableFactorDict:
             raise __QS_Error__("表: '%s' 不存在!" % old_table_name)

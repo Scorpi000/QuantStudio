@@ -18,25 +18,20 @@ from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable, _adjustDa
 os.environ['NLS_LANG'] = 'SIMPLIFIED CHINESE_CHINA.UTF8'
 
 class _DBTable(FactorTable):
-    def __init__(self, name, fdb, sys_args={}, **kwargs):
-        self.FactorDB = fdb
-        self.Name = name
-        super().__init__(sys_args=sys_args, **kwargs)
-        return
     def getMetaData(self, key=None):
-        TableInfo = self.FactorDB._TableInfo.ix[self.Name]
+        TableInfo = self._FactorDB._TableInfo.ix[self.Name]
         if key is None:
             return TableInfo
         else:
             return TableInfo.get(key, None)
     @property
     def FactorNames(self):
-        FactorInfo = self.FactorDB._FactorInfo.ix[self.Name]
-        return FactorInfo[FactorInfo["isFactor"]==1].index.tolist()
+        FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]
+        return FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()
     def getFactorMetaData(self, factor_names=None, key=None):
         if factor_names is None:
             factor_names = self.FactorNames
-        FactorInfo = self.FactorDB._FactorInfo.ix[self.Name]
+        FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]
         if key=="DataType":
             MetaData = FactorInfo["DataType"].ix[factor_names]
             for i in range(MetaData.shape[0]):
@@ -368,9 +363,9 @@ class WindDB(FactorDB):
     def TableNames(self):
         if self._TableInfo is not None: return self._TableInfo.index.tolist()
         else: return []
-    def getTable(self, table_name):
+    def getTable(self, table_name, args={}):
         TableClass = self._TableInfo.loc[table_name, "TableClass"]
-        return eval("_"+TableClass+"(name='"+table_name+"', fdb=self)")
+        return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=args)")
     # -----------------------------------------数据提取---------------------------------
     # 给定起始日期和结束日期, 获取交易所交易日期, 目前仅支持："上海证券交易所", "深圳证券交易所"
     def getTradeDay(self, start_date=None, end_date=None, exchange="上海证券交易所"):
