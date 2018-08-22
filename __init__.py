@@ -17,20 +17,6 @@ __QS_CachePath__ = __QS_MainPath__+os.sep+"Cache"
 __QS_LibPath__ = __QS_MainPath__+os.sep+"Lib"
 __QS_CacheLock__ = Lock()
 
-
-for iFileName in os.listdir(path=__QS_CachePath__):
-    iFilePath = __QS_CachePath__+os.sep+iFileName
-    if os.path.isdir(iFilePath):
-        try:
-            shutil.rmtree(iFilePath)
-        except:
-            warnings.warn("缓存文件夹 : '%s' 清除失败!" % iFileName)
-    elif os.path.isfile(iFilePath):
-        try:
-            os.remove(iFilePath)
-        except:
-            warnings.warn("缓存文件 : '%s' 清除失败!" % iFileName)
-
 # Quant Studio 系统错误
 class __QS_Error__(Exception):
     """Quant Studio 错误"""

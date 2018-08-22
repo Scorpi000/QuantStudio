@@ -2,12 +2,13 @@
 import time
 import os
 import uuid
+import shutil
 import mmap
 import pickle
 import gc
 import shelve
 import datetime as dt
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, Lock, Event
 
 import numpy as np
 import pandas as pd
@@ -233,43 +234,52 @@ class _OperationMode(__QS_Object__):
     def __init__(self, ft, sys_args={}, **kwargs):
         self._FT = ft
         self._isStarted = False
+        self._Factors = []# 因子列表
+        self._FactorDict = {}# 因子字典, {因子名:因子}, 包括所有的因子, 即衍生因子所依赖的描述子也在内
+        self._FactorStartDT = {}# {因子名: 起始时点}
+        self._iPID = "0"# 对象所在的进程 ID
+        self._PIDs = []# 所有的计算进程 ID, 单进程下默认为"0", 多进程为"0-i"
+        self._PID_IDs = {}# 每个计算进程分配的 ID 列表, {PID:[ID]}
+        self._PID_Lock = {}# 每个计算进程分配的缓存数据锁, {PID:Lock}
+        self._RawDataDir = ""# 原始数据存放根目录
+        self._CacheDataDir = "  "# 中间数据存放根目录
+        self._Event = {}# {因子名: (Sub2MainQueue, Event)}
+        self._FileSuffix = (".dat" if os.name=="nt" else "")
         super().__init__(sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
         self.add_trait("FactorNames", ListStr(arg_type="MultiOption", label="运算因子", order=2, option_range=tuple(self._FT.FactorNames)))
 # 因子表准备子进程
-def _prepare(args):
+def _prepareRawData(args):
     if "Sub2MainQueue" not in args:# 运行模式为串行
-        nTask = len(args['GroupInfo'])
-        for i in tqdm(range(nTask)):
-            iFT, iFactorNames, iDTs, iArgs = args['GroupInfo'][i]
-            iRawData = iFT.__QS_prepareRawData__(iFactorNames, args['FT'].OperationMode.IDs, iDTs, iArgs)
-            args['FT']._QS_saveRawData(iRawData)
+        for i in tqdm(range(len(args['GroupInfo']))):
+            iFT, iFactorNames, iRawFactorNames, iDTs, iArgs = args['GroupInfo'][i]
+            iRawData = iFT.__QS_prepareRawData__(iRawFactorNames, args["FT"].OperationMode.IDs, iDTs, iArgs)
+            iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"].OperationMode._RawDataDir, args["FT"].OperationMode._PID_IDs, args["RawDataFileNames"][i])
     else:# 运行模式为并行
-        for iFT, iFactorNames, iDTs, iArgs in args['GroupInfo']:
-            iRawData = iFT.__QS_prepareRawData__(iFactorNames, args['FT'].OperationMode.IDs, iDTs, iArgs)
-            args['FT']._QS_saveRawData(iRawData)
+        for i in range(len(args['GroupInfo'])):
+            iFT, iFactorNames, iRawFactorNames, iDTs, iArgs = args['GroupInfo'][i]
+            iRawData = iFT.__QS_prepareRawData__(iRawFactorNames, args['FT'].OperationMode.IDs, iDTs, iArgs)
+            iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"].OperationMode._RawDataDir, args["FT"].OperationMode._PID_IDs, args["RawDataFileNames"][i])
             args['Sub2MainQueue'].put((args["PID"], 1, None))
     return 0
 # 因子表运算子进程
 def _calculate(args):
     FT = args["FT"]
-    if FT.ExternArgs['运行模式']=='串行':# 运行模式为串行
-        nTask = len(FT.Factors)
+    FT.OperationMode.iPID = args["PID"]
+    if FT.OperationMode.SubProcessNum==0:# 运行模式为串行
+        nTask = len(FT.OperationMode.FactorNames)
         with ProgressBar(max_value=nTask) as ProgBar:
-            for i,iFactor in enumerate(FT.Factors):
-                iData = iFactor.getData(FT.Dates,pids=[qs_env.PID],extern_args=FT.ExternArgs,to_save=True)
-                iFactorDB,iTableName,iUpdateMode = FT.SaveInfo[iFactor.FactorName]
-                getattr(qs_env,iFactorDB).writeFactorData(iData,FT.TempSaveInfo[iFactorDB],iFactor.FactorName,if_exists='merge',data_type=iFactor.FactorDataType)
+            for i, iFactor in enumerate(FT.OperationMode._Factors):
+                iData = iFactor._QS_getData(dts=FT.OperationMode.DateTimes, pids=[args["PID"]])
+                args["FactorDB"].writeData(pd.Panel({iFactor.Name:iData}), args["TableName"], if_exists=args["if_exists"])
                 iData = None
                 ProgBar.update(i+1)
     else:
-        for i,iFactor in enumerate(FT.Factors):
-            iData = iFactor.getData(FT.Dates,pids=[qs_env.PID],extern_args=FT.ExternArgs,to_save=True)
-            iFactorDB,iTableName,iUpdateMode = FT.SaveInfo[iFactor.FactorName]
-            iData = getattr(qs_env,iFactorDB).writeFactorData(iData,FT.TempSaveInfo[iFactorDB],iFactor.FactorName,if_exists='merge',data_type=iFactor.FactorDataType)
+        for i, iFactor in enumerate(FT.OperationMode._Factors):
+            iData = iFactor._QS_getData(dts=FT.OperationMode.DateTimes, pids=[args["PID"]])
+            args["FactorDB"].writeData(pd.Panel({iFactor.Name:iData}), args["TableName"], if_exists=args["if_exists"])
             iData = None
-            args['Sub2MainQueue'].put((qs_env.PID,1,None))
-        qs_env.closeResource()
+            args['Sub2MainQueue'].put((args["PID"], 1, None))
     return 0
 # 因子表, 接口类
 # 因子表可看做一个独立的数据集或命名空间, 可看做 Panel(items=[因子], major_axis=[时间点], minor_axis=[ID])
@@ -469,16 +479,32 @@ class FactorTable(__QS_Object__):
         self.ErgodicMode._isStarted = False
         return 0
     # ------------------------------------运算模式------------------------------------
-    # 获取因子表准备原始数据的分组信息, [(因子表对象, [因子名], [时点], {参数})] 
-    def __QS_genGroupInfo__(self, ft, factors):
+    # 获取因子表准备原始数据的分组信息, [(因子表对象, [因子名], [原始因子名], [时点], {参数})]
+    def __QS_genGroupInfo__(self, factors, operation_mode):
         StartDT = dt.datetime.now()
-        FactorNames = []
+        FactorNames, RawFactorNames = [], set()
         for iFactor in factors:
             FactorNames.append(iFactor.Name)
-            StartDT = min((StartDT, ft.OperationMode._FactorStartDT[iFactor.Name]))
-        EndDT = ft.OperationMode.DateTimes[-1]
-        StartInd, EndInd = ft.OperationMode.DTRuler.index(StartDT), ft.OperationMode.DTRuler.index(EndDT)
-        return [(self, FactorNames, ft.OperationMode.DTRuler[StartDT:EndDT], {})]
+            RawFactorNames.add(iFactor._NameInFT)
+            StartDT = min((StartDT, operation_mode._FactorStartDT[iFactor.Name]))
+        EndDT = operation_mode.DateTimes[-1]
+        StartInd, EndInd = operation_mode.DTRuler.index(StartDT), operation_mode.DTRuler.index(EndDT)
+        return [(self, FactorNames, list(RawFactorNames), operation_mode.DTRuler[StartInd:EndInd+1], {})]
+    def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name):
+        if 'ID' in raw_data:# 如果原始数据有 ID 列，按照 ID 列划分后存入子进程的原始文件中
+            raw_data = raw_data.set_index(['ID'])
+            CommonCols = list(raw_data.columns.difference(set(factor_names)))
+            AllIDs = set(raw_data.index)
+            for iPID, iIDs in pid_ids.items():
+                with shelve.open(raw_data_dir+os.sep+iPID+os.sep+file_name) as iFile:
+                    iIDs = sorted(AllIDs.intersection(set(iIDs)))
+                    iData = raw_data.loc[iIDs]
+                    for jFactorName in factor_names: iFile[jFactorName] = iData[CommonCols+[jFactorName]].reset_index()
+        else:# 如果原始数据没有 ID 列，则将所有数据分别存入子进程的原始文件中
+            for iPID in pid_ids:
+                with shelve.open(raw_data_dir+os.sep+iPID+os.sep+file_name) as iFile:
+                    iFile["RawData"] = raw_data
+        return 0
     def _genFactorDict(self, factors, factor_dict={}):
         for iFactor in factors:
             iFactor._QS_OperationMode = self.OperationMode
@@ -492,7 +518,7 @@ class FactorTable(__QS_Object__):
         if not self.OperationMode.DateTimes: raise __QS_Error__("运算时点序列不能为空!")
         if not self.OperationMode.IDs: raise __QS_Error__("运算 ID 序列不能为空!")
         # 检查时点标尺是否合适
-        DTs = pd.Series(np.arange(0, len(self.OperationMode.DTRuler)), index=self.OperationMode.DTRuler).ix[self.OperationMode.DateTimes]
+        DTs = pd.Series(np.arange(0, len(self.OperationMode.DTRuler)), index=list(self.OperationMode.DTRuler)).ix[self.OperationMode.DateTimes]
         if pd.isnull(DTs).sum()>0: raise __QS_Error__("运算时点序列超出了时点标尺!")
         elif (DTs.diff().iloc[1:]!=1).sum()>0: raise __QS_Error__("运算时点序列的频率与时点标尺不一致!")
         # 检查因子的合法性, 解析出所有的因子(衍生因子所依赖的描述子也在内)
@@ -507,73 +533,41 @@ class FactorTable(__QS_Object__):
         self.OperationMode._FactorDict = self._genFactorDict(self.OperationMode._Factors, self.OperationMode._FactorDict)
         # 生成原始数据和缓存数据存储目录
         with __QS_CacheLock__:
-            FTPath = __QS_CachePath__ + os.sep + genAvailableName("FT", listDirDir(__QS_CachePath__))
-            os.mkdir(FTPath)
-            self.OperationMode._RawDataDir = FTPath+os.sep+'RawData'# 原始数据存放根目录
-            self.OperationMode._CacheDataDir = FTPath+os.sep+'CacheData'# 中间数据存放根目录
+            self.OperationMode._CacheDir = __QS_CachePath__ + os.sep + genAvailableName("FT", listDirDir(__QS_CachePath__))
+            os.mkdir(self.OperationMode._CacheDir)
+            self.OperationMode._RawDataDir = self.OperationMode._CacheDir+os.sep+'RawData'# 原始数据存放根目录
+            self.OperationMode._CacheDataDir = self.OperationMode._CacheDir+os.sep+'CacheData'# 中间数据存放根目录
             os.mkdir(self.OperationMode._RawDataDir)
             os.mkdir(self.OperationMode._CacheDataDir)
         if self.OperationMode.SubProcessNum==0:# 串行模式
             self.OperationMode._PIDs = ["0"]
             self.OperationMode._PID_IDs = {"0":self.OperationMode.IDs}
-            self.OperationMode._RawDataDirLock = None
+            os.mkdir(self.OperationMode._RawDataDir+os.sep+"0")
+            os.mkdir(self.OperationMode._CacheDataDir+os.sep+"0")
+            self.OperationMode._PID_Lock = {"0":Lock()}
         else:
             self.OperationMode._PIDs = []
             self.OperationMode._PID_IDs = {}
             nPrcs = min((self.OperationMode.SubProcessNum, len(self.OperationMode.IDs)))
             SubIDs = partitionList(self.OperationMode.IDs, nPrcs)
+            self.OperationMode._PID_Lock = {}
             for i in range(nPrcs):
                 iPID = "0-"+str(i)
                 self.OperationMode._PIDs.append(iPID)
                 self.OperationMode._PID_IDs[iPID] = SubIDs[i]
                 os.mkdir(self.OperationMode._RawDataDir+os.sep+iPID)
                 os.mkdir(self.OperationMode._CacheDataDir+os.sep+iPID)
-            self.OperationMode._RawDataDirLock = Lock()# 原始数据目录锁, 用于读写可能会引起冲突的文件
+                self.OperationMode._PID_Lock[iPID] = Lock()
         # 创建用于多进程的 Event 数据
         self.OperationMode._Event = {}# {因子名: (Sub2MainQueue, Event)}
         # 给每个因子设置运算模式参数对象
-        for iFactor in self.OperationMode._FactorDict.values(): iFactor.OperationMode = self.OperationMode
+        for iFactor in self.OperationMode._FactorDict.values(): iFactor._OperationMode = self.OperationMode
         # 生成所有因子的起始时点信息
         self.OperationMode._FactorStartDT = {}# {因子名: 起始时点}
-        for iFactor in self.Factors: iFactor._QS_updateStartDT(self.OperationMode.DateTimes[0], self.OperationMode._FactorStartDT)
-    def _QS_saveRawData(self, raw_data, file_name, key_fields={}, extern_args={}):
-        if 'ID' in raw_data:# 如果原始数据有ID列，按照ID列划分后存入子进程的原始文件中
-            raw_data = raw_data.set_index(['ID'])
-            AllIDs = set(raw_data.index)
-            for iPID in self.OperationMode._PID_IDs:
-                with shelve.open(self.OperationMode._RawDataDir+os.sep+iPID+os.sep+file_name) as iFile:
-                    iIDs = list(set(extern_args["PID_ID"][iPID]).intersection(AllIDs))
-                    iIDs.sort()
-                    iData = raw_data.loc[iIDs]
-                    for jKey in key_fields:
-                        iFile[jKey] = iData[key_fields[jKey]]
-        else:# 如果原始数据没有ID列，则将所有数据分别存入子进程的原始文件中
-            for iPID in extern_args['PID_ID']:
-                with shelve.open(extern_args["RawDataDir"]+os.sep+iPID+os.sep+file_name) as iFile:
-                    for jKey in key_fields:
-                        iFile[jKey] = raw_data[key_fields[jKey]]
-        return 0
-    def _adjustSavePosition(self, factor_db):# TODO
-        for iFactorDB in self.QSEnv.SysArgs['FactorDBList']:
-            getattr(self.QSEnv,iFactorDB).connect()
-        for iFactorName in self.SaveInfo:
-            iFactorDB,iTableName,iUpdateMode = self.SaveInfo[iFactorName]
-            iTempTableName = self.TempSaveInfo[iFactorDB]
-            iFactorDB = getattr(self.QSEnv,iFactorDB)
-            if iFactorName not in iFactorDB.getFactorName(iTableName):# 目标表或者因子不存在
-                iFactorDB.moveFactor({iTempTableName:[iFactorName]},iTableName)
-            elif iUpdateMode=='覆盖':
-                iFactorDB.deleteFactor(iTableName,[iFactorName])
-                iFactorDB.moveFactor({iTempTableName:[iFactorName]},iTableName)
-            elif iUpdateMode=='新值为准':
-                iFactorDB.appendFactor(iTableName,iTempTableName,iFactorName,iFactorName,if_overlapping=2)
-            else:# 旧值为准
-                iFactorDB.appendFactor(iTableName,iTempTableName,iFactorName,iFactorName,if_overlapping=1)
-        for iFactorDB,iTempTableName in self.TempSaveInfo.items():
-            getattr(self.QSEnv,iFactorDB).deleteTable(iTempTableName)
-    def prepare(self):
+        for iFactor in self.OperationMode._FactorDict.values(): iFactor._QS_updateStartDT(self.OperationMode.DateTimes[0], self.OperationMode._FactorStartDT)
+    def _prepareRawData(self):
         self._initOperation()
-        print("原始数据准备中...")
+        print("1. 原始数据准备", end="")
         StartT = time.process_time()
         # 分组准备数据
         FTs, FT_Factors = {}, {}# {id(因子表) : 因子表}, {id(因子表) : [因子]}
@@ -583,35 +577,43 @@ class FactorTable(__QS_Object__):
                 iFactorList = FT_Factors.setdefault(iFTID, [])
                 iFactorList.append(iFactor)
                 FTs[iFTID] = iFactor.FactorTable
-        GroupInfo = []
-        for iFTID in FTs: GroupInfo.extend(FTs[iFTID].__QS_genGroupInfo__(self, FT_Factors[iFTID]))
-        args = {"GroupInfo":GroupInfo, "FT":self}
+        GroupInfo, RawDataFileNames = [], []#[(因子表对象, [因子名], [原始因子名], [时点], {参数})], [原始数据文件名]
+        for iFTID, iFT in FTs.items():
+            iGroupInfo = iFT.__QS_genGroupInfo__(FT_Factors[iFTID], self.OperationMode)
+            GroupInfo.extend(iGroupInfo)
+            RawDataFileNames.extend(["-".join((iFT.Name, str(iFTID), str(i))) for i in range(len(iGroupInfo))])
+            for j in range(len(iGroupInfo)):
+                for kFactorName in iGroupInfo[j][1]:
+                    self.OperationMode._FactorDict[kFactorName]._RawDataFile = RawDataFileNames[j]
+        args = {"GroupInfo":GroupInfo, "FT":self, "RawDataFileNames":RawDataFileNames}
         if self.OperationMode.SubProcessNum==0:
-            Error = _prepare(args)
+            Error = _prepareRawData(args)
         else:
             nPrcs = min((self.OperationMode.SubProcessNum, len(args["GroupInfo"])))
-            Procs,Main2SubQueue,Sub2MainQueue = startMultiProcess(pid="0", n_prc=nPrcs, target_fun=_prepare,
-                                                                  arg=args, partition_arg="GroupInfo",
+            Procs,Main2SubQueue,Sub2MainQueue = startMultiProcess(pid="0", n_prc=nPrcs, target_fun=_prepareRawData,
+                                                                  arg=args, partition_arg=["GroupInfo", "RawDataFileNames"],
                                                                   n_partition_head=0, n_partition_tail=0,
                                                                   main2sub_queue="None", sub2main_queue="Single")
-            for i in tqdm(range(len(DTDictPartitionList))):
+            for i in tqdm(range(len(GroupInfo))):
                 iPID, Error, iMsg = Sub2MainQueue.get()
                 if Error!=1:
                     for iPID, iProc in Procs.items():
                         if iProc.is_alive(): iProc.terminate()
                     raise __QS_Error__(iMsg)
             for iPrcs in Procs.values(): iPrcs.join()
-        print("原始数据准备完成, 耗时 : %.2f" % (time.process_time()-StartT))
-    def calculate(self, factor_db, table_name=None, if_exists="append", **kwargs):
-        print("因子数据计算中...")
+        print("耗时 : %.2f" % (time.process_time()-StartT, ))
+    def calculate(self, factor_db, table_name, if_exists="append", **kwargs):
+        self._prepareRawData()
+        print("2. 因子数据计算", end="")
         StartT = time.process_time()
+        Args = {"FT":self, "PID":"0", "FactorDB":factor_db, "TableName":table_name, "if_exists":if_exists}
         if self.OperationMode.SubProcessNum==0:
-            _calculate({"FT": self})
+            _calculate(Args)
         else:
             nPrcs = len(self.OperationMode._PIDs)
             nTask = len(self.OperationMode._Factors) * nPrcs
             EventState = {iFactorName:0 for iFactorName in self.OperationMode._Event}
-            Procs, Main2SubQueue, Sub2MainQueue = startMultiProcess(pid="0", n_prc=nPrcs, target_fun=_calculate, arg={"FT":self},
+            Procs, Main2SubQueue, Sub2MainQueue = startMultiProcess(pid="0", n_prc=nPrcs, target_fun=_calculate, arg=Args,
                                                                     main2sub_queue="None", sub2main_queue="Single")
             iProg = 0
             with ProgressBar(max_value=nTask) as ProgBar:
@@ -628,7 +630,7 @@ class FactorTable(__QS_Object__):
                                 self.OperationMode._Event[iFactorName][1].set()
                                 EventState.pop(iFactorName)
                     while ((not Sub2MainQueue.empty()) or (nEvent==0)) and (iProg<nTask):
-                        iPID,iErrorCode,iMsg = Sub2MainQueue.get()
+                        iPID, iErrorCode, iMsg = Sub2MainQueue.get()
                         if iErrorCode==-1:
                             for iProc in Procs:
                                 if iProc.is_alive(): iProc.terminate()
@@ -638,11 +640,12 @@ class FactorTable(__QS_Object__):
                             ProgBar.update(iProg)
                     if iProg>=nTask: break
             for iPID,iPrcs in Procs.items(): iPrcs.join()
-        print("因子数据计算完成, 耗时 : %.2f" % (time.process_time()-StartT))
-        print("调整存储位置中...")
-        StartT = time.process_time()
-        self._adjustSavePosition()
-        print("调整存储位置完成, 耗时 : %.2f" % (time.process_time()-StartT))
+        print("耗时 : %.2f" % (time.process_time()-StartT))
+        # 清理缓存
+        #try:
+            #shutil.rmtree(self.OperationMode._CacheDir)
+        #except:
+            #print("警告 : 缓存文件夹 : '%s' 清除失败!" % self.OperationMode._CacheDir)
         return 0
 
 # 自定义因子表
@@ -848,6 +851,9 @@ class Factor(__QS_Object__):
         self._FactorTable = ft# 因子所属的因子表, None 表示独立的衍生因子
         self._NameInFT = name# 因子在所属的因子表中的名字
         self.Name = name# 因子对外显示的名称
+        self._OperationMode = None# 运算模式对象
+        self._RawDataFile = ""# 原始数据存放地址
+        self._isCacheDataOK = False
         return super().__init__(sys_args=sys_args, **kwargs)
     @property
     def FactorTable(self):
@@ -867,34 +873,102 @@ class Factor(__QS_Object__):
     def readData(self, ids=None, dts=None):
         if self.FactorTable is not None: return self._FactorTable.readData(factor_names=[self._NameInFT], ids=ids, dts=dts, args=self.Args).loc[self._NameInFT]
         return None
+    # ------------------------------------运算模式------------------------------------
     # 获取数据的开始时点, start_dt:新起始时点, dt_dict: 当前所有因子的时点信息: {因子名 : 开始时点}
     def _QS_updateStartDT(self, start_dt, dt_dict):
         OldStartDT = dt_dict.get(self.Name, start_dt)
         dt_dict[self.Name] = (start_dt if start_dt<OldStartDT else OldStartDT)
+    # 准备缓存数据
+    def __QS_prepareCacheData__(self):
+        StartDT = self._OperationMode._FactorStartDT[self.Name]
+        EndDT = self._OperationMode.DateTimes[-1]
+        StartInd, EndInd = self._OperationMode.DTRuler.index(StartDT), self._OperationMode.DTRuler.index(EndDT)
+        DTs = self._OperationMode.DTRuler[StartInd:EndInd+1]
+        RawDataFilePath = self._OperationMode._RawDataDir+os.sep+self._OperationMode.iPID+os.sep+self._RawDataFile
+        if  os.path.isfile(RawDataFilePath+self._OperationMode._FileSuffix):
+            with shelve.open(RawDataFilePath, "r") as File:
+                RawData = File[self._NameInFT]
+            StdData = self._FactorTable.__QS_calcData__(RawData, factor_names=[self._NameInFT], ids=self._OperationMode._PID_IDs[self._OperationMode.iPID], dts=DTs, args=self.Args).iloc[0]
+        else:
+            StdData = self._FactorTable.readData(factor_names=[self._NameInFT], ids=self._OperationMode._PID_IDs[self._OperationMode.iPID], dts=DTs, args=self.Args).iloc[0]
+        with self._OperationMode._PID_Lock[self._OperationMode.iPID]:
+            with shelve.open(self._OperationMode._CacheDataDir+os.sep+self._OperationMode.iPID+os.sep+self.Name) as CacheFile:
+                CacheFile["StdData"] = StdData
+        self._isCacheDataOK = True
+        return StdData
+    # 获取因子数据, pid=None表示取所有进程的数据
+    def _QS_getData(self, dts, pids=None):
+        pids = set(self._OperationMode._PID_IDs if pids is None else pids)
+        if not self._isCacheDataOK:# 若没有准备好缓存数据, 准备缓存数据
+            StdData = self.__QS_prepareCacheData__()
+            if (StdData is not None) and (self._OperationMode.iPID in pids):
+                pids.remove(self._OperationMode.iPID)
+            else:
+                StdData = None
+        else:
+            StdData = None
+        while len(pids)>0:
+            iPID = pids.pop()
+            iFilePath = self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name
+            if not os.path.isfile(iFilePath+self._OperationMode._FileSuffix):# 该进程的数据没有准备好
+                pids.add(iPID)
+                continue
+            with self._OperationMode._PID_Lock[iPID]:
+                with shelve.open(iFilePath, 'r') as CacheFile:
+                    iStdData = CacheFile["StdData"]
+            if StdData is None:
+                StdData = iStdData
+            else:
+                StdData = pd.merge(StdData, iStdData, how='inner', left_index=True, right_index=True)
+        StdData = StdData.loc[list(dts)].sort_index(axis=1)
+        gc.collect()
+        return StdData
+    
 
 if __name__=='__main__':
     import time
     import datetime as dt
     
     # -----------测试遍历模式----------
-    from QuantStudio.FactorDataBase.HDF5DB import HDF5DB
+    ## 创建因子数据库
+    #from QuantStudio.FactorDataBase.HDF5DB import HDF5DB
+    #MainDB = HDF5DB()
+    #MainDB.connect()
+    #FT = MainDB.getTable("ElementaryFactor")
+    ## 创建自定义的因子表
+    #MainFT = CustomFT("MainFT")
+    #MainFT.addFactors(factor_table=FT, factor_names=["复权收盘价"], args={})
+    #MainFT.setDateTime(FT.getDateTime(ifactor_name="复权收盘价", start_dt=dt.datetime(2014,1,1), end_dt=dt.datetime(2018,1,1)))
+    #MainFT.setID(["000001.SZ", "600000.SH"])
+    #MainFT.ErgodicMode.CacheMode = "ID"
+    #StartT = time.process_time()
+    #MainFT.start()
+    #for iDateTime in MainFT.getDateTime():
+        #MainFT.move(iDateTime)
+        #iData = MainFT.readData(dts=[iDateTime]).iloc[:, 0, :]
+        #print(iDateTime)
+    #MainFT.end()
+    #print(time.process_time()-StartT)
     
-    # 创建因子数据库
-    MainDB = HDF5DB()
-    MainDB.connect()
-    FT = MainDB.getTable("ElementaryFactor")
-    # 创建自定义的因子表
-    MainFT = CustomFT("MainFT")
-    MainFT.addFactors(factor_table=FT, factor_names=["复权收盘价"], args={})
-    MainFT.setDateTime(FT.getDateTime(ifactor_name="复权收盘价", start_dt=dt.datetime(2014,1,1), end_dt=dt.datetime(2018,1,1)))
-    MainFT.setID(["000001.SZ", "600000.SH"])
-    MainFT.ErgodicMode.CacheMode = "ID"
-    StartT = time.process_time()
-    MainFT.start()
-    for iDateTime in MainFT.getDateTime():
-        MainFT.move(iDateTime)
-        iData = MainFT.readData(dts=[iDateTime]).iloc[:, 0, :]
-        print(iDateTime)
-    MainFT.end()
-    print(time.process_time()-StartT)
-    pass
+    # -----------测试因子运算模式----------
+    from multiprocessing import cpu_count
+    from QuantStudio.FactorDataBase.WindDB2 import WindDB2
+    WDB = WindDB2()
+    WDB.connect()
+    FT = WDB.getTable("中国A股日行情")
+    MainFT = FT
+    #MainFT = CustomFT("MainFT")
+    #MainFT.addFactors(factor_table=FT, factor_names=["开盘价", "最高价"], args={})
+    MainFT.OperationMode.DateTimes = FT.getDateTime(ifactor_name="开盘价", start_dt=dt.datetime(2018, 1, 1), end_dt=dt.datetime(2018, 2, 1))
+    MainFT.OperationMode.IDs = FT.getID(idt=dt.datetime(2018, 2, 1))
+    MainFT.OperationMode.FactorNames = ["开盘价", "最高价"]
+    MainFT.OperationMode.SubProcessNum = cpu_count()-1
+    MainFT.OperationMode.DTRuler = MainFT.OperationMode.DateTimes
+    
+    from QuantStudio.FactorDataBase.HDF5DB import HDF5DB
+    HDB = HDF5DB()
+    HDB.connect()    
+    MainFT.calculate(factor_db=HDB, table_name=genAvailableName("TestTable", HDB.TableNames), if_exists="append")
+    
+    HDB.disconnect()
+    WDB.disconnect()

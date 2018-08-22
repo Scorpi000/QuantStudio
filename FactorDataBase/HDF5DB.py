@@ -263,30 +263,31 @@ class HDF5DB(WritableFactorDB):
                 self.setFactorMetaData(table_name, ifactor_name=ifactor_name, key=iKey, value=meta_data[iKey], meta_data=None)
         return 0
     def writeFactorData(self, factor_data, table_name, ifactor_name, if_exists='append', data_type=None):
-        if data_type is None:
-            data_type = _identifyDataType(factor_data.dtypes)
-        isExist = (ifactor_name in self._TableFactorDict.get(table_name, {}))
-        if isExist:# 当前因子存在
-            if if_exists=='replace':
-                self.deleteFactor(table_name, [ifactor_name])
-                self._TableFactorDict[table_name] = self._TableFactorDict.get(table_name, pd.Series()).append(pd.Series(data_type, index=[ifactor_name]))
-                isExist = False
-        else:
-            self._TableFactorDict[table_name] = self._TableFactorDict.get(table_name,pd.Series()).append(pd.Series(data_type,index=[ifactor_name]))
-        StrDataType = h5py.special_dtype(vlen=str)
-        if data_type=='double':
-            try:
-                factor_data = factor_data.astype('float')
-                data_type = 'double'
-            except:
-                factor_data = factor_data.where(pd.notnull(factor_data), None)
-                data_type = 'string'
-        else:
-            factor_data = factor_data.where(pd.notnull(factor_data), None)
-        factor_data.index = [idt.timestamp() for idt in factor_data.index]
+        if data_type is None: data_type = _identifyDataType(factor_data.dtypes)
         TablePath = self.MainDir+os.sep+table_name
         FilePath = TablePath+os.sep+ifactor_name+"."+self._Suffix
         with self._DataLock:
+            isExist = os.path.isfile(FilePath)
+            if isExist:# 当前因子存在
+                if if_exists=='replace':
+                    self.deleteFactor(table_name, [ifactor_name])
+                    self._TableFactorDict[table_name] = self._TableFactorDict.get(table_name, pd.Series()).append(pd.Series(data_type, index=[ifactor_name]))
+                    isExist = False
+                elif ifactor_name not in self._TableFactorDict.get(table_name, {}):
+                    self._TableFactorDict[table_name] = self._TableFactorDict.get(table_name, pd.Series()).append(pd.Series(data_type, index=[ifactor_name]))
+            else:
+                self._TableFactorDict[table_name] = self._TableFactorDict.get(table_name,pd.Series()).append(pd.Series(data_type,index=[ifactor_name]))
+            StrDataType = h5py.special_dtype(vlen=str)
+            if data_type=='double':
+                try:
+                    factor_data = factor_data.astype('float')
+                    data_type = 'double'
+                except:
+                    factor_data = factor_data.where(pd.notnull(factor_data), None)
+                    data_type = 'string'
+            else:
+                factor_data = factor_data.where(pd.notnull(factor_data), None)
+            factor_data.index = [idt.timestamp() for idt in factor_data.index]
             if not os.path.isdir(TablePath):
                 os.mkdir(TablePath)
             if not os.path.isfile(FilePath):

@@ -170,7 +170,7 @@ def allocateDim(n, n_dim=2):
 
 # 以多进程的方式运行程序, target_fun:目标函数, 参数为(arg); main2sub_queue(sub2main_queue)可取值: None, Single, Multiple
 def startMultiProcess(pid="0", n_prc=cpu_count(), target_fun=None, arg={}, 
-                      partition_arg=None, n_partition_head=0, n_partition_tail=0, 
+                      partition_arg=[], n_partition_head=0, n_partition_tail=0, 
                       main2sub_queue="None", sub2main_queue="None", daemon=None):
     PIDs = [pid+"-"+str(i) for i in range(n_prc)]
     if main2sub_queue=='Single': Main2SubQueue = Queue()
@@ -179,12 +179,13 @@ def startMultiProcess(pid="0", n_prc=cpu_count(), target_fun=None, arg={},
     if sub2main_queue=='Single': Sub2MainQueue = Queue()
     elif sub2main_queue=='Multiple': Sub2MainQueue = {iPID:Queue() for iPID in PIDs}
     else: Sub2MainQueue = None
-    if (partition_arg is not None) and (n_prc>0): ArgPartition = partitionList(arg[partition_arg], n_prc, n_partition_head, n_partition_tail)
+    if (partition_arg!=[]) and (n_prc>0): ArgPartition = {iPartitionArg:partitionList(arg[iPartitionArg], n_prc, n_partition_head, n_partition_tail) for iPartitionArg in partition_arg}
     Procs = {}
     for i, iPID in enumerate(PIDs):
         iArg = arg
         iArg["PID"] = iPID
-        if partition_arg is not None: iArg[partition_arg] = ArgPartition[i]
+        if (partition_arg!=[]):
+            for iPartitionArg in partition_arg: iArg[iPartitionArg] = ArgPartition[iPartitionArg][i]
         if sub2main_queue=='Single': iArg["Sub2MainQueue"] = Sub2MainQueue
         elif sub2main_queue=='Multiple': iArg["Sub2MainQueue"] = Sub2MainQueue[iPID]
         if main2sub_queue=='Single': iArg["Main2SubQueue"] = Main2SubQueue
