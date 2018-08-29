@@ -1,4 +1,4 @@
-# coding=utf-8
+# -*- coding: utf-8 -*-
 """因子运算"""
 import os
 import shelve
@@ -14,7 +14,7 @@ from QuantStudio.Tools.AuxiliaryFun import partitionList
 
 
 
-def DefaultOperator(f, idt, iid, x, args):
+def _DefaultOperator(f, idt, iid, x, args):
     return np.nan
 
 # 单点运算
@@ -29,7 +29,7 @@ def DefaultOperator(f, idt, iid, x, args):
 # 如果运算时点参数为多时点, 运算ID参数为多ID, 那么 x 元素为 array(shape=(nDT, nID)), 注意并发时 ID 并不是全截面, 返回 array(shape=(nDT, nID))
 class PointOperation(Factor):
     """单点运算"""
-    Operator = Function(default_value=DefaultOperator, arg_type="Function", label="算子", order=0)
+    Operator = Function(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
     ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
     DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=2)
     IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=3)
@@ -90,7 +90,7 @@ class PointOperation(Factor):
 # 如果运算时点参数为多时点, 运算ID参数为多ID, 那么x元素为array(shape=(回溯期数+nDT, nID)), 注意并发时 ID 并不是全截面, 返回 array(shape=(nDT, nID))
 class TimeOperation(Factor):
     """时间序列运算"""
-    Operator = Function(default_value=DefaultOperator, arg_type="Function", label="算子", order=0)
+    Operator = Function(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
     ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
     DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=2)
     IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=3)
@@ -118,7 +118,7 @@ class TimeOperation(Factor):
         for i, iDescriptor in enumerate(self.Descriptors):
             iStartInd = StartInd - self.LookBack[i]
             if iStartInd<0: raise __QS_Error__("时点标尺长度不足, 请将起始点前移!")
-            iStartDT = DTRuler.iloc[iStartInd]
+            iStartDT = DTRuler[iStartInd]
             iDescriptor._QS_updateStartDT(iStartDT, dt_dict)
     def readData(self, ids, dts, args={}):
         StdData = self._calcData(ids=ids, dts=dts, descriptor_data=[np.r_[np.full((self.LookBack[i], len(ids)), np.nan), iDescriptor.readData(ids=ids, dts=dts).values] for i, iDescriptor in enumerate(self.Descriptors)])
@@ -189,7 +189,7 @@ class TimeOperation(Factor):
 # 如果运算时点参数为多时点, 那么 x 元素为 array(shape=(nDT, nID)), 如果输出形式为全截面返回 array(shape=(nDT, nID)), 否则返回 array(shape=(nDT, ))
 class SectionOperation(Factor):
     """截面运算"""
-    Operator = Function(default_value=DefaultOperator, arg_type="Function", label="算子", order=0)
+    Operator = Function(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
     ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
     DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=2)
     OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=3)
@@ -270,7 +270,7 @@ class SectionOperation(Factor):
 # 如果运算时点参数为多时点, 那么 x 元素为 array(shape=(回溯期数+nDT, nID)), 如果输出形式为全截面返回 array(shape=(nDT, nID)), 否则返回 array(shape=(nDT, ))
 class PanelOperation(Factor):
     """面板运算"""
-    Operator = Function(default_value=DefaultOperator, arg_type="Function", label="算子", order=0)
+    Operator = Function(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
     ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
     DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=2)
     OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=3)

@@ -84,8 +84,9 @@ class _CalendarTable(_DBTable):
 
 class _MarketTable(_DBTable):
     """行情因子表"""
-    FillNa = Bool(True, arg_type="Bool", label="缺失填充", order=0)
-    LookBack = Int(0, arg_type="Integer", label="回溯天数", order=1)
+    FillNa = Bool(False, arg_type="Bool", label="缺失填充", order=0)
+    FillNaLookBack = Int(0, arg_type="Integer", label="缺失填充回溯期数", order=1)
+    RawDataLookBack = Int(0, arg_type="Integer", label="原始数据回溯天数", order=2)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         FactorInfo = fdb._FactorInfo.ix[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
@@ -147,7 +148,7 @@ class _MarketTable(_DBTable):
         if dts: StartDate, EndDate = dts[0].date(), dts[-1].date()
         else: StartDate, EndDate = None, None
         if factor_names is None: factor_names=self.FactorNames
-        if args.get("缺失填充", self.FillNa): StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
+        if args.get("缺失填充", self.FillNa): StartDate -= dt.timedelta(args.get("原始数据回溯天数", self.RawDataLookBack))
         FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._DateField, self._IDField]+self._ConditionFields+factor_names)
         DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
         # 形成SQL语句, 日期, ID, 因子数据
@@ -177,7 +178,7 @@ class _MarketTable(_DBTable):
             Data[iFactorName] = iRawData
         Data = pd.Panel(Data).loc[factor_names]
         Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
-        Data = _adjustDateTime(Data, dts, fillna=args.get("缺失填充", self.FillNa), method="pad")
+        Data = _adjustDateTime(Data, dts, fillna=args.get("缺失填充", self.FillNa), method="pad", limit=args.get("缺失填充回溯期数", self.FillNaLookBack))
         if ids is not None: Data = Data.ix[:, :, ids]
         return Data
 

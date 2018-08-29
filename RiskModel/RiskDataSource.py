@@ -118,6 +118,7 @@ def prepareRDSMMAPCacheData(arg):
                     CacheData[iDate]["Cov"] = Cov[iDate]
                 #print("准备因子:"+str(list(CacheData.keys())))# debug
     return 0
+
 class ParaMMAPCacheRDS(RiskDataSource):
     ClassName = 'ParaMMAPCacheRDS'
     def __init__(self,name,risk_db=None,qs_env={}):

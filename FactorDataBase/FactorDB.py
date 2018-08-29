@@ -519,7 +519,7 @@ class FactorTable(__QS_Object__):
         if pd.isnull(DTs).sum()>0: raise __QS_Error__("运算时点序列超出了时点标尺!")
         elif (DTs.diff().iloc[1:]!=1).sum()>0: raise __QS_Error__("运算时点序列的频率与时点标尺不一致!")
         # 检查因子的合法性, 解析出所有的因子(衍生因子所依赖的描述子也在内)
-        if not self.OperationMode.FactorNames: raise __QS_Error__("运算因子不能为空!")
+        if not self.OperationMode.FactorNames: self.OperationMode.FactorNames = self.FactorNames
         self.OperationMode._Factors = []# 因子列表
         self.OperationMode._FactorDict = {}# 因子字典, {因子名:因子}, 包括所有的因子, 即衍生因子所依赖的描述子也在内
         for iFactorName in self.OperationMode.FactorNames:
@@ -577,11 +577,12 @@ class FactorTable(__QS_Object__):
         GroupInfo, RawDataFileNames = [], []#[(因子表对象, [因子名], [原始因子名], [时点], {参数})], [原始数据文件名]
         for iFTID, iFT in FTs.items():
             iGroupInfo = iFT.__QS_genGroupInfo__(FT_Factors[iFTID], self.OperationMode)
+            iRawDataFileNames = ["-".join((iFT.Name, str(iFTID), str(i))) for i in range(len(iGroupInfo))]
             GroupInfo.extend(iGroupInfo)
-            RawDataFileNames.extend(["-".join((iFT.Name, str(iFTID), str(i))) for i in range(len(iGroupInfo))])
+            RawDataFileNames.extend(iRawDataFileNames)
             for j in range(len(iGroupInfo)):
                 for kFactorName in iGroupInfo[j][1]:
-                    self.OperationMode._FactorDict[kFactorName]._RawDataFile = RawDataFileNames[j]
+                    self.OperationMode._FactorDict[kFactorName]._RawDataFile = iRawDataFileNames[j]
         args = {"GroupInfo":GroupInfo, "FT":self, "RawDataFileNames":RawDataFileNames}
         if self.OperationMode.SubProcessNum==0:
             Error = _prepareRawData(args)
@@ -688,7 +689,9 @@ class CustomFT(FactorTable):
         else:
             iFT = self._TableArgDict[iFTID][0]
             iNameInFT = self._FactorDict["NameInFT"].loc[ifactor_name]
-            return iFT.getFactor(ifactor_name=iNameInFT, args=args)
+            iFactor = iFT.getFactor(ifactor_name=iNameInFT, args=args)
+            iFactor.Name = ifactor_name
+            return iFactor
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         DateTimes = self._DateTimes
         if start_dt is not None:
@@ -740,7 +743,7 @@ class CustomFT(FactorTable):
     # 添加因子, factor_list: 因子对象列表
     def addFactors(self, factor_list=[], factor_table=None, factor_names=None, args={}):
         for iFactor in factor_list:
-            if iFactor.Name in self._FactorDict.index: raise QSError("因子: '%s' 有重名!" % iFactor.Name)
+            if iFactor.Name in self._FactorDict.index: raise __QS_Error__("因子: '%s' 有重名!" % iFactor.Name)
             iFT = iFactor.FactorTable
             iFTID = id(iFT)
             iDataType = iFactor.getMetaData(key="DataType")
@@ -797,10 +800,8 @@ class CustomFT(FactorTable):
         return 0
     # 重命名因子
     def renameFactor(self, factor_name, new_factor_name):
-        if factor_name not in self._FactorDict.index:
-            raise QSError("因子: '%s' 不存在!" % factor_name)
-        if (new_factor_name!=factor_name) and (new_factor_name in self._FactorDict.index):
-            raise QSError("因子: '%s' 有重名!" % new_factor_name)
+        if factor_name not in self._FactorDict.index: raise __QS_Error__("因子: '%s' 不存在!" % factor_name)
+        if (new_factor_name!=factor_name) and (new_factor_name in self._FactorDict.index): raise __QS_Error__("因子: '%s' 有重名!" % new_factor_name)
         FactorNames = list(self._FactorDict.index)
         FactorNames[FactorNames.index(factor_name)] = new_factor_name
         self._FactorDict.index = FactorNames
@@ -822,19 +823,17 @@ class CustomFT(FactorTable):
             self._IDFilterStr = None
             return OldIDFilterStr
         elif (not isinstance(id_filter_str, str)) or (id_filter_str==""):
-            raise QSError("条件字符串必须为非空字符串或者 None!")
+            raise __QS_Error__("条件字符串必须为非空字符串或者 None!")
         CompiledIDFilter = self._CompiledIDFilter.get(id_filter_str, None)
         if CompiledIDFilter is not None:# 该条件已经编译过
             self._IDFilterStr = id_filter_str
             return OldIDFilterStr
         CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(id_filter_str, self.FactorNames)
         if CompiledIDFilterStr is None:
-            raise QSError("条件字符串有误!")
+            raise __QS_Error__("条件字符串有误!")
         self._IDFilterStr = id_filter_str
         self._CompiledIDFilter[id_filter_str] = (CompiledIDFilterStr, IDFilterFactors)
         return OldIDFilterStr
-
-
 
 
 # ---------- 内置的因子运算----------
@@ -912,6 +911,10 @@ class Factor(__QS_Object__):
     @property
     def FactorTable(self):
         return self._FactorTable
+    @property
+    def DTRuler(self):
+        if self._OperationMode is None: return None
+        return self._OperationMode.DTRuler
     # 获取因子的元数据
     def getMetaData(self, key=None):
         if self._FactorTable is not None: return self._FactorTable.getFactorMetaData(factor_names=[self._NameInFT], key=key).loc[self._NameInFT]
