@@ -69,7 +69,7 @@ class _FactorTable(FactorTable):
     def __QS_calcData__(self, raw_data, factor_names=None, ids=None, dts=None, args={}):
         if factor_names is None: factor_names = self.FactorNames
         Data = {iFactor: self.readFactorData(ifactor_name=iFactor, ids=ids, dts=dts, args=args) for iFactor in factor_names}
-        return pd.Panel(Data)
+        return pd.Panel(Data).loc[factor_names]
     def readFactorData(self, ifactor_name, ids=None, dts=None, args={}):
         if ifactor_name not in self.FactorNames:
             raise __QS_Error__("因子: '%s' 不存在!" % ifactor_name)
@@ -128,31 +128,21 @@ class _FactorTable(FactorTable):
 # 因子的元数据存储在 HDF5 文件的 attrs 中
 class HDF5DB(WritableFactorDB):
     """HDF5DB"""
-    MainDir = Directory(value=__QS_MainPath__+os.sep+"DSData", label="主目录", arg_type="Directory", order=0)
+    MainDir = Directory(label="主目录", arg_type="Directory", order=0)
     def __init__(self, sys_args={}, **kwargs):
-        super().__init__(sys_args=sys_args, **kwargs)
-        # 继承来的属性
-        self.Name = "HDF5DB"
         self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
         self._DataLock = Lock()# 访问该因子库资源的锁, 防止并发访问冲突
         self._isAvailable = False
         self._Suffix = "hdf5"# 文件的后缀名
+        super().__init__(sys_args=sys_args, **kwargs)
+        # 继承来的属性
+        self.Name = "HDF5DB"
         return
     def __QS_initArgs__(self):
         Config = readJSONFile(__QS_LibPath__+os.sep+"HDF5DBConfig.json")
         for iArgName, iArgVal in Config.items(): self[iArgName] = iArgVal
-    @on_trait_change("MainDir")
-    def _on_MainDir_change(self, old, new):
-        self.MainDir = new
-        if self._isAvailable:
-            try:
-                self.connect()
-            except Exception as e:
-                self.MainDir = old
-                raise e
     def connect(self):
-        if not os.path.isdir(self.MainDir):
-            raise __QS_Error__("不存在主目录: %s!" % self.MainDir)
+        if not os.path.isdir(self.MainDir): raise __QS_Error__("不存在主目录: %s!" % self.MainDir)
         AllTables = listDirDir(self.MainDir)
         _TableFactorDict = {}
         with self._DataLock:

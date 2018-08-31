@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
-from QuantStudio.FunLib.AuxiliaryFun import getExpWeight
-from QuantStudio.FunLib.DataTypeConversionFun import DummyVarTo01Var
+from QuantStudio.Tools.AuxiliaryFun import getExpWeight
+from QuantStudio.Tools.DataTypeConversionFun import DummyVarTo01Var
 
 
 # 使用 EWMA 方法估计样本协方差矩阵

@@ -1,8 +1,5 @@
 Backup/
 Cache/
-DSData/
-RiskData/
-StrategyLib/
 Lib/
 QuantStudio.bat
 QuantStudio.sh

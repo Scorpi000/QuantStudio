@@ -268,7 +268,7 @@ def getMonthLastDateTime(dts):
             TargetDateTime[-1] = iDateTime
         else:
             TargetDateTime.append(iDateTime)
-    return np.array(TargetDateTime)
+    return TargetDateTime
 # 获取日期序列
 def getDateSeries(start_date, end_date):
     return (start_date-dt.timedelta(1))+np.array([dt.timedelta(1)]*((end_date-start_date).days+1)).cumsum()

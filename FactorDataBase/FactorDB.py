@@ -397,8 +397,8 @@ class FactorTable(__QS_Object__):
             if ids is None: ids = self.ErgodicMode._IDs
             if dts is not None: Data = Data.ix[:, dts, ids]
             else: Data = Data.ix[:, :, ids]
-        if not DataFactorNames: return Data
-        return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=DataFactorNames, ids=ids, dts=dts, args=args), factor_names=DataFactorNames, ids=ids, dts=dts, args=args).join(Data)
+        if not DataFactorNames: return Data.loc[factor_names]
+        return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=DataFactorNames, ids=ids, dts=dts, args=args), factor_names=DataFactorNames, ids=ids, dts=dts, args=args).join(Data).loc[factor_names]
     def _readIDData(self, iid, factor_names=None, dts=None, args={}):
         self.ErgodicMode._IDReadNum[iid] = self.ErgodicMode._IDReadNum.get(iid, 0) + 1
         if (self.ErgodicMode.MaxIDCacheNum<=0) or (not self.ErgodicMode._CacheDTs) or ((self.ErgodicMode._DateTimes[0] if dts is None else dts[0]) < self.ErgodicMode._CacheDTs[0]) or ((self.ErgodicMode._DateTimes[-1] if dts is None else dts[-1]) >self.ErgodicMode._CacheDTs[-1]):

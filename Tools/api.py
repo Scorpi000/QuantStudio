@@ -5,4 +5,5 @@ from . import DateTimeFun as DateTime
 from . import StrategyTestFun as Strategy
 from . import DataPreprocessingFun as Preprocess
 from . import FileFun as File
+from .QtGUI import QtGUIFun as QtGUI
 from .AuxiliaryFun import genAvailableName, distributeEqual

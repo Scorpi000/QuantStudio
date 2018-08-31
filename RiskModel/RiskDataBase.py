@@ -8,15 +8,15 @@ import zipfile
 import numpy as np
 import pandas as pd
 
-from QuantStudio.FunLib.AuxiliaryFun import genAvailableName
-from QuantStudio.FunLib.FileFun import listDirDir,readJSONFile
-from QuantStudio.FunLib.DateTimeFun import cutDate
-from .RiskModelFun import dropRiskMatrixNA,decomposeCov2Corr
-from QuantStudio.QSEnvironment import QSObject,QSArgs,QSError
+from QuantStudio.Tools.AuxiliaryFun import genAvailableName
+from QuantStudio.Tools.FileFun import listDirDir,readJSONFile
+from QuantStudio.Tools.DateTimeFun import cutDate
+from .RiskModelFun import dropRiskMatrixNA, decomposeCov2Corr
+from QuantStudio import __QS_Object__, __QS_Error__
 
 # 风险数据库基类, 必须存储的数据有:
 # 风险矩阵: Cov, DataFrame(data=协方差, index=[ID], columns=[ID])
-class RiskDataBase(QSObject):
+class RiskDataBase(__QS_Object__):
     """RiskDataBase"""
     def __init__(self, qs_env, sys_args={}):
         self.QSEnv = qs_env
