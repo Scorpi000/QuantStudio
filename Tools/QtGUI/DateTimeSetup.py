@@ -84,7 +84,7 @@ class DateTimeSetupDlg(QDialog, Ui_Dialog):
         self.FTComboBox.blockSignals(True)
         self.FDBComboBox.addItems(['FactorDB']+self.QSEnv.SysArgs['FactorDBList'])
         FactorDB = getattr(self.QSEnv,"FactorDB")
-        TableList = FactorDB.getTableName()
+        TableList = FactorDB.TableNames
         TableList.sort()
         self.FTComboBox.addItems(TableList)
         self.FDBComboBox.blockSignals(False)

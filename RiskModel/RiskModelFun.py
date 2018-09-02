@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """风险模型相关方法"""
+import os
+
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
 from QuantStudio.Tools.AuxiliaryFun import getExpWeight
 from QuantStudio.Tools.DataTypeConversionFun import DummyVarTo01Var
-
 
 # 使用 EWMA 方法估计样本协方差矩阵
 # ret: 收益率, array, 行是日期, 列是 ID; forcast_num: 向前预测的期数; half_life: 时间指数权重半衰期

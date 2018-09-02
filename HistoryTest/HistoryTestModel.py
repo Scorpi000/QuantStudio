@@ -3,6 +3,7 @@ import os
 import time
 import shutil
 import datetime as dt
+import webbrowser
 
 import numpy as np
 import pandas as pd
@@ -10,8 +11,9 @@ from tqdm import tqdm, tqdm_notebook
 from traits.api import List, Instance, Str
 from traitsui.api import View, Item, Group
 from traitsui.menu import OKButton, CancelButton
+from lxml import etree
 
-from QuantStudio import __QS_Error__, __QS_Object__
+from QuantStudio import __QS_Error__, __QS_Object__, __QS_MainPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB
 from QuantStudio.Tools.DateTimeFun import combineDateTime
 
@@ -39,6 +41,15 @@ class BaseModule(__QS_Object__):
     # 生成 Excel 报告的函数, xl_book: 给定的 Excel 工作簿对象, sheet_name: 给定的工作表名
     def genExcelReport(self, xl_book, sheet_name):
         return 0
+    # 对象的 HTML 表示
+    def _repr_html_(self):
+        return ""
+    # 生成 HTML 报告的函数, file_path: 给定的文件路径
+    def genHTMLReport(self, file_path):
+        HTML = self._repr_html_()
+        Tree = etree.ElementTree(etree.HTML(HTML))
+        Tree.write(file_path)
+        return webbrowser.open(file_path)
 
 
 class HistoryTestModel(__QS_Object__):
@@ -87,26 +98,25 @@ class HistoryTestModel(__QS_Object__):
             self._TestDateTimes = np.array(tuple(DateTimeFun.combineDateTime(test_dates, test_times)))
         else:
             self._TestDateTimes = np.array(self._TestDateTimes)
-        TotalStartT = time.clock()
+        TotalStartT = time.process_time()
         print("==========历史回测==========", "1. 初始化", sep="\n", end="")
-        # 初始化
         FactorDBs = set()
         for jModule in self.Modules:
             jDBs = jModule.__QS_start__(mdl=self, dts=test_dts, dates=test_dates, times=test_times)
             if jDBs is not None: FactorDBs.update(set(jDBs))
         for jDB in FactorDBs: jDB.start(dts=test_dts, dates=test_dates, times=test_times)
-        print(('耗时 : %.2f' % (time.clock()-TotalStartT, )), "2. 循环计算", sep="\n", end="")
-        StartT = time.clock()
+        print(('耗时 : %.2f' % (time.process_time()-TotalStartT, )), "2. 循环计算", sep="\n", end="")
+        StartT = time.process_time()
         for i, iDateTime in enumerate(tqdm(self._TestDateTimes)):
             self._TestDateTimeIndex = i
             self._TestDateIndex.loc[iDateTime.date()] = i
             for jDB in FactorDBs: jDB.move(iDateTime)
             for jModule in self.Modules: jModule.__QS_move__(iDateTime)
-        print(('耗时 : %.2f' % (time.clock()-StartT, )), "3. 结果生成", sep="\n", end="")
-        StartT = time.clock()
+        print(('耗时 : %.2f' % (time.process_time()-StartT, )), "3. 结果生成", sep="\n", end="")
+        StartT = time.process_time()
         for jModule in self.Modules: jModule.__QS_end__()
         for jDB in FactorDBs: jDB.end()
-        print(('耗时 : %.2f' % (time.clock()-StartT, )), ("总耗时 : %.2f" % (time.clock()-TotalStartT, )), "="*28, sep="\n", end="\n")
+        print(('耗时 : %.2f' % (time.process_time()-StartT, )), ("总耗时 : %.2f" % (time.process_time()-TotalStartT, )), "="*28, sep="\n", end="\n")
         self._Output = {}
         return 0
     # 返回结果
@@ -119,21 +129,31 @@ class HistoryTestModel(__QS_Object__):
                 self._Output[str(j)+"-"+jModule.Name] = iOutput
         return self._Output
     # 生成 Excel 报告
-    def genExcelReport(self, save_path):
-        shutil.copy(self.QSEnv.SysArgs["MainPath"]+os.sep+"FactorTest"+os.sep+"简单因子表现模板.xlsx", save_path)
-        xlBook = xw.Book(save_path)
+    def genExcelReport(self, file_path):
+        shutil.copy(__QS_MainPath__+os.sep+"HistoryTest"+os.sep+"SectionTest"+os.sep+"简单因子表现模板.xlsx", file_path)
+        xlBook = xw.Book(file_path)
         NewSheet = xlBook.sheets.add(name="占位表")
-        for i,iModule in enumerate(self._Modules):
-            iModule.genExcelReport(xlBook, str(i)+"-"+iModule.Type)
+        for i, iModule in enumerate(self.Modules): iModule.genExcelReport(xlBook, str(i)+"-"+iModule.Name)
         xlBook.app.display_alerts = False
         xlBook.sheets["IC"].delete()
         xlBook.sheets["因子换手率"].delete()
         xlBook.sheets["因子值行业分布"].delete()
         xlBook.sheets["分位数组合"].delete()
         xlBook.sheets["IC的衰减"].delete()
-        if xlBook.sheets.count>1:
-            xlBook.sheets["占位表"].delete()
+        if xlBook.sheets.count>1: xlBook.sheets["占位表"].delete()
         xlBook.app.display_alerts = True
         xlBook.save()
         xlBook.app.quit()
         return 0
+    # 对象的 HTML 表示
+    def _repr_html_(self):
+        HTML = ''
+        SepStr = '<HR style="FILTER: alpha(opacity=100,finishopacity=0,style=3)" width="90%" color=#987cb9 SIZE=5><h1 align="center">{Module}</h1>'
+        for i, iModule in enumerate(self.Modules): HTML += SepStr.format(Module=str(i)+"-"+iModule.Name) + iModule._repr_html_()
+        return HTML
+    # 生成 HTML 报告
+    def genHTMLReport(self, file_path):
+        HTML = self._repr_html_()
+        Tree = etree.ElementTree(etree.HTML(HTML))
+        Tree.write(file_path)
+        return webbrowser.open(file_path)

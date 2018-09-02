@@ -78,7 +78,7 @@ class IDSetupDlg(QDialog, Ui_IDSetupDlg):
         self.FTComboBox.blockSignals(True)
         self.FDBComboBox.addItems(['FactorDB']+self.QSEnv.SysArgs['FactorDBList'])
         FactorDB = getattr(self.QSEnv,"FactorDB")
-        TableList = FactorDB.getTableName()
+        TableList = FactorDB.TableNames
         TableList.sort()
         self.FTComboBox.addItems(TableList)
         self.FDBComboBox.blockSignals(False)
@@ -339,7 +339,7 @@ class IDSetupDlg(QDialog, Ui_IDSetupDlg):
     @pyqtSlot(str)
     def on_FDBComboBox_currentIndexChanged(self, p0):
         FactorDB = getattr(self.QSEnv,p0)
-        TableList = FactorDB.getTableName()
+        TableList = FactorDB.TableNames
         TableList.sort()
         self.FTComboBox.blockSignals(True)
         self.FTComboBox.clear()

@@ -1,13 +1,16 @@
 # coding=utf-8
-"""基于 Shrinkage 的风险模型(未完待续)"""
+"""基于 Shrinkage 的风险模型(TODO)"""
 import time
+import os
+import imp
 
 import pandas as pd
 import numpy as np
 from progressbar import ProgressBar
 
-import DataSource
-import RiskModelFun
+from . import RiskModelFun
+from QuantStudio import __QS_LibPath__, __QS_Error__
+from QuantStudio.Tools.AuxiliaryFun import startMultiProcess
 
 # 估计 pi
 def estimate_pi(ret,sample_cov):
@@ -49,47 +52,44 @@ def estimate_rho(ret,sample_cov,pi_matrix,avg_corr):
 def estimate_gamma(sample_cov,shrinkage_target):
     return np.nansum((shrinkage_target-sample_cov)**2)
 # 估计协方差矩阵
-def CovarianceGeneration(args,qs_env):
-    ReturnDates = pd.Series(args["DS"].getDateTime())
-    args["DS"].start()
+def _CovarianceGeneration(args):
+    ReturnDTs = pd.Series(args["FT"].getDateTime())
+    args["FT"].start()
     iReturn = None
-    iReturnDates = []
+    iReturnDTs = []
     SampleFilterFactors = []
     SampleFilterStr = args["CovESTArgs"]["有效样本条件"]
-    FactorNames = args["DS"].FactorNames.copy()
+    FactorNames = args["FT"].FactorNames.copy()
     FactorNames.sort(key=len,reverse=True)
     for iFactor in FactorNames:
         if SampleFilterStr.find('@'+iFactor)!=-1:
             SampleFilterFactors.append(iFactor)
             SampleFilterStr = SampleFilterStr.replace('@'+iFactor, 'iData[\''+iFactor+'\']')
     if args["ModelArgs"]['运行模式']=='串行':# 运行模式为串行
-        ProgBar = ProgressBar(max_value=len(args["RiskESTDates"]))
+        ProgBar = ProgressBar(max_value=len(args["RiskESTDTs"]))
         ProgBar.start()
     else:
         ProgBar = None
-    for i,iDate in enumerate(args["RiskESTDates"]):
-        iInd = (ReturnDates<=iDate).sum()-1
+    for i, iDT in enumerate(args["RiskESTDTs"]):
+        iInd = (ReturnDTs<=iDT).sum()-1
         if iInd<args["CovESTArgs"]["样本长度"]-1:# 样本不足, 跳过
-            if ProgBar is not None:
-                ProgBar.update(i+1)
-            else:
-                args['Sub2MainQueue'].put((qs_env.PID,1,None))
+            if ProgBar is not None: ProgBar.update(i+1)
+            else: args['Sub2MainQueue'].put((args["PID"], 1, None))
             continue
-        args["DS"].MoveOn(iDate)
-        iIDs = args["DS"].getID(idt=iDate,is_filtered=True)
-        iLastDates = iReturnDates
-        iReturnDates = list(ReturnDates.iloc[iInd-args["CovESTArgs"]["样本长度"]+1:iInd+1])
-        iNewDates = list(set(iReturnDates).difference(set(iLastDates)))
-        iNewDates.sort()
+        args["FT"].move(iDT)
+        iIDs = args["FT"].getID(idt=iDT,is_filtered=True)
+        iLastDTs = iReturnDTs
+        iReturnDTs = list(ReturnDTs.iloc[iInd-args["CovESTArgs"]["样本长度"]+1:iInd+1])
+        iNewDTs = sorted(set(iReturnDTs).difference(set(iLastDTs)))
         if iReturn is not None:
-            iReturn = pd.concat([iReturn,args["DS"].getFactorData(ifactor_name=args["ModelArgs"]["收益率因子"],dates=iNewDates)]).loc[iReturnDates,:]
+            iReturn = pd.concat([iReturn,args["FT"].readData(factor_names=[args["ModelArgs"]["收益率因子"]], dts=iNewDTs)]).iloc[0].loc[iReturnDTs,:]
             for jFactor in SampleFilterFactors:
-                iData[jFactor] = pd.concat([iData[jFactor],args["DS"].getFactorData(ifactor_name=jFactor,dates=iNewDates)]).loc[iReturnDates,:]
+                iData[jFactor] = pd.concat([iData[jFactor],args["FT"].readData(factor_names=[jFactor], dts=iNewDTs)]).iloc[0].loc[iReturnDTs,:]
         else:
-            iReturn = args["DS"].getFactorData(ifactor_name=args["ModelArgs"]["收益率因子"],dates=iNewDates).loc[iReturnDates,:]
+            iReturn = args["FT"].readData(factor_names=[args["ModelArgs"]["收益率因子"]], dts=iNewDTs).iloc[0].loc[iReturnDTs,:]
             iData = {}
             for jFactor in SampleFilterFactors:
-                iData[jFactor] = args["DS"].getFactorData(ifactor_name=jFactor,dates=iNewDates).loc[iReturnDates,:]
+                iData[jFactor] = args["FT"].readData(factor_names=[jFactor], dts=iNewDTs).iloc[0].loc[iReturnDTs,:]
         iMask = eval(SampleFilterStr)
         iReturn[~iMask] = np.nan
         iReturnArray = iReturn.loc[:,iIDs].values
@@ -107,95 +107,75 @@ def CovarianceGeneration(args,qs_env):
         delta = max((0,min((kappa/T,1))))
         iCov = (delta*iShrinkageTarget+(1-delta)*iSampleCov)*args["CovESTArgs"]["预测期数"]
         iCov = pd.DataFrame(iCov,index=iIDs,columns=iIDs)
-        args["RiskDB"].saveData(args["TargetTable"],iDate,cov=iCov)
-        if ProgBar is not None:
-            ProgBar.update(i+1)
-        else:
-            args['Sub2MainQueue'].put((qs_env.PID,1,None))
-    if ProgBar is not None:
-        ProgBar.finish()
-    args["DS"].endDS()
-    if args["ModelArgs"]['运行模式']!='串行':
-        qs_env.closeResource()
+        args["RiskDB"].writeData(args["TargetTable"], iDT, cov=iCov)
+        if ProgBar is not None: ProgBar.update(i+1)
+        else: args['Sub2MainQueue'].put((args["PID"], 1, None))
+    if ProgBar is not None: ProgBar.finish()
+    args["FT"].end()
     return 0
 
 
 class ShrinkageModel(object):
     """基于 Shrinkage 的风险模型"""
-    def __init__(self,name,config_file=None,qs_env=None):
+    def __init__(self, name, factor_table, risk_db, table_name, config_file=None):
         self.ModelType = "基于 Shrinkage 的风险模型"
-        # 需要预先指定的属性
         self.Name = name
-        self.QSEnv = qs_env
-        self.Config = self.QSEnv.loadConfigFile(config_file)
-        self.RiskESTDates = []# 估计风险的日期序列
-        # 模型的其他属性
-        self.RiskDB = None# 风险数据库
-        self.TargetTable = None# 风险数据存储的目标表
-        self.DS = None# 提供因子数据的数据源
+        self.RiskESTDTs = []# 估计风险的时点序列
+        self.RiskDB = risk_db# 风险数据库
+        self.TargetTable = table_name# 风险数据存储的目标表
+        self.FT = factor_table# 提供因子数据的因子表
+        if config_file is None: config_file = __QS_LibPath__+os.sep+"ShrinkageModelConfig.py"
+        self.Config = imp.load_module(config_file, *imp.find_module(config_file, [os.path.split(config_file)[0]]))
         return
-    # 设置计算风险估计的日期序列
-    def setRiskESTDate(self,dates):
-        self.RiskESTDates = dates
-        self.RiskESTDates.sort()
+    # 设置计算风险估计的时点序列
+    def setRiskESTDateTime(self, dts):
+        self.RiskESTDTs = sorted(dts)
         return 0
     # 初始化
-    def initInfo(self):
-        if self.RiskESTDates==[]:
-            self.QSEnv.SysArgs['LastErrorMsg'] = "没有设置计算风险数据的日期序列!"
-            return 0
-        # 获得风险数据库
-        self.RiskDB = getattr(self.QSEnv,self.Config.SaveArgs["风险数据库"])
-        self.TargetTable = self.Config.SaveArgs["风险数据表"]
-        # 创建数据源
-        FactorDB = getattr(self.QSEnv,self.Config.ModelArgs['因子数据库'])
-        self.DS = DataSource.DataSource("MainDS",FactorDB,self.QSEnv)
-        self.DS.prepareData(self.Config.DSTableFactor)
-        self.DS.setIDFilter(self.Config.ModelArgs.get("ID过滤条件",None))
-        self.DS.SysArgs.update(getattr(self.Config,"DSSysArgs",{}))
-        if self.RiskESTDates==[]:
-            self.QSEnv.SysArgs['LastErrorMsg'] = "可以计算风险数据的日期序列为空!"
-            return 0
+    def _initInfo(self):
+        if self.RiskESTDTs==[]: raise __QS_Error__("没有设置计算风险数据的时点序列!")
+        FactorNames = set(self.Config.ModelArgs["所有因子"])
+        if not set(self.FT.FactorNames).issuperset(FactorNames): raise __QS_Error__("因子表必须包含如下因子: %s" % FactorNames)
         return 0
     # 生成协方差矩阵
     def _genCovariance(self):
         Args = {"RiskDB":self.RiskDB,
-                "DS":self.DS,
-                "RiskESTDates":self.RiskESTDates,
+                "FT":self.FT,
+                "RiskESTDTs":self.RiskESTDTs,
                 "TargetTable":self.TargetTable,
                 "ModelArgs":self.Config.ModelArgs,
                 "CovESTArgs":self.Config.CovESTArgs}
         if Args["ModelArgs"]['运行模式']=='串行':
-            CovarianceGeneration(Args,self.QSEnv)
+            _CovarianceGeneration(Args)
         else:
-            nTask = len(self.RiskESTDates)
-            nPrcs = min((nTask,self.Config.ModelArgs["子进程数"]))
+            nTask = len(self.RiskESTDTs)
+            nPrcs = min(nTask, self.Config.ModelArgs["子进程数"])
             ProgBar = ProgressBar(max_value=nTask)
-            Procs,Main2SubQueue,Sub2MainQueue = self.QSEnv.startMultiProcess(n_prc=nPrcs, target_fun=CovarianceGeneration,
-                                                                             arg=Args, partition_arg="RiskESTDates",
-                                                                             main2sub_queue="None", sub2main_queue="Single")
+            Procs, Main2SubQueue, Sub2MainQueue = startMultiProcess(pid="0", n_prc=nPrcs, target_fun=_CovarianceGeneration,
+                                                                    arg=Args, partition_arg=["RiskESTDTs"],
+                                                                    main2sub_queue="None", sub2main_queue="Single")
             iProg = 0
             ProgBar.start()
             while (iProg<nTask):
                 iPID,iErrorCode,iMsg = Sub2MainQueue.get()
                 if iErrorCode==-1:
                     for iProc in Procs:
-                        if iProc.is_alive():
-                            iProc.terminate()
+                        if iProc.is_alive(): iProc.terminate()
                     print('进程 '+iPID+' :运行失败:'+str(iMsg))
                     break
                 else:
                     iProg += 1
                     ProgBar.update(iProg)
             ProgBar.finish()
-            for iPID,iPrcs in Procs.items():
-                iPrcs.join()
+            for iPID,iPrcs in Procs.items(): iPrcs.join()
         return 0
     # 生成数据
-    def genData(self):
-        print("风险数据计算中...")
-        StartT = time.clock()
+    def run(self):
+        TotalStartT = time.process_time()
+        print("==========基于 Shrinkage 的风险模型==========", "1. 初始化", sep="\n", end="")
+        self._initInfo()
+        print(('耗时 : %.2f' % (time.process_time()-TotalStartT, )), "2. 估计协方差矩阵", sep="\n", end="")
+        StartT = time.process_time()
         self._genCovariance()
-        print("风险数据计算完成, 耗时 : %.2f" % (time.clock()-StartT))
-        self.RiskDB.connect()
+        print("耗时 : %.2f" % (time.process_time()-StartT, ), ("总耗时 : %.2f" % (time.process_time()-TotalStartT, )), "="*28, sep="\n", end="\n")
         return 0

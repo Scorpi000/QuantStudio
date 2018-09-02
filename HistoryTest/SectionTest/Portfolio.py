@@ -253,8 +253,43 @@ class QuantilePortfolio(BaseModule):
         Chrt.SeriesCollection(2).Name = "多空收益率"
         Chrt.SeriesCollection(1).XValues = CurSheet[1:nDate+1,24].api
         return 0
+    def genMatplotlibFig(self, file_path=None):
+        plt.style.use('ggplot')
+        nRow, nCol = 3, 3
+        Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
+        AxesGrid = gridspec.GridSpec(nRow, nCol)
+        xData = np.linspace(1, self._Output["统计数据"].shape[0], self._Output["IC"].shape[0])
+        xTickLabels = [iDT.strftime("%Y-%m-%d") for iDT in self._Output["IC"].index]
+        yMajorFormatter = FuncFormatter(_formatMatplotlibPercentage)
+        Axes = plt.subplot(AxesGrid[0, 0])
+        Axes.yaxis.set_major_formatter(yMajorFormatter)
+        for i in range(self._Output["IC"].shape[1]):
+            iAxes = plt.subplot(AxesGrid[i//nCol, i%nCol])
+            iAxes.yaxis.set_major_formatter(yMajorFormatter)
+            iAxes.bar(xData, self._Output["IC"].iloc[:, i].values, label="IC", color="b")
+            iAxes.plot(xData, self._Output["IC的移动平均"].iloc[:, i].values, label="IC的移动平均", color="r", alpha=0.6, lw=2)
+            iAxes.set_xticklabels(xTickLabels)
+            iAxes.legend(loc='best')
+            iAxes.set_title(self._Output["IC"].columns[i])
+            plt.setp(iAxes.get_xticklabels(), visible=True, rotation=0, ha='center')
+        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
+        return Fig
+    def _repr_html_(self):
+        Formatters = [_formatPandasPercentage]*4+[lambda x:'{0:.4f}'.format(x)]+[lambda x:'{0:.2f}'.format(x)]*3+[lambda x:'{0:.0f}'.format(x)]
+        HTML = self._Output["统计数据"].to_html(formatters=Formatters)
+        Pos = HTML.find(">")
+        HTML = HTML[:Pos]+' align="center"'+HTML[Pos:]
+        Fig = self.genMatplotlibFig()
+        # figure 保存为二进制文件
+        Buffer = BytesIO()
+        plt.savefig(Buffer)
+        PlotData = Buffer.getvalue()
+        # 图像数据转化为 HTML 格式
+        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+        HTML += ('<img src="%s">' % ImgStr)
+        return HTML
 
-class GroupPortfolio(QuantilePortfolio):
+class GroupPortfolio(QuantilePortfolio):# TODO
     """分组组合"""
     def __QS_genSysArgs__(self, args=None, **kwargs):
         if self.QSEnv.DSs.isEmpty():

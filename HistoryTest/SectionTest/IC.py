@@ -2,7 +2,6 @@
 import datetime as dt
 import base64
 from io import BytesIO
-import webbrowser
 
 import numpy as np
 import pandas as pd
@@ -13,13 +12,17 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import matplotlib.dates as mdate
 from matplotlib.ticker import FuncFormatter
-from lxml import etree
 
 from QuantStudio import __QS_Error__
-from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList, allocateDim
+from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.Tools.DataPreprocessingFun import prepareRegressData
 from QuantStudio.Tools.ExcelFun import copyChart
 from QuantStudio.HistoryTest.HistoryTestModel import BaseModule
+
+def _formatMatplotlibPercentage(x, pos):
+    return '%.2f%%' % (x*100, )
+def _formatPandasPercentage(x):
+    return '{0:.2f}%'.format(x*100)
 
 class IC(BaseModule):
     """IC"""
@@ -118,7 +121,7 @@ class IC(BaseModule):
         self._Output["统计数据"]["标准差"] = self._Output["IC"].std()
         self._Output["统计数据"]["最小值"] = self._Output["IC"].min()
         self._Output["统计数据"]["最大值"] = self._Output["IC"].max()
-        self._Output["统计数据"]["IC_IR"] = self._Output["统计数据"]["平均值"]/self._Output["统计数据"]["标准差"]
+        self._Output["统计数据"]["IC_IR"] = self._Output["统计数据"]["平均值"] / self._Output["统计数据"]["标准差"]
         self._Output["统计数据"]["t统计量"] = np.nan
         self._Output["统计数据"]["平均股票数"] = self._Output["股票数"].mean()
         self._Output["统计数据"]["IC×Sqrt(N)"] = self._Output["统计数据"]["平均值"]*np.sqrt(self._Output["统计数据"]["平均股票数"])
@@ -169,32 +172,28 @@ class IC(BaseModule):
         return 0
     def genMatplotlibFig(self, file_path=None):
         plt.style.use('ggplot')
-        Shape = allocateDim(self._Output["IC"].shape[1])
-        Fig = plt.figure(figsize=(min(32, 16+(Shape[0]-1)*8), 8*Shape[1]))
-        Fig.suptitle(self.Name, y=0.94, weight='bold')
-        Fig.autofmt_xdate()
-        gs = gridspec.GridSpec(Shape[1], Shape[0], wspace=0.25, hspace=0.5)
-        def format_two_dec(x, pos):
-            return '%.2f%%' % (x*100, )
-        #xData = np.linspace(1, self._Output["IC"].shape[0], self._Output["IC"].shape[0])
-        xData = self._Output["IC"].index
-        #xTickLabels = [iDT.strftime("%Y-%m-%d") for iDT in self._Output["IC"].index]
+        nRow, nCol = max(1, self._Output["IC"].shape[1]//3), min(3, self._Output["IC"].shape[1])
+        Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
+        AxesGrid = gridspec.GridSpec(nRow, nCol)
+        xData = np.linspace(1, self._Output["IC"].shape[0], self._Output["IC"].shape[0])
+        xTickLabels = [iDT.strftime("%Y-%m-%d") for iDT in self._Output["IC"].index]
+        yMajorFormatter = FuncFormatter(_formatMatplotlibPercentage)
         for i in range(self._Output["IC"].shape[1]):
-            iAxes = plt.subplot(gs[i//Shape[0], i%Shape[0]])
-            iAxes.xaxis_date()
-            #iAxes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
-            iAxes.yaxis.set_major_formatter(FuncFormatter(format_two_dec))
+            iAxes = plt.subplot(AxesGrid[i//nCol, i%nCol])
+            iAxes.yaxis.set_major_formatter(yMajorFormatter)
             iAxes.bar(xData, self._Output["IC"].iloc[:, i].values, label="IC", color="b")
             iAxes.plot(xData, self._Output["IC的移动平均"].iloc[:, i].values, label="IC的移动平均", color="r", alpha=0.6, lw=2)
-            #iAxes.set_xticks(self._Output["IC"].index)
-            #iAxes.set_xticklabels(xTickLabels)
+            iAxes.set_xticklabels(xTickLabels)
             iAxes.legend(loc='best')
             iAxes.set_title(self._Output["IC"].columns[i])
-            #plt.setp(iAxes.get_xticklabels(), visible=True, rotation=0, ha='center')
+            plt.setp(iAxes.get_xticklabels(), visible=True, rotation=0, ha='center')
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
-        HTML = self._Output["统计数据"].to_html()
+        Formatters = [_formatPandasPercentage]*4+[lambda x:'{0:.4f}'.format(x)]+[lambda x:'{0:.2f}'.format(x)]*3+[lambda x:'{0:.0f}'.format(x)]
+        HTML = self._Output["统计数据"].to_html(formatters=Formatters)
+        Pos = HTML.find(">")
+        HTML = HTML[:Pos]+' align="center"'+HTML[Pos:]
         Fig = self.genMatplotlibFig()
         # figure 保存为二进制文件
         Buffer = BytesIO()
@@ -204,13 +203,7 @@ class IC(BaseModule):
         ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
         HTML += ('<img src="%s">' % ImgStr)
         return HTML
-    def genHTMLReport(self, file_path):
-        HTML = self._repr_html_()
-        # lxml 库的 etree 解析字符串为 html 代码, 并写入文件
-        Tree = etree.ElementTree(etree.HTML(HTML))
-        Tree.write(file_path)
-        # 最后使用默认浏览器打开 html 文件
-        return webbrowser.open(file_path)
+
 
 class RiskAdjustedIC(IC):    
     """风险调整的 IC"""
@@ -365,9 +358,9 @@ class ICDecay(BaseModule):
         self._Output["统计数据"]["IC平均值"] = self._Output["IC"].mean()
         nDT = pd.notnull(self._Output["IC"]).sum()
         self._Output["统计数据"]["标准差"] = self._Output["IC"].std()
-        self._Output["统计数据"]["风险调整的IC"] = self._Output["统计数据"]["IC平均值"]/self._Output["统计数据"]["标准差"]
-        self._Output["统计数据"]["胜率"] = (self._Output["IC"]>0).sum()/nDT
-        self._Output["统计数据"]["t统计量"] = self._Output["统计数据"]["风险调整的IC"]*nDT**0.5
+        self._Output["统计数据"]["IC_IR"] = self._Output["统计数据"]["IC平均值"] / self._Output["统计数据"]["标准差"]
+        self._Output["统计数据"]["t统计量"] = self._Output["统计数据"]["IC_IR"] * nDT**0.5
+        self._Output["统计数据"]["胜率"] = (self._Output["IC"]>0).sum() / nDT
         return 0
     def genExcelReport(self, xl_book, sheet_name):
         xl_book.sheets["IC的衰减"].api.Copy(Before=xl_book.sheets[0].api)
@@ -394,3 +387,34 @@ class ICDecay(BaseModule):
         CurSheet[0, 8].value = list(self._Output["IC"].columns)
         CurSheet[1, 8].value = np.vectorize(lambda x:("%.2f%%" % x) if pd.notnull(x) else None)(self._Output["IC"].values*100)
         return 0
+    def genMatplotlibFig(self, file_path=None):
+        plt.style.use('ggplot')
+        Fig, Axes = plt.subplots(figsize=(16, 8))
+        xData = np.linspace(1, self._Output["统计数据"].shape[0], self._Output["统计数据"].shape[0])
+        xTickLabels = [str(i) for i in self._Output["统计数据"].index]
+        yMajorFormatter = FuncFormatter(_formatMatplotlibPercentage)
+        Axes.yaxis.set_major_formatter(yMajorFormatter)
+        Axes.bar(xData, self._Output["统计数据"]["IC平均值"].values, label="IC", color="b")
+        Axes.set_xticklabels(xTickLabels)
+        Axes.legend(loc='upper left')
+        RAxes = Axes.twinx()
+        RAxes.yaxis.set_major_formatter(yMajorFormatter)
+        RAxes.plot(xData, self._Output["统计数据"]["胜率"].values, label="胜率", color="r", alpha=0.6, lw=2)
+        RAxes.legend(loc="upper right")
+        plt.setp(Axes.get_xticklabels(), visible=True, rotation=0, ha='center')
+        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
+        return Fig
+    def _repr_html_(self):
+        Formatters = [_formatPandasPercentage]*2+[lambda x:'{0:.4f}'.format(x), lambda x:'{0:.2f}'.format(x), _formatPandasPercentage]
+        HTML = self._Output["统计数据"].to_html(formatters=Formatters)
+        Pos = HTML.find(">")
+        HTML = HTML[:Pos]+' align="center"'+HTML[Pos:]
+        Fig = self.genMatplotlibFig()
+        # figure 保存为二进制文件
+        Buffer = BytesIO()
+        plt.savefig(Buffer)
+        PlotData = Buffer.getvalue()
+        # 图像数据转化为 HTML 格式
+        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+        HTML += ('<img src="%s">' % ImgStr)
+        return HTML

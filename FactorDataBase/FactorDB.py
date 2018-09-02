@@ -59,7 +59,7 @@ class FactorDB(__QS_Object__):
     def isAvailable(self):
         return True
     # -------------------------------表的操作---------------------------------
-    # 表名, 返回: array([表名])
+    # 表名, 返回: [表名]
     @property
     def TableNames(self):
         return []

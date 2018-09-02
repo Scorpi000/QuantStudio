@@ -35,6 +35,13 @@ def cutDate(dates, start_date=None, end_date=None):
     if end_date is not None:
         dates = dates[dates<=end_date]
     return list(dates)
+# 截取时点序列
+def cutDateTime(dts, start_dt=None, end_dt=None):
+    if (start_dt is None) and (end_dt is None): return list(dts)
+    dts = np.array(dts)
+    if start_dt is not None: dts = dts[dts>=start_dt]
+    if end_dt is not None: dts = dts[dts<=end_dt]
+    return dts.tolist()
 # 获取某个日期序列的每月最后一天序列
 def getMonthLastDay(dates):
     dates.sort()

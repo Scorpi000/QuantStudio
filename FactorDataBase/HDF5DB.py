@@ -9,7 +9,7 @@ import pandas as pd
 import h5py
 from traits.api import Directory, File, on_trait_change
 
-from QuantStudio import __QS_Error__, __QS_MainPath__, __QS_LibPath__
+from QuantStudio import __QS_Error__, __QS_LibPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
 from QuantStudio.Tools.FileFun import listDirDir, listDirFile, readJSONFile
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
