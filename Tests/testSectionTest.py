@@ -6,6 +6,7 @@ import datetime as dt
 import numpy as np
 import pandas as pd
 
+
 if __name__=='__main__':
     import QuantStudio.api as QS
     
@@ -80,6 +81,5 @@ if __name__=='__main__':
     Model.run(test_dts=TestDTs)
     
     # 查看结果
-    #Output = Model.output()
-    #QS.Tools.QtGUI.showOutput(Output)
-    iModule.genHTMLReport("aha.html")
+    QS.Tools.QtGUI.showOutput(Model.output())
+    #Model.genHTMLReport("aha.html")

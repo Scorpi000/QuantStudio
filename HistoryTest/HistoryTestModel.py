@@ -25,6 +25,9 @@ class BaseModule(__QS_Object__):
         self.Name = name
         self._Model = None
         self._Output = {}
+    @property
+    def Model(self):
+        return self._Model
     # 测试开始前的初始化函数
     def __QS_start__(self, mdl, dts=None, dates=None, times=None):
         self._Model = mdl
@@ -149,7 +152,7 @@ class HistoryTestModel(__QS_Object__):
     def _repr_html_(self):
         HTML = ''
         SepStr = '<HR style="FILTER: alpha(opacity=100,finishopacity=0,style=3)" width="90%" color=#987cb9 SIZE=5><h1 align="center">{Module}</h1>'
-        for i, iModule in enumerate(self.Modules): HTML += SepStr.format(Module=str(i)+"-"+iModule.Name) + iModule._repr_html_()
+        for i, iModule in enumerate(self.Modules): HTML += SepStr.format(Module=str(i)+". "+iModule.Name) + iModule._repr_html_()
         return HTML
     # 生成 HTML 报告
     def genHTMLReport(self, file_path):

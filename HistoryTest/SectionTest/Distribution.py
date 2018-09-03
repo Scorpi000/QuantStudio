@@ -1,15 +1,23 @@
 # coding=utf-8
+import base64
+from io import BytesIO
 import datetime as dt
 
 import numpy as np
 import pandas as pd
 from traits.api import ListStr, Enum, List, ListInt, Int, Str, Dict, on_trait_change
 from traitsui.api import SetEditor, Item
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+from matplotlib.ticker import FuncFormatter
+import matplotlib.dates as mdate
+import matplotlib
 
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList
 from QuantStudio.Tools.ExcelFun import copyChart
 from QuantStudio.HistoryTest.HistoryTestModel import BaseModule
+from QuantStudio.HistoryTest.SectionTest.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 
 class IndustryDistribution(BaseModule):
     """因子值行业分布"""
@@ -109,3 +117,35 @@ class IndustryDistribution(BaseModule):
             StartRow += 17
         CurSheet.charts["行业分布"].delete()
         return 0
+    def genMatplotlibFig(self, file_path=None):
+        nRow, nCol = self._Output["历史平均值"].shape[1], 2
+        Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
+        AxesGrid = gridspec.GridSpec(nRow, nCol)
+        xData = np.arange(0, self._Output["历史平均值"].shape[0])
+        xTickLabels = [str(iIndustry) for iIndustry in self._Output["历史平均值"].index]
+        yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
+        for i, iFactorName in enumerate(self._Output["历史平均值"].columns):
+            iAxes = plt.subplot(AxesGrid[i, 0])
+            iAxes.yaxis.set_major_formatter(yMajorFormatter)
+            iAxes.bar(xData, self._Output["历史平均值"].iloc[:, i].values, color="b", label="历史平均值")
+            iAxes.set_title(iFactorName+"-历史平均值")
+            iAxes.set_xticks(xData)
+            iAxes.set_xticklabels(xTickLabels)
+            iAxes = plt.subplot(AxesGrid[i, 1])
+            iAxes.yaxis.set_major_formatter(yMajorFormatter)
+            iAxes.bar(xData, self._Output["历史标准差"].iloc[:, i].values, color="b", label="历史标准差")
+            iAxes.set_title(iFactorName+"-历史标准差")
+            iAxes.set_xticks(xData)
+            iAxes.set_xticklabels(xTickLabels)
+        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
+        return Fig
+    def _repr_html_(self):
+        Fig = self.genMatplotlibFig()
+        # figure 保存为二进制文件
+        Buffer = BytesIO()
+        plt.savefig(Buffer)
+        PlotData = Buffer.getvalue()
+        # 图像数据转化为 HTML 格式
+        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+        HTML = ('<img src="%s">' % ImgStr)
+        return HTML

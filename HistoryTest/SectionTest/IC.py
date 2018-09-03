@@ -10,7 +10,6 @@ from traitsui.api import SetEditor, Item
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
-import matplotlib.dates as mdate
 from matplotlib.ticker import FuncFormatter
 
 from QuantStudio import __QS_Error__
@@ -19,11 +18,10 @@ from QuantStudio.Tools.DataPreprocessingFun import prepareRegressData
 from QuantStudio.Tools.ExcelFun import copyChart
 from QuantStudio.HistoryTest.HistoryTestModel import BaseModule
 
-def _formatMatplotlibPercentage(x, pos):
+def _QS_formatMatplotlibPercentage(x, pos):
     return '%.2f%%' % (x*100, )
-def _formatPandasPercentage(x):
+def _QS_formatPandasPercentage(x):
     return '{0:.2f}%'.format(x*100)
-
 class IC(BaseModule):
     """IC"""
     TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
@@ -171,26 +169,26 @@ class IC(BaseModule):
         CurSheet.charts["股票数"].delete()
         return 0
     def genMatplotlibFig(self, file_path=None):
-        plt.style.use('ggplot')
-        nRow, nCol = max(1, self._Output["IC"].shape[1]//3), min(3, self._Output["IC"].shape[1])
+        nRow, nCol = self._Output["IC"].shape[1]//3+1, min(3, self._Output["IC"].shape[1])
         Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         AxesGrid = gridspec.GridSpec(nRow, nCol)
-        xData = np.linspace(1, self._Output["IC"].shape[0], self._Output["IC"].shape[0])
-        xTickLabels = [iDT.strftime("%Y-%m-%d") for iDT in self._Output["IC"].index]
-        yMajorFormatter = FuncFormatter(_formatMatplotlibPercentage)
+        xData = np.arange(0, self._Output["IC"].shape[0])
+        xTicks = np.arange(0, self._Output["IC"].shape[0], int(self._Output["IC"].shape[0]/10))
+        xTickLabels = [self._Output["IC"].index[i].strftime("%Y-%m-%d") for i in xTicks]
+        yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
         for i in range(self._Output["IC"].shape[1]):
             iAxes = plt.subplot(AxesGrid[i//nCol, i%nCol])
             iAxes.yaxis.set_major_formatter(yMajorFormatter)
+            iAxes.plot(xData, self._Output["IC的移动平均"].iloc[:, i].values, label="IC的移动平均", color="r", alpha=0.6, lw=3)
             iAxes.bar(xData, self._Output["IC"].iloc[:, i].values, label="IC", color="b")
-            iAxes.plot(xData, self._Output["IC的移动平均"].iloc[:, i].values, label="IC的移动平均", color="r", alpha=0.6, lw=2)
+            iAxes.set_xticks(xTicks)
             iAxes.set_xticklabels(xTickLabels)
             iAxes.legend(loc='best')
             iAxes.set_title(self._Output["IC"].columns[i])
-            plt.setp(iAxes.get_xticklabels(), visible=True, rotation=0, ha='center')
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
-        Formatters = [_formatPandasPercentage]*4+[lambda x:'{0:.4f}'.format(x)]+[lambda x:'{0:.2f}'.format(x)]*3+[lambda x:'{0:.0f}'.format(x)]
+        Formatters = [_QS_formatPandasPercentage]*4+[lambda x:'{0:.4f}'.format(x)]+[lambda x:'{0:.2f}'.format(x)]*3+[lambda x:'{0:.0f}'.format(x)]
         HTML = self._Output["统计数据"].to_html(formatters=Formatters)
         Pos = HTML.find(">")
         HTML = HTML[:Pos]+' align="center"'+HTML[Pos:]
@@ -388,24 +386,24 @@ class ICDecay(BaseModule):
         CurSheet[1, 8].value = np.vectorize(lambda x:("%.2f%%" % x) if pd.notnull(x) else None)(self._Output["IC"].values*100)
         return 0
     def genMatplotlibFig(self, file_path=None):
-        plt.style.use('ggplot')
         Fig, Axes = plt.subplots(figsize=(16, 8))
-        xData = np.linspace(1, self._Output["统计数据"].shape[0], self._Output["统计数据"].shape[0])
+        xData = np.arange(0, self._Output["统计数据"].shape[0])
         xTickLabels = [str(i) for i in self._Output["统计数据"].index]
-        yMajorFormatter = FuncFormatter(_formatMatplotlibPercentage)
+        yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
         Axes.yaxis.set_major_formatter(yMajorFormatter)
         Axes.bar(xData, self._Output["统计数据"]["IC平均值"].values, label="IC", color="b")
+        Axes.set_xticks(xData)
         Axes.set_xticklabels(xTickLabels)
         Axes.legend(loc='upper left')
         RAxes = Axes.twinx()
         RAxes.yaxis.set_major_formatter(yMajorFormatter)
-        RAxes.plot(xData, self._Output["统计数据"]["胜率"].values, label="胜率", color="r", alpha=0.6, lw=2)
+        RAxes.plot(xData, self._Output["统计数据"]["胜率"].values, label="胜率", color="r", alpha=0.6, lw=3)
         RAxes.legend(loc="upper right")
         plt.setp(Axes.get_xticklabels(), visible=True, rotation=0, ha='center')
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
-        Formatters = [_formatPandasPercentage]*2+[lambda x:'{0:.4f}'.format(x), lambda x:'{0:.2f}'.format(x), _formatPandasPercentage]
+        Formatters = [_QS_formatPandasPercentage]*2+[lambda x:'{0:.4f}'.format(x), lambda x:'{0:.2f}'.format(x), _QS_formatPandasPercentage]
         HTML = self._Output["统计数据"].to_html(formatters=Formatters)
         Pos = HTML.find(">")
         HTML = HTML[:Pos]+' align="center"'+HTML[Pos:]

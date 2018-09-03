@@ -1,17 +1,25 @@
 # coding=utf-8
 import datetime as dt
+import base64
+from io import BytesIO
 
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 from traits.api import ListStr, Enum, List, Int, Str, Instance, Dict, Bool, on_trait_change
 from traitsui.api import SetEditor, Item
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+from matplotlib.ticker import FuncFormatter
+import matplotlib.dates as mdate
+import matplotlib
 
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList
 from QuantStudio.Tools.ExcelFun import copyChart
 from QuantStudio.RiskModel.RiskDataSource import RiskDataSource
 from QuantStudio.HistoryTest.HistoryTestModel import BaseModule
+from QuantStudio.HistoryTest.SectionTest.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 
 class SectionCorrelation(BaseModule):
     """因子截面相关性"""
@@ -119,7 +127,7 @@ class SectionCorrelation(BaseModule):
         return 0
     def __QS_end__(self):
         for iMethod in self.CorrMethod:
-            self._Output[iMethod] = pd.DataFrame(np.array(self._Output[iMethod]).T, columns=self._Output.pop("FactorPair"), index=self._Output.pop("时点"))
+            self._Output[iMethod] = pd.DataFrame(np.array(self._Output[iMethod]).T, columns=self._Output["FactorPair"], index=self._Output["时点"])
             iAvgName = iMethod+"均值"
             self._Output[iAvgName] = pd.DataFrame(index=list(self.TestFactors), columns=list(self.TestFactors), dtype="float")
             for i, iFactor in enumerate(self.TestFactors):
@@ -132,6 +140,8 @@ class SectionCorrelation(BaseModule):
                         self._Output[iAvgName].loc[iFactor, jFactor] = self._Output[iAvgName].loc[jFactor,iFactor]
                     else:
                         self._Output[iAvgName].loc[iFactor, jFactor] = 1
+        self._Output.pop("FactorPair")
+        self._Output.pop("时点")
         if (self.RiskDS is not None) and self._CorrMatrixNeeded: self.RiskDS.end()
         return 0
     def genExcelReport(self, xl_book, sheet_name):
@@ -155,6 +165,34 @@ class SectionCorrelation(BaseModule):
             iFormatConditions(1).ColorScaleCriteria(2).FormatColor.Color = 7039480
             iFormatConditions(1).ColorScaleCriteria(2).FormatColor.TintAndShade = 0
         return 0
+    def _plotHeatMap(self, axes, df, title):
+        axes.pcolor(df.values, cmap=matplotlib.cm.Reds)
+        axes.set_xticks(np.arange(df.shape[0])+0.5, minor=False)
+        axes.set_yticks(np.arange(df.shape[1])+0.5, minor=False)
+        axes.invert_yaxis()
+        axes.xaxis.tick_top()
+        axes.set_xticklabels(df.index.tolist(), minor=False)
+        axes.set_yticklabels(df.columns.tolist(), minor=False)
+        axes.set_title(title)
+        return axes
+    def genMatplotlibFig(self, file_path=None):
+        nMethod = len(self.CorrMethod)
+        nRow, nCol = nMethod//3+1, min(3, nMethod)
+        Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
+        AxesGrid = gridspec.GridSpec(nRow, nCol)
+        for i, iMethod in enumerate(self.CorrMethod):
+            iAvgName = iMethod+"均值"
+            iAxes = plt.subplot(AxesGrid[i//nCol, i%nCol])
+            self._plotHeatMap(iAxes, self._Output[iAvgName], iAvgName)
+        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
+        return Fig
+    def _repr_html_(self):
+        HTML = ""
+        for i, iMethod in enumerate(self.CorrMethod):
+            iAvgName = iMethod+"均值"
+            iHTML = self._Output[iAvgName].style.background_gradient(cmap="Reds").set_precision(2).render()
+            HTML += '<h2 align="left">'+iAvgName+'</h2>'+iHTML
+        return HTML
 
 class FactorTurnover(BaseModule):
     """因子换手率"""
@@ -201,32 +239,63 @@ class FactorTurnover(BaseModule):
         return 0
     def __QS_end__(self):
         self._Output = {"因子换手率":pd.DataFrame(self._Output, index=self._Output.pop("时点"))}
-        self._Output["平均换手率"] = pd.DataFrame(self._Output["因子换手率"].mean(), columns=["平均换手率"])
+        self._Output["统计数据"] = pd.DataFrame(self._Output["因子换手率"].mean(), columns=["平均值"])
+        self._Output["统计数据"]["标准差"] = self._Output["因子换手率"].std()
+        self._Output["统计数据"]["最小值"] = self._Output["因子换手率"].min()
+        self._Output["统计数据"]["最大值"] = self._Output["因子换手率"].max()
+        self._Output["统计数据"]["中位数"] = self._Output["因子换手率"].median()
         return 0
     def genExcelReport(self, xl_book, sheet_name):
         xl_book.sheets["因子换手率"].api.Copy(Before=xl_book.sheets[0].api)
         xl_book.sheets[0].name = sheet_name
         CurSheet = xl_book.sheets[sheet_name]
-        nDate = self._Output["因子换手率"].shape[0]
+        nDT = self._Output["因子换手率"].shape[0]
         # 写入统计数据
         CurSheet[1, 0].expand().clear_contents()
-        CurSheet[1, 0].options(transpose=True).value = list(self._Output["平均换手率"].index)
+        CurSheet[1, 0].options(transpose=True).value = list(self._Output["统计数据"].index)
         FormatFun = np.vectorize(lambda x:("%.2f%%" % x) if pd.notnull(x) else None)
-        CurSheet[1, 1].value = FormatFun(self._Output["平均换手率"].values*100)
-        CurSheet.api.ListObjects(1).Resize(CurSheet[0:self._Output["平均换手率"].shape[0]+1, 0:self._Output["平均换手率"].shape[1]+1].api)
+        CurSheet[1, 1].value = FormatFun(self._Output["统计数据"].values*100)
+        CurSheet.api.ListObjects(1).Resize(CurSheet[0:self._Output["统计数据"].shape[0]+1, 0:self._Output["统计数据"].shape[1]+1].api)
         # 写入日期序列
-        CurSheet[0, 3].expand().clear_contents()
-        CurSheet[0, 3].value = "时点"
-        CurSheet[1, 3].options(transpose=True).value = [iDT.strftime("%Y-%m-%d") for iDT in self._Output["因子换手率"].index]
+        CurSheet[0, 7].expand().clear_contents()
+        CurSheet[0, 7].value = "时点"
+        CurSheet[1, 7].options(transpose=True).value = [iDT.strftime("%Y-%m-%d") for iDT in self._Output["因子换手率"].index]
         # 写入时间序列数据
-        for i, iFactor in enumerate(self._Output["平均换手率"].index):
-            iCol = 5+i
+        for i, iFactor in enumerate(self._Output["统计数据"].index):
+            iCol = 9 + i
             CurSheet[0, iCol-1].value = iFactor+"-截面相关性"
             CurSheet[1, iCol-1].value = FormatFun(self._Output["因子换手率"][[iFactor]].values*100)
             # 绘制图线
             Chrt = copyChart(xl_book, sheet_name, "因子换手率", 6, iCol-1, sheet_name, iFactor+"-因子换手率").api[1]
-            Chrt.SeriesCollection(1).Values = CurSheet[1:nDate+1,iCol-1].api
+            Chrt.SeriesCollection(1).Values = CurSheet[1:nDT+1, iCol-1].api
             Chrt.SeriesCollection(1).Name = iFactor+"-截面相关性"
-            Chrt.SeriesCollection(1).XValues = CurSheet[1:nDate+1,3].api
+            Chrt.SeriesCollection(1).XValues = CurSheet[1:nDT+1, 7].api
         CurSheet.charts["因子换手率"].delete()
         return 0
+    def genMatplotlibFig(self, file_path=None):
+        nRow, nCol = self._Output["因子换手率"].shape[1]//3+1, min(3, self._Output["因子换手率"].shape[1])
+        Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
+        AxesGrid = gridspec.GridSpec(nRow, nCol)
+        yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
+        for i in range(self._Output["因子换手率"].shape[1]):
+            iAxes = plt.subplot(AxesGrid[i//nCol, i%nCol])
+            iAxes.yaxis.set_major_formatter(yMajorFormatter)
+            iAxes.xaxis_date()
+            iAxes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
+            iAxes.stackplot(self._Output["因子换手率"].index, self._Output["因子换手率"].iloc[:, i].values, color="b")
+            iAxes.set_title(self._Output["因子换手率"].columns[i])
+        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
+        return Fig
+    def _repr_html_(self):
+        HTML = self._Output["统计数据"].to_html(formatters=[_QS_formatPandasPercentage]*5)
+        Pos = HTML.find(">")
+        HTML = HTML[:Pos]+' align="center"'+HTML[Pos:]
+        Fig = self.genMatplotlibFig()
+        # figure 保存为二进制文件
+        Buffer = BytesIO()
+        plt.savefig(Buffer)
+        PlotData = Buffer.getvalue()
+        # 图像数据转化为 HTML 格式
+        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+        HTML += ('<img src="%s">' % ImgStr)
+        return HTML

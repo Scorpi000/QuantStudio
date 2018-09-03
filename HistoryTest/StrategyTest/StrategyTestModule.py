@@ -1,17 +1,25 @@
 # -*- coding: utf-8 -*-
 import os
 import shutil
+import base64
+from io import BytesIO
+import datetime as dt
 
 import numpy as np
 import pandas as pd
 from traits.api import ListStr, Enum, List, Int, Float, Str, Instance, Dict, on_trait_change
 from traitsui.api import Item, Group, View
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+from matplotlib.ticker import FuncFormatter
+import matplotlib.dates as mdate
 
-from QuantStudio import __QS_Error__
+from QuantStudio import __QS_Error__, __QS_Object__
 from QuantStudio.HistoryTest.HistoryTestModel import BaseModule
-from QuantStudio.Tools import DateTimeFun
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
-from QuantStudio.Tools.StrategyTestFun import summaryStrategy
+from QuantStudio.Tools.StrategyTestFun import summaryStrategy, calcYieldSeq, calcLSYield
+from QuantStudio.FactorDataBase.FactorDB import FactorTable
+from QuantStudio.HistoryTest.SectionTest.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 
 def cutDateTime(df, dts=None, start_dt=None, end_dt=None):
     if dts is not None:
@@ -97,9 +105,9 @@ class Account(BaseModule):
         self._TradingRecord = pd.DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])# 交易记录
         self._Output = None# 缓存的输出结果
     def __QS_start__(self, mdl, dts=None, dates=None, times=None):
-        self._Cash = np.zeros(dts.shape[0]+1)
+        nDT = len(dts)
+        self._Cash, self._Debt = np.zeros(nDT+1), np.zeros(nDT+1)
         self._Cash[0] = self.InitCash
-        self._Debt = np.zeros(dts.shape[0]+1)
         self._CashRecord = pd.DataFrame(columns=["时间点", "现金流"])
         self._DebtRecord = pd.DataFrame(columns=["时间点", "融资"])
         self._TradingRecord = pd.DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])
@@ -115,8 +123,7 @@ class Account(BaseModule):
         self._Output = {}
         return super().__QS_end__()
     def output(self):
-        if self._Output:
-            return self._Output
+        if self._Output: return self._Output
         CashSeries = self.getCashSeries()
         DebtSeries = self.getDebtSeries()
         AccountValueSeries = self.getAccountValueSeries()
@@ -186,17 +193,36 @@ class Account(BaseModule):
             self._DebtRecord.loc[self._DebtRecord.shape[0]] = (self._Model.DateTime, DebtDelta, remark)
         return 0
 
+class _Benchmark(__QS_Object__):
+    """基准"""
+    FactorTable = Instance(FactorTable, arg_type="FactorTable", label="因子表", order=0)
+    PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
+    BenchmarkID = Enum(None, arg_type="SingleOption", label="基准ID", order=2)
+    RebalanceDTs = List(dt.datetime, arg_type="DateTimeList", label="再平衡时点", order=3)
+    @on_trait_change("FactorTable")
+    def _on_FactorTable_changed(self, obj, name, old, new):
+        if self.FactorTable is not None:
+            DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self.FactorTable.getFactorMetaData(key="DataType")))
+            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1))
+            self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
+            self.add_trait("BenchmarkID", Enum(*self.FactorTable.getID(ifactor_name=self.PriceFactor), arg_type="SingleOption", label="基准ID", order=2))
+        else:
+            self.add_trait("PriceFactor", Enum(None, arg_type="SingleOption", label="价格因子", order=1))
+            self.add_trait("BenchmarkID", Enum(None, arg_type="SingleOption", label="基准ID", order=2))
+    @on_trait_change("PriceFactor")
+    def _on_PriceFactor_changed(self, obj, name, old, new):
+        self.add_trait("BenchmarkID", Enum(*self.FactorTable.getID(ifactor_name=self.PriceFactor), arg_type="SingleOption", label="基准ID", order=2))
 # 策略基类
 class Strategy(BaseModule):
     """策略基类"""
     Accounts = List(Account)# 策略所用到的账户
-    def __init__(self, sys_args={}, **kwargs):
-        super().__init__(name="Strategy", sys_args=sys_args, **kwargs)
+    Benchmark = Instance(_Benchmark, arg_type="ArgObject", label="比较基准", order=0)
+    def __init__(self, name, sys_args={}, **kwargs):
+        super().__init__(name=name, sys_args=sys_args, **kwargs)
         self.ModelArgs = {}# 模型参数，即用户自定义参数
         self.UserData = {}# 用户数据存放
-    @property
-    def Model(self):
-        return self._Model
+    def __QS_initArgs__(self):
+        self.Benchmark = _Benchmark()
     def __QS_start__(self, mdl, dts=None, dates=None, times=None):
         self.UserData = {}
         Rslt = ()
@@ -214,6 +240,14 @@ class Strategy(BaseModule):
     def __QS_end__(self):
         for iAccount in self.Accounts: iAccount.__QS_end__()
         return 0
+    def getViewItems(self, context_name=""):
+        Prefix = (context_name+"." if context_name else "")
+        Groups, Context = [], {}
+        for j, jAccount in enumerate(self.Accounts):
+            jItems, jContext = jAccount.getViewItems(context_name=context_name+"_Account"+str(j))
+            Groups.append(Group(*jItems, label=str(j)+"-"+jAccount.Name))
+            Context.update(jContext)
+        return ([Group(*Groups, orientation='horizontal', layout='tabbed', springy=True)], Context)
     # 可选实现
     def init(self):
         return ()
@@ -223,7 +257,6 @@ class Strategy(BaseModule):
     # 可选实现
     def trade(self, idt, trading_record, signal):
         return 0
-    # 生成策略结果, 可选实现
     def output(self):
         if self._Output: return self._Output
         for i, iAccount in enumerate(self.Accounts):
@@ -236,122 +269,97 @@ class Strategy(BaseModule):
             DebtSeries += iAccount.getDebtSeries()
             InitCash += iAccount.InitCash
             DebtRecord = iAccount.DebtRecord.append(DebtRecord)
-        self._Output[self.Name] = genAccountOutput(InitCash, CashSeries, DebtSeries, AccountValueSeries, DebtRecord, self._Model.DateIndexSeries)
+        StrategyOutput = genAccountOutput(InitCash, CashSeries, DebtSeries, AccountValueSeries, DebtRecord, self._Model.DateIndexSeries)
+        if self.Benchmark.FactorTable is not None:# 设置了基准
+            BenchmarkPrice = self.Benchmark.FactorTable.readData(factor_names=[self.Benchmark.PriceFactor], dts=AccountValueSeries.index.tolist(), ids=[self.Benchmark.BenchmarkID]).iloc[0,:,0]
+            BenchmarkOutput = pd.DataFrame(calcYieldSeq(wealth_seq=BenchmarkPrice.values), index=BenchmarkPrice.index, columns=["基准收益率"])
+            BenchmarkOutput["基准累计收益率"] = BenchmarkOutput["基准收益率"].cumsum()
+            BenchmarkOutput["基准净值"] = BenchmarkPrice / BenchmarkPrice.iloc[0]
+            LYield = (StrategyOutput["日期序列"]["无杠杆收益率"].values if "时间序列" not in StrategyOutput else StrategyOutput["时间序列"]["无杠杆收益率"].values)
+            BenchmarkOutput["相对收益率"] = calcLSYield(long_yield=LYield, short_yield=BenchmarkOutput["基准收益率"].values)# 再平衡时点的设置, TODO
+            BenchmarkOutput["相对累计收益率"] = BenchmarkOutput["相对收益率"].cumsum()
+            BenchmarkOutput["相对净值"] = (1 + BenchmarkOutput["相对收益率"]).cumprod()
+            if "时间序列" in StrategyOutput:
+                StrategyOutput["时间序列"] = pd.merge(StrategyOutput["时间序列"], BenchmarkOutput, left_index=True, right_index=True)
+                BenchmarkOutput = BenchmarkOutput.iloc[self._Model.DateIndexSeries.values]
+                BenchmarkOutput["基准收益率"] = BenchmarkOutput["基准净值"].values / np.r_[1, BenchmarkOutput["基准净值"].iloc[:-1].values] - 1
+                BenchmarkOutput["基准累计收益率"] = BenchmarkOutput["基准收益率"].cumsum()
+                BenchmarkOutput["相对收益率"] = BenchmarkOutput["相对净值"].values / np.r_[1, BenchmarkOutput["相对净值"].iloc[:-1].values] - 1
+                BenchmarkOutput["相对累计收益率"] = BenchmarkOutput["相对收益率"].cumsum()
+            BenchmarkOutput.index = StrategyOutput["日期序列"].index
+            StrategyOutput["日期序列"] = pd.merge(StrategyOutput["日期序列"], BenchmarkOutput, left_index=True, right_index=True)
+        self._Output["Strategy"] = StrategyOutput
         return self._Output
-    # 可选实现
     def genExcelReport(self, xl_book, sheet_name):
         xlBook = xw.Book(save_path)
         NewSheet = xlBook.sheets.add(name="占位表")
-        for i,iModule in enumerate(self._Modules):
+        for i, iModule in enumerate(self._Modules):
             iModule.__QS_genExcelReport__(xlBook)
         xlBook.app.display_alerts = False
-        if xlBook.sheets.count>1:
-            xlBook.sheets["占位表"].delete()
+        if xlBook.sheets.count>1: xlBook.sheets["占位表"].delete()
         xlBook.app.display_alerts = True
         xlBook.save()
         xlBook.app.quit()
         return 0
-    def getViewItems(self, context_name=""):
-        Prefix = (context_name+"." if context_name else "")
-        Groups, Context = [], {}
-        for j, jAccount in enumerate(self.Accounts):
-            jItems, jContext = jAccount.getViewItems(context_name=context_name+"_Account"+str(j))
-            Groups.append(Group(*jItems, label=str(j)+"-"+jAccount.Name))
-            Context.update(jContext)
-        return ([Group(*Groups, orientation='horizontal', layout='tabbed', springy=True)], Context)
-# 策略报告基类, TODO: 完善各种统计指标
-class Report(BaseModule):
-    """策略报告基类"""
-    def __init__(self, name, qs_env, sys_args={}):
-        super().__init__(name, qs_env, sys_args)
-        self.__QS_Type__ = "BaseReport"
-        self._Output = None
-    # 产生基准对冲参数
-    def _genBenchmarkArgs(self, args=None):
-        if self.QSEnv.DefaultTable is None:
-            return QSArgs()
-        DefaultFT = (self.QSEnv.getTable(args["基准数据源"]) if (args is not None) and (args["基准数据源"] in self.QSEnv.TableNames) else self.QSEnv.DefaultTable)
-        DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(DefaultFT.getFactorMetaData(key="DataType")))
-        if args is None:
-            SysArgs = {"基准数据源":DefaultFT.Name,
-                       "基准价格":searchNameInStrList(DefaultNumFactorList, ["价","Price","price"]),
-                       "基准 ID":"无",
-                       "再平衡时点":[]}
-            ArgInfo = {}
-            ArgInfo['基准数据源'] = {'type':'SingleOption','range':list(self.QSEnv.TableNames),'refresh':True,'order':0}
-            ArgInfo['基准价格'] = {'type':'SingleOption','range':DefaultNumFactorList,'order':1}
-            ArgInfo['基准 ID'] = {'type':'SingleOption','range':list(DefaultFT.getID())+['无'],'order':2}
-            ArgInfo['再平衡时点'] = {'type':'DateList','order':3}
-            return QSArgs(SysArgs, ArgInfo, self._onBenchmarkArgChanged)
-        args._QS_MonitorChange = False
-        args['基准数据源'] = DefaultFT.Name
-        args.ArgInfo["基准数据源"]["range"] = list(self.QSEnv.TableNames)
-        if args['基准价格'] not in DefaultNumFactorList:
-            args['基准价格'] = searchNameInStrList(DefaultNumFactorList, ["价","Price","price"])
-        args.ArgInfo["基准价格"]["range"] = DefaultNumFactorList
-        if args['基准 ID'] not in DefaultFT.IDs:
-            args['基准 ID'] = '无'
-        args.ArgInfo["基准 ID"]["range"] = DefaultFT.IDs+['无']
-        args._QS_MonitorChange = True
-        return args
-    def _onBenchmarkArgChanged(self, change_type, change_info, **kwargs):
-        Args, Key, Value = change_info
-        if (change_type=="set") and (Key=="基准数据源"):# 数据源发生了变化
-            Args["基准数据源"] = Value
-            self._genBenchmarkArgs(args=Args)
-            return True
-        return super().__QS_onSysArgChanged__(change_type, change_info, **kwargs)
-    # 生成日历统计参数及其初始值
-    def _genCalendarArgs(self, args=None):
-        if args is None:
-            SysArgs = {"年度统计":False,
-                       "月度统计":False,
-                       "星期统计":False,
-                       "日度统计":False,
-                       "日度窗口":[0,0]}
-            ArgInfo = {}
-            ArgInfo['年度统计'] = {'type':'Bool','order':0}
-            ArgInfo['月度统计'] = {'type':'Bool','order':1}
-            ArgInfo["星期统计"] = {'type':'Bool','order':2}
-            ArgInfo['日度统计'] = {'type':'Bool','order':3}
-            ArgInfo['日度窗口'] = {'type':'ArgList','subarg_info':{"type":"Integer","min":0,"max":np.inf,"single_step":1},'order':4}
-            return QSArgs(SysArgs, ArgInfo, None)
-        return args
-    # 生成滚动分析参数及其初始值
-    def _genRollingAnalysisArgs(self, args=None):
-        if args is None:
-            SysArgs = {"滚动分析":False,
-                       "最小窗口":252}
-            ArgInfo = {}
-            ArgInfo['滚动分析'] = {'type':'Bool','order':0}
-            ArgInfo['最小窗口'] = {'Integer':'Integer','min':1,"max":np.inf,"single_step":1,'order':1}
-            return QSArgs(SysArgs, ArgInfo, None)
-        return args
-    def __QS_genSysArgs__(self, args=None, **kwargs):
-        if args is None:
-            SysArgs = {"基准对冲":self._genBenchmarkArgs(None),
-                       "日历分析":self._genCalendarArgs(None),
-                       "滚动分析":self._genRollingAnalysisArgs(None),
-                       "统计日期序列":[]}
-            ArgInfo = {}
-            ArgInfo['基准对冲'] = {'type':'ArgSet','order':0}
-            ArgInfo['日历分析'] = {'type':'ArgSet','order':1}
-            ArgInfo['滚动分析'] = {'type':'ArgSet','order':2}
-            ArgInfo['统计日期序列'] = {'type':'DateList','order':3,'visible':False}
-            return QSArgs(SysArgs, ArgInfo, self.__QS_onSysArgChanged__)
-        args._QS_MonitorChange = False
-        args["基准对冲"] = self._genBenchmarkArgs(args.get("基准对冲"))
-        args._QS_MonitorChange = True
-        return args
-    def output(self):
-        if self._Output is not None:
-            return self._Output
-        AccountValueSeries, CashSeries, DebtSeries, InitCash, DebtRecord = 0, 0, 0, 0, None
-        for iAccount in self.QSEnv.STM.Accounts.values():
-            AccountValueSeries += iAccount.getAccountValueSeries()
-            CashSeries += iAccount.getCashSeries()
-            DebtSeries += iAccount.getDebtSeries()
-            InitCash += iAccount.InitCash
-            DebtRecord = iAccount.DebtRecord.append(DebtRecord)
-        self._Output = genAccountOutput(InitCash, CashSeries, DebtSeries, AccountValueSeries, DebtRecord, self.QSEnv.STM.DateIndexSeries)
-        return self._Output
+    def _formatStatistics(self):
+        Stats = self._Output["Strategy"]["统计数据"]
+        FormattedStats = pd.DataFrame(index=Stats.index, columns=Stats.columns, dtype="O")
+        DateFormatFun = np.vectorize(lambda x: x.strftime("%Y-%m-%d"))
+        IntFormatFun = np.vectorize(lambda x: ("%d" % (x, )))
+        FloatFormatFun = np.vectorize(lambda x: ("%.2f" % (x, )))
+        PercentageFormatFun = np.vectorize(lambda x: ("%.2f%%" % (x*100, )))
+        FormattedStats.iloc[:2] = DateFormatFun(Stats.iloc[:2, :].values)
+        FormattedStats.iloc[2] = IntFormatFun(Stats.iloc[:2, :].values)
+        FormattedStats.iloc[3:6] = PercentageFormatFun(Stats.iloc[3:6, :].values)
+        FormattedStats.iloc[6] = FloatFormatFun(Stats.iloc[6, :].values)
+        FormattedStats.iloc[7:9] = PercentageFormatFun(Stats.iloc[7:9, :].values)
+        FormattedStats.iloc[9:] = DateFormatFun(Stats.iloc[9:, :].values)
+        return FormattedStats
+    def genMatplotlibFig(self):
+        nRow, nCol = 3, 3
+        Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
+        AxesGrid = gridspec.GridSpec(nRow, nCol)
+        xData = np.arange(1, self._Output["统计数据"].shape[0]-1)
+        xTickLabels = [str(iInd) for iInd in self._Output["统计数据"].index[:-2]]
+        PercentageFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
+        FloatFormatter = FuncFormatter(lambda x, pos: '%.2f' % (x, ))
+        self._plotStatistics(plt.subplot(AxesGrid[0, 0]), xData, xTickLabels, self._Output["统计数据"]["年化超额收益率"].iloc[:-2], PercentageFormatter, self._Output["统计数据"]["胜率"].iloc[:-2], PercentageFormatter)
+        self._plotStatistics(plt.subplot(AxesGrid[0, 1]), xData, xTickLabels, self._Output["统计数据"]["信息比率"].iloc[:-2], PercentageFormatter, None)
+        self._plotStatistics(plt.subplot(AxesGrid[0, 2]), xData, xTickLabels, self._Output["统计数据"]["超额最大回撤率"].iloc[:-2], PercentageFormatter, None)
+        self._plotStatistics(plt.subplot(AxesGrid[1, 0]), xData, xTickLabels, self._Output["统计数据"]["年化收益率"].iloc[:-2], PercentageFormatter, pd.Series(self._Output["统计数据"].loc["市场", "年化收益率"], index=self._Output["统计数据"].index[:-2], name="市场"), PercentageFormatter, False)
+        self._plotStatistics(plt.subplot(AxesGrid[1, 1]), xData, xTickLabels, self._Output["统计数据"]["Sharpe比率"].iloc[:-2], FloatFormatter, pd.Series(self._Output["统计数据"].loc["市场", "Sharpe比率"], index=self._Output["统计数据"].index[:-2], name="市场"), FloatFormatter, False)
+        self._plotStatistics(plt.subplot(AxesGrid[1, 2]), xData, xTickLabels, self._Output["统计数据"]["平均换手率"].iloc[:-2], PercentageFormatter, None)
+        Axes = plt.subplot(AxesGrid[2, 0])
+        Axes.xaxis_date()
+        Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
+        Axes.plot(self._Output["净值"].index, self._Output["净值"].iloc[:, 0].values, label=str(self._Output["净值"].iloc[:, 0].name), color="r", alpha=0.6, lw=3)
+        Axes.plot(self._Output["净值"].index, self._Output["净值"].iloc[:, -3].values, label=str(self._Output["净值"].iloc[:, -3].name), color="b", alpha=0.6, lw=3)
+        Axes.plot(self._Output["净值"].index, self._Output["净值"]["市场"].values, label="市场", color="g", alpha=0.6, lw=3)
+        Axes.legend(loc='best')
+        Axes = plt.subplot(AxesGrid[2, 1])
+        xData = np.arange(0, self._Output["净值"].shape[0])
+        xTicks = np.arange(0, self._Output["净值"].shape[0], int(self._Output["净值"].shape[0]/8))
+        xTickLabels = [self._Output["净值"].index[i].strftime("%Y-%m-%d") for i in xTicks]
+        Axes.plot(xData, self._Output["净值"]["L-S"].values, label="多空净值", color="r", alpha=0.6, lw=3)
+        Axes.legend(loc='upper left')
+        RAxes = Axes.twinx()
+        RAxes.yaxis.set_major_formatter(PercentageFormatter)
+        RAxes.bar(xData, self._Output["收益率"]["L-S"].values, label="多空收益率", color="b")
+        RAxes.legend(loc="upper right")
+        Axes.set_xticks(xTicks)
+        Axes.set_xticklabels(xTickLabels)
+        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
+        return Fig
+    def _repr_html_(self):
+        HTML = self._formatStatistics().to_html()
+        Pos = HTML.find(">")
+        HTML = HTML[:Pos]+' align="center"'+HTML[Pos:]
+        Fig = self.genMatplotlibFig()
+        # figure 保存为二进制文件
+        Buffer = BytesIO()
+        plt.savefig(Buffer)
+        PlotData = Buffer.getvalue()
+        # 图像数据转化为 HTML 格式
+        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+        HTML += ('<img src="%s">' % ImgStr)
+        return HTML

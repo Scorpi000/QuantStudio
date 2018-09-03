@@ -133,7 +133,7 @@ class TimeBarAccount(Account):
         Rslt = super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
         self._IDs = list(self.TargetIDs)
         if not self._IDs: self._IDs = list(self._MarketFT.getID(ifactor_name=self.MarketFactorMap.TradePrice))
-        nDT, nID = dts.shape[0], len(self._IDs)
+        nDT, nID = len(dts), len(self._IDs)
         #self._Cash = np.zeros(nDT+1)
         #self._Debt = np.zeros(nDT+1)
         self._Position = np.zeros((nDT+1, nID))

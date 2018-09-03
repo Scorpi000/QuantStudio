@@ -1,17 +1,24 @@
 # coding=utf-8
 import datetime as dt
+import base64
+from io import BytesIO
 
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 from traits.api import ListStr, Enum, List, ListInt, Int, Str, Dict, on_trait_change
 from traitsui.api import SetEditor, Item
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+from matplotlib.ticker import FuncFormatter
+import matplotlib.dates as mdate
 
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.Tools.DataTypeConversionFun import DummyVarTo01Var
 from QuantStudio.Tools.ExcelFun import copyChart
 from QuantStudio.HistoryTest.HistoryTestModel import BaseModule
+from QuantStudio.HistoryTest.SectionTest.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 
 class FamaMacBethRegression(BaseModule):
     """Fama-MacBeth 回归"""
@@ -121,3 +128,75 @@ class FamaMacBethRegression(BaseModule):
         self._Output["统计数据"]["t统计量(Pure-Naive)"] = (self._Output["Pure Return"] - self._Output["Raw Return"]).mean() / (self._Output["Pure Return"] - self._Output["Raw Return"]).std() * np.sqrt(nDT)
         self._Output.pop("时点")
         return 0
+    def _plotStatistics(self, axes, x_data, x_ticklabels, left_data, left_formatter, right_data=None, right_formatter=None, right_axes=True):
+        axes.yaxis.set_major_formatter(left_formatter)
+        axes.bar(x_data, left_data.values, label=left_data.name, color="b")
+        if right_data is not None:
+            if right_axes:
+                axes.legend(loc='upper left')
+                right_axes = axes.twinx()
+                right_axes.yaxis.set_major_formatter(right_formatter)
+                right_axes.plot(x_data, right_data.values, label=right_data.name, color="r", alpha=0.6, lw=3)
+                right_axes.legend(loc="upper right")
+            else:
+                axes.plot(x_data, right_data.values, label=right_data.name, color="r", alpha=0.6, lw=3)
+                axes.legend(loc='best')
+        else:
+            axes.legend(loc='best')
+        axes.set_xticks(x_data)
+        axes.set_xticklabels(x_ticklabels)
+        return axes
+    def genMatplotlibFig(self, file_path=None):
+        nRow, nCol = 1, 3
+        Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
+        AxesGrid = gridspec.GridSpec(nRow, nCol)
+        PercentageFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
+        FloatFormatter = FuncFormatter(lambda x, pos: '%.2f' % (x, ))
+        xData = np.arange(0, self._Output["统计数据"].shape[0])
+        xTickLabels = [str(iInd) for iInd in self._Output["统计数据"].index]
+        iAxes = plt.subplot(AxesGrid[0, 0])
+        iAxes.yaxis.set_major_formatter(PercentageFormatter)
+        iAxes.bar(xData, self._Output["统计数据"]["年化收益率(Raw)"].values, width=-0.25, align="edge", color="r", label="年化收益率(Raw)")
+        iAxes.bar(xData, self._Output["统计数据"]["年化收益率(Pure)"].values, width=0.25, align="edge", color="b", label="年化收益率(Pure)")
+        iAxes.set_xticks(xData)
+        iAxes.set_xticklabels(xTickLabels)
+        iAxes.legend(loc='best')
+        iAxes.set_title("年化收益率")
+        iAxes = plt.subplot(AxesGrid[0, 1])
+        iAxes.yaxis.set_major_formatter(FloatFormatter)
+        iAxes.bar(xData, self._Output["统计数据"]["t统计量(Raw)"].values, width=-0.25, align="edge", color="r", label="t统计量(Raw)")
+        iAxes.bar(xData, self._Output["统计数据"]["t统计量(Pure)"].values, width=0.25, align="edge", color="b", label="t统计量(Pure)")
+        iAxes.set_xticks(xData)
+        iAxes.set_xticklabels(xTickLabels)
+        iAxes.legend(loc='best')
+        iAxes.set_title("t统计量")
+        iAxes = plt.subplot(AxesGrid[0, 2])
+        iAxes.yaxis.set_major_formatter(PercentageFormatter)
+        iAxes.bar(xData, self._Output["统计数据"]["年化收益率(Pure-Naive)"].values, width=-0.25, align="edge", color="r", label="年化收益率(Pure-Naive)")
+        iAxes.set_xticks(xData)
+        iAxes.set_xticklabels(xTickLabels)
+        iAxes.legend(loc='upper left')
+        iAxes.set_title("Pure-Naive")
+        RAxes = iAxes.twinx()
+        RAxes.yaxis.set_major_formatter(FloatFormatter)
+        RAxes.bar(xData, self._Output["统计数据"]["t统计量(Pure-Naive)"].values, width=0.25, align="edge", color="b", label="t统计量(Pure-Naive)")
+        RAxes.legend(loc='upper right')      
+        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
+        return Fig
+    def _repr_html_(self):
+        FloatFormatFun = lambda x:'{0:.2f}'.format(x)
+        Formatters = [_QS_formatPandasPercentage]*2+[FloatFormatFun, _QS_formatPandasPercentage, FloatFormatFun]
+        Formatters += [_QS_formatPandasPercentage]*2+[FloatFormatFun, _QS_formatPandasPercentage, FloatFormatFun]
+        Formatters += [_QS_formatPandasPercentage]*2+[FloatFormatFun, _QS_formatPandasPercentage, FloatFormatFun]
+        HTML = self._Output["统计数据"].to_html(formatters=Formatters)
+        Pos = HTML.find(">")
+        HTML = HTML[:Pos]+' align="center"'+HTML[Pos:]
+        Fig = self.genMatplotlibFig()
+        # figure 保存为二进制文件
+        Buffer = BytesIO()
+        plt.savefig(Buffer)
+        PlotData = Buffer.getvalue()
+        # 图像数据转化为 HTML 格式
+        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+        HTML += ('<img src="%s">' % ImgStr)
+        return HTML

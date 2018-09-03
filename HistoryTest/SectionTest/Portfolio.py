@@ -1,10 +1,16 @@
 # coding=utf-8
 import datetime as dt
+import base64
+from io import BytesIO
 
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 from traits.api import ListStr, Enum, List, Int, Str, Instance, Dict, Bool, on_trait_change
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+from matplotlib.ticker import FuncFormatter
+import matplotlib.dates as mdate
 
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList, distributeEqual
@@ -13,6 +19,7 @@ from QuantStudio.Tools.ExcelFun import copyChart
 from QuantStudio.Tools.StrategyTestFun import calcPortfolioReturn, calcTurnover, calcMaxDrawdownRate
 from QuantStudio.HistoryTest.HistoryTestModel import BaseModule
 from QuantStudio.PortfolioConstructor import BasePC
+from QuantStudio.HistoryTest.SectionTest.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 
 class QuantilePortfolio(BaseModule):
     """分位数组合"""
@@ -253,29 +260,63 @@ class QuantilePortfolio(BaseModule):
         Chrt.SeriesCollection(2).Name = "多空收益率"
         Chrt.SeriesCollection(1).XValues = CurSheet[1:nDate+1,24].api
         return 0
+    def _plotStatistics(self, axes, x_data, x_ticklabels, left_data, left_formatter, right_data=None, right_formatter=None, right_axes=True):
+        axes.yaxis.set_major_formatter(left_formatter)
+        axes.bar(x_data, left_data.values, label=left_data.name, color="b")
+        if right_data is not None:
+            if right_axes:
+                axes.legend(loc='upper left')
+                right_axes = axes.twinx()
+                right_axes.yaxis.set_major_formatter(right_formatter)
+                right_axes.plot(x_data, right_data.values, label=right_data.name, color="r", alpha=0.6, lw=3)
+                right_axes.legend(loc="upper right")
+            else:
+                axes.plot(x_data, right_data.values, label=right_data.name, color="r", alpha=0.6, lw=3)
+                axes.legend(loc='best')
+        else:
+            axes.legend(loc='best')
+        axes.set_xticks(x_data)
+        axes.set_xticklabels(x_ticklabels)
+        return axes
     def genMatplotlibFig(self, file_path=None):
-        plt.style.use('ggplot')
         nRow, nCol = 3, 3
         Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         AxesGrid = gridspec.GridSpec(nRow, nCol)
-        xData = np.linspace(1, self._Output["统计数据"].shape[0], self._Output["IC"].shape[0])
-        xTickLabels = [iDT.strftime("%Y-%m-%d") for iDT in self._Output["IC"].index]
-        yMajorFormatter = FuncFormatter(_formatMatplotlibPercentage)
-        Axes = plt.subplot(AxesGrid[0, 0])
-        Axes.yaxis.set_major_formatter(yMajorFormatter)
-        for i in range(self._Output["IC"].shape[1]):
-            iAxes = plt.subplot(AxesGrid[i//nCol, i%nCol])
-            iAxes.yaxis.set_major_formatter(yMajorFormatter)
-            iAxes.bar(xData, self._Output["IC"].iloc[:, i].values, label="IC", color="b")
-            iAxes.plot(xData, self._Output["IC的移动平均"].iloc[:, i].values, label="IC的移动平均", color="r", alpha=0.6, lw=2)
-            iAxes.set_xticklabels(xTickLabels)
-            iAxes.legend(loc='best')
-            iAxes.set_title(self._Output["IC"].columns[i])
-            plt.setp(iAxes.get_xticklabels(), visible=True, rotation=0, ha='center')
+        xData = np.arange(1, self._Output["统计数据"].shape[0]-1)
+        xTickLabels = [str(iInd) for iInd in self._Output["统计数据"].index[:-2]]
+        PercentageFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
+        FloatFormatter = FuncFormatter(lambda x, pos: '%.2f' % (x, ))
+        self._plotStatistics(plt.subplot(AxesGrid[0, 0]), xData, xTickLabels, self._Output["统计数据"]["年化超额收益率"].iloc[:-2], PercentageFormatter, self._Output["统计数据"]["胜率"].iloc[:-2], PercentageFormatter)
+        self._plotStatistics(plt.subplot(AxesGrid[0, 1]), xData, xTickLabels, self._Output["统计数据"]["信息比率"].iloc[:-2], PercentageFormatter, None)
+        self._plotStatistics(plt.subplot(AxesGrid[0, 2]), xData, xTickLabels, self._Output["统计数据"]["超额最大回撤率"].iloc[:-2], PercentageFormatter, None)
+        self._plotStatistics(plt.subplot(AxesGrid[1, 0]), xData, xTickLabels, self._Output["统计数据"]["年化收益率"].iloc[:-2], PercentageFormatter, pd.Series(self._Output["统计数据"].loc["市场", "年化收益率"], index=self._Output["统计数据"].index[:-2], name="市场"), PercentageFormatter, False)
+        self._plotStatistics(plt.subplot(AxesGrid[1, 1]), xData, xTickLabels, self._Output["统计数据"]["Sharpe比率"].iloc[:-2], FloatFormatter, pd.Series(self._Output["统计数据"].loc["市场", "Sharpe比率"], index=self._Output["统计数据"].index[:-2], name="市场"), FloatFormatter, False)
+        self._plotStatistics(plt.subplot(AxesGrid[1, 2]), xData, xTickLabels, self._Output["统计数据"]["平均换手率"].iloc[:-2], PercentageFormatter, None)
+        Axes = plt.subplot(AxesGrid[2, 0])
+        Axes.xaxis_date()
+        Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
+        Axes.plot(self._Output["净值"].index, self._Output["净值"].iloc[:, 0].values, label=str(self._Output["净值"].iloc[:, 0].name), color="r", alpha=0.6, lw=3)
+        Axes.plot(self._Output["净值"].index, self._Output["净值"].iloc[:, -3].values, label=str(self._Output["净值"].iloc[:, -3].name), color="b", alpha=0.6, lw=3)
+        Axes.plot(self._Output["净值"].index, self._Output["净值"]["市场"].values, label="市场", color="g", alpha=0.6, lw=3)
+        Axes.legend(loc='best')
+        Axes = plt.subplot(AxesGrid[2, 1])
+        xData = np.arange(0, self._Output["净值"].shape[0])
+        xTicks = np.arange(0, self._Output["净值"].shape[0], int(self._Output["净值"].shape[0]/8))
+        xTickLabels = [self._Output["净值"].index[i].strftime("%Y-%m-%d") for i in xTicks]
+        Axes.plot(xData, self._Output["净值"]["L-S"].values, label="多空净值", color="r", alpha=0.6, lw=3)
+        Axes.legend(loc='upper left')
+        RAxes = Axes.twinx()
+        RAxes.yaxis.set_major_formatter(PercentageFormatter)
+        RAxes.bar(xData, self._Output["收益率"]["L-S"].values, label="多空收益率", color="b")
+        RAxes.legend(loc="upper right")
+        Axes.set_xticks(xTicks)
+        Axes.set_xticklabels(xTickLabels)
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
-        Formatters = [_formatPandasPercentage]*4+[lambda x:'{0:.4f}'.format(x)]+[lambda x:'{0:.2f}'.format(x)]*3+[lambda x:'{0:.0f}'.format(x)]
+        Formatters = [_QS_formatPandasPercentage]*3+[lambda x:'{0:.2f}'.format(x)]*2+[_QS_formatPandasPercentage]*2+[lambda x: x.strftime("%Y-%m-%d")]*2
+        Formatters += [_QS_formatPandasPercentage]*3+[lambda x:'{0:.2f}'.format(x)]*2+[_QS_formatPandasPercentage]*2+[lambda x: x.strftime("%Y-%m-%d")]*2
+        Formatters += [lambda x:'{0:.2f}'.format(x)]*2
         HTML = self._Output["统计数据"].to_html(formatters=Formatters)
         Pos = HTML.find(">")
         HTML = HTML[:Pos]+' align="center"'+HTML[Pos:]

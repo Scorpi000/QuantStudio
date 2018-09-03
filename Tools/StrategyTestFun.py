@@ -55,7 +55,7 @@ def calcPortfolioReturn(portfolio, return_rate):
     return PortfolioReturn
 # 计算收益率序列, wealth_seq: 净值序列, array; init_wealth: 初始财富, 若为None使用wealth_seq的第一个元素
 def calcYieldSeq(wealth_seq, init_wealth=None):
-    YieldSeq = np.zeros(wealth_seq.shape)+np.nan
+    YieldSeq = np.zeros(wealth_seq.shape)
     YieldSeq[1:] = (wealth_seq[1:]-wealth_seq[:-1])/wealth_seq[:-1]
     if init_wealth is not None:
         YieldSeq[0] = (wealth_seq[0]-init_wealth)/init_wealth
@@ -66,6 +66,21 @@ def calcWealthSeq(yield_seq, init_wealth=None):
     if init_wealth is not None:
         WealthSeq = np.append(1,WealthSeq)*init_wealth
     return WealthSeq
+# 计算多空组合收益率序列, long_yield, short_yield: 多空收益率序列, array; rebalance_index: 再平衡位置索引, array, None 表示每个时点均进行再平衡
+def calcLSYield(long_yield, short_yield, rebalance_index=None):
+    if rebalance_index is None: return long_yield - short_yield
+    LSYield = np.zeros(long_yield.shape[0])
+    if not rebalance_index: return LSYield
+    nRebalance, iRebalanceInd = len(rebalance_index), 0
+    for i in range(rebalance_index[0], long_yield.shape[0]):
+        if iRebalanceInd>0: LSYield[i] = LNAV * long_yield[i] - SNAV * short_yield[i]
+        if (iRebalanceInd==nRebalance) or (i<rebalance_index[iRebalanceInd]):
+            LNAV *= (1+long_yield[i])
+            SNAV *= (1+short_yield[i])
+        else:
+            LNAV, SNAV = 1.0, 1.0
+            iRebalanceInd += 1
+    return LSYield
 # 计算年化收益率, wealth_seq: 净值序列, array
 def calcAnnualYield(wealth_seq, num_per_year=252, start_date=None, end_date=None):
     if (start_date is not None) and (end_date is not None):
