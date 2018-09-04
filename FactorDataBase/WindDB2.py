@@ -5,7 +5,7 @@ import datetime as dt
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, Int, Str, Range, Bool
+from traits.api import Enum, Int, Str, Range, Bool, List, Dict, Function
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
@@ -14,6 +14,45 @@ from QuantStudio.Tools.FileFun import readJSONFile
 from QuantStudio import __QS_Error__, __QS_LibPath__
 from QuantStudio.FactorDataBase.WindDB import WindDB, _DBTable, _adjustDateTime
 from QuantStudio.FactorDataBase.WindDB import _MarketTable as WindMarketTable
+
+def RollBackNPeriod(report_date, n_period):
+    Date = report_date
+    for i in range(1, n_period+1):
+        if Date[-4:]=='1231':
+            Date = Date[0:4]+'0930'
+        elif Date[-4:]=='0930':
+            Date = Date[0:4]+'0630'
+        elif Date[-4:]=='0630':
+            Date = Date[0:4]+'0331'
+        elif Date[-4:]=='0331':
+            Date = str(int(Date[0:4])-1)+'1231'
+    return Date
+# 生成报告期-公告日期 SQL 查询语句
+def genANN_ReportSQLStr(table_prefix, ids, report_period="1231"):
+    DBTableName = table_prefix+"AShareIssuingDatePredict"
+    # 提取财报的公告期数据, ID, 公告日期, 报告期
+    SQLStr = "SELECT "+DBTableName+".s_info_windcode, "
+    SQLStr += DBTableName+".s_stm_actual_issuingdate, "
+    SQLStr += DBTableName+".report_period "
+    SQLStr += "FROM "+DBTableName+" "
+    SQLStr += "WHERE ("+genSQLInCondition(DBTableName+".s_info_windcode", ids, is_str=True, max_num=1000)+") "
+    if report_period is not None:
+        SQLStr += "AND "+DBTableName+".report_period LIKE '%"+report_period+"' "
+    SQLStr += "ORDER BY "+DBTableName+".s_info_windcode, "
+    SQLStr += DBTableName+".s_stm_actual_issuingdate, "+DBTableName+".report_period"
+    return SQLStr
+# 查找某个报告期对应的公告期
+def findNoteDate(report_date, report_note_dates):
+    for i in range(0, report_note_dates.shape[0]):
+        if report_date==report_note_dates['报告期'].iloc[i]: return report_note_dates['公告日期'].iloc[i]
+    return None
+# f: 该算子所属的因子, 因子对象
+# idt: 当前所处的时点
+# iid: 当前待计算的 ID
+# x: 描述子当期的数据, [DataFrame(columns=['预测日期', '报告期', '研究机构名称', '分析师名称', '预测基准股本(万股)']+SysArgs['字段'])], list的长度为向前年数
+# args: 参数, {参数名:参数值}
+def _DefaultOperator(f, idt, iid, x, args):
+    return np.nan
 
 class _CalendarTable(_DBTable):
     """交易日历因子表"""
@@ -529,6 +568,600 @@ class _FeatureTable(_DBTable):
         Data = _adjustDateTime(Data, dts, fillna=True, method="bfill")
         if ids is not None: Data = Data.ix[:, :, ids]
         return Data
+class _FinancialTable(_DBTable):
+    """财务因子表"""
+    ReportDate = Enum("所有", "年报", "中报", "一季报", "三季报", Dict(), Function(), label="报告期", arg_type="SingleOption", order=0)
+    ReportType = List(["408001000", "408004000"], label="报表类型", arg_type="MultiOption", order=1, option_range=("408001000", "408004000"))
+    CalcType = Enum("最新", "单季度", "TTM", label="计算方法", arg_type="SingleOption", order=2)
+    YearLookBack = Int(0, label="回溯年数", arg_type="Integer", order=3)
+    PeriodLookBack = Int(0, label="回溯期数", arg_type="Integer", order=4)
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        FactorInfo = fdb._FactorInfo.ix[name]
+        self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
+        self._ANNDateField = FactorInfo[FactorInfo["FieldType"]=="ANNDate"].index[0]
+        self._ReportDateField = FactorInfo[FactorInfo["FieldType"]=="ReportDate"].index[0]
+        self._ReportTypeField = FactorInfo[FactorInfo["FieldType"]=="ReportType"].index
+        self._TempData = {}
+        if self._ReportTypeField.shape[0]==0: self._ReportTypeField = None
+        else: self._ReportTypeField = self._ReportTypeField[0]
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+        return
+    # 返回在给定时点 idt 之前有财务报告的 ID
+    # 如果 idt 为 None, 将返回所有有财务报告的 ID
+    # 忽略 ifactor_name
+    def getID(self, ifactor_name=None, idt=None, args={}):
+        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._IDField, self._ANNDateField])
+        SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[self._IDField]+" "# ID
+        SQLStr += "FROM "+DBTableName+" "
+        if idt is not None: SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._ANNDateField]+"<='"+idt.strftime("%Y%m%d")+"' "
+        SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._IDField]
+        return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
+    # 返回在给定 ID iid 的有财务报告的公告时点
+    # 如果 iid 为 None, 将返回所有有财务报告的公告时点
+    # 忽略 ifactor_name
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
+        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._ANNDateField, self._IDField])
+        SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[self._ANNDateField]+" "
+        SQLStr += "FROM "+DBTableName+" "
+        if iid is not None: SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._IDField]+"='"+iid+"' "
+        else: SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._IDField]+" IS NOT NULL "
+        if start_dt is not None: SQLStr += "AND "+DBTableName+"."+FieldDict[self._ANNDateField]+">='"+start_dt.strftime("%Y%m%d")+"' "
+        if end_dt is not None: SQLStr += "AND "+DBTableName+"."+FieldDict[self._ANNDateField]+"<='"+end_dt.strftime("%Y%m%d")+"' "
+        SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._ANNDateField]
+        return list(map(lambda x: dt.datetime(int(x[0][:4]), int(x[0][4:6]), int(x[0][6:8]), 23, 59, 59, 999999), self._FactorDB.fetchall(SQLStr)))
+    def __QS_prepareRawData__(self, factor_names=None, ids=None, dts=None, args={}):
+        if dts: StartDate, EndDate = dts[0].date(), dts[-1].date()
+        else: StartDate, EndDate = None, None
+        if factor_names is None: factor_names=self.FactorNames
+        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._IDField, self._ANNDateField, self._ReportDateField, self._ReportTypeField]+factor_names)
+        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        if self._ReportTypeField is not None:
+            # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
+            SQLStr = "SELECT "+DBTableName+"."+FieldDict[self._IDField]+", "
+            SQLStr += "CASE WHEN "+DBTableName+"."+FieldDict[self._ReportTypeField]+"='408001000' THEN "+self._FactorDB.TablePrefix+"AShareIssuingDatePredict.s_stm_actual_issuingdate "
+            SQLStr += "WHEN "+DBTableName+"."+FieldDict[self._ReportTypeField]+"='408004000' THEN "+DBTableName+"."+FieldDict[self._ANNDateField]+" END AS ANNDate, "
+            SQLStr += DBTableName+"."+FieldDict[self._ReportDateField]+", "
+            SQLStr += DBTableName+"."+FieldDict[self._ReportTypeField]+", "
+        else:
+            # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
+            SQLStr = "SELECT "+DBTableName+"."+FieldDict[self._IDField]+", "
+            SQLStr += DBTableName+"."+FieldDict[self._ANNDateField]+" AS ANNDate, "
+            SQLStr += DBTableName+"."+FieldDict[self._ReportDateField]+", "
+            SQLStr += "NULL AS ReportType, "
+        for iField in factor_names: SQLStr += DBTableName+"."+FieldDict[iField]+", "
+        SQLStr = SQLStr[:-2]+" "
+        SQLStr += "FROM "+DBTableName+" "
+        SQLStr += "INNER JOIN "+self._FactorDB.TablePrefix+"AShareIssuingDatePredict ON ("+DBTableName+"."+FieldDict[self._IDField]+"="+self._FactorDB.TablePrefix+"AShareIssuingDatePredict.s_info_windcode AND "+self._FactorDB.TablePrefix+"AShareIssuingDatePredict.report_period="+DBTableName+"."+FieldDict[self._ReportDateField]+") "
+        if ids is not None: SQLStr += "WHERE ("+genSQLInCondition(DBTableName+"."+FieldDict[self._IDField], ids, is_str=True, max_num=1000)+") "
+        else: SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._IDField]+" IS NOT NULL "
+        if self._ReportTypeField is not None: SQLStr += "AND "+DBTableName+"."+FieldDict[self._ReportTypeField]+" IN ('"+"','".join(args.get("报表类型", self.ReportType))+"')"
+        SQLStr = "SELECT t.* FROM ("+SQLStr+") t WHERE t.ANNDate IS NOT NULL "
+        SQLStr += "ORDER BY t."+FieldDict[self._IDField]+", t.ANNDate, t."+FieldDict[self._ReportDateField]
+        RawData = self._FactorDB.fetchall(SQLStr)
+        if not RawData: return pd.DataFrame(columns=["ID", "公告日期", "报告期", "报表类型"]+factor_names)
+        return pd.DataFrame(np.array(RawData), columns=["ID", "公告日期", "报告期", "报表类型"]+factor_names)
+    def __QS_calcData__(self, raw_data, factor_names=None, ids=None, dts=None, args={}):
+        if factor_names is None: factor_names = self.FactorNames
+        if dts is None: dts = self.getDateTime()
+        Dates = sorted({iDT.strftime("%Y%m%d") for iDT in dts})
+        CalcType, YearLookBack, PeriodLookBack, ReportDate = args.get("计算方法", self.CalcType), args.get("回溯年数", self.YearLookBack), args.get("回溯期数", self.PeriodLookBack), args.get("报告期", self.ReportDate)
+        if (YearLookBack==0) and (PeriodLookBack==0):
+            if CalcType=="最新": CalcFun = self._calcIDData_LR
+            elif CalcType=="单季度": CalcFun = self._calcIDData_SQ
+            elif CalcType=="TTM": CalcFun = self._calcIDData_TTM
+        elif YearLookBack>0:
+            if CalcType=="最新": CalcFun = self._calcIDData_LR_NYear
+            elif CalcType=="单季度": CalcFun = self._calcIDData_SQ_NYear
+            elif CalcType=="TTM": CalcFun = self._calcIDData_TTM_NYear
+        elif PeriodLookBack>0:
+            if CalcType=="最新": CalcFun = self._calcIDData_LR_NPeriod
+            elif CalcType=="单季度": CalcFun = self._calcIDData_SQ_NPeriod
+            elif CalcType=="TTM": CalcFun = self._calcIDData_TTM_NPeriod
+        raw_data = raw_data.set_index(["ID"])
+        Data = {}
+        for iID in raw_data.index.unique():
+            Data[iID] = CalcFun(Dates, raw_data.loc[iID], factor_names, ReportDate, YearLookBack, PeriodLookBack)
+        Data = pd.Panel(Data)
+        Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:]), 23, 59, 59, 999999) for iDate in Dates]
+        Data.minor_axis = factor_names
+        Data = Data.swapaxes(0, 2)
+        Data = _adjustDateTime(Data, dts, fillna=True, method="pad")
+        if ids is not None: Data = Data.ix[:, :, ids]
+        return Data
+    # 检索最大报告期的位置
+    def _findMaxReportDateInd(self, idate, raw_data, report_date, MaxReportDateInd, MaxNoteDateInd, PreMaxNoteDateInd):
+        if isinstance(report_date, dict):
+            TargetReportDateDict = self._TempData.get("TargetReportDateDict",{})
+            TargetReportDate = TargetReportDateDict.get(idate)
+            if TargetReportDate is None:
+                MonthDay = idate[-4:]
+                for iStartDay, iEndDay in report_date:
+                    if (iStartDay<=MonthDay) and (MonthDay<=iEndDay):
+                        iBack, iMonthDay = report_date[(iStartDay,iEndDay)]
+                        TargetReportDate = str(int(idate[:4])+iBack)+iMonthDay
+                TargetReportDateDict[idate] = TargetReportDate
+                self._TempData["TargetReportDateDict"] = TargetReportDateDict
+            LastTargetReportDate = self._TempData.get("LastTargetReportDate")
+            if LastTargetReportDate != TargetReportDate:
+                MaxReportDateInd = -1
+                for i in range(0, MaxNoteDateInd+1):
+                    if (raw_data['报告期'].iloc[MaxNoteDateInd-i]==TargetReportDate):
+                        MaxReportDateInd = MaxNoteDateInd-i
+                        break
+                if MaxReportDateInd==-1:
+                    return (MaxReportDateInd, False)
+                else:
+                    self._TempData["LastTargetReportDate"] = TargetReportDate
+                    self._TempData["LastTargetReportInd"] = MaxReportDateInd
+                    return (MaxNoteDateInd,True)
+            elif MaxNoteDateInd!=PreMaxNoteDateInd:
+                NewMaxReportDateInd = MaxReportDateInd
+                for i in range(0,MaxNoteDateInd-PreMaxNoteDateInd):
+                    if (raw_data['报告期'].iloc[MaxNoteDateInd-i]==TargetReportDate):
+                        NewMaxReportDateInd = MaxNoteDateInd-i
+                        break
+                self._TempData["LastTargetReportDate"] = TargetReportDate
+                self._TempData["LastTargetReportInd"] = NewMaxReportDateInd
+                return (NewMaxReportDateInd, (NewMaxReportDateInd!=MaxReportDateInd))
+            else:
+                MaxReportDateInd = self._TempData["LastTargetReportInd"]
+                return (MaxReportDateInd, False)
+        elif MaxNoteDateInd==PreMaxNoteDateInd:
+            return (MaxReportDateInd, False)
+        elif report_date == '所有':
+            Changed = False
+            for i in range(0,MaxNoteDateInd-PreMaxNoteDateInd):
+                if (MaxReportDateInd<0) or (raw_data['报告期'].iloc[MaxNoteDateInd-i]>=raw_data['报告期'].iloc[MaxReportDateInd]):
+                    MaxReportDateInd = MaxNoteDateInd-i
+                    Changed = True
+        elif report_date == '年报':
+            Changed = False
+            for i in range(0,MaxNoteDateInd-PreMaxNoteDateInd):
+                if (raw_data['报告期'].iloc[MaxNoteDateInd-i][-4:]=='1231') and ((MaxReportDateInd<0) or (raw_data['报告期'].iloc[MaxNoteDateInd-i]>=raw_data['报告期'].iloc[MaxReportDateInd])):
+                    MaxReportDateInd = MaxNoteDateInd-i
+                    Changed = True
+        elif report_date == '中报':
+            Changed = False
+            for i in range(0,MaxNoteDateInd-PreMaxNoteDateInd):
+                if (raw_data['报告期'].iloc[MaxNoteDateInd-i][-4:]=='0630') and ((MaxReportDateInd<0) or (raw_data['报告期'].iloc[MaxNoteDateInd-i]>=raw_data['报告期'].iloc[MaxReportDateInd])):
+                    MaxReportDateInd = MaxNoteDateInd-i
+                    Changed = True
+        elif report_date == '一季报':
+            Changed = False
+            for i in range(0,MaxNoteDateInd-PreMaxNoteDateInd):
+                if (raw_data['报告期'].iloc[MaxNoteDateInd-i][-4:]=='0331') and ((MaxReportDateInd<0) or (raw_data['报告期'].iloc[MaxNoteDateInd-i]>=raw_data['报告期'].iloc[MaxReportDateInd])):
+                    MaxReportDateInd = MaxNoteDateInd-i
+                    Changed = True
+        elif report_date == '三季报':
+            Changed = False
+            for i in range(0,MaxNoteDateInd-PreMaxNoteDateInd):
+                if (raw_data['报告期'].iloc[MaxNoteDateInd-i][-4:]=='0930') and ((MaxReportDateInd<0) or (raw_data['报告期'].iloc[MaxNoteDateInd-i]>=raw_data['报告期'].iloc[MaxReportDateInd])):
+                    MaxReportDateInd = MaxNoteDateInd-i
+                    Changed = True
+        return (MaxReportDateInd, Changed)
+    def _calcIDData_LR(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback):
+        StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan)
+        tempInd = -1# 指向目前看到的最大的公告期
+        tempLen = raw_data.shape[0]
+        MaxReportDateInd = -1# 指向目前看到的最大的报告期
+        for i, iDate in enumerate(date_seq):
+            tempPreInd = tempInd# 指向先前的最大公告期
+            while (tempInd<tempLen-1) and (iDate>=raw_data['公告日期'].iloc[tempInd+1]): tempInd = tempInd+1
+            MaxReportDateInd, Changed = self._findMaxReportDateInd(iDate, raw_data, report_date, MaxReportDateInd, tempInd, tempPreInd)
+            if not Changed:# 最大报告期没有变化
+                if MaxReportDateInd>=0: StdData[i] = StdData[i-1]
+                continue
+            if MaxReportDateInd>=0: StdData[i] = raw_data[factor_names].iloc[MaxReportDateInd].values
+        self._TempData.pop("LastTargetReportDate", None)
+        self._TempData.pop("LastTargetReportInd", None)
+        return StdData
+    def _calcIDData_SQ(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback):
+        StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan)
+        tempInd = -1# 指向目前看到的最大的公告期
+        tempLen = raw_data.shape[0]
+        MaxReportDateInd = -1# 指向目前看到的最大的报告期
+        for i, iDate in enumerate(date_seq):
+            tempPreInd = tempInd# 指向先前的最大公告期
+            while (tempInd<tempLen-1) and (iDate>=raw_data['公告日期'].iloc[tempInd+1]): tempInd = tempInd+1
+            MaxReportDateInd,Changed = self._findMaxReportDateInd(iDate, raw_data, report_date, MaxReportDateInd, tempInd, tempPreInd)
+            if not Changed:
+                if MaxReportDateInd>=0: StdData[i] = StdData[i-1]
+                continue
+            preReportData = None# 前一个报告期数据
+            MaxReportDate = raw_data['报告期'].iloc[MaxReportDateInd]# 当前最大报告期
+            if MaxReportDate[-4:]=='1231':
+                for j in range(0, tempInd+1):
+                    if raw_data['报告期'].iloc[tempInd-j]==MaxReportDate[0:4]+'0930':
+                        preReportData = raw_data[factor_names].iloc[tempInd-j].values
+                        break
+            elif MaxReportDate[-4:]=='0930':
+                for j in range(0, tempInd+1):
+                    if raw_data['报告期'].iloc[tempInd-j]==MaxReportDate[0:4]+'0630':
+                        preReportData = raw_data[factor_names].iloc[tempInd-j].values
+                        break
+            elif MaxReportDate[-4:]=='0630':
+                for j in range(0, tempInd+1):
+                    if raw_data['报告期'].iloc[tempInd-j]==MaxReportDate[0:4]+'0331':
+                        preReportData = raw_data[factor_names].iloc[tempInd-j].values
+                        break
+            elif MaxReportDate[-4:]=='0331':
+                preReportData = 0
+            if preReportData is not None:
+                StdData[i] = raw_data[factor_names].iloc[MaxReportDateInd].values - preReportData
+        self._TempData.pop("LastTargetReportDate", None)
+        self._TempData.pop("LastTargetReportInd", None)
+        return StdData
+    def _calcIDData_TTM(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback):
+        StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan)
+        tempInd = -1# 指向目前看到的最大的公告期
+        tempLen = raw_data.shape[0]
+        MaxReportDateInd = -1# 指向目前看到的最大的报告期
+        for i, iDate in enumerate(date_seq):
+            tempPreInd = tempInd# 指向先前的最大公告期
+            while (tempInd<tempLen-1) and (iDate>=raw_data['公告日期'].iloc[tempInd+1]): tempInd = tempInd+1
+            MaxReportDateInd, Changed = self._findMaxReportDateInd(iDate, raw_data, report_date, MaxReportDateInd, tempInd, tempPreInd)
+            if not Changed:
+                if MaxReportDateInd>=0: StdData[i] = StdData[i-1]
+                continue
+            MaxReportDate = raw_data['报告期'].iloc[MaxReportDateInd]# 当前最大报告期
+            preReportData = None# 去年同期数据
+            preYearReport = None# 去年年报数据
+            if MaxReportDate[-4:]=='1231':# 最新财报为年报
+                StdData[i] = raw_data[factor_names].iloc[MaxReportDateInd].values
+            else:
+                Year = MaxReportDate[0:4]
+                LastYear = str(int(Year)-1)
+                for j in range(0, tempInd+1):
+                    if (preYearReport is not None) and (preReportData is not None):
+                        break
+                    elif (preYearReport is None) and (raw_data['报告期'].iloc[tempInd-j]==LastYear+'1231'):
+                        preYearReport = raw_data[factor_names].iloc[tempInd-j].values
+                    elif (preReportData is None) and (raw_data['报告期'].iloc[tempInd-j]==LastYear+MaxReportDate[-4:]):
+                        preReportData = raw_data[factor_names].iloc[tempInd-j].values
+                if (preYearReport is not None) and (preReportData is not None):
+                    StdData[i] = raw_data[factor_names].iloc[MaxReportDateInd].values + preYearReport - preReportData
+        self._TempData.pop("LastTargetReportDate", None)
+        self._TempData.pop("LastTargetReportInd", None)
+        return StdData
+    def _calcIDData_LR_NYear(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback):
+        StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan)
+        tempInd = -1# 指向目前看到的最大的公告期
+        tempLen = raw_data.shape[0]
+        MaxReportDateInd = -1# 指向目前看到的最大的报告期
+        for i, iDate in enumerate(date_seq):
+            tempPreInd = tempInd# 指向先前的最大公告期
+            while (tempInd<tempLen-1) and (iDate>=raw_data['公告日期'].iloc[tempInd+1]): tempInd = tempInd+1
+            MaxReportDateInd, Changed = self._findMaxReportDateInd(iDate, raw_data, report_date, MaxReportDateInd, tempInd, tempPreInd)
+            if not Changed:
+                if MaxReportDateInd>=0: StdData[i] = StdData[i-1]
+                continue
+            MaxReportDate = raw_data['报告期'].iloc[MaxReportDateInd]# 当前最大报告期
+            Year = MaxReportDate[0:4]
+            LastNYear = str(int(Year)-year_lookback)
+            for j in range(0, tempInd+1):
+                if raw_data['报告期'].iloc[tempInd-j]==LastNYear+MaxReportDate[-4:]:
+                    StdData[i] = raw_data[factor_names].iloc[tempInd-j].values
+                    break
+        self._TempData.pop("LastTargetReportDate", None)
+        self._TempData.pop("LastTargetReportInd", None)
+        return StdData
+    def _calcIDData_SQ_NYear(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback):
+        StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan)
+        tempInd = -1# 指向目前看到的最大的公告期
+        tempLen = raw_data.shape[0]
+        MaxReportDateInd = -1# 指向目前看到的最大的报告期
+        for i, iDate in enumerate(date_seq):
+            tempPreInd = tempInd# 指向先前的最大公告期
+            while (tempInd<tempLen-1) and (iDate>=raw_data['公告日期'].iloc[tempInd+1]): tempInd = tempInd+1
+            MaxReportDateInd, Changed = self._findMaxReportDateInd(iDate, raw_data, report_date, MaxReportDateInd, tempInd, tempPreInd)
+            if not Changed:
+                if MaxReportDateInd>=0: StdData[i] = StdData[i-1]
+            MaxReportDate = raw_data['报告期'].iloc[MaxReportDateInd]# 当前最大报告期
+            preReportData1 = None# 上N年同期财报数据
+            preReportData2 = None# 上N年同期的上一期财报数据
+            Year = MaxReportDate[0:4]
+            LastNYear = str(int(Year)-year_lookback)
+            if MaxReportDate[-4:]=='1231':
+                for j in range(0, tempInd+1):
+                    if (preReportData1 is not None) and (preReportData2 is not None):
+                        break
+                    elif (preReportData1 is None) and (raw_data['报告期'].iloc[tempInd-j]==LastNYear+'1231'):# 找到了上N年同期数据
+                        preReportData1 = raw_data[factor_names].iloc[tempInd-j].values
+                    elif (preReportData2 is None) and (raw_data['报告期'].iloc[tempInd-j]==LastNYear+'0930'):# 找到了上N年同期的上一期数据
+                        preReportData2 = raw_data[factor_names].iloc[tempInd-j].values
+            elif MaxReportDate[-4:]=='0930':
+                for j in range(0, tempInd+1):
+                    if (preReportData1 is not None) and (preReportData2 is not None):
+                        break
+                    elif (preReportData1 is None) and (raw_data['报告期'].iloc[tempInd-j]==LastNYear+'0930'):# 找到了上N年同期数据
+                        preReportData1 = raw_data[factor_names].iloc[tempInd-j].values
+                    elif (preReportData2 is None) and (raw_data['报告期'].iloc[tempInd-j]==LastNYear+'0630'):# 找到了上N年同期的上一期数据
+                        preReportData2 = raw_data[factor_names].iloc[tempInd-j].values
+            elif MaxReportDate[-4:]=='0630':
+                for j in range(0, tempInd+1):
+                    if (preReportData1 is not None) and (preReportData2 is not None):
+                        break
+                    if (preReportData1 is None) and (raw_data['报告期'].iloc[tempInd-j]==LastNYear+'0630'):# 找到了上N年同期数据
+                        preReportData1 = raw_data[factor_names].iloc[tempInd-j].values
+                    elif (preReportData2 is None) and (raw_data['报告期'].iloc[tempInd-j]==LastNYear+'0331'):# 找到了上N年同期的上一期数据
+                        preReportData2 = raw_data[factor_names].iloc[tempInd-j].values
+            elif MaxReportDate[-4:]=='0331':
+                for j in range(0, tempInd+1):
+                    if raw_data['报告期'].iloc[tempInd-j]==LastNYear+'0331':# 找到了上N年同期数据
+                        preReportData1 = raw_data[factor_names].iloc[tempInd-j].values
+                        preReportData2 = 0
+                        break
+            if (preReportData1 is not None) and (preReportData2 is not None):
+                StdData[i] = preReportData1 - preReportData2
+        self._TempData.pop("LastTargetReportDate", None)
+        self._TempData.pop("LastTargetReportInd", None)
+        return StdData
+    def _calcIDData_TTM_NYear(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback):
+        StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan)
+        tempInd = -1# 指向目前看到的最大的公告期
+        tempLen = raw_data.shape[0]
+        MaxReportDateInd = -1# 指向目前看到的最大的报告期
+        for i, iDate in enumerate(date_seq):
+            tempPreInd = tempInd# 指向先前的最大公告期
+            while (tempInd<tempLen-1) and (iDate>=raw_data['公告日期'].iloc[tempInd+1]): tempInd = tempInd+1
+            MaxReportDateInd, Changed = self._findMaxReportDateInd(iDate, raw_data, report_date, MaxReportDateInd, tempInd, tempPreInd)
+            if not Changed:
+                if MaxReportDateInd>=0: StdData[i] = StdData[i-1]
+                continue
+            MaxReportDate = raw_data['报告期'].iloc[MaxReportDateInd]# 当前最大报告期
+            preNYearReportData = None# 上N年同期数据
+            preN_1YearYearReport = None# 上N+1年年报数据
+            preN_1YearReportData = None# 上N+1年同期数据
+            Year = MaxReportDate[0:4]
+            LastNYear = str(int(Year)-year_lookback)
+            if MaxReportDate[-4:]=='1231':# 最新财报为年报
+                for j in range(0, tempInd+1):
+                    if (raw_data['报告期'].iloc[tempInd-j]==LastNYear+'1231'):
+                        StdData[i] = raw_data[factor_names].iloc[tempInd-j].values
+                        break
+            else:
+                for j in range(0, tempInd+1):
+                    if (preN_1YearYearReport is not None) and (preNYearReportData is not None) and (preN_1YearReportData is not None):
+                        break
+                    elif (preN_1YearYearReport is None) and (raw_data['报告期'].iloc[tempInd-j]==str(int(LastNYear)-1)+'1231'):
+                        preN_1YearYearReport = raw_data[factor_names].iloc[tempInd-j].values
+                    elif (preNYearReportData is None) and (raw_data['报告期'].iloc[tempInd-j]==LastNYear+MaxReportDate[-4:]):
+                        preNYearReportData = raw_data[factor_names][tempInd-j].values
+                    elif (preN_1YearReportData is None) and (raw_data['报告期'].iloc[tempInd-j]==str(int(LastNYear)-1)+MaxReportDate[-4:]):
+                        preN_1YearReportData = raw_data[factor_names].iloc[tempInd-j].values
+                if (preN_1YearYearReport is not None) and (preNYearReportData is not None) and (preN_1YearReportData is not None):
+                    StdData[i] = preNYearReportData + preN_1YearYearReport - preN_1YearReportData
+        self._TempData.pop("LastTargetReportDate", None)
+        self._TempData.pop("LastTargetReportInd", None)
+        return StdData
+    def _calcIDData_LR_NPeriod(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback):
+        StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan)
+        tempInd = -1# 指向目前看到的最大的公告期
+        tempLen = raw_data.shape[0]
+        MaxReportDateInd = -1# 指向目前看到的最大的报告期
+        for i, iDate in enumerate(date_seq):
+            tempPreInd = tempInd# 指向先前的最大公告期
+            while (tempInd<tempLen-1) and (iDate>=raw_data['公告日期'].iloc[tempInd+1]): tempInd = tempInd+1
+            MaxReportDateInd, Changed = self._findMaxReportDateInd(iDate, raw_data, report_date, MaxReportDateInd, tempInd, tempPreInd)
+            if not Changed:
+                if MaxReportDateInd>=0: StdData[i] = StdData[i-1]
+            MaxReportDate = raw_data['报告期'].iloc[MaxReportDateInd]# 当前最大报告期
+            ObjectReportDate = RollBackNPeriod(MaxReportDate, period_lookback)
+            for j in range(0, tempInd+1):
+                if raw_data['报告期'].iloc[tempInd-j]==ObjectReportDate:
+                    StdData[i] = raw_data[factor_names].iloc[tempInd-j].values
+        self._TempData.pop("LastTargetReportDate", None)
+        self._TempData.pop("LastTargetReportInd", None)
+        return StdData
+    def _calcIDData_SQ_NPeriod(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback):
+        StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan)
+        tempInd = -1# 指向目前看到的最大的公告期
+        tempLen = raw_data.shape[0]
+        MaxReportDateInd = -1# 指向目前看到的最大的报告期
+        for i, iDate in enumerate(date_seq):
+            tempPreInd = tempInd# 指向先前的最大公告期
+            while (tempInd<tempLen-1) and (iDate>=raw_data['公告日期'].iloc[tempInd+1]): tempInd = tempInd+1
+            MaxReportDateInd, Changed = self._findMaxReportDateInd(iDate, raw_data, report_date, MaxReportDateInd, tempInd, tempPreInd)
+            if not Changed:
+                if MaxReportDateInd>=0: StdData[i] = StdData[i-1]
+                continue
+            MaxReportDate = raw_data['报告期'].iloc[MaxReportDateInd]# 当前最大报告期
+            preReportData1 = None# 上N期财报数据
+            preReportData2 = None# 上N+1期财报数据
+            ObjectReportDate = RollBackNPeriod(MaxReportDate, period_lookback)# 上N期报告期
+            if ObjectReportDate[-4:]=='1231':
+                for j in range(0, tempInd+1):
+                    if (preReportData1 is not None) and (preReportData2 is not None):
+                        break
+                    elif (preReportData1 is None) and (raw_data['报告期'].iloc[tempInd-j]==ObjectReportDate):# 找到了上N期数据
+                        preReportData1 = raw_data[factor_names].iloc[tempInd-j].values
+                    elif (preReportData2 is None) and (raw_data['报告期'].iloc[tempInd-j]==ObjectReportDate[0:4]+'0930'):# 找到了上N+1期数据
+                        preReportData2 = raw_data[factor_names].iloc[tempInd-j].values
+            elif ObjectReportDate[-4:]=='0930':
+                for j in range(0, tempInd+1):
+                    if (preReportData1 is not None) and (preReportData2 is not None):
+                        break
+                    elif (preReportData1 is None) and (raw_data['报告期'].iloc[tempInd-j]==ObjectReportDate):# 找到了上N年同期数据
+                        preReportData1 = raw_data[factor_names].iloc[tempInd-j].values
+                    elif (preReportData2 is None) and (raw_data['报告期'].iloc[tempInd-j]==ObjectReportDate[0:4]+'0630'):# 找到了上N年同期的上一期数据
+                        preReportData2 = raw_data[factor_names].iloc[tempInd-j].values
+            elif ObjectReportDate[-4:]=='0630':
+                for j in range(0, tempInd+1):
+                    if (preReportData1 is not None) and (preReportData2 is not None):
+                        break
+                    elif (preReportData1 is None) and (raw_data['报告期'].iloc[tempInd-j]==ObjectReportDate):# 找到了上N年同期数据
+                        preReportData1 = raw_data[factor_names].iloc[tempInd-j].values
+                    elif (preReportData2 is None) and (raw_data['报告期'].iloc[tempInd-j]==ObjectReportDate[0:4]+'0331'):# 找到了上N年同期的上一期数据
+                        preReportData2 = raw_data[factor_names].iloc[tempInd-j].values
+            elif ObjectReportDate[-4:]=='0331':
+                for j in range(0, tempInd+1):
+                    if raw_data['报告期'].iloc[tempInd-j]==ObjectReportDate:# 找到了上N年同期数据
+                        preReportData1 = raw_data[factor_names].iloc[tempInd-j].values
+                        preReportData2 = 0
+                        break
+            if (preReportData1 is not None) and (preReportData2 is not None):
+                StdData[i] = preReportData1 - preReportData2
+        self._TempData.pop("LastTargetReportDate", None)
+        self._TempData.pop("LastTargetReportInd", None)
+        return StdData
+    def _calcIDData_TTM_NPeriod(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback):
+        StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan)
+        tempInd = -1# 指向目前看到的最大的公告期
+        tempLen = raw_data.shape[0]
+        MaxReportDateInd = -1# 指向目前看到的最大的报告期
+        for i, iDate in enumerate(date_seq):
+            tempPreInd = tempInd# 指向先前的最大公告期
+            while (tempInd<tempLen-1) and (iDate>=raw_data['公告日期'].iloc[tempInd+1]): tempInd = tempInd+1
+            MaxReportDateInd, Changed = self._findMaxReportDateInd(iDate, raw_data, report_date, MaxReportDateInd, tempInd, tempPreInd)
+            if not Changed:
+                if MaxReportDateInd>=0: StdData[i] = StdData[i-1]
+            MaxReportDate = raw_data['报告期'].iloc[MaxReportDateInd]# 当前最大报告期
+            preNPeriodReportData = None# 上N期数据
+            preNPeriodYear_1YearReport = None# 上N期上一年年报数据
+            preNPeriodYear_1ReportData = None# 上N期上一年同期数据
+            ObjectReportDate = RollBackNPeriod(MaxReportDate, period_lookback)
+            if ObjectReportDate[-4:]=='1231':# 上N期财报为年报
+                for j in range(0, tempInd+1):
+                    if (raw_data['报告期'].iloc[tempInd-j]==ObjectReportDate):
+                        StdData[i] = raw_data[factor_names].iloc[tempInd-j].values
+                        break
+            else:
+                for j in range(0, tempInd+1):
+                    if (preNPeriodReportData is not None) and (preNPeriodYear_1YearReport is not None) and (preNPeriodYear_1ReportData is not None):
+                        break
+                    elif (preNPeriodReportData is None) and (raw_data['报告期'].iloc[tempInd-j]==ObjectReportDate):
+                        preNPeriodReportData = raw_data[factor_names].iloc[tempInd-j].values
+                    elif (preNPeriodYear_1YearReport is None) and (raw_data['报告期'].iloc[tempInd-j]==str(int(ObjectReportDate[0:4])-1)+'1231'):
+                        preNPeriodYear_1YearReport = raw_data[factor_names].iloc[tempInd-j].values
+                    elif (preNPeriodYear_1ReportData is None) and (raw_data['报告期'].iloc[tempInd-j]==str(int(ObjectReportDate[0:4])-1)+ObjectReportDate[-4:]):
+                        preNPeriodYear_1ReportData = raw_data[factor_names].iloc[tempInd-j].values
+                if (preNPeriodReportData is not None) and (preNPeriodYear_1YearReport is not None) and (preNPeriodYear_1ReportData is not None):
+                    StdData[i] = preNPeriodReportData + preNPeriodYear_1YearReport - preNPeriodYear_1ReportData
+        self._TempData.pop("LastTargetReportDate", None)
+        self._TempData.pop("LastTargetReportInd", None)
+        return StdData
+class _AnalystConsensusTable(_DBTable):# TODO: 报告期公告期数据的传递
+    """分析师汇总表"""
+    CalcType = Enum("FY0", "FY1", "FY2", "Fwd12M", label="计算方法", arg_type="SingleOption", order=0)
+    Period = Enum("180", label="汇总有效期", arg_type="SingleOption", order=1)
+    FillNa = Bool(False, arg_type="Bool", label="缺失填充", order=2)
+    FillNaLookBack = Int(180, arg_type="Integer", label="缺失填充回溯期数", order=3)
+    RawDataLookBack = Int(180, arg_type="Integer", label="原始数据回溯天数", order=4)
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        FactorInfo = fdb._FactorInfo.ix[name]
+        self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
+        self._DateField = FactorInfo[FactorInfo["FieldType"]=="Date"].index[0]
+        self._ReportDateField = FactorInfo[FactorInfo["FieldType"]=="ReportDate"].index[0]
+        self._PeriodField = FactorInfo[FactorInfo["FieldType"]=="Period"].index[0]
+        self._TempData = {}
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+        return
+    def _prepareReportANNRawData(self, ids):
+        SQLStr = genANN_ReportSQLStr(self._FactorDB.TablePrefix, ids, report_period="1231")
+        RawData = self._FactorDB.fetchall(SQLStr)
+        if not RawData: RawData = pd.DataFrame(columns=["ID", "公告日期", "报告期"])
+        else: RawData = pd.DataFrame(np.array(RawData), columns=["ID", "公告日期", "报告期"])
+    def __QS_prepareRawData__(self, factor_names=None, ids=None, dts=None, args={}):
+        CalcType = args.get("计算方法", self.CalcType)
+        StartDate, EndDate = dts[0].date(), dts[-1].date()
+        if args.get("缺失填充", self.FillNa): StartDate -= dt.timedelta(args.get("原始数据回溯天数", self.RawDataLookBack))
+        if factor_names is None: factor_names=self.FactorNames
+        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._IDField, self._DateField, self._ReportDateField, self._PeriodField]+factor_names)
+        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        # 形成SQL语句, 日期, ID, 报告期, 去年年报公告日期, 数据
+        SQLStr = 'SELECT '+DBTableName+'.'+FieldDict[self._DateField]+', '
+        SQLStr += DBTableName+'.'+FieldDict[self._IDField]+', '
+        SQLStr += DBTableName+'.'+FieldDict[self._ReportDateField]+', '
+        if CalcType!="Fwd12M": SQLStr += self._FactorDB.TablePrefix+"AShareIssuingDatePredict.s_stm_actual_issuingdate, "
+        for iField in factor_names: SQLStr += DBTableName+'.'+FieldDict[iField]+', '
+        SQLStr = SQLStr[:-2]+' '
+        SQLStr += 'FROM '+DBTableName+' '
+        if CalcType!="Fwd12M":
+	    SQLStr += "INNER JOIN "+self._FactorDB.TablePrefix+"AShareIssuingDatePredict "
+	    SQLStr += "ON ("+DBTableName+"."+FieldDict[self._IDField]+"="+self._FactorDB.TablePrefix+".AShareIssuingDatePredict.s_info_windcode "
+	    SQLStr += "AND SUBSTRING("+DBTableName+"."+FieldDict[self._DateField]+",1,4)+'1231'="+self._FactorDB.TablePrefix+"AShareIssuingDatePredict.report_period) "
+        if ids is not None: SQLStr += "WHERE ("+genSQLInCondition(DBTableName+"."+FieldDict[self._IDField], ids, is_str=True, max_num=1000)+") "
+        else: SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._IDField]+" IS NOT NULL "
+        SQLStr += "AND "+DBTableName+"."+FieldDict[self._PeriodField]+"='"+args.get("汇总有效期", self.Period)+"' "
+        if StartDate is not None: SQLStr += "AND "+DBTableName+"."+FieldDict[self._DateField]+">='"+StartDate.strftime("%Y%m%d")+"' "
+        if EndDate is not None: SQLStr += "AND "+DBTableName+"."+FieldDict[self._DateField]+"<='"+EndDate.strftime("%Y%m%d")+"' "
+        SQLStr += 'ORDER BY '+DBTableName+'.'+FieldDict[self._IDField]+', '+DBTableName+'.'+FieldDict[self._DateField]+', '+DBTableName+'.'+FieldDict[self._ReportDateField]
+        RawData = self._FactorDB.fetchall(SQLStr)
+        if not RawData: return pd.DataFrame(columns=['日期','ID','报告期']+factor_names)
+        return pd.DataFrame(np.array(RawData), columns=['日期','ID','报告期']+factor_names)
+    def __QS_calcData__(self, raw_data, factor_names=None, ids=None, dts=None, args={}):
+        if factor_names is None: factor_names = self.FactorNames
+        if dts is None: dts = self.getDateTime()
+        Dates = sorted({iDT.strftime("%Y%m%d") for iDT in dts})
+        CalcType, LookBack = args.get("计算方法", self.CalcType), args.get("缺失填充回溯期数", self.FillNaLookBack)
+        if CalcType=="Fwd12M":
+            CalcFun, FYNum = self._calcIDData_Fwd12M, None
+        else:
+            CalcFun, FYNum = self._calcIDData_FY, int(CalcType[-1])
+        raw_data = raw_data.set_index(["ID"])
+        Data = {}
+        for iID in raw_data.index.unique():
+            Data[iID] = CalcFun(Dates, raw_data.loc[iID], factor_names, LookBack, FYNum)
+        Data = pd.Panel(Data)
+        Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:]), 23, 59, 59, 999999) for iDate in Dates]
+        Data.minor_axis = factor_names
+        Data = Data.swapaxes(0, 2)
+        Data = _adjustDateTime(Data, dts, fillna=True, method="pad")
+        if ids is not None: Data = Data.ix[:, :, ids]
+        return Data
+    def _calcIDData_FY(self, date_seq, raw_data, report_ann_data, factor_names, lookback, fy_num):
+        StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan)
+        tempInd = -1
+        tempLen = raw_data.shape[0]
+        NoteDate = None
+        for i, iDate in enumerate(date_seq):
+            while (tempInd<tempLen-1) and (iDate>=raw_data['日期'].iloc[tempInd+1]): tempInd = tempInd+1
+            if tempInd<0: continue
+            LastYear = str(int(iDate[0:4])-1)
+            NoteDate = findNoteDate(LastYear+'1231', report_ann_data)
+            if (NoteDate is None) or (NoteDate>iDate):
+                ObjectDate = str(int(LastYear)+fy_num)+'1231'
+            else:
+                ObjectDate = str(int(iDate[0:4])+fy_num)+'1231'
+            for j in range(0, tempInd):
+                if raw_data['报告期'].iloc[tempInd-j]==ObjectDate:
+                    FYNoteDate = raw_data['日期'].iloc[tempInd-j]
+                    if (dt.date(int(iDate[0:4]), int(iDate[4:6]), int(iDate[6:])) - dt.date(int(FYNoteDate[0:4]), int(FYNoteDate[4:6]), int(FYNoteDate[6:]))).days<lookback:
+                        StdData[i] = raw_data[factor_names].iloc[tempInd-j].values
+        return StdData
+    def _calcIDData_Fwd12M(self, date_seq, raw_data, report_ann_data, factor_names, lookback, fy_num):
+        StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan)
+        tempInd = -1
+        tempLen = raw_data.shape[0]
+        NoteDate = None
+        for i, iDate in enumerate(date_seq):
+            while (tempInd<tempLen-1) and (iDate>=raw_data['日期'].iloc[tempInd+1]): tempInd = tempInd+1
+            if tempInd<0: continue
+            ObjectDate1 = iDate[0:4]+'1231'
+            ObjectDate2 = str(int(iDate[0:4])+1)+'1231'
+            ObjectData1 = None
+            ObjectData2 = None
+            iDate = dt.date(int(iDate[0:4]), int(iDate[4:6]), int(iDate[6:]))
+            for j in range(0, tempInd):
+                if (ObjectData1 is None) and (raw_data['报告期'].iloc[tempInd-j]==ObjectDate1):
+                    NoteDate = raw_data['日期'].iloc[tempInd-j]
+                    if (iDate-dt.date(int(NoteDate[0:4]), int(NoteDate[4:6]), int(NoteDate[6:]))).days<lookback:
+                        ObjectData1 = raw_data[factor_names].iloc[tempInd-j]
+                if (ObjectData2 is None) and (raw_data['报告期'].iloc[tempInd-j]==ObjectDate2):
+                    NoteDate = raw_data['日期'].iloc[tempInd-j]
+                    if (iDate-dt.date(int(NoteDate[0:4]), int(NoteDate[4:6]), int(NoteDate[6:]))).days<lookback:
+                        ObjectData2 = raw_data[factor_names].iloc[tempInd-j]
+                if (ObjectData1 is not None) and (ObjectData2 is not None):
+                    break
+            if (ObjectData1 is not None) and (ObjectData2 is not None):
+                Weight1 = (dt.date(int(ObjectDate1[0:4]), 12, 31) - iDate).days
+                if (iDate.month==2) and (iDate.day==29): Weight1 = Weight1/366
+                else:
+                    Weight1 = Weight1/(dt.date(iDate.year+1, iDate.month, iDate.day)-iDate).days
+                StdData[i] = Weight1*ObjectData1 + (1-Weight1)*ObjectData2
+        return StdData
 
 class WindDB2(WindDB):
     """Wind 量化研究数据库"""
@@ -635,11 +1268,18 @@ if __name__=="__main__":
     #FT = WDB.getTable("中国国债期货标的券", args={"月合约Wind代码":"T1803.CFE"})
     #DTs = FT.getDateTime(start_dt=StartDT, end_dt=EndDT)
     #CF = WDB.getTable("中国国债期货标的券", args={"回溯天数":366}).readData(factor_names=["转换因子"], ids=FutureInfo.index.tolist(), dts=[DTs[-1]]).iloc[:, 0, :]
-    FT = WDB.getTable("中国国债期货最便宜可交割券")
-    DTs = FT.getDateTime(iid="T1803.CFE", start_dt=StartDT, end_dt=EndDT)
-    Data = FT.readData(factor_names=["CTD证券Wind代码", "IRR"], ids=["T1803.CFE", "T1806.CFE"], dts=DTs)
+    #FT = WDB.getTable("中国国债期货最便宜可交割券")
+    #DTs = FT.getDateTime(iid="T1803.CFE", start_dt=StartDT, end_dt=EndDT)
+    #Data = FT.readData(factor_names=["CTD证券Wind代码", "IRR"], ids=["T1803.CFE", "T1806.CFE"], dts=DTs)
+    
+    #DTs = WDB.getTable("中国A股交易日历").getDateTime(iid="SSE", start_dt=StartDT, end_dt=EndDT)
+    #Data = WDB.getTable("中国A股利润表").readData(factor_names=["利润总额", "营业收入"], ids=["000001.SZ", "600000.SH"], dts=DTs)
+    
+    DTs = WDB.getTable("中国A股交易日历").getDateTime(iid="SSE", start_dt=StartDT, end_dt=EndDT)
+    Data = WDB.getTable("中国A股盈利预测汇总").readData(factor_names=["每股现金流平均值", "净利润平均值(万元)"], ids=["000001.SZ", "600000.SH"], dts=DTs)
     
     #DTs = WDB.getTable("中国封闭式基金日行情").getDateTime(start_dt=StartDT, end_dt=EndDT)    
     #FutureIDMap = WDB.getTable("中国期货连续(主力)合约和月合约映射表").readData(factor_names=["映射月合约Wind代码"], ids=["IH.CFE"], dts=DTs)
     #FutureInfo = WDB.getTable("中国期货基本资料").readData(factor_names=["上市日期", "最后交易日期"], ids=["IH1801.CFE"], dts=[dt.datetime.today()]).iloc[:, 0, :]
+    
     WDB.disconnect()

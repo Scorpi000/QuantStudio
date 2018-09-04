@@ -1,18 +1,31 @@
 # coding=utf-8
+import os
+import datetime as dt
+
 import numpy as np
 import pandas as pd
- 
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-from matplotlib.ticker import FuncFormatter
-import matplotlib.dates as mdate
+import h5py
 
-yData1 = np.random.randn(10)
-yData2 = np.random.randn(10)
-xData = np.arange(0, yData1.shape[0])
-xTickLabels = [str(int(iInd))+"G" for iInd in xData]
-plt.bar(xData, yData1, width=-0.25, align="edge", color="r")
-plt.bar(xData, yData2, width=0.25, align="edge", color="b")
-plt.gca().set_xticks(xData)
-plt.gca().set_xticklabels(xTickLabels)
-plt.show()
+#Tables = ["StyleValueFactor"]
+
+MainDir = "C:\\HST\\HDF5Data"
+for iTable in os.listdir(MainDir):
+    iTablePath = MainDir+os.sep+iTable
+    for jFactor in os.listdir(iTablePath):
+        if jFactor.split(".")[-1]!="hdf5": continue
+        with h5py.File(iTablePath+os.sep+jFactor) as File:
+            if "DateTime" in File: continue
+            ijDates = File["Date"][...]
+            ijDTs = np.array([dt.datetime(int(kDate[:4]), int(kDate[4:6]), int(kDate[6:8]), 23, 59, 59, 999999).timestamp() for kDate in ijDates])
+            File.create_dataset("DateTime", shape=(ijDTs.shape[0],), maxshape=(None,), data=ijDTs)
+            del File["Date"]
+    print(iTable)
+
+#import QuantStudio.api as QS
+#HDB = QS.FactorDB.HDF5DB()
+#HDB.connect()
+#FT = HDB.getTable("StyleValueFactor")
+#DTs = FT.getDateTime(ifactor_name="BP_LR")
+#IDs = FT.getID(ifactor_name="BP_LR")
+#Data = FT.readData(factor_names=["BP_LR"])
+#HDB.disconnect()

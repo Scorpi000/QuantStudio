@@ -411,14 +411,9 @@ class WindDB(FactorDB):
     # 将表名转换成数据库内部表名
     def TableName2DBTableName(self, table_names):
         return dict(self._TableInfo['DBTableName'][table_names])
-    # 获取字段在数据库内部字段名, table_fields 是 list, 每个元素是一个 tuple，tuple 的第一个元素为表名，第二个元素为字段名
-    def FieldName2DBFieldName(self, table_fields=None, table=None, fields=None):
-        if (table is not None) and (fields is not None):
-            return dict(self._FactorInfo['DBFieldName'].ix[table].ix[fields])
-        DBFieldNames = {}
-        for iTableField in table_fields:
-            DBFieldNames[iTableField] = self._FactorInfo['DBFieldName'].ix[iTableField[0]].ix[iTableField[1]]
-        return DBFieldNames
+    # 获取字段在数据库内部字段名
+    def FieldName2DBFieldName(self, table, fields=[]):
+        return dict(self._FactorInfo['DBFieldName'].ix[table].ix[fields])
     # ID 转换成证券 ID
     def ID2EquityID(self, ids):
         nID = len(ids)
