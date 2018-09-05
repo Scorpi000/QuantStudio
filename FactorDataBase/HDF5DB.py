@@ -89,7 +89,7 @@ class _FactorTable(FactorTable):
                         else:
                             Rslt = pd.DataFrame(DataFile["Data"][:, CrossedIDPos], index=DateTimes, columns=CrossedIDs).ix[:, ids]
                 else:
-                    dts = np.array([idt.timestamp() for idt in dts])
+                    dts = [idt.timestamp() for idt in dts]
                     DateTimes = pd.Series(np.arange(0, DateTimes.shape[0]), index=DateTimes)
                     DateTimes = DateTimes.ix[dts]
                     DateTimes = DateTimes[pd.notnull(DateTimes)].astype('int')
