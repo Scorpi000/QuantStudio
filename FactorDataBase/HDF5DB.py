@@ -59,34 +59,33 @@ class _FactorTable(FactorTable):
             for iFactorName in self.FactorNames:
                 IDs = IDs.union(set(self.getID(iFactorName)))
         return sorted(IDs)
-    def getDateTime(self, ifactor_name, iid=None, start_dt=None, end_dt=None):
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None):
+        if ifactor_name is None: ifactor_name = self.FactorNames[0]
         with self._FactorDB._DataLock:
             with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix) as ijFile:
                 Timestamps = ijFile["DateTime"][...]
         if start_dt is not None: Timestamps = Timestamps[Timestamps>=start_dt.timestamp()]
         if end_dt is not None: Timestamps = Timestamps[Timestamps<=end_dt.timestamp()]
         return sorted(dt.datetime.fromtimestamp(iTimestamp) for iTimestamp in Timestamps)
-    def __QS_calcData__(self, raw_data, factor_names=None, ids=None, dts=None, args={}):
-        if factor_names is None: factor_names = self.FactorNames
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         Data = {iFactor: self.readFactorData(ifactor_name=iFactor, ids=ids, dts=dts, args=args) for iFactor in factor_names}
         return pd.Panel(Data).loc[factor_names]
-    def readFactorData(self, ifactor_name, ids=None, dts=None, args={}):
-        if ifactor_name not in self.FactorNames:
-            raise __QS_Error__("因子: '%s' 不存在!" % ifactor_name)
+    def readFactorData(self, ifactor_name, ids, dts, args={}):
+        if ifactor_name not in self.FactorNames: raise __QS_Error__("因子: '%s' 不存在!" % ifactor_name)
         with self._FactorDB._DataLock:
             with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix) as DataFile:
                 DataType = DataFile.attrs["DataType"]
                 DateTimes = DataFile["DateTime"][...]
                 IDs = DataFile["ID"][...]
                 if dts is None:
-                    if (ids is None):
+                    if ids is None:
                         Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs)
                     else:
                         CrossedIDs = list(set(ids).intersection(set(IDs)))
                         IDs = list(IDs)
                         CrossedIDPos = [IDs.index(iID) for iID in CrossedIDs]
                         if not CrossedIDPos:
-                            Rslt = pd.DataFrame([],index=DateTimes,columns=ids)
+                            Rslt = pd.DataFrame([], index=DateTimes, columns=ids)
                         else:
                             Rslt = pd.DataFrame(DataFile["Data"][:, CrossedIDPos], index=DateTimes, columns=CrossedIDs).ix[:, ids]
                 else:
@@ -343,7 +342,7 @@ if __name__=="__main__":
     
     print(HDB.TableNames)
     print(HDB.getTable("ElementaryFactor").FactorNames)
-    Data = HDB.getTable("ElementaryFactor").readData(factor_names=["复权收盘价"])
+    Data = HDB.getTable("ElementaryFactor").readData(factor_names=["复权收盘价"], ids=None, dts=None)
     #HDB.writeData(Data, "TestTable")
     
     ## 功能测试
@@ -351,17 +350,17 @@ if __name__=="__main__":
     DTs = FT.getDateTime(start_dt=dt.datetime(2017,1,1), end_dt=dt.datetime(2017,12,31,23,59,59,999999))
     ## 单 ID, 多个因子, 多时间点读取
     #StartT = time.clock()
-    #IDData = FT.readData(ids=["000001.SZ"], dts=DTs).iloc[:, :, 0]
+    #IDData = FT.readData(factor_names=FT.FactorNames, ids=["000001.SZ"], dts=DTs).iloc[:, :, 0]
     #print("单 ID, 多因子, 多时间点读取: "+str(time.clock()-StartT))
     
     ## 单因子, 多个 ID, 多时间点读取
     #StartT = time.clock()
-    #FactorData = FT.readData(factor_names=["复权收盘价"], dts=DTs).iloc[0]
+    #FactorData = FT.readData(factor_names=["复权收盘价"], ids=FT.getID(ifactor_name="复权收盘价"), dts=DTs).iloc[0]
     #print("单因子, 多 ID, 多时间点读取: "+str(time.clock()-StartT))
     
     ## 单时间点, 多因子, 多 ID
     #StartT = time.clock()
-    #DateTimeData = FT.readData(dts=[dt.datetime(2018,5,31,23,59,59,999999)]).iloc[:, 0, :]
+    #DateTimeData = FT.readData(factor_names=FT.FactorNames, ids=FT.getID(), dts=[dt.datetime(2018,5,31,23,59,59,999999)]).iloc[:, 0, :]
     #print("单时间点, 多因子, 多 ID 读取: "+str(time.clock()-StartT))
     
     ## 多因子, 多 ID, 多时间点读取

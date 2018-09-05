@@ -19,40 +19,42 @@ def _FactorAndSpecificReturnGeneration(args):
     if args["ModelArgs"]['运行模式']=='串行':# 运行模式为串行
         nTask = len(args["RegressDTs"])
         with ProgressBar(max_value=nTask) as ProgBar:
+            IDs = FT.getID(ifactor_name=args["ModelArgs"]['ESTU因子'])
             for i, iDT in enumerate(args["RegressDTs"]):
                 FT.move(iDT)
                 iInd = DSDTs.index(iDT)
                 if iInd==0: continue
                 iPreDT = DSDTs[iInd-1]
-                iESTU = FT.readData(dts=[iPreDT], factor_names=[args["ModelArgs"]['ESTU因子']]).iloc[0,0,:]
-                iRet = FT.readData(dts=[iDT], factor_names=[args["ModelArgs"]['收益率因子']]).iloc[0,0,:]
-                iCap = FT.readData(dts=[iPreDT], factor_names=[args["ModelArgs"]['市值因子']]).iloc[0,0,:]
-                iIndustry = FT.readData(dts=[iPreDT], factor_names=[args["ModelArgs"]['行业因子']]).iloc[0,0,:]
-                iFactorData = FT.readData(dts=[iPreDT], factor_names=args["ModelArgs"]['风格因子']).iloc[:,0,:]
+                iESTU = FT.readData(dts=[iPreDT], ids=IDs, factor_names=[args["ModelArgs"]['ESTU因子']]).iloc[0,0,:]
+                iRet = FT.readData(dts=[iDT], ids=IDs, factor_names=[args["ModelArgs"]['收益率因子']]).iloc[0,0,:]
+                iCap = FT.readData(dts=[iPreDT], ids=IDs, factor_names=[args["ModelArgs"]['市值因子']]).iloc[0,0,:]
+                iIndustry = FT.readData(dts=[iPreDT], ids=IDs, factor_names=[args["ModelArgs"]['行业因子']]).iloc[0,0,:]
+                iFactorData = FT.readData(dts=[iPreDT], ids=IDs, factor_names=args["ModelArgs"]['风格因子']).iloc[:,0,:]
                 iFactorReturn, iSpecificReturn, iFactorData, iStatistics = RiskModelFun.estimateFactorAndSpecificReturn_EUE3(iRet, iFactorData, iIndustry, iCap, iESTU, iCap, args["ModelArgs"]['所有行业'])
                 args["RiskDB"].writeData(args["TargetTable"], iDT, factor_ret=iFactorReturn, specific_ret=iSpecificReturn, file_value={"Statistics":iStatistics})
                 args["RiskDB"].writeData(args["TargetTable"], iPreDT, factor_data=iFactorData, file_value={"Cap":iCap})
                 ProgBar.update(i+1)
     else:
+        IDs = FT.getID(ifactor_name=args["ModelArgs"]['ESTU因子'])
         for i, iDT in enumerate(args["RegressDTs"]):
             FT.move(iDT)
             iInd = DSDTs.index(iDT)
             if iInd==0: continue
             iPreDT = DSDTs[iInd-1]
-            iESTU = FT.readData(dts=[iPreDT], factor_names=[args["ModelArgs"]['ESTU因子']]).iloc[0,0,:]
-            iRet = FT.readData(dts=[iDT], factor_names=[args["ModelArgs"]['收益率因子']]).iloc[0,0,:]
-            iCap = FT.readData(dts=[iPreDT], factor_names=[args["ModelArgs"]['市值因子']]).iloc[0,0,:]
-            iIndustry = FT.readData(dts=[iPreDT], factor_names=[args["ModelArgs"]['行业因子']]).iloc[0,0,:]
-            iFactorData = FT.readData(dts=[iPreDT], factor_names=args["ModelArgs"]['风格因子']).iloc[:,0,:]
+            iESTU = FT.readData(dts=[iPreDT], ids=IDs, factor_names=[args["ModelArgs"]['ESTU因子']]).iloc[0,0,:]
+            iRet = FT.readData(dts=[iDT], ids=IDs, factor_names=[args["ModelArgs"]['收益率因子']]).iloc[0,0,:]
+            iCap = FT.readData(dts=[iPreDT], ids=IDs, factor_names=[args["ModelArgs"]['市值因子']]).iloc[0,0,:]
+            iIndustry = FT.readData(dts=[iPreDT], ids=IDs, factor_names=[args["ModelArgs"]['行业因子']]).iloc[0,0,:]
+            iFactorData = FT.readData(dts=[iPreDT], ids=IDs, factor_names=args["ModelArgs"]['风格因子']).iloc[:,0,:]
             iFactorReturn, iSpecificReturn, iFactorData, iStatistics = RiskModelFun.estimateFactorAndSpecificReturn_EUE3(iRet, iFactorData, iIndustry, iCap, iESTU, iCap, args["ModelArgs"]['所有行业'])
             args["RiskDB"].writeData(args["TargetTable"], iDT, factor_ret=iFactorReturn, specific_ret=iSpecificReturn, file_value={"Statistics":iStatistics})
             args["RiskDB"].writeData(args["TargetTable"], iPreDT, factor_data=iFactorData, file_value={"Cap":iCap})
             args['Sub2MainQueue'].put((args["PID"], 1, None))
     if args["RegressDTs"]!=[]:
-        iESTU = FT.readData(dts=[iDT], factor_names=[args["ModelArgs"]['ESTU因子']]).iloc[0,0,:]
-        iCap = FT.readData(dts=[iDT], factor_names=[args["ModelArgs"]['市值因子']]).iloc[0,0,:]
-        iIndustry = FT.readData(dts=[iDT], factor_names=[args["ModelArgs"]['行业因子']]).iloc[0,0,:]
-        iFactorData = FT.readData(dts=[iDT], factor_names=args["ModelArgs"]['风格因子']).iloc[:,0,:]
+        iESTU = FT.readData(dts=[iDT], ids=IDs, factor_names=[args["ModelArgs"]['ESTU因子']]).iloc[0,0,:]
+        iCap = FT.readData(dts=[iDT], ids=IDs, factor_names=[args["ModelArgs"]['市值因子']]).iloc[0,0,:]
+        iIndustry = FT.readData(dts=[iDT], ids=IDs, factor_names=[args["ModelArgs"]['行业因子']]).iloc[0,0,:]
+        iFactorData = FT.readData(dts=[iDT], ids=IDs, factor_names=args["ModelArgs"]['风格因子']).iloc[:,0,:]
         iFactorReturn, iSpecificReturn, iFactorData, iStatistics = RiskModelFun.estimateFactorAndSpecificReturn_EUE3(iRet, iFactorData, iIndustry, iCap, iESTU, iCap, args["ModelArgs"]['所有行业'])
         args["RiskDB"].writeData(args["TargetTable"], iDT, factor_data=iFactorData, file_value={"Cap":iCap})
     FT.end()

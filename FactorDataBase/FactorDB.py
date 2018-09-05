@@ -21,24 +21,22 @@ from QuantStudio.Tools.IDFun import testIDFilterStr
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName, partitionList, startMultiProcess
 from QuantStudio.Tools.FileFun import listDirDir
 
-def _adjustDateTime(data, dts=None, fillna=False, **kwargs):
+def _adjustDateTime(data, dts, fillna=False, **kwargs):
     if isinstance(data, (pd.DataFrame, pd.Series)):
-        if dts is not None:
-            if fillna:
-                AllDTs = data.index.union(set(dts))
-                AllDTs = AllDTs.sort_values()
-                data = data.ix[AllDTs]
-                data = data.fillna(**kwargs)
-            data = data.ix[dts]
+        if fillna:
+            AllDTs = data.index.union(set(dts))
+            AllDTs = AllDTs.sort_values()
+            data = data.ix[AllDTs]
+            data = data.fillna(**kwargs)
+        data = data.ix[dts]
     else:
-        if dts is not None:
-            FactorNames = data.items
-            if fillna:
-                AllDTs = data.major_axis.union(set(dts))
-                AllDTs = AllDTs.sort_values()
-                data = data.ix[:, AllDTs, :]
-                data = pd.Panel({data.items[i]:data.iloc[i].fillna(axis=0, **kwargs) for i in range(data.shape[0])})
-            data = data.ix[FactorNames, dts, :]
+        FactorNames = data.items
+        if fillna:
+            AllDTs = data.major_axis.union(set(dts))
+            AllDTs = AllDTs.sort_values()
+            data = data.ix[:, AllDTs, :]
+            data = pd.Panel({data.items[i]:data.iloc[i].fillna(axis=0, **kwargs) for i in range(data.shape[0])})
+        data = data.ix[FactorNames, dts, :]
     return data
 
 # 因子库, 只读, 接口类
@@ -94,31 +92,22 @@ class WritableFactorDB(FactorDB):
     def writeData(self, data, table_name, if_exists='append', **kwargs):
         return 0
     # -------------------------------数据变换------------------------------------
-    # 复制因子, 并不删除原来的因子
-    def copyFactor(self, target_table, table_name, factor_names=None, if_exists='append', args={}):
-        FT = self.getTable(table_name)
-        if factor_names is None:
-            factor_names = FT.FactorNames
-        Data = FT.readData(factor_names=factor_names, args=args)
-        return self.writeData(Data, target_table, if_exists=if_exists)
     # 时间平移, 沿着时间轴将所有数据纵向移动 lag 期, lag>0 向前移动, lag<0 向后移动, 空出来的地方填 nan
-    def offsetDateTime(self, lag, table_name, factor_names=None, args={}):
+    def offsetDateTime(self, lag, table_name, factor_names, args={}):
         if lag==0:
             return 0
         FT = self.getTable(table_name)
-        Data = FT.readData(factor_names=factor_names, args=args)
+        Data = FT.readData(factor_names=factor_names, ids=self.getID(), dts=self.getDateTime(), args=args)
         if lag>0:
-            Data.iloc[:,lag:,:] = Data.iloc[:,:-lag,:].values
-            Data.iloc[:,:lag,:] = None
+            Data.iloc[:, lag:, :] = Data.iloc[:,:-lag,:].values
+            Data.iloc[:, :lag, :] = None
         elif lag<0:
-            Data.iloc[:,:lag,:] = Data.iloc[:,-lag:,:].values
-            Data.iloc[:,:lag,:] = None
+            Data.iloc[:, :lag, :] = Data.iloc[:,-lag:,:].values
+            Data.iloc[:, :lag, :] = None
         self.writeData(Data, table_name, if_exists='replace')
         return 0
     # 数据变换, 对原来的时间和ID序列通过某种变换函数得到新的时间序列和ID序列, 调整数据
-    def changeData(self, table_name, factor_names=None, ids=None, dts=None, args={}):
-        if dts is None:
-            return 0
+    def changeData(self, table_name, factor_names, ids, dts, args={}):
         Data = self.getTable(table_name).readData(factor_names=factor_names, ids=ids, dts=dts, args=args)
         self.writeData(Data, table_name, if_exists='replace')
         return 0
@@ -254,12 +243,12 @@ def _prepareRawData(args):
         for i in tqdm(range(len(args['GroupInfo']))):
             iFT, iFactorNames, iRawFactorNames, iDTs, iArgs = args['GroupInfo'][i]
             iRawData = iFT.__QS_prepareRawData__(iRawFactorNames, args["FT"].OperationMode.IDs, iDTs, iArgs)
-            iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"].OperationMode._RawDataDir, args["FT"].OperationMode._PID_IDs, args["RawDataFileNames"][i])
+            iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"].OperationMode._RawDataDir, args["FT"].OperationMode._PID_IDs, args["RawDataFileNames"][i], args["FT"].OperationMode._PID_Lock)
     else:# 运行模式为并行
         for i in range(len(args['GroupInfo'])):
             iFT, iFactorNames, iRawFactorNames, iDTs, iArgs = args['GroupInfo'][i]
             iRawData = iFT.__QS_prepareRawData__(iRawFactorNames, args['FT'].OperationMode.IDs, iDTs, iArgs)
-            iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"].OperationMode._RawDataDir, args["FT"].OperationMode._PID_IDs, args["RawDataFileNames"][i])
+            iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"].OperationMode._RawDataDir, args["FT"].OperationMode._PID_IDs, args["RawDataFileNames"][i], args["FT"].OperationMode._PID_Lock)
             args['Sub2MainQueue'].put((args["PID"], 1, None))
     return 0
 # 因子表运算子进程
@@ -314,17 +303,17 @@ class FactorTable(__QS_Object__):
     def FactorNames(self):
         return []
     # 获取因子对象
-    def getFactor(self, ifactor_name, args={}):
+    def getFactor(self, ifactor_name, args={}, new_name=None):
         iFactor = Factor(name=ifactor_name, ft=self)
         for iArgName in self.ArgNames:
             if iArgName not in ("遍历模式", "运算模式"):
                 iTraitName, iTrait = self.getTrait(iArgName)
                 iFactor.add_trait(iTraitName, iTrait)
                 iFactor[iArgName] = args.get(iArgName, self[iArgName])
+        if new_name is not None: iFactor.Name = new_name
         return iFactor
     # 获取因子的元数据
-    def getFactorMetaData(self, factor_names=None, key=None):
-        if factor_names is None: factor_names = self.FactorNames
+    def getFactorMetaData(self, factor_names, key=None):
         if key is None: return pd.DataFrame(index=factor_names, dtype=np.dtype("O"))
         else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
     # 获取 ID 序列
@@ -350,20 +339,19 @@ class FactorTable(__QS_Object__):
         return []
     # -------------------------------读取数据---------------------------------
     # 准备原始数据的接口
-    def __QS_prepareRawData__(self, factor_names=None, ids=None, dts=None, args={}):
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         return None
     # 计算数据的接口, 返回: Panel(item=[因子], major_axis=[时间点], minor_axis=[ID])
-    def __QS_calcData__(self, raw_data, factor_names=None, ids=None, dts=None, args={}):
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         return None
     # 读取数据, 返回: Panel(item=[因子], major_axis=[时间点], minor_axis=[ID])
-    def readData(self, factor_names=None, ids=None, dts=None, args={}):
+    def readData(self, factor_names, ids, dts, args={}):
         if self.ErgodicMode._isStarted: return self._readData_ErgodicMode(factor_names=factor_names, ids=ids, dts=dts, args=args)
         return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args), factor_names=factor_names, ids=ids, dts=dts, args=args)
     # ------------------------------------遍历模式------------------------------------
-    def _readData_FactorCacheMode(self, factor_names=None, ids=None, dts=None, args={}):
-        if factor_names is None: factor_names = self.FactorNames
+    def _readData_FactorCacheMode(self, factor_names, ids, dts, args={}):
         self.ErgodicMode._FactorReadNum[factor_names] += 1
-        if (self.ErgodicMode.MaxFactorCacheNum<=0) or (not self.ErgodicMode._CacheDTs) or ((self.ErgodicMode._DateTimes[0] if dts is None else dts[0]) < self.ErgodicMode._CacheDTs[0]) or ((self.ErgodicMode._DateTimes[-1] if dts is None else dts[-1]) >self.ErgodicMode._CacheDTs[-1]):
+        if (self.ErgodicMode.MaxFactorCacheNum<=0) or (not self.ErgodicMode._CacheDTs) or (dts[0] < self.ErgodicMode._CacheDTs[0]) or (dts[-1] >self.ErgodicMode._CacheDTs[-1]):
             return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args), factor_names=factor_names, ids=ids, dts=dts, args=args)
         Data = {}
         DataFactorNames = []
@@ -393,40 +381,34 @@ class FactorTable(__QS_Object__):
             self.ErgodicMode._CacheData.update(iData)
         self.ErgodicMode._Queue2SubProcess.put((None, (CacheFactorNames, PopFactorNames)))
         Data = pd.Panel(Data)
-        if Data.shape[0]>0:
-            if ids is None: ids = self.ErgodicMode._IDs
-            if dts is not None: Data = Data.ix[:, dts, ids]
-            else: Data = Data.ix[:, :, ids]
+        if Data.shape[0]>0: Data = Data.ix[:, dts, ids]
         if not DataFactorNames: return Data.loc[factor_names]
         return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=DataFactorNames, ids=ids, dts=dts, args=args), factor_names=DataFactorNames, ids=ids, dts=dts, args=args).join(Data).loc[factor_names]
-    def _readIDData(self, iid, factor_names=None, dts=None, args={}):
+    def _readIDData(self, iid, factor_names, dts, args={}):
         self.ErgodicMode._IDReadNum[iid] = self.ErgodicMode._IDReadNum.get(iid, 0) + 1
-        if (self.ErgodicMode.MaxIDCacheNum<=0) or (not self.ErgodicMode._CacheDTs) or ((self.ErgodicMode._DateTimes[0] if dts is None else dts[0]) < self.ErgodicMode._CacheDTs[0]) or ((self.ErgodicMode._DateTimes[-1] if dts is None else dts[-1]) >self.ErgodicMode._CacheDTs[-1]):
+        if (self.ErgodicMode.MaxIDCacheNum<=0) or (not self.ErgodicMode._CacheDTs) or (dts[0] < self.ErgodicMode._CacheDTs[0]) or (dts[-1] >self.ErgodicMode._CacheDTs[-1]):
             return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=factor_names, ids=[iid], dts=dts, args=args), factor_names=factor_names, ids=[iid], dts=dts, args=args).iloc[:, :, 0]
         IDData = self.ErgodicMode._CacheData.get(iid)
         if IDData is None:# 尚未进入缓存
             if self.ErgodicMode._CacheIDNum<self.ErgodicMode.MaxIDCacheNum:# 当前缓存 ID 数小于最大缓存 ID 数，那么将该 ID 数据读入缓存
                 self.ErgodicMode._CacheIDNum += 1
-                IDData = self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=None, ids=[iid], dts=self.ErgodicMode._CacheDTs, args=args), factor_names=None, ids=[iid], dts=self.ErgodicMode._CacheDTs, args=args).iloc[:, :, 0]
+                IDData = self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=self.FactorNames, ids=[iid], dts=self.ErgodicMode._CacheDTs, args=args), factor_names=self.FactorNames, ids=[iid], dts=self.ErgodicMode._CacheDTs, args=args).iloc[:, :, 0]
                 self.ErgodicMode._CacheData[iid] = IDData
                 self.ErgodicMode._Queue2SubProcess.put((None, (iid, None)))
             else:# 当前缓存 ID 数等于最大缓存 ID 数，那么将检查最小读取次数的 ID
                 CacheIDReadNum = self.ErgodicMode._IDReadNum[self.ErgodicMode._CacheData.keys()]
                 MinReadNumInd = CacheIDReadNum.argmin()
                 if CacheIDReadNum.loc[MinReadNumInd]<self.ErgodicMode._IDReadNum[iid]:# 当前读取的 ID 的读取次数超过了缓存 ID 读取次数的最小值，缓存该 ID 数据
-                    IDData = self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=None, ids=[iid], dts=self.ErgodicMode._CacheDTs, args=args), factor_names=None, ids=[iid], dts=self.ErgodicMode._CacheDTs, args=args).iloc[:, :, 0]
+                    IDData = self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=self.FactorNames, ids=[iid], dts=self.ErgodicMode._CacheDTs, args=args), factor_names=self.FactorNames, ids=[iid], dts=self.ErgodicMode._CacheDTs, args=args).iloc[:, :, 0]
                     PopID = MinReadNumInd
                     self.ErgodicMode._CacheData.pop(PopID)
                     self.ErgodicMode._CacheData[iid] = IDData
                     self.ErgodicMode._Queue2SubProcess.put((None,(iid, PopID)))
                 else:# 当前读取的 ID 的读取次数没有超过缓存 ID 读取次数的最小值, 放弃缓存该 ID 数据
                     return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=factor_names, ids=[iid], dts=dts, args=args), factor_names=factor_names, ids=[iid], dts=dts, args=args).iloc[:, :, 0]
-        if factor_names is not None: IDData = IDData.ix[:, factor_names]
-        if dts is not None: IDData = IDData.ix[dts, :]
-        return IDData
-    def _readData_ErgodicMode(self, factor_names=None, ids=None, dts=None, args={}):
+        return IDData.ix[dts, factor_names]
+    def _readData_ErgodicMode(self, factor_names, ids, dts, args={}):
         if self.ErgodicMode.CacheMode=="因子": return self._readData_FactorCacheMode(factor_names=factor_names, ids=ids, dts=dts, args=args)
-        if ids is None: ids = self._IDs
         return pd.Panel({iID: self._readIDData(iID, factor_names=factor_names, dts=dts, args=args) for iID in ids}).swapaxes(0, 2)
     # 启动遍历模式, dts: 遍历的时间点序列或者迭代器
     def start(self, dts=None, ids=None, **kwargs):
@@ -487,7 +469,7 @@ class FactorTable(__QS_Object__):
         EndDT = operation_mode.DateTimes[-1]
         StartInd, EndInd = operation_mode.DTRuler.index(StartDT), operation_mode.DTRuler.index(EndDT)
         return [(self, FactorNames, list(RawFactorNames), operation_mode.DTRuler[StartInd:EndInd+1], {})]
-    def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name):
+    def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock):
         if 'ID' in raw_data:# 如果原始数据有 ID 列，按照 ID 列划分后存入子进程的原始文件中
             raw_data = raw_data.set_index(['ID'])
             CommonCols = list(raw_data.columns.difference(set(factor_names)))
@@ -496,7 +478,10 @@ class FactorTable(__QS_Object__):
                 with shelve.open(raw_data_dir+os.sep+iPID+os.sep+file_name) as iFile:
                     iIDs = sorted(AllIDs.intersection(set(iIDs)))
                     iData = raw_data.loc[iIDs]
-                    for jFactorName in factor_names: iFile[jFactorName] = iData[CommonCols+[jFactorName]].reset_index()
+                    if factor_names:
+                        for jFactorName in factor_names: iFile[jFactorName] = iData[CommonCols+[jFactorName]].reset_index()
+                    else:
+                        iFile["RawData"] = iData[CommonCols].reset_index()
         else:# 如果原始数据没有 ID 列，则将所有数据分别存入子进程的原始文件中
             for iPID in pid_ids:
                 with shelve.open(raw_data_dir+os.sep+iPID+os.sep+file_name) as iFile:
@@ -652,7 +637,7 @@ class CustomFT(FactorTable):
     def __init__(self, name, sys_args={}, **kwargs):
         self._DateTimes = []# 数据源可提取的最长时点序列，[datetime.datetime]
         self._IDs = []# 数据源可提取的最长ID序列，['600000.SH']
-        self._FactorDict = pd.DataFrame(columns=["FTID", "ArgIndex", "NameInFT", "DataType"], dtype=np.dtype("O"))# 数据源中因子的来源信息
+        self._FactorDict = pd.DataFrame(columns=["FTID", "ArgIndex", "NameInFT", "DataType"], dtype=np.dtype("O"))# 数据源中因子的来源信息, index=[因子名]
         self._TableArgDict = {}# 数据源中的表和参数信息, {id(FT) : (FT, [args]), id(None) : ([Factor], [args])}
         self._IDFilterStr = None# ID 过滤条件字符串, "@收益率>0", 给定日期, 数据源的 getID 将返回过滤后的 ID 序列
         self._CompiledIDFilter = {}# 编译过的过滤条件字符串以及对应的因子列表, {条件字符串: (编译后的条件字符串,[因子])}
@@ -681,17 +666,20 @@ class CustomFT(FactorTable):
             return pd.DataFrame(MetaData)
         else:
             return pd.Series(MetaData)
-    def getFactor(self, ifactor_name, args={}):
+    def getFactor(self, ifactor_name, args={}, new_name=None):
         iFTID = self._FactorDict.loc[ifactor_name, "FTID"]
         iArgIndex = int(self._FactorDict.loc[ifactor_name, "ArgIndex"])
         if iFTID==id(None):
-            return self._TableArgDict[iFTID][0][iArgIndex]
+            iFactor = self._TableArgDict[iFTID][0][iArgIndex]
         else:
             iFT = self._TableArgDict[iFTID][0]
             iNameInFT = self._FactorDict["NameInFT"].loc[ifactor_name]
-            iFactor = iFT.getFactor(ifactor_name=iNameInFT, args=args)
+            iArgs = self._TableArgDict[iFTID][1][iArgIndex]
+            iArgs.update(args)
+            iFactor = iFT.getFactor(ifactor_name=iNameInFT, args=iArgs)
             iFactor.Name = ifactor_name
-            return iFactor
+        if new_name is not None: iFactor.Name = new_name
+        return iFactor
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         DateTimes = self._DateTimes
         if start_dt is not None:
@@ -712,16 +700,16 @@ class CustomFT(FactorTable):
         self._IDFilterStr = OldIDFilterStr
         return eval(CompiledFilterStr)
     def getFilteredID(self, idt, id_filter_str=None, args={}):
-        if not id_filter_str: return self.getID(idt=idt, args=args)
+        OldIDFilterStr = self.setIDFilter(id_filter_str)
+        if self._IDFilterStr is None:
+            self._IDFilterStr = OldIDFilterStr
+            return self.getID(idt=idt)
         CompiledFilterStr, IDFilterFactors = self._CompiledIDFilter[self._IDFilterStr]
-        if CompiledIDFilterStr is None: raise __QS_Error__("过滤条件字符串有误!")
-        temp = self.readData(factor_names=IDFilterFactors, ids=ids, dts=[idt], args=args).loc[:, idt, :]
+        if CompiledFilterStr is None: raise __QS_Error__("过滤条件字符串有误!")
+        temp = self.readData(factor_names=IDFilterFactors, ids=self._IDs, dts=[idt], args=args).loc[:, idt, :]
         self._IDFilterStr = OldIDFilterStr
-        return eval("temp["+CompiledIDFilterStr+"].index.tolist()")
-    def __QS_calcData__(self, raw_data, factor_names=None, ids=None, dts=None, args={}):
-        if factor_names is None: factor_names = self.FactorNames
-        if dts is None: dts = self._DateTimes
-        if ids is None: ids = self._IDs
+        return eval("temp["+CompiledFilterStr+"].index.tolist()")
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         Data = {}
         TableArgFactor = self._FactorDict.loc[factor_names].groupby(by=["FTID", "ArgIndex"]).groups
         for iFTID, iArgIndex in TableArgFactor:
@@ -747,17 +735,18 @@ class CustomFT(FactorTable):
             iFT = iFactor.FactorTable
             iFTID = id(iFT)
             iDataType = iFactor.getMetaData(key="DataType")
+            iArgs = iFactor.Args
             if iFT is None:
                 iFactorList, iArgList = self._TableArgDict.get(iFTID, ([], []))
                 self._FactorDict.loc[iFactor.Name] = (iFTID, len(iArgList), None, iDataType)
                 iFactorList.append(iFactor)
-                iArgList.append(args)
+                iArgList.append(iArgs)
                 self._TableArgDict[iFTID] = (iFactorList, iArgList)
             else:
                 iFT, iArgList = self._TableArgDict.get(iFTID, (iFT, []))
-                iArgIndex = (len(iArgList) if args not in iArgList else iArgList.index(args))
+                iArgIndex = (len(iArgList) if iArgs not in iArgList else iArgList.index(iArgs))
                 self._FactorDict.loc[iFactor.Name] = (iFTID, iArgIndex, iFactor._NameInFT, iDataType)
-                iArgList.append(args)
+                iArgList.append(iFactor.Args)
                 self._TableArgDict[iFTID] = (iFT, iArgList)
         if factor_table is None: return 0
         if factor_names is None: factor_names = factor_table.FactorNames
@@ -932,7 +921,7 @@ class Factor(__QS_Object__):
         return []
     # --------------------------------数据读取---------------------------------
     # 读取数据, 返回: Panel(item=[因子], major_axis=[时间点], minor_axis=[ID])
-    def readData(self, ids=None, dts=None):
+    def readData(self, ids, dts):
         if self.FactorTable is not None: return self._FactorTable.readData(factor_names=[self._NameInFT], ids=ids, dts=dts, args=self.Args).loc[self._NameInFT]
         return None
     # ------------------------------------运算模式------------------------------------

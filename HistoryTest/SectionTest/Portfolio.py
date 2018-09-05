@@ -55,7 +55,7 @@ class QuantilePortfolio(BaseModule):
         self._CurCalcInd = 0
         return (self._FactorTable, )
     def __QS_move__(self, idt):
-        Price = self._FactorTable.readData(dts=[idt], ids=None, factor_names=[self.PriceFactor]).iloc[0, 0, :]
+        Price = self._FactorTable.readData(dts=[idt], ids=self._FactorTable.getID(ifactor_name=self.PriceFactor), factor_names=[self.PriceFactor]).iloc[0, 0, :]
         for i in range(self.GroupNum):
             if len(self._Output["QP_P_CurPos"][i])==0:
                 self._Output["净值"][i].append(self._Output["净值"][i][-1])
@@ -81,10 +81,10 @@ class QuantilePortfolio(BaseModule):
             FactorData = FactorData.astype("float")
             MinDiff = np.min(np.abs(np.diff(FactorData.unique())))
             FactorData += np.random.rand(nID) * MinDiff * 0.01
-        FactorData.sort_values(ascending=(self.FactorOrder=="升序"), inplace=False)
+        FactorData = FactorData.sort_values(ascending=(self.FactorOrder=="升序"), inplace=False)
         IDs = list(FactorData.index)
         if self.WeightFactor!="等权":
-            WeightData = self._FactorTable.readData(dts=[idt], ids=None, factor_names=[self.WeightFactor]).iloc[0, 0, :]
+            WeightData = self._FactorTable.readData(dts=[idt], ids=self._FactorTable.getID(ifactor_name=self.WeightFactor), factor_names=[self.WeightFactor]).iloc[0, 0, :]
         else:
             WeightData = pd.Series(1.0, index=self._FactorTable.getID())
         if self.IndustryFactor=="无":
@@ -146,7 +146,7 @@ class QuantilePortfolio(BaseModule):
         self._Output["净值"]["市场"] = pd.Series(self._Output.pop("市场净值")[1:], index=self._Model.DateTimeSeries)
         self._Output["收益率"] = self._Output["净值"].iloc[1:,:].values / self._Output["净值"].iloc[:-1,:].values - 1
         self._Output["收益率"] = pd.DataFrame(np.row_stack((np.zeros((1, self.GroupNum+1)), self._Output["收益率"])), index=self._Model.DateTimeSeries, columns=[i for i in range(self.GroupNum)]+["市场"])
-        self._Output["收益率"]["L-S"] = self._Output["收益率"].iloc[:,0] - self._Output["收益率"].iloc[:,-2]
+        self._Output["收益率"]["L-S"] = self._Output["收益率"].iloc[:, 0] - self._Output["收益率"].iloc[:, -2]
         self._Output["净值"]["L-S"] = (1 + self._Output["收益率"]["L-S"]).cumprod()
         self._Output["换手率"] = pd.DataFrame(np.array(self._Output["换手率"]).T, index=self._Model.DateTimeSeries)
         self._Output["投资组合"] = {str(i): pd.DataFrame(self._Output["投资组合"][i], index=self._Output["调仓日"]) for i in range(self.GroupNum)}
@@ -314,10 +314,23 @@ class QuantilePortfolio(BaseModule):
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
+        if len(self.ArgNames)>0:
+            HTML = "参数设置: "
+            HTML += '<ul align="left">'
+            for iArgName in self.ArgNames:
+                if iArgName!="调仓时点":
+                    HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
+                elif self.Args[iArgName]:
+                    HTML += "<li>"+iArgName+": 间隔时点</li>"
+                else:
+                    HTML += "<li>"+iArgName+": 所有时点</li>"
+            HTML += "</ul>"
+        else:
+            HTML = ""
         Formatters = [_QS_formatPandasPercentage]*3+[lambda x:'{0:.2f}'.format(x)]*2+[_QS_formatPandasPercentage]*2+[lambda x: x.strftime("%Y-%m-%d")]*2
         Formatters += [_QS_formatPandasPercentage]*3+[lambda x:'{0:.2f}'.format(x)]*2+[_QS_formatPandasPercentage]*2+[lambda x: x.strftime("%Y-%m-%d")]*2
         Formatters += [lambda x:'{0:.2f}'.format(x)]*2
-        HTML = self._Output["统计数据"].to_html(formatters=Formatters)
+        HTML += self._Output["统计数据"].to_html(formatters=Formatters)
         Pos = HTML.find(">")
         HTML = HTML[:Pos]+' align="center"'+HTML[Pos:]
         Fig = self.genMatplotlibFig()

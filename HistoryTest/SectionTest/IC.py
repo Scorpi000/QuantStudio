@@ -188,8 +188,21 @@ class IC(BaseModule):
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
+        if len(self.ArgNames)>0:
+            HTML = "参数设置: "
+            HTML += '<ul align="left">'
+            for iArgName in self.ArgNames:
+                if iArgName!="计算时点":
+                    HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
+                elif self.Args[iArgName]:
+                    HTML += "<li>"+iArgName+": 间隔时点</li>"
+                else:
+                    HTML += "<li>"+iArgName+": 所有时点</li>"
+            HTML += "</ul>"
+        else:
+            HTML = ""
         Formatters = [_QS_formatPandasPercentage]*4+[lambda x:'{0:.4f}'.format(x)]+[lambda x:'{0:.2f}'.format(x)]*3+[lambda x:'{0:.0f}'.format(x)]
-        HTML = self._Output["统计数据"].to_html(formatters=Formatters)
+        HTML += self._Output["统计数据"].to_html(formatters=Formatters)
         Pos = HTML.find(">")
         HTML = HTML[:Pos]+' align="center"'+HTML[Pos:]
         Fig = self.genMatplotlibFig()
@@ -322,7 +335,7 @@ class ICDecay(BaseModule):
                 self._Output["IC"][i].append(np.nan)
             self._Output["时点"].append(idt)
             return 0
-        Price = self._FactorTable.readData(dts=[LastDateTime, idt], ids=None, factor_names=[self.PriceFactor]).iloc[0]
+        Price = self._FactorTable.readData(dts=[LastDateTime, idt], ids=self._FactorTable.getID(ifactor_name=self.PriceFactor), factor_names=[self.PriceFactor]).iloc[0]
         Ret = Price.iloc[1] / Price.iloc[0] - 1
         for i, iRollBack in enumerate(self.LookBack):
             iPreInd = self._CurCalcInd - iRollBack

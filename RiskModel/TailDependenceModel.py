@@ -24,6 +24,7 @@ def _TailDependenceGeneration(args):
         ProgBar.start()
     else:
         ProgBar = None
+    IDs = args["FT"].getID(ifactor_name=args["ModelArgs"]["收益率因子"])
     for i, iDT in enumerate(args["RiskESTDTs"]):
         iInd = (ReturnDTs<=iDT).sum()-1
         if iInd<args["TailDependenceArgs"]["样本长度"]-1:# 样本不足, 跳过
@@ -34,7 +35,7 @@ def _TailDependenceGeneration(args):
         iLastDates = iReturnDTs
         iReturnDTs = list(ReturnDTs.iloc[iInd-args["TailDependenceArgs"]["样本长度"]+1:iInd+1])
         iNewDTs = sorted(set(iReturnDTs).difference(set(iLastDates)))
-        iNewReturn = args["FT"].readData(factor_names=[args["ModelArgs"]["收益率因子"]], dts=iNewDTs).iloc[0]
+        iNewReturn = args["FT"].readData(factor_names=[args["ModelArgs"]["收益率因子"]], ids=IDs, dts=iNewDTs).iloc[0]
         Eng = args["MatlabEng"].acquireEngine()
         Eng.workspace["NewReturn"] = matlab.double(iNewReturn.values.tolist())
         Eng.workspace["nDate"] = matlab.double([args["TailDependenceArgs"]["样本长度"]])

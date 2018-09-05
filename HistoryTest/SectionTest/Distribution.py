@@ -40,7 +40,7 @@ class IndustryDistribution(BaseModule):
         return (Items, Context)
     def __QS_start__(self, mdl, dts=None, dates=None, times=None):
         super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
-        AllIndustries = pd.unique(self._FactorTable.readData(factor_names=[self.IndustryFactor]).iloc[0].values.flatten())
+        AllIndustries = pd.unique(self._FactorTable.readData(factor_names=[self.IndustryFactor], dts=self._FactorTable.getDateTime(ifactor_name=self.IndustryFactor), ids=self._FactorTable.getID(ifactor_name=self.IndustryFactor)).iloc[0].values.flatten())
         Mask = pd.isnull(AllIndustries)
         if np.sum(Mask)>0: AllIndustries = AllIndustries[~Mask].tolist()+[None]
         self._Output = {iFactorName:{iIndustry:[] for iIndustry in AllIndustries} for iFactorName in self.TestFactors}
