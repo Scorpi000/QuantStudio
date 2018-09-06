@@ -185,13 +185,12 @@ class TimeBarAccount(Account):
             self._iTradingRecord = TradingRecord
             self._PositionAmount[iIndex+1] = self._Position[iIndex+1]*self._LastPrice
         return 0
-    def output(self):
-        if self._Output: return self._Output
-        self._Output = super().output()
+    def __QS_end__(self):
+        super().__QS_end__()
         self._Output["持仓"] = self.getPositionSeries()
         self._Output["持仓金额"] = self.getPositionAmountSeries()
         self._Output["证券进出记录"] = self._EquityRecord
-        return self._Output
+        return 0
     # 当前账户价值, float
     @property
     def AccountValue(self):

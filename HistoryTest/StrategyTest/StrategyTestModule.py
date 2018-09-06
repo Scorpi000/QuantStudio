@@ -117,10 +117,6 @@ class Account(BaseModule):
     def __QS_after_move__(self, idt, *args, **kwargs):# 晚于策略运行
         return 0
     def __QS_end__(self):
-        self._Output = {}
-        return super().__QS_end__()
-    def output(self):
-        if self._Output: return self._Output
         CashSeries = self.getCashSeries()
         DebtSeries = self.getDebtSeries()
         AccountValueSeries = self.getAccountValueSeries()
@@ -128,7 +124,8 @@ class Account(BaseModule):
         self._Output["现金流记录"] = self._CashRecord
         self._Output["融资记录"] = self._DebtRecord
         self._Output["交易记录"] = self._TradingRecord
-        return self._Output
+        self._Output = self.output(recalculate=True)
+        return super().__QS_end__()
     # 当前账户的剩余现金
     @property
     def Cash(self):
@@ -236,7 +233,7 @@ class Strategy(BaseModule):
         return 0
     def __QS_end__(self):
         for iAccount in self.Accounts: iAccount.__QS_end__()
-        return 0
+        return super().__QS_end__()
     def getViewItems(self, context_name=""):
         Prefix = (context_name+"." if context_name else "")
         Groups, Context = [], {}
@@ -254,10 +251,10 @@ class Strategy(BaseModule):
     # 可选实现, trading_record: {账户名: 交易记录, 比如: DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])}
     def trade(self, idt, trading_record, signal):
         return 0
-    def output(self):
-        if self._Output: return self._Output
+    def output(self, recalculate=False):
+        if not recalculate: return self._Output
         for i, iAccount in enumerate(self.Accounts):
-            iOutput = iAccount.output()
+            iOutput = iAccount.output(recalculate=True)
             if iOutput: self._Output[str(i)+"-"+iAccount.Name] = iOutput
         AccountValueSeries, CashSeries, DebtSeries, InitCash, DebtRecord = 0, 0, 0, 0, None
         for iAccount in self.Accounts:
@@ -305,50 +302,59 @@ class Strategy(BaseModule):
     def _formatStatistics(self):
         Stats = self._Output["Strategy"]["统计数据"]
         FormattedStats = pd.DataFrame(index=Stats.index, columns=Stats.columns, dtype="O")
-        DateFormatFun = np.vectorize(lambda x: x.strftime("%Y-%m-%d"))
+        DateFormatFun = np.vectorize(lambda x: x.strftime("%Y-%m-%d") if x is not None else "-")
         IntFormatFun = np.vectorize(lambda x: ("%d" % (x, )))
         FloatFormatFun = np.vectorize(lambda x: ("%.2f" % (x, )))
         PercentageFormatFun = np.vectorize(lambda x: ("%.2f%%" % (x*100, )))
         FormattedStats.iloc[:2] = DateFormatFun(Stats.iloc[:2, :].values)
-        FormattedStats.iloc[2] = IntFormatFun(Stats.iloc[:2, :].values)
+        FormattedStats.iloc[2] = IntFormatFun(Stats.iloc[2, :].values)
         FormattedStats.iloc[3:6] = PercentageFormatFun(Stats.iloc[3:6, :].values)
         FormattedStats.iloc[6] = FloatFormatFun(Stats.iloc[6, :].values)
         FormattedStats.iloc[7:9] = PercentageFormatFun(Stats.iloc[7:9, :].values)
         FormattedStats.iloc[9:] = DateFormatFun(Stats.iloc[9:, :].values)
         return FormattedStats
-    def genMatplotlibFig(self):
-        nRow, nCol = 3, 3
+    def genMatplotlibFig(self, file_path=None):
+        StrategyOutput = self._Output["Strategy"]
+        hasBenchmark = ("基准" in StrategyOutput["统计数据"])
+        if hasBenchmark: nRow, nCol = 1, 3
+        else: nRow, nCol = 1, 2
         Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         AxesGrid = gridspec.GridSpec(nRow, nCol)
-        xData = np.arange(1, self._Output["统计数据"].shape[0]-1)
-        xTickLabels = [str(iInd) for iInd in self._Output["统计数据"].index[:-2]]
-        PercentageFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
-        FloatFormatter = FuncFormatter(lambda x, pos: '%.2f' % (x, ))
-        self._plotStatistics(plt.subplot(AxesGrid[0, 0]), xData, xTickLabels, self._Output["统计数据"]["年化超额收益率"].iloc[:-2], PercentageFormatter, self._Output["统计数据"]["胜率"].iloc[:-2], PercentageFormatter)
-        self._plotStatistics(plt.subplot(AxesGrid[0, 1]), xData, xTickLabels, self._Output["统计数据"]["信息比率"].iloc[:-2], PercentageFormatter, None)
-        self._plotStatistics(plt.subplot(AxesGrid[0, 2]), xData, xTickLabels, self._Output["统计数据"]["超额最大回撤率"].iloc[:-2], PercentageFormatter, None)
-        self._plotStatistics(plt.subplot(AxesGrid[1, 0]), xData, xTickLabels, self._Output["统计数据"]["年化收益率"].iloc[:-2], PercentageFormatter, pd.Series(self._Output["统计数据"].loc["市场", "年化收益率"], index=self._Output["统计数据"].index[:-2], name="市场"), PercentageFormatter, False)
-        self._plotStatistics(plt.subplot(AxesGrid[1, 1]), xData, xTickLabels, self._Output["统计数据"]["Sharpe比率"].iloc[:-2], FloatFormatter, pd.Series(self._Output["统计数据"].loc["市场", "Sharpe比率"], index=self._Output["统计数据"].index[:-2], name="市场"), FloatFormatter, False)
-        self._plotStatistics(plt.subplot(AxesGrid[1, 2]), xData, xTickLabels, self._Output["统计数据"]["平均换手率"].iloc[:-2], PercentageFormatter, None)
-        Axes = plt.subplot(AxesGrid[2, 0])
-        Axes.xaxis_date()
-        Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
-        Axes.plot(self._Output["净值"].index, self._Output["净值"].iloc[:, 0].values, label=str(self._Output["净值"].iloc[:, 0].name), color="r", alpha=0.6, lw=3)
-        Axes.plot(self._Output["净值"].index, self._Output["净值"].iloc[:, -3].values, label=str(self._Output["净值"].iloc[:, -3].name), color="b", alpha=0.6, lw=3)
-        Axes.plot(self._Output["净值"].index, self._Output["净值"]["市场"].values, label="市场", color="g", alpha=0.6, lw=3)
-        Axes.legend(loc='best')
-        Axes = plt.subplot(AxesGrid[2, 1])
-        xData = np.arange(0, self._Output["净值"].shape[0])
-        xTicks = np.arange(0, self._Output["净值"].shape[0], int(self._Output["净值"].shape[0]/8))
-        xTickLabels = [self._Output["净值"].index[i].strftime("%Y-%m-%d") for i in xTicks]
-        Axes.plot(xData, self._Output["净值"]["L-S"].values, label="多空净值", color="r", alpha=0.6, lw=3)
-        Axes.legend(loc='upper left')
-        RAxes = Axes.twinx()
-        RAxes.yaxis.set_major_formatter(PercentageFormatter)
-        RAxes.bar(xData, self._Output["收益率"]["L-S"].values, label="多空收益率", color="b")
-        RAxes.legend(loc="upper right")
-        Axes.set_xticks(xTicks)
-        Axes.set_xticklabels(xTickLabels)
+        xData = np.arange(0, StrategyOutput["日期序列"].shape[0])
+        xTicks = np.arange(0, StrategyOutput["日期序列"].shape[0], int(StrategyOutput["日期序列"].shape[0]/10))
+        xTickLabels = [StrategyOutput["日期序列"].index[i].strftime("%Y-%m-%d") for i in xTicks]
+        yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
+        iAxes = plt.subplot(AxesGrid[0, 0])
+        iAxes.plot(xData, StrategyOutput["日期序列"]["账户价值"].values, label="账户价值", color="r", alpha=0.6, lw=3)
+        iRAxes = iAxes.twinx()
+        iRAxes.bar(xData, StrategyOutput["日期序列"]["收益"].values, label="账户收益", color="b")
+        iRAxes.legend(loc="upper right")
+        iAxes.set_xticks(xTicks)
+        iAxes.set_xticklabels(xTickLabels)
+        iAxes.legend(loc='upper left')
+        iAxes.set_title("策略表现")
+        iAxes = plt.subplot(AxesGrid[0, 1])
+        iAxes.plot(xData, StrategyOutput["日期序列"]["无杠杆净值"].values, label="无杠杆净值", color="r", alpha=0.6, lw=3)
+        if hasBenchmark: iAxes.plot(xData, StrategyOutput["日期序列"]["基准净值"].values, label="基准净值", color="g", alpha=0.6, lw=3)
+        iRAxes = iAxes.twinx()
+        iRAxes.yaxis.set_major_formatter(yMajorFormatter)
+        iRAxes.bar(xData, StrategyOutput["日期序列"]["无杠杆收益率"].values, label="无杠杆收益率", color="b")
+        iRAxes.legend(loc="upper right")
+        iAxes.set_xticks(xTicks)
+        iAxes.set_xticklabels(xTickLabels)
+        iAxes.legend(loc='upper left')
+        iAxes.set_title("策略无杠杆表现")
+        if hasBenchmark:
+            iAxes = plt.subplot(AxesGrid[0, 2])
+            iAxes.plot(xData, StrategyOutput["日期序列"]["相对净值"].values, label="相对净值", color="r", alpha=0.6, lw=3)
+            iRAxes = iAxes.twinx()
+            iRAxes.yaxis.set_major_formatter(yMajorFormatter)
+            iRAxes.bar(xData, StrategyOutput["日期序列"]["相对收益率"].values, label="相对收益率", color="b")
+            iRAxes.legend(loc="upper right")
+            iAxes.set_xticks(xTicks)
+            iAxes.set_xticklabels(xTickLabels)
+            iAxes.legend(loc='upper left')
+            iAxes.set_title("策略相对表现")
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):

@@ -139,14 +139,18 @@ def getClassMask(subclass,class_data):
                 Mask = Mask & pd.isnull(class_data.iloc[:,j])
     return Mask
 
-# 使得两个Series相匹配, 即index一致, 缺失的按照指定值填充
-def match2Series(s1,s2,fillna=0.0):
+# 使得两个Series相匹配, 即 index 一致, 缺失的按照指定值填充
+def match2Series(s1, s2, fillna=0.0):
     AllIndex = list(set(s1.index).union(set(s2.index)))
-    s1 = s1[AllIndex]
-    s1[pd.isnull(s1)] = fillna
-    s2 = s2[AllIndex]
-    s2[pd.isnull(s2)] = fillna
-    return (s1,s2)
+    if s1.shape[0]>0:
+        s1 = s1[AllIndex]
+        s1[pd.isnull(s1)] = fillna
+    else: s1 = pd.Series(fillna, index=AllIndex)
+    if s2.shape[0]>0:
+        s2 = s2[AllIndex]
+        s2[pd.isnull(s2)] = fillna
+    else: s2 = pd.Series(fillna, index=AllIndex)
+    return (s1, s2)
 # 返回序列1在序列2中的位置
 def getListIndex(s1,s2):
     Index = pd.Series(np.arange(0,len(s2)),index=s2)

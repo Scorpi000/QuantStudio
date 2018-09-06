@@ -38,8 +38,8 @@ class BaseModule(__QS_Object__):
     # 测试结束后的整理函数
     def __QS_end__(self):
         return 0
-    # 输出上次测试的结果集
-    def output(self):
+    # 计算并输出测试的结果集
+    def output(self, recalculate=False):
         return self._Output
     # 生成 Excel 报告的函数, xl_book: 给定的 Excel 工作簿对象, sheet_name: 给定的工作表名
     def genExcelReport(self, xl_book, sheet_name):
@@ -116,16 +116,15 @@ class HistoryTestModel(__QS_Object__):
         for jModule in self.Modules: jModule.__QS_end__()
         for jDB in FactorDBs: jDB.end()
         print(('耗时 : %.2f' % (time.process_time()-StartT, )), ("总耗时 : %.2f" % (time.process_time()-TotalStartT, )), "="*28, sep="\n", end="\n")
-        self._Output = {}
+        self._Output = self.output(recalculate=True)
         return 0
-    # 返回结果
-    def output(self):
-        if self._Output: return self._Output
+    # 计算并输出测试的结果集
+    def output(self, recalculate=False):
+        if not recalculate: return self._Output
         self._Output = {}
         for j, jModule in enumerate(self.Modules):
-            iOutput = jModule.output()
-            if iOutput:
-                self._Output[str(j)+"-"+jModule.Name] = iOutput
+            iOutput = jModule.output(recalculate=True)
+            if iOutput: self._Output[str(j)+"-"+jModule.Name] = iOutput
         return self._Output
     # 生成 Excel 报告
     def genExcelReport(self, file_path):

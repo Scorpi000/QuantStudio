@@ -808,18 +808,16 @@ class CustomFT(FactorTable):
     # 设置 ID 过滤条件, id_filter_str, '@收益率$>0'
     def setIDFilter(self, id_filter_str):
         OldIDFilterStr = self._IDFilterStr
-        if id_filter_str is None:
+        if not id_filter_str:
             self._IDFilterStr = None
             return OldIDFilterStr
-        elif (not isinstance(id_filter_str, str)) or (id_filter_str==""):
-            raise __QS_Error__("条件字符串必须为非空字符串或者 None!")
+        elif not isinstance(id_filter_str, str): raise __QS_Error__("条件字符串必须为字符串或者为 None!")
         CompiledIDFilter = self._CompiledIDFilter.get(id_filter_str, None)
         if CompiledIDFilter is not None:# 该条件已经编译过
             self._IDFilterStr = id_filter_str
             return OldIDFilterStr
         CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(id_filter_str, self.FactorNames)
-        if CompiledIDFilterStr is None:
-            raise __QS_Error__("条件字符串有误!")
+        if CompiledIDFilterStr is None: raise __QS_Error__("条件字符串有误!")
         self._IDFilterStr = id_filter_str
         self._CompiledIDFilter[id_filter_str] = (CompiledIDFilterStr, IDFilterFactors)
         return OldIDFilterStr
