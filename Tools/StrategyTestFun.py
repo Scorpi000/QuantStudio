@@ -482,44 +482,36 @@ def _densifyWealthSeq(wealth_seq, dates, date_ruler=None):
 def summaryStrategy(wealth_seq, dates, date_ruler=None, init_wealth=None):
     wealth_seq, dates = _densifyWealthSeq(wealth_seq, dates, date_ruler)
     YieldSeq = calcYieldSeq(wealth_seq, init_wealth)
-    if init_wealth is None:
-        init_wealth = wealth_seq[0]
+    if init_wealth is None: init_wealth = wealth_seq[0]
     nCol = (wealth_seq.shape[1] if wealth_seq.ndim>1 else 1)
-    StartDate = dates[0]
-    EndDate = dates[-1]
-    SummaryIndex = ['起始日','结束日']
+    StartDate, EndDate = dates[0], dates[-1]
+    SummaryIndex = ['起始日', '结束日']
     SummaryData = [np.array([StartDate]*nCol), np.array([EndDate]*nCol)]
     SummaryIndex.append('日期数')
-    SummaryData.append(np.zeros(nCol)+len(dates))
+    SummaryData.append(np.zeros(nCol) + len(dates))
     SummaryIndex.append('总收益率')
-    SummaryData.append(wealth_seq[-1]/init_wealth-1)
+    SummaryData.append(wealth_seq[-1] / init_wealth - 1)
     SummaryIndex.append('年化收益率')
     SummaryData.append(calcAnnualYield(wealth_seq, start_date=StartDate, end_date=EndDate))
     SummaryIndex.append('年化波动率')
     SummaryData.append(calcAnnualVolatility(wealth_seq, start_date=StartDate, end_date=EndDate))
     SummaryIndex.append('Sharpe比率')
-    SummaryData.append(SummaryData[4]/SummaryData[5])
+    SummaryData.append(SummaryData[4] / SummaryData[5])
     SummaryIndex.append('胜率')
-    SummaryData.append(np.sum(YieldSeq>=0,axis=0)/(SummaryData[2]-1))
-    SummaryIndex.append('最大回撤率')
-    SummaryIndex.append('最大回撤开始日期')
-    SummaryIndex.append('最大回撤结束日期')
+    SummaryData.append(np.sum(YieldSeq>=0, axis=0) / np.sum(pd.notnull(YieldSeq), axis=0))
+    SummaryIndex.extend(("最大回撤率", "最大回撤开始日期", "最大回撤结束日期"))
     if wealth_seq.ndim==1:
-        MaxDrawdownRate,MaxDrawdownStartPos,MaxDrawdownEndPos,_ = calcDrawdown(wealth_seq=wealth_seq)
-        SummaryData.append(np.abs(MaxDrawdownRate))
-        SummaryData.append(dates[MaxDrawdownStartPos])
-        SummaryData.append(dates[MaxDrawdownEndPos])
+        MaxDrawdownRate, MaxDrawdownStartPos, MaxDrawdownEndPos, _ = calcDrawdown(wealth_seq=wealth_seq)
+        SummaryData.extend((np.abs(MaxDrawdownRate), dates[MaxDrawdownStartPos], dates[MaxDrawdownEndPos]))
     else:
-        MaxDrawdownRate = []
-        MaxDrawdownStartDate = []
-        MaxDrawdownEndDate = []
+        MaxDrawdownRate, MaxDrawdownStartDate, MaxDrawdownEndDate = [], [], []
         for i in range(nCol):
-            iMaxDrawdownRate, iMaxDrawdownStartPos, iMaxDrawdownEndPos,_ = calcDrawdown(wealth_seq=wealth_seq[:,i])
+            iMaxDrawdownRate, iMaxDrawdownStartPos, iMaxDrawdownEndPos, _ = calcDrawdown(wealth_seq=wealth_seq[:, i])
             MaxDrawdownRate.append(np.abs(iMaxDrawdownRate))
             MaxDrawdownStartDate.append((dates[iMaxDrawdownStartPos] if iMaxDrawdownStartPos is not None else None))
             MaxDrawdownEndDate.append((dates[iMaxDrawdownEndPos] if iMaxDrawdownEndPos is not None else None))
-        SummaryData += [np.array(MaxDrawdownRate),np.array(MaxDrawdownStartDate),np.array(MaxDrawdownEndDate)]
-    return pd.DataFrame(SummaryData,index=SummaryIndex)
+        SummaryData.extend((np.array(MaxDrawdownRate), np.array(MaxDrawdownStartDate), np.array(MaxDrawdownEndDate)))
+    return pd.DataFrame(SummaryData, index=SummaryIndex)
 # 计算每年的收益率, wealth_seq: 净值序列, dates: 日期序列, date_ruler: 日期标尺
 def calcReturnPerYear(wealth_seq, dates, date_ruler=None):
     DenseWealthSeq,dates = _densifyWealthSeq(wealth_seq, dates, date_ruler)

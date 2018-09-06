@@ -22,12 +22,9 @@ from QuantStudio.FactorDataBase.FactorDB import FactorTable
 from QuantStudio.HistoryTest.SectionTest.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 
 def cutDateTime(df, dts=None, start_dt=None, end_dt=None):
-    if dts is not None:
-        df = df.ix[dts]
-    if start_dt is not None:
-        df = df[df.index>=start_dt]
-    if end_dt is not None:
-        df = df[df.index<=end_dt]
+    if dts is not None: df = df.ix[dts]
+    if start_dt is not None: df = df[df.index>=start_dt]
+    if end_dt is not None: df = df[df.index<=end_dt]
     return df
 def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, debt_record, date_index):
     Output = {}
@@ -37,19 +34,19 @@ def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, 
     Output["时间序列"]["证券"] = account_value_series - (cash_series - debt_series)
     Output["时间序列"]["账户价值"] = account_value_series
     AccountEarnings = account_value_series.diff()
-    AccountEarnings.iloc[0] = account_value_series.iloc[0]-init_cash
+    AccountEarnings.iloc[0] = account_value_series.iloc[0] - init_cash
     Output["时间序列"]["收益"] = AccountEarnings
-    PreAccountValue = np.append(np.array(init_cash), account_value_series.values[:-1])
-    AccountReturn = AccountEarnings/np.abs(PreAccountValue)
+    PreAccountValue = np.r_[init_cash, account_value_series.values[:-1]]
+    AccountReturn = AccountEarnings / np.abs(PreAccountValue)
     AccountReturn[AccountEarnings==0] = 0.0
     Output["时间序列"]["收益率"] = AccountReturn
     AccountReturn[np.isinf(AccountReturn)] = np.nan
     Output["时间序列"]["累计收益率"] = AccountReturn.cumsum()
-    Output["时间序列"]["净值"] = (AccountReturn+1).cumprod()
+    Output["时间序列"]["净值"] = (AccountReturn + 1).cumprod()
     DebtDelta = debt_record.groupby(by=["时间点"]).sum()["融资"]
-    PreUnleveredValue = pd.Series(np.append(np.array(init_cash), (account_value_series.values+debt_series.values)[:-1]), index=AccountEarnings.index)
+    PreUnleveredValue = pd.Series(np.r_[init_cash, (account_value_series.values + debt_series.values)[:-1]], index=AccountEarnings.index)
     PreUnleveredValue[DebtDelta.index] += DebtDelta.clip(0, np.inf)
-    UnleveredReturn = AccountEarnings/np.abs(PreUnleveredValue)
+    UnleveredReturn = AccountEarnings / np.abs(PreUnleveredValue)
     UnleveredReturn[AccountEarnings==0] = 0.0
     Output["时间序列"]["无杠杆收益率"] = UnleveredReturn
     UnleveredReturn[np.isinf(UnleveredReturn)] = np.nan
@@ -216,6 +213,7 @@ class _Benchmark(__QS_Object__):
 class Strategy(BaseModule):
     """策略基类"""
     Accounts = List(Account)# 策略所用到的账户
+    FactorTables = List(FactorTable)# 策略所用到的因子表
     Benchmark = Instance(_Benchmark, arg_type="ArgObject", label="比较基准", order=0)
     def __init__(self, name, sys_args={}, **kwargs):
         super().__init__(name=name, sys_args=sys_args, **kwargs)
@@ -229,13 +227,12 @@ class Strategy(BaseModule):
         for iAccount in self.Accounts: Rslt += iAccount.__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
         Rslt += super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
         Rslt += self.init()
-        return Rslt
+        return Rslt+tuple(self.FactorTables)
     def __QS_move__(self, idt, *args, **kwargs):
         iTradingRecord = {iAccount.Name:iAccount.__QS_move__(idt) for iAccount in self.Accounts}
         Signal = self.genSignal(idt, iTradingRecord)
         self.trade(idt, iTradingRecord, Signal)
-        for iAccount in self.Accounts:
-            iAccount.__QS_after_move__(idt)
+        for iAccount in self.Accounts: iAccount.__QS_after_move__(idt)
         return 0
     def __QS_end__(self):
         for iAccount in self.Accounts: iAccount.__QS_end__()
@@ -251,10 +248,10 @@ class Strategy(BaseModule):
     # 可选实现
     def init(self):
         return ()
-    # 可选实现
+    # 可选实现, trading_record: {账户名: 交易记录, 比如: DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])}
     def genSignal(self, idt, trading_record):
         return None
-    # 可选实现
+    # 可选实现, trading_record: {账户名: 交易记录, 比如: DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])}
     def trade(self, idt, trading_record, signal):
         return 0
     def output(self):
@@ -270,6 +267,7 @@ class Strategy(BaseModule):
             InitCash += iAccount.InitCash
             DebtRecord = iAccount.DebtRecord.append(DebtRecord)
         StrategyOutput = genAccountOutput(InitCash, CashSeries, DebtSeries, AccountValueSeries, DebtRecord, self._Model.DateIndexSeries)
+        StrategyOutput["统计数据"].columns = ["策略表现", "无杠杆表现"]
         if self.Benchmark.FactorTable is not None:# 设置了基准
             BenchmarkPrice = self.Benchmark.FactorTable.readData(factor_names=[self.Benchmark.PriceFactor], dts=AccountValueSeries.index.tolist(), ids=[self.Benchmark.BenchmarkID]).iloc[0,:,0]
             BenchmarkOutput = pd.DataFrame(calcYieldSeq(wealth_seq=BenchmarkPrice.values), index=BenchmarkPrice.index, columns=["基准收益率"])
@@ -288,6 +286,9 @@ class Strategy(BaseModule):
                 BenchmarkOutput["相对累计收益率"] = BenchmarkOutput["相对收益率"].cumsum()
             BenchmarkOutput.index = StrategyOutput["日期序列"].index
             StrategyOutput["日期序列"] = pd.merge(StrategyOutput["日期序列"], BenchmarkOutput, left_index=True, right_index=True)
+            BenchmarkStatistics = summaryStrategy(BenchmarkOutput[["基准净值", "相对净值"]].values, list(BenchmarkOutput.index), init_wealth=[1, 1])
+            BenchmarkStatistics.columns = ["基准", "相对表现"]
+            StrategyOutput["统计数据"] = pd.merge(StrategyOutput["统计数据"], BenchmarkStatistics, left_index=True, right_index=True)
         self._Output["Strategy"] = StrategyOutput
         return self._Output
     def genExcelReport(self, xl_book, sheet_name):

@@ -1,42 +1,36 @@
 # coding=utf-8
+"""期货账户(TODO)"""
 import os
 from copy import deepcopy
 
 import pandas as pd
 import numpy as np
+from traits.api import Enum, Either, List, ListStr, Int, Float, Str, Bool, Dict, Instance, on_trait_change
 
-from QuantStudio.FunLib.AuxiliaryFun import getFactorList, searchNameInStrList
-from QuantStudio.FunLib.IDFun import testIDFilterStr
-from QuantStudio.FunLib import DateTimeFun
-from QuantStudio.FunLib.DataTypeFun import readNestedDictFromHDF5
-from QuantStudio import QSError, QSArgs, QSObject
-from QuantStudio.StrategyTest.StrategyTestModel import Account, cutDateTime
+from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
+from QuantStudio.Tools.IDFun import testIDFilterStr
+from QuantStudio.Tools import DateTimeFun
+from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5
+from QuantStudio import __QS_Error__, __QS_Object__
+from QuantStudio.HistoryTest.StrategyTest.StrategyTestModule import Account, cutDateTime
+from QuantStudio.HistoryTest.StrategyTest.StockAccount import _TradeLimit, _BarFactorMap, _TickFactorMap
 
-def _getDefaultNontradableIDFilter(ft=None, nonbuyable=True, qs_env=None):
-    if ft is None:
-        return None
-    if nonbuyable:
-        DefaultNontradableIDFilter = readNestedDictFromHDF5(qs_env.SysArgs['LibPath']+os.sep+'IDFilter.hdf5', "/默认限买条件")
-    else:
-        DefaultNontradableIDFilter = readNestedDictFromHDF5(qs_env.SysArgs['LibPath']+os.sep+'IDFilter.hdf5', "/默认限卖条件")
-    if DefaultNontradableIDFilter is not None:
-        CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(DefaultNontradableIDFilter, ft.FactorNames)
-        if CompiledIDFilterStr is not None:
-            return DefaultNontradableIDFilter
-    if '涨跌停' in set(ft.FactorNames):
-        if nonbuyable:
-            DefaultNontradableIDFilter = "(@涨跌停==1)"
-        else:
-            DefaultNontradableIDFilter = "(@涨跌停==-1)"
-    else:
-        DefaultNontradableIDFilter = None
-    return DefaultNontradableIDFilter
-
-class FutureAccount(Account):
-    """期货账户"""
-    def __init__(self, name, qs_env):
-        super().__init__(name, qs_env)
-        self.__QS_Type__ = "FutureAccount"
+# 基于 Bar 数据的股票账户
+# 行情因子表: 开盘价(非必需), 最高价(非必需), 最低价(非必需), 最新价, 成交量(非必需). 最新价用于记录账户价值变化; 成交价: 用于模拟市价单的成交.
+# 复权因子表: 复权因子或者每股送转(日期索引为股权登记日), 每股派息(税后, 日期索引为股权登记日), 派息日(日期索引为股权登记日), 红股上市日(日期索引为股权登记日)
+# 市价单根据当前时段的成交价和成交量的情况成交; 限价单根据最高价, 最低价和成交量的情况成交, 假定成交量在最高价和最低价之间的分布为均匀分布, 如果没有指定最高价和最低价, 则最高价和最低价相等且等于成交价
+# TODO: 加入交易状态, 涨跌停信息
+class TimeBarAccount(Account):
+    """基于 Bar 数据的期货账户"""
+    Delay = Bool(True, arg_type="Bool", label="交易延迟", order=2)
+    TargetIDs = ListStr(arg_type="IDList", label="目标ID", order=3)
+    Multiplier = Float(300, arg_type="Double", label="合约乘数", order=4)
+    InitMarginRate = Float(0.15, arg_type="Double", label="初始保证金率", order=5)
+    MaintenanceMarginRate = Float(0.08, arg_type="Double", label="维持保证金率", order=5)
+    BuyLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="买入限制", order=6)
+    SellLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="卖出限制", order=7)
+    MarketFactorMap = Instance(_BarFactorMap, arg_type="ArgObject", label="行情因子", order=8)
+    def __init__(self, market_ft, sys_args={}, **kwargs):
         # 继承自 Account 的属性
         #self._Cash = np.array([])# 剩余现金, 等于时间点长度+1, >=0
         #self._Debt = np.array([])# 负债, 等于时间点长度+1, >=0
@@ -47,11 +41,17 @@ class FutureAccount(Account):
         self._Position = np.array([])# 仓位, array(index=dts+1, columns=self._IDs)
         self._PositionAmount = np.array([])# 持仓金额, array(index=dts+1, columns=self._IDs)
         self._NominalAmount = np.array([])# 持仓名义金额, array(index=dts+1, columns=self._IDs)
-        self._OrderQueue = []# 当前接收到的订单队列, [pd.DataFrame(columns=["ID", "数量", "目标价"])], 账户每个时点从队列头部取出订单处理, 并在尾部添加空订单
-        self._PositionCostPrice = np.array([])# 当前持仓的成本价, 由于计算保证金的变化, array(len(self._IDs))
+        self._Orders = pd.DataFrame(columns=["ID", "数量", "目标价"])# 当前接收到的订单
         self._LastPrice = np.array([])# 最新价, array(len(self._IDs))
-        self._FT = None# 因子表对象
-        return
+        self._PositionCostPrice = np.array([])# 当前持仓的成本价, 由于计算保证金的变化, array(len(self._IDs))
+        self._MarketFT = market_ft# 行情因子表对象
+        super().__init__(sys_args=sys_args, **kwargs)
+        self.Name = "FutureAccount"
+    def __QS_initArgs__(self):
+        self.MarketFactorMap = _BarFactorMap(self._MarketFT)
+        self.AdjustFactorMap = _AdjustFactorMap(self._AdjustFT)
+        self.BuyLimit = _TradeLimit(direction="Buy")
+        self.SellLimit = _TradeLimit(direction="Sell")
     def __QS_genSysArgs__(self, args=None, **kwargs):
         SysArgs = super().__QS_genSysArgs__(args, **kwargs)
         if self.QSEnv.DefaultTable is None:
@@ -137,7 +137,7 @@ class FutureAccount(Account):
         self._NominalAmount = np.zeros((nDT+1, nID))
         self._OrderQueue = [pd.DataFrame(columns=["ID", "数量", "目标价"]) for i in range(max((1, self.SysArgs["交易延迟"])))]
         self._PositionCostPrice = np.full(nID, np.nan)# 当前持仓的成本价, 由于计算保证金的变化
-        self._FT = self.QSEnv.getTable(self.SysArgs["因子表"])
+        self._MarketFT = self.QSEnv.getTable(self.SysArgs["因子表"])
         self._iTradingRecord = []# 暂存的交易记录
         return 0
     def __QS_move__(self, idt, *args, **kwargs):
@@ -147,7 +147,7 @@ class FutureAccount(Account):
         self._Position[iIndex+1] = self._Position[iIndex]
         self._PositionAmount[iIndex+1] = self._PositionAmount[iIndex]
         self._NominalAmount[iIndex+1] = self._NominalAmount[iIndex]
-        self._LastPrice = self._FT.readData(dts=[self.QSEnv.STM.DateTime], ids=self._IDs, factor_names=[self.SysArgs["最新价"]]).iloc[0, 0].values
+        self._LastPrice = self._MarketFT.readData(dts=[self.QSEnv.STM.DateTime], ids=self._IDs, factor_names=[self.SysArgs["最新价"]]).iloc[0, 0].values
         # 撮合成交
         Orders = self._OrderQueue.pop(0)
         TradingRecord = self._matchMarketOrder(Orders)
@@ -182,26 +182,22 @@ class FutureAccount(Account):
             self._PositionCostPrice = LastPrice
         return 0
     def __QS_end__(self):
-        self._FT = None
+        self._MarketFT = None
         self._OrderQueue = []
         self._PositionCostPrice = None
         return 0
     # 当前账户价值
     @property
     def AccountValue(self):
-        return super().AccountValue + np.nansum(self._PositionAmount[self.QSEnv.STM.DateTimeIndex+1])
+        return super().AccountValue + np.nansum(self._PositionAmount[self._Model.DateTimeIndex+1])
     # 当前账户的持仓
     @property
     def Position(self):
-        return pd.Series(self._Position[self.QSEnv.STM.DateTimeIndex+1], index=self._IDs)
+        return pd.Series(self._Position[self._Model.DateTimeIndex+1], index=self._IDs)
     # 当前账户的持仓金额, 即保证金
     @property
     def PositionAmount(self):
-        return pd.Series(self._PositionAmount[self.QSEnv.STM.DateTimeIndex+1], index=self._IDs)
-    # 当前账户的投资组合
-    @property
-    def Portfolio(self):
-        return self.PositionAmount/self.AccountValue
+        return pd.Series(self._PositionAmount[self._Model.DateTimeIndex+1], index=self._IDs)
     # 当前账户的持仓名义金额
     @property
     def NominalAmount(self):
@@ -209,51 +205,15 @@ class FutureAccount(Account):
     # 本账户支持交易的证券 ID
     @property
     def IDs(self):
-        return np.array(self._IDs)
-    # 本账户当前不能执行买入的证券 ID
+        return self._IDs
+    # 当前账户中还未成交的订单, DataFrame(index=[int], columns=["ID", "数量", "目标价"])
     @property
-    def NonbuyableIDs(self):
-        return self.getNonbuyableID(self.QSEnv.STM.Date)
-    # 本账户当前不能执行卖出的证券 ID
-    @property
-    def NonsellableIDs(self):
-        return self.getNonsellableID(self.QSEnv.STM.Date)
-    # 本账户是否可以卖空
-    @property
-    def isShortAllowed(self):
-        return True
+    def Orders(self):
+        return self._Orders
     # 当前最新价
     @property
     def LastPrice(self):
         return pd.Series(self._LastPrice, index=self._IDs)
-    # 单位保证金
-    @property
-    def UnitMargin(self):
-        return self.LastPrice*self.SysArgs["合约乘数"]*self.SysArgs["保证金率"]
-    # 最小买入数量, 0 表示无限分割
-    @property
-    def MinBuyNum(self):
-        return pd.Series(self.SysArgs["买入限制"]["最小单位"], index=self.IDs)
-    # 单位买入价格
-    @property
-    def BuyUnitPrice(self):
-        return self.LastPrice
-    # 单位买入交易费
-    @property
-    def BuyUnitFee(self):
-        return self.LastPrice*self.SysArgs["合约乘数"]*self.SysArgs["买入限制"]["交易费率"]
-    # 最小卖出数量, 0 表示无限分割
-    @property
-    def MinSellNum(self):
-        return pd.Series(self.SysArgs["卖出限制"]["最小单位"], index=self.IDs)
-    # 单位卖出价格
-    @property
-    def SellUnitPrice(self):
-        return self.LastPrice
-    # 单位卖出交易费
-    @property
-    def SellUnitFee(self):
-        return self.LastPrice*self.SysArgs["合约乘数"]*self.SysArgs["卖出限制"]["交易费率"]
     # 获取持仓的历史序列, 以时间点为索引, 返回: pd.DataFrame(持仓, index=[时间点], columns=[ID])
     def getPositionSeries(self, dts=None, start_dt=None, end_dt=None):
         Data = pd.DataFrame(self._Position[1:self.QSEnv.STM.DateTimeIndex+2], index=self.QSEnv.STM.DateTimeSeries, columns=self._IDs)
@@ -262,12 +222,6 @@ class FutureAccount(Account):
     def getPositionAmountSeries(self, dts=None, start_dt=None, end_dt=None):
         Data = pd.DataFrame(self._PositionAmount[1:self.QSEnv.STM.DateTimeIndex+2], index=self.QSEnv.STM.DateTimeSeries, columns=self._IDs)
         return cutDateTime(Data, dts=dts, start_dt=start_dt, end_dt=end_dt)
-    # 计算持仓投资组合历史序列, 以时间点为索引, 返回: pd.DataFrame(权重, index=[日期], columns=[ID])
-    def getPortfolioSeries(self, dts=None, start_dt=None, end_dt=None):
-        PositionAmount = self.getPositionAmountSeries(dts=dts, start_dt=start_dt, end_dt=end_dt)
-        AccountValue = self.getAccountValueSeries(dts=dts, start_dt=start_dt, end_dt=end_dt)
-        AccountValue[AccountValue==0] += 0.0001
-        return (PositionAmount.T/AccountValue).T
     # 获取账户价值的历史序列, 以时间点为索引
     def getAccountValueSeries(self, dts=None, start_dt=None, end_dt=None):
         CashSeries = self.getCashSeries(dts=dts, start_dt=start_dt, end_dt=end_dt)
@@ -329,7 +283,7 @@ class FutureAccount(Account):
         AvailableCash = self.AvailableCash
         CashChanged = 0.0
         Position = self.Position
-        TradePrice = self._FT.readData(dts=[CurDateTime], ids=self._IDs, factor_names=[self.SysArgs["成交价"]]).iloc[0, 0]
+        TradePrice = self._MarketFT.readData(dts=[CurDateTime], ids=self._IDs, factor_names=[self.SysArgs["成交价"]]).iloc[0, 0]
         PositionAmount = self._PositionAmount[iIndex+1] + (TradePrice - self._PositionCostPrice)*Position*self.SysArgs["合约乘数"]
         TradingRecord = []
         # 先执行平仓交易
@@ -343,14 +297,14 @@ class FutureAccount(Account):
             CloseLongLimit[pd.isnull(ClosePrice[CloseLongOrders.index])] = 0.0# 成交价缺失的不能交易
             CloseShortLimit[pd.isnull(ClosePrice[CloseShortOrders.index])] = 0.0# 成交价缺失的不能交易
             if self.SysArgs["卖出限制"]["禁止条件"] is not None:
-                CloseLongLimit[self._FT.getIDMask(CurDateTime, self.SysArgs["卖出限制"]["禁止条件"])[CloseLongOrders.index]] = 0.0# 满足禁止条件的不能交易
+                CloseLongLimit[self._MarketFT.getIDMask(CurDateTime, self.SysArgs["卖出限制"]["禁止条件"])[CloseLongOrders.index]] = 0.0# 满足禁止条件的不能交易
             if self.SysArgs["买入限制"]["禁止条件"] is not None:
-                CloseShortLimit[self._FT.getIDMask(CurDateTime, self.SysArgs["买入限制"]["禁止条件"])[CloseShortOrders.index]] = 0.0# 满足禁止条件的不能交易
+                CloseShortLimit[self._MarketFT.getIDMask(CurDateTime, self.SysArgs["买入限制"]["禁止条件"])[CloseShortOrders.index]] = 0.0# 满足禁止条件的不能交易
             if self.SysArgs["卖出限制"]["成交量"]!="不限制":# 成交量缺失的不能交易
-                MaxNum = self._FT.readData(dts=[CurDateTime], factor_names=[self.SysArgs["卖出限制"]["成交量"]], ids=list(CloseLongOrders.index)).iloc[0, 0] * self.SysArgs["卖出限制"]["成交量限比"]
+                MaxNum = self._MarketFT.readData(dts=[CurDateTime], factor_names=[self.SysArgs["卖出限制"]["成交量"]], ids=list(CloseLongOrders.index)).iloc[0, 0] * self.SysArgs["卖出限制"]["成交量限比"]
                 CloseLongLimit = np.minimum(CloseLongLimit, MaxNum)
             if self.SysArgs["买入限制"]["成交量"]!="不限制":# 成交量缺失的不能交易
-                MaxNum = self._FT.readData(dts=[CurDateTime], factor_names=[self.SysArgs["买入限制"]["成交量"]], ids=list(CloseShortOrders.index)).iloc[0, 0] * self.SysArgs["买入限制"]["成交量限比"]
+                MaxNum = self._MarketFT.readData(dts=[CurDateTime], factor_names=[self.SysArgs["买入限制"]["成交量"]], ids=list(CloseShortOrders.index)).iloc[0, 0] * self.SysArgs["买入限制"]["成交量限比"]
                 CloseShortLimit = np.minimum(CloseShortLimit, MaxNum)
             CloseLongNum = np.minimum(np.minimum(CloseLongLimit, Position[CloseLongOrders.index]), CloseLongOrders.abs())
             CloseShortNum = np.minimum(np.minimum(CloseShortLimit, Position[CloseShortOrders.index].abs()), CloseShortOrders)
@@ -390,14 +344,14 @@ class FutureAccount(Account):
             OpenLongLimit[pd.isnull(OpenPrice[OpenLongOrders.index])] = 0.0# 成交价缺失的不能交易
             OpenShortLimit[pd.isnull(OpenPrice[OpenShortOrders.index])] = 0.0# 成交价缺失的不能交易
             if self.SysArgs["买入限制"]["禁止条件"] is not None:
-                OpenLongLimit[self._FT.getIDMask(CurDateTime, self.SysArgs["买入限制"]["禁止条件"])[OpenLongOrders.index]] = 0.0# 满足禁止条件的不能交易
+                OpenLongLimit[self._MarketFT.getIDMask(CurDateTime, self.SysArgs["买入限制"]["禁止条件"])[OpenLongOrders.index]] = 0.0# 满足禁止条件的不能交易
             if self.SysArgs["卖出限制"]["禁止条件"] is not None:
-                OpenShortLimit[self._FT.getIDMask(CurDateTime, self.SysArgs["卖出限制"]["禁止条件"])[OpenShortOrders.index]] = 0.0# 满足禁止条件的不能交易
+                OpenShortLimit[self._MarketFT.getIDMask(CurDateTime, self.SysArgs["卖出限制"]["禁止条件"])[OpenShortOrders.index]] = 0.0# 满足禁止条件的不能交易
             if self.SysArgs["买入限制"]["成交量"]!="不限制":# 成交量缺失的不能交易
-                MaxNum = self._FT.readData(dts=[CurDateTime], factor_names=[self.SysArgs["买入限制"]["成交量"]], ids=list(OpenLongOrders.index)).iloc[0, 0] * self.SysArgs["买入限制"]["成交量限比"]
+                MaxNum = self._MarketFT.readData(dts=[CurDateTime], factor_names=[self.SysArgs["买入限制"]["成交量"]], ids=list(OpenLongOrders.index)).iloc[0, 0] * self.SysArgs["买入限制"]["成交量限比"]
                 OpenLongLimit = np.minimum(OpenLongLimit, MaxNum)
             if self.SysArgs["卖出限制"]["成交量"]!="不限制":# 成交量缺失的不能交易
-                MaxNum = self._FT.readData(dts=[CurDateTime], factor_names=[self.SysArgs["卖出限制"]["成交量"]], ids=list(OpenLongOrders.index)).iloc[0, 0] * self.SysArgs["卖出限制"]["成交量限比"]
+                MaxNum = self._MarketFT.readData(dts=[CurDateTime], factor_names=[self.SysArgs["卖出限制"]["成交量"]], ids=list(OpenLongOrders.index)).iloc[0, 0] * self.SysArgs["卖出限制"]["成交量限比"]
                 OpenShortLimit = np.minimum(OpenShortLimit, MaxNum)
             OpenLongNum = np.minimum(OpenLongLimit, OpenLongOrders)
             OpenShortNum = np.minimum(OpenShortLimit, OpenShortOrders.abs())

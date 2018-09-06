@@ -1,4 +1,5 @@
 # coding=utf-8
+"""融券账户(TODO)"""
 import os
 import shelve
 from copy import deepcopy
@@ -6,14 +7,14 @@ from copy import deepcopy
 import pandas as pd
 import numpy as np
 
-from QuantStudio.FunLib.AuxiliaryFun import getFactorList,searchNameInStrList
-from QuantStudio.FunLib.IDFun import testIDFilterStr
-from QuantStudio import QSError, QSArgs, QSObject
-from QuantStudio.StrategyTest.StrategyTestModel import Account, cutDate, indexDate
+from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
+from QuantStudio.Tools.IDFun import testIDFilterStr
+from QuantStudio import __QS_Error__, __QS_Object__
+from QuantStudio.HistoryTest.StrategyTest.StrategyTestModule import Account, cutDateTime
 
 class MarginAccount(Account):
     """融券账户"""
-    def __init__(self, qs_env=None):
+    def __init__(self, sys_args={}, **kwargs):
         self.QSEnv = qs_env
         super().__init__()
         self.__QS_Type__ = "ShortAccount"
@@ -26,19 +27,6 @@ class MarginAccount(Account):
         self.InitMargin = []# 再平衡时的初始Margin, 与self.TradeDates等长
         self.MarginPreTrade = []# 交易发生之前用成交价计算的保证金, 用于计算对冲和空头的保证金以及复算统计结果, 与self.TradeDates等长
         return
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        # Remove the unpicklable entries.
-        state['Dates'] = []
-        state['Position'] = []
-        state['NominalAmount'] = []
-        state['Margin'] = []
-        state['TurnOver'] = []
-        state['InitMargin'] = []
-        state['TradeDates'] = []
-        state['MarginPreTrade'] = []
-        state['TempData'] = {}
-        return state
     # 生成系统参数信息集以及初始值
     def genSysArgInfo(self,arg=None):
         # arg=None 表示初始化参数

@@ -50,22 +50,23 @@ class _FactorTable(FactorTable):
         else:
             return pd.Series(MetaData)
     def getID(self, ifactor_name=None, idt=None):
-        if ifactor_name is not None:
-            with self._FactorDB._DataLock:
-                with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix) as ijFile:
-                    return sorted(ijFile["ID"][...])
-        else:
-            IDs = set()
-            for iFactorName in self.FactorNames:
-                IDs = IDs.union(set(self.getID(iFactorName)))
-        return sorted(IDs)
+        if ifactor_name is None: ifactor_name = self.FactorNames[0]
+        with self._FactorDB._DataLock:
+            with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix) as ijFile:
+                return sorted(ijFile["ID"][...])
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None):
         if ifactor_name is None: ifactor_name = self.FactorNames[0]
         with self._FactorDB._DataLock:
             with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix) as ijFile:
                 Timestamps = ijFile["DateTime"][...]
-        if start_dt is not None: Timestamps = Timestamps[Timestamps>=start_dt.timestamp()]
-        if end_dt is not None: Timestamps = Timestamps[Timestamps<=end_dt.timestamp()]
+        if start_dt is not None:
+            if isinstance(start_dt, pd.Timestamp) and (pd.__version__>="0.20.0"): start_dt = start_dt.to_pydatetime().timestamp()
+            else: start_dt = start_dt.timestamp()
+            Timestamps = Timestamps[Timestamps>=start_dt]
+        if end_dt is not None:
+            if isinstance(end_dt, pd.Timestamp) and (pd.__version__>="0.20.0"): end_dt = end_dt.to_pydatetime().timestamp()
+            else: end_dt = end_dt.timestamp()
+            Timestamps = Timestamps[Timestamps<=end_dt]
         return sorted(dt.datetime.fromtimestamp(iTimestamp) for iTimestamp in Timestamps)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         Data = {iFactor: self.readFactorData(ifactor_name=iFactor, ids=ids, dts=dts, args=args) for iFactor in factor_names}
@@ -80,6 +81,8 @@ class _FactorTable(FactorTable):
                 if dts is None:
                     if ids is None:
                         Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs)
+                    elif len(ids)>=1000:
+                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).ix[ids]
                     else:
                         CrossedIDs = list(set(ids).intersection(set(IDs)))
                         IDs = list(IDs)
@@ -89,7 +92,8 @@ class _FactorTable(FactorTable):
                         else:
                             Rslt = pd.DataFrame(DataFile["Data"][:, CrossedIDPos], index=DateTimes, columns=CrossedIDs).ix[:, ids]
                 else:
-                    dts = [idt.timestamp() for idt in dts]
+                    if dts and isinstance(dts[0], pd.Timestamp) and (pd.__version__>="0.20.0"): dts = [idt.to_pydatetime().timestamp() for idt in dts]
+                    else: dts = [idt.timestamp() for idt in dts]
                     DateTimes = pd.Series(np.arange(0, DateTimes.shape[0]), index=DateTimes)
                     DateTimes = DateTimes.ix[dts]
                     DateTimes = DateTimes[pd.notnull(DateTimes)].astype('int')
@@ -97,7 +101,12 @@ class _FactorTable(FactorTable):
                     DateTimes = DateTimes.sort_values()
                     Mask = DateTimes.tolist()
                     DateTimes = DateTimes.index.values
-                    if nDT>0:
+                    if nDT==0:
+                        if ids is None:
+                            Rslt = pd.DataFrame([], index=[], columns=IDs).ix[dts]
+                        else:
+                            Rslt = pd.DataFrame([], index=[], columns=ids).ix[dts]
+                    elif nDT<1000:
                         if ids is None:
                             Rslt = pd.DataFrame(DataFile["Data"][Mask, :], index=DateTimes, columns=IDs)
                         else:
@@ -108,10 +117,8 @@ class _FactorTable(FactorTable):
                             EndInd = IDRuler.max()
                             Rslt = pd.DataFrame(DataFile["Data"][Mask, StartInd:EndInd+1], index=DateTimes, columns=IDs[StartInd:EndInd+1]).ix[:, ids]
                     else:
-                        if ids is None:
-                            Rslt = pd.DataFrame([], index=[], columns=IDs).ix[dts]
-                        else:
-                            Rslt = pd.DataFrame([], index=[], columns=ids).ix[dts]
+                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DataFile["DateTime"][...], columns=IDs).ix[dts]
+                        if ids is not None: Rslt = Rslt.ix[:, ids]
         if DataType!="double":
             Rslt.where(pd.notnull(Rslt), None, inplace=True)
             Rslt.where(Rslt!="", None, inplace=True)
@@ -276,7 +283,8 @@ class HDF5DB(WritableFactorDB):
                     data_type = 'string'
             else:
                 factor_data = factor_data.where(pd.notnull(factor_data), None)
-            factor_data.index = [idt.timestamp() for idt in factor_data.index]
+            if pd.__version__>="0.20.0": factor_data.index = [idt.to_pydatetime().timestamp() for idt in factor_data.index]
+            else: factor_data.index = [idt.timestamp() for idt in factor_data.index]
             if not os.path.isdir(TablePath):
                 os.mkdir(TablePath)
             if not os.path.isfile(FilePath):
@@ -289,10 +297,10 @@ class HDF5DB(WritableFactorDB):
                     DataFile.create_dataset("DateTime", shape=(factor_data.shape[0],), maxshape=(None,),
                                             data=factor_data.index)
                     if data_type=='double':
-                        DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None,None), dtype=np.float, 
+                        DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=np.float, 
                                                 fillvalue=np.nan, data=factor_data.values)
                     else:
-                        DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None,None), dtype=StrDataType,
+                        DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=StrDataType,
                                                 fillvalue=None, data=factor_data.values)
             else:
                 with h5py.File(FilePath) as DataFile:

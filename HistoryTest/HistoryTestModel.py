@@ -60,23 +60,23 @@ class HistoryTestModel(__QS_Object__):
     Modules = List(BaseModule)# 已经添加的测试模块, [测试模块对象]
     def __init__(self, sys_args={}, **kwargs):
         super().__init__(sys_args=sys_args, **kwargs)
-        self._TestDateTimes = np.array([])# 测试时间点序列, [datetime.datetime]
+        self._TestDateTimes = []# 测试时间点序列, [datetime.datetime]
         self._TestDateTimeIndex = -1# 测试时间点索引
         self._TestDateIndex = pd.Series([], dtype=np.int64)# 测试日期最后一个时间点位于 _TestDateTimes 中的索引
         self._Output = {}
     # 当前时点, datetime.datetime
     @property
     def DateTime(self):
-        return self._TestDateTimes[-1]
-    # 当前时间点在整个回测时间序列中的位置
+        return self._TestDateTimes[self._TestDateTimeIndex]
+    # 当前时间点在整个回测时间序列中的位置索引, int
     @property
     def DateTimeIndex(self):
         return self._TestDateTimeIndex
-    # 截止当前的时间点序列
+    # 截止当前的时间点序列, [datetime.datetime]
     @property
     def DateTimeSeries(self):
         return self._TestDateTimes[:self._TestDateTimeIndex+1]
-    # 截止到当前日期序列在时间点序列中的索引, Series(索引, index=[日期])
+    # 截止到当前日期序列在时间点序列中的索引, Series(int, index=[日期])
     @property
     def DateIndexSeries(self):
         return self._TestDateIndex
@@ -91,16 +91,12 @@ class HistoryTestModel(__QS_Object__):
         return (Groups, Context)
     # 运行模型
     def run(self, test_dts=None, test_dates=None, test_times=None):
-        if test_dts is not None:
-            self._TestDateTimes = np.array(test_dts)
+        if test_dts is not None: self._TestDateTimes = sorted(test_dts)
         elif test_dates is not None:
-            test_dates = np.array(test_dates)
-            if test_times is None:
-                test_times = [dt.time(23,59,59,999999)]
-            test_times = np.array(test_times)
-            self._TestDateTimes = np.array(tuple(DateTimeFun.combineDateTime(test_dates, test_times)))
-        else:
-            self._TestDateTimes = np.array(self._TestDateTimes)
+            test_dates = sorted(test_dates)
+            if test_times is None: test_times = [dt.time(23,59,59,999999)]
+            else: test_times = sorted(test_times)
+            self._TestDateTimes = list(combineDateTime(test_dates, test_times))
         TotalStartT = time.process_time()
         print("==========历史回测==========", "1. 初始化", sep="\n", end="")
         FactorDBs = set()

@@ -1,4 +1,5 @@
 # coding=utf-8
+"""ETF账户(TODO)"""
 import os
 import shelve
 from copy import deepcopy
@@ -6,11 +7,11 @@ from copy import deepcopy
 import pandas as pd
 import numpy as np
 
-from QuantStudio.FunLib.AuxiliaryFun import getFactorList,searchNameInStrList
-from QuantStudio.FunLib.IDFun import testIDFilterStr
-from QuantStudio.FunLib import DateTimeFun
+from QuantStudio.Tools.AuxiliaryFun import getFactorList,searchNameInStrList
+from QuantStudio.Tools.IDFun import testIDFilterStr
+from QuantStudio.Tools import DateTimeFun
 from QuantStudio import QSError, QSArgs, QSObject
-from QuantStudio.StrategyTest.StrategyTestModel import Account, StartedValidator
+from QuantStudio.HistoryTest.StrategyTest.StrategyTestModule import Account
 
 def _getDefaultNontradableIDFilter(data_source=None,nonbuyable=True,qs_env=None):
     if data_source is None:
@@ -242,7 +243,6 @@ class ETFAccount(Account):
     def SellUnitFee(self):
         return self.LastPrice*self.SysArgs["卖出限制"]["交易费率"]
     # 提取证券
-    @StartedValidator
     def fetchEquity(self, target_id, num):
         Position = self._Position[-1].get(target_id, 0)
         EquityNum = min((num, Position))
@@ -253,7 +253,6 @@ class ETFAccount(Account):
         self._EquitySOA.loc[self._EquitySOA.shape[0]] = (self.QSEnv.STM.Date, self.QSEnv.STM.Timestamp, target_id, -EquityNum)
         return EquityNum
     # 增加证券
-    @StartedValidator
     def addEquity(self, target_id, num):
         if num<=0:
             return 0
@@ -263,11 +262,9 @@ class ETFAccount(Account):
         self._EquitySOA.loc[self._EquitySOA.shape[0]] = (self.QSEnv.STM.Date, self.QSEnv.STM.Timestamp, target_id, num)
         return 0
     # 申购 ETF, portfolio: Series(数量, [ID]), TODO
-    @StartedValidator
     def purchaseETF(self, target_id, num, portfolio):
         pass
     # 赎回 ETF, 返回: Series(数量, [ID]), TODO
-    @StartedValidator
     def redeemETF(self, target_id, num):
         pass
     # 当前的申购赎回清单, TODO

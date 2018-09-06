@@ -1,11 +1,12 @@
 # coding=utf-8
+"""股票账户"""
 import os
 import datetime as dt
 from copy import deepcopy
 
 import pandas as pd
 import numpy as np
-from traits.api import Enum, Either, List, ListStr, Int, Float, Str, Bool, Dict, Instance, on_trait_change, HasTraits
+from traits.api import Enum, Either, List, ListStr, Int, Float, Str, Bool, Dict, Instance, on_trait_change
 
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.Tools.IDFun import testIDFilterStr
@@ -113,7 +114,6 @@ class TimeBarAccount(Account):
         #self._CashRecord = pd.DataFrame(columns=["时间点", "现金流"])# 现金流记录, pd.DataFrame(columns=["日期", "时间点", "现金流"]), 现金流入为正, 现金流出为负
         #self._DebtRecord = pd.DataFrame(columns=["时间点", "融资"])# 融资记录, pd.DataFrame(columns=["日期", "时间点", "融资"]), 增加负债为正, 减少负债为负
         #self._TradingRecord = pd.DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])# 交易记录
-        
         self._IDs = []# 本账户支持交易的证券 ID, []
         self._Position = np.array([])# 仓位, array(index=dts+1, columns=self._IDs)
         self._PositionAmount = np.array([])# 持仓金额, array(index=dts+1, columns=self._IDs)
@@ -170,16 +170,17 @@ class TimeBarAccount(Account):
             TradingRecord = pd.DataFrame(TradingRecord, index=np.arange(self._TradingRecord.shape[0], self._TradingRecord.shape[0]+len(TradingRecord)),
                                          columns=self._TradingRecord.columns)
             self._TradingRecord = self._TradingRecord.append(TradingRecord)
-            self._PositionAmount[iIndex+1] = self._Position[iIndex+1]*self._LastPrice
         else:
             TradingRecord = self._iTradingRecord
+        self._PositionAmount[iIndex+1] = self._Position[iIndex+1]*self._LastPrice
         return TradingRecord
     def __QS_after_move__(self, idt, *args, **kwargs):
         super().__QS_after_move__(self, idt, *args, **kwargs)
         if not self.Delay:# 撮合成交
+            iIndex = self._Model.DateTimeIndex
             TradingRecord = self._matchOrder(idt)
             TradingRecord = pd.DataFrame(TradingRecord, index=np.arange(self._TradingRecord.shape[0], self._TradingRecord.shape[0]+len(TradingRecord)),
-                                                                  columns=self._TradingRecord.columns)
+                                         columns=self._TradingRecord.columns)
             self._TradingRecord = self._TradingRecord.append(TradingRecord)
             self._iTradingRecord = TradingRecord
             self._PositionAmount[iIndex+1] = self._Position[iIndex+1]*self._LastPrice
@@ -191,30 +192,35 @@ class TimeBarAccount(Account):
         self._Output["持仓金额"] = self.getPositionAmountSeries()
         self._Output["证券进出记录"] = self._EquityRecord
         return self._Output
-    # 当前账户价值
+    # 当前账户价值, float
     @property
     def AccountValue(self):
         return super().AccountValue + np.nansum(self._PositionAmount[self._Model.DateTimeIndex+1])
-    # 当前账户的持仓数量
+    # 当前账户的持仓数量, Series(index=[ID])
     @property
     def Position(self):
         return pd.Series(self._Position[self._Model.DateTimeIndex+1], index=self._IDs)
-    # 当前账户的持仓金额
+    # 当前账户的持仓金额, Series(index=[ID])
     @property
     def PositionAmount(self):
         return pd.Series(self._PositionAmount[self._Model.DateTimeIndex+1], index=self._IDs)
-    # 本账户支持交易的证券 ID
+    # 本账户支持交易的证券 ID, [ID]
     @property
     def IDs(self):
         return self._IDs
-    # 当前账户中还未成交的订单
+    # 当前账户中还未成交的订单, DataFrame(index=[int], columns=["ID", "数量", "目标价"])
     @property
     def Orders(self):
         return self._Orders
-    # 当前最新价
+    # 当前最新价, Series(index=[ID])
     @property
     def LastPrice(self):
         return pd.Series(self._LastPrice, index=self._IDs)
+    # 当前的 Bar 数据, DataFrame(float, index=[ID], columns=["开盘价", "最高价", "最低价", "最新价", "成交量"])
+    @property
+    def Bar(self):
+        return self._MarketFT.readData(factor_names=[self.MarketFactorMap.Open, self.MarketFactorMap.High, self.MarketFactorMap.Low, self.MarketFactorMap.Last, self.MarketFactorMap.Vol], 
+                                       dts=[self._Model.DateTime], ids=self._IDs).iloc[:,0,:]
     # 提取证券
     def fetchEquity(self, target_id, num, remark=""):
         iIndex = self._Model.DateTimeIndex
@@ -242,23 +248,24 @@ class TimeBarAccount(Account):
         self._PositionAmount[iIndex, TargetIDIndex] = self._PositionAmount[iIndex, TargetIDIndex] + AmountDelta
         self._EquityRecord.loc[self._EquityRecord.shape[0]] = (self._Model.DateTime, target_id, num, AmountDelta, remark)
         return 0
-    # 获取持仓数量的历史序列, 以时间点为索引, 返回: pd.DataFrame(持仓数量, index=[时间点], columns=[ID])
+    # 获取持仓数量的历史序列, 以时间点为索引, 返回: DataFrame(float, index=[时间点], columns=[ID])
     def getPositionSeries(self, dts=None, start_dt=None, end_dt=None):
         Data = pd.DataFrame(self._Position[1:self._Model.DateTimeIndex+2], index=self._Model.DateTimeSeries, columns=self._IDs)
         return cutDateTime(Data, dts=dts, start_dt=start_dt, end_dt=end_dt)
-    # 获取持仓金额的历史序列, 以时间点为索引, 返回: pd.DataFrame(持仓金额, index=[时间点], columns=[ID])
+    # 获取持仓金额的历史序列, 以时间点为索引, 返回: DataFrame(float, index=[时间点], columns=[ID])
     def getPositionAmountSeries(self, dts=None, start_dt=None, end_dt=None):
         Data = pd.DataFrame(self._PositionAmount[1:self._Model.DateTimeIndex+2], index=self._Model.DateTimeSeries, columns=self._IDs)
-        return cutDateTime(Data, dts=dts, start_dt=start_dt, end_dt=end_dt)
-    # 获取账户价值的历史序列, 以时间点为索引
+        Data = cutDateTime(Data, dts=dts, start_dt=start_dt, end_dt=end_dt)
+        return Data.fillna(value=0.0)
+    # 获取账户价值的历史序列, 以时间点为索引, 返回: Series(float, index=[时间点], columns=[ID])
     def getAccountValueSeries(self, dts=None, start_dt=None, end_dt=None):
         CashSeries = self.getCashSeries(dts=dts, start_dt=start_dt, end_dt=end_dt)
         PositionAmountSeries = self.getPositionAmountSeries(dts=dts, start_dt=start_dt, end_dt=end_dt).sum(axis=1)
         DebtSeries = self.getDebtSeries(dts=dts, start_dt=start_dt, end_dt=end_dt)
         return CashSeries + PositionAmountSeries - DebtSeries
-    # 执行给定数量的证券委托单, target_id: 目标证券 ID, num: 待买卖的数量, target_price: nan 表示市价单
-    # combined_order: 组合订单, DataFrame(columns=[ID, 数量, 目标价])
-    # 基本的下单函数
+    # 基本的下单函数, 执行给定数量的证券委托单
+    # 单个订单: target_id: 目标证券 ID, num: 待买卖的数量, target_price: nan 表示市价单
+    # 组合订单: combined_order: DataFrame(columns=[ID, 数量, 目标价])
     def order(self, target_id=None, num=1, target_price=np.nan, combined_order=None):
         if target_id is not None:
             if (num>0) and (self.BuyLimit.MinUnit>0):
@@ -274,10 +281,10 @@ class TimeBarAccount(Account):
             if self.SellLimit.MinUnit>0:
                 Mask = (combined_order["数量"]<0)
                 combined_order["数量"][Mask] = np.fix(combined_order["数量"][Mask] / self.SellLimit.MinUnit) * self.SellLimit.MinUnit
-            combined_order.index = np.arange(Orders.shape[0], Orders.shape[0]+combined_order.shape[0])
+            combined_order.index = np.arange(self._Orders.shape[0], self._Orders.shape[0]+combined_order.shape[0])
             self._Orders = self._Orders.append(combined_order)
         return combined_order
-    # 撤销订单, order_ids 是订单在 self._Orders 中的 index
+    # 撤销订单, order_ids 是订单在 self.Orders 中的 index
     def cancelOrder(self, order_ids):
         self._Orders = self._Orders.loc[self._Orders.index.difference(set(order_ids))]
         self._Orders.sort_index(axis=0, inplace=True)
@@ -287,9 +294,13 @@ class TimeBarAccount(Account):
     def _updateAccount(self, cash_changed, position):
         iIndex = self._Model.DateTimeIndex
         DebtDelta = max((- cash_changed - self.Cash, 0))
-        self._Debt[iIndex+1] += DebtDelta
-        if DebtDelta>0: self._DebtRecord.loc[self._DebtRecord.shape[0]] = (self._Model.DateTime, DebtDelta)
-        self._Cash[iIndex+1] -= min((- cash_changed, self.Cash))
+        if self.DeltLimit>0:
+            self._Debt[iIndex+1] += DebtDelta
+            if DebtDelta>0: self._DebtRecord.loc[self._DebtRecord.shape[0]] = (self._Model.DateTime, DebtDelta)
+            self._Cash[iIndex+1] -= min((- cash_changed, self.Cash))
+        else:
+            if DebtDelta>0: self._Cash[iIndex+1] = 0
+            else: self._Cash[iIndex+1] -= min((- cash_changed, self.Cash))
         position[position.abs()<1e-6] = 0.0
         self._Position[iIndex+1] = position.values
         return 0
@@ -331,7 +342,7 @@ class TimeBarAccount(Account):
         SellPrice = self._MarketFT.readData(dts=[idt], ids=IDs, factor_names=[self.MarketFactorMap.TradePrice]).iloc[0, 0]
         SellLimit = pd.Series(np.zeros(sell_orders.shape[0])+np.inf, index=IDs)
         SellLimit[pd.isnull(SellPrice)] = 0.0# 成交价缺失的不能卖出
-        if self.SellLimit.LimitIDFilter: SellLimit[self._MarketFT.getIDMask(idt, self.SellLimit.LimitIDFilter)[IDs]] = 0.0# 满足禁止条件的不能卖出, TODO
+        if self.SellLimit.LimitIDFilter: SellLimit[self._MarketFT.getIDMask(idt, ids=IDs, id_filter_str=self.SellLimit.LimitIDFilter)] = 0.0# 满足禁止条件的不能卖出, TODO
         if self.MarketFactorMap.Vol: SellLimit = np.minimum(SellLimit, self._MarketFT.readData(factor_names=[self.MarketFactorMap.Vol], ids=IDs, dts=[idt]).iloc[0, 0] * self.SellLimit.MarketOrderVolumeLimit)# 成交量限制
         SellNums = np.minimum(SellLimit, sell_orders)
         if self.SellLimit.MinUnit!=0.0: SellNums = (SellNums / self.SellLimit.MinUnit).astype("int") * self.SellLimit.MinUnit# 最小交易单位限制
@@ -354,7 +365,7 @@ class TimeBarAccount(Account):
         BuyPrice = self._MarketFT.readData(dts=[idt], ids=IDs, factor_names=[self.MarketFactorMap.TradePrice]).iloc[0, 0]
         BuyLimit = pd.Series(np.zeros(buy_orders.shape[0])+np.inf, index=IDs)
         BuyLimit[pd.isnull(BuyPrice)] = 0.0# 成交价缺失的不能买入
-        if self.BuyLimit.LimitIDFilter: BuyLimit[self._MarketFT.getIDMask(idt, self.BuyLimit.LimitIDFilter)[IDs]] = 0.0# 满足禁止条件的不能卖出
+        if self.BuyLimit.LimitIDFilter: BuyLimit[self._MarketFT.getIDMask(idt, ids=IDs, id_filter_str=self.BuyLimit.LimitIDFilter)] = 0.0# 满足禁止条件的不能卖出
         if self.MarketFactorMap.Vol: BuyLimit = np.minimum(BuyLimit, self._MarketFT.readData(dts=[idt], factor_names=[self.MarketFactorMap.Vol], ids=IDs).iloc[0, 0] * self.BuyLimit.MarketOrderVolumeLimit)# 成交量限制
         BuyAmounts = np.minimum(BuyLimit*BuyPrice, buy_orders*BuyPrice)
         TotalBuyAmounts = BuyAmounts.sum()
@@ -374,8 +385,8 @@ class TimeBarAccount(Account):
         if TradingRecord: self._updateAccount(CashChanged, Position)
         return TradingRecord
     # 撮合成交卖出限价单
-    # 如果最高价和最低价未指定, 则检验成交价是否优于目标价, 是就以目标价完成成交, 成交量满足卖出限制要求
-    # 如果指定了最高价和最低价, 则假设成交价服从[最低价, 最高价]中的均匀分布, 据此确定可完成成交的数量, 同时满足卖出限制要求
+    # 如果最高价和最低价未指定, 则检验成交价是否优于目标价, 是就以目标价完成成交, 且成交量满足卖出限制中的限价单成交量限比, 否则无法成交
+    # 如果指定了最高价和最低价, 则假设成交价服从[最低价, 最高价]中的均匀分布, 据此确定可完成成交的数量
     # 未成交的限价单继续保留
     def _matchLimitSellOrder(self, idt, sell_orders):
         if sell_orders.shape[0]==0: return ([], sell_orders)
@@ -417,7 +428,7 @@ class TimeBarAccount(Account):
         if TradingRecord: self._updateAccount(CashChanged, Position)
         return (TradingRecord, sell_orders)
     # 撮合成交买入限价单
-    # 如果最高价和最低价未指定, 则检验成交价是否优于目标价, 是就以目标价完成成交, 成交量满足买入限制要求
+    # 如果最高价和最低价未指定, 则检验成交价是否优于目标价, 是就以目标价完成成交, 且成交量满足买入限制要求
     # 如果指定了最高价和最低价, 则假设成交价服从[最低价, 最高价]中的均匀分布, 据此确定可完成成交的数量, 同时满足买入限制要求
     # 未成交的限价单继续保留
     def _matchLimitBuyOrder(self, idt, buy_orders):
