@@ -191,6 +191,84 @@ class TimeBarAccount(Account):
         self._Output["持仓金额"] = self.getPositionAmountSeries()
         self._Output["证券进出记录"] = self._EquityRecord
         return 0
+    # 添加新的分红送转信息
+    def _addDividendInfo(self, idate):
+        if (self._AdjustFT is None) or (self.AdjustFactorMap.AdjustFactor is not None): return 0
+        Position = self.Position
+        IDs = Position[Position!=0].index
+        if IDs.shape[0]==0: return 0
+        iDT = dt.datetime.combine(idate, dt.time(23,59,59,999999))
+        Dividend = self._AdjustFT.readData(factor_names=[self.AdjustFactorMap.CashDividend, self.AdjustFactorMap.StockDividend], ids=IDs, dts=[iDT]).iloc[:, 0, :]
+        CashDvd = Dividend.iloc[:, 0]
+        IDs = list(CashDvd[CashDvd>0].index)
+        if IDs:# 有现金红利
+            CashDvdDate = self._AdjustFT.readData(factor_names=[self.AdjustFactorMap.CashPayDate], ids=IDs, dts=[iDT]).iloc[0, 0, :]
+            for i, iID in IDs:
+                iDate = CashDvdDate.iloc[i]
+                if pd.notnull(iDate):
+                    iDate = dt.date(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]))
+                    self._CashDividend[iDate] = self._CashDividend.get(iDate, 0)
+                    self._CashDividend.loc[iID, iDate] += CashDvd[iID]*Position[iID]
+        StockDvd = Dividend.iloc[:, 1]
+        IDs = list(StockDvd[StockDvd>0].index)
+        if IDs:# 有红股
+            StockDvdDate = self._AdjustFT.readData(factor_names=[self.AdjustFactorMap.StockPayDate], ids=IDs, dts=[iDT]).iloc[0, 0, :]
+            for i, iID in IDs:
+                iDate = StockDvdDate.iloc[i]
+                if pd.notnull(iDate):
+                    iDate = dt.date(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]))
+                    self._StockDividend[iDate] = self._StockDividend.get(iDate, 0)
+                    self._StockDividend.loc[iID, iDate] += int(StockDvd[iID]*Position[iID])
+        return 0
+    # 处理分红送转
+    def _handleDividend(self, idate):
+        if self._AdjustFT is None: return 0
+        AdjustFactor = self.AdjustFactorMap.AdjustFactor
+        if self.AdjustFactorMap.AdjustFactor is not None:
+            AdjustFactor = self._AdjustFT.readData(factor_names=[self.AdjustFactorMap.AdjustFactor], ids=self._IDs, dts=[dt.datetime.combine(idate, dt.time(23,59,59,999999))]).values.squeeze()
+            AdjustFactor = np.where(np.isnan(AdjustFactor), self._AdjustFactor, AdjustFactor)
+            iIndex = self._Model.DateTimeIndex
+            self._Position[iIndex+1] *= AdjustFactor/self._AdjustFactor
+            self._AdjustFactor = AdjustFactor
+            return 0
+        if idate in self._CashDividend:
+            iDividend = self._CashDividend.pop(idate)
+            iDividend = iDividend[iDividend>0]
+            for i, iID in enumerate(iDividend.index):
+                self.addCash(iDividend.iloc[i], "%s: 股息发放" % iID)
+        if idate in self._StockDividend:
+            iDividend = self._StockDividend.pop(idate)
+            iDividend = iDividend[iDividend>0]
+            for i, iID in enumerate(iDividend.index):
+                self.addEquity(iID, iDividend.iloc[i], "%s: 红股发放" % iID)
+        return 0
+    # 提取证券
+    def fetchEquity(self, target_id, num, remark=""):
+        iIndex = self._Model.DateTimeIndex
+        TargetIDIndex = self._IDs.index(target_id)
+        Position = self._Position[iIndex, TargetIDIndex]
+        EquityNum = min((num, Position))
+        if EquityNum<=0: return 0
+        self._Position[iIndex, TargetIDIndex] -= Position - EquityNum
+        AmountDelta = EquityNum / Position * self._PositionAmount[iIndex, TargetIDIndex]
+        self._PositionAmount[iIndex, TargetIDIndex] -= AmountDelta
+        self._EquityRecord.loc[self._EquityRecord.shape[0]] = (self._Model.DateTime, target_id, -EquityNum, -AmountDelta, remark)
+        return EquityNum
+    # 增加证券
+    def addEquity(self, target_id, num, remark=""):
+        if num<=0: return 0
+        iIndex = self._Model.DateTimeIndex
+        TargetIDIndex = self._IDs.index(target_id)
+        OldPosition = self._Position[iIndex, TargetIDIndex]
+        self._Position[iIndex, TargetIDIndex] = OldPosition + num
+        if OldPosition>0:
+            AmountDelta = self._PositionAmount[iIndex, TargetIDIndex] / OldPosition * num
+        else:
+            LastPrice = self.LastPrice.get(target_id, np.nan)
+            AmountDelta = LastPrice * num
+        self._PositionAmount[iIndex, TargetIDIndex] = self._PositionAmount[iIndex, TargetIDIndex] + AmountDelta
+        self._EquityRecord.loc[self._EquityRecord.shape[0]] = (self._Model.DateTime, target_id, num, AmountDelta, remark)
+        return 0
     # 当前账户价值, float
     @property
     def AccountValue(self):
@@ -220,33 +298,6 @@ class TimeBarAccount(Account):
     def Bar(self):
         return self._MarketFT.readData(factor_names=[self.MarketFactorMap.Open, self.MarketFactorMap.High, self.MarketFactorMap.Low, self.MarketFactorMap.Last, self.MarketFactorMap.Vol], 
                                        dts=[self._Model.DateTime], ids=self._IDs).iloc[:,0,:]
-    # 提取证券
-    def fetchEquity(self, target_id, num, remark=""):
-        iIndex = self._Model.DateTimeIndex
-        TargetIDIndex = self._IDs.index(target_id)
-        Position = self._Position[iIndex, TargetIDIndex]
-        EquityNum = min((num, Position))
-        if EquityNum<=0: return 0
-        self._Position[iIndex, TargetIDIndex] -= Position - EquityNum
-        AmountDelta = EquityNum / Position * self._PositionAmount[iIndex, TargetIDIndex]
-        self._PositionAmount[iIndex, TargetIDIndex] -= AmountDelta
-        self._EquityRecord.loc[self._EquityRecord.shape[0]] = (self._Model.DateTime, target_id, -EquityNum, -AmountDelta, remark)
-        return EquityNum
-    # 增加证券
-    def addEquity(self, target_id, num, remark=""):
-        if num<=0: return 0
-        iIndex = self._Model.DateTimeIndex
-        TargetIDIndex = self._IDs.index(target_id)
-        OldPosition = self._Position[iIndex, TargetIDIndex]
-        self._Position[iIndex, TargetIDIndex] = OldPosition + num
-        if OldPosition>0:
-            AmountDelta = self._PositionAmount[iIndex, TargetIDIndex] / OldPosition * num
-        else:
-            LastPrice = self.LastPrice.get(target_id, np.nan)
-            AmountDelta = LastPrice * num
-        self._PositionAmount[iIndex, TargetIDIndex] = self._PositionAmount[iIndex, TargetIDIndex] + AmountDelta
-        self._EquityRecord.loc[self._EquityRecord.shape[0]] = (self._Model.DateTime, target_id, num, AmountDelta, remark)
-        return 0
     # 获取持仓数量的历史序列, 以时间点为索引, 返回: DataFrame(float, index=[时间点], columns=[ID])
     def getPositionSeries(self, dts=None, start_dt=None, end_dt=None):
         Data = pd.DataFrame(self._Position[1:self._Model.DateTimeIndex+2], index=self._Model.DateTimeSeries, columns=self._IDs)
@@ -474,57 +525,7 @@ class TimeBarAccount(Account):
         TradingRecord = list(zip([idt]*Mask.sum(), Volume.index[Mask], BuyNums[Mask], (BuyAmounts/BuyNums)[Mask], Fees[Mask], (-BuyAmounts-Fees)[Mask], ["close"]*Mask.sum()))
         if TradingRecord: self._updateAccount(CashChanged, Position)
         return (TradingRecord, buy_orders)
-    # 处理分红送转
-    def _handleDividend(self, idate):
-        if self._AdjustFT is None: return 0
-        AdjustFactor = self.AdjustFactorMap.AdjustFactor
-        if self.AdjustFactorMap.AdjustFactor is not None:
-            AdjustFactor = self._AdjustFT.readData(factor_names=[self.AdjustFactorMap.AdjustFactor], ids=self._IDs, dts=[dt.datetime.combine(idate, dt.time(23,59,59,999999))]).values.squeeze()
-            AdjustFactor = np.where(np.isnan(AdjustFactor), self._AdjustFactor, AdjustFactor)
-            iIndex = self._Model.DateTimeIndex
-            self._Position[iIndex+1] *= AdjustFactor/self._AdjustFactor
-            self._AdjustFactor = AdjustFactor
-            return 0
-        if idate in self._CashDividend:
-            iDividend = self._CashDividend.pop(idate)
-            iDividend = iDividend[iDividend>0]
-            for i, iID in enumerate(iDividend.index):
-                self.addCash(iDividend.iloc[i], "%s: 股息发放" % iID)
-        if idate in self._StockDividend:
-            iDividend = self._StockDividend.pop(idate)
-            iDividend = iDividend[iDividend>0]
-            for i, iID in enumerate(iDividend.index):
-                self.addEquity(iID, iDividend.iloc[i], "%s: 红股发放" % iID)
-        return 0
-    # 添加新的分红送转信息
-    def _addDividendInfo(self, idate):
-        if (self._AdjustFT is None) or (self.AdjustFactorMap.AdjustFactor is not None): return 0
-        Position = self.Position
-        IDs = Position[Position!=0].index
-        if IDs.shape[0]==0: return 0
-        iDT = dt.datetime.combine(idate, dt.time(23,59,59,999999))
-        Dividend = self._AdjustFT.readData(factor_names=[self.AdjustFactorMap.CashDividend, self.AdjustFactorMap.StockDividend], ids=IDs, dts=[iDT]).iloc[:, 0, :]
-        CashDvd = Dividend.iloc[:, 0]
-        IDs = list(CashDvd[CashDvd>0].index)
-        if IDs:# 有现金红利
-            CashDvdDate = self._AdjustFT.readData(factor_names=[self.AdjustFactorMap.CashPayDate], ids=IDs, dts=[iDT]).iloc[0, 0, :]
-            for i, iID in IDs:
-                iDate = CashDvdDate.iloc[i]
-                if pd.notnull(iDate):
-                    iDate = dt.date(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]))
-                    self._CashDividend[iDate] = self._CashDividend.get(iDate, 0)
-                    self._CashDividend.loc[iID, iDate] += CashDvd[iID]*Position[iID]
-        StockDvd = Dividend.iloc[:, 1]
-        IDs = list(StockDvd[StockDvd>0].index)
-        if IDs:# 有红股
-            StockDvdDate = self._AdjustFT.readData(factor_names=[self.AdjustFactorMap.StockPayDate], ids=IDs, dts=[iDT]).iloc[0, 0, :]
-            for i, iID in IDs:
-                iDate = StockDvdDate.iloc[i]
-                if pd.notnull(iDate):
-                    iDate = dt.date(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]))
-                    self._StockDividend[iDate] = self._StockDividend.get(iDate, 0)
-                    self._StockDividend.loc[iID, iDate] += int(StockDvd[iID]*Position[iID])
-        return 0
+
 
 class _TickFactorMap(_BarFactorMap):
     """Tick 因子映照"""
