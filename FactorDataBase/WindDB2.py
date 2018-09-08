@@ -493,8 +493,8 @@ class _MappingTable(_DBTable):
             iData = raw_data[iFactorName].unstack()
             Data[iFactorName].loc[iData.index, iData.columns] = iData
             Data[iFactorName].fillna(method="bfill", inplace=True)
-        Data = pd.Panel(Data)
-        return _adjustDateTime(Data, dts, fillna=True, method="bfill").loc[factor_names]
+        Data = pd.Panel(Data).ix[factor_names, :, ids]
+        return _adjustDateTime(Data, dts, fillna=True, method="bfill")
 
 class _FeatureTable(_DBTable):
     """特征因子表"""

@@ -60,14 +60,14 @@ class HistoryTestModel(__QS_Object__):
     Modules = List(BaseModule)# 已经添加的测试模块, [测试模块对象]
     def __init__(self, sys_args={}, **kwargs):
         super().__init__(sys_args=sys_args, **kwargs)
-        self._TestDateTimes = []# 测试时间点序列, [datetime.datetime]
+        self._QS_TestDateTimes = []# 测试时间点序列, [datetime.datetime]
         self._TestDateTimeIndex = -1# 测试时间点索引
-        self._TestDateIndex = pd.Series([], dtype=np.int64)# 测试日期最后一个时间点位于 _TestDateTimes 中的索引
+        self._TestDateIndex = pd.Series([], dtype=np.int64)# 测试日期最后一个时间点位于 _QS_TestDateTimes 中的索引
         self._Output = {}
     # 当前时点, datetime.datetime
     @property
     def DateTime(self):
-        return self._TestDateTimes[self._TestDateTimeIndex]
+        return self._QS_TestDateTimes[self._TestDateTimeIndex]
     # 当前时间点在整个回测时间序列中的位置索引, int
     @property
     def DateTimeIndex(self):
@@ -75,7 +75,7 @@ class HistoryTestModel(__QS_Object__):
     # 截止当前的时间点序列, [datetime.datetime]
     @property
     def DateTimeSeries(self):
-        return self._TestDateTimes[:self._TestDateTimeIndex+1]
+        return self._QS_TestDateTimes[:self._TestDateTimeIndex+1]
     # 截止到当前日期序列在时间点序列中的索引, Series(int, index=[日期])
     @property
     def DateIndexSeries(self):
@@ -91,12 +91,12 @@ class HistoryTestModel(__QS_Object__):
         return (Groups, Context)
     # 运行模型
     def run(self, test_dts=None, test_dates=None, test_times=None):
-        if test_dts is not None: self._TestDateTimes = sorted(test_dts)
+        if test_dts is not None: self._QS_TestDateTimes = sorted(test_dts)
         elif test_dates is not None:
             test_dates = sorted(test_dates)
             if test_times is None: test_times = [dt.time(23,59,59,999999)]
             else: test_times = sorted(test_times)
-            self._TestDateTimes = list(combineDateTime(test_dates, test_times))
+            self._QS_TestDateTimes = list(combineDateTime(test_dates, test_times))
         TotalStartT = time.process_time()
         print("==========历史回测==========", "1. 初始化", sep="\n", end="")
         FactorDBs = set()
@@ -106,7 +106,7 @@ class HistoryTestModel(__QS_Object__):
         for jDB in FactorDBs: jDB.start(dts=test_dts, dates=test_dates, times=test_times)
         print(('耗时 : %.2f' % (time.process_time()-TotalStartT, )), "2. 循环计算", sep="\n", end="")
         StartT = time.process_time()
-        for i, iDateTime in enumerate(tqdm(self._TestDateTimes)):
+        for i, iDateTime in enumerate(tqdm(self._QS_TestDateTimes)):
             self._TestDateTimeIndex = i
             self._TestDateIndex.loc[iDateTime.date()] = i
             for jDB in FactorDBs: jDB.move(iDateTime)

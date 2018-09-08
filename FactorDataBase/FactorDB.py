@@ -215,11 +215,11 @@ def _prepareMMAPIDCacheData(ft):
 # 因子表的运算模式参数对象
 class _OperationMode(__QS_Object__):
     """运算模式"""
-    DateTimes = List(dt.datetime, arg_type="DateTimeList", label="运算时点", order=0)
-    IDs = List(str, arg_type="IDList", label="运算ID", order=1)
-    FactorNames = ListStr(arg_type="MultiOption", label="运算因子", order=2, option_range=())
-    SubProcessNum = Int(0, arg_type="Integer", label="子进程数", order=3)
-    DTRuler = List(dt.datetime, arg_type="DateTimeList", label="时点标尺", order=4)
+    DateTimes = List(dt.datetime)
+    IDs = ListStr()
+    FactorNames = ListStr()
+    SubProcessNum = Int(0, arg_type="Integer", label="子进程数", order=0)
+    DTRuler = List(dt.datetime, arg_type="DateTimeList", label="时点标尺", order=1)
     def __init__(self, ft, sys_args={}, **kwargs):
         self._FT = ft
         self._isStarted = False
@@ -547,10 +547,11 @@ class FactorTable(__QS_Object__):
         # 生成所有因子的起始时点信息
         self.OperationMode._FactorStartDT = {}# {因子名: 起始时点}
         for iFactor in self.OperationMode._FactorDict.values(): iFactor._QS_updateStartDT(self.OperationMode.DateTimes[0], self.OperationMode._FactorStartDT)
-    def _prepareRawData(self):
+    def _prepare(self, factor_names, ids, dts):
+        self.OperationMode.FactorNames = factor_names
+        self.OperationMode.DateTimes = dts
+        self.OperationMode.IDs = ids
         self._initOperation()
-        print("1. 原始数据准备", end="")
-        StartT = time.process_time()
         # 分组准备数据
         FTs, FT_Factors = {}, {}# {id(因子表) : 因子表}, {id(因子表) : [因子]}
         for iFactor in self.OperationMode._FactorDict.values():
@@ -584,10 +585,22 @@ class FactorTable(__QS_Object__):
                         if iProc.is_alive(): iProc.terminate()
                     raise __QS_Error__(iMsg)
             for iPrcs in Procs.values(): iPrcs.join()
-        print("耗时 : %.2f" % (time.process_time()-StartT, ))
-    def calculate(self, factor_db, table_name, if_exists="append", **kwargs):
-        self._prepareRawData()
-        print("2. 因子数据计算", end="")
+        self.OperationMode._isStarted = True
+        return 0
+    def _exit(self):
+        # 清理缓存, TODO
+        #try:
+        #shutil.rmtree(self.OperationMode._CacheDir)
+        #except:
+        #print("警告 : 缓存文件夹 : '%s' 清除失败!" % self.OperationMode._CacheDir)
+        self.OperationMode._isStarted = False
+        return 0
+    # 计算因子数据并写入因子库    
+    def write2FDB(self, factor_names, ids, dts, factor_db, table_name, if_exists="append", **kwargs):
+        print("==========因子运算==========", "1. 原始数据准备", sep="\n", end="")
+        TotalStartT = time.process_time()
+        self._prepare(factor_names, ids, dts)
+        print(("耗时 : %.2f" % (time.process_time()-TotalStartT, )), "2. 因子数据计算", end="", sep="\n")
         StartT = time.process_time()
         Args = {"FT":self, "PID":"0", "FactorDB":factor_db, "TableName":table_name, "if_exists":if_exists}
         if self.OperationMode.SubProcessNum==0:
@@ -624,11 +637,8 @@ class FactorTable(__QS_Object__):
                     if iProg>=nTask: break
             for iPID, iPrcs in Procs.items(): iPrcs.join()
         print("耗时 : %.2f" % (time.process_time()-StartT))
-        # 清理缓存
-        #try:
-            #shutil.rmtree(self.OperationMode._CacheDir)
-        #except:
-            #print("警告 : 缓存文件夹 : '%s' 清除失败!" % self.OperationMode._CacheDir)
+        print(('耗时 : %.2f' % (time.process_time()-StartT, )), ("总耗时 : %.2f" % (time.process_time()-TotalStartT, )), "="*28, sep="\n", end="\n")
+        self._exit()
         return 0
 
 # 自定义因子表
@@ -713,11 +723,13 @@ class CustomFT(FactorTable):
         Data = {}
         TableArgFactor = self._FactorDict.loc[factor_names].groupby(by=["FTID", "ArgIndex"]).groups
         for iFTID, iArgIndex in TableArgFactor:
+            iArgIndex = int(iArgIndex)
             if iFTID==id(None):
                 iFactorList, iArgList = self._TableArgDict[iFTID]
                 iFactor = iFactorList[iArgIndex]
+                iFactorName = TableArgFactor[(iFTID, iArgIndex)][0]
                 iArgs = iArgList[iArgIndex]
-                Data[iFactor] = iFactor.readData(ids=ids, dts=dts, args=iArgs)
+                Data[iFactorName] = iFactor.readData(ids=ids, dts=dts, args=iArgs)
             else:
                 iFT, iArgList = self._TableArgDict[iFTID]
                 iArgs = iArgList[iArgIndex]
@@ -772,8 +784,7 @@ class CustomFT(FactorTable):
         if factor_names is None:
             factor_names = self.FactorNames
         for iFactorName in factor_names:
-            if iFactorName not in self._FactorDict.index:
-                continue
+            if iFactorName not in self._FactorDict.index: continue
             iFTID = self._FactorDict.loc[iFactorName, "FTID"]
             iArgIndex = int(self._FactorDict.loc[iFactorName, "ArgIndex"])
             if iFTID==id(None):
@@ -898,10 +909,6 @@ class Factor(__QS_Object__):
     @property
     def FactorTable(self):
         return self._FactorTable
-    @property
-    def DTRuler(self):
-        if self._OperationMode is None: return None
-        return self._OperationMode.DTRuler
     # 获取因子的元数据
     def getMetaData(self, key=None):
         if self._FactorTable is not None: return self._FactorTable.getFactorMetaData(factor_names=[self._NameInFT], key=key).loc[self._NameInFT]
