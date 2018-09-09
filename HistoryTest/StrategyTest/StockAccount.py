@@ -93,7 +93,17 @@ class _BarFactorMap(__QS_Object__):
         self.add_trait("Vol", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="成交量", order=4))
         self.add_trait("TradePrice", Enum(*DefaultNumFactorList[1:], arg_type="SingleOption", label="成交价", order=5))
         self.TradePrice = self.Last = searchNameInStrList(DefaultNumFactorList[1:], ['新','收','Last','last','close','Close'])
-
+class _TickFactorMap(_BarFactorMap):
+    """Tick 因子映照"""
+    def __init__(self, market_ft, sys_args={}, **kwargs):
+        self._MarketFT = market_ft
+        return super().__init__(sys_args=sys_args, **kwargs)
+    def __QS_initArgs__(self):
+        super().__QS_initArgs__()
+        self.add_trait("Bid", Str(arg_type="String", label="买盘价格因子", order=7))
+        self.add_trait("BidVol", Str(arg_type="String", label="买盘数量因子", order=8))
+        self.add_trait("Ask", Str(arg_type="String", label="卖盘价格因子", order=9))
+        self.add_trait("AskVol", Str(arg_type="String", label="买盘数量因子", order=10))
 # 基于 Bar 数据的股票账户
 # 行情因子表: 开盘价(非必需), 最高价(非必需), 最低价(非必需), 最新价, 成交量(非必需). 最新价用于记录账户价值变化; 成交价: 用于模拟市价单的成交.
 # 复权因子表: 复权因子或者每股送转(日期索引为股权登记日), 每股派息(税后, 日期索引为股权登记日), 派息日(日期索引为股权登记日), 红股上市日(日期索引为股权登记日)
@@ -109,17 +119,17 @@ class TimeBarAccount(Account):
     AdjustFactorMap = Instance(_AdjustFactorMap, arg_type="ArgObject", label="复权因子", order=7)
     def __init__(self, market_ft, adjust_ft=None, sys_args={}, **kwargs):
         # 继承自 Account 的属性
-        #self._Cash = np.array([])# 剩余现金, 等于时间点长度+1, >=0
-        #self._Debt = np.array([])# 负债, 等于时间点长度+1, >=0
-        #self._CashRecord = pd.DataFrame(columns=["时间点", "现金流"])# 现金流记录, pd.DataFrame(columns=["日期", "时间点", "现金流"]), 现金流入为正, 现金流出为负
-        #self._DebtRecord = pd.DataFrame(columns=["时间点", "融资"])# 融资记录, pd.DataFrame(columns=["日期", "时间点", "融资"]), 增加负债为正, 减少负债为负
-        #self._TradingRecord = pd.DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])# 交易记录
+        #self._Cash = None# 剩余现金, >=0,  array(shape=(nDT+1,))
+        #self._Debt = None# 负债, >=0, array(shape=(nDT+1,))
+        #self._CashRecord = None# 现金流记录, 现金流入为正, 现金流出为负, DataFrame(columns=["时间点", "现金流", "备注"])
+        #self._DebtRecord = None# 融资记录, 增加负债为正, 减少负债为负, DataFrame(columns=["时间点", "融资", "备注"])
+        #self._TradingRecord = None# 交易记录, DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])
         self._IDs = []# 本账户支持交易的证券 ID, []
-        self._Position = np.array([])# 仓位, array(index=dts+1, columns=self._IDs)
-        self._PositionAmount = np.array([])# 持仓金额, array(index=dts+1, columns=self._IDs)
-        self._EquityRecord = pd.DataFrame(columns=["时间点", "ID", "进出数量", "进出金额", "备注"])# 证券进出流水记录, 提取为负, 增加为正
-        self._Orders = pd.DataFrame(columns=["ID", "数量", "目标价"])# 当前接收到的订单
-        self._LastPrice = np.array([])# 最新价, array(len(self._IDs))
+        self._Position = None# 仓位, array(shape=(nDT+1, nID))
+        self._PositionAmount = None# 持仓金额, array(shape=(nDT+1, nID))
+        self._EquityRecord = None# 证券进出流水记录, 提取为负, 增加为正, DataFrame(columns=["时间点", "ID", "进出数量", "进出金额", "备注"])
+        self._Orders = None# 接收到的订单, DataFrame(columns=["ID", "数量", "目标价"])
+        self._LastPrice = None# 最新价, array(shape=(nID,))
         self._MarketFT = market_ft# 行情因子表对象
         self._AdjustFT = adjust_ft# 复权因子表对象
         super().__init__(sys_args=sys_args, **kwargs)
@@ -346,7 +356,7 @@ class TimeBarAccount(Account):
         DebtDelta = max((- cash_changed - self.Cash, 0))
         if self.DeltLimit>0:
             self._Debt[iIndex+1] += DebtDelta
-            if DebtDelta>0: self._DebtRecord.loc[self._DebtRecord.shape[0]] = (self._Model.DateTime, DebtDelta)
+            if DebtDelta>0: self._DebtRecord.loc[self._DebtRecord.shape[0]] = (self._Model.DateTime, DebtDelta, "")
             self._Cash[iIndex+1] -= min((- cash_changed, self.Cash))
         else:
             if DebtDelta>0: self._Cash[iIndex+1] = 0
@@ -527,17 +537,6 @@ class TimeBarAccount(Account):
         return (TradingRecord, buy_orders)
 
 
-class _TickFactorMap(_BarFactorMap):
-    """Tick 因子映照"""
-    def __init__(self, market_ft, sys_args={}, **kwargs):
-        self._MarketFT = market_ft
-        return super().__init__(sys_args=sys_args, **kwargs)
-    def __QS_initArgs__(self):
-        super().__QS_initArgs__()
-        self.add_trait("Bid", Str(arg_type="String", label="买盘价格因子", order=7))
-        self.add_trait("BidVol", Str(arg_type="String", label="买盘数量因子", order=8))
-        self.add_trait("Ask", Str(arg_type="String", label="卖盘价格因子", order=9))
-        self.add_trait("AskVol", Str(arg_type="String", label="买盘数量因子", order=10))
 # 基于 Tick 数据的股票账户
 # 行情因子表: 开盘价, 最高价, 最低价, 最新价, 成交价, 成交量, 买价1..., 卖价1..., 买量1..., 卖量1... 最新价用于记录账户价值变化; 买卖盘: 用于模拟市价单的成交
 # 复权因子表: 复权因子或者每股送转(日期索引为股权登记日), 每股派息(税后, 日期索引为股权登记日), 派息日(日期索引为股权登记日), 红股上市日(日期索引为股权登记日)

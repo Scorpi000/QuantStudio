@@ -7,13 +7,17 @@ import pandas as pd
 import numpy as np
 from traits.api import Enum, Either, List, ListStr, Int, Float, Str, Bool, Dict, Instance, on_trait_change
 
-from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
+from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList, match2Series
 from QuantStudio.Tools.IDFun import testIDFilterStr
 from QuantStudio.Tools import DateTimeFun
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5
 from QuantStudio import __QS_Error__, __QS_Object__
 from QuantStudio.HistoryTest.StrategyTest.StrategyTestModule import Account, cutDateTime
 from QuantStudio.HistoryTest.StrategyTest.StockAccount import _TradeLimit
+
+class _TradeLimit(__QS_Object__):
+    """交易限制"""
+    TradeFee = Float(0.0, arg_type="Double", label="交易费率", order=0)
 
 # Bar 因子: 开盘价(非必需), 最高价(非必需), 最低价(非必需), 最新价, 成交价, 成交量(非必需). 最新价用于记录账户价值变化; 成交价用于模拟市价单的成交.
 class _BarFactorMap(__QS_Object__):
@@ -38,24 +42,28 @@ class _BarFactorMap(__QS_Object__):
         self.add_trait("TradePrice", Enum(*DefaultNumFactorList[1:], arg_type="SingleOption", label="成交价", order=5))
         self.TradePrice = self.Last = searchNameInStrList(DefaultNumFactorList[1:], ['新','收','Last','last','close','Close'])
 
-# 证券信息: 合约乘数, 初始保证金率, 维持保证金率, 合约映射
+# 证券信息: 初始保证金率, 维持保证金率, 合约乘数, 合约映射, 结算价
 class _SecurityInfo(__OS_Object__):
-    Multiplier = Enum(None, arg_type="Double", label="合约乘数", order=0)
-    InitMarginRate = Float(0.15, arg_type="Double", label="初始保证金率", order=1)
-    MaintenanceMarginRate = Float(0.08, arg_type="Double", label="维持保证金率", order=2)
-    LastTradeDate = Enum(None, arg_type="SingleOption", label="最后交易日", order=3)
-    ContractMapping = Enum(None, arg_type="SingleOption", label="合约映射", order=4)
-    def __init__(self, market_ft, sys_args={}, **kwargs):
-        self._MarketFT = market_ft
+    InitMarginRate = Float(0.15, arg_type="Double", label="初始保证金率", order=0)
+    MaintenanceMarginRate = Float(0.08, arg_type="Double", label="维持保证金率", order=1)
+    Multiplier = Float(1, arg_type="Double", label="合约乘数", order=2)
+    ContractMapping = Enum(None, arg_type="SingleOption", label="合约映射", order=3)
+    SettlementPrice = Enum(None, arg_type="SingleOption", label="结算价", order=4)
+    def __init__(self, ft, sys_args={}, **kwargs):
+        self._FT = ft
         return super().__init__(sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
-        DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._MarketFT.getFactorMetaData(key="DataType")))
-        self.add_trait("LastTradeDate", Enum(*DefaultStrFactorList, arg_type="SingleOption", label="最后交易日", order=3))
-        self.LastTradeDate = searchNameInStrList(DefaultStrFactorList[1:], ["日",'Date'])
+        DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
+        self.add_trait("ContractMapping", Enum(*DefaultStrFactorList, arg_type="SingleOption", label="合约映射", order=3))
+        self.ContractMapping = searchNameInStrList(DefaultStrFactorList, ['映射','map','Map'])
+        self.add_trait("SettlementPrice", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="结算价", order=4))
+        self.SettlementPrice = searchNameInStrList(DefaultNumFactorList, ['结算','价','settle','Settle','price','Price'])
+        
 
 # 基于 Bar 数据的期货账户
+# 基于连续合约的行情交易
+# market_ft: 行情因子表, 时间频率任意; security_ft: 证券信息因子表, 时间频率日级以下
 # 市价单根据当前时段的成交价和成交量的情况成交; 限价单根据最高价, 最低价和成交量的情况成交, 假定成交量在最高价和最低价之间的分布为均匀分布, 如果没有指定最高价和最低价, 则最高价和最低价相等且等于成交价
-# TODO: 加入交易状态, 涨跌停信息
 class TimeBarAccount(Account):
     """基于 Bar 数据的期货账户"""
     Delay = Bool(True, arg_type="Bool", label="交易延迟", order=2)
@@ -66,17 +74,17 @@ class TimeBarAccount(Account):
     SecurityInfo = Instance(_SecurityInfo, arg_type="ArgObject", label="证券信息", order=7)
     def __init__(self, market_ft, security_ft, sys_args={}, **kwargs):
         # 继承自 Account 的属性
-        #self._Cash = np.array([])# 剩余现金, 等于时间点长度+1, >=0
-        #self._Debt = np.array([])# 负债, 等于时间点长度+1, >=0
-        #self._CashRecord = pd.DataFrame(columns=["时间点", "现金流"])# 现金流记录, pd.DataFrame(columns=["日期", "时间点", "现金流"]), 现金流入为正, 现金流出为负
-        #self._DebtRecord = pd.DataFrame(columns=["时间点", "融资"])# 融资记录, pd.DataFrame(columns=["日期", "时间点", "融资"]), 增加负债为正, 减少负债为负
-        #self._TradingRecord = pd.DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])# 交易记录
+        #self._Cash = None# 剩余现金, >=0,  array(shape=(nDT+1,))
+        #self._Debt = None# 负债, >=0, array(shape=(nDT+1,))
+        #self._CashRecord = None# 现金流记录, 现金流入为正, 现金流出为负, DataFrame(columns=["时间点", "现金流", "备注"])
+        #self._DebtRecord = None# 融资记录, 增加负债为正, 减少负债为负, DataFrame(columns=["时间点", "融资", "备注"])
+        #self._TradingRecord = None# 交易记录, DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])
         self._IDs = []# 本账户支持交易的证券 ID, []
-        self._Position = np.array([])# 持仓数量, array(index=dts+1, columns=self._IDs)
-        self._Margin = np.array([])# 保证金, array(index=dts+1, columns=self._IDs)
-        self._PositionCostPrice = np.array([])# 当前持仓的平均成本价, 由于计算盈亏, array(len(self._IDs))
-        self._Orders = pd.DataFrame(columns=["ID", "数量", "目标价"])# 当前接收到的订单
-        self._LastPrice = np.array([])# 最新价, array(len(self._IDs))
+        self._Position = None# 持仓数量, array(shape=(nDT+1, nID))
+        self._Margin = None# 保证金, array(shape=(nDT+1, nID))
+        self._Orders = None# 当前接收到的订单, DataFrame(columns=["ID", "数量", "目标价"])
+        self._LastPrice = None# 最新价, array(shape=(nID,))
+        self._CostPrice = None# 当前持仓的平均成本价, array(shape=(nID,))
         self._MarketFT = market_ft# 行情因子表对象
         self._SecurityFT = security_ft# 证券信息因子表对象
         super().__init__(sys_args=sys_args, **kwargs)
@@ -95,65 +103,91 @@ class TimeBarAccount(Account):
         self._Position = np.zeros((nDT+1, nID))
         self._Margin = np.zeros((nDT+1, nID))
         self._Orders = pd.DataFrame(columns=["ID", "数量", "目标价"])
-        self._LastPrice = None# 最新价
-        Rslt += (self._MarketFT, )
+        self._LastPrice = np.full(shape=(nID,), fill_value=np.nan)# 最新价
+        self._CostPrice = np.full(shape=(nID,), fill_value=np.nan)# 当前持仓的平均成本价
         self._iTradingRecord = []# 暂存的交易记录
-        self._iDate = None# 当前所处的日期
-        return Rslt
+        self._nDT = nDT
+        return Rslt + (self._MarketFT, self._SecurityFT)
     def __QS_move__(self, idt, *args, **kwargs):
         super().__QS_move__(idt, *args, **kwargs)
         # 更新当前的账户信息
         iIndex = self._Model.DateTimeIndex
-        self._Position[iIndex+1] = self._Position[iIndex]
-        if iIndex<len(self._Model._QS_TestDateTimes)-1:
-            iNextDate = self._Model._QS_TestDateTimes[iIndex+1].date()
-            if iNextDate!=idt.date():# 当前是该交易日的最后一个时点
-                self._handleSettlement(iDate)# 处理结算
+        self._Position[iIndex+1] = self._Position[iIndex]# 初始化持仓
+        self._LastPrice = self._MarketFT.readData(factor_names=[self.MarketFactorMap.Last], ids=self._IDs, dts=[idt]).iloc[0, 0].values
         if self.Delay:# 撮合成交
             self._handleDelivery()# 处理交割
             TradingRecord = self._matchOrder(idt)
-            TradingRecord = pd.DataFrame(TradingRecord, index=np.arange(self._TradingRecord.shape[0], self._TradingRecord.shape[0]+len(TradingRecord)),
-                                         columns=self._TradingRecord.columns)
+            TradingRecord = pd.DataFrame(TradingRecord, index=np.arange(self._TradingRecord.shape[0], self._TradingRecord.shape[0]+len(TradingRecord)), columns=self._TradingRecord.columns)
             self._TradingRecord = self._TradingRecord.append(TradingRecord)
         else:
             TradingRecord = self._iTradingRecord
-        self._LastPrice = self._MarketFT.readData(factor_names=[self.MarketFactorMap.Last], ids=self._IDs, dts=[idt]).iloc[0, 0].values
-        self._Margin[iIndex+1] += (self._LastPrice - self._PositionCostPrice)*self._Position[iIndex+1]*self.SecurityInfo.Multiplier
+        iMarginChanged = (self._LastPrice - self._CostPrice) * self._Position[iIndex+1] * self.SecurityInfo.Multiplier
+        iMarginChanged[np.isnan(iMarginChanged)] = 0.0
+        self._Margin[iIndex+1] += iMarginChanged
+        self._CostPrice = self._LastPrice
         return TradingRecord
     def __QS_after_move__(self, idt, *args, **kwargs):
         super().__QS_after_move__(self, idt, *args, **kwargs)
+        iIndex = self._Model.DateTimeIndex
         if not self.Delay:# 撮合成交
-            iIndex = self._Model.DateTimeIndex
             TradingRecord = self._matchOrder(idt)
-            TradingRecord = pd.DataFrame(TradingRecord, index=np.arange(self._TradingRecord.shape[0], self._TradingRecord.shape[0]+len(TradingRecord)),
-                                         columns=self._TradingRecord.columns)
+            TradingRecord = pd.DataFrame(TradingRecord, index=np.arange(self._TradingRecord.shape[0], self._TradingRecord.shape[0]+len(TradingRecord)), columns=self._TradingRecord.columns)
             self._TradingRecord = self._TradingRecord.append(TradingRecord)
             self._iTradingRecord = TradingRecord
-            self._Margin[iIndex+1] += (self._LastPrice - self._PositionCostPrice)*self._Position[iIndex+1]*self.SecurityInfo.Multiplier
-        self._PositionCostPrice = self._LastPrice
+            iMarginChanged = (self._LastPrice - self._CostPrice) * self._Position[iIndex+1] * self.SecurityInfo.Multiplier
+            iMarginChanged[np.isnan(iMarginChanged)] = 0.0
+            self._Margin[iIndex+1] += iMarginChanged
+            self._CostPrice = self._LastPrice
+        if iIndex<self._nDT-1:
+            self._handleRollover()# 处理展期
+            iNextDate = self._Model._QS_TestDateTimes[iIndex+1].date()
+            if iNextDate!=idt.date():# 当前是该交易日的最后一个时点
+                self._handleSettlement()# 处理结算
         return 0
     def __QS_end__(self):
-        self._MarketFT = None
-        self._OrderQueue = []
-        self._PositionCostPrice = None
+        super().__QS_end__()
+        self._Output["持仓"] = self.getPositionSeries()
+        self._Output["保证金"] = self.getMarginSeries()
         return 0
-    # 处理结算, TODO
-    def _handleSettlement(self):
+    # 处理结算, 对于不满足保证金要求的仓位进行强平
+    def _handleSettlement(self, idt):
+        SettlementPrice = self._SecurityFT.readData(factor_names=[self.SecurityInfo.SettlementPrice], dts=[idt], ids=self._IDs).iloc[0,0,:]
         iIndex = self._Model.DateTimeIndex
         iPosition = self._Position[iIndex+1]
-        MaintenanceMargin = np.abs(iPosition) * self.SecurityInfo.Multiplier * self._LastPrice * self.SecurityInfo.MaintenanceMarginRate
-        iMargin = self._Margin[iIndex+1]
-        iGap = np.clip(MaintenanceMargin - iMargin, 0, np.inf)
+        MaintenanceMargin = np.abs(iPosition) * self.SecurityInfo.Multiplier * SettlementPrice.values * self.SecurityInfo.MaintenanceMarginRate# 维持保证金
+        iGap = np.clip(MaintenanceMargin - self._Margin[iIndex+1], 0, np.inf)# 当前保证金和维持保证金之间的缺口
         iTotalGap = np.nansum(iGap)
         if iTotalGap<=0: return 0
-        iCash = (iCap / iTotalGap) * min(self.AvailableCash, iTotalGap)
-        iMargin += iCash
-        iAllowedPosition = np.floor(iMargin / self.SecurityInfo.Multiplier / self._LastPrice / self.MaintenanceMarginRate)
-        iNum = np.abs(iPosition) - iAllowedPosition
-        iNum
-    # 处理交割, TODO
-    def _handleDelivery(self):
-        pass
+        AvailableCash = self.AvailableCash
+        if AvailableCash>=iTotalGap:
+            self._updateAccount(-iTotalGap, position=None)
+            self._Margin[iIndex+1] += iGap
+            return 0
+        self._Margin[iIndex+1] += (iGap / iTotalGap) * AvailableCash# 将账户中的现金按照缺口金额大小分配给各个 ID
+        iAllowedPosition = self._Margin[iIndex+1] / self.SecurityInfo.Multiplier / SettlementPrice.values / self.MaintenanceMarginRate# 计算当前保证金水平下允许的持仓数量
+        # 对于保证金不足的仓位进行平仓
+        iNum = np.clip(np.abs(iPosition) - iAllowedPosition, 0, np.inf)
+        iOrders = pd.Series(-iNum*np.sign(iPosition), index=pd.Index(self._IDs, name="ID"))
+        iOrders = iOrders[iOrders!=0]
+        iBookOrders = self._Orders.groupby(by=["ID"])["数量"].sum()
+        if iBookOrders.shape[0]>0: iBookOrders = iBookOrders.loc[iOrders.index].fillna(0)
+        else: iBookOrders = pd.Series(0, index=iOrders.index)
+        iMask = (iOrders>0)
+        iOrders[iMask] = (iOrders[iMask] - iBookOrders[iMask]).clip_lower(0)
+        iMask = (iOrders<0)
+        iOrders[iMask] = (iOrders[iMask] - iBookOrders[iMask]).clip_upper(0)
+        iOrders = iOrders[iOrders!=0]
+        if iOrders.shape[0]==0: return 0
+        iOrders = pd.DataFrame(iOrders, columns=["数量"]).reset_index()
+        iOrders["目标价"] = np.nan
+        self.order(combined_order=iOrders)
+        return 0
+    # 处理展期
+    def _handleRollover(self, idt):
+        iIndex = self._Model.DateTimeIndex
+        iPosition = self.Position
+        iPosition = iPosition[iPosition!=0]
+        IDMapping = self._SecurityFT.readData(factor_names=[self.SecurityInfo.ContractMapping], ids=iPosition.index.tolist(), dts=[idt, ])
     # 当前账户价值
     @property
     def AccountValue(self):
@@ -232,18 +266,19 @@ class TimeBarAccount(Account):
     # 更新账户信息
     def _updateAccount(self, cash_changed, position):
         iIndex = self._Model.DateTimeIndex
-        DebtDelta = max((- cash_changed - self.Cash, 0))
+        DebtDelta = max(- cash_changed - self.Cash, 0)
         if self.DeltLimit>0:
             self._Debt[iIndex+1] += DebtDelta
-            if DebtDelta>0: self._DebtRecord.loc[self._DebtRecord.shape[0]] = (self._Model.DateTime, DebtDelta)
-            self._Cash[iIndex+1] -= min((- cash_changed, self.Cash))
+            if DebtDelta>0: self._DebtRecord.loc[self._DebtRecord.shape[0]] = (self._Model.DateTime, DebtDelta, "")
+            self._Cash[iIndex+1] -= min(- cash_changed, self.Cash)
         else:
             if DebtDelta>0: self._Cash[iIndex+1] = 0
-            else: self._Cash[iIndex+1] -= min((- cash_changed, self.Cash))
-        position[position.abs()<1e-6] = 0.0
-        PosIndex = pd.Series(False, index=self._IDs)
-        PosIndex[position.index] = True
-        self._Position[iIndex+1][PosIndex.values] = position.values
+            else: self._Cash[iIndex+1] -= min(- cash_changed, self.Cash)
+        if position is not None:
+            position[position.abs()<1e-6] = 0.0
+            PosIndex = pd.Series(False, index=self._IDs)
+            PosIndex[position.index] = True
+            self._Position[iIndex+1][PosIndex.values] = position.values
         return 0
     # 撮合成交订单
     def _matchOrder(self, idt):
@@ -276,24 +311,23 @@ class TimeBarAccount(Account):
         IDs = orders.index.tolist()
         TradePrice = self._MarketFT.readData(dts=[idt], ids=IDs, factor_names=[self.MarketFactorMap.TradePrice]).iloc[0, 0]# 成交价
         # 过滤限制条件
-        TradeLimit = pd.Series(np.full(shape=orders.shape[0], fill_value=np.inf)*np.sign(orders.values), index=IDs)# 交易限制
         orders[pd.isnull(TradePrice)] = 0.0# 成交价缺失的不能交易
-        if self.SellLimit.LimitIDFilter:# 满足卖出禁止条件的不能卖出
-            Mask = (self._MarketFT.getIDMask(idt, ids=IDs, id_filter_str=self.SellLimit.LimitIDFilter) & (orders<0))
-            orders[Mask] = orders[Mask].clip_lower(0)
-        if self.BuyLimit.LimitIDFilter:# 满足买入禁止条件的不能买入
-            Mask = (self._MarketFT.getIDMask(idt, ids=IDs, id_filter_str=self.BuyLimit.LimitIDFilter) & (orders>0))
-            orders[Mask] = orders[Mask].clip_upper(0)
-        if self.MarketFactorMap.Vol:# 成交量限制
-            VolLimit = self._MarketFT.readData(factor_names=[self.MarketFactorMap.Vol], ids=IDs, dts=[idt]).iloc[0, 0]
-            orders = np.maximum(orders, -VolLimit * self.SellLimit.MarketOrderVolumeLimit)
-            orders = np.minimum(orders, VolLimit * self.BuyLimit.MarketOrderVolumeLimit)
-        if self.SellLimit.MinUnit!=0.0:# 最小卖出交易单位限制
-            Mask = (orders<0)
-            orders[Mask] = (orders[Mask] / self.SellLimit.MinUnit).astype("int") * self.SellLimit.MinUnit
-        if self.BuyLimit.MinUnit!=0.0:# 最小买入交易单位限制
-            Mask = (orders>0)
-            orders[Mask] = (orders[Mask] / self.BuyLimit.MinUnit).astype("int") * self.BuyLimit.MinUnit
+        #if self.SellLimit.LimitIDFilter:# 满足卖出禁止条件的不能卖出
+            #Mask = (self._MarketFT.getIDMask(idt, ids=IDs, id_filter_str=self.SellLimit.LimitIDFilter) & (orders<0))
+            #orders[Mask] = orders[Mask].clip_lower(0)
+        #if self.BuyLimit.LimitIDFilter:# 满足买入禁止条件的不能买入
+            #Mask = (self._MarketFT.getIDMask(idt, ids=IDs, id_filter_str=self.BuyLimit.LimitIDFilter) & (orders>0))
+            #orders[Mask] = orders[Mask].clip_upper(0)
+        #if self.MarketFactorMap.Vol:# 成交量限制
+            #VolLimit = self._MarketFT.readData(factor_names=[self.MarketFactorMap.Vol], ids=IDs, dts=[idt]).iloc[0, 0]
+            #orders = np.maximum(orders, -VolLimit * self.SellLimit.MarketOrderVolumeLimit)
+            #orders = np.minimum(orders, VolLimit * self.BuyLimit.MarketOrderVolumeLimit)
+        #if self.SellLimit.MinUnit!=0.0:# 最小卖出交易单位限制
+            #Mask = (orders<0)
+            #orders[Mask] = (orders[Mask] / self.SellLimit.MinUnit).astype("int") * self.SellLimit.MinUnit
+        #if self.BuyLimit.MinUnit!=0.0:# 最小买入交易单位限制
+            #Mask = (orders>0)
+            #orders[Mask] = (orders[Mask] / self.BuyLimit.MinUnit).astype("int") * self.BuyLimit.MinUnit
         # 分离平仓单和开仓单
         Position = self.Position[IDs]
         CloseOrders = orders.clip(lower=(-Position).clip_upper(0), upper=(-Position).clip_lower(0))# 平仓单
@@ -301,7 +335,7 @@ class TimeBarAccount(Account):
         # 处理平仓单
         TradeAmounts = CloseOrders * TradePrice * self.SecurityInfo.Multiplier
         Fees = TradeAmounts.clip_lower(0) * self.BuyLimit.TradeFee + TradeAmounts.clip_upper(0).abs() * self.SellLimit.TradeFee
-        MarginChanged = (TradePrice - pd.Series(self._PositionCostPrice, index=self._IDs)[IDs]) * Position * self.SecurityInfo.Multiplier
+        MarginChanged = (TradePrice - pd.Series(self._CostPrice, index=self._IDs)[IDs]) * Position * self.SecurityInfo.Multiplier
         Margin = self.Margin[IDs] + MarginChanged
         CashChanged = (Margin * (CloseOrders / Position).abs() - Fees).sum()
         Mask = (CloseOrders.abs()>0)
@@ -325,12 +359,12 @@ class TimeBarAccount(Account):
         CashAllocated = min(CashAcquired.sum(), self.AvailableCash) * CashAcquired / CashAcquired.sum()
         orders = CashAllocated / TradePrice / self.SecurityInfo.Multiplier / (1 + self.BuyLimit.TradeFee * (orders>0) + self.SellLimit.TradeFee * (orders<0))
         orders[pd.isnull(orders)] = 0
-        if self.SellLimit.MinUnit!=0.0:# 最小卖出交易单位限制
-            Mask = (orders<0)
-            orders[Mask] = (orders[Mask] / self.SellLimit.MinUnit).astype("int") * self.SellLimit.MinUnit
-        if self.BuyLimit.MinUnit!=0.0:# 最小买入交易单位限制
-            Mask = (orders>0)
-            orders[Mask] = (orders[Mask] / self.BuyLimit.MinUnit).astype("int") * self.BuyLimit.MinUnit
+        #if self.SellLimit.MinUnit!=0.0:# 最小卖出交易单位限制
+            #Mask = (orders<0)
+            #orders[Mask] = (orders[Mask] / self.SellLimit.MinUnit).astype("int") * self.SellLimit.MinUnit
+        #if self.BuyLimit.MinUnit!=0.0:# 最小买入交易单位限制
+            #Mask = (orders>0)
+            #orders[Mask] = (orders[Mask] / self.BuyLimit.MinUnit).astype("int") * self.BuyLimit.MinUnit
         TradeAmounts = orders * TradePrice * self.SecurityInfo.Multiplier
         Fees = TradeAmounts.clip_lower(0) * self.BuyLimit.TradeFee + TradeAmounts.clip_upper(0).abs() * self.SellLimit.TradeFee
         MarginAcquired = TradeAmounts.abs() * self.InitMarginRate

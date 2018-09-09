@@ -1,4 +1,5 @@
 # coding=utf-8
+"""基于 HDF5 文件的因子库"""
 import os
 from copy import copy
 import datetime as dt
@@ -180,19 +181,15 @@ class HDF5DB(WritableFactorDB):
         if table_name not in self._TableFactorDict: raise __QS_Error__("表 '%s' 不存在!" % table_name)
         return _FactorTable(name=table_name, fdb=self, data_type=self._TableFactorDict[table_name], sys_args=args)
     def renameTable(self, old_table_name, new_table_name):
-        if old_table_name not in self._TableFactorDict:
-            raise __QS_Error__("表: '%s' 不存在!" % old_table_name)
-        if (new_table_name!=old_table_name) and (new_table_name in self._TableFactorDict):
-            raise __QS_Error__("表: '"+new_table_name+"' 已存在!")
-        self._TableFactorDict[new_table_name] = self._TableFactorDict.pop(old_table_name)
+        if old_table_name not in self._TableFactorDict: raise __QS_Error__("表: '%s' 不存在!" % old_table_name)
+        if (new_table_name!=old_table_name) and (new_table_name in self._TableFactorDict): raise __QS_Error__("表: '"+new_table_name+"' 已存在!")
         OldPath = self.MainDir+os.sep+old_table_name
         NewPath = self.MainDir+os.sep+new_table_name
-        if OldPath==NewPath:
-            return 0
-        elif os.path.isdir(NewPath):
-            raise __QS_Error__("目录: '%s' 被占用!" % NewPath)
+        if OldPath==NewPath: pass
+        elif os.path.isdir(NewPath): raise __QS_Error__("目录: '%s' 被占用!" % NewPath)
         with self._DataLock:
             os.rename(OldPath, NewPath)
+        self._TableFactorDict[new_table_name] = self._TableFactorDict.pop(old_table_name)
         return 0
     def deleteTable(self, table_name):
         TablePath = self.MainDir+os.sep+table_name
@@ -217,14 +214,12 @@ class HDF5DB(WritableFactorDB):
         return 0
     # ----------------------------因子操作---------------------------------
     def renameFactor(self, table_name, old_factor_name, new_factor_name):
-        if old_factor_name not in self._TableFactorDict[table_name]:
-            raise __QS_Error__("因子: '%s' 不存在!" % old_factor_name)
-        if (new_factor_name!=old_factor_name) and (new_factor_name in self._TableFactorDict[table_name]):
-            raise __QS_Error__("表中的因子: '%s' 已存在!" % new_factor_name)
-        self._TableFactorDict[table_name][new_factor_name] = self._TableFactorDict[table_name].pop(old_factor_name)
+        if old_factor_name not in self._TableFactorDict[table_name]: raise __QS_Error__("因子: '%s' 不存在!" % old_factor_name)
+        if (new_factor_name!=old_factor_name) and (new_factor_name in self._TableFactorDict[table_name]): raise __QS_Error__("表中的因子: '%s' 已存在!" % new_factor_name)
         TablePath = self.MainDir+os.sep+table_name
         with self._DataLock:
             os.rename(TablePath+os.sep+old_factor_name+"."+self._Suffix, TablePath+os.sep+new_factor_name+"."+self._Suffix)
+        self._TableFactorDict[table_name][new_factor_name] = self._TableFactorDict[table_name].pop(old_factor_name)
         return 0
     def deleteFactor(self, table_name, factor_names):
         TablePath = self.MainDir+os.sep+table_name

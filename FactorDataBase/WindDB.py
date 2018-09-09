@@ -15,8 +15,6 @@ from QuantStudio.Tools.DateTimeFun import getDateSeries, getDateTimeSeries
 from QuantStudio import __QS_Error__, __QS_MainPath__, __QS_LibPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable, _adjustDateTime
 
-os.environ['NLS_LANG'] = 'SIMPLIFIED CHINESE_CHINA.UTF8'
-
 class _DBTable(FactorTable):
     def getMetaData(self, key=None):
         TableInfo = self._FactorDB._TableInfo.ix[self.Name]

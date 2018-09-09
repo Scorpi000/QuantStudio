@@ -95,18 +95,18 @@ class Account(BaseModule):
     DeltLimit = Float(0.0, arg_type="Double", label="负债上限", order=1, low=0.0, high=np.inf, single_step=0.00001, decimals=5)
     def __init__(self, sys_args={}, **kwargs):
         super().__init__(name="Account", sys_args=sys_args, **kwargs)
-        self._Cash = np.array([])# 剩余现金, 等于时间点长度+1, >=0
-        self._Debt = np.array([])# 负债, 等于时间点长度+1, >=0
-        self._CashRecord = pd.DataFrame(columns=["时间点", "现金流", "备注"])# 现金流记录, 现金流入为正, 现金流出为负
-        self._DebtRecord = pd.DataFrame(columns=["时间点", "融资", "备注"])# 融资记录, 增加负债为正, 减少负债为负
-        self._TradingRecord = pd.DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])# 交易记录
+        self._Cash = None# 剩余现金, >=0,  array(shape=(nDT+1,))
+        self._Debt = None# 负债, >=0, array(shape=(nDT+1,))
+        self._CashRecord = None# 现金流记录, 现金流入为正, 现金流出为负, DataFrame(columns=["时间点", "现金流", "备注"])
+        self._DebtRecord = None# 融资记录, 增加负债为正, 减少负债为负, DataFrame(columns=["时间点", "融资", "备注"])
+        self._TradingRecord = None# 交易记录, DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])
         self._Output = None# 缓存的输出结果
     def __QS_start__(self, mdl, dts=None, dates=None, times=None):
         nDT = len(dts)
         self._Cash, self._Debt = np.zeros(nDT+1), np.zeros(nDT+1)
         self._Cash[0] = self.InitCash
-        self._CashRecord = pd.DataFrame(columns=["时间点", "现金流"])
-        self._DebtRecord = pd.DataFrame(columns=["时间点", "融资"])
+        self._CashRecord = pd.DataFrame(columns=["时间点", "现金流", "备注"])
+        self._DebtRecord = pd.DataFrame(columns=["时间点", "融资", "备注"])
         self._TradingRecord = pd.DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])
         return super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
     def __QS_move__(self, idt, *args, **kwargs):# 先于策略运行

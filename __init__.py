@@ -5,6 +5,7 @@ import operator
 import warnings
 warnings.filterwarnings("ignore")
 from multiprocessing import Lock
+os.environ['NLS_LANG'] = 'SIMPLIFIED CHINESE_CHINA.UTF8'
 
 import numpy as np
 import pandas as pd
