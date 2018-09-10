@@ -1,17 +1,14 @@
 # -*- coding: utf-8 -*-
 """均值方差投资组合构建模型"""
 # 目标的一般形式：gamma0*r'w - gamma*1/2*w'*Cov*w - lambda1*norm(w-w0,1) - lambda2*sum((w-w0)^+) - lambda3*sum((w-w0)^-)
-from collections import OrderedDict
-
 import pandas as pd
 import numpy as np
 try:
     import matlab
-    OptClasses = OrderedDict()
 except:
-    OptClasses = None
+    pass
 
-from . import BasePC
+from .BasePC import PortfolioConstructor, MatlabPC
 
 # 优化目标
 # 线性目标：f'*x,{'f':array(n,1),'type':'Linear'}
@@ -26,11 +23,11 @@ from . import BasePC
 # (array(n),{'fval':double,'IterNum':int,'tol':double,...})
 
 # 均值方差投资组合构造器基类
-class MeanVariancePC(BasePC.PortfolioConstructor):
+class MeanVariancePC(PortfolioConstructor):
     """均值方差投资组合构造器"""
     # 启动投资组合构造器
     def initPC(self):
-        Error = BasePC.PortfolioConstructor.initPC(self)
+        Error = PortfolioConstructor.initPC(self)
         self.UseCovMatrix = (self.UseCovMatrix or (self.ObjectArg['风险厌恶系数']!=0.0))
         self.UseHolding = (self.UseHolding or ((self.ObjectArg['换手惩罚系数']!=0.0) or (self.ObjectArg['买入惩罚系数']!=0.0) or (self.ObjectArg['卖出惩罚系数']!=0.0)))
         self.UseBenchmark = (self.UseBenchmark or self.ObjectArg['相对基准'])
@@ -104,11 +101,11 @@ class MeanVariancePC(BasePC.PortfolioConstructor):
             self.ObjectiveConstant += -object_arg['卖出惩罚系数']*(-self.HoldingExtra[self.HoldingExtra<0].sum())
         return Objective
 
-class MatlabMVPC(MeanVariancePC,BasePC.MatlabPC):
+class MatlabMVPC(MeanVariancePC, MatlabPC):
     """MATLAB均值方差组合构造器"""
-    def __init__(self,name,qs_env=None):
-        MeanVariancePC.__init__(self,name,qs_env)
-        self.MatlabScript = "solveMeanVariance"
+    def __init__(self, sys_args={}, **kwargs):
+        MeanVariancePC.__init__(self, sys_args=sys_args, **kwargs)
+        self._MatlabScript = "solveMeanVariance"
     # 产生选项参数信息    
     def genOptionArgInfo(self,arg=None):
         if arg is None:
@@ -124,9 +121,4 @@ class MatlabMVPC(MeanVariancePC,BasePC.MatlabPC):
         PreparedOption = {'Display':option_arg['信息显示'],'Solver':option_arg['求解器']}
         return PreparedOption
     def _solve(self, nvar, prepared_objective, prepared_constraints, prepared_option):
-        return BasePC.MatlabPC._solve(self,nvar, prepared_objective, prepared_constraints, prepared_option)
-
-if OptClasses is not None:
-    OptClasses["MATLAB均值方差组合构造器"] = MatlabMVPC
-else:
-    OptClasses = OrderedDict()
+        return MatlabPC._solve(self,nvar, prepared_objective, prepared_constraints, prepared_option)

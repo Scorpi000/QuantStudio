@@ -9,7 +9,7 @@ from QuantStudio.HistoryTest.StrategyTest.StrategyTestModule import Account, cut
 
 class TimeBarAccount(Account):
     """Time Bar 账户"""
-    def __init__(self, name, qs_env):
+    def __init__(self, name, sys_args={}, **kwargs):
         super().__init__(name, qs_env)
         self.__QS_Type__ = "Time Bar 账户"
         # 继承自 Account 的属性
@@ -210,76 +210,3 @@ class TimeBarAccount(Account):
                 CashChanged += iCashChanged
             self._updateAccount(CashChanged, Position)# 更新账户信息
         return TradingRecord
-
-if __name__=="__main__":
-    from QuantStudio.StrategyTest import Strategy
-    
-    # for each trading day:
-    # - @ 10:00 a.m.:   buy 3 stocks that has smallest return in the morning
-    #                   sell 3 stocks that has biggest return in the morning
-    # - @ 14:55 p.m.:   flat all positions (suppose we can trade intraday)
-    class DemoStrategy(Strategy):
-        def init(self):
-            pass
-        def trade(self, idt, trading_record, signal):
-            iHour = idt.hour
-            iMinute = idt.minute
-            if (iHour==9) and (iMinute==30):
-                self.UserData["LastPrice"] = self.QSEnv.STM.Accounts["TimeBar账户"].LastPrice
-            elif (iHour==10) and (iMinute==0):
-                Price = self.QSEnv.STM.Accounts["TimeBar账户"].LastPrice
-                Ret = np.log(Price) - np.log(self.UserData["LastPrice"])
-                RetOrder = Ret.argsort()
-                for iID in Ret.index[RetOrder.iloc[:3].values]:
-                    self.QSEnv.STM.Accounts["TimeBar账户"].order(iID, 100)
-                for iID in Ret.index[RetOrder.iloc[-3:].values]:
-                    self.QSEnv.STM.Accounts["TimeBar账户"].order(iID, -100)
-            elif (iHour==14) and (iMinute==56):
-                Position = self.QSEnv.STM.Accounts["TimeBar账户"].Position
-                Position = Position[Position!=0]
-                for iID in Position.index:
-                    self.QSEnv.STM.Accounts["TimeBar账户"].order(iID, -Position[iID])
-    
-    from QuantStudio import QSEnv
-    from QuantStudio.FactorDataBase.CloverDB import CloverDB
-    from QuantStudio.FunLib.DateTimeFun import getTimeSeries, combineDateTime
-    from QuantStudio.GUI.QtGUIFun import showOutput
-    QSE = QSEnv()
-    
-    # 创建因子数据库
-    MainDB = CloverDB(QSE)
-    MainDB.connect()
-    QSE.addFactorDataBase(MainDB)
-    IDs = ['600000.SH', '600016.SH', '600019.SH', '600028.SH', '600029.SH',
-           '600030.SH', '600036.SH', '600048.SH', '600050.SH', '600104.SH',
-           '600111.SH', '600340.SH', '600518.SH', '600519.SH', '600547.SH',
-           '600606.SH', '600837.SH', '600887.SH', '600919.SH', '600958.SH',
-           '600999.SH', '601006.SH', '601088.SH', '601166.SH', '601169.SH',
-           '601186.SH', '601211.SH', '601229.SH', '601288.SH', '601318.SH',
-           '601328.SH', '601336.SH', '601390.SH', '601398.SH', '601601.SH',
-           '601628.SH', '601668.SH', '601669.SH', '601688.SH', '601766.SH',
-           '601800.SH', '601818.SH', '601857.SH', '601878.SH', '601881.SH',
-           '601985.SH', '601988.SH', '601989.SH', '603993.SH']
-    
-    # 测试时间序列
-    TestDates = MainDB.getTradeDay(start_date=dt.date(2018,1,1), end_date=dt.date(2018,3,31))
-    TestDateTimes = list(combineDateTime(TestDates, 
-                                         np.append(getTimeSeries(dt.time(9,30), dt.time(11,30), dt.timedelta(minutes=1)), 
-                                                   getTimeSeries(dt.time(13), dt.time(15), dt.timedelta(minutes=1)))))
-    
-    # 添加账户
-    iAccount = TimeBarAccount("TimeBar账户",QSE)
-    iAccount.SysArgs["目标ID"] = IDs
-    QSE.STM.addAccount(iAccount)# 将账户添加入 QS 系统的策略测试模型
-    
-    
-    # 构建策略
-    QSE.STM.Strategy = DemoStrategy("主策略", QSE)# 将策略添加入 QS 系统的策略测试模型
-    
-    # 测试
-    QSE.STM.run(test_dts=TestDateTimes)
-    
-    # 生成报告
-    Rslt = QSE.STM.output()
-    showOutput(QSE, Rslt)
-    QSE.close()

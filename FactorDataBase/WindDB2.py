@@ -93,14 +93,10 @@ class _CalendarTable(_DBTable):
         FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._DateField, self._IDField])
         SQLStr = "SELECT "+DBTableName+"."+FieldDict[self._DateField]+" "
         SQLStr += "FROM "+DBTableName+" "
-        if iid is not None:
-            SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._IDField]+"='"+iid+"' "
-        else:
-            SQLStr = "SELECT DISTINCT "+SQLStr[7:]+"WHERE "+DBTableName+"."+FieldDict[self._IDField]+" IS NOT NULL "
-        if start_dt is not None:
-            SQLStr += "AND "+DBTableName+"."+FieldDict[self._DateField]+">='"+start_dt.strftime("%Y%m%d")+"' "
-        if end_dt is not None:
-            SQLStr += "AND "+DBTableName+"."+FieldDict[self._DateField]+"<='"+end_dt.strftime("%Y%m%d")+"' "
+        if iid is not None: SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._IDField]+"='"+iid+"' "
+        else: SQLStr = "SELECT DISTINCT "+SQLStr[7:]+"WHERE "+DBTableName+"."+FieldDict[self._IDField]+" IS NOT NULL "
+        if start_dt is not None: SQLStr += "AND "+DBTableName+"."+FieldDict[self._DateField]+">='"+start_dt.strftime("%Y%m%d")+"' "
+        if end_dt is not None: SQLStr += "AND "+DBTableName+"."+FieldDict[self._DateField]+"<='"+end_dt.strftime("%Y%m%d")+"' "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._DateField]
         return list(map(lambda x: dt.datetime(int(x[0][:4]), int(x[0][4:6]), int(x[0][6:8]), 23, 59, 59, 999999), self._FactorDB.fetchall(SQLStr)))
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
@@ -1206,28 +1202,6 @@ class WindDB2(WindDB):
         TableClass = self._TableInfo.loc[table_name, "TableClass"]
         return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=args)")
     # -----------------------------------------数据提取---------------------------------
-    # 给定起始日期和结束日期，获取交易所交易日期, 目前仅支持："上海证券交易所", "深圳证券交易所", "香港交易所"
-    def getTradeDay(self, start_date=None, end_date=None, exchange="上海证券交易所"):
-        if exchange not in ("上海证券交易所", "深圳证券交易所", "香港交易所"):
-            raise __QS_Error__("不支持交易所：%s的交易日序列！" % exchange)
-        if start_date is None:
-            start_date = dt.date(1970,1,1)
-        if end_date is None:
-            end_date = dt.date.today()
-        if exchange in ("上海证券交易所", "深圳证券交易所"):
-            SQLStr = "SELECT TRADE_DAYS FROM {Prefix}AShareCalendar WHERE S_INFO_EXCHMARKET=\"{Exchange}\" "
-            SQLStr += "AND TRADE_DAYS<=\"{EndDate}\" "
-            SQLStr += "AND TRADE_DAYS>=\"{StartDate}\" "
-            SQLStr += "ORDER BY TRADE_DAYS"
-            SQLStr = SQLStr.format(Prefix=self.TablePrefix, StartDate=start_date.strftime("%Y%m%d"), 
-                                   EndDate=end_date.strftime("%Y%m%d"), Exchange=("SSE" if exchange=="上海证券交易所" else "SZSE"))
-        elif exchange=="香港交易所":
-            SQLStr = "SELECT TRADE_DAYS FROM {Prefix}HKEXCalendar WHERE S_INFO_EXCHMARKET=\"HKEX\" "
-            SQLStr += "AND TRADE_DAYS<=\"{EndDate}\" "
-            SQLStr += "AND TRADE_DAYS>=\"{StartDate}\" "
-            SQLStr += "ORDER BY TRADE_DAYS"
-            SQLStr = SQLStr.format(Prefix=self.TablePrefix,StartDate=start_date.strftime("%Y%m%d"),EndDate=end_date.strftime("%Y%m%d"))
-        return list(map(lambda x: dt.date(int(x[0][:4]), int(x[0][4:6]), int(x[0][6:8])), self.fetchall(SQLStr)))
     # 获取指定日当前在市或者历史上出现过的全体 A 股 ID
     def _getAllAStock(self, date, is_current=True):
         if is_current:

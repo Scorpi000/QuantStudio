@@ -11,6 +11,34 @@ from traits.api import File, List, Float, Int, Bool, Enum, Str, Range, Password
 from QuantStudio import __QS_Error__, __QS_LibPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable, _adjustDateTime
 
+
+class _CalendarTable(FactorTable):
+    """交易日历因子表"""
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+        self._IDs = ["SSE", "SZSE", "SHFE", "CFFEX"]
+        return
+    @property
+    def FactorNames(self):
+        return ["交易日"]
+    def getID(self, ifactor_name=None, idt=None, args={}):
+        return self._IDs
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
+        if iid is None: iid = "SSE"
+        if start_dt is None: start_dt = dt.date(1900,1,1)
+        start_date = start_dt.strftime("%Y-%m-%d")
+        if end_dt is None: end_dt = dt.date.today()
+        end_date = (end_dt + dt.timedelta(1)).strftime("%Y-%m-%d")
+        jpckg = self._FactorDB._jpype.JPackage('clover.epsilon.database')
+        Dates = jpckg.DatabaseUtil.getTradeDateList(self._jConn, iid, start_date, end_date)
+        iTime = dt.time(23,59,59,999999)
+        return [dt.datetime.combine(dt.datetime.strptime(iDate, "%Y-%m-%d").date(), iTime) for iDate in Dates]
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        Data = pd.DataFrame({iID:pd.Series(1.0, index=self.getDateTime(iid=iID, start_dt=dts[0], end_dt=dts[-1])) for iID in ids})
+        Data = Data.ix[dts, :]
+        Data[pd.isnull(Data)] = 0
+        return pd.Panel({"交易日":Data})
+
 # tms: 时间戳, 单位: 毫秒; date: 日期; update: 最新的采样区间内有多少个行情点;
 # lst: 最新价; vol: 最新成交量; amt: 最新成交额; oin: 最新持仓量;
 # bid: 买一价; bsz: 买一量; ask: 卖一价; asz: 卖一量; 
@@ -18,10 +46,9 @@ from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable, _adjustDa
 # buyVolume: 确定为买方发起成交的成交量; sellVolume: 确定为卖方发起成交的成交量
 class _TickTable(FactorTable):
     """Clover Tick 因子表"""
-    TmsIntv = Float(3, arg_type="Double", label="时间间隔", order=0, low=0.5, high=86400, single_step=0.5)
-    def __init__(self, name, sys_args={}, **kwargs):
-        super().__init__(sys_args=sys_args, **kwargs)
-        self.Name = name
+    TmsIntv = Float(3, arg_type="Double", label="时间间隔", order=0, low=0.5, high=86400, single_step=0.5)# 以秒为单位
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         self._FactorNames = ["lst","vol","amt","mid","bid","bsz","ask","asz","wmp","oin",
                              "buyVolume","sellVolume","bidSizeChange","askSizeChange",
                              "crossBidVolume","crossAskVolume","vi","ofi"]
@@ -35,28 +62,28 @@ class _TickTable(FactorTable):
         if key is None: return MetaData
         elif key in MetaData: return MetaData.ix[:, key]
         else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
-     # 时间点默认是当天, ID 默认是 [000001.SH], 特别参数: 时间间隔: 以秒为单位, 默认是 3 秒
-    def __QS_readData__(self, factor_names=None, ids=None, dts=None, args={}):
-        if factor_names is None: factor_names = self.FactorNames
-        if ids is None: raise __QS_Error__("请指定提取数据的 ID 序列!")
-        if dts: StartDate, EndDate = dts[0].date(), dts[-1].date()
-        else: StartDate, EndDate = dt.date.today()-dt.timedelta(365), dt.date.today()
-        SecDef = self.FactorDB.createSecDef(ids)
+    def getID(self, ifactor_name=None, idt=None):
+        return []
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None):
+        return []
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        if not dts: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        StartDate, EndDate = dts[0].date(), dts[-1].date()
+        SecDef = self._FactorDB.createSecDef(ids)
         tms_intv = int(args.get("时间间隔", self.TmsIntv)*1000)
         StartDate = StartDate.strftime("%Y-%m-%d")
         EndDate = (EndDate + dt.timedelta(1)).strftime("%Y-%m-%d")
         if self._PriceFactors.intersection(set(factor_names)):
-            TradeDates = self.FactorDB._jpype.JPackage('clover.epsilon.database').DatabaseUtil.getTradeDateList(self.FactorDB._jConn, 'SHFE', StartDate, EndDate)
-            if len(TradeDates)==0:
-                return _adjustDateTime(pd.Panel(Data, major_axis=tms, minor_axis=ids), dts=dts, start_dt=start_dt, end_dt=end_dt)
-            JPckg_util = self.FactorDB._jpype.JPackage('clover.model.util')
+            TradeDates = self._FactorDB._jpype.JPackage('clover.epsilon.database').DatabaseUtil.getTradeDateList(self._FactorDB._jConn, 'SHFE', StartDate, EndDate)
+            if len(TradeDates)==0: return _adjustDateTime(pd.Panel(Data, major_axis=tms, minor_axis=ids), dts=dts)
+            JPckg_util = self._FactorDB._jpype.JPackage('clover.model.util')
             PriceMultiplier = np.ones(len(SecDef))
             for j, jSecDef in enumerate(SecDef):
-                jSecurity = JPckg_util.ModelUtils.parseSecurity(self.FactorDB._jConn, TradeDates[-1], JPckg_util.Json.parse(jSecDef))
+                jSecurity = JPckg_util.ModelUtils.parseSecurity(self._FactorDB._jConn, TradeDates[-1], JPckg_util.Json.parse(jSecDef))
                 PriceMultiplier[j] = jSecurity.getMinPriceIncrement()
-        mdreader = self.FactorDB._jpype.JPackage('clover.epsilon.util').TestUtils.createMDReader('JavaSerialPT', 'mdreader.SHFE')
-        JPckg_matlab = self.FactorDB._jpype.JPackage('clover.model.matlab')
-        sdm_def = JPckg_matlab.SecurityDataMatrixPT.generateSDMDataDef_CN(self.FactorDB._jConn, SecDef, StartDate, EndDate, tms_intv)
+        mdreader = self._FactorDB._jpype.JPackage('clover.epsilon.util').TestUtils.createMDReader('JavaSerialPT', 'mdreader.SHFE')
+        JPckg_matlab = self._FactorDB._jpype.JPackage('clover.model.matlab')
+        sdm_def = JPckg_matlab.SecurityDataMatrixPT.generateSDMDataDef_CN(self._FactorDB._jConn, SecDef, StartDate, EndDate, tms_intv)
         sdm = JPckg_matlab.SecurityDataMatrixPT()
         sdm.fetchData(sdm_def, mdreader, tms_intv)
         tms = np.array(sdm.tms)/1000
@@ -97,16 +124,14 @@ class _TimeBarTable(FactorTable):
         else:
             return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
      # 时间点默认是当天, ID 默认是 [000001.SH], 特别参数: 时间间隔: 以秒为单位, 默认是 3 秒
-    def __QS_readData__(self, factor_names=None, ids=None, dts=None, args={}):
-        if ids is None: raise __QS_Error__("请指定提取数据的 ID 序列!")
-        if dts: StartDate, EndDate = dts[0].date(), dts[-1].date()
-        else: StartDate, EndDate = dt.date.today()-dt.timedelta(1), dt.date.today()
-        if factor_names is None: factor_names = self.FactorNames
-        TBs, AllSecurityIDs, SecurityIDs, PriceMultiplier = self.FactorDB.getTimeBar(ids, StartDate, EndDate, 
-                                                                                      tms_intv=args.get("时间间隔", self.TmsIntv)*1000, 
-                                                                                      depth=args.get("深度", self.Depth), 
-                                                                                      dynamic_security_id=args.get("动态证券ID", self.DynamicSecID))
-        Data = self.FactorDB.fetchTimeBarData(factor_names, TBs, AllSecurityIDs, SecurityIDs, PriceMultiplier)
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        if not dts: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        StartDate, EndDate = dts[0].date(), dts[-1].date()
+        TBs, AllSecurityIDs, SecurityIDs, PriceMultiplier = self._FactorDB.getTimeBar(ids, StartDate, EndDate, 
+                                                                                     tms_intv=args.get("时间间隔", self.TmsIntv)*1000, 
+                                                                                     depth=args.get("深度", self.Depth), 
+                                                                                     dynamic_security_id=args.get("动态证券ID", self.DynamicSecID))
+        Data = self._FactorDB.fetchTimeBarData(factor_names, TBs, AllSecurityIDs, SecurityIDs, PriceMultiplier)
         return _adjustDateTime(Data, dts=dts)
 
 class _FeatureTable(FactorTable):
@@ -121,15 +146,12 @@ class _FeatureTable(FactorTable):
         if key is None: return MetaData
         elif key in MetaData: return MetaData.ix[:, key]
         else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
-    def __QS_readData__(self, factor_names=None, ids=None, dts=None, args={}):
-        if factor_names is None: factor_names = self.FactorNames
-        if ids is None: ids = ["000001.SH"]
-        if dts: StartDate, EndDate = dts[0].date(), dts[-1].date()
-        else: StartDate, EndDate = dt.date.today()-dt.timedelta(365), dt.date.today()
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        StartDate, EndDate = dts[0].date(), dts[-1].date()
         Data = {}
         for i in range((EndDate-StartDate).days):
             iDT = dt.datetime.combine(StartDate + dt.timedelta(i), dt.time(23, 59, 59, 999999))
-            Data[iDT] = pd.DataFrame(self.FactorDB.getSecurityInfo(ids, idt=iDT), index=ids).ix[:, factor_names].T
+            Data[iDT] = pd.DataFrame(self._FactorDB.getSecurityInfo(ids, idt=iDT), index=ids).ix[:, factor_names].T
         Data = pd.Panel(Data).swapaxes(0, 1)
         Data = _adjustDateTime(Data, dts, fillna=True, method="bfill")
         return Data
@@ -145,8 +167,8 @@ class CloverDB(FactorDB):
     TablePrefix = Str("", arg_type="String", label="表名前缀", order=6)
     CharSet = Enum("utf8", "gbk", "gb2312", "gb18030", "cp936", "big5", arg_type="SingleOption", label="字符集", order=7)
     Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
-    JVMPath = File("", arg_type="SingleOption", label="Java虚拟机", order=0, filter=["DLL (*.dll)"])
-    JavaPckg = List(File("", filter=["Java Package (*.jar)"]), arg_type="ArgList", label="Java包", order=1)
+    JVMPath = File("", arg_type="SingleOption", label="Java虚拟机", order=9, filter=["DLL (*.dll)"])
+    JavaPckg = List(File("", filter=["Java Package (*.jar)"]), arg_type="ArgList", label="Java包", order=10)
     def __init__(self, sys_args={}, **kwargs):
         super().__init__(sys_args=sys_args, **kwargs)
         # 继承来的属性
@@ -160,7 +182,6 @@ class CloverDB(FactorDB):
         self.JavaPckg.append("X:/java_lib/model-jar-with-dependencies.jar")
     def __getstate__(self):
         state = self.__dict__.copy()
-        # Remove the unpicklable entries.
         state["_jpype"] = (True if self.isAvailable() else False)
         state["_jConn"] = state["_jpype"]
         return state
@@ -168,12 +189,10 @@ class CloverDB(FactorDB):
         self.__dict__.update(state)
         isConnected = self._jpype
         self._jpype, self._jConn = None, None
-        if isConnected:
-            self.connect()
+        if isConnected: self.connect()
     def connect(self):
         if self._jpype is None:
-            if not (os.path.isfile(self.JVMPath)):
-                raise __QS_Error__("Java 虚拟机的设置有误!")
+            if not (os.path.isfile(self.JVMPath)): raise __QS_Error__("Java 虚拟机的路径设置有误!")
             import jpype
             self._jpype = jpype
         if not self._jpype.isJVMStarted():
@@ -190,37 +209,17 @@ class CloverDB(FactorDB):
         self._jpype = None
         return 0
     def isAvailable(self):
-        if self._jpype is not None:
-            return self._jpype.isJVMStarted()
-        else:
-            return False
+        if self._jpype is not None: return self._jpype.isJVMStarted()
+        else: return False
     @property
     def TableNames(self):
-        return ["Tick 数据", "Time Bar 数据", "证券特征"]
+        return ["Tick 数据", "Time Bar 数据", "证券特征", "交易日历"]
     def getTable(self, table_name, args={}):
-        if table_name=="Tick 数据":
-            FT = _TickTable(table_name, sys_args=args)
-        elif table_name=="Time Bar 数据":
-            FT = _TimeBarTable(table_name, sys_args=args)
-        elif table_name=="证券特征":
-            FT = _FeatureTable(table_name, sys_args=args)
-        FT.FactorDB = self
-        return FT
-    # 给定起始日期和结束日期, 获取交易所交易日期
-    def getTradeDay(self, start_date=None, end_date=None, exchange="上海证券交易所"):
-        if exchange not in ("上海证券交易所", "深圳证券交易所"):
-            raise __QS_Error__("不支持交易所：%s的交易日序列！" % exchange)
-        exchange = self._ExchangeDict["上海证券交易所"]
-        if start_date is None:
-            start_date = dt.date(1900,1,1)
-        start_date = start_date.strftime("%Y-%m-%d")
-        if end_date is None:
-            end_date = dt.date.today()
-        end_date = (end_date + dt.timedelta(1)).strftime("%Y-%m-%d")
-        jpckg = self._jpype.JPackage('clover.epsilon.database')
-        Dates = jpckg.DatabaseUtil.getTradeDateList(self._jConn, exchange, start_date, end_date)
-        Dates = np.array(Dates)
-        return np.array([dt.datetime.strptime(iDate, "%Y-%m-%d").date() for iDate in Dates])
+        if table_name=="Tick 数据": return _TickTable(table_name, fdb=self, sys_args=args)
+        elif table_name=="Time Bar 数据": return _TimeBarTable(table_name, fdb=self, sys_args=args)
+        elif table_name=="证券特征": return _FeatureTable(table_name, fdb=self, sys_args=args)
+        elif table_name=="交易日历": return _CalendarTable(table_name, fdb=self, sys_args=args)
+        return None
     # 创建证券定义
     def createSecDef(self, ids, idate=dt.date.today()):
         SecDef = []
@@ -247,8 +246,7 @@ class CloverDB(FactorDB):
         return SecDef
     # 获取证券的描述信息
     def getSecurityInfo(self, ids, idt=None):
-        if idt is None:
-            idt = dt.date.today()
+        if idt is None: idt = dt.date.today()
         idt = idt.strftime("%Y-%m-%d")
         sec_def = self.createSecDef(ids)
         SecInfo = []
@@ -342,7 +340,7 @@ if __name__=="__main__":
     IDs = ["510050.SH", "IH.CFE"]
     #IDs = ["IH1701.CFE", "IH1702.CFE"]
     #print(CDB.TableNames)
-    #Dates = CDB.getTradeDay(start_date=dt.date(2018,1,1), end_date=dt.date(2018,1,5))
+    #DTs = CDB.getTable("交易日历").getDateTime(start_dt=dt.datetime(2018,1,1), end_dt=dt.datetime(2018,1,5))
     #SecDef = CDB.createSecDef(ids=IDs)
     #SecInfo = CDB.getSecurityInfo(ids=IDs)
     #SecIDs = CDB.ID2SecurityID(ids=IDs)

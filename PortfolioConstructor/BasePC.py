@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
-from collections import OrderedDict
-import time
 import os
 
 import pandas as pd
 import numpy as np
+from traits.api import Float, Bool, Int, Str
 try:
     import matlab
 except:
@@ -12,6 +11,7 @@ except:
 
 from QuantStudio.Tools.DataTypeConversionFun import DummyVarTo01Var
 from QuantStudio.Tools.AuxiliaryFun import getFactorList
+from QuantStudio import __QS_Object__, __QS_Error__
 
 # 约束条件
 # Box约束：lb <= x <= ub,{'lb':array(n,1),'ub':array(n,1),'type':'Box'}
@@ -29,14 +29,39 @@ from QuantStudio.Tools.AuxiliaryFun import getFactorList
 # 优化结果
 # (array(n),{'fval':double,'IterNum':int,'tol':double,...})
 
+class BudgetConstraint(__QS_Object__):
+    UpLimit = Float(1.0, arg_type="Double", label="限制上限", order=0)
+    DownLimit = Float(1.0, arg_type="Double", label="限制下限", order=1)
+    Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=2)
+    DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=3)
+    def genConstraint(self):
+        if constraint_arg['相对基准']:
+            aAdj = self.BenchmarkHolding.sum()+self.BenchmarkExtra.sum()
+        else:
+            aAdj = 0.0
+        Constraints = []
+        if constraint_arg['限制上限']==constraint_arg['限制下限']:
+            Constraints.append({"type":"LinearEq",
+                               "Aeq":np.ones((1,self.nID)),
+                               "beq":np.array([[constraint_arg['限制上限']+aAdj]])})
+        else:
+            if constraint_arg['限制下限']>-9999.0:
+                Constraints.append({"type":"LinearIn",
+                                   "A":-np.ones((1,self.nID)),
+                                   "b":-np.array([[constraint_arg['限制下限']+aAdj]])})
+            if constraint_arg['限制上限']<9999.0:
+                Constraints.append({"type":"LinearIn",
+                                   "A":np.ones((1,self.nID)),
+                                   "b":np.array([[constraint_arg['限制上限']+aAdj]])})
+        return Constraints
+
+
 # 投资组合构造器基类
-class PortfolioConstructor(object):
+class PortfolioConstructor(__QS_Object__):
     """投资组合构造器"""
-    def __init__(self,name,qs_env=None):
+    def __init__(self, sys_args={}, **kwargs):
         # 创建后必须立即赋值指定的变量
-        self.Name = name# 投资组合构造器的名称，字符串
-        self.QSEnv = qs_env
-        self.AllFactorDataType = {}# 可用的所有因子数据类型，用于生成参数信息
+        self._AllFactorDataType = {}# 可用的所有因子数据类型，用于生成参数信息
         # 优化前必须指定的变量
         self.Holding = None# 当前持有的投资组合，Series(index=self.TargetIDs)
         self.BenchmarkHolding = None# 当前的基准投资组合，Series(index=self.TargetIDs)
@@ -246,7 +271,7 @@ class PortfolioConstructor(object):
     # 生成因子暴露约束条件参数信息，即：f'*(w-benchmark) <=(==,>=) a
     def _genFactorExposeConstraintArgInfo(self,arg=None):
         # arg=None 表示初始化参数
-        DefaultNumFactorList,DefaultStrFactorList = getFactorList(self.AllFactorDataType)
+        DefaultNumFactorList,DefaultStrFactorList = getFactorList(self._AllFactorDataType)
         if arg is None:
             arg = {}
             arg['因子类型'] = '数值型'
@@ -256,9 +281,9 @@ class PortfolioConstructor(object):
             arg['相对基准'] = False
             arg['舍弃优先级'] = -1
         elif arg['因子名称']!=[]:
-            if (arg['因子类型']=='数值型') and (self.AllFactorDataType[arg['因子名称'][0]]=='string'):
+            if (arg['因子类型']=='数值型') and (self._AllFactorDataType[arg['因子名称'][0]]=='string'):
                 arg['因子名称'] = [DefaultNumFactorList[0]]
-            elif (arg['因子类型']=='类别型') and (self.AllFactorDataType[arg['因子名称'][0]]!='string'):
+            elif (arg['因子类型']=='类别型') and (self._AllFactorDataType[arg['因子名称'][0]]!='string'):
                 arg['因子名称'] = [DefaultStrFactorList[0]]
         ArgInfo = {}
         ArgInfo['因子类型'] = {'数据类型':'Str','取值范围':['数值型','类别型'],'是否刷新':True,'序号':0,'是否可见':True}
@@ -351,7 +376,7 @@ class PortfolioConstructor(object):
             arg['相对基准'] = False
             arg['舍弃优先级'] = -1
         ArgInfo = {}
-        ArgInfo['目标ID'] = {'数据类型':'IDFilterStr','取值范围':list(self.AllFactorDataType.keys()),'是否刷新':False,'是否可见':True,'序号':0,'可否遍历':False}
+        ArgInfo['目标ID'] = {'数据类型':'IDFilterStr','取值范围':list(self._AllFactorDataType.keys()),'是否刷新':False,'是否可见':True,'序号':0,'可否遍历':False}
         ArgInfo['限制上限'] = {'数据类型':'Double','取值范围':[-9999.0,9999.0,0.0001],'是否刷新':False,'序号':1,'是否可见':True}
         ArgInfo['限制下限'] = {'数据类型':'Double','取值范围':[-9999.0,9999.0,0.0001],'是否刷新':False,'序号':2,'是否可见':True}
         ArgInfo['相对基准'] = {'数据类型':'Bool','取值范围':[True,False],'是否刷新':False,'序号':3,'是否可见':True}
@@ -619,16 +644,13 @@ class PortfolioConstructor(object):
         Priority.sort()
         while (ResultInfo.get("Status",0)!=1) and (Priority!=[]):
             iPriority = Priority.pop(0)
-            for j in DropedConstraintInds[iPriority]:
-                Constraints[j] = None
-            nVar,PreparedObjective,PreparedConstraints,PreparedOption = self._prepareModel(Objective,Constraints,self.OptionArg)
-            TargetWeight,ResultInfo = self._solve(nVar,PreparedObjective,PreparedConstraints,PreparedOption)
+            for j in DropedConstraintInds[iPriority]: Constraints[j] = None
+            nVar, PreparedObjective, PreparedConstraints, PreparedOption = self._prepareModel(Objective, Constraints, self.OptionArg)
+            TargetWeight, ResultInfo = self._solve(nVar, PreparedObjective, PreparedConstraints, PreparedOption)
             ReleasedConstraint += DropedConstraints[iPriority]
         ResultInfo['ReleasedConstraint'] = ReleasedConstraint
-        if TargetWeight is not None:
-            return (pd.Series(TargetWeight,index=self.TargetIDs),ResultInfo)
-        else:
-            return (None,ResultInfo)
+        if TargetWeight is not None: return (pd.Series(TargetWeight,index=self.TargetIDs), ResultInfo)
+        else: return (None, ResultInfo)
     # 检查当前的优化问题是否可解
     def _checkSolvability(self):
         for iConstraintType in self.ConstraintArgs[0]:
@@ -648,81 +670,61 @@ class PortfolioConstructor(object):
             Mu = Mu.loc[self.TargetIDs]
             Mu[pd.isnull(Mu)] = 0.0
             return (np.dot(optimal_w.values,np.dot(optimal_w.values,self.CovMatrix.loc[self.TargetIDs,self.TargetIDs].values))+np.dot(Mu.values,optimal_w.values)+temp)**0.5
-    # 保存自身信息
-    def saveInfo(self,container):
-        container["Name"] = self.Name
-        container["AllFactorDataType"] = self.AllFactorDataType
-        return container
-    # 恢复信息
-    def loadInfo(self,container):
-        self.Name = container["Name"]
-        self.AllFactorDataType = container['AllFactorDataType']
-        return 0
 
 # 基于 MATLAB 的投资组合构造器
 class MatlabPC(PortfolioConstructor):
     """基于 MATLAB 的投资组合构造器"""
-    def __init__(self,name,qs_env=None):
-        PortfolioConstructor.__init__(self,name,qs_env=qs_env)
-        self.MatlabScript = ""
+    def __init__(self, matlab_eng, sys_args={}, **kwargs):
+        super().__init__(sys_args=sys_args, **kwargs)
+        self._MatlabScript = ""
+        self._MatlabEng = matlab_eng
         return
     # 传递优化目标变量
-    def _transmitObjective(self, prepared_objective, eng):
+    def _transmitObjective(self, prepared_objective):
         MatlabVar = {}
         for iVar,iValue in prepared_objective.items():
-            if isinstance(iValue,np.ndarray):
-                MatlabVar[iVar] = matlab.double(iValue.tolist())
-            elif isinstance(iValue,str):
-                MatlabVar[iVar] = iValue
-            else:
-                MatlabVar[iVar] = matlab.double([iValue])
-        eng.workspace['Objective'] = MatlabVar
+            if isinstance(iValue, np.ndarray): MatlabVar[iVar] = matlab.double(iValue.tolist())
+            elif isinstance(iValue, str): MatlabVar[iVar] = iValue
+            else: MatlabVar[iVar] = matlab.double([iValue])
+        self._MatlabEng.workspace['Objective'] = MatlabVar
         return 0
     # 传递约束条件变量
-    def _transmitConstraint(self,prepared_constraints,eng):
-        if isinstance(prepared_constraints,dict):
+    def _transmitConstraint(self, prepared_constraints):
+        if isinstance(prepared_constraints, dict):
             MatlabVar = {}
-            for iVar,iValue in prepared_constraints.items():
-                if isinstance(iValue,np.ndarray):
-                    MatlabVar[iVar] = matlab.double(iValue.tolist())
-                elif isinstance(iValue,str):
-                    MatlabVar[iVar] = iValue
-                else:
-                    MatlabVar[iVar] = matlab.double([iValue])
-            eng.workspace[prepared_constraints['type']+'_Constraint'] = MatlabVar
+            for iVar, iValue in prepared_constraints.items():
+                if isinstance(iValue,np.ndarray): MatlabVar[iVar] = matlab.double(iValue.tolist())
+                elif isinstance(iValue,str): MatlabVar[iVar] = iValue
+                else: MatlabVar[iVar] = matlab.double([iValue])
+            self._MatlabEng.workspace[prepared_constraints['type']+'_Constraint'] = MatlabVar
             return 0
         else:
             MatlabVar = []
-            for i,iConstraint in enumerate(prepared_constraints):
+            for i, iConstraint in enumerate(prepared_constraints):
                 iMatlabVar = {}
                 for jVar,jValue in iConstraint.items():
-                    if isinstance(jValue,np.ndarray):
-                        iMatlabVar[jVar] = matlab.double(jValue.tolist())
-                    elif isinstance(jValue,str):
-                        iMatlabVar[jVar] = jValue
-                    else:
-                        iMatlabVar[jVar] = matlab.double([jValue])
+                    if isinstance(jValue, np.ndarray): iMatlabVar[jVar] = matlab.double(jValue.tolist())
+                    elif isinstance(jValue,str): iMatlabVar[jVar] = jValue
+                    else: iMatlabVar[jVar] = matlab.double([jValue])
                 MatlabVar.append(iMatlabVar)
-            eng.workspace[MatlabVar[0]['type']+'_Constraint'] = MatlabVar
+            self._MatlabEng.workspace[MatlabVar[0]['type']+'_Constraint'] = MatlabVar
             return 0
     # 调用 MATLAB 求解优化问题
-    def _solve(self,nvar,prepared_objective,prepared_constraints,prepared_option):
-        ErrorCode = self.QSEnv.MatlabEngine.connect(engine_name=None,option="-desktop")
-        if ErrorCode!=1:
-            return np.zeros(nvar)+np.nan
-        Eng = self.QSEnv.MatlabEngine.acquireEngine()
+    def _solve(self, nvar, prepared_objective, prepared_constraints, prepared_option):
+        ErrorCode = self._MatlabEng.connect(engine_name=None,option="-desktop")
+        if ErrorCode!=1: return np.zeros(nvar)+np.nan
+        Eng = self._MatlabEng.acquireEngine()
         Eng.clear(nargout=0)
-        self._transmitObjective(prepared_objective,Eng)
-        for iType in prepared_constraints:
-            self._transmitConstraint(prepared_constraints[iType],Eng)
+        self._transmitObjective(prepared_objective)
+        for iType in prepared_constraints: self._transmitConstraint(prepared_constraints[iType])
         Eng.workspace['nVar'] = float(nvar)
         Eng.workspace["Options"] = prepared_option
-        getattr(Eng,self.MatlabScript)(nargout=0)
+        getattr(Eng, self._MatlabScript)(nargout=0)
         ResultInfo = Eng.workspace['ResultInfo']
         if ResultInfo["Status"]==1:
             x = Eng.workspace['x']
             x = np.array(x).reshape(nvar)
         else:
             x = None
-        self.QSEnv.MatlabEngine.releaseEngine()
-        return (x,ResultInfo)
+        self._MatlabEng.releaseEngine()
+        return (x, ResultInfo)

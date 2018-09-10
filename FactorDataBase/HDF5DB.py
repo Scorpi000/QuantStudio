@@ -82,16 +82,8 @@ class _FactorTable(FactorTable):
                 if dts is None:
                     if ids is None:
                         Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs)
-                    elif len(ids)>=1000:
-                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).ix[ids]
                     else:
-                        CrossedIDs = list(set(ids).intersection(set(IDs)))
-                        IDs = list(IDs)
-                        CrossedIDPos = [IDs.index(iID) for iID in CrossedIDs]
-                        if not CrossedIDPos:
-                            Rslt = pd.DataFrame([], index=DateTimes, columns=ids)
-                        else:
-                            Rslt = pd.DataFrame(DataFile["Data"][:, CrossedIDPos], index=DateTimes, columns=CrossedIDs).ix[:, ids]
+                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).ix[:, ids]
                 else:
                     if dts and isinstance(dts[0], pd.Timestamp) and (pd.__version__>="0.20.0"): dts = [idt.to_pydatetime().timestamp() for idt in dts]
                     else: dts = [idt.timestamp() for idt in dts]
@@ -335,37 +327,3 @@ class HDF5DB(WritableFactorDB):
             self.writeFactorData(data.iloc[i], table_name, iFactor, if_exists=if_exists)
         return 0
     
-if __name__=="__main__":
-    import time
-    
-    HDB = HDF5DB()
-    HDB.connect()
-    
-    print(HDB.TableNames)
-    print(HDB.getTable("ElementaryFactor").FactorNames)
-    Data = HDB.getTable("ElementaryFactor").readData(factor_names=["复权收盘价"], ids=None, dts=None)
-    #HDB.writeData(Data, "TestTable")
-    
-    ## 功能测试
-    #FT = HDB.getTable("ElementaryFactor")
-    DTs = FT.getDateTime(start_dt=dt.datetime(2017,1,1), end_dt=dt.datetime(2017,12,31,23,59,59,999999))
-    ## 单 ID, 多个因子, 多时间点读取
-    #StartT = time.clock()
-    #IDData = FT.readData(factor_names=FT.FactorNames, ids=["000001.SZ"], dts=DTs).iloc[:, :, 0]
-    #print("单 ID, 多因子, 多时间点读取: "+str(time.clock()-StartT))
-    
-    ## 单因子, 多个 ID, 多时间点读取
-    #StartT = time.clock()
-    #FactorData = FT.readData(factor_names=["复权收盘价"], ids=FT.getID(ifactor_name="复权收盘价"), dts=DTs).iloc[0]
-    #print("单因子, 多 ID, 多时间点读取: "+str(time.clock()-StartT))
-    
-    ## 单时间点, 多因子, 多 ID
-    #StartT = time.clock()
-    #DateTimeData = FT.readData(factor_names=FT.FactorNames, ids=FT.getID(), dts=[dt.datetime(2018,5,31,23,59,59,999999)]).iloc[:, 0, :]
-    #print("单时间点, 多因子, 多 ID 读取: "+str(time.clock()-StartT))
-    
-    ## 多因子, 多 ID, 多时间点读取
-    #StartT = time.clock()
-    #Data = FT.readData(ids=["000001.SZ","000002.SZ"], dts=DTs)
-    #print("多因子, 多 ID, 多时间点读取: "+str(time.clock()-StartT))
-    pass

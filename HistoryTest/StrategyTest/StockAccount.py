@@ -2,7 +2,6 @@
 """股票账户"""
 import os
 import datetime as dt
-from copy import deepcopy
 
 import pandas as pd
 import numpy as np
@@ -108,7 +107,6 @@ class _TickFactorMap(_BarFactorMap):
 # 行情因子表: 开盘价(非必需), 最高价(非必需), 最低价(非必需), 最新价, 成交量(非必需). 最新价用于记录账户价值变化; 成交价: 用于模拟市价单的成交.
 # 复权因子表: 复权因子或者每股送转(日期索引为股权登记日), 每股派息(税后, 日期索引为股权登记日), 派息日(日期索引为股权登记日), 红股上市日(日期索引为股权登记日)
 # 市价单根据当前时段的成交价和成交量的情况成交; 限价单根据最高价, 最低价和成交量的情况成交, 假定成交量在最高价和最低价之间的分布为均匀分布, 如果没有指定最高价和最低价, 则最高价和最低价相等且等于成交价
-# TODO: 加入交易状态, 涨跌停信息
 class TimeBarAccount(Account):
     """基于 Bar 数据的股票账户"""
     Delay = Bool(True, arg_type="Bool", label="交易延迟", order=2)
