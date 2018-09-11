@@ -18,8 +18,8 @@ from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList
 from QuantStudio.Tools.ExcelFun import copyChart
 from QuantStudio.RiskModel.RiskDataSource import RiskDataSource
-from QuantStudio.HistoryTest.HistoryTestModel import BaseModule
-from QuantStudio.HistoryTest.SectionTest.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
+from QuantStudio.BackTest.BackTestModel import BaseModule
+from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 
 class SectionCorrelation(BaseModule):
     """因子截面相关性"""

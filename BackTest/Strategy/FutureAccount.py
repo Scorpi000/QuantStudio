@@ -12,8 +12,8 @@ from QuantStudio.Tools.IDFun import testIDFilterStr
 from QuantStudio.Tools import DateTimeFun
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5
 from QuantStudio import __QS_Error__, __QS_Object__
-from QuantStudio.HistoryTest.StrategyTest.StrategyTestModule import Account, cutDateTime
-from QuantStudio.HistoryTest.StrategyTest.StockAccount import _TradeLimit
+from QuantStudio.BackTest.Strategy.StrategyModule import Account, cutDateTime
+from QuantStudio.BackTest.Strategy.StockAccount import _TradeLimit
 
 class _TradeLimit(__QS_Object__):
     """交易限制"""

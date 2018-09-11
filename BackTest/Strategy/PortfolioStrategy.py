@@ -4,16 +4,18 @@ import os
 
 import pandas as pd
 import numpy as np
-from traits.api import Bool, Enum, Either, List, ListStr, Int, Float, Str, Bool, Dict, Instance, on_trait_change
+from traits.api import Enum, List, ListStr, Int, Float, Str, Bool, Dict, Instance, on_trait_change
 
 from QuantStudio.Tools.AuxiliaryFun import searchNameInStrList, getFactorList, genAvailableName, match2Series
 from QuantStudio.Tools.FileFun import listDirFile, writeFun2File
 from QuantStudio.Tools.MathFun import CartesianProduct
 from QuantStudio.Tools.StrategyTestFun import loadCSVFilePortfolioSignal, writePortfolioSignal2CSV
 from QuantStudio import __QS_Error__, __QS_Object__
-from QuantStudio.HistoryTest.StrategyTest.StrategyTestModule import Strategy, Account
+from QuantStudio.BackTest.Strategy.StrategyModule import Strategy, Account
 
-# 信号数据格式: pd.Series(目标权重, index=[ID]) 或者 None(表示无信号, 默认值)
+# 信号数据格式: (多头信号, 空头信号)
+# 多头信号: Series(多头权重, index=[ID]) 或者 None(表示无信号, 默认值)
+# 空头信号: Series(空头权重, index=[ID]) 或者 None(表示无信号, 默认值)
 
 class _WeightAllocation(__QS_Object__):
     """权重分配"""
@@ -74,10 +76,6 @@ class PortfolioStrategy(Strategy):
         self._TempData['StoredSignal'] = []# 暂存的信号，用于滞后发出信号
         self._TempData['LagNum'] = []# 当前日距离信号生成日的日期数
         return super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
-    def __QS_end__(self):
-        self._LongTradeTarget, self._ShortTradeTarget = None, None
-        self._TempData = {}
-        return 0
     # 生成多头信号, 用户实现
     def genLongSignal(self, idt, trading_record):
         return None

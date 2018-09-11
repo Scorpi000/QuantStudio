@@ -16,7 +16,7 @@ from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.Tools.DataPreprocessingFun import prepareRegressData
 from QuantStudio.Tools.ExcelFun import copyChart
-from QuantStudio.HistoryTest.HistoryTestModel import BaseModule
+from QuantStudio.BackTest.BackTestModel import BaseModule
 
 def _QS_formatMatplotlibPercentage(x, pos):
     return '%.2f%%' % (x*100, )

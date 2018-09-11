@@ -10,7 +10,7 @@ import numpy as np
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.Tools.IDFun import testIDFilterStr
 from QuantStudio import __QS_Error__, __QS_Object__
-from QuantStudio.HistoryTest.StrategyTest.StrategyTestModule import Account, cutDateTime
+from QuantStudio.BackTest.Strategy.StrategyModule import Account, cutDateTime
 
 class MarginAccount(Account):
     """融券账户"""

@@ -15,11 +15,11 @@ from matplotlib.ticker import FuncFormatter
 import matplotlib.dates as mdate
 
 from QuantStudio import __QS_Error__, __QS_Object__
-from QuantStudio.HistoryTest.HistoryTestModel import BaseModule
+from QuantStudio.BackTest.BackTestModel import BaseModule
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.Tools.StrategyTestFun import summaryStrategy, calcYieldSeq, calcLSYield
 from QuantStudio.FactorDataBase.FactorDB import FactorTable
-from QuantStudio.HistoryTest.SectionTest.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
+from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 
 def cutDateTime(df, dts=None, start_dt=None, end_dt=None):
     if dts is not None: df = df.ix[dts]

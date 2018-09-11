@@ -11,7 +11,7 @@ from QuantStudio.Tools.AuxiliaryFun import getFactorList,searchNameInStrList
 from QuantStudio.Tools.IDFun import testIDFilterStr
 from QuantStudio.Tools import DateTimeFun
 from QuantStudio import QSError, QSArgs, QSObject
-from QuantStudio.HistoryTest.StrategyTest.StrategyTestModule import Account
+from QuantStudio.BackTest.Strategy.StrategyModule import Account
 
 def _getDefaultNontradableIDFilter(data_source=None,nonbuyable=True,qs_env=None):
     if data_source is None:

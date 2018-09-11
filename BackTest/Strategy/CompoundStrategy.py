@@ -7,9 +7,9 @@ import numpy as np
 
 from QuantStudio.FunLib.AuxiliaryFun import searchNameInStrList,getFactorList
 from QuantStudio.FunLib.FileFun import listDirFile,writeFun2File
-from QuantStudio.StrategyTest.StrategyTestFun import loadCSVFilePortfolioSignal,writePortfolioSignal2CSV
+from QuantStudio.Strategy.StrategyTestFun import loadCSVFilePortfolioSignal,writePortfolioSignal2CSV
 from QuantStudio import QSArgs, QSError, QSObject
-from QuantStudio.StrategyTest.StrategyTestModel import Strategy
+from QuantStudio.Strategy.StrategyTestModel import Strategy
 
 # 自定义复合策略, TODO
 class CompoundStrategy(Strategy):

@@ -17,9 +17,9 @@ from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList, d
 from QuantStudio.Tools.DataPreprocessingFun import prepareRegressData
 from QuantStudio.Tools.ExcelFun import copyChart
 from QuantStudio.Tools.StrategyTestFun import calcPortfolioReturn, calcTurnover, calcMaxDrawdownRate
-from QuantStudio.HistoryTest.HistoryTestModel import BaseModule
+from QuantStudio.BackTest.BackTestModel import BaseModule
 from QuantStudio.PortfolioConstructor import BasePC
-from QuantStudio.HistoryTest.SectionTest.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
+from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 
 class QuantilePortfolio(BaseModule):
     """分位数组合"""

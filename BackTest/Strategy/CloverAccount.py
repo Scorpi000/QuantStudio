@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 
 from QuantStudio import __QS_Error__
-from QuantStudio.HistoryTest.StrategyTest.StrategyTestModule import Account, cutDateTime
+from QuantStudio.BackTest.Strategy.StrategyModule import Account, cutDateTime
 
 class TimeBarAccount(Account):
     """Time Bar 账户"""

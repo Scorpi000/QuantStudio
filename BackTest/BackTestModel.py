@@ -18,7 +18,7 @@ from QuantStudio.FactorDataBase.FactorDB import FactorDB
 from QuantStudio.Tools.DateTimeFun import combineDateTime
 
 class BaseModule(__QS_Object__):
-    """历史回测基模块"""
+    """回测模块"""
     Name = Str("回测模块")
     def __init__(self, name, sys_args={}, **kwargs):
         super().__init__(sys_args=sys_args, **kwargs)
@@ -55,8 +55,8 @@ class BaseModule(__QS_Object__):
         return webbrowser.open(file_path)
 
 
-class HistoryTestModel(__QS_Object__):
-    """历史回测模型"""
+class BackTestModel(__QS_Object__):
+    """回测模型"""
     Modules = List(BaseModule)# 已经添加的测试模块, [测试模块对象]
     def __init__(self, sys_args={}, **kwargs):
         super().__init__(sys_args=sys_args, **kwargs)
@@ -128,7 +128,7 @@ class HistoryTestModel(__QS_Object__):
         return self._Output
     # 生成 Excel 报告
     def genExcelReport(self, file_path):
-        shutil.copy(__QS_MainPath__+os.sep+"HistoryTest"+os.sep+"SectionTest"+os.sep+"简单因子表现模板.xlsx", file_path)
+        shutil.copy(__QS_MainPath__+os.sep+"BackTest"+os.sep+"SectionFactor"+os.sep+"简单因子表现模板.xlsx", file_path)
         xlBook = xw.Book(file_path)
         NewSheet = xlBook.sheets.add(name="占位表")
         for i, iModule in enumerate(self.Modules): iModule.genExcelReport(xlBook, str(i)+"-"+iModule.Name)
