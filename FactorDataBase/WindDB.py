@@ -34,18 +34,13 @@ class _DBTable(FactorTable):
             MetaData = FactorInfo["DataType"].ix[factor_names]
             for i in range(MetaData.shape[0]):
                 iDataType = MetaData.iloc[i].lower()
-                if iDataType.find("number")!=-1:
-                    MetaData.iloc[i] = "double"
-                else:
-                    MetaData.iloc[i] = "string"
+                if iDataType.find("number")!=-1: MetaData.iloc[i] = "double"
+                else: MetaData.iloc[i] = "string"
             return MetaData
-        elif key=="Description":
-            return FactorInfo["Description"].ix[factor_names]
+        elif key=="Description": return FactorInfo["Description"].ix[factor_names]
         elif key is None:
-            MetaData = {}
-            for iKey in ["DataType", "Description"]:
-                MetaData[iKey] = self.getFactorMetaData(factor_names, key=iKey)
-            return pd.DataFrame(MetaData)
+            return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType"),
+                                 "Description":self.getFactorMetaData(factor_names, key="Description")})
         else:
             return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
 

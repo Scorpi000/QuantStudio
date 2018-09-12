@@ -118,6 +118,7 @@ class TimeBarAccount(Account):
     def __init__(self, market_ft, adjust_ft=None, sys_args={}, **kwargs):
         # 继承自 Account 的属性
         #self._Cash = None# 剩余现金, >=0,  array(shape=(nDT+1,))
+        #self._FrozenCash = 0# 当前被冻结的现金, >=0, float
         #self._Debt = None# 负债, >=0, array(shape=(nDT+1,))
         #self._CashRecord = None# 现金流记录, 现金流入为正, 现金流出为负, DataFrame(columns=["时间点", "现金流", "备注"])
         #self._DebtRecord = None# 融资记录, 增加负债为正, 减少负债为负, DataFrame(columns=["时间点", "融资", "备注"])
@@ -349,18 +350,10 @@ class TimeBarAccount(Account):
         self._Orders.index = np.arange(self._Orders.shape[0])
         return 0
     # 更新账户信息
-    def _updateAccount(self, cash_changed, position):
-        iIndex = self._Model.DateTimeIndex
-        DebtDelta = max((- cash_changed - self.Cash, 0))
-        if self.DeltLimit>0:
-            self._Debt[iIndex+1] += DebtDelta
-            if DebtDelta>0: self._DebtRecord.loc[self._DebtRecord.shape[0]] = (self._Model.DateTime, DebtDelta, "")
-            self._Cash[iIndex+1] -= min((- cash_changed, self.Cash))
-        else:
-            if DebtDelta>0: self._Cash[iIndex+1] = 0
-            else: self._Cash[iIndex+1] -= min((- cash_changed, self.Cash))
+    def _QS_updateAccount(self, cash_changed, position):
+        self._QS_updateCashDebt(cash_changed)
         position[position.abs()<1e-6] = 0.0
-        self._Position[iIndex+1] = position.values
+        self._Position[iIndex] = position.values
         return 0
     # 撮合成交订单
     def _matchOrder(self, idt):
@@ -410,7 +403,7 @@ class TimeBarAccount(Account):
         Position[SellNums.index] -= SellNums
         CashChanged += SellAmounts.sum() - SellFees.sum()
         TradingRecord.extend(list(zip([idt]*Mask.sum(), SellNums[Mask].index, -SellNums[Mask], SellPrice[Mask], SellFees[Mask], (SellAmounts-SellFees)[Mask], ["close"]*Mask.sum())))
-        if TradingRecord: self._updateAccount(CashChanged, Position)# 更新账户信息
+        if TradingRecord: self._QS_updateAccount(CashChanged, Position)# 更新账户信息
         return TradingRecord
     # 撮合成交买入市价单
     # 以成交价完成成交, 成交量满足买入限制要求
@@ -440,7 +433,7 @@ class TimeBarAccount(Account):
             Position[BuyNums.index] += BuyNums
             CashChanged -= BuyAmounts.sum() + BuyFees.sum()
             TradingRecord.extend(list(zip([idt]*Mask.sum(), BuyNums[Mask].index, BuyNums[Mask], BuyPrice[Mask], BuyFees[Mask], -(BuyAmounts+BuyFees)[Mask], ["open"]*Mask.sum())))
-        if TradingRecord: self._updateAccount(CashChanged, Position)
+        if TradingRecord: self._QS_updateAccount(CashChanged, Position)
         return TradingRecord
     # 撮合成交卖出限价单
     # 如果最高价和最低价未指定, 则检验成交价是否优于目标价, 是就以目标价完成成交, 且成交量满足卖出限制中的限价单成交量限比, 否则无法成交
@@ -483,7 +476,7 @@ class TimeBarAccount(Account):
         CashChanged = SellAmounts.sum() - SellFees.sum()
         Mask = (SellNums>0)
         TradingRecord = list(zip([idt]*Mask.sum(), Volume.index[Mask], -SellNums[Mask], (SellAmounts/SellNums)[Mask], SellFees[Mask], (SellAmounts-SellFees)[Mask], ["close"]*Mask.sum()))
-        if TradingRecord: self._updateAccount(CashChanged, Position)
+        if TradingRecord: self._QS_updateAccount(CashChanged, Position)
         return (TradingRecord, sell_orders)
     # 撮合成交买入限价单
     # 如果最高价和最低价未指定, 则检验成交价是否优于目标价, 是就以目标价完成成交, 且成交量满足买入限制要求
@@ -531,7 +524,7 @@ class TimeBarAccount(Account):
         CashChanged = - BuyAmounts.sum() - Fees.sum()
         Mask = (BuyNums>0)
         TradingRecord = list(zip([idt]*Mask.sum(), Volume.index[Mask], BuyNums[Mask], (BuyAmounts/BuyNums)[Mask], Fees[Mask], (-BuyAmounts-Fees)[Mask], ["close"]*Mask.sum()))
-        if TradingRecord: self._updateAccount(CashChanged, Position)
+        if TradingRecord: self._QS_updateAccount(CashChanged, Position)
         return (TradingRecord, buy_orders)
 
 
@@ -586,7 +579,7 @@ class TickAccount(TimeBarAccount):
         Position[sell_orders.index] -= SellNums
         CashChanged = SellAmounts.sum() - SellFees.sum()
         TradingRecord = list(zip([idt]*SellNums.shape[0], SellAmounts.index, -SellNums, SellAmounts/SellNums, SellFees, SellAmounts-SellFees, ["close"]*SellNums.shape[0]))
-        if TradingRecord: self._updateAccount(CashChanged, Position)# 更新账户信息
+        if TradingRecord: self._QS_updateAccount(CashChanged, Position)# 更新账户信息
         return TradingRecord
     # 撮合成交买入市价单
     def _matchMarketBuyOrder(self, idt, buy_orders):
@@ -614,7 +607,7 @@ class TickAccount(TimeBarAccount):
         Position[BuyNums.index] += BuyNums
         CashChanged = -(BuyAmounts.sum() + BuyFees.sum())
         TradingRecord = list(zip([idt]*BuyNums.shape[0], BuyNums.index, BuyNums, BuyAmounts/BuyNums, BuyFees, -(BuyAmounts+BuyFees), ["open"]*BuyNums.shape[0]))
-        if TradingRecord: self._updateAccount(CashChanged, Position)
+        if TradingRecord: self._QS_updateAccount(CashChanged, Position)
         return TradingRecord
 
 if __name__=="__main__":

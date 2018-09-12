@@ -96,6 +96,7 @@ class Account(BaseModule):
     def __init__(self, sys_args={}, **kwargs):
         super().__init__(name="Account", sys_args=sys_args, **kwargs)
         self._Cash = None# 剩余现金, >=0,  array(shape=(nDT+1,))
+        self._FrozenCash = 0# 当前被冻结的现金, >=0, float
         self._Debt = None# 负债, >=0, array(shape=(nDT+1,))
         self._CashRecord = None# 现金流记录, 现金流入为正, 现金流出为负, DataFrame(columns=["时间点", "现金流", "备注"])
         self._DebtRecord = None# 融资记录, 增加负债为正, 减少负债为负, DataFrame(columns=["时间点", "融资", "备注"])
@@ -105,6 +106,7 @@ class Account(BaseModule):
         nDT = len(dts)
         self._Cash, self._Debt = np.zeros(nDT+1), np.zeros(nDT+1)
         self._Cash[0] = self.InitCash
+        self._FrozenCash = 0.0
         self._CashRecord = pd.DataFrame(columns=["时间点", "现金流", "备注"])
         self._DebtRecord = pd.DataFrame(columns=["时间点", "融资", "备注"])
         self._TradingRecord = pd.DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])
@@ -134,10 +136,10 @@ class Account(BaseModule):
     @property
     def Debt(self):
         return self._Debt[self._Model.DateTimeIndex+1]
-    # 当前账户可提取的现金, = Cash + 负债上限 - Debt
+    # 当前账户可提取的现金, = Cash - FronzenCash + 负债上限 - Debt
     @property
     def AvailableCash(self):
-        return self._Cash[self._Model.DateTimeIndex+1] + max((self.DeltLimit - self._Debt[self._Model.DateTimeIndex+1], 0))
+        return self._Cash[self._Model.DateTimeIndex+1] - self._FrozenCash + max(self.DeltLimit - self._Debt[self._Model.DateTimeIndex+1], 0)
     # 当前账户价值, = Cash - Debt
     @property
     def AccountValue(self):
@@ -165,26 +167,43 @@ class Account(BaseModule):
     # 获取账户价值的历史序列, 以时间点为索引
     def getAccountValueSeries(self, dts=None, start_dt=None, end_dt=None):
         return self.getCashSeries(dts=dts, start_dt=start_dt, end_dt=end_dt) - self.getDebtSeries(dts=dts, start_dt=start_dt, end_dt=end_dt)
+    # 更新账户现金负债
+    def _QS_updateCashDebt(self, cash_changed):
+        iIndex = self._Model.DateTimeIndex + 1
+        if cash_changed>0:
+            if self._Debt[iIndex]>0:
+                DebtDec = min(cash_changed, self._Debt[iIndex])
+                self._Debt[iIndex] -= DebtDec
+                self._DebtRecord.loc[self._DebtRecord.shape[0]] = (self._Model.DateTime, -DebtDec, "")
+            else: DebtDec = 0
+            self._Cash[iIndex] += cash_changed - DebtDec
+        elif cash_changed<0:
+            if -cash_changed>self._Cash[iIndex]:
+                DebtInc = min(- cash_changed - self._Cash[iIndex], self.DebtLimit-self._Debt[iIndex])
+                self._Debt[iIndex] += DebtInc
+                self._DebtRecord.loc[self._DebtRecord.shape[0]] = (self._Model.DateTime, DebtInc, "")
+                self._Cash[iIndex] = 0
+            else:
+                self._Cash[iIndex] += cash_changed
+        return 0
     # 抽取现金
     def fetchCash(self, target_cash, remark=""):
-        iIndex = self._Model.DateTimeIndex
-        Cash = min((target_cash, self.AvailableCash))
-        DebtDelta = Cash - min((Cash, self._Cash[iIndex]))
+        iIndex = self._Model.DateTimeIndex + 1
+        Cash = min(target_cash, self.AvailableCash)
+        DebtDelta =  - min(0, self._Cash[iIndex] - Cash)
         self._Debt[iIndex] += DebtDelta
-        self._Cash[iIndex] -= min((Cash, self._Cash[iIndex]))
+        self._Cash[iIndex] -= min(Cash, self._Cash[iIndex])
         self._CashRecord.loc[self._CashRecord.shape[0]] = (self._Model.DateTime, -Cash, remark)
-        if DebtDelta>0:
-            self._DebtRecord.loc[self._DebtRecord.shape[0]] = (self._Model.DateTime, DebtDelta, remark)
+        if DebtDelta>0: self._DebtRecord.loc[self._DebtRecord.shape[0]] = (self._Model.DateTime, DebtDelta, remark)
         return Cash
     # 增加现金
     def addCash(self, target_cash, remark=""):
-        iIndex = self._Model.DateTimeIndex
-        self._Cash[iIndex] += target_cash - min((target_cash, self._Debt[iIndex]))
-        DebtDelta = -min((target_cash, self._Debt[iIndex]))
+        iIndex = self._Model.DateTimeIndex + 1
+        DebtDelta = - min(target_cash, self._Debt[iIndex])
+        self._Cash[iIndex] += target_cash + DebtDelta
         self._Debt[iIndex] += DebtDelta
         self._CashRecord.loc[self._CashRecord.shape[0]] = (self._Model.DateTime, target_cash, remark)
-        if DebtDelta<0:
-            self._DebtRecord.loc[self._DebtRecord.shape[0]] = (self._Model.DateTime, DebtDelta, remark)
+        if DebtDelta<0: self._DebtRecord.loc[self._DebtRecord.shape[0]] = (self._Model.DateTime, DebtDelta, remark)
         return 0
 
 class _Benchmark(__QS_Object__):

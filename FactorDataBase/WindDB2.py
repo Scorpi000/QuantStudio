@@ -9,6 +9,7 @@ import pandas as pd
 from traits.api import Enum, Int, Str, Range, Bool, List, Dict, Function
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
+from QuantStudio.Tools.AuxiliaryFun import searchNameInStrList,
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
 from QuantStudio.Tools.FileFun import readJSONFile
@@ -348,32 +349,33 @@ class _ConstituentTable(_DBTable):
 
 class _DividendTable(_DBTable):
     """分红配股因子表"""
-    DateField = Enum("除权除息日", "股权登记日", "派息日", "红股上市日", arg_type="SingleOption", label="日期字段", order=0)
+    DateField = Enum(None, arg_type="SingleOption", label="日期字段", order=0)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         FactorInfo = fdb._FactorInfo.ix[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)    
+        self._DateFields = FactorInfo[FactorInfo["FieldType"]=="Date"].index.tolist()
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
-        if self.Name=="中国A股分红":
-            self.add_trait("DateField", Enum("除权除息日", "股权登记日", "派息日", "红股上市日", arg_type="SingleOption", label="日期字段", order=0))
-        elif self.Name=="中国A股配股":
-            self.add_trait("DateField", Enum("除权除息日", "股权登记日", "配股上市日", arg_type="SingleOption", label="日期字段", order=0))
-        elif self.Name=="中国共同基金分红":
-            self.add_trait("DateField", Enum("除息日", "派息日", "净值除权日", "权益登记日", "收益支付日", arg_type="SingleOption", label="日期字段", order=0))
-    # 返回除权除息日为给定时点 idt 的所有 ID
+        self.add_trait("DateField", Enum(*self._DateFields, arg_type="SingleOption", label="日期字段", order=0))
+        self.DateField = searchNameInStrList(self._DateFields, ["除"])
+    @property
+    def FactorNames(self):
+        FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]
+        return FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()+self._DateFields
+    # 返回日期字段为给定时点 idt 的所有 ID
     # 如果 idt 为 None, 将返回所有有记录已经实施分红的 ID
     # 忽略 ifactor_name
     def getID(self, ifactor_name=None, idt=None, args={}):
         DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
         FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self.DateField, self._IDField, "方案进度"])
-        SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[self._IDField]+" "# ID
+        SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[self._IDField]+" "
         SQLStr += "FROM "+DBTableName+" "
-        SQLStr += "WHERE "+DBTableName+"."+FieldDict["方案进度"]+"=3 "
-        if idt is not None:
-            SQLStr += "AND "+DBTableName+"."+FieldDict[self.DateField]+"='"+idt.strftime("%Y%m%d")+"' "
+        if idt is not None: SQLStr += "WHERE "+DBTableName+"."+FieldDict[self.DateField]+"='"+idt.strftime("%Y%m%d")+"' "
+        else: SQLStr += "WHERE "+DBTableName+"."+FieldDict[self.DateField]+" IS NOT NULL "
+        if pd.notnull(FieldDict["方案进度"]): SQLStr += "AND "+DBTableName+"."+FieldDict["方案进度"]+"=3 "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._IDField]
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
-    # 返回给定 iid 的所有除权除息日
+    # 返回给定 iid 的所有日期字段的对应时点
     # 如果 iid 为 None, 将返回所有有记录已经实施分红的时间点
     # 忽略 ifactor_name
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
@@ -381,18 +383,13 @@ class _DividendTable(_DBTable):
         FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self.DateField, self._IDField])
         SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[self.DateField]+" "
         SQLStr += "FROM "+DBTableName+" "
-        if iid is not None:
-            SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._IDField]+"='"+iid+"' "
-        else:
-            SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._IDField]+" IS NOT NULL "
-        if start_dt is not None:
-            SQLStr += "AND "+DBTableName+"."+FieldDict[self.DateField]+">='"+start_dt.strftime("%Y%m%d")+"' "
-        if end_dt is not None:
-            SQLStr += "AND "+DBTableName+"."+FieldDict[self.DateField]+"<='"+end_dt.strftime("%Y%m%d")+"' "
+        if iid is not None: SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._IDField]+"='"+iid+"' "
+        else: SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._IDField]+" IS NOT NULL "
+        if start_dt is not None: SQLStr += "AND "+DBTableName+"."+FieldDict[self.DateField]+">='"+start_dt.strftime("%Y%m%d")+"' "
+        if end_dt is not None: SQLStr += "AND "+DBTableName+"."+FieldDict[self.DateField]+"<='"+end_dt.strftime("%Y%m%d")+"' "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self.DateField]
         return list(map(lambda x: dt.datetime(int(x[0][:4]), int(x[0][4:6]), int(x[0][6:8]), 23, 59, 59, 999999), self._FactorDB.fetchall(SQLStr)))
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        StartDate, EndDate = dts[0].date(), dts[-1].date()
         DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
         FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self.DateField, self._IDField, "方案进度"]+factor_names)
         # 形成SQL语句, 日期, ID, 因子数据
@@ -400,10 +397,10 @@ class _DividendTable(_DBTable):
         SQLStr += DBTableName+"."+FieldDict[self._IDField]+", "
         for iField in factor_names: SQLStr += DBTableName+"."+FieldDict[iField]+", "
         SQLStr = SQLStr[:-2]+" FROM "+DBTableName+" "
-        SQLStr += "WHERE "+DBTableName+"."+FieldDict["方案进度"]+"=3 "
-        SQLStr += "AND ("+genSQLInCondition(DBTableName+"."+FieldDict[self._IDField],ids,is_str=True,max_num=1000)+") "
-        SQLStr += "AND "+DBTableName+"."+FieldDict[self.DateField]+">='"+StartDate.strftime("%Y%m%d")+"' "
-        SQLStr += "AND "+DBTableName+"."+FieldDict[self.DateField]+"<='"+EndDate.strftime("%Y%m%d")+"' "
+        SQLStr += "WHERE ("+genSQLInCondition(DBTableName+"."+FieldDict[self._IDField],ids,is_str=True,max_num=1000)+") "
+        SQLStr += "AND "+DBTableName+"."+FieldDict[self.DateField]+">='"+dts[0].strftime("%Y%m%d")+"' "
+        SQLStr += "AND "+DBTableName+"."+FieldDict[self.DateField]+"<='"+dts[-1].strftime("%Y%m%d")+"' "
+        if pd.notnull(FieldDict["方案进度"]): SQLStr += "AND "+DBTableName+"."+FieldDict["方案进度"]+"=3 "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._IDField]+", "+DBTableName+"."+FieldDict[self.DateField]
         RawData = self._FactorDB.fetchall(SQLStr)
         if RawData==[]: return pd.DataFrame(columns=["日期","ID"]+factor_names)
@@ -414,13 +411,10 @@ class _DividendTable(_DBTable):
         Data = {}
         for iFactorName in raw_data:
             Data[iFactorName] = raw_data[iFactorName].unstack()
-            if DataType[iFactorName]=="double":
-                Data[iFactorName] = Data[iFactorName].astype("float")
-        Data = pd.Panel(Data).loc[factor_names]
+            if DataType[iFactorName]=="double": Data[iFactorName] = Data[iFactorName].astype("float")
+        Data = pd.Panel(Data)
         Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
-        Data = _adjustDateTime(Data, dts, fillna=False)
-        Data = Data.ix[:, :, ids]
-        return Data
+        return Data.ix[factor_names, dts, ids]
 
 class _MappingTable(_DBTable):
     """映射因子表"""

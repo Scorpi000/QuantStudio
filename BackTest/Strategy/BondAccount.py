@@ -1,5 +1,5 @@
 # coding=utf-8
-"""期货账户"""
+"""债券账户"""
 import os
 import datetime as dt
 
@@ -19,7 +19,8 @@ class _TradeLimit(__QS_Object__):
     """交易限制"""
     TradeFee = Float(0.0, arg_type="Double", label="交易费率", order=0)
 
-# Bar 因子: 开盘价(非必需), 最高价(非必需), 最低价(非必需), 最新价, 成交价, 成交量(非必需). 最新价用于记录账户价值变化; 成交价用于模拟市价单的成交.
+# Bar 因子: 开盘价(可选), 最高价(可选), 最低价(可选), 最新价, 成交价, 成交量(可选), 应计利息, 时间频率任意
+# 最新价用于记录账户价值变化; 成交价用于模拟市价单的成交, 所有的价格为净价.
 class _BarFactorMap(__QS_Object__):
     """Bar 因子映照"""
     Open = Enum(None, arg_type="SingleOption", label="开盘价", order=0)
@@ -28,11 +29,12 @@ class _BarFactorMap(__QS_Object__):
     Last = Enum(None, arg_type="SingleOption", label="最新价", order=3)
     Vol = Enum(None, arg_type="SingleOption", label="成交量", order=4)
     TradePrice = Enum(None, arg_type="SingleOption", label="成交价", order=5)
+    AI = Enum(None, arg_type="SingleOption", label="应计利息", order=6)
     def __init__(self, market_ft, sys_args={}, **kwargs):
-        self._MarketFT = market_ft
+        self._FT = market_ft
         return super().__init__(sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
-        DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._MarketFT.getFactorMetaData(key="DataType")))
+        DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
         DefaultNumFactorList.insert(0, None)
         self.add_trait("Open", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="开盘价", order=0))
         self.add_trait("High", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="最高价", order=1))
@@ -40,42 +42,42 @@ class _BarFactorMap(__QS_Object__):
         self.add_trait("Last", Enum(*DefaultNumFactorList[1:], arg_type="SingleOption", label="最新价", order=3))
         self.add_trait("Vol", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="成交量", order=4))
         self.add_trait("TradePrice", Enum(*DefaultNumFactorList[1:], arg_type="SingleOption", label="成交价", order=5))
+        self.add_trait("AI", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="应计利息", order=5))
         self.TradePrice = self.Last = searchNameInStrList(DefaultNumFactorList[1:], ['新','收','Last','last','close','Close'])
 
-# 证券信息: 初始保证金率, 维持保证金率, 合约乘数, 合约映射, 结算价
-class _SecurityInfo(__QS_Object__):
-    InitMarginRate = Float(0.15, arg_type="Double", label="初始保证金率", order=0)
-    MaintenanceMarginRate = Float(0.08, arg_type="Double", label="维持保证金率", order=1)
-    Multiplier = Float(1, arg_type="Double", label="合约乘数", order=2)
-    ContractMapping = Enum(None, arg_type="SingleOption", label="合约映射", order=3)
-    SettlementPrice = Enum(None, arg_type="SingleOption", label="结算价", order=4)
-    def __init__(self, ft, sys_args={}, **kwargs):
-        self._FT = ft
+# 因子表的时间频率日级, 时点必须为债权登记日
+class _Payment(__QS_Object__):
+    """兑付信息"""
+    ExDate = Enum(None, arg_type="SingleOption", label="除息日", order=0)
+    PayDate = Enum(None, arg_type="SingleOption", label="付息日", order=1)
+    Interest = Enum(None, arg_type="SingleOption", label="每手付息数", order=2)
+    Principal = Enum(None, arg_type="SingleOption", label="每手兑付本金数", order=3)
+    def __init__(self, payment_ft=None, sys_args={}, **kwargs):
+        self._FT = payment_ft
         return super().__init__(sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
-        self.add_trait("ContractMapping", Enum(*DefaultStrFactorList, arg_type="SingleOption", label="合约映射", order=3))
-        self.ContractMapping = searchNameInStrList(DefaultStrFactorList, ['映射','map','Map'])
-        self.add_trait("SettlementPrice", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="结算价", order=4))
-        self.SettlementPrice = searchNameInStrList(DefaultNumFactorList, ['结算','价','settle','Settle','price','Price'])
-        
+        self.add_trait("ExDate", Enum(*DefaultStrFactorList, arg_type="SingleOption", label="除息日", order=0))
+        self.add_trait("PayDate", Enum(*DefaultStrFactorList, arg_type="SingleOption", label="付息日", order=1))
+        self.add_trait("Interest", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="每手付息数", order=2))
+        self.add_trait("Principal", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="每手兑付本金数", order=3))
+        self.ExDate = searchNameInStrList(DefaultStrFactorList, ["除"])
+        self.PayDate = searchNameInStrList(DefaultStrFactorList, ["付"])
 
-# 基于 Bar 数据的期货账户
-# 基于连续合约的行情交易
-# market_ft: 行情因子表, 时间频率任意; security_ft: 证券信息因子表, 时间频率日级以下
+# 基于 Bar 数据的债券账户
+# market_ft: 行情信息因子表, 时间频率任意; payment_ft: 支付信息因子表, 时间频率日级
 # 市价单根据当前时段的成交价和成交量的情况成交; 限价单根据最高价, 最低价和成交量的情况成交, 假定成交量在最高价和最低价之间的分布为均匀分布, 如果没有指定最高价和最低价, 则最高价和最低价相等且等于成交价
 class TimeBarAccount(Account):
-    """基于 Bar 数据的期货账户"""
+    """基于 Bar 数据的债券账户"""
     Delay = Bool(True, arg_type="Bool", label="交易延迟", order=2)
     TargetIDs = ListStr(arg_type="IDList", label="目标ID", order=3)
     BuyLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="买入限制", order=4)
     SellLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="卖出限制", order=5)
-    MarketFactorMap = Instance(_BarFactorMap, arg_type="ArgObject", label="行情因子", order=6)
-    SecurityInfo = Instance(_SecurityInfo, arg_type="ArgObject", label="证券信息", order=7)
-    def __init__(self, market_ft, security_ft, sys_args={}, **kwargs):
+    MarketInfo = Instance(_BarFactorMap, arg_type="ArgObject", label="行情信息", order=6)
+    PaymentInfo = Instance(_SecurityInfo, arg_type="ArgObject", label="支付信息", order=7)
+    def __init__(self, market_ft, payment_ft, sys_args={}, **kwargs):
         # 继承自 Account 的属性
         #self._Cash = None# 剩余现金, >=0,  array(shape=(nDT+1,))
-        #self._FrozenCash = 0# 当前被冻结的现金, >=0, float
         #self._Debt = None# 负债, >=0, array(shape=(nDT+1,))
         #self._CashRecord = None# 现金流记录, 现金流入为正, 现金流出为负, DataFrame(columns=["时间点", "现金流", "备注"])
         #self._DebtRecord = None# 融资记录, 增加负债为正, 减少负债为负, DataFrame(columns=["时间点", "融资", "备注"])
@@ -84,40 +86,52 @@ class TimeBarAccount(Account):
         self._Position = None# 持仓数量, DataFrame(index=[时间点]+1, columns=self._IDs)
         self._PositionAmount = None# 持仓金额, 保证金 - 浮动盈亏, DataFrame(index=[时间点]+1, columns=self._IDs)
         self._Orders = None# 当前接收到的订单, DataFrame(columns=["ID", "数量", "目标价"])
-        self._OpenPosition = None# 当前未平仓的持仓信息, DataFrame(columns=["ID", "数量", "开仓时点", "开仓价格", "开仓交易费", "保证金", "浮动盈亏"])
-        self._ClosedPosition = None# 已平仓的交易信息, DataFrame(columns=["ID", "数量", "开仓时点", "开仓价格", "开仓交易费", "保证金", "平仓时点", "平仓价格", "平仓交易费", "平仓盈亏"])
+        self._OpenPosition = None# 当前未平仓的持仓信息, DataFrame(columns=["ID", "数量", "开仓时点", "开仓价格", "开仓交易费", "开仓应计利息", "持有应计利息", "浮动盈亏"])
+        self._ClosedPosition = None# 已平仓的交易信息, DataFrame(columns=["ID", "数量", "开仓时点", "开仓价格", "开仓交易费", "开仓应计利息", "平仓时点", "平仓价格", "平仓交易费", "平仓应计利息", "持有应计利息", "平仓盈亏"])
         self._LastPrice = None# 最新价, Series(index=self._IDs)
-        self._MarketFT = market_ft# 行情因子表对象
-        self._SecurityFT = security_ft# 证券信息因子表对象
+        self._AI = None# 应计利息, Series(index=self._IDs)
+        self._MarketFT = market_ft# 行情信息因子表对象
+        self._PaymentFT = payment_ft# 支付信息因子表对象
+        self._UnExInterest = None# 待除权利息, DataFrame(index=[ID], columns=[除息日])
+        self._UnpaidInterest = None# 待支付利息, DataFrame(index=[ID], columns=[付息日])
         super().__init__(sys_args=sys_args, **kwargs)
-        self.Name = "FutureAccount"
+        self.Name = "BondAccount"
     def __QS_initArgs__(self):
-        self.MarketFactorMap = _BarFactorMap(self._MarketFT)
-        self.SecurityInfo = _SecurityInfo(self._SecurityFT)
+        self.MarketInfo = _BarFactorMap(self._MarketFT)
+        self.PaymentInfo = _Payment(self._PaymentFT)
         self.BuyLimit = _TradeLimit(direction="Buy")
         self.SellLimit = _TradeLimit(direction="Sell")
     def __QS_start__(self, mdl, dts=None, dates=None, times=None):
         Rslt = super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
         self._IDs = list(self.TargetIDs)
-        if not self._IDs: self._IDs = list(self._MarketFT.getID(ifactor_name=self.MarketFactorMap.TradePrice))
+        if not self._IDs: self._IDs = list(self._MarketFT.getID(ifactor_name=self.MarketInfo.TradePrice))
         nDT, nID = len(dts), len(self._IDs)
         #self._Cash = np.zeros(nDT+1)
         #self._Debt = np.zeros(nDT+1)
         self._Position = pd.DataFrame(np.zeros((nDT+1, nID)), index=[dts[0]-dt.timedelta(1)]+dts, columns=self._IDs)
         self._PositionAmount = self._Position.copy()
         self._Orders = pd.DataFrame(columns=["ID", "数量", "目标价"])
-        self._LastPrice = pd.Series(np.nan, index=self._IDs)# 最新价
-        self._OpenPosition = pd.DataFrame(columns=["ID", "数量", "开仓时点", "开仓价格", "开仓交易费", "保证金", "浮动盈亏"])
-        self._ClosedPosition = pd.DataFrame(columns=["ID", "数量", "开仓时点", "开仓价格", "开仓交易费", "保证金", "平仓时点", "平仓价格", "平仓交易费", "平仓盈亏"])
+        self._LastPrice = pd.Series(np.nan, index=self._IDs)
+        self._AI = pd.Series(np.nan, index=self._IDs)
+        self._OpenPosition = DataFrame(columns=["ID", "数量", "开仓时点", "开仓价格", "开仓交易费", "开仓支付利息", "持有所得利息", "持有应计利息", "浮动盈亏"])
+        self._ClosedPosition = DataFrame(columns=["ID", "数量", "开仓时点", "开仓价格", "开仓交易费", "开仓支付利息", "平仓时点", "平仓价格", "平仓交易费", "平仓收入利息", "持有所得利息", "平仓盈亏"])
+        self._UnpaidInterest = pd.DataFrame(index=self._IDs)
         self._iTradingRecord = []# 暂存的交易记录
         self._nDT = nDT
         return Rslt + (self._MarketFT, self._SecurityFT)
     def __QS_move__(self, idt, *args, **kwargs):
         super().__QS_move__(idt, *args, **kwargs)
-        self._LastPrice = self._MarketFT.readData(factor_names=[self.MarketFactorMap.Last], ids=self._IDs, dts=[idt]).iloc[0, 0]
+        # 更新当前的账户信息
+        iIndex = self._Model.DateTimeIndex
+        self._LastPrice = self._MarketFT.readData(factor_names=[self.MarketInfo.Last, self.MarketInfo.AI], ids=self._IDs, dts=[idt]).iloc[:, 0]
+        self._AI, self._LastPrice = self._LastPrice.iloc[:, 1], self._LastPrice.iloc[:, 0]
+        if iIndex>0:
+            iPreDate, iDate = self._Model._QS_TestDateTimes[iIndex-1].date(), idt.date()
+            if iPreDate!=iDate:# 进入新的一天, 更新应计利息, 接受支付
+                self._handlePayment(iDate)
+                self._OpenPosition["持有应计利息"] = self._OpenPosition["数量"] * self._AI[self._OpenPosition["ID"].tolist()].values
         if self.Delay:# 撮合成交
-            iIndex = self._Model.DateTimeIndex
-            self._Position.iloc[iIndex+1] = self._Position.iloc[iIndex]
+            self._Position.iloc[iIndex+1] = self._Position.iloc[iIndex]# 初始化持仓
             TradingRecord = self._matchOrder(idt)
             TradingRecord = pd.DataFrame(TradingRecord, index=np.arange(self._TradingRecord.shape[0], self._TradingRecord.shape[0]+len(TradingRecord)), columns=self._TradingRecord.columns)
             self._TradingRecord = self._TradingRecord.append(TradingRecord)
@@ -135,10 +149,9 @@ class TimeBarAccount(Account):
             self._iTradingRecord = TradingRecord
             self._QS_updatePosition()
         if iIndex<self._nDT-1:
-            iNextDate = self._Model._QS_TestDateTimes[iIndex+1].date()
-            if iNextDate!=idt.date():# 当前是该交易日的最后一个时点
-                self._handleRollover(idt)# 处理展期
-                self._handleSettlement(idt)# 处理结算
+            iNextDate, iDate = self._Model._QS_TestDateTimes[iIndex+1].date(), idt.date()
+            if iNextDate!=iDate:# 当前是该交易日的最后一个时点
+                self._addPaymentInfo(iDate)# 添加新的支付信息
         return 0
     def __QS_end__(self):
         super().__QS_end__()
@@ -147,63 +160,38 @@ class TimeBarAccount(Account):
         self._Output["平仓记录"] = self._ClosedPosition
         self._Output["未平仓持仓"] = self._OpenPosition
         return 0
-    # 处理结算, 对于不满足保证金要求的仓位进行强平
-    def _handleSettlement(self, idt):
+    # 添加新的支付信息
+    def _addPaymentInfo(self, idate):
         if self._OpenPosition.shape[0]==0: return 0
-        idt = dt.datetime.combine(idt.date(), dt.time(23,59,59,999999))
-        SettlementPrice = self._SecurityFT.readData(factor_names=[self.SecurityInfo.SettlementPrice], dts=[idt], ids=self._IDs).iloc[0,0,:][self._OpenPosition["ID"].tolist()]
-        self._OpenPosition["浮动盈亏"] = self._OpenPosition["数量"] * (SettlementPrice.values - self._OpenPosition["开仓价格"]) * self.SecurityInfo.Multiplier
-        MaintenanceMargin = self._OpenPosition["数量"].abs() * self.SecurityInfo.Multiplier * SettlementPrice.values * self.SecurityInfo.MaintenanceMarginRate# 维持保证金
-        iGap = (MaintenanceMargin - self._OpenPosition["保证金"] - self._OpenPosition["浮动盈亏"]).clip_lower(0)# 当前保证金和维持保证金之间的缺口
-        iTotalGap = np.nansum(iGap)
-        if iTotalGap<=0: return 0
-        AvailableCash = self.AvailableCash
-        iIndex = self._Model.DateTimeIndex
-        if AvailableCash>=iTotalGap:
-            self._updateAccount(-iTotalGap)
-            self._OpenPosition["保证金"] += iGap
-            iPositionAmount = pd.Series((self._OpenPosition["浮动盈亏"]+self._OpenPosition["保证金"]).values, index=self._OpenPosition["ID"].values).groupby(axis=0, level=0).sum()
-            self._PositionAmount.iloc[iIndex+1][iPositionAmount.index] = iPositionAmount
-            return 0
-        self._OpenPosition["保证金"] += (iGap / iTotalGap) * AvailableCash# 将账户中的现金按照缺口金额大小分配给各个 ID
-        iAllowedPosition = self._OpenPosition["保证金"] / self.SecurityInfo.Multiplier / SettlementPrice.values / self.MaintenanceMarginRate# 计算当前保证金水平下允许的持仓数量
-        # 对于保证金不足的仓位进行平仓
-        iNum = (self._OpenPosition["数量"].abs() - iAllowedPosition).clip_lower(0)
-        iOrders = pd.Series(-iNum.values*np.sign(self._OpenPosition["数量"].values), index=self._OpenPosition["ID"].values).groupby(axis=0, level=0).sum()
-        iOrders = iOrders[iOrders!=0]
-        iBookOrders = self._Orders.groupby(by=["ID"])["数量"].sum()
-        if iBookOrders.shape[0]>0: iBookOrders = iBookOrders.loc[iOrders.index].fillna(0)
-        else: iBookOrders = pd.Series(0, index=iOrders.index)
-        iMask = (iOrders>0)
-        iOrders[iMask] = (iOrders[iMask] - iBookOrders[iMask]).clip_lower(0)
-        iMask = (iOrders<0)
-        iOrders[iMask] = (iOrders[iMask] - iBookOrders[iMask]).clip_upper(0)
-        iOrders = iOrders[iOrders!=0]
-        if iOrders.shape[0]==0: return 0
-        iOrders = pd.DataFrame(iOrders, columns=["数量"]).reset_index()
-        iOrders["目标价"] = np.nan
-        self.order(combined_order=iOrders)
+        iDT = dt.datetime.combine(idate, dt.time(23,59,59,999999))
+        Interest = self._PaymentFT.readData(factor_names=[self.PaymentInfo.Interest, self.PaymentInfo.Principal], ids=self._OpenPosition["ID"].unique().tolist(), dts=[iDT]).iloc[:, 0, :].sum(axis=1)
+        IDs = Interest[Interest>0].index.tolist()
+        if not IDs: return 0
+        iPosition = self.Position
+        DateInfo = self._PaymentFT.readData(factor_names=[self.PaymentInfo.ExDate, self.PaymentInfo.PayDate], ids=IDs, dts=[iDT]).iloc[:, 0, :]
+        for i, iID in IDs:
+            iExDate, iPayDate = DateInfo.iloc[i, 0], DateInfo.iloc[i, 1]
+            if pd.notnull(iExDate) and pd.notnull(iPayDate):
+                iExDate, iPayDate = dt.date(int(iExDate[:4]), int(iExDate[4:6]), int(iExDate[6:8])), dt.date(int(iPayDate[:4]), int(iPayDate[4:6]), int(iPayDate[6:8]))
+                iInterest = Interest[iID] * iPosition[iID]
+                self._UnExInterest[iPayDate] = self._UnExInterest.get(iPayDate, 0)
+                self._UnExInterest.loc[iID, iPayDate] += iInterest
+                self._UnpaidInterest[iPayDate] = self._UnpaidInterest.get(iPayDate, 0)
+                self._UnpaidInterest.loc[iID, iPayDate] += iInterest
         return 0
-    # 处理展期
-    def _handleRollover(self, idt):
-        if self._OpenPosition.shape[0]==0: return 0
-        iIndex = self._Model.DateTimeIndex
-        idt = dt.datetime.combine(idt.date(), dt.time(23,59,59,999999))
-        iNextDT = dt.datetime.combine(self._Model._QS_TestDateTimes[iIndex+1].date(), dt.time(23,59,59,999999))
-        IDMapping = self._SecurityFT.readData(factor_names=[self.SecurityInfo.ContractMapping], ids=self._IDs, dts=[idt, iNextDT]).iloc[0]
-        SettlementPrice = self._SecurityFT.readData(factor_names=[self.SecurityInfo.SettlementPrice], dts=[idt], ids=self._IDs).iloc[0,0,:]
-        isRollover = False
-        for iID in self._OpenPosition["ID"].unique():
-            iCurID, iNextID = IDMapping[iID].iloc[0], IDMapping[iID].iloc[1]
-            if iCurID==iNextID: continue
-            isRollover = True
-            iNextIDPrice = SettlementPrice[IDMapping.iloc[0]==iNextID].iloc[0]
-            iCurIDPrice = SettlementPrice[iID]
-            iMask = (self._OpenPosition["ID"]==iID)
-            iNewNum = self._OpenPosition["数量"][iMask] * iCurIDPrice / iNextIDPrice
-            self._OpenPosition["开仓价格"][iMask] = self._OpenPosition["数量"][iMask] * self._OpenPosition["开仓价格"][iMask] / iNewNum
-            self._OpenPosition["数量"][iMask] = iNewNum
-        if isRollover: self._updateAccount(cash_changed=0.0)
+    # 处理付息
+    def _handlePayment(self, idate):
+        if idate in self._UnExInterest:
+            iInterest = self._UnExInterest.pop(idate)
+            iInterest = iInterest[iInterest>0]
+            for i, iID in enumerate(iInterest.index):
+                self.addCash(iInterest.iloc[i], "%s: 除息" % iID)
+                self._FrozenCash += iInterest.iloc[i]
+        if idate in self._UnpaidInterest:
+            iInterest = self._UnpaidInterest.pop(idate)
+            iInterest = iInterest[iInterest>0]
+            for i, iID in enumerate(iInterest.index):
+                self._FrozenCash -= iInterest.iloc[i]
         return 0
     # 当前账户价值
     @property
@@ -277,8 +265,9 @@ class TimeBarAccount(Account):
         iPosition = pd.Series(0, index=self._IDs)
         iPosition[iNum.index] += iNum
         self._Position.iloc[iIndex+1] = iPosition.values
-        self._OpenPosition["浮动盈亏"] = self._OpenPosition["数量"] * (self._LastPrice[self._OpenPosition["ID"].tolist()].values - self._OpenPosition["开仓价格"]) * self.SecurityInfo.Multiplier
-        iPositionAmount = pd.Series((self._OpenPosition["浮动盈亏"]+self._OpenPosition["保证金"]).values, index=self._OpenPosition["ID"].values).groupby(axis=0, level=0).sum()
+        LastPrice = self._LastPrice[self._OpenPosition["ID"].tolist()].values
+        self._OpenPosition["浮动盈亏"] = self._OpenPosition["数量"] * (LastPrice - self._OpenPosition["开仓价格"]) + self._OpenPosition["持有应计利息"] - self._OpenPosition["开仓支付利息"] + self._OpenPosition["持有所得利息"]
+        iPositionAmount = pd.Series(self._OpenPosition["数量"].values * LastPrice + self._OpenPosition["持有应计利息"].values, index=self._OpenPosition["ID"].values).groupby(axis=0, level=0).sum()
         self._PositionAmount.iloc[iIndex+1] = 0.0
         self._PositionAmount.iloc[iIndex+1][iPositionAmount.index] = iPositionAmount
         return 0
@@ -312,7 +301,7 @@ class TimeBarAccount(Account):
         orders = orders[orders!=0]
         if orders.shape[0]==0: return ([], pd.Series())
         IDs = orders.index.tolist()
-        TradePrice = self._MarketFT.readData(dts=[idt], ids=IDs, factor_names=[self.MarketFactorMap.TradePrice]).iloc[0, 0]# 成交价
+        TradePrice = self._MarketFT.readData(dts=[idt], ids=IDs, factor_names=[self.MarketInfo.TradePrice]).iloc[0, 0]# 成交价
         # 过滤限制条件
         orders[pd.isnull(TradePrice)] = 0.0# 成交价缺失的不能交易
         #if self.SellLimit.LimitIDFilter:# 满足卖出禁止条件的不能卖出
@@ -321,8 +310,8 @@ class TimeBarAccount(Account):
         #if self.BuyLimit.LimitIDFilter:# 满足买入禁止条件的不能买入
             #Mask = (self._MarketFT.getIDMask(idt, ids=IDs, id_filter_str=self.BuyLimit.LimitIDFilter) & (orders>0))
             #orders[Mask] = orders[Mask].clip_upper(0)
-        #if self.MarketFactorMap.Vol:# 成交量限制
-            #VolLimit = self._MarketFT.readData(factor_names=[self.MarketFactorMap.Vol], ids=IDs, dts=[idt]).iloc[0, 0]
+        #if self.MarketInfo.Vol:# 成交量限制
+            #VolLimit = self._MarketFT.readData(factor_names=[self.MarketInfo.Vol], ids=IDs, dts=[idt]).iloc[0, 0]
             #orders = np.maximum(orders, -VolLimit * self.SellLimit.MarketOrderVolumeLimit)
             #orders = np.minimum(orders, VolLimit * self.BuyLimit.MarketOrderVolumeLimit)
         #if self.SellLimit.MinUnit!=0.0:# 最小卖出交易单位限制
@@ -371,7 +360,7 @@ class TimeBarAccount(Account):
         iNewPosition.index = np.arange(iOpenPosition.shape[0], iOpenPosition.shape[0]+iNewPosition.shape[0])
         self._OpenPosition = iOpenPosition.append(iNewPosition)
         TradingRecord = list(zip([idt]*CloseOrders.shape[0], CloseOrders.index, CloseOrders, TradePrice, Fees, CashChanged, ["close"]*CloseOrders.shape[0]))
-        self._QS_updateCashDebt(CashChanged.sum())
+        if TradingRecord: self._updateAccount(CashChanged.sum())# 更新账户信息
         return (TradingRecord, OpenOrders)
     # 撮合成交市价开仓单
     # 以成交价完成成交, 成交量满足交易限制要求
@@ -380,7 +369,7 @@ class TimeBarAccount(Account):
         orders = orders[orders!=0]
         if orders.shape[0]==0: return []
         IDs = orders.index.tolist()
-        TradePrice = self._MarketFT.readData(dts=[idt], ids=IDs, factor_names=[self.MarketFactorMap.TradePrice]).iloc[0, 0]# 成交价
+        TradePrice = self._MarketFT.readData(dts=[idt], ids=IDs, factor_names=[self.MarketInfo.TradePrice]).iloc[0, 0]# 成交价
         # 处理开仓单
         TradeAmounts = orders * TradePrice * self.SecurityInfo.Multiplier
         MarginAcquired = TradeAmounts.abs() * self.SecurityInfo.InitMarginRate
@@ -412,7 +401,7 @@ class TimeBarAccount(Account):
         iNewPosition["浮动盈亏"] = 0.0
         iNewPosition.index = np.arange(self._OpenPosition.shape[0], self._OpenPosition.shape[0]+iNewPosition.shape[0])
         self._OpenPosition = self._OpenPosition.append(iNewPosition)
-        self._QS_updateCashDebt(CashChanged)# 更新账户信息
+        self._updateAccount(CashChanged)# 更新账户信息
         return TradingRecord
     # 撮合成交卖出限价单
     # 如果最高价和最低价未指定, 则检验成交价是否优于目标价, 是就以目标价完成成交, 且成交量满足卖出限制中的限价单成交量限比, 否则无法成交
