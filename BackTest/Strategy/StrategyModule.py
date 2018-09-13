@@ -92,7 +92,7 @@ def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, 
 class Account(BaseModule):
     """账户"""
     InitCash = Float(1e9, arg_type="Double", label="初始资金", order=0, low=0.0, high=np.inf, single_step=0.00001, decimals=5)
-    DeltLimit = Float(0.0, arg_type="Double", label="负债上限", order=1, low=0.0, high=np.inf, single_step=0.00001, decimals=5)
+    DebtLimit = Float(0.0, arg_type="Double", label="负债上限", order=1, low=0.0, high=np.inf, single_step=0.00001, decimals=5)
     def __init__(self, sys_args={}, **kwargs):
         super().__init__(name="Account", sys_args=sys_args, **kwargs)
         self._Cash = None# 剩余现金, >=0,  array(shape=(nDT+1,))
@@ -139,7 +139,7 @@ class Account(BaseModule):
     # 当前账户可提取的现金, = Cash - FronzenCash + 负债上限 - Debt
     @property
     def AvailableCash(self):
-        return self._Cash[self._Model.DateTimeIndex+1] - self._FrozenCash + max(self.DeltLimit - self._Debt[self._Model.DateTimeIndex+1], 0)
+        return self._Cash[self._Model.DateTimeIndex+1] - self._FrozenCash + max(self.DebtLimit - self._Debt[self._Model.DateTimeIndex+1], 0)
     # 当前账户价值, = Cash - Debt
     @property
     def AccountValue(self):

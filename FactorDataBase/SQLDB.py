@@ -14,10 +14,8 @@ from QuantStudio import __QS_Error__, __QS_LibPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
 
 def _identifyDataType(dtypes):
-    if np.dtype('O') in dtypes.values:
-        return 'string'
-    else:
-        return 'double'
+    if np.dtype('O') in dtypes.values: return 'varchar(40)'
+    else: return 'double'
 
 class _FactorTable(FactorTable):
     """SQLDB 因子表"""
@@ -33,7 +31,7 @@ class _FactorTable(FactorTable):
         if key is None: return pd.DataFrame(self._DataType.ix[factor_names], columns=["DataType"])
         else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
     def getID(self, ifactor_name=None, idt=None):
-        DBTableName = self._FactorDB.TablePrefix+self.Name
+        DBTableName = self._FactorDB.TablePrefix+self._FactorDB._Prefix+self.Name
         SQLStr = "SELECT DISTINCT "+DBTableName+".ID "
         SQLStr += "FROM "+DBTableName+" "
         if idt is not None: SQLStr += "WHERE "+DBTableName+".DateTime='"+idt.strftime("%Y%m%d")+"' "
@@ -42,26 +40,26 @@ class _FactorTable(FactorTable):
         SQLStr += "ORDER BY "+DBTableName+".ID"
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None):
-        DBTableName = self._FactorDB.TablePrefix+self.Name
+        DBTableName = self._FactorDB.TablePrefix+self._FactorDB._Prefix+self.Name
         SQLStr = "SELECT DISTINCT "+DBTableName+".DateTime "
         SQLStr += "FROM "+DBTableName+" "
         if iid is not None: SQLStr += "WHERE "+DBTableName+".ID='"+iid+"' "
         else: SQLStr += "WHERE "+DBTableName+".ID IS NOT NULL "
-        if start_dt is not None: SQLStr += "AND "+DBTableName+".DateTime>='"+start_dt.strftime("%Y-%m-%d %H:%M:%s.%f")+"' "
-        if end_dt is not None: SQLStr += "AND "+DBTableName+".DateTime<='"+end_dt.strftime("%Y-%m-%d %H:%M:%s.%f")+"' "
+        if start_dt is not None: SQLStr += "AND "+DBTableName+".DateTime>='"+start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
+        if end_dt is not None: SQLStr += "AND "+DBTableName+".DateTime<='"+end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
         SQLStr += "ORDER BY "+DBTableName+".DateTime"
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        DBTableName = self._FactorDB.TablePrefix+self.Name
+        DBTableName = self._FactorDB.TablePrefix+self._FactorDB._Prefix+self.Name
         # 形成 SQL 语句, 时点, ID, 因子数据
         SQLStr = "SELECT "+DBTableName+".DateTime, "
         SQLStr += DBTableName+".ID, "
         for iField in factor_names: SQLStr += DBTableName+"."+iField+", "
         SQLStr = SQLStr[:-2]+" FROM "+DBTableName+" "
         SQLStr += "WHERE ("+genSQLInCondition(DBTableName+".ID", ids, is_str=True, max_num=1000)+") "
-        SQLStr += "AND "+DBTableName+".DateTime>='"+dts[0].strftime("%Y-%m-%d %H:%M:%s.%f")+"' "
-        SQLStr += "AND "+DBTableName+".DateTime<='"+dts[-1].strftime("%Y-%m-%d %H:%M:%s.%f")+"' "
-        SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._IDField]+", "+DBTableName+"."+FieldDict[self._DateField]
+        SQLStr += "AND "+DBTableName+".DateTime>='"+dts[0].strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
+        SQLStr += "AND "+DBTableName+".DateTime<='"+dts[-1].strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
+        SQLStr += "ORDER BY "+DBTableName+".DateTime, "+DBTableName+".ID"
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["DateTime", "ID"]+factor_names)
         return pd.DataFrame(np.array(RawData), columns=["DateTime", "ID"]+factor_names)
@@ -89,6 +87,7 @@ class SQLDB(WritableFactorDB):
     Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
     def __init__(self, sys_args={}, **kwargs):
         self._Connection = None# 数据库链接
+        self._Prefix = "QS_"
         self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
         super().__init__(sys_args=sys_args, **kwargs)
         self.Name = "SQLDB"
@@ -103,7 +102,6 @@ class SQLDB(WritableFactorDB):
         else: self._Connection = None
     def __QS_initArgs__(self):
         ConfigFilePath = __QS_LibPath__+os.sep+"SQLDBConfig.json"# 配置文件路径
-        self._InfoFilePath = __QS_LibPath__+os.sep+"WindDBInfo.hdf5"# 数据库信息文件路径
         Config = readJSONFile(ConfigFilePath)
         ArgNames = self.ArgNames
         for iArgName, iArgVal in Config.items():
@@ -135,8 +133,11 @@ class SQLDB(WritableFactorDB):
             else:
                 import pyodbc
                 self._Connection = pyodbc.connect('DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s' % (self.DBType, self.DBName, self.IPAddr, self.User, self.Pwd))
-        if self.DBType=="My SQL":
-            SQLStr = ("SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE table_schema='%s' AND COLUMN_NAME NOT IN ('ID', 'DateTime') ORDER BY TABLE_NAME, COLUMN_NAME" % self.DBName)
+        if self.DBType=="MySQL":
+            SQLStr = ("SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE table_schema='%s' " % self.DBName)
+            SQLStr += ("AND TABLE_NAME LIKE '%s%%' " % self._Prefix)
+            SQLStr += "AND COLUMN_NAME NOT IN ('ID', 'DateTime') "
+            SQLStr += "ORDER BY TABLE_NAME, COLUMN_NAME"
             Rslt = self.fetchall(SQLStr)
             if not Rslt: self._TableFactorDict = {}
             else:
@@ -144,7 +145,8 @@ class SQLDB(WritableFactorDB):
                 Mask = (self._TableFactorDict=="varchar")
                 self._TableFactorDict[Mask] = "string"
                 self._TableFactorDict[~Mask] = "double"
-                self._TableFactorDict = {iTable:self._TableFactorDict.loc[iTable] for iTable in self._TableFactorDict.index.levels[0]}
+                nPrefix = len(self._Prefix)
+                self._TableFactorDict = {iTable[nPrefix:]:self._TableFactorDict.loc[iTable] for iTable in self._TableFactorDict.index.levels[0]}
         return 0
     def disconnect(self):
         if self._Connection is not None:
@@ -170,7 +172,7 @@ class SQLDB(WritableFactorDB):
         return Data
     def execute(self, sql_str):
         Cursor = self._Connection.cursor()
-        Cursor.execute(SQLStr)
+        Cursor.execute(sql_str)
         self._Connection.commit()
         Cursor.close()
         return 0
@@ -184,13 +186,13 @@ class SQLDB(WritableFactorDB):
     def renameTable(self, old_table_name, new_table_name):
         if old_table_name not in self._TableFactorDict: raise __QS_Error__("表: '%s' 不存在!" % old_table_name)
         if (new_table_name!=old_table_name) and (new_table_name in self._TableFactorDict): raise __QS_Error__("表: '"+new_table_name+"' 已存在!")
-        SQLStr = "ALTER TABLE "+self.TablePrefix+old_table_name+" RENAME TO "+self.TablePrefix+new_table_name
+        SQLStr = "ALTER TABLE "+self.TablePrefix+self._Prefix+old_table_name+" RENAME TO "+self.TablePrefix+self._Prefix+new_table_name
         self.execute(SQLStr)
         self._TableFactorDict[new_table_name] = self._TableFactorDict.pop(old_table_name)
         return 0
     # 为某张表增加索引
     def addIndex(self, index_name, table_name, fields=["DateTime", "ID"], index_type="BTREE"):
-        SQLStr = "CREATE INDEX "+index_name+" USING "+index_type+" ON "+self.TablePrefix+table_name+"("+", ".join(fields)+")"
+        SQLStr = "CREATE INDEX "+index_name+" USING "+index_type+" ON "+self.TablePrefix+self._Prefix+table_name+"("+", ".join(fields)+")"
         return self.execute(SQLStr)
     # 创建表, field_types: {字段名: 数据类型}, if_exists='cancel'：取消, 'replace'：删除后重建, 'error': 报错
     def createTable(self, table_name, field_types, if_exists='cancel'):
@@ -198,14 +200,14 @@ class SQLDB(WritableFactorDB):
             if if_exists=="replace": self.deleteTable(table_name)
             elif if_exists=="error": raise __QS_Error__("表 '%s' 已存在!" % table_name)
             else: return 0
-        SQLStr = "CREATE TABLE %s (DateTime datetime, ID VARCHAR(10), " % (self.TablePrefix+table_name)
+        SQLStr = "CREATE TABLE %s (`DateTime` DATETIME(6) NOT NULL, `ID` VARCHAR(40) NOT NULL, " % (self.TablePrefix+self._Prefix+table_name)
         for iField in field_types: SQLStr += "`%s` %s, " % (iField, field_types[iField])
-        SQLStr = SQLStr[:-2]+")"
+        SQLStr = SQLStr[:-2]+" PRIMARY KEY (`DateTime`, `ID`)) ENGINE=InnoDB DEFAULT CHARSET=utf8"
         return self.execute(SQLStr)
     # 增加字段，field_types: {字段名: 数据类型}
     def addField(self, table_name, field_types):
         if table_name not in self._TableFactorDict: self.createTable(table_name, field_types)
-        SQLStr = "ALTER TABLE %s " % (self.TablePrefix+table_name)
+        SQLStr = "ALTER TABLE %s " % (self.TablePrefix+self._Prefix+table_name)
         SQLStr += "ADD COLUMN ("
         for iField in field_types: SQLStr += "%s %s," % (iField, field_types[iField])
         SQLStr = SQLStr[:-1]+")"
@@ -213,57 +215,66 @@ class SQLDB(WritableFactorDB):
     # ----------------------------因子操作---------------------------------
     def deleteTable(self, table_name):
         if table_name not in self._TableFactorDict: return 0
-        SQLStr = 'DROP TABLE %s' % (self.TablePrefix+table_name)
+        SQLStr = 'DROP TABLE %s' % (self.TablePrefix+self._Prefix+table_name)
         self.execute(SQLStr)
         self._TableFactorDict.pop(table_name, None)
         return 0
     def renameFactor(self, table_name, old_factor_name, new_factor_name):
         if old_factor_name not in self._TableFactorDict[table_name]: raise __QS_Error__("因子: '%s' 不存在!" % old_factor_name)
         if (new_factor_name!=old_factor_name) and (new_factor_name in self._TableFactorDict[table_name]): raise __QS_Error__("表中的因子: '%s' 已存在!" % new_factor_name)
-        SQLStr = "ALTER TABLE "+self.TablePrefix+table_name
+        SQLStr = "ALTER TABLE "+self.TablePrefix+self._Prefix+table_name
         SQLStr += " CHANGE COLUMN `"+old_factor_name+"` `"+new_factor_name+"`"
         self.execute(SQLStr)
         self._TableFactorDict[table_name][new_factor_name] = self._TableFactorDict[table_name].pop(old_factor_name)
         return 0
     def deleteFactor(self, table_name, factor_names):
         if not factor_names: return 0
-        SQLStr = "ALTER TABLE "+self.TablePrefix+table_name
+        SQLStr = "ALTER TABLE "+self.TablePrefix+self._Prefix+table_name
         for iFactorName in factor_names: SQLStr += " DROP COLUMN `"+iFactorName+"`,"
         self.execute(SQLStr[:-1])
         FactorIndex = list(set(self._TableFactorDict.get(table_name, pd.Series()).index).difference(set(factor_names)))
         if not FactorIndex: self._TableFactorDict.pop(table_name, None)
         else: self._TableFactorDict[table_name] = self._TableFactorDict[table_name][FactorIndex]
         return 0
-    def setFactorMetaData(self, table_name, ifactor_name, key=None, value=None, meta_data=None):
-        with self._DataLock:
-            with h5py.File(self.MainDir+os.sep+table_name+os.sep+ifactor_name+"."+self._Suffix) as File:
-                if key is not None:
-                    if key in File.attrs:
-                        del File.attrs[key]
-                    if (isinstance(value, np.ndarray)) and (value.dtype==np.dtype("O")):
-                        File.attrs.create(key, data=value, dtype=h5py.special_dtype(vlen=str))
-                    elif value is not None:
-                        File.attrs[key] = value
-        if meta_data is not None:
-            for iKey in meta_data:
-                self.setFactorMetaData(table_name, ifactor_name=ifactor_name, key=iKey, value=meta_data[iKey], meta_data=None)
-        return 0
+    def deleteData(self, table_name, ids=None, dts=None):
+        DBTableName = self.TablePrefix+self._Prefix+table_name
+        if (ids is None) and (dts is None):
+            SQLStr = "TRUNCATE TABLE "+DBTableName
+            return self.execute(SQLStr)
+        SQLStr = "DELETE * FROM "+DBTableName
+        if dts is not None:
+            DTs = [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts]
+            SQLStr += "WHERE "+genSQLInCondition(DBTableName+".DateTime", DTs, is_str=True, max_num=1000)+" "
+        else:
+            SQLStr += "WHERE "+DBTableName+".DateTime IS NOT NULL "
+        if ids is not None:
+            SQLStr += "AND "+genSQLInCondition(DBTableName+".ID", ids, is_str=True, max_num=1000)
+        return self.execute(SQLStr)
     def writeData(self, data, table_name, if_exists='append', **kwargs):# TODO, 更新实现
-        FieldTypes = {iFactorName:_identifyDataType(Data.dtypes[i]) for i, iFactorName in enumerate(data.items)}
-        if table_name not in self._TableFactorDict:
-            self.createTable(table_name, field_types=FieldTypes)
-        elif if_exists=='replace':
-            self.createTable(table_name, field_types=FieldTypes, if_exists="replace")
-        data = data.where(pd.notnull(data), None)
-        NewData = pd.DataFrame()
-        SQLStr = "INSERT INTO "+self.TablePrefix+table_name+" ("
+        FieldTypes = {iFactorName:_identifyDataType(data.iloc[i].dtypes) for i, iFactorName in enumerate(data.items)}
+        if table_name not in self._TableFactorDict: self.createTable(table_name, field_types=FieldTypes)
+        elif if_exists=='replace': self.createTable(table_name, field_types=FieldTypes, if_exists="replace")
+        else:
+            NewFactorNames = data.items.difference(self._TableFactorDict[table_name].index).tolist()
+            if NewFactorNames: self.addField(table_name, {iFactorName:FieldTypes[iFactorName] for iFactorName in NewFactorNames})
+        if if_exists=="append":
+            SQLStr = "INSERT IGNORE INTO "+self.TablePrefix+self._Prefix+table_name+" (`DateTime`, `ID`, "
+        elif if_exists=="update":
+            SQLStr = "REPLACE INTO "+self.TablePrefix+self._Prefix+table_name+" (`DateTime`, `ID`, "
+        else:
+            SQLStr = "INSERT INTO "+self.TablePrefix+self._Prefix+table_name+" (`DateTime`, `ID`, "
+        NewData = {}
         for iFactorName in data.items:
-            NewData[iFactorName] = data.loc[iFactorName].stack()
-            SQLStr = SQLStr+str(iFactorName)+", "
-        SQLStr = SQLStr[:-2]+") VALUES ("+"%s, "*data.shape[0]
+            iData = data.loc[iFactorName].stack(dropna=False)
+            NewData[iFactorName] = iData
+            SQLStr += "`"+iFactorName+"`, "
+        NewData = pd.DataFrame(NewData)
+        if NewData.shape[0]==0: return 0
+        NewData = NewData.astype("O").where(pd.notnull(NewData), None)
+        SQLStr = SQLStr[:-2] + ") VALUES (" + "%s, " * (data.shape[0]+2)
         SQLStr = SQLStr[:-2]+") "
         Cursor=self._Connection.cursor()
         Cursor.executemany(SQLStr, NewData.reset_index().values.tolist())
-        self.Connection.commit()
+        self._Connection.commit()
         Cursor.close()
         return 0

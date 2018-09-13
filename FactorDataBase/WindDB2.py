@@ -9,7 +9,7 @@ import pandas as pd
 from traits.api import Enum, Int, Str, Range, Bool, List, Dict, Function
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
-from QuantStudio.Tools.AuxiliaryFun import searchNameInStrList,
+from QuantStudio.Tools.AuxiliaryFun import searchNameInStrList
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
 from QuantStudio.Tools.FileFun import readJSONFile
@@ -132,7 +132,7 @@ class _MarketTable(_DBTable):
         return
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
-        for i, iCondition in enumerate(self._ConditionFields): self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+2))
+        for i, iCondition in enumerate(self._ConditionFields): self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+1))
     def getCondition(self, icondition, ids=None, dts=None):
         DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
         FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._DateField, self._IDField, icondition])
@@ -179,7 +179,28 @@ class _MarketTable(_DBTable):
         for iConditionField in self._ConditionFields: SQLStr += "AND "+DBTableName+"."+FieldDict[iConditionField]+"='"+args.get(iConditionField, self[iConditionField])+"' "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._DateField]
         return list(map(lambda x: dt.datetime(int(x[0][:4]), int(x[0][4:6]), int(x[0][6:8]), 23, 59, 59, 999999), self._FactorDB.fetchall(SQLStr)))
-        # 时间点默认是当天, ID 默认是 [000001.SH], 特别参数: 回溯天数
+    def __QS_genGroupInfo__(self, factors, operation_mode):
+        ConditionGroup = {}
+        StartDT = dt.datetime.now()
+        FactorNames, RawFactorNames = [], set()
+        for iFactor in factors:
+            iConditions = ";".join([iArgName+":"+iFactor[iArgName] for iArgName in iFactor.ArgNames if iArgName!="回溯天数"])
+            if iConditions not in ConditionGroup:
+                ConditionGroup[iConditions] = {"FactorNames":[iFactor.Name], 
+                                               "RawFactorNames":{iFactor._NameInFT}, 
+                                               "StartDT":operation_mode._FactorStartDT[iFactor.Name], 
+                                               "args":iFactor.Args.copy()}
+            else:
+                ConditionGroup[iConditions]["FactorNames"].append(iFactor.Name)
+                ConditionGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
+                ConditionGroup[iConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], ConditionGroup[iConditions]["StartDT"])
+                ConditionGroup[iConditions]["args"]["回溯天数"] = max(ConditionGroup[iConditions]["args"]["回溯天数"], iFactor.LookBack)
+        EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
+        Groups = []
+        for iConditions in ConditionGroup:
+            StartInd = operation_mode.DTRuler.index(ConditionGroup[iConditions]["StartDT"])
+            Groups.append((self, ConditionGroup[iConditions]["FactorNames"], list(ConditionGroup[iConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], ConditionGroup[iConditions]["args"]))
+        return Groups
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
@@ -193,7 +214,12 @@ class _MarketTable(_DBTable):
         SQLStr += "WHERE ("+genSQLInCondition(DBTableName+"."+FieldDict[self._IDField], ids, is_str=True, max_num=1000)+") "
         SQLStr += "AND "+DBTableName+"."+FieldDict[self._DateField]+">='"+StartDate.strftime("%Y%m%d")+"' "
         SQLStr += "AND "+DBTableName+"."+FieldDict[self._DateField]+"<='"+EndDate.strftime("%Y%m%d")+"' "
-        for iConditionField in self._ConditionFields: SQLStr += "AND "+DBTableName+"."+FieldDict[iConditionField]+"='"+args.get(iConditionField, self[iConditionField])+"' "
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        for iConditionField in self._ConditionFields:
+            if FactorInfo.loc[iConditionField, "DataType"].find("CHAR")!=-1:
+                SQLStr += "AND "+DBTableName+"."+FieldDict[iConditionField]+"='"+args.get(iConditionField, self[iConditionField])+"' "
+            else:
+                SQLStr += "AND "+DBTableName+"."+FieldDict[iConditionField]+"="+args.get(iConditionField, self[iConditionField])+" "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._IDField]+", "+DBTableName+"."+FieldDict[self._DateField]
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["日期", "ID"]+factor_names)
@@ -356,6 +382,7 @@ class _DividendTable(_DBTable):
         self._DateFields = FactorInfo[FactorInfo["FieldType"]=="Date"].index.tolist()
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
+        super().__QS_initArgs__()
         self.add_trait("DateField", Enum(*self._DateFields, arg_type="SingleOption", label="日期字段", order=0))
         self.DateField = searchNameInStrList(self._DateFields, ["除"])
     @property
@@ -389,9 +416,30 @@ class _DividendTable(_DBTable):
         if end_dt is not None: SQLStr += "AND "+DBTableName+"."+FieldDict[self.DateField]+"<='"+end_dt.strftime("%Y%m%d")+"' "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self.DateField]
         return list(map(lambda x: dt.datetime(int(x[0][:4]), int(x[0][4:6]), int(x[0][6:8]), 23, 59, 59, 999999), self._FactorDB.fetchall(SQLStr)))
+    def __QS_genGroupInfo__(self, factors, operation_mode):
+        DateFieldGroup = {}
+        StartDT = dt.datetime.now()
+        FactorNames, RawFactorNames = [], set()
+        for iFactor in factors:
+            iDateField = iFactor.DateField
+            if iDateField not in DateFieldGroup:
+                DateFieldGroup[iDateField] = {"FactorNames":[iFactor.Name], 
+                                              "RawFactorNames":{iFactor._NameInFT}, 
+                                              "StartDT":operation_mode._FactorStartDT[iFactor.Name], 
+                                              "args":{"日期字段":iDateField}}
+            else:
+                DateFieldGroup[iDateField]["FactorNames"].append(iFactor.Name)
+                DateFieldGroup[iDateField]["RawFactorNames"].add(iFactor._NameInFT)
+                DateFieldGroup[iDateField]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], DateFieldGroup[iDateField]["StartDT"])
+        EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
+        Groups = []
+        for iDateField in DateFieldGroup:
+            StartInd = operation_mode.DTRuler.index(DateFieldGroup[iDateField]["StartDT"])
+            Groups.append((self, DateFieldGroup[iDateField]["FactorNames"], list(DateFieldGroup[iDateField]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], DateFieldGroup[iDateField]["args"]))
+        return Groups
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self.DateField, self._IDField, "方案进度"]+factor_names)
+        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=list({self.DateField, self._IDField, "方案进度"}.union(set(factor_names))))
         # 形成SQL语句, 日期, ID, 因子数据
         SQLStr = "SELECT "+DBTableName+"."+FieldDict[self.DateField]+", "
         SQLStr += DBTableName+"."+FieldDict[self._IDField]+", "
@@ -1247,11 +1295,11 @@ if __name__=="__main__":
 
     # 功能测试
     WDB = WindDB2()
-    #WDB.importInfo("C:\\HST\\QuantStudio\\Resource\\WindDB2Info.xlsx")
-    WDB.connect()
-    print(WDB.TableNames)
-    StartDT = dt.datetime(2007,1,1)
-    EndDT = dt.datetime(2007,12,31,23,59,59,999999)
+    WDB.importInfo("C:\\HST\\QuantStudio\\Resource\\WindDB2Info.xlsx")
+    #WDB.connect()
+    #print(WDB.TableNames)
+    #StartDT = dt.datetime(2007,1,1)
+    #EndDT = dt.datetime(2007,12,31,23,59,59,999999)
 
     #FT = WDB.getTable("中国国债期货标的券", args={"月合约Wind代码":"T1803.CFE"})
     #DTs = FT.getDateTime(start_dt=StartDT, end_dt=EndDT)
@@ -1263,14 +1311,14 @@ if __name__=="__main__":
     #DTs = WDB.getTable("中国A股交易日历").getDateTime(iid="SSE", start_dt=StartDT, end_dt=EndDT)
     #Data = WDB.getTable("中国A股利润表").readData(factor_names=["利润总额", "营业收入"], ids=["000001.SZ", "600000.SH"], dts=DTs)
 
-    DTs = WDB.getTable("中国A股交易日历").getDateTime(iid="SSE", start_dt=StartDT, end_dt=EndDT)
-    Data = WDB.getTable("中国A股盈利预测汇总").readData(factor_names=["每股现金流平均值", "净利润平均值(万元)"], ids=["000001.SZ", "600000.SH"], dts=DTs)
+    #DTs = WDB.getTable("中国A股交易日历").getDateTime(iid="SSE", start_dt=StartDT, end_dt=EndDT)
+    #Data = WDB.getTable("中国A股盈利预测汇总").readData(factor_names=["每股现金流平均值", "净利润平均值(万元)"], ids=["000001.SZ", "600000.SH"], dts=DTs)
 
     #DTs = WDB.getTable("中国封闭式基金日行情").getDateTime(start_dt=StartDT, end_dt=EndDT)    
     #FutureIDMap = WDB.getTable("中国期货连续(主力)合约和月合约映射表").readData(factor_names=["映射月合约Wind代码"], ids=["IH.CFE"], dts=DTs)
     #FutureInfo = WDB.getTable("中国期货基本资料").readData(factor_names=["上市日期", "最后交易日期"], ids=["IH1801.CFE"], dts=[dt.datetime.today()]).iloc[:, 0, :]
 
-    WDB.disconnect()
+    #WDB.disconnect()
     
     #import QuantStudio.api as QS
     #HDB = QS.FactorDB.HDF5DB()

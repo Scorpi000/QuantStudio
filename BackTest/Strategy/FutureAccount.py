@@ -350,7 +350,6 @@ class TimeBarAccount(Account):
             ijPosition = iOpenPosition.loc[[jID]]
             if jNum<0: ijClosedNum = (ijPosition["数量"] - (ijPosition["数量"].cumsum()+jNum).clip_lower(0)).clip_lower(0)
             else: ijClosedNum = (ijPosition["数量"] - (ijPosition["数量"].cumsum()+jNum).clip_upper(0)).clip_upper(0)
-            CashChanged[j] = ijClosedNum * (TradePrice[jID] - ijPosition["开仓价格"]) + ijPosition["保证金"] - Fees[jID]
             ijClosedPosition = ijPosition.copy()
             ijClosedPosition["数量"] = ijClosedNum
             ijClosedPosition["平仓时点"] = idt

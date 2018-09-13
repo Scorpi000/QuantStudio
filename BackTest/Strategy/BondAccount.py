@@ -1,5 +1,5 @@
 # coding=utf-8
-"""债券账户"""
+"""债券账户(TODO)"""
 import os
 import datetime as dt
 
@@ -84,7 +84,7 @@ class TimeBarAccount(Account):
         #self._TradingRecord = None# 交易记录, DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])
         self._IDs = []# 本账户支持交易的证券 ID, []
         self._Position = None# 持仓数量, DataFrame(index=[时间点]+1, columns=self._IDs)
-        self._PositionAmount = None# 持仓金额, 保证金 - 浮动盈亏, DataFrame(index=[时间点]+1, columns=self._IDs)
+        self._PositionAmount = None# 持仓金额, DataFrame(index=[时间点]+1, columns=self._IDs)
         self._Orders = None# 当前接收到的订单, DataFrame(columns=["ID", "数量", "目标价"])
         self._OpenPosition = None# 当前未平仓的持仓信息, DataFrame(columns=["ID", "数量", "开仓时点", "开仓价格", "开仓交易费", "开仓应计利息", "持有应计利息", "浮动盈亏"])
         self._ClosedPosition = None# 已平仓的交易信息, DataFrame(columns=["ID", "数量", "开仓时点", "开仓价格", "开仓交易费", "开仓应计利息", "平仓时点", "平仓价格", "平仓交易费", "平仓应计利息", "持有应计利息", "平仓盈亏"])
@@ -97,6 +97,7 @@ class TimeBarAccount(Account):
         super().__init__(sys_args=sys_args, **kwargs)
         self.Name = "BondAccount"
     def __QS_initArgs__(self):
+        super().__QS_initArgs__()
         self.MarketInfo = _BarFactorMap(self._MarketFT)
         self.PaymentInfo = _Payment(self._PaymentFT)
         self.BuyLimit = _TradeLimit(direction="Buy")
@@ -113,8 +114,8 @@ class TimeBarAccount(Account):
         self._Orders = pd.DataFrame(columns=["ID", "数量", "目标价"])
         self._LastPrice = pd.Series(np.nan, index=self._IDs)
         self._AI = pd.Series(np.nan, index=self._IDs)
-        self._OpenPosition = DataFrame(columns=["ID", "数量", "开仓时点", "开仓价格", "开仓交易费", "开仓支付利息", "持有所得利息", "持有应计利息", "浮动盈亏"])
-        self._ClosedPosition = DataFrame(columns=["ID", "数量", "开仓时点", "开仓价格", "开仓交易费", "开仓支付利息", "平仓时点", "平仓价格", "平仓交易费", "平仓收入利息", "持有所得利息", "平仓盈亏"])
+        self._OpenPosition = pd.DataFrame(columns=["ID", "数量", "开仓时点", "开仓价格", "开仓交易费", "开仓支付利息", "持有所得利息", "持有应计利息", "浮动盈亏"])
+        self._ClosedPosition = pd.DataFrame(columns=["ID", "数量", "开仓时点", "开仓价格", "开仓交易费", "开仓支付利息", "平仓时点", "平仓价格", "平仓交易费", "平仓收入利息", "持有所得利息", "平仓盈亏"])
         self._UnpaidInterest = pd.DataFrame(index=self._IDs)
         self._iTradingRecord = []# 暂存的交易记录
         self._nDT = nDT

@@ -2,7 +2,7 @@
 """SQL 数据库辅助函数"""
 
 # 给定一个字符串list，用某个字符将其元素连接起来形成字符串,但每个字符串用到的元素数目不超过某个值
-def genSQLInCondition(field_name,range_list, is_str=True, max_num=1000):
+def genSQLInCondition(field_name, range_list, is_str=True, max_num=1000):
     nStr = len(range_list)
     if nStr<=max_num:
         if is_str:

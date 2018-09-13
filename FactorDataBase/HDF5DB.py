@@ -16,10 +16,8 @@ from QuantStudio.Tools.FileFun import listDirDir, listDirFile, readJSONFile
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
 
 def _identifyDataType(dtypes):
-    if np.dtype('O') in dtypes.values:
-        return 'string'
-    else:
-        return 'double'
+    if np.dtype('O') in dtypes.values: return 'string'
+    else: return 'double'
 
 class _FactorTable(FactorTable):
     """HDF5DB 因子表"""
