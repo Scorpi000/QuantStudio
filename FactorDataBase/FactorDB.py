@@ -636,7 +636,6 @@ class FactorTable(__QS_Object__):
                             ProgBar.update(iProg)
                     if iProg>=nTask: break
             for iPID, iPrcs in Procs.items(): iPrcs.join()
-        print("耗时 : %.2f" % (time.process_time()-StartT))
         print(('耗时 : %.2f' % (time.process_time()-StartT, )), ("总耗时 : %.2f" % (time.process_time()-TotalStartT, )), "="*28, sep="\n", end="\n")
         self._exit()
         return 0

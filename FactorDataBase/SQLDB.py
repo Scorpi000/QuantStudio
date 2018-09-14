@@ -202,8 +202,10 @@ class SQLDB(WritableFactorDB):
             else: return 0
         SQLStr = "CREATE TABLE %s (`DateTime` DATETIME(6) NOT NULL, `ID` VARCHAR(40) NOT NULL, " % (self.TablePrefix+self._Prefix+table_name)
         for iField in field_types: SQLStr += "`%s` %s, " % (iField, field_types[iField])
-        SQLStr = SQLStr[:-2]+" PRIMARY KEY (`DateTime`, `ID`)) ENGINE=InnoDB DEFAULT CHARSET=utf8"
-        return self.execute(SQLStr)
+        SQLStr += "PRIMARY KEY (`DateTime`, `ID`)) ENGINE=InnoDB DEFAULT CHARSET=utf8"
+        self.execute(SQLStr)
+        self._TableFactorDict[table_name] = pd.Series({iFactorName: ("string" if field_types[iFactorName].find("char")!=-1 else "double") for iFactorName in field_types})
+        return 0
     # 增加字段，field_types: {字段名: 数据类型}
     def addField(self, table_name, field_types):
         if table_name not in self._TableFactorDict: self.createTable(table_name, field_types)
@@ -211,7 +213,10 @@ class SQLDB(WritableFactorDB):
         SQLStr += "ADD COLUMN ("
         for iField in field_types: SQLStr += "%s %s," % (iField, field_types[iField])
         SQLStr = SQLStr[:-1]+")"
-        return self.execute(SQLStr)
+        self.execute(SQLStr)
+        NewDataType = pd.Series({iFactorName: ("string" if field_types[iFactorName].find("char")!=-1 else "double") for iFactorName in field_types})
+        self._TableFactorDict[table_name] = self._TableFactorDict[table_name].append(NewDataType)
+        return 0
     # ----------------------------因子操作---------------------------------
     def deleteTable(self, table_name):
         if table_name not in self._TableFactorDict: return 0

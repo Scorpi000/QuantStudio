@@ -1,18 +1,14 @@
 # coding=utf-8
-"""基于净值数据的账户(TODO)"""
-import os
+"""基于净值数据的账户"""
 import datetime as dt
 
 import pandas as pd
 import numpy as np
-from traits.api import Enum, Either, List, ListStr, Int, Float, Str, Bool, Dict, Instance, on_trait_change
+from traits.api import Enum, ListStr, Float, Str, Bool, Instance, on_trait_change
 
-from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList, match2Series
-from QuantStudio.Tools.IDFun import testIDFilterStr
-from QuantStudio.Tools import DateTimeFun
-from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5
 from QuantStudio import __QS_Error__, __QS_Object__
 from QuantStudio.BackTest.Strategy.StrategyModule import Account, cutDateTime
+from QuantStudio.Tools.AuxiliaryFun import getFactorList
 
 class _TradeLimit(__QS_Object__):
     """交易限制"""
@@ -22,16 +18,32 @@ class _TradeLimit(__QS_Object__):
         self._Direction = direction
         return super().__init__(sys_args=sys_args, **kwargs)
 
+class _MarketInfo(__QS_Object__):
+    """行情信息"""
+    NAV = Enum(None, arg_type="SingleOption", label="复权净值", order=0)
+    Return = Enum(None, arg_type="SingleOption", label="收益率", order=1)
+    def __init__(self, ft, sys_args={}, **kwargs):
+        self._FT = ft
+        return super().__init__(sys_args=sys_args, **kwargs)
+    def __QS_initArgs__(self):
+        super().__QS_initArgs__()
+        DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
+        DefaultNumFactorList.insert(0, None)
+        self.add_trait("NAV", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="复权净值", order=0))
+        self.add_trait("Return", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="收益率", order=1))
+    @on_trait_change("Return")
+    def _on_Return_changed(self, obj, name, old, new):
+        if new is not None: self.NAV = None
+
 # 基于净值数据的账户
 # ft: 提供净值或者收益率数据的因子表, 时间频率任意
 class NAVAccount(Account):
     """净值账户"""
     Delay = Bool(True, arg_type="Bool", label="交易延迟", order=2)
     TargetIDs = ListStr(arg_type="IDList", label="目标ID", order=3)
-    NAV = Enum(None, arg_type="SingleOption", label="复权净值", order=4)
-    Return = Enum(None, arg_type="SingleOption", label="收益率", order=5)
-    BuyLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="买入限制", order=6)
-    SellLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="卖出限制", order=7)
+    BuyLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="买入限制", order=4)
+    SellLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="卖出限制", order=5)
+    MarketInfo = Instance(_MarketInfo, allow_none=False, arg_type="ArgObject", label="行情信息", order=6)
     def __init__(self, ft, sys_args={}, **kwargs):
         # 继承自 Account 的属性
         #self._Cash = None# 剩余现金, >=0,  array(shape=(nDT+1,))
@@ -52,20 +64,16 @@ class NAVAccount(Account):
         self.Name = "NAVAccount"
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
-        DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
-        DefaultNumFactorList.insert(0, None)
-        self.add_trait("NAV", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="复权净值", order=4))
-        self.NAV = DefaultNumFactorList[-1]
-        self.add_trait("Return", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="收益率", order=5))
         self.BuyLimit = _TradeLimit(direction="Buy")
         self.SellLimit = _TradeLimit(direction="Sell")
+        self.MarketInfo = _MarketInfo(ft=self._FT)
     def __QS_start__(self, mdl, dts=None, dates=None, times=None):
         Rslt = super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
-        if (self.NAV is None) and (self.Return is None): raise __QS_Error__("复权净值或者收益率必须指定其一!")
+        if (self.MarketInfo.NAV is None) and (self.MarketInfo.Return is None): raise __QS_Error__("复权净值或者收益率必须指定其一!")
         self._IDs = list(self.TargetIDs)
         if not self._IDs:
-            if self.NAV is not None: self._IDs = list(self._FT.getID(ifactor_name=self.NAV))
-            self._IDs = list(self._FT.getID(ifactor_name=self.Return))
+            if self.MarketInfo.NAV is not None: self._IDs = list(self._FT.getID(ifactor_name=self.MarketInfo.NAV))
+            else: self._IDs = list(self._FT.getID(ifactor_name=self.MarketInfo.Return))
         nDT, nID = len(dts), len(self._IDs)
         #self._Cash = np.zeros(nDT+1)
         #self._FrozenCash = 0
@@ -73,7 +81,7 @@ class NAVAccount(Account):
         self._Position = pd.DataFrame(np.zeros((nDT+1, nID)), index=[dts[0]-dt.timedelta(1)]+dts, columns=self._IDs)
         self._PositionAmount = self._Position.copy()
         self._Orders = pd.DataFrame(columns=["ID", "数量", "目标价"])
-        self._LastPrice = pd.Series(1, index=self._IDs)
+        self._LastPrice = pd.Series(1.0, index=self._IDs)
         self._OpenPosition = pd.DataFrame(columns=["ID", "数量", "开仓时点", "开仓价格", "开仓交易费", "浮动盈亏"])
         self._ClosedPosition = pd.DataFrame(columns=["ID", "数量", "开仓时点", "开仓价格", "开仓交易费", "平仓时点", "平仓价格", "平仓交易费", "平仓盈亏"])
         self._iTradingRecord = []# 暂存的交易记录
@@ -83,9 +91,9 @@ class NAVAccount(Account):
         super().__QS_move__(idt, *args, **kwargs)
         # 更新当前的账户信息
         iIndex = self._Model.DateTimeIndex
-        if self.NAV is not None: self._LastPrice = self._FT.readData(factor_names=[self.NAV], ids=self._IDs, dts=[idt]).iloc[0, 0]
+        if self.MarketInfo.NAV is not None: self._LastPrice = self._FT.readData(factor_names=[self.MarketInfo.NAV], ids=self._IDs, dts=[idt]).iloc[0, 0]
         else:
-            iReturn = self._FT.readData(factor_names=[self.Return], ids=self._IDs, dts=[idt]).iloc[0, 0]
+            iReturn = self._FT.readData(factor_names=[self.MarketInfo.Return], ids=self._IDs, dts=[idt]).iloc[0, 0]
             iReturn[pd.isnull(iReturn)] = 0.0
             self._LastPrice *= (1 + iReturn)
         self._Position.iloc[iIndex+1] = self._Position.iloc[iIndex]# 初始化持仓
@@ -121,7 +129,7 @@ class NAVAccount(Account):
     @property
     def Position(self):
         return self._Position.iloc[self._Model.DateTimeIndex+1]
-    # 当前账户的持仓金额, 即保证金
+    # 当前账户的持仓金额
     @property
     def PositionAmount(self):
         self.PositionAmount.iloc[self._Model.DateTimeIndex+1]
@@ -151,14 +159,16 @@ class NAVAccount(Account):
         PositionAmountSeries = self.getPositionAmountSeries(dts=dts, start_dt=start_dt, end_dt=end_dt).sum(axis=1)
         DebtSeries = self.getDebtSeries(dts=dts, start_dt=start_dt, end_dt=end_dt)
         return CashSeries + PositionAmountSeries - DebtSeries
-    # 执行给定数量的证券委托单, target_id: 目标证券 ID, num: 待买卖的数量, target_price: nan 表示市价单, 
+    # 执行给定数量的证券委托单, target_id: 目标证券 ID, num: 待买卖的数量, target_price: nan 表示市价单, 返回: (订单ID, 
     # combined_order: 组合订单, DataFrame(index=[ID], columns=[数量, 目标价])
     # 基本的下单函数, 必须实现
     def order(self, target_id=None, num=0, target_price=np.nan, combined_order=None):
         if target_id is not None:
             self._Orders.loc[self._Orders.shape[0]] = (target_id, num, target_price)
-            return (target_id, num, target_price)
+            return (self._Orders.shape[0], target_id, num, target_price)
         if combined_order is not None:
+            combined_order.index.name = "ID"
+            combined_order = combined_order.reset_index()
             combined_order.index = np.arange(self._Orders.shape[0], self._Orders.shape[0]+combined_order.shape[0])
             self._Orders = self._Orders.append(combined_order)
         return combined_order
@@ -183,8 +193,7 @@ class NAVAccount(Account):
         return 0
     # 撮合成交订单
     def _matchOrder(self, idt):
-        MarketOrderMask = pd.isnull(self._Orders["目标价"])
-        MarketOrders = self._Orders[MarketOrderMask]
+        MarketOrders = self._Orders[pd.isnull(self._Orders["目标价"])]
         MarketOrders = MarketOrders.groupby(by=["ID"]).sum()["数量"]# Series(数量, index=[ID])
         # 先执行平仓交易
         TradingRecord, MarketOpenOrders = self._matchMarketCloseOrder(idt, MarketOrders)
@@ -256,7 +265,6 @@ class NAVAccount(Account):
         if orders.shape[0]==0: return []
         IDs = orders.index.tolist()
         TradePrice = self.LastPrice[IDs]
-        # 处理开仓单
         TradeAmounts = orders * TradePrice
         FeesAcquired = TradeAmounts.clip_lower(0) * self.BuyLimit.TradeFee + TradeAmounts.clip_upper(0).abs() * self.SellLimit.TradeFee
         CashAcquired = TradeAmounts.abs() + FeesAcquired

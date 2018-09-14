@@ -1,26 +1,21 @@
 # coding=utf-8
 """期货账户"""
-import os
 import datetime as dt
 
 import pandas as pd
 import numpy as np
-from traits.api import Enum, Either, List, ListStr, Int, Float, Str, Bool, Dict, Instance, on_trait_change
+from traits.api import Enum, ListStr, Float, Bool, Instance, on_trait_change
 
-from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList, match2Series
-from QuantStudio.Tools.IDFun import testIDFilterStr
-from QuantStudio.Tools import DateTimeFun
-from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5
 from QuantStudio import __QS_Error__, __QS_Object__
 from QuantStudio.BackTest.Strategy.StrategyModule import Account, cutDateTime
-from QuantStudio.BackTest.Strategy.StockAccount import _TradeLimit
+from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 
 class _TradeLimit(__QS_Object__):
     """交易限制"""
     TradeFee = Float(0.0, arg_type="Double", label="交易费率", order=0)
 
-# Bar 因子: 开盘价(非必需), 最高价(非必需), 最低价(非必需), 最新价, 成交价, 成交量(非必需). 最新价用于记录账户价值变化; 成交价用于模拟市价单的成交.
-class _BarFactorMap(__QS_Object__):
+# 市场 Bar 行情: 开盘价(非必需), 最高价(非必需), 最低价(非必需), 最新价, 成交价, 成交量(非必需). 最新价用于记录账户价值变化; 成交价用于模拟市价单的成交.
+class _MarketBarInfo(__QS_Object__):
     """Bar 因子映照"""
     Open = Enum(None, arg_type="SingleOption", label="开盘价", order=0)
     High = Enum(None, arg_type="SingleOption", label="最高价", order=1)
@@ -28,11 +23,11 @@ class _BarFactorMap(__QS_Object__):
     Last = Enum(None, arg_type="SingleOption", label="最新价", order=3)
     Vol = Enum(None, arg_type="SingleOption", label="成交量", order=4)
     TradePrice = Enum(None, arg_type="SingleOption", label="成交价", order=5)
-    def __init__(self, market_ft, sys_args={}, **kwargs):
-        self._MarketFT = market_ft
+    def __init__(self, ft, sys_args={}, **kwargs):
+        self._FT = ft
         return super().__init__(sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
-        DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._MarketFT.getFactorMetaData(key="DataType")))
+        DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
         DefaultNumFactorList.insert(0, None)
         self.add_trait("Open", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="开盘价", order=0))
         self.add_trait("High", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="最高价", order=1))
@@ -70,7 +65,7 @@ class TimeBarAccount(Account):
     TargetIDs = ListStr(arg_type="IDList", label="目标ID", order=3)
     BuyLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="买入限制", order=4)
     SellLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="卖出限制", order=5)
-    MarketFactorMap = Instance(_BarFactorMap, arg_type="ArgObject", label="行情因子", order=6)
+    MarketInfo = Instance(_MarketBarInfo, arg_type="ArgObject", label="行情因子", order=6)
     SecurityInfo = Instance(_SecurityInfo, arg_type="ArgObject", label="证券信息", order=7)
     def __init__(self, market_ft, security_ft, sys_args={}, **kwargs):
         # 继承自 Account 的属性
@@ -92,14 +87,15 @@ class TimeBarAccount(Account):
         super().__init__(sys_args=sys_args, **kwargs)
         self.Name = "FutureAccount"
     def __QS_initArgs__(self):
-        self.MarketFactorMap = _BarFactorMap(self._MarketFT)
+        super().__QS_initArgs__()
+        self.MarketInfo = _MarketBarInfo(self._MarketFT)
         self.SecurityInfo = _SecurityInfo(self._SecurityFT)
         self.BuyLimit = _TradeLimit(direction="Buy")
         self.SellLimit = _TradeLimit(direction="Sell")
     def __QS_start__(self, mdl, dts=None, dates=None, times=None):
         Rslt = super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
         self._IDs = list(self.TargetIDs)
-        if not self._IDs: self._IDs = list(self._MarketFT.getID(ifactor_name=self.MarketFactorMap.TradePrice))
+        if not self._IDs: self._IDs = list(self._MarketFT.getID(ifactor_name=self.MarketInfo.TradePrice))
         nDT, nID = len(dts), len(self._IDs)
         #self._Cash = np.zeros(nDT+1)
         #self._Debt = np.zeros(nDT+1)
@@ -114,7 +110,7 @@ class TimeBarAccount(Account):
         return Rslt + (self._MarketFT, self._SecurityFT)
     def __QS_move__(self, idt, *args, **kwargs):
         super().__QS_move__(idt, *args, **kwargs)
-        self._LastPrice = self._MarketFT.readData(factor_names=[self.MarketFactorMap.Last], ids=self._IDs, dts=[idt]).iloc[0, 0]
+        self._LastPrice = self._MarketFT.readData(factor_names=[self.MarketInfo.Last], ids=self._IDs, dts=[idt]).iloc[0, 0]
         if self.Delay:# 撮合成交
             iIndex = self._Model.DateTimeIndex
             self._Position.iloc[iIndex+1] = self._Position.iloc[iIndex]
@@ -312,7 +308,7 @@ class TimeBarAccount(Account):
         orders = orders[orders!=0]
         if orders.shape[0]==0: return ([], pd.Series())
         IDs = orders.index.tolist()
-        TradePrice = self._MarketFT.readData(dts=[idt], ids=IDs, factor_names=[self.MarketFactorMap.TradePrice]).iloc[0, 0]# 成交价
+        TradePrice = self._MarketFT.readData(dts=[idt], ids=IDs, factor_names=[self.MarketInfo.TradePrice]).iloc[0, 0]# 成交价
         # 过滤限制条件
         orders[pd.isnull(TradePrice)] = 0.0# 成交价缺失的不能交易
         #if self.SellLimit.LimitIDFilter:# 满足卖出禁止条件的不能卖出
@@ -321,8 +317,8 @@ class TimeBarAccount(Account):
         #if self.BuyLimit.LimitIDFilter:# 满足买入禁止条件的不能买入
             #Mask = (self._MarketFT.getIDMask(idt, ids=IDs, id_filter_str=self.BuyLimit.LimitIDFilter) & (orders>0))
             #orders[Mask] = orders[Mask].clip_upper(0)
-        #if self.MarketFactorMap.Vol:# 成交量限制
-            #VolLimit = self._MarketFT.readData(factor_names=[self.MarketFactorMap.Vol], ids=IDs, dts=[idt]).iloc[0, 0]
+        #if self.MarketInfo.Vol:# 成交量限制
+            #VolLimit = self._MarketFT.readData(factor_names=[self.MarketInfo.Vol], ids=IDs, dts=[idt]).iloc[0, 0]
             #orders = np.maximum(orders, -VolLimit * self.SellLimit.MarketOrderVolumeLimit)
             #orders = np.minimum(orders, VolLimit * self.BuyLimit.MarketOrderVolumeLimit)
         #if self.SellLimit.MinUnit!=0.0:# 最小卖出交易单位限制
@@ -379,7 +375,7 @@ class TimeBarAccount(Account):
         orders = orders[orders!=0]
         if orders.shape[0]==0: return []
         IDs = orders.index.tolist()
-        TradePrice = self._MarketFT.readData(dts=[idt], ids=IDs, factor_names=[self.MarketFactorMap.TradePrice]).iloc[0, 0]# 成交价
+        TradePrice = self._MarketFT.readData(dts=[idt], ids=IDs, factor_names=[self.MarketInfo.TradePrice]).iloc[0, 0]# 成交价
         # 处理开仓单
         TradeAmounts = orders * TradePrice * self.SecurityInfo.Multiplier
         MarginAcquired = TradeAmounts.abs() * self.SecurityInfo.InitMarginRate

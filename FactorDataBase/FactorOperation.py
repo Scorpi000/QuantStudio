@@ -37,10 +37,6 @@ class PointOperation(Factor):
     def __init__(self, name="", descriptors=[], sys_args={}, **kwargs):
         self.Descriptors = descriptors
         return super().__init__(name=name, ft=None, sys_args=sys_args, **kwargs)
-    @property
-    def DTRuler(self):
-        if self._OperationMode is None: return self._DTRuler
-        return self._OperationMode.DTRuler
     def getMetaData(self, key=None):
         if key is None: return pd.Series({"DataType":self.DataType})
         elif key=="DataType": return self.DataType
@@ -111,10 +107,6 @@ class TimeOperation(Factor):
     def __QS_initArgs__(self):
         self.LookBack = [0]*len(self.Descriptors)
         self.LookBackMode = ["滚动窗口"]*len(self.Descriptors)
-    @property
-    def DTRuler(self):
-        if self._OperationMode is None: return self._DTRuler
-        return self._OperationMode.DTRuler
     def getMetaData(self, key=None):
         if key is None: return pd.Series({"DataType":self.DataType})
         elif key=="DataType": return self.DataType
@@ -134,41 +126,54 @@ class TimeOperation(Factor):
         StdData = self._calcData(ids=ids, dts=dts, descriptor_data=[np.r_[np.full((self.LookBack[i], len(ids)), np.nan), iDescriptor.readData(ids=ids, dts=dts).values] for i, iDescriptor in enumerate(self.Descriptors)])
         return pd.DataFrame(StdData, index=dts, columns=ids)
     def _calcData(self, ids, dts, descriptor_data):
-        if self._OperationMode is None: self._DTRuler = dts
         if self.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
         else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')
-        StartIndAndLen = []
+        StartIndAndLen, MaxLookBack, MaxLen = [], 0, 1
         for i, iDescriptor in enumerate(self.Descriptors):
+            iLookBack = self.LookBack[i]
             if self.LookBackMode[i]=="滚动窗口":
-                StartIndAndLen.append((self.LookBack[i], self.LookBack[i]+1))
+                StartIndAndLen.append((iLookBack, iLookBack+1))
+                MaxLen = max(MaxLen, iLookBack+1)
             else:
-                StartIndAndLen.append((self.LookBack[i], np.inf))
+                StartIndAndLen.append((iLookBack, np.inf))
+                MaxLen = np.inf
+            MaxLookBack = max(MaxLookBack, iLookBack)
         if self.iLookBack!=0:
-            if self.iLookBackMode=="扩张窗口":# 自身为扩张窗口模式
+            if self.iLookBackMode=="扩张窗口":
                 StartIndAndLen.insert(0, (-1, np.inf))
-            else:# 自身为滚动窗口模式
+                MaxLen = np.inf
+            else:
                 StartIndAndLen.insert(0, (-1, self.iLookBack))
+                MaxLen = max(MaxLen, self.iLookBack+1)
+            MaxLookBack = max(MaxLookBack, self.iLookBack)
             descriptor_data.insert(0, StdData)
+        if self._OperationMode is None: DTRuler = [None] * MaxLookBack + dts
+        else:
+            StartInd = self._OperationMode.DTRuler.index(dts[0])
+            if StartInd>=MaxLookBack: DTRuler = self._OperationMode.DTRuler[StartInd-MaxLookBack:]
+            else: DTRuler = [None]*(MaxLookBack-StartInd) + self._OperationMode.DTRuler
         if (self.DTMode=='单时点') and (self.IDMode=='单ID'):
             for i, iDT in enumerate(dts):
+                iDTs = DTRuler[max(0, MaxLookBack+i-MaxLen):i+1+MaxLookBack]
                 for j, jID in enumerate(ids):
                     x = []
                     for k, kDescriptorData in enumerate(descriptor_data):
                         kStartInd, kLen = StartIndAndLen[k]
                         x.append(kDescriptorData[max(0, kStartInd+1+i-kLen):kStartInd+1+i, j])
-                    StdData[i, j] = self.Operator(self, iDT, jID, x, self.ModelArgs)
+                    StdData[i, j] = self.Operator(self, iDTs, jID, x, self.ModelArgs)
         elif (self.DTMode=='单时点') and (self.IDMode=='多ID'):
             for i, iDT in enumerate(dts):
+                iDTs = DTRuler[max(0, MaxLookBack+i-MaxLen):i+1+MaxLookBack]
                 x = []
                 for k,kDescriptorData in enumerate(descriptor_data):
                     kStartInd, kLen = StartIndAndLen[k]
                     x.append(kDescriptorData[max(0, kStartInd+1+i-kLen):kStartInd+1+i])
-                StdData[i, :] = self.Operator(self, iDT, ids, x, self.ModelArgs)
+                StdData[i, :] = self.Operator(self, iDTs, ids, x, self.ModelArgs)
         elif (self.DTMode=='多时点') and (self.IDMode=='单ID'):
             for j, jID in enumerate(ids):
-                StdData[:, j] = self.Operator(self, dts, jID, [kDescriptorData[:, j] for kDescriptorData in descriptor_data], self.ModelArgs)
+                StdData[:, j] = self.Operator(self, DTRuler, jID, [kDescriptorData[:, j] for kDescriptorData in descriptor_data], self.ModelArgs)
         else:
-            StdData = self.Operator(self, dts, ids, descriptor_data, self.ModelArgs)
+            StdData = self.Operator(self, DTRuler, ids, descriptor_data, self.ModelArgs)
         return StdData
     def __QS_prepareCacheData__(self):
         PID = self._OperationMode._iPID
@@ -212,10 +217,6 @@ class SectionOperation(Factor):
         if key is None: return pd.Series({"DataType":self.DataType})
         elif key=="DataType": return self.DataType
         return None
-    @property
-    def DTRuler(self):
-        if self._OperationMode is None: return self._DTRuler
-        return self._OperationMode.DTRuler
     def readData(self, ids, dts, args={}):
         StdData = self._calcData(ids=ids, dts=dts, descriptor_data=[iDescriptor.readData(ids=ids, dts=dts).values for iDescriptor in self.Descriptors])
         return pd.DataFrame(StdData, index=dts, columns=ids)
@@ -327,43 +328,55 @@ class PanelOperation(Factor):
         StdData = self._calcData(ids=ids, dts=dts, descriptor_data=[np.r_[np.full((self.LookBack[i], len(ids)), np.nan), iDescriptor.readData(ids=ids, dts=dts).values] for i, iDescriptor in enumerate(self.Descriptors)])
         return pd.DataFrame(StdData, index=dts, columns=ids)
     def _calcData(self, ids, dts, descriptor_data):
-        if self._OperationMode is None: self._DTRuler = dts
         if self.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
         else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')
-        StartIndAndLen = []
+        StartIndAndLen, MaxLookBack, MaxLen = [], 0, 1
         for i, iDescriptor in enumerate(self.Descriptors):
             if self.LookBackMode[i]=="滚动窗口":
                 StartIndAndLen.append((self.LookBack[i], self.LookBack[i]+1))
+                MaxLen = max(MaxLen, iLookBack+1)
             else:
                 StartIndAndLen.append((self.LookBack[i], np.inf))
+                MaxLen = np.inf
+            MaxLookBack = max(MaxLookBack, iLookBack)
         if self.iLookBack!=0:
             if self.iLookBackMode=="扩张窗口":# 自身为扩张窗口模式
                 StartIndAndLen.insert(0, (-1, np.inf))
+                MaxLen = np.inf
             else:# 自身为滚动窗口模式
                 StartIndAndLen.insert(0, (-1, self.iLookBack))
+                MaxLen = max(MaxLen, self.iLookBack+1)
             descriptor_data.insert(0, StdData)
+            MaxLookBack = max(MaxLookBack, self.iLookBack)
+        if self._OperationMode is None: DTRuler = [None] * MaxLookBack + dts
+        else:
+            StartInd = self._OperationMode.DTRuler.index(dts[0])
+            if StartInd>=MaxLookBack: DTRuler = self._OperationMode.DTRuler[StartInd-MaxLookBack:]
+            else: DTRuler = [None]*(MaxLookBack-StartInd) + self._OperationMode.DTRuler
         if self.OutputMode=='全截面':
             if self.DTMode=='单时点':
                 for i, iDT in enumerate(dts):
+                    iDTs = DTRuler[max(0, MaxLookBack+i-MaxLen):i+1+MaxLookBack]
                     x = []
                     for k, kDescriptorData in enumerate(descriptor_data):
                         kStartInd, kLen = StartIndAndLen[k]
                         x.append(kDescriptorData[max(0, kStartInd+1+i-kLen):kStartInd+1+i])
-                    StdData[i, :] = self.Operator(self, iDT, ids, x, self.ModelArgs)
+                    StdData[i, :] = self.Operator(self, iDTs, ids, x, self.ModelArgs)
             else:
-                StdData = self.Operator(self, dts, ids, descriptor_data, self.ModelArgs)
+                StdData = self.Operator(self, DTRuler, ids, descriptor_data, self.ModelArgs)
         else:
             if self.DTMode=='单时点':
                 for i, iDT in enumerate(dts):
+                    iDTs = DTRuler[max(0, MaxLookBack+i-MaxLen):i+1+MaxLookBack]
                     x = []
                     for k, kDescriptorData in enumerate(descriptor_data):
                         kStartInd, kLen = StartIndAndLen[k]
                         x.append(kDescriptorData[max(0, kStartInd+1+i-kLen):kStartInd+1+i])
                     for j, jID in enumerate(ids):
-                        StdData[i, j] = self.Operator(self, iDT, jID, x, self.ModelArgs)
+                        StdData[i, j] = self.Operator(self, iDTs, jID, x, self.ModelArgs)
             else:
                 for j, jID in enumerate(ids):
-                    StdData[:, j] = self.Operator(self, dts, jID, descriptor_data, self.ModelArgs)
+                    StdData[:, j] = self.Operator(self, DTRuler, jID, descriptor_data, self.ModelArgs)
         return StdData
     def __QS_prepareCacheData__(self):
         DTs = list(self._PID_DTs[self._OperationMode._iPID])
