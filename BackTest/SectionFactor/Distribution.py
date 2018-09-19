@@ -26,9 +26,9 @@ class IndustryDistribution(BaseModule):
     Threshold = Enum("中位数","平均数","25%分位数","75%分位数",arg_type="SingleOption", label="阈值", order=2)
     CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=3)
     IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=4)
-    def __init__(self, factor_table, sys_args={}, **kwargs):
+    def __init__(self, factor_table, name="因子值行业分布", sys_args={}, **kwargs):
         self._FactorTable = factor_table
-        super().__init__(name="因子值行业分布", sys_args=sys_args, **kwargs)
+        return super().__init__(name=name, sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FactorTable.getFactorMetaData(key="DataType")))
         self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
@@ -118,34 +118,45 @@ class IndustryDistribution(BaseModule):
         CurSheet.charts["行业分布"].delete()
         return 0
     def genMatplotlibFig(self, file_path=None):
-        nRow, nCol = self._Output["历史平均值"].shape[1], 2
+        nRow, nCol = self._Output["历史平均值"].shape[1]//3+1, min(3, self._Output["历史平均值"].shape[1])
         Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         AxesGrid = gridspec.GridSpec(nRow, nCol)
         xData = np.arange(0, self._Output["历史平均值"].shape[0])
         xTickLabels = [str(iIndustry) for iIndustry in self._Output["历史平均值"].index]
         yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
         for i, iFactorName in enumerate(self._Output["历史平均值"].columns):
-            iAxes = plt.subplot(AxesGrid[i, 0])
+            iAxes = plt.subplot(AxesGrid[i//nCol, i%nCol])
             iAxes.yaxis.set_major_formatter(yMajorFormatter)
             iAxes.bar(xData, self._Output["历史平均值"].iloc[:, i].values, color="b", label="历史平均值")
             iAxes.set_title(iFactorName+"-历史平均值")
             iAxes.set_xticks(xData)
             iAxes.set_xticklabels(xTickLabels)
-            iAxes = plt.subplot(AxesGrid[i, 1])
-            iAxes.yaxis.set_major_formatter(yMajorFormatter)
-            iAxes.bar(xData, self._Output["历史标准差"].iloc[:, i].values, color="b", label="历史标准差")
-            iAxes.set_title(iFactorName+"-历史标准差")
-            iAxes.set_xticks(xData)
-            iAxes.set_xticklabels(xTickLabels)
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
+        if len(self.ArgNames)>0:
+            HTML = "参数设置: "
+            HTML += '<ul align="left">'
+            for iArgName in self.ArgNames:
+                if iArgName!="计算时点":
+                    HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
+                elif self.Args[iArgName]:
+                    HTML += "<li>"+iArgName+": 自定义时点</li>"
+                else:
+                    HTML += "<li>"+iArgName+": 所有时点</li>"
+            HTML += "</ul>"
+        else:
+            HTML = ""
+        Formatters = [_QS_formatPandasPercentage]*self._Output["历史平均值"].shape[1]
+        iHTML = self._Output["历史平均值"].to_html(formatters=Formatters)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         Fig = self.genMatplotlibFig()
         # figure 保存为二进制文件
         Buffer = BytesIO()
-        plt.savefig(Buffer)
+        plt.savefig(Buffer, bbox_inches='tight')
         PlotData = Buffer.getvalue()
         # 图像数据转化为 HTML 格式
         ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
-        HTML = ('<img src="%s">' % ImgStr)
+        HTML += ('<img src="%s">' % ImgStr)
         return HTML

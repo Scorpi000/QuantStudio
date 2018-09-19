@@ -34,9 +34,9 @@ class IC(BaseModule):
     CorrMethod = Enum("spearman", "pearson", "kendall", arg_type="SingleOption", label="相关性算法", order=7)
     IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
     RollAvgPeriod = Int(12, arg_type="Integer", label="滚动平均期数", order=9)
-    def __init__(self, factor_table, sys_args={}, **kwargs):
+    def __init__(self, factor_table, name="IC", sys_args={}, **kwargs):
         self._FactorTable = factor_table
-        super().__init__(name="IC", sys_args=sys_args, **kwargs)
+        super().__init__(name=name, sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FactorTable.getFactorMetaData(key="DataType")))
         self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
@@ -195,20 +195,20 @@ class IC(BaseModule):
                 if iArgName!="计算时点":
                     HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
                 elif self.Args[iArgName]:
-                    HTML += "<li>"+iArgName+": 间隔时点</li>"
+                    HTML += "<li>"+iArgName+": 自定义时点</li>"
                 else:
                     HTML += "<li>"+iArgName+": 所有时点</li>"
             HTML += "</ul>"
         else:
             HTML = ""
         Formatters = [_QS_formatPandasPercentage]*4+[lambda x:'{0:.4f}'.format(x)]+[lambda x:'{0:.2f}'.format(x)]*3+[lambda x:'{0:.0f}'.format(x)]
-        HTML += self._Output["统计数据"].to_html(formatters=Formatters)
-        Pos = HTML.find(">")
-        HTML = HTML[:Pos]+' align="center"'+HTML[Pos:]
+        iHTML = self._Output["统计数据"].to_html(formatters=Formatters)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         Fig = self.genMatplotlibFig()
         # figure 保存为二进制文件
         Buffer = BytesIO()
-        plt.savefig(Buffer)
+        plt.savefig(Buffer, bbox_inches='tight')
         PlotData = Buffer.getvalue()
         # 图像数据转化为 HTML 格式
         ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
@@ -219,9 +219,8 @@ class IC(BaseModule):
 class RiskAdjustedIC(IC):    
     """风险调整的 IC"""
     RiskFactors = ListStr(arg_type="MultiOption", label="风险因子", order=2.5, option_range=())
-    def __init__(self, factor_table, sys_args={}, **kwargs):
-        super().__init__(factor_table=factor_table, sys_args=sys_args, **kwargs)
-        self.Name = "风险调整的 IC"
+    def __init__(self, factor_table, name="风险调整的 IC", sys_args={}, **kwargs):
+        return super().__init__(factor_table=factor_table, name=name, sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
         self.remove_trait("WeightFactor")
@@ -304,9 +303,9 @@ class ICDecay(BaseModule):
     LookBack = ListInt(np.arange(1,13).tolist(), arg_type="NultiOpotion", label="回溯期数", order=6)
     CorrMethod = Enum("spearman", "pearson", "kendall", arg_type="SingleOption", label="相关性算法", order=7)
     IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
-    def __init__(self, factor_table, sys_args={}, **kwargs):
+    def __init__(self, factor_table, name="IC 衰减", sys_args={}, **kwargs):
         self._FactorTable = factor_table
-        super().__init__(name="IC 衰减", sys_args=sys_args, **kwargs)
+        super().__init__(name=name, sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FactorTable.getFactorMetaData(key="DataType")))
         self.add_trait("TestFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="测试因子", order=0))
@@ -416,14 +415,27 @@ class ICDecay(BaseModule):
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
+        if len(self.ArgNames)>0:
+            HTML = "参数设置: "
+            HTML += '<ul align="left">'
+            for iArgName in self.ArgNames:
+                if iArgName!="计算时点":
+                    HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
+                elif self.Args[iArgName]:
+                    HTML += "<li>"+iArgName+": 自定义时点</li>"
+                else:
+                    HTML += "<li>"+iArgName+": 所有时点</li>"
+            HTML += "</ul>"
+        else:
+            HTML = ""
         Formatters = [_QS_formatPandasPercentage]*2+[lambda x:'{0:.4f}'.format(x), lambda x:'{0:.2f}'.format(x), _QS_formatPandasPercentage]
-        HTML = self._Output["统计数据"].to_html(formatters=Formatters)
-        Pos = HTML.find(">")
-        HTML = HTML[:Pos]+' align="center"'+HTML[Pos:]
+        iHTML = self._Output["统计数据"].to_html(formatters=Formatters)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         Fig = self.genMatplotlibFig()
         # figure 保存为二进制文件
         Buffer = BytesIO()
-        plt.savefig(Buffer)
+        plt.savefig(Buffer, bbox_inches='tight')
         PlotData = Buffer.getvalue()
         # 图像数据转化为 HTML 格式
         ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()

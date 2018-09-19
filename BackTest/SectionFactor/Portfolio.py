@@ -33,9 +33,9 @@ class QuantilePortfolio(BaseModule):
     MarketIDFilter = Str(arg_type="IDFilter", label="市场组合", order=7)
     IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
     Perturbation = Bool(False, arg_type="Bool", label="随机微扰", order=9)
-    def __init__(self, factor_table, sys_args={}, **kwargs):
+    def __init__(self, factor_table, name="分位数组合", sys_args={}, **kwargs):
         self._FactorTable = factor_table
-        super().__init__(name="分位数组合", sys_args=sys_args, **kwargs)
+        return super().__init__(name=name, sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FactorTable.getFactorMetaData(key="DataType")))
         self.add_trait("TestFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="测试因子", order=0))
@@ -321,7 +321,7 @@ class QuantilePortfolio(BaseModule):
                 if iArgName!="调仓时点":
                     HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
                 elif self.Args[iArgName]:
-                    HTML += "<li>"+iArgName+": 间隔时点</li>"
+                    HTML += "<li>"+iArgName+": 自定义时点</li>"
                 else:
                     HTML += "<li>"+iArgName+": 所有时点</li>"
             HTML += "</ul>"
@@ -330,13 +330,13 @@ class QuantilePortfolio(BaseModule):
         Formatters = [_QS_formatPandasPercentage]*3+[lambda x:'{0:.2f}'.format(x)]*2+[_QS_formatPandasPercentage]*2+[lambda x: x.strftime("%Y-%m-%d")]*2
         Formatters += [_QS_formatPandasPercentage]*3+[lambda x:'{0:.2f}'.format(x)]*2+[_QS_formatPandasPercentage]*2+[lambda x: x.strftime("%Y-%m-%d")]*2
         Formatters += [lambda x:'{0:.2f}'.format(x)]*2
-        HTML += self._Output["统计数据"].to_html(formatters=Formatters)
-        Pos = HTML.find(">")
-        HTML = HTML[:Pos]+' align="center"'+HTML[Pos:]
+        iHTML = self._Output["统计数据"].to_html(formatters=Formatters)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         Fig = self.genMatplotlibFig()
         # figure 保存为二进制文件
         Buffer = BytesIO()
-        plt.savefig(Buffer)
+        plt.savefig(Buffer, bbox_inches='tight')
         PlotData = Buffer.getvalue()
         # 图像数据转化为 HTML 格式
         ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()

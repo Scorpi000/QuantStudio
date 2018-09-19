@@ -29,9 +29,9 @@ class SectionCorrelation(BaseModule):
     CorrMethod = ListStr(["spearman"], arg_type="MultiOption", label="相关性算法", order=3, option_range=("spearman", "pearson", "kendall"))
     RiskDS = Instance(RiskDataSource, arg_type="RiskDS", label="风险数据源", order=4)
     IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=5)
-    def __init__(self, factor_table, sys_args={}, **kwargs):
+    def __init__(self, factor_table, name="因子截面相关性", sys_args={}, **kwargs):
         self._FactorTable = factor_table
-        super().__init__(name="因子截面相关性", sys_args=sys_args, **kwargs)
+        return super().__init__(name=name, sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FactorTable.getFactorMetaData(key="DataType")))
         self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
@@ -187,11 +187,26 @@ class SectionCorrelation(BaseModule):
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
-        HTML = ""
+        if len(self.ArgNames)>0:
+            HTML = "参数设置: "
+            HTML += '<ul align="left">'
+            for iArgName in self.ArgNames:
+                if iArgName=="风险数据源":
+                    if self.RiskDS is None: HTML += "<li>"+iArgName+": None</li>"
+                    else: HTML += "<li>"+iArgName+": "+self.RiskDS.Name+"</li>"
+                elif iArgName!="计算时点":
+                    HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
+                elif self.Args[iArgName]:
+                    HTML += "<li>"+iArgName+": 自定义时点</li>"
+                else:
+                    HTML += "<li>"+iArgName+": 所有时点</li>"
+            HTML += "</ul>"
+        else:
+            HTML = ""
         for i, iMethod in enumerate(self.CorrMethod):
             iAvgName = iMethod+"均值"
             iHTML = self._Output[iAvgName].style.background_gradient(cmap="Reds").set_precision(2).render()
-            HTML += '<h2 align="left">'+iAvgName+'</h2>'+iHTML
+            HTML += '<div align="left" style="font-size:1em"><strong>'+iAvgName+'</strong></div>'+iHTML
         return HTML
 
 class FactorTurnover(BaseModule):
@@ -199,9 +214,9 @@ class FactorTurnover(BaseModule):
     TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
     CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=1)
     IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=2)
-    def __init__(self, factor_table, sys_args={}, **kwargs):
+    def __init__(self, factor_table, name="因子换手率", sys_args={}, **kwargs):
         self._FactorTable = factor_table
-        super().__init__(name="因子换手率", sys_args=sys_args, **kwargs)
+        return super().__init__(name=name, sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FactorTable.getFactorMetaData(key="DataType")))
         self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
@@ -287,13 +302,26 @@ class FactorTurnover(BaseModule):
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
-        HTML = self._Output["统计数据"].to_html(formatters=[_QS_formatPandasPercentage]*5)
-        Pos = HTML.find(">")
-        HTML = HTML[:Pos]+' align="center"'+HTML[Pos:]
+        if len(self.ArgNames)>0:
+            HTML = "参数设置: "
+            HTML += '<ul align="left">'
+            for iArgName in self.ArgNames:
+                if iArgName!="计算时点":
+                    HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
+                elif self.Args[iArgName]:
+                    HTML += "<li>"+iArgName+": 自定义时点</li>"
+                else:
+                    HTML += "<li>"+iArgName+": 所有时点</li>"
+            HTML += "</ul>"
+        else:
+            HTML = ""
+        iHTML += self._Output["统计数据"].to_html(formatters=[_QS_formatPandasPercentage]*5)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         Fig = self.genMatplotlibFig()
         # figure 保存为二进制文件
         Buffer = BytesIO()
-        plt.savefig(Buffer)
+        plt.savefig(Buffer, bbox_inches='tight')
         PlotData = Buffer.getvalue()
         # 图像数据转化为 HTML 格式
         ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()

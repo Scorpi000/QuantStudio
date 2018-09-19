@@ -146,7 +146,7 @@ class BackTestModel(__QS_Object__):
     # 对象的 HTML 表示
     def _repr_html_(self):
         HTML = ''
-        SepStr = '<HR style="FILTER: alpha(opacity=100,finishopacity=0,style=3)" width="90%" color=#987cb9 SIZE=5><h3 align="center">{Module}</h3>'
+        SepStr = '<HR style="FILTER: alpha(opacity=100,finishopacity=0,style=3)" width="90%" color=#987cb9 SIZE=5><div align="center" style="font-size:1.17em"><strong>{Module}</strong></div>'
         for i, iModule in enumerate(self.Modules): HTML += SepStr.format(Module=str(i)+". "+iModule.Name) + iModule._repr_html_()
         return HTML
     # 生成 HTML 报告

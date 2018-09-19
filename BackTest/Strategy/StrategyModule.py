@@ -12,7 +12,6 @@ from traitsui.api import Item, Group, View
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.ticker import FuncFormatter
-import matplotlib.dates as mdate
 
 from QuantStudio import __QS_Error__, __QS_Object__
 from QuantStudio.BackTest.BackTestModel import BaseModule
@@ -93,8 +92,8 @@ class Account(BaseModule):
     """账户"""
     InitCash = Float(1e9, arg_type="Double", label="初始资金", order=0, low=0.0, high=np.inf, single_step=0.00001, decimals=5)
     DebtLimit = Float(0.0, arg_type="Double", label="负债上限", order=1, low=0.0, high=np.inf, single_step=0.00001, decimals=5)
-    def __init__(self, sys_args={}, **kwargs):
-        super().__init__(name="Account", sys_args=sys_args, **kwargs)
+    def __init__(self, name="Account", sys_args={}, **kwargs):
+        super().__init__(name=name, sys_args=sys_args, **kwargs)
         self._Cash = None# 剩余现金, >=0,  array(shape=(nDT+1,))
         self._FrozenCash = 0# 当前被冻结的现金, >=0, float
         self._Debt = None# 负债, >=0, array(shape=(nDT+1,))
