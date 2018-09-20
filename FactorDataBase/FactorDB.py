@@ -88,8 +88,8 @@ class WritableFactorDB(FactorDB):
     # 设置因子的元数据. 必须具体化
     def setFactorMetaData(self, table_name, ifactor_name, key=None, value=None, meta_data=None):
         return 0
-    # 写入数据, if_exists: append, update, replace, skip. 必须具体化
-    def writeData(self, data, table_name, if_exists='append', **kwargs):
+    # 写入数据, if_exists: append, update, replace, skip. data_type: dict like, {因子名:数据类型}, 必须具体化
+    def writeData(self, data, table_name, if_exists='append', data_type=None, **kwargs):
         return 0
     # -------------------------------数据变换------------------------------------
     # 时间平移, 沿着时间轴将所有数据纵向移动 lag 期, lag>0 向前移动, lag<0 向后移动, 空出来的地方填 nan
@@ -260,13 +260,13 @@ def _calculate(args):
         with ProgressBar(max_value=nTask) as ProgBar:
             for i, iFactor in enumerate(FT.OperationMode._Factors):
                 iData = iFactor._QS_getData(dts=FT.OperationMode.DateTimes, pids=[args["PID"]])
-                args["FactorDB"].writeData(pd.Panel({iFactor.Name:iData}), args["TableName"], if_exists=args["if_exists"])
+                args["FactorDB"].writeData(pd.Panel({iFactor.Name:iData}), args["TableName"], if_exists=args["if_exists"], data_type={iFactor.Name:iFactor.getMetaData(key="DataType")})
                 iData = None
                 ProgBar.update(i+1)
     else:
         for i, iFactor in enumerate(FT.OperationMode._Factors):
             iData = iFactor._QS_getData(dts=FT.OperationMode.DateTimes, pids=[args["PID"]])
-            args["FactorDB"].writeData(pd.Panel({iFactor.Name:iData}), args["TableName"], if_exists=args["if_exists"])
+            args["FactorDB"].writeData(pd.Panel({iFactor.Name:iData}), args["TableName"], if_exists=args["if_exists"], data_type={iFactor.Name:iFactor.getMetaData(key="DataType")})
             iData = None
             args['Sub2MainQueue'].put((args["PID"], 1, None))
     return 0
@@ -470,6 +470,7 @@ class FactorTable(__QS_Object__):
         StartInd, EndInd = operation_mode.DTRuler.index(StartDT), operation_mode.DTRuler.index(EndDT)
         return [(self, FactorNames, list(RawFactorNames), operation_mode.DTRuler[StartInd:EndInd+1], {})]
     def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock):
+        if raw_data is None: return 0
         if 'ID' in raw_data:# 如果原始数据有 ID 列，按照 ID 列划分后存入子进程的原始文件中
             raw_data = raw_data.set_index(['ID'])
             CommonCols = list(raw_data.columns.difference(set(factor_names)))
@@ -523,7 +524,7 @@ class FactorTable(__QS_Object__):
             os.mkdir(self.OperationMode._CacheDataDir)
         if self.OperationMode.SubProcessNum==0:# 串行模式
             self.OperationMode._PIDs = ["0"]
-            self.OperationMode._PID_IDs = {"0":self.OperationMode.IDs}
+            self.OperationMode._PID_IDs = {"0":list(self.OperationMode.IDs)}
             os.mkdir(self.OperationMode._RawDataDir+os.sep+"0")
             os.mkdir(self.OperationMode._CacheDataDir+os.sep+"0")
             self.OperationMode._PID_Lock = {"0":Lock()}
@@ -531,7 +532,7 @@ class FactorTable(__QS_Object__):
             self.OperationMode._PIDs = []
             self.OperationMode._PID_IDs = {}
             nPrcs = min((self.OperationMode.SubProcessNum, len(self.OperationMode.IDs)))
-            SubIDs = partitionList(self.OperationMode.IDs, nPrcs)
+            SubIDs = partitionList(list(self.OperationMode.IDs), nPrcs)
             self.OperationMode._PID_Lock = {}
             for i in range(nPrcs):
                 iPID = "0-"+str(i)
@@ -598,10 +599,10 @@ class FactorTable(__QS_Object__):
     # 计算因子数据并写入因子库    
     def write2FDB(self, factor_names, ids, dts, factor_db, table_name, if_exists="append", **kwargs):
         print("==========因子运算==========", "1. 原始数据准备", sep="\n", end="")
-        TotalStartT = time.process_time()
+        TotalStartT = time.clock()
         self._prepare(factor_names, ids, dts)
-        print(("耗时 : %.2f" % (time.process_time()-TotalStartT, )), "2. 因子数据计算", end="", sep="\n")
-        StartT = time.process_time()
+        print(("耗时 : %.2f" % (time.clock()-TotalStartT, )), "2. 因子数据计算", end="", sep="\n")
+        StartT = time.clock()
         Args = {"FT":self, "PID":"0", "FactorDB":factor_db, "TableName":table_name, "if_exists":if_exists}
         if self.OperationMode.SubProcessNum==0:
             _calculate(Args)
@@ -636,7 +637,7 @@ class FactorTable(__QS_Object__):
                             ProgBar.update(iProg)
                     if iProg>=nTask: break
             for iPID, iPrcs in Procs.items(): iPrcs.join()
-        print(('耗时 : %.2f' % (time.process_time()-StartT, )), ("总耗时 : %.2f" % (time.process_time()-TotalStartT, )), "="*28, sep="\n", end="\n")
+        print(('耗时 : %.2f' % (time.clock()-StartT, )), ("总耗时 : %.2f" % (time.clock()-TotalStartT, )), "="*28, sep="\n", end="\n")
         self._exit()
         return 0
 
@@ -994,7 +995,7 @@ class Factor(__QS_Object__):
                 Args = {"Fun1":self.Operator, "SepInd":len(self.Descriptors), "Arg1":self.ModelArgs}
                 return (self.Descriptors+[other], Args)
             elif (other.Name==""):# 第二个因子为中间运算因子
-                Args = {"Fun2":other.SysArgs["算子"], "SepInd":1, "Arg2":other.ModelArgs}
+                Args = {"Fun2":other.Operator, "SepInd":1, "Arg2":other.ModelArgs}
                 return ([self]+other.Descriptors, Args)
             else:# 两个因子均为正常因子
                 Args = {"SepInd":1}
@@ -1176,14 +1177,14 @@ if __name__=='__main__':
     #MainFT.setDateTime(FT.getDateTime(ifactor_name="复权收盘价", start_dt=dt.datetime(2014,1,1), end_dt=dt.datetime(2018,1,1)))
     #MainFT.setID(["000001.SZ", "600000.SH"])
     #MainFT.ErgodicMode.CacheMode = "ID"
-    #StartT = time.process_time()
+    #StartT = time.clock()
     #MainFT.start()
     #for iDateTime in MainFT.getDateTime():
         #MainFT.move(iDateTime)
         #iData = MainFT.readData(dts=[iDateTime]).iloc[:, 0, :]
         #print(iDateTime)
     #MainFT.end()
-    #print(time.process_time()-StartT)
+    #print(time.clock()-StartT)
     
     # -----------测试因子运算模式----------
     from multiprocessing import cpu_count

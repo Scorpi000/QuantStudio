@@ -97,25 +97,25 @@ class BackTestModel(__QS_Object__):
             if test_times is None: test_times = [dt.time(23,59,59,999999)]
             else: test_times = sorted(test_times)
             self._QS_TestDateTimes = list(combineDateTime(test_dates, test_times))
-        TotalStartT = time.process_time()
+        TotalStartT = time.clock()
         print("==========历史回测==========", "1. 初始化", sep="\n", end="")
         FactorDBs = set()
         for jModule in self.Modules:
             jDBs = jModule.__QS_start__(mdl=self, dts=test_dts, dates=test_dates, times=test_times)
             if jDBs is not None: FactorDBs.update(set(jDBs))
         for jDB in FactorDBs: jDB.start(dts=test_dts, dates=test_dates, times=test_times)
-        print(('耗时 : %.2f' % (time.process_time()-TotalStartT, )), "2. 循环计算", sep="\n", end="")
-        StartT = time.process_time()
+        print(('耗时 : %.2f' % (time.clock()-TotalStartT, )), "2. 循环计算", sep="\n", end="")
+        StartT = time.clock()
         for i, iDateTime in enumerate(tqdm(self._QS_TestDateTimes)):
             self._TestDateTimeIndex = i
             self._TestDateIndex.loc[iDateTime.date()] = i
             for jDB in FactorDBs: jDB.move(iDateTime)
             for jModule in self.Modules: jModule.__QS_move__(iDateTime)
-        print(('耗时 : %.2f' % (time.process_time()-StartT, )), "3. 结果生成", sep="\n", end="")
-        StartT = time.process_time()
+        print(('耗时 : %.2f' % (time.clock()-StartT, )), "3. 结果生成", sep="\n", end="")
+        StartT = time.clock()
         for jModule in self.Modules: jModule.__QS_end__()
         for jDB in FactorDBs: jDB.end()
-        print(('耗时 : %.2f' % (time.process_time()-StartT, )), ("总耗时 : %.2f" % (time.process_time()-TotalStartT, )), "="*28, sep="\n", end="\n")
+        print(('耗时 : %.2f' % (time.clock()-StartT, )), ("总耗时 : %.2f" % (time.clock()-TotalStartT, )), "="*28, sep="\n", end="\n")
         self._Output = self.output(recalculate=True)
         return 0
     # 计算并输出测试的结果集

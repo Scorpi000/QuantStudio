@@ -242,14 +242,14 @@ def regress_change_rate(*factors, **kwargs):
 # ----------------------时间序列运算--------------------------------
 def _rolling_mean(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
-    return Data.rolling(**args["OperatorArg"]).mean().values[-len(idt):]
+    return Data.rolling(**args["OperatorArg"]).mean().values[args["OperatorArg"]["window"]-1:]
 def rolling_mean(f, window, min_periods=None, win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_rolling_mean,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _rolling_sum(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
-    return Data.rolling(**args["OperatorArg"]).sum().values[-len(idt):]
+    return Data.rolling(**args["OperatorArg"]).sum().values[args["OperatorArg"]["window"]-1:]
 def rolling_sum(f, window, min_periods=None, win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}

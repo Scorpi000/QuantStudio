@@ -11,16 +11,16 @@ from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.Tools.IDFun import testIDFilterStr
 from QuantStudio.Tools import DateTimeFun
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5
-from QuantStudio import __QS_Error__, __QS_Object__
+from QuantStudio import __QS_Error__, __QS_Object__, __QS_LibPath__
 from QuantStudio.BackTest.Strategy.StrategyModule import Account, cutDateTime
 
-def _getDefaultNontradableIDFilter(ft=None, nonbuyable=True, qs_env=None):
+def _getDefaultNontradableIDFilter(ft=None, nonbuyable=True):
     if ft is None:
         return None
     if nonbuyable:
-        DefaultNontradableIDFilter = readNestedDictFromHDF5(qs_env.SysArgs['LibPath']+os.sep+'IDFilter.hdf5', "/默认限买条件")
+        DefaultNontradableIDFilter = readNestedDictFromHDF5(__QS_LibPath__+os.sep+'IDFilter.hdf5', "/默认限买条件")
     else:
-        DefaultNontradableIDFilter = readNestedDictFromHDF5(qs_env.SysArgs['LibPath']+os.sep+'IDFilter.hdf5', "/默认限卖条件")
+        DefaultNontradableIDFilter = readNestedDictFromHDF5(__QS_LibPath__+os.sep+'IDFilter.hdf5', "/默认限卖条件")
     if DefaultNontradableIDFilter is not None:
         CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(DefaultNontradableIDFilter, ft.FactorNames)
         if CompiledIDFilterStr is not None:

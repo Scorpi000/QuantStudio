@@ -320,8 +320,9 @@ class HDF5DB(WritableFactorDB):
                             iPos = OldIDs.index(iID)
                             DataFile["Data"][CrossedDateTimePos, iPos] = NewData[:,i]
         return 0
-    def writeData(self, data, table_name, if_exists='append', **kwargs):
+    def writeData(self, data, table_name, if_exists='append', data_type=None, **kwargs):
         for i, iFactor in enumerate(data.items):
-            self.writeFactorData(data.iloc[i], table_name, iFactor, if_exists=if_exists)
+            iDataType = data_type.get(iFactor, _identifyDataType(data.iloc[i].dtypes))
+            self.writeFactorData(data.iloc[i], table_name, iFactor, if_exists=if_exists, data_type=iDataType)
         return 0
     

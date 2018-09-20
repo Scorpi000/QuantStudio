@@ -31,6 +31,7 @@ class _DBTable(FactorTable):
             factor_names = self.FactorNames
         FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]
         if key=="DataType":
+            if hasattr(self, "_DataType"): return self._DataType.ix[factor_names]
             MetaData = FactorInfo["DataType"].ix[factor_names]
             for i in range(MetaData.shape[0]):
                 iDataType = MetaData.iloc[i].lower()
