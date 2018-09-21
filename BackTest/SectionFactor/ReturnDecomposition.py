@@ -194,15 +194,15 @@ class FamaMacBethRegression(BaseModule):
         iAxes.set_title("t统计量")
         iAxes = plt.subplot(AxesGrid[0, 2])
         iAxes.yaxis.set_major_formatter(PercentageFormatter)
-        iAxes.bar(xData, self._Output["统计数据"]["年化收益率(Pure-Naive)"].values, width=-0.25, align="edge", color="r", label="年化收益率(Pure-Naive)")
+        iAxes.bar(xData, self._Output["统计数据"]["年化收益率(Pure-Naive)"].values, color="r", label="年化收益率(Pure-Naive)")
         iAxes.set_xticks(xData)
         iAxes.set_xticklabels(xTickLabels)
         iAxes.legend(loc='upper left')
         iAxes.set_title("Pure-Naive")
         RAxes = iAxes.twinx()
         RAxes.yaxis.set_major_formatter(FloatFormatter)
-        RAxes.bar(xData, self._Output["统计数据"]["t统计量(Pure-Naive)"].values, width=0.25, align="edge", color="b", label="t统计量(Pure-Naive)")
-        RAxes.legend(loc='upper right')      
+        RAxes.plot(xData, self._Output["统计数据"]["t统计量(Pure-Naive)"].values, color="b", alpha=0.6, lw=3, label="t统计量(Pure-Naive)")
+        RAxes.legend(loc='upper right')
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
@@ -224,6 +224,10 @@ class FamaMacBethRegression(BaseModule):
         Formatters += [_QS_formatPandasPercentage]*2+[FloatFormatFun, _QS_formatPandasPercentage, FloatFormatFun]
         Formatters += [_QS_formatPandasPercentage]*2+[FloatFormatFun, _QS_formatPandasPercentage, FloatFormatFun]
         iHTML = self._Output["统计数据"].to_html(formatters=Formatters)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        HTML += '<div align="left" style="font-size:1em"><strong>回归统计量</strong></div>'
+        iHTML = self._Output["回归统计量均值"].to_html(formatters=[FloatFormatFun]*5)
         Pos = iHTML.find(">")
         HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         Fig = self.genMatplotlibFig()
