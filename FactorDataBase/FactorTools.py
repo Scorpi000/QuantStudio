@@ -257,42 +257,42 @@ def _rolling_std(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     OperatorArg = args["OperatorArg"].copy()
     SubOperatorArg = OperatorArg.pop("SubOperatorArg", {})
-    return Data.rolling(**OperatorArg).std(**SubOperatorArg).values[-len(idt):]
+    return Data.rolling(**OperatorArg).apply(lambda x:np.nanstd(x, **SubOperatorArg), raw=True).values[args["OperatorArg"]["window"]-1:]
 def rolling_std(f, window, min_periods=None, win_type=None, ddof=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type,"SubOperatorArg":{"ddof":ddof}}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_rolling_std,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _rolling_max(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
-    return Data.rolling(**args["OperatorArg"]).max().values[-len(idt):]
+    return Data.rolling(**args["OperatorArg"]).max().values[args["OperatorArg"]["window"]-1:]
 def rolling_max(f, window, min_periods=None, win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_rolling_max,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _rolling_min(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
-    return Data.rolling(**args["OperatorArg"]).min().values[-len(idt):]
+    return Data.rolling(**args["OperatorArg"]).min().values[args["OperatorArg"]["window"]-1:]
 def rolling_min(f, window, min_periods=None, win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_rolling_min,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _rolling_median(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
-    return Data.rolling(**args["OperatorArg"]).median().values[-len(idt):]
+    return Data.rolling(**args["OperatorArg"]).median().values[args["OperatorArg"]["window"]-1:]
 def rolling_median(f, window, min_periods=None, win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_rolling_median,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _rolling_skew(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
-    return Data.rolling(**args["OperatorArg"]).skew().values[-len(idt):]
+    return Data.rolling(**args["OperatorArg"]).skew().values[args["OperatorArg"]["window"]-1:]
 def rolling_skew(f, window, min_periods=None, win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_rolling_skew,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _rolling_kurt(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
-    return Data.rolling(**args["OperatorArg"]).kurt().values[-len(idt):]
+    return Data.rolling(**args["OperatorArg"]).kurt().values[args["OperatorArg"]["window"]-1:]
 def rolling_kurt(f, window, min_periods=None, win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
@@ -301,7 +301,7 @@ def _rolling_var(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     OperatorArg = args["OperatorArg"].copy()
     SubOperatorArg = OperatorArg.pop("SubOperatorArg", {})
-    return Data.rolling(**OperatorArg).var(**SubOperatorArg).values[-len(idt):]
+    return Data.rolling(**OperatorArg).apply(lambda x:np.nanvar(x, **SubOperatorArg), raw=True).values[args["OperatorArg"]["window"]-1:]
 def rolling_var(f, window, min_periods=None, win_type=None, ddof=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type,"SubOperatorArg":{"ddof":ddof}}
@@ -310,14 +310,14 @@ def _rolling_quantile(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     OperatorArg = args["OperatorArg"].copy()
     SubOperatorArg = OperatorArg.pop("SubOperatorArg", {})
-    return Data.rolling(**OperatorArg).quantile(**SubOperatorArg).values[-len(idt):]
+    return Data.rolling(**OperatorArg).quantile(**SubOperatorArg).values[args["OperatorArg"]["window"]-1:]
 def rolling_quantile(f, window, quantile=0.5, min_periods=None, win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type,"SubOperatorArg":{"quantile":quantile}}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_rolling_quantile,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _rolling_count(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
-    return Data.rolling(**args["OperatorArg"]).count().values[-len(idt):]
+    return Data.rolling(**args["OperatorArg"]).count().values[args["OperatorArg"]["window"]-1:]
 def rolling_count(f, window, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window}
@@ -339,14 +339,14 @@ def rolling_change_rate(f, window, **kwargs):
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_rolling_change_rate,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _expanding_mean(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
-    return Data.expanding(**args["OperatorArg"]).mean().values[-len(idt):]
+    return Data.expanding(**args["OperatorArg"]).mean().values[args["OperatorArg"]["min_periods"]-1:]
 def expanding_mean(f, start_date=None, min_periods=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"min_periods":min_periods}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_expanding_mean,"参数":Args,"回溯期数":[min_periods-1]*len(Descriptors),"起始日":[start_date]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _expanding_sum(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
-    return Data.expanding(**args["OperatorArg"]).sum().values[-len(idt):]
+    return Data.expanding(**args["OperatorArg"]).sum().values[args["OperatorArg"]["min_periods"]-1:]
 def expanding_sum(f, start_date=None, min_periods=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"min_periods":min_periods}
@@ -355,42 +355,42 @@ def _expanding_std(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     OperatorArg = args["OperatorArg"].copy()
     SubOperatorArg = OperatorArg.pop("SubOperatorArg", {})
-    return Data.expanding(**OperatorArg).std(**SubOperatorArg).values[-len(idt):]
+    return Data.expanding(**OperatorArg).std(**SubOperatorArg).values[args["OperatorArg"]["min_periods"]-1:]
 def expanding_std(f, start_date=None, min_periods=1, ddof=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"min_periods":min_periods,"SubOperatorArg":{"ddof":ddof}}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_expanding_std,"参数":Args,"回溯期数":[min_periods-1]*len(Descriptors),"起始日":[start_date]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _expanding_max(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
-    return Data.expanding(**args["OperatorArg"]).max().values[-len(idt):]
+    return Data.expanding(**args["OperatorArg"]).max().values[args["OperatorArg"]["min_periods"]-1:]
 def expanding_max(f, start_date=None, min_periods=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"min_periods":min_periods}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_expanding_max,"参数":Args,"回溯期数":[min_periods-1]*len(Descriptors),"起始日":[start_date]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _expanding_min(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
-    return Data.expanding(**args["OperatorArg"]).min().values[-len(idt):]
+    return Data.expanding(**args["OperatorArg"]).min().values[args["OperatorArg"]["min_periods"]-1:]
 def expanding_min(f, start_date=None, min_periods=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"min_periods":min_periods}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_expanding_min,"参数":Args,"回溯期数":[min_periods-1]*len(Descriptors),"起始日":[start_date]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _expanding_median(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
-    return Data.expanding(**args["OperatorArg"]).median().values[-len(idt):]
+    return Data.expanding(**args["OperatorArg"]).median().values[args["OperatorArg"]["min_periods"]-1:]
 def expanding_median(f, start_date=None, min_periods=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"min_periods":min_periods}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_expanding_median,"参数":Args,"回溯期数":[min_periods-1]*len(Descriptors),"起始日":[start_date]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _expanding_skew(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
-    return Data.expanding(**args["OperatorArg"]).skew().values[-len(idt):]
+    return Data.expanding(**args["OperatorArg"]).skew().values[args["OperatorArg"]["min_periods"]-1:]
 def expanding_skew(f, start_date=None, min_periods=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"min_periods":min_periods}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_expanding_skew,"参数":Args,"回溯期数":[min_periods-1]*len(Descriptors),"起始日":[start_date]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _expanding_kurt(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
-    return Data.expanding(**args["OperatorArg"]).kurt().values[-len(idt):]
+    return Data.expanding(**args["OperatorArg"]).kurt().values[args["OperatorArg"]["min_periods"]-1:]
 def expanding_kurt(f, start_date=None, min_periods=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"min_periods":min_periods}
@@ -399,7 +399,7 @@ def _expanding_var(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     OperatorArg = args["OperatorArg"].copy()
     SubOperatorArg = OperatorArg.pop("SubOperatorArg", {})
-    return Data.expanding(**OperatorArg).var(**SubOperatorArg).values[-len(idt):]
+    return Data.expanding(**OperatorArg).var(**SubOperatorArg).values[args["OperatorArg"]["min_periods"]-1:]
 def expanding_var(f, start_date=None, min_periods=1, ddof=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"min_periods":min_periods,"SubOperatorArg":{"ddof":ddof}}
@@ -408,21 +408,21 @@ def _expanding_quantile(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     OperatorArg = args["OperatorArg"].copy()
     SubOperatorArg = OperatorArg.pop("SubOperatorArg",{})
-    return Data.expanding(**OperatorArg).quantile(**SubOperatorArg).values[-len(idt):]
+    return Data.expanding(**OperatorArg).quantile(**SubOperatorArg).values[args["OperatorArg"]["min_periods"]-1:]
 def expanding_quantile(f, start_date=None, quantile=0.5, min_periods=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"min_periods":min_periods,"SubOperatorArg":{"quantile":quantile}}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_expanding_quantile,"参数":Args,"回溯期数":[min_periods-1]*len(Descriptors),"起始日":[start_date]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _expanding_count(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
-    return Data.expanding(**args["OperatorArg"]).count().values[-len(idt):]
+    return Data.expanding(**args["OperatorArg"]).count().values[args["OperatorArg"]["min_periods"]-1:]
 def expanding_count(f, start_date=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_expanding_count,"参数":Args,"回溯期数":[min_periods-1]*len(Descriptors),"起始日":[start_date]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _ewm_mean(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
-    return Data.ewm(**args["OperatorArg"]).mean().values[-len(idt):]
+    return Data.ewm(**args["OperatorArg"]).mean().values[args["OperatorArg"]["min_periods"]-1:]
 def ewm_mean(f, start_date=None, com=None, span=None, halflife=None, alpha=None, min_periods=0, adjust=True, ignore_na=False, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"com":com,"span":span,"halflife":halflife,"alpha":alpha,
@@ -432,7 +432,7 @@ def _ewm_std(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     OperatorArg = args["OperatorArg"].copy()
     SubOperatorArg = OperatorArg.pop("SubOperatorArg",{})
-    return Data.ewm(**OperatorArg).std(**SubOperatorArg).values[-len(idt):]
+    return Data.ewm(**OperatorArg).std(**SubOperatorArg).values[args["OperatorArg"]["min_periods"]-1:]
 def ewm_std(f, start_date=None, com=None, span=None, halflife=None, alpha=None, min_periods=0, adjust=True, ignore_na=False, bias=False, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"com":com,"span":span,"halflife":halflife,"alpha":alpha,"min_periods":min_periods,
@@ -442,7 +442,7 @@ def _ewm_var(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     OperatorArg = args["OperatorArg"].copy()
     SubOperatorArg = OperatorArg.pop("SubOperatorArg",{})
-    return Data.ewm(**OperatorArg).var(**SubOperatorArg).values[-len(idt):]
+    return Data.ewm(**OperatorArg).var(**SubOperatorArg).values[args["OperatorArg"]["min_periods"]-1:]
 def ewm_var(f, start_date=None, com=None, span=None, halflife=None, alpha=None, min_periods=0, adjust=True, ignore_na=False, bias=False, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"com":com,"span":span,"halflife":halflife,"alpha":alpha,"min_periods":min_periods,
@@ -452,14 +452,14 @@ def _rolling_cov(f,idt,iid,x,args):
     Data1,Data2 = _genOperatorData(f,idt,iid,x,args)
     OperatorArg = args["OperatorArg"].copy()
     SubOperatorArg = OperatorArg.pop("SubOperatorArg",{})
-    return pd.DataFrame(Data1).rolling(**OperatorArg).cov(pd.DataFrame(Data2),**SubOperatorArg).values[-len(idt):]
+    return pd.DataFrame(Data1).rolling(**OperatorArg).cov(pd.DataFrame(Data2),**SubOperatorArg).values[args["OperatorArg"]["window"]-1:]
 def rolling_cov(f1, f2, window, min_periods=None, win_type=None, ddof=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f1,f2)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type,"SubOperatorArg":{"ddof":ddof}}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_rolling_cov,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _rolling_corr(f,idt,iid,x,args):
     Data1,Data2 = _genOperatorData(f,idt,iid,x,args)
-    return pd.DataFrame(Data1).rolling(**args["OperatorArg"]).corr(pd.DataFrame(Data2)).values[-len(idt):]
+    return pd.DataFrame(Data1).rolling(**args["OperatorArg"]).corr(pd.DataFrame(Data2)).values[args["OperatorArg"]["window"]-1:]
 def rolling_corr(f1, f2, window, min_periods=None, win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f1,f2)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
@@ -503,14 +503,14 @@ def _expanding_cov(f,idt,iid,x,args):
     Data1,Data2 = _genOperatorData(f,idt,iid,x,args)
     OperatorArg = args["OperatorArg"].copy()
     SubOperatorArg = OperatorArg.pop("SubOperatorArg",{})
-    return pd.DataFrame(Data1).expanding(**OperatorArg).cov(pd.DataFrame(Data2),**SubOperatorArg).values[-len(idt):]
+    return pd.DataFrame(Data1).expanding(**OperatorArg).cov(pd.DataFrame(Data2),**SubOperatorArg).values[args["OperatorArg"]["min_periods"]-1:]
 def expanding_cov(f1, f2, start_date=None, min_periods=1, ddof=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f1,f2)
     Args["OperatorArg"] = {"min_periods":min_periods,"SubOperatorArg":{"ddof":ddof}}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_expanding_cov,"参数":Args,"回溯期数":[min_periods-1]*len(Descriptors),"起始日":[start_date]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _expanding_corr(f,idt,iid,x,args):
     Data1,Data2 = _genOperatorData(f,idt,iid,x,args)
-    return pd.DataFrame(Data1).expanding(**args["OperatorArg"]).corr(pd.DataFrame(Data2)).values[-len(idt):]
+    return pd.DataFrame(Data1).expanding(**args["OperatorArg"]).corr(pd.DataFrame(Data2)).values[args["OperatorArg"]["min_periods"]-1:]
 def expanding_corr(f1, f2, start_date=None, min_periods=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f1,f2)
     Args["OperatorArg"] = {"min_periods":min_periods}
@@ -519,7 +519,7 @@ def _ewm_cov(f,idt,iid,x,args):
     Data1,Data2 = _genOperatorData(f,idt,iid,x,args)
     OperatorArg = args["OperatorArg"].copy()
     SubOperatorArg = OperatorArg.pop("SubOperatorArg",{})
-    return pd.DataFrame(Data1).ewm(**OperatorArg).cov(pd.DataFrame(Data2),**SubOperatorArg).values[-len(idt):]
+    return pd.DataFrame(Data1).ewm(**OperatorArg).cov(pd.DataFrame(Data2),**SubOperatorArg).values[args["OperatorArg"]["min_periods"]-1:]
 def ewm_cov(f1, f2, start_date=None, com=None, span=None, halflife=None, alpha=None, min_periods=0, adjust=True, ignore_na=False, bias=False, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f1,f2)
     Args["OperatorArg"] = {"com":com,"span":span,"halflife":halflife,"min_periods":min_periods,
@@ -527,7 +527,7 @@ def ewm_cov(f1, f2, start_date=None, com=None, span=None, halflife=None, alpha=N
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_ewm_cov,"参数":Args,"回溯期数":[min_periods]*len(Descriptors),"起始日":[start_date]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _ewm_corr(f,idt,iid,x,args):
     Data1,Data2 = _genOperatorData(f,idt,iid,x,args)
-    return pd.DataFrame(Data1).ewm(**args["OperatorArg"]).corr(pd.DataFrame(Data2)).values[-len(idt):]
+    return pd.DataFrame(Data1).ewm(**args["OperatorArg"]).corr(pd.DataFrame(Data2)).values[args["OperatorArg"]["min_periods"]-1:]
 def ewm_corr(f1, f2, start_date=None, com=None, span=None, halflife=None, alpha=None, min_periods=0, adjust=True, ignore_na=False, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f1,f2)
     Args["OperatorArg"] = {"com":com,"span":span,"halflife":halflife,"min_periods":min_periods,

@@ -60,7 +60,7 @@ def _prepareReportANNRawData(fdb, ids):
     RawData = fdb.fetchall(SQLStr)
     if not RawData: return pd.DataFrame(columns=["ID", "公告日期", "报告期"])
     else: return pd.DataFrame(np.array(RawData), columns=["ID", "公告日期", "报告期"])
-def _saveRawDataWithReportANN(fdb, report_ann_file, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock):
+def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock):
     isANNReport = raw_data._QS_ANNReport
     if isANNReport:
         PID = sorted(pid_lock)[0]
@@ -71,8 +71,8 @@ def _saveRawDataWithReportANN(fdb, report_ann_file, raw_data, factor_names, raw_
             pid_lock[PID].release()
             IDs = []
             for iPID in sorted(pid_ids): IDs.extend(pid_ids[iPID])
-            RawData = _prepareReportANNRawData(fdb, ids=IDs)
-            super().__QS_saveRawData__(RawData, [], raw_data_dir, pid_ids, report_ann_file, pid_lock)
+            RawData = _prepareReportANNRawData(ft.FactorDB, ids=IDs)
+            super(_DBTable, ft).__QS_saveRawData__(RawData, [], raw_data_dir, pid_ids, report_ann_file, pid_lock)
         else:
             pid_lock[PID].release()
     raw_data = raw_data.set_index(['ID'])
@@ -157,7 +157,6 @@ class _CalendarTable(_DBTable):
 class _MarketTable(_DBTable):
     """行情因子表"""
     LookBack = Int(0, arg_type="Integer", label="回溯天数", order=0)
-    DateField = Enum(None, arg_type="SingleOption", label="日期字段", order=1)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         FactorInfo = fdb._FactorInfo.ix[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
@@ -169,10 +168,12 @@ class _MarketTable(_DBTable):
         super().__QS_initArgs__()
         FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]
         self.add_trait("DateField", Enum(*self._DateFields, arg_type="SingleOption", label="日期字段", order=0))
-        self.DateField = FactorInfo[(FactorInfo["Supplementary"]=="DefaultDate") & (FactorInfo["FieldType"]=="Date")].index[0]
+        DefaultDateField = FactorInfo[(FactorInfo["Supplementary"]=="DefaultDate") & (FactorInfo["FieldType"]=="Date")]
+        if DefaultDateField.shape[0]>0: self.DateField = DefaultDateField.index[0]
+        else: self.DateField = FactorInfo[FactorInfo["FieldType"]=="Date"].index[0]
         for i, iCondition in enumerate(self._ConditionFields):
-            self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+1))
-            self[iCondition] = FactorInfo.loc[iCondition, "Supplementary"]
+            self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+2))
+            self[iCondition] = str(FactorInfo.loc[iCondition, "Supplementary"])
     @property
     def FactorNames(self):
         FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]
@@ -273,6 +274,7 @@ class _MarketTable(_DBTable):
         if not RawData: return pd.DataFrame(columns=["日期", "ID"]+factor_names)
         return pd.DataFrame(np.array(RawData), columns=["日期", "ID"]+factor_names)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data = raw_data.set_index(["日期", "ID"])
         DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
         Data = {}
@@ -768,7 +770,7 @@ class _FinancialTable(_DBTable):
         raw_data = raw_data.set_index(["ID"])
         Data = {}
         for iID in raw_data.index.unique():
-            Data[iID] = CalcFun(Dates, raw_data.loc[iID], factor_names, ReportDate, YearLookBack, PeriodLookBack)
+            Data[iID] = CalcFun(Dates, raw_data.loc[[iID]], factor_names, ReportDate, YearLookBack, PeriodLookBack)
         Data = pd.Panel(Data)
         Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:]), 23, 59, 59, 999999) for iDate in Dates]
         Data.minor_axis = factor_names
@@ -1119,7 +1121,7 @@ class _AnalystConsensusTable(_DBTable):
         RawData._QS_ANNReport = (CalcType!="Fwd12M")
         return RawData
     def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock):
-        return _saveRawDataWithReportANN(self._FactorDB, self._ANN_ReportFileName, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock)
+        return _saveRawDataWithReportANN(self, self._ANN_ReportFileName, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock)
     def __QS_genGroupInfo__(self, factors, operation_mode):
         PeriodGroup = {}
         StartDT = dt.datetime.now()
@@ -1353,9 +1355,10 @@ class _AnalystEstDetailTable(_DBTable):
             StartDT = min(operation_mode._FactorStartDT[iFactor.Name], StartDT)
         EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
         StartInd = operation_mode.DTRuler.index(StartDT)
+        Args["附加字段"], Args["去重字段"] = list(Args["附加字段"]), list(Args["去重字段"])
         return [(self, FactorNames, list(RawFactorNames), operation_mode.DTRuler[StartInd:EndInd+1], Args)]
     def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock):
-        return _saveRawDataWithReportANN(self._FactorDB, self._ANN_ReportFileName, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock)
+        return _saveRawDataWithReportANN(self, self._ANN_ReportFileName, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock)
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         StartDate -= dt.timedelta(args.get("周期", self.Period))
@@ -1378,6 +1381,7 @@ class _AnalystEstDetailTable(_DBTable):
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: RawData = pd.DataFrame(columns=["日期", "ID", self._ReportDateField, self._CapitalField]+AllFields)
         else: RawData = pd.DataFrame(np.array(RawData), columns=["日期", "ID", self._ReportDateField, self._CapitalField]+AllFields)
+        RawData._QS_ANNReport = True
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
