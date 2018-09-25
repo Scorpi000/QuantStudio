@@ -66,7 +66,7 @@ def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_d
         PID = sorted(pid_lock)[0]
         ANN_ReportFilePath = raw_data_dir+os.sep+PID+os.sep+report_ann_file
         pid_lock[PID].acquire()
-        if not os.path.isfile(ANN_ReportFilePath+'.dat'):# 没有报告期-公告日期数据, 提取该数据
+        if not os.path.isfile(ANN_ReportFilePath+(".dat" if os.name=="nt" else "")):# 没有报告期-公告日期数据, 提取该数据
             with shelve.open(ANN_ReportFilePath) as ANN_ReportFile: pass
             pid_lock[PID].release()
             IDs = []
@@ -84,8 +84,7 @@ def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_d
             iData = raw_data.loc[iIDs]
             for jFactorName in factor_names:
                 ijData = iData[CommonCols+[jFactorName]].reset_index()
-                if isANNReport:
-                    ijData._QS_ANNReportPath = raw_data_dir+os.sep+iPID+os.sep+report_ann_file
+                if isANNReport: ijData.columns.name = raw_data_dir+os.sep+iPID+os.sep+report_ann_file
                 iFile[jFactorName] = ijData
     return 0
 
@@ -1153,8 +1152,8 @@ class _AnalystConsensusTable(_DBTable):
             CalcFun, FYNum, ANNReportData = self._calcIDData_Fwd12M, None, None
         else:
             CalcFun, FYNum = self._calcIDData_FY, int(CalcType[-1])
-            ANNReportPath = getattr(raw_data, "_QS_ANNReportPath", None)
-            if (ANNReportPath is not None) and os.path.isfile(ANNReportPath):
+            ANNReportPath = raw_data.columns.name
+            if (ANNReportPath is not None) and os.path.isfile(ANNReportPath+(".dat" if os.name=="nt" else "")):
                 with shelve.open(ANNReportPath) as ANN_ReportFile:
                     ANNReportData = ANN_ReportFile["RawData"]
             else:
@@ -1165,12 +1164,12 @@ class _AnalystConsensusTable(_DBTable):
         for iID in raw_data.index.unique():
             if ANNReportData is not None:
                 if iID in ANNReportData.index:
-                    iANNReportData = ANNReportData.loc[iID]
+                    iANNReportData = ANNReportData.loc[[iID]]
                 else:
                     continue
             else:
                 iANNReportData = None
-            Data[iID] = CalcFun(Dates, raw_data.loc[iID], iANNReportData, factor_names, LookBack, FYNum)
+            Data[iID] = CalcFun(Dates, raw_data.loc[[iID]], iANNReportData, factor_names, LookBack, FYNum)
         Data = pd.Panel(Data)
         Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:]), 23, 59, 59, 999999) for iDate in Dates]
         Data = Data.swapaxes(0, 2)
@@ -1389,14 +1388,14 @@ class _AnalystEstDetailTable(_DBTable):
         DeduplicationFields = args.get("去重字段", self.Deduplication)
         AdditionalFields = list(set(args.get("附加字段", self.AdditionalFields)+DeduplicationFields))
         AllFields = list(set(factor_names+AdditionalFields))
+        ANNReportPath = raw_data.columns.name
         raw_data = raw_data.loc[:, ["日期", "ID", self._ReportDateField, self._CapitalField]+AllFields].set_index(["ID"])
         Period = args.get("周期", self.Period)
         ForwardYears = args.get("向前年数", self.ForwardYears)
         ModelArgs = args.get("参数", self.ModelArgs)
         Operator = args.get("算子", self.Operator)
         DataType = args.get("数据类型", self.DataType)
-        ANNReportPath = getattr(raw_data, "_QS_ANNReportPath", None)
-        if (ANNReportPath is not None) and os.path.isfile(ANNReportPath):
+        if (ANNReportPath is not None) and os.path.isfile(ANNReportPath+(".dat" if os.name=="nt" else "")):
             with shelve.open(ANNReportPath) as ANN_ReportFile:
                 ANNReportData = ANN_ReportFile["RawData"]
         else:

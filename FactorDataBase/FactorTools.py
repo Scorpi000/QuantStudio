@@ -6,10 +6,11 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
+from QuantStudio import __QS_Error__
 from QuantStudio.FactorDataBase.FactorDB import Factor
-from QuantStudio.FactorDataBase.FactorOperation import PointOperation, TimeOperation, SectionOperation
-#from .SectionOperation import,SectionAggregate
+from QuantStudio.FactorDataBase.FactorOperation import PointOperation, TimeOperation, SectionOperation, SectionAggregation
 from QuantStudio.Tools import DataPreprocessingFun
+
 
 def _genMultivariateOperatorInfo(*factors):
     Args = {}
@@ -951,35 +952,33 @@ def orthogonalize(Y, X, mask=None, constant=False, dummy_data=None, drop_dummy_n
     return SectionOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_orthogonalize,"参数":Args,"运算时点":"多时点","输出形式":"全截面"})
 
 # ----------------------聚合运算--------------------------------
-def _disaggregate(f,idt,iid,x,args):# 将聚合因子分解成为普通因子
-    if args["OperatorArg"]["cat_data"]:
-        Data,CatData = _genOperatorData(f,idt,iid,x,args)
-        if Data.dtype[0]==np.dtype("O"):
-            Rslt = np.empty(CatData.shape,dtype="O")
-        else:
-            Rslt = np.zeros(CatData.shape)+np.nan
-        for iCat in Data.dtype.names:
-            iMask = (CatData==iCat)
-            Rslt[iMask] = np.repeat(np.reshape(Data[iCat],(Data.shape[0],1)),len(iid),axis=1)[iMask]
-        return Rslt
+def _disaggregate(f,idt,iid,x,args):
+    if "target_id" in args["OperatorArg"]:
+        Data = args["OperatorArg"]["f"].readData(dts=idt, ids=[args["OperatorArg"]["target_id"]])
+        return np.repeat(Data.values, len(iid), axis=1)
+    CatData = _genOperatorData(f,idt,iid,x,args)
+    Data = args["OperatorArg"]["f"].readData(dts=idt, ids=args["OperatorArg"]["f"].getID())
+    if f.DataType=="string": Rslt = np.full(shape=CatData.shape, fill_value=None, dtype=np.dtype("O"))
+    else: Rslt = np.full(shape=CatData.shape, fill_value=np.nan, dtype="float")
+    for i, iCat in enumerate(Data.dtypes.index):
+        iMask = (CatData==iCat)
+        Rslt[iMask] = np.repeat(Data.iloc[:, [i]].values, len(iid), axis=1)[iMask]
+    return Rslt
+def disaggregate(f, target_id=None, cat_data=None, **kwargs):# 将聚合因子分解成为普通因子
+    if (target_id is None) and (cat_data is None): raise __QS_Error__("目标ID或者类别因子不能全为 None!")
+    elif target_id is not None:
+        Args = {"OperatorArg":{"f":f, "target_id":target_id}}
+        return PointOperation(kwargs.get('factor_name',str(uuid.uuid1())),[],{"算子":_disaggregate,"参数":Args,"运算时点":"多时点","运算ID":"多ID", "数据类型":f.getMetaData(key="DataType")})
     else:
-        Data = _genOperatorData(f,idt,iid,x,args)
-        return np.repeat(np.reshape(Data[0],(Data[0].shape[0],1)),len(iid),axis=1)
-def disaggregate(f, cat_data=None, **kwargs):
-    if cat_data is None:
-        Descriptors,Args = _genMultivariateOperatorInfo(f)
-        Args["OperatorArg"] = {"cat_data":False}
-    else:
-        Descriptors,Args = _genMultivariateOperatorInfo(f,cat_data)
-        Args["OperatorArg"] = {"cat_data":True}
-    return PointOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_disaggregate,"参数":Args,"运算时点":"多时点","运算ID":"多ID"})
+        Descriptors, Args = _genMultivariateOperatorInfo(cat_data)
+        Args["OperatorArg"] = {"f":f}
+        return PointOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_disaggregate,"参数":Args,"运算时点":"多时点","运算ID":"多ID", "数据类型":f.getMetaData(key="DataType")})
 def _aggr_sum(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
     FactorData = Data[0]
-    if args["OperatorArg"]["Mask"]:
-        Mask = Data[1]
+    if args["OperatorArg"]["Mask"]: Mask = Data[1]
     return np.nansum(FactorData[Mask==1])
-def aggr_sum(f, mask=None, cat_data=None, aggr_output=False, aggr_save=True, ignore_na=True, code_map=None, **kwargs):
+def aggr_sum(f, mask=None, cat_data=None, code_map=None, **kwargs):
     Factors = [f]
     cat_pos = 1
     if mask is not None:
@@ -992,15 +991,14 @@ def aggr_sum(f, mask=None, cat_data=None, aggr_output=False, aggr_save=True, ign
     Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
     Args["OperatorArg"] = {"Mask":(mask is not None)}
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
-    return SectionAggregate(FactorName,Descriptors,{"算子":_aggr_sum,"参数":Args,"忽略缺失":ignore_na,"代码对照":code_map,
-                                                    "分类因子":cat_pos,"聚合输出":aggr_output,"聚合存储":aggr_save})
+    return SectionAggregation(FactorName,Descriptors,{"算子":_aggr_sum,"参数":Args,"代码对照":code_map, "分类因子":cat_pos})
 def _aggr_prod(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
     FactorData = Data[0]
     if args["OperatorArg"]["Mask"]:
         Mask = Data[1]
     return np.nanprod(FactorData[Mask==1])
-def aggr_prod(f, mask=None, cat_data=None, aggr_output=False, aggr_save=True, ignore_na=True, code_map=None, **kwargs):
+def aggr_prod(f, mask=None, cat_data=None, code_map=None, **kwargs):
     Factors = [f]
     cat_pos = 1
     if mask is not None:
@@ -1013,15 +1011,13 @@ def aggr_prod(f, mask=None, cat_data=None, aggr_output=False, aggr_save=True, ig
     Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
     Args["OperatorArg"] = {"Mask":(mask is not None)}
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
-    return SectionAggregate(FactorName,Descriptors,{"算子":_aggr_prod,"参数":Args,"忽略缺失":ignore_na,"代码对照":code_map,
-                                                    "分类因子":cat_pos,"聚合输出":aggr_output,"聚合存储":aggr_save})
+    return SectionAggregation(FactorName,Descriptors,{"算子":_aggr_prod,"参数":Args,"代码对照":code_map,"分类因子":cat_pos})
 def _aggr_max(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
     FactorData = Data[0]
-    if args["OperatorArg"]["Mask"]:
-        Mask = Data[1]
+    if args["OperatorArg"]["Mask"]: Mask = Data[1]
     return np.nanmax(FactorData[Mask==1])
-def aggr_max(f, mask=None, cat_data=None, aggr_output=False, aggr_save=True, ignore_na=True, code_map=None, **kwargs):
+def aggr_max(f, mask=None, cat_data=None, code_map=None, **kwargs):
     Factors = [f]
     cat_pos = 1
     if mask is not None:
@@ -1034,15 +1030,13 @@ def aggr_max(f, mask=None, cat_data=None, aggr_output=False, aggr_save=True, ign
     Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
     Args["OperatorArg"] = {"Mask":(mask is not None)}
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
-    return SectionAggregate(FactorName,Descriptors,{"算子":_aggr_max,"参数":Args,"忽略缺失":ignore_na,"代码对照":code_map,
-                                                    "分类因子":cat_pos,"聚合输出":aggr_output,"聚合存储":aggr_save})
+    return SectionAggregation(FactorName,Descriptors,{"算子":_aggr_max,"参数":Args,"代码对照":code_map,"分类因子":cat_pos})
 def _aggr_min(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
     FactorData = Data[0]
-    if args["OperatorArg"]["Mask"]:
-        Mask = Data[1]
+    if args["OperatorArg"]["Mask"]: Mask = Data[1]
     return np.nanmin(FactorData[Mask==1])
-def aggr_min(f, mask=None, cat_data=None, aggr_output=False, aggr_save=True, ignore_na=True, code_map=None, **kwargs):
+def aggr_min(f, mask=None, cat_data=None, code_map=None, **kwargs):
     Factors = [f]
     cat_pos = 1
     if mask is not None:
@@ -1055,8 +1049,7 @@ def aggr_min(f, mask=None, cat_data=None, aggr_output=False, aggr_save=True, ign
     Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
     Args["OperatorArg"] = {"Mask":(mask is not None)}
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
-    return SectionAggregate(FactorName,Descriptors,{"算子":_aggr_min,"参数":Args,"忽略缺失":ignore_na,"代码对照":code_map,
-                                                    "分类因子":cat_pos,"聚合输出":aggr_output,"聚合存储":aggr_save})
+    return SectionAggregation(FactorName,Descriptors,{"算子":_aggr_min,"参数":Args,"代码对照":code_map,"分类因子":cat_pos})
 def _aggr_mean(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
     FactorData = Data[0]
@@ -1073,7 +1066,7 @@ def _aggr_mean(f,idt,iid,x,args):
         return np.nansum((FactorData*Weight)[Mask])/np.nansum(Weight[Mask])
     else:
         return np.nansum(FactorData*Weight)/np.nansum(Weight)
-def aggr_mean(f, mask=None, cat_data=None, weight_data=None, ignore_na=True, aggr_output=False, aggr_save=True, ignore_cat_na=True, code_map=None, **kwargs):
+def aggr_mean(f, mask=None, cat_data=None, weight_data=None, ignore_na=False, code_map=None, **kwargs):
     Factors = [f]
     OperatorArg = {"MaskPos":-1,"WeightPos":-1,"ignore_na":ignore_na}
     cat_pos = 1
@@ -1092,15 +1085,13 @@ def aggr_mean(f, mask=None, cat_data=None, weight_data=None, ignore_na=True, agg
     Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
     Args["OperatorArg"] = OperatorArg
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
-    return SectionAggregate(FactorName,Descriptors,{"算子":_aggr_mean,"参数":Args,"忽略缺失":ignore_cat_na,"代码对照":code_map,
-                                                    "分类因子":cat_pos,"聚合输出":aggr_output,"聚合存储":aggr_save})
+    return SectionAggregation(FactorName,Descriptors,{"算子":_aggr_mean,"参数":Args,"代码对照":code_map,"分类因子":cat_pos})
 def _aggr_std(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
     FactorData = Data[0]
-    if args["OperatorArg"]["Mask"]:
-        Mask = Data[1]
+    if args["OperatorArg"]["Mask"]: Mask = Data[1]
     return np.nanstd(FactorData[Mask==1],ddof=args["OperatorArg"]["ddof"])
-def aggr_std(f, ddof=1, mask=None, cat_data=None, aggr_output=False, aggr_save=True, ignore_na=True, code_map=None, **kwargs):
+def aggr_std(f, ddof=1, mask=None, cat_data=None, code_map=None, **kwargs):
     Factors = [f]
     cat_pos = 1
     if mask is not None:
@@ -1113,15 +1104,13 @@ def aggr_std(f, ddof=1, mask=None, cat_data=None, aggr_output=False, aggr_save=T
     Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
     Args["OperatorArg"] = {"Mask":(mask is not None),"ddof":ddof}
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
-    return SectionAggregate(FactorName,Descriptors,{"算子":_aggr_std,"参数":Args,"忽略缺失":ignore_na,"代码对照":code_map,
-                                                    "分类因子":cat_pos,"聚合输出":aggr_output,"聚合存储":aggr_save})
+    return SectionAggregation(FactorName,Descriptors,{"算子":_aggr_std,"参数":Args,"代码对照":code_map,"分类因子":cat_pos})
 def _aggr_var(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
     FactorData = Data[0]
-    if args["OperatorArg"]["Mask"]:
-        Mask = Data[1]
+    if args["OperatorArg"]["Mask"]: Mask = Data[1]
     return np.nanvar(FactorData[Mask==1],ddof=args["OperatorArg"]["ddof"])
-def aggr_var(f, ddof=1, mask=None, cat_data=None, aggr_output=False, aggr_save=True, ignore_na=True, code_map=None, **kwargs):
+def aggr_var(f, ddof=1, mask=None, cat_data=None, code_map=None, **kwargs):
     Factors = [f]
     cat_pos = 1
     if mask is not None:
@@ -1134,15 +1123,13 @@ def aggr_var(f, ddof=1, mask=None, cat_data=None, aggr_output=False, aggr_save=T
     Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
     Args["OperatorArg"] = {"Mask":(mask is not None),"ddof":ddof}
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
-    return SectionAggregate(FactorName,Descriptors,{"算子":_aggr_var,"参数":Args,"忽略缺失":ignore_na,"代码对照":code_map,
-                                                    "分类因子":cat_pos,"聚合输出":aggr_output,"聚合存储":aggr_save})
+    return SectionAggregation(FactorName,Descriptors,{"算子":_aggr_var,"参数":Args,"代码对照":code_map,"分类因子":cat_pos})
 def _aggr_median(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
     FactorData = Data[0]
-    if args["OperatorArg"]["Mask"]:
-        Mask = Data[1]
+    if args["OperatorArg"]["Mask"]: Mask = Data[1]
     return np.nanmedian(FactorData[Mask==1])
-def aggr_median(f, mask=None, cat_data=None, aggr_output=False, aggr_save=True, ignore_na=True, code_map=None, **kwargs):
+def aggr_median(f, mask=None, cat_data=None, code_map=None, **kwargs):
     Factors = [f]
     cat_pos = 1
     if mask is not None:
@@ -1155,15 +1142,13 @@ def aggr_median(f, mask=None, cat_data=None, aggr_output=False, aggr_save=True, 
     Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
     Args["OperatorArg"] = {"Mask":(mask is not None)}
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
-    return SectionAggregate(FactorName,Descriptors,{"算子":_aggr_median,"参数":Args,"忽略缺失":ignore_na,"代码对照":code_map,
-                                                    "分类因子":cat_pos,"聚合输出":aggr_output,"聚合存储":aggr_save})
+    return SectionAggregation(FactorName,Descriptors,{"算子":_aggr_median,"参数":Args,"代码对照":code_map,"分类因子":cat_pos})
 def _aggr_quantile(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
     FactorData = Data[0]
-    if args["OperatorArg"]["Mask"]:
-        Mask = Data[1]
+    if args["OperatorArg"]["Mask"]: Mask = Data[1]
     return np.nanpercentile(FactorData[Mask==1],args["OperatorArg"]["quantile"]*100)
-def aggr_quantile(f, quantile=0.5, mask=None, cat_data=None, aggr_output=False, aggr_save=True, ignore_na=True, code_map=None, **kwargs):
+def aggr_quantile(f, quantile=0.5, mask=None, cat_data=None, code_map=None, **kwargs):
     Factors = [f]
     cat_pos = 1
     if mask is not None:
@@ -1176,15 +1161,13 @@ def aggr_quantile(f, quantile=0.5, mask=None, cat_data=None, aggr_output=False, 
     Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
     Args["OperatorArg"] = {"Mask":(mask is not None),"quantile":quantile}
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
-    return SectionAggregate(FactorName,Descriptors,{"算子":_aggr_median,"参数":Args,"忽略缺失":ignore_na,"代码对照":code_map,
-                                                    "分类因子":cat_pos,"聚合输出":aggr_output,"聚合存储":aggr_save})
+    return SectionAggregation(FactorName,Descriptors,{"算子":_aggr_median,"参数":Args,"代码对照":code_map,"分类因子":cat_pos})
 def _aggr_count(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
     FactorData = Data[0]
-    if args["OperatorArg"]["Mask"]:
-        Mask = Data[1]
+    if args["OperatorArg"]["Mask"]: Mask = Data[1]
     return pd.notnull(FactorData[Mask==1]).sum()
-def aggr_count(f, mask=None, cat_data=None, aggr_output=False, aggr_save=True, ignore_na=True, code_map=None, **kwargs):
+def aggr_count(f, mask=None, cat_data=None, code_map=None, **kwargs):
     Factors = [f]
     cat_pos = 1
     if mask is not None:
@@ -1197,5 +1180,4 @@ def aggr_count(f, mask=None, cat_data=None, aggr_output=False, aggr_save=True, i
     Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
     Args["OperatorArg"] = {"Mask":(mask is not None)}
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
-    return SectionAggregate(FactorName,Descriptors,{"算子":_aggr_count,"参数":Args,"忽略缺失":ignore_na,"代码对照":code_map,
-                                                    "分类因子":cat_pos,"聚合输出":aggr_output,"聚合存储":aggr_save})
+    return SectionAggregation(FactorName,Descriptors,{"算子":_aggr_count,"参数":Args,"代码对照":code_map,"分类因子":cat_pos})

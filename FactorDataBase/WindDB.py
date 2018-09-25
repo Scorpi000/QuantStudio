@@ -276,6 +276,7 @@ class WindDB(FactorDB):
             self.connect()
         else:
             self._Connection = None
+        self._AllTables = state.get("_AllTables", [])
     def __QS_initArgs__(self):
         ConfigFilePath = __QS_LibPath__+os.sep+"WindDBConfig.json"# 配置文件路径
         self._InfoFilePath = __QS_LibPath__+os.sep+"WindDBInfo.hdf5"# 数据库信息文件路径
@@ -331,11 +332,9 @@ class WindDB(FactorDB):
     def isAvailable(self):
         return (self._Connection is not None)
     def cursor(self, sql_str=None):
-        if self._Connection is None:
-            raise __QS_Error__("%s尚未连接!" % self.__doc__)
+        if self._Connection is None: raise __QS_Error__("%s尚未连接!" % self.__doc__)
         Cursor = self._Connection.cursor()
-        if sql_str is None:
-            return Cursor
+        if sql_str is None: return Cursor
         if not self._AllTables:
             if self.DBType=="SQL Server":
                 Cursor.execute("SELECT Name FROM SysObjects Where XType='U'")

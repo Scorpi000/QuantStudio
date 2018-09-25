@@ -110,7 +110,9 @@ class _FactorTable(FactorTable):
                     else:
                         Rslt = pd.DataFrame(DataFile["Data"][...], index=DataFile["DateTime"][...], columns=IDs).ix[dts]
                         if ids is not None: Rslt = Rslt.ix[:, ids]
-        if DataType!="double": Rslt = Rslt.where((pd.notnull(Rslt) & (Rslt!="")), None)
+        if DataType!="double":
+            Rslt = Rslt.where(pd.notnull(Rslt), None)
+            Rslt = Rslt.where(Rslt!="", None)
         Rslt.sort_index(axis=0, inplace=True)
         Rslt.sort_index(axis=1, inplace=True)
         Rslt.index = [dt.datetime.fromtimestamp(itms) for itms in Rslt.index]
