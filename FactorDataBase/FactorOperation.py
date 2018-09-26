@@ -37,7 +37,7 @@ class PointOperation(Factor):
     def __init__(self, name="", descriptors=[], sys_args={}, **kwargs):
         self.Descriptors = descriptors
         self.UserData = {}
-        return super().__init__(name=name, ft=None, sys_args=sys_args, **kwargs)
+        return super().__init__(name=name, ft=None, sys_args=sys_args, config_file=None, **kwargs)
     def getMetaData(self, key=None):
         if key is None: return pd.Series({"DataType":self.DataType})
         elif key=="DataType": return self.DataType
@@ -104,7 +104,7 @@ class TimeOperation(Factor):
     def __init__(self, name='', descriptors=[], sys_args={}, **kwargs):
         self.Descriptors = descriptors
         self.UserData = {}
-        return super().__init__(name=name, ft=None, sys_args=sys_args, **kwargs)
+        return super().__init__(name=name, ft=None, sys_args=sys_args, config_file=None, **kwargs)
     def __QS_initArgs__(self):
         self.LookBack = [0]*len(self.Descriptors)
         self.LookBackMode = ["滚动窗口"]*len(self.Descriptors)
@@ -214,7 +214,7 @@ class SectionOperation(Factor):
     def __init__(self, name='', descriptors=[], sys_args={}, **kwargs):
         self.Descriptors = descriptors
         self.UserData = {}
-        return super().__init__(name=name, ft=None, sys_args=sys_args, **kwargs)
+        return super().__init__(name=name, ft=None, sys_args=sys_args, config_file=None, **kwargs)
     def getMetaData(self, key=None):
         if key is None: return pd.Series({"DataType":self.DataType})
         elif key=="DataType": return self.DataType
@@ -300,7 +300,7 @@ class PanelOperation(Factor):
     def __init__(self, name='', descriptors=[], sys_args={}, **kwargs):
         self.Descriptors = descriptors
         self.UserData = {}
-        return super().__init__(name=name, ft=None, sys_args=sys_args, **kwargs)
+        return super().__init__(name=name, ft=None, sys_args=sys_args, config_file=None, **kwargs)
     def __QS_initArgs__(self):
         self.LookBack = [0]*len(self.Descriptors)
         self.LookBackMode = ["滚动窗口"]*len(self.Descriptors)
@@ -429,7 +429,7 @@ class SectionAggregation(Factor):
     def __init__(self, name='', descriptors=[], sys_args={}, **kwargs):
         self.Descriptors = descriptors
         self.UserData = {}
-        return super().__init__(name=name, ft=None, sys_args=sys_args, **kwargs)
+        return super().__init__(name=name, ft=None, sys_args=sys_args, config_file=None, **kwargs)
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
         FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]

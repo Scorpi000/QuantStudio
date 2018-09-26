@@ -30,9 +30,9 @@ class _BarFactorMap(__QS_Object__):
     Vol = Enum(None, arg_type="SingleOption", label="成交量", order=4)
     TradePrice = Enum(None, arg_type="SingleOption", label="成交价", order=5)
     AI = Enum(None, arg_type="SingleOption", label="应计利息", order=6)
-    def __init__(self, market_ft, sys_args={}, **kwargs):
+    def __init__(self, market_ft, sys_args={}, config_file=None, **kwargs):
         self._FT = market_ft
-        return super().__init__(sys_args=sys_args, **kwargs)
+        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
         DefaultNumFactorList.insert(0, None)
@@ -52,9 +52,9 @@ class _Payment(__QS_Object__):
     PayDate = Enum(None, arg_type="SingleOption", label="付息日", order=1)
     Interest = Enum(None, arg_type="SingleOption", label="每手付息数", order=2)
     Principal = Enum(None, arg_type="SingleOption", label="每手兑付本金数", order=3)
-    def __init__(self, payment_ft=None, sys_args={}, **kwargs):
+    def __init__(self, payment_ft=None, sys_args={}, config_file=None, **kwargs):
         self._FT = payment_ft
-        return super().__init__(sys_args=sys_args, **kwargs)
+        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
         self.add_trait("ExDate", Enum(*DefaultStrFactorList, arg_type="SingleOption", label="除息日", order=0))
@@ -75,7 +75,7 @@ class TimeBarAccount(Account):
     SellLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="卖出限制", order=5)
     MarketInfo = Instance(_BarFactorMap, arg_type="ArgObject", label="行情信息", order=6)
     PaymentInfo = Instance(_SecurityInfo, arg_type="ArgObject", label="支付信息", order=7)
-    def __init__(self, market_ft, payment_ft, sys_args={}, **kwargs):
+    def __init__(self, market_ft, payment_ft, sys_args={}, config_file=None, **kwargs):
         # 继承自 Account 的属性
         #self._Cash = None# 剩余现金, >=0,  array(shape=(nDT+1,))
         #self._Debt = None# 负债, >=0, array(shape=(nDT+1,))
@@ -94,7 +94,7 @@ class TimeBarAccount(Account):
         self._PaymentFT = payment_ft# 支付信息因子表对象
         self._UnExInterest = None# 待除权利息, DataFrame(index=[ID], columns=[除息日])
         self._UnpaidInterest = None# 待支付利息, DataFrame(index=[ID], columns=[付息日])
-        super().__init__(sys_args=sys_args, **kwargs)
+        super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
         self.Name = "BondAccount"
     def __QS_initArgs__(self):
         super().__QS_initArgs__()

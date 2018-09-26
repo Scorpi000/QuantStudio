@@ -68,6 +68,9 @@ class FactorDB(__QS_Object__):
 # 支持写入的因子库, 接口类
 class WritableFactorDB(FactorDB):
     """可写入的因子数据库"""
+    def __init__(self, sys_args={}, config_file=None, **kwargs):
+        self._QS_AutoExpand = False# 写入部分数据时是否会在时间和ID维度上自动扩展
+        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     # -------------------------------表的操作---------------------------------
     # 重命名表. 必须具体化
     def renameTable(self, old_table_name, new_table_name):
@@ -89,7 +92,7 @@ class WritableFactorDB(FactorDB):
     def setFactorMetaData(self, table_name, ifactor_name, key=None, value=None, meta_data=None):
         return 0
     # 写入数据, if_exists: append, update, replace, skip. data_type: dict like, {因子名:数据类型}, 必须具体化
-    def writeData(self, data, table_name, if_exists='append', data_type=None, **kwargs):
+    def writeData(self, data, table_name, if_exists="append", data_type={}, **kwargs):
         return 0
     # -------------------------------数据变换------------------------------------
     # 时间平移, 沿着时间轴将所有数据纵向移动 lag 期, lag>0 向前移动, lag<0 向后移动, 空出来的地方填 nan
@@ -220,7 +223,7 @@ class _OperationMode(__QS_Object__):
     FactorNames = ListStr()
     SubProcessNum = Int(0, arg_type="Integer", label="子进程数", order=0)
     DTRuler = List(dt.datetime, arg_type="DateTimeList", label="时点标尺", order=1)
-    def __init__(self, ft, sys_args={}, **kwargs):
+    def __init__(self, ft, sys_args={}, config_file=None, **kwargs):
         self._FT = ft
         self._isStarted = False
         self._Factors = []# 因子列表
@@ -234,7 +237,7 @@ class _OperationMode(__QS_Object__):
         self._CacheDataDir = "  "# 中间数据存放根目录
         self._Event = {}# {因子名: (Sub2MainQueue, Event)}
         self._FileSuffix = (".dat" if os.name=="nt" else "")
-        super().__init__(sys_args=sys_args, **kwargs)
+        super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         self.add_trait("FactorNames", ListStr(arg_type="MultiOption", label="运算因子", order=2, option_range=tuple(self._FT.FactorNames)))
 # 因子表准备子进程
@@ -279,10 +282,10 @@ def _calculate(args):
 class FactorTable(__QS_Object__):
     ErgodicMode = Instance(_ErgodicMode, arg_type="ArgObject", label="遍历模式", order=0)
     OperationMode = Instance(_OperationMode, arg_type="ArgObject", label="运算模式", order=1)
-    def __init__(self, name, fdb=None, sys_args={}, **kwargs):
+    def __init__(self, name, fdb=None, sys_args={}, config_file=None, **kwargs):
         self._Name = name
         self._FactorDB = fdb# 因子表所属的因子库, None 表示自定义的因子表
-        return super().__init__(sys_args=sys_args, **kwargs)
+        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         self.ErgodicMode = _ErgodicMode()
         self.OperationMode = _OperationMode(ft=self)
@@ -593,17 +596,23 @@ class FactorTable(__QS_Object__):
         #try:
         #shutil.rmtree(self.OperationMode._CacheDir)
         #except:
-        #print("警告 : 缓存文件夹 : '%s' 清除失败!" % self.OperationMode._CacheDir)
+        #print("警告 : 缓存文件夹 : '%s' 清除失败, 请自行删除!" % self.OperationMode._CacheDir)
         self.OperationMode._isStarted = False
         return 0
     # 计算因子数据并写入因子库    
     def write2FDB(self, factor_names, ids, dts, factor_db, table_name, if_exists="append", **kwargs):
+        if not isinstance(factor_db, WritableFactorDB): raise __QS_Error__("因子数据库: %s 不可写入!" % factor_db.Name)
         print("==========因子运算==========", "1. 原始数据准备", sep="\n", end="")
         TotalStartT = time.clock()
         self._prepare(factor_names, ids, dts)
         print(("耗时 : %.2f" % (time.clock()-TotalStartT, )), "2. 因子数据计算", end="", sep="\n")
         StartT = time.clock()
-        Args = {"FT":self, "PID":"0", "FactorDB":factor_db, "TableName":table_name, "if_exists":if_exists}
+        if (self.OperationMode.SubProcessNum>=2) and (if_exists=="append") and (table_name in factor_db.TableNames) and (factor_db._QS_AutoExpand):# 因子数据库在写入时会自动扩展数据, 则写入临时表, 再合并临时表和原表
+            TempTable = genAvailableName("TempTable", factor_db.TableNames)
+            Args = {"FT":self, "PID":"0", "FactorDB":factor_db, "TableName":TempTable, "if_exists":if_exists}
+        else:
+            TempTable = None
+            Args = {"FT":self, "PID":"0", "FactorDB":factor_db, "TableName":table_name, "if_exists":if_exists}
         if self.OperationMode.SubProcessNum==0:
             _calculate(Args)
         else:
@@ -637,14 +646,21 @@ class FactorTable(__QS_Object__):
                             ProgBar.update(iProg)
                     if iProg>=nTask: break
             for iPID, iPrcs in Procs.items(): iPrcs.join()
-        print(('耗时 : %.2f' % (time.clock()-StartT, )), ("总耗时 : %.2f" % (time.clock()-TotalStartT, )), "="*28, sep="\n", end="\n")
+        print(("耗时 : %.2f" % (time.clock()-StartT, )), "3. 清理缓存", end="", sep="\n")
+        StartT = time.clock()
+        factor_db.connect()
+        if TempTable is not None:# 创建了临时表, 合并临时表和原表
+            TempTable = factor_db.getTable(TempTable)
+            factor_db.writeData(TempTable.readData(factor_names=factor_names, ids=ids, dts=dts), table_name=table_name, if_exists=if_exists, data_type=TempTable.getFactorMetaData(factor_names=factor_names, key="DataType"))
+            factor_db.deleteTable(TempTable.Name)
         self._exit()
+        print(('耗时 : %.2f' % (time.clock()-StartT, )), ("总耗时 : %.2f" % (time.clock()-TotalStartT, )), "="*28, sep="\n", end="\n")
         return 0
 
 # 自定义因子表
 class CustomFT(FactorTable):
     """自定义因子表"""
-    def __init__(self, name, sys_args={}, **kwargs):
+    def __init__(self, name, sys_args={}, config_file=None, **kwargs):
         self._DateTimes = []# 数据源可提取的最长时点序列，[datetime.datetime]
         self._IDs = []# 数据源可提取的最长ID序列，['600000.SH']
         self._FactorDict = pd.DataFrame(columns=["FTID", "ArgIndex", "NameInFT", "DataType"], dtype=np.dtype("O"))# 数据源中因子的来源信息, index=[因子名]
@@ -652,7 +668,7 @@ class CustomFT(FactorTable):
         self._IDFilterStr = None# ID 过滤条件字符串, "@收益率>0", 给定日期, 数据源的 getID 将返回过滤后的 ID 序列
         self._CompiledIDFilter = {}# 编译过的过滤条件字符串以及对应的因子列表, {条件字符串: (编译后的条件字符串,[因子])}
         self._isStarted = False# 数据源是否启动
-        return super().__init__(name=name, fdb=None, sys_args=sys_args, **kwargs)
+        return super().__init__(name=name, fdb=None, sys_args=sys_args, config_file=config_file, **kwargs)
     @property
     def FactorNames(self):
         return self._FactorDict.index.tolist()
@@ -898,14 +914,14 @@ def _BinaryOperator(f, idt, iid, x, args):
 # 没有相关数据时, 方法返回 None
 class Factor(__QS_Object__):
     Name = Str("因子")
-    def __init__(self, name, ft=None, sys_args={}, **kwargs):
+    def __init__(self, name, ft=None, sys_args={}, config_file=None, **kwargs):
         self._FactorTable = ft# 因子所属的因子表, None 表示独立的衍生因子
         self._NameInFT = name# 因子在所属的因子表中的名字
         self.Name = name# 因子对外显示的名称
         self._OperationMode = None# 运算模式对象
         self._RawDataFile = ""# 原始数据存放地址
         self._isCacheDataOK = False
-        return super().__init__(sys_args=sys_args, **kwargs)
+        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     @property
     def FactorTable(self):
         return self._FactorTable
@@ -1160,66 +1176,3 @@ class Factor(__QS_Object__):
         Descriptors, Args = self._genUnitaryOperatorInfo()
         Args["OperatorType"] = "not"
         return PointOperation("", Descriptors, {"算子":_UnitaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID"})
-    
-if __name__=='__main__':
-    import time
-    import datetime as dt
-    
-    # -----------测试遍历模式----------
-    ## 创建因子数据库
-    #from QuantStudio.FactorDataBase.HDF5DB import HDF5DB
-    #MainDB = HDF5DB()
-    #MainDB.connect()
-    #FT = MainDB.getTable("ElementaryFactor")
-    ## 创建自定义的因子表
-    #MainFT = CustomFT("MainFT")
-    #MainFT.addFactors(factor_table=FT, factor_names=["复权收盘价"], args={})
-    #MainFT.setDateTime(FT.getDateTime(ifactor_name="复权收盘价", start_dt=dt.datetime(2014,1,1), end_dt=dt.datetime(2018,1,1)))
-    #MainFT.setID(["000001.SZ", "600000.SH"])
-    #MainFT.ErgodicMode.CacheMode = "ID"
-    #StartT = time.clock()
-    #MainFT.start()
-    #for iDateTime in MainFT.getDateTime():
-        #MainFT.move(iDateTime)
-        #iData = MainFT.readData(dts=[iDateTime]).iloc[:, 0, :]
-        #print(iDateTime)
-    #MainFT.end()
-    #print(time.clock()-StartT)
-    
-    # -----------测试因子运算模式----------
-    from multiprocessing import cpu_count
-    from QuantStudio.FactorDataBase.WindDB2 import WindDB2
-    WDB = WindDB2()
-    WDB.connect()
-    FT = WDB.getTable("中国A股日行情")
-    IDs = ["000001.SZ", "600000.SH"]# FT.getID(idt=dt.datetime(2018, 2, 1))
-    DTs = FT.getDateTime(ifactor_name="开盘价", start_dt=dt.datetime(2018, 1, 1), end_dt=dt.datetime(2018, 2, 1))
-    
-    from QuantStudio.FactorDataBase.FactorTools import rolling_mean, standardizeZScore
-    Low = FT.getFactor("最低价")
-    High = FT.getFactor("最高价")
-    #Mid = (Low + High)/2# 单点运算
-    #Avg = rolling_mean(Low, window=2)# 时间序列运算
-    Std = standardizeZScore(Low)# 截面运算
-    
-    #Data = Mid.readData(ids=IDs, dts=DTs)
-    #Data = Avg.readData(ids=IDs, dts=DTs)
-    Data = Std.readData(ids=IDs, dts=DTs)
-    #Data0 = (Low.readData(ids=IDs, dts=DTs) + High.readData(ids=IDs, dts=DTs))/2
-    #print(Data-Data0)
-    # 运算模式
-    #MainFT = CustomFT("MainFT")
-    #MainFT.addFactors(factor_list=[Low, High, Sum])
-    #MainFT.OperationMode.DateTimes = DTs
-    #MainFT.OperationMode.IDs = IDs
-    #MainFT.OperationMode.FactorNames = ["最低价", "最高价", "Sum"]
-    #MainFT.OperationMode.SubProcessNum = 0
-    #MainFT.OperationMode.DTRuler = MainFT.OperationMode.DateTimes
-    
-    #from QuantStudio.FactorDataBase.HDF5DB import HDF5DB
-    #HDB = HDF5DB()
-    #HDB.connect()    
-    #MainFT.calculate(factor_db=HDB, table_name=genAvailableName("TestTable", HDB.TableNames), if_exists="append")
-    
-    #HDB.disconnect()
-    WDB.disconnect()

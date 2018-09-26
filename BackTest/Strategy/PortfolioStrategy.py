@@ -26,9 +26,9 @@ class _WeightAllocation(__QS_Object__):
     GroupMiss = Enum("忽略","全配", label="类别缺失", arg_type="SingleOption", order=4)
     WeightMiss = Enum("舍弃", "填充均值", label="权重缺失", arg_type="SingleOption", order=5)
     EmptyAlloc = Enum('清空持仓', '保持仓位', '市场组合', label="零股处理", arg_type="SingleOption", order=6)
-    def __init__(self, ft=None, sys_args={}, **kwargs):
+    def __init__(self, ft=None, sys_args={}, config_file=None, **kwargs):
         self._FT = ft
-        return super().__init__(sys_args=sys_args, **kwargs)
+        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
         self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=1))
@@ -46,9 +46,9 @@ class PortfolioStrategy(Strategy):
     LongAccount = Instance(Account, label="多头账户", arg_type="ArgObject", order=6)
     ShortAccount = Instance(Account, label="空头账户", arg_type="ArgObject", order=7)
     TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=8)
-    def __init__(self, name, factor_table=None, sys_args={}, **kwargs):
+    def __init__(self, name, factor_table=None, sys_args={}, config_file=None, **kwargs):
         self._FT = factor_table# 因子表
-        super().__init__(name, sys_args=sys_args, **kwargs)
+        super().__init__(name, sys_args=sys_args, config_file=config_file, **kwargs)
         self._AllLongSignals = {}# 存储所有生成的多头信号, {时点:信号}
         self._AllShortSignals = {}# 存储所有生成的空头信号, {时点:信号}
         return
@@ -247,9 +247,9 @@ class _Filter(__QS_Object__):
     FilterNum = Int(30, label="筛选数目", arg_type="Integer", order=5)
     GroupFactors = List(label="分类因子", arg_type="MultiOption", order=6, option_range=())
     TurnoverBuffer = Instance(_TurnoverBuffer, arg_type="ArgObject", label="换手缓冲", order=7)
-    def __init__(self, ft=None, sys_args={}, **kwargs):
+    def __init__(self, ft=None, sys_args={}, config_file=None, **kwargs):
         self._FT = ft
-        return super().__init__(sys_args=sys_args, **kwargs)
+        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         self.TurnoverBuffer = _TurnoverBuffer()
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))

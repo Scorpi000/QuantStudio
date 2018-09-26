@@ -13,7 +13,7 @@ from QuantStudio.Tools.AuxiliaryFun import searchNameInStrList
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
 from QuantStudio.Tools.FileFun import readJSONFile
-from QuantStudio import __QS_Error__, __QS_LibPath__
+from QuantStudio import __QS_Object__, __QS_Error__, __QS_LibPath__
 from QuantStudio.FactorDataBase.WindDB import WindDB, _DBTable, _adjustDateTime
 
 def fillna(df, limit_ns):
@@ -1438,16 +1438,11 @@ class _AnalystEstDetailTable(_DBTable):
 
 class WindDB2(WindDB):
     """Wind 量化研究数据库"""
-    def __init__(self, sys_args={}, **kwargs):
-        super().__init__(sys_args, **kwargs)
+    def __init__(self, sys_args={}, config_file=None, **kwargs):
+        super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"WindDB2Config.json" if config_file is None else config_file), **kwargs)
         self.Name = "WindDB2"
     def __QS_initArgs__(self):
-        ConfigFilePath = __QS_LibPath__+os.sep+"WindDB2Config.json"# 配置文件路径
         self._InfoFilePath = __QS_LibPath__+os.sep+"WindDB2Info.hdf5"# 数据库信息文件路径
-        Config = readJSONFile(ConfigFilePath)
-        ArgNames = self.ArgNames
-        for iArgName, iArgVal in Config.items():
-            if iArgName in ArgNames: self[iArgName] = iArgVal
         if not os.path.isfile(self._InfoFilePath):
             InfoResourcePath = __QS_MainPath__+os.sep+"Rescource"+os.sep+"WindDB2Info.xlsx"# 数据库信息源文件路径
             print("缺失数据库信息文件: '%s', 尝试从 '%s' 中导入信息." % (self._InfoFilePath, InfoResourcePath))

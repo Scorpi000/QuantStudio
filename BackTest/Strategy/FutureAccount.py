@@ -23,9 +23,9 @@ class _MarketBarInfo(__QS_Object__):
     Last = Enum(None, arg_type="SingleOption", label="最新价", order=3)
     Vol = Enum(None, arg_type="SingleOption", label="成交量", order=4)
     TradePrice = Enum(None, arg_type="SingleOption", label="成交价", order=5)
-    def __init__(self, ft, sys_args={}, **kwargs):
+    def __init__(self, ft, sys_args={}, config_file=None, **kwargs):
         self._FT = ft
-        return super().__init__(sys_args=sys_args, **kwargs)
+        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
         DefaultNumFactorList.insert(0, None)
@@ -44,9 +44,9 @@ class _SecurityInfo(__QS_Object__):
     Multiplier = Float(1, arg_type="Double", label="合约乘数", order=2)
     ContractMapping = Enum(None, arg_type="SingleOption", label="合约映射", order=3)
     SettlementPrice = Enum(None, arg_type="SingleOption", label="结算价", order=4)
-    def __init__(self, ft, sys_args={}, **kwargs):
+    def __init__(self, ft, sys_args={}, config_file=None, **kwargs):
         self._FT = ft
-        return super().__init__(sys_args=sys_args, **kwargs)
+        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
         self.add_trait("ContractMapping", Enum(*DefaultStrFactorList, arg_type="SingleOption", label="合约映射", order=3))
@@ -67,7 +67,7 @@ class TimeBarAccount(Account):
     SellLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="卖出限制", order=5)
     MarketInfo = Instance(_MarketBarInfo, arg_type="ArgObject", label="行情因子", order=6)
     SecurityInfo = Instance(_SecurityInfo, arg_type="ArgObject", label="证券信息", order=7)
-    def __init__(self, market_ft, security_ft, sys_args={}, **kwargs):
+    def __init__(self, market_ft, security_ft, sys_args={}, config_file=None, **kwargs):
         # 继承自 Account 的属性
         #self._Cash = None# 剩余现金, >=0,  array(shape=(nDT+1,))
         #self._FrozenCash = 0# 当前被冻结的现金, >=0, float
@@ -84,7 +84,7 @@ class TimeBarAccount(Account):
         self._LastPrice = None# 最新价, Series(index=self._IDs)
         self._MarketFT = market_ft# 行情因子表对象
         self._SecurityFT = security_ft# 证券信息因子表对象
-        super().__init__(sys_args=sys_args, **kwargs)
+        super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
         self.Name = "FutureAccount"
     def __QS_initArgs__(self):
         super().__QS_initArgs__()

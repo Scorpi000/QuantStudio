@@ -85,11 +85,11 @@ class SQLDB(WritableFactorDB):
     TablePrefix = Str("", arg_type="String", label="表名前缀", order=6)
     CharSet = Enum("utf8", "gbk", "gb2312", "gb18030", "cp936", "big5", arg_type="SingleOption", label="字符集", order=7)
     Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
-    def __init__(self, sys_args={}, **kwargs):
+    def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._Connection = None# 数据库链接
         self._Prefix = "QS_"
         self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
-        super().__init__(sys_args=sys_args, **kwargs)
+        super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"SQLDBConfig.json" if config_file is None else config_file), **kwargs)
         self.Name = "SQLDB"
         return
     def __getstate__(self):
@@ -100,12 +100,6 @@ class SQLDB(WritableFactorDB):
         self.__dict__.update(state)
         if self._Connection: self.connect()
         else: self._Connection = None
-    def __QS_initArgs__(self):
-        ConfigFilePath = __QS_LibPath__+os.sep+"SQLDBConfig.json"# 配置文件路径
-        Config = readJSONFile(ConfigFilePath)
-        ArgNames = self.ArgNames
-        for iArgName, iArgVal in Config.items():
-            if iArgName in ArgNames: self[iArgName] = iArgVal
     # -------------------------------------------数据库相关---------------------------
     def connect(self):
         if (self.Connector=='cx_Oracle') or ((self.Connector=='default') and (self.DBType=='Oracle')):
@@ -255,7 +249,7 @@ class SQLDB(WritableFactorDB):
         if ids is not None:
             SQLStr += "AND "+genSQLInCondition(DBTableName+".ID", ids, is_str=True, max_num=1000)
         return self.execute(SQLStr)
-    def writeData(self, data, table_name, if_exists='append', **kwargs):# TODO, 更新实现
+    def writeData(self, data, table_name, if_exists="append", data_type={}, **kwargs):# TODO, 更新实现
         FieldTypes = {iFactorName:_identifyDataType(data.iloc[i].dtypes) for i, iFactorName in enumerate(data.items)}
         if table_name not in self._TableFactorDict: self.createTable(table_name, field_types=FieldTypes)
         elif if_exists=='replace': self.createTable(table_name, field_types=FieldTypes, if_exists="replace")
@@ -278,7 +272,7 @@ class SQLDB(WritableFactorDB):
         NewData = NewData.astype("O").where(pd.notnull(NewData), None)
         SQLStr = SQLStr[:-2] + ") VALUES (" + "%s, " * (data.shape[0]+2)
         SQLStr = SQLStr[:-2]+") "
-        Cursor=self._Connection.cursor()
+        Cursor = self._Connection.cursor()
         Cursor.executemany(SQLStr, NewData.reset_index().values.tolist())
         self._Connection.commit()
         Cursor.close()

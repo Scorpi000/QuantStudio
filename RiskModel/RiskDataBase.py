@@ -21,9 +21,9 @@ from QuantStudio import __QS_Object__, __QS_Error__, __QS_LibPath__, __QS_CacheL
 class RiskDataBase(__QS_Object__):
     """RiskDataBase"""
     Name = Str("风险数据库")
-    def __init__(self, sys_args={}, **kwargs):
+    def __init__(self, sys_args={}, config_file=None, **kwargs):
         self.DBType = "RDB"
-        super().__init__(sys_args)
+        super().__init__(sys_args=sys_args, config_file=config_file)
         self._TableDT = {}#{表名：[时点]}
         self._isAvailable = False
         return
@@ -116,8 +116,8 @@ class RiskDataBase(__QS_Object__):
 class ShelveRDB(RiskDataBase):
     """RDB"""
     MainDir = Directory(label="主目录", arg_type="Directory", order=0)
-    def __init__(self, sys_args={}, **kwargs):
-        super().__init__(sys_args=sys_args, **kwargs)
+    def __init__(self, sys_args={}, config_file=None, **kwargs):
+        super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
         self._DataLock = Lock()
         self._Suffix = ("nt" if os.name=="nt" else "")
     def __QS_initArgs__(self):
@@ -280,8 +280,8 @@ class ShelveRDB(RiskDataBase):
 # 回归统计量: Statistics, {"tValue":Series(data=统计量, index=[因子]),"FValue":double,"rSquared":double,"rSquared_Adj":double}
 class FactorRDB(RiskDataBase):
     """FactorRDB"""
-    def __init__(self, sys_args={}, **kwargs):
-        super().__init__(sys_args=sys_args, **kwargs)
+    def __init__(self, sys_args={}, config_file=None, **kwargs):
+        super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
         self.DBType = "FRDB"
         return
     # 获取表的所有因子
@@ -356,8 +356,8 @@ class FactorRDB(RiskDataBase):
 # 每个 shelve 文件以时点为索引, 每个时点对应相应的数据
 class ShelveFRDB(ShelveRDB, FactorRDB):
     """FRDB"""
-    def __init__(self, sys_args={}, **kwargs):
-        super().__init__(sys_args=sys_args, **kwargs)
+    def __init__(self, sys_args={}, config_file=None, **kwargs):
+        super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
         self.DBType = 'FRDB'
         return
     def __QS_initArgs__(self):

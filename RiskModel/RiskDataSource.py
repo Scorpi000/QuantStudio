@@ -14,12 +14,12 @@ from .RiskModelFun import dropRiskMatrixNA
 
 # 风险数据源基类
 class RiskDataSource(__QS_Object__):
-    def __init__(self, name, risk_db, table_name, sys_args={}, **kwargs):
+    def __init__(self, name, risk_db, table_name, sys_args={}, config_file=None, **kwargs):
         self._Name = name
         self._RiskDB = risk_db# 风险数据库
         self._TableName = table_name# 风险数据所在的表
         self._DTs = []# 数据源可提取的最长时点序列，['20090101']
-        return super().__init__(sys_args=sys_args, **kwargs)
+        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     @property
     def Name(self):
         return self._Name
@@ -88,8 +88,8 @@ def _prepareRDSMMAPCacheData(arg):
 class ParaMMAPCacheRDS(RiskDataSource):
     ForwardPeriod = Int(12, arg_type="Integer", label="向前缓冲时点数", order=0)
     BackwardPeriod = Int(0, arg_type="Integer", label="向后缓冲时点数", order=1)
-    def __init__(self, name, risk_db, table_name, sys_args={}, **kwargs):
-        super().__init__(self, name=name, risk_db=risk_db, table_name=table_name, sys_args=sys_args, **kwargs)
+    def __init__(self, name, risk_db, table_name, sys_args={}, config_file=None, **kwargs):
+        super().__init__(self, name=name, risk_db=risk_db, table_name=table_name, sys_args=sys_args, config_file=config_file, **kwargs)
         # 遍历模式变量
         self.CurInd = -1# 当前时点在self._DTs中的位置, 以此作为缓冲数据的依据
         self.DTNum = None# 时点数
@@ -168,8 +168,8 @@ class ParaMMAPCacheRDS(RiskDataSource):
 # 因子收益率: FactorReturn, Series(data=收益率,index=因子)
 # 特异性收益率: SpecificReturn, Series(data=收益率,index=ID)
 class FactorRDS(RiskDataSource):
-    def __init__(self, name, risk_db, table_name, sys_args={}, **kwargs):
-        super().__init__(name=name, risk_db=risk_db, table_name=table_name, sys_args=sys_args, **kwargs)
+    def __init__(self, name, risk_db, table_name, sys_args={}, config_file=None, **kwargs):
+        super().__init__(name=name, risk_db=risk_db, table_name=table_name, sys_args=sys_args, config_file=config_file, **kwargs)
         self.FactorNames = self._RiskDB.getTableFactor(table_name)# 数据源中所有的因子名，['LNCAP']
         return
     # 获取 ID, idt: 时点，返回对应该时点的个股风险不缺失的ID序列
@@ -265,8 +265,8 @@ def _prepareFRDSMMAPCacheData(arg):
                     CacheData[iDT]["FactorData"] = FactorData[iDT]
     return 0
 class ParaMMAPCacheFRDS(FactorRDS, ParaMMAPCacheRDS):
-    def __init__(self, name, risk_db, table_name, sys_args={}, **kwargs):
-        ParaMMAPCacheRDS.__init__(self, name=name, risk_db=risk_db, table_name=table_name, sys_args=sys_args, **kwargs)
+    def __init__(self, name, risk_db, table_name, sys_args={}, config_file=None, **kwargs):
+        ParaMMAPCacheRDS.__init__(self, name=name, risk_db=risk_db, table_name=table_name, sys_args=sys_args, config_file=config_file, **kwargs)
         self.FactorNames = self._RiskDB.getTableFactor(table_name)# 数据源中所有的因子名，['LNCAP']
         self.CacheFun = _prepareFRDSMMAPCacheData
         return

@@ -169,8 +169,8 @@ class CloverDB(FactorDB):
     Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
     JVMPath = File("", arg_type="SingleOption", label="Java虚拟机", order=9, filter=["DLL (*.dll)"])
     JavaPckg = List(File("", filter=["Java Package (*.jar)"]), arg_type="ArgList", label="Java包", order=10)
-    def __init__(self, sys_args={}, **kwargs):
-        super().__init__(sys_args=sys_args, **kwargs)
+    def __init__(self, sys_args={}, config_file=None, **kwargs):
+        super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
         # 继承来的属性
         self.Name = "CloverDB"
         self._jpype = None# jpype 模块

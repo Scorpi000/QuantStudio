@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
+import json
 import operator
 import warnings
 warnings.filterwarnings("ignore")
@@ -29,7 +30,7 @@ class __QS_Error__(Exception):
 # Quant Studio 系统对象
 class __QS_Object__(HasTraits):
     """Quant Studio 系统对象"""
-    def __init__(self, sys_args={}, **kwargs):
+    def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(**kwargs)
         self._LabelTrait = {}
         self._ArgOrder = pd.Series()
@@ -42,7 +43,15 @@ class __QS_Object__(HasTraits):
             self._ArgOrder[iLabel] = iOrder
         self._ArgOrder.sort_values(inplace=True)
         self.__QS_initArgs__()
-        for iArgName, iArgVal in sys_args.items(): self[iArgName] = iArgVal
+        self._ConfigFile, Config = None, {}
+        if config_file and os.path.isfile(config_file):
+            self._ConfigFile = config_file
+            with open(self._ConfigFile, "r", encoding="utf-8") as File:
+                FileStr = File.read()
+                if FileStr: Config = json.loads(FileStr)
+        Config.update(sys_args)
+        for iArgName, iArgVal in Config.items():
+            if iArgName in self._ArgOrder.index: self[iArgName] = iArgVal
         self.trait_view(name="QSView", view_element=View(*self.getViewItems()[0], buttons=[OKButton, CancelButton], resizable=True, title=getattr(self, "Name", "设置参数")))
     @property
     def ArgNames(self):

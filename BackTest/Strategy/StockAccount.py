@@ -57,14 +57,14 @@ class _TradeLimit(__QS_Object__):
     MinUnit = Int(0, arg_type="Integer", label="最小单位", order=2)
     MarketOrderVolumeLimit = Float(0.1, arg_type="Double", label="市价单成交量限比", order=3)
     LimitOrderVolumeLimit = Float(0.1, arg_type="Double", label="限价单成交量限比", order=4)
-    def __init__(self, direction, sys_args={}, **kwargs):
+    def __init__(self, direction, sys_args={}, config_file=None, **kwargs):
         self._Direction = direction
-        return super().__init__(sys_args=sys_args, **kwargs)
+        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
 class _AdjustFactorMap(__QS_Object__):
     """复权因子映照"""
-    def __init__(self, adjust_ft=None, sys_args={}, **kwargs):
+    def __init__(self, adjust_ft=None, sys_args={}, config_file=None, **kwargs):
         self._AdjustFT = adjust_ft
-        return super().__init__(sys_args=sys_args, **kwargs)
+        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         if self._AdjustFT is not None:
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._AdjustFT.getFactorMetaData(key="DataType")))
@@ -79,9 +79,9 @@ class _AdjustFactorMap(__QS_Object__):
 
 class _BarFactorMap(__QS_Object__):
     """Bar 因子映照"""
-    def __init__(self, market_ft, sys_args={}, **kwargs):
+    def __init__(self, market_ft, sys_args={}, config_file=None, **kwargs):
         self._MarketFT = market_ft
-        return super().__init__(sys_args=sys_args, **kwargs)
+        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._MarketFT.getFactorMetaData(key="DataType")))
         DefaultNumFactorList.insert(0, None)
@@ -94,9 +94,9 @@ class _BarFactorMap(__QS_Object__):
         self.TradePrice = self.Last = searchNameInStrList(DefaultNumFactorList[1:], ['新','收','Last','last','close','Close'])
 class _TickFactorMap(_BarFactorMap):
     """Tick 因子映照"""
-    def __init__(self, market_ft, sys_args={}, **kwargs):
+    def __init__(self, market_ft, sys_args={}, config_file=None, **kwargs):
         self._MarketFT = market_ft
-        return super().__init__(sys_args=sys_args, **kwargs)
+        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
         self.add_trait("Bid", Str(arg_type="String", label="买盘价格因子", order=7))
@@ -115,7 +115,7 @@ class TimeBarAccount(Account):
     SellLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="卖出限制", order=5)
     MarketFactorMap = Instance(_BarFactorMap, arg_type="ArgObject", label="行情因子", order=6)
     AdjustFactorMap = Instance(_AdjustFactorMap, arg_type="ArgObject", label="复权因子", order=7)
-    def __init__(self, market_ft, adjust_ft=None, sys_args={}, **kwargs):
+    def __init__(self, market_ft, adjust_ft=None, sys_args={}, config_file=None, **kwargs):
         # 继承自 Account 的属性
         #self._Cash = None# 剩余现金, >=0,  array(shape=(nDT+1,))
         #self._FrozenCash = 0# 当前被冻结的现金, >=0, float
@@ -131,7 +131,7 @@ class TimeBarAccount(Account):
         self._LastPrice = None# 最新价, array(shape=(nID,))
         self._MarketFT = market_ft# 行情因子表对象
         self._AdjustFT = adjust_ft# 复权因子表对象
-        super().__init__(sys_args=sys_args, **kwargs)
+        super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
         self.Name = "StockAccount"
     def __QS_initArgs__(self):
         self.MarketFactorMap = _BarFactorMap(self._MarketFT)

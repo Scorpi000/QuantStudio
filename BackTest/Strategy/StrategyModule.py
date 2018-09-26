@@ -92,8 +92,8 @@ class Account(BaseModule):
     """账户"""
     InitCash = Float(1e9, arg_type="Double", label="初始资金", order=0, low=0.0, high=np.inf, single_step=0.00001, decimals=5)
     DebtLimit = Float(0.0, arg_type="Double", label="负债上限", order=1, low=0.0, high=np.inf, single_step=0.00001, decimals=5)
-    def __init__(self, name="Account", sys_args={}, **kwargs):
-        super().__init__(name=name, sys_args=sys_args, **kwargs)
+    def __init__(self, name="Account", sys_args={}, config_file=None, **kwargs):
+        super().__init__(name=name, sys_args=sys_args, config_file=config_file, **kwargs)
         self._Cash = None# 剩余现金, >=0,  array(shape=(nDT+1,))
         self._FrozenCash = 0# 当前被冻结的现金, >=0, float
         self._Debt = None# 负债, >=0, array(shape=(nDT+1,))
@@ -230,8 +230,8 @@ class Strategy(BaseModule):
     Accounts = List(Account)# 策略所用到的账户
     FactorTables = List(FactorTable)# 策略所用到的因子表
     Benchmark = Instance(_Benchmark, arg_type="ArgObject", label="比较基准", order=0)
-    def __init__(self, name, sys_args={}, **kwargs):
-        super().__init__(name=name, sys_args=sys_args, **kwargs)
+    def __init__(self, name, sys_args={}, config_file=None, **kwargs):
+        super().__init__(name=name, sys_args=sys_args, config_file=config_file, **kwargs)
         self.ModelArgs = {}# 模型参数，即用户自定义参数
         self.UserData = {}# 用户数据存放
     def __QS_initArgs__(self):

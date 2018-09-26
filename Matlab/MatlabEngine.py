@@ -11,8 +11,8 @@ class MatlabEngine(__QS_Object__):
     ExclusiveMode = Bool(False, arg_type="Bool", label="ExclusiveMode", order=1)
     Option = Str("-desktop", arg_type="String", label="Option", order=2)
     Async = Bool(False, arg_type="Bool", label="Async", order=3)
-    def __init__(self, sys_args={}, **kwargs):
-        super().__init__(sys_args=sys_args, **kwargs)
+    def __init__(self, sys_args={}, config_file=None, **kwargs):
+        super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
         self._Engine = None
         self._EngineLock = Lock()
     def __getstate__(self):

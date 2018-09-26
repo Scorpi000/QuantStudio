@@ -20,8 +20,8 @@ from QuantStudio.Tools.DateTimeFun import combineDateTime
 class BaseModule(__QS_Object__):
     """回测模块"""
     Name = Str("回测模块")
-    def __init__(self, name, sys_args={}, **kwargs):
-        super().__init__(sys_args=sys_args, **kwargs)
+    def __init__(self, name, sys_args={}, config_file=None, **kwargs):
+        super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
         self.Name = name
         self._Model = None
         self._Output = {}
@@ -58,8 +58,8 @@ class BaseModule(__QS_Object__):
 class BackTestModel(__QS_Object__):
     """回测模型"""
     Modules = List(BaseModule)# 已经添加的测试模块, [测试模块对象]
-    def __init__(self, sys_args={}, **kwargs):
-        super().__init__(sys_args=sys_args, **kwargs)
+    def __init__(self, sys_args={}, config_file=None, **kwargs):
+        super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
         self._QS_TestDateTimes = []# 测试时间点序列, [datetime.datetime]
         self._TestDateTimeIndex = -1# 测试时间点索引
         self._TestDateIndex = pd.Series([], dtype=np.int64)# 测试日期最后一个时间点位于 _QS_TestDateTimes 中的索引

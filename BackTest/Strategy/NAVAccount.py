@@ -14,17 +14,17 @@ class _TradeLimit(__QS_Object__):
     """交易限制"""
     LimitIDFilter = Str(arg_type="IDFilter", label="禁止条件", order=0)
     TradeFee = Float(0.003, arg_type="Double", label="交易费率", order=1)
-    def __init__(self, direction, sys_args={}, **kwargs):
+    def __init__(self, direction, sys_args={}, config_file=None, **kwargs):
         self._Direction = direction
-        return super().__init__(sys_args=sys_args, **kwargs)
+        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
 
 class _MarketInfo(__QS_Object__):
     """行情信息"""
     NAV = Enum(None, arg_type="SingleOption", label="复权净值", order=0)
     Return = Enum(None, arg_type="SingleOption", label="收益率", order=1)
-    def __init__(self, ft, sys_args={}, **kwargs):
+    def __init__(self, ft, sys_args={}, config_file=None, **kwargs):
         self._FT = ft
-        return super().__init__(sys_args=sys_args, **kwargs)
+        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
@@ -44,7 +44,7 @@ class NAVAccount(Account):
     BuyLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="买入限制", order=4)
     SellLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="卖出限制", order=5)
     MarketInfo = Instance(_MarketInfo, allow_none=False, arg_type="ArgObject", label="行情信息", order=6)
-    def __init__(self, ft, name="NAVAccount", sys_args={}, **kwargs):
+    def __init__(self, ft, name="NAVAccount", sys_args={}, config_file=None, **kwargs):
         # 继承自 Account 的属性
         #self._Cash = None# 剩余现金, >=0,  array(shape=(nDT+1,))
         #self._FrozenCash = 0# 当前被冻结的现金, >=0, float
@@ -60,7 +60,7 @@ class NAVAccount(Account):
         self._ClosedPosition = None# 已平仓的交易信息, DataFrame(columns=["ID", "数量", "开仓时点", "开仓价格", "开仓交易费", "平仓时点", "平仓价格", "平仓交易费", "平仓盈亏"])
         self._LastPrice = None# 最新价, Series(index=self._IDs)
         self._FT = ft# 提供净值或者收益率数据的因子表
-        return super().__init__(name=name, sys_args=sys_args, **kwargs)
+        return super().__init__(name=name, sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
         self.BuyLimit = _TradeLimit(direction="Buy")

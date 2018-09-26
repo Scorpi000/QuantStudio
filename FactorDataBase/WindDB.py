@@ -256,13 +256,13 @@ class WindDB(FactorDB):
     TablePrefix = Str("", arg_type="String", label="表名前缀", order=6)
     CharSet = Enum("utf8", "gbk", "gb2312", "gb18030", "cp936", "big5", arg_type="SingleOption", label="字符集", order=7)
     Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
-    def __init__(self, sys_args={}, **kwargs):
+    def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._Connection = None# 数据库链接
         self._TableInfo = None# 数据库中的表信息
         self._FactorInfo = None# 数据库中的表字段信息
         self._InfoFilePath = None# 数据库信息文件路径
         self._AllTables = []# 数据库中的所有表名, 用于查询时解决大小写敏感问题
-        super().__init__(sys_args=sys_args, **kwargs)
+        super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"WindDBConfig.json" if config_file is None else config_file), **kwargs)
         self.Name = "WindDB"
         return
     def __getstate__(self):
@@ -278,12 +278,7 @@ class WindDB(FactorDB):
             self._Connection = None
         self._AllTables = state.get("_AllTables", [])
     def __QS_initArgs__(self):
-        ConfigFilePath = __QS_LibPath__+os.sep+"WindDBConfig.json"# 配置文件路径
         self._InfoFilePath = __QS_LibPath__+os.sep+"WindDBInfo.hdf5"# 数据库信息文件路径
-        Config = readJSONFile(ConfigFilePath)
-        ArgNames = self.ArgNames
-        for iArgName, iArgVal in Config.items():
-            if iArgName in ArgNames: self[iArgName] = iArgVal
         if not os.path.isfile(self._InfoFilePath):
             InfoResourcePath = __QS_MainPath__+os.sep+"Rescource"+os.sep+"WindDBInfo.xlsx"# 数据库信息源文件路径
             print("缺失数据库信息文件: '%s', 尝试从 '%s' 中导入信息." % (self._InfoFilePath, InfoResourcePath))
@@ -291,6 +286,7 @@ class WindDB(FactorDB):
             self.importInfo(InfoResourcePath)
         self._TableInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/TableInfo")
         self._FactorInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/FactorInfo")
+        return super().__QS_initArgs__()
     # -------------------------------------------数据库相关---------------------------
     def connect(self):
         if (self.Connector=='cx_Oracle') or ((self.Connector=='default') and (self.DBType=='Oracle')):

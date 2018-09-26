@@ -126,18 +126,16 @@ class _FactorTable(FactorTable):
 class HDF5DB(WritableFactorDB):
     """HDF5DB"""
     MainDir = Directory(label="主目录", arg_type="Directory", order=0)
-    def __init__(self, sys_args={}, **kwargs):
+    def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
         self._DataLock = Lock()# 访问该因子库资源的锁, 防止并发访问冲突
         self._isAvailable = False
         self._Suffix = "hdf5"# 文件的后缀名
-        super().__init__(sys_args=sys_args, **kwargs)
+        super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"HDF5DBConfig.json" if config_file is None else config_file), **kwargs)
+        self._QS_AutoExpand = True
         # 继承来的属性
         self.Name = "HDF5DB"
         return
-    def __QS_initArgs__(self):
-        Config = readJSONFile(__QS_LibPath__+os.sep+"HDF5DBConfig.json")
-        for iArgName, iArgVal in Config.items(): self[iArgName] = iArgVal
     def connect(self):
         if not os.path.isdir(self.MainDir): raise __QS_Error__("不存在主目录: %s!" % self.MainDir)
         AllTables = listDirDir(self.MainDir)
@@ -310,8 +308,7 @@ class HDF5DB(WritableFactorDB):
                         CrossedDateTimes = np.array(factor_data.index.intersection(set(OldDateTimes)))
                         CrossedIDs = factor_data.columns.intersection(set(OldIDs))
                         NewData = factor_data.ix[CrossedDateTimes, CrossedIDs]
-                        if NewData.shape[0]*NewData.shape[1]==0:
-                            return 0
+                        if NewData.shape[0]*NewData.shape[1]==0: return 0
                         OldDateTimes = list(OldDateTimes)
                         OldIDs = list(OldIDs)
                         CrossedDateTimePos = np.array([OldDateTimes.index(iDateTime) for iDateTime in CrossedDateTimes])
@@ -322,7 +319,7 @@ class HDF5DB(WritableFactorDB):
                             iPos = OldIDs.index(iID)
                             DataFile["Data"][CrossedDateTimePos, iPos] = NewData[:,i]
         return 0
-    def writeData(self, data, table_name, if_exists='append', data_type=None, **kwargs):
+    def writeData(self, data, table_name, if_exists="append", data_type={}, **kwargs):
         for i, iFactor in enumerate(data.items):
             iDataType = data_type.get(iFactor, _identifyDataType(data.iloc[i].dtypes))
             self.writeFactorData(data.iloc[i], table_name, iFactor, if_exists=if_exists, data_type=iDataType)
