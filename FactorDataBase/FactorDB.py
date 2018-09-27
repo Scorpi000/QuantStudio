@@ -69,7 +69,6 @@ class FactorDB(__QS_Object__):
 class WritableFactorDB(FactorDB):
     """可写入的因子数据库"""
     def __init__(self, sys_args={}, config_file=None, **kwargs):
-        self._QS_AutoExpand = False# 写入部分数据时是否会在时间和ID维度上自动扩展
         return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     # -------------------------------表的操作---------------------------------
     # 重命名表. 必须具体化
@@ -91,8 +90,8 @@ class WritableFactorDB(FactorDB):
     # 设置因子的元数据. 必须具体化
     def setFactorMetaData(self, table_name, ifactor_name, key=None, value=None, meta_data=None):
         return 0
-    # 写入数据, if_exists: append, update, replace, skip. data_type: dict like, {因子名:数据类型}, 必须具体化
-    def writeData(self, data, table_name, if_exists="append", data_type={}, **kwargs):
+    # 写入数据, if_exists: append, update. data_type: dict like, {因子名:数据类型}, 必须具体化
+    def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
         return 0
     # -------------------------------数据变换------------------------------------
     # 时间平移, 沿着时间轴将所有数据纵向移动 lag 期, lag>0 向前移动, lag<0 向后移动, 空出来的地方填 nan
@@ -260,18 +259,47 @@ def _calculate(args):
     FT.OperationMode._iPID = args["PID"]
     if FT.OperationMode.SubProcessNum==0:# 运行模式为串行
         nTask = len(FT.OperationMode.FactorNames)
-        with ProgressBar(max_value=nTask) as ProgBar:
+        if hasattr(args["FactorDB"], "writeFactorData"):
+            with ProgressBar(max_value=nTask) as ProgBar:
+                for i, iFactor in enumerate(FT.OperationMode._Factors):
+                    iData = iFactor._QS_getData(dts=FT.OperationMode.DateTimes, pids=[args["PID"]])
+                    args["FactorDB"].writeFactorData(iData, args["TableName"], iFactor.Name, if_exists=args["if_exists"], data_type=iFactor.getMetaData(key="DataType"))
+                    iData = None
+                    ProgBar.update(i+1)
+        else:
+            nDT = len(FT.OperationMode.DateTimes)
+            iDTLen= int(np.ceil(nDT/nTask))
+            DataTypes = {iFactor.Name:iFactor.getMetaData(key="DataType") for iFactor in FT.OperationMode._Factors}
+            FactorNames = list(FT.OperationMode.FactorNames)
+            with ProgressBar(max_value=nTask) as ProgBar:
+                for i in range(nTask):
+                    iDTs = list(FT.OperationMode.DateTimes[i*iDTLen:(i+1)*iDTLen])
+                    if iDTs:
+                        iData = pd.Panel({iFactor.Name:iFactor._QS_getData(dts=iDTs, pids=[args["PID"]]) for iFactor in FT.OperationMode._Factors}).loc[FactorNames]
+                        args["FactorDB"].writeData(iData, args["TableName"], if_exists=args["if_exists"], data_type=DataTypes)
+                        iData = None
+                    ProgBar.update(i+1)
+            
+    else:
+        if hasattr(args["FactorDB"], "writeFactorData"):
             for i, iFactor in enumerate(FT.OperationMode._Factors):
                 iData = iFactor._QS_getData(dts=FT.OperationMode.DateTimes, pids=[args["PID"]])
-                args["FactorDB"].writeData(pd.Panel({iFactor.Name:iData}), args["TableName"], if_exists=args["if_exists"], data_type={iFactor.Name:iFactor.getMetaData(key="DataType")})
+                args["FactorDB"].writeFactorData(iData, args["TableName"], iFactor.Name, if_exists=args["if_exists"], data_type=iFactor.getMetaData(key="DataType"))
                 iData = None
-                ProgBar.update(i+1)
-    else:
-        for i, iFactor in enumerate(FT.OperationMode._Factors):
-            iData = iFactor._QS_getData(dts=FT.OperationMode.DateTimes, pids=[args["PID"]])
-            args["FactorDB"].writeData(pd.Panel({iFactor.Name:iData}), args["TableName"], if_exists=args["if_exists"], data_type={iFactor.Name:iFactor.getMetaData(key="DataType")})
-            iData = None
-            args['Sub2MainQueue'].put((args["PID"], 1, None))
+                args['Sub2MainQueue'].put((args["PID"], 1, None))
+        else:
+            nTask = len(FT.OperationMode.FactorNames)
+            nDT = len(FT.OperationMode.DateTimes)
+            iDTLen= int(np.ceil(nDT/nTask))
+            DataTypes = {iFactor.Name:iFactor.getMetaData(key="DataType") for iFactor in FT.OperationMode._Factors}
+            FactorNames = list(FT.OperationMode.FactorNames)
+            for i in range(nTask):
+                iDTs = list(FT.OperationMode.DateTimes[i*iDTLen:(i+1)*iDTLen])
+                if iDTs:
+                    iData = pd.Panel({iFactor.Name:iFactor._QS_getData(dts=iDTs, pids=[args["PID"]]) for iFactor in FT.OperationMode._Factors}).loc[FactorNames]
+                    args["FactorDB"].writeData(iData, args["TableName"], if_exists=args["if_exists"], data_type=DataTypes)
+                    iData = None
+                args['Sub2MainQueue'].put((args["PID"], 1, None))
     return 0
 # 因子表, 接口类
 # 因子表可看做一个独立的数据集或命名空间, 可看做 Panel(items=[因子], major_axis=[时间点], minor_axis=[ID])
@@ -600,19 +628,14 @@ class FactorTable(__QS_Object__):
         self.OperationMode._isStarted = False
         return 0
     # 计算因子数据并写入因子库    
-    def write2FDB(self, factor_names, ids, dts, factor_db, table_name, if_exists="append", **kwargs):
+    def write2FDB(self, factor_names, ids, dts, factor_db, table_name, if_exists="update", **kwargs):
         if not isinstance(factor_db, WritableFactorDB): raise __QS_Error__("因子数据库: %s 不可写入!" % factor_db.Name)
         print("==========因子运算==========", "1. 原始数据准备", sep="\n", end="")
         TotalStartT = time.clock()
         self._prepare(factor_names, ids, dts)
         print(("耗时 : %.2f" % (time.clock()-TotalStartT, )), "2. 因子数据计算", end="", sep="\n")
         StartT = time.clock()
-        if (self.OperationMode.SubProcessNum>=2) and (if_exists=="append") and (table_name in factor_db.TableNames) and (factor_db._QS_AutoExpand):# 因子数据库在写入时会自动扩展数据, 则写入临时表, 再合并临时表和原表
-            TempTable = genAvailableName("TempTable", factor_db.TableNames)
-            Args = {"FT":self, "PID":"0", "FactorDB":factor_db, "TableName":TempTable, "if_exists":if_exists}
-        else:
-            TempTable = None
-            Args = {"FT":self, "PID":"0", "FactorDB":factor_db, "TableName":table_name, "if_exists":if_exists}
+        Args = {"FT":self, "PID":"0", "FactorDB":factor_db, "TableName":table_name, "if_exists":if_exists}
         if self.OperationMode.SubProcessNum==0:
             _calculate(Args)
         else:
@@ -649,10 +672,6 @@ class FactorTable(__QS_Object__):
         print(("耗时 : %.2f" % (time.clock()-StartT, )), "3. 清理缓存", end="", sep="\n")
         StartT = time.clock()
         factor_db.connect()
-        if TempTable is not None:# 创建了临时表, 合并临时表和原表
-            TempTable = factor_db.getTable(TempTable)
-            factor_db.writeData(TempTable.readData(factor_names=factor_names, ids=ids, dts=dts), table_name=table_name, if_exists=if_exists, data_type=TempTable.getFactorMetaData(factor_names=factor_names, key="DataType"))
-            factor_db.deleteTable(TempTable.Name)
         self._exit()
         print(('耗时 : %.2f' % (time.clock()-StartT, )), ("总耗时 : %.2f" % (time.clock()-TotalStartT, )), "="*28, sep="\n", end="\n")
         return 0

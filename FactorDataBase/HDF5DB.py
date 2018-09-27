@@ -1,7 +1,6 @@
 # coding=utf-8
 """基于 HDF5 文件的因子库"""
 import os
-from copy import copy
 import datetime as dt
 from multiprocessing import Lock
 
@@ -99,14 +98,14 @@ class _FactorTable(FactorTable):
                             Rslt = pd.DataFrame([], index=[], columns=ids).ix[dts]
                     elif nDT<1000:
                         if ids is None:
-                            Rslt = pd.DataFrame(DataFile["Data"][Mask, :], index=DateTimes, columns=IDs)
+                            Rslt = pd.DataFrame(DataFile["Data"][Mask, :], index=DateTimes, columns=IDs).ix[dts]
                         else:
                             IDRuler = pd.Series(np.arange(0,IDs.shape[0]), index=IDs)
                             IDRuler = IDRuler.loc[ids]
                             IDRuler = IDRuler[pd.notnull(IDRuler)].astype('int')
                             StartInd = IDRuler.min()
                             EndInd = IDRuler.max()
-                            Rslt = pd.DataFrame(DataFile["Data"][Mask, StartInd:EndInd+1], index=DateTimes, columns=IDs[StartInd:EndInd+1]).ix[:, ids]
+                            Rslt = pd.DataFrame(DataFile["Data"][Mask, StartInd:EndInd+1], index=DateTimes, columns=IDs[StartInd:EndInd+1]).ix[dts, ids]
                     else:
                         Rslt = pd.DataFrame(DataFile["Data"][...], index=DataFile["DateTime"][...], columns=IDs).ix[dts]
                         if ids is not None: Rslt = Rslt.ix[:, ids]
@@ -132,7 +131,6 @@ class HDF5DB(WritableFactorDB):
         self._isAvailable = False
         self._Suffix = "hdf5"# 文件的后缀名
         super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"HDF5DBConfig.json" if config_file is None else config_file), **kwargs)
-        self._QS_AutoExpand = True
         # 继承来的属性
         self.Name = "HDF5DB"
         return
@@ -241,38 +239,63 @@ class HDF5DB(WritableFactorDB):
             for iKey in meta_data:
                 self.setFactorMetaData(table_name, ifactor_name=ifactor_name, key=iKey, value=meta_data[iKey], meta_data=None)
         return 0
-    def writeFactorData(self, factor_data, table_name, ifactor_name, if_exists='append', data_type=None):
+    def _updateFactorData(self, factor_data, table_name, ifactor_name, data_type):
+        FilePath = self.MainDir+os.sep+table_name+os.sep+ifactor_name+"."+self._Suffix
+        with h5py.File(FilePath) as DataFile:
+            nOldDT, OldDateTimes = DataFile["DateTime"].shape[0], DataFile["DateTime"][...].tolist()
+            OldDTSet = set(OldDateTimes)
+            NewDateTimes = factor_data.index.difference(OldDTSet).values
+            OldIDs = DataFile["ID"][...]
+            OldIDSet = set(OldIDs)
+            NewIDs = factor_data.columns.difference(OldIDSet).values
+            DataFile["DateTime"].resize((nOldDT+NewDateTimes.shape[0], ))
+            DataFile["DateTime"][nOldDT:] = NewDateTimes
+            DataFile["ID"].resize((OldIDs.shape[0]+NewIDs.shape[0], ))
+            DataFile["ID"][OldIDs.shape[0]:] = NewIDs
+            DataFile["Data"].resize((DataFile["DateTime"].shape[0], DataFile["ID"].shape[0]))
+            if NewDateTimes.shape[0]>0:
+                NewData = factor_data.ix[NewDateTimes, np.r_[OldIDs, NewIDs]]
+                if data_type!="double": NewData = NewData.where(pd.notnull(NewData), None)
+                DataFile["Data"][nOldDT:,:] = NewData.values
+            CrossedDateTimes = factor_data.index.intersection(OldDTSet)
+            if CrossedDateTimes.shape[0]>0:
+                CrossedDateTimePos = [OldDateTimes.index(iDT) for iDT in CrossedDateTimes]
+                CrossedDateTimes = CrossedDateTimes[np.argsort(CrossedDateTimePos)]
+                CrossedDateTimePos.sort()
+                if NewIDs.shape[0]>0:
+                    NewData = factor_data.ix[CrossedDateTimes, NewIDs]
+                    if data_type!="double": NewData = NewData.where(pd.notnull(NewData), None)
+                    DataFile["Data"][CrossedDateTimePos, OldIDs.shape[0]:] = NewData.values
+                CrossedIDs = factor_data.columns.intersection(OldIDSet)
+                NewData = factor_data.ix[CrossedDateTimes, CrossedIDs].values
+                OldIDs = OldIDs.tolist()
+                for i, iID in enumerate(CrossedIDs):
+                    iPos = OldIDs.index(iID)
+                    DataFile["Data"][CrossedDateTimePos, iPos] = NewData[:, i]
+        return 0
+    def writeFactorData(self, factor_data, table_name, ifactor_name, if_exists="update", data_type=None):
         if data_type is None: data_type = _identifyDataType(factor_data.dtypes)
+        if data_type=='double':
+            try:
+                factor_data = factor_data.astype('float')
+                data_type = 'double'
+            except:
+                factor_data = factor_data.where(pd.notnull(factor_data), None)
+                data_type = 'string'
+        else:
+            factor_data = factor_data.where(pd.notnull(factor_data), None)
+        if if_exists=="append": DTs = factor_data.index.tolist()
+        if pd.__version__>="0.20.0": factor_data.index = [idt.to_pydatetime().timestamp() for idt in factor_data.index]
+        else: factor_data.index = [idt.timestamp() for idt in factor_data.index]
         TablePath = self.MainDir+os.sep+table_name
         FilePath = TablePath+os.sep+ifactor_name+"."+self._Suffix
         with self._DataLock:
-            isExist = os.path.isfile(FilePath)
-            if isExist:# 当前因子存在
-                if if_exists=='replace':
-                    self.deleteFactor(table_name, [ifactor_name])
-                    self._TableFactorDict[table_name] = self._TableFactorDict.get(table_name, pd.Series()).append(pd.Series(data_type, index=[ifactor_name]))
-                    isExist = False
-                elif ifactor_name not in self._TableFactorDict.get(table_name, {}):
-                    self._TableFactorDict[table_name] = self._TableFactorDict.get(table_name, pd.Series()).append(pd.Series(data_type, index=[ifactor_name]))
-            else:
-                self._TableFactorDict[table_name] = self._TableFactorDict.get(table_name,pd.Series()).append(pd.Series(data_type,index=[ifactor_name]))
-            StrDataType = h5py.special_dtype(vlen=str)
-            if data_type=='double':
-                try:
-                    factor_data = factor_data.astype('float')
-                    data_type = 'double'
-                except:
-                    factor_data = factor_data.where(pd.notnull(factor_data), None)
-                    data_type = 'string'
-            else:
-                factor_data = factor_data.where(pd.notnull(factor_data), None)
-            if pd.__version__>="0.20.0": factor_data.index = [idt.to_pydatetime().timestamp() for idt in factor_data.index]
-            else: factor_data.index = [idt.timestamp() for idt in factor_data.index]
-            if not os.path.isdir(TablePath):
-                os.mkdir(TablePath)
+            if not os.path.isdir(TablePath): os.mkdir(TablePath)
+            if ifactor_name not in self._TableFactorDict.get(table_name, {}):
+                self._TableFactorDict[table_name] = self._TableFactorDict.get(table_name, pd.Series()).append(pd.Series(data_type, index=[ifactor_name]))
             if not os.path.isfile(FilePath):
-                open(FilePath, mode='a').close()
-            if not isExist:
+                open(FilePath, mode="a").close()
+                StrDataType = h5py.special_dtype(vlen=str)
                 with h5py.File(FilePath) as DataFile:
                     DataFile.attrs["DataType"] = data_type
                     DataFile.create_dataset("ID", shape=(factor_data.shape[1],), maxshape=(None,), dtype=StrDataType, 
@@ -285,40 +308,13 @@ class HDF5DB(WritableFactorDB):
                     else:
                         DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=StrDataType,
                                                 fillvalue=None, data=factor_data.values)
-            else:
-                with h5py.File(FilePath) as DataFile:
-                    OldDateTimes = DataFile["DateTime"][...]
-                    NewDateTimes = np.array(list(set(factor_data.index).difference(set(OldDateTimes))))
-                    OldIDs = DataFile["ID"][...]
-                    NewIDs = np.array(list(set(factor_data.columns).difference(set(OldIDs))))
-                    DataFile["DateTime"].resize((OldDateTimes.shape[0]+NewDateTimes.shape[0], ))
-                    DataFile["DateTime"][OldDateTimes.shape[0]:] = NewDateTimes
-                    DataFile["ID"].resize((OldIDs.shape[0]+NewIDs.shape[0], ))
-                    DataFile["ID"][OldIDs.shape[0]:] = NewIDs
-                    DataFile["Data"].resize((DataFile["DateTime"].shape[0], DataFile["ID"].shape[0]))
-                    NewData = factor_data.ix[NewDateTimes, np.append(OldIDs, NewIDs)]
-                    if data_type!="double":
-                        NewData = NewData.where(pd.notnull(NewData), None)
-                    DataFile["Data"][OldDateTimes.shape[0]:,:] = NewData.values
-                    NewData = factor_data.ix[OldDateTimes, NewIDs]
-                    if data_type!="double":
-                        NewData = NewData.where(pd.notnull(NewData), None)
-                    DataFile["Data"][:OldDateTimes.shape[0],OldIDs.shape[0]:] = NewData.values
-                    if if_exists=="update":
-                        CrossedDateTimes = np.array(factor_data.index.intersection(set(OldDateTimes)))
-                        CrossedIDs = factor_data.columns.intersection(set(OldIDs))
-                        NewData = factor_data.ix[CrossedDateTimes, CrossedIDs]
-                        if NewData.shape[0]*NewData.shape[1]==0: return 0
-                        OldDateTimes = list(OldDateTimes)
-                        OldIDs = list(OldIDs)
-                        CrossedDateTimePos = np.array([OldDateTimes.index(iDateTime) for iDateTime in CrossedDateTimes])
-                        CrossedDateTimes = CrossedDateTimes[np.argsort(CrossedDateTimePos)]
-                        CrossedDateTimePos.sort()
-                        NewData = NewData.ix[CrossedDateTimes,:].values
-                        for i, iID in enumerate(CrossedIDs):
-                            iPos = OldIDs.index(iID)
-                            DataFile["Data"][CrossedDateTimePos, iPos] = NewData[:,i]
-        return 0
+                return 0
+            elif if_exists=="update": return self._updateFactorData(factor_data, table_name, ifactor_name, data_type)
+        if if_exists=="append":
+            OldData = self.getTable(table_name).readFactorData(ifactor_name=ifactor_name, ids=factor_data.columns.tolist(), dts=DTs)
+            OldData.index = factor_data.index
+            factor_data = OldData.where(pd.notnull(OldData), factor_data)
+            self._updateFactorData(factor_data, table_name, ifactor_name, data_type)
     def writeData(self, data, table_name, if_exists="append", data_type={}, **kwargs):
         for i, iFactor in enumerate(data.items):
             iDataType = data_type.get(iFactor, _identifyDataType(data.iloc[i].dtypes))

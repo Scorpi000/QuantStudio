@@ -3,6 +3,7 @@
 import re
 import os
 import datetime as dt
+from multiprocessing import Lock
 
 import numpy as np
 import pandas as pd
@@ -50,14 +51,15 @@ class _FactorTable(FactorTable):
         SQLStr += "ORDER BY "+DBTableName+".DateTime"
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        if (not dts) or (not ids): return pd.DataFrame(columns=["DateTime", "ID"]+factor_names)
         DBTableName = self._FactorDB.TablePrefix+self._FactorDB._Prefix+self.Name
         # 形成 SQL 语句, 时点, ID, 因子数据
         SQLStr = "SELECT "+DBTableName+".DateTime, "
         SQLStr += DBTableName+".ID, "
         for iField in factor_names: SQLStr += DBTableName+"."+iField+", "
         SQLStr = SQLStr[:-2]+" FROM "+DBTableName+" "
-        SQLStr += "WHERE ("+genSQLInCondition(DBTableName+".ID", ids, is_str=True, max_num=1000)+") "
-        SQLStr += "AND "+DBTableName+".DateTime>='"+dts[0].strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
+        #SQLStr += "WHERE ("+genSQLInCondition(DBTableName+".ID", ids, is_str=True, max_num=1000)+") "
+        SQLStr += "WHERE "+DBTableName+".DateTime>='"+dts[0].strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
         SQLStr += "AND "+DBTableName+".DateTime<='"+dts[-1].strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
         SQLStr += "ORDER BY "+DBTableName+".DateTime, "+DBTableName+".ID"
         RawData = self._FactorDB.fetchall(SQLStr)
@@ -87,6 +89,7 @@ class SQLDB(WritableFactorDB):
     Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._Connection = None# 数据库链接
+        self._DataLock = Lock()# 访问该因子库资源的锁, 防止并发访问冲突
         self._Prefix = "QS_"
         self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
         super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"SQLDBConfig.json" if config_file is None else config_file), **kwargs)
@@ -188,28 +191,21 @@ class SQLDB(WritableFactorDB):
     def addIndex(self, index_name, table_name, fields=["DateTime", "ID"], index_type="BTREE"):
         SQLStr = "CREATE INDEX "+index_name+" USING "+index_type+" ON "+self.TablePrefix+self._Prefix+table_name+"("+", ".join(fields)+")"
         return self.execute(SQLStr)
-    # 创建表, field_types: {字段名: 数据类型}, if_exists='cancel'：取消, 'replace'：删除后重建, 'error': 报错
-    def createTable(self, table_name, field_types, if_exists='cancel'):
-        if table_name in self._TableFactorDict:
-            if if_exists=="replace": self.deleteTable(table_name)
-            elif if_exists=="error": raise __QS_Error__("表 '%s' 已存在!" % table_name)
-            else: return 0
-        SQLStr = "CREATE TABLE %s (`DateTime` DATETIME(6) NOT NULL, `ID` VARCHAR(40) NOT NULL, " % (self.TablePrefix+self._Prefix+table_name)
+    # 创建表, field_types: {字段名: 数据类型}
+    def createTable(self, table_name, field_types):
+        SQLStr = "CREATE TABLE IF NOT EXISTS %s (`DateTime` DATETIME(6) NOT NULL, `ID` VARCHAR(40) NOT NULL, " % (self.TablePrefix+self._Prefix+table_name)
         for iField in field_types: SQLStr += "`%s` %s, " % (iField, field_types[iField])
         SQLStr += "PRIMARY KEY (`DateTime`, `ID`)) ENGINE=InnoDB DEFAULT CHARSET=utf8"
         self.execute(SQLStr)
-        self._TableFactorDict[table_name] = pd.Series({iFactorName: ("string" if field_types[iFactorName].find("char")!=-1 else "double") for iFactorName in field_types})
         return 0
     # 增加字段，field_types: {字段名: 数据类型}
     def addField(self, table_name, field_types):
-        if table_name not in self._TableFactorDict: self.createTable(table_name, field_types)
+        if table_name not in self._TableFactorDict: return self.createTable(table_name, field_types)
         SQLStr = "ALTER TABLE %s " % (self.TablePrefix+self._Prefix+table_name)
         SQLStr += "ADD COLUMN ("
         for iField in field_types: SQLStr += "%s %s," % (iField, field_types[iField])
         SQLStr = SQLStr[:-1]+")"
         self.execute(SQLStr)
-        NewDataType = pd.Series({iFactorName: ("string" if field_types[iFactorName].find("char")!=-1 else "double") for iFactorName in field_types})
-        self._TableFactorDict[table_name] = self._TableFactorDict[table_name].append(NewDataType)
         return 0
     # ----------------------------因子操作---------------------------------
     def deleteTable(self, table_name):
@@ -249,28 +245,43 @@ class SQLDB(WritableFactorDB):
         if ids is not None:
             SQLStr += "AND "+genSQLInCondition(DBTableName+".ID", ids, is_str=True, max_num=1000)
         return self.execute(SQLStr)
-    def writeData(self, data, table_name, if_exists="append", data_type={}, **kwargs):# TODO, 更新实现
+    def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
         FieldTypes = {iFactorName:_identifyDataType(data.iloc[i].dtypes) for i, iFactorName in enumerate(data.items)}
-        if table_name not in self._TableFactorDict: self.createTable(table_name, field_types=FieldTypes)
-        elif if_exists=='replace': self.createTable(table_name, field_types=FieldTypes, if_exists="replace")
+        if table_name not in self._TableFactorDict:
+            self.createTable(table_name, field_types=FieldTypes)
+            self._TableFactorDict[table_name] = pd.Series({iFactorName: ("string" if FieldTypes[iFactorName].find("char")!=-1 else "double") for iFactorName in FieldTypes})
+            SQLStr = "INSERT INTO "+self.TablePrefix+self._Prefix+table_name+" (`DateTime`, `ID`, "
         else:
             NewFactorNames = data.items.difference(self._TableFactorDict[table_name].index).tolist()
-            if NewFactorNames: self.addField(table_name, {iFactorName:FieldTypes[iFactorName] for iFactorName in NewFactorNames})
-        if if_exists=="append":
-            SQLStr = "INSERT IGNORE INTO "+self.TablePrefix+self._Prefix+table_name+" (`DateTime`, `ID`, "
-        elif if_exists=="update":
+            if NewFactorNames:
+                self.addField(table_name, {iFactorName:FieldTypes[iFactorName] for iFactorName in NewFactorNames})
+                NewDataType = pd.Series({iFactorName: ("string" if FieldTypes[iFactorName].find("char")!=-1 else "double") for iFactorName in NewFactorNames})
+                self._TableFactorDict[table_name] = self._TableFactorDict[table_name].append(NewDataType)
+            AllFactorNames = self._TableFactorDict[table_name].index.tolist()
+            OldData = self.getTable(table_name).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
+            if if_exists=="append":
+                for iFactorName in AllFactorNames:
+                    if iFactorName in data:
+                        data[iFactorName] = OldData[iFactorName].where(pd.notnull(OldData[iFactorName]), data[iFactorName])
+                    else:
+                        data[iFactorName] = OldData[iFactorName]
+            elif if_exists=="update":
+                for iFactorName in AllFactorNames:
+                    if iFactorName in data:
+                        data[iFactorName] = data[iFactorName].where(pd.notnull(data[iFactorName]), OldData[iFactorName])
+                    else:
+                        data[iFactorName] = OldData[iFactorName]
             SQLStr = "REPLACE INTO "+self.TablePrefix+self._Prefix+table_name+" (`DateTime`, `ID`, "
-        else:
-            SQLStr = "INSERT INTO "+self.TablePrefix+self._Prefix+table_name+" (`DateTime`, `ID`, "
         NewData = {}
         for iFactorName in data.items:
             iData = data.loc[iFactorName].stack(dropna=False)
             NewData[iFactorName] = iData
             SQLStr += "`"+iFactorName+"`, "
-        NewData = pd.DataFrame(NewData)
+        NewData = pd.DataFrame(NewData).loc[:, data.items]
+        NewData = NewData[pd.notnull(NewData).any(axis=1)]
         if NewData.shape[0]==0: return 0
         NewData = NewData.astype("O").where(pd.notnull(NewData), None)
-        SQLStr = SQLStr[:-2] + ") VALUES (" + "%s, " * (data.shape[0]+2)
+        SQLStr = SQLStr[:-2] + ") VALUES (" + "%s, " * (NewData.shape[1]+2)
         SQLStr = SQLStr[:-2]+") "
         Cursor = self._Connection.cursor()
         Cursor.executemany(SQLStr, NewData.reset_index().values.tolist())
