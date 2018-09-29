@@ -221,6 +221,21 @@ def standardizeDynamicPeer(data, corr_matrix, mask=None, cat_data=None, n_group=
             StdData[j] = (data[j]-jAvg)/jStd
     return StdData
 
+# 以之前的值进行缺失值填充
+# data: 待填充的数据, array; dts: 时间序列, array; lookback: 如果指定了时间序列 dts 则为回溯的时间, 以秒为单位, 否则为回溯期数
+def fillNaByLookback(data, lookback, dts=None):
+    if not isinstance(data, pd.DataFrame):
+        isDF = True
+        data = pd.DataFrame(data)
+    if dts is None: dts = data.index.values
+    else: dts = np.array(dts)
+    Ind = pd.DataFrame(np.r_[0, np.diff(dts).astype("float")].reshape((data.shape[0], 1)).repeat(data.shape[1], axis=1).cumsum(axis=0))
+    Ind1 = Ind.where(pd.notnull(data), other=np.nan)
+    Ind1.fillna(method="pad", inplace=True)
+    data = data.fillna(method="pad")
+    data.where(((Ind.values-Ind1.values)/10**9<=lookback), np.nan, inplace=True)
+    if isDF: return data
+    else: return data.values
 # 以固定值进行缺失值填充
 # data: 待填充的数据, array; mask: True-False mask, 标记需要填充的范围, array; value: 缺失填充值, double or string
 def fillNaNByVal(data, mask=None, value=0.0):

@@ -5,13 +5,13 @@ import datetime as dt
 import numpy as np
 import pandas as pd
 
-# 日期字符串(20120202)转成datetime(timestamp)，如果不是日期字符串，则返回None
+# 日期字符串(20120202)转成datetime(timestamp)，如果不是日期字符串，则返回None, depreciated
 def DateStr2Datetime(date_str):
     try:
         return pd.datetime(int(date_str[0:4]),int(date_str[4:6]),int(date_str[6:8]))
     except:
         return None
-# datetime(timestamp)转成日期字符串(20120202)
+# datetime(timestamp)转成日期字符串(20120202), depreciated
 def Datetime2DateStr(date):
     Year = date.year
     Month = date.month
@@ -25,7 +25,7 @@ def Datetime2DateStr(date):
     else:
         Day = str(Day)
     return str(Year)+Month+Day
-# 截取日期序列
+# 截取日期序列, depreciated
 def cutDate(dates, start_date=None, end_date=None):
     if (start_date is None) and (end_date is None):
         return list(dates)
@@ -35,167 +35,14 @@ def cutDate(dates, start_date=None, end_date=None):
     if end_date is not None:
         dates = dates[dates<=end_date]
     return list(dates)
-# 截取时点序列
+# 截取时点序列, depreciated
 def cutDateTime(dts, start_dt=None, end_dt=None):
     if (start_dt is None) and (end_dt is None): return list(dts)
     dts = np.array(dts)
     if start_dt is not None: dts = dts[dts>=start_dt]
     if end_dt is not None: dts = dts[dts<=end_dt]
     return dts.tolist()
-# 获取某个日期序列的每月最后一天序列
-def getMonthLastDay(dates):
-    dates.sort()
-    MonthLastDay = []
-    MonthLastDay.append(dates[0])
-    for iDate in dates:
-        if (iDate[:6]==MonthLastDay[-1][:6]):
-            MonthLastDay[-1] = iDate
-        else:
-            MonthLastDay.append(iDate)
-    return MonthLastDay
-# 获取某个日期序列的每月中间一天序列，每月小于等于15日的最后一天
-def getMonthMiddleDay(dates):
-    dates.sort()
-    MonthMiddleDay = [dates[0]]
-    for iDate in dates:
-        if (iDate[:6]==MonthMiddleDay[-1][:6]):
-            if int(iDate[-2:])<=15:
-                MonthMiddleDay[-1] = iDate
-        else:
-            MonthMiddleDay.append(iDate)
-    return MonthMiddleDay
-# 获取某个日期序列的每月第一天序列
-def getMonthFirstDay(dates):
-    dates.sort()
-    MonthFirstDay = []
-    MonthFirstDay.append(dates[0])
-    for iDate in dates:
-        if (iDate[:6]!=MonthFirstDay[-1][:6]):
-            MonthFirstDay.append(iDate)
-    return MonthFirstDay
-# 获取某个日期序列的每周最后一天序列
-def getWeekLastDay(dates):
-    dates.sort()
-    WeekLastDay = []
-    WeekLastDay.append(dates[0])
-    for iDate in dates:
-        iDateTime = DateStr2Datetime(iDate)
-        iDateWeekDay = iDateTime.weekday()
-        tempDateTime = DateStr2Datetime(WeekLastDay[-1])
-        tempWeekDay = tempDateTime.weekday()
-        if (iDateTime-tempDateTime).days != (iDateWeekDay-tempWeekDay):
-            WeekLastDay.append(iDate)
-        else:
-            WeekLastDay[-1] = iDate
-    return WeekLastDay
-# 获取某个日期序列的每周第一天序列
-def getWeekFirstDay(dates):
-    dates.sort()
-    WeekFirstDay = []
-    WeekFirstDay.append(dates[0])
-    for iDate in dates:
-        iDateTime = DateStr2Datetime(iDate)
-        iDateWeekDay = iDateTime.weekday()
-        tempDateTime = DateStr2Datetime(WeekFirstDay[-1])
-        tempWeekDay = tempDateTime.weekday()
-        if (iDateTime-tempDateTime).days != (iDateWeekDay-tempWeekDay):
-            WeekFirstDay.append(iDate)
-    return WeekFirstDay
-# 获取某个日期序列的每年最后一天序列
-def getYearLastDay(dates):
-    dates.sort()
-    YearLastDay = []
-    YearLastDay.append(dates[0])
-    for iDate in dates:
-        if (iDate[:4]==YearLastDay[-1][:4]):
-            YearLastDay[-1] = iDate
-        else:
-            YearLastDay.append(iDate)
-    return YearLastDay
-# 获取某个日期序列的每年第一天序列
-def getYearFirstDay(dates):
-    dates.sort()
-    YearFirstDay = []
-    YearFirstDay.append(dates[0])
-    for iDate in dates:
-        if (iDate[:4]!=YearFirstDay[-1][:4]):
-            YearFirstDay.append(iDate)
-    return YearFirstDay
-# 获取某个日期序列的每个季度第一天序列
-def getQuarterFirstDay(dates):
-    dates.sort()
-    QuarterFirstDay = []
-    QuarterFirstDay.append(dates[0])
-    for iDate in dates:
-        if (iDate[:4]!=QuarterFirstDay[-1][:4]):
-            QuarterFirstDay.append(iDate)
-        elif int((int(iDate[4:6])-1)/3)!=int((int(QuarterFirstDay[-1][4:6])-1)/3):
-            QuarterFirstDay.append(iDate)
-    return QuarterFirstDay
-# 获取某个日期序列的每个季度最后一天序列
-def getQuarterLastDay(dates):
-    dates.sort()
-    QuarterLastDay = []
-    QuarterLastDay.append(dates[0])
-    for iDate in dates:
-        if (iDate[:4]!=QuarterLastDay[-1][:4]):
-            QuarterLastDay.append(iDate)
-        elif int((int(iDate[4:6])-1)/3)!=int((int(QuarterLastDay[-1][4:6])-1)/3):
-            QuarterLastDay.append(iDate)
-        else:
-            QuarterLastDay[-1] = iDate
-    return QuarterLastDay
-# 获取某个日期序列的每个财报公布季度最后一天序列,上年11月初至当年四月底为第一季度，5月初至八月底为第二季度，9月初至十月底为第三季度
-def getFinancialQuarterLastDay(dates):
-    def getQuanterNum(date):
-        if int(date[4:6]) in [1,2,3,4,11,12]:
-            return 0
-        elif int(date[4:6]) in [5,6,7,8]:
-            return 2
-        else:
-            return 3
-    dates.sort()
-    QuarterLastDay = []
-    QuarterLastDay.append(dates[0])
-    for iDate in dates:
-        if (iDate[:4]==QuarterLastDay[-1][:4]):
-            if (getQuanterNum(iDate)!=getQuanterNum(QuarterLastDay[-1])) or ((int(iDate[4:6])>=11) and (int(QuarterLastDay[-1][4:6])<=4)):
-                QuarterLastDay.append(iDate)
-            else:
-                QuarterLastDay[-1] = iDate
-        elif (int(iDate[:4])-int(QuarterLastDay[-1][:4])>1):
-            QuarterLastDay.append(iDate)
-        else:
-            if (int(QuarterLastDay[-1][4:6])>=11) and (int(iDate[4:6])<=4):
-                QuarterLastDay[-1] = iDate
-            elif getQuanterNum(iDate)!=getQuanterNum(QuarterLastDay[-1]):
-                QuarterLastDay.append(iDate)
-            else:
-                QuarterLastDay[-1] = iDate
-    return QuarterLastDay
-# 获取某个日期序列的每个财报公布季度最后一天序列,上年11月初至当年四月底为第一季度，5月初至八月底为第二季度，9月初至十月底为第三季度
-def getFinancialQuarterFirstDay(dates):
-    def getQuanterNum(date):
-        if int(date[4:6]) in [1,2,3,4,11,12]:
-            return 0
-        elif int(date[4:6]) in [5,6,7,8]:
-            return 2
-        else:
-            return 3
-    dates.sort()
-    QuarterFirstDay = []
-    QuarterFirstDay.append(dates[0])
-    for iDate in dates:
-        if (iDate[:4]==QuarterFirstDay[-1][:4]):# 同一年
-            if (getQuanterNum(iDate)!=getQuanterNum(QuarterFirstDay[-1])) or ((int(iDate[4:6])>=11) and (int(QuarterFirstDay[-1][4:6])<=4)):
-                QuarterFirstDay.append(iDate)
-        elif (int(iDate[:4])-int(QuarterFirstDay[-1][:4])>1):# 相差超过一年
-            QuarterFirstDay.append(iDate)
-        else:
-            if getQuanterNum(iDate)!=getQuanterNum(QuarterFirstDay[-1]):
-                QuarterFirstDay.append(iDate)
-    return QuarterFirstDay
-# 日期变换
+# 日期变换, depreciated
 def changeDate(dates, change_type=None):
     if change_type is None:
         return ['月末日',"周末日","年末日","季末日","月初日","周初日","年初日","季初日","A股财报季初日","A股财报季末日","月中日"]
@@ -221,7 +68,7 @@ def changeDate(dates, change_type=None):
         return getFinancialQuarterLastDay(dates)
     elif change_type == '月中日':
         return getMonthMiddleDay(dates)
-# 获取连续的自然日序列
+# 获取连续的自然日序列, depreciated
 def getNaturalDay(start_date,end_date):
     if start_date>end_date:
         return []
@@ -231,17 +78,6 @@ def getNaturalDay(start_date,end_date):
         Dates.append(iDate)
         iDate = Datetime2DateStr(DateStr2Datetime(iDate)+dt.timedelta(days=1))
     return Dates
-# 获取当前日期的字符串形式
-def getCurrentDateStr():
-    Today = pd.datetime.today()
-    return Datetime2DateStr(Today)
-# 获取去N年的同一天，如果是2月29号，返回2月28号
-def getLastNYearDate(date,n_year=1):
-    Year = int(date[:4])-n_year
-    if (date[4:]=='0229') and (Year%4!=0):
-        return str(Year)+'0228'
-    else:
-        return str(Year)+date[4:]
 # -------------------------------新的基于 DateTime 的日期时间函数---------------------
 # 合并日期序列和时间序列, 形成 DateTime 序列, 生成器函数
 def combineDateTime(dates, times):
@@ -265,20 +101,135 @@ def getDateStartEndIndex(dts, dates):
         else:
             Index[i, 1] = iIndex-1
     return Index
+# 获取某个时点序列的每月第一个时点序列
+def getMonthFirstDateTime(dts):
+    dts = sorted(dts)
+    TargetDTs = [dts[0]]
+    for iDT in dts:
+        if (iDT.year!=TargetDTs[-1].year) or (iDT.month!=TargetDTs[-1].month):
+            TargetDTs.append(iDT)
+    return TargetDTs
+# 获取某个时点序列的每月中间一时点序列, 每月小于等于 middle_day(默认 15) 的最后一天的最后一个时点
+def getMonthMiddleDateTime(dts, middle_day=15):
+    dts = sorted(dts)
+    TargetDTs = [dts[0]]
+    for iDT in dts:
+        if (iDT.year==TargetDTs[-1].year) and (iDT.month==TargetDTs[-1].month):
+            if iDT.day<=middle_day:
+                TargetDTs[-1] = iDT
+        else:
+            TargetDTs.append(iDT)
+    return TargetDTs
 # 获取某个时点序列的每月最后一个时点序列
 def getMonthLastDateTime(dts):
-    dts.sort()
-    TargetDateTime = []
-    TargetDateTime.append(dts[0])
-    for iDateTime in dts:
-        if (iDateTime.year==TargetDateTime[-1].year) and (iDateTime.month==TargetDateTime[-1].month):
-            TargetDateTime[-1] = iDateTime
+    dts = sorted(dts)
+    TargetDTs = [dts[0]]
+    for iDT in dts:
+        if (iDT.year==TargetDTs[-1].year) and (iDT.month==TargetDTs[-1].month):
+            TargetDTs[-1] = iDT
         else:
-            TargetDateTime.append(iDateTime)
-    return TargetDateTime
+            TargetDTs.append(iDT)
+    return TargetDTs
+# 获取某个时点序列的每周第一个时点序列
+def getWeekFirstDateTime(dts):
+    dts = sorted(dts)
+    TargetDTs = [dts[0]]
+    for iDT in dts:
+        if (iDT.date()-TargetDTs[-1].date()).days != (iDT.weekday()-TargetDTs[-1].weekday()):
+            TargetDTs.append(iDT)
+    return TargetDTs
+# 获取某个时点序列的每周最后一个时点序列
+def getWeekLastDateTime(dts):
+    dts = sorted(dts)
+    TargetDTs = [dts[0]]
+    for iDT in dts:
+        if (iDT.date()-TargetDTs[-1].date()).days != (iDT.weekday()-TargetDTs[-1].weekday()):
+            TargetDTs.append(iDT)
+        else:
+            TargetDTs[-1] = iDT
+    return TargetDTs
+# 获取某个时点序列的每年第一天序列
+def getYearFirstDateTime(dts):
+    dts = sorted(dts)
+    TargetDTs = [dts[0]]
+    for iDT in dts:
+        if iDT.year!=TargetDTs[-1].year:
+            TargetDTs.append(iDT)
+    return TargetDTs
+# 获取某个时点序列的每年最后一个时点序列
+def getYearLastDateTime(dts):
+    dts = sorted(dts)
+    TargetDTs = [dts[0]]
+    for iDT in dts:
+        if (iDT.year==TargetDTs[-1].year):
+            TargetDTs[-1] = iDT
+        else:
+            TargetDTs.append(iDT)
+    return TargetDTs
+# 获取某个时点序列的每个季度第一个时点序列
+def getQuarterFirstDateTime(dts):
+    dts = sorted(dts)
+    TargetDTs = [dts[0]]
+    for iDT in dts:
+        if (iDT.year!=TargetDTs[-1].year):
+            TargetDTs.append(iDT)
+        elif (iDT.month-1)//3 != (TargetDTs[-1].month-1)//3:
+            TargetDTs.append(iDT)
+    return TargetDTs
+# 获取某个时点序列的每个季度最后一个时点序列
+def getQuarterLastDateTime(dts):
+    dts = sorted(dts)
+    TargetDTs = [dts[0]]
+    for iDT in dts:
+        if (iDT.year!=TargetDTs[-1].year):
+            TargetDTs.append(iDT)
+        elif (iDT.month-1)//3 != (TargetDTs[-1].month-1)//3:
+            TargetDTs.append(iDT)
+        else:
+            TargetDTs[-1] = iDT
+    return TargetDTs
+def _getQuanterNum(idt):
+    if idt.month in (1,2,3,4,11,12): return 1
+    elif idt.month in (5,6,7,8): return 2
+    else: return 3
+# 获取某个时点序列的每个财报公布季度第一个时点序列, 上年 11 月初至当年 4 月底为第一季度, 5 月初至 8 月底为第二季度, 9 月初至 10 月底为第三季度
+def getFinancialQuarterFirstDateTime(dts):
+    dts = sorted(dts)
+    TargetDTs = [dts[0]]
+    for iDT in dts:
+        if (iDT.year==TargetDTs[-1].year):# 同一年
+            if (_getQuanterNum(iDT)!=_getQuanterNum(TargetDTs[-1])) or ((iDT.month>=11) and (TargetDTs[-1].month<=4)):
+                TargetDTs.append(iDT)
+        elif iDT.year-TargetDTs[-1].year>1:# 相差超过一年
+            TargetDTs.append(iDT)
+        else:
+            if _getQuanterNum(iDT)!=_getQuanterNum(TargetDTs[-1]):
+                TargetDTs.append(iDT)
+    return TargetDTs
+# 获取某个时点序列的每个财报公布季度最后一个时点序列, 上年 11 月初至当年 4 月底为第一季度, 5 月初至 8 月底为第二季度, 9 月初至 10 月底为第三季度
+def getFinancialQuarterLastDateTime(dts):
+    dts = sorted(dts)
+    TargetDTs = [dts[0]]
+    for iDT in dts:
+        if (iDT.year==TargetDTs[-1].year):
+            if (_getQuanterNum(iDT)!=_getQuanterNum(TargetDTs[-1])) or ((iDT.month>=11) and (TargetDTs[-1].month<=4)):
+                TargetDTs.append(iDT)
+            else:
+                TargetDTs[-1] = iDT
+        elif iDT.year-TargetDTs[-1].year>1:
+            TargetDTs.append(iDT)
+        else:
+            if (TargetDTs[-1].month>=11) and (iDT.month<=4):
+                TargetDTs[-1] = iDT
+            elif _getQuanterNum(iDT)!=_getQuanterNum(TargetDTs[-1]):
+                TargetDTs.append(iDT)
+            else:
+                TargetDTs[-1] = iDT
+    return TargetDTs
+
 # 获取日期序列
 def getDateSeries(start_date, end_date):
-    return (start_date-dt.timedelta(1))+np.array([dt.timedelta(1)]*((end_date-start_date).days+1)).cumsum()
+    return (start_date-dt.timedelta(1)) + np.array([dt.timedelta(1)] * ((end_date-start_date).days+1)).cumsum()
 # 获取日内连续的时间序列, start_time, end_time, timedelta 是 datetime.time 对象
 def getTimeSeries(start_time, end_time, timedelta):
     TimeSeries = getDateTimeSeries(dt.datetime.combine(dt.date.today(), start_time), dt.datetime.combine(dt.date.today(), end_time), timedelta)

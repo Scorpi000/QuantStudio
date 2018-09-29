@@ -3,6 +3,7 @@
 import os
 import sys
 import shelve
+import datetime as dt
 import time
 
 import numpy as np
@@ -11,7 +12,7 @@ from scipy.stats import skew,kurtosis,norm
 from scipy.integrate import quad
 import statsmodels.api as sm
 
-from QuantStudio.Tools.DateTimeFun import DateStr2Datetime,getCurrentDateStr,getNaturalDay
+from QuantStudio.Tools.DateTimeFun import DateStr2Datetime, getDateSeries
 from QuantStudio.Tools.FileFun import listDirFile,readCSV2Pandas
 
 # 迭代法求解在考虑交易费且无交易限制假设下执行交易后的财富值
@@ -685,8 +686,7 @@ def calcAvgReturnPerYearday(wealth_seq, dates, date_ruler=None):
     DenseWealthSeq,dates = _densifyWealthSeq(wealth_seq, dates, date_ruler)
     YeardayYield = np.zeros((366,)+DenseWealthSeq.shape[1:])
     YeardayNum = np.zeros(366)
-    YeardaySeq = getNaturalDay("20000101","20001231")
-    YeardaySeq = [iDate[4:] for iDate in YeardaySeq]
+    YeardaySeq = [iDate.strftime("%m%d") for iDate in getDateSeries(start_date=dt.date(2000, 1, 1), end_date=dt.date(2000, 12, 31))]
     for i,iDate in enumerate(dates[1:]):
         iInd = YeardaySeq.index(iDate[4:])
         YeardayNum[iInd] += 1

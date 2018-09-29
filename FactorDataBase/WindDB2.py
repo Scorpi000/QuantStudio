@@ -13,16 +13,9 @@ from QuantStudio.Tools.AuxiliaryFun import searchNameInStrList
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
 from QuantStudio.Tools.FileFun import readJSONFile
+from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio import __QS_Object__, __QS_Error__, __QS_LibPath__
 from QuantStudio.FactorDataBase.WindDB import WindDB, _DBTable, _adjustDateTime
-
-def fillna(df, limit_ns):
-    Ind = pd.DataFrame(np.r_[0, np.diff(df.index.values).astype("float")].reshape((df.shape[0], 1)).repeat(df.shape[1], axis=1).cumsum(axis=0))
-    Ind1 = Ind.where(pd.notnull(df.values), other=np.nan)
-    Ind1.fillna(method="pad", inplace=True)
-    df = df.fillna(method="pad")
-    df.where((Ind.values-Ind1.values<=limit_ns), np.nan, inplace=True)
-    return df
 
 def RollBackNPeriod(report_date, n_period):
     Date = report_date
@@ -287,9 +280,9 @@ class _MarketTable(_DBTable):
         if LookBack==0: return Data.ix[:, dts, ids]
         AllDTs = Data.major_axis.union(set(dts)).sort_values()
         Data = Data.ix[:, AllDTs, ids]
-        LimitNs = LookBack*24.0*3600*10**9
+        Limits = LookBack*24.0*3600
         for i, iFactorName in enumerate(Data.items):
-            Data.iloc[i] = fillna(Data.iloc[i], limit_ns=LimitNs)
+            Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
         return Data.loc[:, dts]
 
 class _ConstituentTable(_DBTable):
@@ -1176,9 +1169,9 @@ class _AnalystConsensusTable(_DBTable):
         if LookBack==0: return Data.ix[:, dts, ids]
         AllDTs = Data.major_axis.union(set(dts)).sort_values()
         Data = Data.ix[:, AllDTs, ids]
-        LimitNs = LookBack*24.0*3600*10**9
+        Limits = LookBack*24.0*3600
         for i, iFactorName in enumerate(Data.items):
-            Data.iloc[i] = fillna(Data.iloc[i], limit_ns=LimitNs)
+            Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
         return Data.loc[:, dts]
     def _calcIDData_FY(self, date_seq, raw_data, report_ann_data, factor_names, lookback, fy_num):
         StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan)

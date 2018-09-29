@@ -35,19 +35,28 @@ class _FactorTable(FactorTable):
         DBTableName = self._FactorDB.TablePrefix+self._FactorDB._Prefix+self.Name
         SQLStr = "SELECT DISTINCT "+DBTableName+".ID "
         SQLStr += "FROM "+DBTableName+" "
-        if idt is not None: SQLStr += "WHERE "+DBTableName+".DateTime='"+idt.strftime("%Y%m%d")+"' "
-        else: SQLStr += "WHERE "+DBTableName+".DateTime IS NOT NULL "
-        if ifactor_name is not None: SQLStr += "AND "+DBTableName+"."+ifactor_name+" IS NOT NULL "
+        if idt is not None:
+            SQLStr += "WHERE "+DBTableName+".DateTime='"+idt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
+            JoinStr = "AND "
+        else:
+            JoinStr = "WHERE "
+        if ifactor_name is not None: SQLStr += JoinStr+DBTableName+"."+ifactor_name+" IS NOT NULL "
         SQLStr += "ORDER BY "+DBTableName+".ID"
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None):
         DBTableName = self._FactorDB.TablePrefix+self._FactorDB._Prefix+self.Name
         SQLStr = "SELECT DISTINCT "+DBTableName+".DateTime "
         SQLStr += "FROM "+DBTableName+" "
-        if iid is not None: SQLStr += "WHERE "+DBTableName+".ID='"+iid+"' "
-        else: SQLStr += "WHERE "+DBTableName+".ID IS NOT NULL "
-        if start_dt is not None: SQLStr += "AND "+DBTableName+".DateTime>='"+start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
-        if end_dt is not None: SQLStr += "AND "+DBTableName+".DateTime<='"+end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
+        if iid is not None:
+            SQLStr += "WHERE "+DBTableName+".ID='"+iid+"' "
+            JoinStr = "AND "
+        else:
+            JoinStr = "WHERE "
+        if start_dt is not None:
+            SQLStr += JoinStr+DBTableName+".DateTime>='"+start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
+            JoinStr = "AND "
+        if end_dt is not None:
+            SQLStr += JoinStr+DBTableName+".DateTime<='"+end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
         SQLStr += "ORDER BY "+DBTableName+".DateTime"
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
@@ -58,9 +67,13 @@ class _FactorTable(FactorTable):
         SQLStr += DBTableName+".ID, "
         for iField in factor_names: SQLStr += DBTableName+"."+iField+", "
         SQLStr = SQLStr[:-2]+" FROM "+DBTableName+" "
-        #SQLStr += "WHERE ("+genSQLInCondition(DBTableName+".ID", ids, is_str=True, max_num=1000)+") "
-        SQLStr += "WHERE "+DBTableName+".DateTime>='"+dts[0].strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
-        SQLStr += "AND "+DBTableName+".DateTime<='"+dts[-1].strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
+        if np.nanmax(np.diff(np.array(dts))).days<=1:
+            SQLStr += "WHERE "+DBTableName+".DateTime>='"+dts[0].strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
+            SQLStr += "AND "+DBTableName+".DateTime<='"+dts[-1].strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
+        else:
+            SQLStr += "WHERE ("+genSQLInCondition(DBTableName+".DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
+        if len(ids)<=1000:
+            SQLStr += "AND ("+genSQLInCondition(DBTableName+".ID", ids, is_str=True, max_num=1000)+") "
         SQLStr += "ORDER BY "+DBTableName+".DateTime, "+DBTableName+".ID"
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["DateTime", "ID"]+factor_names)
@@ -101,10 +114,10 @@ class SQLDB(WritableFactorDB):
         return state
     def __setstate__(self, state):
         self.__dict__.update(state)
-        if self._Connection: self.connect()
+        if self._Connection: self._connect()
         else: self._Connection = None
     # -------------------------------------------数据库相关---------------------------
-    def connect(self):
+    def _connect(self):
         if (self.Connector=='cx_Oracle') or ((self.Connector=='default') and (self.DBType=='Oracle')):
             try:
                 import cx_Oracle
@@ -120,7 +133,7 @@ class SQLDB(WritableFactorDB):
         elif (self.Connector=='mysql.connector') or ((self.Connector=='default') and (self.DBType=='MySQL')):
             try:
                 import mysql.connector
-                self._Connection = mysql.connector.connect(host=self.IPAddr, port=str(self.Port), user=self.User, password=self.Pwd, database=self.DBName, charset=self.CharSet)
+                self._Connection = mysql.connector.connect(host=self.IPAddr, port=str(self.Port), user=self.User, password=self.Pwd, database=self.DBName, charset=self.CharSet, autocommit=True)
             except Exception as e:
                 if self.Connector!='default': raise e
         else:
@@ -130,6 +143,9 @@ class SQLDB(WritableFactorDB):
             else:
                 import pyodbc
                 self._Connection = pyodbc.connect('DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s' % (self.DBType, self.DBName, self.IPAddr, self.User, self.Pwd))
+        return 0
+    def connect(self):
+        self._connect()
         if self.DBType=="MySQL":
             SQLStr = ("SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE table_schema='%s' " % self.DBName)
             SQLStr += ("AND TABLE_NAME LIKE '%s%%' " % self._Prefix)
@@ -158,7 +174,7 @@ class SQLDB(WritableFactorDB):
         return (self._Connection is not None)
     def cursor(self, sql_str=None):
         if self._Connection is None: raise __QS_Error__("%s尚未连接!" % self.__doc__)
-        Cursor = self._Connection.cursor()
+        Cursor = self._Connection.cursor(buffered=True)
         if sql_str is None: return Cursor
         Cursor.execute(sql_str)
         return Cursor

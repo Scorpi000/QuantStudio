@@ -314,6 +314,7 @@ class WindDB(FactorDB):
             else:
                 import pyodbc
                 self._Connection = pyodbc.connect('DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s' % (self.DBType, self.DBName, self.IPAddr, self.User, self.Pwd))
+        self._Connection.autocommit = True
         self._AllTables = []
         return 0
     def disconnect(self):
