@@ -8,7 +8,7 @@ import pickle
 import gc
 import shelve
 import datetime as dt
-from multiprocessing import Process, Queue, Lock, Event
+from multiprocessing import Process, Queue, Lock, Event, cpu_count
 
 import numpy as np
 import pandas as pd
@@ -640,10 +640,12 @@ class FactorTable(__QS_Object__):
         self.OperationMode._isStarted = False
         return 0
     # 计算因子数据并写入因子库    
-    def write2FDB(self, factor_names, ids, dts, factor_db, table_name, if_exists="update", **kwargs):
+    def write2FDB(self, factor_names, ids, dts, factor_db, table_name, if_exists="update", subprocess_num=cpu_count()-1, dt_ruler=None, **kwargs):
         if not isinstance(factor_db, WritableFactorDB): raise __QS_Error__("因子数据库: %s 不可写入!" % factor_db.Name)
         print("==========因子运算==========", "1. 原始数据准备", sep="\n", end="")
         TotalStartT = time.clock()
+        self.OperationMode.SubProcessNum = subprocess_num
+        self.OperationMode.DTRuler = (dts if dt_ruler is None else dt_ruler)
         self._prepare(factor_names, ids, dts)
         print(("耗时 : %.2f" % (time.clock()-TotalStartT, )), "2. 因子数据计算", end="", sep="\n")
         StartT = time.clock()
