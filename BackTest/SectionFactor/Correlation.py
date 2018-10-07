@@ -51,8 +51,8 @@ class SectionCorrelation(BaseModule):
         Items[0].editor = SetEditor(values=self.trait("TestFactors").option_range)
         Items[3].editor = SetEditor(values=self.trait("CorrMethod").option_range)
         return (Items, Context)
-    def __QS_start__(self, mdl, dts=None, dates=None, times=None):
-        super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
+    def __QS_start__(self, mdl, dts, **kwargs):
+        super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._Output = {"FactorPair":[]}
         for i, iFactor in enumerate(self.TestFactors):
             for j, jFactor in enumerate(self.TestFactors):
@@ -64,7 +64,7 @@ class SectionCorrelation(BaseModule):
         self._Output["时点"] = []
         self._CurCalcInd = 0
         return (self._FactorTable, )
-    def __QS_move__(self, idt):
+    def __QS_move__(self, idt, **kwargs):
         if self.CalcDTs:
             if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
             self._CurCalcInd = self.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd

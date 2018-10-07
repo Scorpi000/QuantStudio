@@ -63,8 +63,8 @@ class TimeBarAccount(Account):
         self._LastPrice[self._LastPrice==0] = np.nan
         self._LastPrice.fillna(method="pad", inplace=True)
         return 0
-    def __QS_move__(self, idt, *args, **kwargs):
-        super().__QS_move__(idt, *args, **kwargs)
+    def __QS_move__(self, idt, **kwargs):
+        super().__QS_move__(idt, **kwargs)
         # 更新当前的账户信息
         iIndex = self.QSEnv.STM.DateTimeIndex
         self._Position[iIndex+1] = self._Position[iIndex]
@@ -80,8 +80,8 @@ class TimeBarAccount(Account):
         # 更新当前的账户信息
         self._PositionAmount[iIndex+1] = self._Position[iIndex+1]*self.LastPrice.values
         return TradingRecord
-    def __QS_after_move__(self, idt, *args, **kwargs):
-        super().__QS_after_move__(self, idt, *args, **kwargs)
+    def __QS_after_move__(self, idt, **kwargs):
+        super().__QS_after_move__(self, idt, **kwargs)
         self._iTradingRecord = self._matchOrder(idt)
         if self._iTradingRecord:
             iIndex = self.QSEnv.STM.DateTimeIndex
@@ -98,7 +98,7 @@ class TimeBarAccount(Account):
             return self._Output
         self._Output = super().output()
         self._Output["证券进出记录"] = self._EquityRecord
-        self._Output["持仓"] = self.getPositionSeries()
+        self._Output["持仓"] = self.getPositionNumSeries()
         self._Output["持仓金额"] = self.getPositionAmountSeries()
         return self._Output
     # 当前账户价值
@@ -131,7 +131,7 @@ class TimeBarAccount(Account):
     def isShortAllowed(self):
         return True
     # 获取持仓的历史序列, 以时间点为索引, 返回: pd.DataFrame(持仓, index=[时间点], columns=[ID])
-    def getPositionSeries(self, dts=None, start_dt=None, end_dt=None):
+    def getPositionNumSeries(self, dts=None, start_dt=None, end_dt=None):
         Data = pd.DataFrame(self._Position[1:self.QSEnv.STM.DateTimeIndex+2], index=self.QSEnv.STM.DateTimeSeries, columns=self._IDs)
         return cutDateTime(Data, dts=dts, start_dt=start_dt, end_dt=end_dt)
     # 获取持仓证券的金额历史序列, 以时间点为索引, 返回: pd.DataFrame(持仓金额, index=[时间点], columns=[ID])

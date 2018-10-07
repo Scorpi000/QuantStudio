@@ -138,8 +138,8 @@ class TimeBarAccount(Account):
         self.AdjustFactorMap = _AdjustFactorMap(self._AdjustFT)
         self.BuyLimit = _TradeLimit(direction="Buy")
         self.SellLimit = _TradeLimit(direction="Sell")
-    def __QS_start__(self, mdl, dts=None, dates=None, times=None):
-        Rslt = super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
+    def __QS_start__(self, mdl, dts, **kwargs):
+        Rslt = super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._IDs = list(self.TargetIDs)
         if not self._IDs: self._IDs = list(self._MarketFT.getID(ifactor_name=self.MarketFactorMap.TradePrice))
         nDT, nID = len(dts), len(self._IDs)
@@ -163,8 +163,8 @@ class TimeBarAccount(Account):
         self._iTradingRecord = []# 暂存的交易记录
         self._iDate = None# 当前所处的日期
         return Rslt
-    def __QS_move__(self, idt, *args, **kwargs):
-        super().__QS_move__(idt, *args, **kwargs)
+    def __QS_move__(self, idt, **kwargs):
+        super().__QS_move__(idt, **kwargs)
         # 更新当前的账户信息
         self._LastPrice = self._MarketFT.readData(factor_names=[self.MarketFactorMap.Last], ids=self._IDs, dts=[idt]).iloc[0, 0].values
         iIndex = self._Model.DateTimeIndex
@@ -183,8 +183,8 @@ class TimeBarAccount(Account):
             TradingRecord = self._iTradingRecord
         self._PositionAmount[iIndex+1] = self._Position[iIndex+1]*self._LastPrice
         return TradingRecord
-    def __QS_after_move__(self, idt, *args, **kwargs):
-        super().__QS_after_move__(self, idt, *args, **kwargs)
+    def __QS_after_move__(self, idt, **kwargs):
+        super().__QS_after_move__(idt, **kwargs)
         if not self.Delay:# 撮合成交
             iIndex = self._Model.DateTimeIndex
             TradingRecord = self._matchOrder(idt)
@@ -196,7 +196,7 @@ class TimeBarAccount(Account):
         return 0
     def __QS_end__(self):
         super().__QS_end__()
-        self._Output["持仓"] = self.getPositionSeries()
+        self._Output["持仓"] = self.getPositionNumSeries()
         self._Output["持仓金额"] = self.getPositionAmountSeries()
         self._Output["证券进出记录"] = self._EquityRecord
         return 0
@@ -308,7 +308,7 @@ class TimeBarAccount(Account):
         return self._MarketFT.readData(factor_names=[self.MarketFactorMap.Open, self.MarketFactorMap.High, self.MarketFactorMap.Low, self.MarketFactorMap.Last, self.MarketFactorMap.Vol], 
                                        dts=[self._Model.DateTime], ids=self._IDs).iloc[:,0,:]
     # 获取持仓数量的历史序列, 以时间点为索引, 返回: DataFrame(float, index=[时间点], columns=[ID])
-    def getPositionSeries(self, dts=None, start_dt=None, end_dt=None):
+    def getPositionNumSeries(self, dts=None, start_dt=None, end_dt=None):
         Data = pd.DataFrame(self._Position[1:self._Model.DateTimeIndex+2], index=self._Model.DateTimeSeries, columns=self._IDs)
         return cutDateTime(Data, dts=dts, start_dt=start_dt, end_dt=end_dt)
     # 获取持仓金额的历史序列, 以时间点为索引, 返回: DataFrame(float, index=[时间点], columns=[ID])
@@ -609,7 +609,3 @@ class TickAccount(TimeBarAccount):
         TradingRecord = list(zip([idt]*BuyNums.shape[0], BuyNums.index, BuyNums, BuyAmounts/BuyNums, BuyFees, -(BuyAmounts+BuyFees), ["open"]*BuyNums.shape[0]))
         if TradingRecord: self._QS_updateAccount(CashChanged, Position)
         return TradingRecord
-
-if __name__=="__main__":
-    testC = _TradeLimit(direction="Buy")
-    testC.setArgs()

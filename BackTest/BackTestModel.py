@@ -29,11 +29,11 @@ class BaseModule(__QS_Object__):
     def Model(self):
         return self._Model
     # 测试开始前的初始化函数
-    def __QS_start__(self, mdl, dts=None, dates=None, times=None):
+    def __QS_start__(self, mdl, dts, **kwargs):
         self._Model = mdl
         return ()
     # 测试至某个时点的计算函数
-    def __QS_move__(self, idt, *args, **kwargs):
+    def __QS_move__(self, idt, **kwargs):
         return 0
     # 测试结束后的整理函数
     def __QS_end__(self):
@@ -90,27 +90,22 @@ class BackTestModel(__QS_Object__):
             Context[Prefix+"Module"+str(j)] = jModule
         return (Groups, Context)
     # 运行模型
-    def run(self, test_dts=None, test_dates=None, test_times=None):
-        if test_dts is not None: self._QS_TestDateTimes = sorted(test_dts)
-        elif test_dates is not None:
-            test_dates = sorted(test_dates)
-            if test_times is None: test_times = [dt.time(23,59,59,999999)]
-            else: test_times = sorted(test_times)
-            self._QS_TestDateTimes = list(combineDateTime(test_dates, test_times))
+    def run(self, dts):
+        self._QS_TestDateTimes = sorted(dts)
         TotalStartT = time.clock()
         print("==========历史回测==========", "1. 初始化", sep="\n", end="")
         FactorDBs = set()
         for jModule in self.Modules:
-            jDBs = jModule.__QS_start__(mdl=self, dts=test_dts, dates=test_dates, times=test_times)
+            jDBs = jModule.__QS_start__(mdl=self, dts=dts)
             if jDBs is not None: FactorDBs.update(set(jDBs))
-        for jDB in FactorDBs: jDB.start(dts=test_dts, dates=test_dates, times=test_times)
+        for jDB in FactorDBs: jDB.start(dts=dts)
         print(('耗时 : %.2f' % (time.clock()-TotalStartT, )), "2. 循环计算", sep="\n", end="")
         StartT = time.clock()
-        for i, iDateTime in enumerate(tqdm(self._QS_TestDateTimes)):
+        for i, iDT in enumerate(tqdm(self._QS_TestDateTimes)):
             self._TestDateTimeIndex = i
-            self._TestDateIndex.loc[iDateTime.date()] = i
-            for jDB in FactorDBs: jDB.move(iDateTime)
-            for jModule in self.Modules: jModule.__QS_move__(iDateTime)
+            self._TestDateIndex.loc[iDT.date()] = i
+            for jDB in FactorDBs: jDB.move(iDT)
+            for jModule in self.Modules: jModule.__QS_move__(iDT)
         print(('耗时 : %.2f' % (time.clock()-StartT, )), "3. 结果生成", sep="\n", end="")
         StartT = time.clock()
         for jModule in self.Modules: jModule.__QS_end__()

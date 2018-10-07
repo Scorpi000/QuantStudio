@@ -1,0 +1,253 @@
+# coding=utf-8
+"""基于 tushare 的因子库"""
+import re
+import os
+import datetime as dt
+
+import numpy as np
+import pandas as pd
+import tushare as ts
+from traits.api import Enum, Int, Str, Range, Bool
+
+from QuantStudio.Tools.AuxiliaryFun import searchNameInStrList
+from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
+from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
+from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
+from QuantStudio import __QS_Object__, __QS_Error__, __QS_LibPath__, __QS_MainPath__
+from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
+
+class _FactorTable(FactorTable):
+    def getMetaData(self, key=None):
+        TableInfo = self._FactorDB._TableInfo.ix[self.Name]
+        if key is None:
+            return TableInfo
+        else:
+            return TableInfo.get(key, None)
+    @property
+    def FactorNames(self):
+        FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]
+        return FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()
+    def getFactorMetaData(self, factor_names=None, key=None):
+        if factor_names is None:
+            factor_names = self.FactorNames
+        FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]
+        if key=="DataType":
+            if hasattr(self, "_DataType"): return self._DataType.ix[factor_names]
+            MetaData = FactorInfo["DataType"].ix[factor_names]
+            for i in range(MetaData.shape[0]):
+                iDataType = MetaData.iloc[i].lower()
+                if iDataType.find("str")!=-1: MetaData.iloc[i] = "string"
+                else: MetaData.iloc[i] = "double"
+            return MetaData
+        elif key=="Description": return FactorInfo["Description"].ix[factor_names]
+        elif key is None:
+            return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType"),
+                                 "Description":self.getFactorMetaData(factor_names, key="Description")})
+        else:
+            return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
+
+
+class _CalendarTable(_FactorTable):
+    """交易日历因子表"""
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        FactorInfo = fdb._FactorInfo.ix[name]
+        self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
+        self._DateField = FactorInfo[FactorInfo["FieldType"]=="Date"].index[0]
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+        return
+    # 返回交易所列表
+    # 忽略 ifactor_name, idt
+    def getID(self, ifactor_name=None, idt=None, args={}):
+        return ["SSE", "SZSE"]
+    # 返回交易所为 iid 的交易日列表
+    # 如果 iid 为 None, 将返回表中有记录数据的时间点序列
+    # 忽略 ifactor_name
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
+        DBTableName = self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        DateField = self._FactorDB._FactorInfo['DBFieldName'].ix[self.Name].ix[self._DateField]
+        if start_dt is None: start_dt = dt.date(1900, 1, 1)
+        start_dt = start_dt.strftime("%Y%m%d")
+        if end_dt is None: end_dt = dt.date.today()
+        end_dt = end_dt.strftime("%Y%m%d")
+        if iid is None: iid="SSE"
+        Dates = self._FactorDB._ts.query(DBTableName, exchange_id=iid, start_date=start_dt, end_date=end_dt, fields=DateField, is_open="1")
+        return [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Dates[DateField].values]
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        DBTableName = self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        FieldDict = self._FactorDB._FactorInfo['DBFieldName'].ix[self.Name].ix[[self._DateField, self._IDField]+factor_names]
+        Fields = FieldDict.tolist()
+        StartDate, EndDate = dts[0].strftime("%Y%m%d"), dts[-1].strftime("%Y%m%d")
+        RawData = None
+        for iID in ids:
+            iData = self._FactorDB._ts.query(DBTableName, exchange_id=iID, start_date=StartDate, end_date=EndDate, fields=Fields)
+            iData.index = [iID] * iData.shape[0]
+            if RawData is None: RawData = iData
+            else: RawData = RawData.append(iData)
+        if RawData is None: return pd.DataFrame(columns=["日期", "ID"]+factor_names)
+        RawData.index, RawData.columns = np.arange(RawData.shape[0]), ["日期", "ID"]+factor_names
+        return RawData
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        raw_data = raw_data.set_index(["日期", "ID"])
+        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
+        Data = {}
+        for iFactorName in raw_data.columns:
+            iRawData = raw_data[iFactorName].unstack()
+            if DataType[iFactorName]=="double": iRawData = iRawData.astype("float")
+            Data[iFactorName] = iRawData
+        Data = pd.Panel(Data).loc[factor_names]
+        Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
+        return Data.ix[:, dts, ids]
+
+class _MarketTable(_FactorTable):
+    """行情因子表"""
+    LookBack = Int(0, arg_type="Integer", label="回溯天数", order=0)
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        FactorInfo = fdb._FactorInfo.ix[name]
+        self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
+        self._DateFields = FactorInfo[FactorInfo["FieldType"]=="Date"].index.tolist()
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+        return
+    def __QS_initArgs__(self):
+        super().__QS_initArgs__()
+        FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]
+        self.add_trait("DateField", Enum(*self._DateFields, arg_type="SingleOption", label="日期字段", order=0))
+        DefaultDateField = FactorInfo[(FactorInfo["Supplementary"]=="DefaultDate") & (FactorInfo["FieldType"]=="Date")]
+        if DefaultDateField.shape[0]>0: self.DateField = DefaultDateField.index[0]
+        else: self.DateField = self._DateFields[0]
+    @property
+    def FactorNames(self):
+        FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]
+        return FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()+self._DateFields
+    def getID(self, ifactor_name=None, idt=None, args={}):
+        return self._FactorDB.getID(index_id="全体A股", is_current=False)
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
+        if start_dt is not None: start_dt = start_dt.date()
+        if end_dt is not None: end_dt = end_dt.date()
+        return self._FactorDB.getTradeDay(start_date=start_dt, end_date=end_dt, exchange="SSE", output_type="datetime")
+    def __QS_genGroupInfo__(self, factors, operation_mode):
+        Group = {"FactorNames":[], "RawFactorNames":set(), "StartDT":dt.datetime.today(), "args":{"回溯天数":0}}
+        for iFactor in factors:
+            Group["FactorNames"].append(iFactor.Name)
+            Group["RawFactorNames"].add(iFactor._NameInFT)
+            Group["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], Group["StartDT"])
+            Group["args"]["回溯天数"] = max(Group["args"]["回溯天数"], iFactor.LookBack)
+        StartInd = operation_mode.DTRuler.index(Group["StartDT"])
+        EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
+        return [(self, Group["FactorNames"], list(Group["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], Group["args"])]
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        StartDate, EndDate = dts[0].date(), dts[-1].date()
+        StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
+        Fields = [self.DateField, self._IDField]+factor_names
+        DBFields = self._FactorDB._FactorInfo['DBFieldName'].ix[self.Name].ix[Fields].tolist()
+        DBTableName = self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        RawData = pd.DataFrame(columns=DBFields)
+        FieldStr = ",".join(DBFields)
+        if len(ids)<=(EndDate-StartDate).days:
+            StartDate, EndDate = StartDate.strftime("%Y%m%d"), EndDate.strftime("%Y%m%d")
+            for iID in ids:
+                iData = self._FactorDB._ts.query(DBTableName, ts_code=iID, start_date=StartDate, end_date=EndDate, fields=FieldStr)
+                RawData = RawData.append(iData)
+        else:
+            for i in range((EndDate-StartDate).days+1):
+                iDate = StartDate + dt.timedelta(i)
+                iData = self._FactorDB._ts.query(DBTableName, trade_date=iDate.strftime("%Y%m%d"), fields=FieldStr)
+                RawData = RawData.append(iData)
+        RawData = RawData.loc[:, DBFields]
+        RawData.columns = ["日期", "ID"]+factor_names
+        return RawData.sort_values(by=["ID", "日期"])
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        raw_data = raw_data.set_index(["日期", "ID"])
+        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
+        Data = {}
+        for iFactorName in raw_data.columns:
+            iRawData = raw_data[iFactorName].unstack()
+            if DataType[iFactorName]=="double": iRawData = iRawData.astype("float")
+            Data[iFactorName] = iRawData
+        Data = pd.Panel(Data).loc[factor_names]
+        Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
+        LookBack = args.get("回溯天数", self.LookBack)
+        if LookBack==0: return Data.ix[:, dts, ids]
+        AllDTs = Data.major_axis.union(set(dts)).sort_values()
+        Data = Data.ix[:, AllDTs, ids]
+        Limits = LookBack*24.0*3600
+        for i, iFactorName in enumerate(Data.items):
+            Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
+        return Data.loc[:, dts]
+
+class TushareDB(FactorDB):
+    """tushare"""
+    Token = Str("", label="Token", arg_type="String", order=0)
+    def __init__(self, sys_args={}, config_file=None, **kwargs):
+        super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"TushareDBConfig.json" if config_file is None else config_file), **kwargs)
+        self.Name = "TushareDB"
+        self._ts = None
+        return
+    def __QS_initArgs__(self):
+        self._InfoFilePath = __QS_LibPath__+os.sep+"TushareDBInfo.hdf5"# 信息文件路径
+        if not os.path.isfile(self._InfoFilePath):
+            InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"TushareDBInfo.xlsx"# 信息源文件路径
+            print("缺失信息文件: '%s', 尝试从 '%s' 中导入信息." % (self._InfoFilePath, InfoResourcePath))
+            if not os.path.isfile(InfoResourcePath): raise __QS_Error__("缺失信息文件: %s" % InfoResourcePath)
+            self.importInfo(InfoResourcePath)
+        self._TableInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/TableInfo")
+        self._FactorInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/FactorInfo")
+    def connect(self):
+        ts.set_token(self.Token)
+        self._ts = ts.pro_api()
+        return 0
+    def disconnect(self):
+        self._ts = None
+        return 0
+    def isAvailable(self):
+        return (self._ts is not None)
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state["_ts"] = self.isAvailable()
+        return state
+    def __setstate__(self,state):
+        self.__dict__.update(state)
+        if self._ts:
+            self._ts = None
+            self.connect()
+        else:
+            self._ts = None
+    @property
+    def TableNames(self):
+        if self._TableInfo is not None: return self._TableInfo.index.tolist()
+        else: return []
+    def getTable(self, table_name, args={}):
+        TableClass = self._TableInfo.loc[table_name, "TableClass"]
+        return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=args)")
+    # 给定起始日期和结束日期, 获取交易所交易日期
+    def getTradeDay(self, start_date=None, end_date=None, exchange="SSE", **kwargs):
+        if exchange not in ("SSE", "SZSE"): raise __QS_Error__("不支持交易所: '%s' 的交易日序列!" % exchange)
+        if start_date is None: start_date = dt.date(1900, 1, 1)
+        start_date = start_date.strftime("%Y%m%d")
+        if end_date is None: end_date = dt.date.today()
+        end_date = end_date.strftime("%Y%m%d")
+        Dates = self._ts.trade_cal(exchange_id=exchange, start_date=start_date, end_date=end_date, fields="cal_date", is_open="1")
+        if kwargs.get("output_type", "date")=="date":
+            return Dates["cal_date"].map(lambda x:dt.datetime.strptime(x, "%Y%m%d").date()).tolist()
+        else:
+            return Dates["cal_date"].map(lambda x:dt.datetime.combine(dt.datetime.strptime(x, "%Y%m%d").date(), dt.time(23,59,59,999999))).tolist()
+    # 获取指定日当前在市或者历史上出现过的全体 A 股 ID
+    def _getAllAStock(self, date, is_current=True):
+        Data = self._ts.stock_basic(exchange_id="", is_hs="", fields="ts_code, list_date, delist_date")
+        date = date.strftime("%Y%m%d")
+        Data = Data[Data["list_date"]<=date]
+        if is_current: Data = Data[pd.isnull(Data["delist_date"]) | (Data["delist_date"]>date)]
+        return Data["ts_code"].tolist()
+    # 获取指定日当前或历史上的指数成份股ID, is_current=True: 获取指定日当天的ID, False:获取截止指定日历史上出现的 ID
+    def getID(self, index_id="全体A股", date=None, is_current=True):
+        if date is None: date = dt.date.today()
+        if index_id=="全体A股": return self._getAllAStock(date=date, is_current=is_current)
+        if not is_current: raise __QS_Error__("不支持提取 '%s' 的历史成分股!" % index_id)
+        return self._ts.index_weight(index_code=index_id, trade_date=date.strftime("%Y%m%d"), fields="con_code")["con_code"].tolist()
+    # 将 Excel 文件中的表和字段信息导入信息文件
+    def importInfo(self, excel_file_path):
+        DF = pd.read_excel(excel_file_path, "TableInfo").set_index(["TableName"])
+        writeNestedDict2HDF5(DF, self._InfoFilePath, "/TableInfo")
+        DF = pd.read_excel(excel_file_path, 'FactorInfo').set_index(['TableName', 'FieldName'])
+        writeNestedDict2HDF5(DF, self._InfoFilePath, "/FactorInfo")

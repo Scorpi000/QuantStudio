@@ -280,7 +280,7 @@ class WindDB(FactorDB):
     def __QS_initArgs__(self):
         self._InfoFilePath = __QS_LibPath__+os.sep+"WindDBInfo.hdf5"# 数据库信息文件路径
         if not os.path.isfile(self._InfoFilePath):
-            InfoResourcePath = __QS_MainPath__+os.sep+"Rescource"+os.sep+"WindDBInfo.xlsx"# 数据库信息源文件路径
+            InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"WindDBInfo.xlsx"# 数据库信息源文件路径
             print("缺失数据库信息文件: '%s', 尝试从 '%s' 中导入信息." % (self._InfoFilePath, InfoResourcePath))
             if not os.path.isfile(InfoResourcePath): raise __QS_Error__("缺失数据库信息文件: %s" % InfoResourcePath)
             self.importInfo(InfoResourcePath)
@@ -357,10 +357,10 @@ class WindDB(FactorDB):
         TableClass = self._TableInfo.loc[table_name, "TableClass"]
         return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=args)")
     # -----------------------------------------数据提取---------------------------------
-    # 给定起始日期和结束日期, 获取交易所交易日期, 目前仅支持："上海证券交易所", "深圳证券交易所"
-    def getTradeDay(self, start_date=None, end_date=None, exchange="上海证券交易所"):
-        if exchange not in ("上海证券交易所", "深圳证券交易所"):
-            raise __QS_Error__("不支持交易所：%s的交易日序列！" % exchange)
+    # 给定起始日期和结束日期, 获取交易所交易日期, 目前仅支持："SSE", "SZSE"
+    def getTradeDay(self, start_date=None, end_date=None, exchange="SSE"):
+        if exchange not in ("SSE", "SZSE"):
+            raise __QS_Error__("不支持交易所: '%s' 的交易日序列!" % exchange)
         if start_date is None:
             start_date = dt.date(1900,1,1)
         if end_date is None:

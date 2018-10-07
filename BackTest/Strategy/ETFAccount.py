@@ -51,7 +51,7 @@ def _getDefaultNontradableIDFilter(data_source=None,nonbuyable=True,qs_env=None)
 
 class ETFAccount(Account):
     """ETF账户"""
-    def __init__(self, name, qs_env):
+    def __init__(self, name):
         super().__init__(name, qs_env)
         self.__QS_Type__ = "ETFAccount"
         # 继承自 Account 的属性
@@ -160,8 +160,8 @@ class ETFAccount(Account):
         #self._NonsellableID = None# 用于缓存禁止卖出证券列表
         #self._LastPrice = None# 用于缓存当前的最新价
         return 0
-    def __QS_move__(self, idt, timestamp, *args, **kwargs):
-        super().__QS_move__(idt, timestamp, *args, **kwargs)
+    def __QS_move__(self, idt, **kwargs):
+        super().__QS_move__(idt, **kwargs)
         # 更新当前的账户信息
         self._Position.append(self._Position[-1])
         # 撮合成交
@@ -280,7 +280,7 @@ class ETFAccount(Account):
     def EstCashBalance(self):
         pass
     # 获取持仓的历史序列, 以时间戳为索引
-    def getPositionSeries(self, start_tms=None, end_tms=None):
+    def getPositionNumSeries(self, start_tms=None, end_tms=None):
         TMSSeries = self.QSEnv.STM.TimestampSeries
         StartIndex = (1+TMSSeries.index(start_tms) if start_tms is not None else 1)
         EndIndex = (1+TMSSeries.index(end_tms) if end_tms is not None else len(TMSSeries))

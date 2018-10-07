@@ -51,8 +51,8 @@ class FMPModel(BaseModule):
             portfolio[PosMask] = portfolio[PosMask] / TotalPosWeight
             portfolio[NegMask] = portfolio[NegMask] * TotalNegWeight / TotalPosWeight
         return portfolio
-    def __QS_start__(self, mdl, dts=None, dates=None, times=None):
-        super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
+    def __QS_start__(self, mdl, dts, **kwargs):
+        super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self.RiskDS.start(dts=dts)
         self._Output = {}
         self._Output["因子暴露"] = pd.DataFrame(0.0, columns=self.AttributeFactors)
@@ -63,7 +63,7 @@ class FMPModel(BaseModule):
         self._CurCalcInd = 0
         self._IDs = self._FactorTable.getID()
         return (self._FactorTable, )
-    def __QS_move__(self, idt, *args, **kwargs):
+    def __QS_move__(self, idt, **kwargs):
         PreDT = None
         if self.CalcDTs:
             if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
@@ -83,7 +83,7 @@ class FMPModel(BaseModule):
             Portfolio[pd.isnull(Portfolio)], BenchmarkPortfolio[pd.isnull(BenchmarkPortfolio)] = 0.0, 0.0
             Portfolio = Portfolio - BenchmarkPortfolio
         # 计算因子模拟组合
-        self.RiskDS.move(PreDT, *args, **kwargs)
+        self.RiskDS.move(PreDT, **kwargs)
         CovMatrix = self.RiskDS.readCov(PreDT, ids=Portfolio.index.tolist(), drop_na=True)
         FactorExpose = self._FactorTable.readData(factor_names=list(self.AttributeFactors), ids=IDs, dts=[PreDT]).iloc[:,0].dropna(axis=0)
         IDs = FactorExpose.index.intersection(CovMatrix.index).tolist()
@@ -172,35 +172,3 @@ class FMPModel(BaseModule):
         ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
         HTML += ('<img src="%s">' % ImgStr)
         return HTML
-
-class BrinsonModel(BaseModule):
-    """Brinson 绩效分析模型"""
-    Portfolio = Enum(None, arg_type="SingleOption", label="策略组合", order=0)
-    BenchmarkPortfolio = Enum(None, arg_type="SingleOption", label="基准组合", order=1)
-    GroupFactor = Enum(None, arg_type="SingleOption", label="资产类别", order=2)
-    PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=3)
-    CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=4)
-    def __init__(self, factor_table, name="Brinson绩效分析模型", sys_args={}, **kwargs):
-        self._FactorTable = factor_table
-        return super().__init__(name=name, sys_args=sys_args, config_file=None, **kwargs)
-    def __QS_initArgs__(self):
-        DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FactorTable.getFactorMetaData(key="DataType")))
-        self.add_trait("Portfolio", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="策略组合", order=0))
-        self.add_trait("BenchmarkPortfolio", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="基准组合", order=1))
-        self.add_trait("GroupFactor", Enum(*DefaultStrFactorList, arg_type="SingleOption", label="资产类别", order=2))
-        self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=3))
-        self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
-    def __QS_start__(self, mdl, dts=None, dates=None, times=None):
-        super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
-        self._Output = {}
-        self._Output["业绩基准"] = pd.DataFrame(0.0, columns=self.AttributeFactors)
-        self._Output["主动资产配置"] = pd.DataFrame(0.0, columns=self.AttributeFactors)
-        self._Output["主动个券选择"] = pd.DataFrame(0.0, columns=self.AttributeFactors)
-        self._Output["策略组合"] = pd.DataFrame(0.0, columns=self.AttributeFactors)
-        self._CurCalcInd = 0
-        self._IDs = self._FactorTable.getID()
-        return (self._FactorTable, )
-    def __QS_move__(self, idt):
-        return 0
-    def __QS_end__(self):
-        return 0

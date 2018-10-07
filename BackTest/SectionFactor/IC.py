@@ -52,15 +52,15 @@ class IC(BaseModule):
         Items, Context = super().getViewItems(context_name=context_name)
         Items[0].editor = SetEditor(values=self.trait("TestFactors").option_range)
         return (Items, Context)
-    def __QS_start__(self, mdl, dts=None, dates=None, times=None):
-        super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
+    def __QS_start__(self, mdl, dts, **kwargs):
+        super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._Output = {}
         self._Output["IC"] = {iFactorName:[] for iFactorName in self.TestFactors}
         self._Output["股票数"] = {iFactorName:[] for iFactorName in self.TestFactors}
         self._Output["时点"] = []
         self._CurCalcInd = 0
         return (self._FactorTable, )
-    def __QS_move__(self, idt):
+    def __QS_move__(self, idt, **kwargs):
         if self.CalcDTs:
             if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
             self._CurCalcInd = self.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
@@ -224,7 +224,7 @@ class RiskAdjustedIC(IC):
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
         self.remove_trait("WeightFactor")
-    def __QS_move__(self, idt):
+    def __QS_move__(self, idt, **kwargs):
         if self.CalcDTs:
             if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
             self._CurCalcInd = self.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
@@ -313,13 +313,13 @@ class ICDecay(BaseModule):
         self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
         self.add_trait("IndustryFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="行业因子", order=3))
         self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=4))
-    def __QS_start__(self, mdl, dts=None, dates=None, times=None):
-        super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
+    def __QS_start__(self, mdl, dts, **kwargs):
+        super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._Output = {"IC":[[] for i in self.LookBack]}
         self._Output["时点"] = []
         self._CurCalcInd = 0
         return (self._FactorTable, )
-    def __QS_move__(self, idt):
+    def __QS_move__(self, idt, **kwargs):
         if self.CalcDTs:
             if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
             self._CurCalcInd = self.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd

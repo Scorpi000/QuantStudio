@@ -30,10 +30,11 @@ class _WeightAllocation(__QS_Object__):
         self._FT = ft
         return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
-        DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
-        self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=1))
-        self.add_trait("GroupFactor", Enum(*self._FT.FactorNames, arg_type="MultiOption", label="类别因子", order=2, option_range=("等权", )+tuple(DefaultNumFactorList)))
-        self.add_trait("GroupWeight", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="类别权重", order=3))
+        if self._FT is not None:
+            DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
+            self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=1))
+            self.add_trait("GroupFactor", Enum(*self._FT.FactorNames, arg_type="MultiOption", label="类别因子", order=2, option_range=("等权", )+tuple(DefaultNumFactorList)))
+            self.add_trait("GroupWeight", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="类别权重", order=3))
 
 # 投资组合策略
 class PortfolioStrategy(Strategy):
@@ -64,7 +65,10 @@ class PortfolioStrategy(Strategy):
     def _on_ShortAccount_changed(self, obj, name, old, new):
         if self.ShortAccount and (self.ShortAccount not in self.Accounts): self.Accounts.append(self.ShortAccount)
         elif self.ShortAccount is None: self.Accounts.remove(old)
-    def __QS_start__(self, mdl, dts=None, dates=None, times=None):
+    @property
+    def MainFactorTable(self):
+        return self._FT
+    def __QS_start__(self, mdl, dts, **kwargs):
         self._AllLongSignals = {}
         self._AllShortSignals = {}
         self._LongTradeTarget = None# 锁定的多头交易目标
@@ -75,7 +79,13 @@ class PortfolioStrategy(Strategy):
         self._TempData = {}
         self._TempData['StoredSignal'] = []# 暂存的信号，用于滞后发出信号
         self._TempData['LagNum'] = []# 当前日距离信号生成日的日期数
-        return super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
+        return (self._FT, ) + super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
+    def output(self, recalculate=False):
+        Output = super().output(recalculate=recalculate)
+        if recalculate:
+            Output["Strategy"]["多头信号"] = pd.DataFrame(self._AllLongSignals).T
+            Output["Strategy"]["空头信号"] = pd.DataFrame(self._AllShortSignals).T
+        return Output
     # 生成多头信号, 用户实现
     def genLongSignal(self, idt, trading_record):
         return None
@@ -144,8 +154,7 @@ class PortfolioStrategy(Strategy):
             Orders = Orders / LastPrice[Orders.index]
             Orders = Orders[pd.notnull(Orders) & (Orders!=0)]
             if Orders.shape[0]==0: return 0
-            Orders = pd.DataFrame(Orders).reset_index()
-            Orders.columns = ["ID", "数量"]
+            Orders = pd.DataFrame(Orders, columns=["数量"])
             Orders["目标价"] = np.nan
             self.LongAccount.order(combined_order=Orders)
         return 0

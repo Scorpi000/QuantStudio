@@ -12,7 +12,6 @@ from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.AuxiliaryFun import searchNameInStrList
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
-from QuantStudio.Tools.FileFun import readJSONFile
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio import __QS_Object__, __QS_Error__, __QS_LibPath__
 from QuantStudio.FactorDataBase.WindDB import WindDB, _DBTable, _adjustDateTime
@@ -1376,7 +1375,6 @@ class _AnalystEstDetailTable(_DBTable):
         RawData._QS_ANNReport = True
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return pd.Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
         Dates = sorted({dt.datetime.combine(iDT.date(), dt.time(23,59,59,999999)) for iDT in dts})
         DeduplicationFields = args.get("去重字段", self.Deduplication)
         AdditionalFields = list(set(args.get("附加字段", self.AdditionalFields)+DeduplicationFields))
@@ -1402,7 +1400,11 @@ class _AnalystEstDetailTable(_DBTable):
             else: kData = np.full(shape=(len(Dates), len(ids)), fill_value=None, dtype="O")
             kFields = ["日期", self._ReportDateField, self._CapitalField, kFactorName]+AdditionalFields
             for j, jID in enumerate(ids):
-                if jID not in AllIDs: continue
+                if jID not in AllIDs:
+                    x = [pd.DataFrame(columns=kFields)]*len(ForwardYears)
+                    for i, iDate in enumerate(Dates):
+                        kData[i, j] = Operator(self, iDate, jID, x, ModelArgs)
+                    continue
                 jReportNoteDate = ANNReportData.loc[[jID]].reset_index()
                 jRawData = raw_data.loc[jID][kFields]
                 ijNoteDate = None
@@ -1437,7 +1439,7 @@ class WindDB2(WindDB):
     def __QS_initArgs__(self):
         self._InfoFilePath = __QS_LibPath__+os.sep+"WindDB2Info.hdf5"# 数据库信息文件路径
         if not os.path.isfile(self._InfoFilePath):
-            InfoResourcePath = __QS_MainPath__+os.sep+"Rescource"+os.sep+"WindDB2Info.xlsx"# 数据库信息源文件路径
+            InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"WindDB2Info.xlsx"# 数据库信息源文件路径
             print("缺失数据库信息文件: '%s', 尝试从 '%s' 中导入信息." % (self._InfoFilePath, InfoResourcePath))
             if not os.path.isfile(InfoResourcePath): raise __QS_Error__("缺失数据库信息文件: %s" % InfoResourcePath)
             self.importInfo(InfoResourcePath)

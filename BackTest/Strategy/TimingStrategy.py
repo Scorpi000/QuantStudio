@@ -31,7 +31,7 @@ class TimingStrategy(Strategy):
         else:
             self.add_trait("目标ID", Enum(None, label="目标ID", arg_type="SingleOption", order=5))
             self.Accounts.remove(old)
-    def __QS_start__(self, mdl, dts=None, dates=None, times=None):
+    def __QS_start__(self, mdl, dts, **kwargs):
         self._AllSignals = {}
         self._TradeTarget = None# 锁定的交易目标
         self._SignalExcutePeriod = 0# 信号已经执行的期数
@@ -40,15 +40,15 @@ class TimingStrategy(Strategy):
         self._TempData['StoredSignal'] = []# 暂存的信号，用于滞后发出信号
         self._TempData['LagNum'] = []# 当前日距离信号生成日的日期数
         self._TempData['LastSignal'] = None# 上次生成的信号
-        return super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
-    def __QS_move__(self, idt, *args, **kwargs):
-        iTradingRecord = {iAccount.Name:iAccount.__QS_move__(idt) for iAccount in self.Accounts}
+        return (self._FT, )+super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
+    def __QS_move__(self, idt, **kwargs):
+        iTradingRecord = {iAccount.Name:iAccount.__QS_move__(idt, **kwargs) for iAccount in self.Accounts}
         if (not self.SigalDTs) or (idt in self.SigalDTs):
             Signal = self.genSignal(idt, iTradingRecord)
         else:
             Signal = None
         self.trade(idt, iTradingRecord, Signal)
-        for iAccount in self.Accounts: iAccount.__QS_after_move__(idt)
+        for iAccount in self.Accounts: iAccount.__QS_after_move__(idt, **kwargs)
         return 0
     def genSignal(self, idt, trading_record):
         return None

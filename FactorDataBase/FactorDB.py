@@ -97,8 +97,7 @@ class WritableFactorDB(FactorDB):
     # -------------------------------数据变换------------------------------------
     # 时间平移, 沿着时间轴将所有数据纵向移动 lag 期, lag>0 向前移动, lag<0 向后移动, 空出来的地方填 nan
     def offsetDateTime(self, lag, table_name, factor_names, args={}):
-        if lag==0:
-            return 0
+        if lag==0: return 0
         FT = self.getTable(table_name)
         Data = FT.readData(factor_names=factor_names, ids=self.getID(), dts=self.getDateTime(), args=args)
         if lag>0:
@@ -107,27 +106,32 @@ class WritableFactorDB(FactorDB):
         elif lag<0:
             Data.iloc[:, :lag, :] = Data.iloc[:,-lag:,:].values
             Data.iloc[:, :lag, :] = None
-        self.writeData(Data, table_name, if_exists='replace')
+        DataType = FT.getFactorMetaData(factor_names, key="DataType").to_dict()
+        self.deleteFactor(table_name, factor_names)
+        self.writeData(Data, table_name, data_type=DataType)
         return 0
     # 数据变换, 对原来的时间和ID序列通过某种变换函数得到新的时间序列和ID序列, 调整数据
     def changeData(self, table_name, factor_names, ids, dts, args={}):
-        Data = self.getTable(table_name).readData(factor_names=factor_names, ids=ids, dts=dts, args=args)
-        self.writeData(Data, table_name, if_exists='replace')
+        FT = self.getTable(table_name)
+        Data = FT.readData(factor_names=factor_names, ids=ids, dts=dts, args=args)
+        DataType = FT.getFactorMetaData(factor_names, key="DataType").to_dict()
+        self.deleteFactor(table_name, factor_names)
+        self.writeData(Data, table_name, data_type=DataType)
         return 0
     # 填充缺失值
-    def fillNA(self, filled_value, table_name, factor_names=None, ids=None, dts=None, args={}):
+    def fillNA(self, filled_value, table_name, factor_names, ids, dts, args={}):
         Data = self.getTable(table_name).readData(factor_names=factor_names, ids=ids, dts=dts, args=args)
         Data.fillna(filled_value, inplace=True)
         self.writeData(Data, table_name, if_exists='update')
         return 0
     # 替换数据
-    def replaceData(self, old_value, new_value, table_name, factor_names=None, ids=None, dts=None, args={}):
+    def replaceData(self, old_value, new_value, table_name, factor_names, ids, dts, args={}):
         Data = self.getTable(table_name).readData(factor_names=factor_names, ids=ids, dts=dts, args=args)
         Data = Data.where(Data!=old_value, new_value)
         self.writeData(Data, table_name, if_exists='update')
         return 0
     # 压缩数据
-    def compressData(self, table_name=None, factor_names=None):
+    def compressData(self, table_name, factor_names):
         return 0
 
 # 因子表的遍历模式参数对象
@@ -450,9 +454,9 @@ class FactorTable(__QS_Object__):
         if self.ErgodicMode.CacheMode=="因子": return self._readData_FactorCacheMode(factor_names=factor_names, ids=ids, dts=dts, args=args)
         return pd.Panel({iID: self._readIDData(iID, factor_names=factor_names, dts=dts, args=args) for iID in ids}).swapaxes(0, 2)
     # 启动遍历模式, dts: 遍历的时间点序列或者迭代器
-    def start(self, dts=None, ids=None, **kwargs):
+    def start(self, dts, ids=None, **kwargs):
         if self.ErgodicMode._isStarted: return 0
-        self.ErgodicMode._DateTimes = np.array((self.getDateTime() if dts is None else dts), dtype="O")
+        self.ErgodicMode._DateTimes = np.array(dts, dtype="O")
         self.ErgodicMode._IDs = (self.getID() if ids is None else ids)
         self.ErgodicMode._CurInd = -1# 当前时点在 dts 中的位置, 以此作为缓冲数据的依据
         self.ErgodicMode._DTNum = self.ErgodicMode._DateTimes.shape[0]# 时点数
@@ -471,7 +475,7 @@ class FactorTable(__QS_Object__):
         self.ErgodicMode._isStarted = True
         return 0
     # 时间点向前移动, idt: 时间点, datetime.dateime
-    def move(self, idt, *args, **kwargs):
+    def move(self, idt, **kwargs):
         if idt==self.ErgodicMode._CurDT: return 0
         self.ErgodicMode._CurDT = idt
         PreInd = self.ErgodicMode._CurInd
@@ -797,7 +801,7 @@ class CustomFT(FactorTable):
         self._IDFilterStr = id_filter_str
         self._CompiledIDFilter[id_filter_str] = (CompiledIDFilterStr, IDFilterFactors)
         return OldIDFilterStr
-    def start(self, dts=None, ids=None, **kwargs):
+    def start(self, dts, ids=None, **kwargs):
         super().start(dts=dts, ids=ids, **kwargs)
         for iFactor in self._Factors.values(): iFactor.start(dts=dts, ids=ids, **kwargs)
         return 0
@@ -968,7 +972,7 @@ class Factor(__QS_Object__):
         return StdData
     # ------------------------------------遍历模式------------------------------------
     # 启动遍历模式, dts: 遍历的时间点序列或者迭代器
-    def start(self, dts=None, ids=None, **kwargs):
+    def start(self, dts, ids=None, **kwargs):
         self._isStarted = True
         return 0
     # 结束遍历模式

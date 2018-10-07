@@ -20,6 +20,8 @@ from QuantStudio.Tools.StrategyTestFun import summaryStrategy, calcYieldSeq, cal
 from QuantStudio.FactorDataBase.FactorDB import FactorTable
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 
+_QS_MinPositionNum = 1e-8
+
 def cutDateTime(df, dts=None, start_dt=None, end_dt=None):
     if dts is not None: df = df.ix[dts]
     if start_dt is not None: df = df[df.index>=start_dt]
@@ -90,7 +92,7 @@ def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, 
 # 账户基类, 本身只能存放现金
 class Account(BaseModule):
     """账户"""
-    InitCash = Float(1e9, arg_type="Double", label="初始资金", order=0, low=0.0, high=np.inf, single_step=0.00001, decimals=5)
+    InitCash = Float(1e8, arg_type="Double", label="初始资金", order=0, low=0.0, high=np.inf, single_step=0.00001, decimals=5)
     DebtLimit = Float(0.0, arg_type="Double", label="负债上限", order=1, low=0.0, high=np.inf, single_step=0.00001, decimals=5)
     def __init__(self, name="Account", sys_args={}, config_file=None, **kwargs):
         super().__init__(name=name, sys_args=sys_args, config_file=config_file, **kwargs)
@@ -101,7 +103,7 @@ class Account(BaseModule):
         self._DebtRecord = None# 融资记录, 增加负债为正, 减少负债为负, DataFrame(columns=["时间点", "融资", "备注"])
         self._TradingRecord = None# 交易记录, DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])
         self._Output = None# 缓存的输出结果
-    def __QS_start__(self, mdl, dts=None, dates=None, times=None):
+    def __QS_start__(self, mdl, dts, **kwargs):
         nDT = len(dts)
         self._Cash, self._Debt = np.zeros(nDT+1), np.zeros(nDT+1)
         self._Cash[0] = self.InitCash
@@ -109,13 +111,13 @@ class Account(BaseModule):
         self._CashRecord = pd.DataFrame(columns=["时间点", "现金流", "备注"])
         self._DebtRecord = pd.DataFrame(columns=["时间点", "融资", "备注"])
         self._TradingRecord = pd.DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])
-        return super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
-    def __QS_move__(self, idt, *args, **kwargs):# 先于策略运行
+        return super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
+    def __QS_move__(self, idt, **kwargs):# 先于策略运行
         iIndex = self._Model.DateTimeIndex
         self._Cash[iIndex+1] = self._Cash[iIndex]
         self._Debt[iIndex+1] = self._Debt[iIndex]
         return 0
-    def __QS_after_move__(self, idt, *args, **kwargs):# 晚于策略运行
+    def __QS_after_move__(self, idt, **kwargs):# 晚于策略运行
         return 0
     def __QS_end__(self):
         CashSeries = self.getCashSeries()
@@ -236,18 +238,18 @@ class Strategy(BaseModule):
         self.UserData = {}# 用户数据存放
     def __QS_initArgs__(self):
         self.Benchmark = _Benchmark()
-    def __QS_start__(self, mdl, dts=None, dates=None, times=None):
+    def __QS_start__(self, mdl, dts, **kwargs):
         self.UserData = {}
         Rslt = ()
-        for iAccount in self.Accounts: Rslt += iAccount.__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
-        Rslt += super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
-        Rslt += self.init()
+        for iAccount in self.Accounts: Rslt += iAccount.__QS_start__(mdl=mdl, dts=dts, **kwargs)
+        Rslt += super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
+        self.init()
         return Rslt+tuple(self.FactorTables)
-    def __QS_move__(self, idt, *args, **kwargs):
-        iTradingRecord = {iAccount.Name:iAccount.__QS_move__(idt) for iAccount in self.Accounts}
+    def __QS_move__(self, idt, **kwargs):
+        iTradingRecord = {iAccount.Name:iAccount.__QS_move__(idt, **kwargs) for iAccount in self.Accounts}
         Signal = self.genSignal(idt, iTradingRecord)
         self.trade(idt, iTradingRecord, Signal)
-        for iAccount in self.Accounts: iAccount.__QS_after_move__(idt)
+        for iAccount in self.Accounts: iAccount.__QS_after_move__(idt, **kwargs)
         return 0
     def __QS_end__(self):
         for iAccount in self.Accounts: iAccount.__QS_end__()
@@ -262,7 +264,7 @@ class Strategy(BaseModule):
         return ([Group(*Groups, orientation='horizontal', layout='tabbed', springy=True)], Context)
     # 可选实现
     def init(self):
-        return ()
+        return 0
     # 可选实现, trading_record: {账户名: 交易记录, 比如: DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])}
     def genSignal(self, idt, trading_record):
         return None

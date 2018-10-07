@@ -62,8 +62,8 @@ class QuantilePortfolio(BaseModule):
         self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
         self.add_trait("IndustryFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="行业因子", order=4))
         self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=5))
-    def __QS_start__(self, mdl, dts=None, dates=None, times=None):
-        super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
+    def __QS_start__(self, mdl, dts, **kwargs):
+        super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._Output = {"净值":[[1] for i in range(self.GroupNum)]}
         self._Output["投资组合"] = [[] for i in range(self.GroupNum)]
         self._Output["换手率"] = [[] for i in range(self.GroupNum)]
@@ -73,7 +73,7 @@ class QuantilePortfolio(BaseModule):
         self._Output["QP_P_MarketPos"] = pd.Series()
         self._CurCalcInd = 0
         return (self._FactorTable, )
-    def __QS_move__(self, idt):
+    def __QS_move__(self, idt, **kwargs):
         Price = self._FactorTable.readData(dts=[idt], ids=self._FactorTable.getID(ifactor_name=self.PriceFactor), factor_names=[self.PriceFactor]).iloc[0, 0, :]
         for i in range(self.GroupNum):
             if len(self._Output["QP_P_CurPos"][i])==0:
@@ -429,7 +429,7 @@ class GroupPortfolio(QuantilePortfolio):# TODO
                 Args.ArgInfo["分类节点"] = {"type":"ArgList","subarg_info":{"type":"Double","min":-np.inf,"max":np.inf,"single_step":0.01},"order":7}
             return True
         return super().__QS_onSysArgChanged__(change_type, change_info, **kwargs)
-    def __QS_move__(self, idt):
+    def __QS_move__(self, idt, **kwargs):
         Price = self._FactorTable.getFactorData(dates=[idt],ids=None,ifactor_name=self._SysArgs["价格因子"]).iloc[0]
         for i in range(self._SysArgs["分组数"]):
             if len(self._Output["QP_P_CurPos"][i])==0:
@@ -574,7 +574,7 @@ class PureFactorPortfolio(QuantilePortfolio):# TODO
         ArgInfo["优化器"] = {"数据类型":"Str","取值范围":list(BasePC.PCClasses.keys()),"是否刷新":False,"order":8,"是否可见":True}
         ArgInfo["数据源"] = {"数据类型":"Str","取值范围":AllDSNames,"是否刷新":True,"order":9,"是否可见":False}
         return (args,ArgInfo)
-    def __QS_start__(self):
+    def __QS_start__(self, mdl, dts, **kwargs):
         self._Output = {"收益率":[]}
         self._Output["投资组合"] = []
         self._Output["换手率"] = []
@@ -605,7 +605,7 @@ class PureFactorPortfolio(QuantilePortfolio):# TODO
         self._Output["优化器"].UsefulFactors = self._Output["优化器"].getUsefulFactors()
         self._Output["优化器"].initPC()
         return self._Output
-    def __QS_move__(self, idt):
+    def __QS_move__(self, idt, **kwargs):
         IDs = self.DSs[args["数据源"]].getID(idt=self.CurDate,is_filtered=True)
         self._Output["优化器"].FactorData = self.DSs[args["数据源"]].getDateTimeData(idt=self.CurDate,ids=IDs,factor_names=[args["测试因子"]]+args["中性因子"])
         self._Output["优化器"].CovMatrix = args["风险数据源"].getDateCov(self.CurDate,drop_na=True)

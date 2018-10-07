@@ -836,14 +836,13 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
             else:
                 SelectedOutput.extend(getNestedDictItems(iValue, iKeyList))
         nOutput = len(SelectedOutput)
-        if nOutput==0:
-            return 0
+        if nOutput==0: return 0
         elif nOutput==1:
             self.CurDF = SelectedOutput[0][1]
+            self.CurDF.Name = SelectedOutput[0][0][-1]
             return self.populateMainResultTable()
-        MergeHow, isOK = QInputDialog.getItem(None,'多表连接方式','请选择连接方式',['inner','outer','left','right'])
-        if not isOK:
-            return 0
+        MergeHow, isOK = QInputDialog.getItem(None, "多表连接方式", "请选择连接方式", ['inner','outer','left','right'])
+        if not isOK: return 0
         self.CurDF = SelectedOutput[0][1].copy()
         iPrefix = joinList(SelectedOutput[0][0],"-")
         self.CurDF.columns = [iPrefix+"-"+str(iCol) for iCol in self.CurDF.columns]
@@ -852,8 +851,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
             iPrefix = joinList(iKeyList,"-")
             iOutput.columns = [iPrefix+"-"+str(iCol) for iCol in iOutput.columns]
             self.CurDF = pd.merge(self.CurDF, iOutput, left_index=True, right_index=True, how=MergeHow)
-        if self.CurDF.shape[0]==0:
-            QMessageBox.critical(None, '错误', '你选择的结果集索引可能不一致!')
+        if self.CurDF.shape[0]==0: QMessageBox.critical(None, "错误", "你选择的结果集索引可能不一致!")
         return self.populateMainResultTable()
     def _getPlotArgs(self, plot_data):
         nCol = plot_data.shape[1]
@@ -927,17 +925,16 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
         return 0
     @pyqtSlot()
     def on_ExportButton_clicked(self):
-        if self.CurDF is None:
-            return 0
-        FilePath = QFileDialog.getSaveFileName(None,'导出数据','..'+os.sep+'untitled.csv',"Excel (*.csv)")
-        if FilePath=='':
-            return 0
-        if isinstance(self.CurDF.iloc[0,0],dict):
+        if self.CurDF is None: return 0
+        FileName = getattr(self.CurDF, "Name", "untitled")
+        FilePath = QFileDialog.getSaveFileName(None, "导出数据", ".."+os.sep+FileName+".csv", "Excel (*.csv)")
+        if not FilePath: return 0
+        if isinstance(self.CurDF.iloc[0,0], dict):
             for i,iCol in enumerate(self.CurDF.columns):
                 writeDictSeries2CSV(self.CurDF[iCol],FilePath[:-4]+"-"+str(iCol)+".csv")
         else:
             self.CurDF.to_csv(FilePath)
-        QMessageBox.information(None,'完成','导出数据完成!')
+        QMessageBox.information(None, "完成", "导出数据完成!")
         return 0
     @pyqtSlot()
     def on_TransposeButton_clicked(self):

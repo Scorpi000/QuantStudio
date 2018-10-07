@@ -42,12 +42,12 @@ class FamaMacBethRegression(BaseModule):
         Items, Context = super().getViewItems(context_name=context_name)
         Items[0].editor = SetEditor(values=self.trait("TestFactors").option_range)
         return (Items, Context)
-    def __QS_start__(self, mdl, dts=None, dates=None, times=None):
-        super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
+    def __QS_start__(self, mdl, dts, **kwargs):
+        super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._Output = {"Pure Return":[], "Raw Return":[], "时点":[], "回归R平方":[], "回归调整R平方":[], "回归F统计量":[], "回归t统计量(Raw Return)":[], "回归t统计量(Pure Return)":[]}
         self._CurCalcInd = 0
         return (self._FactorTable, )
-    def __QS_move__(self, idt):
+    def __QS_move__(self, idt, **kwargs):
         if self.CalcDTs:
             if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
             self._CurCalcInd = self.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd

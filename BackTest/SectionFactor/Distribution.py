@@ -38,8 +38,8 @@ class IndustryDistribution(BaseModule):
         Items, Context = super().getViewItems(context_name=context_name)
         Items[0].editor = SetEditor(values=self.trait("TestFactors").option_range)
         return (Items, Context)
-    def __QS_start__(self, mdl, dts=None, dates=None, times=None):
-        super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
+    def __QS_start__(self, mdl, dts, **kwargs):
+        super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         AllIndustries = pd.unique(self._FactorTable.readData(factor_names=[self.IndustryFactor], dts=self._FactorTable.getDateTime(ifactor_name=self.IndustryFactor), ids=self._FactorTable.getID(ifactor_name=self.IndustryFactor)).iloc[0].values.flatten())
         Mask = pd.isnull(AllIndustries)
         if np.sum(Mask)>0: AllIndustries = AllIndustries[~Mask].tolist()+[None]
@@ -50,7 +50,7 @@ class IndustryDistribution(BaseModule):
         self._Output["时点"] = []
         self._CurCalcInd = 0
         return (self._FactorTable, )
-    def __QS_move__(self, idt):
+    def __QS_move__(self, idt, **kwargs):
         if self.CalcDTs:
             if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
             self._CurCalcInd = self.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd

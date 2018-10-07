@@ -92,8 +92,8 @@ class TimeBarAccount(Account):
         self.SecurityInfo = _SecurityInfo(self._SecurityFT)
         self.BuyLimit = _TradeLimit(direction="Buy")
         self.SellLimit = _TradeLimit(direction="Sell")
-    def __QS_start__(self, mdl, dts=None, dates=None, times=None):
-        Rslt = super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
+    def __QS_start__(self, mdl, dts, **kwargs):
+        Rslt = super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._IDs = list(self.TargetIDs)
         if not self._IDs: self._IDs = list(self._MarketFT.getID(ifactor_name=self.MarketInfo.TradePrice))
         nDT, nID = len(dts), len(self._IDs)
@@ -108,8 +108,8 @@ class TimeBarAccount(Account):
         self._iTradingRecord = []# 暂存的交易记录
         self._nDT = nDT
         return Rslt + (self._MarketFT, self._SecurityFT)
-    def __QS_move__(self, idt, *args, **kwargs):
-        super().__QS_move__(idt, *args, **kwargs)
+    def __QS_move__(self, idt, **kwargs):
+        super().__QS_move__(idt, **kwargs)
         self._LastPrice = self._MarketFT.readData(factor_names=[self.MarketInfo.Last], ids=self._IDs, dts=[idt]).iloc[0, 0]
         if self.Delay:# 撮合成交
             iIndex = self._Model.DateTimeIndex
@@ -121,8 +121,8 @@ class TimeBarAccount(Account):
             TradingRecord = self._iTradingRecord
         self._QS_updatePosition()
         return TradingRecord
-    def __QS_after_move__(self, idt, *args, **kwargs):
-        super().__QS_after_move__(self, idt, *args, **kwargs)
+    def __QS_after_move__(self, idt, **kwargs):
+        super().__QS_after_move__(idt, **kwargs)
         iIndex = self._Model.DateTimeIndex
         if not self.Delay:# 撮合成交
             TradingRecord = self._matchOrder(idt)
@@ -138,7 +138,7 @@ class TimeBarAccount(Account):
         return 0
     def __QS_end__(self):
         super().__QS_end__()
-        self._Output["持仓"] = self.getPositionSeries()
+        self._Output["持仓"] = self.getPositionNumSeries()
         self._Output["持仓金额"] = self.getPositionAmountSeries()
         self._Output["平仓记录"] = self._ClosedPosition
         self._Output["未平仓持仓"] = self._OpenPosition
@@ -226,7 +226,7 @@ class TimeBarAccount(Account):
     def LastPrice(self):
         return self._LastPrice
     # 获取持仓的历史序列, 以时间点为索引, 返回: pd.DataFrame(持仓, index=[时间点], columns=[ID])
-    def getPositionSeries(self, dts=None, start_dt=None, end_dt=None):
+    def getPositionNumSeries(self, dts=None, start_dt=None, end_dt=None):
         Data = self._Position.iloc[1:self._Model.DateTimeIndex+2]
         return cutDateTime(Data, dts=dts, start_dt=start_dt, end_dt=end_dt)
     # 获取持仓证券的金额历史序列, 以时间点为索引, 返回: pd.DataFrame(持仓金额, index=[时间点], columns=[ID])
