@@ -151,16 +151,21 @@ class _MarketTable(_DBTable):
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         FactorInfo = fdb._FactorInfo.ix[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
-        self._DateFields = FactorInfo[FactorInfo["FieldType"]=="Date"].index.tolist()
-        self._ConditionFields = FactorInfo[FactorInfo["FieldType"]=="Condition"].index.tolist()
+        self._DateFields = FactorInfo[FactorInfo["FieldType"]=="Date"].index.tolist()# 所有的日期字段列表
+        self._ConditionFields = FactorInfo[FactorInfo["FieldType"]=="Condition"].index.tolist()# 所有的条件字段列表
+        iFactorInfo = FactorInfo[pd.notnull(FactorInfo["Supplementary"])]
+        self._UniqueDateField = iFactorInfo[iFactorInfo["Supplementary"].str.contains("UniqueDate")].index# 具有唯一性的日期字段, 如果未设置, 则默认所有日期字段都有唯一性
+        if self._UniqueDateField.shape[0]==0: self._UniqueDateField = None
+        else: self._UniqueDateField = self._UniqueDateField[0]
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         return
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
         FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]
         self.add_trait("DateField", Enum(*self._DateFields, arg_type="SingleOption", label="日期字段", order=0))
-        DefaultDateField = FactorInfo[(FactorInfo["Supplementary"]=="DefaultDate") & (FactorInfo["FieldType"]=="Date")]
-        if DefaultDateField.shape[0]>0: self.DateField = DefaultDateField.index[0]
+        iFactorInfo = FactorInfo[(FactorInfo["FieldType"]=="Date") & pd.notnull(FactorInfo["Supplementary"])]
+        iFactorInfo = iFactorInfo[iFactorInfo["Supplementary"].str.contains("DefaultDate")]
+        if iFactorInfo.shape[0]>0: self.DateField = iFactorInfo.index[0]
         else: self.DateField = FactorInfo[FactorInfo["FieldType"]=="Date"].index[0]
         for i, iCondition in enumerate(self._ConditionFields):
             self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+2))
@@ -222,39 +227,50 @@ class _MarketTable(_DBTable):
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self.DateField]
         return list(map(lambda x: dt.datetime(int(x[0][:4]), int(x[0][4:6]), int(x[0][6:8]), 23, 59, 59, 999999), self._FactorDB.fetchall(SQLStr)))
     def __QS_genGroupInfo__(self, factors, operation_mode):
-        ConditionGroup = {}
+        DateConditionGroup = {}
         for iFactor in factors:
-            iConditions = ";".join([iArgName+":"+iFactor[iArgName] for iArgName in iFactor.ArgNames if iArgName!="回溯天数"])
-            if iConditions not in ConditionGroup:
-                ConditionGroup[iConditions] = {"FactorNames":[iFactor.Name], 
-                                               "RawFactorNames":{iFactor._NameInFT}, 
-                                               "StartDT":operation_mode._FactorStartDT[iFactor.Name], 
-                                               "args":iFactor.Args.copy()}
+            iDateConditions = (iFactor.DateField, ";".join([iArgName+":"+iFactor[iArgName] for iArgName in iFactor.ArgNames if iArgName!="回溯天数"]))
+            if iDateConditions not in DateConditionGroup:
+                DateConditionGroup[iDateConditions] = {"FactorNames":[iFactor.Name], 
+                                                       "RawFactorNames":{iFactor._NameInFT}, 
+                                                       "StartDT":operation_mode._FactorStartDT[iFactor.Name], 
+                                                       "args":iFactor.Args.copy()}
             else:
-                ConditionGroup[iConditions]["FactorNames"].append(iFactor.Name)
-                ConditionGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
-                ConditionGroup[iConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], ConditionGroup[iConditions]["StartDT"])
-                ConditionGroup[iConditions]["args"]["回溯天数"] = max(ConditionGroup[iConditions]["args"]["回溯天数"], iFactor.LookBack)
+                DateConditionGroup[iDateConditions]["FactorNames"].append(iFactor.Name)
+                DateConditionGroup[iDateConditions]["RawFactorNames"].add(iFactor._NameInFT)
+                DateConditionGroup[iDateConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], DateConditionGroup[iDateConditions]["StartDT"])
+                DateConditionGroup[iDateConditions]["args"]["回溯天数"] = max(DateConditionGroup[iDateConditions]["args"]["回溯天数"], iFactor.LookBack)
         EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
         Groups = []
-        for iConditions in ConditionGroup:
-            StartInd = operation_mode.DTRuler.index(ConditionGroup[iConditions]["StartDT"])
-            Groups.append((self, ConditionGroup[iConditions]["FactorNames"], list(ConditionGroup[iConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], ConditionGroup[iConditions]["args"]))
+        for iDateConditions in DateConditionGroup:
+            StartInd = operation_mode.DTRuler.index(DateConditionGroup[iDateConditions]["StartDT"])
+            Groups.append((self, DateConditionGroup[iDateConditions]["FactorNames"], list(DateConditionGroup[iDateConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], DateConditionGroup[iDateConditions]["args"]))
         return Groups
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
         FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self.DateField, self._IDField]+self._ConditionFields+factor_names)
         DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         # 形成SQL语句, 日期, ID, 因子数据
         SQLStr = "SELECT "+DBTableName+"."+FieldDict[self.DateField]+", "
         SQLStr += DBTableName+"."+FieldDict[self._IDField]+", "
         for iField in factor_names: SQLStr += DBTableName+"."+FieldDict[iField]+", "
         SQLStr = SQLStr[:-2]+" FROM "+DBTableName+" "
+        if (self._UniqueDateField is not None) and (self._UniqueDateField!=self.DateField):
+            UniqueDateField = FactorInfo.loc[self._UniqueDateField, "DBFieldName"]
+            SubSQLStr = "SELECT MAX("+DBTableName+"."+UniqueDateField+") AS UniqueDateField, "
+            SubSQLStr += DBTableName+"."+FieldDict[self.DateField]+", "
+            SubSQLStr += DBTableName+"."+FieldDict[self._IDField]+" "
+            SubSQLStr += "FROM "+DBTableName+" "
+            SubSQLStr += "GROUP BY "+DBTableName+"."+FieldDict[self._IDField]+", "+DBTableName+"."+FieldDict[self.DateField]
+            SQLStr += "INNER JOIN ("+SubSQLStr+") t ON ("
+            SQLStr += DBTableName+"."+FieldDict[self._IDField]+"=t."+FieldDict[self._IDField]+" "
+            SQLStr += "AND "+DBTableName+"."+FieldDict[self.DateField]+"=t."+FieldDict[self.DateField]+" "
+            SQLStr += "AND "+DBTableName+"."+UniqueDateField+"=t.UniqueDateField) "
         SQLStr += "WHERE ("+genSQLInCondition(DBTableName+"."+FieldDict[self._IDField], ids, is_str=True, max_num=1000)+") "
         SQLStr += "AND "+DBTableName+"."+FieldDict[self.DateField]+">='"+StartDate.strftime("%Y%m%d")+"' "
         SQLStr += "AND "+DBTableName+"."+FieldDict[self.DateField]+"<='"+EndDate.strftime("%Y%m%d")+"' "
-        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         for iConditionField in self._ConditionFields:
             if FactorInfo.loc[iConditionField, "DataType"].find("CHAR")!=-1:
                 SQLStr += "AND "+DBTableName+"."+FieldDict[iConditionField]+"='"+args.get(iConditionField, self[iConditionField])+"' "

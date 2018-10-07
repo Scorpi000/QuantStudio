@@ -225,8 +225,9 @@ def standardizeDynamicPeer(data, corr_matrix, mask=None, cat_data=None, n_group=
 # data: 待填充的数据, array; dts: 时间序列, array; lookback: 如果指定了时间序列 dts 则为回溯的时间, 以秒为单位, 否则为回溯期数
 def fillNaByLookback(data, lookback, dts=None):
     if not isinstance(data, pd.DataFrame):
-        isDF = True
+        isDF = False
         data = pd.DataFrame(data)
+    else: isDF = True
     if dts is None: dts = data.index.values
     else: dts = np.array(dts)
     Ind = pd.DataFrame(np.r_[0, np.diff(dts).astype("float")].reshape((data.shape[0], 1)).repeat(data.shape[1], axis=1).cumsum(axis=0))

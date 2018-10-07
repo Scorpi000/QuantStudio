@@ -153,7 +153,7 @@ class TimeOperation(DerivativeFactor):
             else: DTRuler = [None]*(MaxLookBack-StartInd) + self._OperationMode.DTRuler
         if (self.DTMode=='单时点') and (self.IDMode=='单ID'):
             for i, iDT in enumerate(dts):
-                iDTs = DTRuler[max(0, MaxLookBack+i-MaxLen):i+1+MaxLookBack]
+                iDTs = DTRuler[max(0, MaxLookBack+i+1-MaxLen):i+1+MaxLookBack]
                 for j, jID in enumerate(ids):
                     x = []
                     for k, kDescriptorData in enumerate(descriptor_data):
@@ -162,7 +162,7 @@ class TimeOperation(DerivativeFactor):
                     StdData[i, j] = self.Operator(self, iDTs, jID, x, self.ModelArgs)
         elif (self.DTMode=='单时点') and (self.IDMode=='多ID'):
             for i, iDT in enumerate(dts):
-                iDTs = DTRuler[max(0, MaxLookBack+i-MaxLen):i+1+MaxLookBack]
+                iDTs = DTRuler[max(0, MaxLookBack+i+1-MaxLen):i+1+MaxLookBack]
                 x = []
                 for k,kDescriptorData in enumerate(descriptor_data):
                     kStartInd, kLen = StartIndAndLen[k]
@@ -340,7 +340,7 @@ class PanelOperation(DerivativeFactor):
         if self.OutputMode=='全截面':
             if self.DTMode=='单时点':
                 for i, iDT in enumerate(dts):
-                    iDTs = DTRuler[max(0, MaxLookBack+i-MaxLen):i+1+MaxLookBack]
+                    iDTs = DTRuler[max(0, MaxLookBack+i+1-MaxLen):i+1+MaxLookBack]
                     x = []
                     for k, kDescriptorData in enumerate(descriptor_data):
                         kStartInd, kLen = StartIndAndLen[k]
@@ -351,7 +351,7 @@ class PanelOperation(DerivativeFactor):
         else:
             if self.DTMode=='单时点':
                 for i, iDT in enumerate(dts):
-                    iDTs = DTRuler[max(0, MaxLookBack+i-MaxLen):i+1+MaxLookBack]
+                    iDTs = DTRuler[max(0, MaxLookBack+i+1-MaxLen):i+1+MaxLookBack]
                     x = []
                     for k, kDescriptorData in enumerate(descriptor_data):
                         kStartInd, kLen = StartIndAndLen[k]
