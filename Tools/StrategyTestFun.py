@@ -932,7 +932,7 @@ def loadCSVFilePortfolioSignal(csv_path):
         AllSignalDates = pd.unique(CSVDF.iloc[:,0])
         AllColumns = list(CSVDF.columns)
         for iDate in AllSignalDates:
-            iSignal = CSVDF.ix[CSVDF.iloc[:,0]==iDate,1:]
+            iSignal = CSVDF.iloc[:, 1:][CSVDF.iloc[:,0]==iDate]
             iSignal = iSignal.set_index(AllColumns[1:2])
             iSignal = iSignal[AllColumns[2]]
             FileSignals[str(iDate)] = iSignal

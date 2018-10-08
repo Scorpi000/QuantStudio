@@ -134,12 +134,13 @@ class PortfolioStrategy(Strategy):
                 self._LongTradeTarget = None
                 self._LongSignalExcutePeriod = 0
             else:
-                iTradingRecord = trading_record[self.LongAccount.Name]
-                iTradingRecord = iTradingRecord.set_index(["ID"]).ix[self._LongTradeTarget.index]
-                if self.TradeTarget=="锁定买卖金额":
-                    TargetChanged = iTradingRecord["数量"] * iTradingRecord["价格"]
-                    TargetChanged[pd.isnull(TargetChanged)] = 0.0
-                    self._LongTradeTarget = self._LongTradeTarget - TargetChanged
+                iTradingRecord = trading_record[self.LongAccount.Name].set_index(["ID"])
+                if iTradingRecord.index.intersection(self._LongTradeTarget.index).shape[0]>0:
+                    iTradingRecord = iTradingRecord.loc[self._LongTradeTarget.index]
+                    if self.TradeTarget=="锁定买卖金额":
+                        TargetChanged = iTradingRecord["数量"] * iTradingRecord["价格"]
+                        TargetChanged[pd.isnull(TargetChanged)] = 0.0
+                        self._LongTradeTarget = self._LongTradeTarget - TargetChanged
         # 根据交易目标下订单
         if self._LongTradeTarget is not None:
             if self.TradeTarget=="锁定买卖金额":

@@ -17,28 +17,28 @@ from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable, _adjustDa
 
 class _DBTable(FactorTable):
     def getMetaData(self, key=None):
-        TableInfo = self._FactorDB._TableInfo.ix[self.Name]
+        TableInfo = self._FactorDB._TableInfo.loc[self.Name]
         if key is None:
             return TableInfo
         else:
             return TableInfo.get(key, None)
     @property
     def FactorNames(self):
-        FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         return FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()
     def getFactorMetaData(self, factor_names=None, key=None):
         if factor_names is None:
             factor_names = self.FactorNames
-        FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         if key=="DataType":
-            if hasattr(self, "_DataType"): return self._DataType.ix[factor_names]
-            MetaData = FactorInfo["DataType"].ix[factor_names]
+            if hasattr(self, "_DataType"): return self._DataType.loc[factor_names]
+            MetaData = FactorInfo["DataType"].loc[factor_names]
             for i in range(MetaData.shape[0]):
                 iDataType = MetaData.iloc[i].lower()
                 if iDataType.find("number")!=-1: MetaData.iloc[i] = "double"
                 else: MetaData.iloc[i] = "string"
             return MetaData
-        elif key=="Description": return FactorInfo["Description"].ix[factor_names]
+        elif key=="Description": return FactorInfo["Description"].loc[factor_names]
         elif key is None:
             return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType"),
                                  "Description":self.getFactorMetaData(factor_names, key="Description")})
@@ -120,7 +120,7 @@ class _MarketTable(_DBTable):
         Data = pd.Panel(Data).loc[factor_names]
         Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
         Data = _adjustDateTime(Data, dts, fillna=FillNa, method="pad")
-        if ids is not None: Data = Data.ix[:, :, ids]
+        if ids is not None: Data = Data.loc[:, :, ids]
         return Data
 
 class _ConstituentTable(_DBTable):
@@ -207,7 +207,7 @@ class _ConstituentTable(_DBTable):
                     kEndDate = (dt.datetime.strptime(jIDRawData["剔除日期"].iloc[k], "%Y%m%d").date()-dt.timedelta(1) if jIDRawData["剔除日期"].iloc[k] is not None else dt.date.today())
                     iData[jID].loc[kStartDate:kEndDate] = 1
             Data[iIndexID] = iData
-        Data = pd.Panel(Data).ix[factor_names]
+        Data = pd.Panel(Data).loc[factor_names]
         Data.major_axis = [dt.datetime.combine(iDate, dt.time(23, 59, 59, 999999)) for iDate in Data.major_axis]
         Data.fillna(value=0, inplace=True)
         return _adjustDateTime(Data, dts, fillna=True, method="bfill")
@@ -262,6 +262,9 @@ class WindDB(FactorDB):
         self._FactorInfo = None# 数据库中的表字段信息
         self._InfoFilePath = None# 数据库信息文件路径
         self._AllTables = []# 数据库中的所有表名, 用于查询时解决大小写敏感问题
+        self._InfoFilePath = __QS_LibPath__+os.sep+"WindDBInfo.hdf5"# 数据库信息文件路径
+        self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"WindDBInfo.xlsx"# 数据库信息源文件路径
+        self._updateInfo()
         super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"WindDBConfig.json" if config_file is None else config_file), **kwargs)
         self.Name = "WindDB"
         return
@@ -277,16 +280,16 @@ class WindDB(FactorDB):
         else:
             self._Connection = None
         self._AllTables = state.get("_AllTables", [])
-    def __QS_initArgs__(self):
-        self._InfoFilePath = __QS_LibPath__+os.sep+"WindDBInfo.hdf5"# 数据库信息文件路径
-        if not os.path.isfile(self._InfoFilePath):
-            InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"WindDBInfo.xlsx"# 数据库信息源文件路径
-            print("缺失数据库信息文件: '%s', 尝试从 '%s' 中导入信息." % (self._InfoFilePath, InfoResourcePath))
-            if not os.path.isfile(InfoResourcePath): raise __QS_Error__("缺失数据库信息文件: %s" % InfoResourcePath)
-            self.importInfo(InfoResourcePath)
+    def _updateInfo(self):
+        if not os.path.isfile(self._InfoFilePath): 
+            print("缺失数据库信息文件: '%s', 尝试从 '%s' 中导入信息." % (self._InfoFilePath, self._InfoResourcePath))
+            if not os.path.isfile(self._InfoResourcePath): raise __QS_Error__("缺失数据库信息文件: %s" % self._InfoResourcePath)
+            self.importInfo(self._InfoResourcePath)
+        elif os.path.isfile(self._InfoResourcePath) and (os.path.getmtime(self._InfoResourcePath)>os.path.getmtime(self._InfoFilePath)):
+            print("数据库信息文件: '%s' 有更新, 尝试从中导入新信息." % self._InfoResourcePath)
+            self.importInfo(self._InfoResourcePath)
         self._TableInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/TableInfo")
         self._FactorInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/FactorInfo")
-        return super().__QS_initArgs__()
     # -------------------------------------------数据库相关---------------------------
     def connect(self):
         if (self.Connector=='cx_Oracle') or ((self.Connector=='default') and (self.DBType=='Oracle')):
@@ -403,7 +406,7 @@ class WindDB(FactorDB):
         return dict(self._TableInfo['DBTableName'][table_names])
     # 获取字段在数据库内部字段名
     def FieldName2DBFieldName(self, table, fields=[]):
-        return dict(self._FactorInfo['DBFieldName'].ix[table].ix[fields])
+        return dict(self._FactorInfo['DBFieldName'].loc[table].loc[fields])
     # ID 转换成证券 ID
     def ID2EquityID(self, ids):
         nID = len(ids)

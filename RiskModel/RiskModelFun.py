@@ -243,7 +243,7 @@ def estimateFactorAndSpecificReturn_EUE3(ret,factor_data,industry_data,weight,es
     FactorReturn[pd.isnull(FactorReturn)] = ESTUMarketRet
     # 生成特异性收益率
     ESTUIndustryDummy = DummyVarTo01Var(industry_data,ignore_na=True)
-    ESTUIndustryDummy = ESTUIndustryDummy.ix[:,all_industries]
+    ESTUIndustryDummy = ESTUIndustryDummy.loc[:,all_industries]
     ESTUIndustryDummy = ESTUIndustryDummy.where(pd.notnull(ESTUIndustryDummy),0.0)
     X = np.hstack((np.ones((ret.shape[0],1)),factor_data.values,ESTUIndustryDummy.values))
     SpecificReturn = pd.Series(ret.values-np.dot(X,FactorReturn.values),index=ret.index)

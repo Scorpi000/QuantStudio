@@ -46,17 +46,18 @@ class _FactorTable(FactorTable):
         if end_dt is not None: DTs = DTs[DTs<=end_dt]
         return DTs.tolist()
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        FactorNames = set(factor_names)
         Data = {}
         for iID in ids:
             if self._Lib.has_symbol(iID):
                 iMetaData = self._Lib.read_metadata(symbol=iID)
                 iCols = pd.Series(iMetaData["Cols"], index=iMetaData["FactorNames"])
-                iCols = iCols.loc[iCols.index.intersection(FactorNames)]
+                iCols = iCols.loc[iCols.index.intersection(factor_names)]
                 if iCols.shape[0]>0:
                     Data[iID] = self._Lib.read(symbol=iID, columns=iCols.values.tolist(), chunk_range=pd.date_range(dts[0], dts[-1]), filter_data=True)
                     Data[iID].columns = iCols.index
-        return pd.Panel(Data).swapaxes(0, 2).ix[factor_names, :, ids]
+        if Data: return pd.Panel(Data).swapaxes(0, 2).loc[factor_names, :, ids]
+        else: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+            
 
 # 基于 Arctic 数据库的因子数据库
 # 使用 CHUNKSTORE
@@ -184,13 +185,16 @@ class ArcticDB(WritableFactorDB):
             #iCrossFactorNames = iOldFactorNames.intersection(iData.columns).tolist()
             iOldData = Lib.read(symbol=iID, chunk_range=DTRange, filter_data=True)
             iOldData.columns = iOldFactorNames
-            iOldData = iOldData.ix[iOldData.index.union(iData.index), iOldFactorNames+iNewFactorNames]
+            if iOldData.shape[0]>0:
+                iOldData = iOldData.loc[iOldData.index.union(iData.index), iOldFactorNames+iNewFactorNames]
+            else:
+                iOldData = pd.DataFrame(index=iData.index, columns=iOldFactorNames+iNewFactorNames)
             iOldData.update(iData, overwrite=OverWrite)
             if iNewFactorNames:
                 iCols += [str(i) for i in range(iOldData.shape[1], iOldData.shape[1]+len(iNewFactorNames))]
                 #iOldData = pd.merge(iOldData, iData.loc[:, iNewFactorNames], how="outer", left_index=True, right_index=True)
             #if iCrossFactorNames:
-                #iOldData = iOldData.ix[iOldData.index.union(iData.index), :]
+                #iOldData = iOldData.loc[iOldData.index.union(iData.index), :]
                 #iOldData.update(iData, overwrite=OverWrite)
                 #if if_exists=="update": iOldData.loc[iData.index, iCrossFactorNames] = iData.loc[:, iCrossFactorNames]
                 #else: iOldData.loc[iData.index, iCrossFactorNames] = iOldData.loc[iData.index, iCrossFactorNames].where(pd.notnull(iOldData.loc[iData.index, iCrossFactorNames]), iData.loc[:, iCrossFactorNames])
@@ -199,7 +203,7 @@ class ArcticDB(WritableFactorDB):
             Lib.update(iID, iOldData, metadata=iMetaData, chunk_range=DTRange)
         FactorInfo = Lib.read(symbol="_FactorInfo").set_index("FactorName")
         NewFactorNames = data.items.difference(FactorInfo.index).tolist()
-        FactorInfo = FactorInfo.ix[FactorInfo.index.tolist()+NewFactorNames, :]
+        FactorInfo = FactorInfo.loc[FactorInfo.index.tolist()+NewFactorNames, :]
         for iFactorName in NewFactorNames:
             if iFactorName in data_type: FactorInfo.loc[iFactorName, "DataType"] = data_type[iFactorName]
             elif np.dtype('O') in data.loc[iFactorName].dtypes: FactorInfo.loc[iFactorName, "DataType"] = "string"

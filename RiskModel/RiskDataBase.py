@@ -192,10 +192,13 @@ class ShelveRDB(RiskDataBase):
             with shelve.open(self.MainDir+os.sep+table_name+os.sep+"Cov") as DataFile:
                 if (dts is not None) and (not isinstance(dts,list)):
                     Data = DataFile.get(dts.strftime("%Y-%m-%d %H:%M:%S.%f"), None)
-                    if (Data is not None) and (ids is not None):
-                        Data = Data.ix[ids, ids]
-                    if (Data is not None) and drop_na:
-                        Data = dropRiskMatrixNA(Data)
+                    if Data is not None:
+                        if ids is not None:
+                            if Data.index.intersection(ids).shape[0]>0:
+                                Data = Data.loc[ids, ids]
+                            else:
+                                Data = pd.DataFrame(index=ids, columns=ids)
+                        if drop_na: Data = dropRiskMatrixNA(Data)
                 else:
                     if dts is None:
                         dts = self._TableDT[table_name]
@@ -206,7 +209,7 @@ class ShelveRDB(RiskDataBase):
                     if ids is None:
                         Data = {iDT:dropRiskMatrixNA(DataFile[iDT.strftime("%Y-%m-%d %H:%M:%S.%f")]) for iDT in dts}
                     else:
-                        Data = {iDate:dropRiskMatrixNA(DataFile[iDT.strftime("%Y-%m-%d %H:%M:%S.%f")].ix[ids,ids]) for iDT in dts}
+                        Data = {iDate:dropRiskMatrixNA(DataFile[iDT.strftime("%Y-%m-%d %H:%M:%S.%f")].loc[ids,ids]) for iDT in dts}
                     if Data=={}:
                         Data = None
         return Data
@@ -313,7 +316,7 @@ class FactorRDB(RiskDataBase):
         if (dts is not None) and (not isinstance(dts,list)):
             if ids is None:
                 ids = SpecificRisk.index
-                FactorData = FactorData.ix[ids]
+                FactorData = FactorData.loc[ids]
             CovMatrix = np.dot(np.dot(FactorData.values, FactorCov.values), FactorData.values.T) + np.diag(SpecificRisk.values**2)
             CovMatrix = pd.DataFrame(CovMatrix, index=ids, columns=ids)
             if drop_na:
@@ -323,7 +326,7 @@ class FactorRDB(RiskDataBase):
         for iDT in FactorCov:
             if ids is None:
                 iIDs = SpecificRisk.loc[iDT].index
-                iFactorData = FactorData[iDT].ix[iIDs]
+                iFactorData = FactorData[iDT].loc[iIDs]
             else:
                 iIDs = ids
                 iFactorData = FactorData[iDT]
@@ -443,7 +446,7 @@ class ShelveFRDB(ShelveRDB, FactorRDB):
                 if (dts is not None) and (not isinstance(dts,list)):
                     Data = DataFile.get(dts.strftime("%Y-%m-%d %H:%M:%S.%f"), None)
                     if (Data is not None) and (ids is not None):
-                        Data = Data.ix[ids]
+                        Data = Data.loc[ids]
                 else:
                     if dts is None:
                         DTStrs = list(DataFile)
@@ -452,7 +455,7 @@ class ShelveFRDB(ShelveRDB, FactorRDB):
                     if ids is None:
                         Data = {dt.datetime.strptime(iDT, "%Y-%m-%d %H:%M:%S.%f"):DataFile[iDT] for iDT in DTStrs}
                     else:
-                        Data = {dt.datetime.strptime(iDT, "%Y-%m-%d %H:%M:%S.%f"):DataFile[iDT].ix[ids] for iDT in DTStrs}
+                        Data = {dt.datetime.strptime(iDT, "%Y-%m-%d %H:%M:%S.%f"):DataFile[iDT].loc[ids] for iDT in DTStrs}
                     if Data=={}:
                         Data = None
         return Data

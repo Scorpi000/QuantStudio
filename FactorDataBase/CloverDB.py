@@ -35,7 +35,7 @@ class _CalendarTable(FactorTable):
         return [dt.datetime.combine(dt.datetime.strptime(iDate, "%Y-%m-%d").date(), iTime) for iDate in Dates]
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         Data = pd.DataFrame({iID:pd.Series(1.0, index=self.getDateTime(iid=iID, start_dt=dts[0], end_dt=dts[-1])) for iID in ids})
-        Data = Data.ix[dts, :]
+        Data = Data.loc[dts, :]
         Data[pd.isnull(Data)] = 0
         return pd.Panel({"交易日":Data})
 
@@ -60,7 +60,7 @@ class _TickTable(FactorTable):
         if factor_names is None: factor_names = self.FactorNames
         MetaData = pd.DataFrame("double", index=factor_names, columns=["DataType"], dtype=np.dtype("O"))
         if key is None: return MetaData
-        elif key in MetaData: return MetaData.ix[:, key]
+        elif key in MetaData: return MetaData.loc[:, key]
         else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
     def getID(self, ifactor_name=None, idt=None):
         return []
@@ -120,7 +120,7 @@ class _TimeBarTable(FactorTable):
         if key is None:
             return MetaData
         elif key in MetaData:
-            return MetaData.ix[:, key]
+            return MetaData.loc[:, key]
         else:
             return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
      # 时间点默认是当天, ID 默认是 [000001.SH], 特别参数: 时间间隔: 以秒为单位, 默认是 3 秒
@@ -144,14 +144,14 @@ class _FeatureTable(FactorTable):
         if factor_names is None: factor_names = self.FactorNames
         MetaData = pd.DataFrame("string", index=factor_names, columns=["DataType"], dtype=np.dtype("O"))
         if key is None: return MetaData
-        elif key in MetaData: return MetaData.ix[:, key]
+        elif key in MetaData: return MetaData.loc[:, key]
         else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         Data = {}
         for i in range((EndDate-StartDate).days):
             iDT = dt.datetime.combine(StartDate + dt.timedelta(i), dt.time(23, 59, 59, 999999))
-            Data[iDT] = pd.DataFrame(self._FactorDB.getSecurityInfo(ids, idt=iDT), index=ids).ix[:, factor_names].T
+            Data[iDT] = pd.DataFrame(self._FactorDB.getSecurityInfo(ids, idt=iDT), index=ids).loc[:, factor_names].T
         Data = pd.Panel(Data).swapaxes(0, 1)
         Data = _adjustDateTime(Data, dts, fillna=True, method="bfill")
         return Data

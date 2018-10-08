@@ -23,7 +23,7 @@ from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage
 _QS_MinPositionNum = 1e-8
 
 def cutDateTime(df, dts=None, start_dt=None, end_dt=None):
-    if dts is not None: df = df.ix[dts]
+    if dts is not None: df = df.loc[dts]
     if start_dt is not None: df = df[df.index>=start_dt]
     if end_dt is not None: df = df[df.index<=end_dt]
     return df

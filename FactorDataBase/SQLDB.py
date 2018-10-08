@@ -28,8 +28,8 @@ class _FactorTable(FactorTable):
         return self._DataType.index.tolist()
     def getFactorMetaData(self, factor_names=None, key=None):
         if factor_names is None: factor_names = self.FactorNames
-        if key=="DataType": return self._DataType.ix[factor_names]
-        if key is None: return pd.DataFrame(self._DataType.ix[factor_names], columns=["DataType"])
+        if key=="DataType": return self._DataType.loc[factor_names]
+        if key is None: return pd.DataFrame(self._DataType.loc[factor_names], columns=["DataType"])
         else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
     def getID(self, ifactor_name=None, idt=None):
         DBTableName = self._FactorDB.TablePrefix+self._FactorDB._Prefix+self.Name
@@ -67,7 +67,7 @@ class _FactorTable(FactorTable):
         SQLStr += DBTableName+".ID, "
         for iField in factor_names: SQLStr += DBTableName+"."+iField+", "
         SQLStr = SQLStr[:-2]+" FROM "+DBTableName+" "
-        if np.nanmax(np.diff(np.array(dts))).days<=1:
+        if (len(dts)==1) or (np.nanmax(np.diff(np.array(dts))).days<=1):
             SQLStr += "WHERE "+DBTableName+".DateTime>='"+dts[0].strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
             SQLStr += "AND "+DBTableName+".DateTime<='"+dts[-1].strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
         else:
@@ -79,6 +79,7 @@ class _FactorTable(FactorTable):
         if not RawData: return pd.DataFrame(columns=["DateTime", "ID"]+factor_names)
         return pd.DataFrame(np.array(RawData), columns=["DateTime", "ID"]+factor_names)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data = raw_data.set_index(["DateTime", "ID"])
         DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
         Data = {}
@@ -87,7 +88,7 @@ class _FactorTable(FactorTable):
             if DataType[iFactorName]=="double": iRawData = iRawData.astype("float")
             Data[iFactorName] = iRawData
         Data = pd.Panel(Data).loc[factor_names]
-        return Data.ix[:, dts, ids]
+        return Data.loc[:, dts, ids]
 
 class SQLDB(WritableFactorDB):
     """SQLDB"""

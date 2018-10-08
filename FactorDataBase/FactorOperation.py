@@ -408,8 +408,7 @@ class SectionAggregation(DerivativeFactor):
     IDMap = Dict(arg_type="ArgDict", label="代码对照", order=4)
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
-        FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]
-        self.add_trait("GroupFactor", Enum(*([None]+[i for i in range(len(self.Descriptors))]), arg_type="SingleOption", label="类别因子", order=2))
+        self.add_trait("GroupFactor", Enum(*([None]+[i for i in range(len(self.Descriptors))]), arg_type="SingleOption", label="类别因子", order=3))
     def readData(self, ids, dts, args={}):
         StdData = self._calcData(ids=ids, dts=dts, descriptor_data=[iDescriptor.readData(ids=ids, dts=dts).values for iDescriptor in self.Descriptors])
         return pd.DataFrame(StdData, index=dts, columns=ids)

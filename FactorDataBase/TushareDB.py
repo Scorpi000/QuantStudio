@@ -18,28 +18,28 @@ from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
 
 class _FactorTable(FactorTable):
     def getMetaData(self, key=None):
-        TableInfo = self._FactorDB._TableInfo.ix[self.Name]
+        TableInfo = self._FactorDB._TableInfo.loc[self.Name]
         if key is None:
             return TableInfo
         else:
             return TableInfo.get(key, None)
     @property
     def FactorNames(self):
-        FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         return FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()
     def getFactorMetaData(self, factor_names=None, key=None):
         if factor_names is None:
             factor_names = self.FactorNames
-        FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         if key=="DataType":
-            if hasattr(self, "_DataType"): return self._DataType.ix[factor_names]
-            MetaData = FactorInfo["DataType"].ix[factor_names]
+            if hasattr(self, "_DataType"): return self._DataType.loc[factor_names]
+            MetaData = FactorInfo["DataType"].loc[factor_names]
             for i in range(MetaData.shape[0]):
                 iDataType = MetaData.iloc[i].lower()
                 if iDataType.find("str")!=-1: MetaData.iloc[i] = "string"
                 else: MetaData.iloc[i] = "double"
             return MetaData
-        elif key=="Description": return FactorInfo["Description"].ix[factor_names]
+        elif key=="Description": return FactorInfo["Description"].loc[factor_names]
         elif key is None:
             return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType"),
                                  "Description":self.getFactorMetaData(factor_names, key="Description")})
@@ -50,7 +50,7 @@ class _FactorTable(FactorTable):
 class _CalendarTable(_FactorTable):
     """交易日历因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        FactorInfo = fdb._FactorInfo.ix[name]
+        FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
         self._DateField = FactorInfo[FactorInfo["FieldType"]=="Date"].index[0]
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
@@ -64,7 +64,7 @@ class _CalendarTable(_FactorTable):
     # 忽略 ifactor_name
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         DBTableName = self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
-        DateField = self._FactorDB._FactorInfo['DBFieldName'].ix[self.Name].ix[self._DateField]
+        DateField = self._FactorDB._FactorInfo['DBFieldName'].loc[self.Name].loc[self._DateField]
         if start_dt is None: start_dt = dt.date(1900, 1, 1)
         start_dt = start_dt.strftime("%Y%m%d")
         if end_dt is None: end_dt = dt.date.today()
@@ -74,7 +74,7 @@ class _CalendarTable(_FactorTable):
         return [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Dates[DateField].values]
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         DBTableName = self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
-        FieldDict = self._FactorDB._FactorInfo['DBFieldName'].ix[self.Name].ix[[self._DateField, self._IDField]+factor_names]
+        FieldDict = self._FactorDB._FactorInfo['DBFieldName'].loc[self.Name].loc[[self._DateField, self._IDField]+factor_names]
         Fields = FieldDict.tolist()
         StartDate, EndDate = dts[0].strftime("%Y%m%d"), dts[-1].strftime("%Y%m%d")
         RawData = None
@@ -97,27 +97,27 @@ class _CalendarTable(_FactorTable):
             Data[iFactorName] = iRawData
         Data = pd.Panel(Data).loc[factor_names]
         Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
-        return Data.ix[:, dts, ids]
+        return Data.loc[:, dts, ids]
 
 class _MarketTable(_FactorTable):
     """行情因子表"""
     LookBack = Int(0, arg_type="Integer", label="回溯天数", order=0)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        FactorInfo = fdb._FactorInfo.ix[name]
+        FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
         self._DateFields = FactorInfo[FactorInfo["FieldType"]=="Date"].index.tolist()
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         return
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
-        FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         self.add_trait("DateField", Enum(*self._DateFields, arg_type="SingleOption", label="日期字段", order=0))
         DefaultDateField = FactorInfo[(FactorInfo["Supplementary"]=="DefaultDate") & (FactorInfo["FieldType"]=="Date")]
         if DefaultDateField.shape[0]>0: self.DateField = DefaultDateField.index[0]
         else: self.DateField = self._DateFields[0]
     @property
     def FactorNames(self):
-        FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         return FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()+self._DateFields
     def getID(self, ifactor_name=None, idt=None, args={}):
         return self._FactorDB.getID(index_id="全体A股", is_current=False)
@@ -139,7 +139,7 @@ class _MarketTable(_FactorTable):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
         Fields = [self.DateField, self._IDField]+factor_names
-        DBFields = self._FactorDB._FactorInfo['DBFieldName'].ix[self.Name].ix[Fields].tolist()
+        DBFields = self._FactorDB._FactorInfo['DBFieldName'].loc[self.Name].loc[Fields].tolist()
         DBTableName = self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         RawData = pd.DataFrame(columns=DBFields)
         FieldStr = ",".join(DBFields)
@@ -168,14 +168,13 @@ class _MarketTable(_FactorTable):
         Data = pd.Panel(Data).loc[factor_names]
         Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
         LookBack = args.get("回溯天数", self.LookBack)
-        if LookBack==0: return Data.ix[:, dts, ids]
+        if LookBack==0: return Data.loc[:, dts, ids]
         AllDTs = Data.major_axis.union(set(dts)).sort_values()
-        Data = Data.ix[:, AllDTs, ids]
+        Data = Data.loc[:, AllDTs, ids]
         Limits = LookBack*24.0*3600
         for i, iFactorName in enumerate(Data.items):
             Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
         return Data.loc[:, dts]
-
 class TushareDB(FactorDB):
     """tushare"""
     Token = Str("", label="Token", arg_type="String", order=0)
@@ -183,14 +182,18 @@ class TushareDB(FactorDB):
         super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"TushareDBConfig.json" if config_file is None else config_file), **kwargs)
         self.Name = "TushareDB"
         self._ts = None
+        self._InfoFilePath = __QS_LibPath__+os.sep+"TushareDBInfo.hdf5"# 数据库信息文件路径
+        self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"TushareDBInfo.xlsx"# 数据库信息源文件路径
+        self._updateInfo()
         return
-    def __QS_initArgs__(self):
-        self._InfoFilePath = __QS_LibPath__+os.sep+"TushareDBInfo.hdf5"# 信息文件路径
-        if not os.path.isfile(self._InfoFilePath):
-            InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"TushareDBInfo.xlsx"# 信息源文件路径
-            print("缺失信息文件: '%s', 尝试从 '%s' 中导入信息." % (self._InfoFilePath, InfoResourcePath))
-            if not os.path.isfile(InfoResourcePath): raise __QS_Error__("缺失信息文件: %s" % InfoResourcePath)
-            self.importInfo(InfoResourcePath)
+    def _updateInfo(self):
+        if not os.path.isfile(self._InfoFilePath): 
+            print("缺失数据库信息文件: '%s', 尝试从 '%s' 中导入信息." % (self._InfoFilePath, self._InfoResourcePath))
+            if not os.path.isfile(self._InfoResourcePath): raise __QS_Error__("缺失数据库信息文件: %s" % self._InfoResourcePath)
+            self.importInfo(self._InfoResourcePath)
+        elif os.path.isfile(self._InfoResourcePath) and (os.path.getmtime(self._InfoResourcePath)>os.path.getmtime(self._InfoFilePath)):
+            print("数据库信息文件: '%s' 有更新, 尝试从中导入新信息." % self._InfoResourcePath)
+            self.importInfo(self._InfoResourcePath)
         self._TableInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/TableInfo")
         self._FactorInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/FactorInfo")
     def connect(self):

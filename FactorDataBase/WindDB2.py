@@ -13,7 +13,7 @@ from QuantStudio.Tools.AuxiliaryFun import searchNameInStrList
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
-from QuantStudio import __QS_Object__, __QS_Error__, __QS_LibPath__
+from QuantStudio import __QS_Object__, __QS_Error__, __QS_LibPath__, __QS_MainPath__
 from QuantStudio.FactorDataBase.WindDB import WindDB, _DBTable, _adjustDateTime
 
 def RollBackNPeriod(report_date, n_period):
@@ -91,7 +91,7 @@ def _DefaultOperator(f, idt, iid, x, args):
 class _CalendarTable(_DBTable):
     """交易日历因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        FactorInfo = fdb._FactorInfo.ix[name]
+        FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
         self._DateField = FactorInfo[FactorInfo["FieldType"]=="Date"].index[0]
         self._DataType = pd.Series("double", index=["交易日"])
@@ -149,7 +149,7 @@ class _MarketTable(_DBTable):
     """行情因子表"""
     LookBack = Int(0, arg_type="Integer", label="回溯天数", order=0)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        FactorInfo = fdb._FactorInfo.ix[name]
+        FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
         self._DateFields = FactorInfo[FactorInfo["FieldType"]=="Date"].index.tolist()# 所有的日期字段列表
         self._ConditionFields = FactorInfo[FactorInfo["FieldType"]=="Condition"].index.tolist()# 所有的条件字段列表
@@ -161,7 +161,7 @@ class _MarketTable(_DBTable):
         return
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
-        FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         self.add_trait("DateField", Enum(*self._DateFields, arg_type="SingleOption", label="日期字段", order=0))
         iFactorInfo = FactorInfo[(FactorInfo["FieldType"]=="Date") & pd.notnull(FactorInfo["Supplementary"])]
         iFactorInfo = iFactorInfo[iFactorInfo["Supplementary"].str.contains("DefaultDate")]
@@ -172,7 +172,7 @@ class _MarketTable(_DBTable):
             self[iCondition] = str(FactorInfo.loc[iCondition, "Supplementary"])
     @property
     def FactorNames(self):
-        FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         return FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()+self._DateFields
     def getCondition(self, icondition, ids=None, dts=None):
         DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
@@ -292,9 +292,9 @@ class _MarketTable(_DBTable):
         Data = pd.Panel(Data).loc[factor_names]
         Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
         LookBack = args.get("回溯天数", self.LookBack)
-        if LookBack==0: return Data.ix[:, dts, ids]
+        if LookBack==0: return Data.loc[:, dts, ids]
         AllDTs = Data.major_axis.union(set(dts)).sort_values()
-        Data = Data.ix[:, AllDTs, ids]
+        Data = Data.loc[:, AllDTs, ids]
         Limits = LookBack*24.0*3600
         for i, iFactorName in enumerate(Data.items):
             Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
@@ -303,7 +303,7 @@ class _MarketTable(_DBTable):
 class _ConstituentTable(_DBTable):
     """成份因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        FactorInfo = fdb._FactorInfo.ix[name]
+        FactorInfo = fdb._FactorInfo.loc[name]
         self._GroupField = FactorInfo[FactorInfo["FieldType"]=="Group"].index[0]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
         self._InDateField = FactorInfo[FactorInfo["FieldType"]=="InDate"].index[0]
@@ -324,10 +324,10 @@ class _ConstituentTable(_DBTable):
         return self._IndexIDs
     def getFactorMetaData(self, factor_names=None, key=None):
         if factor_names is None: factor_names = self.FactorNames
-        FactorInfo = self._FactorDB._FactorInfo.ix[self.Name]
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         if key=="DataType":
             return pd.Series("double", index=factor_names)
-        elif key=="Description": return FactorInfo["Description"].ix[factor_names]
+        elif key=="Description": return FactorInfo["Description"].loc[factor_names]
         elif key is None:
             return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType"),
                                  "Description":self.getFactorMetaData(factor_names, key="Description")})
@@ -435,14 +435,14 @@ class _ConstituentTable(_DBTable):
                     kEndDate = (dt.datetime.strptime(jIDRawData[self._OutDateField].iloc[k], "%Y%m%d").date()-dt.timedelta(1) if jIDRawData[self._OutDateField].iloc[k] is not None else dt.date.today())
                     iData[jID].loc[kStartDate:kEndDate] = 1
             Data[iIndexID] = iData
-        Data = pd.Panel(Data).ix[factor_names, :, ids]
+        Data = pd.Panel(Data).loc[factor_names, :, ids]
         Data.major_axis = [dt.datetime.combine(iDate, dt.time(23, 59, 59, 999999)) for iDate in Data.major_axis]
         Data.fillna(value=0, inplace=True)
         return _adjustDateTime(Data, dts, fillna=True, method="bfill")
 class _MappingTable(_DBTable):
     """映射因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        FactorInfo = fdb._FactorInfo.ix[name]
+        FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
         self._StartDateField = FactorInfo[FactorInfo["FieldType"]=="StartDate"].index[0]
         self._EndDateField = FactorInfo[FactorInfo["FieldType"]=="EndDate"].index[0]
@@ -507,13 +507,13 @@ class _MappingTable(_DBTable):
                 jStartDate, jEndDate = dt.datetime.strptime(ijRawData[self._StartDateField], "%Y%m%d"), dt.datetime.combine(dt.datetime.strptime(ijRawData[self._EndDateField], "%Y%m%d").date(), dt.time(23,59,59,999999))-DeltaDT
                 iData.loc[jStartDate:jEndDate] = np.repeat(ijRawData[factor_names].values.reshape((1, nFactor)), iData.loc[jStartDate:jEndDate].shape[0], axis=0)
             Data[iID] = iData
-        return pd.Panel(Data).swapaxes(0, 2).ix[:, :, ids]
+        return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
 
 class _IndustryTable(_DBTable):
     """行业因子表"""
     Level = Enum(1, 2, 3, 4, label="分类级别", arg_type="SingleOption", order=0)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        FactorInfo = fdb._FactorInfo.ix[name]
+        FactorInfo = fdb._FactorInfo.loc[name]
         self._IndustryCodeField = FactorInfo[FactorInfo["FieldType"]=="IndustryCode"].index[0]
         self._IndustryCodeStart = FactorInfo[FactorInfo["FieldType"]=="IndustryCode"]["Supplementary"].iloc[0][1:]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
@@ -652,12 +652,12 @@ class _IndustryTable(_DBTable):
                 jStartDate, jEndDate = dt.datetime.strptime(ijRawData[self._InDateField], "%Y%m%d"), dt.datetime.combine(dt.datetime.strptime(ijRawData[self._OutDateField], "%Y%m%d").date(), dt.time(23,59,59,999999))-DeltaDT
                 iData.loc[jStartDate:jEndDate] = np.repeat(ijRawData[factor_names].values.reshape((1, nFactor)), iData.loc[jStartDate:jEndDate].shape[0], axis=0)
             Data[iID] = iData
-        return pd.Panel(Data).swapaxes(0, 2).ix[:, :, ids]
+        return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
 
 class _FeatureTable(_DBTable):
     """特征因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        FactorInfo = fdb._FactorInfo.ix[name]
+        FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
     def getID(self, ifactor_name=None, idt=None, args={}):
@@ -687,7 +687,7 @@ class _FeatureTable(_DBTable):
         raw_data = raw_data.set_index(["ID"])
         Data = pd.Panel({dt.datetime.today(): raw_data.T}).swapaxes(0, 1)
         Data = _adjustDateTime(Data, dts, fillna=True, method="bfill")
-        Data = Data.ix[:, :, ids]
+        Data = Data.loc[:, :, ids]
         return Data
 class _FinancialTable(_DBTable):
     """财务因子表"""
@@ -697,7 +697,7 @@ class _FinancialTable(_DBTable):
     YearLookBack = Int(0, label="回溯年数", arg_type="Integer", order=3)
     PeriodLookBack = Int(0, label="回溯期数", arg_type="Integer", order=4)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        FactorInfo = fdb._FactorInfo.ix[name]
+        FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
         self._ANNDateField = FactorInfo[FactorInfo["FieldType"]=="ANNDate"].index[0]
         self._ReportDateField = FactorInfo[FactorInfo["FieldType"]=="ReportDate"].index[0]
@@ -783,7 +783,7 @@ class _FinancialTable(_DBTable):
         Data.minor_axis = factor_names
         Data = Data.swapaxes(0, 2)
         Data = _adjustDateTime(Data, dts, fillna=True, method="pad")
-        Data = Data.ix[:, :, ids]
+        Data = Data.loc[:, :, ids]
         return Data
     # 检索最大报告期的位置
     def _findMaxReportDateInd(self, idate, raw_data, report_date, MaxReportDateInd, MaxNoteDateInd, PreMaxNoteDateInd):
@@ -1096,7 +1096,7 @@ class _AnalystConsensusTable(_DBTable):
     Period = Enum("263001000", "263002000", "263003000", "263004000", label="周期", arg_type="SingleOption", order=1)
     LookBack = Int(180, arg_type="Integer", label="回溯天数", order=2)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        FactorInfo = fdb._FactorInfo.ix[name]
+        FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
         self._DateField = FactorInfo[FactorInfo["FieldType"]=="Date"].index[0]
         self._ReportDateField = FactorInfo[FactorInfo["FieldType"]=="ReportDate"].index[0]
@@ -1181,9 +1181,9 @@ class _AnalystConsensusTable(_DBTable):
         Data = pd.Panel(Data)
         Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:]), 23, 59, 59, 999999) for iDate in Dates]
         Data = Data.swapaxes(0, 2)
-        if LookBack==0: return Data.ix[:, dts, ids]
+        if LookBack==0: return Data.loc[:, dts, ids]
         AllDTs = Data.major_axis.union(set(dts)).sort_values()
-        Data = Data.ix[:, AllDTs, ids]
+        Data = Data.loc[:, AllDTs, ids]
         Limits = LookBack*24.0*3600
         for i, iFactorName in enumerate(Data.items):
             Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
@@ -1250,7 +1250,7 @@ class _AnalystRatingDetailTable(_DBTable):
     Period = Int(180, arg_type="Integer", label="周期", order=4)
     DataType = Enum("double", "string", arg_type="SingleOption", label="数据类型", order=5)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        FactorInfo = fdb._FactorInfo.ix[name]
+        FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
         self._DateField = FactorInfo[FactorInfo["FieldType"]=="Date"].index[0]
         self._InstituteField = FactorInfo[FactorInfo["FieldType"]=="Institute"].index[0]
@@ -1324,7 +1324,7 @@ class _AnalystRatingDetailTable(_DBTable):
                         ijRawData = pd.merge(ijTemp, ijRawData, how='left', left_on=DeduplicationFields+["日期"], right_on=DeduplicationFields+["日期"])
                     kData[i, j] = Operator(self, iDate, jID, ijRawData, ModelArgs)
             Data[kFactorName] = kData
-        return pd.Panel(Data, major_axis=Dates, minor_axis=ids).ix[factor_names, dts]
+        return pd.Panel(Data, major_axis=Dates, minor_axis=ids).loc[factor_names, dts]
 
 class _AnalystEstDetailTable(_DBTable):
     """分析师盈利预测明细表"""
@@ -1336,7 +1336,7 @@ class _AnalystEstDetailTable(_DBTable):
     Period = Int(180, arg_type="Integer", label="周期", order=5)
     DataType = Enum("double", "string", arg_type="SingleOption", label="数据类型", order=6)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        FactorInfo = fdb._FactorInfo.ix[name]
+        FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
         self._DateField = FactorInfo[FactorInfo["FieldType"]=="Date"].index[0]
         self._InstituteField = FactorInfo[FactorInfo["FieldType"]=="Institute"].index[0]
@@ -1445,22 +1445,17 @@ class _AnalystEstDetailTable(_DBTable):
                             x.append(iijRawData)
                     kData[i, j] = Operator(self, iDate, jID, x, ModelArgs)
             Data[kFactorName] = kData
-        return pd.Panel(Data, major_axis=Dates, minor_axis=ids).ix[factor_names, dts]
+        return pd.Panel(Data, major_axis=Dates, minor_axis=ids).loc[factor_names, dts]
 
 class WindDB2(WindDB):
     """Wind 量化研究数据库"""
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"WindDB2Config.json" if config_file is None else config_file), **kwargs)
         self.Name = "WindDB2"
-    def __QS_initArgs__(self):
+    def _updateInfo(self):
         self._InfoFilePath = __QS_LibPath__+os.sep+"WindDB2Info.hdf5"# 数据库信息文件路径
-        if not os.path.isfile(self._InfoFilePath):
-            InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"WindDB2Info.xlsx"# 数据库信息源文件路径
-            print("缺失数据库信息文件: '%s', 尝试从 '%s' 中导入信息." % (self._InfoFilePath, InfoResourcePath))
-            if not os.path.isfile(InfoResourcePath): raise __QS_Error__("缺失数据库信息文件: %s" % InfoResourcePath)
-            self.importInfo(InfoResourcePath)
-        self._TableInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/TableInfo")
-        self._FactorInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/FactorInfo")
+        self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"WindDB2Info.xlsx"# 数据库信息源文件路径
+        return super()._updateInfo()
     def getTable(self, table_name, args={}):
         TableClass = self._TableInfo.loc[table_name, "TableClass"]
         return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=args)")

@@ -24,20 +24,27 @@ from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 
 def _adjustDateTime(data, dts, fillna=False, **kwargs):
     if isinstance(data, (pd.DataFrame, pd.Series)):
-        if fillna:
-            AllDTs = data.index.union(set(dts))
-            AllDTs = AllDTs.sort_values()
-            data = data.ix[AllDTs]
-            data = data.fillna(**kwargs)
-        data = data.ix[dts]
+        if data.shape[0]==0:
+            if isinstance(data, pd.DataFrame): data = pd.DataFrame(index=dts, columns=data.columns)
+            else: data = pd.Series(index=dts)
+        else:
+            if fillna:
+                AllDTs = data.index.union(dts)
+                AllDTs = AllDTs.sort_values()
+                data = data.loc[AllDTs]
+                data = data.fillna(**kwargs)
+            data = data.loc[dts]
     else:
-        FactorNames = data.items
-        if fillna:
-            AllDTs = data.major_axis.union(set(dts))
-            AllDTs = AllDTs.sort_values()
-            data = data.ix[:, AllDTs, :]
-            data = pd.Panel({data.items[i]:data.iloc[i].fillna(axis=0, **kwargs) for i in range(data.shape[0])})
-        data = data.ix[FactorNames, dts, :]
+        if data.shape[1]==0:
+            data = pd.Panel(items=data.items, major_axis=dts, minor_axis=data.minor_axis)
+        else:
+            FactorNames = data.items
+            if fillna:
+                AllDTs = data.major_axis.union(dts)
+                AllDTs = AllDTs.sort_values()
+                data = data.loc[:, AllDTs, :]
+                data = pd.Panel({data.items[i]:data.iloc[i].fillna(axis=0, **kwargs) for i in range(data.shape[0])})
+            data = data.loc[FactorNames, dts, :]
     return data
 
 # 因子库, 只读, 接口类
@@ -180,12 +187,16 @@ def _prepareMMAPFactorCacheData(ft):
                 CacheDTs = ft.ErgodicMode._DateTimes[max((0, CurInd-ft.ErgodicMode.BackwardPeriod)):min((DTNum, CurInd+ft.ErgodicMode.ForwardPeriod+1))].tolist()
                 NewCacheDTs = sorted(set(CacheDTs).difference(OldCacheDTs))
                 if CacheData:
+                    isDisjoint = OldCacheDTs.isdisjoint(CacheDTs)
                     CacheFactorNames = list(CacheData.keys())
                     #print("准备缓存区: "+str(CacheFactorNames))# debug
                     NewCacheData = ft.__QS_calcData__(raw_data=ft.__QS_prepareRawData__(factor_names=CacheFactorNames, ids=ft.ErgodicMode._IDs, dts=NewCacheDTs), factor_names=CacheFactorNames, ids=ft.ErgodicMode._IDs, dts=NewCacheDTs)
                     for iFactorName in CacheData:
-                        CacheData[iFactorName] = CacheData[iFactorName].ix[CacheDTs, :]
-                        CacheData[iFactorName].ix[NewCacheDTs, :] = NewCacheData[iFactorName]
+                        if isDisjoint:
+                            CacheData[iFactorName] = NewCacheData[iFactorName]
+                        else:
+                            CacheData[iFactorName] = CacheData[iFactorName].loc[CacheDTs, :]
+                            CacheData[iFactorName].loc[NewCacheDTs, :] = NewCacheData[iFactorName]
                     NewCacheData = None
     return 0
 # 基于 mmap 的 ID 缓冲的因子表, 如果开启遍历模式, 那么限制缓冲的 ID 个数和时间点长度, 缓冲区里是 ID 的部分数据
@@ -216,11 +227,15 @@ def _prepareMMAPIDCacheData(ft):
                 CacheDTs = ft.ErgodicMode._DateTimes[max((0, CurInd-ft.ErgodicMode.BackwardPeriod)):min((DTNum, CurInd+ft.ErgodicMode.ForwardPeriod+1))].tolist()
                 NewCacheDTs = sorted(set(CacheDTs).difference(OldCacheDTs))
                 if CacheData:
+                    isDisjoint = OldCacheDTs.isdisjoint(CacheDTs)
                     CacheIDs = list(CacheData.keys())
                     NewCacheData = ft.__QS_calcData__(raw_data=ft.__QS_prepareRawData__(factor_names=ft.FactorNames, ids=CacheIDs, dts=NewCacheDTs), factor_names=ft.FactorNames, ids=CacheIDs, dts=NewCacheDTs)
                     for iID in CacheData:
-                        CacheData[iID] = CacheData[iID].ix[CacheDTs, :]
-                        CacheData[iID].ix[NewCacheDTs, :] = NewCacheData.loc[:, :, iID]
+                        if isDisjoint:
+                            CacheData[iID] = NewCacheData.loc[:, :, iID]
+                        else:
+                            CacheData[iID] = CacheData[iID].loc[CacheDTs, :]
+                            CacheData[iID].loc[NewCacheDTs, :] = NewCacheData.loc[:, :, iID]
                     NewCacheData = None
     return 0
 # 因子表的运算模式参数对象
@@ -423,7 +438,7 @@ class FactorTable(__QS_Object__):
             self.ErgodicMode._CacheData.update(iData)
         self.ErgodicMode._Queue2SubProcess.put((None, (CacheFactorNames, PopFactorNames)))
         Data = pd.Panel(Data)
-        if Data.shape[0]>0: Data = Data.ix[:, dts, ids]
+        if Data.shape[0]>0: Data = Data.loc[:, dts, ids]
         if not DataFactorNames: return Data.loc[factor_names]
         #print("超出缓存区因子个数读取: "+str(DataFactorNames))# debug
         return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=DataFactorNames, ids=ids, dts=dts, args=args), factor_names=DataFactorNames, ids=ids, dts=dts, args=args).join(Data).loc[factor_names]
@@ -449,7 +464,7 @@ class FactorTable(__QS_Object__):
                     self.ErgodicMode._Queue2SubProcess.put((None,(iid, PopID)))
                 else:# 当前读取的 ID 的读取次数没有超过缓存 ID 读取次数的最小值, 放弃缓存该 ID 数据
                     return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=factor_names, ids=[iid], dts=dts, args=args), factor_names=factor_names, ids=[iid], dts=dts, args=args).iloc[:, :, 0]
-        return IDData.ix[dts, factor_names]
+        return IDData.loc[dts, factor_names]
     def _readData_ErgodicMode(self, factor_names, ids, dts, args={}):
         if self.ErgodicMode.CacheMode=="因子": return self._readData_FactorCacheMode(factor_names=factor_names, ids=ids, dts=dts, args=args)
         return pd.Panel({iID: self._readIDData(iID, factor_names=factor_names, dts=dts, args=args) for iID in ids}).swapaxes(0, 2)
@@ -520,7 +535,7 @@ class FactorTable(__QS_Object__):
         if raw_data is None: return 0
         if 'ID' in raw_data:# 如果原始数据有 ID 列，按照 ID 列划分后存入子进程的原始文件中
             raw_data = raw_data.set_index(['ID'])
-            CommonCols = list(raw_data.columns.difference(set(factor_names)))
+            CommonCols = raw_data.columns.difference(factor_names).tolist()
             AllIDs = set(raw_data.index)
             for iPID, iIDs in pid_ids.items():
                 with shelve.open(raw_data_dir+os.sep+iPID+os.sep+file_name) as iFile:
@@ -548,7 +563,10 @@ class FactorTable(__QS_Object__):
         if not self.OperationMode.DateTimes: raise __QS_Error__("运算时点序列不能为空!")
         if not self.OperationMode.IDs: raise __QS_Error__("运算 ID 序列不能为空!")
         # 检查时点标尺是否合适
-        DTs = pd.Series(np.arange(0, len(self.OperationMode.DTRuler)), index=list(self.OperationMode.DTRuler)).ix[self.OperationMode.DateTimes]
+        try:
+            DTs = pd.Series(np.arange(0, len(self.OperationMode.DTRuler)), index=list(self.OperationMode.DTRuler)).loc[list(self.OperationMode.DateTimes)]
+        except:
+            raise __QS_Error__("运算时点序列超出了时点标尺!")
         if pd.isnull(DTs).sum()>0: raise __QS_Error__("运算时点序列超出了时点标尺!")
         elif (DTs.diff().iloc[1:]!=1).sum()>0: raise __QS_Error__("运算时点序列的频率与时点标尺不一致!")
         # 检查因子的合法性, 解析出所有的因子(衍生因子所依赖的描述子也在内)
@@ -934,7 +952,8 @@ class Factor(__QS_Object__):
         RawDataFilePath = self._OperationMode._RawDataDir+os.sep+self._OperationMode._iPID+os.sep+self._RawDataFile
         if  os.path.isfile(RawDataFilePath+self._OperationMode._FileSuffix):
             with shelve.open(RawDataFilePath, "r") as File:
-                RawData = File[self._NameInFT]
+                if self._NameInFT in File: RawData = File[self._NameInFT]
+                else: RawData = File["RawData"]
             StdData = self._FactorTable.__QS_calcData__(RawData, factor_names=[self._NameInFT], ids=self._OperationMode._PID_IDs[self._OperationMode._iPID], dts=DTs, args=self.Args).iloc[0]
         else:
             StdData = self._FactorTable.readData(factor_names=[self._NameInFT], ids=self._OperationMode._PID_IDs[self._OperationMode._iPID], dts=DTs, args=self.Args).iloc[0]
@@ -1185,13 +1204,17 @@ class DataFactor(Factor):
         if self._OperationMode is not None: return self._OperationMode.DateTimes
         return self._Data.index.tolist()
     def readData(self, ids, dts):
-        if self.LookBack==0: return self._Data.ix[dts, ids]
-        else: return fillNaByLookback(self._Data.ix[sorted(set(dts).union(self._Data.index)), ids], lookback=self.LookBack*24.0*3600).loc[dts, :]
+        if (self._Data.columns.intersection(ids).shape[0]==0) or (self._Data.index.intersection(dts).shape[0]==0):
+            return pd.DataFrame(index=dts, columns=ids, dtype=("O" if self.DataType=="string" else np.float))
+        if self.LookBack==0: return self._Data.loc[dts, ids]
+        else: return fillNaByLookback(self._Data.loc[sorted(self._Data.index.union(dts)), ids], lookback=self.LookBack*24.0*3600).loc[dts, :]
     def __QS_prepareCacheData__(self):
         return self._Data
     def _QS_getData(self, dts, pids=None):
         pids = set(self._OperationMode._PID_IDs if pids is None else pids)
         IDs = []
         for iPID in pids: IDs.extend(self._OperationMode._PID_IDs[iPID])
-        StdData = self._Data.ix[list(dts), IDs].sort_index(axis=1)
-        return StdData
+        dts = list(dts)
+        if (self._Data.columns.intersection(IDs).shape[0]==0) or (self._Data.index.intersection(dts).shape[0]==0):
+            return pd.DataFrame(index=dts, columns=IDs, dtype=("O" if self.DataType=="string" else np.float))
+        return self._Data.loc[dts, IDs].sort_index(axis=1)

@@ -8,25 +8,27 @@ from QuantStudio.Tools.DataTypeConversionFun import DictKeyValueTurn_List
 from QuantStudio.Tools.MathFun import CartesianProduct
 
 # 产生一个有效的名字
-def genAvailableName(header,all_names,name_num=1,check_header=True):
-    if check_header and (header not in all_names):
+def genAvailableName(header,all_names,name_num=1,check_header=True,ignore_case=False):
+    if ignore_case:
+        all_names = [iName.lower() for iName in all_names]
+        LowerHeader = header.lower()
+    else: LowerHeader = header
+    if check_header and (LowerHeader not in all_names):
         AvailableNames = [header]
         CurNum = 1
     else:
         AvailableNames = []
         CurNum = 0
     i = 1
-    CurName = header+str(i)
+    CurName = LowerHeader+str(i)
     while (CurNum<name_num):
         if CurName not in all_names:
-            AvailableNames.append(CurName)
+            AvailableNames.append(header+str(i))
             CurNum += 1
         i += 1
-        CurName = header+str(i)
-    if name_num==1:
-        return AvailableNames[0]
-    else:
-        return AvailableNames
+        CurName = LowerHeader+str(i)
+    if name_num==1: return AvailableNames[0]
+    else: return AvailableNames
 # 指数权重,window_len:窗长；half_life:半衰期；返回:[权重]，从大到小排列
 def getExpWeight(window_len,half_life,is_unitized=True):
     ExpWeight = (0.5**(1/half_life))**np.arange(window_len)

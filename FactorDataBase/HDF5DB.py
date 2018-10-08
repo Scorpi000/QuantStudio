@@ -33,20 +33,22 @@ class _FactorTable(FactorTable):
     def getFactorMetaData(self, factor_names=None, key=None):
         if factor_names is None:
             factor_names = self.FactorNames
-        if key=="DataType":
-            return self._DataType.ix[factor_names]
+        elif set(factor_names).isdisjoint(self.FactorNames):
+            return super().getFactorMetaData(factor_names=factor_names, key=key)
+        if key=="DataType": return self._DataType.loc[factor_names]
         with self._FactorDB._DataLock:
             MetaData = {}
             for iFactorName in factor_names:
-                with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+iFactorName+"."+self._Suffix) as File:
-                    if key is None:
-                        MetaData[iFactorName] = pd.Series(File.attrs)
-                    elif key in File.attrs:
-                        MetaData[iFactorName] = File.attrs[key]
+                if iFactorName in self.FactorNames:
+                    with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+iFactorName+"."+self._Suffix) as File:
+                        if key is None:
+                            MetaData[iFactorName] = pd.Series(File.attrs)
+                        elif key in File.attrs:
+                            MetaData[iFactorName] = File.attrs[key]
         if key is None:
-            return pd.DataFrame(MetaData)
+            return pd.DataFrame(MetaData).loc[:, factor_names]
         else:
-            return pd.Series(MetaData)
+            return pd.Series(MetaData).loc[factor_names]
     def getID(self, ifactor_name=None, idt=None):
         if ifactor_name is None: ifactor_name = self.FactorNames[0]
         with self._FactorDB._DataLock:
@@ -79,8 +81,12 @@ class _FactorTable(FactorTable):
                 if dts is None:
                     if ids is None:
                         Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs)
+                    elif set(ids).isdisjoint(IDs):
+                        Rslt = pd.DataFrame(index=DateTimes, columns=ids)
                     else:
-                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).ix[:, ids]
+                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).loc[ids]
+                elif (ids is not None) and set(ids).isdisjoint(IDs):
+                    Rslt = pd.DataFrame(index=dts, columns=ids)
                 else:
                     if dts and isinstance(dts[0], pd.Timestamp) and (pd.__version__>="0.20.0"): dts = [idt.to_pydatetime().timestamp() for idt in dts]
                     else: dts = [idt.timestamp() for idt in dts]
@@ -94,17 +100,17 @@ class _FactorTable(FactorTable):
                         Mask = DateTimes.tolist()
                         DateTimes = DateTimes.index.values
                         if ids is None:
-                            Rslt = pd.DataFrame(DataFile["Data"][Mask, :], index=DateTimes, columns=IDs).ix[dts]
+                            Rslt = pd.DataFrame(DataFile["Data"][Mask, :], index=DateTimes, columns=IDs).loc[dts]
                         else:
                             IDRuler = pd.Series(np.arange(0,IDs.shape[0]), index=IDs)
                             IDRuler = IDRuler.loc[ids]
                             IDRuler = IDRuler[pd.notnull(IDRuler)].astype('int')
                             StartInd = IDRuler.min()
                             EndInd = IDRuler.max()
-                            Rslt = pd.DataFrame(DataFile["Data"][Mask, StartInd:EndInd+1], index=DateTimes, columns=IDs[StartInd:EndInd+1]).ix[dts, ids]
+                            Rslt = pd.DataFrame(DataFile["Data"][Mask, StartInd:EndInd+1], index=DateTimes, columns=IDs[StartInd:EndInd+1]).loc[dts, ids]
                     else:
-                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DataFile["DateTime"][...], columns=IDs).ix[dts]
-                        if ids is not None: Rslt = Rslt.ix[:, ids]
+                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DataFile["DateTime"][...], columns=IDs).loc[dts]
+                        if ids is not None: Rslt = Rslt.loc[:, ids]
         if DataType!="double":
             Rslt = Rslt.where(pd.notnull(Rslt), None)
             Rslt = Rslt.where(Rslt!="", None)
@@ -138,9 +144,11 @@ class HDF5DB(WritableFactorDB):
             for iTable in AllTables:
                 iTablePath = self.MainDir+os.sep+iTable
                 iFactors = set(listDirFile(iTablePath, suffix=self._Suffix))
-                if not iFactors:
-                    continue
-                iDataType = readNestedDictFromHDF5(iTablePath+os.sep+"_TableInfo.h5", "/DataType")
+                if not iFactors: continue
+                try:
+                    iDataType = readNestedDictFromHDF5(iTablePath+os.sep+"_TableInfo.h5", "/DataType")
+                except:
+                    iDataType = None
                 if (iDataType is None) or (iFactors!=set(iDataType.index)):
                     iDataType = {}
                     for ijFactor in iFactors:
@@ -241,33 +249,31 @@ class HDF5DB(WritableFactorDB):
         with self._DataLock:
             with h5py.File(FilePath) as DataFile:
                 nOldDT, OldDateTimes = DataFile["DateTime"].shape[0], DataFile["DateTime"][...].tolist()
-                OldDTSet = set(OldDateTimes)
-                NewDateTimes = factor_data.index.difference(OldDTSet).values
+                NewDateTimes = factor_data.index.difference(OldDateTimes).values
                 OldIDs = DataFile["ID"][...]
-                OldIDSet = set(OldIDs)
-                NewIDs = factor_data.columns.difference(OldIDSet).values
+                NewIDs = factor_data.columns.difference(OldIDs).values
                 DataFile["DateTime"].resize((nOldDT+NewDateTimes.shape[0], ))
                 DataFile["DateTime"][nOldDT:] = NewDateTimes
                 DataFile["ID"].resize((OldIDs.shape[0]+NewIDs.shape[0], ))
                 DataFile["ID"][OldIDs.shape[0]:] = NewIDs
                 DataFile["Data"].resize((DataFile["DateTime"].shape[0], DataFile["ID"].shape[0]))
                 if NewDateTimes.shape[0]>0:
-                    NewData = factor_data.ix[NewDateTimes, np.r_[OldIDs, NewIDs]]
+                    NewData = factor_data.loc[NewDateTimes, np.r_[OldIDs, NewIDs]]
                     if data_type!="double": NewData = NewData.where(pd.notnull(NewData), None)
                     else: NewData = NewData.astype("float")
                     DataFile["Data"][nOldDT:, :] = NewData.values
-                CrossedDateTimes = factor_data.index.intersection(OldDTSet)
+                CrossedDateTimes = factor_data.index.intersection(OldDateTimes)
                 if CrossedDateTimes.shape[0]>0:
                     CrossedDateTimePos = [OldDateTimes.index(iDT) for iDT in CrossedDateTimes]
                     CrossedDateTimes = CrossedDateTimes[np.argsort(CrossedDateTimePos)]
                     CrossedDateTimePos.sort()
                     if NewIDs.shape[0]>0:
-                        NewData = factor_data.ix[CrossedDateTimes, NewIDs]
+                        NewData = factor_data.loc[CrossedDateTimes, NewIDs]
                         if data_type!="double": NewData = NewData.where(pd.notnull(NewData), None)
                         else: NewData = NewData.astype("float")
                         DataFile["Data"][CrossedDateTimePos, OldIDs.shape[0]:] = NewData.values
-                    CrossedIDs = factor_data.columns.intersection(OldIDSet)
-                    NewData = factor_data.ix[CrossedDateTimes, CrossedIDs].values
+                    CrossedIDs = factor_data.columns.intersection(OldIDs)
+                    NewData = factor_data.loc[CrossedDateTimes, CrossedIDs].values
                     OldIDs = OldIDs.tolist()
                     for i, iID in enumerate(CrossedIDs):
                         iPos = OldIDs.index(iID)

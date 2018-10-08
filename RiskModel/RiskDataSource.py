@@ -108,7 +108,7 @@ class ParaMMAPCacheRDS(RiskDataSource):
         if CovMatrix is None:
             return None
         if ids is not None:
-            CovMatrix = CovMatrix.ix[ids, ids]
+            CovMatrix = CovMatrix.loc[ids, ids]
         if drop_na:
             return dropRiskMatrixNA(CovMatrix)
         return CovMatrix
@@ -180,7 +180,7 @@ class FactorRDS(RiskDataSource):
     def readFactorCov(self, idt, factor_names=None):
         Data = self._RiskDB.readFactorCov(self._TableName, dts=idt)
         if factor_names is not None:
-            return Data.ix[factor_names, factor_names]
+            return Data.loc[factor_names, factor_names]
         else:
             return Data
     # 给定单个时点，提取个股的特别风险
@@ -190,7 +190,7 @@ class FactorRDS(RiskDataSource):
     def readFactorData(self, idt, factor_names=None, ids=None):
         Data = self._RiskDB.readFactorData(self._TableName, dts=idt, ids=ids)
         if factor_names is not None:
-            return Data.ix[:,factor_names]
+            return Data.loc[:,factor_names]
         else:
             return Data
     # 给定单个时点，提取个股的协方差矩阵
@@ -214,7 +214,7 @@ class FactorRDS(RiskDataSource):
     def readFactorReturn(self, idt, factor_names=None):
         Data = self._RiskDB.readFactorReturn(self._TableName, dts=idt)
         if factor_names is not None:
-            return Data.ix[factor_names]
+            return Data.loc[factor_names]
         else:
             return Data
     # 给定单个时点，提取残余收益率
@@ -285,7 +285,7 @@ class ParaMMAPCacheFRDS(FactorRDS, ParaMMAPCacheRDS):
         if Data is None:
             return None
         if factor_names is not None:
-            return Data.ix[factor_names, factor_names]
+            return Data.loc[factor_names, factor_names]
         else:
             return Data
     def readSpecificRisk(self, idt, ids=None):
@@ -297,7 +297,7 @@ class ParaMMAPCacheFRDS(FactorRDS, ParaMMAPCacheRDS):
         if Data is None:
             return None
         if ids is not None:
-            return Data.ix[ids]
+            return Data.loc[ids]
         else:
             return Data
     def readFactorData(self, idt, factor_names=None, ids=None):
@@ -309,7 +309,7 @@ class ParaMMAPCacheFRDS(FactorRDS, ParaMMAPCacheRDS):
         if Data is None:
             return None
         if ids is not None:
-            Data = Data.ix[ids]
+            Data = Data.loc[ids]
         if factor_names is not None:
-            Data = Data.ix[:,factor_names]
+            Data = Data.loc[:,factor_names]
         return Data

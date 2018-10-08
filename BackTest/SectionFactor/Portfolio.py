@@ -619,7 +619,7 @@ class PureFactorPortfolio(QuantilePortfolio):# TODO
         Signal = Signal/Signal.sum()
         Signal = dict(Signal)
         RetRate = self.DSs[args["数据源"]].getFactorData(dates=self.CurDate,ids=None,ifactor_name=args["收益率因子"])
-        RetRate = RetRate.ix[self.CurDate]
+        RetRate = RetRate.loc[self.CurDate]
         self._Output["投资组合"].append(dict(Portfolio))
         if self.CurInd>=1:
             self._Output["换手率"].append(calcTurnover(self._Output["投资组合"][-2],self._Output["投资组合"][-1]))
