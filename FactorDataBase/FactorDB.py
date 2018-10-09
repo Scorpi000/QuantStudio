@@ -12,7 +12,6 @@ from multiprocessing import Process, Queue, Lock, Event, cpu_count
 
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 from progressbar import ProgressBar
 from traits.api import Instance, Str, File, List, Int, Bool, Directory, Enum, ListStr
 
@@ -265,13 +264,16 @@ class _OperationMode(__QS_Object__):
         self.add_trait("FactorNames", ListStr(arg_type="MultiOption", label="运算因子", order=2, option_range=tuple(self._FT.FactorNames)))
 # 因子表准备子进程
 def _prepareRawData(args):
+    nGroup = len(args['GroupInfo'])
     if "Sub2MainQueue" not in args:# 运行模式为串行
-        for i in tqdm(range(len(args['GroupInfo']))):
-            iFT, iFactorNames, iRawFactorNames, iDTs, iArgs = args['GroupInfo'][i]
-            iRawData = iFT.__QS_prepareRawData__(iRawFactorNames, args["FT"].OperationMode.IDs, iDTs, iArgs)
-            iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"].OperationMode._RawDataDir, args["FT"].OperationMode._PID_IDs, args["RawDataFileNames"][i], args["FT"].OperationMode._PID_Lock)
+        with ProgressBar(max_value=len(nGroup)) as ProgBar:
+            for i in range(nGroup):
+                iFT, iFactorNames, iRawFactorNames, iDTs, iArgs = args['GroupInfo'][i]
+                iRawData = iFT.__QS_prepareRawData__(iRawFactorNames, args["FT"].OperationMode.IDs, iDTs, iArgs)
+                iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"].OperationMode._RawDataDir, args["FT"].OperationMode._PID_IDs, args["RawDataFileNames"][i], args["FT"].OperationMode._PID_Lock)
+                ProgBar.update(i+1)
     else:# 运行模式为并行
-        for i in range(len(args['GroupInfo'])):
+        for i in range(nGroup):
             iFT, iFactorNames, iRawFactorNames, iDTs, iArgs = args['GroupInfo'][i]
             iRawData = iFT.__QS_prepareRawData__(iRawFactorNames, args['FT'].OperationMode.IDs, iDTs, iArgs)
             iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"].OperationMode._RawDataDir, args["FT"].OperationMode._PID_IDs, args["RawDataFileNames"][i], args["FT"].OperationMode._PID_Lock)
@@ -644,12 +646,15 @@ class FactorTable(__QS_Object__):
                                                                   arg=args, partition_arg=["GroupInfo", "RawDataFileNames"],
                                                                   n_partition_head=0, n_partition_tail=0,
                                                                   main2sub_queue="None", sub2main_queue="Single")
-            for i in tqdm(range(len(GroupInfo))):
-                iPID, Error, iMsg = Sub2MainQueue.get()
-                if Error!=1:
-                    for iPID, iProc in Procs.items():
-                        if iProc.is_alive(): iProc.terminate()
-                    raise __QS_Error__(iMsg)
+            nGroup = len(len(GroupInfo))
+            with ProgressBar(max_value=nGroup) as ProgBar:
+                for i in range(nGroup):
+                    iPID, Error, iMsg = Sub2MainQueue.get()
+                    if Error!=1:
+                        for iPID, iProc in Procs.items():
+                            if iProc.is_alive(): iProc.terminate()
+                        raise __QS_Error__(iMsg)
+                    ProgBar.update(i+1)
             for iPrcs in Procs.values(): iPrcs.join()
         self.OperationMode._isStarted = True
         return 0

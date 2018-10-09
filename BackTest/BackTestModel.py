@@ -7,7 +7,7 @@ import webbrowser
 
 import numpy as np
 import pandas as pd
-from tqdm import tqdm, tqdm_notebook
+from progressbar import ProgressBar
 from traits.api import List, Instance, Str
 from traitsui.api import View, Item, Group
 from traitsui.menu import OKButton, CancelButton
@@ -101,11 +101,13 @@ class BackTestModel(__QS_Object__):
         for jDB in FactorDBs: jDB.start(dts=dts)
         print(('耗时 : %.2f' % (time.clock()-TotalStartT, )), "2. 循环计算", sep="\n", end="")
         StartT = time.clock()
-        for i, iDT in enumerate(tqdm(self._QS_TestDateTimes)):
-            self._TestDateTimeIndex = i
-            self._TestDateIndex.loc[iDT.date()] = i
-            for jDB in FactorDBs: jDB.move(iDT)
-            for jModule in self.Modules: jModule.__QS_move__(iDT)
+        with ProgressBar(max_value=len(self._QS_TestDateTimes)) as ProgBar:
+            for i, iDT in enumerate(self._QS_TestDateTimes):
+                self._TestDateTimeIndex = i
+                self._TestDateIndex.loc[iDT.date()] = i
+                for jDB in FactorDBs: jDB.move(iDT)
+                for jModule in self.Modules: jModule.__QS_move__(iDT)
+                ProgBar.update(i+1)
         print(('耗时 : %.2f' % (time.clock()-StartT, )), "3. 结果生成", sep="\n", end="")
         StartT = time.clock()
         for jModule in self.Modules: jModule.__QS_end__()

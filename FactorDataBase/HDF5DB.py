@@ -85,6 +85,7 @@ class _FactorTable(FactorTable):
                         Rslt = pd.DataFrame(index=DateTimes, columns=ids)
                     else:
                         Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).loc[ids]
+                    Rslt.index = [dt.datetime.fromtimestamp(itms) for itms in Rslt.index]
                 elif (ids is not None) and set(ids).isdisjoint(IDs):
                     Rslt = pd.DataFrame(index=dts, columns=ids)
                 else:
@@ -97,6 +98,7 @@ class _FactorTable(FactorTable):
                         if ids is None: Rslt = pd.DataFrame(index=dts, columns=IDs)
                         else: Rslt = pd.DataFrame(index=dts, columns=ids)
                     elif nDT<1000:
+                        DateTimes = DateTimes.sort_values()
                         Mask = DateTimes.tolist()
                         DateTimes = DateTimes.index.values
                         if ids is None:
@@ -111,12 +113,12 @@ class _FactorTable(FactorTable):
                     else:
                         Rslt = pd.DataFrame(DataFile["Data"][...], index=DataFile["DateTime"][...], columns=IDs).loc[dts]
                         if ids is not None: Rslt = Rslt.loc[:, ids]
+                    Rslt.index = [dt.datetime.fromtimestamp(itms) for itms in Rslt.index]
         if DataType!="double":
             Rslt = Rslt.where(pd.notnull(Rslt), None)
             Rslt = Rslt.where(Rslt!="", None)
         Rslt.sort_index(axis=0, inplace=True)
         Rslt.sort_index(axis=1, inplace=True)
-        Rslt.index = [dt.datetime.fromtimestamp(itms) for itms in Rslt.index]
         return Rslt
 
 # 基于 HDF5 文件的因子数据库
