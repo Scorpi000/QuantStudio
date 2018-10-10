@@ -23,10 +23,9 @@ class RiskDataBase(__QS_Object__):
     Name = Str("风险数据库")
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self.DBType = "RDB"
-        super().__init__(sys_args=sys_args, config_file=config_file)
         self._TableDT = {}#{表名：[时点]}
         self._isAvailable = False
-        return
+        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     # 链接数据库
     def connect(self):
         self._isAvailable = True
@@ -117,12 +116,9 @@ class ShelveRDB(RiskDataBase):
     """RDB"""
     MainDir = Directory(label="主目录", arg_type="Directory", order=0)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
-        super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
         self._DataLock = Lock()
-        self._Suffix = ("nt" if os.name=="nt" else "")
-    def __QS_initArgs__(self):
-        Config = readJSONFile(__QS_LibPath__+os.sep+"RDBConfig.json")
-        for iArgName, iArgVal in Config.items(): self[iArgName] = iArgVal
+        self._Suffix = ("dat" if os.name=="nt" else "")
+        return super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"RDBConfig.json" if config_file is None else config_file), **kwargs)
     def connect(self):
         if not os.path.isdir(self.MainDir): raise __QS_Error__("不存在 ShelveRDB 的主目录: %s!" % self.MainDir)
         AllTables = listDirDir(self.MainDir)
@@ -360,12 +356,9 @@ class FactorRDB(RiskDataBase):
 class ShelveFRDB(ShelveRDB, FactorRDB):
     """FRDB"""
     def __init__(self, sys_args={}, config_file=None, **kwargs):
-        super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
-        self.DBType = 'FRDB'
+        super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"FRDBConfig.json" if config_file is None else config_file), **kwargs)
+        self.DBType = "FRDB"
         return
-    def __QS_initArgs__(self):
-        Config = readJSONFile(__QS_LibPath__+os.sep+"FRDBConfig.json")
-        for iArgName, iArgVal in Config.items(): self[iArgName] = iArgVal
     def connect(self):
         if not os.path.isdir(self.MainDir): raise __QS_Error__("不存在 ShelveFRDB 的主目录: %s!" % self.MainDir)
         AllTables = listDirDir(self.MainDir)
@@ -390,7 +383,7 @@ class ShelveFRDB(ShelveRDB, FactorRDB):
     def getTableFactor(self, table_name):
         with self._DataLock:
             with shelve.open(self.MainDir+os.sep+table_name+os.sep+"FactorCov") as DataFile:
-                FactorCov = DataFile[self._TableDT[table_name][-1]]
+                FactorCov = DataFile[self._TableDT[table_name][-1].strftime("%Y-%m-%d %H:%M:%S.%f")]
         return FactorCov.index.tolist()
     def getTableID(self, table_name, idt=None):
         return FactorRDB.getTableID(self, table_name, idt=idt)
@@ -419,7 +412,7 @@ class ShelveFRDB(ShelveRDB, FactorRDB):
         return self.readData(table_name, "FactorCov", dts=dts, ids=None)
     def readSpecificRisk(self, table_name, dts=None, ids=None):
         SpecificRisk = self.readData(table_name, "SpecificRisk", dts=dts, ids=ids)
-        if isinstance(SpecificRisk,dict):
+        if isinstance(SpecificRisk, dict):
             SpecificRisk = pd.DataFrame(SpecificRisk).T
             return SpecificRisk.sort_index()
         else:

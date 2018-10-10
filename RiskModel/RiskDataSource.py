@@ -1,4 +1,5 @@
 # coding=utf-8
+import os
 import uuid
 import mmap
 import pickle
@@ -89,7 +90,7 @@ class ParaMMAPCacheRDS(RiskDataSource):
     ForwardPeriod = Int(12, arg_type="Integer", label="向前缓冲时点数", order=0)
     BackwardPeriod = Int(0, arg_type="Integer", label="向后缓冲时点数", order=1)
     def __init__(self, name, risk_db, table_name, sys_args={}, config_file=None, **kwargs):
-        super().__init__(self, name=name, risk_db=risk_db, table_name=table_name, sys_args=sys_args, config_file=config_file, **kwargs)
+        super().__init__(name=name, risk_db=risk_db, table_name=table_name, sys_args=sys_args, config_file=config_file, **kwargs)
         # 遍历模式变量
         self.CurInd = -1# 当前时点在self._DTs中的位置, 以此作为缓冲数据的依据
         self.DTNum = None# 时点数
@@ -273,7 +274,7 @@ class ParaMMAPCacheFRDS(FactorRDS, ParaMMAPCacheRDS):
     def start(self, dts, **kwargs):
         return ParaMMAPCacheRDS.start(self, dts, **kwargs)
     def move(self, idt, *args, **kwargs):
-        return ParaMMAPCacheRDS.MoveOn(self, idt, *args, **kwargs)
+        return ParaMMAPCacheRDS.move(self, idt, *args, **kwargs)
     def end(self):
         return ParaMMAPCacheRDS.end(self)
     def readFactorCov(self, idt, factor_names=None):

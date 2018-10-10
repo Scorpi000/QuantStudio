@@ -9,21 +9,15 @@ from QuantStudio.Tools.DataTypeConversionFun import DummyVarTo01Var
 from QuantStudio.Tools.AuxiliaryFun import getFactorList
 from QuantStudio import __QS_Object__, __QS_Error__
 
-# 约束条件
-# Box约束：lb <= x <= ub,{'lb':array(n,1),'ub':array(n,1),'type':'Box'}
+# 数学形式的约束条件
+# Box 约束：lb <= x <= ub,{'lb':array(n,1),'ub':array(n,1),'type':'Box'}
 # 线性不等式约束：A * x <= b,{'A':array(m,n),'b':array(m,1),'type':'LinearIn'}
 # 线性等式约束：Aeq * x == beq,{'Aeq':array(m,n),'beq':array(m,1),'type':'LinearEq'}
 # 二次约束：x'*Sigma*x + Mu'*x <= q,{'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Delta':array(n,1),'Mu':array(n,1),'q':double,'type':'Quadratic'},其中，Sigma = X*F*X'+Delta
-# L1范数约束：sum(abs(x-c)) <= l,{'c':array(n,1),'l':double,'type':'L1'}
+# L1 范数约束：sum(abs(x-c)) <= l,{'c':array(n,1),'l':double,'type':'L1'}
 # 正部总约束：sum((x-c_pos)^+) <= l_pos，{'c_pos':array(n,1),'l_pos':double,'type':'Pos'}
 # 负部总约束：sum((x-c_neg)^-) <= l_neg，{'c_neg':array(n,1),'l_neg':double,'type':'Neg'}
 # 非零数目约束：sum((x-b)!=0) <= N, {'b':array(n,1),'N':double,'type':'NonZeroNum'}
-
-# 其他选项
-# {"MaxIter":int,"tol":double,"Algorithm":str,"x0":array(n),...}
-
-# 优化结果
-# (array(n),{'fval':double,'IterNum':int,'tol':double,...})
 
 # 优化目标基类
 class OptimizationObjective(__QS_Object__):
@@ -42,10 +36,11 @@ class OptimizationObjective(__QS_Object__):
     def genObjective(self):
         return {}
 # 均值方差优化目标
+# 数学形式:
 # 线性目标: f'*x,{'f':array(n,1),'type':'Linear'}
 # 二次目标: x'Sigma*x + Mu'*x,{'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Delta':array(n,1),'Mu':array(n,1),'type':'Quadratic'},其中，Sigma = X*F*X'+Delta
-# L1惩罚线性目标: f'*x + lambda1*sum(abs(x-c)) + lambda2*sum((x-c_pos)^+) + lambda3*sum((x-c_neg)^-),{'f':array(n,1),'lambda1':double,'c':array(n,1),'lambda2':double,'c_pos':array(n,1),'lambda3':double,'c_neg':array(n,1),'type':'L1_Linear'}
-# L1惩罚二次目标: x'Sigma*x + Mu'*x + lambda1*sum(abs(x-c)) + lambda2*sum((x-c_pos)^+) + lambda3*sum((x-c_neg)^-),{'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Delta':array(n,1),'Mu':array(n,1),'lambda1':double,'c':array(n,1),'lambda2':double,'c_pos':array(n,1),'lambda3':double,'c_neg':array(n,1),'type':'L1_Quadratic'}, 其中, Sigma = X*F*X'+Delta
+# L1 惩罚线性目标: f'*x + lambda1*sum(abs(x-c)) + lambda2*sum((x-c_pos)^+) + lambda3*sum((x-c_neg)^-),{'f':array(n,1),'lambda1':double,'c':array(n,1),'lambda2':double,'c_pos':array(n,1),'lambda3':double,'c_neg':array(n,1),'type':'L1_Linear'}
+# L1 惩罚二次目标: x'Sigma*x + Mu'*x + lambda1*sum(abs(x-c)) + lambda2*sum((x-c_pos)^+) + lambda3*sum((x-c_neg)^-),{'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Delta':array(n,1),'Mu':array(n,1),'lambda1':double,'c':array(n,1),'lambda2':double,'c_pos':array(n,1),'lambda3':double,'c_neg':array(n,1),'type':'L1_Quadratic'}, 其中, Sigma = X*F*X'+Delta
 class MeanVarianceObjective(OptimizationObjective):
     Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=0)
     ExpectedReturnCoef = Float(0.0, arg_type="Double", label="收益项系数", order=1)
@@ -114,7 +109,7 @@ class MeanVarianceObjective(OptimizationObjective):
             self._ObjectiveConstant += -self.SellPenaltyCoef * (-self._PC._HoldingExtra[self._PC._HoldingExtra<0].sum())
         return Objective
 # 最大夏普率优化目标
-# (f'*x + f0) / sqrt(x'Sigma*x + Mu'x + q),{'f':array(n,1),'f0':double,'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Mu':array(n,1),'Delta':array(n,1),'q':double,'type':'Sharpe'},其中，Sigma = X*F*X'+Delta
+# 数学形式: (f'*x + f0) / sqrt(x'Sigma*x + Mu'x + q),{'f':array(n,1),'f0':double,'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Mu':array(n,1),'Delta':array(n,1),'q':double,'type':'Sharpe'},其中，Sigma = X*F*X'+Delta
 class MaxSharpeObjective(OptimizationObjective):
     Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=0)
     @property
@@ -156,7 +151,7 @@ class MaxSharpeObjective(OptimizationObjective):
         return Objective
 
 # 风险预算优化目标
-# {'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Delta':array(n,1),'b':array(n,1),type':'Risk_Budget'}
+# 数学形式: {'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Delta':array(n,1),'b':array(n,1),type':'Risk_Budget'}
 class RiskBudgetObjective(OptimizationObjective):
     BudgetFactor = Enum("等权", arg_type="SingleOption", label="预算因子", order=0)
     @property
@@ -197,7 +192,7 @@ class RiskBudgetObjective(OptimizationObjective):
 
 
 # 最大分散化优化目标
-# {'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Delta':array(n,1),type':'Max_Diversification'}
+# 数学形式: {'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Delta':array(n,1),type':'Max_Diversification'}
 class MaxDiversificationObjective(OptimizationObjective):
     @property
     def Type(self):
@@ -229,7 +224,7 @@ class Constraint(__QS_Object__):
     @property
     def Dependency(self):
         return {}
-# 预算约束: i'*(w-benchmark) <=(==,>=) a
+# 预算约束: i'*(w-benchmark) <=(==,>=) a, 转换成线性等式约束或线性不等式约束
 class BudgetConstraint(Constraint):
     UpLimit = Float(1.0, arg_type="Double", label="限制上限", order=0)
     DownLimit = Float(1.0, arg_type="Double", label="限制下限", order=1)
@@ -265,7 +260,7 @@ class BudgetConstraint(Constraint):
                                     "b":np.array([[self.UpLimit+aAdj]])})
         return Constraints
 
-# 因子暴露约束: f'*(w-benchmark) <=(==,>=) a
+# 因子暴露约束: f'*(w-benchmark) <=(==,>=) a, 转换成线性等式约束或线性不等式约束
 class FactorExposeConstraint(Constraint):
     FactorType = Enum("数值型", "类别型", arg_type="SingleOption", label="因子类型", order=0)
     FactorNames = List(arg_type="MultiOption", label="因子名称", order=1, option_range=())
@@ -361,7 +356,7 @@ class FactorExposeConstraint(Constraint):
         else:
             return self._genClassFactorExposeConstraint()
 
-# 权重约束: (w-benchmark) <=(>=) a
+# 权重约束: (w-benchmark) <=(>=) a, 转换成 Box 约束
 class WeightConstraint(Constraint):
     TargetIDs = List(arg_type="IDList", label="目标ID", order=0)
     UpLimit = Float(1.0, arg_type="Double", label="限制上限", order=1)
@@ -390,7 +385,7 @@ class WeightConstraint(Constraint):
             UpConstraint += self._PC.BenchmarkHolding
             DownConstraint += self._PC.BenchmarkHolding
         return [{"type":"Box", "lb":DownConstraint.values.reshape((self._PC._nID,1)), "ub":UpConstraint.values.reshape((self._PC._nID, 1))}]    
-# 换手约束: sum(abs(w-w0)) <=(==) a
+# 换手约束: sum(abs(w-w0)) <=(==) a, 转换成 L1 范数约束, 正部总约束, 负部总约束
 class TurnoverConstraint(Constraint):
     ConstraintType = Enum("总换手限制", "总买入限制", "总卖出限制", "买卖限制", "买入限制", "卖出限制", arg_type="SingleOption", label="限制类型", order=0)
     AmtMultiple = Float(1.0, arg_type="Double", label="成交额倍数", order=1)
@@ -428,7 +423,7 @@ class TurnoverConstraint(Constraint):
         elif self.ConstraintType=="买入限制":
             return [{"type":"Box", "ub":np.zeros((self._PC._nID, 1))+np.inf, "lb":-aAdj+HoldingWeight}]
         return []
-# 波动率约束: (w-benchmark)'*Cov*(w-benchmark) <= a
+# 波动率约束: (w-benchmark)'*Cov*(w-benchmark) <= a, 转换成二次约束
 class VolatilityConstraint(Constraint):
     UpLimit = Float(0.06, arg_type="Double", label="限制上限", order=0)
     Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=1)
@@ -462,7 +457,7 @@ class VolatilityConstraint(Constraint):
             Constraint['Sigma'] = self._PC.CovMatrix.values
         return [Constraint]
 
-# 预期收益约束: r'*(w-benchmark) >= a
+# 预期收益约束: r'*(w-benchmark) >= a, 转换成线性不等式约束
 class ExpectedReturnConstraint(Constraint):
     DownLimit = Float(0.0, arg_type="Double", label="限制下限", order=0)
     Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=1)
@@ -482,7 +477,7 @@ class ExpectedReturnConstraint(Constraint):
             return [{"type":"LinearIn", "A":-r, "b":np.array([[aAdj]])}]
         else:
             return [{"type":"LinearIn", "A":-r, "b":np.array([[-self.DownLimit]])}]
-# 非零数目约束: sum((w-benchmark!=0)<=N
+# 非零数目约束: sum((w-benchmark!=0)<=N, 转换成非零数目约束
 class NonZeroNumConstraint(Constraint):
     UpLimit = Float(150, arg_type="Double", label="限制上限", order=0)
     Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=1)
@@ -511,7 +506,7 @@ class PortfolioConstructor(__QS_Object__):
     CovMatrix = Instance(pd.DataFrame, arg_type="DataFrame", label="协方差矩阵", order=1)
     FactorCov = Instance(pd.DataFrame, arg_type="DataFrame", label="因子协方差阵", order=2)
     RiskFactorData = Instance(pd.DataFrame, arg_type="DataFrame", label="风险因子值", order=3)
-    SpecificRisk = Instance(pd.DataFrame, arg_type="DataFrame", label="特异性风险", order=4)
+    SpecificRisk = Instance(pd.Series, arg_type="Series", label="特异性风险", order=4)
     Holding = Instance(pd.Series, arg_type="Series", label="初始投资组合", order=5)
     BenchmarkHolding = Instance(pd.Series, arg_type="Series", label="基准投资组合", order=6)
     AmountFactor = Instance(pd.Series, arg_type="Series", label="成交金额", order=7)
@@ -580,7 +575,7 @@ class PortfolioConstructor(__QS_Object__):
     @on_trait_change("FactorData")
     def _on_FactorData_changed(self, obj, name, old, new):
         if not self._isStarted: self._DataChanged = True
-    # 求解优化问题
+    # 求解优化问题, 返回: (Series(权重, index=[ID]) 或 None, 其他信息: {})
     def solve(self):
         self._isStarted = True
         if self._ModelChanged: self._init()
@@ -678,8 +673,8 @@ class PortfolioConstructor(__QS_Object__):
                 self.SpecificRisk = self.SpecificRisk.loc[TargetBenchmarkExtraIDs]
                 self.RiskFactorData = self.RiskFactorData.fillna(RiskFactorDataNAFillVal)
                 self.SpecificRisk = self.SpecificRisk.fillna(SpecialRiskNAFillVal)
-                self.CovMatrix = np.dot(np.dot(self.RiskFactorData.values,self.FactorCov.values),self.RiskFactorData.values.T)+np.diag(self.SpecificRisk.values**2)
-                self.CovMatrix = pd.DataFrame(self.CovMatrix,index=TargetBenchmarkExtraIDs,columns=TargetBenchmarkExtraIDs)
+                CovMatrix = np.dot(np.dot(self.RiskFactorData.values,self.FactorCov.values), self.RiskFactorData.values.T) + np.diag(self.SpecificRisk.values**2)
+                self.CovMatrix = pd.DataFrame(CovMatrix, index=TargetBenchmarkExtraIDs, columns=TargetBenchmarkExtraIDs)
                 self.RiskFactorData = self.RiskFactorData.loc[self._TargetIDs]
                 self.SpecificRisk = self.SpecificRisk.loc[self._TargetIDs]
             self._BenchmarkExtraCov = self.CovMatrix.loc[self._BenchmarkExtraIDs, self._BenchmarkExtraIDs]
@@ -738,9 +733,9 @@ class PortfolioConstructor(__QS_Object__):
     # 整理选项参数
     def _genOption(self):
         return self.OptimOption
-    # 求解一次优化问题
+    # 求解一次优化问题, 返回: (array(nvar) 或 None, 其他信息: {})
     def _solve(self, nvar, prepared_objective, prepared_constraints, prepared_option):
-        return (None,{})
+        return (None, {})
     # 检查当前的优化问题是否可解
     def _checkSolvability(self):
         for iConstraint in self.Constraints:
