@@ -7,7 +7,7 @@ from multiprocessing import Lock
 import numpy as np
 import pandas as pd
 import h5py
-from traits.api import Directory, File, on_trait_change
+from traits.api import Directory
 
 from QuantStudio import __QS_Error__, __QS_LibPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
@@ -21,7 +21,7 @@ def _identifyDataType(dtypes):
 class _FactorTable(FactorTable):
     """HDF5DB 因子表"""
     def __init__(self, name, fdb, data_type, sys_args={}, **kwargs):
-        self._Suffix = "hdf5"# 文件后缀名
+        self._Suffix = fdb._Suffix# 文件后缀名
         self._DataType = data_type
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
     def getMetaData(self, key=None):

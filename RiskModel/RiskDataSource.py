@@ -45,21 +45,23 @@ class RiskDataSource(__QS_Object__):
         return self._DTs
     # 给定单个时点, 提取个股的协方差矩阵
     def readCov(self, idt, ids=None, drop_na=True):
-        return self._RiskDB.readCov(self._TableName, dates=idt, ids=ids, drop_na=drop_na)
+        Cov = self._RiskDB.readCov(self._TableName, dts=[idt], ids=ids).iloc[0]
+        if drop_na: Cov = dropRiskMatrixNA(Cov)
+        return Cov
 
 # 基于mmap的带并行局部缓冲的风险数据源, 如果开启遍历模式, 那么限制缓冲的时点长度, 缓冲区里是部分时点序列数据, 如果未开启, 则调用 RiskDataSource 提取数据的方法. 适合遍历数据, 内存消耗小, 首次提取时间不长
 def _prepareRDSMMAPCacheData(arg):
-    CacheData = {}
-    CacheDTs = []
+    _CacheData = {}
+    _CacheDTs = []
     while True:
         Task = arg["Queue2SubProcess"].get()
         if Task is None:
             break
         if (Task[0] is None) and (Task[1] is None):# 把数据装入缓冲区
-            CacheDataByte = pickle.dumps(CacheData)
+            CacheDataByte = pickle.dumps(_CacheData)
             DataLen = len(CacheDataByte)
             Msg = None
-            if arg["TagName"] is not None:
+            if arg["_TagName"] is not None:
                 MMAPCacheData = mmap.mmap(-1, DataLen, tagname=arg["TagName"])# 当前MMAP缓存区
             else:
                 MMAPCacheData = mmap.mmap(-1, DataLen)
@@ -67,23 +69,22 @@ def _prepareRDSMMAPCacheData(arg):
             MMAPCacheData.seek(0)
             MMAPCacheData.write(CacheDataByte)
             CacheDataByte = None
-            arg["Queue2MainProcess"].put((DataLen,Msg))
+            arg["_Queue2MainProcess"].put((DataLen,Msg))
             Msg = None
             gc.collect()
         else:# 准备缓冲区
             MMAPCacheData = None
-            CurInd = Task[0]+arg['ForwardPeriod']+1
-            if CurInd<arg["DTNum"]:# 未到结尾处, 需要再准备缓存数据
-                OldCacheDTs = CacheDTs
-                CacheDTs = arg["DTs"][max(0, CurInd-arg['BackwardPeriod']):min(arg["DTNum"], CurInd+arg['ForwardPeriod']+1)]
-                NewCacheDTs = list(set(CacheDTs).difference(set(OldCacheDTs)))
-                NewCacheDTs.sort()
-                DropDTs = set(OldCacheDTs).difference(set(CacheDTs))
-                for iDT in DropDTs: CacheData.pop(iDT)
+            _CurInd = Task[0]+arg['ForwardPeriod']+1
+            if _CurInd<arg["DTNum"]:# 未到结尾处, 需要再准备缓存数据
+                OldCacheDTs = _CacheDTs
+                _CacheDTs = arg["DTs"][max(0, _CurInd-arg['BackwardPeriod']):min(arg["DTNum"], _CurInd+arg['ForwardPeriod']+1)]
+                NewCacheDTs = sorted(set(_CacheDTs).difference(OldCacheDTs))
+                DropDTs = set(OldCacheDTs).difference(_CacheDTs)
+                for iDT in DropDTs: _CacheData.pop(iDT)
                 Cov = arg["RiskDB"].readCov(arg['TableName'], dts=NewCacheDTs)
                 for iDT in NewCacheDTs:
-                    CacheData[iDT] = {}
-                    CacheData[iDT]["Cov"] = Cov[iDT]
+                    _CacheData[iDT] = {}
+                    _CacheData[iDT]["Cov"] = Cov[iDT]
     return 0
 
 class ParaMMAPCacheRDS(RiskDataSource):
@@ -92,74 +93,71 @@ class ParaMMAPCacheRDS(RiskDataSource):
     def __init__(self, name, risk_db, table_name, sys_args={}, config_file=None, **kwargs):
         super().__init__(name=name, risk_db=risk_db, table_name=table_name, sys_args=sys_args, config_file=config_file, **kwargs)
         # 遍历模式变量
-        self.CurInd = -1# 当前时点在self._DTs中的位置, 以此作为缓冲数据的依据
-        self.DTNum = None# 时点数
-        self.CacheDTs = []# 缓冲的时点序列
-        self.CacheData = {}# 当前缓冲区,{"Cov":DataFrame(因子协方差,index=[因子],columns=[因子])}
-        self.Queue2SubProcess = None# 主进程向数据准备子进程发送消息的管道
-        self.Queue2MainProcess = None# 数据准备子进程向主进程发送消息的管道
-        self.CacheFun = _prepareRDSMMAPCacheData
+        self._CurInd = -1# 当前时点在self._DTs中的位置, 以此作为缓冲数据的依据
+        self._DTNum = None# 时点数
+        self._CacheDTs = []# 缓冲的时点序列
+        self._CacheData = {}# 当前缓冲区,{"Cov":DataFrame(因子协方差,index=[因子],columns=[因子])}
+        self._Queue2SubProcess = None# 主进程向数据准备子进程发送消息的管道
+        self._Queue2MainProcess = None# 数据准备子进程向主进程发送消息的管道
+        self._CacheFun = _prepareRDSMMAPCacheData
         return
     def readCov(self, idt, ids=None, drop_na=True):
-        CovMatrix = self.CacheData.get(idt)
+        CovMatrix = self._CacheData.get(idt)
         if CovMatrix is None:# 非遍历模式或者缓冲区无数据
-            CovMatrix = self.RiskDB.readCov(self._TableName, dts=idt)
+            CovMatrix = self.RiskDB.readCov(self._TableName, dts=[idt]).iloc[0]
         else:
             CovMatrix = CovMatrix.get("Cov")
-        if CovMatrix is None:
-            return None
-        if ids is not None:
-            CovMatrix = CovMatrix.loc[ids, ids]
-        if drop_na:
-            return dropRiskMatrixNA(CovMatrix)
+        if CovMatrix is None: return None
+        if ids is not None: CovMatrix = CovMatrix.loc[ids, ids]
+        if drop_na: return dropRiskMatrixNA(CovMatrix)
         return CovMatrix
     def start(self, dts, **kwargs):
-        self.CurInd = -1
-        self.DTNum = len(self._DTs)
-        self.CacheDTs = []
-        self.CacheData = {}
+        self._CurInd = -1
+        self._DTNum = len(self._DTs)
+        self._CacheDTs = []
+        self._CacheData = {}
         self.CacheFactorNum = 0
-        self.Queue2SubProcess = Queue()
-        self.Queue2MainProcess = Queue()
+        self._Queue2SubProcess = Queue()
+        self._Queue2MainProcess = Queue()
         arg = {}
-        arg['Queue2SubProcess'] = self.Queue2SubProcess
-        arg['Queue2MainProcess'] = self.Queue2MainProcess
+        arg['Queue2SubProcess'] = self._Queue2SubProcess
+        arg['Queue2MainProcess'] = self._Queue2MainProcess
         arg['DSName'] = self.Name
         arg['RiskDB'] = self._RiskDB
         arg["TableName"] = self._TableName
         arg["DTs"] = self._DTs
-        arg['DTNum'] = self.DTNum
+        arg['DTNum'] = self._DTNum
         arg['ForwardPeriod'] = self.ForwardPeriod
         arg['BackwardPeriod'] = self.BackwardPeriod
-        arg["TagName"] = self.TagName = (str(uuid.uuid1()) if os.name=="nt" else None)# 共享内存的 tag
-        self.CacheDataProcess = Process(target=self.CacheFun,args=(arg,),daemon=True)
+        arg["TagName"] = self._TagName = (str(uuid.uuid1()) if os.name=="nt" else None)# 共享内存的 tag
+        self.CacheDataProcess = Process(target=self._CacheFun,args=(arg,),daemon=True)
         self.CacheDataProcess.start()
         self.TempDTs = pd.Series(self._DTs)
         return 0
     def move(self, idt, *args, **kwargs):
-        PreInd = self.CurInd
-        self.CurInd = (self.TempDTs<=idt).sum()-1
-        if (self.CurInd>-1) and ((self.CacheDTs==[]) or (self._DTs[self.CurInd]>self.CacheDTs[-1])):# 需要读入缓冲区的数据
-            self.Queue2SubProcess.put((None,None))
-            DataLen, Msg = self.Queue2MainProcess.get()
-            if self.TagName is not None:
-                MMAPCacheData = mmap.mmap(-1, DataLen, tagname=self.TagName)# 当前共享内存缓冲区
+        PreInd = self._CurInd
+        self._CurInd = (self.TempDTs<=idt).sum()-1
+        if (self._CurInd>-1) and ((self._CacheDTs==[]) or (self._DTs[self._CurInd]>self._CacheDTs[-1])):# 需要读入缓冲区的数据
+            self._Queue2SubProcess.put((None,None))
+            DataLen, Msg = self._Queue2MainProcess.get()
+            if self._TagName is not None:
+                MMAPCacheData = mmap.mmap(-1, DataLen, tagname=self._TagName)# 当前共享内存缓冲区
             else:
                 MMAPCacheData = Msg
                 Msg = None
-            if self.CurInd==PreInd+1:# 没有跳跃, 连续型遍历
-                self.Queue2SubProcess.put((self.CurInd,None))
-                self.CacheDTs = self._DTs[max(0, self.CurInd-self.BackwardPeriod):min(self.DTNum, self.CurInd+self.ForwardPeriod+1)]
+            if self._CurInd==PreInd+1:# 没有跳跃, 连续型遍历
+                self._Queue2SubProcess.put((self._CurInd,None))
+                self._CacheDTs = self._DTs[max(0, self._CurInd-self.BackwardPeriod):min(self._DTNum, self._CurInd+self.ForwardPeriod+1)]
             else:# 出现了跳跃
-                LastCacheInd = (self._DTs.index(self.CacheDTs[-1]) if self.CacheDTs!=[] else self.CurInd-1)
-                self.Queue2SubProcess.put((LastCacheInd+1, None))
-                self.CacheDTs = self._DTs[max(0, LastCacheInd+1-self.BackwardPeriod):min(self.DTNum, LastCacheInd+1+self.ForwardPeriod+1)]
+                LastCacheInd = (self._DTs.index(self._CacheDTs[-1]) if self._CacheDTs!=[] else self._CurInd-1)
+                self._Queue2SubProcess.put((LastCacheInd+1, None))
+                self._CacheDTs = self._DTs[max(0, LastCacheInd+1-self.BackwardPeriod):min(self._DTNum, LastCacheInd+1+self.ForwardPeriod+1)]
             MMAPCacheData.seek(0)
-            self.CacheData = pickle.loads(MMAPCacheData.read(DataLen))
+            self._CacheData = pickle.loads(MMAPCacheData.read(DataLen))
         return 0
     def end(self):
-        self.CacheData = {}
-        self.Queue2SubProcess.put(None)
+        self._CacheData = {}
+        self._Queue2SubProcess.put(None)
         return 0
 
 # 多因子风险数据源基类,主要元素如下:
@@ -171,67 +169,59 @@ class ParaMMAPCacheRDS(RiskDataSource):
 class FactorRDS(RiskDataSource):
     def __init__(self, name, risk_db, table_name, sys_args={}, config_file=None, **kwargs):
         super().__init__(name=name, risk_db=risk_db, table_name=table_name, sys_args=sys_args, config_file=config_file, **kwargs)
-        self.FactorNames = self._RiskDB.getTableFactor(table_name)# 数据源中所有的因子名，['LNCAP']
+        self._FactorNames = self._RiskDB.getTableFactor(self._TableName)# 数据源中所有的因子名，['LNCAP']
         return
+    @property
+    def FactorNames(self):
+        return self._FactorNames
     # 获取 ID, idt: 时点，返回对应该时点的个股风险不缺失的ID序列
     def getID(self, idt):
         iSpecificRisk = self.readSpecificRisk(idt)
         return iSpecificRisk[pd.notnull(iSpecificRisk)].index.tolist()
     # 给定单个时点，提取因子风险矩阵
     def readFactorCov(self, idt, factor_names=None):
-        Data = self._RiskDB.readFactorCov(self._TableName, dts=idt)
-        if factor_names is not None:
-            return Data.loc[factor_names, factor_names]
-        else:
-            return Data
+        Data = self._RiskDB.readFactorCov(self._TableName, dts=[idt]).iloc[0]
+        if factor_names is not None: return Data.loc[factor_names, factor_names]
+        return Data
     # 给定单个时点，提取个股的特别风险
     def readSpecificRisk(self, idt, ids=None):
-        return self._RiskDB.readSpecificRisk(self._TableName, dts=idt,ids=ids)
+        return self._RiskDB.readSpecificRisk(self._TableName, dts=[idt], ids=ids).iloc[0]
     # 给定单个时点，提取因子截面数据
     def readFactorData(self, idt, factor_names=None, ids=None):
-        Data = self._RiskDB.readFactorData(self._TableName, dts=idt, ids=ids)
-        if factor_names is not None:
-            return Data.loc[:,factor_names]
-        else:
-            return Data
+        Data = self._RiskDB.readFactorData(self._TableName, dts=[idt], ids=ids).iloc[:, 0, :]
+        if factor_names is not None: return Data.loc[:, factor_names]
+        return Data
     # 给定单个时点，提取个股的协方差矩阵
     def readCov(self, idt, ids=None, drop_na=True):
         FactorCov = self.readFactorCov(idt)
         SpecificRisk = self.readSpecificRisk(idt, ids=ids)
-        if (FactorCov is None) or (SpecificRisk is None):
-            return None
-        if ids is None:
-            ids = SpecificRisk.index.tolist()
+        if (FactorCov is None) or (SpecificRisk is None): return None
+        if ids is None: ids = SpecificRisk.index.tolist()
         FactorExpose = self.readFactorData(idt, factor_names=FactorCov.index.tolist(), ids=ids)
         CovMatrix = np.dot(np.dot(FactorExpose.values, FactorCov.values), FactorExpose.values.T) + np.diag(SpecificRisk.values**2)
-        if ids is not None:
-            CovMatrix = pd.DataFrame(CovMatrix, index=ids, columns=ids)
-        else:
-            CovMatrix = pd.DataFrame(CovMatrix, index=SpecificRisk.index, columns=SpecificRisk.index)
-        if drop_na:
-            return dropRiskMatrixNA(CovMatrix)
+        if ids is not None: CovMatrix = pd.DataFrame(CovMatrix, index=ids, columns=ids)
+        else: CovMatrix = pd.DataFrame(CovMatrix, index=SpecificRisk.index, columns=SpecificRisk.index)
+        if drop_na: return dropRiskMatrixNA(CovMatrix)
         return CovMatrix
     # 给定单个时点，提取因子收益率
     def readFactorReturn(self, idt, factor_names=None):
-        Data = self._RiskDB.readFactorReturn(self._TableName, dts=idt)
-        if factor_names is not None:
-            return Data.loc[factor_names]
-        else:
-            return Data
+        Data = self._RiskDB.readFactorReturn(self._TableName, dts=[idt]).iloc[0]
+        if factor_names is not None: return Data.loc[factor_names]
+        return Data
     # 给定单个时点，提取残余收益率
     def readSpecificReturn(self, idt, ids=None):
-        return self._RiskDB.readSpecificReturn(self._TableName, dts=idt, ids=ids)
+        return self._RiskDB.readSpecificReturn(self._TableName, dts=[idt], ids=ids).iloc[0]
 
 # 基于mmap的带并行局部缓冲的因子风险数据源, 如果开启遍历模式, 那么限制缓冲的时点长度, 缓冲区里是部分时点序列数据, 如果未开启, 则调用 FactorRDS 提取数据的方法. 适合遍历数据, 内存消耗小, 首次提取时间不长
 def _prepareFRDSMMAPCacheData(arg):
-    CacheData = {}
-    CacheDTs = []
+    _CacheData = {}
+    _CacheDTs = []
     while True:
         Task = arg["Queue2SubProcess"].get()
         if Task is None:
             break
         if (Task[0] is None) and (Task[1] is None):# 把数据装入缓冲区
-            CacheDataByte = pickle.dumps(CacheData)
+            CacheDataByte = pickle.dumps(_CacheData)
             DataLen = len(CacheDataByte)
             Msg = None
             if arg["TagName"] is not None:
@@ -247,29 +237,27 @@ def _prepareFRDSMMAPCacheData(arg):
             gc.collect()
         else:# 准备缓冲区
             MMAPCacheData = None
-            CurInd = Task[0]+arg['ForwardPeriod']+1
-            if CurInd<arg["DTNum"]:# 未到结尾处, 需要再准备缓存数据
-                OldCacheDTs = CacheDTs
-                CacheDTs = arg["DTs"][max(0, CurInd-arg['BackwardPeriod']):min(arg["DTNum"], CurInd+arg['ForwardPeriod']+1)]
-                NewCacheDTs = list(set(CacheDTs).difference(set(OldCacheDTs)))
-                NewCacheDTs.sort()
-                DropDTs = set(OldCacheDTs).difference(set(CacheDTs))
-                for iDT in DropDTs:
-                    CacheData.pop(iDT)
+            _CurInd = Task[0]+arg['ForwardPeriod']+1
+            if _CurInd<arg["DTNum"]:# 未到结尾处, 需要再准备缓存数据
+                OldCacheDTs = _CacheDTs
+                _CacheDTs = arg["DTs"][max(0, _CurInd-arg['BackwardPeriod']):min(arg["DTNum"], _CurInd+arg['ForwardPeriod']+1)]
+                NewCacheDTs = sorted(set(_CacheDTs).difference(OldCacheDTs))
+                DropDTs = set(OldCacheDTs).difference(_CacheDTs)
+                for iDT in DropDTs: _CacheData.pop(iDT)
                 FactorCov = arg["RiskDB"].readFactorCov(arg['TableName'], dts=NewCacheDTs)
                 SpecificRisk = arg['RiskDB'].readSpecificRisk(arg['TableName'], dts=NewCacheDTs)
                 FactorData = arg['RiskDB'].readFactorData(arg['TableName'], dts=NewCacheDTs)
                 for iDT in NewCacheDTs:
-                    CacheData[iDT] = {}
-                    CacheData[iDT]["FactorCov"] = FactorCov[iDT]
-                    CacheData[iDT]["SpecificRisk"] = SpecificRisk.loc[iDT]
-                    CacheData[iDT]["FactorData"] = FactorData[iDT]
+                    _CacheData[iDT] = {}
+                    _CacheData[iDT]["FactorCov"] = FactorCov[iDT]
+                    _CacheData[iDT]["SpecificRisk"] = SpecificRisk.loc[iDT]
+                    _CacheData[iDT]["FactorData"] = FactorData.loc[:, iDT, :]
     return 0
 class ParaMMAPCacheFRDS(FactorRDS, ParaMMAPCacheRDS):
     def __init__(self, name, risk_db, table_name, sys_args={}, config_file=None, **kwargs):
         ParaMMAPCacheRDS.__init__(self, name=name, risk_db=risk_db, table_name=table_name, sys_args=sys_args, config_file=config_file, **kwargs)
-        self.FactorNames = self._RiskDB.getTableFactor(table_name)# 数据源中所有的因子名，['LNCAP']
-        self.CacheFun = _prepareFRDSMMAPCacheData
+        self._FactorNames = self._RiskDB.getTableFactor(table_name)# 数据源中所有的因子名，['LNCAP']
+        self._CacheFun = _prepareFRDSMMAPCacheData
         return
     def start(self, dts, **kwargs):
         return ParaMMAPCacheRDS.start(self, dts, **kwargs)
@@ -278,39 +266,30 @@ class ParaMMAPCacheFRDS(FactorRDS, ParaMMAPCacheRDS):
     def end(self):
         return ParaMMAPCacheRDS.end(self)
     def readFactorCov(self, idt, factor_names=None):
-        Data = self.CacheData.get(idt)
+        Data = self._CacheData.get(idt)
         if Data is None:# 非遍历模式或者缓冲区无数据
-            Data = self._RiskDB.readFactorCov(self._TableName, dts=idt)
+            Data = self._RiskDB.readFactorCov(self._TableName, dts=[idt]).iloc[0]
         else:
             Data = Data.get("FactorCov")
-        if Data is None:
-            return None
-        if factor_names is not None:
-            return Data.loc[factor_names, factor_names]
-        else:
-            return Data
+        if Data is None: return None
+        if factor_names is not None: return Data.loc[factor_names, factor_names]
+        return Data
     def readSpecificRisk(self, idt, ids=None):
-        Data = self.CacheData.get(idt)
+        Data = self._CacheData.get(idt)
         if Data is None:# 非遍历模式或者缓冲区无数据
-            Data = self._RiskDB.readSpecificRisk(self._TableName, dts=idt, ids=ids)
+            Data = self._RiskDB.readSpecificRisk(self._TableName, dts=[idt], ids=ids).iloc[0]
         else:
             Data = Data.get("SpecificRisk")
-        if Data is None:
-            return None
-        if ids is not None:
-            return Data.loc[ids]
-        else:
-            return Data
+        if Data is None: return None
+        if ids is not None: return Data.loc[ids]
+        return Data
     def readFactorData(self, idt, factor_names=None, ids=None):
-        Data = self.CacheData.get(idt)
+        Data = self._CacheData.get(idt)
         if Data is None:# 非遍历模式或者缓冲区无数据
-            Data = self._RiskDB.readFactorData(self._TableName, dts=idt, ids=ids)
+            Data = self._RiskDB.readFactorData(self._TableName, dts=[idt], ids=ids).iloc[:, 0, :]
         else:
             Data = Data.get("FactorData")
-        if Data is None:
-            return None
-        if ids is not None:
-            Data = Data.loc[ids]
-        if factor_names is not None:
-            Data = Data.loc[:,factor_names]
+        if Data is None: return None
+        if ids is not None: Data = Data.loc[ids]
+        if factor_names is not None: Data = Data.loc[:, factor_names]
         return Data

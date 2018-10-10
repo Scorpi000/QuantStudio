@@ -31,8 +31,8 @@ def _FactorAndSpecificReturnGeneration(args):
                 iIndustry = FT.readData(dts=[iPreDT], ids=IDs, factor_names=[args["ModelArgs"]['行业因子']]).iloc[0,0,:]
                 iFactorData = FT.readData(dts=[iPreDT], ids=IDs, factor_names=args["ModelArgs"]['风格因子']).iloc[:,0,:]
                 iFactorReturn, iSpecificReturn, iFactorData, iStatistics = RiskModelFun.estimateFactorAndSpecificReturn_EUE3(iRet, iFactorData, iIndustry, iCap, iESTU, iCap, args["ModelArgs"]['所有行业'])
-                args["RiskDB"].writeData(args["TargetTable"], iDT, factor_ret=iFactorReturn, specific_ret=iSpecificReturn, file_value={"Statistics":iStatistics})
-                args["RiskDB"].writeData(args["TargetTable"], iPreDT, factor_data=iFactorData, file_value={"Cap":iCap})
+                args["RiskDB"].writeData(args["TargetTable"], iDT, factor_ret=iFactorReturn, specific_ret=iSpecificReturn, Statistics=pd.Series(iStatistics))
+                args["RiskDB"].writeData(args["TargetTable"], iPreDT, factor_data=iFactorData, Cap=iCap)
                 ProgBar.update(i+1)
     else:
         IDs = FT.getID(ifactor_name=args["ModelArgs"]['ESTU因子'])
@@ -47,8 +47,8 @@ def _FactorAndSpecificReturnGeneration(args):
             iIndustry = FT.readData(dts=[iPreDT], ids=IDs, factor_names=[args["ModelArgs"]['行业因子']]).iloc[0,0,:]
             iFactorData = FT.readData(dts=[iPreDT], ids=IDs, factor_names=args["ModelArgs"]['风格因子']).iloc[:,0,:]
             iFactorReturn, iSpecificReturn, iFactorData, iStatistics = RiskModelFun.estimateFactorAndSpecificReturn_EUE3(iRet, iFactorData, iIndustry, iCap, iESTU, iCap, args["ModelArgs"]['所有行业'])
-            args["RiskDB"].writeData(args["TargetTable"], iDT, factor_ret=iFactorReturn, specific_ret=iSpecificReturn, file_value={"Statistics":iStatistics})
-            args["RiskDB"].writeData(args["TargetTable"], iPreDT, factor_data=iFactorData, file_value={"Cap":iCap})
+            args["RiskDB"].writeData(args["TargetTable"], iDT, factor_ret=iFactorReturn, specific_ret=iSpecificReturn, Statistics=pd.Series(iStatistics))
+            args["RiskDB"].writeData(args["TargetTable"], iPreDT, factor_data=iFactorData, Cap=iCap)
             args['Sub2MainQueue'].put((args["PID"], 1, None))
     if args["RegressDTs"]!=[]:
         iESTU = FT.readData(dts=[iDT], ids=IDs, factor_names=[args["ModelArgs"]['ESTU因子']]).iloc[0,0,:]
@@ -56,7 +56,7 @@ def _FactorAndSpecificReturnGeneration(args):
         iIndustry = FT.readData(dts=[iDT], ids=IDs, factor_names=[args["ModelArgs"]['行业因子']]).iloc[0,0,:]
         iFactorData = FT.readData(dts=[iDT], ids=IDs, factor_names=args["ModelArgs"]['风格因子']).iloc[:,0,:]
         iFactorReturn, iSpecificReturn, iFactorData, iStatistics = RiskModelFun.estimateFactorAndSpecificReturn_EUE3(iRet, iFactorData, iIndustry, iCap, iESTU, iCap, args["ModelArgs"]['所有行业'])
-        args["RiskDB"].writeData(args["TargetTable"], iDT, factor_data=iFactorData, file_value={"Cap":iCap})
+        args["RiskDB"].writeData(args["TargetTable"], iDT, factor_data=iFactorData, Cap=iCap)
     FT.end()
     return 0
 
@@ -133,7 +133,7 @@ def _SpecificRiskGeneration(args):
                                                                forcast_num=args["SpecificRiskESTArgs"]["预测期数"],
                                                                auto_corr_num=args["SpecificRiskESTArgs"]["自相关滞后期"],
                                                                half_life=args["FactorCovESTArgs"]["波动率半衰期"])
-        args["RiskDB"].writeData(args["TargetTable"],iDT,specific_risk=iSpecificRisk)
+        args["RiskDB"].writeData(args["TargetTable"], iDT, specific_risk=iSpecificRisk)
         if ProgBar is not None: ProgBar.update(i+1)
         else: args['Sub2MainQueue'].put((args["PID"], 1, None))
     if ProgBar is not None: ProgBar.finish()
@@ -171,14 +171,14 @@ class BarraModel(object):
             StartInd = min(max(RiskESTStartInd-self.Config.SpecificRiskESTArgs["样本长度"]+1, 0), StartInd)
         self.RegressDTs = DSDTs.iloc[StartInd:]
         self.RegressDTs = list(self.RegressDTs[self.RegressDTs<=self.RiskESTDTs[-1]])
-        if self.RiskDB.checkTableExistence(self.TargetTable):# 目标风险数据表已经存在
+        if self.TargetTable in self.RiskDB.TableNames:# 目标风险数据表已经存在
             OldDTs = self.RiskDB.getFactorReturnDateTime(self.TargetTable)
             self.RegressDTs = sorted(set(self.RegressDTs).difference(set(OldDTs)))
         return 0
     # 调整风险数据的计算时点序列
     def _adjustRiskESTDateTime(self):
         AllReturnDTs = self.RegressDTs
-        if self.RiskDB.checkTableExistence(self.TargetTable):# 目标风险数据表已经存在
+        if self.TargetTable in self.RiskDB.TableNames:# 目标风险数据表已经存在
             AllReturnDTs = sorted(set(self.RiskDB.getFactorReturnDate(self.TargetTable)).union(set(AllReturnDTs)))
         RequiredLen = max(self.Config.FactorCovESTArgs["样本长度"], self.Config.SpecificRiskESTArgs["样本长度"])
         for i, iDT in enumerate(self.RiskESTDTs):
