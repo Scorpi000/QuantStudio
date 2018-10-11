@@ -1,6 +1,15 @@
 # -*- coding: utf-8 -*-
 from .BasePC import MeanVarianceObjective, MaxDiversificationObjective, RiskBudgetObjective, MaxDiversificationObjective
 from .BasePC import BudgetConstraint, WeightConstraint, FactorExposeConstraint, VolatilityConstraint, ExpectedReturnConstraint, TurnoverConstraint, NonZeroNumConstraint
-from .MatlabPC import MatlabPC
-from .PyomoPC import PyomoPC
-from .APMonitorPC import APMPC
+try:
+    from .MatlabPC import MatlabPC
+except:
+    pass
+try:
+    from .PyomoPC import PyomoPC
+except:
+    pass
+try:
+    from .APMonitorPC import APMPC
+except:
+    pass

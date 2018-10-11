@@ -3,7 +3,6 @@
 import re
 import os
 import datetime as dt
-from multiprocessing import Lock
 
 import numpy as np
 import pandas as pd
@@ -103,7 +102,6 @@ class SQLDB(WritableFactorDB):
     Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._Connection = None# 数据库链接
-        self._DataLock = Lock()# 访问该因子库资源的锁, 防止并发访问冲突
         self._Prefix = "QS_"
         self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
         super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"SQLDBConfig.json" if config_file is None else config_file), **kwargs)
@@ -175,7 +173,7 @@ class SQLDB(WritableFactorDB):
         return (self._Connection is not None)
     def cursor(self, sql_str=None):
         if self._Connection is None: raise __QS_Error__("%s尚未连接!" % self.__doc__)
-        Cursor = self._Connection.cursor(buffered=True)
+        Cursor = self._Connection.cursor()
         if sql_str is None: return Cursor
         Cursor.execute(sql_str)
         return Cursor
@@ -214,7 +212,7 @@ class SQLDB(WritableFactorDB):
         for iField in field_types: SQLStr += "`%s` %s, " % (iField, field_types[iField])
         SQLStr += "PRIMARY KEY (`DateTime`, `ID`)) ENGINE=InnoDB DEFAULT CHARSET=utf8"
         self.execute(SQLStr)
-        return 0
+        return self.addIndex(table_name+"_index", table_name)
     # 增加字段，field_types: {字段名: 数据类型}
     def addField(self, table_name, field_types):
         if table_name not in self._TableFactorDict: return self.createTable(table_name, field_types)
@@ -224,13 +222,13 @@ class SQLDB(WritableFactorDB):
         SQLStr = SQLStr[:-1]+")"
         self.execute(SQLStr)
         return 0
-    # ----------------------------因子操作---------------------------------
     def deleteTable(self, table_name):
         if table_name not in self._TableFactorDict: return 0
         SQLStr = 'DROP TABLE %s' % (self.TablePrefix+self._Prefix+table_name)
         self.execute(SQLStr)
         self._TableFactorDict.pop(table_name, None)
         return 0
+    # ----------------------------因子操作---------------------------------
     def renameFactor(self, table_name, old_factor_name, new_factor_name):
         if old_factor_name not in self._TableFactorDict[table_name]: raise __QS_Error__("因子: '%s' 不存在!" % old_factor_name)
         if (new_factor_name!=old_factor_name) and (new_factor_name in self._TableFactorDict[table_name]): raise __QS_Error__("表中的因子: '%s' 已存在!" % new_factor_name)
