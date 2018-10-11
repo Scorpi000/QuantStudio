@@ -302,7 +302,7 @@ class HDF5DB(WritableFactorDB):
             if ifactor_name not in self._TableFactorDict.get(table_name, {}):
                 self._TableFactorDict[table_name] = self._TableFactorDict.get(table_name, pd.Series()).append(pd.Series(data_type, index=[ifactor_name]))
             if not os.path.isfile(FilePath):
-                open(FilePath, mode="a").close()
+                open(FilePath, mode="a").close()# h5py 直接创建文件名包含中文的文件会报错.
                 StrDataType = h5py.special_dtype(vlen=str)
                 with h5py.File(FilePath) as DataFile:
                     DataFile.attrs["DataType"] = data_type

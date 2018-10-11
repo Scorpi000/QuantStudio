@@ -24,8 +24,9 @@ def L1_LinearObjective(model):
 def QuadraticObjective(model):
     Expr = pyo.summation(model.Mu, model.x)
     for i in model.N:
-        for j in model.N:
-            Expr += model.x[i]*model.Sigma[i, j]*model.x[j]
+        Expr += model.Sigma[i, i] * model.x[i]**2
+        for j in range(i+1, len(model.N)):
+            Expr += 2 * model.Sigma[i, j] * model.x[i] * model.x[j]
     return Expr
 # L1 惩罚二次目标: x'Sigma*x + Mu'*x + lambda1*sum(abs(x-c)) + lambda2*sum((x-c_pos)^+) + lambda3*sum((x-c_neg)^-),{'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Delta':array(n,1),'Mu':array(n,1),'lambda1':double,'c':array(n,1),'lambda2':double,'c_pos':array(n,1),'lambda3':double,'c_neg':array(n,1),'type':'L1_Quadratic'}, 其中, Sigma = X*F*X'+Delta
 def L1_QuadraticObjective(model):
@@ -173,7 +174,8 @@ class PyomoPC(PortfolioConstructor):
                         IndexNN = list(zip(IndexN.repeat(nvar), (np.arange(nvar**2) % nvar)))
                         Data["Sigma"+j] = dict(list(zip(IndexNN, jSubConstraint["Sigma"].flatten())))
                     else:
-                        Sigma = np.dot(np.dot(jSubConstraint["X"], jSubConstraint["F"]), jSubConstraint["X"].T) + jSubConstraint["Delta"]
+                        Sigma = np.dot(np.dot(jSubConstraint["X"], jSubConstraint["F"]), jSubConstraint["X"].T) + np.diag(jSubConstraint["Delta"].flatten())
+                        Sigma = (Sigma + Sigma.T) / 2
                         IndexNN = list(zip(IndexN.repeat(nvar), (np.arange(nvar**2) % nvar)))
                         Data["Sigma"+j] = dict(list(zip(IndexNN, Sigma.flatten())))
             elif iType=="L1":
@@ -241,8 +243,9 @@ class PyomoPC(PortfolioConstructor):
             IndexNN = list(zip(IndexN.repeat(nvar), (np.arange(nvar**2) % nvar)))
             Data["Sigma"] = dict(list(zip(IndexNN, prepared_objective["Sigma"].flatten())))
         elif "X" in prepared_objective:
-            Sigma = np.dot(np.dot(prepared_objective["X"], prepared_objective["F"]), prepared_objective["X"].T) + prepared_objective["Delta"]
+            Sigma = np.dot(np.dot(prepared_objective["X"], prepared_objective["F"]), prepared_objective["X"].T) + np.diag(prepared_objective["Delta"].flatten())
             IndexNN = list(zip(IndexN.repeat(nvar), (np.arange(nvar**2) % nvar)))
+            Sigma = (Sigma + Sigma.T) / 2
             Data["Sigma"] = dict(list(zip(IndexNN, Sigma.flatten())))
         if "Mu" in prepared_objective: Data["Mu"] = dict(list(zip(IndexN, prepared_objective["Mu"].flatten())))
         Data.update(self._loadConstraintData(nvar, prepared_constraints))

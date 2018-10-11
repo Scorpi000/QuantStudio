@@ -3,3 +3,4 @@ from .BasePC import MeanVarianceObjective, MaxDiversificationObjective, RiskBudg
 from .BasePC import BudgetConstraint, WeightConstraint, FactorExposeConstraint, VolatilityConstraint, ExpectedReturnConstraint, TurnoverConstraint, NonZeroNumConstraint
 from .MatlabPC import MatlabPC
 from .PyomoPC import PyomoPC
+from .APMonitorPC import APMPC

@@ -69,6 +69,7 @@ class MatlabPC(PortfolioConstructor):
     def _solve(self, nvar, prepared_objective, prepared_constraints, prepared_option):
         self._startEng()
         with self._EngLock:
+            self._MatlabEng.cd(__QS_MainPath__+os.sep+"Matlab")
             self._MatlabEng.clear(nargout=0)
             self._transmitObjective(prepared_objective)
             for iType in prepared_constraints: self._transmitConstraint(prepared_constraints[iType])

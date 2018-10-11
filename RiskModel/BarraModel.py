@@ -14,7 +14,7 @@ from QuantStudio.Tools.AuxiliaryFun import startMultiProcess
 # 截面回归生成因子收益率和特异性收益率
 def _FactorAndSpecificReturnGeneration(args):
     FT = args["FT"]
-    FT.start()
+    FT.start(dts=args["RegressDTs"])
     DSDTs = FT.getDateTime()
     if args["ModelArgs"]['运行模式']=='串行':# 运行模式为串行
         nTask = len(args["RegressDTs"])
@@ -31,7 +31,7 @@ def _FactorAndSpecificReturnGeneration(args):
                 iIndustry = FT.readData(dts=[iPreDT], ids=IDs, factor_names=[args["ModelArgs"]['行业因子']]).iloc[0,0,:]
                 iFactorData = FT.readData(dts=[iPreDT], ids=IDs, factor_names=args["ModelArgs"]['风格因子']).iloc[:,0,:]
                 iFactorReturn, iSpecificReturn, iFactorData, iStatistics = RiskModelFun.estimateFactorAndSpecificReturn_EUE3(iRet, iFactorData, iIndustry, iCap, iESTU, iCap, args["ModelArgs"]['所有行业'])
-                args["RiskDB"].writeData(args["TargetTable"], iDT, factor_ret=iFactorReturn, specific_ret=iSpecificReturn, Statistics=pd.Series(iStatistics))
+                args["RiskDB"].writeData(args["TargetTable"], iDT, factor_ret=iFactorReturn, specific_ret=iSpecificReturn, Statistics=pd.Series(iStatistics).sort_index())
                 args["RiskDB"].writeData(args["TargetTable"], iPreDT, factor_data=iFactorData, Cap=iCap)
                 ProgBar.update(i+1)
     else:
@@ -47,7 +47,7 @@ def _FactorAndSpecificReturnGeneration(args):
             iIndustry = FT.readData(dts=[iPreDT], ids=IDs, factor_names=[args["ModelArgs"]['行业因子']]).iloc[0,0,:]
             iFactorData = FT.readData(dts=[iPreDT], ids=IDs, factor_names=args["ModelArgs"]['风格因子']).iloc[:,0,:]
             iFactorReturn, iSpecificReturn, iFactorData, iStatistics = RiskModelFun.estimateFactorAndSpecificReturn_EUE3(iRet, iFactorData, iIndustry, iCap, iESTU, iCap, args["ModelArgs"]['所有行业'])
-            args["RiskDB"].writeData(args["TargetTable"], iDT, factor_ret=iFactorReturn, specific_ret=iSpecificReturn, Statistics=pd.Series(iStatistics))
+            args["RiskDB"].writeData(args["TargetTable"], iDT, factor_ret=iFactorReturn, specific_ret=iSpecificReturn, Statistics=pd.Series(iStatistics).sort_index())
             args["RiskDB"].writeData(args["TargetTable"], iPreDT, factor_data=iFactorData, Cap=iCap)
             args['Sub2MainQueue'].put((args["PID"], 1, None))
     if args["RegressDTs"]!=[]:
@@ -119,15 +119,15 @@ def _SpecificRiskGeneration(args):
             if ProgBar is not None: ProgBar.update(i+1)
             else: args['Sub2MainQueue'].put((args["PID"], 1, None))
             continue
-        iCap = args["RiskDB"].readData(args["TargetTable"], "Cap", dts=iDT)
+        iCap = args["RiskDB"].readData(args["TargetTable"], "Cap", dts=[iDT]).iloc[0]
         iLastDTs = iSpecificReturnDTs
         iSpecificReturnDTs = list(SpecificReturnDTs.iloc[iInd-args["SpecificRiskESTArgs"]["样本长度"]+1:iInd+1])
-        iNewDTs = sorted(set(iSpecificReturnDTs).difference(set(iLastDTs)))
+        iNewDTs = sorted(set(iSpecificReturnDTs).difference(iLastDTs))
         if iSpecificReturn is None:
             iSpecificReturn = args["RiskDB"].readSpecificReturn(args["TargetTable"], dts=iNewDTs).loc[iSpecificReturnDTs,:]
         else:
             iSpecificReturn = pd.concat([iSpecificReturn,args["RiskDB"].readSpecificReturn(args["TargetTable"], dts=iNewDTs)]).loc[iSpecificReturnDTs,:]
-        iFactorData = args["RiskDB"].readFactorData(args["TargetTable"], dts=iDT)
+        iFactorData = args["RiskDB"].readFactorData(args["TargetTable"], dts=[iDT]).iloc[:, 0, :]
         iFactorData = iFactorData.loc[:,args["SpecificRiskESTArgs"]["结构化模型回归风格因子"]+args["ModelArgs"]["所有行业"]]
         iSpecificRisk = RiskModelFun.estimateSpecificRisk_EUE3(specific_ret=iSpecificReturn, factor_data=iFactorData, cap=iCap,
                                                                forcast_num=args["SpecificRiskESTArgs"]["预测期数"],
@@ -146,7 +146,9 @@ class BarraModel(object):
         self.ModelType = "多因子风险模型"
         self.Name = name
         if config_file is None: config_file = __QS_LibPath__+os.sep+"BarraModelConfig.py"
-        self.Config = imp.load_module(config_file, *imp.find_module(config_file, [os.path.split(config_file)[0]]))
+        ModulePath, ConfigModule = os.path.split(config_file)
+        ConfigModule = ".".join(ConfigModule.split(".")[:-1])
+        self.Config = imp.load_module(config_file, *imp.find_module(ConfigModule, [ModulePath]))
         self.RiskESTDTs = []# 估计风险的时点序列
         self.RegressDTs = None# 进行截面回归的时点序列
         self.RiskDB = risk_db# 风险数据库
@@ -171,15 +173,13 @@ class BarraModel(object):
             StartInd = min(max(RiskESTStartInd-self.Config.SpecificRiskESTArgs["样本长度"]+1, 0), StartInd)
         self.RegressDTs = DSDTs.iloc[StartInd:]
         self.RegressDTs = list(self.RegressDTs[self.RegressDTs<=self.RiskESTDTs[-1]])
-        if self.TargetTable in self.RiskDB.TableNames:# 目标风险数据表已经存在
-            OldDTs = self.RiskDB.getFactorReturnDateTime(self.TargetTable)
-            self.RegressDTs = sorted(set(self.RegressDTs).difference(set(OldDTs)))
+        OldDTs = self.RiskDB.getFactorReturnDateTime(self.TargetTable)
+        self.RegressDTs = sorted(set(self.RegressDTs).difference(OldDTs))
         return 0
     # 调整风险数据的计算时点序列
     def _adjustRiskESTDateTime(self):
         AllReturnDTs = self.RegressDTs
-        if self.TargetTable in self.RiskDB.TableNames:# 目标风险数据表已经存在
-            AllReturnDTs = sorted(set(self.RiskDB.getFactorReturnDate(self.TargetTable)).union(set(AllReturnDTs)))
+        AllReturnDTs = sorted(set(self.RiskDB.getFactorReturnDateTime(self.TargetTable)).union(AllReturnDTs))
         RequiredLen = max(self.Config.FactorCovESTArgs["样本长度"], self.Config.SpecificRiskESTArgs["样本长度"])
         for i, iDT in enumerate(self.RiskESTDTs):
             iInd = AllReturnDTs.index(iDT)
@@ -313,16 +313,16 @@ class BarraModel(object):
     # 生成数据
     def run(self):
         TotalStartT = time.clock()
-        print("==========Barra 风险模型==========", "1. 初始化", sep="\n", end="")
+        print("==========Barra 风险模型==========", "1. 初始化", sep="\n")
         self._initInfo()
-        print(('耗时 : %.2f' % (time.clock()-TotalStartT, )), "2. 截面回归", sep="\n", end="")
+        print(('耗时 : %.2f' % (time.clock()-TotalStartT, )), "2. 截面回归", sep="\n")
         StartT = time.clock()
         self._genFactorAndSpecificReturn()
-        print("耗时 : %.2f" % (time.clock()-StartT, ), "3. 估计因子协方差矩阵", sep="\n", end="")
+        print("耗时 : %.2f" % (time.clock()-StartT, ), "3. 估计因子协方差矩阵", sep="\n")
         StartT = time.clock()
         self._genFactorCovariance()
-        print("耗时 : %.2f" % (time.clock()-StartT, ), "4. 估计特异性风险", sep="\n", end="")
+        print("耗时 : %.2f" % (time.clock()-StartT, ), "4. 估计特异性风险", sep="\n")
         StartT = time.clock()
         self._genSpecificRisk()
-        print("耗时 : %.2f" % (time.clock()-StartT, ), ("总耗时 : %.2f" % (time.clock()-TotalStartT, )), "="*28, sep="\n", end="\n")
+        print("耗时 : %.2f" % (time.clock()-StartT, ), ("总耗时 : %.2f" % (time.clock()-TotalStartT, )), "="*28, sep="\n")
         return 0

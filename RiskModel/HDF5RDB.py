@@ -21,7 +21,8 @@ class HDF5RDB(RiskDataBase):
         self._DataLock = Lock()
         self._Suffix = "hdf5"
         self._isAvailable = False
-        return super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"HDF5RDBConfig.json" if config_file is None else config_file), **kwargs)
+        super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"HDF5RDBConfig.json" if config_file is None else config_file), **kwargs)
+        self.Name = "HDF5RDB"
     def connect(self):
         if not os.path.isdir(self.MainDir): raise __QS_Error__("不存在 HDF5RDB 的主目录: %s!" % self.MainDir)
         AllTables = listDirFile(self.MainDir, suffix=self._Suffix)
@@ -107,9 +108,10 @@ class HDF5RDB(RiskDataBase):
         if ids: return pd.Panel(items=dts, major_axis=ids, minor_axis=ids)
         return pd.Panel(items=dts)
     def writeData(self, table_name, idt, icov):
-        TablePath = self.MainDir+os.sep+table_name+"."
+        FilePath = self.MainDir+os.sep+table_name+"."+self._Suffix
         with self._DataLock:
-            with h5py.File(self.MainDir+os.sep+table_name+"."+self._Suffix) as File:
+            if not os.path.isfile(FilePath): open(FilePath, mode="a").close()# h5py 直接创建文件名包含中文的文件会报错.
+            with h5py.File(FilePath) as File:
                 iDTStr = idt.strftime("%Y-%m-%d %H:%M:%S.%f")
                 if "Cov" not in File: CovGroup = File.create_group("Cov")
                 else: CovGroup = File["Cov"]
@@ -130,7 +132,8 @@ class HDF5FRDB(FactorRDB):
         self._DataLock = Lock()
         self._Suffix = "h5"
         self._isAvailable = False
-        return super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"HDF5FRDBConfig.json" if config_file is None else config_file), **kwargs)
+        super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"HDF5FRDBConfig.json" if config_file is None else config_file), **kwargs)
+        self.Name = "HDF5FRDB"
     def connect(self):
         if not os.path.isdir(self.MainDir): raise __QS_Error__("不存在 HDF5FRDB 的主目录: %s!" % self.MainDir)
         AllTables = listDirFile(self.MainDir, suffix=self._Suffix)
@@ -178,14 +181,22 @@ class HDF5FRDB(FactorRDB):
                 if DTStr in Group: return sorted(Group[DTStr]["ID"][...])
                 else: return []
     def getFactorReturnDateTime(self, table_name, start_dt=None, end_dt=None):
+        FilePath = self.MainDir+os.sep+table_name+"."+self._Suffix
         with self._DataLock:
-            with h5py.File(self.MainDir+os.sep+table_name+"."+self._Suffix, mode="r") as File:
+            if not os.path.isfile(FilePath): return []
+            with h5py.File(FilePath, mode="r") as File:
+                if "FactorReturn" not in File: return []
                 DTs = sorted(File["FactorReturn"])
+        DTs = [dt.datetime.strptime(iDT, "%Y-%m-%d %H:%M:%S.%f") for iDT in DTs]
         return cutDateTime(DTs, start_dt=start_dt, end_dt=end_dt)
     def getSpecificReturnDateTime(self, table_name, start_dt=None, end_dt=None):
+        FilePath = self.MainDir+os.sep+table_name+"."+self._Suffix
         with self._DataLock:
-            with h5py.File(self.MainDir+os.sep+table_name+"."+self._Suffix, mode="r") as File:
+            if not os.path.isfile(FilePath): return []
+            with h5py.File(FilePath, mode="r") as File:
+                if "SpecificReturn" not in File: return []
                 DTs = sorted(File["SpecificReturn"])
+        DTs = [dt.datetime.strptime(iDT, "%Y-%m-%d %H:%M:%S.%f") for iDT in DTs]
         return cutDateTime(DTs, start_dt=start_dt, end_dt=end_dt)
     def readCov(self, table_name, dts, ids=None):
         FactorCov = self.readFactorCov(table_name, dts=dts)
@@ -193,11 +204,11 @@ class HDF5FRDB(FactorRDB):
         SpecificRisk = self.readSpecificRisk(table_name, dts=dts, ids=ids)
         Data = {}
         if ids is None:
-            ids = SpecificRisk.index
+            ids = SpecificRisk.columns
             FactorData = FactorData.loc[:, :, ids]
         for iDT in FactorCov.items:
             iFactorData = FactorData.loc[:, iDT].values
-            iCov = np.dot(np.dot(iFactorData, FactorCov.loc[iDT].values), iFactorData) + np.diag(SpecificRisk.loc[iDT].values**2)
+            iCov = np.dot(np.dot(iFactorData, FactorCov.loc[iDT].values), iFactorData.T) + np.diag(SpecificRisk.loc[iDT].values**2)
             Data[iDT] = pd.DataFrame(iCov, index=ids, columns=ids)
         return pd.Panel(Data).loc[dts]
     def readFactorCov(self, table_name, dts):
@@ -226,7 +237,7 @@ class HDF5FRDB(FactorRDB):
         if not Data: return pd.DataFrame(index=dts, columns=([] if ids is None else ids))
         Data = pd.DataFrame(Data).T.loc[dts]
         if ids is not None:
-            if Data.columns.intersection(ids).shape[0]>0: Data = Data.loc[ids]
+            if Data.columns.intersection(ids).shape[0]>0: Data = Data.loc[:, ids]
             else: Data = pd.DataFrame(index=dts, columns=ids)
         return Data
     def readFactorData(self, table_name, dts, ids=None):
@@ -273,11 +284,32 @@ class HDF5FRDB(FactorRDB):
             if Data.columns.intersection(ids).shape[0]>0: Data = Data.loc[ids]
             else: Data = pd.DataFrame(index=dts, columns=ids)
         return Data
+    def readData(self, table_name, data_item, dts):
+        Data = {}
+        with self._DataLock:
+            with h5py.File(self.MainDir+os.sep+table_name+"."+self._Suffix, mode="r") as File:
+                if data_item not in File: return None
+                Group = File[data_item]
+                for iDT in dts:
+                    iDTStr = iDT.strftime("%Y-%m-%d %H:%M:%S.%f")
+                    if iDTStr not in Group: continue
+                    iGroup = Group[iDTStr]
+                    if "columns" in iGroup:
+                        Type = "DataFrame"
+                        Data[iDT] = pd.DataFrame(iGroup["Data"][...], index=iGroup["index"][...], columns=iGroup["columns"][...])
+                    else:
+                        Type = "Series"
+                        Data[iDT] = pd.Series(iGroup["Data"][...], index=iGroup["index"][...])
+        if not Data: return None
+        if Type=="Series": return pd.DataFrame(Data).T.loc[dts]
+        else: return pd.Panel(Data).loc[dts]
     def writeData(self, table_name, idt, factor_data=None, factor_cov=None, specific_risk=None, factor_ret=None, specific_ret=None, **kwargs):
         iDTStr = idt.strftime("%Y-%m-%d %H:%M:%S.%f")
         StrType = h5py.special_dtype(vlen=str)
+        FilePath = self.MainDir+os.sep+table_name+"."+self._Suffix
         with self._DataLock:
-            with h5py.File(self.MainDir+os.sep+table_name+"."+self._Suffix) as File:
+            if not os.path.isfile(FilePath): open(FilePath, mode="a").close()# h5py 直接创建文件名包含中文的文件会报错.
+            with h5py.File(FilePath) as File:
                 if factor_data is not None:
                     if "FactorData" not in File: Group = File.create_group("FactorData")
                     else: Group = File["FactorData"]

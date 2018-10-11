@@ -28,13 +28,13 @@ end
 if exist('Pos_Constraint','var')
     for i=1:length(Pos_Constraint)
         iPos_Constraint = Pos_Constraint{i};
-        Constraints = Constraints + [norm(x-iPos_Constraint.c_pos,1) <= iPos_Constraint.l_pos];
+        Constraints = Constraints + [sum(abs(x-iPos_Constraint.c_pos) + (x-iPos_Constraint.c_pos)) <= 2*iPos_Constraint.l_pos];
     end
 end
 if exist('Neg_Constraint','var')
     for i=1:length(Neg_Constraint)
         iNeg_Constraint = Neg_Constraint{i};
-        Constraints = Constraints + [norm(iNeg_Constraint.c_neg-x,1) <= iNeg_Constraint.l_neg];
+        Constraints = Constraints + [sum(abs(x-iNeg_Constraint.c_neg) - (x-iNeg_Constraint.c_neg)) <= 2*iNeg_Constraint.l_neg];
     end
 end
 if exist('NonZeroNum_Constraint','var')
