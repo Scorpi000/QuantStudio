@@ -6,6 +6,7 @@ from multiprocessing import Lock
 import numpy as np
 import pandas as pd
 import matlab
+import matlab.engine
 
 from .BasePC import PortfolioConstructor
 from QuantStudio import __QS_MainPath__, __QS_Error__
@@ -52,7 +53,6 @@ class MatlabPC(PortfolioConstructor):
     def _startEng(self):
         if self._MatlabEng is None:
             self._MatlabEng = matlab.engine.start_matlab(option=self._Option)
-            self._MatlabEng.cd(__QS_MainPath__+os.sep+"Matlab")
         if self._EngLock is None: self._EngLock = Lock()
         return 0
     def _init(self):

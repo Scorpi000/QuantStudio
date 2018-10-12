@@ -6,7 +6,6 @@ import operator
 import warnings
 warnings.filterwarnings("ignore")
 from multiprocessing import Lock
-os.environ['NLS_LANG'] = 'SIMPLIFIED CHINESE_CHINA.UTF8'
 
 import numpy as np
 import pandas as pd
@@ -97,10 +96,3 @@ class __QS_Object__(HasTraits):
         self.remove_trait(self._LabelTrait[key])
     def __QS_initArgs__(self):
         return None
-
-if __name__=="__main__":
-    from traits.api import Str
-    a = __QS_Object__()
-    print(a.ArgNames)
-    a.add_trait("aha", Str("aha", arg_type="String"))
-    print(a.ArgNames)

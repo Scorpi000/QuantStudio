@@ -128,3 +128,22 @@ class BrinsonModel(BaseModule):
         self._Output["多期综合"]["交互作用超额收益"] = self._Output["多期综合"]["策略组合收益"] - self._Output["多期综合"]["主动资产配置组合收益"] - self._Output["多期综合"]["主动个券选择组合收益"] + self._Output["多期综合"]["基准组合收益"]
         self._Output["多期综合"]["总超额收益"] = self._Output["多期综合"]["策略组合收益"] - self._Output["多期综合"]["基准组合收益"]
         return 0
+    def _repr_html_(self):
+        if len(self.ArgNames)>0:
+            HTML = "参数设置: "
+            HTML += '<ul align="left">'
+            for iArgName in self.ArgNames:
+                if iArgName!="计算时点":
+                    HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
+                elif self.Args[iArgName]:
+                    HTML += "<li>"+iArgName+": 自定义时点</li>"
+                else:
+                    HTML += "<li>"+iArgName+": 所有时点</li>"
+            HTML += "</ul>"
+        else:
+            HTML = ""
+        Formatters = [_QS_formatPandasPercentage]*8
+        iHTML = self._Output["多期综合"].to_html(formatters=Formatters)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        return HTML
