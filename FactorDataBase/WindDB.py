@@ -282,15 +282,22 @@ class WindDB(FactorDB):
             self._Connection = None
         self._AllTables = state.get("_AllTables", [])
     def _updateInfo(self):
-        if not os.path.isfile(self._InfoFilePath): 
-            print("缺失数据库信息文件: '%s', 尝试从 '%s' 中导入信息." % (self._InfoFilePath, self._InfoResourcePath))
-            if not os.path.isfile(self._InfoResourcePath): raise __QS_Error__("缺失数据库信息文件: %s" % self._InfoResourcePath)
-            self.importInfo(self._InfoResourcePath)
-        elif os.path.isfile(self._InfoResourcePath) and (os.path.getmtime(self._InfoResourcePath)>os.path.getmtime(self._InfoFilePath)):
+        if not os.path.isfile(self._InfoResourcePath):
+            print("数据库信息文件: '%s' 缺失, 尝试从 '%s' 中导入信息." % (self._InfoFilePath, self._InfoResourcePath))
+        elif (os.path.getmtime(self._InfoResourcePath)>os.path.getmtime(self._InfoFilePath)):
             print("数据库信息文件: '%s' 有更新, 尝试从中导入新信息." % self._InfoResourcePath)
-            self.importInfo(self._InfoResourcePath)
+        else:
+            try:
+                self._TableInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/TableInfo")
+                self._FactorInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/FactorInfo")
+                return 0
+            except:
+                print("数据库信息文件: '%s' 损坏, 尝试从 '%s' 中导入信息." % (self._InfoFilePath, self._InfoResourcePath))
+        if not os.path.isfile(self._InfoResourcePath): raise __QS_Error__("缺失数据库信息文件: %s" % self._InfoResourcePath)
+        self.importInfo(self._InfoResourcePath)
         self._TableInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/TableInfo")
         self._FactorInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/FactorInfo")
+        return 0
     # -------------------------------------------数据库相关---------------------------
     def connect(self):
         if (self.Connector=='cx_Oracle') or ((self.Connector=='default') and (self.DBType=='Oracle')):
@@ -458,7 +465,8 @@ class WindDB(FactorDB):
         return dict(Rslt)
     # 将 Excel 文件中的表和字段信息导入信息文件
     def importInfo(self, excel_file_path):
-        DF = pd.read_excel(excel_file_path, "TableInfo").set_index(["TableName"])
-        writeNestedDict2HDF5(DF, self._InfoFilePath, "/TableInfo")
-        DF = pd.read_excel(excel_file_path, 'FactorInfo').set_index(['TableName', 'FieldName'])
-        writeNestedDict2HDF5(DF, self._InfoFilePath, "/FactorInfo")
+        TableInfo = pd.read_excel(excel_file_path, "TableInfo").set_index(["TableName"])
+        FactorInfo = pd.read_excel(excel_file_path, 'FactorInfo').set_index(['TableName', 'FieldName'])
+        writeNestedDict2HDF5(TableInfo, self._InfoFilePath, "/TableInfo")
+        writeNestedDict2HDF5(FactorInfo, self._InfoFilePath, "/FactorInfo")
+        return 0

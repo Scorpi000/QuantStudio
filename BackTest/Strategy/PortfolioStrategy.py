@@ -379,3 +379,287 @@ class HierarchicalFiltrationStrategy(PortfolioStrategy):
         OriginalIDs = self.ShortAccount.IDs
         IDs = self._genSignalIDs(idt, OriginalIDs, '空头信号')
         return pd.Series(1/len(IDs), index=IDs)
+
+# 基于优化器的投资组合策略
+class OptimizerStrategy(PortfolioStrategy):
+    def __init__(self, name, pc, factor_table=None, sys_args={}, config_file=None, **kwargs):
+        self._PC = pc
+        self._SharedInfo = {}
+        return super().__init__(name=name, factor_table=factor_table, sys_args=sys_args, config_file=config_file, **kwargs)
+    # 生成约束条件参数信息以及初始值
+    def _genConstraintArgInfo(self,arg=None):
+        AllConstraintType = list(self.PC.ConstraintArgInfoFun.keys())
+        AllConstraintType.sort()
+        if arg is None:
+            arg = {"约束类型":AllConstraintType[0]}
+        InitConstraintArg,SubArgInfo = self.PC.ConstraintArgInfoFun[arg['约束类型']](None)
+        if ("条件参数" not in arg) or (set(arg['条件参数'].keys())!=set(InitConstraintArg.keys())):
+            arg['条件参数'] = InitConstraintArg
+        ArgInfo = {"约束类型":{'数据类型':'Str','取值范围':AllConstraintType,'是否刷新':True,'序号':0,'是否可见':True,"是否可改":getattr(self.PC,"ConstraintAdjustive",True)},
+                   "条件参数":{'数据类型':'ArgSet','取值范围':[SubArgInfo,self.PC.ConstraintArgInfoFun[arg['约束类型']],None,{}],'是否刷新':False,'序号':1,'是否可见':True,'可否遍历':False}}
+        return (arg,ArgInfo)
+    # 生成信号后期调整参数集
+    def _genSignalAdjustArgInfo(self,arg=None):
+        if arg is None:
+            arg = {"调整方式":"权重下限调整","权重下限幂次":-5,"权重累计阈值":0.97,"是否归一":False,"打印信息":False}
+        ArgInfo = {"调整方式":{'数据类型':'Str','取值范围':["权重下限调整","权重累计调整"],'是否刷新':False,'序号':0,'是否可见':True},
+                   "权重下限幂次":{'数据类型':'Int','取值范围':[-16,-1,1],'是否刷新':False,'序号':1,'是否可见':True},
+                   "权重累计阈值":{'数据类型':'Double','取值范围':[0.0,1.0,0.00001],'是否刷新':False,'序号':2,'是否可见':True},
+                   "是否归一":{'数据类型':'Bool','取值范围':[True,False],'是否刷新':False,'序号':3,'是否可见':True},
+                   "打印信息":{'数据类型':'Bool','取值范围':[True,False],'是否刷新':False,'序号':4,'是否可见':True}}
+        return (arg,ArgInfo)
+    # 生成系统参数信息集以及初始值
+    def genSysArgInfo(self,arg=None):
+        # arg=None 表示初始化参数
+        DefaultNumFactorList,DefaultStrFactorList = getFactorList(self.StdDataSource.DataType)
+        ArgInfo = {}
+        if arg is None:# 初始化参数
+            self.PC.AllFactorDataType = self.StdDataSource.DataType
+            arg = {"信号滞后期":0,
+                   "组合模型":"均值方差模型",
+                   "构造器":self.PC.__doc__,
+                   "目标ID":None,
+                   "预期收益":DefaultNumFactorList[0],
+                   "风险数据源":None,
+                   '基准权重':searchNameInStrList(DefaultNumFactorList,['权重','Weight','weight']),
+                   "成交额":searchNameInStrList(DefaultNumFactorList,['成交']),
+                   "成交价":searchNameInStrList(DefaultNumFactorList,['价','Price','price']),
+                   "约束个数":2,
+                   "多头信号日":[],
+                   "空头信号日":[]}
+            arg['优化目标'],SubArgInfo = self.PC.genObjectArgInfo(None)
+            ArgInfo['优化目标'] = {'数据类型':'ArgSet','取值范围':[SubArgInfo,self.PC.genObjectArgInfo,None,{}],'是否刷新':False,'序号':9}
+            arg["0-预算约束"],iInfo = self._genConstraintArgInfo({"约束类型":"预算约束"})
+            ArgInfo["0-预算约束"] = {'数据类型':'ArgSet','取值范围':[iInfo,self._genConstraintArgInfo,None,{}],'是否刷新':True,'序号':11,'可否遍历':False}
+            arg["1-权重约束"],iInfo = self._genConstraintArgInfo({"约束类型":"权重约束"})
+            ArgInfo["1-权重约束"] = {'数据类型':'ArgSet','取值范围':[iInfo,self._genConstraintArgInfo,None,{}],'是否刷新':True,'序号':12,'可否遍历':False}
+            self._SharedInfo["约束条件"] = ['0-预算约束','1-权重约束']
+            arg['构造器参数'],SubArgInfo = self.PC.genOptionArgInfo(None)
+            ArgInfo['构造器参数'] = {'数据类型':'ArgSet','取值范围':[SubArgInfo,self.PC.genOptionArgInfo,None,{}],'是否刷新':False,'序号':13}
+            arg['信号调整'],SubArgInfo = self._genSignalAdjustArgInfo(None)
+            ArgInfo['信号调整'] = {'数据类型':'ArgSet','取值范围':[SubArgInfo,self._genSignalAdjustArgInfo,None,{}],'是否刷新':False,'序号':14}
+        else:
+            ChangedKey = arg.pop("_ChangedKey_",None)
+            if (self.PC.__doc__!=arg["构造器"]) or (arg["构造器"] not in self.ModelClass[arg['组合模型']]):# 调整组合模型或者更换了构造器
+                NewArg = {"信号滞后期":arg["信号滞后期"],
+                          "组合模型":arg['组合模型'],
+                          "构造器":arg["构造器"],
+                          "目标ID":arg["目标ID"],
+                          "预期收益":arg['预期收益'],
+                          "风险数据源":arg['风险数据源'],
+                          '基准权重':arg['基准权重'],
+                          "成交额":arg['成交额'],
+                          "成交价":arg['成交价'],
+                          "约束个数":0,
+                          "空头信号日":arg['空头信号日'],
+                          "多头信号日":arg['多头信号日']}
+                AllPCClasses = list(self.ModelClass[NewArg['组合模型']].keys())
+                if NewArg['构造器'] not in AllPCClasses:
+                    NewArg['构造器'] = AllPCClasses[0]
+                self.PC = self.ModelClass[NewArg['组合模型']][NewArg["构造器"]]("MainPC",qs_env=self.QSEnv)
+                self.PC.AllFactorDataType = self.StdDataSource.DataType
+                NewArg['优化目标'],SubArgInfo = self.PC.genObjectArgInfo(None)
+                ArgInfo['优化目标'] = {'数据类型':'ArgSet','取值范围':[SubArgInfo,self.PC.genObjectArgInfo,None,{}],'是否刷新':False,'序号':9}            
+                NewConstraintList = []
+                for i in range(arg["约束个数"]):
+                    iConstraintType = arg[self._SharedInfo['约束条件'][i]]['约束类型']
+                    if iConstraintType in self.PC.ConstraintArgInfoFun:
+                        NewArg[self._SharedInfo['约束条件'][i]],iInfo = self._genConstraintArgInfo(arg.get(self._SharedInfo['约束条件'][i]))
+                        ArgInfo[self._SharedInfo['约束条件'][i]] = {'数据类型':'ArgSet','取值范围':[iInfo,self._genConstraintArgInfo,None,{}],'是否刷新':True,'序号':NewArg['约束个数']+11,'可否遍历':False}
+                        NewConstraintList.append(str(NewArg['约束个数'])+"-"+iConstraintType)
+                        NewArg['约束个数'] += 1
+                self._SharedInfo["约束条件"] = NewConstraintList
+                NewArg['构造器参数'],SubArgInfo = self.PC.genOptionArgInfo(None)
+                ArgInfo['构造器参数'] = {'数据类型':'ArgSet','取值范围':[SubArgInfo,self.PC.genOptionArgInfo,None,{}],'是否刷新':False,'序号':NewArg['约束个数']+11}
+                NewArg['信号调整'],SubArgInfo = self._genSignalAdjustArgInfo(arg['信号调整'])
+                ArgInfo['信号调整'] = {'数据类型':'ArgSet','取值范围':[SubArgInfo,self._genSignalAdjustArgInfo,None,{}],'是否刷新':False,'序号':NewArg['约束个数']+12}
+                arg = NewArg
+            elif len(arg)!=15+arg['约束个数']:# 调整了约束个数
+                NewArg = {"信号滞后期":arg["信号滞后期"],
+                          "组合模型":arg.get("组合模型","均值方差模型"),
+                          "构造器":arg.get("构造器",self.PC.__doc__),
+                          "目标ID":arg["目标ID"],
+                          "预期收益":arg['预期收益'],
+                          "风险数据源":arg['风险数据源'],
+                          '基准权重':arg['基准权重'],
+                          "成交额":arg['成交额'],
+                          "成交价":arg['成交价'],
+                          "优化目标":arg['优化目标'],
+                          "约束个数":arg["约束个数"],
+                          "空头信号日":arg['空头信号日'],
+                          "多头信号日":arg['多头信号日']}
+                NewArg['优化目标'],SubArgInfo = self.PC.genObjectArgInfo(arg['优化目标'])
+                ArgInfo['优化目标'] = {'数据类型':'ArgSet','取值范围':[SubArgInfo,self.PC.genObjectArgInfo,None,{}],'是否刷新':False,'序号':9}
+                nConstraintNoChg = min((len(self._SharedInfo['约束条件']),arg['约束个数']))
+                self._SharedInfo['约束条件'] = self._SharedInfo['约束条件'][:nConstraintNoChg]
+                for i in range(nConstraintNoChg):
+                    NewArg[self._SharedInfo['约束条件'][i]],iInfo = self._genConstraintArgInfo(arg.get(self._SharedInfo['约束条件'][i]))
+                    ArgInfo[self._SharedInfo['约束条件'][i]] = {'数据类型':'ArgSet','取值范围':[iInfo,self._genConstraintArgInfo,None,{}],'是否刷新':True,'序号':i+11,'可否遍历':False}
+                for i in range(arg['约束个数']-nConstraintNoChg):
+                    iArgName = str(i+nConstraintNoChg)+"-因子暴露约束"
+                    NewArg[iArgName],iInfo = self._genConstraintArgInfo({"约束类型":"因子暴露约束"})
+                    ArgInfo[iArgName] = {'数据类型':'ArgSet','取值范围':[iInfo,self._genConstraintArgInfo,None,{}],'是否刷新':True,'序号':i+nConstraintNoChg+11,'可否遍历':False}
+                    self._SharedInfo['约束条件'].append(iArgName)
+                NewArg['构造器参数'],SubArgInfo = self.PC.genOptionArgInfo(arg['构造器参数'])
+                ArgInfo['构造器参数'] = {'数据类型':'ArgSet','取值范围':[SubArgInfo,self.PC.genOptionArgInfo,None,{}],'是否刷新':False,'序号':arg['约束个数']+11}
+                NewArg['信号调整'],SubArgInfo = self._genSignalAdjustArgInfo(arg['信号调整'])
+                ArgInfo['信号调整'] = {'数据类型':'ArgSet','取值范围':[SubArgInfo,self._genSignalAdjustArgInfo,None,{}],'是否刷新':False,'序号':arg['约束个数']+12}
+                arg = NewArg
+            else:# 调整了约束条件
+                arg['优化目标'],SubArgInfo = self.PC.genObjectArgInfo(arg['优化目标'])
+                ArgInfo['优化目标'] = {'数据类型':'ArgSet','取值范围':[SubArgInfo,self.PC.genObjectArgInfo,None,{}],'是否刷新':False,'序号':9}
+                for i in range(arg['约束个数']):
+                    iNewConstraintType = str(i)+"-"+arg[self._SharedInfo['约束条件'][i]]['约束类型']
+                    arg[iNewConstraintType],iArgInfo = self._genConstraintArgInfo(arg.pop(self._SharedInfo['约束条件'][i]))
+                    self._SharedInfo['约束条件'][i] = iNewConstraintType
+                    ArgInfo[iNewConstraintType] = {'数据类型':'ArgSet','取值范围':[iArgInfo,self._genConstraintArgInfo,None,{}],'是否刷新':True,'序号':i+11,'可否遍历':False}
+                arg['构造器参数'],SubArgInfo = self.PC.genOptionArgInfo(arg['构造器参数'])
+                ArgInfo['构造器参数'] = {'数据类型':'ArgSet','取值范围':[SubArgInfo,self.PC.genOptionArgInfo,None,{}],'是否刷新':False,'序号':arg['约束个数']+11}
+                arg['信号调整'],SubArgInfo = self._genSignalAdjustArgInfo(arg['信号调整'])
+                ArgInfo['信号调整'] = {'数据类型':'ArgSet','取值范围':[SubArgInfo,self._genSignalAdjustArgInfo,None,{}],'是否刷新':False,'序号':arg['约束个数']+12}
+        ArgInfo['信号滞后期'] = {'数据类型':'Int','取值范围':[0,9999,1],'是否刷新':False,'序号':0,'可否遍历':True}
+        ArgInfo['组合模型'] = {'数据类型':'Str','取值范围':list(self.ModelClass.keys()),'是否刷新':True,'序号':1}
+        ArgInfo['构造器'] = {'数据类型':'Str','取值范围':list(self.ModelClass[arg["组合模型"]].keys()),'是否刷新':True,'序号':2}
+        ArgInfo["目标ID"] = {'数据类型':'IDFilterStr','取值范围':self.StdDataSource.FactorNames,'是否刷新':False,'序号':3,'可否遍历':False}
+        ArgInfo['预期收益'] = {'数据类型':'Str','取值范围':DefaultNumFactorList,'是否刷新':False,'序号':4}
+        ArgInfo['风险数据源'] = {'数据类型':'RiskDS','取值范围':[],'是否刷新':False,'序号':5}
+        ArgInfo['基准权重'] = {'数据类型':'Str','取值范围':DefaultNumFactorList,'是否刷新':False,'序号':6}
+        ArgInfo['成交额'] = {'数据类型':'Str','取值范围':DefaultNumFactorList,'是否刷新':False,'序号':7}
+        ArgInfo['成交价'] = {'数据类型':'Str','取值范围':DefaultNumFactorList,'是否刷新':False,'序号':8}
+        ArgInfo['约束个数'] = {'数据类型':'Int','取值范围':[0,9999,1],'是否刷新':True,'序号':10,'是否可改':getattr(self.PC,"ConstraintAdjustive",True)}
+        ArgInfo['多头信号日'] = {'数据类型':'DateList','取值范围':self.StdDataSource.getDate(),'是否刷新':False,'序号':arg['约束个数']+13}
+        ArgInfo['空头信号日'] = {'数据类型':'DateList','取值范围':self.StdDataSource.getDate(),'是否刷新':False,'序号':arg['约束个数']+14}
+        return (arg,ArgInfo)
+    # 启动并初始化信号生成器
+    def start(self):
+        if self.PC.__doc__!=self.SysArgs["构造器"]:
+            self.PC = self.ModelClass[self.SysArgs['组合模型']][self.SysArgs["构造器"]]("MainPC",qs_env=self.QSEnv)
+        self.PC.setObject(object_arg=self.SysArgs['优化目标'])
+        self.PC.clearConstraint()
+        for iConstraintArgName in self._SharedInfo['约束条件']:
+            self.PC.addConstraint(constraint_type=self.SysArgs[iConstraintArgName]["约束类型"],constraint_arg=self.SysArgs[iConstraintArgName]["条件参数"])
+        self.PC.setOptionArg(option_arg=self.SysArgs['构造器参数'])
+        self.PC.initPC()
+        if self.SysArgs['风险数据源'] is not None:
+            self.SysArgs['风险数据源'].start()
+        Rslt = SignalGenerator.start(self)
+        self.TempData["CompiledIDFilterStr"] = self.SysArgs['目标ID']# 暂存编译好的过滤条件，加快运行速度
+        self.TempData["IDFilterFactors"] = None
+        self.Status = []# 记录求解失败的优化问题信息, [(日期, 结果信息)]
+        self.ReleasedConstraint = []# 记录被舍弃的约束条件, [(日期, [舍弃的条件])]
+        return Rslt
+    # 调整信号
+    def _adjustSignal(self,raw_signal):
+        if raw_signal is not None:
+            if self.SysArgs['信号调整']["调整方式"]=="权重下限调整":
+                LongSignal = raw_signal[raw_signal>10**self.SysArgs['信号调整']["权重下限幂次"]]
+                ShortSignal = raw_signal[raw_signal<-10**self.SysArgs['信号调整']["权重下限幂次"]]
+            else:
+                LongSignal = raw_signal[raw_signal>0]
+                ShortSignal = raw_signal[raw_signal<0]
+                LongSignal = LongSignal.sort_values(ascending=False)
+                Pos = min((LongSignal.shape[0]-1,(LongSignal.cumsum()<self.SysArgs['信号调整']["权重累计阈值"]*LongSignal.sum()).sum()))
+                LongSignal = LongSignal.iloc[:Pos+1]
+                ShortSignal = ShortSignal.sort_values(ascending=True)
+                Pos = min((ShortSignal.shape[0]-1,(ShortSignal.cumsum()>self.SysArgs['信号调整']["权重累计阈值"]*ShortSignal.sum()).sum()))
+                ShortSignal = ShortSignal.iloc[:Pos+1]
+            if self.SysArgs['信号调整']["是否归一"]:
+                LongSignal = LongSignal/LongSignal.sum()
+                ShortSignal = ShortSignal/ShortSignal.abs().sum()
+            return {"多头信号":LongSignal,"空头信号":ShortSignal}
+        else:
+            return {"多头信号":None,"空头信号":None}
+    # 产生信号(字典)，无信号则返回None
+    def genSignal(self,cur_date):
+        isLongSignalDate,isShortSignalDate = self._isSignalDate(cur_date)
+        if isLongSignalDate or isShortSignalDate:
+            if self.SysArgs['风险数据源'] is not None:
+                self.SysArgs['风险数据源'].MoveOn(cur_date)
+            if self.SysArgs["目标ID"] is None:
+                self.PC.setTargetID(self.StdDataSource.getID(idate=cur_date,is_filtered=True))
+            else:
+                OldIDFilterStr,OldIDFilterFactors = self.StdDataSource.setIDFilter(self.TempData.get('CompiledIDFilterStr'),self.TempData.get('IDFilterFactors'))
+                self.PC.setTargetID(self.StdDataSource.getID(idate=cur_date,is_filtered=True))
+                self.TempData['CompiledIDFilterStr'],self.TempData['IDFilterFactors'] = self.StdDataSource.setIDFilter(OldIDFilterStr,id_filter_factors=OldIDFilterFactors)
+            if self.PC.UseAmount:
+                self.PC.setAmountData(self.StdDataSource.getFactorData(dates=cur_date,ids=None,ifactor_name=self.SysArgs['成交额']).loc[cur_date])
+            if self.PC.UseExpectedReturn:
+                self.PC.setExpectedReturn(self.StdDataSource.getFactorData(dates=cur_date,ids=None,ifactor_name=self.SysArgs['预期收益']).loc[cur_date])
+            if self.PC.UseCovMatrix:
+                if self.SysArgs["风险数据源"].RiskDB.DBType=='FRDB':
+                    self.PC.setCovMatrix(factor_cov=self.SysArgs["风险数据源"].getDateFactorCov(cur_date),
+                                         specific_risk=self.SysArgs["风险数据源"].getDateSpecificRisk(cur_date),
+                                         risk_factor_data=self.SysArgs["风险数据源"].getDateFactorData(cur_date))
+                else:
+                    self.PC.setCovMatrix(cov_matrix=self.SysArgs["风险数据源"].getDateCov(cur_date))                    
+            if self.PC.UseFactor!=[]:
+                self.PC.setFactorData(factor_data=self.StdDataSource.getDateData(idate=cur_date,factor_names=self.PC.UseFactor,ids=None))
+            if self.PC.UseHolding or self.PC.UseAmount or self.PC.UseWealth:
+                TradePrice = self.StdDataSource.getFactorData(dates=cur_date,ids=None,ifactor_name=self.SysArgs['成交价']).loc[cur_date]# 获取当前成交价信息
+                WealthDistribution = self.LongAccount.calcWealthDistribution(price=TradePrice)
+                EquityWealth = WealthDistribution.sum()# 当前证券账户的财富
+                CashWealth = self.CashAccount.getWealth()# 当前资金账户财富
+                TotalWealth = EquityWealth+CashWealth# 总财富
+                self.PC.setHolding(WealthDistribution/TotalWealth)# 当前的投资组合
+                self.PC.setWealth(TotalWealth)
+            if self.PC.UseBenchmark:
+                self.PC.setBenchmarkHolding(self.StdDataSource.getFactorData(dates=cur_date,ids=None,ifactor_name=self.SysArgs['基准权重']).loc[cur_date])
+            self.PC.setFilteredID(self.StdDataSource,cur_date)
+            RawSignal,ResultInfo = self.PC.solve()
+            if ResultInfo['Status']!=1:
+                self.Status.append((cur_date,ResultInfo))# debug
+                if self.SysArgs['信号调整'].get("打印信息",False):
+                    print(cur_date+" : 错误代码-"+str(ResultInfo["ErrorCode"])+"    "+ResultInfo["Msg"])
+            if ResultInfo['ReleasedConstraint']!=[]:
+                self.ReleasedConstraint.append((cur_date,ResultInfo['ReleasedConstraint']))
+                if self.SysArgs['信号调整'].get("打印信息",False):
+                    print(cur_date+" : 舍弃约束-"+str(ResultInfo['ReleasedConstraint']))
+            Signal = self._adjustSignal(RawSignal)
+        else:
+            Signal = {"多头信号":None,"空头信号":None}
+        Signal = self._complementSignal(Signal)
+        self._saveSignal(cur_date,Signal)
+        return self._bufferSignal(Signal)
+    # 结束信号生成器，并生成特有的结果集
+    def endSG(self):
+        self.PC.endPC()
+        if self.SysArgs['风险数据源'] is not None:
+            self.SysArgs['风险数据源'].endDS()
+        if self.Status!=[]:
+            print("以下日期组合优化问题的求解出现问题: ")
+            for iDate,iResultInfo in self.Status:
+                print(iDate+" : 错误代码-"+str(iResultInfo["ErrorCode"])+"    "+iResultInfo["Msg"])
+        if self.ReleasedConstraint!=[]:
+            print("以下日期组合优化问题的求解舍弃了约束条件: ")
+            for iDate,iReleasedConstraint in self.ReleasedConstraint:
+                print(iDate+" : 舍弃约束-"+str(iReleasedConstraint))
+        return SignalGenerator.endSG(self)
+    # 保存自身信息
+    def saveInfo(self,container):
+        RiskDS = self.SysArgs['风险数据源']
+        if RiskDS is not None:
+            self.SysArgs['风险数据源'] = RiskDS.saveInfo({})
+        container = SignalGenerator.saveInfo(self,container)
+        container['PC'] = self.PC.saveInfo({})
+        container['_SharedInfo'] = self._SharedInfo
+        self.SysArgs['风险数据源'] = RiskDS
+        return container
+    # 恢复信息
+    def loadInfo(self,container):
+        self._SharedInfo = container['_SharedInfo']
+        self.PC.loadInfo(container['PC'])
+        if "构造器" not in container['SysArgs']:# 兼容老版本
+            SysArgs = container['SysArgs']
+            SysArgs["构造器"] = self.PC.__doc__
+            SysArgs["组合模型"] = "均值方差模型"
+            SysArgs['构造器参数'] = SysArgs.pop("优化器参数")
+            SysArgs["构造器参数"].pop("优化器",None)
+            SysArgs["优化目标"].pop("优化目标")
+            container["SysArgs"] = SysArgs
+        Error = SignalGenerator.loadInfo(self,container)
+        if self.SysArgs['风险数据源'] is not None:
+            import RiskDataSource
+            RiskDSInfo = self.SysArgs['风险数据源']
+            self.SysArgs['风险数据源'] = RiskDataSource.RDSClasses[RiskDSInfo['RiskDB']][RiskDSInfo['DSType']](RiskDSInfo['Name'],getattr(self.QSEnv,RiskDSInfo['RiskDB'],self.QSEnv.RDB),qs_env=self.QSEnv)
+            self.SysArgs['风险数据源'].loadInfo(RiskDSInfo)
+        return Error
