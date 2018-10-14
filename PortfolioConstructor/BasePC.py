@@ -578,7 +578,7 @@ class PortfolioConstructor(__QS_Object__):
     # 求解优化问题, 返回: (Series(权重, index=[ID]) 或 None, 其他信息: {})
     def solve(self):
         self._isStarted = True
-        if self._ModelChanged: self._init()
+        self._Dependency = self.init()
         if self._DataChanged: self._preprocessData()
         Objective = self.OptimObjective.genObjective()
         MathConstraints = []
@@ -607,23 +607,24 @@ class PortfolioConstructor(__QS_Object__):
         self._isStarted = False
         if TargetWeight is not None: return (pd.Series(TargetWeight, index=self._TargetIDs), ResultInfo)
         else: return (None, ResultInfo)
-    # 初始化
-    def _init(self):
-        self._Dependency = {"因子":[]}
-        for iConstraint in self.Constraints:
-            for jDependency, jValue in iConstraint.Dependency.items():
+    # 初始化, 返回依赖信息
+    def init(self):
+        if self._ModelChanged:
+            self._Dependency = {"因子":[]}
+            for iConstraint in self.Constraints:
+                for jDependency, jValue in iConstraint.Dependency.items():
+                    if jDependency=="因子":
+                        self._Dependency["因子"].extend(jValue)
+                    else:
+                        self._Dependency[jDependency] = (self._Dependency.get(jDependency, False) or jValue)
+            for jDependency, jValue in self.OptimObjective.Dependency.items():
                 if jDependency=="因子":
                     self._Dependency["因子"].extend(jValue)
                 else:
                     self._Dependency[jDependency] = (self._Dependency.get(jDependency, False) or jValue)
-        for jDependency, jValue in self.OptimObjective.Dependency.items():
-            if jDependency=="因子":
-                self._Dependency["因子"].extend(jValue)
-            else:
-                self._Dependency[jDependency] = (self._Dependency.get(jDependency, False) or jValue)
-        self._Dependency["因子"] = list(set(self._Dependency["因子"]))
-        self._ModelChanged = False
-        return 0
+            self._Dependency["因子"] = list(set(self._Dependency["因子"]))
+            self._ModelChanged = False
+        return self._Dependency
     # 预处理数据
     def _preprocessData(self):
         if self.TargetIDs: self._TargetIDs = set(self.TargetIDs)
