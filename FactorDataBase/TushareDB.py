@@ -167,6 +167,7 @@ class _MarketTable(_FactorTable):
             Data[iFactorName] = iRawData
         Data = pd.Panel(Data).loc[factor_names]
         Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
+        if Data.minor_axis.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         LookBack = args.get("回溯天数", self.LookBack)
         if LookBack==0: return Data.loc[:, dts, ids]
         AllDTs = Data.major_axis.union(set(dts)).sort_values()
@@ -175,6 +176,7 @@ class _MarketTable(_FactorTable):
         for i, iFactorName in enumerate(Data.items):
             Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
         return Data.loc[:, dts]
+
 class TushareDB(FactorDB):
     """tushare"""
     Token = Str("", label="Token", arg_type="String", order=0)
@@ -232,9 +234,10 @@ class TushareDB(FactorDB):
         end_date = end_date.strftime("%Y%m%d")
         Dates = self._ts.trade_cal(exchange_id=exchange, start_date=start_date, end_date=end_date, fields="cal_date", is_open="1")
         if kwargs.get("output_type", "date")=="date":
-            return Dates["cal_date"].map(lambda x:dt.datetime.strptime(x, "%Y%m%d").date()).tolist()
+            return [dt.datetime.strptime(iDate, "%Y%m%d").date() for iDate in Dates["cal_date"]]
         else:
-            return Dates["cal_date"].map(lambda x:dt.datetime.combine(dt.datetime.strptime(x, "%Y%m%d").date(), dt.time(23,59,59,999999))).tolist()
+            iTime = dt.time(23,59,59,999999)
+            return [dt.datetime.combine(dt.datetime.strptime(iDate, "%Y%m%d").date(), iTime) for iDate in Dates["cal_date"]]
     # 获取指定日当前在市或者历史上出现过的全体 A 股 ID
     def _getAllAStock(self, date, is_current=True):
         Data = self._ts.stock_basic(exchange_id="", is_hs="", fields="ts_code, list_date, delist_date")

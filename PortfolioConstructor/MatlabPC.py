@@ -55,16 +55,16 @@ class MatlabPC(PortfolioConstructor):
             self._MatlabEng = matlab.engine.start_matlab(option=self._Option)
         if self._EngLock is None: self._EngLock = Lock()
         return 0
-    def _init(self):
+    def init(self):
         if self.OptimObjective.Type=="均值方差目标": self._MatlabScript = "solveMeanVariance"
         elif self.OptimObjective.Type=="风险预算目标": self._MatlabScript = "solveRiskBudget"
         elif self.OptimObjective.Type=="最大夏普率目标": self._MatlabScript = "solveMaxSharpe"
         elif self.OptimObjective.Type=="最大分散化目标": self._MatlabScript = "solveMaxDiversification"
         else: raise __QS_Error__("不支持的优化目标: '%s'" % self.OptimObjective.Type)
-        return super()._init()
+        return super().init()
     # 整理选项参数
     def _genOption(self):
-        return {"Display":"Default", "Solver":"Default"}
+        return {"Display":"0", "Solver":"Default"}
     # 调用 MATLAB 求解优化问题
     def _solve(self, nvar, prepared_objective, prepared_constraints, prepared_option):
         self._startEng()

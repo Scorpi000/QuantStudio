@@ -195,7 +195,7 @@ class SimpleAccount(Account):
         self._PositionAmount.iloc[iIndex+1][iPositionAmount.index] = iPositionAmount
         return 0
     # 更新交易限制条件
-    def _updateTradeLimit(self):
+    def _updateTradeLimit(self, idt):
         self._SellVolLimit[:] = self._BuyVolLimit[:] = np.inf
         if self.SellLimit.LimitIDFilter:# 满足卖出禁止条件的不能卖出
             Mask = self._MarketFT.getIDMask(idt, ids=self._IDs, id_filter_str=self.SellLimit.LimitIDFilter)
@@ -216,7 +216,7 @@ class SimpleAccount(Account):
     # 撮合成交订单
     def _matchOrder(self, idt):
         if self._Orders.shape[0]==0: return []
-        self._updateTradeLimit()
+        self._updateTradeLimit(idt)
         MarketOrderMask = pd.isnull(self._Orders["目标价"])
         MarketOrders = self._Orders[MarketOrderMask]
         MarketOrders = MarketOrders.groupby(by=["ID"]).sum()["数量"]# Series(数量, index=[ID])

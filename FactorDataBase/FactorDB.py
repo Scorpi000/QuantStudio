@@ -177,7 +177,10 @@ def _prepareMMAPFactorCacheData(ft):
             for iFactorName in PopFactors: CacheData.pop(iFactorName)
             if NewFactors:
                 #print("调整缓存区: "+str(NewFactors))# debug
-                CacheData.update(dict(ft.__QS_calcData__(raw_data=ft.__QS_prepareRawData__(factor_names=NewFactors, ids=ft.ErgodicMode._IDs, dts=CacheDTs), factor_names=NewFactors, ids=ft.ErgodicMode._IDs, dts=CacheDTs)))
+                if CacheDTs:
+                    CacheData.update(dict(ft.__QS_calcData__(raw_data=ft.__QS_prepareRawData__(factor_names=NewFactors, ids=ft.ErgodicMode._IDs, dts=CacheDTs), factor_names=NewFactors, ids=ft.ErgodicMode._IDs, dts=CacheDTs)))
+                else:
+                    CacheData.update({iFactorName: pd.DataFrame(index=CacheDTs, columns=ft.ErgodicMode._IDs) for iFactorName in NewFactors})
         else:# 准备缓存区
             Msg = MMAPCacheData = None# 这句话必须保留...诡异
             CurInd = Task[0] + ft.ErgodicMode.ForwardPeriod + 1
@@ -189,7 +192,10 @@ def _prepareMMAPFactorCacheData(ft):
                     isDisjoint = OldCacheDTs.isdisjoint(CacheDTs)
                     CacheFactorNames = list(CacheData.keys())
                     #print("准备缓存区: "+str(CacheFactorNames))# debug
-                    NewCacheData = ft.__QS_calcData__(raw_data=ft.__QS_prepareRawData__(factor_names=CacheFactorNames, ids=ft.ErgodicMode._IDs, dts=NewCacheDTs), factor_names=CacheFactorNames, ids=ft.ErgodicMode._IDs, dts=NewCacheDTs)
+                    if NewCacheDTs:
+                        NewCacheData = ft.__QS_calcData__(raw_data=ft.__QS_prepareRawData__(factor_names=CacheFactorNames, ids=ft.ErgodicMode._IDs, dts=NewCacheDTs), factor_names=CacheFactorNames, ids=ft.ErgodicMode._IDs, dts=NewCacheDTs)
+                    else:
+                        NewCacheData = pd.Panel(items=CacheFactorNames, major_axis=NewCacheDTs, minor_axis=ft.ErgodicMode._IDs)
                     for iFactorName in CacheData:
                         if isDisjoint:
                             CacheData[iFactorName] = NewCacheData[iFactorName]
@@ -217,7 +223,11 @@ def _prepareMMAPIDCacheData(ft):
         elif Task[0] is None:# 调整缓存区数据
             NewID, PopID = Task[1]
             if PopID: CacheData.pop(PopID)# 用新 ID 数据替换旧 ID
-            if NewID: CacheData[NewID] = ft.__QS_calcData__(raw_data=ft.__QS_prepareRawData__(factor_names=ft.FactorNames, ids=[NewID], dts=CacheDTs), factor_names=ft.FactorNames, ids=[NewID], dts=CacheDTs).iloc[:, :, 0]
+            if NewID:
+                if CacheDTs:
+                    CacheData[NewID] = ft.__QS_calcData__(raw_data=ft.__QS_prepareRawData__(factor_names=ft.FactorNames, ids=[NewID], dts=CacheDTs), factor_names=ft.FactorNames, ids=[NewID], dts=CacheDTs).iloc[:, :, 0]
+                else:
+                    CacheData[NewID] = pd.DataFrame(index=CacheDTs, columns=ft.FactorNames)
         else:# 准备缓冲区
             Msg = MMAPCacheData = None# 这句话必须保留...诡异
             CurInd = Task[0] + ft.ErgodicMode.ForwardPeriod + 1
@@ -228,7 +238,10 @@ def _prepareMMAPIDCacheData(ft):
                 if CacheData:
                     isDisjoint = OldCacheDTs.isdisjoint(CacheDTs)
                     CacheIDs = list(CacheData.keys())
-                    NewCacheData = ft.__QS_calcData__(raw_data=ft.__QS_prepareRawData__(factor_names=ft.FactorNames, ids=CacheIDs, dts=NewCacheDTs), factor_names=ft.FactorNames, ids=CacheIDs, dts=NewCacheDTs)
+                    if NewCacheDTs:
+                        NewCacheData = ft.__QS_calcData__(raw_data=ft.__QS_prepareRawData__(factor_names=ft.FactorNames, ids=CacheIDs, dts=NewCacheDTs), factor_names=ft.FactorNames, ids=CacheIDs, dts=NewCacheDTs)
+                    else:
+                        NewCacheData = pd.Panel(items=ft.FactorNames, major_axis=NewCacheDTs, minor_axis=CacheIDs)
                     for iID in CacheData:
                         if isDisjoint:
                             CacheData[iID] = NewCacheData.loc[:, :, iID]
@@ -521,6 +534,8 @@ class FactorTable(__QS_Object__):
         self.ErgodicMode._isStarted = False
         self.ErgodicMode._CurDT = None
         return 0
+    def __del__(self):
+        self.end()
     # ------------------------------------运算模式------------------------------------
     # 获取因子表准备原始数据的分组信息, [(因子表对象, [因子名], [原始因子名], [时点], {参数})]
     def __QS_genGroupInfo__(self, factors, operation_mode):

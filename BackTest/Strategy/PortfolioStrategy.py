@@ -39,15 +39,15 @@ class _WeightAllocation(__QS_Object__):
 
 # 投资组合策略
 class PortfolioStrategy(Strategy):
-    SigalDelay = Int(0, label="信号滞后期", arg_type="Integer", order=0)
-    SigalValidity = Int(1, label="信号有效期", arg_type="Integer", order=1)
-    LongSigalDTs = List(label="多头信号时点", arg_type="DateTimeList", order=2)
-    ShortSigalDTs = List(label="空头信号时点", arg_type="DateTimeList", order=3)
-    LongWeightAlloction = Instance(_WeightAllocation, label="多头权重配置", arg_type="ArgObject", order=4)
-    ShortWeightAlloction = Instance(_WeightAllocation, label="空头权重配置", arg_type="ArgObject", order=5)
-    LongAccount = Instance(Account, label="多头账户", arg_type="ArgObject", order=6)
-    ShortAccount = Instance(Account, label="空头账户", arg_type="ArgObject", order=7)
-    TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=8)
+    SigalDelay = Int(0, label="信号滞后期", arg_type="Integer", order=1)
+    SigalValidity = Int(1, label="信号有效期", arg_type="Integer", order=2)
+    LongSigalDTs = List(label="多头信号时点", arg_type="DateTimeList", order=3)
+    ShortSigalDTs = List(label="空头信号时点", arg_type="DateTimeList", order=4)
+    LongWeightAlloction = Instance(_WeightAllocation, label="多头权重配置", arg_type="ArgObject", order=5)
+    ShortWeightAlloction = Instance(_WeightAllocation, label="空头权重配置", arg_type="ArgObject", order=6)
+    LongAccount = Instance(Account, label="多头账户", arg_type="ArgObject", order=7)
+    ShortAccount = Instance(Account, label="空头账户", arg_type="ArgObject", order=8)
+    TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=9)
     def __init__(self, name, factor_table=None, sys_args={}, config_file=None, **kwargs):
         self._FT = factor_table# 因子表
         super().__init__(name, sys_args=sys_args, config_file=config_file, **kwargs)
@@ -55,9 +55,9 @@ class PortfolioStrategy(Strategy):
         self._AllShortSignals = {}# 存储所有生成的空头信号, {时点:信号}
         return
     def __QS_initArgs__(self):
-        super().__QS_initArgs__()
         self.LongWeightAlloction = _WeightAllocation(ft=self._FT)
         self.ShortWeightAlloction = _WeightAllocation(ft=self._FT)
+        return super().__QS_initArgs__()
     @on_trait_change("LongAccount")
     def _on_LongAccount_changed(self, obj, name, old, new):
         if self.LongAccount and (self.LongAccount not in self.Accounts): self.Accounts.append(self.LongAccount)
@@ -287,10 +287,10 @@ class _Filter(__QS_Object__):
                 self.add_trait("FilterUpLimit", Float(0.1, label="筛选上限", arg_type="Double", order=5.1))
                 self.add_trait("FilterDownLimit", Float(0.0, label="筛选下限", arg_type="Double", order=5.2))
 class HierarchicalFiltrationStrategy(PortfolioStrategy):
-    FilterLevel = Int(1, label="筛选层数", arg_type="Integer", order=9)
+    FilterLevel = Int(1, label="筛选层数", arg_type="Integer", order=10)
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
-        self.add_trait("Level0", Instance(_Filter, label="第0层", arg_type="ArgObject", order=10))
+        self.add_trait("Level0", Instance(_Filter, label="第0层", arg_type="ArgObject", order=11))
         self.Level0 = _Filter(ft=self._FT)
         self.LongWeightAlloction.ReAllocWeight = True
         self.ShortWeightAlloction.ReAllocWeight = True
@@ -299,7 +299,7 @@ class HierarchicalFiltrationStrategy(PortfolioStrategy):
         ArgNames = self.ArgNames
         if new>old:# 增加了筛选层数
             for i in range(max(0, old), max(0, new)):
-                self.add_trait("Level"+str(i), Instance(_Filter, label="第"+str(i)+"层", arg_type="ArgObject", order=10+i))
+                self.add_trait("Level"+str(i), Instance(_Filter, label="第"+str(i)+"层", arg_type="ArgObject", order=11+i))
                 setattr(self, "Level"+str(i), _Filter(ft=self._FT))
         elif new<old:# 减少了筛选层数
             for i in range(max(0, old)-1, max(0, new)-1, -1):
@@ -354,8 +354,8 @@ class HierarchicalFiltrationStrategy(PortfolioStrategy):
             if iArgs.IDFilter:
                 iIDs = self._FT.getFilteredID(idt, id_filter_str=iArgs.IDFilter)
                 IDs = sorted(set(iIDs).intersection(set(IDs)))
-            if iArgs.GroupFactors!=[]:
-                GroupData = self._FT.readData(dts=[idt], ids=IDs, factor_names=iArgs.GroupFactors).iloc[:,0,:]
+            if iArgs.GroupFactors:
+                GroupData = self._FT.readData(dts=[idt], ids=IDs, factor_names=list(iArgs.GroupFactors)).iloc[:,0,:]
                 if GroupData.shape[0]>0: GroupData[pd.isnull(GroupData)] = np.nan
                 AllGroups = [GroupData[iGroup].unique().tolist() for iGroup in iArgs.GroupFactors]
                 AllGroups = CartesianProduct(AllGroups)
@@ -391,15 +391,15 @@ class _SignalAdjustment(__QS_Object__):
 
 # 基于优化器的投资组合策略
 class OptimizerStrategy(PortfolioStrategy):
-    TargetIDs = Str(arg_type="IDFilterStr", label="目标ID", order=4)
-    ExpectedReturn = Enum(None, arg_type="SingleOption", label="预期收益", order=5)
-    RDS = Instance(RiskDataSource, arg_type="RiskDS", label="风险数据源", order=6)
-    BenchmarkFactor = Enum(None, arg_type="SingleOption", label="基准权重", order=7)
-    AmountFactor = Enum(None, arg_type="SingleOption", label="成交金额", order=8)
-    SignalAdjustment = Instance(_SignalAdjustment, arg_type="ArgObject", label="信号调整", order=9)
-    LongAccount = Instance(Account, label="多头账户", arg_type="ArgObject", order=10)
-    ShortAccount = Instance(Account, label="空头账户", arg_type="ArgObject", order=11)
-    TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=12)
+    TargetIDs = Str(arg_type="IDFilterStr", label="目标ID", order=5)
+    ExpectedReturn = Enum(None, arg_type="SingleOption", label="预期收益", order=6)
+    RDS = Instance(RiskDataSource, arg_type="RiskDS", label="风险数据源", order=7)
+    BenchmarkFactor = Enum(None, arg_type="SingleOption", label="基准权重", order=8)
+    AmountFactor = Enum(None, arg_type="SingleOption", label="成交金额", order=9)
+    SignalAdjustment = Instance(_SignalAdjustment, arg_type="ArgObject", label="信号调整", order=10)
+    LongAccount = Instance(Account, label="多头账户", arg_type="ArgObject", order=11)
+    ShortAccount = Instance(Account, label="空头账户", arg_type="ArgObject", order=12)
+    TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=13)
     def __init__(self, name, pc, factor_table=None, sys_args={}, config_file=None, **kwargs):
         self._PC = pc
         self._SharedInfo = {}
@@ -413,6 +413,7 @@ class OptimizerStrategy(PortfolioStrategy):
         self.add_trait("BenchmarkFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="基准权重", order=8))
         self.add_trait("AmountFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="成交金额", order=9))
         self.SignalAdjustment = _SignalAdjustment()
+        return Strategy.__QS_initArgs__(self)
     def __QS_start__(self, mdl, dts, **kwargs):
         if self.RDS is not None: self.RDS.start(dts=dts)
         self._Status = []# 记录求解失败的优化问题信息, [(时点, 结果信息)]
@@ -477,16 +478,21 @@ class OptimizerStrategy(PortfolioStrategy):
             self._ReleasedConstraint.append((idt, ResultInfo["ReleasedConstraint"]))
             if self.SignalAdjustment.Display: print(idt.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 舍弃约束-"+str(ResultInfo["ReleasedConstraint"]))# debug
         return self._adjustSignal(RawSignal)
+    def trade(self, idt, trading_record, signal):
+        LongSignal, ShortSignal = signal
+        LongSignal, ShortSignal = self._bufferSignal(LongSignal, ShortSignal)
+        self._processLongSignal(idt, trading_record, LongSignal)
+        self._processShortSignal(idt, trading_record, ShortSignal)
+        return 0
     def __QS_end__(self):
-        self.PC.endPC()
         if self.RDS is not None: self.RDS.end()
         if not self.SignalAdjustment.Display:
             if self._Status:
                 print("以下时点组合优化问题的求解出现问题: ")
                 for iDT, iResultInfo in self._Status:
-                    print(idt.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 错误代码-"+str(ResultInfo["ErrorCode"])+"    "+ResultInfo["Msg"])
+                    print(iDT.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 错误代码-"+str(ResultInfo["ErrorCode"])+"    "+ResultInfo["Msg"])
             if self._ReleasedConstraint!=[]:
                 print("以下时点组合优化问题的求解舍弃了约束条件: ")
                 for iDT, iReleasedConstraint in self._ReleasedConstraint:
-                    print(idt.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 舍弃约束-"+str(ResultInfo["ReleasedConstraint"]))
+                    print(iDT.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 舍弃约束-"+str(ResultInfo["ReleasedConstraint"]))
         return super().__QS_end__()

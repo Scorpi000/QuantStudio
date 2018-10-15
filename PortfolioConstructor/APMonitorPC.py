@@ -76,4 +76,4 @@ class APMPC(PortfolioConstructor):
         else: raise __QS_Error__("不支持的优化目标: '%s'" % self.OptimObjective.Type)
         self._Model.options.IMODE = 3 #steady state optimization
         self._Model.solve()
-        return (np.array(self._x.tolist()).flatten(), {})
+        return (np.array(self._x.tolist()).flatten(), {"Status":1})

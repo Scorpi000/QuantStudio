@@ -84,7 +84,7 @@ class _FactorTable(FactorTable):
                     elif set(ids).isdisjoint(IDs):
                         Rslt = pd.DataFrame(index=DateTimes, columns=ids)
                     else:
-                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).loc[ids]
+                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).loc[:, ids]
                     Rslt.index = [dt.datetime.fromtimestamp(itms) for itms in Rslt.index]
                 elif (ids is not None) and set(ids).isdisjoint(IDs):
                     Rslt = pd.DataFrame(index=dts, columns=ids)

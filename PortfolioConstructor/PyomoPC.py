@@ -250,9 +250,9 @@ class PyomoPC(PortfolioConstructor):
         if "Mu" in prepared_objective: Data["Mu"] = dict(list(zip(IndexN, prepared_objective["Mu"].flatten())))
         Data.update(self._loadConstraintData(nvar, prepared_constraints))
         return {None: Data}
-    def _init(self):
+    def init(self):
         self._PyomoModelChanged = self._ModelChanged
-        return super()._init()
+        return super().init()
     def _solve(self, nvar, prepared_objective, prepared_constraints, prepared_option):
         if (self._Model is None) or self._PyomoModelChanged:
             if self.OptimObjective.Type=="均值方差目标": self._Model = self._genMeanVarianceModel(nvar, prepared_objective, prepared_constraints)
@@ -265,4 +265,4 @@ class PyomoPC(PortfolioConstructor):
         Instance = self._Model.create_instance(Data)
         pyo.SolverFactory(prepared_option.get("Solver", "cplex")).solve(Instance)
         x = np.array([Instance.x[i]() for i in range(nvar)])
-        return (x, {})
+        return (x, {"Status":1}))

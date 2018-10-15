@@ -36,6 +36,8 @@ class RiskDataSource(__QS_Object__):
     # 结束遍历模式
     def end(self):
         return 0
+    def __del__(self):
+        self.end()
     # 获取 ID, idt: 某个时点, 返回对应该时点的个股风险不缺失的ID序列
     def getID(self, idt):
         iCov = self.readCov(idt, drop_na=True)
