@@ -7,6 +7,7 @@ from traits.api import Float, Bool, Int, Str, Instance, List, Enum, Dict, on_tra
 
 from QuantStudio.Tools.DataTypeConversionFun import DummyVarTo01Var
 from QuantStudio.Tools.AuxiliaryFun import getFactorList
+from QuantStudio.Tools.IDFun import testIDFilterStr, filterID
 from QuantStudio import __QS_Object__, __QS_Error__
 
 # 数学形式的约束条件
@@ -358,7 +359,7 @@ class FactorExposeConstraint(Constraint):
 
 # 权重约束: (w-benchmark) <=(>=) a, 转换成 Box 约束
 class WeightConstraint(Constraint):
-    TargetIDs = List(arg_type="IDList", label="目标ID", order=0)
+    TargetIDs = Str(arg_type="IDFilterStr", label="目标ID", order=0)
     UpLimit = Float(1.0, arg_type="Double", label="限制上限", order=1)
     DownLimit = Float(1.0, arg_type="Double", label="限制下限", order=2)
     Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=3)
@@ -370,6 +371,10 @@ class WeightConstraint(Constraint):
     def Dependency(self):
         Dependency = {}
         if self.Benchmark: Dependency["基准投资组合"] = True
+        if self.TargetIDs:
+            CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(self.TargetIDs)
+            if CompiledIDFilterStr is None: raise __QS_Error__("ID 过滤字符串有误!")
+            Dependency["因子"] = IDFilterFactors
         return Dependency
     def genConstraint(self):
         if not self.TargetIDs:
@@ -378,13 +383,15 @@ class WeightConstraint(Constraint):
         else:
             UpConstraint = pd.Series(np.inf, index=self._PC._TargetIDs)
             DownConstraint = pd.Series(-np.inf, index=self._PC._TargetIDs)
-            SpecialIDs = list(set(self.TargetIDs).intersection(self._PC._TargetIDs))
-            UpConstraint[SpecialIDs] = self.UpLimit
-            DownConstraint[SpecialIDs] = self.DownLimit
+            CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(self.TargetIDs)
+            TargetIDs = filterID(self._PC.FactorData.loc[:, IDFilterFactors])
+            TargetIDs = list(set(TargetIDs).intersection(self._PC._TargetIDs))
+            UpConstraint[TargetIDs] = self.UpLimit
+            DownConstraint[TargetIDs] = self.DownLimit
         if self.Benchmark:
             UpConstraint += self._PC.BenchmarkHolding
             DownConstraint += self._PC.BenchmarkHolding
-        return [{"type":"Box", "lb":DownConstraint.values.reshape((self._PC._nID,1)), "ub":UpConstraint.values.reshape((self._PC._nID, 1))}]    
+        return [{"type":"Box", "lb":DownConstraint.values.reshape((self._PC._nID, 1)), "ub":UpConstraint.values.reshape((self._PC._nID, 1))}]
 # 换手约束: sum(abs(w-w0)) <=(==) a, 转换成 L1 范数约束, 正部总约束, 负部总约束
 class TurnoverConstraint(Constraint):
     ConstraintType = Enum("总换手限制", "总买入限制", "总卖出限制", "买卖限制", "买入限制", "卖出限制", arg_type="SingleOption", label="限制类型", order=0)
@@ -398,7 +405,7 @@ class TurnoverConstraint(Constraint):
     def Dependency(self):
         Dependency = {"初始投资组合":True}
         if (self.ConstraintType in ["买卖限制", "买入限制", "卖出限制"]) and (iConstraint.AmtMultiple!=0.0):
-            Dependency["成交额因子"] = True
+            Dependency["成交金额"] = True
             Dependency["总财富"] = True
         return Dependency
     def genConstraint(self):
@@ -505,7 +512,7 @@ class PortfolioConstructor(__QS_Object__):
     ExpectedReturn = Instance(pd.Series, arg_type="Series", label="预期收益", order=0)
     CovMatrix = Instance(pd.DataFrame, arg_type="DataFrame", label="协方差矩阵", order=1)
     FactorCov = Instance(pd.DataFrame, arg_type="DataFrame", label="因子协方差阵", order=2)
-    RiskFactorData = Instance(pd.DataFrame, arg_type="DataFrame", label="风险因子值", order=3)
+    RiskFactorData = Instance(pd.DataFrame, arg_type="DataFrame", label="风险因子", order=3)
     SpecificRisk = Instance(pd.Series, arg_type="Series", label="特异性风险", order=4)
     Holding = Instance(pd.Series, arg_type="Series", label="初始投资组合", order=5)
     BenchmarkHolding = Instance(pd.Series, arg_type="Series", label="基准投资组合", order=6)
@@ -630,25 +637,32 @@ class PortfolioConstructor(__QS_Object__):
         if self.TargetIDs: self._TargetIDs = set(self.TargetIDs)
         else: self._TargetIDs = None
         if self._Dependency.get("预期收益", False):
+            if self.ExpectedReturn is None: raise __QS_Error__("模型需要预期收益, 但尚未赋值!")
             self.ExpectedReturn = self.ExpectedReturn.dropna()
             if self._TargetIDs is None: self._TargetIDs = self.ExpectedReturn.index.tolist()
             else: self._TargetIDs = self.ExpectedReturn.index.intersection(self._TargetIDs).tolist()
         if self._Dependency.get("协方差矩阵", False):
             if self.FactorCov is not None:
+                if self.RiskFactorData is None: raise __QS_Error__("模型需要风险因子, 但尚未赋值!")
+                if self.SpecificRisk is None: raise __QS_Error__("模型需要特异性风险, 但尚未赋值!")
                 self.RiskFactorData = self.RiskFactorData.dropna(how="any", axis=0)
                 self.SpecificRisk = self.SpecificRisk.dropna()
                 if self._TargetIDs is None: self._TargetIDs = self.RiskFactorData.index.intersection(self.SpecificRisk.index).tolist()
                 else: self._TargetIDs = self.RiskFactorData.index.intersection(self.SpecificRisk.index).intersection(self._TargetIDs).tolist()
             else:
+                if self.CovMatrix is None: raise __QS_Error__("模型需要协方差矩阵, 但尚未赋值!")
                 self.CovMatrix = self.CovMatrix.dropna(how="all", axis=0)
                 self.CovMatrix = self.CovMatrix.loc[:, self.CovMatrix.index]
                 self.CovMatrix = self.CovMatrix.dropna(how="any", axis=0)
                 if self._TargetIDs is None: self._TargetIDs = self.CovMatrix.index.tolist()
                 else: self._TargetIDs = self.CovMatrix.index.intersection(self._TargetIDs).tolist()
-        if self._Dependency.get("成交额因子", False):
+        if self._Dependency.get("成交金额", False):
+            if self.AmountFactor is None: raise __QS_Error__("模型需要成交金额, 但尚未赋值!")
             if self._TargetIDs is None: self._TargetIDs = self.AmountFactor.index.tolist()
             else: self._TargetIDs = self.AmountFactor.index.intersection(self._TargetIDs).tolist()
         if self._Dependency.get("因子", []):
+            MissingFactor = set(self._Dependency["因子"]).difference(self.FactorData.columns)
+            if MissingFactor: raise __QS_Error__("模型需要因子: %s, 但尚未赋值!" % str(MissingFactor))
             self.FactorData = self.FactorData.loc[:, self._Dependency["因子"]]
             self.FactorData = self.FactorData.dropna(how="any", axis=0)
             if self._TargetIDs is None: self._TargetIDs = self.FactorData.index.tolist()
@@ -682,6 +696,7 @@ class PortfolioConstructor(__QS_Object__):
             self._BenchmarkExtraCov1 = self.CovMatrix.loc[self._BenchmarkExtraIDs, self._TargetIDs]
             self.CovMatrix = self.CovMatrix.loc[self._TargetIDs, self._TargetIDs]
         if self._Dependency.get("预期收益", False):
+            if self.ExpectedReturn is None: raise __QS_Error__("模型需要预期收益, 但尚未赋值!")
             self._BenchmarkExtraExpectedReturn = self.ExpectedReturn.loc[self._BenchmarkExtraIDs]
             self._BenchmarkExtraExpectedReturn = self._BenchmarkExtraExpectedReturn.fillna(0.0)
             self.ExpectedReturn = self.ExpectedReturn.loc[self._TargetIDs]
@@ -692,6 +707,7 @@ class PortfolioConstructor(__QS_Object__):
             self.FactorData = self.FactorData.loc[self._TargetIDs]
             self.FactorData = self.FactorData.fillna(0.0)
         if self._Dependency.get("初始投资组合", False):
+            if self.Holding is None: raise __QS_Error__("模型需要初始投资组合, 但尚未赋值!")
             self._HoldingExtraIDs = sorted(self.Holding[self.Holding>0].index.difference(self._TargetIDs))
             self._HoldingExtra = self.Holding[self._HoldingExtraIDs]
             self.Holding = self.Holding.loc[self._TargetIDs]
@@ -701,7 +717,7 @@ class PortfolioConstructor(__QS_Object__):
             self.Holding = None
             self._HoldingExtra = pd.Series()
         TargetHoldingExtraIDs = self._TargetIDs + self._HoldingExtraIDs
-        if self._Dependency.get("成交额因子", False):
+        if self._Dependency.get("成交金额", False):
             self._HoldingExtraAmount = self.AmountFactor.loc[self._HoldingExtraIDs]
             self._HoldingExtraAmount = self._HoldingExtraAmount.fillna(0.0)
             self.AmountFactor = self.AmountFactor.loc[self._TargetIDs]

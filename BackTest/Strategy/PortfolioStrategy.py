@@ -12,7 +12,7 @@ from QuantStudio.Tools.MathFun import CartesianProduct
 from QuantStudio.Tools.StrategyTestFun import loadCSVFilePortfolioSignal, writePortfolioSignal2CSV
 from QuantStudio import __QS_Error__, __QS_Object__
 from QuantStudio.BackTest.Strategy.StrategyModule import Strategy, Account
-from QuantStudio.RiskModel.RiskDataSource import RiskDataSource
+from QuantStudio.RiskModel.RiskDataSource import RiskDataSource, FactorRDS
 
 # 信号数据格式: (多头信号, 空头信号)
 # 多头信号: Series(多头权重, index=[ID]) 或者 None(表示无信号, 默认值)
@@ -417,98 +417,76 @@ class OptimizerStrategy(PortfolioStrategy):
         if self.RDS is not None: self.RDS.start(dts=dts)
         self._Status = []# 记录求解失败的优化问题信息, [(时点, 结果信息)]
         self._ReleasedConstraint = []# 记录被舍弃的约束条件, [(时点, [舍弃的条件])]
-    def start(self):
-        
-            
-        Rslt = SignalGenerator.start(self)
-        self.TempData["CompiledIDFilterStr"] = self.SysArgs['目标ID']# 暂存编译好的过滤条件，加快运行速度
-        self.TempData["IDFilterFactors"] = None
-        self._Status = []# 记录求解失败的优化问题信息, [(日期, 结果信息)]
-        self._ReleasedConstraint = []# 记录被舍弃的约束条件, [(日期, [舍弃的条件])]
-        return Rslt
+        self._Dependency = self._PC.init()# PC 的依赖信息
+        return super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
     # 调整信号
-    def _adjustSignal(self,raw_signal):
-        if raw_signal is not None:
-            if self.SysArgs['信号调整']["调整方式"]=="权重下限调整":
-                LongSignal = raw_signal[raw_signal>10**self.SysArgs['信号调整']["权重下限幂次"]]
-                ShortSignal = raw_signal[raw_signal<-10**self.SysArgs['信号调整']["权重下限幂次"]]
-            else:
-                LongSignal = raw_signal[raw_signal>0]
-                ShortSignal = raw_signal[raw_signal<0]
-                LongSignal = LongSignal.sort_values(ascending=False)
-                Pos = min((LongSignal.shape[0]-1,(LongSignal.cumsum()<self.SysArgs['信号调整']["权重累计阈值"]*LongSignal.sum()).sum()))
-                LongSignal = LongSignal.iloc[:Pos+1]
-                ShortSignal = ShortSignal.sort_values(ascending=True)
-                Pos = min((ShortSignal.shape[0]-1,(ShortSignal.cumsum()>self.SysArgs['信号调整']["权重累计阈值"]*ShortSignal.sum()).sum()))
-                ShortSignal = ShortSignal.iloc[:Pos+1]
-            if self.SysArgs['信号调整']["是否归一"]:
-                LongSignal = LongSignal/LongSignal.sum()
-                ShortSignal = ShortSignal/ShortSignal.abs().sum()
-            return {"多头信号":LongSignal,"空头信号":ShortSignal}
+    def _adjustSignal(self, raw_signal):
+        if raw_signal is None: return (None, None)
+        if self.SignalAdjustment.AdjustType=="忽略小权重":
+            LongSignal = raw_signal[raw_signal>self.SignalAdjustment.TinyWeightThreshold]
+            ShortSignal = raw_signal[raw_signal<-self.SignalAdjustment.TinyWeightThreshold]
         else:
-            return {"多头信号":None,"空头信号":None}
-    # 产生信号(字典)，无信号则返回None
-    def genSignal(self,cur_date):
-        isLongSignalDate,isShortSignalDate = self._isSignalDate(cur_date)
-        if isLongSignalDate or isShortSignalDate:
-            if self.SysArgs['风险数据源'] is not None:
-                self.SysArgs['风险数据源'].MoveOn(cur_date)
-            if self.SysArgs["目标ID"] is None:
-                self.PC.setTargetID(self.StdDataSource.getID(idate=cur_date,is_filtered=True))
+            LongSignal = raw_signal[raw_signal>0]
+            ShortSignal = raw_signal[raw_signal<0]
+            LongSignal = LongSignal.sort_values(ascending=False)
+            Pos = min((LongSignal.shape[0]-1, (LongSignal.cumsum()<self.SignalAdjustment.AccumulatedWeightThreshold*LongSignal.sum()).sum()))
+            LongSignal = LongSignal.iloc[:Pos+1]
+            ShortSignal = ShortSignal.sort_values(ascending=True)
+            Pos = min((ShortSignal.shape[0]-1, (ShortSignal.cumsum()>self.SignalAdjustment.AccumulatedWeightThreshold*ShortSignal.sum()).sum()))
+            ShortSignal = ShortSignal.iloc[:Pos+1]
+        if self.SignalAdjustment.Normalization:
+            LongSignal = LongSignal / LongSignal.sum()
+            ShortSignal = ShortSignal / ShortSignal.abs().sum()
+        return (LongSignal, ShortSignal)
+    def genSignal(self, idt, trading_record):
+        isLongSignalDT = ((self.LongAccount is not None) and ((not self.LongSigalDTs) or (idt in self.LongSigalDTs)))
+        isShortSignalDT = ((self.ShortAccount is not None) and ((not self.ShortSigalDTs) or (idt in self.ShortSigalDTs)))
+        if not (isLongSignalDT or isShortSignalDT): return (None, None)
+        if self.RDS is not None: self.RDS.move(idt)
+        IDs = self._PC.TargetIDs = self._FT.getID(idt=idt)
+        if self.TargetIDs: self._PC.TargetIDs = self._FT.getFilteredID(idt=idt, id_filter_str=self.TargetIDs)
+        if self._Dependency.get("预期收益", False): self._PC.ExpectedReturn = self._FT.readData(factor_names=[self.ExpectedReturn], ids=IDs, dts=[idt]).iloc[0, 0, :]
+        if self._Dependency.get("协方差矩阵", False):
+            if isinstance(self.RDS, FactorRDS):
+                self._PC.FactorCov = self.RDS.readFactorCov(idt=idt)
+                self._PC.RiskFactorData = self.RDS.readFactorData(idt=idt, ids=IDs)
+                self._PC.SpecificRisk = self.RDS.readSpecificRisk(idt=idt, ids=IDs)
             else:
-                OldIDFilterStr,OldIDFilterFactors = self.StdDataSource.setIDFilter(self.TempData.get('CompiledIDFilterStr'),self.TempData.get('IDFilterFactors'))
-                self.PC.setTargetID(self.StdDataSource.getID(idate=cur_date,is_filtered=True))
-                self.TempData['CompiledIDFilterStr'],self.TempData['IDFilterFactors'] = self.StdDataSource.setIDFilter(OldIDFilterStr,id_filter_factors=OldIDFilterFactors)
-            if self.PC.UseAmount:
-                self.PC.setAmountData(self.StdDataSource.getFactorData(dates=cur_date,ids=None,ifactor_name=self.SysArgs['成交额']).loc[cur_date])
-            if self.PC.UseExpectedReturn:
-                self.PC.setExpectedReturn(self.StdDataSource.getFactorData(dates=cur_date,ids=None,ifactor_name=self.SysArgs['预期收益']).loc[cur_date])
-            if self.PC.UseCovMatrix:
-                if self.SysArgs["风险数据源"].RiskDB.DBType=='FRDB':
-                    self.PC.setCovMatrix(factor_cov=self.SysArgs["风险数据源"].getDateFactorCov(cur_date),
-                                         specific_risk=self.SysArgs["风险数据源"].getDateSpecificRisk(cur_date),
-                                         risk_factor_data=self.SysArgs["风险数据源"].getDateFactorData(cur_date))
-                else:
-                    self.PC.setCovMatrix(cov_matrix=self.SysArgs["风险数据源"].getDateCov(cur_date))                    
-            if self.PC.UseFactor!=[]:
-                self.PC.setFactorData(factor_data=self.StdDataSource.getDateData(idate=cur_date,factor_names=self.PC.UseFactor,ids=None))
-            if self.PC.UseHolding or self.PC.UseAmount or self.PC.UseWealth:
-                TradePrice = self.StdDataSource.getFactorData(dates=cur_date,ids=None,ifactor_name=self.SysArgs['成交价']).loc[cur_date]# 获取当前成交价信息
-                WealthDistribution = self.LongAccount.calcWealthDistribution(price=TradePrice)
-                EquityWealth = WealthDistribution.sum()# 当前证券账户的财富
-                CashWealth = self.CashAccount.getWealth()# 当前资金账户财富
-                TotalWealth = EquityWealth+CashWealth# 总财富
-                self.PC.setHolding(WealthDistribution/TotalWealth)# 当前的投资组合
-                self.PC.setWealth(TotalWealth)
-            if self.PC.UseBenchmark:
-                self.PC.setBenchmarkHolding(self.StdDataSource.getFactorData(dates=cur_date,ids=None,ifactor_name=self.SysArgs['基准权重']).loc[cur_date])
-            self.PC.setFilteredID(self.StdDataSource,cur_date)
-            RawSignal,ResultInfo = self.PC.solve()
-            if ResultInfo['_Status']!=1:
-                self._Status.append((cur_date,ResultInfo))# debug
-                if self.SysArgs['信号调整'].get("打印信息",False):
-                    print(cur_date+" : 错误代码-"+str(ResultInfo["ErrorCode"])+"    "+ResultInfo["Msg"])
-            if ResultInfo['_ReleasedConstraint']!=[]:
-                self._ReleasedConstraint.append((cur_date,ResultInfo['_ReleasedConstraint']))
-                if self.SysArgs['信号调整'].get("打印信息",False):
-                    print(cur_date+" : 舍弃约束-"+str(ResultInfo['_ReleasedConstraint']))
-            Signal = self._adjustSignal(RawSignal)
-        else:
-            Signal = {"多头信号":None,"空头信号":None}
-        Signal = self._complementSignal(Signal)
-        self._saveSignal(cur_date,Signal)
-        return self._bufferSignal(Signal)
-    # 结束信号生成器，并生成特有的结果集
-    def endSG(self):
+                self._PC.CovMatrix = self.RDS.readCov(idt=idt, ids=IDs, drop_na=False)
+        if self._Dependency.get("成交金额", False): self._PC.AmountFactor = self._FT.readData(factor_names=[self.AmountFactor], ids=IDs, dts=[idt]).iloc[0, 0, :]
+        if self._Dependency.get("因子", []): self._PC.FactorData = self._FT.readData(factor_names=[self._Dependency["因子"]], ids=IDs, dts=[idt]).iloc[:, 0, :]
+        if self._Dependency.get("基准投资组合", False): self._PC.BenchmarkHolding = self._FT.readData(factor_names=["基准权重"], ids=IDs, dts=[idt]).iloc[0, 0, :]
+        if self._Dependency.get("初始投资组合", False):
+            if self.LongAccount is not None: LongAmount = self.LongAccount.PositionAmount
+            else: LongAmount = pd.Series(0.0, index=IDs)
+            if self.ShortAccount is not None: ShortAmount = self.ShortAccount.PositionAmount
+            else: ShortAmount = pd.Series(0.0, index=IDs)
+            TotalLongAmount, TotalShortAmount = LongAmount.sum(), ShortAmount.sum()
+            if TotalLongAmount>0: self._PC.Holding = (LongAmount / TotalLongAmount).add(-ShortAmount / TotalLongAmount * TotalShortAmount, fill_value=0.0)
+            elif TotalShortAmount>0: self._PC.Holding = -ShortAmount / TotalShortAmount
+            else: self._PC.Holding = pd.Series(0.0, index=IDs)
+        if self._Dependency.get("总财富", False):
+            LongAmount = (self.LongAccount.PositionAmount.sum() if self.LongAccount is not None else 0.0)
+            ShortAmount = (self.ShortAccount.PositionAmount.sum() if self.ShortAccount is not None else 0.0)
+            self._PC.Wealth = LongAmount + ShortAmount
+        RawSignal, ResultInfo = self._PC.solve()
+        if ResultInfo.get("Status", 1)!=1:
+            self._Status.append((idt, ResultInfo))
+            if self.SignalAdjustment.Display: print(idt.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 错误代码-"+str(ResultInfo["ErrorCode"])+"    "+ResultInfo["Msg"])# debug
+        if ResultInfo["ReleasedConstraint"]:
+            self._ReleasedConstraint.append((idt, ResultInfo["ReleasedConstraint"]))
+            if self.SignalAdjustment.Display: print(idt.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 舍弃约束-"+str(ResultInfo["ReleasedConstraint"]))# debug
+        return self._adjustSignal(RawSignal)
+    def __QS_end__(self):
         self.PC.endPC()
-        if self.SysArgs['风险数据源'] is not None:
-            self.SysArgs['风险数据源'].endDS()
-        if self._Status!=[]:
-            print("以下日期组合优化问题的求解出现问题: ")
-            for iDate,iResultInfo in self._Status:
-                print(iDate+" : 错误代码-"+str(iResultInfo["ErrorCode"])+"    "+iResultInfo["Msg"])
-        if self._ReleasedConstraint!=[]:
-            print("以下日期组合优化问题的求解舍弃了约束条件: ")
-            for iDate,iReleasedConstraint in self._ReleasedConstraint:
-                print(iDate+" : 舍弃约束-"+str(iReleasedConstraint))
-        return SignalGenerator.endSG(self)
+        if self.RDS is not None: self.RDS.end()
+        if not self.SignalAdjustment.Display:
+            if self._Status:
+                print("以下时点组合优化问题的求解出现问题: ")
+                for iDT, iResultInfo in self._Status:
+                    print(idt.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 错误代码-"+str(ResultInfo["ErrorCode"])+"    "+ResultInfo["Msg"])
+            if self._ReleasedConstraint!=[]:
+                print("以下时点组合优化问题的求解舍弃了约束条件: ")
+                for iDT, iReleasedConstraint in self._ReleasedConstraint:
+                    print(idt.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 舍弃约束-"+str(ResultInfo["ReleasedConstraint"]))
+        return super().__QS_end__()

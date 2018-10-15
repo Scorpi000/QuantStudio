@@ -1,7 +1,11 @@
 # coding=utf-8
 """ID的操作函数"""
+import re
+
 import numpy as np
 import pandas as pd
+
+from QuantStudio import __QS_Error__
 
 # 给A股ID添加后缀
 def suffixAShareID(ids):
@@ -40,19 +44,28 @@ def adjustID(ids):
         NewIDs.append('0'*(6-tempLen)+jIDStr)
     return NewIDs
 # 测试输入的条件字符串是否有语法错误
-def testIDFilterStr(id_filter_str, factor_names):
+def testIDFilterStr(id_filter_str, factor_names=None):
     CompiledIDFilterStr = id_filter_str
     IDFilterFactors = []
-    FactorNames = list(factor_names)
-    FactorNames.sort(key=len, reverse=True)
-    for iFactorName in FactorNames:
+    if not factor_names:
+        factor_names = re.findall("@(\w+)")
+        if "_ID" in factor_names: factor_names.remove("_ID")
+    factor_names = sorted(factor_names, key=len, reverse=True)
+    for iFactorName in factor_names:
         if CompiledIDFilterStr.find("@"+iFactorName)!=-1:
-            CompiledIDFilterStr = CompiledIDFilterStr.replace('@'+iFactorName,"temp['"+iFactorName+"']")
+            CompiledIDFilterStr = CompiledIDFilterStr.replace("@"+iFactorName,"temp['"+iFactorName+"']")
             IDFilterFactors.append(iFactorName)
-    CompiledIDFilterStr = CompiledIDFilterStr.replace('@_ID','temp.index')
+    CompiledIDFilterStr = CompiledIDFilterStr.replace("@_ID", "temp.index")
     temp = pd.DataFrame(columns=IDFilterFactors)
     try:
-        eval('temp['+CompiledIDFilterStr+']')
+        eval("temp["+CompiledIDFilterStr+"]")
     except:
-        return (None,None)
+        return (None, None)
     return (CompiledIDFilterStr, IDFilterFactors)
+# 过滤 ID
+def filterID(factor_data, id_filter_str):
+    if not id_filter_str: return factor_data.index.tolist()
+    CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(id_filter_str, factor_names=factor_data.columns)
+    if CompiledIDFilterStr is None: raise __QS_Error__("ID 过滤字符串有误!")
+    temp = factor_data
+    return eval("temp["+CompiledIDFilterStr+"].index.tolist()")
