@@ -661,7 +661,7 @@ class FactorTable(__QS_Object__):
                                                                   arg=args, partition_arg=["GroupInfo", "RawDataFileNames"],
                                                                   n_partition_head=0, n_partition_tail=0,
                                                                   main2sub_queue="None", sub2main_queue="Single")
-            nGroup = len(len(GroupInfo))
+            nGroup = len(GroupInfo)
             with ProgressBar(max_value=nGroup) as ProgBar:
                 for i in range(nGroup):
                     iPID, Error, iMsg = Sub2MainQueue.get()
