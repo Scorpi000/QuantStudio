@@ -106,15 +106,19 @@ class _MarketTable(_FactorTable):
         FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
         self._DateFields = FactorInfo[FactorInfo["FieldType"]=="Date"].index.tolist()
+        self._ConditionFields = FactorInfo[FactorInfo["FieldType"]=="Condition"].index.tolist()# 所有的条件字段列表
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         return
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
-        self.add_trait("DateField", Enum(*self._DateFields, arg_type="SingleOption", label="日期字段", order=0))
+        self.add_trait("DateField", Enum(*self._DateFields, arg_type="SingleOption", label="日期字段", order=1))
         DefaultDateField = FactorInfo[(FactorInfo["Supplementary"]=="DefaultDate") & (FactorInfo["FieldType"]=="Date")]
         if DefaultDateField.shape[0]>0: self.DateField = DefaultDateField.index[0]
         else: self.DateField = self._DateFields[0]
+        for i, iCondition in enumerate(self._ConditionFields):
+            self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+2))
+            self[iCondition] = str(FactorInfo.loc[iCondition, "Supplementary"])        
     @property
     def FactorNames(self):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
@@ -126,32 +130,52 @@ class _MarketTable(_FactorTable):
         if end_dt is not None: end_dt = end_dt.date()
         return self._FactorDB.getTradeDay(start_date=start_dt, end_date=end_dt, exchange="SSE", output_type="datetime")
     def __QS_genGroupInfo__(self, factors, operation_mode):
-        Group = {"FactorNames":[], "RawFactorNames":set(), "StartDT":dt.datetime.today(), "args":{"回溯天数":0}}
+        DateConditionGroup = {}
         for iFactor in factors:
-            Group["FactorNames"].append(iFactor.Name)
-            Group["RawFactorNames"].add(iFactor._NameInFT)
-            Group["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], Group["StartDT"])
-            Group["args"]["回溯天数"] = max(Group["args"]["回溯天数"], iFactor.LookBack)
-        StartInd = operation_mode.DTRuler.index(Group["StartDT"])
+            iDateConditions = (iFactor.DateField, ";".join([iArgName+":"+iFactor[iArgName] for iArgName in iFactor.ArgNames if iArgName!="回溯天数"]))
+            if iDateConditions not in DateConditionGroup:
+                DateConditionGroup[iDateConditions] = {"FactorNames":[iFactor.Name], 
+                                                       "RawFactorNames":{iFactor._NameInFT}, 
+                                                       "StartDT":operation_mode._FactorStartDT[iFactor.Name], 
+                                                       "args":iFactor.Args.copy()}
+            else:
+                DateConditionGroup[iDateConditions]["FactorNames"].append(iFactor.Name)
+                DateConditionGroup[iDateConditions]["RawFactorNames"].add(iFactor._NameInFT)
+                DateConditionGroup[iDateConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], DateConditionGroup[iDateConditions]["StartDT"])
+                DateConditionGroup[iDateConditions]["args"]["回溯天数"] = max(DateConditionGroup[iDateConditions]["args"]["回溯天数"], iFactor.LookBack)
         EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
-        return [(self, Group["FactorNames"], list(Group["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], Group["args"])]
+        Groups = []
+        for iDateConditions in DateConditionGroup:
+            StartInd = operation_mode.DTRuler.index(DateConditionGroup[iDateConditions]["StartDT"])
+            Groups.append((self, DateConditionGroup[iDateConditions]["FactorNames"], list(DateConditionGroup[iDateConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], DateConditionGroup[iDateConditions]["args"]))
+        return Groups
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
         Fields = [self.DateField, self._IDField]+factor_names
-        DBFields = self._FactorDB._FactorInfo['DBFieldName'].loc[self.Name].loc[Fields].tolist()
+        DBFields = FactorInfo['DBFieldName'].loc[Fields].tolist()
         DBTableName = self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         RawData = pd.DataFrame(columns=DBFields)
         FieldStr = ",".join(DBFields)
-        if len(ids)<=(EndDate-StartDate).days:
+        Conditions = {}
+        for iConditionField in self._ConditionFields:
+            iDataType = FactorInfo.loc[iConditionField, "DataType"]
+            if iDataType=="str":
+                Conditions[FactorInfo.loc[iConditionField, "DBFieldName"]] = args.get(iConditionField, self[iConditionField])
+            elif iDataType=="float":
+                Conditions[FactorInfo.loc[iConditionField, "DBFieldName"]] = float(args.get(iConditionField, self[iConditionField]))
+            elif iDataType=="int":
+                Conditions[FactorInfo.loc[iConditionField, "DBFieldName"]] = int(args.get(iConditionField, self[iConditionField]))
+        if (len(ids)<=(EndDate-StartDate).days) and (self._IDField=="ts_code"):
             StartDate, EndDate = StartDate.strftime("%Y%m%d"), EndDate.strftime("%Y%m%d")
             for iID in ids:
-                iData = self._FactorDB._ts.query(DBTableName, ts_code=iID, start_date=StartDate, end_date=EndDate, fields=FieldStr)
+                iData = self._FactorDB._ts.query(DBTableName, ts_code=iID, start_date=StartDate, end_date=EndDate, fields=FieldStr, **Conditions)
                 RawData = RawData.append(iData)
         else:
             for i in range((EndDate-StartDate).days+1):
                 iDate = StartDate + dt.timedelta(i)
-                iData = self._FactorDB._ts.query(DBTableName, trade_date=iDate.strftime("%Y%m%d"), fields=FieldStr)
+                iData = self._FactorDB._ts.query(DBTableName, trade_date=iDate.strftime("%Y%m%d"), fields=FieldStr, **Conditions)
                 RawData = RawData.append(iData)
         RawData = RawData.loc[:, DBFields]
         RawData.columns = ["日期", "ID"]+factor_names
@@ -170,7 +194,7 @@ class _MarketTable(_FactorTable):
         if Data.minor_axis.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         LookBack = args.get("回溯天数", self.LookBack)
         if LookBack==0: return Data.loc[:, dts, ids]
-        AllDTs = Data.major_axis.union(set(dts)).sort_values()
+        AllDTs = Data.major_axis.union(dts).sort_values()
         Data = Data.loc[:, AllDTs, ids]
         Limits = LookBack*24.0*3600
         for i, iFactorName in enumerate(Data.items):

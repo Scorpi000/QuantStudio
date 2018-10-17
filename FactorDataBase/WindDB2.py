@@ -162,7 +162,7 @@ class _MarketTable(_DBTable):
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
-        self.add_trait("DateField", Enum(*self._DateFields, arg_type="SingleOption", label="日期字段", order=0))
+        self.add_trait("DateField", Enum(*self._DateFields, arg_type="SingleOption", label="日期字段", order=1))
         iFactorInfo = FactorInfo[(FactorInfo["FieldType"]=="Date") & pd.notnull(FactorInfo["Supplementary"])]
         iFactorInfo = iFactorInfo[iFactorInfo["Supplementary"].str.contains("DefaultDate")]
         if iFactorInfo.shape[0]>0: self.DateField = iFactorInfo.index[0]
@@ -293,7 +293,7 @@ class _MarketTable(_DBTable):
         Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
         LookBack = args.get("回溯天数", self.LookBack)
         if LookBack==0: return Data.loc[:, dts, ids]
-        AllDTs = Data.major_axis.union(set(dts)).sort_values()
+        AllDTs = Data.major_axis.union(dts).sort_values()
         Data = Data.loc[:, AllDTs, ids]
         Limits = LookBack*24.0*3600
         for i, iFactorName in enumerate(Data.items):

@@ -256,8 +256,8 @@ class _OperationMode(__QS_Object__):
     DateTimes = List(dt.datetime)
     IDs = ListStr()
     FactorNames = ListStr()
-    SubProcessNum = Int(0, arg_type="Integer", label="子进程数", order=0)
-    DTRuler = List(dt.datetime, arg_type="DateTimeList", label="时点标尺", order=1)
+    SubProcessNum = Int(0)
+    DTRuler = List(dt.datetime)
     def __init__(self, ft, sys_args={}, config_file=None, **kwargs):
         self._FT = ft
         self._isStarted = False
@@ -347,8 +347,8 @@ def _calculate(args):
 # 不支持某个操作时, 方法产生错误
 # 没有相关数据时, 方法返回 None
 class FactorTable(__QS_Object__):
-    ErgodicMode = Instance(_ErgodicMode, arg_type="ArgObject", label="遍历模式", order=0)
-    OperationMode = Instance(_OperationMode, arg_type="ArgObject", label="运算模式", order=1)
+    ErgodicMode = Instance(_ErgodicMode, arg_type="ArgObject", label="遍历模式", order=-1)
+    OperationMode = Instance(_OperationMode)
     def __init__(self, name, fdb=None, sys_args={}, config_file=None, **kwargs):
         self._Name = name
         self._FactorDB = fdb# 因子表所属的因子库, None 表示自定义的因子表
