@@ -232,10 +232,12 @@ class Strategy(BaseModule):
     Accounts = List(Account)# 策略所用到的账户
     FactorTables = List(FactorTable)# 策略所用到的因子表
     Benchmark = Instance(_Benchmark, arg_type="ArgObject", label="比较基准", order=0)
-    def __init__(self, name, sys_args={}, config_file=None, **kwargs):
-        super().__init__(name=name, sys_args=sys_args, config_file=config_file, **kwargs)
+    def __init__(self, name, accounts=[], fts=[], sys_args={}, config_file=None, **kwargs):
+        self.Accounts = accounts# 策略所用到的账户
+        self.FactorTables = fts# 策略所用到的因子表
         self.ModelArgs = {}# 模型参数，即用户自定义参数
         self.UserData = {}# 用户数据存放
+        return super().__init__(name=name, sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         self.Benchmark = _Benchmark()
     def __QS_start__(self, mdl, dts, **kwargs):

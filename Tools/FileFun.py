@@ -4,7 +4,6 @@ import os
 import io
 import shutil
 import json
-import winreg
 
 import numpy as np
 import pandas as pd
@@ -283,5 +282,6 @@ def readJSONFile(file_path):
     return {}
 # 获取 Windows 系统的桌面路径
 def getWindowsDesktopPath():
+    import winreg
     Key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Shell Folders")
     return winreg.QueryValueEx(Key, "Desktop")[0]
