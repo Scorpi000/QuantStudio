@@ -225,6 +225,9 @@ class Constraint(__QS_Object__):
     @property
     def Dependency(self):
         return {}
+    def genConstraint(self):
+        return []
+
 # 预算约束: i'*(w-benchmark) <=(==,>=) a, 转换成线性等式约束或线性不等式约束
 class BudgetConstraint(Constraint):
     UpLimit = Float(1.0, arg_type="Double", label="限制上限", order=0)
@@ -361,7 +364,7 @@ class FactorExposeConstraint(Constraint):
 class WeightConstraint(Constraint):
     TargetIDs = Str(arg_type="IDFilterStr", label="目标ID", order=0)
     UpLimit = Float(1.0, arg_type="Double", label="限制上限", order=1)
-    DownLimit = Float(1.0, arg_type="Double", label="限制下限", order=2)
+    DownLimit = Float(0.0, arg_type="Double", label="限制下限", order=2)
     Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=3)
     DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=4)
     @property
@@ -597,7 +600,7 @@ class PortfolioConstructor(__QS_Object__):
             MathConstraints.extend(iMathConstraints)
             iEndInd = iStartInd + len(iMathConstraints)
             iPriority = iConstraint.DropPriority
-            if (iEndInd-iStartInd!=0) and (iPriority!=-1):
+            if (iEndInd-iStartInd!=0) and (iPriority>-1):
                 DropedConstraintInds[iPriority] = DropedConstraintInds.get(iPriority,[])+[i for i in range(iStartInd+1,iEndInd+1)]
                 DropedConstraints[iPriority] = DropedConstraints.get(iPriority,[])+[str(i)+'-'+iConstraint.Type]
             iStartInd = iEndInd

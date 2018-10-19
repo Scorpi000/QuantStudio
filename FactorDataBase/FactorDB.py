@@ -279,7 +279,7 @@ class _OperationMode(__QS_Object__):
 def _prepareRawData(args):
     nGroup = len(args['GroupInfo'])
     if "Sub2MainQueue" not in args:# 运行模式为串行
-        with ProgressBar(max_value=len(nGroup)) as ProgBar:
+        with ProgressBar(max_value=nGroup) as ProgBar:
             for i in range(nGroup):
                 iFT, iFactorNames, iRawFactorNames, iDTs, iArgs = args['GroupInfo'][i]
                 iRawData = iFT.__QS_prepareRawData__(iRawFactorNames, args["FT"].OperationMode.IDs, iDTs, iArgs)

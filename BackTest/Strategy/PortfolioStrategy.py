@@ -50,7 +50,7 @@ class PortfolioStrategy(Strategy):
     TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=9)
     def __init__(self, name, factor_table=None, sys_args={}, config_file=None, **kwargs):
         self._FT = factor_table# 因子表
-        super().__init__(name, sys_args=sys_args, config_file=config_file, **kwargs)
+        super().__init__(name=name, accounts=[], fts=([] if self._FT is None else [self._FT]), sys_args=sys_args, config_file=config_file, **kwargs)
         self._AllLongSignals = {}# 存储所有生成的多头信号, {时点:信号}
         self._AllShortSignals = {}# 存储所有生成的空头信号, {时点:信号}
         return

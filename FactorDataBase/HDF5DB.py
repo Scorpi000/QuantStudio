@@ -49,12 +49,12 @@ class _FactorTable(FactorTable):
             return pd.DataFrame(MetaData).loc[:, factor_names]
         else:
             return pd.Series(MetaData).loc[factor_names]
-    def getID(self, ifactor_name=None, idt=None):
+    def getID(self, ifactor_name=None, idt=None, args={}):
         if ifactor_name is None: ifactor_name = self.FactorNames[0]
         with self._FactorDB._DataLock:
             with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix) as ijFile:
                 return sorted(ijFile["ID"][...])
-    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None):
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         if ifactor_name is None: ifactor_name = self.FactorNames[0]
         with self._FactorDB._DataLock:
             with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix) as ijFile:
