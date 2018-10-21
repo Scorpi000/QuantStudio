@@ -1421,7 +1421,7 @@ class _AnalystEstDetailTable(_DBTable):
                         kData[i, j] = Operator(self, iDate, jID, x, ModelArgs)
                     continue
                 jReportNoteDate = ANNReportData.loc[[jID]].reset_index()
-                jRawData = raw_data.loc[jID][kFields]
+                jRawData = raw_data.loc[[jID], kFields]
                 ijNoteDate = None
                 for i, iDate in enumerate(Dates):
                     iStartDate = (iDate - dt.timedelta(Period)).strftime("%Y%m%d")

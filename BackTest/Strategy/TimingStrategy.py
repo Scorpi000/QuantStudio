@@ -20,9 +20,8 @@ class TimingStrategy(Strategy):
     TradeTarget = Enum("锁定买卖金额", "锁定目标仓位", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=6)
     def __init__(self, name, factor_table=None, sys_args={}, config_file=None, **kwargs):
         self._FT = factor_table# 因子表
-        super().__init__(name, sys_args=sys_args, config_file=config_file, **kwargs)
         self._AllSignals = {}# 存储所有生成的信号, {时点:信号}
-        return
+        return super().__init__(name, sys_args=sys_args, config_file=config_file, **kwargs)
     @on_trait_change("TargetAccount")
     def on_TargetAccount_changed(self, obj, name, old, new):
         if self.TargetAccount is not None:
@@ -31,6 +30,9 @@ class TimingStrategy(Strategy):
         else:
             self.add_trait("目标ID", Enum(None, label="目标ID", arg_type="SingleOption", order=5))
             self.Accounts.remove(old)
+    @property
+    def MainFactorTable(self):
+        return self._FT
     def __QS_start__(self, mdl, dts, **kwargs):
         self._AllSignals = {}
         self._TradeTarget = None# 锁定的交易目标
