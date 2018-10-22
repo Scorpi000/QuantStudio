@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from . import MailFun as Mail
+#from . import MailFun as Mail
 from . import MathFun as Math
 from . import DateTimeFun as DateTime
 from . import StrategyTestFun as Strategy
