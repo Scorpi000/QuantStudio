@@ -243,14 +243,14 @@ def regress_change_rate(*factors, **kwargs):
 def _rolling_mean(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     return Data.rolling(**args["OperatorArg"]).mean().values[args["OperatorArg"]["window"]-1:]
-def rolling_mean(f, window, min_periods=None, win_type=None, **kwargs):
+def rolling_mean(f, window, min_periods=1, win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_rolling_mean,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _rolling_sum(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     return Data.rolling(**args["OperatorArg"]).sum().values[args["OperatorArg"]["window"]-1:]
-def rolling_sum(f, window, min_periods=None, win_type=None, **kwargs):
+def rolling_sum(f, window, min_periods=1, win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_rolling_sum,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
@@ -259,42 +259,42 @@ def _rolling_std(f,idt,iid,x,args):
     OperatorArg = args["OperatorArg"].copy()
     SubOperatorArg = OperatorArg.pop("SubOperatorArg", {})
     return Data.rolling(**OperatorArg).apply(lambda x:np.nanstd(x, **SubOperatorArg), raw=True).values[args["OperatorArg"]["window"]-1:]
-def rolling_std(f, window, min_periods=None, win_type=None, ddof=1, **kwargs):
+def rolling_std(f, window, min_periods=1, win_type=None, ddof=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type,"SubOperatorArg":{"ddof":ddof}}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_rolling_std,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _rolling_max(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     return Data.rolling(**args["OperatorArg"]).max().values[args["OperatorArg"]["window"]-1:]
-def rolling_max(f, window, min_periods=None, win_type=None, **kwargs):
+def rolling_max(f, window, min_periods=1, win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_rolling_max,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _rolling_min(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     return Data.rolling(**args["OperatorArg"]).min().values[args["OperatorArg"]["window"]-1:]
-def rolling_min(f, window, min_periods=None, win_type=None, **kwargs):
+def rolling_min(f, window, min_periods=1, win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_rolling_min,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _rolling_median(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     return Data.rolling(**args["OperatorArg"]).median().values[args["OperatorArg"]["window"]-1:]
-def rolling_median(f, window, min_periods=None, win_type=None, **kwargs):
+def rolling_median(f, window, min_periods=1, win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_rolling_median,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _rolling_skew(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     return Data.rolling(**args["OperatorArg"]).skew().values[args["OperatorArg"]["window"]-1:]
-def rolling_skew(f, window, min_periods=None, win_type=None, **kwargs):
+def rolling_skew(f, window, min_periods=1, win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_rolling_skew,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _rolling_kurt(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     return Data.rolling(**args["OperatorArg"]).kurt().values[args["OperatorArg"]["window"]-1:]
-def rolling_kurt(f, window, min_periods=None, win_type=None, **kwargs):
+def rolling_kurt(f, window, min_periods=1, win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_rolling_kurt,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
@@ -303,7 +303,7 @@ def _rolling_var(f,idt,iid,x,args):
     OperatorArg = args["OperatorArg"].copy()
     SubOperatorArg = OperatorArg.pop("SubOperatorArg", {})
     return Data.rolling(**OperatorArg).apply(lambda x:np.nanvar(x, **SubOperatorArg), raw=True).values[args["OperatorArg"]["window"]-1:]
-def rolling_var(f, window, min_periods=None, win_type=None, ddof=1, **kwargs):
+def rolling_var(f, window, min_periods=1, win_type=None, ddof=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type,"SubOperatorArg":{"ddof":ddof}}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_rolling_var,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
@@ -312,7 +312,7 @@ def _rolling_quantile(f,idt,iid,x,args):
     OperatorArg = args["OperatorArg"].copy()
     SubOperatorArg = OperatorArg.pop("SubOperatorArg", {})
     return Data.rolling(**OperatorArg).quantile(**SubOperatorArg).values[args["OperatorArg"]["window"]-1:]
-def rolling_quantile(f, window, quantile=0.5, min_periods=None, win_type=None, **kwargs):
+def rolling_quantile(f, window, quantile=0.5, min_periods=1, win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type,"SubOperatorArg":{"quantile":quantile}}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_rolling_quantile,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
@@ -454,14 +454,14 @@ def _rolling_cov(f,idt,iid,x,args):
     OperatorArg = args["OperatorArg"].copy()
     SubOperatorArg = OperatorArg.pop("SubOperatorArg",{})
     return pd.DataFrame(Data1).rolling(**OperatorArg).cov(pd.DataFrame(Data2),**SubOperatorArg).values[args["OperatorArg"]["window"]-1:]
-def rolling_cov(f1, f2, window, min_periods=None, win_type=None, ddof=1, **kwargs):
+def rolling_cov(f1, f2, window, min_periods=1, win_type=None, ddof=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f1,f2)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type,"SubOperatorArg":{"ddof":ddof}}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_rolling_cov,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _rolling_corr(f,idt,iid,x,args):
     Data1,Data2 = _genOperatorData(f,idt,iid,x,args)
     return pd.DataFrame(Data1).rolling(**args["OperatorArg"]).corr(pd.DataFrame(Data2)).values[args["OperatorArg"]["window"]-1:]
-def rolling_corr(f1, f2, window, min_periods=None, win_type=None, **kwargs):
+def rolling_corr(f1, f2, window, min_periods=1, win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f1,f2)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_rolling_corr,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})

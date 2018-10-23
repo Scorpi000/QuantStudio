@@ -18,8 +18,8 @@ mpl.rcParams['axes.unicode_minus'] = False
 
 __QS_MainPath__ = os.path.split(os.path.realpath(__file__))[0]
 __QS_CachePath__ = __QS_MainPath__+os.sep+"Cache"
+if not os.path.isdir(__QS_CachePath__): os.mkdir(__QS_CachePath__)
 __QS_LibPath__ = __QS_MainPath__+os.sep+"Lib"
-__QS_CacheLock__ = Lock()
 
 # Quant Studio 系统错误
 class __QS_Error__(Exception):

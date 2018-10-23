@@ -125,7 +125,7 @@ class BackTestModel(__QS_Object__):
         return self._Output
     # 生成 Excel 报告
     def genExcelReport(self, file_path):
-        shutil.copy(__QS_MainPath__+os.sep+"BackTest"+os.sep+"SectionFactor"+os.sep+"简单因子表现模板.xlsx", file_path)
+        shutil.copy(__QS_MainPath__+os.sep+"Resource"+os.sep+"SimpleSectionFactorTemplate.xlsx", file_path)
         xlBook = xw.Book(file_path)
         NewSheet = xlBook.sheets.add(name="占位表")
         for i, iModule in enumerate(self.Modules): iModule.genExcelReport(xlBook, str(i)+"-"+iModule.Name)

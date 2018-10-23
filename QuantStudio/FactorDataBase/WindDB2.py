@@ -153,7 +153,7 @@ class _MarketTable(_DBTable):
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
         self._DateFields = FactorInfo[FactorInfo["FieldType"]=="Date"].index.tolist()# 所有的日期字段列表
         self._ConditionFields = FactorInfo[FactorInfo["FieldType"]=="Condition"].index.tolist()# 所有的条件字段列表
-        iFactorInfo = FactorInfo[pd.notnull(FactorInfo["Supplementary"])]
+        iFactorInfo = FactorInfo[pd.notnull(FactorInfo["Supplementary"]) & (FactorInfo["FieldType"]=="Date")]
         self._UniqueDateField = iFactorInfo[iFactorInfo["Supplementary"].str.contains("UniqueDate")].index# 具有唯一性的日期字段, 如果未设置, 则默认所有日期字段都有唯一性
         if self._UniqueDateField.shape[0]==0: self._UniqueDateField = None
         else: self._UniqueDateField = self._UniqueDateField[0]
@@ -299,7 +299,77 @@ class _MarketTable(_DBTable):
         for i, iFactorName in enumerate(Data.items):
             Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
         return Data.loc[:, dts]
-
+class _DividendTable(_DBTable):
+    """分红因子表"""
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        FactorInfo = fdb._FactorInfo.loc[name]
+        self._IDField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="ID"].iloc[0]
+        self._ExDateField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="ExDate"].iloc[0]# 除权除息日
+        self._ProgressField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="Progress"].iloc[0]# 方案进度
+        self._BaseShareField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="BaseShare"].iloc[0]# 基准股本
+        Mask = pd.notnull(FactorInfo["FieldType"])
+        self._Factors = pd.Series(FactorInfo["DBFieldName"][Mask].values, index=FactorInfo["FieldType"][Mask].values)
+        self._Factors = self._Factors[self._Factors.index.difference({"ID", "ExDate", "Progress", "BaseShare"})]
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+        return
+    @property
+    def FactorNames(self):
+        return self._Factors.index.tolist()
+    # 返回在给定时点 idt 的有数据记录的 ID
+    # 如果 idt 为 None, 将返回所有有历史数据记录的 ID
+    # 忽略 ifactor_name
+    def getID(self, ifactor_name=None, idt=None, args={}):
+        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        SQLStr = "SELECT DISTINCT "+DBTableName+"."+self._IDField+" "
+        SQLStr += "FROM "+DBTableName+" "
+        if idt is not None: SQLStr += "WHERE "+DBTableName+"."+self._ExDateField+"='"+idt.strftime("%Y%m%d")+"' "
+        else: SQLStr += "WHERE "+DBTableName+"."+self._ExDateField+" IS NOT NULL "
+        SQLStr += "AND "+DBTableName+"."+self._ProgressField+"=3 "
+        SQLStr += "ORDER BY "+DBTableName+"."+self._IDField
+        return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
+    # 返回在给定 ID iid 的有数据记录的时间点
+    # 如果 iid 为 None, 将返回所有有历史数据记录的时间点
+    # 忽略 ifactor_name
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
+        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        SQLStr = "SELECT DISTINCT "+DBTableName+"."+self._ExDateField+" "
+        SQLStr += "FROM "+DBTableName+" "
+        SQLStr += "WHERE "+DBTableName+"."+self._ExDateField+" IS NOT NULL "
+        if iid is not None: SQLStr += "AND "+DBTableName+"."+self._IDField+"='"+iid+"' "
+        if start_dt is not None: SQLStr += "AND "+DBTableName+"."+self._ExDateField+">='"+start_dt.strftime("%Y%m%d")+"' "
+        if end_dt is not None: SQLStr += "AND "+DBTableName+"."+self._ExDateField+"<='"+end_dt.strftime("%Y%m%d")+"' "
+        SQLStr += "AND "+DBTableName+"."+self._ProgressField+"=3 "
+        SQLStr += "ORDER BY "+DBTableName+"."+self._ExDateField
+        return list(map(lambda x: dt.datetime(int(x[0][:4]), int(x[0][4:6]), int(x[0][6:8]), 23, 59, 59, 999999), self._FactorDB.fetchall(SQLStr)))
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        StartDate, EndDate = dts[0].date(), dts[-1].date()
+        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        # 形成SQL语句, 日期, ID, 因子数据
+        SQLStr = "SELECT "+DBTableName+"."+self._ExDateField+", "
+        SQLStr += DBTableName+"."+self._IDField+", "
+        for iFactor in factor_names: SQLStr += "SUM("+DBTableName+"."+self._Factors[iFactor]+" * "+DBTableName+"."+self._BaseShareField+"), "
+        SQLStr = SQLStr[:-2]+" FROM "+DBTableName+" "
+        SQLStr += "WHERE ("+genSQLInCondition(DBTableName+"."+self._IDField, ids, is_str=True, max_num=1000)+") "
+        SQLStr += "AND "+DBTableName+"."+self._ExDateField+">='"+StartDate.strftime("%Y%m%d")+"' "
+        SQLStr += "AND "+DBTableName+"."+self._ExDateField+"<='"+EndDate.strftime("%Y%m%d")+"' "
+        SQLStr += "AND "+DBTableName+"."+self._ProgressField+"=3 "
+        SQLStr += "GROUP BY "+DBTableName+"."+self._IDField+", "+DBTableName+"."+self._ExDateField+" "
+        SQLStr += "ORDER BY "+DBTableName+"."+self._IDField+", "+DBTableName+"."+self._ExDateField
+        RawData = self._FactorDB.fetchall(SQLStr)
+        if not RawData: return pd.DataFrame(columns=["日期", "ID"]+factor_names)
+        return pd.DataFrame(np.array(RawData), columns=["日期", "ID"]+factor_names)
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        raw_data = raw_data.set_index(["日期", "ID"])
+        Data = {}
+        for iFactorName in raw_data.columns:
+            iRawData = raw_data[iFactorName].unstack().astype("float")
+            Data[iFactorName] = iRawData
+        Data = pd.Panel(Data).loc[factor_names]
+        Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
+        if Data.major_axis.intersection(dts).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        return Data.loc[:, dts, ids]
 class _ConstituentTable(_DBTable):
     """成份因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
@@ -1558,8 +1628,11 @@ class WindDB2(WindDB):
         self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"WindDB2Info.xlsx"# 数据库信息源文件路径
         return super()._updateInfo()
     def getTable(self, table_name, args={}):
-        TableClass = self._TableInfo.loc[table_name, "TableClass"]
-        return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=args)")
+        if table_name in self._TableInfo.index:
+            TableClass = self._TableInfo.loc[table_name, "TableClass"]
+            if pd.notnull(TableClass):
+                return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=args)")
+        raise __QS_Error__("因子库目前尚不支持表: '%s'" % table_name)
     # -----------------------------------------数据提取---------------------------------
     # 获取指定日当前在市或者历史上出现过的全体 A 股 ID
     def _getAllAStock(self, date, is_current=True):
