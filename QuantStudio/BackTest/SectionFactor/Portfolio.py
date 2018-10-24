@@ -124,7 +124,7 @@ class QuantilePortfolio(BaseModule):
                     self._Output["换手率"][i][-1] = 1
         else:
             Portfolio = [{} for i in range(self.GroupNum)]
-            IndustryData = self._FactorTable.getFactorData(dts=[idt], ids=IDs, factor_names=[self.IndustryFactor]).iloc[0, 0, :]
+            IndustryData = self._FactorTable.readData(dts=[idt], ids=IDs, factor_names=[self.IndustryFactor]).iloc[0, 0, :]
             AllIndustry = IndustryData.unique()
             for iIndustry in AllIndustry:
                 iMask = (IndustryData==iIndustry)
@@ -147,7 +147,7 @@ class QuantilePortfolio(BaseModule):
                 elif nPortfolio==1:
                     self._Output["换手率"][i][-1] = 1
         if self.MarketIDFilter:
-            IDs = self._FactorTable.getFilteredID(idt=idt, is_filtered=True, id_filter_str=self.MarketIDFilter)
+            IDs = self._FactorTable.getFilteredID(idt=idt, id_filter_str=self.MarketIDFilter)
         WeightData = WeightData[IDs]
         Price = Price[IDs]
         WeightData = WeightData[pd.notnull(WeightData) & pd.notnull(Price)]
@@ -430,7 +430,7 @@ class GroupPortfolio(QuantilePortfolio):# TODO
             return True
         return super().__QS_onSysArgChanged__(change_type, change_info, **kwargs)
     def __QS_move__(self, idt, **kwargs):
-        Price = self._FactorTable.getFactorData(dates=[idt],ids=None,ifactor_name=self._SysArgs["价格因子"]).iloc[0]
+        Price = self._FactorTable.readData(dates=[idt],ids=None,ifactor_name=self._SysArgs["价格因子"]).iloc[0]
         for i in range(self._SysArgs["分组数"]):
             if len(self._Output["QP_P_CurPos"][i])==0:
                 self._Output["净值"][i].append(self._Output["净值"][i][-1])
@@ -448,7 +448,7 @@ class GroupPortfolio(QuantilePortfolio):# TODO
         if (self._CalcDateTimes is not None) and (idt not in self._CalcDateTimes):
             return 0
         IDs = self._FactorTable.getID(idt=idt, is_filtered=True, id_filter_str=self._SysArgs["筛选条件"])
-        FactorData = self._FactorTable.getFactorData(dates=[idt], ids=IDs, ifactor_name=self._SysArgs["测试因子"]).iloc[0].copy()
+        FactorData = self._FactorTable.readData(dts=[idt], ids=IDs, ifactor_name=self._SysArgs["测试因子"]).iloc[0].copy()
         FactorData = FactorData[pd.notnull(Price[IDs])]
         nID = FactorData.shape[0]
         if (self._SysArgs["随机微扰"]) and (nID>0):
@@ -469,7 +469,7 @@ class GroupPortfolio(QuantilePortfolio):# TODO
                 FactorData = -FactorData
         # 构建投资组合
         if self._SysArgs["权重因子"]!="等权":
-            WeightData = self._FactorTable.getFactorData(dates=[idt], ids=IDs, ifactor_name=self._SysArgs["权重因子"]).iloc[0]
+            WeightData = self._FactorTable.readData(dts=[idt], ids=IDs, ifactor_name=self._SysArgs["权重因子"]).iloc[0]
         else:
             WeightData = pd.Series(1.0,index=IDs)
         IDs = []
@@ -618,7 +618,7 @@ class PureFactorPortfolio(QuantilePortfolio):# TODO
         Signal = Signal[Signal.cumsum()>0.9999]
         Signal = Signal/Signal.sum()
         Signal = dict(Signal)
-        RetRate = self.DSs[args["数据源"]].getFactorData(dates=self.CurDate,ids=None,ifactor_name=args["收益率因子"])
+        RetRate = self.DSs[args["数据源"]].readData(dts=[idt], ids=None, factor_names=[args["收益率因子"]])
         RetRate = RetRate.loc[self.CurDate]
         self._Output["投资组合"].append(dict(Portfolio))
         if self.CurInd>=1:

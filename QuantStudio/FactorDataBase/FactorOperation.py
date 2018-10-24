@@ -243,16 +243,13 @@ class SectionOperation(DerivativeFactor):
         return StdData
     def __QS_prepareCacheData__(self):
         DTs = list(self._PID_DTs[self._OperationMode._iPID])
-        if len(DTs)==0:# 该进程未分配到计算任务
-            if self._OperationMode.SubProcessNum>0:
-                Sub2MainQueue, PIDEvent = self._OperationMode._Event[self.Name]
-                Sub2MainQueue.put(1)
-                PIDEvent.wait()
-            self._isCacheDataOK = True
-            return None
         IDs = list(self._OperationMode.IDs)
-        StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor._QS_getData(DTs, pids=None).values for iDescriptor in self.Descriptors])
-        StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
+        print(self._OperationMode._iPID+"-"+str(DTs))
+        if len(DTs)>0:# 该进程分配到计算任务
+            StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor._QS_getData(DTs, pids=None).values for iDescriptor in self.Descriptors])
+            StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
+        else:
+            StdData = pd.DataFrame(columns=IDs)
         for iPID, iIDs in self._OperationMode._PID_IDs.items():
             with self._OperationMode._PID_Lock[iPID]:
                 with shelve.open(self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name) as CacheFile:

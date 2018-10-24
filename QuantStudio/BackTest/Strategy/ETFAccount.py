@@ -215,11 +215,11 @@ class ETFAccount(Account):
     # 当前最新价
     @property
     def LastPrice(self):
-        return self._DS.getFactorData(ifactor_name=self.SysArgs["最新价"], dates=[self.QSEnv.STM.Date]).iloc[0]
+        return self._DS.readData(ifactor_name=self.SysArgs["最新价"], dates=[self.QSEnv.STM.Date]).iloc[0]
     # 最小买入数量, 0 表示无限分割
     @property
     def MinBuyNum(self):
-        UnitPrice = self._DS.getFactorData(ifactor_name=[self.SysArgs["买入限制"]["单位价格"]], dates=[CurDate]).iloc[0]
+        UnitPrice = self._DS.readData(ifactor_name=[self.SysArgs["买入限制"]["单位价格"]], dates=[CurDate]).iloc[0]
         return self.SysArgs["买入限制"]["最小单位"]*UnitPrice/self.LastPrice
     # 单位买入价格
     @property
@@ -232,7 +232,7 @@ class ETFAccount(Account):
     # 最小卖出数量, 0 表示无限分割
     @property
     def MinSellNum(self):
-        UnitPrice = self._DS.getFactorData(ifactor_name=[self.SysArgs["卖出限制"]["单位价格"]], dates=[CurDate]).iloc[0]
+        UnitPrice = self._DS.readData(ifactor_name=[self.SysArgs["卖出限制"]["单位价格"]], dates=[CurDate]).iloc[0]
         return self.SysArgs["卖出限制"]["最小单位"]*UnitPrice/self.LastPrice
     # 单位卖出价格
     @property
@@ -391,7 +391,7 @@ class ETFAccount(Account):
         CashChanged = 0.0
         Position = self.Position
         Position = Position.append(pd.Series(0.0,index=Orders.index.difference(Position.index)))
-        TradePrice = self._DS.getFactorData(ifactor_name=self.SysArgs["成交价"], dates=[CurDate]).iloc[0]
+        TradePrice = self._DS.readData(ifactor_name=self.SysArgs["成交价"], dates=[CurDate]).iloc[0]
         TradingRecord = []
         # 先执行卖出交易
         SellOrders = -Orders[Orders<0]
@@ -402,13 +402,13 @@ class ETFAccount(Account):
             if self.SysArgs["卖出限制"]["禁止条件"] is not None:
                 SellLimit[self._DS.getIDMask(CurDate, self.SysArgs["卖出限制"]["禁止条件"])[SellOrders.index]] = 0.0# 满足禁止条件的不能卖出
             if self.SysArgs["卖出限制"]["成交额"]!="不限制":# 成交额缺失的不能卖出
-                MaxAmount = self._DS.getFactorData(ifactor_name=self.SysArgs["卖出限制"]["成交额"], 
+                MaxAmount = self._DS.readData(ifactor_name=self.SysArgs["卖出限制"]["成交额"], 
                                                    ids=list(SellOrders.index), dates=[CurDate]).iloc[0]
                 MaxAmount = MaxAmount * self.SysArgs["卖出限制"]["成交额限比"]
                 SellLimit = np.minimum(SellLimit, MaxAmount)
             SellAmounts = np.minimum(np.minimum(SellLimit, Position[SellOrders.index]*SellPrice), SellOrders*SellPrice)
             if self.SysArgs["卖出限制"]['最小单位']!=0.0:
-                TradeUnitPrice = self._DS.getFactorData(ifactor_name=[self.SysArgs["卖出限制"]["单位价格"]], 
+                TradeUnitPrice = self._DS.readData(ifactor_name=[self.SysArgs["卖出限制"]["单位价格"]], 
                                                         ids=list(SellOrders.index), dates=[CurDate]).iloc[0]
                 SellAmounts = (SellAmounts/(self.SysArgs["卖出限制"]['最小单位']*TradeUnitPrice)).astype("int")*self.SysArgs["卖出限制"]['最小单位']*TradeUnitPrice
             SellFees = SellAmounts*self.SysArgs["卖出限制"]["交易费率"]
@@ -429,7 +429,7 @@ class ETFAccount(Account):
             if self.SysArgs["买入限制"]["禁止条件"] is not None:
                 BuyLimit[self._DS.getIDMask(CurDate, self.SysArgs["买入限制"]["禁止条件"])[BuyOrders.index]] = 0.0# 满足禁止条件的不能卖出
             if self.SysArgs["买入限制"]["成交额"]!="不限制":# 成交额缺失的不能买入
-                MaxAmount = self._DS.getFactorData(ifactor_name=self.SysArgs["买入限制"]["成交额"], 
+                MaxAmount = self._DS.readData(ifactor_name=self.SysArgs["买入限制"]["成交额"], 
                                                    ids=list(BuyOrders.index), dates=[CurDate]).iloc[0]
                 MaxAmount = MaxAmount * self.SysArgs["买入限制"]["成交额限比"]
                 BuyLimit = np.minimum(BuyLimit, MaxAmount)
@@ -438,7 +438,7 @@ class ETFAccount(Account):
             if TotalBuyAmounts>0:
                 BuyAmounts = min((TotalBuyAmounts*(1+self.SysArgs["买入限制"]["交易费率"]), max((0, AvailableCash))))*BuyAmounts/TotalBuyAmounts/(1+self.SysArgs["买入限制"]["交易费率"])
                 if self.SysArgs["买入限制"]['最小单位']!=0.0:
-                    TradeUnitPrice = self._DS.getFactorData(ifactor_name=[self.SysArgs["买入限制"]["单位价格"]], 
+                    TradeUnitPrice = self._DS.readData(ifactor_name=[self.SysArgs["买入限制"]["单位价格"]], 
                                                             ids=list(BuyOrders.index), dates=[CurDate]).iloc[0]
                     BuyAmounts = (BuyAmounts/(self.SysArgs["买入限制"]['最小单位']*TradeUnitPrice)).astype("int")*self.SysArgs["买入限制"]['最小单位']*TradeUnitPrice
                 BuyFees = BuyAmounts*self.SysArgs["买入限制"]["交易费率"]

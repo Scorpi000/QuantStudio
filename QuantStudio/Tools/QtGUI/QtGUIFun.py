@@ -46,7 +46,7 @@ def populateQTreeWidgetWithNestedDict(tree_widget, nested_dict):
 
 
 # 以 GUI 的方式查看数据集
-def showOutput(output, plot_engine="plotly"):
+def showOutput(output, plot_engine="matplotlib"):
     from QuantStudio.Tools.QtGUI.ResultDlg import PlotlyResultDlg, MatplotlibResultDlg
     App = QApplication(sys.argv)
     if plot_engine=="plotly": Dlg = PlotlyResultDlg(None, output)
