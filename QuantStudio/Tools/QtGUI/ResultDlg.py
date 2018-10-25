@@ -1184,22 +1184,31 @@ class MatplotlibResultDlg(PlotlyResultDlg):
             return 0
         # 设置绘图模式
         PlotMode, PlotAxes, PlotArgs = self._getPlotArgs(PlotResult)
-        if PlotMode is None:
-            return 0
+        if PlotMode is None: return 0
         # 设置要绘制的索引
         xData = self._getDataIndex(PlotResult.index)
         if not xData:
             QMessageBox.critical(None,'错误','绘图数据为空!')
             return 0
         PlotResult = PlotResult.loc[xData]
-        xTickLabels = []
-        isStr = False
-        for iData in xData:
-            xTickLabels.append(str(iData))
-            if isinstance(iData, str):
-                isStr = True
-        if isStr:
-            xData = np.linspace(1, len(xData), len(xData))
+        if (not PlotResult.index.is_mixed()) and isinstance(PlotResult.index[0], (dt.datetime, dt.date)):# index 是日期或者时间
+            isDT = True
+            xData = np.arange(0, PlotResult.shape[0])
+            xTicks = np.arange(0, PlotResult.shape[0], max(1, int(PlotResult.shape[0]/10)))
+            if isinstance(PlotResult.index[0], dt.datetime):
+                if float(np.min(np.diff(PlotResult.index)) / 1e9 / 3600 / 24)>=1:
+                    xTickLabels = [PlotResult.index[i].strftime("%Y-%m-%d") for i in xTicks]
+                else:
+                    xTickLabels = [PlotResult.index[i].strftime("%Y-%m-%d %H:%M:%S.%f") for i in xTicks]
+            else:
+                xTickLabels = [PlotResult.index[i].strftime("%Y-%m-%d") for i in xTicks]
+        else:
+            xTickLabels = []
+            isStr = False
+            for iData in xData:
+                xTickLabels.append(str(iData))
+                if isinstance(iData, str): isStr = True
+            if isStr: xData = np.arange(0, PlotResult.shape[0])
         FigDlg = Ui_FigDlg()
         Fig = FigDlg.PlotWidget.Canvas.Fig
         if ('左轴' in PlotAxes):
@@ -1212,21 +1221,31 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         for i in range(PlotResult.shape[1]):
             iAxe = (LeftAxe if PlotAxes[i]=="左轴" else RightAxe)
             yData = PlotResult.iloc[:,i]
-            try:
-                if PlotMode[i]=="Line":
-                    iAxe.plot(yData, label=str(yData.name), **PlotArgs[i])
-                elif PlotMode[i]=="Bar":
-                    iAxe.bar(yData.index, yData.values, label=str(yData.name), **PlotArgs[i])
-                elif PlotMode[i]=="Stack":
-                    iAxe.stackplot(yData.index, yData.values, **PlotArgs[i])
-            except:
+            if not isDT:
+                try:
+                    if PlotMode[i]=="Line":
+                        iAxe.plot(yData, label=str(yData.name), **PlotArgs[i])
+                    elif PlotMode[i]=="Bar":
+                        iAxe.bar(yData.index, yData.values, label=str(yData.name), **PlotArgs[i])
+                    elif PlotMode[i]=="Stack":
+                        iAxe.stackplot(yData.index, yData.values, **PlotArgs[i])
+                except:
+                    if PlotMode[i]=="Line":
+                        iAxe.plot(xData, yData.values, label=str(yData.name), **PlotArgs[i])
+                    elif PlotMode[i]=="Bar":
+                        iAxe.bar(xData, yData.values, label=str(yData.name), **PlotArgs[i])
+                    elif PlotMode[i]=="Stack":
+                        iAxe.stackplot(xData, yData.values, **PlotArgs[i])
+                    iAxe.set_xticks(xData)
+                    iAxe.set_xticklabels(xTickLabels)
+            else:
                 if PlotMode[i]=="Line":
                     iAxe.plot(xData, yData.values, label=str(yData.name), **PlotArgs[i])
                 elif PlotMode[i]=="Bar":
                     iAxe.bar(xData, yData.values, label=str(yData.name), **PlotArgs[i])
                 elif PlotMode[i]=="Stack":
                     iAxe.stackplot(xData, yData.values, **PlotArgs[i])
-                iAxe.set_xticks(xData)
+                iAxe.set_xticks(xTicks)
                 iAxe.set_xticklabels(xTickLabels)
         if '左轴' in PlotAxes:
             LeftAxe.legend(loc='upper left',shadow=True)
@@ -1242,7 +1261,7 @@ if __name__=='__main__':
     from QuantStudio.Tools.DateTimeFun import getDateSeries
     
     Dates = getDateSeries(dt.date(2016,1,1), dt.date(2016,12,31))
-    TestData = {"Bar1":{"a":{"a1":pd.DataFrame(np.random.rand(10,3),index=Dates[:10],columns=['b','c','d']),
+    TestData = {"Bar1":{"a":{"a1":pd.DataFrame(np.random.rand(11,3),index=Dates[:11],columns=['b','c','d']),
                              "a2":pd.DataFrame(np.random.rand(10,2))},
                         "b":pd.DataFrame(['a']*150,columns=['c'])},
                 "Bar2":pd.DataFrame(np.random.randn(3,2),index=[1,"b2","b3"])}

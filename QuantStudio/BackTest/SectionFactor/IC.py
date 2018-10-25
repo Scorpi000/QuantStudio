@@ -173,7 +173,7 @@ class IC(BaseModule):
         Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         AxesGrid = gridspec.GridSpec(nRow, nCol)
         xData = np.arange(0, self._Output["IC"].shape[0])
-        xTicks = np.arange(0, self._Output["IC"].shape[0], int(self._Output["IC"].shape[0]/10))
+        xTicks = np.arange(0, self._Output["IC"].shape[0], max(1, int(self._Output["IC"].shape[0]/10)))
         xTickLabels = [self._Output["IC"].index[i].strftime("%Y-%m-%d") for i in xTicks]
         yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
         for i in range(self._Output["IC"].shape[1]):

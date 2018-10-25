@@ -6,7 +6,7 @@ with open("README.rst", "r") as fh:
 
 setuptools.setup(
     name="QuantStudio",
-    version="0.0.1",
+    version="0.0.2",
     author="scorpi000",
     author_email="scorpi000@sina.cn",
     description="Quant Studio",

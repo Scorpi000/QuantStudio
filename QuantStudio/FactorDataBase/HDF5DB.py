@@ -260,23 +260,36 @@ class HDF5DB(WritableFactorDB):
                 DataFile["ID"][OldIDs.shape[0]:] = NewIDs
                 DataFile["Data"].resize((DataFile["DateTime"].shape[0], DataFile["ID"].shape[0]))
                 if NewDateTimes.shape[0]>0:
-                    print(len(OldDateTimes))
-                    print(len(NewDateTimes))
                     NewData = factor_data.loc[NewDateTimes, np.r_[OldIDs, NewIDs]]
                     if data_type!="double": NewData = NewData.where(pd.notnull(NewData), None)
                     else: NewData = NewData.astype("float")
                     DataFile["Data"][nOldDT:, :] = NewData.values
                 CrossedDateTimes = factor_data.index.intersection(OldDateTimes)
-                if CrossedDateTimes.shape[0]>0:
-                    CrossedDateTimePos = [OldDateTimes.index(iDT) for iDT in CrossedDateTimes]
-                    CrossedDateTimes = CrossedDateTimes[np.argsort(CrossedDateTimePos)]
-                    CrossedDateTimePos.sort()
+                if CrossedDateTimes.shape[0]==0: return 0
+                if len(CrossedDateTimes)==len(OldDateTimes):
                     if NewIDs.shape[0]>0:
-                        NewData = factor_data.loc[CrossedDateTimes, NewIDs]
+                        NewData = factor_data.loc[OldDateTimes, NewIDs]
                         if data_type!="double": NewData = NewData.where(pd.notnull(NewData), None)
                         else: NewData = NewData.astype("float")
-                        DataFile["Data"][CrossedDateTimePos, OldIDs.shape[0]:] = NewData.values
+                        DataFile["Data"][:, OldIDs.shape[0]:] = NewData.values
                     CrossedIDs = factor_data.columns.intersection(OldIDs)
+                    if CrossedIDs.shape[0]>0:
+                        OldIDs = OldIDs.tolist()
+                        CrossedIDPos = [OldIDs.index(iID) for iID in CrossedIDs]
+                        CrossedIDs = CrossedIDs[np.argsort(CrossedIDPos)]
+                        CrossedIDPos.sort()
+                        DataFile["Data"][:, CrossedIDPos] = factor_data.loc[OldDateTimes, CrossedIDs].values
+                    return 0
+                CrossedDateTimePos = [OldDateTimes.index(iDT) for iDT in CrossedDateTimes]
+                CrossedDateTimes = CrossedDateTimes[np.argsort(CrossedDateTimePos)]
+                CrossedDateTimePos.sort()
+                if NewIDs.shape[0]>0:
+                    NewData = factor_data.loc[CrossedDateTimes, NewIDs]
+                    if data_type!="double": NewData = NewData.where(pd.notnull(NewData), None)
+                    else: NewData = NewData.astype("float")
+                    DataFile["Data"][CrossedDateTimePos, OldIDs.shape[0]:] = NewData.values
+                CrossedIDs = factor_data.columns.intersection(OldIDs)
+                if CrossedIDs.shape[0]>0:
                     NewData = factor_data.loc[CrossedDateTimes, CrossedIDs].values
                     OldIDs = OldIDs.tolist()
                     for i, iID in enumerate(CrossedIDs):
@@ -318,18 +331,17 @@ class HDF5DB(WritableFactorDB):
                     else:
                         DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=StrDataType,
                                                 fillvalue=None, data=factor_data.values)
-                #factor_data.index = DTs
+                factor_data.index = DTs
                 return 0
-        print(DTs)
         if if_exists=="update":
             self._updateFactorData(factor_data, table_name, ifactor_name, data_type)
-            #factor_data.index = DTs
+            factor_data.index = DTs
         elif if_exists=="append":
             OldData = self.getTable(table_name).readFactorData(ifactor_name=ifactor_name, ids=factor_data.columns.tolist(), dts=DTs.tolist())
             OldData.index = factor_data.index
             factor_data = OldData.where(pd.notnull(OldData), factor_data)
             self._updateFactorData(factor_data, table_name, ifactor_name, data_type)
-            #factor_data.index = DTs
+            factor_data.index = DTs
         return 0
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
         for i, iFactor in enumerate(data.items):

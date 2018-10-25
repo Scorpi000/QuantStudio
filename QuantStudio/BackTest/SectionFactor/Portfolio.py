@@ -302,7 +302,7 @@ class QuantilePortfolio(BaseModule):
         Axes.legend(loc='best')
         Axes = plt.subplot(AxesGrid[2, 1])
         xData = np.arange(0, self._Output["净值"].shape[0])
-        xTicks = np.arange(0, self._Output["净值"].shape[0], int(self._Output["净值"].shape[0]/8))
+        xTicks = np.arange(0, self._Output["净值"].shape[0], max(1, int(self._Output["净值"].shape[0]/8)))
         xTickLabels = [self._Output["净值"].index[i].strftime("%Y-%m-%d") for i in xTicks]
         Axes.plot(xData, self._Output["净值"]["L-S"].values, label="多空净值", color="r", alpha=0.6, lw=3)
         Axes.legend(loc='upper left')

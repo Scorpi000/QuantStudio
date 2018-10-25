@@ -263,13 +263,14 @@ class _OperationMode(__QS_Object__):
         self._isStarted = False
         self._Factors = []# 因子列表
         self._FactorDict = {}# 因子字典, {因子名:因子}, 包括所有的因子, 即衍生因子所依赖的描述子也在内
+        self._FactorID = {}# {因子名: 因子唯一的 ID 号(int)}, 比如防止操作系统文件大小写不敏感导致缓存文件重名
         self._FactorStartDT = {}# {因子名: 起始时点}
         self._iPID = "0"# 对象所在的进程 ID
         self._PIDs = []# 所有的计算进程 ID, 单进程下默认为"0", 多进程为"0-i"
         self._PID_IDs = {}# 每个计算进程分配的 ID 列表, {PID:[ID]}
         self._PID_Lock = {}# 每个计算进程分配的缓存数据锁, {PID:Lock}
         self._RawDataDir = ""# 原始数据存放根目录
-        self._CacheDataDir = "  "# 中间数据存放根目录
+        self._CacheDataDir = ""# 中间数据存放根目录
         self._Event = {}# {因子名: (Sub2MainQueue, Event)}
         self._FileSuffix = (".dat" if os.name=="nt" else "")
         super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
@@ -599,8 +600,8 @@ class FactorTable(__QS_Object__):
         # 生成原始数据和缓存数据存储目录
         self.OperationMode._CacheDir = __QS_CachePath__ + os.sep + genAvailableName("FT", listDirDir(__QS_CachePath__))
         os.mkdir(self.OperationMode._CacheDir)
-        self.OperationMode._RawDataDir = self.OperationMode._CacheDir+os.sep+'RawData'# 原始数据存放根目录
-        self.OperationMode._CacheDataDir = self.OperationMode._CacheDir+os.sep+'CacheData'# 中间数据存放根目录
+        self.OperationMode._RawDataDir = self.OperationMode._CacheDir+os.sep+"RawData"# 原始数据存放根目录
+        self.OperationMode._CacheDataDir = self.OperationMode._CacheDir+os.sep+"CacheData"# 中间数据存放根目录
         os.mkdir(self.OperationMode._RawDataDir)
         os.mkdir(self.OperationMode._CacheDataDir)
         if self.OperationMode.SubProcessNum==0:# 串行模式
@@ -624,8 +625,11 @@ class FactorTable(__QS_Object__):
                 self.OperationMode._PID_Lock[iPID] = Lock()
         # 创建用于多进程的 Event 数据
         self.OperationMode._Event = {}# {因子名: (Sub2MainQueue, Event)}
-        # 给每个因子设置运算模式参数对象
-        for iFactor in self.OperationMode._FactorDict.values(): iFactor._OperationMode = self.OperationMode
+        # 给每个因子设置运算模式参数对象, 并生成因子唯一的 ID 号
+        self.OperationMode._FactorID = {}
+        for i, iFactorName in enumerate(self.OperationMode._FactorDict.keys()):
+            self.OperationMode._FactorDict[iFactorName]._OperationMode = self.OperationMode
+            self.OperationMode._FactorID[iFactorName] = i
         # 生成所有因子的起始时点信息
         self.OperationMode._FactorStartDT = {}# {因子名: 起始时点}
         for iFactor in self.OperationMode._FactorDict.values(): iFactor._QS_updateStartDT(self.OperationMode.DateTimes[0], self.OperationMode._FactorStartDT)
@@ -969,7 +973,7 @@ class Factor(__QS_Object__):
         StartInd, EndInd = self._OperationMode.DTRuler.index(StartDT), self._OperationMode.DTRuler.index(EndDT)
         DTs = self._OperationMode.DTRuler[StartInd:EndInd+1]
         RawDataFilePath = self._OperationMode._RawDataDir+os.sep+self._OperationMode._iPID+os.sep+self._RawDataFile
-        if  os.path.isfile(RawDataFilePath+self._OperationMode._FileSuffix):
+        if os.path.isfile(RawDataFilePath+self._OperationMode._FileSuffix):
             with shelve.open(RawDataFilePath, "r") as File:
                 if self._NameInFT in File: RawData = File[self._NameInFT]
                 else: RawData = File["RawData"]
@@ -977,7 +981,7 @@ class Factor(__QS_Object__):
         else:
             StdData = self._FactorTable.readData(factor_names=[self._NameInFT], ids=self._OperationMode._PID_IDs[self._OperationMode._iPID], dts=DTs, args=self.Args).iloc[0]
         with self._OperationMode._PID_Lock[self._OperationMode._iPID]:
-            with shelve.open(self._OperationMode._CacheDataDir+os.sep+self._OperationMode._iPID+os.sep+self.Name) as CacheFile:
+            with shelve.open(self._OperationMode._CacheDataDir+os.sep+self._OperationMode._iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
                 CacheFile["StdData"] = StdData
         self._isCacheDataOK = True
         return StdData
@@ -994,7 +998,7 @@ class Factor(__QS_Object__):
             StdData = None
         while len(pids)>0:
             iPID = pids.pop()
-            iFilePath = self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name
+            iFilePath = self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])
             if not os.path.isfile(iFilePath+self._OperationMode._FileSuffix):# 该进程的数据没有准备好
                 pids.add(iPID)
                 continue

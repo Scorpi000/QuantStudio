@@ -36,7 +36,7 @@ class _MarketInfo(__QS_Object__):
         DefaultNumFactorList.insert(0, None)
         self.add_trait("Last", Enum(*DefaultNumFactorList[1:], arg_type="SingleOption", label="最新价", order=0))
         self.add_trait("TradePrice", Enum(*DefaultNumFactorList[1:], arg_type="SingleOption", label="成交价", order=1))
-        self.add_trait("Amt", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="成交量", order=2))
+        self.add_trait("Amt", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="成交额", order=2))
         self.TradePrice = self.Last = searchNameInStrList(DefaultNumFactorList[1:], ['新','收','Last','last','close','Close'])
 
 # 基于价格和成交额数据的简单账户

@@ -21,6 +21,7 @@ from QuantStudio.FactorDataBase.FactorDB import FactorTable
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 
 _QS_MinPositionNum = 1e-8
+_QS_MinCash = 1e-7
 
 def cutDateTime(df, dts=None, start_dt=None, end_dt=None):
     if dts is not None: df = df.loc[dts]
@@ -95,7 +96,6 @@ class Account(BaseModule):
     InitCash = Float(1e8, arg_type="Double", label="初始资金", order=0, low=0.0, high=np.inf, single_step=0.00001, decimals=5)
     DebtLimit = Float(0.0, arg_type="Double", label="负债上限", order=1, low=0.0, high=np.inf, single_step=0.00001, decimals=5)
     def __init__(self, name="Account", sys_args={}, config_file=None, **kwargs):
-        super().__init__(name=name, sys_args=sys_args, config_file=config_file, **kwargs)
         self._Cash = None# 剩余现金, >=0,  array(shape=(nDT+1,))
         self._FrozenCash = 0# 当前被冻结的现金, >=0, float
         self._Debt = None# 负债, >=0, array(shape=(nDT+1,))
@@ -103,6 +103,7 @@ class Account(BaseModule):
         self._DebtRecord = None# 融资记录, 增加负债为正, 减少负债为负, DataFrame(columns=["时间点", "融资", "备注"])
         self._TradingRecord = None# 交易记录, DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])
         self._Output = None# 缓存的输出结果
+        return super().__init__(name=name, sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_start__(self, mdl, dts, **kwargs):
         nDT = len(dts)
         self._Cash, self._Debt = np.zeros(nDT+1), np.zeros(nDT+1)

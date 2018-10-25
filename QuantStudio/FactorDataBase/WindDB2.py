@@ -505,7 +505,9 @@ class _ConstituentTable(_DBTable):
                     kEndDate = (dt.datetime.strptime(jIDRawData[self._OutDateField].iloc[k], "%Y%m%d").date()-dt.timedelta(1) if jIDRawData[self._OutDateField].iloc[k] is not None else dt.date.today())
                     iData[jID].loc[kStartDate:kEndDate] = 1
             Data[iIndexID] = iData
-        Data = pd.Panel(Data).loc[factor_names, :, ids]
+        Data = pd.Panel(Data)
+        if Data.minor_axis.intersection(ids).shape[0]==0: return pd.Panel(0.0, items=factor_names, major_axis=dts, minor_axis=ids)
+        Data = Data.loc[factor_names, :, ids]
         Data.major_axis = [dt.datetime.combine(iDate, dt.time(23, 59, 59, 999999)) for iDate in Data.major_axis]
         Data.fillna(value=0, inplace=True)
         return _adjustDateTime(Data, dts, fillna=True, method="bfill")

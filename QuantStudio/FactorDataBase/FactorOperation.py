@@ -82,7 +82,7 @@ class PointOperation(DerivativeFactor):
         StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor._QS_getData(DTs, pids=[PID]).values for iDescriptor in self.Descriptors])
         StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
         with self._OperationMode._PID_Lock[PID]:
-            with shelve.open(self._OperationMode._CacheDataDir+os.sep+PID+os.sep+self.Name) as CacheFile:
+            with shelve.open(self._OperationMode._CacheDataDir+os.sep+PID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
                 CacheFile["StdData"] = StdData
         self._isCacheDataOK = True
         return StdData
@@ -191,7 +191,7 @@ class TimeOperation(DerivativeFactor):
         StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData)
         StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
         with self._OperationMode._PID_Lock[PID]:
-            with shelve.open(self._OperationMode._CacheDataDir+os.sep+PID+os.sep+self.Name) as CacheFile:
+            with shelve.open(self._OperationMode._CacheDataDir+os.sep+PID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
                 CacheFile["StdData"] = StdData
         self._isCacheDataOK = True
         return StdData
@@ -223,16 +223,16 @@ class SectionOperation(DerivativeFactor):
         if (self._OperationMode.SubProcessNum>0) and (self.Name not in self._OperationMode._Event):
             self._OperationMode._Event[self.Name] = (Queue(), Event())
     def _calcData(self, ids, dts, descriptor_data):
-        if self.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
-        else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')
-        if self.OutputMode=='全截面':
-            if self.DTMode=='单时点':
+        if self.DataType=="double": StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype="float")
+        else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype="O")
+        if self.OutputMode=="全截面":
+            if self.DTMode=="单时点":
                 for i, iDT in enumerate(dts):
                     StdData[i, :] = self.Operator(self, iDT, ids, [kDescriptorData[i] for kDescriptorData in descriptor_data], self.ModelArgs)
             else:
                 StdData = self.Operator(self, dts, ids, descriptor_data, self.ModelArgs)
         else:
-            if self.DTMode=='单时点':
+            if self.DTMode=="单时点":
                 for i, iDT in enumerate(dts):
                     x = [kDescriptorData[i] for kDescriptorData in descriptor_data]
                     for j, jID in enumerate(ids):
@@ -244,15 +244,17 @@ class SectionOperation(DerivativeFactor):
     def __QS_prepareCacheData__(self):
         DTs = list(self._PID_DTs[self._OperationMode._iPID])
         IDs = list(self._OperationMode.IDs)
-        print(self._OperationMode._iPID+"-"+str(DTs))
-        if len(DTs)>0:# 该进程分配到计算任务
+        if len(DTs)==0:# 该进程未分配到计算任务
+            iDTs = [self._OperationMode.DateTimes[-1]]
+            for i, iDescriptor in enumerate(self.Descriptors):
+                iDescriptor._QS_getData(iDTs, pids=None)
+            StdData = pd.DataFrame(columns=IDs, dtype=("float" if self.DataType=="double" else "O"))
+        else:
             StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor._QS_getData(DTs, pids=None).values for iDescriptor in self.Descriptors])
             StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
-        else:
-            StdData = pd.DataFrame(columns=IDs)
         for iPID, iIDs in self._OperationMode._PID_IDs.items():
             with self._OperationMode._PID_Lock[iPID]:
-                with shelve.open(self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name) as CacheFile:
+                with shelve.open(self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
                     if "StdData" in CacheFile:
                         CacheFile["StdData"] = pd.concat([CacheFile["StdData"], StdData.loc[:,iIDs]]).sort_index()
                     else:
@@ -361,26 +363,25 @@ class PanelOperation(DerivativeFactor):
         return StdData
     def __QS_prepareCacheData__(self):
         DTs = list(self._PID_DTs[self._OperationMode._iPID])
-        if len(DTs)==0:# 该进程未分配到计算任务
-            if self._OperationMode.SubProcessNum>0:
-                Sub2MainQueue, PIDEvent = self._OperationMode._Event[self.Name]
-                Sub2MainQueue.put(1)
-                PIDEvent.wait()
-            self._isCacheDataOK = True
-            return None
         IDs = list(self._OperationMode.IDs)
-        DescriptorData, StartInd = [], self._OperationMode.DTRuler.index(DTs[0])
-        for i, iDescriptor in enumerate(self.Descriptors):
-            iStartInd = StartInd - self.LookBack[i]
-            iDTs = list(self._OperationMode.DTRuler[max(0, iStartInd):StartInd]) + DTs
-            iDescriptorData = iDescriptor._QS_getData(iDTs, pids=None).values
-            if iStartInd<0: iDescriptorData = np.r_[np.full(shape=(abs(iStartInd), iDescriptorData.shape[1]), fill_value=np.nan), iDescriptorData]
-            DescriptorData.append(iDescriptorData)
-        StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData)
-        DescriptorData, iDescriptorData, StdData = None, None, pd.DataFrame(StdData, index=DTs, columns=IDs)
+        if len(DTs)==0:# 该进程未分配到计算任务
+            iDTs = [self._OperationMode.DateTimes[-1]]
+            for i, iDescriptor in enumerate(self.Descriptors):
+                iDescriptor._QS_getData(iDTs, pids=None)
+            StdData = pd.DataFrame(columns=IDs)
+        else:
+            DescriptorData, StartInd = [], self._OperationMode.DTRuler.index(DTs[0])
+            for i, iDescriptor in enumerate(self.Descriptors):
+                iStartInd = StartInd - self.LookBack[i]
+                iDTs = list(self._OperationMode.DTRuler[max(0, iStartInd):StartInd]) + DTs
+                iDescriptorData = iDescriptor._QS_getData(iDTs, pids=None).values
+                if iStartInd<0: iDescriptorData = np.r_[np.full(shape=(abs(iStartInd), iDescriptorData.shape[1]), fill_value=np.nan), iDescriptorData]
+                DescriptorData.append(iDescriptorData)
+            StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData)
+            DescriptorData, iDescriptorData, StdData = None, None, pd.DataFrame(StdData, index=DTs, columns=IDs)
         for iPID, iIDs in self._OperationMode._PID_IDs.items():
             with self._OperationMode._PID_Lock[iPID]:
-                with shelve.open(self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name) as CacheFile:
+                with shelve.open(self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
                     if "StdData" in CacheFile:
                         CacheFile["StdData"] = pd.concat([CacheFile["StdData"], StdData.loc[:,iIDs]]).sort_index()
                     else:
@@ -451,7 +452,7 @@ class SectionAggregation(DerivativeFactor):
         StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData)
         StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
         with self._OperationMode._PID_Lock[PID]:
-            with shelve.open(self._OperationMode._CacheDataDir+os.sep+PID+os.sep+self.Name) as CacheFile:
+            with shelve.open(self._OperationMode._CacheDataDir+os.sep+PID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
                 CacheFile["StdData"] = StdData
         self._isCacheDataOK = True
         return StdData
