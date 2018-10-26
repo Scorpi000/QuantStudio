@@ -2,18 +2,19 @@
 """策略回测相关函数"""
 import os
 import sys
-import shelve
+import shutil
 import datetime as dt
 import time
 
 import numpy as np
 import pandas as pd
-from scipy.stats import skew,kurtosis,norm
+from scipy.stats import skew, kurtosis, norm
 from scipy.integrate import quad
 import statsmodels.api as sm
 
-from QuantStudio.Tools.DateTimeFun import DateStr2Datetime, getDateSeries
-from QuantStudio.Tools.FileFun import listDirFile,readCSV2Pandas
+from QuantStudio.Tools.DateTimeFun import getDateSeries
+from QuantStudio.Tools.FileFun import listDirFile, readCSV2Pandas
+from QuantStudio import __QS_Error__
 
 # 迭代法求解在考虑交易费且无交易限制假设下执行交易后的财富值
 # p_holding: 当前持有的投资组合, Series(权重,index=[ID])
@@ -132,7 +133,7 @@ def calcExpandingAnnualYieldSeq(wealth_seq, min_window=252, num_per_year=252):
         nYear = i/num_per_year
         ExpandingAnnualYieldSeq[i] = (iWealth/wealth_seq[0])**(1/nYear)-1
     return ExpandingAnnualYieldSeq
-# 计算滚动年化波动率, wealth_seq: 净值序列, array
+# 计算扩张年化波动率, wealth_seq: 净值序列, array
 def calcExpandingAnnualVolatilitySeq(wealth_seq, min_window=252, num_per_year=252):
     YieldSeq = calcYieldSeq(wealth_seq)
     ExpandingAnnualVolatilitySeq = np.zeros(YieldSeq.shape)+np.nan
@@ -271,17 +272,17 @@ def calcUpPeriod(wealth_seq):
     UpOrDownSeq = (np.diff(wealth_seq)>=0)
     NowIsUp = False
     tempInd = 0
-    for i in range(1,UpOrDownSeq.shape[0]):
+    for i in range(UpOrDownSeq.shape[0]):
         if (not NowIsUp) and (UpOrDownSeq[i]):
-            UpDates.append(i-1)
-            UpWealth.append(wealth_seq[i-1])
             UpDates.append(i)
             UpWealth.append(wealth_seq[i])
+            UpDates.append(i+1)
+            UpWealth.append(wealth_seq[i+1])
             NowIsUp = True
             tempInd = tempInd+2
         elif (NowIsUp) and (UpOrDownSeq[i]):
-            UpDates[tempInd-1] = i
-            UpWealth[tempInd-1] = wealth_seq[i]
+            UpDates[tempInd-1] = i+1
+            UpWealth[tempInd-1] = wealth_seq[i+1]
         elif (NowIsUp) and (not UpOrDownSeq[i]):
             NowIsUp = False
     return (np.array(UpWealth),np.array(UpDates))
@@ -292,17 +293,17 @@ def calcDownPeriod(wealth_seq):
     UpOrDownSeq = (np.diff(wealth_seq)<0)
     NowIsDown = False
     tempInd = 0
-    for i in range(1,len(UpOrDownSeq)):
+    for i in range(UpOrDownSeq.shape[0]):
         if (not NowIsDown) and (UpOrDownSeq[i]):
-            DownDates.append(i-1)
-            DownWealth.append(wealth_seq[i-1])
             DownDates.append(i)
             DownWealth.append(wealth_seq[i])
+            DownDates.append(i+1)
+            DownWealth.append(wealth_seq[i+1])
             NowIsDown = True
             tempInd = tempInd+2
         elif (NowIsDown) and (UpOrDownSeq[i]):
-            DownDates[tempInd-1] = i
-            DownWealth[tempInd-1] = wealth_seq[i]
+            DownDates[tempInd-1] = i+1
+            DownWealth[tempInd-1] = wealth_seq[i+1]
         elif (NowIsDown) and (not UpOrDownSeq[i]):
             NowIsDown = False
     return (np.array(DownWealth),np.array(DownDates))
@@ -571,7 +572,7 @@ def calcMaxDrawdownPerYear(wealth_seq, dates, date_ruler=None):
     else:
         YearMD.append(np.array([calcMaxDrawdownRateExEx(iWealthSeq[:,j])[0] for j in range(iWealthSeq.shape[1])]))
     return pd.DataFrame(YearMD,index=Years)
-# 计算每年每月的收益率, wealth_seq: 净值序列, dates: 日期序列, date_ruler: 日期标尺
+# 计算每年每月的收益率, wealth_seq: 净值序列, dates: 日期序列, date_ruler: 日期标尺, TODO
 def calcReturnPerYearMonth(wealth_seq, dates, date_ruler=None):
     DenseWealthSeq,dates = _densifyWealthSeq(wealth_seq, dates, date_ruler)
     MonthYield = []
@@ -657,7 +658,7 @@ def calcAvgReturnPerWeekday(wealth_seq, dates, date_ruler=None):
     WeekdayYield = np.zeros((7,)+DenseWealthSeq.shape[1:])
     WeekdayNum = np.zeros(7)
     for i,iDate in enumerate(dates[1:]):
-        iWeekday = DateStr2Datetime(iDate).weekday()
+        iWeekday = iDate.weekday()
         WeekdayNum[iWeekday-1] += 1
         WeekdayYield[iWeekday-1] += DenseWealthSeq[i+1]/DenseWealthSeq[i]-1
     for i in range(7):
@@ -672,7 +673,7 @@ def calcAvgReturnPerMonthday(wealth_seq, dates, date_ruler=None):
     MonthdayYield = np.zeros((31,)+DenseWealthSeq.shape[1:])
     MonthdayNum = np.zeros(31)
     for i,iDate in enumerate(dates[1:]):
-        iMonthday = DateStr2Datetime(iDate).day
+        iMonthday = iDate.day
         MonthdayNum[iMonthday-1] += 1
         MonthdayYield[iMonthday-1] += DenseWealthSeq[i+1]/DenseWealthSeq[i]-1
     for i in range(31):
@@ -722,202 +723,13 @@ def calcCLModel(wealth_seq, market_wealth_seq, risk_free_rate=0.0):
     X[:,2] = rM*(rM>=0)
     Rslt = sm.OLS(Y,X,missing='drop').fit()
     return Rslt.params
-# 生成策略的Excel报告
-def genStrategyExcelReport(save_path,template_path,strategy_name,output,save_type="新建"):
-    if (template_path=='') or (save_path==''):
-        return 0
-    if strategy_name=='':
-        NewSheetName = "策略表现"
-    else:
-        NewSheetName = strategy_name
-    import shutil
-    import xlwings as xw
-    if (save_type=='新建') or (not os.path.exists(save_path)):
-        shutil.copy(template_path, save_path)
-        xlBook = xw.Book(save_path)
-        xlBook.sheets['策略表现'].name = NewSheetName
-    else:
-        xlBook = xw.Book(save_path)
-        TempBook = xw.Book(template_path)
-        TempBook.sheets["策略表现"].api.Copy(Before=xlBook.sheets[0].api)
-        TempBook.close()
-        AllSheetNames = [iSheet.name for iSheet in xlBook.sheets]
-        if (NewSheetName in AllSheetNames) and (NewSheetName!=xlBook.sheets[xlBook.sheets.count-1].name):
-            xlBook.app.display_alerts = False
-            xlBook.sheets[NewSheetName].delete()
-            xlBook.app.display_alerts = True
-        xlBook.sheets[0].name = NewSheetName
-    CurSheet = xlBook.sheets[NewSheetName]
-    # 写入日期序列
-    CurSheet[1,0].expand().clear_contents()
-    Dates = [iDate[:4]+'-'+iDate[4:6]+'-'+iDate[6:] for iDate in output['净值'].index]
-    CurSheet[1,0].options(transpose=True).value = Dates
-    # 写入净值数据
-    Data = output['净值'].iloc[:,3:].copy()
-    if Data.shape[1]==1:# 只有策略多头, 补充策略多空, 基准, 对冲
-        Data['策略多空'] = Data['策略多头']
-        Data['基准'] = 1.0
-        Data['对冲'] = Data['策略多头']
-    elif Data.shape[1]==2:# 只有策略多头, 策略多空, 补充基准, 对冲
-        Data['基准'] = 1.0
-        Data['对冲'] = Data['策略多头']
-    elif Data.shape[1]==3:# 只有策略多头, 基准, 对冲, 补充策略多空
-        Data.insert(1,'策略多空',Data['策略多头'])
-    CurSheet[1,1].value = Data.values
-    # 写入收益率数据
-    CurSheet[2,5].expand().clear_contents()
-    Data = output['收益率'].copy()
-    if Data.shape[1]==1:# 只有策略多头, 补充策略多空, 基准, 对冲
-        Data['策略多空'] = Data['策略多头']
-        Data['基准'] = 0.0
-        Data['对冲'] = Data['策略多头']
-    elif Data.shape[1]==2:# 只有策略多头, 策略多空, 补充基准, 对冲
-        Data['基准'] = 0.0
-        Data['对冲'] = Data['策略多头']
-    elif Data.shape[1]==3:# 只有策略多头, 基准, 对冲, 补充策略多空
-        Data.insert(1,'策略多空',Data['策略多头'])
-    CurSheet[2,5].value = Data.values
-    # 写入回撤数据
-    CurSheet[1,9].expand().clear_contents()
-    Data = output['回撤'].copy()
-    if Data.shape[1]==1:# 只有策略多头, 补充策略多空, 基准, 对冲
-        Data['策略多空'] = Data['策略多头']
-        Data['基准'] = 0.0
-        Data['对冲'] = Data['策略多头']
-    elif Data.shape[1]==2:# 只有策略多头, 策略多空, 补充基准, 对冲
-        Data['基准'] = 0.0
-        Data['对冲'] = Data['策略多头']
-    elif Data.shape[1]==3:# 只有策略多头, 基准, 对冲, 补充策略多空
-        Data.insert(1,'策略多空',Data['策略多头'])
-    CurSheet[1,9].value = Data.values
-    # 绘制净值, 收益率, 回撤图像
-    DataLen = output['净值'].shape[0]
-    Chrt = CurSheet.charts["多头净值"].api[1]
-    Chrt.SeriesCollection(1).Values = CurSheet[1:DataLen+1,1].api
-    Chrt.SeriesCollection(2).Values = CurSheet[1:DataLen+1,3].api
-    Chrt.SeriesCollection(3).Values = CurSheet[1:DataLen+1,9].api
-    Chrt.SeriesCollection(1).XValues = CurSheet[1:DataLen+1,0].api
-    Chrt = CurSheet.charts["多空净值收益率"].api[1]
-    Chrt.SeriesCollection(1).Values = CurSheet[1:DataLen+1,2].api
-    Chrt.SeriesCollection(2).Values = CurSheet[1:DataLen+1,6].api
-    Chrt.SeriesCollection(1).XValues = CurSheet[1:DataLen+1,0].api
-    Chrt = CurSheet.charts["对冲净值收益率"].api[1]
-    Chrt.SeriesCollection(1).Values = CurSheet[1:DataLen+1,4].api
-    Chrt.SeriesCollection(2).Values = CurSheet[1:DataLen+1,8].api
-    Chrt.SeriesCollection(1).XValues = CurSheet[1:DataLen+1,0].api
-    Chrt = CurSheet.charts["多空净值回撤"].api[1]
-    Chrt.SeriesCollection(1).Values = CurSheet[1:DataLen+1,2].api
-    Chrt.SeriesCollection(2).Values = CurSheet[1:DataLen+1,10].api
-    Chrt.SeriesCollection(1).XValues = CurSheet[1:DataLen+1,0].api
-    Chrt = CurSheet.charts["对冲净值回撤"].api[1]
-    Chrt.SeriesCollection(1).Values = CurSheet[1:DataLen+1,4].api
-    Chrt.SeriesCollection(2).Values = CurSheet[1:DataLen+1,12].api
-    Chrt.SeriesCollection(1).XValues = CurSheet[1:DataLen+1,0].api
-    # 写入换手率数据
-    CurSheet[1,14].expand().clear_contents()
-    CurSheet["Q:Q"].clear_contents()
-    CurSheet["Q1"].value = "滚动平均"
-    Data = output['换手率']
-    Data = Data[Data['换手率']!=0]
-    Dates = [iDate[:4]+'-'+iDate[4:6]+'-'+iDate[6:] for iDate in Data.index]
-    CurSheet[1,14].options(transpose=True).value = Dates
-    CurSheet[1,15].value = Data.values
-    nYear = ((DateStr2Datetime(Data.index[-1])-DateStr2Datetime(Data.index[0])).days)/365
-    nAvg = round(Data.shape[0]/nYear)
-    AvgData = Data.copy()
-    for i in range(Data.shape[0]):
-        if i<nAvg-1:
-            AvgData['换手率'].iloc[i] = np.nan
-        else:
-            AvgData['换手率'].iloc[i] = Data['换手率'].iloc[i-nAvg+1:i+1].mean()
-    if Data.shape[0]>=nAvg:
-        CurSheet[nAvg,16].value = AvgData.iloc[nAvg-1:,:].values
-    Chrt = CurSheet.charts["换手率"].api[1]
-    Chrt.SeriesCollection(1).Values = CurSheet[1:Data.shape[0]+1,15].api
-    Chrt.SeriesCollection(2).Values = CurSheet[1:Data.shape[0]+1,16].api
-    Chrt.SeriesCollection(1).XValues = CurSheet[1:Data.shape[0]+1,14].api
-    # 写入统计数据
-    CurSheet[1,18].expand().clear_contents()
-    Index = ["总收益率","年化收益率","年化波动率","Sharpe比率","最大回撤率","最大回撤开始日期","最大回撤结束日期","胜率"]
-    CurSheet[1,18].options(transpose=True).value = Index
-    CurSheet[1,19].value = output['统计数据'].loc[Index,["策略多头","策略多空","基准","对冲"]].values
-    # 写入年度统计数据
-    CurSheet[0,24].expand().clear_contents()
-    if "年度统计" in output:
-        Data = output['年度统计']
-        CurSheet[0,24].value = '年份'
-        CurSheet[0,25].value = list(Data.columns)
-        CurSheet[1,24].options(transpose=True).value = list(Data.index)
-        CurSheet[1,25].value = Data.values
-        Chrt = CurSheet.charts["对冲年度统计"].api[1]
-        Chrt.SeriesCollection(1).Values = CurSheet[1:Data.shape[0]+1,25].api
-        Chrt.SeriesCollection(1).XValues = CurSheet[1:Data.shape[0]+1,24].api
-        if Data.shape[1]>=3:
-            Chrt.SeriesCollection(2).Values = CurSheet[1:Data.shape[0]+1,25+Data.shape[1]-2].api
-            Chrt.SeriesCollection(3).Values = CurSheet[1:Data.shape[0]+1,25+Data.shape[1]-1].api
-        else:
-            Chrt.SeriesCollection(3).Delete()
-            Chrt.SeriesCollection(2).Delete()
-        Chrt = CurSheet.charts["多空年度统计"].api[1]
-        Chrt.SeriesCollection(1).Values = CurSheet[1:Data.shape[0]+1,25].api
-        Chrt.SeriesCollection(1).XValues = CurSheet[1:Data.shape[0]+1,24].api
-        if (Data.shape[1]==2) or (Data.shape[1]==4):
-            Chrt.SeriesCollection(2).Values = CurSheet[1:Data.shape[0]+1,26].api
-        else:
-            Chrt.SeriesCollection(2).Delete()
-        CurSheet.api.ListObjects.Add(1, CurSheet[0:Data.shape[0]+1,24:25+Data.shape[1]].api,True,1).Name = "YearStatisticsTable"
-        CurSheet.api.ListObjects("YearStatisticsTable").TableStyle = "TableStyleLight9"
-        StartCol = 31
-    else:
-        CurSheet.charts["对冲年度统计"].delete()
-        CurSheet.charts["多空年度统计"].delete()
-        for i in range(6):
-            CurSheet.api.Columns(25).Delete()
-        StartCol = 25
-    # 写入月度统计数据
-    CurSheet[0,StartCol-1].expand().clear_contents()
-    if "月度统计" in output:
-        Data = output['月度统计']
-        CurSheet[0,StartCol-1].value = '月份'
-        CurSheet[0,StartCol].value = list(Data.columns)
-        CurSheet[1,StartCol-1].options(transpose=True).value = list(Data.index)
-        CurSheet[1,StartCol].value = Data.values
-        Chrt = CurSheet.charts["对冲月度统计"].api[1]
-        Chrt.SeriesCollection(1).Values = CurSheet[1:Data.shape[0]+1,StartCol].api
-        Chrt.SeriesCollection(1).XValues = CurSheet[1:Data.shape[0]+1,StartCol-1].api
-        if Data.shape[1]>=3:
-            Chrt.SeriesCollection(2).Values = CurSheet[1:Data.shape[0]+1,StartCol+Data.shape[1]-2].api
-            Chrt.SeriesCollection(3).Values = CurSheet[1:Data.shape[0]+1,StartCol+Data.shape[1]-1].api
-        else:
-            Chrt.SeriesCollection(3).Delete()
-            Chrt.SeriesCollection(2).Delete()
-        Chrt = CurSheet.charts["多空月度统计"].api[1]
-        Chrt.SeriesCollection(1).Values = CurSheet[1:Data.shape[0]+1,StartCol].api
-        Chrt.SeriesCollection(1).XValues = CurSheet[1:Data.shape[0]+1,StartCol-1].api
-        if (Data.shape[1]==2) or (Data.shape[1]==4):
-            Chrt.SeriesCollection(2).Values = CurSheet[1:Data.shape[0]+1,StartCol+1].api
-        else:
-            Chrt.SeriesCollection(2).Delete()
-        CurSheet.api.ListObjects.Add(1, CurSheet[0:Data.shape[0]+1,StartCol-1:StartCol+Data.shape[1]].api,True,1).Name = "MonthStatisticsTable"
-        CurSheet.api.ListObjects("MonthStatisticsTable").TableStyle = "TableStyleLight9"
-    else:
-        CurSheet.charts["对冲月度统计"].delete()
-        CurSheet.charts["多空月度统计"].delete()
-    xlBook.save()
-    xlBook.app.quit()
-    return 0
-# 加载CSV文件投资组合信号, 返回: {日期:信号}
+# 加载CSV文件投资组合信号, 返回: {时点: 信号}
 def loadCSVFilePortfolioSignal(csv_path):
     FileSignals = {}
-    if not os.path.isfile(csv_path):
-        return FileSignals
+    if not os.path.isfile(csv_path): raise __QS_Error__("文件: '%s' 不存在" % csv_path)
     with open(csv_path) as CSVFile:
         FirstLine = CSVFile.readline()
-    if len(FirstLine.split(","))==3:
-        file_type="纵向排列"
-    else:
-        file_type="横向排列"
-    if file_type=='横向排列':
+    if len(FirstLine.split(","))==3:# 横向排列
         CSVDF = readCSV2Pandas(csv_path,detect_file_encoding=True)
         temp = list(CSVDF.columns)
         nCol = len(temp)
@@ -927,7 +739,7 @@ def loadCSVFilePortfolioSignal(csv_path):
             iSignal = CSVDF.iloc[:,i*2:i*2+2]
             iSignal = iSignal[pd.notnull(iSignal.iloc[:,1])].set_index([iDate]).iloc[:,0]
             FileSignals[AllSignalDates[i]] = iSignal
-    else:
+    else:# 纵向排列
         CSVDF = readCSV2Pandas(csv_path,detect_file_encoding=True,header=0)
         AllSignalDates = pd.unique(CSVDF.iloc[:,0])
         AllColumns = list(CSVDF.columns)
@@ -956,7 +768,7 @@ def writePortfolioSignal2CSV(signals, csv_path):
     except:
         return -1
     return 0
-# 加载CSV文件择时信号, 返回: {时间戳: 信号}
+# 加载CSV文件择时信号, 返回: {时点: 信号}
 def loadCSVFileTimingSignal(csv_path):
     FileSignals = {}
     if not os.path.isfile(csv_path):

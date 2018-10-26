@@ -1,27 +1,34 @@
 import setuptools
 import os
 
-with open("README.rst", "r") as fh:
+with open("README.rst", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setuptools.setup(
     name="QuantStudio",
-    version="0.0.2",
+    version="0.0.3",
     author="scorpi000",
     author_email="scorpi000@sina.cn",
+    maintainer="scorpi000",
+    maintainer_email="scorpi000@sina.cn",
     description="Quant Studio",
     long_description=long_description,
     long_description_content_type="text/x-rst",
     url="https://bitbucket.org/Scorpi000/quantstudio_v2/src/master/",
-    python_requires='>=3.5',
+    license="GPLv3",
+    platforms=["Windows"],
+    python_requires=">=3.5",
+    scripts=[],
     package_data={
     "QuantStudio": ["Matlab/*", "Lib/*", "Resource/*"]
     },
     packages=setuptools.find_packages(),
     classifiers=[
+        "Intended Audience :: Quantitative Investors",
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
-        "Operating System :: OS Independent",
+        "Operating System :: Microsoft :: Windows",
+        "Topic :: Quantitative Investment",
     ],
     install_requires=[
         "numpy>=1.14.4+mkl",
@@ -32,7 +39,6 @@ setuptools.setup(
         "seaborn>=0.7.1",
         "plotly>=2.0.6",
         "patsy",
-        "xlrd>=0.9.0",
         "statsmodels>=0.9.0",
         "h5py>=2.6.0",
         "cx-Oracle>=5.2.1",
@@ -47,8 +53,8 @@ setuptools.setup(
         "traitsui>=6.0.0",
         "bs4>=0.0.1",
         "tushare>=1.2.12",
-        "xlwings>=0.11.4",
-        "pywin32>=220.1",
-        "Pyomo>=5.5.0"
+        "Pyomo>=5.5.0",
+        "xlrd>=0.9.0",
+        # "pywin32>=220.1" if os.name=="nt"
     ]
 )

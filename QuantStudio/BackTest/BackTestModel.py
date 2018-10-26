@@ -15,7 +15,6 @@ from lxml import etree
 
 from QuantStudio import __QS_Error__, __QS_Object__, __QS_MainPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB
-from QuantStudio.Tools.DateTimeFun import combineDateTime
 
 class BaseModule(__QS_Object__):
     """回测模块"""

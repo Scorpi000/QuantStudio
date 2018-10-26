@@ -290,21 +290,21 @@ def getWindowsDesktopPath():
 # LOCK_SH: Shared Lock(默认), 这种锁会拒绝所有进程的写入请求, 包括最初设定锁的进程. 但所有的进程都可以读取被锁定的文件.
 # LOCK_NB: Nonblocking Lock, 当这个值被指定时, 如果函数不能获取指定的锁会立刻返回.
 # 使用 Python 的位操作符, 或操作 |, 可以将 LOCK_NB 和 LOCK_SH 或 LOCK_EX 进行或操作.
-if os.name=="nt":# Windows 系统
-    import win32con, win32file, pywintypes
-    LOCK_EX = win32con.LOCKFILE_EXCLUSIVE_LOCK
-    LOCK_SH = 0
-    LOCK_NB = win32con.LOCKFILE_FAIL_IMMEDIATELY
-    __overlapped = pywintypes.OVERLAPPED()
-    def lockFile(file, flags):
-        hfile = win32file._get_osfhandle(file.fileno())
-        win32file.LockFileEx(hfile, flags, 0, 0xffff0000, __overlapped)
-    def unlockFile(file):
-        hfile = win32file._get_osfhandle(file.fileno())
-        win32file.UnlockFileEx(hfile, 0, 0xffff0000, __overlapped)
-elif os.name=="posix":# Unix 系统
-    from fcntl import LOCK_EX, LOCK_SH, LOCK_NB
-    def lockFile(file, flags):
-        fcntl.flock(file.fileno(), flags)
-    def unlockFile(file):
-        fcntl.flock(file.fileno(), fcntl.LOCK_UN)
+#if os.name=="nt":# Windows 系统
+    #import win32con, win32file, pywintypes
+    #LOCK_EX = win32con.LOCKFILE_EXCLUSIVE_LOCK
+    #LOCK_SH = 0
+    #LOCK_NB = win32con.LOCKFILE_FAIL_IMMEDIATELY
+    #__overlapped = pywintypes.OVERLAPPED()
+    #def lockFile(file, flags):
+        #hfile = win32file._get_osfhandle(file.fileno())
+        #win32file.LockFileEx(hfile, flags, 0, 0xffff0000, __overlapped)
+    #def unlockFile(file):
+        #hfile = win32file._get_osfhandle(file.fileno())
+        #win32file.UnlockFileEx(hfile, 0, 0xffff0000, __overlapped)
+#elif os.name=="posix":# Unix 系统
+    #from fcntl import LOCK_EX, LOCK_SH, LOCK_NB
+    #def lockFile(file, flags):
+        #fcntl.flock(file.fileno(), flags)
+    #def unlockFile(file):
+        #fcntl.flock(file.fileno(), fcntl.LOCK_UN)
