@@ -55,11 +55,11 @@ class FMPModel(BaseModule):
         super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self.RiskDS.start(dts=dts)
         self._Output = {}
-        self._Output["因子暴露"] = pd.DataFrame(0.0, columns=self.AttributeFactors)
-        self._Output["风险调整的因子暴露"] = pd.DataFrame(0.0, columns=self.AttributeFactors)
-        self._Output["风险贡献"] = pd.DataFrame(0.0, columns=self.AttributeFactors+["Alpha"])
-        self._Output["收益贡献"] = pd.DataFrame(0.0, columns=self.AttributeFactors+["Alpha"])
-        self._Output["因子收益"] = pd.DataFrame(np.nan, columns=self.AttributeFactors)
+        self._Output["因子暴露"] = pd.DataFrame(columns=self.AttributeFactors)
+        self._Output["风险调整的因子暴露"] = pd.DataFrame(columns=self.AttributeFactors)
+        self._Output["风险贡献"] = pd.DataFrame(columns=self.AttributeFactors+["Alpha"])
+        self._Output["收益贡献"] = pd.DataFrame(columns=self.AttributeFactors+["Alpha"])
+        self._Output["因子收益"] = pd.DataFrame(columns=self.AttributeFactors)
         self._CurCalcInd = 0
         self._IDs = self._FactorTable.getID()
         return (self._FactorTable, )
@@ -105,7 +105,7 @@ class FMPModel(BaseModule):
         Portfolio = self._normalizePortfolio(Portfolio.loc[IDs])
         Beta = np.dot(np.dot(np.dot(np.linalg.inv(np.dot(np.dot(FMPHolding, CovMatrix.values), FMPHolding.T)), FMPHolding), CovMatrix.values), Portfolio.values)
         Price = self._FactorTable.readData(factor_names=[self.PriceFactor], dts=[PreDT, idt], ids=IDs).iloc[0]
-        Return = Price.iloc[:, 1] / Price.iloc[:, 0] - 1
+        Return = Price.iloc[1] / Price.iloc[0] - 1
         # 计算各统计指标
         if FactorExpose.shape[1]>self._Output["因子暴露"].shape[1]:
             FactorNames = FactorExpose.columns.tolist()
@@ -119,16 +119,16 @@ class FMPModel(BaseModule):
         RiskContribution = np.dot(np.dot(FMPHolding, CovMatrix.values), Portfolio.values) / np.sqrt(np.dot(np.dot(Portfolio.values, CovMatrix.values), Portfolio.values)) * Beta
         self._Output["风险贡献"].loc[idt, FactorExpose.columns] = RiskContribution
         self._Output["风险贡献"].loc[idt, "Alpha"] = np.sqrt(np.dot(np.dot(Portfolio.values, CovMatrix), Portfolio.values)) - np.nansum(RiskContribution)
-        self._Output["因子收益"].loc[idt, FactorExpose.columns] = np.nansum(Return.values * FMPHolding.T, axis=0)
+        self._Output["因子收益"].loc[idt, FactorExpose.columns] = np.nansum(Return.values * FMPHolding, axis=1)
         self._Output["收益贡献"].loc[idt, FactorExpose.columns] = self._Output["因子收益"].loc[idt, FactorExpose.columns] * self._Output["因子暴露"].loc[PreDT, FactorExpose.columns]
         self._Output["收益贡献"].loc[idt, "Alpha"] = (Portfolio * Return).sum() - self._Output["收益贡献"].loc[idt, FactorExpose.columns].sum()
         return 0
     def __QS_end__(self):
         self.RiskDS.end()
         self._Output["风险贡献占比"] = self._Output["风险贡献"].divide(self._Output["风险贡献"].sum(axis=1), axis=0)
-        self._Output["历史均值"] = pd.DataFrame(columns=["因子暴露", "风险调整的因子暴露", "风险贡献", "风险贡献占比", "收益贡献"], index=self._AttributeFactors+["Alpha"])
-        self._Output["历史均值"]["因子暴露"][self._AttributeFactors] = self._Output["因子暴露"].mean(axis=0)
-        self._Output["历史均值"]["风险调整的因子暴露"][self._AttributeFactors] = self._Output["风险调整的因子暴露"].mean(axis=0)
+        self._Output["历史均值"] = pd.DataFrame(columns=["因子暴露", "风险调整的因子暴露", "风险贡献", "风险贡献占比", "收益贡献"], index=self._Output["收益贡献"].columns)
+        self._Output["历史均值"]["因子暴露"] = self._Output["因子暴露"].mean(axis=0)
+        self._Output["历史均值"]["风险调整的因子暴露"] = self._Output["风险调整的因子暴露"].mean(axis=0)
         self._Output["历史均值"]["风险贡献"] = self._Output["风险贡献"].mean(axis=0)
         self._Output["历史均值"]["风险贡献占比"] = self._Output["风险贡献占比"].mean(axis=0)
         self._Output["历史均值"]["收益贡献"] = self._Output["收益贡献"].mean(axis=0)

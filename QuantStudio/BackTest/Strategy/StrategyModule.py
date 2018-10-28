@@ -294,7 +294,11 @@ class Strategy(BaseModule):
             BenchmarkOutput["基准累计收益率"] = BenchmarkOutput["基准收益率"].cumsum()
             BenchmarkOutput["基准净值"] = BenchmarkPrice / BenchmarkPrice.iloc[0]
             LYield = (StrategyOutput["日期序列"]["无杠杆收益率"].values if "时间序列" not in StrategyOutput else StrategyOutput["时间序列"]["无杠杆收益率"].values)
-            BenchmarkOutput["相对收益率"] = calcLSYield(long_yield=LYield, short_yield=BenchmarkOutput["基准收益率"].values)# 再平衡时点的设置, TODO
+            if not self.Benchmark.RebalanceDTs: RebalanceIndex = None
+            else:
+                RebalanceIndex = pd.Series(np.arange(BenchmarkOutput["基准收益率"].shape[0]), index=BenchmarkOutput["基准收益率"].index, dtype=int)
+                RebalanceIndex = RebalanceIndex.loc[RebalanceIndex.index.intersection(self.Benchmark.RebalanceDTs)].values.tolist()
+            BenchmarkOutput["相对收益率"] = calcLSYield(long_yield=LYield, short_yield=BenchmarkOutput["基准收益率"].values, rebalance_index=RebalanceIndex)
             BenchmarkOutput["相对累计收益率"] = BenchmarkOutput["相对收益率"].cumsum()
             BenchmarkOutput["相对净值"] = (1 + BenchmarkOutput["相对收益率"]).cumprod()
             if "时间序列" in StrategyOutput:

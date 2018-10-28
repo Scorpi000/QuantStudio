@@ -60,6 +60,7 @@ class DefaultAccount(Account):
         self._IDs = []# 本账户支持交易的证券 ID, []
         self._PositionNum = None# 持仓数量, DataFrame(index=[时间点]+1, columns=self._IDs)
         self._PositionAmount = None# 持仓金额, DataFrame(index=[时间点]+1, columns=self._IDs)
+        self._Turnover = None# 换手率, Series(index=[时间点])
         self._Orders = None# 当前接收到的订单, DataFrame(columns=["ID", "数量", "目标价"])
         self._LastPrice = None# 最新价, Series(index=self._IDs)
         self._TradePrice = None# 成交价, Series(index=self._IDs)
@@ -82,6 +83,7 @@ class DefaultAccount(Account):
         #self._Debt = np.zeros(nDT+1)
         self._PositionNum = pd.DataFrame(np.zeros((nDT+1, nID)), index=[dts[0]-dt.timedelta(1)]+dts, columns=self._IDs)
         self._PositionAmount = self._PositionNum.copy()
+        self._Turnover = pd.Series(np.zeros((nDT, )), index=dts)
         self._Orders = pd.DataFrame(columns=["ID", "数量", "目标价"])
         self._LastPrice = self._TradePrice = None
         self._iTradingRecord = []# 暂存的交易记录
@@ -117,6 +119,7 @@ class DefaultAccount(Account):
         super().__QS_end__()
         self._Output["持仓数量"] = self.getPositionNumSeries()
         self._Output["持仓金额"] = self.getPositionAmountSeries()
+        self._Output["换手率"] = pd.DataFrame(self._Turnover.values, index=self._Turnover.index, columns=["换手率"])
         return 0
     # 当前账户价值
     @property
@@ -232,9 +235,10 @@ class DefaultAccount(Account):
         Mask = (BuyAmounts>0)
         TradingRecord.extend((zip([idt]*Mask.sum(), orders.index[Mask], BuyNums[Mask], TradePrice[Mask], Fees[Mask], -CashAllocated[Mask], ["buy"]*Mask.sum())))
         # 更新持仓数量和现金
-        self._QS_updateCashDebt(CashChanged.sum() - CashAllocated.sum())
         iIndex = self._Model.DateTimeIndex
-        iPosition = self.PositionNum.copy()
+        iPosition = self._PositionNum.iloc[iIndex+1].copy()
+        self._Turnover.iloc[iIndex] = (SellAmounts.sum() + BuyAmounts.sum()) / ((self._TradePrice * iPosition).sum() + super().AccountValue)
         iPosition[orders.index] += BuyNums + SellNums
         self._PositionNum.iloc[iIndex+1] = iPosition
+        self._QS_updateCashDebt(CashChanged.sum() - CashAllocated.sum())
         return TradingRecord

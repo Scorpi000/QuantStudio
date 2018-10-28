@@ -20,8 +20,7 @@ import plotly
 from traits.api import File, Enum, List
 
 from QuantStudio import __QS_CachePath__, __QS_MainPath__, __QS_Error__, __QS_Object__
-from QuantStudio.Tools.DateTimeFun import DateStr2Datetime
-from QuantStudio.Tools.FileFun import writeDictSeries2CSV,exportOutput2Excel,exportOutput2CSV,readCSV2StdDF
+from QuantStudio.Tools.FileFun import writeDictSeries2CSV, exportOutput2Excel, exportOutput2CSV, readCSV2StdDF
 from QuantStudio.Tools.DataTypeFun import getNestedDictItems, getNestedDictValue, removeNestedDictItem
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName, joinList
 from QuantStudio.Tools import StrategyTestFun
@@ -360,8 +359,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
     # -----------------------------------数据操作--------------------------------
     def saveDF(self, df, var_name=""):
         VarName, isOk = QInputDialog.getText(None,'变量名称','请输入变量名称:',text=var_name)
-        if (not isOk) or (VarName==""):
-            return 0
+        if (not isOk) or (VarName==""): return 0
         SelectedItem = self.MainResultTree.selectedItems()
         if SelectedItem==[]:
             Parent = self.MainResultTree
@@ -585,12 +583,9 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
         if SelectedDF is None:
             QMessageBox.critical(None,'错误',Msg)
             return 0
-        Dates = list(SelectedDF.index)
-        xData = [str(iDate) for iDate in Dates]
-        Dlg = _TableDlg(None, _MultiOptionTable(None, Dates, None))
+        Dlg = _TableDlg(None, _MultiOptionTable(None, SelectedDF.index.tolist(), None))
         Dlg.exec_()
-        if not Dlg.isOK:
-            return 0
+        if not Dlg.isOK: return 0
         SelectedIndex = Dlg.MainTable.extract()
         SelectedDF = SelectedDF.loc[SelectedIndex]
         SelectedIndex = [str(iIndex) for iIndex in SelectedIndex]
@@ -683,9 +678,9 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
         Mask = pd.Series(True, index=all_index)
         if index_type is not None:
             for i in range(Mask.shape[0]):
-                if DateStr2Datetime(all_index[i]) is None:
+                if not isinstance(all_index[i], (dt.date, dt.datetime)):
                     Mask.iloc[i] = False
-        Dlg = _TableDlg(None, _MultiOptionTable(None, list(Mask[Mask].index), None))
+        Dlg = _TableDlg(None, _MultiOptionTable(None, Mask[Mask].index.tolist(), None))
         Dlg.exec_()
         return Dlg.MainTable.extract()
     def summaryStrategy(self):
@@ -694,23 +689,23 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
             QMessageBox.critical(None,'错误',Msg)
             return 0
         # 设置要统计的索引
-        SelectedIndex = self._getDataIndex(list(SelectedDF.index), index_type="Date")
-        SelectedDF = SelectedDF.loc[SelectedIndex,:]
-        Summary = StrategyTestFun.summaryStrategy(SelectedDF.values,list(SelectedDF.index))
+        SelectedIndex = self._getDataIndex(SelectedDF.index.tolist(), index_type="Date")
+        SelectedDF = SelectedDF.loc[SelectedIndex, :]
+        if SelectedDF.shape[0]==0: return 0
+        Summary = StrategyTestFun.summaryStrategy(SelectedDF.values, SelectedDF.index.tolist())
         Summary.columns = SelectedDF.columns
-        return self.saveDF(Summary,var_name="统计数据")
+        return self.saveDF(Summary, var_name="统计数据")
     def summaryStrategyExpanding(self):
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QMessageBox.critical(None, "错误", Msg)
             return 0
         MinPeriod,isOK = QInputDialog.getInt(None,'获取','最小窗口',value=20,min=1,max=10000,step=1)
-        if not isOK:
-            return 0
+        if not isOK: return 0
         # 设置要统计的索引
-        SelectedIndex = self._getDataIndex(list(SelectedDF.index), index_type="Date")
+        SelectedIndex = self._getDataIndex(SelectedDF.index.tolist(), index_type="Date")
         SelectedDF = SelectedDF.loc[SelectedIndex,:]
-        NumPerYear = (SelectedDF.shape[0]-1)/((DateStr2Datetime(SelectedDF.index[-1])-DateStr2Datetime(SelectedDF.index[0])).days/365)
+        NumPerYear = (SelectedDF.shape[0]-1)/((SelectedDF.index[-1]-SelectedDF.index[0]).days/365)
         AnnualYield = pd.DataFrame(StrategyTestFun.calcExpandingAnnualYieldSeq(SelectedDF.values,MinPeriod,NumPerYear),index=SelectedDF.index,columns=[iCol+"-年化收益率" for iCol in SelectedDF.columns])
         AnnualVolatility = pd.DataFrame(StrategyTestFun.calcExpandingAnnualVolatilitySeq(SelectedDF.values,MinPeriod,NumPerYear),index=SelectedDF.index,columns=[iCol+"-年化波动率" for iCol in SelectedDF.columns])
         Sharpe = pd.DataFrame(AnnualYield.values/AnnualVolatility.values,index=SelectedDF.index,columns=[iCol+"-Sharpen比率" for iCol in SelectedDF.columns])
@@ -721,15 +716,16 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
             QMessageBox.critical(None,'错误',Msg)
             return 0
         # 设置要统计的索引
-        SelectedIndex = self._getDataIndex(list(SelectedDF.index),index_type="Date")
-        SelectedDF = SelectedDF.loc[SelectedIndex,:]
-        Dates = list(SelectedDF.index)
-        Return = StrategyTestFun.calcReturnPerYear(SelectedDF.values, Dates, date_ruler=None)
+        SelectedIndex = self._getDataIndex(SelectedDF.index.tolist(), index_type="Date")
+        SelectedDF = SelectedDF.loc[SelectedIndex, :]
+        if SelectedDF.shape[0]==0: return 0
+        DTs = SelectedDF.index.tolist()
+        Return = StrategyTestFun.calcReturnPerYear(SelectedDF.values, DTs, dt_ruler=None)
         Return.columns = [str(iCol)+"-收益率" for iCol in SelectedDF.columns]
-        Volatility = StrategyTestFun.calcVolatilityPerYear(SelectedDF.values,Dates,date_ruler=None)
+        Volatility = StrategyTestFun.calcVolatilityPerYear(SelectedDF.values, DTs, dt_ruler=None)
         Volatility.columns = [str(iCol)+"-波动率" for iCol in SelectedDF.columns]
         Sharpe = pd.DataFrame(Return.values/Volatility.values,index=Return.index,columns=[str(iCol)+"-Sharpe比率" for iCol in SelectedDF.columns])
-        Drawdown = StrategyTestFun.calcMaxDrawdownPerYear(SelectedDF.values,Dates,date_ruler=None)
+        Drawdown = StrategyTestFun.calcMaxDrawdownPerYear(SelectedDF.values, DTs, dt_ruler=None)
         Drawdown.columns = [str(iCol)+"-最大回撤率" for iCol in SelectedDF.columns]
         return self.saveDF(pd.merge(pd.merge(pd.merge(Return,Volatility,left_index=True,right_index=True),Sharpe,left_index=True,right_index=True),Drawdown,left_index=True,right_index=True),var_name="年度统计")
     def summaryStrategyPerYearMonth(self):
@@ -738,15 +734,16 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
             QMessageBox.critical(None,'错误',Msg)
             return 0
         # 设置要统计的索引
-        SelectedIndex = self._getDataIndex(list(SelectedDF.index),index_type="Date")
+        SelectedIndex = self._getDataIndex(SelectedDF.index.tolist(), index_type="Date")
         SelectedDF = SelectedDF.loc[SelectedIndex,:]
-        Dates = list(SelectedDF.index)
-        Return = StrategyTestFun.calcReturnPerYearMonth(SelectedDF.values,Dates,date_ruler=None)
+        if SelectedDF.shape[0]==0: return 0
+        DTs = SelectedDF.index.tolist()
+        Return = StrategyTestFun.calcReturnPerYearMonth(SelectedDF.values, DTs, dt_ruler=None)
         Return.columns = [str(iCol)+"-收益率" for iCol in SelectedDF.columns]
-        Volatility = StrategyTestFun.calcVolatilityPerYearMonth(SelectedDF.values,Dates,date_ruler=None)
+        Volatility = StrategyTestFun.calcVolatilityPerYearMonth(SelectedDF.values, DTs, dt_ruler=None)
         Volatility.columns = [str(iCol)+"-波动率" for iCol in SelectedDF.columns]
         Sharpe = pd.DataFrame(Return.values/Volatility.values,index=Return.index,columns=[str(iCol)+"-Sharpe比率" for iCol in SelectedDF.columns])
-        Drawdown = StrategyTestFun.calcMaxDrawdownPerYearMonth(SelectedDF.values,Dates,date_ruler=None)
+        Drawdown = StrategyTestFun.calcMaxDrawdownPerYearMonth(SelectedDF.values, DTs, dt_ruler=None)
         Drawdown.columns = [str(iCol)+"-最大回撤率" for iCol in SelectedDF.columns]
         return self.saveDF(pd.merge(pd.merge(pd.merge(Return,Volatility,left_index=True,right_index=True),Sharpe,left_index=True,right_index=True),Drawdown,left_index=True,right_index=True),var_name="月度统计")
     def calcAvgReturnPerMonth(self):
@@ -755,22 +752,22 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
             QMessageBox.critical(None,'错误',Msg)
             return 0
         # 设置要统计的索引
-        SelectedIndex = self._getDataIndex(list(SelectedDF.index),index_type="Date")
+        SelectedIndex = self._getDataIndex(SelectedDF.index.tolist(), index_type="Date")
         SelectedDF = SelectedDF.loc[SelectedIndex,:]
-        Dates = list(SelectedDF.index)
-        Return = StrategyTestFun.calcAvgReturnPerMonth(SelectedDF.values,Dates,date_ruler=None)
+        if SelectedDF.shape[0]==0: return 0
+        Return = StrategyTestFun.calcAvgReturnPerMonth(SelectedDF.values, SelectedDF.index.tolist(), dt_ruler=None)
         Return.columns = SelectedDF.columns
-        return self.saveDF(Return,var_name="月度平均收益率")
+        return self.saveDF(Return, var_name="月度平均收益率")
     def calcAvgReturnPerWeekday(self):
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
             QMessageBox.critical(None,'错误',Msg)
             return 0
         # 设置要统计的索引
-        SelectedIndex = self._getDataIndex(list(SelectedDF.index),index_type="Date")
+        SelectedIndex = self._getDataIndex(SelectedDF.index.tolist(), index_type="Date")
         SelectedDF = SelectedDF.loc[SelectedIndex,:]
-        Dates = list(SelectedDF.index)
-        Return = StrategyTestFun.calcAvgReturnPerWeekday(SelectedDF.values,Dates,date_ruler=None)
+        if SelectedDF.shape[0]==0: return 0
+        Return = StrategyTestFun.calcAvgReturnPerWeekday(SelectedDF.values, SelectedDF.index.tolist(), dt_ruler=None)
         Return.columns = SelectedDF.columns
         return self.saveDF(Return,var_name="周度日平均收益率")
     def calcAvgReturnPerMonthday(self):
@@ -779,10 +776,10 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
             QMessageBox.critical(None,'错误',Msg)
             return 0
         # 设置要统计的索引
-        SelectedIndex = self._getDataIndex(list(SelectedDF.index),index_type="Date")
+        SelectedIndex = self._getDataIndex(SelectedDF.index.tolist(),index_type="Date")
         SelectedDF = SelectedDF.loc[SelectedIndex,:]
-        Dates = list(SelectedDF.index)
-        Return = StrategyTestFun.calcAvgReturnPerMonthday(SelectedDF.values,Dates,date_ruler=None)
+        if SelectedDF.shape[0]==0: return 0
+        Return = StrategyTestFun.calcAvgReturnPerMonthday(SelectedDF.values, SelectedDF.index.tolist(), dt_ruler=None)
         Return.columns = SelectedDF.columns
         return self.saveDF(Return,var_name="月度日平均收益率")
     def calcAvgReturnPerYearday(self):
@@ -791,10 +788,10 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
             QMessageBox.critical(None,'错误',Msg)
             return 0
         # 设置要统计的索引
-        SelectedIndex = self._getDataIndex(list(SelectedDF.index),index_type="Date")
-        SelectedDF = SelectedDF.loc[SelectedIndex,:]
-        Dates = list(SelectedDF.index)
-        Return = StrategyTestFun.calcAvgReturnPerYearday(SelectedDF.values,Dates,date_ruler=None)
+        SelectedIndex = self._getDataIndex(SelectedDF.index.tolist(), index_type="Date")
+        SelectedDF = SelectedDF.loc[SelectedIndex, :]
+        if SelectedDF.shape[0]==0: return 0
+        Return = StrategyTestFun.calcAvgReturnPerYearday(SelectedDF.values, SelectedDF.index.tolist(), dt_ruler=None)
         Return.columns = SelectedDF.columns
         return self.saveDF(Return,var_name="年度日平均收益率")
     # -----------------------------------其他操作--------------------------------
@@ -1203,6 +1200,7 @@ class MatplotlibResultDlg(PlotlyResultDlg):
             else:
                 xTickLabels = [PlotResult.index[i].strftime("%Y-%m-%d") for i in xTicks]
         else:
+            isDT = False
             xTickLabels = []
             isStr = False
             for iData in xData:

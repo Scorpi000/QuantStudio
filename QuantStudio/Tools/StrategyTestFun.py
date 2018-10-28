@@ -1,5 +1,5 @@
 # coding=utf-8
-"""策略回测相关函数"""
+"""策略相关函数"""
 import os
 import sys
 import shutil
@@ -84,18 +84,18 @@ def calcLSYield(long_yield, short_yield, rebalance_index=None):
             iRebalanceInd += 1
     return LSYield
 # 计算年化收益率, wealth_seq: 净值序列, array
-def calcAnnualYield(wealth_seq, num_per_year=252, start_date=None, end_date=None):
-    if (start_date is not None) and (end_date is not None):
-        nYear = (end_date - start_date).days / 365
+def calcAnnualYield(wealth_seq, num_per_year=252, start_dt=None, end_dt=None):
+    if (start_dt is not None) and (end_dt is not None):
+        nYear = (end_dt - start_dt).days / 365
     else:
         nYear = (wealth_seq.shape[0] - 1) / num_per_year
     return (wealth_seq[-1] / wealth_seq[0])**(1/nYear) - 1
 # 计算年化波动率, wealth_seq: 净值序列, array
-def calcAnnualVolatility(wealth_seq, num_per_year=252, start_date=None, end_date=None):
+def calcAnnualVolatility(wealth_seq, num_per_year=252, start_dt=None, end_dt=None):
     YieldSeq = calcYieldSeq(wealth_seq)
-    if (start_date is not None) and (end_date is not None):
-        num_per_year = (YieldSeq.shape[0] - 1) / ((end_date - start_date).days / 365)
-    return np.nanstd(YieldSeq,axis=0) * num_per_year**0.5
+    if (start_dt is not None) and (end_dt is not None):
+        num_per_year = (YieldSeq.shape[0] - 1) / ((end_dt - start_dt).days / 365)
+    return np.nanstd(YieldSeq, axis=0) * num_per_year**0.5
 # 计算滚动年化收益率, wealth_seq: 净值序列, array
 def calcRollingAnnualYieldSeq(wealth_seq, window=252, min_window=252, num_per_year=252):
     RollingAnnualYieldSeq = np.zeros(wealth_seq.shape)+np.nan
@@ -460,244 +460,220 @@ def calcBurkeRatio(wealth_seq, periods, risk_free_rate=0.0, expected_return=None
         return np.sign(Denominator)*np.inf
     return Denominator / AverageDrawdownSquared**0.5
 # 以更高的频率扩充净值序列
-def _densifyWealthSeq(wealth_seq, dates, date_ruler=None):
-    if date_ruler is None:
-        return (wealth_seq, dates)
-    else:
-        try:
-            date_ruler = date_ruler[date_ruler.index(dates[0]):date_ruler.index(dates[-1])+1]
-        except:
-            return (wealth_seq,dates)
-    nDate = len(date_ruler)
-    if nDate<=len(dates):
-        return (wealth_seq,dates)
-    DenseWealthSeq = np.zeros((nDate,)+wealth_seq.shape[1:])
+def _densifyWealthSeq(wealth_seq, dts, dt_ruler=None):
+    if dt_ruler is None: return (wealth_seq, dts)
+    try:
+        dt_ruler = dt_ruler[dt_ruler.index(dts[0]):dt_ruler.index(dts[-1])+1]
+    except:
+        return (wealth_seq, dts)
+    nDT = len(dt_ruler)
+    if nDT<=len(dts): return (wealth_seq, dts)
+    DenseWealthSeq = np.zeros((nDT, ) + wealth_seq.shape[1:])
     DenseWealthSeq[0] = wealth_seq[0]
-    for i,iDate in enumerate(dates[1:]):
-        iStartInd = date_ruler.index(dates[i])
-        iInd = date_ruler.index(iDate)
-        iAvgYield = np.array([(wealth_seq[i+1]/wealth_seq[i])**(1/(iInd-iStartInd))-1])
-        iWealthSeq = np.cumprod(np.repeat(iAvgYield,iInd-iStartInd,axis=0)+1,axis=0)*wealth_seq[i]
+    for i, iDT in enumerate(dts[1:]):
+        iStartInd = dt_ruler.index(dts[i])
+        iInd = dt_ruler.index(iDT)
+        iAvgYield = np.array([(wealth_seq[i+1] / wealth_seq[i])**(1 / (iInd-iStartInd)) - 1])
+        iWealthSeq = np.cumprod(np.repeat(iAvgYield, iInd-iStartInd, axis=0)+1, axis=0) * wealth_seq[i]
         DenseWealthSeq[iStartInd+1:iInd+1] = iWealthSeq
-    return (DenseWealthSeq,date_ruler)
+    return (DenseWealthSeq, dt_ruler)
 # 生成策略的统计指标
-def summaryStrategy(wealth_seq, dates, date_ruler=None, init_wealth=None):
-    wealth_seq, dates = _densifyWealthSeq(wealth_seq, dates, date_ruler)
+def summaryStrategy(wealth_seq, dts, dt_ruler=None, init_wealth=None):
+    wealth_seq, dts = _densifyWealthSeq(wealth_seq, dts, dt_ruler)
     YieldSeq = calcYieldSeq(wealth_seq, init_wealth)
     if init_wealth is None: init_wealth = wealth_seq[0]
     nCol = (wealth_seq.shape[1] if wealth_seq.ndim>1 else 1)
-    StartDate, EndDate = dates[0], dates[-1]
-    SummaryIndex = ['起始日', '结束日']
-    SummaryData = [np.array([StartDate]*nCol), np.array([EndDate]*nCol)]
-    SummaryIndex.append('日期数')
-    SummaryData.append(np.zeros(nCol) + len(dates))
+    StartDT, EndDT = dts[0], dts[-1]
+    SummaryIndex = ['起始时点', '结束时点']
+    SummaryData = [np.array([StartDT]*nCol), np.array([EndDT]*nCol)]
+    SummaryIndex.append('时点数')
+    SummaryData.append(np.zeros(nCol) + len(dts))
     SummaryIndex.append('总收益率')
     SummaryData.append(wealth_seq[-1] / init_wealth - 1)
     SummaryIndex.append('年化收益率')
-    SummaryData.append(calcAnnualYield(wealth_seq, start_date=StartDate, end_date=EndDate))
+    SummaryData.append(calcAnnualYield(wealth_seq, start_dt=StartDT, end_dt=EndDT))
     SummaryIndex.append('年化波动率')
-    SummaryData.append(calcAnnualVolatility(wealth_seq, start_date=StartDate, end_date=EndDate))
+    SummaryData.append(calcAnnualVolatility(wealth_seq, start_dt=StartDT, end_dt=EndDT))
     SummaryIndex.append('Sharpe比率')
     SummaryData.append(SummaryData[4] / SummaryData[5])
     SummaryIndex.append('胜率')
     SummaryData.append(np.sum(YieldSeq>=0, axis=0) / np.sum(pd.notnull(YieldSeq), axis=0))
-    SummaryIndex.extend(("最大回撤率", "最大回撤开始日期", "最大回撤结束日期"))
+    SummaryIndex.extend(("最大回撤率", "最大回撤开始时点", "最大回撤结束时点"))
     if wealth_seq.ndim==1:
         MaxDrawdownRate, MaxDrawdownStartPos, MaxDrawdownEndPos, _ = calcDrawdown(wealth_seq=wealth_seq)
-        SummaryData.extend((np.abs(MaxDrawdownRate), dates[MaxDrawdownStartPos], dates[MaxDrawdownEndPos]))
+        SummaryData.extend((np.abs(MaxDrawdownRate), dts[MaxDrawdownStartPos], dts[MaxDrawdownEndPos]))
     else:
-        MaxDrawdownRate, MaxDrawdownStartDate, MaxDrawdownEndDate = [], [], []
+        MaxDrawdownRate, MaxDrawdownStartDT, MaxDrawdownEndDT = [], [], []
         for i in range(nCol):
             iMaxDrawdownRate, iMaxDrawdownStartPos, iMaxDrawdownEndPos, _ = calcDrawdown(wealth_seq=wealth_seq[:, i])
             MaxDrawdownRate.append(np.abs(iMaxDrawdownRate))
-            MaxDrawdownStartDate.append((dates[iMaxDrawdownStartPos] if iMaxDrawdownStartPos is not None else None))
-            MaxDrawdownEndDate.append((dates[iMaxDrawdownEndPos] if iMaxDrawdownEndPos is not None else None))
-        SummaryData.extend((np.array(MaxDrawdownRate), np.array(MaxDrawdownStartDate), np.array(MaxDrawdownEndDate)))
+            MaxDrawdownStartDT.append((dts[iMaxDrawdownStartPos] if iMaxDrawdownStartPos is not None else None))
+            MaxDrawdownEndDT.append((dts[iMaxDrawdownEndPos] if iMaxDrawdownEndPos is not None else None))
+        SummaryData.extend((np.array(MaxDrawdownRate), np.array(MaxDrawdownStartDT), np.array(MaxDrawdownEndDT)))
     return pd.DataFrame(SummaryData, index=SummaryIndex)
-# 计算每年的收益率, wealth_seq: 净值序列, dates: 日期序列, date_ruler: 日期标尺
-def calcReturnPerYear(wealth_seq, dates, date_ruler=None):
-    DenseWealthSeq,dates = _densifyWealthSeq(wealth_seq, dates, date_ruler)
-    YearYield = []
-    Years = []
-    PreDate = dates[0]
-    StartInd = 0
-    for i,iDate in enumerate(dates[1:]):
-        if iDate[:4]!=PreDate[:4]:# 进入新的年度
-            Years.append(PreDate[:4])
+# 计算每年的收益率, wealth_seq: 净值序列, dts: 时间序列, dt_ruler: 时间标尺
+def calcReturnPerYear(wealth_seq, dts, dt_ruler=None):
+    DenseWealthSeq, dts = _densifyWealthSeq(wealth_seq, dts, dt_ruler)
+    Years, YearYield = [], []
+    PreDT, StartInd = dts[0], 0
+    for i, iDT in enumerate(dts[1:]):
+        if iDT.year!=PreDT.year:# 进入新的年度
+            Years.append(str(PreDT.year))
             YearYield.append(DenseWealthSeq[i]/DenseWealthSeq[StartInd]-1)
             StartInd = i
-        PreDate = iDate
-    Years.append(iDate[:4])
-    YearYield.append(DenseWealthSeq[-1]/DenseWealthSeq[StartInd]-1)
-    return pd.DataFrame(YearYield,index=Years)
-# 计算每年的波动率, wealth_seq: 净值序列, dates: 日期序列, date_ruler: 日期标尺
-def calcVolatilityPerYear(wealth_seq, dates, date_ruler=None):
-    DenseWealthSeq,dates = _densifyWealthSeq(wealth_seq, dates, date_ruler)
-    YearVol = []
-    Years = []
-    PreDate = dates[0]
-    StartInd = 0
-    for i,iDate in enumerate(dates[1:]):
-        if iDate[:4]!=PreDate[:4]:# 进入新的年度
-            Years.append(PreDate[:4])
+        PreDT = iDT
+    Years.append(str(iDT.year))
+    YearYield.append(DenseWealthSeq[-1] / DenseWealthSeq[StartInd] - 1)
+    return pd.DataFrame(YearYield, index=Years)
+# 计算每年的波动率, wealth_seq: 净值序列, dts: 时间序列, dt_ruler: 时间标尺
+def calcVolatilityPerYear(wealth_seq, dts, dt_ruler=None):
+    DenseWealthSeq, dts = _densifyWealthSeq(wealth_seq, dts, dt_ruler)
+    Years, YearVol = [], []
+    PreDT, StartInd = dts[0], 0
+    for i, iDT in enumerate(dts[1:]):
+        if iDT.year!=PreDT.year:# 进入新的年度
+            Years.append(str(PreDT.year))
             iYieldSeq = calcYieldSeq(DenseWealthSeq[StartInd:i+1])
-            YearVol.append(np.nanstd(iYieldSeq,axis=0)*(i-StartInd)**0.5)
+            YearVol.append(np.nanstd(iYieldSeq, axis=0)*(i-StartInd)**0.5)
             StartInd = i
-        PreDate = iDate
-    Years.append(iDate[:4])
+        PreDT = iDT
+    Years.append(str(iDT.year))
     iYieldSeq = calcYieldSeq(DenseWealthSeq[StartInd:])
-    YearVol.append(np.nanstd(iYieldSeq,axis=0)*(i-StartInd)**0.5)
-    return pd.DataFrame(YearVol,index=Years)
-# 计算每年的最大回撤, wealth_seq: 净值序列, dates: 日期序列, date_ruler: 日期标尺
-def calcMaxDrawdownPerYear(wealth_seq, dates, date_ruler=None):
-    DenseWealthSeq,dates = _densifyWealthSeq(wealth_seq, dates, date_ruler)
-    YearMD = []
-    Years = []
-    PreDate = dates[0]
-    StartInd = 0
-    for i,iDate in enumerate(dates[1:]):
-        if iDate[:4]!=PreDate[:4]:# 进入新的年度
-            Years.append(PreDate[:4])
+    YearVol.append(np.nanstd(iYieldSeq, axis=0) * (i-StartInd)**0.5)
+    return pd.DataFrame(YearVol, index=Years)
+# 计算每年的最大回撤, wealth_seq: 净值序列, dts: 时间序列, dt_ruler: 时间标尺
+def calcMaxDrawdownPerYear(wealth_seq, dts, dt_ruler=None):
+    DenseWealthSeq, dts = _densifyWealthSeq(wealth_seq, dts, dt_ruler)
+    Years, YearMD = [], []
+    PreDT, StartInd = dts[0], 0
+    for i, iDT in enumerate(dts[1:]):
+        if iDT.year!=PreDT.year:# 进入新的年度
+            Years.append(str(PreDT.year))
             iWealthSeq = DenseWealthSeq[StartInd:i+1]
             if iWealthSeq.ndim==1:
                 YearMD.append(calcMaxDrawdownRateExEx(iWealthSeq)[0])
             else:
-                YearMD.append(np.array([calcMaxDrawdownRateExEx(iWealthSeq[:,j])[0] for j in range(iWealthSeq.shape[1])]))
+                YearMD.append(np.array([calcMaxDrawdownRateExEx(iWealthSeq[:, j])[0] for j in range(iWealthSeq.shape[1])]))
             StartInd = i
-        PreDate = iDate
-    Years.append(iDate[:4])
+        PreDT = iDT
+    Years.append(str(iDT.year))
     iWealthSeq = DenseWealthSeq[StartInd:]
     if iWealthSeq.ndim==1:
         YearMD.append(calcMaxDrawdownRateExEx(iWealthSeq)[0])
     else:
         YearMD.append(np.array([calcMaxDrawdownRateExEx(iWealthSeq[:,j])[0] for j in range(iWealthSeq.shape[1])]))
-    return pd.DataFrame(YearMD,index=Years)
-# 计算每年每月的收益率, wealth_seq: 净值序列, dates: 日期序列, date_ruler: 日期标尺, TODO
-def calcReturnPerYearMonth(wealth_seq, dates, date_ruler=None):
-    DenseWealthSeq,dates = _densifyWealthSeq(wealth_seq, dates, date_ruler)
-    MonthYield = []
-    Months = []
-    PreDate = dates[0]
-    StartInd = 0
-    for i,iDate in enumerate(dates[1:]):
-        if iDate[:6]!=PreDate[:6]:# 进入新的月度
-            Months.append(PreDate[:6])
-            MonthYield.append(DenseWealthSeq[i]/DenseWealthSeq[StartInd]-1)
+    return pd.DataFrame(YearMD, index=Years)
+# 计算每年每月的收益率, wealth_seq: 净值序列, dts: 时间序列, dt_ruler: 时间标尺
+def calcReturnPerYearMonth(wealth_seq, dts, dt_ruler=None):
+    DenseWealthSeq, dts = _densifyWealthSeq(wealth_seq, dts, dt_ruler)
+    MonthYield, Months = [], []
+    PreDT, StartInd = dts[0], 0
+    for i, iDT in enumerate(dts[1:]):
+        if (iDT.year!=PreDT.year) or (iDT.month!=PreDT.month):# 进入新的月度
+            Months.append(PreDT.strftime("%Y%m"))
+            MonthYield.append(DenseWealthSeq[i] / DenseWealthSeq[StartInd] - 1)
             StartInd = i
-        PreDate = iDate
-    Months.append(iDate[:6])
-    MonthYield.append(DenseWealthSeq[-1]/DenseWealthSeq[StartInd]-1)
-    return pd.DataFrame(MonthYield,index=Months)
-# 计算每年每月的波动率, wealth_seq: 净值序列, dates: 日期序列, date_ruler: 日期标尺
-def calcVolatilityPerYearMonth(wealth_seq, dates, date_ruler=None):
-    DenseWealthSeq,dates = _densifyWealthSeq(wealth_seq, dates, date_ruler)
-    MonthVol = []
-    Months = []
-    PreDate = dates[0]
-    StartInd = 0
-    for i,iDate in enumerate(dates[1:]):
-        if iDate[:6]!=PreDate[:6]:# 进入新的月度
-            Months.append(PreDate[:6])
+        PreDT = iDT
+    Months.append(iDT.strftime("%Y%m"))
+    MonthYield.append(DenseWealthSeq[-1] / DenseWealthSeq[StartInd] - 1)
+    return pd.DataFrame(MonthYield, index=Months)
+# 计算每年每月的波动率, wealth_seq: 净值序列, dts: 时间序列, dt_ruler: 时间标尺
+def calcVolatilityPerYearMonth(wealth_seq, dts, dt_ruler=None):
+    DenseWealthSeq, dts = _densifyWealthSeq(wealth_seq, dts, dt_ruler)
+    MonthVol, Months = [], []
+    PreDT, StartInd = dts[0], 0
+    for i, iDT in enumerate(dts[1:]):
+        if (iDT.year!=PreDT.year) or (iDT.month!=PreDT.month):# 进入新的月度
+            Months.append(PreDT.strftime("%Y%m"))
             iYieldSeq = calcYieldSeq(DenseWealthSeq[StartInd:i+1])
-            MonthVol.append(np.nanstd(iYieldSeq,axis=0)*(i-StartInd)**0.5)
+            MonthVol.append(np.nanstd(iYieldSeq, axis=0) * (i-StartInd)**0.5)
             StartInd = i
-        PreDate = iDate
-    Months.append(iDate[:6])
+        PreDT = iDT
+    Months.append(iDT.strftime("%Y%m"))
     iYieldSeq = calcYieldSeq(DenseWealthSeq[StartInd:])
-    MonthVol.append(np.nanstd(iYieldSeq,axis=0)*(i-StartInd)**0.5)
-    return pd.DataFrame(MonthVol,index=Months)
-# 计算每年每月的最大回撤, wealth_seq: 净值序列, dates: 日期序列, date_ruler: 日期标尺
-def calcMaxDrawdownPerYearMonth(wealth_seq, dates, date_ruler=None):
-    DenseWealthSeq,dates = _densifyWealthSeq(wealth_seq, dates, date_ruler)
-    MonthMD = []
-    Months = []
-    PreDate = dates[0]
-    StartInd = 0
-    for i,iDate in enumerate(dates[1:]):
-        if iDate[:6]!=PreDate[:6]:# 进入新的月度
-            Months.append(PreDate[:6])
+    MonthVol.append(np.nanstd(iYieldSeq, axis=0) * (i-StartInd)**0.5)
+    return pd.DataFrame(MonthVol, index=Months)
+# 计算每年每月的最大回撤, wealth_seq: 净值序列, dts: 时间序列, dt_ruler: 时间标尺
+def calcMaxDrawdownPerYearMonth(wealth_seq, dts, dt_ruler=None):
+    DenseWealthSeq, dts = _densifyWealthSeq(wealth_seq, dts, dt_ruler)
+    MonthMD, Months = [], []
+    PreDT, StartInd = dts[0], 0
+    for i, iDT in enumerate(dts[1:]):
+        if (iDT.year!=PreDT.year) or (iDT.month!=PreDT.month):# 进入新的月度
+            Months.append(PreDT.strftime("%Y%m"))
             iWealthSeq = DenseWealthSeq[StartInd:i+1]
             if iWealthSeq.ndim==1:
                 MonthMD.append(calcMaxDrawdownRateExEx(iWealthSeq)[0])
             else:
                 MonthMD.append(np.array([calcMaxDrawdownRateExEx(iWealthSeq[:,j])[0] for j in range(iWealthSeq.shape[1])]))
             StartInd = i
-        PreDate = iDate
-    Months.append(iDate[:6])
+        PreDT = iDT
+    Months.append(iDT.strftime("%Y%m"))
     iWealthSeq = DenseWealthSeq[StartInd:]
     if iWealthSeq.ndim==1:
         MonthMD.append(calcMaxDrawdownRateExEx(iWealthSeq)[0])
     else:
         MonthMD.append(np.array([calcMaxDrawdownRateExEx(iWealthSeq[:,j])[0] for j in range(iWealthSeq.shape[1])]))
-    return pd.DataFrame(MonthMD,index=Months)
-# 计算每个年度月平均收益率, wealth_seq: 净值序列, dates: 日期序列, date_ruler: 日期标尺
-def calcAvgReturnPerMonth(wealth_seq, dates, date_ruler=None):
-    DenseWealthSeq,dates = _densifyWealthSeq(wealth_seq, dates, date_ruler)
-    MonthYield = np.zeros((12,)+DenseWealthSeq.shape[1:])
+    return pd.DataFrame(MonthMD, index=Months)
+# 计算每个年度月平均收益率, wealth_seq: 净值序列, dts: 时间序列, dt_ruler: 时间标尺
+def calcAvgReturnPerMonth(wealth_seq, dts, dt_ruler=None):
+    DenseWealthSeq, dts = _densifyWealthSeq(wealth_seq, dts, dt_ruler)
+    MonthYield = np.zeros((12, ) + DenseWealthSeq.shape[1:])
     MonthNum = np.zeros(12)
-    PreDate = dates[0]
-    StartInd = 0
-    for i,iDate in enumerate(dates[1:]):
-        if iDate[:6]!=PreDate[:6]:# 进入新的月度
-            iTargetMonth = int(PreDate[4:6])
-            MonthYield[iTargetMonth-1] += DenseWealthSeq[i]/DenseWealthSeq[StartInd]-1
+    PreDT, StartInd = dts[0], 0
+    for i, iDT in enumerate(dts[1:]):
+        if (iDT.year!=PreDT.year) or (iDT.month!=PreDT.month):# 进入新的月度
+            iTargetMonth = PreDT.month
+            MonthYield[iTargetMonth-1] += DenseWealthSeq[i] / DenseWealthSeq[StartInd] - 1
             MonthNum[iTargetMonth-1] += 1
             StartInd = i
-        PreDate = iDate
-    MonthYield[int(iDate[4:6])-1] += DenseWealthSeq[-1]/DenseWealthSeq[StartInd]-1
-    MonthNum[int(iDate[4:6])-1] += 1
+        PreDT = iDT
+    MonthYield[iDT.month-1] += DenseWealthSeq[-1] / DenseWealthSeq[StartInd] - 1
+    MonthNum[iDT.month-1] += 1
     for i in range(12):
-        if MonthNum[i]==0:
-            MonthYield[i] = np.nan
-        else:
-            MonthYield[i] = MonthYield[i]/MonthNum[i]
-    return pd.DataFrame(MonthYield,index=[i+1 for i in range(12)])
-# 计算每个周度日平均收益率, wealth_seq: 净值序列, dates: 日期序列, date_ruler: 日期标尺
-def calcAvgReturnPerWeekday(wealth_seq, dates, date_ruler=None):
-    DenseWealthSeq,dates = _densifyWealthSeq(wealth_seq, dates, date_ruler)
-    WeekdayYield = np.zeros((7,)+DenseWealthSeq.shape[1:])
+        if MonthNum[i]==0: MonthYield[i] = np.nan
+        else: MonthYield[i] = MonthYield[i] / MonthNum[i]
+    return pd.DataFrame(MonthYield, index=[i+1 for i in range(12)])
+# 计算每个周度日平均收益率, wealth_seq: 净值序列, dts: 时间序列, dt_ruler: 时间标尺
+def calcAvgReturnPerWeekday(wealth_seq, dts, dt_ruler=None):
+    DenseWealthSeq, dts = _densifyWealthSeq(wealth_seq, dts, dt_ruler)
+    WeekdayYield = np.zeros((7, ) + DenseWealthSeq.shape[1:])
     WeekdayNum = np.zeros(7)
-    for i,iDate in enumerate(dates[1:]):
-        iWeekday = iDate.weekday()
+    for i, iDT in enumerate(dts[1:]):
+        iWeekday = iDT.weekday()
         WeekdayNum[iWeekday-1] += 1
-        WeekdayYield[iWeekday-1] += DenseWealthSeq[i+1]/DenseWealthSeq[i]-1
+        WeekdayYield[iWeekday-1] += DenseWealthSeq[i+1] / DenseWealthSeq[i] - 1
     for i in range(7):
-        if WeekdayNum[i]==0:
-            WeekdayYield[i] = np.nan
-        else:
-            WeekdayYield[i] = WeekdayYield[i]/WeekdayNum[i]
-    return pd.DataFrame(WeekdayYield,index=[i+1 for i in range(7)])
-# 计算每个月度日平均收益率, wealth_seq: 净值序列, dates: 日期序列, date_ruler: 日期标尺
-def calcAvgReturnPerMonthday(wealth_seq, dates, date_ruler=None):
-    DenseWealthSeq,dates = _densifyWealthSeq(wealth_seq, dates, date_ruler)
-    MonthdayYield = np.zeros((31,)+DenseWealthSeq.shape[1:])
+        if WeekdayNum[i]==0: WeekdayYield[i] = np.nan
+        else: WeekdayYield[i] = WeekdayYield[i] / WeekdayNum[i]
+    return pd.DataFrame(WeekdayYield, index=[i+1 for i in range(7)])
+# 计算每个月度日平均收益率, wealth_seq: 净值序列, dts: 时间序列, dt_ruler: 时间标尺
+def calcAvgReturnPerMonthday(wealth_seq, dts, dt_ruler=None):
+    DenseWealthSeq, dts = _densifyWealthSeq(wealth_seq, dts, dt_ruler)
+    MonthdayYield = np.zeros((31, ) + DenseWealthSeq.shape[1:])
     MonthdayNum = np.zeros(31)
-    for i,iDate in enumerate(dates[1:]):
-        iMonthday = iDate.day
+    for i, iDT in enumerate(dts[1:]):
+        iMonthday = iDT.day
         MonthdayNum[iMonthday-1] += 1
-        MonthdayYield[iMonthday-1] += DenseWealthSeq[i+1]/DenseWealthSeq[i]-1
+        MonthdayYield[iMonthday-1] += DenseWealthSeq[i+1] / DenseWealthSeq[i] - 1
     for i in range(31):
-        if MonthdayNum[i]==0:
-            MonthdayYield[i] = np.nan
-        else:
-            MonthdayYield[i] = MonthdayYield[i]/MonthdayNum[i]
-    return pd.DataFrame(MonthdayYield,index=[i+1 for i in range(31)])
-# 计算每个年度日平均收益率, wealth_seq: 净值序列, dates: 日期序列, date_ruler: 日期标尺
-def calcAvgReturnPerYearday(wealth_seq, dates, date_ruler=None):
-    DenseWealthSeq,dates = _densifyWealthSeq(wealth_seq, dates, date_ruler)
-    YeardayYield = np.zeros((366,)+DenseWealthSeq.shape[1:])
+        if MonthdayNum[i]==0: MonthdayYield[i] = np.nan
+        else: MonthdayYield[i] = MonthdayYield[i] / MonthdayNum[i]           
+    return pd.DataFrame(MonthdayYield, index=[i+1 for i in range(31)])
+# 计算每个年度日平均收益率, wealth_seq: 净值序列, dts: 时间序列, dt_ruler: 时间标尺
+def calcAvgReturnPerYearday(wealth_seq, dts, dt_ruler=None):
+    DenseWealthSeq, dts = _densifyWealthSeq(wealth_seq, dts, dt_ruler)
+    YeardayYield = np.zeros((366, ) + DenseWealthSeq.shape[1:])
     YeardayNum = np.zeros(366)
-    YeardaySeq = [iDate.strftime("%m%d") for iDate in getDateSeries(start_date=dt.date(2000, 1, 1), end_date=dt.date(2000, 12, 31))]
-    for i,iDate in enumerate(dates[1:]):
-        iInd = YeardaySeq.index(iDate[4:])
+    YeardaySeq = [iDT.strftime("%m%d") for iDT in getDateSeries(start_dt=dt.date(2000, 1, 1), end_dt=dt.date(2000, 12, 31))]
+    for i, iDT in enumerate(dts[1:]):
+        iInd = YeardaySeq.index(iDT.strftime("%m%d"))
         YeardayNum[iInd] += 1
-        YeardayYield[iInd] += DenseWealthSeq[i+1]/DenseWealthSeq[i]-1
-    for i in range(5):
-        if YeardayNum[i]==0:
-            YeardayYield[i] = np.nan
-        else:
-            YeardayYield[i] = YeardayYield[i]/YeardayNum[i]
-    return pd.DataFrame(YeardayYield,index=YeardaySeq)
+        YeardayYield[iInd] += DenseWealthSeq[i+1] / DenseWealthSeq[i] - 1
+    for i in range(366):
+        if YeardayNum[i]==0: YeardayYield[i] = np.nan
+        else: YeardayYield[i] = YeardayYield[i] / YeardayNum[i]
+    return pd.DataFrame(YeardayYield, index=YeardaySeq)
 # T-M 二项式模型, 评价择时能力和选股能力
 def calcTMModel(wealth_seq, market_wealth_seq, risk_free_rate=0.0):
     Y = calcYieldSeq(wealth_seq)-risk_free_rate
@@ -729,25 +705,25 @@ def loadCSVFilePortfolioSignal(csv_path):
     if not os.path.isfile(csv_path): raise __QS_Error__("文件: '%s' 不存在" % csv_path)
     with open(csv_path) as CSVFile:
         FirstLine = CSVFile.readline()
-    if len(FirstLine.split(","))==3:# 横向排列
+    if len(FirstLine.split(","))!=3:# 横向排列
         CSVDF = readCSV2Pandas(csv_path,detect_file_encoding=True)
         temp = list(CSVDF.columns)
         nCol = len(temp)
         AllSignalDates = [str(int(temp[i])) for i in range(0,nCol,2)]
         for i in range(int(nCol/2)):
-            iDate = CSVDF.columns[i*2]
+            iDT = CSVDF.columns[i*2]
             iSignal = CSVDF.iloc[:,i*2:i*2+2]
-            iSignal = iSignal[pd.notnull(iSignal.iloc[:,1])].set_index([iDate]).iloc[:,0]
+            iSignal = iSignal[pd.notnull(iSignal.iloc[:,1])].set_index([iDT]).iloc[:,0]
             FileSignals[AllSignalDates[i]] = iSignal
     else:# 纵向排列
         CSVDF = readCSV2Pandas(csv_path,detect_file_encoding=True,header=0)
         AllSignalDates = pd.unique(CSVDF.iloc[:,0])
         AllColumns = list(CSVDF.columns)
-        for iDate in AllSignalDates:
-            iSignal = CSVDF.iloc[:, 1:][CSVDF.iloc[:,0]==iDate]
+        for iDT in AllSignalDates:
+            iSignal = CSVDF.iloc[:, 1:][CSVDF.iloc[:,0]==iDT]
             iSignal = iSignal.set_index(AllColumns[1:2])
             iSignal = iSignal[AllColumns[2]]
-            FileSignals[str(iDate)] = iSignal
+            FileSignals[str(iDT)] = iSignal
     return FileSignals
 # 将投资组合信号写入CSV文件
 def writePortfolioSignal2CSV(signals, csv_path):
@@ -755,14 +731,14 @@ def writePortfolioSignal2CSV(signals, csv_path):
     AllDates.sort()
     nDate = len(AllDates)
     nID = 0
-    IDNums = [signals[iDate].shape[0] for iDate in AllDates]
+    IDNums = [signals[iDT].shape[0] for iDT in AllDates]
     if IDNums==[]:
         np.savetxt(csv_path,np.array([]),fmt='%s',delimiter=',')
         return 0
     nID = max(IDNums)
     SignalArray = np.array([('',)*nDate*2]*(nID+1),dtype='O')
-    for i,iDate in enumerate(AllDates):
-        SignalArray[:IDNums[i]+1,2*i:2*i+2] = np.array([(iDate,'')]+list(signals[iDate].items()))
+    for i, iDT in enumerate(AllDates):
+        SignalArray[:IDNums[i]+1,2*i:2*i+2] = np.array([(iDT,'')]+list(signals[iDT].items()))
     try:
         np.savetxt(csv_path,SignalArray,fmt='%s',delimiter=',')
     except:
@@ -785,8 +761,8 @@ def loadCSVFileTimingSignal(csv_path):
     else:
         CSVDF = readCSV2Pandas(csv_path,detect_file_encoding=True,header=None,index_col=0)
     CSVDF = CSVDF.iloc[:,0]
-    for iDate in CSVDF.index:
-        FileSignals[str(iDate)] = CSVDF[iDate]
+    for iDT in CSVDF.index:
+        FileSignals[str(iDT)] = CSVDF[iDT]
     return FileSignals
 # 生成随机投资组合, ids: 初始股票池
 def genRandomPortfolio(ids, target_num=20, weight=None):

@@ -155,7 +155,7 @@ class PortfolioStrategy(Strategy):
             Orders = Orders / LastPrice[Orders.index]
             Orders = Orders[pd.notnull(Orders) & (Orders!=0)]
             if Orders.shape[0]==0: return 0
-            Orders = pd.DataFrame(Orders, columns=["数量"])
+            Orders = pd.DataFrame(Orders.values, index=Orders.index, columns=["数量"])
             Orders["目标价"] = np.nan
             self.LongAccount.order(combined_order=Orders)
         return 0
