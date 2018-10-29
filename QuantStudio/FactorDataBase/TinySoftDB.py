@@ -1,21 +1,17 @@
 # coding=utf-8
-"""基于天软的因子库"""
+"""基于天软的因子库(TODO)"""
 import os
 import sys
 import datetime as dt
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, Int, Str, Range, Bool, Directory, Password
+from traits.api import Str, Range, Directory, Password
 
-from QuantStudio.Tools.AuxiliaryFun import searchNameInStrList
-from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
-from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
-from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
-from QuantStudio import __QS_Object__, __QS_Error__, __QS_LibPath__, __QS_MainPath__
+from QuantStudio import __QS_Error__, __QS_LibPath__, __QS_MainPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
 
-class TinySoftDB(QSObject):
+class TinySoftDB(FactorDB):
     """TinySoft"""
     InstallDir = Directory(label="安装目录", arg_type="Directory", order=0)
     IPAddr = Str("tsl.tinysoft.com.cn", arg_type="String", label="IP地址", order=1)
@@ -64,52 +60,48 @@ class TinySoftDB(QSObject):
             return self.TSLPy.Logined()
         else:
             return False
-    # 给定起始日期和结束日期，获取交易所交易日期
-    def getTradeDay(self, start_date=None, end_date=None, exchange="上海证券交易所"):
-        if exchange not in ("上海证券交易所", "深圳证券交易所"):
-            raise QSError("不支持交易所：%s的交易日序列！" % exchange)
-        if start_date is None:
-            start_date = dt.date(1970,1,1)
-        if end_date is None:
-            end_date = dt.date.today()
+    # 给定起始日期和结束日期, 获取交易所交易日期
+    def getTradeDay(self, start_date=None, end_date=None, exchange="SSE", **kwargs):
+        if exchange not in ("SSE", "SZSE"): raise __QS_Error__("不支持交易所: '%s' 的交易日序列!" % exchange)
+        if start_date is None: start_date = dt.date(1900, 1, 1)
+        if end_date is None: end_date = dt.date.today()
         CodeStr = "SetSysParam(pn_cycle(), cy_day());return MarketTradeDayQk(inttodate({StartDate}), inttodate({EndDate}));"
         CodeStr = CodeStr.format(StartDate=start_date.strftime("%Y%m%d"), EndDate=end_date.strftime("%Y%m%d"))
         ErrorCode, Data, Msg = self.TSLPy.RemoteExecute(CodeStr,{})
-        if ErrorCode!=0:
-            raise QSError("TinySoft 执行错误: "+Msg.decode("gbk"))
-        return np.array(list(map(lambda x: dt.date(*self.TSLPy.DecodeDate(x)), Data)))
+        if ErrorCode!=0: raise __QS_Error__("TinySoft 执行错误: "+Msg.decode("gbk"))
+        return list(map(lambda x: dt.date(*self.TSLPy.DecodeDate(x)), Data))
     # 获取指定日当前或历史上的全体 A 股 ID，返回在市场上出现过的所有A股, 目前仅支持提取当前的所有 A 股
     def _getAllAStock(self, date=None, is_current=True):# TODO
-        if date is None:
-            date = dt.date.today()
+        if date is None: date = dt.date.today()
         CodeStr = "return getBK('深证A股;中小企业板;创业板;上证A股');"
         ErrorCode, Data, Msg = self.TSLPy.RemoteExecute(CodeStr,{})
-        if ErrorCode!=0:
-            raise QSError("TinySoft 执行错误: "+Msg.decode("gbk"))
-        Data = list(map(lambda x: x.decode("gbk"), Data))
-        return np.array(list(map(lambda x: x[2:]+"."+x[:2], Data)))
+        if ErrorCode!=0: raise __QS_Error__("TinySoft 执行错误: "+Msg.decode("gbk"))
+        IDs = []
+        for iID in Data:
+            iID = iID.decode("gbk")
+            IDs.append(iID[2:]+"."+iID[:2])
+        return IDs
     # 给定指数名称和ID，获取指定日当前或历史上的指数中的股票ID，is_current=True:获取指定日当天的ID，False:获取截止指定日历史上出现的ID, 目前仅支持提取当前的指数成份股
     def getID(self, index_id, date=None, is_current=True):# TODO
-        if date is None:
-            date = dt.date.today()
+        if index_id=="全体A股": return self._getAllAStock(date=date, is_current=is_current)
+        if date is None: date = dt.date.today()
         CodeStr = "return GetBKByDate('{IndexID}',IntToDate({Date}));"
         CodeStr = CodeStr.format(IndexID="".join(reversed(index_id.split("."))), Date=date.strftime("%Y%m%d"))
         ErrorCode, Data, Msg = self.TSLPy.RemoteExecute(CodeStr,{})
-        if ErrorCode!=0:
-            raise QSError("TinySoft 执行错误: "+Msg.decode("gbk"))
-        Data = list(map(lambda x: x.decode("gbk"), Data))
-        return np.array(list(map(lambda x: x[2:]+"."+x[:2], Data)))
+        if ErrorCode!=0: raise __QS_Error__("TinySoft 执行错误: "+Msg.decode("gbk"))
+        IDs = []
+        for iID in Data:
+            iID = iID.decode("gbk")
+            IDs.append(iID[2:]+"."+iID[:2])
+        return IDs
     # 将 DataFrame values 和 columns 中的 bytes 类型解码成字符串
     def _decodeDataFrame(self, df):
         Cols = []
         DecodeFun = (lambda x: x.decode("gbk"))
         for i, iCol in enumerate(df.columns):
-            if isinstance(iCol, bytes):
-                Cols.append(iCol.decode("gbk"))
-            else:
-                Cols.append(iCol)
-            if df.dtypes.iloc[i]==np.dtype("O"):
-                df[iCol] = df[iCol].apply(DecodeFun)
+            if isinstance(iCol, bytes): Cols.append(iCol.decode("gbk"))
+            else: Cols.append(iCol)
+            if df.dtypes.iloc[i]==np.dtype("O"): df[iCol] = df[iCol].apply(DecodeFun)
         df.columns = Cols
         return df
     # 获取 Level 1数据
@@ -127,13 +119,12 @@ class TinySoftDB(QSObject):
         CodeStr = CodeStr.format(StartDate=start_date.strftime("%Y%m%d"), EndDate=end_date.strftime("%Y%m%d"), ID=target_id, 
                                  Fields="['date'],"+("['"+("'],['".join(fields))+"']" if fields is not None else "*"))
         ErrorCode, Data, Msg = self.TSLPy.RemoteExecute(CodeStr,{})
-        if ErrorCode!=0:
-            raise QSError("TinySoft 执行错误: "+Msg.decode("gbk"))
+        if ErrorCode!=0: raise __QS_Error__("TinySoft 执行错误: "+Msg.decode("gbk"))
         Data = pd.DataFrame(Data)
         Data = self._decodeDataFrame(Data)
         Data["date"] = Data["date"].apply(lambda x : dt.datetime(*self.TSLPy.DecodeDateTime(x)))
         Data = Data.set_index(["date"])
-        return Data.ix[:,fields]
+        return Data.loc[:, fields]
     # 获取 Tick 数据
     def getTickData(self, target_id, start_date, end_date, fields=None):
         if fields is None:
@@ -145,28 +136,22 @@ class TinySoftDB(QSObject):
     # 获取 Bar 数据, cycle: 周期, int 或者字符串 : day, week, month, quarter, halfyear, year 等
     # cycle_unit: 周期单位, 支持: s(秒), d(天)
     def getBarData(self, target_id, start_date, end_date, fields=None, cycle=60, cycle_unit="s"):
-        if isinstance(cycle, str):
-            CycleStr = "cy_"+cycle+"()"
-        elif cycle_unit=="s":
-            CycleStr = ("cy_trailingseconds(%d)" % cycle)
-        elif cycle_unit=="d":
-            CycleStr = ("cy_trailingdays(%d)" % cycle)
-        if fields is None:
-            fields = ["open", "high", "low", "price", "vol", "amount", "cjbs"]
-        elif "date" in fields:
-            fields.remove("date")
+        if isinstance(cycle, str): CycleStr = "cy_"+cycle+"()"
+        elif cycle_unit=="s": CycleStr = ("cy_trailingseconds(%d)" % cycle)
+        elif cycle_unit=="d": CycleStr = ("cy_trailingdays(%d)" % cycle)
+        if fields is None: fields = ["open", "high", "low", "price", "vol", "amount", "cjbs"]
+        elif "date" in fields: fields.remove("date")
         target_id = "".join(reversed(target_id.split(".")))
         CodeStr = "SetSysParam(pn_cycle(),{Cycle});return select {Fields} from markettable datekey inttodate({StartDate}) to (inttodate({EndDate})+0.9999) of '{ID}' end;"
         CodeStr = CodeStr.format(StartDate=start_date.strftime("%Y%m%d"), EndDate=end_date.strftime("%Y%m%d"), ID=target_id, Cycle=CycleStr,
                                  Fields="['date'],"+("['"+("'],['".join(fields))+"']" if fields is not None else "*"))
         ErrorCode, Data, Msg = self.TSLPy.RemoteExecute(CodeStr,{})
-        if ErrorCode!=0:
-            raise QSError("TinySoft 执行错误: "+Msg.decode("gbk"))
+        if ErrorCode!=0: raise __QS_Error__("TinySoft 执行错误: "+Msg.decode("gbk"))
         Data = pd.DataFrame(Data)
         Data = self._decodeDataFrame(Data)
         Data["date"] = Data["date"].apply(lambda x : dt.datetime(*self.TSLPy.DecodeDateTime(x)))
         Data = Data.set_index(["date"])
-        return Data.ix[:,fields]
+        return Data.loc[:, fields]
 
 if __name__=="__main__":
     TSDB = TinySoft()
