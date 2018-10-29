@@ -471,7 +471,7 @@ class _ConstituentTable(_DBTable):
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
-        Fields = [self._IDField, self._GroupField, self._InDateField, self._OutDateField]
+        Fields = [self._GroupField, self._IDField, self._InDateField, self._OutDateField]
         if self._CurSignField: Fields.append(self._CurSignField)
         FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=Fields)
         # 指数中成份股 ID, 指数证券 ID, 纳入日期, 剔除日期, 最新标志

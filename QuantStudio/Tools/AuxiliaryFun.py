@@ -154,7 +154,7 @@ def match2Series(s1, s2, fillna=0.0):
     else: s2 = pd.Series(fillna, index=AllIndex)
     return (s1, s2)
 # 返回序列1在序列2中的位置
-def getListIndex(s1,s2):
+def getListIndex(s1, s2):
     Index = pd.Series(np.arange(0,len(s2)),index=s2)
     return list(Index.ix[s1].values)
 # 用 join_str 连接列表, 不要求全部为字符串

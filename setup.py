@@ -6,7 +6,7 @@ with open("README.rst", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="QuantStudio",
-    version="0.0.3",
+    version="0.0.4",
     author="scorpi000",
     author_email="scorpi000@sina.cn",
     maintainer="scorpi000",
@@ -24,11 +24,9 @@ setuptools.setup(
     },
     packages=setuptools.find_packages(),
     classifiers=[
-        "Intended Audience :: Quantitative Investors",
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
         "Operating System :: Microsoft :: Windows",
-        "Topic :: Quantitative Investment",
     ],
     install_requires=[
         "numpy>=1.14.4+mkl",

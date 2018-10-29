@@ -73,15 +73,16 @@ def calcLSYield(long_yield, short_yield, rebalance_index=None):
     if rebalance_index is None: return long_yield - short_yield
     LSYield = np.zeros(long_yield.shape[0])
     if not rebalance_index: return LSYield
-    nRebalance, iRebalanceInd = len(rebalance_index), 0
+    nRebalance, iPreRebalanceInd = len(rebalance_index), -1
+    LNAV, SNAV = 1.0, 1.0
     for i in range(rebalance_index[0], long_yield.shape[0]):
-        if iRebalanceInd>0: LSYield[i] = LNAV * long_yield[i] - SNAV * short_yield[i]
-        if (iRebalanceInd==nRebalance) or (i<rebalance_index[iRebalanceInd]):
-            LNAV *= (1+long_yield[i])
-            SNAV *= (1+short_yield[i])
-        else:
+        if (iPreRebalanceInd==nRebalance-1) or ((iPreRebalanceInd>=0) and (i<=rebalance_index[iPreRebalanceInd+1])):
+            LSYield[i] = LNAV * long_yield[i] - SNAV * short_yield[i]
+            LNAV *= (1 + long_yield[i])
+            SNAV *= (1 + short_yield[i])
+        if i==rebalance_index[iPreRebalanceInd+1]:
             LNAV, SNAV = 1.0, 1.0
-            iRebalanceInd += 1
+            iPreRebalanceInd += 1
     return LSYield
 # 计算年化收益率, wealth_seq: 净值序列, array
 def calcAnnualYield(wealth_seq, num_per_year=252, start_dt=None, end_dt=None):

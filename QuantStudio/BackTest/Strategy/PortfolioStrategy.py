@@ -39,15 +39,14 @@ class _WeightAllocation(__QS_Object__):
 
 # 投资组合策略
 class PortfolioStrategy(Strategy):
-    SigalDelay = Int(0, label="信号滞后期", arg_type="Integer", order=1)
-    SigalValidity = Int(1, label="信号有效期", arg_type="Integer", order=2)
-    LongSigalDTs = List(label="多头信号时点", arg_type="DateTimeList", order=3)
-    ShortSigalDTs = List(label="空头信号时点", arg_type="DateTimeList", order=4)
-    LongWeightAlloction = Instance(_WeightAllocation, label="多头权重配置", arg_type="ArgObject", order=5)
-    ShortWeightAlloction = Instance(_WeightAllocation, label="空头权重配置", arg_type="ArgObject", order=6)
-    LongAccount = Instance(Account, label="多头账户", arg_type="ArgObject", order=7)
-    ShortAccount = Instance(Account, label="空头账户", arg_type="ArgObject", order=8)
-    TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=9)
+    SignalDelay = Int(0, label="信号滞后期", arg_type="Integer", order=1)
+    SignalValidity = Int(1, label="信号有效期", arg_type="Integer", order=2)
+    SignalDTs = List(label="信号触发时点", arg_type="DateTimeList", order=3)
+    LongWeightAlloction = Instance(_WeightAllocation, label="多头权重配置", arg_type="ArgObject", order=4)
+    ShortWeightAlloction = Instance(_WeightAllocation, label="空头权重配置", arg_type="ArgObject", order=5)
+    LongAccount = Instance(Account, label="多头账户", arg_type="ArgObject", order=6)
+    ShortAccount = Instance(Account, label="空头账户", arg_type="ArgObject", order=7)
+    TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=8)
     def __init__(self, name, factor_table=None, sys_args={}, config_file=None, **kwargs):
         self._FT = factor_table# 因子表
         self._AllLongSignals = {}# 存储所有生成的多头信号, {时点:信号}
@@ -80,25 +79,24 @@ class PortfolioStrategy(Strategy):
         self._TempData['StoredSignal'] = []# 暂存的信号，用于滞后发出信号
         self._TempData['LagNum'] = []# 当前日距离信号生成日的日期数
         return (self._FT, ) + super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
+    def __QS_move__(self, idt, **kwargs):
+        iTradingRecord = {iAccount.Name:iAccount.__QS_move__(idt, **kwargs) for iAccount in self.Accounts}
+        LongSignal, ShortSignal = None, None
+        if (not self.SignalDTs) or (idt in self.SignalDTs):
+            LongSignal, ShortSignal = self.genSignal(idt, iTradingRecord)
+        if self.LongAccount is None: LongSignal = None
+        if self.ShortAccount is None: ShortSignal = None
+        self.trade(idt, iTradingRecord, (LongSignal, ShortSignal))
+        for iAccount in self.Accounts: iAccount.__QS_after_move__(idt, **kwargs)
+        return 0
     def output(self, recalculate=False):
         Output = super().output(recalculate=recalculate)
         if recalculate:
             Output["Strategy"]["多头信号"] = pd.DataFrame(self._AllLongSignals).T
             Output["Strategy"]["空头信号"] = pd.DataFrame(self._AllShortSignals).T
         return Output
-    # 生成多头信号, 用户实现
-    def genLongSignal(self, idt, trading_record):
-        return None
-    # 生成空头信号, 用户实现
-    def genShortSignal(self, idt, trading_record):
-        return None
     def genSignal(self, idt, trading_record):
-        LongSignal, ShortSignal = None, None
-        if (self.LongAccount is not None) and ((not self.LongSigalDTs) or (idt in self.LongSigalDTs)):
-            LongSignal = self.genLongSignal(idt, trading_record)
-        if (self.ShortAccount is not None) and ((not self.ShortSigalDTs) or (idt in self.ShortSigalDTs)):
-            ShortSignal = self.genShortSignal(idt, trading_record)
-        return (LongSignal, ShortSignal)
+        return (None, None)
     def trade(self, idt, trading_record, signal):
         LongSignal, ShortSignal = signal
         if LongSignal is not None:
@@ -130,7 +128,7 @@ class PortfolioStrategy(Strategy):
             self._LongSignalExcutePeriod = 0
         elif self._LongTradeTarget is not None:# 没有新的信号, 根据交易记录调整交易目标
             self._LongSignalExcutePeriod += 1
-            if self._LongSignalExcutePeriod>=self.SigalValidity:
+            if self._LongSignalExcutePeriod>=self.SignalValidity:
                 self._LongTradeTarget = None
                 self._LongSignalExcutePeriod = 0
             else:
@@ -232,7 +230,7 @@ class PortfolioStrategy(Strategy):
             self._TempData['LagNum'][i] = iLagNum+1
         LongSignal, ShortSignal = None, None
         while self._TempData['StoredSignal']!=[]:
-            if self._TempData['LagNum'][0]>=self.SigalDelay:
+            if self._TempData['LagNum'][0]>=self.SignalDelay:
                 LongSignal, ShortSignal = self._TempData['StoredSignal'].pop(0)
                 self._TempData['LagNum'].pop(0)
             else:
@@ -286,6 +284,13 @@ class _Filter(__QS_Object__):
                 self.add_trait("FilterUpLimit", Float(0.1, label="筛选上限", arg_type="Double", order=5.1))
                 self.add_trait("FilterDownLimit", Float(0.0, label="筛选下限", arg_type="Double", order=5.2))
 class HierarchicalFiltrationStrategy(PortfolioStrategy):
+    LongSignalDTs = List(label="多头信号时点", arg_type="DateTimeList", order=3)
+    ShortSignalDTs = List(label="空头信号时点", arg_type="DateTimeList", order=4)
+    LongWeightAlloction = Instance(_WeightAllocation, label="多头权重配置", arg_type="ArgObject", order=5)
+    ShortWeightAlloction = Instance(_WeightAllocation, label="空头权重配置", arg_type="ArgObject", order=6)
+    LongAccount = Instance(Account, label="多头账户", arg_type="ArgObject", order=7)
+    ShortAccount = Instance(Account, label="空头账户", arg_type="ArgObject", order=8)
+    TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=9)    
     FilterLevel = Int(1, label="筛选层数", arg_type="Integer", order=10)
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
@@ -369,16 +374,22 @@ class HierarchicalFiltrationStrategy(PortfolioStrategy):
             else:
                 IDs = self._filtrateID(idt, IDs, iArgs)
         return IDs
-    def genLongSignal(self, idt, trading_record):
-        if self.LongAccount is None: return None
+    def genLongSignal(self, idt):
         OriginalIDs = self.LongAccount.IDs
-        IDs = self._genSignalIDs(idt, OriginalIDs, '多头信号')
+        IDs = self._genSignalIDs(idt, OriginalIDs, "多头信号")
         return pd.Series(1/len(IDs), index=IDs)
-    def genShortSignal(self, idt, trading_record):
+    def genShortSignal(self, idt):
         if self.ShortAccount is None: return None
         OriginalIDs = self.ShortAccount.IDs
-        IDs = self._genSignalIDs(idt, OriginalIDs, '空头信号')
+        IDs = self._genSignalIDs(idt, OriginalIDs, "空头信号")
         return pd.Series(1/len(IDs), index=IDs)
+    def genSignal(self, idt, trading_record):
+        LongSignal, ShortSignal = None, None
+        if (not self.LongSignalDTs) or (idt in self.LongSignalDTs):
+            LongSignal = self.genLongSignal(idt)
+        if (not self.ShortSignalDTs) or (idt in self.ShortSignalDTs):
+            ShortSignal = self.genShortSignal(idt)
+        return (LongSignal, ShortSignal)
 
 class _SignalAdjustment(__QS_Object__):
     """信号调整"""
@@ -390,15 +401,15 @@ class _SignalAdjustment(__QS_Object__):
 
 # 基于优化器的投资组合策略
 class OptimizerStrategy(PortfolioStrategy):
-    TargetIDs = Str(arg_type="IDFilterStr", label="目标ID", order=5)
-    ExpectedReturn = Enum(None, arg_type="SingleOption", label="预期收益", order=6)
-    RDS = Instance(RiskDataSource, arg_type="RiskDS", label="风险数据源", order=7)
-    BenchmarkFactor = Enum(None, arg_type="SingleOption", label="基准权重", order=8)
-    AmountFactor = Enum(None, arg_type="SingleOption", label="成交金额", order=9)
-    SignalAdjustment = Instance(_SignalAdjustment, arg_type="ArgObject", label="信号调整", order=10)
-    LongAccount = Instance(Account, label="多头账户", arg_type="ArgObject", order=11)
-    ShortAccount = Instance(Account, label="空头账户", arg_type="ArgObject", order=12)
-    TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=13)
+    TargetIDs = Str(arg_type="IDFilterStr", label="目标ID", order=4)
+    ExpectedReturn = Enum(None, arg_type="SingleOption", label="预期收益", order=5)
+    RDS = Instance(RiskDataSource, arg_type="RiskDS", label="风险数据源", order=6)
+    BenchmarkFactor = Enum(None, arg_type="SingleOption", label="基准权重", order=7)
+    AmountFactor = Enum(None, arg_type="SingleOption", label="成交金额", order=8)
+    SignalAdjustment = Instance(_SignalAdjustment, arg_type="ArgObject", label="信号调整", order=9)
+    LongAccount = Instance(Account, label="多头账户", arg_type="ArgObject", order=10)
+    ShortAccount = Instance(Account, label="空头账户", arg_type="ArgObject", order=11)
+    TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=12)
     def __init__(self, name, pc, factor_table=None, sys_args={}, config_file=None, **kwargs):
         self._PC = pc
         self._SharedInfo = {}
@@ -408,9 +419,9 @@ class OptimizerStrategy(PortfolioStrategy):
         self.remove_trait("ShortWeightAlloction")
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
         DefaultNumFactorList.insert(0, None)
-        self.add_trait("ExpectedReturn", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="预期收益", order=6))
-        self.add_trait("BenchmarkFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="基准权重", order=8))
-        self.add_trait("AmountFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="成交金额", order=9))
+        self.add_trait("ExpectedReturn", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="预期收益", order=5))
+        self.add_trait("BenchmarkFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="基准权重", order=7))
+        self.add_trait("AmountFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="成交金额", order=8))
         self.SignalAdjustment = _SignalAdjustment()
         return Strategy.__QS_initArgs__(self)
     def __QS_start__(self, mdl, dts, **kwargs):
@@ -439,9 +450,6 @@ class OptimizerStrategy(PortfolioStrategy):
             ShortSignal = ShortSignal / ShortSignal.abs().sum()
         return (LongSignal, ShortSignal)
     def genSignal(self, idt, trading_record):
-        isLongSignalDT = ((self.LongAccount is not None) and ((not self.LongSigalDTs) or (idt in self.LongSigalDTs)))
-        isShortSignalDT = ((self.ShortAccount is not None) and ((not self.ShortSigalDTs) or (idt in self.ShortSigalDTs)))
-        if not (isLongSignalDT or isShortSignalDT): return (None, None)
         if self.RDS is not None: self.RDS.move(idt)
         IDs = self._PC.TargetIDs = self._FT.getID(idt=idt)
         if self.TargetIDs: self._PC.TargetIDs = self._FT.getFilteredID(idt=idt, id_filter_str=self.TargetIDs)
