@@ -86,6 +86,8 @@ class PortfolioStrategy(Strategy):
             LongSignal, ShortSignal = self.genSignal(idt, iTradingRecord)
         if self.LongAccount is None: LongSignal = None
         if self.ShortAccount is None: ShortSignal = None
+        if (LongSignal is not None) and isinstance(LongSignal, pd.Series): raise __QS_Error__("多头信号格式有误, 必须是 Series 类型!")
+        if (ShortSignal is not None) and isinstance(ShortSignal, pd.Series): raise __QS_Error__("空头信号格式有误, 必须是 Series 类型!")
         self.trade(idt, iTradingRecord, (LongSignal, ShortSignal))
         for iAccount in self.Accounts: iAccount.__QS_after_move__(idt, **kwargs)
         return 0

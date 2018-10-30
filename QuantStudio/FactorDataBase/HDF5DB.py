@@ -72,7 +72,7 @@ class _FactorTable(FactorTable):
         Data = {iFactor: self.readFactorData(ifactor_name=iFactor, ids=ids, dts=dts, args=args) for iFactor in factor_names}
         return pd.Panel(Data).loc[factor_names]
     def readFactorData(self, ifactor_name, ids, dts, args={}):
-        if ifactor_name not in self.FactorNames: raise __QS_Error__("因子: '%s' 不存在!" % ifactor_name)
+        if ifactor_name not in self.FactorNames: raise __QS_Error__("因子库 '%s' 的因子表 '%s' 中不存在因子 '%s'!" % (self._FactorDB.Name, self.Name, ifactor_name))
         with self._FactorDB._DataLock:
             with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix, mode="r") as DataFile:
                 DataType = DataFile.attrs["DataType"]

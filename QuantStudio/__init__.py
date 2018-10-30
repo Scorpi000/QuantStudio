@@ -5,7 +5,6 @@ import json
 import operator
 import warnings
 warnings.filterwarnings("ignore")
-from multiprocessing import Lock
 
 import numpy as np
 import pandas as pd
