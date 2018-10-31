@@ -789,7 +789,7 @@ class CustomFT(FactorTable):
         self._IDFilterStr = OldIDFilterStr
         return eval("temp["+CompiledFilterStr+"].index.tolist()")
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        return pd.Panel({iFactorName:self._Factors[iFactorName].readData(ids=ids, dts=dts) for iFactorName in factor_names}).loc[factor_names]
+        return pd.Panel({iFactorName:self._Factors[iFactorName].readData(ids=ids, dts=dts, dt_ruler=self._DateTimes) for iFactorName in factor_names}).loc[factor_names]
     # ---------------新的接口------------------
     # 添加因子, factor_list: 因子对象列表
     def addFactors(self, factor_list=[], factor_table=None, factor_names=None, args={}):
@@ -934,20 +934,19 @@ class Factor(__QS_Object__):
     def getMetaData(self, key=None):
         return self._FactorTable.getFactorMetaData(factor_names=[self._NameInFT], key=key).loc[self._NameInFT]
     # 获取 ID 序列
-    def getID(self, idt=None, args={}):
+    def getID(self, idt=None):
         if self._OperationMode is not None: return self._OperationMode.IDs
-        if self._FactorTable is not None: return self._FactorTable.getID(ifactor_name=self._NameInFT, idt=idt, args=args)
+        if self._FactorTable is not None: return self._FactorTable.getID(ifactor_name=self._NameInFT, idt=idt, args=self.Args)
         return []
     # 获取时间点序列
-    def getDateTime(self, iid=None, start_dt=None, end_dt=None, args={}):
+    def getDateTime(self, iid=None, start_dt=None, end_dt=None):
         if self._OperationMode is not None: return self._OperationMode.DateTimes
-        if self._FactorTable is not None: return self._FactorTable.getDateTime(ifactor_name=self._NameInFT, iid=iid, start_dt=start_dt, end_dt=end_dt, args=args)
+        if self._FactorTable is not None: return self._FactorTable.getDateTime(ifactor_name=self._NameInFT, iid=iid, start_dt=start_dt, end_dt=end_dt, args=self.Args)
         return []
     # --------------------------------数据读取---------------------------------
     # 读取数据, 返回: Panel(item=[因子], major_axis=[时间点], minor_axis=[ID])
-    def readData(self, ids, dts):
-        if not self._isStarted:
-            return self._FactorTable.readData(factor_names=[self._NameInFT], ids=ids, dts=dts, args=self.Args).loc[self._NameInFT]
+    def readData(self, ids, dts, **kwargs):
+        if not self._isStarted: return self._FactorTable.readData(factor_names=[self._NameInFT], ids=ids, dts=dts, args=self.Args).loc[self._NameInFT]
         # 启动了遍历模式
         if self._CacheData is None:
             self._CacheData = self._FactorTable.readData(factor_names=[self._NameInFT], ids=ids, dts=dts, args=self.Args).loc[self._NameInFT]
@@ -1220,13 +1219,13 @@ class DataFactor(Factor):
         if key is None: return pd.Series({"DataType":self.DataType})
         elif key=="DataType": return self.DataType
         return None
-    def getID(self, idt=None, args={}):
+    def getID(self, idt=None):
         if self._OperationMode is not None: return self._OperationMode.IDs
         return self._Data.columns.tolist()
-    def getDateTime(self, iid=None, start_dt=None, end_dt=None, args={}):
+    def getDateTime(self, iid=None, start_dt=None, end_dt=None):
         if self._OperationMode is not None: return self._OperationMode.DateTimes
         return self._Data.index.tolist()
-    def readData(self, ids, dts):
+    def readData(self, ids, dts, **kwargs):
         if (self._Data.columns.intersection(ids).shape[0]==0) or (self._Data.index.intersection(dts).shape[0]==0):
             return pd.DataFrame(index=dts, columns=ids, dtype=("O" if self.DataType=="string" else np.float))
         if self.LookBack==0: return self._Data.loc[dts, ids]

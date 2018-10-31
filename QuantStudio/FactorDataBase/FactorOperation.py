@@ -49,8 +49,8 @@ class PointOperation(DerivativeFactor):
     """单点运算"""
     DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
     IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=4)
-    def readData(self, ids, dts, args={}):
-        StdData = self._calcData(ids=ids, dts=dts, descriptor_data=[iDescriptor.readData(ids=ids, dts=dts).values for iDescriptor in self.Descriptors])
+    def readData(self, ids, dts, **kwargs):
+        StdData = self._calcData(ids=ids, dts=dts, descriptor_data=[iDescriptor.readData(ids=ids, dts=dts, **kwargs).values for iDescriptor in self.Descriptors])
         return pd.DataFrame(StdData, index=dts, columns=ids)
     def _QS_updateStartDT(self, start_dt, dt_dict):
         super()._QS_updateStartDT(start_dt, dt_dict)
@@ -121,8 +121,19 @@ class TimeOperation(DerivativeFactor):
                 print("注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足!" % (self.Name, iDescriptor.Name))
             iStartDT = DTRuler[max(0, iStartInd)]
             iDescriptor._QS_updateStartDT(iStartDT, dt_dict)
-    def readData(self, ids, dts, args={}):
-        StdData = self._calcData(ids=ids, dts=dts, descriptor_data=[np.r_[np.full((self.LookBack[i], len(ids)), np.nan), iDescriptor.readData(ids=ids, dts=dts).values] for i, iDescriptor in enumerate(self.Descriptors)])
+    def readData(self, ids, dts, **kwargs):
+        DTRuler = kwargs.get("dt_ruler", dts)
+        StartInd = DTRuler.index(dts[0])
+        nID = len(ids)
+        DescriptorData = []
+        for i, iDescriptor in enumerate(self.Descriptors):
+            iDTs = DTRuler[max(StartInd-self.LookBack[i], 0):StartInd]+dts
+            iDescriptorData = iDescriptor.readData(ids=ids, dts=iDTs, **kwargs).values
+            if StartInd<self.LookBack[i]:
+                iLookBackData = np.full((self.LookBack[i]-StartInd, nID), np.nan)
+                iDescriptorData = np.r_[iLookBackData, iDescriptorData]
+            DescriptorData.append(iDescriptorData)
+        StdData = self._calcData(ids=ids, dts=dts, descriptor_data=DescriptorData)
         return pd.DataFrame(StdData, index=dts, columns=ids)
     def _calcData(self, ids, dts, descriptor_data):
         if self.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
@@ -208,7 +219,7 @@ class SectionOperation(DerivativeFactor):
     """截面运算"""
     DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
     OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=4)
-    def readData(self, ids, dts, args={}):
+    def readData(self, ids, dts, **kwargs):
         StdData = self._calcData(ids=ids, dts=dts, descriptor_data=[iDescriptor.readData(ids=ids, dts=dts).values for iDescriptor in self.Descriptors])
         return pd.DataFrame(StdData, index=dts, columns=ids)
     def _QS_updateStartDT(self, start_dt, dt_dict):
@@ -306,8 +317,19 @@ class PanelOperation(DerivativeFactor):
                 iDescriptor._QS_updateStartDT(iStartDT, dt_dict)
         if (self._OperationMode.SubProcessNum>0) and (self.Name not in self._OperationMode._Event):
             self._OperationMode._Event[self.Name] = (Queue(), Event())
-    def readData(self, ids, dts, args={}):
-        StdData = self._calcData(ids=ids, dts=dts, descriptor_data=[np.r_[np.full((self.LookBack[i], len(ids)), np.nan), iDescriptor.readData(ids=ids, dts=dts).values] for i, iDescriptor in enumerate(self.Descriptors)])
+    def readData(self, ids, dts, **kwargs):
+        DTRuler = kwargs.get("dt_ruler", dts)
+        StartInd = DTRuler.index(dts[0])
+        nID = len(ids)
+        DescriptorData = []
+        for i, iDescriptor in enumerate(self.Descriptors):
+            iDTs = DTRuler[max(StartInd-self.LookBack[i], 0):StartInd]+dts
+            iDescriptorData = iDescriptor.readData(ids=ids, dts=iDTs, **kwargs).values
+            if StartInd<self.LookBack[i]:
+                iLookBackData = np.full((self.LookBack[i]-StartInd, nID), np.nan)
+                iDescriptorData = np.r_[iLookBackData, iDescriptorData]
+            DescriptorData.append(iDescriptorData)
+        StdData = self._calcData(ids=ids, dts=dts, descriptor_data=DescriptorData)
         return pd.DataFrame(StdData, index=dts, columns=ids)
     def _calcData(self, ids, dts, descriptor_data):
         if self.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
@@ -407,7 +429,7 @@ class SectionAggregation(DerivativeFactor):
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
         self.add_trait("GroupFactor", Enum(*([None]+[i for i in range(len(self.Descriptors))]), arg_type="SingleOption", label="类别因子", order=3))
-    def readData(self, ids, dts, args={}):
+    def readData(self, ids, dts, **kwargs):
         StdData = self._calcData(ids=ids, dts=dts, descriptor_data=[iDescriptor.readData(ids=ids, dts=dts).values for iDescriptor in self.Descriptors])
         return pd.DataFrame(StdData, index=dts, columns=ids)
     def _QS_updateStartDT(self, start_dt, dt_dict):
