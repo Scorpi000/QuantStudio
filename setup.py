@@ -53,6 +53,8 @@ setuptools.setup(
         "tushare>=1.2.12",
         "Pyomo>=5.5.0",
         "xlrd>=0.9.0",
+        "PyQt5==5.9.2",
+        "QScintilla==2.10.2"
         # "pywin32>=220.1" if os.name=="nt"
     ]
 )

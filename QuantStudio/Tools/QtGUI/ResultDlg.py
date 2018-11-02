@@ -3,8 +3,7 @@ import os
 import sys
 import datetime as dt
 
-from PyQt4.QtCore import *
-from PyQt4.QtGui import *
+from PyQt5 import QtWidgets, QtCore, QtGui
 
 import numpy as np
 import pandas as pd
@@ -28,30 +27,15 @@ from QuantStudio.Tools.QtGUI.QtGUIFun import populateTableWithDataFrame, populat
 from QuantStudio.Tools.QtGUI.Ui_ResultDlg import Ui_ResultDlg
 from QuantStudio.Tools.QtGUI.Ui_FigDlg import Ui_FigDlg
 
-
-try:
-    _fromUtf8 = QString.fromUtf8
-except:
-    def _fromUtf8(s):
-        return s
-
-try:
-    _encoding = QApplication.UnicodeUTF8
-    def _translate(context, text, disambig):
-        return QApplication.translate(context, text, disambig, _encoding)
-except AttributeError:
-    def _translate(context, text, disambig):
-        return QApplication.translate(context, text, disambig)
-
 # 展示的数据类型 output: 嵌套的字典, 叶节点是 DataFrame
 
 # 用于多选的 QTableWidget
-class _MultiOptionTable(QTableWidget):
+class _MultiOptionTable(QtWidgets.QTableWidget):
     def __init__(self, parent=None, data_range=[], data=None):
         super().__init__(parent)
         self.DataRange = data_range
-        self.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         nData = len(data_range)
         self.setRowCount(nData)
         self.setColumnCount(1)
@@ -59,24 +43,18 @@ class _MultiOptionTable(QTableWidget):
         self.setVerticalHeaderLabels([str(iData) for iData in data_range])
         if data is None:
             for i in range(nData):
-                iWidget = QCheckBox(None)
+                iWidget = QtWidgets.QCheckBox(None)
                 iWidget.setChecked(True)
                 self.setCellWidget(i,0,iWidget)
         else:
             for i,iData in enumerate(data_range):
-                iWidget = QCheckBox(None)
+                iWidget = QtWidgets.QCheckBox(None)
                 iWidget.setChecked((iData in data))
                 self.setCellWidget(i,0,iWidget)
         # 设置弹出菜单
-        MenuItem = QAction('全选', self)
-        self.connect(MenuItem,SIGNAL("triggered()"), self.selectAll)
-        self.addAction(MenuItem)
-        MenuItem = QAction('全不选', self)
-        self.connect(MenuItem,SIGNAL("triggered()"), self.selectNone)
-        self.addAction(MenuItem)
-        MenuItem = QAction('反选', self)
-        self.connect(MenuItem,SIGNAL("triggered()"), self.selectOpposite)
-        self.addAction(MenuItem)
+        self.addAction(QtWidgets.QAction('全选', self, triggered=self.selectAll))
+        self.addAction(QtWidgets.QAction('全不选', self, triggered=self.selectNone))
+        self.addAction(QtWidgets.QAction('反选', self, triggered=self.selectOpposite))
         return
     def extract(self):
         return [self.DataRange[i] for i in range(self.rowCount()) if self.cellWidget(i, 0).isChecked()]
@@ -97,34 +75,35 @@ class _MultiOptionTable(QTableWidget):
 
 
 # 表格对话框
-class _TableDlg(QDialog):
+class _TableDlg(QtWidgets.QDialog):
     def __init__(self, parent=None, table_widget=None, timely_modified=False):
         super().__init__(parent)
-        self.setObjectName(_fromUtf8("_TableDlg"))
+        self.setObjectName("_TableDlg")
         self.resize(346, 472)
         self.setSizeGripEnabled(True)
-        self.verticalLayout = QVBoxLayout(self)
+        self.verticalLayout = QtWidgets.QVBoxLayout(self)
         if table_widget is not None:
             self.MainTable = table_widget
             self.MainTable.setParent(self)
         else:
-            self.MainTable = QTableWidget(self)
+            self.MainTable = QtWidgets.QTableWidget(self)
         self.MainTable.TimelyModified = timely_modified
-        self.MainTable.setObjectName(_fromUtf8("MainTable"))
+        self.MainTable.setObjectName("MainTable")
         self.verticalLayout.addWidget(self.MainTable)
-        self.buttonBox = QDialogButtonBox(self)
-        self.buttonBox.setStandardButtons(QDialogButtonBox.Cancel | QDialogButtonBox.Ok)
-        self.buttonBox.setObjectName(_fromUtf8("buttonBox"))
+        self.buttonBox = QtWidgets.QDialogButtonBox(self)
+        self.buttonBox.setStandardButtons(QtWidgets.QDialogButtonBox.Cancel | QtWidgets.QDialogButtonBox.Ok)
+        self.buttonBox.setObjectName("buttonBox")
         self.verticalLayout.addWidget(self.buttonBox)
         self.isOK = False
+        _translate = QtCore.QCoreApplication.translate
         self.setWindowTitle(_translate("_TableDlg", "_TableDlg", None))
-        QMetaObject.connectSlotsByName(self)
+        QtCore.QMetaObject.connectSlotsByName(self)
         return
-    @pyqtSlot()
+    @QtCore.pyqtSlot()
     def on_buttonBox_accepted(self):
         self.isOK = True
         self.close()
-    @pyqtSlot()
+    @QtCore.pyqtSlot()
     def on_buttonBox_rejected(self):
         self.close()
 class _FromCSVArgs(__QS_Object__):
@@ -133,7 +112,7 @@ class _FromCSVArgs(__QS_Object__):
     ColIndex = Enum("日期", "字符串", "整数", "小数", arg_type="SingleOption", order=2, label="列索引")
     CharSet = Enum("自动检测", "utf-8", "ascii", "mbcs", "gb2312", "gbk", "big5", "gb18030", "cp936", arg_type="SingleOption", order=3, label="字符编码")
 # 基于 plotly 绘图的 ResultDlg
-class PlotlyResultDlg(QDialog, Ui_ResultDlg):
+class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
     def __init__(self, parent=None, output={}):
         super().__init__(parent)
         self.setupUi(self)
@@ -145,26 +124,16 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
         return
     def setMenu(self):# 设置弹出菜单
         # 设置 MainResultTree 的弹出菜单
-        NewAction = QAction('重命名',self.MainResultTree)
-        self.connect(NewAction,SIGNAL("triggered()"),self.renameVar)
-        self.MainResultTree.addAction(NewAction)
-        NewAction = QAction('删除变量',self.MainResultTree)
-        self.connect(NewAction,SIGNAL("triggered()"),self.deleteVar)
-        self.MainResultTree.addAction(NewAction)
-        NewAction = QAction('导出CSV',self.MainResultTree)
-        self.connect(NewAction,SIGNAL("triggered()"),self.toCSV)
-        self.MainResultTree.addAction(NewAction)
-        NewAction = QAction('导出Excel',self.MainResultTree)
-        self.connect(NewAction,SIGNAL("triggered()"),self.toExcel)
-        self.MainResultTree.addAction(NewAction)
-        NewAction = QAction('导入CSV',self.MainResultTree)
-        self.connect(NewAction,SIGNAL("triggered()"),self.fromCSV)
-        self.MainResultTree.addAction(NewAction)
+        self.MainResultTree.addAction(QtWidgets.QAction('重命名',self.MainResultTree, triggered=self.renameVar))
+        self.MainResultTree.addAction(QtWidgets.QAction('删除变量',self.MainResultTree, triggered=self.deleteVar))
+        self.MainResultTree.addAction(QtWidgets.QAction('导出CSV',self.MainResultTree, triggered=self.toCSV))
+        self.MainResultTree.addAction(QtWidgets.QAction('导出Excel',self.MainResultTree, triggered=self.toExcel))
+        self.MainResultTree.addAction(QtWidgets.QAction('导入CSV',self.MainResultTree, triggered=self.fromCSV))
         # 设置 MainResultTable 的弹出菜单
-        self.MainResultTable.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.MainResultTable.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.MainResultTable.customContextMenuRequested.connect(self.showMainResultTableContextMenu)
-        self.MainResultTable.ContextMenu = {'主菜单':QMenu()}
-        self.MainResultTable.ContextMenu['数据操作'] = {"主菜单":QMenu("数据操作")}
+        self.MainResultTable.ContextMenu = {'主菜单':QtWidgets.QMenu()}
+        self.MainResultTable.ContextMenu['数据操作'] = {"主菜单":QtWidgets.QMenu("数据操作")}
         NewAction = self.MainResultTable.ContextMenu['数据操作']['主菜单'].addAction('存为变量')
         NewAction.triggered.connect(self.saveAsVar)
         NewAction = self.MainResultTable.ContextMenu['数据操作']['主菜单'].addAction('删除列')
@@ -176,7 +145,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
         NewAction = self.MainResultTable.ContextMenu['数据操作']['主菜单'].addAction('形成Grid')
         NewAction.triggered.connect(self.asGrid)
         self.MainResultTable.ContextMenu['主菜单'].addMenu(self.MainResultTable.ContextMenu['数据操作']['主菜单'])
-        self.MainResultTable.ContextMenu['排序筛选'] = {"主菜单":QMenu("排序筛选")}
+        self.MainResultTable.ContextMenu['排序筛选'] = {"主菜单":QtWidgets.QMenu("排序筛选")}
         NewAction = self.MainResultTable.ContextMenu['排序筛选']['主菜单'].addAction('升序')
         NewAction.triggered.connect(self.sortDataAscending)
         NewAction = self.MainResultTable.ContextMenu['排序筛选']['主菜单'].addAction('降序')
@@ -184,7 +153,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
         NewAction = self.MainResultTable.ContextMenu['排序筛选']['主菜单'].addAction('筛选')
         NewAction.triggered.connect(self.filterData)
         self.MainResultTable.ContextMenu['主菜单'].addMenu(self.MainResultTable.ContextMenu['排序筛选']['主菜单'])
-        self.MainResultTable.ContextMenu['绘制图像'] = {"主菜单":QMenu("绘制图像")}
+        self.MainResultTable.ContextMenu['绘制图像'] = {"主菜单":QtWidgets.QMenu("绘制图像")}
         NewAction = self.MainResultTable.ContextMenu['绘制图像']['主菜单'].addAction('直方图')
         NewAction.triggered.connect(self.plotHist)
         NewAction = self.MainResultTable.ContextMenu['绘制图像']['主菜单'].addAction('三维直方图')
@@ -200,7 +169,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
         self.MainResultTable.ContextMenu['主菜单'].addMenu(self.MainResultTable.ContextMenu['绘制图像']['主菜单'])
         NewAction = self.MainResultTable.ContextMenu['主菜单'].addAction('统计量')
         NewAction.triggered.connect(self.calStatistics)
-        self.MainResultTable.ContextMenu['数据运算'] = {"主菜单":QMenu("数据运算")}
+        self.MainResultTable.ContextMenu['数据运算'] = {"主菜单":QtWidgets.QMenu("数据运算")}
         NewAction = self.MainResultTable.ContextMenu['数据运算']['主菜单'].addAction('累积求和')
         NewAction.triggered.connect(self.calCumsum)
         NewAction = self.MainResultTable.ContextMenu['数据运算']['主菜单'].addAction('累积求积')
@@ -220,7 +189,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
         NewAction = self.MainResultTable.ContextMenu['数据运算']['主菜单'].addAction('相关系数')
         NewAction.triggered.connect(self.calCorrMatrix)
         self.MainResultTable.ContextMenu['主菜单'].addMenu(self.MainResultTable.ContextMenu['数据运算']['主菜单'])
-        self.MainResultTable.ContextMenu['策略统计'] = {"主菜单":QMenu("策略统计")}
+        self.MainResultTable.ContextMenu['策略统计'] = {"主菜单":QtWidgets.QMenu("策略统计")}
         NewAction = self.MainResultTable.ContextMenu['策略统计']['主菜单'].addAction('概括统计')
         NewAction.triggered.connect(self.summaryStrategy)
         NewAction = self.MainResultTable.ContextMenu['策略统计']['主菜单'].addAction('滚动统计')
@@ -248,43 +217,43 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
         self.MainResultTree.resizeColumnToContents(0)
         self.MainResultTree.blockSignals(False)
         return 0
-    @pyqtSlot(QTreeWidgetItem, int)
+    @QtCore.pyqtSlot(QtWidgets.QTreeWidgetItem, int)
     def on_MainResultTree_itemDoubleClicked(self, item, column):
         self.on_GenTableButton_clicked()
     def renameVar(self):# 重命名变量
         SelectedItem = self.MainResultTree.selectedItems()
         if len(SelectedItem)!=1:
-            QMessageBox.critical(None, '错误', '请选择一个变量或变量集!')
+            QtWidgets.QMessageBox.critical(None, '错误', '请选择一个变量或变量集!')
             return 0
         SelectedItem = SelectedItem[0]
         OldKey = SelectedItem.text(0)
-        NewKey, isOk = QInputDialog.getText(None, '重命名', '请输入新名字: ', text=OldKey)
+        NewKey, isOk = QtWidgets.QInputDialog.getText(None, '重命名', '请输入新名字: ', text=OldKey)
         if (not isOk) or (NewKey==OldKey):
             return 0
-        KeyList = SelectedItem.data(0, Qt.UserRole)
+        KeyList = SelectedItem.data(0, QtCore.Qt.UserRole)
         Parent = getNestedDictValue(self.Output, KeyList[:-1])
         if NewKey in Parent:
-            QMessageBox.critical(None,'错误','有重名!')
+            QtWidgets.QMessageBox.critical(None,'错误','有重名!')
             return 0
         else:
             Parent[NewKey] = Parent.pop(OldKey)
         SelectedItem.setText(0, NewKey)
-        SelectedItem.setData(0, Qt.UserRole, KeyList[:-1]+(NewKey,))
+        SelectedItem.setData(0, QtCore.Qt.UserRole, KeyList[:-1]+(NewKey,))
         if isinstance(Parent[NewKey], dict):
-            iItem = QTreeWidgetItemIterator(SelectedItem)
+            iItem = QtWidgets.QTreeWidgetItemIterator(SelectedItem)
             iItem = iItem.__iadd__(1)
             iTreeItem = iItem.value()
             while iTreeItem:
                 iParent = iTreeItem.parent()
-                iParentKeyList = iParent.data(0, Qt.UserRole)
-                iTreeItem.setData(0, Qt.UserRole, iParentKeyList+iTreeItem.data(0, Qt.UserRole)[-1:])
+                iParentKeyList = iParent.data(0, QtCore.Qt.UserRole)
+                iTreeItem.setData(0, QtCore.Qt.UserRole, iParentKeyList+iTreeItem.data(0, QtCore.Qt.UserRole)[-1:])
                 iItem = iItem.__iadd__(1)
                 iTreeItem = iItem.value()
         return 0
     def deleteVar(self):# 删除变量
         SelectedItems = self.MainResultTree.selectedItems()
         for iItem in SelectedItems:
-            iKeyList = iItem.data(0, Qt.UserRole)
+            iKeyList = iItem.data(0, QtCore.Qt.UserRole)
             removeNestedDictItem(self.Output, iKeyList)
         self.populateMainResultTree()
         return 0
@@ -292,7 +261,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
         SelectedItems = self.MainResultTree.selectedItems()
         SelectedOutput = []# [(key_list, value)]
         for iItem in SelectedItems:
-            iKeyList = iItem.data(0, Qt.UserRole)
+            iKeyList = iItem.data(0, QtCore.Qt.UserRole)
             iValue = getNestedDictValue(self.Output, iKeyList)
             if not isinstance(iValue, dict):
                 SelectedOutput.append((iKeyList, iValue))
@@ -300,16 +269,16 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
                 SelectedOutput.extend(getNestedDictItems(iValue, iKeyList))
         Output = {joinList(iKeyList,"-"):iOutput for iKeyList, iOutput in SelectedOutput}
         if Output=={}: return 0
-        DirPath = QFileDialog.getExistingDirectory(parent=None, caption='导出CSV', directory=os.getcwd())
+        DirPath = QtWidgets.QFileDialog.getExistingDirectory(parent=None, caption='导出CSV', directory=os.getcwd())
         if DirPath=='': return 0
         exportOutput2CSV(Output, DirPath)
-        QMessageBox.information(None,'完成','导出数据完成!')
+        QtWidgets.QMessageBox.information(None,'完成','导出数据完成!')
         return 0
     def toExcel(self):# 导出变量到Excel
         SelectedItems = self.MainResultTree.selectedItems()
         SelectedOutput = []# [(key_list, value)]
         for iItem in SelectedItems:
-            iKeyList = iItem.data(0, Qt.UserRole)
+            iKeyList = iItem.data(0, QtCore.Qt.UserRole)
             iValue = getNestedDictValue(self.Output, iKeyList)
             if not isinstance(iValue, dict):
                 SelectedOutput.append((iKeyList, iValue))
@@ -332,16 +301,16 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
             ParentOutput = self.Output
             ParentKeyList = ()
         else:
-            ParentKeyList = Parent.data(0, Qt.UserRole)
+            ParentKeyList = Parent.data(0, QtCore.Qt.UserRole)
             ParentOutput = getNestedDictValue(self.Output, ParentKeyList)
         for iFilePath in Args["导入文件"]:
             iVar = os.path.split(iFilePath)[-1][:-4]
-            if (iVar in ParentOutput) and (QMessageBox.Ok!=QMessageBox.question(None, '警告', "变量: "+iVar+", 重名, 是否覆盖?", QMessageBox.Ok | QMessageBox.Cancel, QMessageBox.Cancel)):
+            if (iVar in ParentOutput) and (QtWidgets.QMessageBox.Ok!=QtWidgets.QMessageBox.question(None, '警告', "变量: "+iVar+", 重名, 是否覆盖?", QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel, QtWidgets.QMessageBox.Cancel)):
                 iVar = genAvailableName(iVar, list(ParentOutput.keys()))
             iData = readCSV2StdDF(iFilePath,index=Args["行索引"],col=Args["列索引"],encoding=(None if Args["字符编码"]=="自动检测" else Args["字符编码"]))
             ParentOutput[iVar] = iData
         self.populateMainResultTree()
-        QMessageBox.information(None, '完成', '导入数据完成!')
+        QtWidgets.QMessageBox.information(None, '完成', '导入数据完成!')
         return 0
     # ------------------------MainResultTable 相关操作-------------------------
     def populateMainResultTable(self):# 刷新数据
@@ -354,11 +323,11 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
             TargetDF = TargetDF.iloc[:,:min((ColLimitNum,TargetDF.shape[1]))]
         return populateTableWithDataFrame(self.MainResultTable,TargetDF)    
     def showMainResultTableContextMenu(self,pos):# 显示MainResultTable的右键菜单
-        self.MainResultTable.ContextMenu['主菜单'].move(QCursor.pos())
+        self.MainResultTable.ContextMenu['主菜单'].move(QtGui.QCursor.pos())
         self.MainResultTable.ContextMenu['主菜单'].show()
     # -----------------------------------数据操作--------------------------------
     def saveDF(self, df, var_name=""):
-        VarName, isOk = QInputDialog.getText(None,'变量名称','请输入变量名称:',text=var_name)
+        VarName, isOk = QtWidgets.QInputDialog.getText(None,'变量名称','请输入变量名称:',text=var_name)
         if (not isOk) or (VarName==""): return 0
         SelectedItem = self.MainResultTree.selectedItems()
         if SelectedItem==[]:
@@ -373,7 +342,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
         else:
             ParentKeyList = Parent.data(0, Qt.UserRole)
             ParentOutput = getNestedDictValue(self.Output, ParentKeyList)
-        if (VarName in ParentOutput) and (QMessageBox.Ok!=QMessageBox.question(None,'警告',"变量: "+VarName+", 重名, 是否覆盖?", QMessageBox.Ok | QMessageBox.Cancel, QMessageBox.Cancel)):
+        if (VarName in ParentOutput) and (QtWidgets.QMessageBox.Ok!=QtWidgets.QMessageBox.question(None,'警告',"变量: "+VarName+", 重名, 是否覆盖?", QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel, QtWidgets.QMessageBox.Cancel)):
             return 0
         ParentOutput[VarName] = df
         self.populateMainResultTree()
@@ -389,7 +358,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
     def asIndex(self):# 作为索引
         SelectedColumn = self.getSelectedColumns()
         if len(SelectedColumn)!=1:
-            QMessageBox.critical(None,'错误','请选择一列!')
+            QtWidgets.QMessageBox.critical(None,'错误','请选择一列!')
             return 0
         self.CurDF = self.CurDF.reset_index().set_index([self.CurDF.columns[SelectedColumn[0]]])
         return self.populateMainResultTable()
@@ -399,7 +368,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
     def asGrid(self):# 形成Grid
         SelectedColumns = self.getSelectedColumns()
         if len(SelectedColumns)!=3:
-            QMessageBox.critical(None,'错误','请选择三列!')
+            QtWidgets.QMessageBox.critical(None,'错误','请选择三列!')
             return 0
         X = self.CurDF.iloc[:,SelectedColumns[0]]
         Y = self.CurDF.iloc[:,SelectedColumns[1]]
@@ -417,7 +386,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
     # -----------------------------------排序筛选--------------------------------
     def filterData(self):# 筛选
         SelectedColumn = self.getSelectedColumns()
-        if len(SelectedColumn)!=1: return QMessageBox.critical(None,'错误','请选择一列!')
+        if len(SelectedColumn)!=1: return QtWidgets.QMessageBox.critical(None,'错误','请选择一列!')
         SelectedDF,Msg = self.getSelectedDF(all_num=False)
         SelectedDF = SelectedDF.iloc[:,0]
         Dlg = _TableDlg(None, _MultiOptionTable(None, list(SelectedDF.unique()), None))
@@ -432,7 +401,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
     def sortData(self,ascending=True):
         SelectedColumns = self.getSelectedColumns()
         if len(SelectedColumns)==0:
-            QMessageBox.critical(None,'错误','请选择至少一列!')
+            QtWidgets.QMessageBox.critical(None,'错误','请选择至少一列!')
             return 0
         self.CurDF = self.CurDF.sort(list(self.CurDF.columns[SelectedColumns]),ascending=ascending)
         return self.populateMainResultTable()
@@ -444,14 +413,14 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
     def plotHist(self):# 直方图
         SelectedColumn = self.getSelectedColumns()
         if len(SelectedColumn)!=1:
-            QMessageBox.critical(None,'错误','请选择一列!')
+            QtWidgets.QMessageBox.critical(None,'错误','请选择一列!')
             return 0
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         SelectedDF = SelectedDF.iloc[:,0]
-        GroupNum,isOK = QInputDialog.getInt(None,'获取分组数','分组数',value=10,min=1,max=1000,step=1)
+        GroupNum,isOK = QtWidgets.QInputDialog.getInt(None,'获取分组数','分组数',value=10,min=1,max=1000,step=1)
         if not isOK:
             return 0
         yData = SelectedDF[pd.notnull(SelectedDF)].values
@@ -464,16 +433,16 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
         from mpl_toolkits.mplot3d import Axes3D
         SelectedColumn = self.getSelectedColumns()
         if len(SelectedColumn)!=2:
-            QMessageBox.critical(None,'错误','请选择两列!')
+            QtWidgets.QMessageBox.critical(None,'错误','请选择两列!')
             return 0
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         SelectedDF.dropna()
         xData = SelectedDF.iloc[:,0].astype('float').values
         yData = SelectedDF.iloc[:,1].astype('float').values
-        GroupNum,isOK = QInputDialog.getInt(None,'获取分组数','分组数',value=10,min=1,max=1000,step=1)
+        GroupNum,isOK = QtWidgets.QInputDialog.getInt(None,'获取分组数','分组数',value=10,min=1,max=1000,step=1)
         if not isOK:
             return 0
         hist, xedges, yedges = np.histogram2d(xData, yData, bins=GroupNum)
@@ -495,11 +464,11 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
     def plotCDF(self):# 经验分布图
         SelectedColumn = self.getSelectedColumns()
         if len(SelectedColumn)!=1:
-            QMessageBox.critical(None,'错误','请选择一列!')
+            QtWidgets.QMessageBox.critical(None,'错误','请选择一列!')
             return 0
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         SelectedDF = SelectedDF.iloc[:,0]
         xData = SelectedDF[pd.notnull(SelectedDF)].values
@@ -519,12 +488,12 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
     def plotScatter(self):# 二维散点图
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         elif (SelectedDF.shape[1]<1) or (SelectedDF.shape[1]>3):
-            QMessageBox.critical(None,'错误','请选择一到三列!')
+            QtWidgets.QMessageBox.critical(None,'错误','请选择一到三列!')
             return 0
-        isOK = QMessageBox.question(None,'添加回归线','是否添加回归线?',QMessageBox.Ok | QMessageBox.Cancel,QMessageBox.Cancel)
+        isOK = QtWidgets.QMessageBox.question(None, '添加回归线','是否添加回归线?', QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel, QtWidgets.QMessageBox.Cancel)
         SelectedDF.dropna()
         GraphObj = []
         if SelectedDF.shape[1]==1:
@@ -541,7 +510,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
             zData = SelectedDF.iloc[:,2].astype('float')
             Size = ((zData-zData.mean())/zData.std()*50).values
             GraphObj.append(plotly.graph_objs.Scatter(x=xData,y=yData,marker=dict(size=Size),mode="markers",name=str(SelectedDF.columns[0])+"-"+str(SelectedDF.columns[1])+"-"+str(SelectedDF.columns[2])))
-        if isOK==QMessageBox.Ok:
+        if isOK==QtWidgets.QMessageBox.Ok:
             xData = sm.add_constant(xData, prepend=True)
             Model = sm.OLS(yData,xData,missing='drop')
             Result = Model.fit()
@@ -554,18 +523,18 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
     def plotScatter3D(self):# 三维散点图
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         elif SelectedDF.shape[1]!=3:
-            QMessageBox.critical(None,'错误','请选择三列!')
+            QtWidgets.QMessageBox.critical(None,'错误','请选择三列!')
             return 0
-        isOK = QMessageBox.question(None,'添加回归面','是否添加回归面?',QMessageBox.Ok | QMessageBox.Cancel,QMessageBox.Cancel)
+        isOK = QtWidgets.QMessageBox.question(None,'添加回归面','是否添加回归面?',QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel,QtWidgets.QMessageBox.Cancel)
         SelectedDF.dropna()
         xData = SelectedDF.iloc[:,0].values
         yData = SelectedDF.iloc[:,1].values
         zData = SelectedDF.iloc[:,2].values
         GraphObj = [plotly.graph_objs.Scatter3d(x=xData,y=yData,z=zData,mode='markers',name=str(SelectedDF.columns[0])+"-"+str(SelectedDF.columns[1])+"-"+str(SelectedDF.columns[2]))]
-        if isOK==QMessageBox.Ok:
+        if isOK==QtWidgets.QMessageBox.Ok:
             xRegressData = np.ones((SelectedDF.shape[0],3))
             xRegressData[:,1] = xData
             xRegressData[:,2] = yData
@@ -581,7 +550,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
     def plotHeatMap(self):# 热图
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         Dlg = _TableDlg(None, _MultiOptionTable(None, SelectedDF.index.tolist(), None))
         Dlg.exec_()
@@ -596,7 +565,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
     def calStatistics(self):# 统计量
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         # 设置要统计的索引
         SelectedIndex = self._getDataIndex(list(SelectedDF.index))
@@ -612,65 +581,65 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
             SummaryData.loc['总积'].iloc[i] = iData.prod()
             SummaryData.loc['最大值'].iloc[i] = iData.max()
             SummaryData.loc['最小值'].iloc[i] = iData.min()
-        TableWidget = QTableWidget()
+        TableWidget = QtWidgets.QTableWidget()
         populateTableWithDataFrame(TableWidget, SummaryData)
         _TableDlg(None, TableWidget).exec_()
         return 0
     def calCumsum(self):# 累计求和
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         return self.saveDF(SelectedDF.cumsum())
     def calCumprod(self):# 累计求积
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         return self.saveDF(SelectedDF.cumprod())
     def calRollingAverage(self):# 滚动平均
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
-        Window,isOK = QInputDialog.getInt(None,'获取窗口长度','窗口长度',value=12,min=1,max=SelectedDF.shape[0],step=1)
+        Window,isOK = QtWidgets.QInputDialog.getInt(None,'获取窗口长度','窗口长度',value=12,min=1,max=SelectedDF.shape[0],step=1)
         if not isOK:
             return 0
         return self.saveDF(SelectedDF.rolling(Window).mean())
     def calLog(self):# 求对数
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         return self.saveDF(np.log(SelectedDF))
     def calReturn(self):# 求收益率序列
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         return self.saveDF(pd.DataFrame(StrategyTestFun.calcYieldSeq(SelectedDF.values),index=SelectedDF.index,columns=SelectedDF.columns))
     def calLogReturn(self):# 求对数收益率序列
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         return self.saveDF(np.log(SelectedDF).diff())
     def calWealth(self):# 求净值
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         return self.saveDF(pd.DataFrame(StrategyTestFun.calcWealthSeq(SelectedDF.values),index=SelectedDF.index,columns=SelectedDF.columns))
     def calDiff(self):# 差分
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         return self.saveDF(SelectedDF.diff())
     def calCorrMatrix(self):# 相关系数
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         return self.saveDF(SelectedDF.corr())
     # -----------------------------------策略统计--------------------------------
@@ -686,7 +655,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
     def summaryStrategy(self):
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         # 设置要统计的索引
         SelectedIndex = self._getDataIndex(SelectedDF.index.tolist(), index_type="Date")
@@ -698,9 +667,9 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
     def summaryStrategyExpanding(self):
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None, "错误", Msg)
+            QtWidgets.QMessageBox.critical(None, "错误", Msg)
             return 0
-        MinPeriod,isOK = QInputDialog.getInt(None,'获取','最小窗口',value=20,min=1,max=10000,step=1)
+        MinPeriod,isOK = QtWidgets.QInputDialog.getInt(None,'获取','最小窗口',value=20,min=1,max=10000,step=1)
         if not isOK: return 0
         # 设置要统计的索引
         SelectedIndex = self._getDataIndex(SelectedDF.index.tolist(), index_type="Date")
@@ -713,7 +682,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
     def summaryStrategyPerYear(self):
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         # 设置要统计的索引
         SelectedIndex = self._getDataIndex(SelectedDF.index.tolist(), index_type="Date")
@@ -731,7 +700,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
     def summaryStrategyPerYearMonth(self):
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         # 设置要统计的索引
         SelectedIndex = self._getDataIndex(SelectedDF.index.tolist(), index_type="Date")
@@ -749,7 +718,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
     def calcAvgReturnPerMonth(self):
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         # 设置要统计的索引
         SelectedIndex = self._getDataIndex(SelectedDF.index.tolist(), index_type="Date")
@@ -761,7 +730,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
     def calcAvgReturnPerWeekday(self):
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         # 设置要统计的索引
         SelectedIndex = self._getDataIndex(SelectedDF.index.tolist(), index_type="Date")
@@ -773,7 +742,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
     def calcAvgReturnPerMonthday(self):
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         # 设置要统计的索引
         SelectedIndex = self._getDataIndex(SelectedDF.index.tolist(),index_type="Date")
@@ -785,7 +754,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
     def calcAvgReturnPerYearday(self):
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         # 设置要统计的索引
         SelectedIndex = self._getDataIndex(SelectedDF.index.tolist(), index_type="Date")
@@ -796,7 +765,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
         return self.saveDF(Return,var_name="年度日平均收益率")
     # -----------------------------------其他操作--------------------------------
     def saveCurDFInFactorDB(self):
-        TargetFactorName,isOk = QInputDialog.getText(None,'目标因子',"请输入保存入数据库的因子名")
+        TargetFactorName,isOk = QtWidgets.QInputDialog.getText(None,'目标因子',"请输入保存入数据库的因子名")
         if (not isOk) or (TargetFactorName==''):
             return 0
         return self._saveVarDataInFactorDB({TargetFactorName:self.CurDF})
@@ -821,12 +790,12 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
             except:
                 return (None,'选择的数据中包含非数值型数据!')
         return (SelectedDF, "")
-    @pyqtSlot()
+    @QtCore.pyqtSlot()
     def on_GenTableButton_clicked(self):
         SelectedItems = self.MainResultTree.selectedItems()
         SelectedOutput = []# [(key_list, value)]
         for iItem in SelectedItems:
-            iKeyList = iItem.data(0, Qt.UserRole)
+            iKeyList = iItem.data(0, QtCore.Qt.UserRole)
             iValue = getNestedDictValue(self.Output, iKeyList)
             if not isinstance(iValue, dict):
                 SelectedOutput.append((iKeyList, iValue))
@@ -838,7 +807,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
             self.CurDF = SelectedOutput[0][1]
             self.CurDF.Name = SelectedOutput[0][0][-1]
             return self.populateMainResultTable()
-        MergeHow, isOK = QInputDialog.getItem(None, "多表连接方式", "请选择连接方式", ['inner','outer','left','right'])
+        MergeHow, isOK = QtWidgets.QInputDialog.getItem(None, "多表连接方式", "请选择连接方式", ['inner','outer','left','right'])
         if not isOK: return 0
         self.CurDF = SelectedOutput[0][1].copy()
         iPrefix = joinList(SelectedOutput[0][0],"-")
@@ -848,13 +817,13 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
             iPrefix = joinList(iKeyList,"-")
             iOutput.columns = [iPrefix+"-"+str(iCol) for iCol in iOutput.columns]
             self.CurDF = pd.merge(self.CurDF, iOutput, left_index=True, right_index=True, how=MergeHow)
-        if self.CurDF.shape[0]==0: QMessageBox.critical(None, "错误", "你选择的结果集索引可能不一致!")
+        if self.CurDF.shape[0]==0: QtWidgets.QMessageBox.critical(None, "错误", "你选择的结果集索引可能不一致!")
         return self.populateMainResultTable()
     def _getPlotArgs(self, plot_data):
         nCol = plot_data.shape[1]
         PlotMode = ['Line']*nCol
         PlotAxes = ['左轴']*nCol
-        DataTable = QTableWidget()
+        DataTable = QtWidgets.QTableWidget()
         DataTable.setRowCount(nCol)
         DataTable.setVerticalHeaderLabels([str(iCol) for iCol in plot_data.columns])
         DataTable.setColumnCount(2)
@@ -862,10 +831,10 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
         AllModes = ['Line','Bar','Stack']
         AllAxes = ['左轴','右轴']
         for i in range(nCol):
-            iComboBox = QComboBox(None)
+            iComboBox = QtWidgets.QComboBox(None)
             iComboBox.addItems(AllModes)
             DataTable.setCellWidget(i,0,iComboBox)
-            iComboBox = QComboBox(None)
+            iComboBox = QtWidgets.QComboBox(None)
             iComboBox.addItems(AllAxes)
             DataTable.setCellWidget(i,1,iComboBox)
         Dlg = _TableDlg(None, DataTable)
@@ -876,12 +845,12 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
             PlotMode[i] = DataTable.cellWidget(i,0).currentText()
             PlotAxes[i] = DataTable.cellWidget(i,1).currentText()
         return (PlotMode, PlotAxes)
-    @pyqtSlot()
+    @QtCore.pyqtSlot()
     def on_PlotButton_clicked(self):
         # 获取绘图数据
         PlotResult,Msg = self.getSelectedDF(all_num=True)
         if PlotResult is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         # 设置绘图模式
         PlotMode, PlotAxes = self._getPlotArgs(PlotResult)
@@ -890,7 +859,7 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
         # 设置要绘制的索引
         xData = self._getDataIndex(PlotResult.index)
         if not xData:
-            QMessageBox.critical(None,'错误','绘图数据为空!')
+            QtWidgets.QMessageBox.critical(None,'错误','绘图数据为空!')
             return 0
         PlotResult = PlotResult.loc[xData]
         xTickLabels = []
@@ -920,20 +889,20 @@ class PlotlyResultDlg(QDialog, Ui_ResultDlg):
         Fig = plotly.graph_objs.Figure(data=GraphObj, layout=plotly.graph_objs.Layout(**LayoutDict))
         plotly.offline.plot(Fig, filename=__QS_CachePath__+os.sep+"PlotlyFig.html")
         return 0
-    @pyqtSlot()
+    @QtCore.pyqtSlot()
     def on_ExportButton_clicked(self):
         if self.CurDF is None: return 0
         FileName = getattr(self.CurDF, "Name", "untitled")
-        FilePath = QFileDialog.getSaveFileName(None, "导出数据", ".."+os.sep+FileName+".csv", "Excel (*.csv)")
+        FilePath = QtWidgets.QFileDialog.getSaveFileName(None, "导出数据", ".."+os.sep+FileName+".csv", "Excel (*.csv)")
         if not FilePath: return 0
         if isinstance(self.CurDF.iloc[0,0], dict):
             for i,iCol in enumerate(self.CurDF.columns):
                 writeDictSeries2CSV(self.CurDF[iCol],FilePath[:-4]+"-"+str(iCol)+".csv")
         else:
             self.CurDF.to_csv(FilePath)
-        QMessageBox.information(None, "完成", "导出数据完成!")
+        QtWidgets.QMessageBox.information(None, "完成", "导出数据完成!")
         return 0
-    @pyqtSlot()
+    @QtCore.pyqtSlot()
     def on_TransposeButton_clicked(self):
         if self.CurDF is not None:
             self.CurDF = self.CurDF.T
@@ -944,14 +913,14 @@ class MatplotlibResultDlg(PlotlyResultDlg):
     def plotHist(self):
         SelectedColumn = self.getSelectedColumns()
         if len(SelectedColumn)!=1:
-            QMessageBox.critical(None,'错误','请选择一列!')
+            QtWidgets.QMessageBox.critical(None,'错误','请选择一列!')
             return 0
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         SelectedDF = SelectedDF.iloc[:,0]
-        GroupNum,isOK = QInputDialog.getInt(None,'获取分组数','分组数',value=10,min=1,max=1000,step=1)
+        GroupNum,isOK = QtWidgets.QInputDialog.getInt(None,'获取分组数','分组数',value=10,min=1,max=1000,step=1)
         if not isOK:
             return 0
         tempFigDlg = Ui_FigDlg()
@@ -979,7 +948,7 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         SelectedDF.dropna()
         xData = SelectedDF.iloc[:,0].astype('float').values
         yData = SelectedDF.iloc[:,1].astype('float').values
-        GroupNum,isOK = QInputDialog.getInt(None,'获取分组数','分组数',value=10,min=1,max=1000,step=1)
+        GroupNum,isOK = QtWidgets.QInputDialog.getInt(None,'获取分组数','分组数',value=10,min=1,max=1000,step=1)
         if not isOK:
             return 0
         hist, xedges, yedges = np.histogram2d(xData, yData, bins=GroupNum)
@@ -1001,11 +970,11 @@ class MatplotlibResultDlg(PlotlyResultDlg):
     def plotCDF(self):
         SelectedColumn = self.getSelectedColumns()
         if len(SelectedColumn)!=1:
-            QMessageBox.critical(None,'错误','请选择一列!')
+            QtWidgets.QMessageBox.critical(None,'错误','请选择一列!')
             return 0
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         SelectedDF = SelectedDF.iloc[:,0]
         tempFigDlg = Ui_FigDlg()
@@ -1030,12 +999,12 @@ class MatplotlibResultDlg(PlotlyResultDlg):
     def plotScatter(self):
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         elif (SelectedDF.shape[1]<1) or (SelectedDF.shape[1]>3):
-            QMessageBox.critical(None,'错误','请选择一到三列!')
+            QtWidgets.QMessageBox.critical(None,'错误','请选择一到三列!')
             return 0
-        isOK = QMessageBox.question(None,'添加回归线','是否添加回归线?',QMessageBox.Ok | QMessageBox.Cancel,QMessageBox.Cancel)
+        isOK = QtWidgets.QMessageBox.question(None,'添加回归线','是否添加回归线?',QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel,QtWidgets.QMessageBox.Cancel)
         tempFigDlg = Ui_FigDlg()
         Fig = tempFigDlg.PlotWidget.Canvas.Fig
         Axes = Fig.add_subplot(111)
@@ -1055,7 +1024,7 @@ class MatplotlibResultDlg(PlotlyResultDlg):
             Size = ((zData-zData.mean())/zData.std()*50).values
             Color = ((zData-zData.min())/(zData.max()-zData.min())).values
             Axes.scatter(xData,yData,s=Size,c=Color,label='散点图')
-        if isOK==QMessageBox.Ok:
+        if isOK==QtWidgets.QMessageBox.Ok:
             xData = sm.add_constant(xData, prepend=True)
             Model = sm.OLS(yData,xData,missing='drop')
             Result = Model.fit()
@@ -1071,12 +1040,12 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         from mpl_toolkits.mplot3d import Axes3D
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         elif SelectedDF.shape[1]!=3:
-            QMessageBox.critical(None,'错误','请选择三列!')
+            QtWidgets.QMessageBox.critical(None,'错误','请选择三列!')
             return 0
-        isOK = QMessageBox.question(None,'添加回归面','是否添加回归面?',QMessageBox.Ok | QMessageBox.Cancel,QMessageBox.Cancel)
+        isOK = QtWidgets.QMessageBox.question(None,'添加回归面','是否添加回归面?',QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel,QtWidgets.QMessageBox.Cancel)
         tempFigDlg = Ui_FigDlg()
         Fig = tempFigDlg.PlotWidget.Canvas.Fig
         Axes = Axes3D(Fig)
@@ -1085,7 +1054,7 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         yData = SelectedDF.iloc[:,1].values
         zData = SelectedDF.iloc[:,2].values
         Axes.scatter(xData,yData,zData,label='散点图')
-        if isOK==QMessageBox.Ok:
+        if isOK==QtWidgets.QMessageBox.Ok:
             xRegressData = np.ones((SelectedDF.shape[0],3))
             xRegressData[:,1] = xData
             xRegressData[:,2] = yData
@@ -1102,7 +1071,7 @@ class MatplotlibResultDlg(PlotlyResultDlg):
     def plotHeatMap(self):
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None:
-            QMessageBox.critical(None,'错误',Msg)
+            QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         SelectedIndex = self._getDataIndex(list(SelectedDF.index))
         SelectedDF = SelectedDF.loc[SelectedIndex]
@@ -1125,7 +1094,7 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         PlotMode = ['Line']*nCol
         PlotAxes = ['左轴']*nCol
         PlotArgs = [{} for i in range(nCol)]
-        DataTable = QTableWidget()
+        DataTable = QtWidgets.QTableWidget()
         DataTable.setRowCount(nCol)
         DataTable.setVerticalHeaderLabels([str(iCol) for iCol in plot_data.columns])
         DataTable.setColumnCount(6)
@@ -1136,22 +1105,22 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         AllColor = ['默认','blue','red','cyan','green','black','magenta','yellow','white']
         AllMarkers = ['默认','.',',','+','x','*','o','v','^','<','>','1','2','3','4','s','p','h','H','D','d','|','-']
         for i in range(nCol):
-            iComboBox = QComboBox(None)
+            iComboBox = QtWidgets.QComboBox(None)
             iComboBox.addItems(AllModes)
             DataTable.setCellWidget(i,0,iComboBox)
-            iComboBox = QComboBox(None)
+            iComboBox = QtWidgets.QComboBox(None)
             iComboBox.addItems(AllAxes)
             DataTable.setCellWidget(i,1,iComboBox)
-            iComboBox = QComboBox(None)
+            iComboBox = QtWidgets.QComboBox(None)
             iComboBox.addItems(AllColor)
             DataTable.setCellWidget(i,2,iComboBox)
-            iComboBox = QComboBox(None)
+            iComboBox = QtWidgets.QComboBox(None)
             iComboBox.addItems(AllLineStyles)
             DataTable.setCellWidget(i,3,iComboBox)
-            iComboBox = QComboBox(None)
+            iComboBox = QtWidgets.QComboBox(None)
             iComboBox.addItems(AllMarkers)
             DataTable.setCellWidget(i,4,iComboBox)
-            iComboBox = QDoubleSpinBox(None)
+            iComboBox = QtWidgets.QDoubleSpinBox(None)
             iComboBox.setRange(0.1,10)
             iComboBox.setSingleStep(0.1)
             iComboBox.setValue(2.0)
@@ -1172,7 +1141,7 @@ class MatplotlibResultDlg(PlotlyResultDlg):
                 PlotArgs[i]['marker'] = iMarker
             PlotArgs[i]['linewidth'] = DataTable.cellWidget(i,5).value()
         return (PlotMode, PlotAxes, PlotArgs)
-    @pyqtSlot()
+    @QtCore.pyqtSlot()
     def on_PlotButton_clicked(self):
         # 获取绘图数据
         PlotResult,Msg = self.getSelectedDF(all_num=True)
@@ -1185,7 +1154,7 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         # 设置要绘制的索引
         xData = self._getDataIndex(PlotResult.index)
         if not xData:
-            QMessageBox.critical(None,'错误','绘图数据为空!')
+            QtWidgets.QMessageBox.critical(None,'错误','绘图数据为空!')
             return 0
         PlotResult = PlotResult.loc[xData]
         if (not PlotResult.index.is_mixed()) and isinstance(PlotResult.index[0], (dt.datetime, dt.date)):# index 是日期或者时间
@@ -1263,7 +1232,7 @@ if __name__=='__main__':
                              "a2":pd.DataFrame(np.random.rand(10,2))},
                         "b":pd.DataFrame(['a']*150,columns=['c'])},
                 "Bar2":pd.DataFrame(np.random.randn(3,2),index=[1,"b2","b3"])}
-    app = QApplication(sys.argv)
+    app = QtWidgets.QApplication(sys.argv)
     #TestWindow = PlotlyResultDlg(None, TestData)
     TestWindow = MatplotlibResultDlg(None, TestData)
     TestWindow.show()

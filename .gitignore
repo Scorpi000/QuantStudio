@@ -3,8 +3,10 @@ dist/
 QuantStudio.egg-info/
 QuantStudio/Backup/
 QuantStudio/Cache/
+QuantStudio/Tools/QtGUI/.eric6project/
 __*/
 _eric*/
+*.e4p
 *.bak
 *.dat
 *.dir
