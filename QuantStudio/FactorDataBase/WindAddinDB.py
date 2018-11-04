@@ -4,6 +4,7 @@ import sys
 import re
 import os
 import datetime as dt
+import tempfile
 
 import numpy as np
 import pandas as pd
@@ -14,7 +15,7 @@ from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.FileFun import readJSONFile, listDirFile
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
 from QuantStudio.Tools.DateTimeFun import getDateSeries, getDateTimeSeries
-from QuantStudio import __QS_Error__, __QS_MainPath__, __QS_LibPath__, __QS_CachePath__
+from QuantStudio import __QS_Error__, __QS_MainPath__, __QS_LibPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable, _adjustDateTime
 
 class _WSD(FactorTable):
@@ -82,7 +83,6 @@ class WindAddinDB(FactorDB):
     NavigatorPath = File("", arg_type="File", label="代码生成器路径", order=0)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self.w = None
-        self._LogFilePath = None
         super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"WindDBConfig.json" if config_file is None else config_file), **kwargs)
         self.Name = "WindAddinDB"
         return
@@ -126,10 +126,7 @@ class WindAddinDB(FactorDB):
             except:
                 self.w = None
                 raise __QS_Error__("没有安装 Wind 插件, 或者插件安装失败!")
-        AllFileNames = listDirFile(__QS_CachePath__, "log")
-        FileName = genAvailableName("WindAddinLogFile", AllFileNames)
-        self._LogFilePath = __QS_CachePath__+os.sep+FileName+".log"
-        with open(self._LogFilePath, "a") as LogFile:
+        with tempfile.TemporaryFile() as LogFile:
             Stdout = sys.stdout
             sys.stdout = LogFile
             Data = self.w.start()

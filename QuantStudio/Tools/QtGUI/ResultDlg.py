@@ -2,6 +2,7 @@
 import os
 import sys
 import datetime as dt
+import tempfile
 
 from PyQt5 import QtWidgets, QtCore, QtGui
 
@@ -21,7 +22,7 @@ import matplotlib.cm
 import plotly
 from traits.api import File, Enum, List
 
-from QuantStudio import __QS_CachePath__, __QS_MainPath__, __QS_Error__, __QS_Object__
+from QuantStudio import __QS_MainPath__, __QS_Error__, __QS_Object__
 from QuantStudio.Tools.FileFun import writeDictSeries2CSV, exportOutput2Excel, exportOutput2CSV, readCSV2StdDF
 from QuantStudio.Tools.DataTypeFun import getNestedDictItems, getNestedDictValue, removeNestedDictItem
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName, joinList
@@ -428,8 +429,9 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
         yData = SelectedDF[pd.notnull(SelectedDF)].values
         xData = np.linspace(np.nanmin(yData),np.nanmax(yData),yData.shape[0]*10)
         yNormalData = norm.pdf(xData,loc=np.nanmean(yData),scale=np.nanstd(yData))
-        GraphObj = [plotly.graph_objs.Histogram(x=yData,histnorm='probability',name='直方图',nbinsx=GroupNum),plotly.graph_objs.Scatter(x=xData,y=yNormalData,name='Normal Distribution',line={'color':'r','width':2})]
-        plotly.offline.plot({"data":GraphObj,"layout": plotly.graph_objs.Layout(title="直方图")},filename=__QS_CachePath__+os.sep+"PlotlyFig.html")
+        GraphObj = [plotly.graph_objs.Histogram(x=yData,histnorm='probability',name='直方图',nbinsx=GroupNum),plotly.graph_objs.Scatter(x=xData,y=yNormalData,name='Normal Distribution',line={'color':'rgb(255,0,0)','width':2})]
+        with tempfile.TemporaryFile() as File:
+            plotly.offline.plot({"data":GraphObj,"layout": plotly.graph_objs.Layout(title="直方图")}, filename=File.name)
         return 0
     def plotHist3D(self):# 三维直方图
         from mpl_toolkits.mplot3d import Axes3D
@@ -485,7 +487,8 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
         xNormalData = np.linspace(xData[0],xData[-1],(nData+2)*10)
         yNormalData = norm.cdf(xNormalData,loc=np.mean(xData[1:-1]),scale=np.std(xData[1:-1]))
         GraphObj.append(plotly.graph_objs.Scatter(x=xNormalData,y=yNormalData,name="Normal Distribution"))
-        plotly.offline.plot({"data":GraphObj,"layout": plotly.graph_objs.Layout(title="经验分布")},filename=__QS_CachePath__+os.sep+"PlotlyFig.html")
+        with tempfile.TemporaryFile() as File:
+            plotly.offline.plot({"data":GraphObj,"layout": plotly.graph_objs.Layout(title="经验分布")}, filename=File.name)
         return 0
     def plotScatter(self):# 二维散点图
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
@@ -520,7 +523,8 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
             xData.sort()
             yRegressData = Result.params[0]+Result.params[1]*xData
             GraphObj.append(plotly.graph_objs.Scatter(x=xData,y=yRegressData,name="回归线"))
-        plotly.offline.plot({"data":GraphObj,"layout": plotly.graph_objs.Layout(title="散点图")},filename=__QS_CachePath__+os.sep+"PlotlyFig.html")
+        with tempfile.TemporaryFile() as File:
+            plotly.offline.plot({"data":GraphObj,"layout": plotly.graph_objs.Layout(title="散点图")}, filename=File.name)
         return 0
     def plotScatter3D(self):# 三维散点图
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
@@ -547,7 +551,8 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
             X,Y = np.meshgrid(xData,yData)
             zRegressData = Result.params[0]+Result.params[1]*X+Result.params[2]*Y
             GraphObj.append(plotly.graph_objs.Surface(x=X,y=Y,z=zRegressData,colorscale='Viridis',name='回归面'))
-        plotly.offline.plot({"data":GraphObj,"layout": plotly.graph_objs.Layout(title="3D散点图")},filename=__QS_CachePath__+os.sep+"PlotlyFig.html")
+        with tempfile.TemporaryFile() as File:
+            plotly.offline.plot({"data":GraphObj,"layout": plotly.graph_objs.Layout(title="3D散点图")}, filename=File.name)
         return 0
     def plotHeatMap(self):# 热图
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
@@ -561,7 +566,8 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
         SelectedDF = SelectedDF.loc[SelectedIndex]
         SelectedIndex = [str(iIndex) for iIndex in SelectedIndex]
         GraphObj = [plotly.graph_objs.Heatmap(z=SelectedDF.astype('float').values)]
-        plotly.offline.plot({"data":GraphObj,"layout": plotly.graph_objs.Layout(title="热图")},filename=__QS_CachePath__+os.sep+"PlotlyFig.html")
+        with tempfile.TemporaryFile() as File:
+            plotly.offline.plot({"data":GraphObj,"layout": plotly.graph_objs.Layout(title="热图")},filename=File.name)
         return 0
     # -----------------------------------数据运算--------------------------------
     def calStatistics(self):# 统计量
@@ -892,7 +898,8 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
                 iGraphObj = plotly.graph_objs.Scatter(x=xData, y=yData.values, name=str(yData.name), fill='tonexty', **iArgs)
             GraphObj.append(iGraphObj)
         Fig = plotly.graph_objs.Figure(data=GraphObj, layout=plotly.graph_objs.Layout(**LayoutDict))
-        plotly.offline.plot(Fig, filename=__QS_CachePath__+os.sep+"PlotlyFig.html")
+        with tempfile.TemporaryFile() as File:
+            plotly.offline.plot(Fig, filename=File.name)
         return 0
     @QtCore.pyqtSlot()
     def on_ExportButton_clicked(self):
@@ -1254,8 +1261,8 @@ if __name__=='__main__':
                         "b":pd.DataFrame(['a']*150,columns=['c'])},
                 "Bar2":pd.DataFrame(np.random.randn(3,2),index=[1,"b2","b3"])}
     app = QtWidgets.QApplication(sys.argv)
-    #TestWindow = PlotlyResultDlg(None, TestData)
-    TestWindow = MatplotlibResultDlg(None, TestData)
+    TestWindow = PlotlyResultDlg(None, TestData)
+    #TestWindow = MatplotlibResultDlg(None, TestData)
     TestWindow.show()
     app.exec_()
     sys.exit()

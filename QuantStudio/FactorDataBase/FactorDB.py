@@ -8,6 +8,7 @@ import pickle
 import gc
 import shelve
 import datetime as dt
+import tempfile
 from multiprocessing import Process, Queue, Lock, Event, cpu_count
 
 import numpy as np
@@ -15,7 +16,7 @@ import pandas as pd
 from progressbar import ProgressBar
 from traits.api import Instance, Str, File, List, Int, Bool, Directory, Enum, ListStr
 
-from QuantStudio import __QS_Object__, __QS_Error__, __QS_CachePath__
+from QuantStudio import __QS_Object__, __QS_Error__
 from QuantStudio.Tools.IDFun import testIDFilterStr
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName, partitionList, startMultiProcess
 from QuantStudio.Tools.FileFun import listDirDir
@@ -606,10 +607,9 @@ class FactorTable(__QS_Object__):
             self.OperationMode._FactorDict[iFactorName] = iFactor
         self.OperationMode._FactorDict = self._genFactorDict(self.OperationMode._Factors, self.OperationMode._FactorDict)
         # 生成原始数据和缓存数据存储目录
-        self.OperationMode._CacheDir = __QS_CachePath__ + os.sep + genAvailableName("FT", listDirDir(__QS_CachePath__))
-        os.mkdir(self.OperationMode._CacheDir)
-        self.OperationMode._RawDataDir = self.OperationMode._CacheDir+os.sep+"RawData"# 原始数据存放根目录
-        self.OperationMode._CacheDataDir = self.OperationMode._CacheDir+os.sep+"CacheData"# 中间数据存放根目录
+        self.OperationMode._CacheDir = tempfile.TemporaryDirectory()
+        self.OperationMode._RawDataDir = self.OperationMode._CacheDir.name+os.sep+"RawData"# 原始数据存放根目录
+        self.OperationMode._CacheDataDir = self.OperationMode._CacheDir.name+os.sep+"CacheData"# 中间数据存放根目录
         os.mkdir(self.OperationMode._RawDataDir)
         os.mkdir(self.OperationMode._CacheDataDir)
         if self.OperationMode.SubProcessNum==0:# 串行模式
@@ -685,11 +685,7 @@ class FactorTable(__QS_Object__):
         self.OperationMode._isStarted = True
         return 0
     def _exit(self):
-        #清理缓存
-        try:
-            shutil.rmtree(self.OperationMode._CacheDir)
-        except:
-            print("警告 : 缓存文件夹 : '%s' 清除失败, 请自行删除!" % self.OperationMode._CacheDir)
+        self.OperationMode._CacheDir = None
         self.OperationMode._isStarted = False
         return 0
     # 计算因子数据并写入因子库    

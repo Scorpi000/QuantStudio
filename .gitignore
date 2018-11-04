@@ -2,7 +2,6 @@ build/
 dist/
 QuantStudio.egg-info/
 QuantStudio/Backup/
-QuantStudio/Cache/
 QuantStudio/Tools/QtGUI/.eric6project/
 __*/
 _eric*/
@@ -14,4 +13,3 @@ _eric*/
 *.hdf5
 *.wpr
 *.wpu
-pyuic5.bat
