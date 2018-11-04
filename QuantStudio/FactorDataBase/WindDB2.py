@@ -100,6 +100,16 @@ class _CalendarTable(_DBTable):
     @property
     def FactorNames(self):
         return ["交易日"]
+    def getFactorMetaData(self, factor_names=None, key=None):
+        if factor_names is None: factor_names = self.FactorNames
+        if key=="DataType":
+            return self._DataType.loc[factor_names]
+        elif key=="Description": return pd.Series(["0 or nan: 非交易日; 1: 交易日"]*len(factor_names), index=factor_names)
+        elif key is None:
+            return pd.DataFrame({"DataType": self.getFactorMetaData(factor_names, key="DataType"),
+                                 "Description": self.getFactorMetaData(factor_names, key="Description")})
+        else:
+            return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
     # 返回给定时点 idt 有交易的交易所列表
     # 如果 idt 为 None, 将返回表中的所有交易所
     # 忽略 ifactor_name
@@ -397,7 +407,7 @@ class _ConstituentTable(_DBTable):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         if key=="DataType":
             return pd.Series("double", index=factor_names)
-        elif key=="Description": return FactorInfo["Description"].loc[factor_names]
+        elif key=="Description": return pd.Series(["0 or nan: 非成分; 1: 是成分"]*len(factor_names), index=factor_names)
         elif key is None:
             return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType"),
                                  "Description":self.getFactorMetaData(factor_names, key="Description")})

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'C:\HST\QuantStudio\QuantStudio\Tools\QtGUI\ResultDlg.ui'
+# Form implementation generated from reading ui file 'D:\Project\QuantStudio\QuantStudio\Tools\QtGUI\ResultDlg.ui'
 #
 # Created by: PyQt5 UI code generator 5.11.3
 #

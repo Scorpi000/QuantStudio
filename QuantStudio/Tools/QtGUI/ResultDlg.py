@@ -12,6 +12,9 @@ import statsmodels.api as sm
 from matplotlib.pylab import mpl
 mpl.rcParams['font.sans-serif'] = ['SimHei']
 mpl.rcParams['axes.unicode_minus'] = False
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 plt.style.use('ggplot')
 import matplotlib.cm
@@ -25,7 +28,6 @@ from QuantStudio.Tools.AuxiliaryFun import genAvailableName, joinList
 from QuantStudio.Tools import StrategyTestFun
 from QuantStudio.Tools.QtGUI.QtGUIFun import populateTableWithDataFrame, populateQTreeWidgetWithNestedDict
 from QuantStudio.Tools.QtGUI.Ui_ResultDlg import Ui_ResultDlg
-from QuantStudio.Tools.QtGUI.Ui_FigDlg import Ui_FigDlg
 
 # 展示的数据类型 output: 嵌套的字典, 叶节点是 DataFrame
 
@@ -127,7 +129,7 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
         self.MainResultTree.addAction(QtWidgets.QAction('重命名',self.MainResultTree, triggered=self.renameVar))
         self.MainResultTree.addAction(QtWidgets.QAction('删除变量',self.MainResultTree, triggered=self.deleteVar))
         self.MainResultTree.addAction(QtWidgets.QAction('导出CSV',self.MainResultTree, triggered=self.toCSV))
-        self.MainResultTree.addAction(QtWidgets.QAction('导出Excel',self.MainResultTree, triggered=self.toExcel))
+        #self.MainResultTree.addAction(QtWidgets.QAction('导出Excel',self.MainResultTree, triggered=self.toExcel))
         self.MainResultTree.addAction(QtWidgets.QAction('导入CSV',self.MainResultTree, triggered=self.fromCSV))
         # 设置 MainResultTable 的弹出菜单
         self.MainResultTable.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
@@ -340,7 +342,7 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
             ParentOutput = self.Output
             ParentKeyList = ()
         else:
-            ParentKeyList = Parent.data(0, Qt.UserRole)
+            ParentKeyList = Parent.data(0, QtCore.Qt.UserRole)
             ParentOutput = getNestedDictValue(self.Output, ParentKeyList)
         if (VarName in ParentOutput) and (QtWidgets.QMessageBox.Ok!=QtWidgets.QMessageBox.question(None,'警告',"变量: "+VarName+", 重名, 是否覆盖?", QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel, QtWidgets.QMessageBox.Cancel)):
             return 0
@@ -454,12 +456,12 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
         dx = 0.5 * np.ones_like(zpos)
         dy = dx.copy()
         dz = hist.flatten()
-        tempFigDlg = Ui_FigDlg()
-        Fig = tempFigDlg.PlotWidget.Canvas.Fig
+        tempFigDlg = _MatplotlibWidget()
+        Fig = tempFigDlg.Mpl.Fig
         Axes = Axes3D(Fig)
         Axes.bar3d(xpos, ypos, zpos, dx, dy, dz, color='b', zsort='average')
-        tempFigDlg.PlotWidget.Canvas.draw()
-        tempFigDlg.exec_()
+        tempFigDlg.Mpl.draw()
+        tempFigDlg.show()
         return 0    
     def plotCDF(self):# 经验分布图
         SelectedColumn = self.getSelectedColumns()
@@ -772,17 +774,20 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
     # -----------------------------------面板操作----------------------------------
     def getSelectedColumns(self):
         SelectedIndexes = self.MainResultTable.selectedIndexes()
-        SelectedColumns = []
         nRow = self.MainResultTable.rowCount()
-        if nRow==0:
-            return []
-        for i in range(0,len(SelectedIndexes),nRow):
-            SelectedColumns.append(SelectedIndexes[i].column())
+        if nRow==0: return []
+        SelectedColumns = []
+        nSelectedIndexes = len(SelectedIndexes)
+        if (nSelectedIndexes==1) or (SelectedIndexes[0].column()!=SelectedIndexes[1].column()):
+            for i in range(0, int(nSelectedIndexes/nRow)):
+                SelectedColumns.append(SelectedIndexes[i].column())
+        else:
+            for i in range(0, nSelectedIndexes, nRow):
+                SelectedColumns.append(SelectedIndexes[i].column())
         return SelectedColumns
     def getSelectedDF(self, all_num=True):
         SelectedColumns = self.getSelectedColumns()
-        if SelectedColumns==[]:
-            return (None,'没有选中数据列!')
+        if SelectedColumns==[]: return (None,'没有选中数据列!')
         SelectedDF = self.CurDF.iloc[:,SelectedColumns].copy()
         if all_num:
             try:
@@ -909,6 +914,24 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
             return self.populateMainResultTable()
         return 0
 # 基于 matplotlib 绘图的 ResultDlg
+class _MplCanvas(FigureCanvas):
+    def __init__(self, parent=None, width=5, height=4, dpi=150):
+        self.Fig = Figure(figsize=(width, height), dpi=dpi)
+        #self.Axes = self.Fig.add_subplot(111)
+        #self.Axes.hold(False)
+        FigureCanvas.__init__(self, self.Fig)
+        FigureCanvas.setSizePolicy(self,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        FigureCanvas.updateGeometry(self)
+class _MatplotlibWidget(QtWidgets.QWidget):
+    def __init__(self, parent=None):
+        super(_MatplotlibWidget, self).__init__(parent)
+        self.Layout = QtWidgets.QVBoxLayout(self)
+        self.Mpl = _MplCanvas(self)
+        self.MplNTB = NavigationToolbar(self.Mpl, self)
+        self.Layout.addWidget(self.Mpl)
+        self.Layout.addWidget(self.MplNTB)
+        self.setLayout(self.Layout)
+        
 class MatplotlibResultDlg(PlotlyResultDlg):
     def plotHist(self):
         SelectedColumn = self.getSelectedColumns()
@@ -921,19 +944,18 @@ class MatplotlibResultDlg(PlotlyResultDlg):
             return 0
         SelectedDF = SelectedDF.iloc[:,0]
         GroupNum,isOK = QtWidgets.QInputDialog.getInt(None,'获取分组数','分组数',value=10,min=1,max=1000,step=1)
-        if not isOK:
-            return 0
-        tempFigDlg = Ui_FigDlg()
-        Fig = tempFigDlg.PlotWidget.Canvas.Fig
+        if not isOK: return 0
+        tempFigDlg = _MatplotlibWidget()
+        Fig = tempFigDlg.Mpl.Fig
         Axes = Fig.add_subplot(111)
         yData = SelectedDF[pd.notnull(SelectedDF)].values
         xData = np.linspace(np.min(yData),np.max(yData),len(yData)*10)
         yNormalData = norm.pdf(xData,loc=np.mean(yData),scale=np.std(yData))
-        Axes.hist(yData,GroupNum,normed=True,label='直方图')
-        Axes.plot(xData,yNormalData,label='Normal Distribution',linewidth=2,color='r')
-        Axes.legend(loc='upper left',shadow=True)
-        tempFigDlg.PlotWidget.Canvas.draw()
-        tempFigDlg.exec_()
+        Axes.hist(yData, GroupNum, normed=True, label='直方图', color="b")
+        Axes.plot(xData, yNormalData, label='Normal Distribution', linewidth=2, color='r')
+        Axes.legend(loc='upper left', shadow=True)
+        tempFigDlg.Mpl.draw()
+        tempFigDlg.show()
         return 0
     def plotHist3D(self):
         from mpl_toolkits.mplot3d import Axes3D
@@ -949,8 +971,7 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         xData = SelectedDF.iloc[:,0].astype('float').values
         yData = SelectedDF.iloc[:,1].astype('float').values
         GroupNum,isOK = QtWidgets.QInputDialog.getInt(None,'获取分组数','分组数',value=10,min=1,max=1000,step=1)
-        if not isOK:
-            return 0
+        if not isOK: return 0
         hist, xedges, yedges = np.histogram2d(xData, yData, bins=GroupNum)
         elements = (len(xedges) - 1) * (len(yedges) - 1)
         xpos, ypos = np.meshgrid(xedges[:-1]+0.25, yedges[:-1]+0.25)
@@ -960,12 +981,12 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         dx = 0.5 * np.ones_like(zpos)
         dy = dx.copy()
         dz = hist.flatten()
-        tempFigDlg = Ui_FigDlg()
-        Fig = tempFigDlg.PlotWidget.Canvas.Fig
+        tempFigDlg = _MatplotlibWidget()
+        Fig = tempFigDlg.Mpl.Fig
         Axes = Axes3D(Fig)
         Axes.bar3d(xpos, ypos, zpos, dx, dy, dz, color='b', zsort='average')
-        tempFigDlg.PlotWidget.Canvas.draw()
-        tempFigDlg.exec_()
+        tempFigDlg.Mpl.draw()
+        tempFigDlg.show()
         return 0    
     def plotCDF(self):
         SelectedColumn = self.getSelectedColumns()
@@ -977,8 +998,8 @@ class MatplotlibResultDlg(PlotlyResultDlg):
             QtWidgets.QMessageBox.critical(None,'错误',Msg)
             return 0
         SelectedDF = SelectedDF.iloc[:,0]
-        tempFigDlg = Ui_FigDlg()
-        Fig = tempFigDlg.PlotWidget.Canvas.Fig
+        tempFigDlg = _MatplotlibWidget()
+        Fig = tempFigDlg.Mpl.Fig
         Axes = Fig.add_subplot(111)
         xData = SelectedDF[pd.notnull(SelectedDF)].values
         xData.sort()
@@ -991,10 +1012,10 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         Axes.plot(xData,yData,label='经验分布函数',linewidth=2,color='b')
         xNormalData = np.linspace(xData[0],xData[-1],(nData+2)*10)
         yNormalData = norm.cdf(xNormalData,loc=np.mean(xData[1:-1]),scale=np.std(xData[1:-1]))
-        Axes.plot(xNormalData,yNormalData,label='Normal Distribution',linewidth=2,color='r')
+        Axes.plot(xNormalData, yNormalData, label='Normal Distribution', linewidth=2, color='r')
         Axes.legend(loc='upper left',shadow=True)
-        tempFigDlg.PlotWidget.Canvas.draw()
-        tempFigDlg.exec_()
+        tempFigDlg.Mpl.draw()
+        tempFigDlg.show()
         return 0
     def plotScatter(self):
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
@@ -1005,8 +1026,8 @@ class MatplotlibResultDlg(PlotlyResultDlg):
             QtWidgets.QMessageBox.critical(None,'错误','请选择一到三列!')
             return 0
         isOK = QtWidgets.QMessageBox.question(None,'添加回归线','是否添加回归线?',QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel,QtWidgets.QMessageBox.Cancel)
-        tempFigDlg = Ui_FigDlg()
-        Fig = tempFigDlg.PlotWidget.Canvas.Fig
+        tempFigDlg = _MatplotlibWidget()
+        Fig = tempFigDlg.Mpl.Fig
         Axes = Fig.add_subplot(111)
         SelectedDF.dropna()
         if SelectedDF.shape[1]==1:
@@ -1033,8 +1054,8 @@ class MatplotlibResultDlg(PlotlyResultDlg):
             yRegressData = Result.params[0]+Result.params[1]*xData
             Axes.plot(xData,yRegressData,label='回归线',color='r',linewidth=2)
         Axes.legend(loc='upper left',shadow=True)
-        tempFigDlg.PlotWidget.Canvas.draw()
-        tempFigDlg.exec_()
+        tempFigDlg.Mpl.draw()
+        tempFigDlg.show()
         return 0
     def plotScatter3D(self):
         from mpl_toolkits.mplot3d import Axes3D
@@ -1046,8 +1067,8 @@ class MatplotlibResultDlg(PlotlyResultDlg):
             QtWidgets.QMessageBox.critical(None,'错误','请选择三列!')
             return 0
         isOK = QtWidgets.QMessageBox.question(None,'添加回归面','是否添加回归面?',QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel,QtWidgets.QMessageBox.Cancel)
-        tempFigDlg = Ui_FigDlg()
-        Fig = tempFigDlg.PlotWidget.Canvas.Fig
+        tempFigDlg = _MatplotlibWidget()
+        Fig = tempFigDlg.Mpl.Fig
         Axes = Axes3D(Fig)
         SelectedDF.dropna()
         xData = SelectedDF.iloc[:,0].values
@@ -1065,8 +1086,8 @@ class MatplotlibResultDlg(PlotlyResultDlg):
             X,Y = np.meshgrid(xData,yData)
             zRegressData = Result.params[0]+Result.params[1]*X+Result.params[2]*Y
             Axes.plot_surface(X,Y,zRegressData,label='回归面')
-        tempFigDlg.PlotWidget.Canvas.draw()
-        tempFigDlg.exec_()
+        tempFigDlg.Mpl.draw()
+        tempFigDlg.show()
         return 0
     def plotHeatMap(self):
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
@@ -1076,8 +1097,8 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         SelectedIndex = self._getDataIndex(list(SelectedDF.index))
         SelectedDF = SelectedDF.loc[SelectedIndex]
         SelectedIndex = [str(iIndex) for iIndex in SelectedIndex]
-        tempFigDlg = Ui_FigDlg()
-        Fig = tempFigDlg.PlotWidget.Canvas.Fig
+        tempFigDlg = _MatplotlibWidget()
+        Fig = tempFigDlg.Mpl.Fig
         Axes = Fig.add_subplot(111)
         HeatMap = Axes.pcolor(SelectedDF.astype('float').values, cmap=matplotlib.cm.Reds)
         Axes.set_xticks(np.arange(SelectedDF.shape[0])+0.5, minor=False)
@@ -1086,8 +1107,8 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         Axes.xaxis.tick_top()
         Axes.set_xticklabels(SelectedIndex, minor=False)
         Axes.set_yticklabels(list(SelectedDF.columns), minor=False)
-        tempFigDlg.PlotWidget.Canvas.draw()
-        tempFigDlg.exec_()
+        tempFigDlg.Mpl.draw()
+        tempFigDlg.show()
         return 0
     def _getPlotArgs(self, plot_data):
         nCol = plot_data.shape[1]
@@ -1176,8 +1197,8 @@ class MatplotlibResultDlg(PlotlyResultDlg):
                 xTickLabels.append(str(iData))
                 if isinstance(iData, str): isStr = True
             if isStr: xData = np.arange(0, PlotResult.shape[0])
-        FigDlg = Ui_FigDlg()
-        Fig = FigDlg.PlotWidget.Canvas.Fig
+        FigDlg = _MatplotlibWidget()
+        Fig = FigDlg.Mpl.Fig
         if ('左轴' in PlotAxes):
             LeftAxe = Fig.add_subplot(111)
             if ('右轴' in PlotAxes):
@@ -1219,8 +1240,8 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         if '右轴' in PlotAxes:
             RightAxe.legend(loc='upper right',shadow=True)
         plt.title(','.join([str(iCol) for iCol in PlotResult.columns]))
-        FigDlg.PlotWidget.Canvas.draw()
-        FigDlg.exec_()
+        FigDlg.Mpl.draw()
+        FigDlg.show()
         return 0
 
 if __name__=='__main__':

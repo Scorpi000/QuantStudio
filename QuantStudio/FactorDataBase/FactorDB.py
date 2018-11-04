@@ -157,8 +157,8 @@ class _ErgodicMode(__QS_Object__):
         if "_CacheDataProcess" in state: state["_CacheDataProcess"] = None
         return state
 # 基于 mmap 的缓冲数据, 如果开启遍历模式, 那么限制缓冲的因子个数, ID 个数, 时间点长度, 缓冲区里是因子的部分数据
-def _prepareMMAPFactorCacheData(ft):
-    CacheData, CacheDTs, Msg, MMAPCacheData, DTNum = {}, [], None, None, len(ft.ErgodicMode._DateTimes)
+def _prepareMMAPFactorCacheData(ft, mmap_cache):
+    CacheData, CacheDTs, MMAPCacheData, DTNum = {}, [], mmap_cache, len(ft.ErgodicMode._DateTimes)
     while True:
         Task = ft.ErgodicMode._Queue2SubProcess.get()# 获取任务
         if Task is None: break# 结束进程
@@ -166,11 +166,11 @@ def _prepareMMAPFactorCacheData(ft):
             CacheDataByte = pickle.dumps(CacheData)
             DataLen = len(CacheDataByte)
             if os.name=='nt': MMAPCacheData = mmap.mmap(-1, DataLen, tagname=ft.ErgodicMode._TagName)
-            else: Msg = MMAPCacheData = mmap.mmap(-1, DataLen)
+            else: MMAPCacheData.resize(DataLen)
             MMAPCacheData.seek(0)
             MMAPCacheData.write(CacheDataByte)
             CacheDataByte = None
-            ft.ErgodicMode._Queue2MainProcess.put((DataLen, Msg))
+            ft.ErgodicMode._Queue2MainProcess.put(DataLen)
             gc.collect()
         elif Task[0] is None:# 调整缓存区
             NewFactors, PopFactors = Task[1]
@@ -182,7 +182,7 @@ def _prepareMMAPFactorCacheData(ft):
                 else:
                     CacheData.update({iFactorName: pd.DataFrame(index=CacheDTs, columns=ft.ErgodicMode._IDs) for iFactorName in NewFactors})
         else:# 准备缓存区
-            Msg = MMAPCacheData = None# 这句话必须保留...诡异
+            MMAPCacheData = mmap_cache# 这句话必须保留...诡异
             CurInd = Task[0] + ft.ErgodicMode.ForwardPeriod + 1
             if CurInd < DTNum:# 未到结尾处, 需要再准备缓存数据
                 OldCacheDTs = set(CacheDTs)
@@ -205,8 +205,8 @@ def _prepareMMAPFactorCacheData(ft):
                     NewCacheData = None
     return 0
 # 基于 mmap 的 ID 缓冲的因子表, 如果开启遍历模式, 那么限制缓冲的 ID 个数和时间点长度, 缓冲区里是 ID 的部分数据
-def _prepareMMAPIDCacheData(ft):
-    CacheData, CacheDTs, Msg, MMAPCacheData, DTNum = {}, [], None, None, len(ft.ErgodicMode._DateTimes)
+def _prepareMMAPIDCacheData(ft, mmap_cache):
+    CacheData, CacheDTs, MMAPCacheData, DTNum = {}, [], mmap_cache, len(ft.ErgodicMode._DateTimes)
     while True:
         Task = ft.ErgodicMode._Queue2SubProcess.get()# 获取任务
         if Task is None: break# 结束进程
@@ -214,11 +214,11 @@ def _prepareMMAPIDCacheData(ft):
             CacheDataByte = pickle.dumps(CacheData)
             DataLen = len(CacheDataByte)
             if os.name=='nt': MMAPCacheData = mmap.mmap(-1, DataLen, tagname=ft.ErgodicMode._TagName)
-            else: Msg = MMAPCacheData = mmap.mmap(-1, DataLen)
+            else: MMAPCacheData.resize(DataLen)
             MMAPCacheData.seek(0)
             MMAPCacheData.write(CacheDataByte)
             CacheDataByte = None
-            ft.ErgodicMode._Queue2MainProcess.put((DataLen, Msg))
+            ft.ErgodicMode._Queue2MainProcess.put(DataLen)
             gc.collect()
         elif Task[0] is None:# 调整缓存区数据
             NewID, PopID = Task[1]
@@ -229,7 +229,7 @@ def _prepareMMAPIDCacheData(ft):
                 else:
                     CacheData[NewID] = pd.DataFrame(index=CacheDTs, columns=ft.FactorNames)
         else:# 准备缓冲区
-            Msg = MMAPCacheData = None# 这句话必须保留...诡异
+            MMAPCacheData = mmap_cache# 这句话必须保留...诡异
             CurInd = Task[0] + ft.ErgodicMode.ForwardPeriod + 1
             if CurInd<DTNum:# 未到结尾处, 需要再准备缓存数据
                 OldCacheDTs = set(CacheDTs)
@@ -499,9 +499,14 @@ class FactorTable(__QS_Object__):
         self.ErgodicMode._IDReadNum = pd.Series()# ID读取次数, pd.Series(读取次数, index=self.FactorNames)
         self.ErgodicMode._Queue2SubProcess = Queue()# 主进程向数据准备子进程发送消息的管道
         self.ErgodicMode._Queue2MainProcess = Queue()# 数据准备子进程向主进程发送消息的管道
-        self.ErgodicMode._TagName = (str(uuid.uuid1()) if os.name=="nt" else None)# 共享内存的 tag
-        if self.ErgodicMode.CacheMode=="因子": self.ErgodicMode._CacheDataProcess = Process(target=_prepareMMAPFactorCacheData, args=(self, ), daemon=True)
-        else: self.ErgodicMode._CacheDataProcess = Process(target=_prepareMMAPIDCacheData, args=(self, ), daemon=True)
+        if os.name=="nt":
+            self.ErgodicMode._TagName = str(uuid.uuid1())# 共享内存的 tag
+            self._MMAPCacheData = None# 当前共享内存缓冲区
+        else:
+            self.ErgodicMode._TagName = None# 共享内存的 tag
+            self._MMAPCacheData = mmap.mmap(-1, 1)# 当前共享内存缓冲区
+        if self.ErgodicMode.CacheMode=="因子": self.ErgodicMode._CacheDataProcess = Process(target=_prepareMMAPFactorCacheData, args=(self, self._MMAPCacheData), daemon=True)
+        else: self.ErgodicMode._CacheDataProcess = Process(target=_prepareMMAPIDCacheData, args=(self, self._MMAPCacheData), daemon=True)
         self.ErgodicMode._CacheDataProcess.start()
         self.ErgodicMode._isStarted = True
         return 0
@@ -513,9 +518,11 @@ class FactorTable(__QS_Object__):
         self.ErgodicMode._CurInd = PreInd + np.sum(self.ErgodicMode._DateTimes[PreInd+1:]<=idt)
         if (self.ErgodicMode._CurInd>-1) and ((not self.ErgodicMode._CacheDTs) or (self.ErgodicMode._DateTimes[self.ErgodicMode._CurInd]>self.ErgodicMode._CacheDTs[-1])):# 需要读入缓冲区的数据
             self.ErgodicMode._Queue2SubProcess.put((None, None))
-            DataLen, Msg = self.ErgodicMode._Queue2MainProcess.get()
+            DataLen = self.ErgodicMode._Queue2MainProcess.get()
             if os.name=="nt": MMAPCacheData = mmap.mmap(-1, DataLen, tagname=self.ErgodicMode._TagName)# 当前共享内存缓冲区
-            else: MMAPCacheData, Msg = Msg, None
+            else:
+                MMAPCacheData = self._MMAPCacheData
+                MMAPCacheData.resize(DataLen)
             if self.ErgodicMode._CurInd==PreInd+1:# 没有跳跃, 连续型遍历
                 self.ErgodicMode._Queue2SubProcess.put((self.ErgodicMode._CurInd, None))
                 self.ErgodicMode._CacheDTs = self.ErgodicMode._DateTimes[max((0, self.ErgodicMode._CurInd-self.ErgodicMode.BackwardPeriod)):min((self.ErgodicMode._DTNum, self.ErgodicMode._CurInd+self.ErgodicMode.ForwardPeriod+1))].tolist()
@@ -534,6 +541,7 @@ class FactorTable(__QS_Object__):
         self.ErgodicMode._CacheDataProcess = None
         self.ErgodicMode._isStarted = False
         self.ErgodicMode._CurDT = None
+        self._MMAPCacheData = None
         return 0
     def __del__(self):
         self.end()

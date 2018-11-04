@@ -62,9 +62,10 @@ class MatlabPC(PortfolioConstructor):
         elif self.OptimObjective.Type=="最大分散化目标": self._MatlabScript = "solveMaxDiversification"
         else: raise __QS_Error__("不支持的优化目标: '%s'" % self.OptimObjective.Type)
         return super().init()
-    # 整理选项参数
     def _genOption(self):
-        return {"Display":"0", "Solver":"Default"}
+        Options = {"Display":"0", "Solver":"Default"}
+        Options.update(self.OptimOption)
+        return Options
     # 调用 MATLAB 求解优化问题
     def _solve(self, nvar, prepared_objective, prepared_constraints, prepared_option):
         self._startEng()
