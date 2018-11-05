@@ -11,12 +11,18 @@ import pandas as pd
 from traits.api import HasTraits
 from traitsui.api import Item, View
 from traitsui.menu import OKButton, CancelButton
-from matplotlib.pylab import mpl
-mpl.rcParams['font.sans-serif'] = ['SimHei']
-mpl.rcParams['axes.unicode_minus'] = False
 
 __QS_MainPath__ = os.path.split(os.path.realpath(__file__))[0]
 __QS_LibPath__ = __QS_MainPath__+os.sep+"Lib"
+
+from matplotlib.pylab import mpl
+if os.name!="nt":
+    import matplotlib.font_manager as font_manager
+    prop = font_manager.FontProperties(fname=__QS_MainPath__+os.sep+"Resource"+os.sep+"simhei.ttf")
+    mpl.rcParams['font.family'] = prop.get_name()
+else:
+    mpl.rcParams['font.family'] = ["SimHei"]
+mpl.rcParams['axes.unicode_minus'] = False
 
 # Quant Studio 系统错误
 class __QS_Error__(Exception):

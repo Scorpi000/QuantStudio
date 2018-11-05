@@ -10,9 +10,9 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 import statsmodels.api as sm
-from matplotlib.pylab import mpl
-mpl.rcParams['font.sans-serif'] = ['SimHei']
-mpl.rcParams['axes.unicode_minus'] = False
+#from matplotlib.pylab import mpl
+#mpl.rcParams['font.sans-serif'] = ['SimHei']
+#mpl.rcParams['axes.unicode_minus'] = False
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
@@ -1259,10 +1259,10 @@ if __name__=='__main__':
     TestData = {"Bar1":{"a":{"a1":pd.DataFrame(np.random.rand(11,3),index=Dates[:11],columns=['b','c','d']),
                              "a2":pd.DataFrame(np.random.rand(10,2))},
                         "b":pd.DataFrame(['a']*150,columns=['c'])},
-                "Bar2":pd.DataFrame(np.random.randn(3,2),index=[1,"b2","b3"])}
+                "Bar2":pd.DataFrame(np.random.randn(3,2), index=["中文", "b2", "b3"])}
     app = QtWidgets.QApplication(sys.argv)
-    TestWindow = PlotlyResultDlg(None, TestData)
-    #TestWindow = MatplotlibResultDlg(None, TestData)
+    #TestWindow = PlotlyResultDlg(None, TestData)
+    TestWindow = MatplotlibResultDlg(None, TestData)
     TestWindow.show()
     app.exec_()
     sys.exit()
