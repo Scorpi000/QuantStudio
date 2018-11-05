@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
+import platform
 import json
 import operator
 import warnings
@@ -16,12 +17,16 @@ __QS_MainPath__ = os.path.split(os.path.realpath(__file__))[0]
 __QS_LibPath__ = __QS_MainPath__+os.sep+"Lib"
 
 from matplotlib.pylab import mpl
-if os.name!="nt":
-    import matplotlib.font_manager as font_manager
-    prop = font_manager.FontProperties(fname=__QS_MainPath__+os.sep+"Resource"+os.sep+"simhei.ttf")
-    mpl.rcParams['font.family'] = prop.get_name()
+if platform.system()=="Windows":
+    mpl.rcParams['font.sans-serif'] = ["SimHei"]
+elif platform.system()=="Darwin":
+    from matplotlib.font_manager import FontProperties
+    Font = FontProperties(fname="/Library/Fonts/Arial Unicode.ttf")
+    mpl.rcParams["font.family"] = Font.get_family()
+    mpl.rcParams["font.sans-serif"] = Font.get_name()
 else:
-    mpl.rcParams['font.family'] = ["SimHei"]
+    import matplotlib
+    matplotlib.backends.use("Qt5Agg")
 mpl.rcParams['axes.unicode_minus'] = False
 
 # Quant Studio 系统错误

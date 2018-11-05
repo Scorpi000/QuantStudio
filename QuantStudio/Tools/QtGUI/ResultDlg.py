@@ -10,9 +10,6 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 import statsmodels.api as sm
-#from matplotlib.pylab import mpl
-#mpl.rcParams['font.sans-serif'] = ['SimHei']
-#mpl.rcParams['axes.unicode_minus'] = False
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
@@ -906,12 +903,9 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
         if self.CurDF is None: return 0
         FileName = getattr(self.CurDF, "Name", "untitled")
         FilePath = QtWidgets.QFileDialog.getSaveFileName(None, "导出数据", ".."+os.sep+FileName+".csv", "Excel (*.csv)")
+        if isinstance(FilePath, tuple): FilePath = FilePath[0]
         if not FilePath: return 0
-        if isinstance(self.CurDF.iloc[0,0], dict):
-            for i,iCol in enumerate(self.CurDF.columns):
-                writeDictSeries2CSV(self.CurDF[iCol],FilePath[:-4]+"-"+str(iCol)+".csv")
-        else:
-            self.CurDF.to_csv(FilePath)
+        self.CurDF.to_csv(FilePath)
         QtWidgets.QMessageBox.information(None, "完成", "导出数据完成!")
         return 0
     @QtCore.pyqtSlot()
