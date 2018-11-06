@@ -20,10 +20,11 @@ from matplotlib.pylab import mpl
 if platform.system()=="Windows":
     mpl.rcParams['font.sans-serif'] = ["SimHei"]
 elif platform.system()=="Darwin":
-    from matplotlib.font_manager import FontProperties
-    Font = FontProperties(fname="/Library/Fonts/Arial Unicode.ttf")
-    mpl.rcParams["font.family"] = Font.get_family()
-    mpl.rcParams["font.sans-serif"] = Font.get_name()
+    if os.path.isfile("/Library/Fonts/Arial Unicode.ttf"):
+        from matplotlib.font_manager import FontProperties
+        Font = FontProperties(fname="/Library/Fonts/Arial Unicode.ttf")
+        mpl.rcParams["font.family"] = Font.get_family()
+        mpl.rcParams["font.sans-serif"] = Font.get_name()
 else:
     import matplotlib
     matplotlib.backends.use("Qt5Agg")

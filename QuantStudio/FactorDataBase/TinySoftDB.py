@@ -6,10 +6,164 @@ import datetime as dt
 
 import numpy as np
 import pandas as pd
-from traits.api import Str, Range, Directory, Password
+from traits.api import Str, Range, Directory, Password, Either, Int, Enum
 
 from QuantStudio import __QS_Error__, __QS_LibPath__, __QS_MainPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
+
+class _CalendarTable(FactorTable):
+    """交易日历因子表"""
+    @property
+    def FactorNames(self):
+        return ["交易日"]
+    def getFactorMetaData(self, factor_names=None, key=None):
+        if factor_names is None: factor_names = self.FactorNames
+        if key=="DataType": return pd.Series(["double"]*len(factor_names), index=factor_names)
+        elif key=="Description": return pd.Series(["0 or nan: 非交易日; 1: 交易日"]*len(factor_names), index=factor_names)
+        elif key is None:
+            return pd.DataFrame({"DataType": self.getFactorMetaData(factor_names, key="DataType"),
+                                 "Description": self.getFactorMetaData(factor_names, key="Description")})
+        else:
+            return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
+    # 返回交易所列表
+    def getID(self, ifactor_name=None, idt=None, args={}):
+        return ["SSE", "SZSE"]
+    # 返回交易所为 iid 的交易日列表
+    # 如果 iid 为 None, 将返回表中有记录数据的时间点序列
+    # 忽略 ifactor_name
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
+        if start_dt is None: start_dt = dt.date(1900, 1, 1)
+        if end_dt is None: end_dt = dt.date.today()
+        CodeStr = "SetSysParam(pn_cycle(), cy_day());return MarketTradeDayQk(inttodate({StartDate}), inttodate({EndDate}));"
+        CodeStr = CodeStr.format(StartDate=start_dt.strftime("%Y%m%d"), EndDate=end_dt.strftime("%Y%m%d"))
+        ErrorCode, Data, Msg = self.TSLPy.RemoteExecute(CodeStr,{})
+        if ErrorCode!=0: raise __QS_Error__("TinySoft 执行错误: "+Msg.decode("gbk"))
+        return list(map(lambda x: dt.datetime.combine(dt.date(*self.TSLPy.DecodeDate(x)), dt.time(23,59,59,999999)), Data))
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        Data = pd.DataFrame(1, index=self.getDateTime(start_dt=dts[0], end_dt=dts[-1]), columns=["SSE", "SZSE"])
+        if Data.index.intersection(dts).shape[0]==0: return pd.Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
+        Data = Data.loc[dts, ids]
+        return pd.Panel({"交易日": Data})
+class _TradeTable(FactorTable):
+    """tradetable"""
+    @property
+    def FactorNames(self):
+        return ["yclose","vol","amount","cjbs",
+                "buy1","buy2","buy3","buy4","buy5","bc1","bc2","bc3","bc4","bc5",
+                "sale1","sale2","sale3","sale4","sale5","sc1","sc2","sc3","sc4","sc5",
+                "zmm","buy_vol","buy_amount","sale_vol","sale_amount",
+                "w_buy","w_sale","wb","lb"]
+    def getFactorMetaData(self, factor_names=None, key=None):
+        if factor_names is None: factor_names = self.FactorNames
+        if key=="DataType": return pd.Series(["double"]*len(factor_names), index=factor_names)
+        elif key is None: return pd.DataFrame({"DataType": self.getFactorMetaData(factor_names, key="DataType")})
+        else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
+    def getID(self, ifactor_name=None, idt=None, args={}):
+        return []
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
+        if iid is None: iid = "000001.SH"
+        if start_dt is None: start_dt = dt.datetime(1970, 1, 1)
+        if end_dt is None: end_dt = dt.datetime.now()
+        CodeStr = "return select "+"['date'] "
+        CodeStr += "from tradetable datekey inttodate("+start_dt.strftime("%Y%m%d")+") "
+        CodeStr += "to (inttodate("+end_dt.strftime("%Y%m%d")+")+0.9999) of '{ID}' end;"
+        ErrorCode, Data, Msg = self._FactorDB.TSLPy.RemoteExecute(CodeStr.format(ID="".join(reversed(iid.split(".")))), {})
+        if ErrorCode!=0: raise __QS_Error__("TinySoft 执行错误: "+Msg.decode("gbk"))
+        DTs = np.array([dt.datetime(*self._FactorDB.TSLPy.DecodeDateTime(iData[b"date"])) for iData in Data], dtype="O")
+        return DTs[(DTs>=start_dt) & (DTs<=end_dt)].tolist()
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        CodeStr = "return select "+"['date'],"+("['"+("'],['".join(factor_names))+"']" if factor_names is not None else "*")+" "
+        CodeStr += "from tradetable datekey inttodate("+dts[0].strftime("%Y%m%d")+") "
+        CodeStr += "to (inttodate("+dts[-1].strftime("%Y%m%d")+")+0.9999) of '{ID}' end;"
+        Data = {}
+        for iID in ids:
+            iCodeStr = CodeStr.format(ID="".join(reversed(iID.split("."))))
+            ErrorCode, iData, Msg = self._FactorDB.TSLPy.RemoteExecute(iCodeStr, {})
+            if ErrorCode!=0: raise __QS_Error__("TinySoft 执行错误: "+Msg.decode("gbk"))
+            if iData: Data[iID] = pd.DataFrame(iData).set_index([b"date"])
+        if not Data: return pd.Panel(Data)
+        Data = pd.Panel(Data).swapaxes(0, 2)
+        Data.major_axis = [dt.datetime(*self._FactorDB.TSLPy.DecodeDateTime(iDT)) for iDT in Data.major_axis]
+        Data.items = [(iCol.decode("gbk") if isinstance(iCol, bytes) else iCol) for i, iCol in enumerate(Data.items)]
+        return Data.loc[factor_names]
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        if raw_data.shape[2]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        return raw_data.loc[:, dts, ids]
+
+class _MarketTable(FactorTable):
+    """markettable"""
+    Cycle = Either(Enum("day", "week", "month", "quarter", "halfyear", "year"), Int(60), arg_type="Integer", label="周期", order=0)
+    CycleUnit = Enum("s", "d", arg_type="SingleOption", label="周期单位", order=1)
+    def __QS_initArgs__(self):
+        super().__QS_initArgs__()
+        self.Cycle = 60
+    @property
+    def FactorNames(self):
+        return ["open", "high", "low", "price", "vol", "amount", "cjbs"]
+    def getFactorMetaData(self, factor_names=None, key=None):
+        if factor_names is None: factor_names = self.FactorNames
+        if key=="DataType": return pd.Series(["double"]*len(factor_names), index=factor_names)
+        elif key is None: return pd.DataFrame({"DataType": self.getFactorMetaData(factor_names, key="DataType")})
+        else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
+    def getID(self, ifactor_name=None, idt=None, args={}):
+        return []
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
+        if iid is None: iid = "000001.SH"
+        CycleStr = self._genCycleStr(args.get("周期", self.Cycle), args.get("周期单位", self.CycleUnit))
+        if start_dt is None: start_dt = dt.datetime(1970, 1, 1)
+        if end_dt is None: end_dt = dt.datetime.now()
+        CodeStr = "SetSysParam(pn_cycle(),"+CycleStr+");"
+        CodeStr += "return select "+"['date'] "
+        CodeStr += "from markettable datekey inttodate("+start_dt.strftime("%Y%m%d")+") "
+        CodeStr += "to (inttodate("+end_dt.strftime("%Y%m%d")+")+0.9999) of '{ID}' end;"
+        ErrorCode, Data, Msg = self._FactorDB.TSLPy.RemoteExecute(CodeStr.format(ID="".join(reversed(iid.split(".")))), {})
+        if ErrorCode!=0: raise __QS_Error__("TinySoft 执行错误: "+Msg.decode("gbk"))
+        DTs = np.array([dt.datetime(*self._FactorDB.TSLPy.DecodeDateTime(iData[b"date"])) for iData in Data], dtype="O")
+        return DTs[(DTs>=start_dt) & (DTs<=end_dt)].tolist()
+    def _genCycleStr(self, cycle, cycle_unit):
+        if isinstance(cycle, str): return "cy_"+cycle+"()"
+        elif cycle_unit=="s": return ("cy_trailingseconds(%d)" % cycle)
+        elif cycle_unit=="d": return ("cy_trailingdays(%d)" % cycle)
+        else: raise __QS_Error__("不支持的和周期单位: '%s'!" % (cycle_unit, ))
+    def __QS_genGroupInfo__(self, factors, operation_mode):
+        CycleStrGroup = {}
+        for iFactor in factors:
+            iCycleStr = self._genCycleStr(iFactor.Cycle, iFactor.CycleUnit)
+            if iCycleStr not in CycleStrGroup:
+                CycleStrGroup[iCycleStr] = {"FactorNames":[iFactor.Name], 
+                                            "RawFactorNames":{iFactor._NameInFT}, 
+                                            "StartDT":operation_mode._FactorStartDT[iFactor.Name], 
+                                            "args":iFactor.Args.copy()}
+            else:
+                CycleStrGroup[iCycleStr]["FactorNames"].append(iFactor.Name)
+                CycleStrGroup[iCycleStr]["RawFactorNames"].add(iFactor._NameInFT)
+                CycleStrGroup[iCycleStr]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], CycleStrGroup[iCycleStr]["StartDT"])
+        EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
+        Groups = []
+        for iCycleStr in CycleStrGroup:
+            StartInd = operation_mode.DTRuler.index(CycleStrGroup[iCycleStr]["StartDT"])
+            Groups.append((self, CycleStrGroup[iCycleStr]["FactorNames"], list(CycleStrGroup[iCycleStr]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], CycleStrGroup[iCycleStr]["args"]))
+        return Groups
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        CycleStr = self._genCycleStr(args.get("周期", self.Cycle), args.get("周期单位", self.CycleUnit))
+        CodeStr = "SetSysParam(pn_cycle(),"+CycleStr+");"
+        CodeStr += "return select "+"['date'],"+("['"+("'],['".join(factor_names))+"']" if factor_names is not None else "*")+" "
+        CodeStr += "from markettable datekey inttodate("+dts[0].strftime("%Y%m%d")+") "
+        CodeStr += "to (inttodate("+dts[-1].strftime("%Y%m%d")+")+0.9999) of '{ID}' end;"
+        Data = {}
+        for iID in ids:
+            iCodeStr = CodeStr.format(ID="".join(reversed(iID.split("."))))
+            ErrorCode, iData, Msg = self._FactorDB.TSLPy.RemoteExecute(iCodeStr, {})
+            if ErrorCode!=0: raise __QS_Error__("TinySoft 执行错误: "+Msg.decode("gbk"))
+            if iData: Data[iID] = pd.DataFrame(iData).set_index([b"date"])
+        if not Data: return pd.Panel(Data)
+        Data = pd.Panel(Data).swapaxes(0, 2)
+        Data.major_axis = [dt.datetime(*self._FactorDB.TSLPy.DecodeDateTime(iDT)) for iDT in Data.major_axis]
+        Data.items = [(iCol.decode("gbk") if isinstance(iCol, bytes) else iCol) for i, iCol in enumerate(Data.items)]
+        return Data.loc[factor_names]
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        if raw_data.shape[2]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        return raw_data.loc[:, dts, ids]
 
 class TinySoftDB(FactorDB):
     """TinySoft"""
@@ -60,6 +214,14 @@ class TinySoftDB(FactorDB):
             return self.TSLPy.Logined()
         else:
             return False
+    @property
+    def TableNames(self):
+        return ["交易日历", "tradetable", "markettable"]
+    def getTable(self, table_name, args={}):
+        if table_name=="交易日历": return _CalendarTable(name=table_name, fdb=self, sys_args=args)
+        elif table_name=="tradetable": return _TradeTable(name=table_name, fdb=self, sys_args=args)
+        elif table_name=="markettable": return _MarketTable(name=table_name, fdb=self, sys_args=args)
+        else: raise __QS_Error__("表: '%s' 不存在!" % table_name)
     # 给定起始日期和结束日期, 获取交易所交易日期
     def getTradeDay(self, start_date=None, end_date=None, exchange="SSE", **kwargs):
         if exchange not in ("SSE", "SZSE"): raise __QS_Error__("不支持交易所: '%s' 的交易日序列!" % exchange)
@@ -94,74 +256,3 @@ class TinySoftDB(FactorDB):
             iID = iID.decode("gbk")
             IDs.append(iID[2:]+"."+iID[:2])
         return IDs
-    # 将 DataFrame values 和 columns 中的 bytes 类型解码成字符串
-    def _decodeDataFrame(self, df):
-        Cols = []
-        DecodeFun = (lambda x: x.decode("gbk"))
-        for i, iCol in enumerate(df.columns):
-            if isinstance(iCol, bytes): Cols.append(iCol.decode("gbk"))
-            else: Cols.append(iCol)
-            if df.dtypes.iloc[i]==np.dtype("O"): df[iCol] = df[iCol].apply(DecodeFun)
-        df.columns = Cols
-        return df
-    # 获取 Level 1数据
-    def getLevel1Data(self, target_id, start_date, end_date, fields=None):
-        CodeStr = "return select {Fields} from tradetable datekey inttodate({StartDate}) to (inttodate({EndDate})+0.9999) of '{ID}' end;"
-        target_id = "".join(reversed(target_id.split(".")))
-        if fields is None:
-            fields = ["yclose","vol","amount","cjbs",
-                      "buy1","buy2","buy3","buy4","buy5","bc1","bc2","bc3","bc4","bc5",
-                      "sale1","sale2","sale3","sale4","sale5","sc1","sc2","sc3","sc4","sc5",
-                      "zmm","buy_vol","buy_amount","sale_vol","sale_amount",
-                      "w_buy","w_sale","wb","lb"]
-        elif "date" in fields:
-            fields.remove("date")
-        CodeStr = CodeStr.format(StartDate=start_date.strftime("%Y%m%d"), EndDate=end_date.strftime("%Y%m%d"), ID=target_id, 
-                                 Fields="['date'],"+("['"+("'],['".join(fields))+"']" if fields is not None else "*"))
-        ErrorCode, Data, Msg = self.TSLPy.RemoteExecute(CodeStr,{})
-        if ErrorCode!=0: raise __QS_Error__("TinySoft 执行错误: "+Msg.decode("gbk"))
-        Data = pd.DataFrame(Data)
-        Data = self._decodeDataFrame(Data)
-        Data["date"] = Data["date"].apply(lambda x : dt.datetime(*self.TSLPy.DecodeDateTime(x)))
-        Data = Data.set_index(["date"])
-        return Data.loc[:, fields]
-    # 获取 Tick 数据
-    def getTickData(self, target_id, start_date, end_date, fields=None):
-        if fields is None:
-            fields = ["yclose","vol","amount",
-                      "cjbs","buy1","bc1","sale1","sc1",
-                      "zmm","buy_vol","buy_amount","sale_vol","sale_amount",
-                      "w_buy","w_sale","wb","lb"]
-        return self.getLevel1Data(target_id, start_date, end_date, fields=fields)
-    # 获取 Bar 数据, cycle: 周期, int 或者字符串 : day, week, month, quarter, halfyear, year 等
-    # cycle_unit: 周期单位, 支持: s(秒), d(天)
-    def getBarData(self, target_id, start_date, end_date, fields=None, cycle=60, cycle_unit="s"):
-        if isinstance(cycle, str): CycleStr = "cy_"+cycle+"()"
-        elif cycle_unit=="s": CycleStr = ("cy_trailingseconds(%d)" % cycle)
-        elif cycle_unit=="d": CycleStr = ("cy_trailingdays(%d)" % cycle)
-        if fields is None: fields = ["open", "high", "low", "price", "vol", "amount", "cjbs"]
-        elif "date" in fields: fields.remove("date")
-        target_id = "".join(reversed(target_id.split(".")))
-        CodeStr = "SetSysParam(pn_cycle(),{Cycle});return select {Fields} from markettable datekey inttodate({StartDate}) to (inttodate({EndDate})+0.9999) of '{ID}' end;"
-        CodeStr = CodeStr.format(StartDate=start_date.strftime("%Y%m%d"), EndDate=end_date.strftime("%Y%m%d"), ID=target_id, Cycle=CycleStr,
-                                 Fields="['date'],"+("['"+("'],['".join(fields))+"']" if fields is not None else "*"))
-        ErrorCode, Data, Msg = self.TSLPy.RemoteExecute(CodeStr,{})
-        if ErrorCode!=0: raise __QS_Error__("TinySoft 执行错误: "+Msg.decode("gbk"))
-        Data = pd.DataFrame(Data)
-        Data = self._decodeDataFrame(Data)
-        Data["date"] = Data["date"].apply(lambda x : dt.datetime(*self.TSLPy.DecodeDateTime(x)))
-        Data = Data.set_index(["date"])
-        return Data.loc[:, fields]
-
-if __name__=="__main__":
-    TSDB = TinySoft()
-    TSDB.connect()
-    
-    # 功能测试
-    Dates = TSDB.getTradeDay(start_date=dt.date(2018,1,1), end_date=dt.date(2018,2,1))
-    #IDs1 = TSDB._getAllAStock()
-    IDs2 = TSDB.getID("000300.SH", dt.datetime(2018,6,7))
-    #Data1 = TSDB.getLevel1Data("000002.SZ", dt.datetime(2018,6,7), dt.datetime(2018,6,7))
-    #Data2 = TSDB.getTickData("000002.SZ", dt.datetime(2018,6,7), dt.datetime(2018,6,7))
-    #Data3 = TSDB.getBarData("000002.SZ", dt.datetime(2018,1,1), dt.datetime(2018,6,7), cycle="day")
-    TSDB.disconnect()
