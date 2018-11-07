@@ -227,13 +227,16 @@ class DefaultAccount(Account):
         BuyAmounts = TradeAmounts.clip_lower(0)
         CashAcquired = BuyAmounts * (1 + self.BuyLimit.TradeFee)
         TotalCashAcquired = CashAcquired.sum()
-        AvailableCash = self.AvailableCash + CashChanged.sum()
-        CashAllocated = min(AvailableCash, TotalCashAcquired) * CashAcquired / TotalCashAcquired
-        BuyAmounts = CashAllocated / (1 + self.BuyLimit.TradeFee)
-        Fees = BuyAmounts * self.BuyLimit.TradeFee
-        BuyNums = BuyAmounts / TradePrice
-        Mask = (BuyAmounts>0)
-        TradingRecord.extend((zip([idt]*Mask.sum(), orders.index[Mask], BuyNums[Mask], TradePrice[Mask], Fees[Mask], -CashAllocated[Mask], ["buy"]*Mask.sum())))
+        if TotalCashAcquired>0:
+            AvailableCash = self.AvailableCash + CashChanged.sum()
+            CashAllocated = min(AvailableCash, TotalCashAcquired) * CashAcquired / TotalCashAcquired
+            BuyAmounts = CashAllocated / (1 + self.BuyLimit.TradeFee)
+            Fees = BuyAmounts * self.BuyLimit.TradeFee
+            BuyNums = BuyAmounts / TradePrice
+            Mask = (BuyAmounts>0)
+            TradingRecord.extend((zip([idt]*Mask.sum(), orders.index[Mask], BuyNums[Mask], TradePrice[Mask], Fees[Mask], -CashAllocated[Mask], ["buy"]*Mask.sum())))
+        else:
+            CashAllocated = BuyNums = pd.Series(0, index=BuyAmounts.index)
         # 更新持仓数量和现金
         iIndex = self._Model.DateTimeIndex
         iPosition = self._PositionNum.iloc[iIndex+1].copy()

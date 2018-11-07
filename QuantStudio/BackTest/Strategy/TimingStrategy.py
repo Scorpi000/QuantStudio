@@ -2,7 +2,7 @@
 """择时交易型策略"""
 import pandas as pd
 import numpy as np
-from traits.api import Enum, List, Int, Instance, on_trait_change
+from traits.api import Enum, List, Int, Instance, on_trait_change, Str
 
 from QuantStudio import __QS_Error__, __QS_Object__
 from QuantStudio.BackTest.Strategy.StrategyModule import Strategy, Account
@@ -11,25 +11,29 @@ from QuantStudio.BackTest.Strategy.StrategyModule import Strategy, Account
 
 # 择时策略
 class TimingStrategy(Strategy):
-    SigalDelay = Int(0, label="信号滞后期", arg_type="Integer", order=0)
-    SigalValidity = Int(1, label="信号有效期", arg_type="Integer", order=1)
-    SigalDTs = List(label="信号触发时点", arg_type="DateTimeList", order=2)
-    SignalInterval = Enum("不发信号", "延续上期", label="信号间期", arg_type="ArgObject", order=3)
-    TargetAccount = Instance(Account, label="目标账户", arg_type="ArgObject", order=4)
-    TargetID = Enum(None, label="目标ID", arg_type="SingleOption", order=5)
-    TradeTarget = Enum("锁定买卖金额", "锁定目标仓位", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=6)
+    SigalDelay = Int(0, label="信号滞后期", arg_type="Integer", order=1)
+    SigalValidity = Int(1, label="信号有效期", arg_type="Integer", order=2)
+    SigalDTs = List(label="信号触发时点", arg_type="DateTimeList", order=3)
+    SignalInterval = Enum("不发信号", "延续上期", label="信号间期", arg_type="ArgObject", order=4)
+    TargetAccount = Instance(Account, label="目标账户", arg_type="ArgObject", order=5)
+    TargetID = Str(label="目标ID", arg_type="String", order=6)
+    TradeTarget = Enum("锁定买卖金额", "锁定目标仓位", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=7)
     def __init__(self, name, factor_table=None, sys_args={}, config_file=None, **kwargs):
         self._FT = factor_table# 因子表
         self._AllSignals = {}# 存储所有生成的信号, {时点:信号}
-        return super().__init__(name, sys_args=sys_args, config_file=config_file, **kwargs)
+        return super().__init__(name=name, accounts=[], fts=([] if self._FT is None else [self._FT]), sys_args=sys_args, config_file=config_file, **kwargs)
     @on_trait_change("TargetAccount")
     def on_TargetAccount_changed(self, obj, name, old, new):
         if self.TargetAccount is not None:
-            self.add_trait("目标ID", Enum(*self.TargetAccount.IDs, label="目标ID", arg_type="SingleOption", order=5))
             if self.TargetAccount not in self.Accounts: self.Accounts.append(self.TargetAccount)
+            IDs = self.TargetAccount.IDs
         else:
-            self.add_trait("目标ID", Enum(None, label="目标ID", arg_type="SingleOption", order=5))
             self.Accounts.remove(old)
+            IDs = []
+        if IDs:
+            self.add_trait("TargetID", Enum(*IDs, label="目标ID", arg_type="SingleOption", order=6))
+        else:
+            self.add_trait("TargetID", Str(label="目标ID", arg_type="String", order=6))
     @property
     def MainFactorTable(self):
         return self._FT

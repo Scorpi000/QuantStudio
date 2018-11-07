@@ -89,6 +89,10 @@ class _TradeTable(FactorTable):
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[2]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         return raw_data.loc[:, dts, ids]
+    def readDayData(self, factor_names, ids, start_date, end_date, args={}):
+        RawData = self.__QS_prepareRawData__(factor_names, ids, dts=[start_date, end_date], args=args)
+        if RawData.shape[2]==0: return pd.Panel(items=factor_names, major_axis=[], minor_axis=ids)
+        return RawData.loc[:, :, ids]
 
 class _MarketTable(FactorTable):
     """markettable"""
@@ -164,6 +168,10 @@ class _MarketTable(FactorTable):
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[2]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         return raw_data.loc[:, dts, ids]
+    def readDayData(self, factor_names, ids, start_date, end_date, args={}):
+        RawData = self.__QS_prepareRawData__(factor_names, ids, dts=[start_date, end_date], args=args)
+        if RawData.shape[2]==0: return pd.Panel(items=factor_names, major_axis=[], minor_axis=ids)
+        return RawData.loc[:, :, ids]
 
 class TinySoftDB(FactorDB):
     """TinySoft"""

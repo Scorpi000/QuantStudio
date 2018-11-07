@@ -53,7 +53,7 @@ class _FactorTable(FactorTable):
                 iCols = pd.Series(iMetaData["Cols"], index=iMetaData["FactorNames"])
                 iCols = iCols.loc[iCols.index.intersection(factor_names)]
                 if iCols.shape[0]>0:
-                    Data[iID] = self._Lib.read(symbol=iID, columns=iCols.values.tolist(), chunk_range=pd.date_range(dts[0], dts[-1]), filter_data=True)
+                    Data[iID] = self._Lib.read(symbol=iID, columns=iCols.values.tolist(), chunk_range=pd.DatetimeIndex(dts), filter_data=True)
                     Data[iID].columns = iCols.index
         if Data: return pd.Panel(Data).swapaxes(0, 2).loc[factor_names, :, ids]
         else: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
@@ -170,7 +170,8 @@ class ArcticDB(WritableFactorDB):
         if table_name not in self._Arctic.list_libraries(): return self._writeNewData(data, table_name, data_type=data_type)
         Lib = self._Arctic[table_name]
         DataCols = [str(i) for i in range(data.shape[0])]
-        DTRange = pd.date_range(data.major_axis[0], data.major_axis[-1])
+        #DTRange = pd.date_range(data.major_axis[0], data.major_axis[-1], freq=Freq)
+        DTRange = data.major_axis
         OverWrite = (if_exists=="update")
         for i, iID in enumerate(data.minor_axis):
             iData = data.iloc[:, :, i]
@@ -184,12 +185,12 @@ class ArcticDB(WritableFactorDB):
             iNewFactorNames = iData.columns.difference(iOldFactorNames).tolist()
             #iCrossFactorNames = iOldFactorNames.intersection(iData.columns).tolist()
             iOldData = Lib.read(symbol=iID, chunk_range=DTRange, filter_data=True)
-            iOldData.columns = iOldFactorNames
             if iOldData.shape[0]>0:
+                iOldData.columns = iOldFactorNames
                 iOldData = iOldData.loc[iOldData.index.union(iData.index), iOldFactorNames+iNewFactorNames]
+                iOldData.update(iData, overwrite=OverWrite)
             else:
-                iOldData = pd.DataFrame(index=iData.index, columns=iOldFactorNames+iNewFactorNames)
-            iOldData.update(iData, overwrite=OverWrite)
+                iOldData = iData.loc[:, iOldFactorNames+iNewFactorNames]
             if iNewFactorNames:
                 iCols += [str(i) for i in range(iOldData.shape[1], iOldData.shape[1]+len(iNewFactorNames))]
                 #iOldData = pd.merge(iOldData, iData.loc[:, iNewFactorNames], how="outer", left_index=True, right_index=True)

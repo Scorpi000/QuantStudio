@@ -243,7 +243,6 @@ def _prepareMMAPIDCacheData(ft, mmap_cache):
                 else:
                     CacheData[NewID] = pd.DataFrame(index=CacheDTs, columns=ft.FactorNames)
         else:# 准备缓冲区
-            MMAPCacheData = mmap_cache# 这句话必须保留...诡异
             CurInd = Task[0] + ft.ErgodicMode.ForwardPeriod + 1
             if CurInd<DTNum:# 未到结尾处, 需要再准备缓存数据
                 OldCacheDTs = set(CacheDTs)
