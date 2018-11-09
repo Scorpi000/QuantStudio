@@ -76,8 +76,8 @@ class MeanVarianceObjective(OptimizationObjective):
         if self.RiskAversionCoef!=0.0:
             Sigma = self._PC.CovMatrix.values
             if self.Benchmark:
-                Mu += self.RiskAversionCoef * np.dot(self._PC._BenchmarkExtra.values, self._PC.BenchmarkExtraCov1.values).reshape((self._PC._nID, 1))
-                Mu += self.RiskAversionCoef * np.dot(self.BenchmarkHolding.values, Sigma).reshape((self._PC._nID, 1))
+                Mu += self.RiskAversionCoef * np.dot(self._PC._BenchmarkExtra.values, self._PC._BenchmarkExtraCov1.values).reshape((self._PC._nID, 1))
+                Mu += self.RiskAversionCoef * np.dot(self._PC.BenchmarkHolding.values, Sigma).reshape((self._PC._nID, 1))
                 self._ObjectiveConstant += -self.RiskAversionCoef/2 * np.dot(np.dot(self._PC._BenchmarkExtra.values, self._PC._BenchmarkExtraCov.values), self._PC._BenchmarkExtra.values)
                 self._ObjectiveConstant += -self.RiskAversionCoef * np.dot(np.dot(self._PC._BenchmarkExtra.values, self._PC._BenchmarkExtraCov1.values), self._PC.BenchmarkHolding.values)
                 self._ObjectiveConstant += -self.RiskAversionCoef/2 * np.dot(np.dot(self._PC.BenchmarkHolding.values, Sigma), self._PC.BenchmarkHolding.values)
@@ -412,7 +412,7 @@ class TurnoverConstraint(Constraint):
             Dependency["总财富"] = True
         return Dependency
     def genConstraint(self):
-        HoldingWeight = self.Holding.values.reshape((self._PC._nID, 1))
+        HoldingWeight = self._PC.Holding.values.reshape((self._PC._nID, 1))
         if self.ConstraintType=="总换手限制":
             aAdj = self.UpLimit - self._PC._HoldingExtra.abs().sum()
             return [{"type":"L1", "c":HoldingWeight, "l":aAdj}]
@@ -450,7 +450,7 @@ class VolatilityConstraint(Constraint):
         if self.Benchmark:
             Sigma = self._PC.CovMatrix.values
             BenchmarkWeight = self._PC.BenchmarkHolding.values
-            Mu = -2*np.dot(BenchmarkWeight, Sigma) - 2*np.dot(self._PC._BenchmarkExtra.values, self._BenchmarkExtraCov1.values)
+            Mu = -2*np.dot(BenchmarkWeight, Sigma) - 2*np.dot(self._PC._BenchmarkExtra.values, self._PC._BenchmarkExtraCov1.values)
             Mu = Mu.reshape((self._PC._nID, 1))
             q = self.UpLimit**2 - np.dot(np.dot(BenchmarkWeight, Sigma), BenchmarkWeight)
             q -= 2*np.dot(np.dot(self._PC._BenchmarkExtra.values, self._PC._BenchmarkExtraCov1.values), BenchmarkWeight)

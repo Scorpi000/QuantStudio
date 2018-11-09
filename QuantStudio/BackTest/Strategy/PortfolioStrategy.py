@@ -85,9 +85,16 @@ class PortfolioStrategy(Strategy):
         if (not self.SignalDTs) or (idt in self.SignalDTs):
             LongSignal, ShortSignal = self.genSignal(idt, iTradingRecord)
         if self.LongAccount is None: LongSignal = None
+        elif LongSignal is not None:
+            if not isinstance(LongSignal, pd.Series): raise __QS_Error__("多头信号格式有误, 必须是 Series 类型!")
+            if self.LongWeightAlloction.ReAllocWeight: LongSignal = self._allocateWeight(idt, LongSignal.index.tolist(), self.LongAccount.IDs, self.LongWeightAlloction)
+            if LongSignal is not None: self._AllLongSignals[idt] = LongSignal
         if self.ShortAccount is None: ShortSignal = None
-        if (LongSignal is not None) and (not isinstance(LongSignal, pd.Series)): raise __QS_Error__("多头信号格式有误, 必须是 Series 类型!")
-        if (ShortSignal is not None) and (not isinstance(ShortSignal, pd.Series)): raise __QS_Error__("空头信号格式有误, 必须是 Series 类型!")
+        elif ShortSignal is not None:
+            if not isinstance(ShortSignal, pd.Series): raise __QS_Error__("空头信号格式有误, 必须是 Series 类型!")
+            if self.ShortWeightAlloction.ReAllocWeight: ShortSignal = self._allocateWeight(idt, ShortSignal.index.tolist(), self.ShortAccount.IDs, self.ShortWeightAlloction)
+            if ShortSignal is not None: self._AllShortSignals[idt] = ShortSignal
+        LongSignal, ShortSignal = self._bufferSignal(LongSignal, ShortSignal)
         self.trade(idt, iTradingRecord, (LongSignal, ShortSignal))
         for iAccount in self.Accounts: iAccount.__QS_after_move__(idt, **kwargs)
         return 0
@@ -101,32 +108,22 @@ class PortfolioStrategy(Strategy):
         return (None, None)
     def trade(self, idt, trading_record, signal):
         LongSignal, ShortSignal = signal
-        if LongSignal is not None:
-            if self.LongWeightAlloction.ReAllocWeight:
-                LongSignal = self._allocateWeight(idt, LongSignal.index.tolist(), self.LongAccount.IDs, self.LongWeightAlloction)
-            self._AllLongSignals[idt] = LongSignal
-        if ShortSignal is not None:
-            if self.ShortWeightAlloction.ReAllocWeight:
-                ShortSignal = self._allocateWeight(idt, ShortSignal.index.tolist(), self.ShortAccount.IDs, self.ShortWeightAlloction)
-            self._AllShortSignals[idt] = ShortSignal
-        LongSignal, ShortSignal = self._bufferSignal(LongSignal, ShortSignal)
         self._processLongSignal(idt, trading_record, LongSignal)
         self._processShortSignal(idt, trading_record, ShortSignal)
         return 0
     def _processLongSignal(self, idt, trading_record, long_signal):
         if self.LongAccount is None: return 0
-        AccountValue = self.LongAccount.AccountValue
-        pHolding = self.LongAccount.PositionAmount
-        pHolding = pHolding[pHolding>0]
-        pHolding = pHolding / AccountValue
+        AccountValue = abs(self.LongAccount.AccountValue)
+        pHolding = self.LongAccount.PositionAmount / AccountValue
         if long_signal is not None:# 有新的信号, 形成新的交易目标
+            long_signal = long_signal.loc[pHolding.index]
+            long_signal.fillna(0.0, inplace=True)
             if self.TradeTarget=="锁定买卖金额":
-                pSignalHolding, long_signal = match2Series(pHolding, long_signal, fillna=0.0)
-                self._LongTradeTarget = (long_signal - pSignalHolding) * AccountValue
+                self._LongTradeTarget = (long_signal - pHolding) * AccountValue
             elif self.TradeTarget=="锁定目标权重":
                 self._LongTradeTarget = long_signal
             elif self.TradeTarget=="锁定目标金额":
-                self._LongTradeTarget = long_signal*AccountValue
+                self._LongTradeTarget = long_signal * AccountValue
             self._LongSignalExcutePeriod = 0
         elif self._LongTradeTarget is not None:# 没有新的信号, 根据交易记录调整交易目标
             self._LongSignalExcutePeriod += 1
@@ -134,25 +131,24 @@ class PortfolioStrategy(Strategy):
                 self._LongTradeTarget = None
                 self._LongSignalExcutePeriod = 0
             else:
-                iTradingRecord = trading_record[self.LongAccount.Name].set_index(["ID"])
-                if iTradingRecord.index.intersection(self._LongTradeTarget.index).shape[0]>0:
-                    iTradingRecord = iTradingRecord.loc[self._LongTradeTarget.index]
+                iTradingRecord = trading_record[self.LongAccount.Name]
+                if iTradingRecord.shape[0]>0:
                     if self.TradeTarget=="锁定买卖金额":
-                        TargetChanged = iTradingRecord["数量"] * iTradingRecord["价格"]
-                        TargetChanged[pd.isnull(TargetChanged)] = 0.0
-                        self._LongTradeTarget = self._LongTradeTarget - TargetChanged
+                        TargetChanged = pd.Series((iTradingRecord["买卖数量"] * iTradingRecord["价格"]).values, index=iTradingRecord["ID"].values)
+                        TargetChanged = TargetChanged.groupby(axis=0, level=0).sum().loc[self._LongTradeTarget.index]
+                        TargetChanged.fillna(0.0, inplace=True)
+                        TradeTarget = self._LongTradeTarget - TargetChanged
+                        TradeTarget[np.sign(self._LongTradeTarget)*np.sign(TradeTarget)<0] = 0.0
+                        self._LongTradeTarget = TradeTarget
         # 根据交易目标下订单
         if self._LongTradeTarget is not None:
             if self.TradeTarget=="锁定买卖金额":
                 Orders = self._LongTradeTarget
             elif self.TradeTarget=="锁定目标权重":
-                pHolding, LongTradeTarget = match2Series(pHolding, self._LongTradeTarget, fillna=0.0)
-                Orders = (LongTradeTarget - pHolding) * AccountValue
+                Orders = (self._LongTradeTarget - pHolding) * AccountValue
             elif self.TradeTarget=="锁定目标金额":
-                pHolding, LongTradeTarget = match2Series(pHolding, self._LongTradeTarget, fillna=0.0)
-                Orders = LongTradeTarget - pHolding*AccountValue
-            LastPrice = self.LongAccount.LastPrice
-            Orders = Orders / LastPrice[Orders.index]
+                Orders = self._LongTradeTarget - pHolding * AccountValue
+            Orders = Orders / self.LongAccount.LastPrice
             Orders = Orders[pd.notnull(Orders) & (Orders!=0)]
             if Orders.shape[0]==0: return 0
             Orders = pd.DataFrame(Orders.values, index=Orders.index, columns=["数量"])
@@ -160,7 +156,49 @@ class PortfolioStrategy(Strategy):
             self.LongAccount.order(combined_order=Orders)
         return 0
     def _processShortSignal(self, idt, trading_record, short_signal):
-        return 0# TODO
+        if self.ShortAccount is None: return 0
+        AccountValue = abs(self.ShortAccount.AccountValue)
+        pHolding = self.ShortAccount.PositionAmount / AccountValue
+        if short_signal is not None:# 有新的信号, 形成新的交易目标
+            short_signal = short_signal.loc[pHolding.index]
+            short_signal.fillna(0.0, inplace=True)
+            if self.TradeTarget=="锁定买卖金额":
+                self._ShortTradeTarget = (short_signal - pHolding) * AccountValue
+            elif self.TradeTarget=="锁定目标权重":
+                self._ShortTradeTarget = short_signal
+            elif self.TradeTarget=="锁定目标金额":
+                self._ShortTradeTarget = short_signal * AccountValue
+            self._LongSignalExcutePeriod = 0
+        elif self._ShortTradeTarget is not None:# 没有新的信号, 根据交易记录调整交易目标
+            self._LongSignalExcutePeriod += 1
+            if self._LongSignalExcutePeriod>=self.SignalValidity:
+                self._ShortTradeTarget = None
+                self._LongSignalExcutePeriod = 0
+            else:
+                iTradingRecord = trading_record[self.ShortAccount.Name]
+                if iTradingRecord.shape[0]>0:
+                    if self.TradeTarget=="锁定买卖金额":
+                        TargetChanged = pd.Series((iTradingRecord["买卖数量"] * iTradingRecord["价格"]).values, index=iTradingRecord["ID"].values)
+                        TargetChanged = TargetChanged.groupby(axis=0, level=0).sum().loc[self._ShortTradeTarget.index]
+                        TargetChanged.fillna(0.0, inplace=True)
+                        TradeTarget = self._ShortTradeTarget - TargetChanged
+                        TradeTarget[np.sign(self._ShortTradeTarget)*np.sign(TradeTarget)<0] = 0.0
+                        self._ShortTradeTarget = TradeTarget
+        # 根据交易目标下订单
+        if self._ShortTradeTarget is not None:
+            if self.TradeTarget=="锁定买卖金额":
+                Orders = self._ShortTradeTarget
+            elif self.TradeTarget=="锁定目标权重":
+                Orders = (self._ShortTradeTarget - pHolding) * AccountValue
+            elif self.TradeTarget=="锁定目标金额":
+                Orders = self._ShortTradeTarget - pHolding * AccountValue
+            Orders = Orders / self.ShortAccount.LastPrice
+            Orders = Orders[pd.notnull(Orders) & (Orders!=0)]
+            if Orders.shape[0]==0: return 0
+            Orders = pd.DataFrame(Orders.values, index=Orders.index, columns=["数量"])
+            Orders["目标价"] = np.nan
+            self.ShortAccount.order(combined_order=Orders)
+        return 0
     # 配置权重
     def _allocateWeight(self, idt, ids, original_ids, args):
         nID = len(ids)
@@ -223,13 +261,14 @@ class PortfolioStrategy(Strategy):
                 NewSignal = NewSignal.append(iSignal[pd.notnull(iSignal) & (iSignal!=0)])
             NewSignal = NewSignal / NewSignal.sum()
         return NewSignal
-    # 将信号缓存，并弹出滞后期到期的信号
+    # 将信号缓存, 并弹出滞后期到期的信号
     def _bufferSignal(self, long_signal, short_signal):
+        if self.SignalDelay<=0: return (long_signal, short_signal)
         if (long_signal is not None) or (short_signal is not None):
             self._TempData['StoredSignal'].append((long_signal, short_signal))
             self._TempData['LagNum'].append(-1)
         for i,iLagNum in enumerate(self._TempData['LagNum']):
-            self._TempData['LagNum'][i] = iLagNum+1
+            self._TempData['LagNum'][i] = iLagNum + 1
         LongSignal, ShortSignal = None, None
         while self._TempData['StoredSignal']!=[]:
             if self._TempData['LagNum'][0]>=self.SignalDelay:
@@ -310,6 +349,19 @@ class HierarchicalFiltrationStrategy(PortfolioStrategy):
         elif new<old:# 减少了筛选层数
             for i in range(max(0, old)-1, max(0, new)-1, -1):
                 self.remove_trait("Level"+str(i))
+    def __QS_move__(self, idt, **kwargs):
+        iTradingRecord = {iAccount.Name:iAccount.__QS_move__(idt, **kwargs) for iAccount in self.Accounts}
+        LongSignal, ShortSignal = self.genSignal(idt, iTradingRecord)
+        if LongSignal is not None:
+            if self.LongWeightAlloction.ReAllocWeight: LongSignal = self._allocateWeight(idt, LongSignal.index.tolist(), self.LongAccount.IDs, self.LongWeightAlloction)
+            if LongSignal is not None: self._AllLongSignals[idt] = LongSignal
+        if ShortSignal is not None:
+            if self.ShortWeightAlloction.ReAllocWeight: ShortSignal = self._allocateWeight(idt, ShortSignal.index.tolist(), self.ShortAccount.IDs, self.ShortWeightAlloction)
+            if ShortSignal is not None: self._AllShortSignals[idt] = ShortSignal
+        LongSignal, ShortSignal = self._bufferSignal(LongSignal, ShortSignal)
+        self.trade(idt, iTradingRecord, (LongSignal, ShortSignal))
+        for iAccount in self.Accounts: iAccount.__QS_after_move__(idt, **kwargs)
+        return 0
     def _filtrateID(self, idt, ids, args):
         FactorData = self._FT.readData(dts=[idt], ids=ids, factor_names=[args.TargetFactor]).iloc[0,0,:]
         FactorData = FactorData[pd.notnull(FactorData)]
@@ -376,21 +428,16 @@ class HierarchicalFiltrationStrategy(PortfolioStrategy):
             else:
                 IDs = self._filtrateID(idt, IDs, iArgs)
         return IDs
-    def genLongSignal(self, idt):
-        OriginalIDs = self.LongAccount.IDs
-        IDs = self._genSignalIDs(idt, OriginalIDs, "多头信号")
-        return pd.Series(1/len(IDs), index=IDs)
-    def genShortSignal(self, idt):
-        if self.ShortAccount is None: return None
-        OriginalIDs = self.ShortAccount.IDs
-        IDs = self._genSignalIDs(idt, OriginalIDs, "空头信号")
-        return pd.Series(1/len(IDs), index=IDs)
     def genSignal(self, idt, trading_record):
         LongSignal, ShortSignal = None, None
-        if (not self.LongSignalDTs) or (idt in self.LongSignalDTs):
-            LongSignal = self.genLongSignal(idt)
-        if (not self.ShortSignalDTs) or (idt in self.ShortSignalDTs):
-            ShortSignal = self.genShortSignal(idt)
+        if (self.LongAccount is not None) and ((not self.LongSignalDTs) or (idt in self.LongSignalDTs)):
+            OriginalIDs = self.LongAccount.IDs
+            IDs = self._genSignalIDs(idt, OriginalIDs, "多头信号")
+            LongSignal = pd.Series(1/len(IDs), index=IDs)
+        if (self.ShortAccount is not None) and ((not self.ShortSignalDTs) or (idt in self.ShortSignalDTs)):
+            OriginalIDs = self.ShortAccount.IDs
+            IDs = self._genSignalIDs(idt, OriginalIDs, "空头信号")
+            ShortSignal = pd.Series(1/len(IDs), index=IDs)
         return (LongSignal, ShortSignal)
 
 class _SignalAdjustment(__QS_Object__):
@@ -432,6 +479,31 @@ class OptimizerStrategy(PortfolioStrategy):
         self._ReleasedConstraint = []# 记录被舍弃的约束条件, [(时点, [舍弃的条件])]
         self._Dependency = self._PC.init()# PC 的依赖信息
         return super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
+    def __QS_move__(self, idt, **kwargs):
+        iTradingRecord = {iAccount.Name:iAccount.__QS_move__(idt, **kwargs) for iAccount in self.Accounts}
+        LongSignal, ShortSignal = None, None
+        if (not self.SignalDTs) or (idt in self.SignalDTs):
+            LongSignal, ShortSignal = self.genSignal(idt, iTradingRecord)
+        if self.LongAccount is None: LongSignal = None
+        elif LongSignal is not None: self._AllLongSignals[idt] = LongSignal
+        if self.ShortAccount is None: ShortSignal = None
+        elif ShortSignal is not None: self._AllShortSignals[idt] = ShortSignal
+        LongSignal, ShortSignal = self._bufferSignal(LongSignal, ShortSignal)
+        self.trade(idt, iTradingRecord, (LongSignal, ShortSignal))
+        for iAccount in self.Accounts: iAccount.__QS_after_move__(idt, **kwargs)
+        return 0
+    def __QS_end__(self):
+        if self.RDS is not None: self.RDS.end()
+        if not self.SignalAdjustment.Display:
+            if self._Status:
+                print("以下时点组合优化问题的求解出现问题: ")
+                for iDT, iResultInfo in self._Status:
+                    print(iDT.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 错误代码-"+str(iResultInfo["ErrorCode"])+"    "+iResultInfo["Msg"])
+            if self._ReleasedConstraint!=[]:
+                print("以下时点组合优化问题的求解舍弃了约束条件: ")
+                for iDT, iReleasedConstraint in self._ReleasedConstraint:
+                    print(iDT.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 舍弃约束-"+str(iReleasedConstraint))
+        return super().__QS_end__()
     # 调整信号
     def _adjustSignal(self, raw_signal):
         if raw_signal is None: return (None, None)
@@ -464,8 +536,8 @@ class OptimizerStrategy(PortfolioStrategy):
             else:
                 self._PC.CovMatrix = self.RDS.readCov(idt=idt, ids=IDs, drop_na=False)
         if self._Dependency.get("成交金额", False): self._PC.AmountFactor = self._FT.readData(factor_names=[self.AmountFactor], ids=IDs, dts=[idt]).iloc[0, 0, :]
-        if self._Dependency.get("因子", []): self._PC.FactorData = self._FT.readData(factor_names=[self._Dependency["因子"]], ids=IDs, dts=[idt]).iloc[:, 0, :]
-        if self._Dependency.get("基准投资组合", False): self._PC.BenchmarkHolding = self._FT.readData(factor_names=["基准权重"], ids=IDs, dts=[idt]).iloc[0, 0, :]
+        if self._Dependency.get("因子", []): self._PC.FactorData = self._FT.readData(factor_names=self._Dependency["因子"], ids=IDs, dts=[idt]).iloc[:, 0, :]
+        if self._Dependency.get("基准投资组合", False): self._PC.BenchmarkHolding = self._FT.readData(factor_names=[self.BenchmarkFactor], ids=IDs, dts=[idt]).iloc[0, 0, :]
         if self._Dependency.get("初始投资组合", False):
             if self.LongAccount is not None: LongAmount = self.LongAccount.PositionAmount
             else: LongAmount = pd.Series(0.0, index=IDs)
@@ -487,21 +559,4 @@ class OptimizerStrategy(PortfolioStrategy):
             self._ReleasedConstraint.append((idt, ResultInfo["ReleasedConstraint"]))
             if self.SignalAdjustment.Display: print(idt.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 舍弃约束-"+str(ResultInfo["ReleasedConstraint"]))# debug
         return self._adjustSignal(RawSignal)
-    def trade(self, idt, trading_record, signal):
-        LongSignal, ShortSignal = signal
-        LongSignal, ShortSignal = self._bufferSignal(LongSignal, ShortSignal)
-        self._processLongSignal(idt, trading_record, LongSignal)
-        self._processShortSignal(idt, trading_record, ShortSignal)
-        return 0
-    def __QS_end__(self):
-        if self.RDS is not None: self.RDS.end()
-        if not self.SignalAdjustment.Display:
-            if self._Status:
-                print("以下时点组合优化问题的求解出现问题: ")
-                for iDT, iResultInfo in self._Status:
-                    print(iDT.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 错误代码-"+str(ResultInfo["ErrorCode"])+"    "+ResultInfo["Msg"])
-            if self._ReleasedConstraint!=[]:
-                print("以下时点组合优化问题的求解舍弃了约束条件: ")
-                for iDT, iReleasedConstraint in self._ReleasedConstraint:
-                    print(iDT.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 舍弃约束-"+str(ResultInfo["ReleasedConstraint"]))
-        return super().__QS_end__()
+

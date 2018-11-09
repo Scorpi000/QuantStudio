@@ -102,16 +102,16 @@ class DefaultAccount(Account):
             TradingRecord = pd.DataFrame(TradingRecord, index=np.arange(self._TradingRecord.shape[0], self._TradingRecord.shape[0]+len(TradingRecord)), columns=self._TradingRecord.columns)
             self._TradingRecord = self._TradingRecord.append(TradingRecord)
         else:
-            TradingRecord = self._iTradingRecord
+            TradingRecord = pd.DataFrame(self._iTradingRecord, columns=self._TradingRecord.columns)
         self._PositionAmount.iloc[iIndex+1] = self._PositionNum.iloc[iIndex+1] * self._LastPrice
         return TradingRecord
     def __QS_after_move__(self, idt, **kwargs):
         super().__QS_after_move__(idt, **kwargs)
         if not self.Delay:# 撮合成交
             TradingRecord = self._matchOrder(idt)
+            self._iTradingRecord = TradingRecord
             TradingRecord = pd.DataFrame(TradingRecord, index=np.arange(self._TradingRecord.shape[0], self._TradingRecord.shape[0]+len(TradingRecord)), columns=self._TradingRecord.columns)
             self._TradingRecord = self._TradingRecord.append(TradingRecord)
-            self._iTradingRecord = TradingRecord
             iIndex = self._Model.DateTimeIndex
             self._PositionAmount.iloc[iIndex+1] = self._PositionNum.iloc[iIndex+1] * self._LastPrice
         return 0
