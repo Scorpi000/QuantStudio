@@ -112,12 +112,10 @@ class TimingStrategy(Strategy):
     def trade(self, idt, trading_record, signal):
         PositionAmount = self.TargetAccount.PositionAmount
         PositionValue = PositionAmount + self._CashAllocated
-        PositionLevel = PositionAmount / PositionValue
         if signal is not None:# 有新的信号, 形成新的交易目标
-            signal = signal.loc[PositionLevel.index]
-            signal = signal.where(pd.notnull(signal), PositionLevel)
+            signal = signal.loc[PositionValue.index]
             if self.TradeTarget=="锁定买卖金额":
-                self._TradeTarget = (signal - PositionLevel) * PositionValue
+                self._TradeTarget = signal * PositionValue - PositionAmount
             elif self.TradeTarget=="锁定目标金额":
                 self._TradeTarget = PositionValue * signal
             elif self.TradeTarget=="锁定目标仓位":
@@ -143,7 +141,7 @@ class TimingStrategy(Strategy):
             if self.TradeTarget=="锁定买卖金额":
                 Orders = self._TradeTarget
             elif self.TradeTarget=="锁定目标仓位":
-                Orders = (self._TradeTarget - PositionLevel) * PositionValue
+                Orders = self._TradeTarget * PositionValue - PositionAmount
             elif self.TradeTarget=="锁定目标金额":
                 Orders = self._TradeTarget - PositionAmount
             Orders = Orders / self.TargetAccount.LastPrice
