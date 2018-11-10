@@ -23,6 +23,8 @@ class TimingStrategy(Strategy):
         self._FT = factor_table# 因子表
         self._AllSignals = {}# 存储所有生成的信号, {时点: 信号}
         self._AllAllocationReset = {}# 存储所有的资金分配信号, {时点: 信号}
+        self._ValueAllocated = None
+        self._CashAllocated = None
         return super().__init__(name=name, accounts=[], fts=([] if self._FT is None else [self._FT]), sys_args=sys_args, config_file=config_file, **kwargs)
     @on_trait_change("TargetAccount")
     def on_TargetAccount_changed(self, obj, name, old, new):
@@ -36,31 +38,30 @@ class TimingStrategy(Strategy):
         return self._FT
     @property
     def TargetIDs(self):
-        if self.ValueAllocated is None:
-            if self.TargetAccount is not None: return self.TargetAccount.IDs
-            else: return []
-        return self.ValueAllocated.index.tolist()
+        if self._ValueAllocated is None:
+            if self.ValueAllocated is None:
+                if self.TargetAccount is not None: return self.TargetAccount.IDs
+                else: return []
+            return self.ValueAllocated.index.tolist()
+        else:
+            return self._ValueAllocated[self._ValueAllocated!=0].index.tolist()
     # 重新设置资金分配
     def _resetAllocation(self, new_allocation):
         IDs = self.TargetAccount.IDs
-        PositionAmount = self.TargetAccount.PositionAmount
-        if new_allocation.index.intersection(IDs).shape[0]==0:
-            self._CashAllocated = -PositionAmount
+        if new_allocation is None:
+            return pd.Series(self.TargetAccount.AccountValue / len(IDs), index=IDs)
+        elif new_allocation.index.intersection(IDs).shape[0]==0:
+            return pd.Series(0.0, index=IDs)
         else:
-            new_allocation = new_allocation.loc[IDs] * self.TargetAccount.AccountValue
-            new_allocation.fillna(0.0, inplace=True)
-            self._CashAllocated = new_allocation - PositionAmount
-        return 0
+            return new_allocation.loc[IDs].fillna(0.0)
     def __QS_start__(self, mdl, dts, **kwargs):
         Rslt = super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._AllSignals = {}
         self._TradeTarget = None# 锁定的交易目标
         self._SignalExcutePeriod = 0# 信号已经执行的期数
-        if self.ValueAllocated is None:
-            IDs = self.TargetAccount.IDs
-            self.ValueAllocated = pd.Series(self.TargetAccount.AccountValue / len(IDs), index=IDs)
-        self._resetAllocation(self.ValueAllocated)
-        self._AllAllocationReset = {dts[0]-dt.timedelta(1): self.ValueAllocated}
+        self._ValueAllocated = self._resetAllocation(self.ValueAllocated)
+        self._CashAllocated = self._ValueAllocated - self.TargetAccount.PositionAmount.fillna(0.0)
+        self._AllAllocationReset = {dts[0]-dt.timedelta(1): self._ValueAllocated}
         self._isAllocationReseted = False
         # 初始化信号滞后发生的控制变量
         self._TempData = {}
@@ -80,24 +81,19 @@ class TimingStrategy(Strategy):
         Signal = self._bufferSignal(Signal)
         NewAllocation = None
         if self._isAllocationReseted:
-            if self.ValueAllocated is None:
-                IDs = self.TargetAccount.IDs
-                self.ValueAllocated = pd.Series(self.TargetAccount.AccountValue / len(IDs), index=IDs)
-            NewAllocation = self.ValueAllocated
+            NewAllocation = self._resetAllocation(self.ValueAllocated)
             self._AllAllocationReset[idt] = NewAllocation
             self._isAllocationReseted = False
         NewAllocation = self._bufferAllocationReset(NewAllocation)
         if NewAllocation is not None:
-            self._resetAllocation(NewAllocation)
+            self._ValueAllocated = NewAllocation
+            self._CashAllocated = self._ValueAllocated - self.TargetAccount.PositionAmount.fillna(0.0)
         else:# 更新资金分配
             iTradingRecord = TradingRecord[self.TargetAccount.Name]
             if iTradingRecord.shape[0]>0:
-                ValueChanged = pd.Series((iTradingRecord["买卖数量"] * iTradingRecord["价格"]).values, index=iTradingRecord["ID"].values)
-                ValueChanged = ValueChanged.groupby(axis=0, level=0).sum().loc[self._CashAllocated.index]
-                ValueChanged.fillna(0.0, inplace=True)
-                Fee = iTradingRecord.loc[:, ["ID","交易费"]].groupby(by=["ID"])["交易费"].sum().loc[self._CashAllocated.index]
-                Fee.fillna(0.0, inplace=True)
-                self._CashAllocated -= ValueChanged + Fee
+                CashChanged = pd.Series((iTradingRecord["买卖数量"] * iTradingRecord["价格"] + iTradingRecord["交易费"]).values, index=iTradingRecord["ID"].values)
+                CashChanged = CashChanged.groupby(axis=0, level=0).sum().loc[self._CashAllocated.index]
+                self._CashAllocated -= CashChanged.fillna(0.0)
         self.trade(idt, TradingRecord, Signal)
         for iAccount in self.Accounts: iAccount.__QS_after_move__(idt, **kwargs)
         return 0
@@ -114,6 +110,7 @@ class TimingStrategy(Strategy):
         PositionValue = PositionAmount + self._CashAllocated
         if signal is not None:# 有新的信号, 形成新的交易目标
             signal = signal.loc[PositionValue.index]
+            signal[self._ValueAllocated==0] = 0.0
             if self.TradeTarget=="锁定买卖金额":
                 self._TradeTarget = signal * PositionValue - PositionAmount
             elif self.TradeTarget=="锁定目标金额":
