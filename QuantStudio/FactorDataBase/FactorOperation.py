@@ -123,19 +123,24 @@ class TimeOperation(DerivativeFactor):
             iDescriptor._QS_updateStartDT(iStartDT, dt_dict)
     def readData(self, ids, dts, **kwargs):
         DTRuler = kwargs.get("dt_ruler", dts)
-        StartInd = DTRuler.index(dts[0])
+        StartInd = (DTRuler.index(dts[0]) if dts[0] in DTRuler else 0)
+        EndInd = (DTRuler.index(dts[-1]) if dts[-1] in DTRuler else len(DTRuler)-1)
+        if StartInd>EndInd: return pd.DataFrame(index=dts, columns=ids)
         nID = len(ids)
         DescriptorData = []
         for i, iDescriptor in enumerate(self.Descriptors):
-            iDTs = DTRuler[max(StartInd-self.LookBack[i], 0):StartInd]+dts
-            iDescriptorData = iDescriptor.readData(ids=ids, dts=iDTs, **kwargs).values
+            iDTs = DTRuler[max(StartInd-self.LookBack[i], 0):EndInd+1]
+            if iDTs:
+                iDescriptorData = iDescriptor.readData(ids=ids, dts=iDTs, **kwargs).values
+            else:
+                iDescriptorData = np.full((0, nID), np.nan)
             if StartInd<self.LookBack[i]:
                 iLookBackData = np.full((self.LookBack[i]-StartInd, nID), np.nan)
                 iDescriptorData = np.r_[iLookBackData, iDescriptorData]
             DescriptorData.append(iDescriptorData)
-        StdData = self._calcData(ids=ids, dts=dts, descriptor_data=DescriptorData)
-        return pd.DataFrame(StdData, index=dts, columns=ids)
-    def _calcData(self, ids, dts, descriptor_data):
+        StdData = self._calcData(ids=ids, dts=DTRuler[StartInd:EndInd+1], descriptor_data=DescriptorData, dt_ruler=DTRuler)
+        return pd.DataFrame(StdData, index=DTRuler[StartInd:EndInd+1], columns=ids).loc[dts, :]
+    def _calcData(self, ids, dts, descriptor_data, dt_ruler):
         if self.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
         else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')
         StartIndAndLen, MaxLookBack, MaxLen = [], 0, 1
@@ -157,11 +162,9 @@ class TimeOperation(DerivativeFactor):
                 MaxLen = max(MaxLen, self.iLookBack+1)
             MaxLookBack = max(MaxLookBack, self.iLookBack)
             descriptor_data.insert(0, StdData)
-        if self._OperationMode is None: DTRuler = [None] * MaxLookBack + dts
-        else:
-            StartInd = self._OperationMode.DTRuler.index(dts[0])
-            if StartInd>=MaxLookBack: DTRuler = self._OperationMode.DTRuler[StartInd-MaxLookBack:]
-            else: DTRuler = [None]*(MaxLookBack-StartInd) + self._OperationMode.DTRuler
+        StartInd = dt_ruler.index(dts[0])
+        if StartInd>=MaxLookBack: DTRuler = dt_ruler[StartInd-MaxLookBack:]
+        else: DTRuler = [None]*(MaxLookBack-StartInd) + dt_ruler
         if (self.DTMode=='单时点') and (self.IDMode=='单ID'):
             for i, iDT in enumerate(dts):
                 iDTs = DTRuler[max(0, MaxLookBack+i+1-MaxLen):i+1+MaxLookBack]
@@ -199,7 +202,7 @@ class TimeOperation(DerivativeFactor):
             iDescriptorData = iDescriptor._QS_getData(iDTs, pids=[PID]).values
             if iStartInd<0: iDescriptorData = np.r_[np.full(shape=(abs(iStartInd), iDescriptorData.shape[1]), fill_value=np.nan), iDescriptorData]
             DescriptorData.append(iDescriptorData)
-        StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData)
+        StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData, dt_ruler=self._OperationMode.DTRuler)
         StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
         with self._OperationMode._PID_Lock[PID]:
             with shelve.open(self._OperationMode._CacheDataDir+os.sep+PID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
@@ -319,19 +322,24 @@ class PanelOperation(DerivativeFactor):
             self._OperationMode._Event[self.Name] = (Queue(), Event())
     def readData(self, ids, dts, **kwargs):
         DTRuler = kwargs.get("dt_ruler", dts)
-        StartInd = DTRuler.index(dts[0])
+        StartInd = (DTRuler.index(dts[0]) if dts[0] in DTRuler else 0)
+        EndInd = (DTRuler.index(dts[-1]) if dts[-1] in DTRuler else len(DTRuler)-1)
+        if StartInd>EndInd: return pd.DataFrame(index=dts, columns=ids)
         nID = len(ids)
         DescriptorData = []
         for i, iDescriptor in enumerate(self.Descriptors):
-            iDTs = DTRuler[max(StartInd-self.LookBack[i], 0):StartInd]+dts
-            iDescriptorData = iDescriptor.readData(ids=ids, dts=iDTs, **kwargs).values
+            iDTs = DTRuler[max(StartInd-self.LookBack[i], 0):EndInd+1]
+            if iDTs:
+                iDescriptorData = iDescriptor.readData(ids=ids, dts=iDTs, **kwargs).values
+            else:
+                iDescriptorData = np.full((0, nID), np.nan)
             if StartInd<self.LookBack[i]:
                 iLookBackData = np.full((self.LookBack[i]-StartInd, nID), np.nan)
                 iDescriptorData = np.r_[iLookBackData, iDescriptorData]
             DescriptorData.append(iDescriptorData)
-        StdData = self._calcData(ids=ids, dts=dts, descriptor_data=DescriptorData)
-        return pd.DataFrame(StdData, index=dts, columns=ids)
-    def _calcData(self, ids, dts, descriptor_data):
+        StdData = self._calcData(ids=ids, dts=DTRuler[StartInd:EndInd+1], descriptor_data=DescriptorData, dt_ruler=DTRuler)
+        return pd.DataFrame(StdData, index=DTRuler[StartInd:EndInd+1], columns=ids).loc[dts, :]
+    def _calcData(self, ids, dts, descriptor_data, dt_ruler):
         if self.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
         else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')
         StartIndAndLen, MaxLookBack, MaxLen = [], 0, 1
@@ -353,11 +361,9 @@ class PanelOperation(DerivativeFactor):
                 MaxLen = max(MaxLen, self.iLookBack+1)
             descriptor_data.insert(0, StdData)
             MaxLookBack = max(MaxLookBack, self.iLookBack)
-        if self._OperationMode is None: DTRuler = [None] * MaxLookBack + dts
-        else:
-            StartInd = self._OperationMode.DTRuler.index(dts[0])
-            if StartInd>=MaxLookBack: DTRuler = self._OperationMode.DTRuler[StartInd-MaxLookBack:]
-            else: DTRuler = [None]*(MaxLookBack-StartInd) + self._OperationMode.DTRuler
+        StartInd = dt_ruler.index(dts[0])
+        if StartInd>=MaxLookBack: DTRuler = dt_ruler[StartInd-MaxLookBack:]
+        else: DTRuler = [None]*(MaxLookBack-StartInd) + dt_ruler
         if self.OutputMode=='全截面':
             if self.DTMode=='单时点':
                 for i, iDT in enumerate(dts):
@@ -399,7 +405,7 @@ class PanelOperation(DerivativeFactor):
                 iDescriptorData = iDescriptor._QS_getData(iDTs, pids=None).values
                 if iStartInd<0: iDescriptorData = np.r_[np.full(shape=(abs(iStartInd), iDescriptorData.shape[1]), fill_value=np.nan), iDescriptorData]
                 DescriptorData.append(iDescriptorData)
-            StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData)
+            StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData, dt_ruler=self._OperationMode.DTRuler)
             DescriptorData, iDescriptorData, StdData = None, None, pd.DataFrame(StdData, index=DTs, columns=IDs)
         for iPID, iIDs in self._OperationMode._PID_IDs.items():
             with self._OperationMode._PID_Lock[iPID]:
