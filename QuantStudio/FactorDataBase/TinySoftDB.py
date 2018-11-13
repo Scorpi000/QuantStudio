@@ -38,7 +38,7 @@ class _CalendarTable(FactorTable):
         CodeStr = CodeStr.format(StartDate=start_dt.strftime("%Y%m%d"), EndDate=end_dt.strftime("%Y%m%d"))
         ErrorCode, Data, Msg = self.TSLPy.RemoteExecute(CodeStr,{})
         if ErrorCode!=0: raise __QS_Error__("TinySoft 执行错误: "+Msg.decode("gbk"))
-        return list(map(lambda x: dt.datetime.combine(dt.date(*self.TSLPy.DecodeDate(x)), dt.time(23,59,59,999999)), Data))
+        return list(map(lambda x: dt.datetime(*self.TSLPy.DecodeDate(x)), Data))
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         Data = pd.DataFrame(1, index=self.getDateTime(start_dt=dts[0], end_dt=dts[-1]), columns=["SSE", "SZSE"])
         if Data.index.intersection(dts).shape[0]==0: return pd.Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)

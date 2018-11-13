@@ -164,7 +164,7 @@ class TimeBarAccount(Account):
     # 添加新的支付信息
     def _addPaymentInfo(self, idate):
         if self._OpenPosition.shape[0]==0: return 0
-        iDT = dt.datetime.combine(idate, dt.time(23,59,59,999999))
+        iDT = dt.datetime.combine(idate, dt.time(0))
         Interest = self._PaymentFT.readData(factor_names=[self.PaymentInfo.Interest, self.PaymentInfo.Principal], ids=self._OpenPosition["ID"].unique().tolist(), dts=[iDT]).iloc[:, 0, :].sum(axis=1)
         IDs = Interest[Interest>0].index.tolist()
         if not IDs: return 0

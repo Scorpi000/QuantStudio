@@ -71,7 +71,7 @@ class _CalendarTable(_FactorTable):
         end_dt = end_dt.strftime("%Y%m%d")
         if iid is None: iid="SSE"
         Dates = self._FactorDB._ts.query(DBTableName, exchange_id=iid, start_date=start_dt, end_date=end_dt, fields=DateField, is_open="1")
-        return [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Dates[DateField].values]
+        return [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8])) for iDate in Dates[DateField].values]
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         DBTableName = self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         FieldDict = self._FactorDB._FactorInfo['DBFieldName'].loc[self.Name].loc[[self._DateField, self._IDField]+factor_names]
@@ -96,7 +96,7 @@ class _CalendarTable(_FactorTable):
             if DataType[iFactorName]=="double": iRawData = iRawData.astype("float")
             Data[iFactorName] = iRawData
         Data = pd.Panel(Data).loc[factor_names]
-        Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
+        Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Data.major_axis]
         return Data.loc[:, dts, ids]
 
 class _MarketTable(_FactorTable):
@@ -190,7 +190,7 @@ class _MarketTable(_FactorTable):
             if DataType[iFactorName]=="double": iRawData = iRawData.astype("float")
             Data[iFactorName] = iRawData
         Data = pd.Panel(Data).loc[factor_names]
-        Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
+        Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Data.major_axis]
         if Data.minor_axis.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         LookBack = args.get("回溯天数", self.LookBack)
         if LookBack==0: return Data.loc[:, dts, ids]
@@ -260,15 +260,16 @@ class TushareDB(FactorDB):
         if kwargs.get("output_type", "date")=="date":
             return [dt.datetime.strptime(iDate, "%Y%m%d").date() for iDate in Dates["cal_date"]]
         else:
-            iTime = dt.time(23,59,59,999999)
-            return [dt.datetime.combine(dt.datetime.strptime(iDate, "%Y%m%d").date(), iTime) for iDate in Dates["cal_date"]]
+            return [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Dates["cal_date"]]
     # 获取指定日当前在市或者历史上出现过的全体 A 股 ID
     def _getAllAStock(self, date, is_current=True):
-        Data = self._ts.stock_basic(exchange_id="", is_hs="", fields="ts_code, list_date, delist_date")
+        Data = self._ts.stock_basic(exchange_id="", is_hs="", list_status="L", fields="ts_code, list_date, delist_date")
+        Data = Data.append(self._ts.stock_basic(exchange_id="", is_hs="", list_status="D", fields="ts_code, list_date, delist_date"))
+        Data = Data.append(self._ts.stock_basic(exchange_id="", is_hs="", list_status="P", fields="ts_code, list_date, delist_date"))
         date = date.strftime("%Y%m%d")
         Data = Data[Data["list_date"]<=date]
         if is_current: Data = Data[pd.isnull(Data["delist_date"]) | (Data["delist_date"]>date)]
-        return Data["ts_code"].tolist()
+        return sorted(Data["ts_code"])
     # 获取指定日当前或历史上的指数成份股ID, is_current=True: 获取指定日当天的ID, False:获取截止指定日历史上出现的 ID
     def getID(self, index_id="全体A股", date=None, is_current=True):
         if date is None: date = dt.date.today()

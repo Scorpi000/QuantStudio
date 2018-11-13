@@ -31,7 +31,7 @@ class _CalendarTable(FactorTable):
         end_date = (end_dt + dt.timedelta(1)).strftime("%Y-%m-%d")
         jpckg = self._FactorDB._jpype.JPackage('clover.epsilon.database')
         Dates = jpckg.DatabaseUtil.getTradeDateList(self._jConn, iid, start_date, end_date)
-        iTime = dt.time(23,59,59,999999)
+        iTime = dt.time(0)
         return [dt.datetime.combine(dt.datetime.strptime(iDate, "%Y-%m-%d").date(), iTime) for iDate in Dates]
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         Data = pd.DataFrame({iID:pd.Series(1.0, index=self.getDateTime(iid=iID, start_dt=dts[0], end_dt=dts[-1])) for iID in ids})
@@ -150,7 +150,7 @@ class _FeatureTable(FactorTable):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         Data = {}
         for i in range((EndDate-StartDate).days):
-            iDT = dt.datetime.combine(StartDate + dt.timedelta(i), dt.time(23, 59, 59, 999999))
+            iDT = dt.datetime.combine(StartDate + dt.timedelta(i), dt.time(0))
             Data[iDT] = pd.DataFrame(self._FactorDB.getSecurityInfo(ids, idt=iDT), index=ids).loc[:, factor_names].T
         Data = pd.Panel(Data).swapaxes(0, 1)
         Data = _adjustDateTime(Data, dts, fillna=True, method="bfill")

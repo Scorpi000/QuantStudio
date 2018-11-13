@@ -134,7 +134,7 @@ class _CalendarTable(_DBTable):
         if start_dt is not None: SQLStr += "AND "+DBTableName+"."+FieldDict[self._DateField]+">='"+start_dt.strftime("%Y%m%d")+"' "
         if end_dt is not None: SQLStr += "AND "+DBTableName+"."+FieldDict[self._DateField]+"<='"+end_dt.strftime("%Y%m%d")+"' "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._DateField]
-        return list(map(lambda x: dt.datetime(int(x[0][:4]), int(x[0][4:6]), int(x[0][6:8]), 23, 59, 59, 999999), self._FactorDB.fetchall(SQLStr)))
+        return list(map(lambda x: dt.datetime.strptime(x[0], "%Y%m%d"), self._FactorDB.fetchall(SQLStr)))
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
         FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._DateField, self._IDField])
@@ -152,7 +152,7 @@ class _CalendarTable(_DBTable):
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         raw_data["交易日"] = 1
         Data = pd.Panel({"交易日":raw_data.set_index(["日期", "ID"])["交易日"].unstack()}).loc[factor_names]
-        Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
+        Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Data.major_axis]
         return _adjustDateTime(Data, dts, fillna=True, value=0)
 
 class _MarketTable(_DBTable):
@@ -235,7 +235,7 @@ class _MarketTable(_DBTable):
             else:
                 SQLStr += "AND "+DBTableName+"."+FieldDict[iConditionField]+"="+args.get(iConditionField, self[iConditionField])+" "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self.DateField]
-        return list(map(lambda x: dt.datetime(int(x[0][:4]), int(x[0][4:6]), int(x[0][6:8]), 23, 59, 59, 999999), self._FactorDB.fetchall(SQLStr)))
+        return list(map(lambda x: dt.datetime.strptime(x[0], "%Y%m%d"), self._FactorDB.fetchall(SQLStr)))
     def __QS_genGroupInfo__(self, factors, operation_mode):
         DateConditionGroup = {}
         for iFactor in factors:
@@ -300,7 +300,7 @@ class _MarketTable(_DBTable):
             if DataType[iFactorName]=="double": iRawData = iRawData.astype("float")
             Data[iFactorName] = iRawData
         Data = pd.Panel(Data).loc[factor_names]
-        Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
+        Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Data.major_axis]
         LookBack = args.get("回溯天数", self.LookBack)
         if LookBack==0: return Data.loc[:, dts, ids]
         AllDTs = Data.major_axis.union(dts).sort_values()
@@ -350,7 +350,7 @@ class _DividendTable(_DBTable):
         if end_dt is not None: SQLStr += "AND "+DBTableName+"."+self._ExDateField+"<='"+end_dt.strftime("%Y%m%d")+"' "
         SQLStr += "AND "+DBTableName+"."+self._ProgressField+"=3 "
         SQLStr += "ORDER BY "+DBTableName+"."+self._ExDateField
-        return list(map(lambda x: dt.datetime(int(x[0][:4]), int(x[0][4:6]), int(x[0][6:8]), 23, 59, 59, 999999), self._FactorDB.fetchall(SQLStr)))
+        return list(map(lambda x: dt.datetime.strptime(x[0], "%Y%m%d"), self._FactorDB.fetchall(SQLStr)))
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
@@ -377,7 +377,7 @@ class _DividendTable(_DBTable):
             iRawData = raw_data[iFactorName].unstack().astype("float")
             Data[iFactorName] = iRawData
         Data = pd.Panel(Data).loc[factor_names]
-        Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
+        Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Data.major_axis]
         if Data.major_axis.intersection(dts).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         return Data.loc[:, dts, ids]
 class _ConstituentTable(_DBTable):
@@ -460,23 +460,22 @@ class _ConstituentTable(_DBTable):
                 SQLStr += "AND "+DBTableName+"."+FieldDict[self._InDateField]+"<='"+end_dt.strftime("%Y%m%d")+"' "
             SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._InDateField]
             Data = self._FactorDB.fetchall(SQLStr)
-            TimeDelta = dt.timedelta(seconds=59, microseconds=999999, minutes=59, hours=23)
             DateTimes = set()
             for iStartDate, iEndDate in Data:
-                iStartDT = dt.datetime.strptime(iStartDate, "%Y%m%d") + TimeDelta
+                iStartDT = dt.datetime.strptime(iStartDate, "%Y%m%d")
                 if iEndDate is None: iEndDT = (dt.datetime.now() if end_dt is None else end_dt)
-                else: iEndDT = dt.datetime.strptime(iEndDate, "%Y%m%d") + TimeDelta
+                else: iEndDT = dt.datetime.strptime(iEndDate, "%Y%m%d")
                 DateTimes = DateTimes.union(set(getDateTimeSeries(start_dt=iStartDT, end_dt=iEndDT, timedelta=dt.timedelta(1))))
             return sorted(DateTimes)
         SQLStr = "SELECT MIN("+DBTableName+"."+FieldDict[self._InDateField]+") "# 纳入日期
         SQLStr += "FROM "+DBTableName
         if ifactor_name is not None:
             SQLStr += " WHERE "+DBTableName+"."+FieldDict[self._GroupField]+"='"+ifactor_name+"'"
-        StartDT = dt.datetime.strptime(self._FactorDB.fetchall(SQLStr)[0][0], "%Y%m%d") + dt.timedelta(seconds=59, microseconds=999999, minutes=59, hours=23)
+        StartDT = dt.datetime.strptime(self._FactorDB.fetchall(SQLStr)[0][0], "%Y%m%d")
         if start_dt is not None:
             StartDT = max((StartDT, start_dt))
         if end_dt is None:
-            end_dt = dt.datetime.combine(dt.date.today(), dt.time(23,59,59,999999))
+            end_dt = dt.datetime.combine(dt.date.today(), dt.time(0))
         return list(getDateTimeSeries(start_dt=start_dt, end_dt=end_dt, timedelta=dt.timedelta(1)))
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
@@ -518,7 +517,7 @@ class _ConstituentTable(_DBTable):
         Data = pd.Panel(Data)
         if Data.minor_axis.intersection(ids).shape[0]==0: return pd.Panel(0.0, items=factor_names, major_axis=dts, minor_axis=ids)
         Data = Data.loc[factor_names, :, ids]
-        Data.major_axis = [dt.datetime.combine(iDate, dt.time(23, 59, 59, 999999)) for iDate in Data.major_axis]
+        Data.major_axis = [dt.datetime.combine(iDate, dt.time(0)) for iDate in Data.major_axis]
         Data.fillna(value=0, inplace=True)
         return _adjustDateTime(Data, dts, fillna=True, method="bfill")
 class _MappingTable(_DBTable):
@@ -553,9 +552,9 @@ class _MappingTable(_DBTable):
         SQLStr = "SELECT MIN("+DBTableName+"."+FieldDict[self._StartDateField]+") "# 起始日期
         SQLStr += "FROM "+DBTableName
         if iid is not None: SQLStr += " WHERE "+DBTableName+"."+FieldDict[self._IDField]+"='"+iid+"'"
-        StartDT = dt.datetime.strptime(self._FactorDB.fetchall(SQLStr)[0][0], "%Y%m%d") + dt.timedelta(seconds=59, microseconds=999999, minutes=59, hours=23)
+        StartDT = dt.datetime.strptime(self._FactorDB.fetchall(SQLStr)[0][0], "%Y%m%d")
         if start_dt is not None: StartDT = max((StartDT, start_dt))
-        if end_dt is None: end_dt = dt.datetime.combine(dt.date.today(), dt.time(23,59,59,999999))
+        if end_dt is None: end_dt = dt.datetime.combine(dt.date.today(), dt.time(0))
         return list(getDateTimeSeries(start_dt=start_dt, end_dt=end_dt, timedelta=dt.timedelta(1)))
         # 时间点默认是当天, ID 默认是 [000001.SH], 特别参数: 回溯天数
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
@@ -586,7 +585,7 @@ class _MappingTable(_DBTable):
             iData = pd.DataFrame(index=dts, columns=factor_names)
             for j in range(iRawData.shape[0]):
                 ijRawData = iRawData.iloc[j]
-                jStartDate, jEndDate = dt.datetime.strptime(ijRawData[self._StartDateField], "%Y%m%d"), dt.datetime.combine(dt.datetime.strptime(ijRawData[self._EndDateField], "%Y%m%d").date(), dt.time(23,59,59,999999))-DeltaDT
+                jStartDate, jEndDate = dt.datetime.strptime(ijRawData[self._StartDateField], "%Y%m%d"), dt.datetime.strptime(ijRawData[self._EndDateField], "%Y%m%d")-DeltaDT
                 iData.loc[jStartDate:jEndDate] = np.repeat(ijRawData[factor_names].values.reshape((1, nFactor)), iData.loc[jStartDate:jEndDate].shape[0], axis=0)
             Data[iID] = iData
         return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
@@ -655,20 +654,19 @@ class _IndustryTable(_DBTable):
             if end_dt is not None: SQLStr += "AND "+DBTableName+"."+FieldDict[self._InDateField]+"<='"+end_dt.strftime("%Y%m%d")+"' "
             SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._InDateField]
             Data = self._FactorDB.fetchall(SQLStr)
-            TimeDelta = dt.timedelta(seconds=59, microseconds=999999, minutes=59, hours=23)
             DateTimes = set()
             for iStartDate, iEndDate in Data:
-                iStartDT = dt.datetime.strptime(iStartDate, "%Y%m%d") + TimeDelta
+                iStartDT = dt.datetime.strptime(iStartDate, "%Y%m%d")
                 if iEndDate is None: iEndDT = (dt.datetime.now() if end_dt is None else end_dt)
-                else: iEndDT = dt.datetime.strptime(iEndDate, "%Y%m%d") + TimeDelta
+                else: iEndDT = dt.datetime.strptime(iEndDate, "%Y%m%d")
                 DateTimes = DateTimes.union(set(getDateTimeSeries(start_dt=iStartDT, end_dt=iEndDT, timedelta=dt.timedelta(1))))
             return sorted(DateTimes)
         SQLStr = "SELECT MIN("+DBTableName+"."+FieldDict[self._InDateField]+") "# 纳入日期
         SQLStr += "FROM "+DBTableName
         SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._IndustryCodeField]+" IN ("+SubSQLStr+") "
-        StartDT = dt.datetime.strptime(self._FactorDB.fetchall(SQLStr)[0][0], "%Y%m%d") + dt.timedelta(seconds=59, microseconds=999999, minutes=59, hours=23)
+        StartDT = dt.datetime.strptime(self._FactorDB.fetchall(SQLStr)[0][0], "%Y%m%d")
         if start_dt is not None: StartDT = max((StartDT, start_dt))
-        if end_dt is None: end_dt = dt.datetime.combine(dt.date.today(), dt.time(23,59,59,999999))
+        if end_dt is None: end_dt = dt.datetime.combine(dt.date.today(), dt.time(0))
         return list(getDateTimeSeries(start_dt=start_dt, end_dt=end_dt, timedelta=dt.timedelta(1)))
     def __QS_genGroupInfo__(self, factors, operation_mode):
         LevelGroup = {}
@@ -731,7 +729,7 @@ class _IndustryTable(_DBTable):
             iData = pd.DataFrame(index=dts, columns=factor_names, dtype="O")
             for j in range(iRawData.shape[0]):
                 ijRawData = iRawData.iloc[j]
-                jStartDate, jEndDate = dt.datetime.strptime(ijRawData[self._InDateField], "%Y%m%d"), dt.datetime.combine(dt.datetime.strptime(ijRawData[self._OutDateField], "%Y%m%d").date(), dt.time(23,59,59,999999))-DeltaDT
+                jStartDate, jEndDate = dt.datetime.strptime(ijRawData[self._InDateField], "%Y%m%d"), dt.datetime.strptime(ijRawData[self._OutDateField], "%Y%m%d")-DeltaDT
                 iData.loc[jStartDate:jEndDate] = np.repeat(ijRawData[factor_names].values.reshape((1, nFactor)), iData.loc[jStartDate:jEndDate].shape[0], axis=0)
             Data[iID] = iData
         return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
@@ -812,7 +810,7 @@ class _FinancialTable(_DBTable):
         if start_dt is not None: SQLStr += "AND "+DBTableName+"."+FieldDict[self._ANNDateField]+">='"+start_dt.strftime("%Y%m%d")+"' "
         if end_dt is not None: SQLStr += "AND "+DBTableName+"."+FieldDict[self._ANNDateField]+"<='"+end_dt.strftime("%Y%m%d")+"' "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._ANNDateField]
-        return list(map(lambda x: dt.datetime(int(x[0][:4]), int(x[0][4:6]), int(x[0][6:8]), 23, 59, 59, 999999), self._FactorDB.fetchall(SQLStr)))
+        return list(map(lambda x: dt.datetime.strptime(x[0], "%Y%m%d"), self._FactorDB.fetchall(SQLStr)))
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._IDField, self._ANNDateField, self._ReportDateField, self._ReportTypeField]+factor_names)
         DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
@@ -860,7 +858,7 @@ class _FinancialTable(_DBTable):
         for iID in raw_data.index.unique():
             Data[iID] = CalcFun(Dates, raw_data.loc[[iID]], factor_names, ReportDate, YearLookBack, PeriodLookBack)
         Data = pd.Panel(Data)
-        Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:]), 23, 59, 59, 999999) for iDate in Dates]
+        Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Dates]
         Data.minor_axis = factor_names
         Data = Data.swapaxes(0, 2)
         Data = _adjustDateTime(Data, dts, fillna=True, method="pad")
@@ -1260,7 +1258,7 @@ class _AnalystConsensusTable(_DBTable):
                 iANNReportData = None
             Data[iID] = CalcFun(Dates, raw_data.loc[[iID]], iANNReportData, factor_names, LookBack, FYNum)
         Data = pd.Panel(Data)
-        Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:]), 23, 59, 59, 999999) for iDate in Dates]
+        Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Dates]
         Data = Data.swapaxes(0, 2)
         if LookBack==0: return Data.loc[:, dts, ids]
         AllDTs = Data.major_axis.union(set(dts)).sort_values()
@@ -1378,7 +1376,7 @@ class _AnalystRatingDetailTable(_DBTable):
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
-        Dates = sorted({dt.datetime.combine(iDT.date(), dt.time(23,59,59,999999)) for iDT in dts})
+        Dates = sorted({dt.datetime.combine(iDT.date(), dt.time(0)) for iDT in dts})
         DeduplicationFields = args.get("去重字段", self.Deduplication)
         AdditionalFields = list(set(args.get("附加字段", self.AdditionalFields)+DeduplicationFields))
         AllFields = list(set(factor_names+AdditionalFields))
@@ -1472,7 +1470,7 @@ class _AnalystEstDetailTable(_DBTable):
         RawData._QS_ANNReport = True
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        Dates = sorted({dt.datetime.combine(iDT.date(), dt.time(23,59,59,999999)) for iDT in dts})
+        Dates = sorted({dt.datetime.combine(iDT.date(), dt.time(0)) for iDT in dts})
         DeduplicationFields = args.get("去重字段", self.Deduplication)
         AdditionalFields = list(set(args.get("附加字段", self.AdditionalFields)+DeduplicationFields))
         AllFields = list(set(factor_names+AdditionalFields))
@@ -1580,9 +1578,9 @@ class _AnnTable(_DBTable):
             if start_dt is not None: SQLStr += "AND "+FieldDict[self._AnnDateField]+">='"+start_dt.strftime("%Y%m%d")+"' "
             if end_dt is not None: SQLStr += "AND "+FieldDict[self._AnnDateField]+"<='"+end_dt.strftime("%Y%m%d")+"' "
             SQLStr += "ORDER BY "+FieldDict[self._AnnDateField]
-        return list(map(lambda x: dt.datetime(int(x[0][:4]), int(x[0][4:6]), int(x[0][6:8]), 23, 59, 59, 999999), self._FactorDB.fetchall(SQLStr)))
+        return list(map(lambda x: dt.datetime.strptime(x[0], "%Y%m%d"), self._FactorDB.fetchall(SQLStr)))
     def __QS_genGroupInfo__(self, factors, operation_mode):
-        FactorNames, RawFactorNames, LookBack, StartDT = [], set(), 0, dt.datetime.combine(dt.date.today(), dt.time(23, 59, 59, 999999))
+        FactorNames, RawFactorNames, LookBack, StartDT = [], set(), 0, dt.datetime.combine(dt.date.today(), dt.time(0))
         for iFactor in factors:
             FactorNames.append(iFactor.Name)
             RawFactorNames.add(iFactor._NameInFT)
@@ -1643,7 +1641,7 @@ class _AnnTable(_DBTable):
         for iFactorName in factor_names:
             Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
         Data = pd.Panel(Data).loc[factor_names, :, ids]
-        Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
+        Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Data.major_axis]
         LookBack = args.get("回溯天数", self.LookBack)
         if LookBack==0: return Data.loc[:, dts, ids]
         AllDTs = Data.major_axis.union(dts).sort_values()

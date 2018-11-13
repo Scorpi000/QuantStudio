@@ -146,7 +146,7 @@ class TimeBarAccount(Account):
     # 处理结算, 对于不满足保证金要求的仓位进行强平
     def _handleSettlement(self, idt):
         if self._OpenPosition.shape[0]==0: return 0
-        idt = dt.datetime.combine(idt.date(), dt.time(23,59,59,999999))
+        idt = dt.datetime.combine(idt.date(), dt.time(0))
         SettlementPrice = self._SecurityFT.readData(factor_names=[self.SecurityInfo.SettlementPrice], dts=[idt], ids=self._IDs).iloc[0,0,:][self._OpenPosition["ID"].tolist()]
         self._OpenPosition["浮动盈亏"] = self._OpenPosition["数量"] * (SettlementPrice.values - self._OpenPosition["开仓价格"]) * self.SecurityInfo.Multiplier
         MaintenanceMargin = self._OpenPosition["数量"].abs() * self.SecurityInfo.Multiplier * SettlementPrice.values * self.SecurityInfo.MaintenanceMarginRate# 维持保证金
@@ -184,8 +184,8 @@ class TimeBarAccount(Account):
     def _handleRollover(self, idt):
         if self._OpenPosition.shape[0]==0: return 0
         iIndex = self._Model.DateTimeIndex
-        idt = dt.datetime.combine(idt.date(), dt.time(23,59,59,999999))
-        iNextDT = dt.datetime.combine(self._Model._QS_TestDateTimes[iIndex+1].date(), dt.time(23,59,59,999999))
+        idt = dt.datetime.combine(idt.date(), dt.time(0))
+        iNextDT = dt.datetime.combine(self._Model._QS_TestDateTimes[iIndex+1].date(), dt.time(0))
         IDMapping = self._SecurityFT.readData(factor_names=[self.SecurityInfo.ContractMapping], ids=self._IDs, dts=[idt, iNextDT]).iloc[0]
         SettlementPrice = self._SecurityFT.readData(factor_names=[self.SecurityInfo.SettlementPrice], dts=[idt], ids=self._IDs).iloc[0,0,:]
         isRollover = False

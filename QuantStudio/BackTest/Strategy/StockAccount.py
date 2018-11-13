@@ -206,7 +206,7 @@ class TimeBarAccount(Account):
         Position = self.Position
         IDs = Position[Position!=0].index
         if IDs.shape[0]==0: return 0
-        iDT = dt.datetime.combine(idate, dt.time(23,59,59,999999))
+        iDT = dt.datetime.combine(idate, dt.time(0))
         Dividend = self._AdjustFT.readData(factor_names=[self.AdjustFactorMap.CashDividend, self.AdjustFactorMap.StockDividend], ids=IDs, dts=[iDT]).iloc[:, 0, :]
         CashDvd = Dividend.iloc[:, 0]
         IDs = list(CashDvd[CashDvd>0].index)
@@ -234,7 +234,7 @@ class TimeBarAccount(Account):
         if self._AdjustFT is None: return 0
         AdjustFactor = self.AdjustFactorMap.AdjustFactor
         if self.AdjustFactorMap.AdjustFactor is not None:
-            AdjustFactor = self._AdjustFT.readData(factor_names=[self.AdjustFactorMap.AdjustFactor], ids=self._IDs, dts=[dt.datetime.combine(idate, dt.time(23,59,59,999999))]).values.squeeze()
+            AdjustFactor = self._AdjustFT.readData(factor_names=[self.AdjustFactorMap.AdjustFactor], ids=self._IDs, dts=[dt.datetime.combine(idate, dt.time(0))]).values.squeeze()
             AdjustFactor = np.where(np.isnan(AdjustFactor), self._AdjustFactor, AdjustFactor)
             iIndex = self._Model.DateTimeIndex
             self._Position[iIndex+1] *= AdjustFactor/self._AdjustFactor

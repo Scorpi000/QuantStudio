@@ -69,7 +69,7 @@ class _WSD(FactorTable):
         for iFactorName in factor_names:
             Data[iFactorName] = self._getFactorData(iFactorName, ids=ids, dts=dts, args=FactorInfo[iFactorName], max_id_num=MaxIDNum)
         Data = pd.Panel(Data).loc[factor_names]
-        Data.major_axis = [dt.datetime.combine(iDate, dt.time(23, 59, 59, 999999)) for iDate in Data.major_axis]
+        Data.major_axis = [dt.datetime.combine(iDate, dt.time(0)) for iDate in Data.major_axis]
         return Data.loc[:, dts, :]
 
 class _WSS(FactorTable):
@@ -190,5 +190,5 @@ if __name__=="__main__":
     WADB.connect()
     FT = WADB.getTable("WSD")
     print(FT.FactorNames)
-    Data = FT.readData(factor_names=["close"], ids=["000001.SZ"], dts=[dt.datetime(2018, 10, 31, 23, 59, 59, 999999)])
+    Data = FT.readData(factor_names=["close"], ids=["000001.SZ"], dts=[dt.datetime(2018, 10, 31)])
     print("====")

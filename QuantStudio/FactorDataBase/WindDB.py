@@ -75,7 +75,7 @@ class _MarketTable(_DBTable):
         if end_dt is not None:
             SQLStr += "AND "+DBTableName+"."+FieldDict["日期"]+"<='"+end_dt.strftime("%Y%m%d")+"' "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict["日期"]
-        return list(map(lambda x: dt.datetime(int(x[0][:4]), int(x[0][4:6]), int(x[0][6:8]), 23, 59, 59, 999999), self.FactorDB.fetchall(SQLStr)))
+        return list(map(lambda x: dt.datetime.strptime(x[0], "%Y%m%d"), self.FactorDB.fetchall(SQLStr)))
      # 时间点默认是当天, ID 默认是 [000001.SH], 特别参数: 回溯天数
     def _getRawData(self, fields, ids=None, start_date=None, end_date=None, args={}):
         DBTableName = self.FactorDB.TablePrefix+self.FactorDB.TableName2DBTableName([self.Name])[self.Name]
@@ -118,7 +118,7 @@ class _MarketTable(_DBTable):
                 iRawData = iRawData.astype("float")
             Data[iFactorName] = iRawData
         Data = pd.Panel(Data).loc[factor_names]
-        Data.major_axis = [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8]), 23, 59, 59, 999999) for iDate in Data.major_axis]
+        Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Data.major_axis]
         Data = _adjustDateTime(Data, dts, fillna=FillNa, method="pad")
         if ids is not None: Data = Data.loc[:, :, ids]
         return Data
@@ -178,12 +178,10 @@ class _ConstituentTable(_DBTable):
             SQLStr += "AND "+DBTableName+"."+FieldDict["纳入日期"]+"<='"+end_dt.strftime("%Y%m%d")+"' "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict["纳入日期"]
         Data = self.FactorDB.fetchall(SQLStr)
-        TimeDelta = dt.timedelta(seconds=59, microseconds=999999, minutes=59, hours=23)
         DateTimes = set()
         for iStartDate, iEndDate in Data:
-            iStartDT = dt.datetime.strptime(iStartDate, "%Y%m%d") + TimeDelta
+            iStartDT = dt.datetime.strptime(iStartDate, "%Y%m%d")
             if iEndDate is None: iEndDT = (dt.datetime.now() if end_dt is None else end_dt)
-                
             DateTimes = DateTimes.union(set(getDateTimeSeries(start_dt=iStartDT, end_dt=iEndDT, timedelta=dt.timedelta(1))))
         return sorted(DateTimes)
     def __QS_readData__(self, factor_names=None, ids=None, dts=None, args={}):
@@ -208,7 +206,7 @@ class _ConstituentTable(_DBTable):
                     iData[jID].loc[kStartDate:kEndDate] = 1
             Data[iIndexID] = iData
         Data = pd.Panel(Data).loc[factor_names]
-        Data.major_axis = [dt.datetime.combine(iDate, dt.time(23, 59, 59, 999999)) for iDate in Data.major_axis]
+        Data.major_axis = [dt.datetime.combine(iDate, dt.time(0)) for iDate in Data.major_axis]
         Data.fillna(value=0, inplace=True)
         return _adjustDateTime(Data, dts, fillna=True, method="bfill")
     def _getRawData(self, fields, ids=None, start_date=None, end_date=None, args={}):

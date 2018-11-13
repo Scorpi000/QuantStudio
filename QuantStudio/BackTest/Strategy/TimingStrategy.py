@@ -37,7 +37,7 @@ class TimingStrategy(Strategy):
     def MainFactorTable(self):
         return self._FT
     @property
-    def TargetIDs(self):
+    def TargetIDs(self):# 当前有分配资金的 ID 列表
         if self._ValueAllocated is None:
             if self.ValueAllocated is None:
                 if self.TargetAccount is not None: return self.TargetAccount.IDs
@@ -45,6 +45,17 @@ class TimingStrategy(Strategy):
             return self.ValueAllocated.index.tolist()
         else:
             return self._ValueAllocated[self._ValueAllocated!=0].index.tolist()
+    @property
+    def PositionLevel(self):# 当前目标账户中所有 ID 的仓位水平
+        if self.TargetAccount is None: raise __QS_Error__("尚未设置目标账户!")
+        if self._CashAllocated is None: return pd.Series(0.0, index=self.TargetAccount.IDs)
+        PositionAmount = self.TargetAccount.PositionAmount
+        PositionValue = PositionAmount + self._CashAllocated
+        PositionLevel = PositionAmount / PositionValue
+        PositionLevel[PositionValue==0] = 0.0
+        Mask = ((PositionAmount!=0) & (PositionValue==0))
+        PositionLevel[Mask] = np.sign(PositionAmount)[Mask]
+        return PositionLevel
     # 重新设置资金分配
     def _resetAllocation(self, new_allocation):
         IDs = self.TargetAccount.IDs
