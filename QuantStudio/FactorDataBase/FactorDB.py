@@ -151,6 +151,8 @@ class _ErgodicMode(__QS_Object__):
     MaxFactorCacheNum = Int(60, arg_type="Integer", label="最大缓冲因子数", order=3)
     MaxIDCacheNum = Int(10000, arg_type="Integer", label="最大缓冲ID数", order=4)
     CacheSize = Int(300, arg_type="Integer", label="缓冲区大小", order=5)# 以 MB 为单位
+    ErgodicDTs = List(arg_type="DateTimeList", label="遍历时点", order=6)
+    ErgodicIDs = List(arg_type="IDList", label="遍历ID", order=7)
     def __init__(self, sys_args={}, **kwargs):
         super().__init__(sys_args=sys_args, **kwargs)
         self._isStarted = False
@@ -504,10 +506,12 @@ class FactorTable(__QS_Object__):
         if self.ErgodicMode.CacheMode=="因子": return self._readData_FactorCacheMode(factor_names=factor_names, ids=ids, dts=dts, args=args)
         return pd.Panel({iID: self._readIDData(iID, factor_names=factor_names, dts=dts, args=args) for iID in ids}).swapaxes(0, 2)
     # 启动遍历模式, dts: 遍历的时间点序列或者迭代器
-    def start(self, dts, ids=None, **kwargs):
+    def start(self, dts, **kwargs):
         if self.ErgodicMode._isStarted: return 0
-        self.ErgodicMode._DateTimes = np.array(dts, dtype="O")
-        self.ErgodicMode._IDs = (self.getID() if ids is None else ids)
+        self.ErgodicMode._DateTimes = np.array((self.getDateTime() if not self.ErgodicMode.ErgodicDTs else self.ErgodicMode.ErgodicDTs), dtype="O")
+        if self.ErgodicMode._DateTimes.shape[0]==0: raise __QS_Error__("因子表: '%s' 的默认时间序列为空, 请设置参数 '遍历模式-遍历时点' !" % self.Name)
+        self.ErgodicMode._IDs = (self.getID() if not self.ErgodicMode.ErgodicIDs else list(self.ErgodicMode.ErgodicIDs))
+        if not self.ErgodicMode._IDs: raise __QS_Error__("因子表: '%s' 的默认 ID 序列为空, 请设置参数 '遍历模式-遍历ID' !" % self.Name)
         self.ErgodicMode._CurInd = -1# 当前时点在 dts 中的位置, 以此作为缓冲数据的依据
         self.ErgodicMode._DTNum = self.ErgodicMode._DateTimes.shape[0]# 时点数
         self.ErgodicMode._CacheDTs = []# 缓冲的时点序列
@@ -865,9 +869,9 @@ class CustomFT(FactorTable):
         self._IDFilterStr = id_filter_str
         self._CompiledIDFilter[id_filter_str] = (CompiledIDFilterStr, IDFilterFactors)
         return OldIDFilterStr
-    def start(self, dts, ids=None, **kwargs):
-        super().start(dts=dts, ids=ids, **kwargs)
-        for iFactor in self._Factors.values(): iFactor.start(dts=dts, ids=ids, **kwargs)
+    def start(self, dts, **kwargs):
+        super().start(dts=dts, **kwargs)
+        for iFactor in self._Factors.values(): iFactor.start(dts=dts, **kwargs)
         return 0
     def end(self):
         super().end()
@@ -1036,7 +1040,7 @@ class Factor(__QS_Object__):
         return StdData
     # ------------------------------------遍历模式------------------------------------
     # 启动遍历模式, dts: 遍历的时间点序列或者迭代器
-    def start(self, dts, ids=None, **kwargs):
+    def start(self, dts, **kwargs):
         self._isStarted = True
         return 0
     # 结束遍历模式

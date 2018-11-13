@@ -60,7 +60,7 @@ class SectionCorrelation(BaseModule):
         nPair = len(self._Output["FactorPair"])
         self._Output.update({iMethod:[[] for i in range(nPair)] for iMethod in self.CorrMethod})
         self._CorrMatrixNeeded = (("factor-score correlation" in self.CorrMethod) or ("factor-portfolio correlation" in self.CorrMethod))
-        if self._CorrMatrixNeeded and (self.RiskDS is not None): self.RiskDS.start()
+        if self._CorrMatrixNeeded and (self.RiskDS is not None): self.RiskDS.start(dts=dts)
         self._Output["时点"] = []
         self._CurCalcInd = 0
         return (self._FactorTable, )

@@ -27,8 +27,8 @@ class DerivativeFactor(Factor):
         if key is None: return pd.Series({"DataType":self.DataType})
         elif key=="DataType": return self.DataType
         return None
-    def start(self, dts, ids=None, **kwargs):
-        for iDescriptor in self.Descriptors: iDescriptor.start(dts=dts, ids=ids, **kwargs)
+    def start(self, dts, **kwargs):
+        for iDescriptor in self.Descriptors: iDescriptor.start(dts=dts, **kwargs)
         return 0
     def end(self):
         for iDescriptor in self.Descriptors: iDescriptor.end()
