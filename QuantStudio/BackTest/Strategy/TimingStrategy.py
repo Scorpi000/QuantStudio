@@ -123,9 +123,9 @@ class TimingStrategy(Strategy):
             signal = signal.loc[PositionValue.index]
             signal[self._ValueAllocated==0] = 0.0
             if self.TradeTarget=="锁定买卖金额":
-                self._TradeTarget = signal * PositionValue - PositionAmount
+                self._TradeTarget = signal * PositionValue.abs() - PositionAmount
             elif self.TradeTarget=="锁定目标金额":
-                self._TradeTarget = PositionValue * signal
+                self._TradeTarget = PositionValue.abs() * signal
             elif self.TradeTarget=="锁定目标仓位":
                 self._TradeTarget = signal
             self._SignalExcutePeriod = 0
@@ -149,7 +149,7 @@ class TimingStrategy(Strategy):
             if self.TradeTarget=="锁定买卖金额":
                 Orders = self._TradeTarget
             elif self.TradeTarget=="锁定目标仓位":
-                Orders = self._TradeTarget * PositionValue - PositionAmount
+                Orders = self._TradeTarget * PositionValue.abs() - PositionAmount
             elif self.TradeTarget=="锁定目标金额":
                 Orders = self._TradeTarget - PositionAmount
             Orders = Orders / self.TargetAccount.LastPrice

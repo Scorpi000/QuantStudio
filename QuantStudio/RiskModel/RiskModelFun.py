@@ -48,21 +48,19 @@ def calcAvgCorr(cov_matrix):
     CorrMatrix = dropRiskMatrixNA(pd.DataFrame(CorrMatrix)).values
     return (np.nansum(CorrMatrix)-np.nansum(np.diag(CorrMatrix)))/CorrMatrix.shape[0]/(CorrMatrix.shape[0]-1)
 # 带一个线性约束的加权多元线性回归, x: array((N,K)), y: array((N,)), weight: None 或者 array((N,)), 返回回归系数
-def regressWithOneLinearEqConstraint(y,x,weight=None,Aeq=None,beq=None,statistics=False):
-    Mask = ((np.sum(np.isnan(x),axis=1)==0) & (pd.notnull(y)))
+def regressWithOneLinearEqConstraint(y, x, weight=None, Aeq=None, beq=None, statistics=False):
+    Mask = ((np.sum(np.isnan(x), axis=1)==0) & (pd.notnull(y)))
     if weight is not None:
         Mask = (Mask & pd.notnull(weight))
     else:
         weight = np.ones(y.shape)
     x = x[Mask,:]
-    if x.shape[0]<=1:
-        return None
+    if x.shape[0]<=1: return None
     y = y[Mask]
     weight = weight[Mask]
     if (Aeq is not None) and (beq is not None):
         NonZeroInd = np.arange(0,Aeq.shape[0])[Aeq!=0]
-        if NonZeroInd.shape[0]==0:
-            return None
+        if NonZeroInd.shape[0]==0: return None
         NonZeroInd = NonZeroInd[0]
         yy = y-x[:,NonZeroInd]*beq/Aeq[NonZeroInd]
         if NonZeroInd==0:
@@ -79,22 +77,21 @@ def regressWithOneLinearEqConstraint(y,x,weight=None,Aeq=None,beq=None,statistic
     else:
         Result = sm.WLS(y,x,weights=weight).fit()
         beta = Result.params
-    if not statistics:
-        return beta
+    if not statistics: return beta
     Statistics = {"R2":1-np.sum(weight*(y-np.dot(x,beta))**2)/np.sum(weight*y**2)}
     Statistics["R2_adj"] = 1-(1-Statistics["R2"])*(y.shape[0]-1)/(y.shape[0]-beta.shape[0]-1+((Aeq is not None) and (beq is not None)))
-    return (beta,Statistics)
+    return (beta, Statistics)
 
 # 计算回归权重
-def calcRegressWeight(cap_data,percentile=0.95):
+def calcRegressWeight(cap_data, percentile=0.95):
     Weight = cap_data**0.5
     Quantile = Weight.quantile(percentile)
     Weight[Weight>Quantile] = Quantile
-    Weight = Weight/Weight.sum()
+    Weight = Weight / Weight.sum()
     return Weight
 
 # 计算市场收益率, ret_data: Series(收益率,index=[ID]), weight: Series(权重,index=[ID]), mask: Series(True or False,index=[ID])
-def calcMarketReturn(ret,weight=None):
+def calcMarketReturn(ret, weight=None):
     Mask = pd.notnull(ret)
     if weight is not None:
         Mask = (Mask & pd.notnull(weight))
@@ -114,7 +111,7 @@ def calcRetOutlier(resid_ret):
     return Outlier
 
 # 补充Proxy Asset
-def addProxySample(ret,factor_data,industry_data,weight,market_ret):
+def addProxySample(ret, factor_data, industry_data, weight, market_ret):
     ProxyID = []
     ProxyWeight = []
     ProxyRet = []
@@ -142,7 +139,7 @@ def addProxySample(ret,factor_data,industry_data,weight,market_ret):
 
 # 使用 EWMA 方法和 Newey-West 方法估计协方差, jret, kret: np.array(收益率), weight: np.array(权重), delta: kret相对于jret的滞后期
 # 假设 jret、kret 以及 weight 均没有nan
-def calcCovariance(jret,kret,weight,delta=0):
+def calcCovariance(jret, kret, weight, delta=0):
     nLen = jret.shape[0]-np.abs(delta)
     weight = weight[:nLen]
     weight = weight/np.nansum(weight)
@@ -156,15 +153,14 @@ def calcCovariance(jret,kret,weight,delta=0):
 
 # 使用 EWMA 方法和 Newey-West 方法估计协方差矩阵, ret: 收益率, DataFrame(收益率, index=[日期], columns=[ID])
 # forcast_num: 向前预测的期数; auto_corr_num: 考虑有自相关性的最大期数; half_life: 时间指数权重半衰期; calc_cov: 是否计算协方差, False的话只返回方差(Series)
-def estimateCovMatrix(ret,forcast_num=21,auto_corr_num=10,half_life=480,calc_cov=True):
+def estimateCovMatrix(ret, forcast_num=21, auto_corr_num=10, half_life=480, calc_cov=True):
     if forcast_num>auto_corr_num+1:
         N = auto_corr_num
     else:
-        N = forcast_num-1
+        N = forcast_num - 1
     Weight = np.flipud(np.array(getExpWeight(ret.shape[0],half_life)))
-    nCol = ret.shape[1]
     if calc_cov:
-        CovMatrix = pd.DataFrame(np.zeros((nCol,nCol))+np.nan,index=ret.columns,columns=ret.columns)
+        CovMatrix = pd.DataFrame(np.nan, index=ret.columns, columns=ret.columns)
         for j,jCol in enumerate(ret.columns):
             for kCol in ret.columns[j:]:
                 jRet = ret[jCol].values
@@ -173,26 +169,26 @@ def estimateCovMatrix(ret,forcast_num=21,auto_corr_num=10,half_life=480,calc_cov
                 Coefs = np.zeros(N*2+1)
                 for Delta in range(-N,N+1):
                     Coefs[Delta+N] = N+1-np.abs(Delta)
-                    Covs[Delta+N] = calcCovariance(jRet,kRet,Weight,Delta)
+                    Covs[Delta+N] = calcCovariance(jRet, kRet, Weight, Delta)
                 CovMatrix[jCol][kCol] = np.nansum(Coefs*Covs)
                 CovMatrix[kCol][jCol] = CovMatrix[jCol][kCol]
     else:
         Columns = ret.columns
-        CovMatrix = np.zeros(nCol)+np.nan
+        CovMatrix = np.zeros(ret.shape[1])+np.nan
         ret = ret.values
-        for j in range(nCol):
-            jRet = ret[:,j]
+        for j in range(ret.shape[1]):
+            jRet = ret[:, j]
             Covs = np.zeros(N*2+1)
             Coefs = np.zeros(N*2+1)
-            for Delta in range(-N,N+1):
+            for Delta in range(-N, N+1):
                 Coefs[Delta+N] = N+1-np.abs(Delta)
-                Covs[Delta+N] = calcCovariance(jRet,jRet,Weight,Delta)
+                Covs[Delta+N] = calcCovariance(jRet, jRet, Weight, Delta)
             CovMatrix[j] = np.nansum(Coefs*Covs)
-        CovMatrix = pd.Series(CovMatrix,index=Columns)
-    CovMatrix = CovMatrix*forcast_num/(N+1)
+        CovMatrix = pd.Series(CovMatrix, index=Columns)
+    CovMatrix = CovMatrix * forcast_num / (N+1)
     return CovMatrix
 # 使对称矩阵正定, 对于非正特征值以小正数替换
-def makeMatrixPositiveDefinite(target_matrix,epsilon=1e-6):
+def makeMatrixPositiveDefinite(target_matrix, epsilon=1e-6):
     D,Q = np.linalg.eig(target_matrix)
     D[D<=0] = epsilon
     return np.dot(np.dot(Q,np.diag(D)),Q.T)
@@ -201,7 +197,7 @@ def makeMatrixPositiveDefinite(target_matrix,epsilon=1e-6):
 # industry_data: Series(行业名称,index=[ID]); weight: Series(回归权重,index=[ID]);
 # estu: Series(是否属于Estimation Universe,0 or 1,index=[ID]); cap: Series(市值,index=[ID])
 # all_industries: [所有的行业名]
-def estimateFactorAndSpecificReturn_EUE3(ret,factor_data,industry_data,weight,estu,cap,all_industries):
+def estimateFactorAndSpecificReturn_EUE3(ret, factor_data, industry_data, weight, estu, cap, all_industries):
     # 准备用于回归的数据
     ESTUMask = ((estu==1) & pd.notnull(weight))
     ESTUFactorData = factor_data.loc[ESTUMask,:]
@@ -282,36 +278,36 @@ def calcBlendingCoefficient(specific_ret):
     return Gamma
     
 # 计算Structural forcast of specific risk
-def calcSTRSpecificRisk(gamma,std_ts,factor_data,cap):
+def calcSTRSpecificRisk(gamma, std_ts, factor_data, cap):
     # 准备回归数据
-    IDs = list(gamma[gamma==1].index)# 选择gamma值为1的ID
+    IDs = gamma[gamma==1].index.tolist()# 选择gamma值为1的ID
     Y = std_ts.loc[IDs]
     Y[Y==0] = np.nan
-    FactorData = factor_data.loc[IDs,:]
-    FactorData = FactorData.loc[:,FactorData.abs().sum()!=0]
+    FactorData = factor_data.loc[IDs, :]
+    FactorData = FactorData.loc[:, FactorData.abs().sum()!=0]
     RegWeight = calcRegressWeight(cap).loc[IDs]
     # 回归
-    Coef = regressWithOneLinearEqConstraint(np.log(Y.values),FactorData.values,RegWeight.values)
+    Coef = regressWithOneLinearEqConstraint(np.log(Y.values), FactorData.values, RegWeight.values)
     # 估计Scale Multiplier
-    Temp = Y.values/np.exp(np.dot(FactorData.values,Coef))
+    Temp = Y.values / np.exp(np.dot(FactorData.values, Coef))
     Mask = (pd.notnull(Temp) & pd.notnull(RegWeight.values))
-    E0 = np.nansum(Temp[Mask]*RegWeight.values[Mask])/np.nansum(RegWeight.values[Mask])
+    E0 = np.nansum(Temp[Mask] * RegWeight.values[Mask]) / np.nansum(RegWeight.values[Mask])
     # 计算Structural forcast of specific risk
-    return pd.Series(np.exp(np.dot(factor_data.loc[:,FactorData.columns].values,Coef))*E0,index=std_ts.index)
+    return pd.Series(np.exp(np.dot(factor_data.loc[:, FactorData.columns].values, Coef)) * E0, index=std_ts.index)
 
 # 估计特异性风险, 使用Barra EUE3的方法, 参见EUE3
 # specific_ret: DataFrame(收益率,index=[日期],columns=[ID]); forcast_num: 向前预测的期数;
 # auto_corr_num: 考虑有自相关性的最大期数; half_life: 时间指数权重半衰期;
-def estimateSpecificRisk_EUE3(specific_ret,factor_data,cap,forcast_num=21,auto_corr_num=10,half_life=480):
-    Std_TS = estimateCovMatrix(specific_ret,forcast_num=forcast_num,auto_corr_num=auto_corr_num,half_life=half_life,calc_cov=False)**0.5
+def estimateSpecificRisk_EUE3(specific_ret, factor_data, cap, forcast_num=21, auto_corr_num=10, half_life=480):
+    Std_TS = estimateCovMatrix(specific_ret, forcast_num=forcast_num, auto_corr_num=auto_corr_num, half_life=half_life, calc_cov=False)**0.5
     Gamma = calcBlendingCoefficient(specific_ret)
-    Std_STR = calcSTRSpecificRisk(Gamma,Std_TS,factor_data,cap)
-    return Std_TS*Gamma+(1-Gamma)*Std_STR
+    Std_STR = calcSTRSpecificRisk(Gamma, Std_TS, factor_data, cap)
+    return Std_TS*Gamma + (1-Gamma)*Std_STR
 
 # Eigenfactor Risk Adjustment
 # factor_cov: DataFrame(因子协方差,index=[因子名],columns=[因子名]);
 # 返回DataFrame(修正的因子协方差,index=[因子名],columns=[因子名]);
-def EigenfactorRiskAdjustment(factor_cov,monte_carlo_num=1000,date_num=480,ignore_num=9,a=1.4,forcast_num=21,auto_corr_num=10,half_life_corr=480,half_life_vol=90):
+def EigenfactorRiskAdjustment(factor_cov, monte_carlo_num=1000, date_num=480, ignore_num=9, a=1.4, forcast_num=21, auto_corr_num=10, half_life_corr=480, half_life_vol=90):
     nFactor = factor_cov.shape[0]
     D0,U0 = np.linalg.eig(factor_cov.values)
     D0 = np.diag(D0)
@@ -334,7 +330,7 @@ def EigenfactorRiskAdjustment(factor_cov,monte_carlo_num=1000,date_num=480,ignor
 # Bayesian Shrinkage
 # specific_risk: Series(特异性风险,index=[ID]); factor_data: DataFrame(因子暴露,index=[ID],columns=[因子名]);
 # 返回修正后的特异性风险: Series(特异性风险,index=[ID])
-def BayesianShrinkage(specific_risk,cap,quantile_num=10,q=0.1):
+def BayesianShrinkage(specific_risk, cap,quantile_num=10, q=0.1):
     Rslt = pd.Series(np.nan,index=specific_risk.index)
     Mask = pd.notnull(specific_risk)
     specific_risk = specific_risk[Mask]
@@ -358,7 +354,7 @@ def BayesianShrinkage(specific_risk,cap,quantile_num=10,q=0.1):
 # forcast_volitility: DataFrame(波动率预测,index=[预测日期],columns=[ID或者因子]);
 # half_life: 计算乘子的半衰期; forcast_num: 预测期数, 如果为<=0的数据则用forcast_volitility的日期间隔计算收益
 # 返回调整乘子
-def VolatilityRegimeAdjustment(ret,forcast_volitility,half_life=90,forcast_num=21):
+def VolatilityRegimeAdjustment(ret, forcast_volitility, half_life=90, forcast_num=21):
     BiasStats = pd.Series(np.nan,index=forcast_volitility.index)
     for i,iDate in enumerate(forcast_volitility.index):
         iInd = (ret.index<=iDate).sum()-1
@@ -383,8 +379,8 @@ def VolatilityRegimeAdjustment(ret,forcast_volitility,half_life=90,forcast_num=2
     Weight = Weight[BiasStats.index]/Weight[BiasStats.index].sum()
     return (Weight*BiasStats**2).sum()**0.5
 
-# 偏差统计检验, 未完待续
-def BiasTest(risk_ds,dates,ret_data,test_portfolios):
+# 偏差统计检验, TODO
+def BiasTest(risk_ds, dates, ret_data, test_portfolios):
     AllPortfolioNames = list(test_portfolios.keys())
     ZScore = pd.DataFrame(np.nan,index=dates,columns=AllPortfolioNames)# Z-Score
     RobustZScore = pd.DataFrame(np.nan,index=dates,columns=AllPortfolioNames)# Robust Z-Score

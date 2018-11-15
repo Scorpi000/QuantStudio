@@ -119,16 +119,17 @@ def _SpecificRiskGeneration(args):
             if ProgBar is not None: ProgBar.update(i+1)
             else: args['Sub2MainQueue'].put((args["PID"], 1, None))
             continue
-        iCap = args["RiskDB"].readData(args["TargetTable"], "Cap", dts=[iDT]).iloc[0]
         iLastDTs = iSpecificReturnDTs
         iSpecificReturnDTs = list(SpecificReturnDTs.iloc[iInd-args["SpecificRiskESTArgs"]["样本长度"]+1:iInd+1])
         iNewDTs = sorted(set(iSpecificReturnDTs).difference(iLastDTs))
         if iSpecificReturn is None:
-            iSpecificReturn = args["RiskDB"].readSpecificReturn(args["TargetTable"], dts=iNewDTs).loc[iSpecificReturnDTs,:]
+            iSpecificReturn = args["RiskDB"].readSpecificReturn(args["TargetTable"], dts=iNewDTs).loc[iSpecificReturnDTs, :]
         else:
-            iSpecificReturn = pd.concat([iSpecificReturn,args["RiskDB"].readSpecificReturn(args["TargetTable"], dts=iNewDTs)]).loc[iSpecificReturnDTs,:]
+            iSpecificReturn = pd.concat([iSpecificReturn, args["RiskDB"].readSpecificReturn(args["TargetTable"], dts=iNewDTs)]).loc[iSpecificReturnDTs, :]
         iFactorData = args["RiskDB"].readFactorData(args["TargetTable"], dts=[iDT]).iloc[:, 0, :]
-        iFactorData = iFactorData.loc[:,args["SpecificRiskESTArgs"]["结构化模型回归风格因子"]+args["ModelArgs"]["所有行业"]]
+        iCap = args["RiskDB"].readData(args["TargetTable"], "Cap", dts=[iDT]).iloc[0]
+        iFactorData = iFactorData.loc[iSpecificReturn.columns, args["SpecificRiskESTArgs"]["结构化模型回归风格因子"]+args["ModelArgs"]["所有行业"]]
+        iCap = iCap.loc[iSpecificReturn.columns]
         iSpecificRisk = RiskModelFun.estimateSpecificRisk_EUE3(specific_ret=iSpecificReturn, factor_data=iFactorData, cap=iCap,
                                                                forcast_num=args["SpecificRiskESTArgs"]["预测期数"],
                                                                auto_corr_num=args["SpecificRiskESTArgs"]["自相关滞后期"],
