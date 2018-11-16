@@ -98,8 +98,11 @@ class PortfolioStrategy(Strategy):
         AccountValue = abs(self.TargetAccount.AccountValue)
         PositionAmount = self.TargetAccount.PositionAmount
         if signal is not None:# 有新的信号, 形成新的交易目标
-            signal = signal.loc[PositionAmount.index]
-            signal.fillna(0.0, inplace=True)
+            if signal.shape[0]>0:
+                signal = signal.loc[PositionAmount.index]
+                signal.fillna(0.0, inplace=True)
+            else:
+                signal = pd.Series(0.0, index=PositionAmount.index)
             if self.TradeTarget=="锁定买卖金额":
                 self._TradeTarget = signal * AccountValue - PositionAmount
             elif self.TradeTarget=="锁定目标权重":

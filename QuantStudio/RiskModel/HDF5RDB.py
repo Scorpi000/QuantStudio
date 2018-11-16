@@ -251,7 +251,7 @@ class HDF5FRDB(FactorRDB):
                     if iDTStr not in Group: continue
                     iGroup = Group[iDTStr]
                     Data[iDT] = pd.DataFrame(iGroup["Data"][...], index=iGroup["ID"][...], columns=iGroup["Factor"][...]).T
-        if not Data: return pd.Panel(items=[], index=dts, columns=([] if ids is None else ids))
+        if not Data: return pd.Panel(items=[], major_axis=dts, minor_axis=([] if ids is None else ids))
         Data = pd.Panel(Data).swapaxes(0, 1).loc[:, dts, :]
         if ids is not None:
             if Data.minor_axis.intersection(ids).shape[0]>0: Data = Data.loc[:, :, ids]

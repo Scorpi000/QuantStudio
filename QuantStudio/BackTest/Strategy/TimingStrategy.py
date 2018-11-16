@@ -120,7 +120,10 @@ class TimingStrategy(Strategy):
         PositionAmount = self.TargetAccount.PositionAmount
         PositionValue = PositionAmount + self._CashAllocated
         if signal is not None:# 有新的信号, 形成新的交易目标
-            signal = signal.loc[PositionValue.index]
+            if signal.shape[0]>0:
+                signal = signal.loc[PositionValue.index]
+            else:
+                signal = pd.Series(np.nan, index=PositionValue.index)
             signal[self._ValueAllocated==0] = 0.0
             if self.TradeTarget=="锁定买卖金额":
                 self._TradeTarget = signal * PositionValue.abs() - PositionAmount
