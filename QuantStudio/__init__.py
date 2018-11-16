@@ -25,9 +25,6 @@ elif platform.system()=="Darwin":
         Font = FontProperties(fname="/Library/Fonts/Arial Unicode.ttf")
         mpl.rcParams["font.family"] = Font.get_family()
         mpl.rcParams["font.sans-serif"] = Font.get_name()
-else:
-    import matplotlib
-    matplotlib.backends.use("Qt5Agg")
 mpl.rcParams['axes.unicode_minus'] = False
 
 # Quant Studio 系统错误
