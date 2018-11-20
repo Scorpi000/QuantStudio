@@ -315,7 +315,7 @@ class FactorTurnover(BaseModule):
             HTML += "</ul>"
         else:
             HTML = ""
-        iHTML += self._Output["统计数据"].to_html(formatters=[_QS_formatPandasPercentage]*5)
+        iHTML = self._Output["统计数据"].to_html(formatters=[_QS_formatPandasPercentage]*5)
         Pos = iHTML.find(">")
         HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         Fig = self.genMatplotlibFig()
