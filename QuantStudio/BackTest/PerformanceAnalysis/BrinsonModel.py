@@ -50,6 +50,7 @@ class BrinsonModel(BaseModule):
             portfolio[NegMask] = portfolio[NegMask] * TotalNegWeight / TotalPosWeight
         return portfolio
     def __QS_start__(self, mdl, dts, **kwargs):
+        if self._isStarted: return ()
         super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._Output = {}
         if self.CalcDTs: DTs = self.CalcDTs
@@ -62,6 +63,7 @@ class BrinsonModel(BaseModule):
         self._IDs = self._FactorTable.getID()
         return (self._FactorTable, )
     def __QS_move__(self, idt, **kwargs):
+        if self._iDT==idt: return 0
         PreDT = None
         if self.CalcDTs:
             if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
@@ -94,6 +96,7 @@ class BrinsonModel(BaseModule):
         self._Output["基准组合资产权重"].loc[idt, "现金"] = 1 - self._Output["基准组合资产权重"].loc[idt].iloc[1:].sum()
         return 0
     def __QS_end__(self):
+        if not self._isStarted: return 0
         self._Output["策略组合资产权重"].where(pd.notnull(self._Output["策略组合资产权重"]), 0.0, inplace=True)
         self._Output["基准组合资产权重"].where(pd.notnull(self._Output["基准组合资产权重"]), 0.0, inplace=True)
         self._Output["策略组合资产收益"].where(pd.notnull(self._Output["策略组合资产收益"]), 0.0, inplace=True)

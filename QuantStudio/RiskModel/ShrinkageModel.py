@@ -172,9 +172,9 @@ class ShrinkageModel(object):
     # 生成数据
     def run(self):
         TotalStartT = time.clock()
-        print("==========基于 Shrinkage 的风险模型==========", "1. 初始化", sep="\n", end="")
+        print("==========基于 Shrinkage 的风险模型==========", "1. 初始化", sep="\n", end="\n")
         self._initInfo()
-        print(('耗时 : %.2f' % (time.clock()-TotalStartT, )), "2. 估计协方差矩阵", sep="\n", end="")
+        print(('耗时 : %.2f' % (time.clock()-TotalStartT, )), "2. 估计协方差矩阵", sep="\n", end="\n")
         StartT = time.clock()
         self._genCovariance()
         print("耗时 : %.2f" % (time.clock()-StartT, ), ("总耗时 : %.2f" % (time.clock()-TotalStartT, )), "="*28, sep="\n", end="\n")

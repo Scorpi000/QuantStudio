@@ -6,10 +6,6 @@ try:
 except:
     pass
 try:
-    from .PyomoPC import PyomoPC
-except:
-    pass
-try:
-    from .APMonitorPC import APMPC
+    from .CVXPC import CVXPC
 except:
     pass

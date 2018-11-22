@@ -80,7 +80,7 @@ class _FactorTable(FactorTable):
                 IDs = DataFile["ID"][...]
                 if dts is None:
                     if ids is None:
-                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs)
+                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).sort_index(axis=1)
                     elif set(ids).isdisjoint(IDs):
                         Rslt = pd.DataFrame(index=DateTimes, columns=ids)
                     else:
@@ -95,14 +95,14 @@ class _FactorTable(FactorTable):
                     DateTimes = DateTimes[DateTimes.index.intersection(dts)].astype('int')
                     nDT = DateTimes.shape[0]
                     if nDT==0:
-                        if ids is None: Rslt = pd.DataFrame(index=dts, columns=IDs)
+                        if ids is None: Rslt = pd.DataFrame(index=dts, columns=IDs).sort_index(axis=1)
                         else: Rslt = pd.DataFrame(index=dts, columns=ids)
                     elif nDT<1000:
                         DateTimes = DateTimes.sort_values()
                         Mask = DateTimes.tolist()
                         DateTimes = DateTimes.index.values
                         if ids is None:
-                            Rslt = pd.DataFrame(DataFile["Data"][Mask, :], index=DateTimes, columns=IDs).loc[dts]
+                            Rslt = pd.DataFrame(DataFile["Data"][Mask, :], index=DateTimes, columns=IDs).loc[dts].sort_index(axis=1)
                         else:
                             IDRuler = pd.Series(np.arange(0,IDs.shape[0]), index=IDs)
                             IDRuler = IDRuler.loc[ids]
@@ -113,12 +113,12 @@ class _FactorTable(FactorTable):
                     else:
                         Rslt = pd.DataFrame(DataFile["Data"][...], index=DataFile["DateTime"][...], columns=IDs).loc[dts]
                         if ids is not None: Rslt = Rslt.loc[:, ids]
+                        else: Rslt.sort_index(axis=1, inplace=True)
                     Rslt.index = [dt.datetime.fromtimestamp(itms) for itms in Rslt.index]
         if DataType!="double":
             Rslt = Rslt.where(pd.notnull(Rslt), None)
             Rslt = Rslt.where(Rslt!="", None)
         Rslt.sort_index(axis=0, inplace=True)
-        Rslt.sort_index(axis=1, inplace=True)
         return Rslt
 
 # 基于 HDF5 文件的因子数据库

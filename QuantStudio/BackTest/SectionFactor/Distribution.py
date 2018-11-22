@@ -39,6 +39,7 @@ class IndustryDistribution(BaseModule):
         Items[0].editor = SetEditor(values=self.trait("TestFactors").option_range)
         return (Items, Context)
     def __QS_start__(self, mdl, dts, **kwargs):
+        if self._isStarted: return ()
         super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         AllIndustries = pd.unique(self._FactorTable.readData(factor_names=[self.IndustryFactor], dts=self._FactorTable.getDateTime(ifactor_name=self.IndustryFactor), ids=self._FactorTable.getID(ifactor_name=self.IndustryFactor)).iloc[0].values.flatten())
         Mask = pd.isnull(AllIndustries)
@@ -51,6 +52,7 @@ class IndustryDistribution(BaseModule):
         self._CurCalcInd = 0
         return (self._FactorTable, )
     def __QS_move__(self, idt, **kwargs):
+        if self._iDT==idt: return 0
         if self.CalcDTs:
             if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
             self._CurCalcInd = self.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
@@ -82,6 +84,7 @@ class IndustryDistribution(BaseModule):
         self._Output["时点"].append(idt)
         return 0
     def __QS_end__(self):
+        if not self._isStarted: return 0
         for iFactorName in self.TestFactors:
             self._Output[iFactorName] = pd.DataFrame(self._Output[iFactorName], index=self._Output["时点"], columns=self._Output["行业分类"])
             self._Output["历史平均值"][iFactorName] = self._Output[iFactorName].mean()

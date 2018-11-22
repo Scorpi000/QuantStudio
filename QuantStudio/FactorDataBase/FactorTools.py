@@ -550,6 +550,16 @@ def lag(f, lag_period=1, window=1, dt_change_fun=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"lag_period":lag_period,"window":window,"dt_change_fun":dt_change_fun}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_lag,"参数":Args,"回溯期数":[window]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
+def _nav(f, idt, iid, x, args):
+    Price = x[0]
+    Return, = _genOperatorData(f, idt, iid, x[1:], args)
+    if Price.shape[0]<=Return.shape[0]:
+        return np.nancumprod(Return + 1, axis=0)
+    else:
+        return Price[-Return.shape[0]-1, :] * np.nancumprod(Return + 1, axis=0)
+def nav(ret, init=None, **kwargs):
+    Descriptors, Args = _genMultivariateOperatorInfo(ret)
+    return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_nav,"参数":Args,"回溯期数":[0]*len(Descriptors),"自身回溯期数":1,"自身回溯模式":"扩张窗口","自身初始值":init,"运算时点":"多时点","运算ID":"多ID"})
 # ----------------------截面运算--------------------------------
 def _standardizeZScore(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)

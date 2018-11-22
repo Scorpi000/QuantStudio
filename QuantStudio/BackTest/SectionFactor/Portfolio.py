@@ -63,6 +63,7 @@ class QuantilePortfolio(BaseModule):
         self.add_trait("IndustryFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="行业因子", order=4))
         self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=5))
     def __QS_start__(self, mdl, dts, **kwargs):
+        if self._isStarted: return ()
         super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._Output = {"净值":[[1] for i in range(self.GroupNum)]}
         self._Output["投资组合"] = [[] for i in range(self.GroupNum)]
@@ -74,6 +75,7 @@ class QuantilePortfolio(BaseModule):
         self._CurCalcInd = 0
         return (self._FactorTable, )
     def __QS_move__(self, idt, **kwargs):
+        if self._iDT==idt: return 0
         Price = self._FactorTable.readData(dts=[idt], ids=self._FactorTable.getID(ifactor_name=self.PriceFactor), factor_names=[self.PriceFactor]).iloc[0, 0, :]
         for i in range(self.GroupNum):
             if len(self._Output["QP_P_CurPos"][i])==0:
@@ -157,6 +159,7 @@ class QuantilePortfolio(BaseModule):
         self._Output["调仓日"].append(idt)
         return 0
     def __QS_end__(self):
+        if not self._isStarted: return 0
         self._Output.pop("QP_P_CurPos")
         self._Output.pop("QP_P_MarketPos")
         for i in range(self.GroupNum):

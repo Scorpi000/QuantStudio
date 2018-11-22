@@ -714,12 +714,12 @@ class FactorTable(__QS_Object__):
     # 计算因子数据并写入因子库    
     def write2FDB(self, factor_names, ids, dts, factor_db, table_name, if_exists="update", subprocess_num=cpu_count()-1, dt_ruler=None, **kwargs):
         if not isinstance(factor_db, WritableFactorDB): raise __QS_Error__("因子数据库: %s 不可写入!" % factor_db.Name)
-        print("==========因子运算==========", "1. 原始数据准备", sep="\n", end="")
+        print("==========因子运算==========", "1. 原始数据准备", sep="\n", end="\n")
         TotalStartT = time.clock()
         self.OperationMode.SubProcessNum = subprocess_num
         self.OperationMode.DTRuler = (dts if dt_ruler is None else dt_ruler)
         self._prepare(factor_names, ids, dts)
-        print(("耗时 : %.2f" % (time.clock()-TotalStartT, )), "2. 因子数据计算", end="", sep="\n")
+        print(("耗时 : %.2f" % (time.clock()-TotalStartT, )), "2. 因子数据计算", end="\n", sep="\n")
         StartT = time.clock()
         Args = {"FT":self, "PID":"0", "FactorDB":factor_db, "TableName":table_name, "if_exists":if_exists}
         if self.OperationMode.SubProcessNum==0:
@@ -755,7 +755,7 @@ class FactorTable(__QS_Object__):
                             ProgBar.update(iProg)
                     if iProg>=nTask: break
             for iPID, iPrcs in Procs.items(): iPrcs.join()
-        print(("耗时 : %.2f" % (time.clock()-StartT, )), "3. 清理缓存", end="", sep="\n")
+        print(("耗时 : %.2f" % (time.clock()-StartT, )), "3. 清理缓存", end="\n", sep="\n")
         StartT = time.clock()
         factor_db.connect()
         self._exit()
@@ -1013,7 +1013,13 @@ class Factor(__QS_Object__):
         return StdData
     # 获取因子数据, pid=None表示取所有进程的数据
     def _QS_getData(self, dts, pids=None):
-        pids = set(self._OperationMode._PID_IDs if pids is None else pids)
+        if pids is None:
+            IDs = list(self._OperationMode.IDs)
+            pids = set(self._OperationMode._PID_IDs)
+        else:
+            IDs = []
+            for iPID in pids: IDs.extend(self._OperationMode._PID_IDs[iPID])
+            pids = set(pids)
         if not self._isCacheDataOK:# 若没有准备好缓存数据, 准备缓存数据
             StdData = self.__QS_prepareCacheData__()
             if (StdData is not None) and (self._OperationMode._iPID in pids):
@@ -1035,7 +1041,7 @@ class Factor(__QS_Object__):
                 StdData = iStdData
             else:
                 StdData = pd.merge(StdData, iStdData, how='inner', left_index=True, right_index=True)
-        StdData = StdData.loc[list(dts)].sort_index(axis=1)
+        StdData = StdData.loc[list(dts), IDs]
         gc.collect()
         return StdData
     # ------------------------------------遍历模式------------------------------------
@@ -1260,9 +1266,10 @@ class DataFactor(Factor):
     def __QS_prepareCacheData__(self):
         return self._Data
     def _QS_getData(self, dts, pids=None):
-        pids = set(self._OperationMode._PID_IDs if pids is None else pids)
-        IDs = []
-        for iPID in pids: IDs.extend(self._OperationMode._PID_IDs[iPID])
+        if pids is None: IDs = list(self._OperationMode.IDs)
+        else:
+            IDs = []
+            for iPID in pids: IDs.extend(self._OperationMode._PID_IDs[iPID])
         dts = list(dts)
         if (self._Data.columns.intersection(IDs).shape[0]==0) or (self._Data.index.intersection(dts).shape[0]==0):
             return pd.DataFrame(index=dts, columns=IDs, dtype=("O" if self.DataType=="string" else np.float))

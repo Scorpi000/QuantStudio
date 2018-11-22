@@ -52,6 +52,7 @@ class FMPModel(BaseModule):
             portfolio[NegMask] = portfolio[NegMask] * TotalNegWeight / TotalPosWeight
         return portfolio
     def __QS_start__(self, mdl, dts, **kwargs):
+        if self._isStarted: return ()
         super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self.RiskDS.start(dts=dts)
         self._Output = {}
@@ -64,6 +65,7 @@ class FMPModel(BaseModule):
         self._IDs = self._FactorTable.getID()
         return (self._FactorTable, )
     def __QS_move__(self, idt, **kwargs):
+        if self._iDT==idt: return 0
         PreDT = None
         if self.CalcDTs:
             if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
@@ -124,6 +126,7 @@ class FMPModel(BaseModule):
         self._Output["收益贡献"].loc[idt, "Alpha"] = (Portfolio * Return).sum() - self._Output["收益贡献"].loc[idt, FactorExpose.columns].sum()
         return 0
     def __QS_end__(self):
+        if not self._isStarted: return 0
         self.RiskDS.end()
         self._Output["风险贡献占比"] = self._Output["风险贡献"].divide(self._Output["风险贡献"].sum(axis=1), axis=0)
         self._Output["历史均值"] = pd.DataFrame(columns=["因子暴露", "风险调整的因子暴露", "风险贡献", "风险贡献占比", "收益贡献"], index=self._Output["收益贡献"].columns)

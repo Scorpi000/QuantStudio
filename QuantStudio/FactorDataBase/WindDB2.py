@@ -528,7 +528,7 @@ class _MappingTable(_DBTable):
         self._StartDateField = FactorInfo[FactorInfo["FieldType"]=="StartDate"].index[0]
         self._EndDateField = FactorInfo[FactorInfo["FieldType"]=="EndDate"].index[0]
         self._EndDateIncluded = FactorInfo[FactorInfo["FieldType"]=="EndDate"]["Supplementary"].iloc[0]
-        self._EndDateIncluded = (pd.isnull(self._EndDateField) or (self._EndDateField=="包含"))
+        self._EndDateIncluded = (pd.isnull(self._EndDateIncluded) or (self._EndDateIncluded=="包含"))
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
     # 返回给定时点 idt 有数据的所有 ID
     # 如果 idt 为 None, 将返回所有有记录的 ID

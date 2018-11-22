@@ -6,7 +6,7 @@ from multiprocessing import Queue, Event, Lock
 
 import pandas as pd
 import numpy as np
-from traits.api import Function, Dict, Enum, List, Int
+from traits.api import Function, Dict, Enum, List, Int, Instance
 
 from QuantStudio import __QS_Error__
 from QuantStudio.FactorDataBase.FactorDB import Factor
@@ -102,9 +102,10 @@ class TimeOperation(DerivativeFactor):
     DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
     IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=4)
     LookBack = List(arg_type="ArgList", label="回溯期数", order=5)# 描述子向前回溯的时点数(不包括当前时点)
-    LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=6)
+    LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=6)# 描述子的回溯模式
     iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=7)
     iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=8)
+    iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=9)
     def __QS_initArgs__(self):
         self.LookBack = [0]*len(self.Descriptors)
         self.LookBackMode = ["滚动窗口"]*len(self.Descriptors)
@@ -112,28 +113,29 @@ class TimeOperation(DerivativeFactor):
         super()._QS_updateStartDT(start_dt, dt_dict)
         if len(self.Descriptors)>len(self.LookBack): raise  __QS_Error__("时间序列运算因子 : '%s' 的参数'回溯期数'序列长度小于描述子个数!" % self.Name)
         StartDT = dt_dict[self.Name]
-        DTRuler = self._OperationMode.DTRuler
-        StartInd = DTRuler.index(StartDT)
+        StartInd = self._OperationMode.DTRuler.index(StartDT)
+        if (self.iLookBackMode=="扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0]>0):
+            if self.iInitData.index[-1] not in self._OperationMode.DTRuler: print("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name, ))
+            else: StartInd = min(StartInd, self._OperationMode.DTRuler.index(self.iInitData.index[-1]) + 1)
         for i, iDescriptor in enumerate(self.Descriptors):
             iStartInd = StartInd - self.LookBack[i]
-            if iStartInd<0:
-                #raise __QS_Error__("时点标尺长度不足, 请将起始点前移!")
-                print("注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足!" % (self.Name, iDescriptor.Name))
-            iStartDT = DTRuler[max(0, iStartInd)]
+            if iStartInd<0: print("注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足, 不足的部分将填充 nan!" % (self.Name, iDescriptor.Name))
+            iStartDT = self._OperationMode.DTRuler[max(0, iStartInd)]
             iDescriptor._QS_updateStartDT(iStartDT, dt_dict)
     def readData(self, ids, dts, **kwargs):
         DTRuler = kwargs.get("dt_ruler", dts)
         StartInd = (DTRuler.index(dts[0]) if dts[0] in DTRuler else 0)
+        if (self.iLookBackMode=="扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0]>0):
+            if self.iInitData.index[-1] not in DTRuler: print("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name, ))
+            else: StartInd = min(StartInd, DTRuler.index(self.iInitData.index[-1]) + 1)
         EndInd = (DTRuler.index(dts[-1]) if dts[-1] in DTRuler else len(DTRuler)-1)
         if StartInd>EndInd: return pd.DataFrame(index=dts, columns=ids)
         nID = len(ids)
         DescriptorData = []
         for i, iDescriptor in enumerate(self.Descriptors):
             iDTs = DTRuler[max(StartInd-self.LookBack[i], 0):EndInd+1]
-            if iDTs:
-                iDescriptorData = iDescriptor.readData(ids=ids, dts=iDTs, **kwargs).values
-            else:
-                iDescriptorData = np.full((0, nID), np.nan)
+            if iDTs: iDescriptorData = iDescriptor.readData(ids=ids, dts=iDTs, **kwargs).values
+            else: iDescriptorData = np.full((0, nID), np.nan)
             if StartInd<self.LookBack[i]:
                 iLookBackData = np.full((self.LookBack[i]-StartInd, nID), np.nan)
                 iDescriptorData = np.r_[iLookBackData, iDescriptorData]
@@ -153,12 +155,22 @@ class TimeOperation(DerivativeFactor):
                 StartIndAndLen.append((iLookBack, np.inf))
                 MaxLen = np.inf
             MaxLookBack = max(MaxLookBack, iLookBack)
-        if self.iLookBack!=0:
+        iStartInd = 0
+        if (self.iLookBackMode=="扩张窗口") or (self.iLookBack!=0):
+            if self.iInitData is not None:
+                iInitData = self.iInitData.loc[self.iInitData.index<dts[0], :]
+                if iInitData.shape[0]>0:
+                    if iInitData.columns.intersection(ids).shape[0]>0:
+                        iInitData = iInitData.loc[:, ids].values.astype(StdData.dtype)
+                    else:
+                        iInitData = np.full(shape=(iInitData.shape[0], len(ids)), dtype=StdData.dtype)
+                    iStartInd = min(self.iLookBack, iInitData.shape[0])
+                    StdData = np.r_[iInitData[-iStartInd:], StdData]
             if self.iLookBackMode=="扩张窗口":
-                StartIndAndLen.insert(0, (-1, np.inf))
+                StartIndAndLen.insert(0, (iStartInd-1, np.inf))
                 MaxLen = np.inf
             else:
-                StartIndAndLen.insert(0, (-1, self.iLookBack))
+                StartIndAndLen.insert(0, (iStartInd-1, self.iLookBack))
                 MaxLen = max(MaxLen, self.iLookBack+1)
             MaxLookBack = max(MaxLookBack, self.iLookBack)
             descriptor_data.insert(0, StdData)
@@ -173,7 +185,7 @@ class TimeOperation(DerivativeFactor):
                     for k, kDescriptorData in enumerate(descriptor_data):
                         kStartInd, kLen = StartIndAndLen[k]
                         x.append(kDescriptorData[max(0, kStartInd+1+i-kLen):kStartInd+1+i, j])
-                    StdData[i, j] = self.Operator(self, iDTs, jID, x, self.ModelArgs)
+                    StdData[iStartInd+i, j] = self.Operator(self, iDTs, jID, x, self.ModelArgs)
         elif (self.DTMode=='单时点') and (self.IDMode=='多ID'):
             for i, iDT in enumerate(dts):
                 iDTs = DTRuler[max(0, MaxLookBack+i+1-MaxLen):i+1+MaxLookBack]
@@ -181,13 +193,13 @@ class TimeOperation(DerivativeFactor):
                 for k,kDescriptorData in enumerate(descriptor_data):
                     kStartInd, kLen = StartIndAndLen[k]
                     x.append(kDescriptorData[max(0, kStartInd+1+i-kLen):kStartInd+1+i])
-                StdData[i, :] = self.Operator(self, iDTs, ids, x, self.ModelArgs)
+                StdData[iStartInd+i, :] = self.Operator(self, iDTs, ids, x, self.ModelArgs)
         elif (self.DTMode=='多时点') and (self.IDMode=='单ID'):
             for j, jID in enumerate(ids):
-                StdData[:, j] = self.Operator(self, DTRuler, jID, [kDescriptorData[:, j] for kDescriptorData in descriptor_data], self.ModelArgs)
+                StdData[iStartInd:, j] = self.Operator(self, DTRuler, jID, [kDescriptorData[:, j] for kDescriptorData in descriptor_data], self.ModelArgs)
         else:
-            StdData = self.Operator(self, DTRuler, ids, descriptor_data, self.ModelArgs)
-        return StdData
+            return self.Operator(self, DTRuler, ids, descriptor_data, self.ModelArgs)
+        return StdData[iStartInd:, :]
     def __QS_prepareCacheData__(self):
         PID = self._OperationMode._iPID
         StartDT = self._OperationMode._FactorStartDT[self.Name]
@@ -297,25 +309,29 @@ class PanelOperation(DerivativeFactor):
     LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=6)
     iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=7)
     iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=8)
+    iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=9)
     def __QS_initArgs__(self):
         self.LookBack = [0]*len(self.Descriptors)
         self.LookBackMode = ["滚动窗口"]*len(self.Descriptors)
     def _QS_updateStartDT(self, start_dt, dt_dict):
-        if len(self.Descriptors)>len(self.LookBack): raise  __QS_Error__("时间序列运算因子 : '%s' 的参数'回溯期数'序列长度小于描述子个数!" % self.Name)
+        if len(self.Descriptors)>len(self.LookBack): raise  __QS_Error__("面板运算因子 : '%s' 的参数'回溯期数'序列长度小于描述子个数!" % self.Name)
         OldStartDT = dt_dict.get(self.Name, None)
         if (OldStartDT is None) or (start_dt<OldStartDT):
-            dt_dict[self.Name] = start_dt
-            StartInd, EndInd = self._OperationMode.DTRuler.index(dt_dict[self.Name]), self._OperationMode.DTRuler.index(self._OperationMode.DateTimes[-1])
-            DTs = self._OperationMode.DTRuler[StartInd:EndInd+1]
-            DTPartition = partitionList(DTs, len(self._OperationMode._PIDs))
-            self._PID_DTs = {iPID:DTPartition[i] for i, iPID in enumerate(self._OperationMode._PIDs)}
-            StartDT = dt_dict[self.Name]
+            StartDT = dt_dict[self.Name] = start_dt
             DTRuler = self._OperationMode.DTRuler
-            StartInd = DTRuler.index(StartDT)
+            StartInd, EndInd = DTRuler.index(StartDT), DTRuler.index(self._OperationMode.DateTimes[-1])
+            if (self.iLookBackMode=="扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0]>0):
+                if self.iInitData.index[-1] not in self._OperationMode.DTRuler: print("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name, ))
+                else: StartInd = min(StartInd, self._OperationMode.DTRuler.index(self.iInitData.index[-1]) + 1)
+            DTs = DTRuler[StartInd:EndInd+1]
+            if self.iLookBackMode=="扩张窗口":
+                DTPartition = [DTs]+[[]]*(len(self._OperationMode._PIDs)-1)
+            else:
+                DTPartition = partitionList(DTs, len(self._OperationMode._PIDs))
+            self._PID_DTs = {iPID:DTPartition[i] for i, iPID in enumerate(self._OperationMode._PIDs)}
             for i, iDescriptor in enumerate(self.Descriptors):
                 iStartInd = StartInd - self.LookBack[i]
-                if iStartInd<0:
-                    print("注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足!" % (self.Name, iDescriptor.Name))
+                if iStartInd<0: print("注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足!" % (self.Name, iDescriptor.Name))
                 iStartDT = DTRuler[max(0, iStartInd)]
                 iDescriptor._QS_updateStartDT(iStartDT, dt_dict)
         if (self._OperationMode.SubProcessNum>0) and (self.Name not in self._OperationMode._Event):
@@ -323,6 +339,9 @@ class PanelOperation(DerivativeFactor):
     def readData(self, ids, dts, **kwargs):
         DTRuler = kwargs.get("dt_ruler", dts)
         StartInd = (DTRuler.index(dts[0]) if dts[0] in DTRuler else 0)
+        if (self.iLookBackMode=="扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0]>0):
+            if self.iInitData.index[-1] not in DTRuler: print("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name, ))
+            else: StartInd = min(StartInd, DTRuler.index(self.iInitData.index[-1]) + 1)
         EndInd = (DTRuler.index(dts[-1]) if dts[-1] in DTRuler else len(DTRuler)-1)
         if StartInd>EndInd: return pd.DataFrame(index=dts, columns=ids)
         nID = len(ids)
@@ -352,12 +371,22 @@ class PanelOperation(DerivativeFactor):
                 StartIndAndLen.append((iLookBack, np.inf))
                 MaxLen = np.inf
             MaxLookBack = max(MaxLookBack, iLookBack)
-        if self.iLookBack!=0:
+        iStartInd = 0
+        if (self.iLookBackMode=="扩张窗口") or (self.iLookBack!=0):
+            if self.iInitData is not None:
+                iInitData = self.iInitData.loc[self.iInitData.index<dts[0], :]
+                if iInitData.shape[0]>0:
+                    if iInitData.columns.intersection(ids).shape[0]>0:
+                        iInitData = iInitData.loc[:, ids].values.astype(StdData.dtype)
+                    else:
+                        iInitData = np.full(shape=(iInitData.shape[0], len(ids)), dtype=StdData.dtype)
+                    iStartInd = min(self.iLookBack, iInitData.shape[0])
+                    StdData = np.r_[iInitData[-iStartInd:], StdData]
             if self.iLookBackMode=="扩张窗口":# 自身为扩张窗口模式
-                StartIndAndLen.insert(0, (-1, np.inf))
+                StartIndAndLen.insert(0, (iStartInd-1, np.inf))
                 MaxLen = np.inf
             else:# 自身为滚动窗口模式
-                StartIndAndLen.insert(0, (-1, self.iLookBack))
+                StartIndAndLen.insert(0, (iStartInd-1, self.iLookBack))
                 MaxLen = max(MaxLen, self.iLookBack+1)
             descriptor_data.insert(0, StdData)
             MaxLookBack = max(MaxLookBack, self.iLookBack)
@@ -372,9 +401,9 @@ class PanelOperation(DerivativeFactor):
                     for k, kDescriptorData in enumerate(descriptor_data):
                         kStartInd, kLen = StartIndAndLen[k]
                         x.append(kDescriptorData[max(0, kStartInd+1+i-kLen):kStartInd+1+i])
-                    StdData[i, :] = self.Operator(self, iDTs, ids, x, self.ModelArgs)
+                    StdData[iStartInd+i, :] = self.Operator(self, iDTs, ids, x, self.ModelArgs)
             else:
-                StdData = self.Operator(self, DTRuler, ids, descriptor_data, self.ModelArgs)
+                return self.Operator(self, DTRuler, ids, descriptor_data, self.ModelArgs)
         else:
             if self.DTMode=='单时点':
                 for i, iDT in enumerate(dts):
@@ -384,11 +413,11 @@ class PanelOperation(DerivativeFactor):
                         kStartInd, kLen = StartIndAndLen[k]
                         x.append(kDescriptorData[max(0, kStartInd+1+i-kLen):kStartInd+1+i])
                     for j, jID in enumerate(ids):
-                        StdData[i, j] = self.Operator(self, iDTs, jID, x, self.ModelArgs)
+                        StdData[iStartInd+i, j] = self.Operator(self, iDTs, jID, x, self.ModelArgs)
             else:
                 for j, jID in enumerate(ids):
-                    StdData[:, j] = self.Operator(self, DTRuler, jID, descriptor_data, self.ModelArgs)
-        return StdData
+                    StdData[iStartInd:, j] = self.Operator(self, DTRuler, jID, descriptor_data, self.ModelArgs)
+        return StdData[iStartInd:, :]
     def __QS_prepareCacheData__(self):
         DTs = list(self._PID_DTs[self._OperationMode._iPID])
         IDs = list(self._OperationMode.IDs)

@@ -352,6 +352,5 @@ if __name__=="__main__":
     Data = FT.readData(factor_names=["lst"], ids=["510050.SH"])
     
     #FT = CDB.getTable("Time Bar 数据")
-    ##print(FT.FactorNames)
     #Data = FT.readData(factor_names=["mid", "amt"], ids=IDs, args={"时间间隔":60, "动态证券ID":False})
     CDB.disconnect()

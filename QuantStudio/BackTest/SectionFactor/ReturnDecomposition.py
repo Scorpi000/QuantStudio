@@ -43,11 +43,13 @@ class FamaMacBethRegression(BaseModule):
         Items[0].editor = SetEditor(values=self.trait("TestFactors").option_range)
         return (Items, Context)
     def __QS_start__(self, mdl, dts, **kwargs):
+        if self._isStarted: return ()
         super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._Output = {"Pure Return":[], "Raw Return":[], "时点":[], "回归R平方":[], "回归调整R平方":[], "回归F统计量":[], "回归t统计量(Raw Return)":[], "回归t统计量(Pure Return)":[]}
         self._CurCalcInd = 0
         return (self._FactorTable, )
     def __QS_move__(self, idt, **kwargs):
+        if self._iDT==idt: return 0
         if self.CalcDTs:
             if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
             self._CurCalcInd = self.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
@@ -107,6 +109,7 @@ class FamaMacBethRegression(BaseModule):
                 pass
         return 0
     def __QS_end__(self):
+        if not self._isStarted: return 0
         FactorNames = list(self.TestFactors)
         self._Output["Pure Return"] = pd.DataFrame(self._Output["Pure Return"], index=self._Output["时点"], columns=FactorNames)
         self._Output["Raw Return"] = pd.DataFrame(self._Output["Raw Return"], index=self._Output["时点"], columns=FactorNames)

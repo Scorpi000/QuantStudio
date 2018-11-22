@@ -23,6 +23,8 @@ class BaseModule(__QS_Object__):
         self.Name = name
         self._Model = None
         self._Output = {}
+        self._isStarted = False# 模块是否已经启动
+        self._iDT = None# 当前的时点
         return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     @property
     def Model(self):
@@ -30,12 +32,16 @@ class BaseModule(__QS_Object__):
     # 测试开始前的初始化函数
     def __QS_start__(self, mdl, dts, **kwargs):
         self._Model = mdl
+        self._isStarted = True
         return ()
     # 测试至某个时点的计算函数
     def __QS_move__(self, idt, **kwargs):
+        self._iDT = idt
         return 0
     # 测试结束后的整理函数
     def __QS_end__(self):
+        self._isStarted = False
+        self._iDT = None
         return 0
     # 计算并输出测试的结果集
     def output(self, recalculate=False):
@@ -61,7 +67,7 @@ class BackTestModel(__QS_Object__):
         self._QS_TestDateTimes = []# 测试时间点序列, [datetime.datetime]
         self._TestDateTimeIndex = -1# 测试时间点索引
         self._TestDateIndex = pd.Series([], dtype=np.int64)# 测试日期最后一个时间点位于 _QS_TestDateTimes 中的索引
-        self._Output = {}
+        self._Output = {}# 生成的结果集
         return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     # 当前时点, datetime.datetime
     @property
@@ -92,13 +98,13 @@ class BackTestModel(__QS_Object__):
     def run(self, dts):
         self._QS_TestDateTimes = sorted(dts)
         TotalStartT = time.clock()
-        print("==========历史回测==========", "1. 初始化", sep="\n", end="")
+        print("==========历史回测==========", "1. 初始化", sep="\n", end="\n")
         FactorDBs = set()
         for jModule in self.Modules:
             jDBs = jModule.__QS_start__(mdl=self, dts=dts)
             if jDBs is not None: FactorDBs.update(set(jDBs))
         for jDB in FactorDBs: jDB.start(dts=dts)
-        print(('耗时 : %.2f' % (time.clock()-TotalStartT, )), "2. 循环计算", sep="\n", end="")
+        print(('耗时 : %.2f' % (time.clock()-TotalStartT, )), "2. 循环计算", sep="\n", end="\n")
         StartT = time.clock()
         with ProgressBar(max_value=len(self._QS_TestDateTimes)) as ProgBar:
             for i, iDT in enumerate(self._QS_TestDateTimes):
@@ -107,7 +113,7 @@ class BackTestModel(__QS_Object__):
                 for jDB in FactorDBs: jDB.move(iDT)
                 for jModule in self.Modules: jModule.__QS_move__(iDT)
                 ProgBar.update(i+1)
-        print(('耗时 : %.2f' % (time.clock()-StartT, )), "3. 结果生成", sep="\n", end="")
+        print(('耗时 : %.2f' % (time.clock()-StartT, )), "3. 结果生成", sep="\n", end="\n")
         StartT = time.clock()
         for jModule in self.Modules: jModule.__QS_end__()
         for jDB in FactorDBs: jDB.end()

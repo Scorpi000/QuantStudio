@@ -112,9 +112,9 @@ class TailDependenceModel(object):
     # 生成数据
     def run(self):
         TotalStartT = time.clock()
-        print("==========尾部相关性模型==========", "1. 初始化", sep="\n", end="")
+        print("==========尾部相关性模型==========", "1. 初始化", sep="\n", end="\n")
         self._initInfo()
-        print(('耗时 : %.2f' % (time.clock()-TotalStartT, )), "2. 估计尾部相关性矩阵", sep="\n", end="")
+        print(('耗时 : %.2f' % (time.clock()-TotalStartT, )), "2. 估计尾部相关性矩阵", sep="\n", end="\n")
         StartT = time.clock()
         self._genTailDependence()
         print("耗时 : %.2f" % (time.clock()-StartT, ), ("总耗时 : %.2f" % (time.clock()-TotalStartT, )), "="*28, sep="\n", end="\n")

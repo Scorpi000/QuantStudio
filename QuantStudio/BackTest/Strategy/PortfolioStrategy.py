@@ -59,6 +59,7 @@ class PortfolioStrategy(Strategy):
     def MainFactorTable(self):
         return self._FT
     def __QS_start__(self, mdl, dts, **kwargs):
+        if self._isStarted: return ()
         if self.TargetAccount is None: raise __QS_Error__("必须设置目标账户!")
         self._AllSignals = {}
         self._TradeTarget = None# 锁定的交易目标
@@ -69,6 +70,7 @@ class PortfolioStrategy(Strategy):
         self._TempData['LagNum'] = []# 当前日距离信号生成日的日期数
         return (self._FT, ) + super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
     def __QS_move__(self, idt, **kwargs):
+        if self._iDT==idt: return 0
         iTradingRecord = {iAccount.Name:iAccount.__QS_move__(idt, **kwargs) for iAccount in self.Accounts}
         Signal = None
         if (not self.SignalDTs) or (idt in self.SignalDTs):
@@ -386,12 +388,14 @@ class OptimizerStrategy(PortfolioStrategy):
         self.SignalAdjustment = _SignalAdjustment()
         return Strategy.__QS_initArgs__(self)
     def __QS_start__(self, mdl, dts, **kwargs):
+        if self._isStarted: return ()
         if self.RDS is not None: self.RDS.start(dts=dts)
         self._Status = []# 记录求解失败的优化问题信息, [(时点, 结果信息)]
         self._ReleasedConstraint = []# 记录被舍弃的约束条件, [(时点, [舍弃的条件])]
         self._Dependency = self._PC.init()# PC 的依赖信息
         return super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
     def __QS_move__(self, idt, **kwargs):
+        if self._iDT==idt: return 0
         iTradingRecord = {iAccount.Name:iAccount.__QS_move__(idt, **kwargs) for iAccount in self.Accounts}
         Signal = None
         if (not self.SignalDTs) or (idt in self.SignalDTs):
@@ -402,6 +406,7 @@ class OptimizerStrategy(PortfolioStrategy):
         for iAccount in self.Accounts: iAccount.__QS_after_move__(idt, **kwargs)
         return 0
     def __QS_end__(self):
+        if not self._isStarted: return 0
         if self.RDS is not None: self.RDS.end()
         if not self.SignalAdjustment.Display:
             if self._Status:

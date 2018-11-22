@@ -226,12 +226,14 @@ class FactorTurnover(BaseModule):
         Items[0].editor = SetEditor(values=self.trait("TestFactors").option_range)
         return (Items, Context)
     def __QS_start__(self, mdl, dts=None, dates=None, times=None):
+        if self._isStarted: return ()
         super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
         self._Output = {iFactorName:[] for iFactorName in self.TestFactors}
         self._Output["时点"] = []
         self._CurCalcInd = 0
         return (self._FactorTable, )
     def __QS_move__(self, idt):
+        if self._iDT==idt: return 0
         if self.CalcDTs:
             if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
             self._CurCalcInd = self.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
@@ -253,6 +255,7 @@ class FactorTurnover(BaseModule):
         self._Output["时点"].append(idt)
         return 0
     def __QS_end__(self):
+        if not self._isStarted: return 0
         self._Output = {"因子换手率":pd.DataFrame(self._Output, index=self._Output.pop("时点"))}
         self._Output["统计数据"] = pd.DataFrame(self._Output["因子换手率"].mean(), columns=["平均值"])
         self._Output["统计数据"]["标准差"] = self._Output["因子换手率"].std()

@@ -21,7 +21,7 @@ from QuantStudio.FactorDataBase.FactorDB import FactorTable
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 
 _QS_MinPositionNum = 1e-8
-_QS_MinCash = 1e-7
+_QS_MinCash = 1e-8
 
 def cutDateTime(df, dts=None, start_dt=None, end_dt=None):
     if dts is not None: df = df.loc[dts]
@@ -105,6 +105,7 @@ class Account(BaseModule):
         self._Output = None# 缓存的输出结果
         return super().__init__(name=name, sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_start__(self, mdl, dts, **kwargs):
+        if self._isStarted: return ()
         nDT = len(dts)
         self._Cash, self._Debt = np.zeros(nDT+1), np.zeros(nDT+1)
         self._Cash[0] = self.InitCash
@@ -114,13 +115,15 @@ class Account(BaseModule):
         self._TradingRecord = pd.DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])
         return super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
     def __QS_move__(self, idt, **kwargs):# 先于策略运行
+        if self._iDT==idt: return self._TradingRecord
         iIndex = self._Model.DateTimeIndex
         self._Cash[iIndex+1] = self._Cash[iIndex]
         self._Debt[iIndex+1] = self._Debt[iIndex]
-        return 0
+        return self._TradingRecord
     def __QS_after_move__(self, idt, **kwargs):# 晚于策略运行
         return 0
     def __QS_end__(self):
+        if not self._isStarted: return 0
         CashSeries = self.getCashSeries()
         DebtSeries = self.getDebtSeries()
         AccountValueSeries = self.getAccountValueSeries()
@@ -242,6 +245,7 @@ class Strategy(BaseModule):
     def __QS_initArgs__(self):
         self.Benchmark = _Benchmark()
     def __QS_start__(self, mdl, dts, **kwargs):
+        if self._isStarted: return ()
         self.UserData = {}
         Rslt = ()
         for iAccount in self.Accounts: Rslt += iAccount.__QS_start__(mdl=mdl, dts=dts, **kwargs)
@@ -249,12 +253,14 @@ class Strategy(BaseModule):
         self.init()
         return Rslt+tuple(self.FactorTables)
     def __QS_move__(self, idt, **kwargs):
+        if self._iDT==idt: return 0
         iTradingRecord = {iAccount.Name:iAccount.__QS_move__(idt, **kwargs) for iAccount in self.Accounts}
         Signal = self.genSignal(idt, iTradingRecord)
         self.trade(idt, iTradingRecord, Signal)
         for iAccount in self.Accounts: iAccount.__QS_after_move__(idt, **kwargs)
         return 0
     def __QS_end__(self):
+        if not self._isStarted: return 0
         for iAccount in self.Accounts: iAccount.__QS_end__()
         return super().__QS_end__()
     def getViewItems(self, context_name=""):

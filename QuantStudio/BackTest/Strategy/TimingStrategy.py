@@ -66,6 +66,7 @@ class TimingStrategy(Strategy):
         else:
             return new_allocation.loc[IDs].fillna(0.0)
     def __QS_start__(self, mdl, dts, **kwargs):
+        if self._isStarted: return ()
         Rslt = super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._AllSignals = {}
         self._TradeTarget = None# 锁定的交易目标
@@ -84,6 +85,7 @@ class TimingStrategy(Strategy):
         self._isStarted = True
         return (self._FT, )+Rslt
     def __QS_move__(self, idt, **kwargs):
+        if self._iDT==idt: return 0
         TradingRecord = {iAccount.Name:iAccount.__QS_move__(idt, **kwargs) for iAccount in self.Accounts}
         if (not self.SigalDTs) or (idt in self.SigalDTs):
             Signal = self.genSignal(idt, TradingRecord)

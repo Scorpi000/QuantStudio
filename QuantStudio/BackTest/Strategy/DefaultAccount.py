@@ -74,6 +74,7 @@ class DefaultAccount(Account):
         self.SellLimit = _TradeLimit(direction="Sell")
         self.MarketInfo = _MarketInfo(ft=self._MarketFT)
     def __QS_start__(self, mdl, dts, **kwargs):
+        if self._isStarted: return ()
         Rslt = super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._IDs = list(self.TargetIDs)
         if not self._IDs: self._IDs = self._MarketFT.getID(ifactor_name=self.MarketInfo.Last)
@@ -86,11 +87,12 @@ class DefaultAccount(Account):
         self._Turnover = pd.Series(np.zeros((nDT, )), index=dts)
         self._Orders = pd.DataFrame(columns=["ID", "数量", "目标价"])
         self._LastPrice = self._TradePrice = None
-        self._iTradingRecord = []# 暂存的交易记录
+        self._iTradingRecord = pd.DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])# 暂存的交易记录
         self._SellVolLimit, self._BuyVolLimit = pd.Series(np.inf, index=self._IDs), pd.Series(np.inf, index=self._IDs)
         self._nDT = nDT
         return Rslt + (self._MarketFT, )
     def __QS_move__(self, idt, **kwargs):
+        if self._iDT==idt: return self._iTradingRecord
         super().__QS_move__(idt, **kwargs)
         # 更新当前的账户信息
         iIndex = self._Model.DateTimeIndex
@@ -98,24 +100,23 @@ class DefaultAccount(Account):
         self._TradePrice = self._MarketFT.readData(factor_names=[self.MarketInfo.TradePrice], ids=self._IDs, dts=[idt]).iloc[0, 0]
         self._PositionNum.iloc[iIndex+1] = self._PositionNum.iloc[iIndex]# 初始化持仓
         if self.Delay:# 撮合成交
-            TradingRecord = self._matchOrder(idt)
-            TradingRecord = pd.DataFrame(TradingRecord, index=np.arange(self._TradingRecord.shape[0], self._TradingRecord.shape[0]+len(TradingRecord)), columns=self._TradingRecord.columns)
-            self._TradingRecord = self._TradingRecord.append(TradingRecord)
-        else:
-            TradingRecord = pd.DataFrame(self._iTradingRecord, columns=self._TradingRecord.columns)
+            self._iTradingRecord = self._matchOrder(idt)
+            self._iTradingRecord = pd.DataFrame(self._iTradingRecord, index=np.arange(self._TradingRecord.shape[0], self._TradingRecord.shape[0]+len(self._iTradingRecord)), columns=self._TradingRecord.columns)
+            self._TradingRecord = self._TradingRecord.append(self._iTradingRecord)
         self._PositionAmount.iloc[iIndex+1] = self._PositionNum.iloc[iIndex+1] * self._LastPrice
-        return TradingRecord
+        return self._iTradingRecord
     def __QS_after_move__(self, idt, **kwargs):
+        if self._iDT==idt: return 0
         super().__QS_after_move__(idt, **kwargs)
         if not self.Delay:# 撮合成交
-            TradingRecord = self._matchOrder(idt)
-            self._iTradingRecord = TradingRecord
-            TradingRecord = pd.DataFrame(TradingRecord, index=np.arange(self._TradingRecord.shape[0], self._TradingRecord.shape[0]+len(TradingRecord)), columns=self._TradingRecord.columns)
-            self._TradingRecord = self._TradingRecord.append(TradingRecord)
+            self._iTradingRecord = self._matchOrder(idt)
+            self._iTradingRecord = pd.DataFrame(self._iTradingRecord, index=np.arange(self._TradingRecord.shape[0], self._TradingRecord.shape[0]+len(self._iTradingRecord)), columns=self._TradingRecord.columns)
+            self._TradingRecord = self._TradingRecord.append(self._iTradingRecord)
             iIndex = self._Model.DateTimeIndex
             self._PositionAmount.iloc[iIndex+1] = self._PositionNum.iloc[iIndex+1] * self._LastPrice
         return 0
     def __QS_end__(self):
+        if not self._isStarted: return 0
         super().__QS_end__()
         self._Output["持仓数量"] = self.getPositionNumSeries()
         self._Output["持仓金额"] = self.getPositionAmountSeries()
