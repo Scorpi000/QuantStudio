@@ -66,8 +66,9 @@ class CVXPC(PortfolioConstructor):
         self._x = x
         self._Model.solve(**prepared_option)
         Status = (1 if self._Model.status not in ("infeasible", "unbounded") else 0)
-        return (self._x.value, {"Status":Status, "Msg":self._Model.status, "solve_time":self._Model.solver_stats.solve_time, 
-                                "setup_time":self._Model.solver_stats.setup_time, "num_iters":self._Model.solver_stats.num_iters})
+        return (self._x.value, {"Status":Status, "Msg":self._Model.status, "solver_name":self._Model.solver_stats.solver_name,
+                                "solve_time":self._Model.solver_stats.solve_time, "setup_time":self._Model.solver_stats.setup_time, 
+                                "num_iters":self._Model.solver_stats.num_iters})
     # 风险预算模型
     def _solveRiskBudgetModel(self, nvar, prepared_objective, prepared_constraints, prepared_option):
         x = cvx.Variable(nvar)
@@ -84,8 +85,9 @@ class CVXPC(PortfolioConstructor):
         self._x = x
         self._Model.solve(**prepared_option)
         Status = (1 if self._Model.status not in ("infeasible", "unbounded") else 0)
-        return (x.value / np.sum(x.value), {"Status":Status, "Msg":self._Model.status, "solve_time":self._Model.solver_stats.solve_time, 
-                                            "setup_time":self._Model.solver_stats.setup_time, "num_iters":self._Model.solver_stats.num_iters})
+        return (x.value / np.sum(x.value), {"Status":Status, "Msg":self._Model.status, "solver_name":self._Model.solver_stats.solver_name,
+                                            "solve_time":self._Model.solver_stats.solve_time, "setup_time":self._Model.solver_stats.setup_time, 
+                                            "num_iters":self._Model.solver_stats.num_iters})
     # 最大分散化模型
     def _solveMaxDiversificationModel(self, nvar, prepared_objective, prepared_constraints, prepared_option):
         x = cvx.Variable(nvar)
@@ -103,8 +105,9 @@ class CVXPC(PortfolioConstructor):
         self._Model.solve(**prepared_option)
         Status = (1 if self._Model.status not in ("infeasible", "unbounded") else 0)
         x = np.dot(D, x.value)
-        return (x / np.sum(x), {"Status":Status, "Msg":self._Model.status, "solve_time":self._Model.solver_stats.solve_time, 
-                                "setup_time":self._Model.solver_stats.setup_time, "num_iters":self._Model.solver_stats.num_iters})
+        return (x / np.sum(x), {"Status":Status, "Msg":self._Model.status, "solver_name":self._Model.solver_stats.solver_name,
+                                "solve_time":self._Model.solver_stats.solve_time, "setup_time":self._Model.solver_stats.setup_time, 
+                                "num_iters":self._Model.solver_stats.num_iters})
     def _genOption(self):
         Options = {"verbose":False}
         Options.update(self.OptimOption)
