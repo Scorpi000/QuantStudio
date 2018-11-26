@@ -1,5 +1,5 @@
 # coding=utf-8
-"""简单账户"""
+"""默认账户"""
 import datetime as dt
 
 import pandas as pd
@@ -12,32 +12,20 @@ from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 
 class _TradeLimit(__QS_Object__):
     """交易限制"""
-    LimitIDFilter = Str(arg_type="IDFilter", label="禁止条件", order=0)
-    TradeFee = Float(0.003, arg_type="Double", label="交易费率", order=1)
-    AmtLimitRatio = Float(0.1, arg_type="Double", label="成交额限比", order=2)
-    def __init__(self, direction, sys_args={}, config_file=None, **kwargs):
+    TradePrice = Enum(None, arg_type="SingleOption", label="成交价", order=0)
+    LimitIDFilter = Str(arg_type="IDFilter", label="禁止条件", order=1)
+    TradeFee = Float(0.003, arg_type="Double", label="交易费率", order=2)
+    Amt = Enum(None, arg_type="SingleOption", label="成交额", order=3)
+    AmtLimitRatio = Float(0.1, arg_type="Double", label="成交额限比", order=4)
+    def __init__(self, account, direction, sys_args={}, config_file=None, **kwargs):
+        self._Account = account
         self._Direction = direction
         return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
-        if self._Direction=="Sell":
-            self.add_trait("ShortAllowed", Bool(False, arg_type="SingleOption", label="允许卖空", order=3))
-
-class _MarketInfo(__QS_Object__):
-    """行情信息"""
-    Last = Enum(None, arg_type="SingleOption", label="最新价", order=0)
-    TradePrice = Enum(None, arg_type="SingleOption", label="成交价", order=1)
-    Amt = Enum(None, arg_type="SingleOption", label="成交额", order=2)
-    def __init__(self, ft, sys_args={}, config_file=None, **kwargs):
-        self._MarketFT = ft
-        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
-    def __QS_initArgs__(self):
-        super().__QS_initArgs__()
-        DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._MarketFT.getFactorMetaData(key="DataType")))
-        DefaultNumFactorList.insert(0, None)
-        self.add_trait("Last", Enum(*DefaultNumFactorList[1:], arg_type="SingleOption", label="最新价", order=0))
-        self.add_trait("TradePrice", Enum(*DefaultNumFactorList[1:], arg_type="SingleOption", label="成交价", order=1))
-        self.add_trait("Amt", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="成交额", order=2))
-        self.TradePrice = self.Last = searchNameInStrList(DefaultNumFactorList[1:], ['新','收','Last','last','close','Close'])
+        DefaultNumFactorList = [None] + self._Account.trait("Last").option_range
+        self.add_trait("TradePrice", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="成交价", order=0))
+        self.add_trait("Amt", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="成交额", order=3))
+        if self._Direction=="Sell": self.add_trait("ShortAllowed", Bool(False, arg_type="SingleOption", label="允许卖空", order=5))
 
 # 基于价格和成交额数据的简单账户, 只支持市价单
 # market_ft: 提供价格数据的因子表, 时间频率任意
@@ -48,7 +36,7 @@ class DefaultAccount(Account):
     TargetIDs = ListStr(arg_type="IDList", label="目标ID", order=3)
     BuyLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="买入限制", order=4)
     SellLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="卖出限制", order=5)
-    MarketInfo = Instance(_MarketInfo, allow_none=False, arg_type="ArgObject", label="行情信息", order=6)
+    Last = Enum(None, arg_type="SingleOption", label="最新价", order=6)
     def __init__(self, market_ft, name="默认证券账户", sys_args={}, config_file=None, **kwargs):
         # 继承自 Account 的属性
         #self._Cash = None# 剩余现金, >=0,  array(shape=(nDT+1,))
@@ -63,21 +51,25 @@ class DefaultAccount(Account):
         self._Turnover = None# 换手率, Series(index=[时间点])
         self._Orders = None# 当前接收到的订单, DataFrame(columns=["ID", "数量", "目标价"])
         self._LastPrice = None# 最新价, Series(index=self._IDs)
-        self._TradePrice = None# 成交价, Series(index=self._IDs)
+        self._BuyPrice = None# 买入成交价, Series(index=self._IDs)
+        self._SellPrice = None# 卖出成交价, Series(index=self._IDs)
         self._SellVolLimit = None# 卖出成交量限制, Series(index=self._IDs)
         self._BuyVolLimit = None# 买入成交量限制, Series(index=self._IDs)
         self._MarketFT = market_ft# 提供净值或者收益率数据的因子表
+        self._TempData = {}# 临时数据
         return super().__init__(name=name, sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
-        self.BuyLimit = _TradeLimit(direction="Buy")
-        self.SellLimit = _TradeLimit(direction="Sell")
-        self.MarketInfo = _MarketInfo(ft=self._MarketFT)
+        DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._MarketFT.getFactorMetaData(key="DataType")))
+        self.add_trait("Last", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="最新价", order=6, option_range=DefaultNumFactorList))
+        self.Last = searchNameInStrList(DefaultNumFactorList, ['新','收','Last','last','close','Close'])
+        self.BuyLimit = _TradeLimit(account=self, direction="Buy")
+        self.SellLimit = _TradeLimit(account=self, direction="Sell")
     def __QS_start__(self, mdl, dts, **kwargs):
         if self._isStarted: return ()
         Rslt = super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._IDs = list(self.TargetIDs)
-        if not self._IDs: self._IDs = self._MarketFT.getID(ifactor_name=self.MarketInfo.Last)
+        if not self._IDs: self._IDs = self._MarketFT.getID(ifactor_name=self.Last)
         nDT, nID = len(dts), len(self._IDs)
         #self._Cash = np.zeros(nDT+1)
         #self._FrozenCash = 0
@@ -86,7 +78,10 @@ class DefaultAccount(Account):
         self._PositionAmount = self._PositionNum.copy()
         self._Turnover = pd.Series(np.zeros((nDT, )), index=dts)
         self._Orders = pd.DataFrame(columns=["ID", "数量", "目标价"])
-        self._LastPrice = self._TradePrice = None
+        self._TempData = {}
+        if self.BuyLimit.TradePrice is None: self.BuyLimit.TradePrice, self._TempData["BuyPrice"] = self.Last, None
+        if self.SellLimit.TradePrice is None: self.SellLimit.TradePrice, self._TempData["SellPrice"] = self.Last, None
+        self._LastPrice = self._BuyPrice = self._SellPrice = None
         self._iTradingRecord = pd.DataFrame(columns=["时间点", "ID", "买卖数量", "价格", "交易费", "现金收支", "类型"])# 暂存的交易记录
         self._SellVolLimit, self._BuyVolLimit = pd.Series(np.inf, index=self._IDs), pd.Series(np.inf, index=self._IDs)
         self._nDT = nDT
@@ -96,8 +91,7 @@ class DefaultAccount(Account):
         super().__QS_move__(idt, **kwargs)
         # 更新当前的账户信息
         iIndex = self._Model.DateTimeIndex
-        self._LastPrice = self._MarketFT.readData(factor_names=[self.MarketInfo.Last], ids=self._IDs, dts=[idt]).iloc[0, 0]
-        self._TradePrice = self._MarketFT.readData(factor_names=[self.MarketInfo.TradePrice], ids=self._IDs, dts=[idt]).iloc[0, 0]
+        self._LastPrice = self._MarketFT.readData(factor_names=[self.Last], ids=self._IDs, dts=[idt]).iloc[0, 0]
         self._PositionNum.iloc[iIndex+1] = self._PositionNum.iloc[iIndex]# 初始化持仓
         if self.Delay:# 撮合成交
             self._iTradingRecord = self._matchOrder(idt)
@@ -118,6 +112,8 @@ class DefaultAccount(Account):
     def __QS_end__(self):
         if not self._isStarted: return 0
         super().__QS_end__()
+        self.BuyLimit.TradePrice = self._TempData.pop("BuyPrice", self.BuyLimit.TradePrice)
+        self.SellLimit.TradePrice = self._TempData.pop("SellPrice", self.SellLimit.TradePrice)
         self._Output["持仓数量"] = self.getPositionNumSeries()
         self._Output["持仓金额"] = self.getPositionAmountSeries()
         self._Output["换手率"] = pd.DataFrame(self._Turnover.values, index=self._Turnover.index, columns=["换手率"])
@@ -184,18 +180,22 @@ class DefaultAccount(Account):
     # 更新交易限制条件
     def _updateTradeLimit(self, idt):
         self._SellVolLimit[:] = self._BuyVolLimit[:] = np.inf
+        TradePrice = self._MarketFT.readData(factor_names=[self.BuyLimit.TradePrice, self.SellLimit.TradePrice], ids=self._IDs, dts=[idt]).iloc[:,0,:]
+        self._BuyPrice, self._SellPrice = TradePrice.iloc[:, 0], TradePrice.iloc[:, 1]
+        self._BuyVolLimit[pd.isnull(self._BuyPrice) | (self._BuyPrice<=0)] = 0.0# 买入成交价缺失的不能买入
+        self._SellVolLimit[pd.isnull(self._SellPrice) | (self._SellPrice<=0)] = 0.0# 卖出成交价缺失的不能卖出
         if self.SellLimit.LimitIDFilter:# 满足卖出禁止条件的不能卖出
             Mask = self._MarketFT.getIDMask(idt, ids=self._IDs, id_filter_str=self.SellLimit.LimitIDFilter)
             self._SellVolLimit[Mask] = 0.0
         if self.BuyLimit.LimitIDFilter:# 满足买入禁止条件的不能买入
             Mask = self._MarketFT.getIDMask(idt, ids=self._IDs, id_filter_str=self.BuyLimit.LimitIDFilter)
             self._BuyVolLimit[Mask] = 0.0
-        if self.MarketInfo.Amt is not None:# 指定了成交额, 成交额满足限制要求
-            Amount = self._MarketFT.readData(factor_names=[self.MarketInfo.Amt], ids=self._IDs, dts=[idt]).iloc[0,0,:]
-            self._SellVolLimit = self._SellVolLimit.clip_upper(Amount * self.SellLimit.AmtLimitRatio / self._TradePrice)
-            self._BuyVolLimit = self._BuyVolLimit.clip_upper(Amount * self.BuyLimit.AmtLimitRatio / self._TradePrice)
-        Mask = (pd.isnull(self._TradePrice) | (self._TradePrice<=0))
-        self._SellVolLimit[Mask] = self._BuyVolLimit[Mask] = 0.0# 成交价缺失的不能交易
+        if self.BuyLimit.Amt is not None:# 指定了买入成交额, 成交额满足限制要求
+            Amount = self._MarketFT.readData(factor_names=[self.BuyLimit.Amt], ids=self._IDs, dts=[idt]).iloc[0,0,:]
+            self._BuyVolLimit = self._BuyVolLimit.clip_upper(Amount * self.BuyLimit.AmtLimitRatio / self._BuyPrice)
+        if self.SellLimit.Amt is not None:# 指定了卖出成交额, 成交额满足限制要求
+            Amount = self._MarketFT.readData(factor_names=[self.SellLimit.Amt], ids=self._IDs, dts=[idt]).iloc[0,0,:]
+            self._SellVolLimit = self._SellVolLimit.clip_upper(Amount * self.SellLimit.AmtLimitRatio / self._SellPrice)
         if not self.SellLimit.ShortAllowed:
             PositionNum = self._PositionNum.iloc[self._Model.DateTimeIndex+1]
             self._SellVolLimit = self._SellVolLimit.clip_upper(PositionNum.clip_lower(0.0))
@@ -215,17 +215,17 @@ class DefaultAccount(Account):
         orders = orders.clip(upper=self._BuyVolLimit.loc[IDs], lower=-self._SellVolLimit.loc[IDs])# 过滤限制条件
         orders = orders[orders!=0]
         if orders.shape[0]==0: return []
-        TradePrice = self._TradePrice[orders.index]
-        TradeAmounts = TradePrice * orders# 交易金额
         # 先执行卖出交易
-        SellAmounts = TradeAmounts.clip_upper(0).abs()
+        SellPrice = self._SellPrice[orders.index]
+        SellAmounts = (SellPrice * orders).clip_upper(0).abs()
         Fees = SellAmounts * self.SellLimit.TradeFee# 卖出交易费
         CashChanged = SellAmounts - Fees
         Mask = (SellAmounts>0)
         SellNums = orders.clip_upper(0)
-        TradingRecord = list(zip([idt]*Mask.sum(), orders.index[Mask], SellNums[Mask], TradePrice[Mask], Fees[Mask], CashChanged[Mask], ["sell"]*Mask.sum()))
+        TradingRecord = list(zip([idt]*Mask.sum(), orders.index[Mask], SellNums[Mask], SellPrice[Mask], Fees[Mask], CashChanged[Mask], ["sell"]*Mask.sum()))
         # 再执行买入交易
-        BuyAmounts = TradeAmounts.clip_lower(0)
+        BuyPrice = self._BuyPrice[orders.index]
+        BuyAmounts = (BuyPrice * orders).clip_lower(0)
         CashAcquired = BuyAmounts * (1 + self.BuyLimit.TradeFee)
         TotalCashAcquired = CashAcquired.sum()
         if TotalCashAcquired>0:
@@ -233,15 +233,16 @@ class DefaultAccount(Account):
             CashAllocated = min(AvailableCash, TotalCashAcquired) * CashAcquired / TotalCashAcquired
             BuyAmounts = CashAllocated / (1 + self.BuyLimit.TradeFee)
             Fees = BuyAmounts * self.BuyLimit.TradeFee
-            BuyNums = BuyAmounts / TradePrice
+            BuyNums = BuyAmounts / BuyPrice
             Mask = (BuyAmounts>0)
-            TradingRecord.extend((zip([idt]*Mask.sum(), orders.index[Mask], BuyNums[Mask], TradePrice[Mask], Fees[Mask], -CashAllocated[Mask], ["buy"]*Mask.sum())))
+            TradingRecord.extend((zip([idt]*Mask.sum(), orders.index[Mask], BuyNums[Mask], BuyPrice[Mask], Fees[Mask], -CashAllocated[Mask], ["buy"]*Mask.sum())))
         else:
             CashAllocated = BuyNums = pd.Series(0, index=BuyAmounts.index)
         # 更新持仓数量和现金
         iIndex = self._Model.DateTimeIndex
         iPosition = self._PositionNum.iloc[iIndex+1].copy()
-        self._Turnover.iloc[iIndex] = (SellAmounts.sum() + BuyAmounts.sum()) / ((self._TradePrice * iPosition).sum() + super().AccountValue)
+        TotalAmount = (self._BuyPrice * iPosition.clip_upper(0) + self._SellPrice * iPosition.clip_lower(0)).sum()
+        self._Turnover.iloc[iIndex] = (SellAmounts.sum() + BuyAmounts.sum()) / (TotalAmount + super().AccountValue)
         iPosition[orders.index] += BuyNums + SellNums
         self._PositionNum.iloc[iIndex+1] = iPosition
         self._QS_updateCashDebt(CashChanged.sum() - CashAllocated.sum())
