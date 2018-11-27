@@ -259,7 +259,6 @@ class WindDB(FactorDB):
         self._Connection = None# 数据库链接
         self._TableInfo = None# 数据库中的表信息
         self._FactorInfo = None# 数据库中的表字段信息
-        self._InfoFilePath = None# 数据库信息文件路径
         self._AllTables = []# 数据库中的所有表名, 用于查询时解决大小写敏感问题
         self._InfoFilePath = __QS_LibPath__+os.sep+"WindDBInfo.hdf5"# 数据库信息文件路径
         self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"WindDBInfo.xlsx"# 数据库信息源文件路径
@@ -280,7 +279,7 @@ class WindDB(FactorDB):
             self._Connection = None
         self._AllTables = state.get("_AllTables", [])
     def _updateInfo(self):
-        if not os.path.isfile(self._InfoResourcePath):
+        if not os.path.isfile(self._InfoFilePath):
             print("数据库信息文件: '%s' 缺失, 尝试从 '%s' 中导入信息." % (self._InfoFilePath, self._InfoResourcePath))
         elif (os.path.getmtime(self._InfoResourcePath)>os.path.getmtime(self._InfoFilePath)):
             print("数据库信息文件: '%s' 有更新, 尝试从中导入新信息." % self._InfoResourcePath)
@@ -291,7 +290,7 @@ class WindDB(FactorDB):
                 return 0
             except:
                 print("数据库信息文件: '%s' 损坏, 尝试从 '%s' 中导入信息." % (self._InfoFilePath, self._InfoResourcePath))
-        if not os.path.isfile(self._InfoResourcePath): raise __QS_Error__("缺失数据库信息文件: %s" % self._InfoResourcePath)
+        if not os.path.isfile(self._InfoResourcePath): raise __QS_Error__("缺失数据库信息源文件: %s" % self._InfoResourcePath)
         self.importInfo(self._InfoResourcePath)
         self._TableInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/TableInfo")
         self._FactorInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/FactorInfo")

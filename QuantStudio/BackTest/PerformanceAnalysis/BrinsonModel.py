@@ -24,10 +24,10 @@ from QuantStudio.BackTest.SectionFactor.Portfolio import _QS_plotStatistics
 # 2. 两个计算时点之间没有调整策略持仓
 class BrinsonModel(BaseModule):
     """Brinson 绩效分析模型"""
-    Portfolio = Enum(None, arg_type="SingleOption", label="策略组合", order=0)
-    BenchmarkPortfolio = Enum(None, arg_type="SingleOption", label="基准组合", order=1)
-    GroupFactor = Enum(None, arg_type="SingleOption", label="资产类别", order=2)
-    PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=3)
+    #Portfolio = Enum(None, arg_type="SingleOption", label="策略组合", order=0)
+    #BenchmarkPortfolio = Enum(None, arg_type="SingleOption", label="基准组合", order=1)
+    #GroupFactor = Enum(None, arg_type="SingleOption", label="资产类别", order=2)
+    #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=3)
     CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=4)
     def __init__(self, factor_table, name="Brinson绩效分析模型", sys_args={}, **kwargs):
         self._FactorTable = factor_table

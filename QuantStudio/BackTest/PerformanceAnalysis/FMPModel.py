@@ -22,11 +22,11 @@ from QuantStudio.BackTest.SectionFactor.Portfolio import _QS_plotStatistics
 
 class FMPModel(BaseModule):
     """基于特征因子模拟组合的绩效分析模型"""
-    Portfolio = Enum(None, arg_type="SingleOption", label="策略组合", order=0)
-    BenchmarkPortfolio = Enum("无", arg_type="SingleOption", label="基准组合", order=1)
+    #Portfolio = Enum(None, arg_type="SingleOption", label="策略组合", order=0)
+    #BenchmarkPortfolio = Enum("无", arg_type="SingleOption", label="基准组合", order=1)
     AttributeFactors = ListStr(arg_type="MultiOption", label="特征因子", order=2, option_range=())
-    IndustryFactor = Enum("无", arg_type="SingleOption", label="行业因子", order=3)
-    PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=4)
+    #IndustryFactor = Enum("无", arg_type="SingleOption", label="行业因子", order=3)
+    #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=4)
     RiskDS = Instance(RiskDataSource, arg_type="RiskDS", label="风险数据源", order=5)
     CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=6)
     def __init__(self, factor_table, name="因子模拟组合绩效分析模型", sys_args={}, **kwargs):

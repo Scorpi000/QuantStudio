@@ -26,9 +26,9 @@ class IC(BaseModule):
     """IC"""
     TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
     FactorOrder = Dict(key_trait=Str(), value_trait=Enum("降序", "升序"), arg_type="ArgDict", label="排序方向", order=1)
-    PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=2)
-    IndustryFactor = Enum("无", arg_type="SingleOption", label="行业因子", order=3)
-    WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=4)
+    #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=2)
+    #IndustryFactor = Enum("无", arg_type="SingleOption", label="行业因子", order=3)
+    #WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=4)
     CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=5)
     LookBack = Int(1, arg_type="Integer", label="回溯期数", order=6)
     CorrMethod = Enum("spearman", "pearson", "kendall", arg_type="SingleOption", label="相关性算法", order=7)
@@ -298,11 +298,11 @@ class RiskAdjustedIC(IC):
 
 class ICDecay(BaseModule):
     """IC 衰减"""
-    TestFactor = Enum(None, arg_type="SingleOption", label="测试因子", order=0)
+    #TestFactor = Enum(None, arg_type="SingleOption", label="测试因子", order=0)
     FactorOrder = Enum("降序","升序", arg_type="SingleOption", label="排序方向", order=1)
-    PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=2)
-    IndustryFactor = Enum("无", arg_type="SingleOption", label="行业因子", order=3)
-    WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=4)
+    #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=2)
+    #IndustryFactor = Enum("无", arg_type="SingleOption", label="行业因子", order=3)
+    #WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=4)
     CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=5)
     LookBack = ListInt(np.arange(1,13).tolist(), arg_type="NultiOpotion", label="回溯期数", order=6)
     CorrMethod = Enum("spearman", "pearson", "kendall", arg_type="SingleOption", label="相关性算法", order=7)

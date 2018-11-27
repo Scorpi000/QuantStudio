@@ -12,10 +12,10 @@ from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 
 class _TradeLimit(__QS_Object__):
     """交易限制"""
-    TradePrice = Enum(None, arg_type="SingleOption", label="成交价", order=0)
+    #TradePrice = Enum(None, arg_type="SingleOption", label="成交价", order=0)
     LimitIDFilter = Str(arg_type="IDFilter", label="禁止条件", order=1)
     TradeFee = Float(0.003, arg_type="Double", label="交易费率", order=2)
-    Amt = Enum(None, arg_type="SingleOption", label="成交额", order=3)
+    #Amt = Enum(None, arg_type="SingleOption", label="成交额", order=3)
     AmtLimitRatio = Float(0.1, arg_type="Double", label="成交额限比", order=4)
     def __init__(self, account, direction, sys_args={}, config_file=None, **kwargs):
         self._Account = account
@@ -36,7 +36,7 @@ class DefaultAccount(Account):
     TargetIDs = ListStr(arg_type="IDList", label="目标ID", order=3)
     BuyLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="买入限制", order=4)
     SellLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="卖出限制", order=5)
-    Last = Enum(None, arg_type="SingleOption", label="最新价", order=6)
+    #Last = Enum(None, arg_type="SingleOption", label="最新价", order=6)
     def __init__(self, market_ft, name="默认证券账户", sys_args={}, config_file=None, **kwargs):
         # 继承自 Account 的属性
         #self._Cash = None# 剩余现金, >=0,  array(shape=(nDT+1,))

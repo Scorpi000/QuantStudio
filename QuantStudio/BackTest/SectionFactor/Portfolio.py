@@ -42,12 +42,12 @@ def _QS_plotStatistics(axes, x_data, x_ticklabels, left_data, left_formatter, ri
 
 class QuantilePortfolio(BaseModule):
     """分位数组合"""
-    TestFactor = Enum(None, arg_type="SingleOption", label="测试因子", order=0)
+    #TestFactor = Enum(None, arg_type="SingleOption", label="测试因子", order=0)
     FactorOrder = Enum("降序", "升序", arg_type="SingleOption", label="排序方向", order=1)
     GroupNum = Int(10, arg_type="Integer", label="分组数", order=2)
-    PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=3)
-    IndustryFactor = Enum("无", arg_type="SingleOption", label="行业因子", order=4)
-    WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=5)
+    #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=3)
+    #IndustryFactor = Enum("无", arg_type="SingleOption", label="行业因子", order=4)
+    #WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=5)
     CalcDTs = List(dt.datetime, arg_type="DateList", label="调仓时点", order=6)
     MarketIDFilter = Str(arg_type="IDFilter", label="市场组合", order=7)
     IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)

@@ -214,9 +214,12 @@ class Account(BaseModule):
 class _Benchmark(__QS_Object__):
     """基准"""
     FactorTable = Instance(FactorTable, arg_type="FactorTable", label="因子表", order=0)
-    PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
-    BenchmarkID = Enum(None, arg_type="SingleOption", label="基准ID", order=2)
+    #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
+    #BenchmarkID = Enum(None, arg_type="SingleOption", label="基准ID", order=2)
     RebalanceDTs = List(dt.datetime, arg_type="DateTimeList", label="再平衡时点", order=3)
+    def __QS_initArgs__(self):
+        self.add_trait("PriceFactor", Enum(None, arg_type="SingleOption", label="价格因子", order=1))
+        self.add_trait("BenchmarkID", Enum(None, arg_type="SingleOption", label="基准ID", order=2))
     @on_trait_change("FactorTable")
     def _on_FactorTable_changed(self, obj, name, old, new):
         if self.FactorTable is not None:

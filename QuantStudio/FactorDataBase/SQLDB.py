@@ -118,34 +118,33 @@ class SQLDB(WritableFactorDB):
         else: self._Connection = None
     # -------------------------------------------数据库相关---------------------------
     def _connect(self):
-        if (self.Connector=='cx_Oracle') or ((self.Connector=='default') and (self.DBType=='Oracle')):
+        if (self.Connector=="cx_Oracle") or ((self.Connector=="default") and (self.DBType=="Oracle")):
             try:
                 import cx_Oracle
                 self._Connection = cx_Oracle.connect(self.User, self.Pwd, cx_Oracle.makedsn(self.IPAddr, str(self.Port), self.DBName))
             except Exception as e:
-                if self.Connector!='default': raise e
-        elif (self.Connector=='pymssql') or ((self.Connector=='default') and (self.DBType=='SQL Server')):
+                if self.Connector!="default": raise e
+        elif (self.Connector=="pymssql") or ((self.Connector=="default") and (self.DBType=="SQL Server")):
             try:
                 import pymssql
                 self._Connection = pymssql.connect(server=self.IPAddr, port=str(self.Port), user=self.User, password=self.Pwd, database=self.DBName, charset=self.CharSet)
             except Exception as e:
-                if self.Connector!='default': raise e
-        elif (self.Connector=='mysql.connector') or ((self.Connector=='default') and (self.DBType=='MySQL')):
+                if self.Connector!="default": raise e
+        elif (self.Connector=="mysql.connector") or ((self.Connector=="default") and (self.DBType=="MySQL")):
             try:
                 import mysql.connector
                 self._Connection = mysql.connector.connect(host=self.IPAddr, port=str(self.Port), user=self.User, password=self.Pwd, database=self.DBName, charset=self.CharSet, autocommit=True)
             except Exception as e:
-                if self.Connector!='default': raise e
+                if self.Connector!="default": raise e
         else:
-            if self.Connector not in ('default', 'pyodbc'):
+            if self.Connector not in ("default", "pyodbc"):
                 self._Connection = None
                 raise __QS_Error__("不支持该连接器(connector) : "+self.Connector)
             else:
                 import pyodbc
-                if self.DSN:
-                    self._Connection = pyodbc.connect('DSN=%s;PWD=%s' % (self.DSN, self.Pwd))
-                else:
-                    self._Connection = pyodbc.connect('DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s' % (self.DBType, self.DBName, self.IPAddr, self.User, self.Pwd))
+                if self.DSN: self._Connection = pyodbc.connect("DSN=%s;PWD=%s" % (self.DSN, self.Pwd))
+                else: self._Connection = pyodbc.connect("DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s" % (self.DBType, self.DBName, self.IPAddr, self.User, self.Pwd))
+                self.Connector = "pyodbc"
         return 0
     def connect(self):
         self._connect()
@@ -216,7 +215,11 @@ class SQLDB(WritableFactorDB):
         for iField in field_types: SQLStr += "`%s` %s, " % (iField, field_types[iField])
         SQLStr += "PRIMARY KEY (`DateTime`, `ID`)) ENGINE=InnoDB DEFAULT CHARSET=utf8"
         self.execute(SQLStr)
-        return self.addIndex(table_name+"_index", table_name)
+        try:
+            self.addIndex(table_name+"_index", table_name)
+        except Exception as e:
+            print("索引创建失败: "+str(e))
+        return 0
     # 增加字段，field_types: {字段名: 数据类型}
     def addField(self, table_name, field_types):
         if table_name not in self._TableFactorDict: return self.createTable(table_name, field_types)
@@ -300,7 +303,10 @@ class SQLDB(WritableFactorDB):
         NewData = NewData[pd.notnull(NewData).any(axis=1)]
         if NewData.shape[0]==0: return 0
         NewData = NewData.astype("O").where(pd.notnull(NewData), None)
-        SQLStr = SQLStr[:-2] + ") VALUES (" + "%s, " * (NewData.shape[1]+2)
+        if self.Connector=="pyodbc":
+            SQLStr = SQLStr[:-2] + ") VALUES (" + "?, " * (NewData.shape[1]+2)
+        else:
+            SQLStr = SQLStr[:-2] + ") VALUES (" + "%s, " * (NewData.shape[1]+2)
         SQLStr = SQLStr[:-2]+") "
         Cursor = self._Connection.cursor()
         Cursor.executemany(SQLStr, NewData.reset_index().values.tolist())

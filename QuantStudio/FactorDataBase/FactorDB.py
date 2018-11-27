@@ -564,7 +564,7 @@ class FactorTable(__QS_Object__):
         if not self.ErgodicMode._isStarted: return 0
         self.ErgodicMode._CacheData, self.ErgodicMode._FactorReadNum, self.ErgodicMode._IDReadNum = None, None, None
         self.ErgodicMode._Queue2SubProcess.put(None)
-        self.ErgodicMode._CacheDataProcess = None
+        self.ErgodicMode._Queue2SubProcess = self.ErgodicMode._Queue2MainProcess = self.ErgodicMode._CacheDataProcess = None
         self.ErgodicMode._isStarted = False
         self.ErgodicMode._CurDT = None
         self._MMAPCacheData = None

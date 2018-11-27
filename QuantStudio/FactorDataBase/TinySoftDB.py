@@ -10,6 +10,36 @@ from traits.api import Str, Range, Directory, Password, Either, Int, Enum
 
 from QuantStudio import __QS_Error__, __QS_LibPath__, __QS_MainPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
+from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
+
+class _TSTable(FactorTable):
+    def getMetaData(self, key=None):
+        TableInfo = self._FactorDB._TableInfo.loc[self.Name]
+        if key is None: return TableInfo
+        else: return TableInfo.get(key, None)
+    @property
+    def FactorNames(self):
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        return FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()
+    def getFactorMetaData(self, factor_names=None, key=None):
+        if factor_names is None: factor_names = self.FactorNames
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        if key=="DataType":
+            if hasattr(self, "_DataType"): return self._DataType.loc[factor_names]
+            MetaData = FactorInfo["DataType"].loc[factor_names]
+            for i in range(MetaData.shape[0]):
+                iDataType = MetaData.iloc[i].lower()
+                if (iDataType.find("real")!=-1) or (iDataType.find("int")!=-1): MetaData.iloc[i] = "double"
+                else: MetaData.iloc[i] = "string"
+            return MetaData
+        elif key=="Description": return FactorInfo["Description"].loc[factor_names]
+        elif key is None:
+            return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType"),
+                                 "Description":self.getFactorMetaData(factor_names, key="Description")})
+        else:
+            return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
+    def getID(self, ifactor_name=None, idt=None, args={}):
+        return []
 
 class _CalendarTable(FactorTable):
     """交易日历因子表"""
@@ -44,22 +74,8 @@ class _CalendarTable(FactorTable):
         if Data.index.intersection(dts).shape[0]==0: return pd.Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
         Data = Data.loc[dts, ids]
         return pd.Panel({"交易日": Data})
-class _TradeTable(FactorTable):
+class _TradeTable(_TSTable):
     """tradetable"""
-    @property
-    def FactorNames(self):
-        return ["yclose","vol","amount","cjbs",
-                "buy1","buy2","buy3","buy4","buy5","bc1","bc2","bc3","bc4","bc5",
-                "sale1","sale2","sale3","sale4","sale5","sc1","sc2","sc3","sc4","sc5",
-                "zmm","buy_vol","buy_amount","sale_vol","sale_amount",
-                "w_buy","w_sale","wb","lb"]
-    def getFactorMetaData(self, factor_names=None, key=None):
-        if factor_names is None: factor_names = self.FactorNames
-        if key=="DataType": return pd.Series(["double"]*len(factor_names), index=factor_names)
-        elif key is None: return pd.DataFrame({"DataType": self.getFactorMetaData(factor_names, key="DataType")})
-        else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
-    def getID(self, ifactor_name=None, idt=None, args={}):
-        return []
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         if iid is None: iid = "000001.SH"
         if start_dt is None: start_dt = dt.datetime(1970, 1, 1)
@@ -72,7 +88,8 @@ class _TradeTable(FactorTable):
         DTs = np.array([dt.datetime(*self._FactorDB.TSLPy.DecodeDateTime(iData[b"date"])) for iData in Data], dtype="O")
         return DTs[(DTs>=start_dt) & (DTs<=end_dt)].tolist()
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        CodeStr = "return select "+"['date'],"+("['"+("'],['".join(factor_names))+"']" if factor_names is not None else "*")+" "
+        Fields = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[factor_names].tolist()
+        CodeStr = "return select "+"['date'],['"+("'],['".join(Fields))+"'] "
         CodeStr += "from tradetable datekey inttodate("+dts[0].strftime("%Y%m%d")+") "
         CodeStr += "to (inttodate("+dts[-1].strftime("%Y%m%d")+")+0.9999) of '{ID}' end;"
         Data = {}
@@ -85,7 +102,9 @@ class _TradeTable(FactorTable):
         Data = pd.Panel(Data).swapaxes(0, 2)
         Data.major_axis = [dt.datetime(*self._FactorDB.TSLPy.DecodeDateTime(iDT)) for iDT in Data.major_axis]
         Data.items = [(iCol.decode("gbk") if isinstance(iCol, bytes) else iCol) for i, iCol in enumerate(Data.items)]
-        return Data.loc[factor_names]
+        Data = Data.loc[Fields]
+        Data.items = factor_names
+        return Data
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[2]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         return raw_data.loc[:, dts, ids]
@@ -94,23 +113,13 @@ class _TradeTable(FactorTable):
         if RawData.shape[2]==0: return pd.Panel(items=factor_names, major_axis=[], minor_axis=ids)
         return RawData.loc[:, :, ids]
 
-class _MarketTable(FactorTable):
+class _MarketTable(_TSTable):
     """markettable"""
-    Cycle = Either(Enum("day", "week", "month", "quarter", "halfyear", "year"), Int(60), arg_type="Integer", label="周期", order=0)
+    Cycle = Either(Int(60), Enum("day", "week", "month", "quarter", "halfyear", "year"), arg_type="Integer", label="周期", order=0)
     CycleUnit = Enum("s", "d", arg_type="SingleOption", label="周期单位", order=1)
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
         self.Cycle = 60
-    @property
-    def FactorNames(self):
-        return ["open", "high", "low", "price", "vol", "amount", "cjbs"]
-    def getFactorMetaData(self, factor_names=None, key=None):
-        if factor_names is None: factor_names = self.FactorNames
-        if key=="DataType": return pd.Series(["double"]*len(factor_names), index=factor_names)
-        elif key is None: return pd.DataFrame({"DataType": self.getFactorMetaData(factor_names, key="DataType")})
-        else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
-    def getID(self, ifactor_name=None, idt=None, args={}):
-        return []
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         if iid is None: iid = "000001.SH"
         CycleStr = self._genCycleStr(args.get("周期", self.Cycle), args.get("周期单位", self.CycleUnit))
@@ -150,8 +159,9 @@ class _MarketTable(FactorTable):
         return Groups
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         CycleStr = self._genCycleStr(args.get("周期", self.Cycle), args.get("周期单位", self.CycleUnit))
+        Fields = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[factor_names].tolist()
         CodeStr = "SetSysParam(pn_cycle(),"+CycleStr+");"
-        CodeStr += "return select "+"['date'],"+("['"+("'],['".join(factor_names))+"']" if factor_names is not None else "*")+" "
+        CodeStr += "return select "+"['date'],['"+"'],['".join(Fields)+"'] "
         CodeStr += "from markettable datekey inttodate("+dts[0].strftime("%Y%m%d")+") "
         CodeStr += "to (inttodate("+dts[-1].strftime("%Y%m%d")+")+0.9999) of '{ID}' end;"
         Data = {}
@@ -164,7 +174,9 @@ class _MarketTable(FactorTable):
         Data = pd.Panel(Data).swapaxes(0, 2)
         Data.major_axis = [dt.datetime(*self._FactorDB.TSLPy.DecodeDateTime(iDT)) for iDT in Data.major_axis]
         Data.items = [(iCol.decode("gbk") if isinstance(iCol, bytes) else iCol) for i, iCol in enumerate(Data.items)]
-        return Data.loc[factor_names]
+        Data = Data.loc[Fields]
+        Data.items = factor_names
+        return Data
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[2]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         return raw_data.loc[:, dts, ids]
@@ -184,10 +196,29 @@ class TinySoftDB(FactorDB):
         super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"TinySoftDBConfig.json" if config_file is None else config_file), **kwargs)
         self.Name = "TinySoftDB"
         self.TSLPy = None
-        #self._InfoFilePath = __QS_LibPath__+os.sep+"TinySoftDBInfo.hdf5"# 数据库信息文件路径
-        #self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"TinySoftDBInfo.xlsx"# 数据库信息源文件路径
-        #self._updateInfo()
+        self._TableInfo = None# 数据库中的表信息
+        self._FactorInfo = None# 数据库中的表字段信息
+        self._InfoFilePath = __QS_LibPath__+os.sep+"TinySoftDBInfo.hdf5"# 数据库信息文件路径
+        self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"TinySoftDBInfo.xlsx"# 数据库信息源文件路径
+        self._updateInfo()
         return
+    def _updateInfo(self):
+        if not os.path.isfile(self._InfoFilePath):
+            print("数据库信息文件: '%s' 缺失, 尝试从 '%s' 中导入信息." % (self._InfoFilePath, self._InfoResourcePath))
+        elif (os.path.getmtime(self._InfoResourcePath)>os.path.getmtime(self._InfoFilePath)):
+            print("数据库信息文件: '%s' 有更新, 尝试从中导入新信息." % self._InfoResourcePath)
+        else:
+            try:
+                self._TableInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/TableInfo")
+                self._FactorInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/FactorInfo")
+                return 0
+            except:
+                print("数据库信息文件: '%s' 损坏, 尝试从 '%s' 中导入信息." % (self._InfoFilePath, self._InfoResourcePath))
+        if not os.path.isfile(self._InfoResourcePath): raise __QS_Error__("缺失数据库信息源文件: %s" % self._InfoResourcePath)
+        self.importInfo(self._InfoResourcePath)
+        self._TableInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/TableInfo")
+        self._FactorInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/FactorInfo")
+        return 0
     def __getstate__(self):
         state = self.__dict__.copy()
         state["TSLPy"] = (True if self.isAvailable() else False)
@@ -224,12 +255,12 @@ class TinySoftDB(FactorDB):
             return False
     @property
     def TableNames(self):
-        return ["交易日历", "tradetable", "markettable"]
+        if self._TableInfo is not None: return ["交易日历"]+self._TableInfo.index.tolist()
+        else: return ["交易日历"]
     def getTable(self, table_name, args={}):
         if table_name=="交易日历": return _CalendarTable(name=table_name, fdb=self, sys_args=args)
-        elif table_name=="tradetable": return _TradeTable(name=table_name, fdb=self, sys_args=args)
-        elif table_name=="markettable": return _MarketTable(name=table_name, fdb=self, sys_args=args)
-        else: raise __QS_Error__("表: '%s' 不存在!" % table_name)
+        TableClass = self._TableInfo.loc[table_name, "TableClass"]
+        return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=args)")
     # 给定起始日期和结束日期, 获取交易所交易日期
     def getTradeDay(self, start_date=None, end_date=None, exchange="SSE", **kwargs):
         if exchange not in ("SSE", "SZSE"): raise __QS_Error__("不支持交易所: '%s' 的交易日序列!" % exchange)
@@ -264,3 +295,10 @@ class TinySoftDB(FactorDB):
             iID = iID.decode("gbk")
             IDs.append(iID[2:]+"."+iID[:2])
         return IDs
+    # 将 Excel 文件中的表和字段信息导入信息文件
+    def importInfo(self, excel_file_path):
+        TableInfo = pd.read_excel(excel_file_path, "TableInfo").set_index(["TableName"])
+        FactorInfo = pd.read_excel(excel_file_path, 'FactorInfo').set_index(['TableName', 'FieldName'])
+        writeNestedDict2HDF5(TableInfo, self._InfoFilePath, "/TableInfo")
+        writeNestedDict2HDF5(FactorInfo, self._InfoFilePath, "/FactorInfo")
+        return 0

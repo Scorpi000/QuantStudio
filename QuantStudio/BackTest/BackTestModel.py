@@ -15,6 +15,8 @@ from lxml import etree
 
 from QuantStudio import __QS_Error__, __QS_Object__, __QS_MainPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB
+from QuantStudio.Tools.AuxiliaryFun import startMultiProcess
+from QuantStudio.Tools.QSObjects import QSPipe
 
 class BaseModule(__QS_Object__):
     """回测模块"""
@@ -60,6 +62,31 @@ class BaseModule(__QS_Object__):
         return webbrowser.open(file_path)
 
 
+
+def _runModel(args):
+    Sub2MainQueue, OutputPipe = args.pop("Sub2MainQueue"), args.pop("OutputPipe")
+    FactorDBs = set()
+    for j in args["module_inds"]:
+        jDBs = args["mdl"].Modules[j].__QS_start__(mdl=args["mdl"], dts=args["mdl"]._QS_TestDateTimes)
+        if jDBs is not None: FactorDBs.update(set(jDBs))
+    for jDB in FactorDBs: jDB.start(dts=args["mdl"]._QS_TestDateTimes)
+    Sub2MainQueue.put(0)
+    for i, iDT in enumerate(args["mdl"]._QS_TestDateTimes):
+        args["mdl"]._TestDateTimeIndex = i
+        args["mdl"]._TestDateIndex.loc[iDT.date()] = i
+        for jDB in FactorDBs: jDB.move(iDT)
+        for j in args["module_inds"]: args["mdl"].Modules[j].__QS_move__(iDT)
+        Sub2MainQueue.put(1)
+    for j in args["module_inds"]: args["mdl"].Modules[j].__QS_end__()
+    for jDB in FactorDBs: jDB.end()
+    Output = {}
+    for j in args["module_inds"]:
+        iOutput = args["mdl"].Modules[j].output(recalculate=True)
+        if iOutput: Output[str(j)+"-"+args["mdl"].Modules[j].Name] = iOutput
+    Sub2MainQueue.put(2)
+    OutputPipe.put(Output)
+    return 0
+
 class BackTestModel(__QS_Object__):
     """回测模型"""
     Modules = List(BaseModule)# 已经添加的测试模块, [测试模块对象]
@@ -95,16 +122,17 @@ class BackTestModel(__QS_Object__):
             Context[Prefix+"Module"+str(j)] = jModule
         return (Groups, Context)
     # 运行模型
-    def run(self, dts):
+    def run(self, dts, subprocess_num=0):
         self._QS_TestDateTimes = sorted(dts)
+        if subprocess_num>0: return self._runMultiProcs(subprocess_num)
         TotalStartT = time.clock()
         print("==========历史回测==========", "1. 初始化", sep="\n", end="\n")
         FactorDBs = set()
         for jModule in self.Modules:
-            jDBs = jModule.__QS_start__(mdl=self, dts=dts)
+            jDBs = jModule.__QS_start__(mdl=self, dts=self._QS_TestDateTimes)
             if jDBs is not None: FactorDBs.update(set(jDBs))
-        for jDB in FactorDBs: jDB.start(dts=dts)
-        print(('耗时 : %.2f' % (time.clock()-TotalStartT, )), "2. 循环计算", sep="\n", end="\n")
+        for jDB in FactorDBs: jDB.start(dts=self._QS_TestDateTimes)
+        print(("耗时 : %.2f" % (time.clock()-TotalStartT, )), "2. 循环计算", sep="\n", end="\n")
         StartT = time.clock()
         with ProgressBar(max_value=len(self._QS_TestDateTimes)) as ProgBar:
             for i, iDT in enumerate(self._QS_TestDateTimes):
@@ -113,12 +141,48 @@ class BackTestModel(__QS_Object__):
                 for jDB in FactorDBs: jDB.move(iDT)
                 for jModule in self.Modules: jModule.__QS_move__(iDT)
                 ProgBar.update(i+1)
-        print(('耗时 : %.2f' % (time.clock()-StartT, )), "3. 结果生成", sep="\n", end="\n")
+        print(("耗时 : %.2f" % (time.clock()-StartT, )), "3. 结果生成", sep="\n", end="\n")
         StartT = time.clock()
         for jModule in self.Modules: jModule.__QS_end__()
         for jDB in FactorDBs: jDB.end()
-        print(('耗时 : %.2f' % (time.clock()-StartT, )), ("总耗时 : %.2f" % (time.clock()-TotalStartT, )), "="*28, sep="\n", end="\n")
+        print(("耗时 : %.2f" % (time.clock()-StartT, )), ("总耗时 : %.2f" % (time.clock()-TotalStartT, )), "="*28, sep="\n", end="\n")
         self._Output = self.output(recalculate=True)
+        return 0
+    def _runMultiProcs(self, subprocess_num):
+        nPrcs = min(subprocess_num, len(self.Modules))
+        Args = {"mdl":self, "module_inds":np.arange(len(self.Modules)).tolist(), "OutputPipe":QSPipe()}
+        TotalStartT = time.clock()
+        print("==========历史回测==========", "1. 初始化", sep="\n", end="\n")
+        Procs, Main2SubQueue, Sub2MainQueue = startMultiProcess(pid="0", n_prc=nPrcs, target_fun=_runModel,
+                                                                arg=Args, partition_arg=["module_inds"],
+                                                                main2sub_queue=None, sub2main_queue="Single")
+        nTask = nPrcs * len(self._QS_TestDateTimes)
+        InitStage, CalcStage, EndStage = 0, 0, 0
+        self._Output = {}
+        while True:
+            if CalcStage>=nTask:
+                ProgBar.finish()
+                print(("耗时 : %.2f" % (time.clock()-CalcStageStartT, )), "3. 结果生成", sep="\n", end="\n")
+                CalcStage = -1
+                EndStageStartT = time.clock()
+            if EndStage>=nPrcs:
+                print(("耗时 : %.2f" % (time.clock()-EndStageStartT, )), ("总耗时 : %.2f" % (time.clock()-TotalStartT, )), "="*28, sep="\n", end="\n")
+                break
+            iStage = Sub2MainQueue.get()
+            if iStage==0:# 初始化阶段
+                if InitStage==0:
+                    print(("耗时 : %.2f" % (time.clock()-TotalStartT, )), "2. 循环计算", sep="\n", end="\n")
+                    CalcStageStartT = time.clock()
+                    ProgBar = ProgressBar(max_value=nTask)
+                    ProgBar.start()
+                InitStage += 1
+            elif iStage==1:# 计算阶段
+                CalcStage += 1
+                ProgBar.update(CalcStage)
+            elif iStage==2:# 结果生成阶段
+                EndStage += 1
+                self._Output.update(Args["OutputPipe"].get())
+        for iPID, iPrcs in Procs.items(): iPrcs.join()
         return 0
     # 计算并输出测试的结果集
     def output(self, recalculate=False):

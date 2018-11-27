@@ -366,10 +366,10 @@ class _SignalAdjustment(__QS_Object__):
 # 基于优化器的投资组合策略
 class OptimizerStrategy(PortfolioStrategy):
     TargetIDs = Str(arg_type="IDFilterStr", label="目标ID", order=4)
-    ExpectedReturn = Enum(None, arg_type="SingleOption", label="预期收益", order=5)
+    #ExpectedReturn = Enum(None, arg_type="SingleOption", label="预期收益", order=5)
     RDS = Instance(RiskDataSource, arg_type="RiskDS", label="风险数据源", order=6)
-    BenchmarkFactor = Enum(None, arg_type="SingleOption", label="基准权重", order=7)
-    AmountFactor = Enum(None, arg_type="SingleOption", label="成交金额", order=8)
+    #BenchmarkFactor = Enum(None, arg_type="SingleOption", label="基准权重", order=7)
+    #AmountFactor = Enum(None, arg_type="SingleOption", label="成交金额", order=8)
     SignalAdjustment = Instance(_SignalAdjustment, arg_type="ArgObject", label="信号调整", order=9)
     TargetAccount = Instance(Account, label="目标账户", arg_type="ArgObject", order=10)
     TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=11)
