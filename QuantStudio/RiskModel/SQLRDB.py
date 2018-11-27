@@ -17,34 +17,39 @@ from .RiskDataBase import RiskDataBase, FactorRDB
 class SQLRDB(QSSQLObject, RiskDataBase):
     """基于关系数据库的风险数据库"""
     def __init__(self, sys_args={}, config_file=None, **kwargs):
-        self._TableNames = []# [表名]
+        self._TableAdditionalCols = {}# {表名:[额外的字段名]}
         self._Prefix = "QSR_"
         super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"SQLRDBConfig.json" if config_file is None else config_file), **kwargs)
         self.Name = "SQLRDB"
     def connect(self):
         super().connect()
-        nPrefix = len(self._Prefix)
         if self.DBType=="MySQL":
-            SQLStr = ("SELECT DISTINCT TABLE_NAME FROM information_schema.COLUMNS WHERE table_schema='%s' " % self.DBName)
+            SQLStr = ("SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS WHERE table_schema='%s' " % self.DBName)
             SQLStr += ("AND TABLE_NAME LIKE '%s%%' " % self._Prefix)
-            SQLStr += "ORDER BY TABLE_NAME"
-            self._TableNames = [iRslt[0][nPrefix:] for iRslt in self.fetchall(SQLStr)]
+            SQLStr += "AND COLUMN_NAME NOT IN ('Cov') "
+            SQLStr += "ORDER BY TABLE_NAME, COLUMN_NAME"
+            Rslt = self.fetchall(SQLStr)
+            if not Rslt: self._TableAdditionalCols = {}
+            else:
+                self._TableAdditionalCols = pd.DataFrame(np.array(Rslt), columns=["表", "字段"]).set_index(["表"])["字段"]
+                nPrefix = len(self._Prefix)
+                self._TableAdditionalCols = {iTable[nPrefix:]:self._TableAdditionalCols.loc[iTable].tolist() for iTable in self._TableAdditionalCols.index.drop_duplicates()}
         return 0
     @property
     def TableNames(self):
-        return self._TableNames
+        return sorted(self._TableAdditionalCols)
     def renameTable(self, old_table_name, new_table_name):
-        if old_table_name not in self._TableNames: raise __QS_Error__("表: '%s' 不存在!" % old_table_name)
-        if (new_table_name!=old_table_name) and (new_table_name in self._TableNames): raise __QS_Error__("表: '"+new_table_name+"' 已存在!")
+        if old_table_name not in self._TableAdditionalCols: raise __QS_Error__("表: '%s' 不存在!" % old_table_name)
+        if (new_table_name!=old_table_name) and (new_table_name in self._TableAdditionalCols): raise __QS_Error__("表: '"+new_table_name+"' 已存在!")
         SQLStr = "ALTER TABLE "+self.TablePrefix+self._Prefix+old_table_name+" RENAME TO "+self.TablePrefix+self._Prefix+new_table_name
         self.execute(SQLStr)
-        self._TableNames[self._TableNames.index(old_table_name)] = new_table_name
+        self._TableAdditionalCols[new_table_name] = self._TableAdditionalCols.pop(old_table_name)
         return 0
     def deleteTable(self, table_name):
-        if table_name not in self._TableNames: return 0
+        if table_name not in self._TableAdditionalCols: return 0
         SQLStr = 'DROP TABLE %s' % (self.TablePrefix+self._Prefix+table_name)
         self.execute(SQLStr)
-        self._TableNames.remove(table_name)
+        self._TableAdditionalCols.pop(table_name)
         return 0
     def getTableDateTime(self, table_name, start_dt=None, end_dt=None):
         DBTableName = self.TablePrefix+self._Prefix+table_name
@@ -67,18 +72,25 @@ class SQLRDB(QSSQLObject, RiskDataBase):
         DTs = [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts]
         SQLStr += "WHERE "+genSQLInCondition(DBTableName+".DateTime", DTs, is_str=True, max_num=1000)+" "
         return self.execute(SQLStr)
+    def getTableID(self, table_name, idt=None):
+        DBTableName = self.TablePrefix+self._Prefix+table_name
+        SQLStr = "SELECT JSON_EXTRACT(Cov, '$.columns') AS IDs FROM "+DBTableName+" "
+        if idt is not None: SQLStr += "WHERE DateTime='"+idt.strftime("%Y-%m-%d %H:%M:%S.%f")+"'"
+        else: SQLStr += "WHERE DateTime=(SELECT MAX(DateTime) FROM "+DBTableName+")"
+        IDs = self.fetchall(SQLStr)
+        if not IDs: return []
+        return json.loads(IDs[0][0])
     def readCov(self, table_name, dts, ids=None):
         DBTableName = self.TablePrefix+self._Prefix+table_name
         # 形成 SQL 语句, DateTime, IDs, Cov
         SQLStr = "SELECT "+DBTableName+".DateTime, "
-        SQLStr += DBTableName+".IDs, "
         SQLStr += DBTableName+".Cov "
-        SQLStr += " FROM "+DBTableName+" "
+        SQLStr += "FROM "+DBTableName+" "
         SQLStr += "WHERE ("+genSQLInCondition(DBTableName+".DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
         Data = {}
-        for iDT, iIDs, iCov in self.fetchall(SQLStr):
-            iIDs = json.loads(iIDs)
-            iCov = pd.DataFrame(json.loads(iCov), index=iIDs, columns=iIDs)
+        for iDT, iCov in self.fetchall(SQLStr):
+            iCov = pd.read_json(iCov, orient="split")
+            iCov.index = iCov.columns
             if ids is not None:
                 if iCov.index.intersection(ids).shape[0]>0: iCov = iCov.loc[ids, ids]
                 else: iCov = pd.DataFrame(index=ids, columns=ids)
@@ -86,44 +98,40 @@ class SQLRDB(QSSQLObject, RiskDataBase):
         if Data: return pd.Panel(Data).loc[dts]
         if ids: return pd.Panel(items=dts, major_axis=ids, minor_axis=ids)
         return pd.Panel(items=dts)
-    # 为某张表增加索引
-    def addIndex(self, index_name, table_name, fields=["DateTime"], index_type="BTREE"):
-        SQLStr = "CREATE INDEX "+index_name+" USING "+index_type+" ON "+self.TablePrefix+self._Prefix+table_name+"("+", ".join(fields)+")"
-        return self.execute(SQLStr)
-    # 创建表
-    def createTable(self, table_name):
-        SQLStr = "CREATE TABLE IF NOT EXISTS %s (`DateTime` DATETIME(6) NOT NULL, `IDs` TEXT NOT NULL, `Cov` LONGTEXT NOT NULL, " % (self.TablePrefix+self._Prefix+table_name, )
+    def createTable(self, table_name):# 创建表
+        SQLStr = "CREATE TABLE IF NOT EXISTS %s (`DateTime` DATETIME(6) NOT NULL, `Cov` JSON NOT NULL, " % (self.TablePrefix+self._Prefix+table_name, )
         SQLStr += "PRIMARY KEY (`DateTime`)) ENGINE=InnoDB DEFAULT CHARSET=utf8"
         self.execute(SQLStr)
         try:
-            self.addIndex(table_name+"_index", table_name)
+            self.addIndex(table_name+"_index", self._Prefix+table_name, fields=["DateTime"])
         except Exception as e:
             print("索引创建失败: "+str(e))
         return 0
     def writeData(self, table_name, idt, icov):
-        if table_name not in self._TableNames:
+        if table_name not in self._TableAdditionalCols:
             self.createTable(table_name)
-            self._TableNames.append(table_name)
+            
             if self.Connector == "pyodbc":
-                SQLStr = "INSERT INTO "+self.TablePrefix+self._Prefix+table_name+" (`DateTime`, `IDs`, `Cov`) VALUES (?, ?, ?)"
+                SQLStr = "INSERT INTO "+self.TablePrefix+self._Prefix+table_name+" (`DateTime`, `Cov`) VALUES (?, ?)"
             else:
-                SQLStr = "INSERT INTO "+self.TablePrefix+self._Prefix+table_name+" (`DateTime`, `IDs`, `Cov`) VALUES (%s, %s, %s)"
+                SQLStr = "INSERT INTO "+self.TablePrefix+self._Prefix+table_name+" (`DateTime`, `Cov`) VALUES (%s, %s)"
         else:
             if self.Connector=="pyodbc":
-                SQLStr = "REPLACE INTO "+self.TablePrefix+self._Prefix+table_name+" (`DateTime`, `IDs`, `Cov`) VALUES (?, ?, ?)"
+                SQLStr = "REPLACE INTO "+self.TablePrefix+self._Prefix+table_name+" (`DateTime`, `Cov`) VALUES (?, ?)"
             else:
-                SQLStr = "REPLACE INTO "+self.TablePrefix+self._Prefix+table_name+" (`DateTime`, `IDs`, `Cov`) VALUES (%s, %s, %s)"
+                SQLStr = "REPLACE INTO "+self.TablePrefix+self._Prefix+table_name+" (`DateTime`, `Cov`) VALUES (%s, %s)"
         Cursor = self._Connection.cursor()
-        Cursor.execute(SQLStr, (idt, json.dumps(icov.index.tolist()), json.dumps(icov.values.tolist())))
+        Cursor.execute(SQLStr, (idt, icov.to_json(orient="split", index=False)))
         self._Connection.commit()
         Cursor.close()
+        if table_name not in self._TableAdditionalCols: self._TableAdditionalCols[table_name] = ["DateTime"]
         return 0
 
 # TODO: 附加数据的读写
 class SQLFRDB(QSSQLObject, FactorRDB):
     """基于关系型数据库的多因子风险数据库"""
     def __init__(self, sys_args={}, config_file=None, **kwargs):
-        self._TableNames = []# [表名]
+        self._TableAdditionalCols = {}# {表名:[额外的字段名]}
         self._Prefix = "QSFR_"
         super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"SQLRDBConfig.json" if config_file is None else config_file), **kwargs)
         self.Name = "SQLRDB"
@@ -131,68 +139,50 @@ class SQLFRDB(QSSQLObject, FactorRDB):
         super().connect()
         nPrefix = len(self._Prefix)
         if self.DBType=="MySQL":
-            SQLStr = ("SELECT DISTINCT TABLE_NAME FROM information_schema.COLUMNS WHERE table_schema='%s' " % self.DBName)
+            SQLStr = ("SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS WHERE table_schema='%s' " % self.DBName)
             SQLStr += ("AND TABLE_NAME LIKE '%s%%' " % self._Prefix)
-            SQLStr += "ORDER BY TABLE_NAME"
-            self._TableNames = [iRslt[0][nPrefix:] for iRslt in self.fetchall(SQLStr)]
+            SQLStr += "AND COLUMN_NAME NOT IN ('FactorCov', 'FactorData', 'SpecificRisk', 'FactorReturn', 'SpecificReturn') "
+            SQLStr += "ORDER BY TABLE_NAME, COLUMN_NAME"
+            Rslt = self.fetchall(SQLStr)
+            if not Rslt: self._TableAdditionalCols = {}
+            else:
+                self._TableAdditionalCols = pd.DataFrame(np.array(Rslt), columns=["表", "字段"]).set_index(["表"])["字段"]
+                nPrefix = len(self._Prefix)
+                self._TableAdditionalCols = {iTable[nPrefix:]:self._TableAdditionalCols.loc[iTable].tolist() for iTable in self._TableAdditionalCols.index.drop_duplicates()}
         return 0
     @property
     def TableNames(self):
-        return self._TableNames
-    def getTableMetaData(self, table_name, key=None):
-        return SQLRDB.getTableMetaData(self, table_name, key=key)
-    def setTableMetaData(self, table_name, key=None, value=None, meta_data=None):
-        return SQLRDB.setTableMetaData(self, table_name, key=key, value=value, meta_data=meta_data)
+        return sorted(self._TableAdditionalCols)
     def renameTable(self, old_table_name, new_table_name):
         return SQLRDB.renameTable(self, old_table_name, new_table_name)
     def deleteTable(self, table_name):
         return SQLRDB.deleteTable(self, table_name)
-    # 为某张表增加索引
-    def addIndex(self, index_name, table_name, fields=["DateTime"], index_type="BTREE"):
-        SQLStr = "CREATE INDEX "+index_name+" USING "+index_type+" ON "+self.TablePrefix+self._Prefix+table_name+"("+", ".join(fields)+")"
-        return self.execute(SQLStr)
-    # 创建表
-    def createTable(self, table_name):
-        SQLStr = "CREATE TABLE IF NOT EXISTS %s (`DateTime` DATETIME(6) NOT NULL, `FactorIDs` MEDIUMTEXT, `Factors` TEXT, `FactorData` LONGTEXT, `FactorCov` LONGTEXT, `FactorReturn` MEDIUMTEXT, `SpecificIDs` MEDIUMTEXT, `SpecificRisk` LONGTEXT, `SpecificReturn` LONGTEXT, " % (self.TablePrefix+self._Prefix+table_name, )
-        SQLStr += "PRIMARY KEY (`DateTime`)) ENGINE=InnoDB DEFAULT CHARSET=utf8"
-        self.execute(SQLStr)
-        try:
-            self.addIndex(table_name+"_index", table_name)
-        except Exception as e:
-            print("索引创建失败: "+str(e))
-        return 0
-    def getTableFactor(self, table_name):
-        DBTableName = self.TablePrefix+self._Prefix+table_name
-        SQLStr = "SELECT "+DBTableName+".Factors "
-        SQLStr += "FROM "+DBTableName+" "
-        SQLStr += "WHERE Factors IS NOT NULL "
-        SQLStr += "ORDER BY "+DBTableName+".DateTime DESC"
-        Cursor = self.cursor(SQLStr)
-        Factors = json.loads(Cursor.fetchone()[0])
-        Cursor.close()
-        return Factors
     def getTableDateTime(self, table_name, start_dt=None, end_dt=None):
         DBTableName = self.TablePrefix+self._Prefix+table_name
         SQLStr = "SELECT DISTINCT "+DBTableName+".DateTime "
         SQLStr += "FROM "+DBTableName+" "
-        SQLStr += "WHERE SpecificIDs IS NOT NULL "
+        SQLStr += "WHERE SpecificRisk IS NOT NULL "
         if start_dt is not None: SQLStr += "AND "+DBTableName+".DateTime>='"+start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
         if end_dt is not None: SQLStr += "AND "+DBTableName+".DateTime<='"+end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
         SQLStr += "ORDER BY "+DBTableName+".DateTime"
         return [iRslt[0] for iRslt in self.fetchall(SQLStr)]
+    def deleteDateTime(self, table_name, dts):
+        return SQLRDB.deleteDateTime(self, table_name, dts)
+    def getTableFactor(self, table_name):
+        DBTableName = self.TablePrefix+self._Prefix+table_name
+        SQLStr = "SELECT JSON_EXTRACT(FactorCov, '$.columns') AS IDs FROM "+DBTableName+" "
+        SQLStr += "WHERE DateTime=(SELECT MAX(DateTime) FROM "+DBTableName+" WHERE FactorCov IS NOT NULL)"
+        Factors = self.fetchall(SQLStr)
+        if not Factors: return []
+        return json.loads(Factors[0][0])
     def getTableID(self, table_name, idt=None):
         DBTableName = self.TablePrefix+self._Prefix+table_name
-        SQLStr = "SELECT "+DBTableName+".SpecificIDs "
-        SQLStr += "FROM "+DBTableName+" "
-        SQLStr += "WHERE SpecificIDs IS NOT NULL "
-        if idt is None:
-            SQLStr += "ORDER BY "+DBTableName+".DateTime DESC"
-        else:
-            SQLStr += "AND "+DBTableName+".DateTime='"+idt.strftime("%Y-%m-%d %H:%M:%S.%f")+"'"
-        Cursor = self.cursor(SQLStr)
-        IDs = json.loads(Cursor.fetchone()[0])
-        Cursor.close()
-        return IDs
+        SQLStr = "SELECT JSON_EXTRACT(SpecificRisk, '$.index') AS IDs FROM "+DBTableName+" "
+        if idt is not None: SQLStr += "WHERE DateTime='"+idt.strftime("%Y-%m-%d %H:%M:%S.%f")+"'"
+        else: SQLStr += "WHERE DateTime=(SELECT MAX(DateTime) FROM "+DBTableName+" WHERE SpecificRisk IS NOT NULL)"
+        IDs = self.fetchall(SQLStr)
+        if not IDs: return []
+        return json.loads(IDs[0][0])
     def getFactorReturnDateTime(self, table_name, start_dt=None, end_dt=None):
         DBTableName = self.TablePrefix+self._Prefix+table_name
         SQLStr = "SELECT DISTINCT "+DBTableName+".DateTime "
@@ -213,61 +203,54 @@ class SQLFRDB(QSSQLObject, FactorRDB):
         return [iRslt[0] for iRslt in self.fetchall(SQLStr)]
     def readCov(self, table_name, dts, ids=None):
         DBTableName = self.TablePrefix+self._Prefix+table_name
-        # 形成 SQL 语句, DateTime, FactorIDs, FactorCov, FactorData, SpecificIDs, SpecificRisk
         SQLStr = "SELECT "+DBTableName+".DateTime, "
-        SQLStr += DBTableName+".FactorIDs, "
         SQLStr += DBTableName+".FactorCov, "
         SQLStr += DBTableName+".FactorData, "
-        SQLStr += DBTableName+".SpecificIDs, "
         SQLStr += DBTableName+".SpecificRisk "
-        SQLStr += " FROM "+DBTableName+" "
+        SQLStr += "FROM "+DBTableName+" "
         SQLStr += "WHERE "+DBTableName+".FactorCov IS NOT NULL "
         SQLStr += "AND ("+genSQLInCondition(DBTableName+".DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
         Data = {}
-        for iDT, iFactorIDs, iFactorCov, iFactorData, iSpecificIDs, iSpecificRisk in self.fetchall(SQLStr):
-            iFactorCov = np.array(json.loads(iFactorCov))
-            iSpecificRisk = pd.Series(json.loads(iSpecificRisk), index=json.loads(iSpecificIDs))
-            iFactorData = pd.DataFrame(json.loads(iFactorData), index=json.loads(iFactorIDs))
+        for iDT, iFactorCov, iFactorData, iSpecificRisk in self.fetchall(SQLStr):
+            iFactorCov = pd.read_json(iFactorCov, orient="split")
+            iSpecificRisk = pd.read_json(iSpecificRisk, orient="split", typ="series")
+            iFactorData = pd.read_json(iFactorData, orient="split")
             if ids is None:
                 iIDs = iSpecificRisk.index
                 iFactorData = iFactorData.loc[iIDs].values
                 iSpecificRisk = iSpecificRisk.values
             else:
                 iIDs = ids
-                iFactorData = iFactorData.loc[ids].values
-                iSpecificRisk = iSpecificRisk.loc[ids].values
-            iCov = np.dot(np.dot(iFactorData, iFactorCov), iFactorData.T) + np.diag(iSpecificRisk**2)
+                iFactorData = iFactorData.loc[iIDs].values
+                iSpecificRisk = iSpecificRisk.loc[iIDs].values
+            iCov = np.dot(np.dot(iFactorData, iFactorCov.values), iFactorData.T) + np.diag(iSpecificRisk**2)
             Data[iDT] = pd.DataFrame(iCov, index=iIDs, columns=iIDs)
         if Data: return pd.Panel(Data).loc[dts]
         return pd.Panel(items=dts)
     def readFactorCov(self, table_name, dts):
         DBTableName = self.TablePrefix+self._Prefix+table_name
-        # 形成 SQL 语句, DateTime, Factors, FactorCov
         SQLStr = "SELECT "+DBTableName+".DateTime, "
-        SQLStr += DBTableName+".Factors, "
         SQLStr += DBTableName+".FactorCov "
-        SQLStr += " FROM "+DBTableName+" "
+        SQLStr += "FROM "+DBTableName+" "
         SQLStr += "WHERE "+DBTableName+".FactorCov IS NOT NULL "
         SQLStr += "AND ("+genSQLInCondition(DBTableName+".DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
         Data = {}
-        for iDT, iFactors, iCov in self.fetchall(SQLStr):
-            iFactors = json.loads(iFactors)
-            Data[iDT] = pd.DataFrame(json.loads(iCov), index=iFactors, columns=iFactors)
+        for iDT, iCov in self.fetchall(SQLStr):
+            iCov = pd.read_json(iCov, orient="split")
+            iCov.index = iCov.columns
+            Data[iDT] = iCov
         if Data: return pd.Panel(Data).loc[dts]
         return pd.Panel(items=dts)
     def readSpecificRisk(self, table_name, dts, ids=None):
         DBTableName = self.TablePrefix+self._Prefix+table_name
-        # 形成 SQL 语句, DateTime, SepecificIDs, SepecificRisk
         SQLStr = "SELECT "+DBTableName+".DateTime, "
-        SQLStr += DBTableName+".SepecificIDs, "
         SQLStr += DBTableName+".SepecificRisk "
-        SQLStr += " FROM "+DBTableName+" "
-        SQLStr += "WHERE "+DBTableName+".FactorCov IS NOT NULL "
+        SQLStr += "FROM "+DBTableName+" "
+        SQLStr += "WHERE "+DBTableName+".SepecificRisk IS NOT NULL "
         SQLStr += "AND ("+genSQLInCondition(DBTableName+".DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
         Data = {}
-        for iDT, iIDs, iSepecificRisk in self.fetchall(SQLStr):
-            iIDs = json.loads(iIDs)
-            Data[iDT] = pd.Series(json.loads(iSepecificRisk), index=iIDs)
+        for iDT, iSepecificRisk in self.fetchall(SQLStr):
+            Data[iDT] = pd.read_json(iSepecificRisk, orient="split", typ="series")
         if not Data: return pd.DataFrame(index=dts, columns=([] if ids is None else ids))
         Data = pd.DataFrame(Data).T.loc[dts]
         if ids is not None:
@@ -276,19 +259,14 @@ class SQLFRDB(QSSQLObject, FactorRDB):
         return Data
     def readFactorData(self, table_name, dts, ids=None):
         DBTableName = self.TablePrefix+self._Prefix+table_name
-        # 形成 SQL 语句, DateTime, Factors, FactorIDs, FactorData
         SQLStr = "SELECT "+DBTableName+".DateTime, "
-        SQLStr += DBTableName+".Factors, "
-        SQLStr += DBTableName+".FactorIDs, "
         SQLStr += DBTableName+".FactorData "
-        SQLStr += " FROM "+DBTableName+" "
+        SQLStr += "FROM "+DBTableName+" "
         SQLStr += "WHERE "+DBTableName+".FactorData IS NOT NULL "
         SQLStr += "AND ("+genSQLInCondition(DBTableName+".DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
         Data = {}
-        for iDT, iFactors, iIDs, iData in self.fetchall(SQLStr):
-            iFactors = json.loads(iFactors)
-            iIDs = json.loads(iIDs)
-            Data[iDT] = pd.DataFrame(json.loads(iData), index=iIDs, columns=iFactors).T
+        for iDT, iData in self.fetchall(SQLStr):
+            Data[iDT] = pd.read_json(iData, orient="split").T
         if not Data: return pd.Panel(items=[], major_axis=dts, minor_axis=([] if ids is None else ids))
         Data = pd.Panel(Data).swapaxes(0, 1).loc[:, dts, :]
         if ids is not None:
@@ -297,85 +275,100 @@ class SQLFRDB(QSSQLObject, FactorRDB):
         return Data
     def readFactorReturn(self, table_name, dts):
         DBTableName = self.TablePrefix+self._Prefix+table_name
-        # 形成 SQL 语句, DateTime, Factors, FactorReturn
         SQLStr = "SELECT "+DBTableName+".DateTime, "
-        SQLStr += DBTableName+".Factors, "
         SQLStr += DBTableName+".FactorReturn "
-        SQLStr += " FROM "+DBTableName+" "
+        SQLStr += "FROM "+DBTableName+" "
         SQLStr += "WHERE "+DBTableName+".FactorReturn IS NOT NULL "
         SQLStr += "AND ("+genSQLInCondition(DBTableName+".DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
         Data = {}
-        for iDT, iFactors, iFactorReturn in self.fetchall(SQLStr):
-            iFactors = json.loads(iFactors)
-            Data[iDT] = pd.Series(json.loads(iFactorReturn), index=iFactors)
+        for iDT, iFactorReturn in self.fetchall(SQLStr):
+            Data[iDT] = pd.read_json(iFactorReturn, orient="split", typ="series")
         if not Data: return pd.DataFrame(index=dts)
         return pd.DataFrame(Data).T.loc[dts]
     def readSpecificReturn(self, table_name, dts, ids=None):
         DBTableName = self.TablePrefix+self._Prefix+table_name
-        # 形成 SQL 语句, DateTime, SepecificIDs, SepecificRisk
         SQLStr = "SELECT "+DBTableName+".DateTime, "
-        SQLStr += DBTableName+".SepecificIDs, "
         SQLStr += DBTableName+".SepecificReturn "
-        SQLStr += " FROM "+DBTableName+" "
+        SQLStr += "FROM "+DBTableName+" "
         SQLStr += "WHERE "+DBTableName+".SepecificReturn IS NOT NULL "
         SQLStr += "AND ("+genSQLInCondition(DBTableName+".DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
         Data = {}
-        for iDT, iIDs, iSepecificReturn in self.fetchall(SQLStr):
-            iIDs = json.loads(iIDs)
-            Data[iDT] = pd.Series(json.loads(iSepecificReturn), index=iIDs)
+        for iDT, iSpecificReturn in self.fetchall(SQLStr):
+            Data[iDT] = pd.read_json(iSpecificReturn, orient="split", typ="series")
         if not Data: return pd.DataFrame(index=dts, columns=([] if ids is None else ids))
         Data = pd.DataFrame(Data).T.loc[dts]
         if ids is not None:
             if Data.columns.intersection(ids).shape[0]>0: Data = Data.loc[:, ids]
             else: Data = pd.DataFrame(index=dts, columns=ids)
         return Data
+    def readData(self, table_name, data_item, dts):
+        DBTableName = self.TablePrefix+self._Prefix+table_name
+        SQLStr = "SELECT "+DBTableName+".DateTime, "
+        SQLStr += DBTableName+"."+data_item+" "
+        SQLStr += "FROM "+DBTableName+" "
+        SQLStr += "WHERE "+DBTableName+"."+data_item+" IS NOT NULL "
+        SQLStr += "AND ("+genSQLInCondition(DBTableName+".DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
+        Data = {}
+        Type = None
+        for iDT, iData in self.fetchall(SQLStr):
+            if Type is None:
+                try:
+                    Data[iDT] = pd.read_json(iData, orient="split")
+                    Type = "frame"
+                except:
+                    Type = "series"
+                    Data[iDT] = pd.read_json(iData, orient="split", typ=Type)
+            else:
+                Data[iDT] = pd.read_json(iData, orient="split", typ=Type)
+        if not Data: return None
+        if Type=="series": return pd.DataFrame(Data).T.loc[dts]
+        else: return pd.Panel(Data).loc[dts]
+    def createTable(self, table_name):# 创建表
+        SQLStr = "CREATE TABLE IF NOT EXISTS %s (`DateTime` DATETIME(6) NOT NULL, `FactorData` JSON, `FactorCov` JSON, `SpecificRisk` JSON, `FactorReturn` JSON, `SpecificReturn` JSON, " % (self.TablePrefix+self._Prefix+table_name, )
+        SQLStr += "PRIMARY KEY (`DateTime`)) ENGINE=InnoDB DEFAULT CHARSET=utf8"
+        self.execute(SQLStr)
+        try:
+            self.addIndex(table_name+"_index", self._Prefix+table_name, fields=["DateTime"])
+        except Exception as e:
+            print("索引创建失败: "+str(e))
+        return 0
     def writeData(self, table_name, idt, factor_data=None, factor_cov=None, specific_risk=None, factor_ret=None, specific_ret=None, **kwargs):
-        SQLStr = "`DateTime`, "
+        SQLStr = "INSERT INTO "+self.TablePrefix+self._Prefix+table_name+" (`DateTime`, "
+        SubSQLStr = "ON DUPLICATE KEY UPDATE "
         Data = [idt]
-        hasFactorIDs = hasFactors = hasSpecificIDs = False
         if factor_data is not None:
-            SQLStr += "`FactorIDs`, `Factors`, `FactorData`, "
-            Data.extend([json.dumps(factor_data.index.tolist()), json.dumps(factor_data.columns.tolist()), json.dumps(factor_data.values.tolist())])
-            hasFactorIDs = hasFactors = True
+            SQLStr += "`FactorData`, "
+            Data.append(factor_data.to_json(orient="split"))
+            SubSQLStr += "FactorData=VALUES(FactorData), "
         if factor_cov is not None:
-            if hasFactors:
-                SQLStr += "`FactorCov`, "
-                Data.append(json.dumps(factor_cov.values.tolist()))
-            else:
-                SQLStr += "`Factors`, `FactorCov`, "
-                Data.extend([json.dumps(factor_cov.index.tolist()), json.dumps(factor_cov.values.tolist())])
-            hasFactors = True
+            SQLStr += "`FactorCov`, "
+            Data.append(factor_cov.to_json(orient="split", index=False))
+            SubSQLStr += "FactorCov=VALUES(FactorCov), "
         if specific_risk is not None:
-            SQLStr += "`SpecificIDs`, `SpecificRisk`, "
-            Data.extend([json.dumps(specific_risk.index.tolist()), json.dumps(specific_risk.values.tolist())])
-            hasSpecificIDs = True
+            SQLStr += "`SpecificRisk`, "
+            Data.append(specific_risk.to_json(orient="split"))
+            SubSQLStr += "SpecificRisk=VALUES(SpecificRisk), "
         if factor_ret is not None:
-            if hasFactors:
-                SQLStr += "`FactorReturn`, "
-                Data.append(json.dumps(factor_ret.values.tolist()))
-            else:
-                SQLStr += "`Factors`, `FactorReturn`, "
-                Data.extend([json.dumps(factor_ret.index.tolist()), json.dumps(factor_ret.values.tolist())])
-            hasFactors = True
+            SQLStr += "`FactorReturn`, "
+            Data.append(factor_ret.to_json(orient="split"))
+            SubSQLStr += "FactorReturn=VALUES(FactorReturn), "
         if specific_ret is not None:
-            if hasSpecificIDs:
-                SQLStr += "`SpecificReturn`, "
-                Data.append(json.dumps(specific_ret.values.tolist()))
-            else:
-                SQLStr += "`SpecificIDs`, `SpecificReturn`, "
-                Data.extend([json.dumps(specific_ret.index.tolist()), json.dumps(specific_ret.values.tolist())])
-            hasSpecificIDs = True
-        SQLStr = SQLStr[:-2]
-        if len(SQLStr.split(","))==1: return 0
-        RepSym = ("?" if self.Connector=="pyodbc" else "%s")
-        if table_name not in self._TableNames:
-            self.createTable(table_name)
-            self._TableNames.append(table_name)
-            SQLStr = "INSERT INTO "+self.TablePrefix+self._Prefix+table_name+" ("+SQLStr+") VALUES ("+", ".join([RepSym]*len(Data))+")"
-        else:
-            SQLStr = "REPLACE INTO "+self.TablePrefix+self._Prefix+table_name+" ("+SQLStr+") VALUES ("+", ".join([RepSym]*len(Data))+")"
+            SQLStr += "`SpecificReturn`, "
+            Data.append(specific_ret.to_json(orient="split"))
+            SubSQLStr += "SpecificReturn=VALUES(SpecificReturn), "
+        if kwargs:
+            # TODO: 检查字段是否存在, 否则添加字段
+            for iKey, iValue in kwargs.items():
+                SQLStr += "`"+iKey+"`, "
+                Data.append(iValue.to_json(orient="split"))
+                SubSQLStr += iKey+"=VALUES("+iKey+"), "
+        if len(Data)==1: return 0
+        SQLStr, SubSQLStr = SQLStr[:-2], SubSQLStr[:-2]
+        if table_name not in self._TableAdditionalCols: self.createTable(table_name)
+        SQLStr += ") VALUES ("+", ".join([("?" if self.Connector=="pyodbc" else "%s")]*len(Data))+") "+SubSQLStr
         Cursor = self._Connection.cursor()
         Cursor.execute(SQLStr, tuple(Data))
         self._Connection.commit()
         Cursor.close()
+        if table_name not in self._TableAdditionalCols: self._TableAdditionalCols[table_name] = ["DateTime"]
         return 0

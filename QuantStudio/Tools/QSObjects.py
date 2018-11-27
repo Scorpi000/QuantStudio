@@ -94,6 +94,9 @@ class QSSQLObject(__QS_Object__):
         self._Connection.commit()
         Cursor.close()
         return 0
+    def addIndex(self, index_name, table_name, fields, index_type="BTREE"):
+        SQLStr = "CREATE INDEX "+index_name+" USING "+index_type+" ON "+self.TablePrefix+table_name+"("+", ".join(fields)+")"
+        return self.execute(SQLStr)
 
 # put 函数会阻塞, 直至对象传输完毕
 class QSPipe(object):
