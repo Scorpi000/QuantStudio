@@ -232,7 +232,10 @@ class _Benchmark(__QS_Object__):
             self.add_trait("BenchmarkID", Enum(None, arg_type="SingleOption", label="基准ID", order=2))
     @on_trait_change("PriceFactor")
     def _on_PriceFactor_changed(self, obj, name, old, new):
-        self.add_trait("BenchmarkID", Enum(*self.FactorTable.getID(ifactor_name=self.PriceFactor), arg_type="SingleOption", label="基准ID", order=2))
+        if self.FactorTable is not None:
+            self.add_trait("BenchmarkID", Enum(*self.FactorTable.getID(ifactor_name=self.PriceFactor), arg_type="SingleOption", label="基准ID", order=2))
+        else:
+            self.add_trait("BenchmarkID", Enum(None, arg_type="SingleOption", label="基准ID", order=2))
 # 策略基类
 class Strategy(BaseModule):
     """策略基类"""

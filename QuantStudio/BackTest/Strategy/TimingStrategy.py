@@ -28,8 +28,8 @@ class TimingStrategy(Strategy):
         return super().__init__(name=name, accounts=[], fts=([] if self._FT is None else [self._FT]), sys_args=sys_args, config_file=config_file, **kwargs)
     @on_trait_change("TargetAccount")
     def on_TargetAccount_changed(self, obj, name, old, new):
-        if self.TargetAccount and (self.TargetAccount not in self.Accounts): self.Accounts.append(self.TargetAccount)
-        elif self.TargetAccount is None: self.Accounts.remove(old)
+        if (self.TargetAccount is not None) and (self.TargetAccount not in self.Accounts): self.Accounts.append(self.TargetAccount)
+        elif (self.TargetAccount is None) and (old in self.Accounts): self.Accounts.remove(old)
     @on_trait_change("ValueAllocated")
     def on_ValueAllocated_changed(self, obj, name, old, new):
         self._isAllocationReseted = True

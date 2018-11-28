@@ -282,7 +282,7 @@ class HDF5FRDB(FactorRDB):
         if not Data: return pd.DataFrame(index=dts, columns=([] if ids is None else ids))
         Data = pd.DataFrame(Data).T.loc[dts]
         if ids is not None:
-            if Data.columns.intersection(ids).shape[0]>0: Data = Data.loc[ids]
+            if Data.columns.intersection(ids).shape[0]>0: Data = Data.loc[:, ids]
             else: Data = pd.DataFrame(index=dts, columns=ids)
         return Data
     def readData(self, table_name, data_item, dts):

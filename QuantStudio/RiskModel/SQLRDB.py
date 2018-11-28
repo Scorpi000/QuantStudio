@@ -1,17 +1,15 @@
 # coding=utf-8
 """基于关系数据库的风险数据库"""
 import os
-import datetime as dt
 import json
+import datetime as dt
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, Str, Range, Password
 
-from QuantStudio.Tools.DateTimeFun import cutDateTime
+from QuantStudio import __QS_Error__, __QS_LibPath__
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.QSObjects import QSSQLObject
-from QuantStudio import __QS_Object__, __QS_Error__, __QS_LibPath__
 from .RiskDataBase import RiskDataBase, FactorRDB
 
 class SQLRDB(QSSQLObject, RiskDataBase):
@@ -33,7 +31,7 @@ class SQLRDB(QSSQLObject, RiskDataBase):
             else:
                 self._TableAdditionalCols = pd.DataFrame(np.array(Rslt), columns=["表", "字段"]).set_index(["表"])["字段"]
                 nPrefix = len(self._Prefix)
-                self._TableAdditionalCols = {iTable[nPrefix:]:self._TableAdditionalCols.loc[iTable].tolist() for iTable in self._TableAdditionalCols.index.drop_duplicates()}
+                self._TableAdditionalCols = {iTable[nPrefix:]:self._TableAdditionalCols.loc[[iTable]].tolist() for iTable in self._TableAdditionalCols.index.drop_duplicates()}
         return 0
     @property
     def TableNames(self):
@@ -102,32 +100,23 @@ class SQLRDB(QSSQLObject, RiskDataBase):
         SQLStr = "CREATE TABLE IF NOT EXISTS %s (`DateTime` DATETIME(6) NOT NULL, `Cov` JSON NOT NULL, " % (self.TablePrefix+self._Prefix+table_name, )
         SQLStr += "PRIMARY KEY (`DateTime`)) ENGINE=InnoDB DEFAULT CHARSET=utf8"
         self.execute(SQLStr)
+        self._TableAdditionalCols[table_name] = self._TableAdditionalCols.get(table_name, ["DateTime"])
         try:
             self.addIndex(table_name+"_index", self._Prefix+table_name, fields=["DateTime"])
         except Exception as e:
             print("索引创建失败: "+str(e))
         return 0
     def writeData(self, table_name, idt, icov):
-        if table_name not in self._TableAdditionalCols:
-            self.createTable(table_name)
-            
-            if self.Connector == "pyodbc":
-                SQLStr = "INSERT INTO "+self.TablePrefix+self._Prefix+table_name+" (`DateTime`, `Cov`) VALUES (?, ?)"
-            else:
-                SQLStr = "INSERT INTO "+self.TablePrefix+self._Prefix+table_name+" (`DateTime`, `Cov`) VALUES (%s, %s)"
-        else:
-            if self.Connector=="pyodbc":
-                SQLStr = "REPLACE INTO "+self.TablePrefix+self._Prefix+table_name+" (`DateTime`, `Cov`) VALUES (?, ?)"
-            else:
-                SQLStr = "REPLACE INTO "+self.TablePrefix+self._Prefix+table_name+" (`DateTime`, `Cov`) VALUES (%s, %s)"
+        DBTableName = self.TablePrefix+self._Prefix+table_name
+        SQLStr = "INSERT INTO "+DBTableName+" (`DateTime`, `Cov`) VALUES ("+", ".join([("?" if self.Connector=="pyodbc" else "%s")]*2)+")"
+        if table_name not in self._TableAdditionalCols: self.createTable(table_name)
+        else: SQLStr += " ON DUPLICATE KEY UPDATE Cov=VALUES(Cov)"
         Cursor = self._Connection.cursor()
         Cursor.execute(SQLStr, (idt, icov.to_json(orient="split", index=False)))
         self._Connection.commit()
         Cursor.close()
-        if table_name not in self._TableAdditionalCols: self._TableAdditionalCols[table_name] = ["DateTime"]
         return 0
 
-# TODO: 附加数据的读写
 class SQLFRDB(QSSQLObject, FactorRDB):
     """基于关系型数据库的多因子风险数据库"""
     def __init__(self, sys_args={}, config_file=None, **kwargs):
@@ -148,7 +137,7 @@ class SQLFRDB(QSSQLObject, FactorRDB):
             else:
                 self._TableAdditionalCols = pd.DataFrame(np.array(Rslt), columns=["表", "字段"]).set_index(["表"])["字段"]
                 nPrefix = len(self._Prefix)
-                self._TableAdditionalCols = {iTable[nPrefix:]:self._TableAdditionalCols.loc[iTable].tolist() for iTable in self._TableAdditionalCols.index.drop_duplicates()}
+                self._TableAdditionalCols = {iTable[nPrefix:]:self._TableAdditionalCols.loc[[iTable]].tolist() for iTable in self._TableAdditionalCols.index.drop_duplicates()}
         return 0
     @property
     def TableNames(self):
@@ -244,9 +233,9 @@ class SQLFRDB(QSSQLObject, FactorRDB):
     def readSpecificRisk(self, table_name, dts, ids=None):
         DBTableName = self.TablePrefix+self._Prefix+table_name
         SQLStr = "SELECT "+DBTableName+".DateTime, "
-        SQLStr += DBTableName+".SepecificRisk "
+        SQLStr += DBTableName+".SpecificRisk "
         SQLStr += "FROM "+DBTableName+" "
-        SQLStr += "WHERE "+DBTableName+".SepecificRisk IS NOT NULL "
+        SQLStr += "WHERE "+DBTableName+".SpecificRisk IS NOT NULL "
         SQLStr += "AND ("+genSQLInCondition(DBTableName+".DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
         Data = {}
         for iDT, iSepecificRisk in self.fetchall(SQLStr):
@@ -288,9 +277,9 @@ class SQLFRDB(QSSQLObject, FactorRDB):
     def readSpecificReturn(self, table_name, dts, ids=None):
         DBTableName = self.TablePrefix+self._Prefix+table_name
         SQLStr = "SELECT "+DBTableName+".DateTime, "
-        SQLStr += DBTableName+".SepecificReturn "
+        SQLStr += DBTableName+".SpecificReturn "
         SQLStr += "FROM "+DBTableName+" "
-        SQLStr += "WHERE "+DBTableName+".SepecificReturn IS NOT NULL "
+        SQLStr += "WHERE "+DBTableName+".SpecificReturn IS NOT NULL "
         SQLStr += "AND ("+genSQLInCondition(DBTableName+".DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
         Data = {}
         for iDT, iSpecificReturn in self.fetchall(SQLStr):
@@ -327,13 +316,16 @@ class SQLFRDB(QSSQLObject, FactorRDB):
         SQLStr = "CREATE TABLE IF NOT EXISTS %s (`DateTime` DATETIME(6) NOT NULL, `FactorData` JSON, `FactorCov` JSON, `SpecificRisk` JSON, `FactorReturn` JSON, `SpecificReturn` JSON, " % (self.TablePrefix+self._Prefix+table_name, )
         SQLStr += "PRIMARY KEY (`DateTime`)) ENGINE=InnoDB DEFAULT CHARSET=utf8"
         self.execute(SQLStr)
+        self._TableAdditionalCols[table_name] = self._TableAdditionalCols.get(table_name, ["DateTime"])
         try:
             self.addIndex(table_name+"_index", self._Prefix+table_name, fields=["DateTime"])
         except Exception as e:
             print("索引创建失败: "+str(e))
         return 0
     def writeData(self, table_name, idt, factor_data=None, factor_cov=None, specific_risk=None, factor_ret=None, specific_ret=None, **kwargs):
-        SQLStr = "INSERT INTO "+self.TablePrefix+self._Prefix+table_name+" (`DateTime`, "
+        if table_name not in self._TableAdditionalCols: self.createTable(table_name)
+        DBTableName = self.TablePrefix+self._Prefix+table_name
+        SQLStr = "INSERT INTO "+DBTableName+" (`DateTime`, "
         SubSQLStr = "ON DUPLICATE KEY UPDATE "
         Data = [idt]
         if factor_data is not None:
@@ -357,18 +349,20 @@ class SQLFRDB(QSSQLObject, FactorRDB):
             Data.append(specific_ret.to_json(orient="split"))
             SubSQLStr += "SpecificReturn=VALUES(SpecificReturn), "
         if kwargs:
-            # TODO: 检查字段是否存在, 否则添加字段
+            AlterSQLStr = "ALTER TABLE "+DBTableName+" ADD "
             for iKey, iValue in kwargs.items():
                 SQLStr += "`"+iKey+"`, "
                 Data.append(iValue.to_json(orient="split"))
                 SubSQLStr += iKey+"=VALUES("+iKey+"), "
+                if iKey not in self._TableAdditionalCols[table_name]:
+                    AlterSQLStr += iKey+" JSON, "
+                    self._TableAdditionalCols[table_name].append(iKey)
+            if AlterSQLStr.find("JSON")!=-1: self.execute(AlterSQLStr[:-2])
         if len(Data)==1: return 0
         SQLStr, SubSQLStr = SQLStr[:-2], SubSQLStr[:-2]
-        if table_name not in self._TableAdditionalCols: self.createTable(table_name)
         SQLStr += ") VALUES ("+", ".join([("?" if self.Connector=="pyodbc" else "%s")]*len(Data))+") "+SubSQLStr
         Cursor = self._Connection.cursor()
         Cursor.execute(SQLStr, tuple(Data))
         self._Connection.commit()
         Cursor.close()
-        if table_name not in self._TableAdditionalCols: self._TableAdditionalCols[table_name] = ["DateTime"]
         return 0

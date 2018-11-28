@@ -103,33 +103,33 @@ class QSPipe(object):
     """进程间 Pipe, 无大小限制"""
     # cache_size: 缓存大小, 单位是 MB
     def __init__(self, cache_size=100):
-        self._CacheSize = cache_size
+        self._CacheSize = int(cache_size*2**20)
         self._PutQueue = Queue()
         self._PutLock = Lock()
         self._GetQueue = Queue()
         if os.name=="nt":
             self._TagName = str(uuid.uuid1())# 共享内存的 tag
-            self._MMAPCacheData = mmap.mmap(-1, int(self._CacheSize*2**20), tagname=self._TagName)# 当前共享内存缓冲区
+            self._MMAPCacheData = mmap.mmap(-1, self._CacheSize, tagname=self._TagName)# 当前共享内存缓冲区
         else:
             self._TagName = None# 共享内存的 tag
-            self._MMAPCacheData = mmap.mmap(-1, int(self._CacheSize*2**20))# 当前共享内存缓冲区
+            self._MMAPCacheData = mmap.mmap(-1, self._CacheSize)# 当前共享内存缓冲区
     @property
     def CacheSize(self):
-        return self._CacheSize
+        return self._CacheSize / 2**20
     def __getstate__(self):
         state = self.__dict__.copy()
         if os.name=="nt": state["_MMAPCacheData"] = None
         return state
     def __setstate__(self, state):
         self.__dict__.update(state)
-        if os.name=="nt": self._MMAPCacheData = mmap.mmap(-1, int(self._CacheSize*2**20), tagname=self._TagName)
+        if os.name=="nt": self._MMAPCacheData = mmap.mmap(-1, self._CacheSize, tagname=self._TagName)
     def put(self, obj):
         with self._PutLock:
             DataByte = pickle.dumps(obj)
             DataLen = len(DataByte)
             for i in range(int(DataLen/self._CacheSize)+1):
                 iStartInd = i * self._CacheSize
-                iEndInd = max((i+1)*self._CacheSize, DataLen)
+                iEndInd = min((i+1)*self._CacheSize, DataLen)
                 if iEndInd>iStartInd:
                     self._MMAPCacheData.seek(0)
                     self._MMAPCacheData.write(DataByte[iStartInd:iEndInd])

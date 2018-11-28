@@ -53,8 +53,8 @@ class PortfolioStrategy(Strategy):
         return super().__QS_initArgs__()
     @on_trait_change("TargetAccount")
     def _on_TargetAccount_changed(self, obj, name, old, new):
-        if self.TargetAccount and (self.TargetAccount not in self.Accounts): self.Accounts.append(self.TargetAccount)
-        elif self.TargetAccount is None: self.Accounts.remove(old)
+        if (self.TargetAccount is not None) and (self.TargetAccount not in self.Accounts): self.Accounts.append(self.TargetAccount)
+        elif (self.TargetAccount is None) and (old in self.Accounts): self.Accounts.remove(old)
     @property
     def MainFactorTable(self):
         return self._FT
