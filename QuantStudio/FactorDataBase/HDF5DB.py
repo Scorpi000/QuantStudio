@@ -2,6 +2,7 @@
 """基于 HDF5 文件的因子库"""
 import os
 import datetime as dt
+import shutil
 from multiprocessing import Lock
 
 import numpy as np

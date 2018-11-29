@@ -15,7 +15,6 @@ import matplotlib.dates as mdate
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList, distributeEqual
 from QuantStudio.Tools.DataPreprocessingFun import prepareRegressData
-from QuantStudio.Tools.ExcelFun import copyChart
 from QuantStudio.Tools.StrategyTestFun import calcPortfolioReturn, calcTurnover, calcMaxDrawdownRate
 from QuantStudio.BackTest.BackTestModel import BaseModule
 from QuantStudio.PortfolioConstructor import BasePC
@@ -222,65 +221,6 @@ class QuantilePortfolio(BaseModule):
                 self._Output["统计数据"].loc[iCol, "CAPM Beta"] = np.nan
                 self._Output["统计数据"].loc[iCol, "CAPM Alpha"] = np.nan
         self._Output.pop("调仓日")
-        return 0
-    def genExcelReport(self, xl_book, sheet_name):
-        xl_book.sheets["分位数组合"].api.Copy(Before=xl_book.sheets[0].api)
-        xl_book.sheets[0].name = sheet_name
-        CurSheet = xl_book.sheets[sheet_name]
-        nDate = self._Output["净值"].shape[0]
-        nQuantile = self.GroupNum
-        # 写入统计数据
-        CurSheet[1, 0].expand().clear_contents()
-        CurSheet[0, 0].value = "组合"
-        CurSheet[1, 0].options(transpose=True).value = list(self._Output["统计数据"].index)
-        CurSheet[1, 1].value = self._Output["统计数据"].values
-        CurSheet[1, 21].options(transpose=True).value = [("%.2f%%" % (self._Output["统计数据"]["年化收益率"]["市场"]*100))]*nQuantile
-        CurSheet[1, 22].options(transpose=True).value = [("%.2f" % (self._Output["统计数据"]["Sharpe比率"]["市场"]))]*nQuantile
-        Table = CurSheet.api.ListObjects(1)
-        Table.Resize(CurSheet[0:self._Output["统计数据"].shape[0]+1,0:self._Output["统计数据"].shape[1]+1].api)
-        # 调整图线数据
-        Chrt = CurSheet.charts["超额收益率"].api[1]
-        Chrt.SeriesCollection(1).Values = CurSheet[1:nQuantile+1,11].api
-        Chrt.SeriesCollection(2).Values = CurSheet[1:nQuantile+1,15].api
-        Chrt.SeriesCollection(1).XValues = CurSheet[1:nQuantile+1,0].api
-        Chrt = CurSheet.charts["信息比率"].api[1]
-        Chrt.SeriesCollection(1).Values = CurSheet[1:nQuantile+1,13].api
-        Chrt.SeriesCollection(1).XValues = CurSheet[1:nQuantile+1,0].api
-        Chrt = CurSheet.charts["年化收益率"].api[1]
-        Chrt.SeriesCollection(1).Values = CurSheet[1:nQuantile+1,2].api
-        Chrt.SeriesCollection(2).Values = CurSheet[1:nQuantile+1,21].api
-        Chrt.SeriesCollection(1).XValues = CurSheet[1:nQuantile+1,0].api
-        Chrt = CurSheet.charts["Sharpe比率"].api[1]
-        Chrt.SeriesCollection(1).Values = CurSheet[1:nQuantile+1,4].api
-        Chrt.SeriesCollection(2).Values = CurSheet[1:nQuantile+1,22].api
-        Chrt.SeriesCollection(1).XValues = CurSheet[1:nQuantile+1,0].api
-        Chrt = CurSheet.charts["换手率"].api[1]
-        Chrt.SeriesCollection(1).Values = CurSheet[1:nQuantile+1,6].api
-        Chrt.SeriesCollection(1).XValues = CurSheet[1:nQuantile+1,0].api
-        # 写入时间序列
-        CurSheet[0, 24].expand().clear_contents()
-        CurSheet[0, 24].value = "时点"
-        CurSheet[1, 24].options(transpose=True).value = [iDT.strftime("%Y-%m-%d") for iDT in self._Output["净值"].index]
-        # 写入时间序列数据
-        CurSheet[0, 25].value = list(self._Output["净值"].columns)
-        CurSheet[1, 25].value = self._Output["净值"].values
-        CurSheet[0, 25+nQuantile+2].value = "L-S收益率"
-        CurSheet[1, 25+nQuantile+2].value = np.vectorize(lambda x:("%.2f%%" % x) if pd.notnull(x) else None)(self._Output["收益率"][["L-S"]].values*100)
-        # 调整图线数据
-        Chrt = CurSheet.charts["多头净值"].api[1]
-        Chrt.SeriesCollection(1).Values = CurSheet[1:nDate+1,25].api
-        Chrt.SeriesCollection(1).Name = "Top组合"
-        Chrt.SeriesCollection(2).Values = CurSheet[1:nDate+1,25+nQuantile-1].api
-        Chrt.SeriesCollection(2).Name = "Bottom组合"
-        Chrt.SeriesCollection(3).Values = CurSheet[1:nDate+1,25+nQuantile].api
-        Chrt.SeriesCollection(3).Name = "市场组合"
-        Chrt.SeriesCollection(1).XValues = CurSheet[1:nDate+1,24].api
-        Chrt = CurSheet.charts["多空净值"].api[1]
-        Chrt.SeriesCollection(1).Values = CurSheet[1:nDate+1,25+nQuantile+1].api
-        Chrt.SeriesCollection(1).Name = "多空净值"
-        Chrt.SeriesCollection(2).Values = CurSheet[1:nDate+1,25+nQuantile+2].api
-        Chrt.SeriesCollection(2).Name = "多空收益率"
-        Chrt.SeriesCollection(1).XValues = CurSheet[1:nDate+1,24].api
         return 0
     def genMatplotlibFig(self, file_path=None):
         nRow, nCol = 3, 3

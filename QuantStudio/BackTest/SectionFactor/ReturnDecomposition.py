@@ -16,7 +16,6 @@ import matplotlib.dates as mdate
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.Tools.DataTypeConversionFun import DummyVarTo01Var
-from QuantStudio.Tools.ExcelFun import copyChart
 from QuantStudio.BackTest.BackTestModel import BaseModule
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 

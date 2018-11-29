@@ -16,7 +16,6 @@ import matplotlib
 
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList
-from QuantStudio.Tools.ExcelFun import copyChart
 from QuantStudio.RiskModel.RiskDataSource import RiskDataSource
 from QuantStudio.BackTest.BackTestModel import BaseModule
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
@@ -144,27 +143,6 @@ class SectionCorrelation(BaseModule):
         self._Output.pop("时点")
         if (self.RiskDS is not None) and self._CorrMatrixNeeded: self.RiskDS.end()
         return 0
-    def genExcelReport(self, xl_book, sheet_name):
-        xl_book.sheets.add(name=sheet_name)
-        CurSheet = xl_book.sheets[sheet_name]
-        nFactor = len(self.TestFactors)
-        for j, jMethod in enumerate(self.CorrMethod):
-            jData = self._Output[jMethod+"均值"]
-            # 写入统计数据
-            CurSheet[(nFactor+1)*j, 0].value = jData
-            CurSheet[(nFactor+1)*j, 0].value = jMethod+"相关性"
-            # 形成热图
-            CurSheet[(nFactor+1)*j+1:(nFactor+1)*j+1+nFactor, 1:1+nFactor].select()
-            iFormatConditions = xl_book.app.selection.api.FormatConditions
-            iFormatConditions.AddColorScale(2)
-            iFormatConditions(iFormatConditions.Count).SetFirstPriority()
-            iFormatConditions(1).ColorScaleCriteria(1).Type = 1
-            iFormatConditions(1).ColorScaleCriteria(1).FormatColor.Color = 16776444
-            iFormatConditions(1).ColorScaleCriteria(1).FormatColor.TintAndShade = 0
-            iFormatConditions(1).ColorScaleCriteria(2).Type = 2
-            iFormatConditions(1).ColorScaleCriteria(2).FormatColor.Color = 7039480
-            iFormatConditions(1).ColorScaleCriteria(2).FormatColor.TintAndShade = 0
-        return 0
     def _plotHeatMap(self, axes, df, title):
         axes.pcolor(df.values, cmap=matplotlib.cm.Reds)
         axes.set_xticks(np.arange(df.shape[0])+0.5, minor=False)
@@ -262,33 +240,6 @@ class FactorTurnover(BaseModule):
         self._Output["统计数据"]["最小值"] = self._Output["因子换手率"].min()
         self._Output["统计数据"]["最大值"] = self._Output["因子换手率"].max()
         self._Output["统计数据"]["中位数"] = self._Output["因子换手率"].median()
-        return 0
-    def genExcelReport(self, xl_book, sheet_name):
-        xl_book.sheets["因子换手率"].api.Copy(Before=xl_book.sheets[0].api)
-        xl_book.sheets[0].name = sheet_name
-        CurSheet = xl_book.sheets[sheet_name]
-        nDT = self._Output["因子换手率"].shape[0]
-        # 写入统计数据
-        CurSheet[1, 0].expand().clear_contents()
-        CurSheet[1, 0].options(transpose=True).value = list(self._Output["统计数据"].index)
-        FormatFun = np.vectorize(lambda x:("%.2f%%" % x) if pd.notnull(x) else None)
-        CurSheet[1, 1].value = FormatFun(self._Output["统计数据"].values*100)
-        CurSheet.api.ListObjects(1).Resize(CurSheet[0:self._Output["统计数据"].shape[0]+1, 0:self._Output["统计数据"].shape[1]+1].api)
-        # 写入日期序列
-        CurSheet[0, 7].expand().clear_contents()
-        CurSheet[0, 7].value = "时点"
-        CurSheet[1, 7].options(transpose=True).value = [iDT.strftime("%Y-%m-%d") for iDT in self._Output["因子换手率"].index]
-        # 写入时间序列数据
-        for i, iFactor in enumerate(self._Output["统计数据"].index):
-            iCol = 9 + i
-            CurSheet[0, iCol-1].value = iFactor+"-截面相关性"
-            CurSheet[1, iCol-1].value = FormatFun(self._Output["因子换手率"][[iFactor]].values*100)
-            # 绘制图线
-            Chrt = copyChart(xl_book, sheet_name, "因子换手率", 6, iCol-1, sheet_name, iFactor+"-因子换手率").api[1]
-            Chrt.SeriesCollection(1).Values = CurSheet[1:nDT+1, iCol-1].api
-            Chrt.SeriesCollection(1).Name = iFactor+"-截面相关性"
-            Chrt.SeriesCollection(1).XValues = CurSheet[1:nDT+1, 7].api
-        CurSheet.charts["因子换手率"].delete()
         return 0
     def genMatplotlibFig(self, file_path=None):
         nRow, nCol = self._Output["因子换手率"].shape[1]//3+1, min(3, self._Output["因子换手率"].shape[1])

@@ -57,7 +57,7 @@ class _TickTable(FactorTable):
     def FactorNames(self):
         return self._FactorNames
     def getFactorMetaData(self, factor_names=None, key=None):
-        if factor_names is None: factor_names = self.FactorNames
+        if factor_names is None: factor_names = self._FactorNames
         MetaData = pd.DataFrame("double", index=factor_names, columns=["DataType"], dtype=np.dtype("O"))
         if key is None: return MetaData
         elif key in MetaData: return MetaData.loc[:, key]
@@ -74,25 +74,24 @@ class _TickTable(FactorTable):
         StartDate = StartDate.strftime("%Y-%m-%d")
         EndDate = (EndDate + dt.timedelta(1)).strftime("%Y-%m-%d")
         if self._PriceFactors.intersection(set(factor_names)):
-            TradeDates = self._FactorDB._jpype.JPackage('clover.epsilon.database').DatabaseUtil.getTradeDateList(self._FactorDB._jConn, 'SHFE', StartDate, EndDate)
+            TradeDates = self._FactorDB._jpype.JPackage("clover.epsilon.database").DatabaseUtil.getTradeDateList(self._FactorDB._jConn, "SHFE", StartDate, EndDate)
             if len(TradeDates)==0: return _adjustDateTime(pd.Panel(Data, major_axis=tms, minor_axis=ids), dts=dts)
-            JPckg_util = self._FactorDB._jpype.JPackage('clover.model.util')
+            JPckg_util = self._FactorDB._jpype.JPackage("clover.model.util")
             PriceMultiplier = np.ones(len(SecDef))
             for j, jSecDef in enumerate(SecDef):
                 jSecurity = JPckg_util.ModelUtils.parseSecurity(self._FactorDB._jConn, TradeDates[-1], JPckg_util.Json.parse(jSecDef))
                 PriceMultiplier[j] = jSecurity.getMinPriceIncrement()
-        mdreader = self._FactorDB._jpype.JPackage('clover.epsilon.util').TestUtils.createMDReader('JavaSerialPT', 'mdreader.SHFE')
-        JPckg_matlab = self._FactorDB._jpype.JPackage('clover.model.matlab')
+        mdreader = self._FactorDB._jpype.JPackage("clover.epsilon.util").TestUtils.createMDReader("JavaSerialPT", "mdreader.SHFE")
+        JPckg_matlab = self._FactorDB._jpype.JPackage("clover.model.matlab")
         sdm_def = JPckg_matlab.SecurityDataMatrixPT.generateSDMDataDef_CN(self._FactorDB._jConn, SecDef, StartDate, EndDate, tms_intv)
         sdm = JPckg_matlab.SecurityDataMatrixPT()
         sdm.fetchData(sdm_def, mdreader, tms_intv)
-        tms = np.array(sdm.tms)/1000
+        tms = np.array(sdm.tms) / 1000
         tms = [dt.datetime.fromtimestamp(iTMS) for iTMS in tms]
         Data = {}
         for iField in factor_names:
             iData = np.array(getattr(sdm, iField))
-            if iField in self._PriceFactors:
-                iData = iData * PriceMultiplier
+            if iField in self._PriceFactors: iData = iData * PriceMultiplier
             Data[iField] = iData
         Data = pd.Panel(Data, major_axis=tms, minor_axis=ids).loc[factor_names]
         return _adjustDateTime(Data, dts=dts)
@@ -128,9 +127,9 @@ class _TimeBarTable(FactorTable):
         if not dts: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         TBs, AllSecurityIDs, SecurityIDs, PriceMultiplier = self._FactorDB.getTimeBar(ids, StartDate, EndDate, 
-                                                                                     tms_intv=args.get("时间间隔", self.TmsIntv)*1000, 
-                                                                                     depth=args.get("深度", self.Depth), 
-                                                                                     dynamic_security_id=args.get("动态证券ID", self.DynamicSecID))
+                                                                                      tms_intv=args.get("时间间隔", self.TmsIntv)*1000, 
+                                                                                      depth=args.get("深度", self.Depth), 
+                                                                                      dynamic_security_id=args.get("动态证券ID", self.DynamicSecID))
         Data = self._FactorDB.fetchTimeBarData(factor_names, TBs, AllSecurityIDs, SecurityIDs, PriceMultiplier)
         return _adjustDateTime(Data, dts=dts)
 
@@ -158,32 +157,24 @@ class _FeatureTable(FactorTable):
 
 class CloverDB(FactorDB):
     """Clover 数据库"""
-    DBType = Enum("MySQL", "SQL Server", "Oracle", arg_type="SingleOption", label="数据库类型", order=0)
-    DBName = Str("epsilon", arg_type="String", label="数据库名", order=1)
-    IPAddr = Str("192.168.100.2", arg_type="String", label="IP地址", order=2)
-    Port = Range(low=0, high=65535, value=3306, arg_type="Integer", label="端口", order=3)
-    User = Str("epsilon", arg_type="String", label="用户名", order=4)
-    Pwd = Password("epsilon7777", arg_type="String", label="密码", order=5)
-    TablePrefix = Str("", arg_type="String", label="表名前缀", order=6)
-    CharSet = Enum("utf8", "gbk", "gb2312", "gb18030", "cp936", "big5", arg_type="SingleOption", label="字符集", order=7)
-    Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
-    JVMPath = File("", arg_type="SingleOption", label="Java虚拟机", order=9, filter=["DLL (*.dll)"])
-    JavaPckg = List(File("", filter=["Java Package (*.jar)"]), arg_type="ArgList", label="Java包", order=10)
+    DBName = Str("epsilon", arg_type="String", label="数据库名", order=0)
+    IPAddr = Str("192.168.100.2", arg_type="String", label="IP地址", order=1)
+    Port = Range(low=0, high=65535, value=3306, arg_type="Integer", label="端口", order=2)
+    User = Str("epsilon", arg_type="String", label="用户名", order=3)
+    Pwd = Password("epsilon7777", arg_type="String", label="密码", order=4)
+    JVMPath = File("", arg_type="SingleOption", label="Java虚拟机", order=5, filter=["DLL (*.dll)"])
+    JavaPckg = List(File("", filter=["Java Package (*.jar)"]), arg_type="ArgList", label="Java包", order=6)
+    JavaOption = List(arg_type="StrList", label="Java选项", order=7)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
-        super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
-        # 继承来的属性
-        self.Name = "CloverDB"
         self._jpype = None# jpype 模块
         self._jConn = None# epsilon 数据库连接
         self._ExchangeDict = {"上海证券交易所":"SHFE", "深圳证券交易所":"SZSE"}
+        super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
+        self.Name = "CloverDB"
         return
-    def __QS_initArgs__(self):
-        self.JVMPath = "C:\\Program Files\\Java\\jdk1.8.0_172\\jre\\bin\\server\\jvm.dll"
-        self.JavaPckg.append("X:/java_lib/model-jar-with-dependencies.jar")
     def __getstate__(self):
         state = self.__dict__.copy()
-        state["_jpype"] = (True if self.isAvailable() else False)
-        state["_jConn"] = state["_jpype"]
+        state["_jConn"] = state["_jpype"] = (True if self.isAvailable() else False)
         return state
     def __setstate__(self, state):
         self.__dict__.update(state)
@@ -196,10 +187,10 @@ class CloverDB(FactorDB):
             import jpype
             self._jpype = jpype
         if not self._jpype.isJVMStarted():
-            JOption = ["-Xmx64g", "-Xms16g"]
+            JOption = list(self.JavaOption)
             if self.JavaPckg: JOption.append("-Djava.class.path="+";".join(self.JavaPckg))
             self._jpype.startJVM(self.JVMPath, *JOption)
-            jpckg = self._jpype.JPackage('java.sql')
+            jpckg = self._jpype.JPackage("java.sql")
             ConnStr = "jdbc:mysql://"+self.IPAddr+":"+str(self.Port)+"/"+self.DBName
             self._jConn = jpckg.DriverManager.getConnection(ConnStr, self.User, self.Pwd)
         return 0

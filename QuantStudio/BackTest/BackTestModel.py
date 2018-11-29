@@ -48,9 +48,6 @@ class BaseModule(__QS_Object__):
     # 计算并输出测试的结果集
     def output(self, recalculate=False):
         return self._Output
-    # 生成 Excel 报告的函数, xl_book: 给定的 Excel 工作簿对象, sheet_name: 给定的工作表名
-    def genExcelReport(self, xl_book, sheet_name):
-        return 0
     # 对象的 HTML 表示
     def _repr_html_(self):
         return ""
@@ -192,23 +189,6 @@ class BackTestModel(__QS_Object__):
             iOutput = jModule.output(recalculate=True)
             if iOutput: self._Output[str(j)+"-"+jModule.Name] = iOutput
         return self._Output
-    # 生成 Excel 报告
-    def genExcelReport(self, file_path):
-        shutil.copy(__QS_MainPath__+os.sep+"Resource"+os.sep+"SimpleSectionFactorTemplate.xlsx", file_path)
-        xlBook = xw.Book(file_path)
-        NewSheet = xlBook.sheets.add(name="占位表")
-        for i, iModule in enumerate(self.Modules): iModule.genExcelReport(xlBook, str(i)+"-"+iModule.Name)
-        xlBook.app.display_alerts = False
-        xlBook.sheets["IC"].delete()
-        xlBook.sheets["因子换手率"].delete()
-        xlBook.sheets["因子值行业分布"].delete()
-        xlBook.sheets["分位数组合"].delete()
-        xlBook.sheets["IC的衰减"].delete()
-        if xlBook.sheets.count>1: xlBook.sheets["占位表"].delete()
-        xlBook.app.display_alerts = True
-        xlBook.save()
-        xlBook.app.quit()
-        return 0
     # 对象的 HTML 表示
     def _repr_html_(self):
         HTML = ''

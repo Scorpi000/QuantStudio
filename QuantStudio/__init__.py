@@ -70,8 +70,8 @@ class __QS_Object__(HasTraits):
         return ([Item(Prefix+self._LabelTrait[iLabel]) for iLabel in self._ArgOrder.index], Context)
     def setArgs(self):
         Items, Context = self.getViewItems()
-        if Context: return self.configure_traits(view=View(*Items, buttons=[OKButton, CancelButton], resizable=True, title=getattr(self, "Name", "设置参数")), context=Context)
-        return self.configure_traits(view=View(*Items, buttons=[OKButton, CancelButton], resizable=True, title=getattr(self, "Name", "设置参数")))
+        if Context: return self.configure_traits(view=View(*Items, buttons=[OKButton, CancelButton], resizable=True, title=getattr(self, "Name", "设置参数"), kind="modal"), context=Context)
+        return self.configure_traits(view=View(*Items, buttons=[OKButton, CancelButton], resizable=True, title=getattr(self, "Name", "设置参数"), kind="modal"))
     def getTrait(self, arg_name):
         return (self._LabelTrait[arg_name], self.trait(self._LabelTrait[arg_name]))
     def add_trait(self, name, *trait):

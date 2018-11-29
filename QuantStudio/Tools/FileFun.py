@@ -195,32 +195,24 @@ def detectFileEncoding(file_path,big_file=False,size=None):
             else:
                 return chardet.detect(File.read(size))
 # 将读入CSV文件（支持中文路径），形成DataFrame
-def readCSV2StdDF(file_path,index='日期',col='字符串',encoding=None):
-    if encoding is None:
-        CSVFactor = readCSV2Pandas(file_path,detect_file_encoding=True,index_col=0,header=0)
-    else:
-        CSVFactor = readCSV2Pandas(file_path,detect_file_encoding=False,index_col=0,header=0,encoding=encoding)
-    if index=='日期':
-        DFIndex = [str(int(float(iDate))) for iDate in CSVFactor.index]
-    elif index=='字符串':
-        DFIndex = [str(iID) for iID in CSVFactor.index]
+def readCSV2StdDF(file_path,index='时间',col='字符串',encoding=None):
+    Options = {"index_col":0, "header":0, "detect_file_encoding":False}
+    if (index=="时间") or (col=="时间"): Options.update({"infer_datetime_format":True, "parse_dates":True})
+    if encoding is not None: Options.update({"detect_file_encoding":True, "encoding":encoding})
+    CSVFactor = readCSV2Pandas(file_path, **Options)
+    if index=='字符串':
+        CSVFactor.index = [str(iID) for iID in CSVFactor.index]
     elif index=='整数':
-        DFIndex = [int(float(iID)) for iID in CSVFactor.index]
+        CSVFactor.index = [int(float(iID)) for iID in CSVFactor.index]
     elif index=="小数":
-        DFIndex = [float(iID) for iID in CSVFactor.index]
-    else:
-        DFIndex = CSVFactor.index
-    if index=='日期':
-        DFCol = [str(int(float(iDate))) for iDate in CSVFactor.columns]
-    elif index=='字符串':
-        DFCol = [str(iID) for iID in CSVFactor.columns]
+        CSVFactor.index = [float(iID) for iID in CSVFactor.index]
+    if index=='字符串':
+        CSVFactor.columns = [str(iID) for iID in CSVFactor.columns]
     elif index=='整数':
-        DFCol = [int(float(iID)) for iID in CSVFactor.columns]
+        CSVFactor.columns = [int(float(iID)) for iID in CSVFactor.columns]
     elif index=="小数":
-        DFCol = [float(iID) for iID in CSVFactor.columns]
-    else:
-        DFCol = CSVFactor.columns
-    return pd.DataFrame(CSVFactor.values,index=DFIndex,columns=DFCol)
+        CSVFactor.columns = [float(iID) for iID in CSVFactor.columns]
+    return CSVFactor
 # 将CSV中的因子数据加载入内存
 def loadCSVFactorData(csv_path):
     with open(csv_path,mode='rb') as File:
@@ -245,26 +237,6 @@ def loadCSVFactorData(csv_path):
     CSVID = [str(iID) for iID in CSVFactor.columns]
     CSVFactor = pd.DataFrame(CSVFactor.values,index=CSVDate,columns=CSVID)
     return CSVFactor
-# 将结果集写入 Excel 文件, output: {文件名: DataFrame}
-def exportOutput2Excel(output, file_path=None):
-    import xlwings as xw
-    OutputNames = list(output.keys())
-    OutputNames.sort()
-    xlBook = xw.Book()
-    nSheet = xlBook.sheets.count
-    for i,iKey in enumerate(OutputNames):
-        iOutput = output[iKey]
-        if i<nSheet:
-            xlBook.sheets[i].name = iKey
-        else:
-            xlBook.sheets.add(iKey)
-        xlBook.sheets[iKey][0,0].options(pd.DataFrame,index=True,header=True).value = iOutput
-    if file_path is None:
-        return xlBook
-    else:
-        xlBook.save(path=file_path)
-        xlBook.close()
-        return 0
 # 将结果集写入 CSV 文件, output: {文件名: DataFrame}
 def exportOutput2CSV(output, dir_path="."):
     OutputNames = list(output.keys())

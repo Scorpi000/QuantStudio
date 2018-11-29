@@ -14,13 +14,13 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
-plt.style.use('ggplot')
+plt.style.use("ggplot")
 import matplotlib.cm
 import plotly
 from traits.api import File, Enum, List
 
 from QuantStudio import __QS_MainPath__, __QS_Error__, __QS_Object__
-from QuantStudio.Tools.FileFun import writeDictSeries2CSV, exportOutput2Excel, exportOutput2CSV, readCSV2StdDF
+from QuantStudio.Tools.FileFun import writeDictSeries2CSV, exportOutput2CSV, readCSV2StdDF
 from QuantStudio.Tools.DataTypeFun import getNestedDictItems, getNestedDictValue, removeNestedDictItem
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName, joinList
 from QuantStudio.Tools import StrategyTestFun
@@ -108,8 +108,8 @@ class _TableDlg(QtWidgets.QDialog):
         self.close()
 class _FromCSVArgs(__QS_Object__):
     FilePath = File(filter=["Excel (*.csv)"], arg_type="File", order=0, label="导入文件")
-    RowIndex = Enum("日期", "字符串", "整数", "小数", arg_type="SingleOption", order=1, label="行索引")
-    ColIndex = Enum("日期", "字符串", "整数", "小数", arg_type="SingleOption", order=2, label="列索引")
+    RowIndex = Enum("时间", "字符串", "整数", "小数", arg_type="SingleOption", order=1, label="行索引")
+    ColIndex = Enum("字符串", "时间", "整数", "小数", arg_type="SingleOption", order=2, label="列索引")
     CharSet = Enum("自动检测", "utf-8", "ascii", "mbcs", "gb2312", "gbk", "big5", "gb18030", "cp936", arg_type="SingleOption", order=3, label="字符编码")
 # 基于 plotly 绘图的 ResultDlg
 class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
@@ -127,7 +127,7 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
         self.MainResultTree.addAction(QtWidgets.QAction('重命名',self.MainResultTree, triggered=self.renameVar))
         self.MainResultTree.addAction(QtWidgets.QAction('删除变量',self.MainResultTree, triggered=self.deleteVar))
         self.MainResultTree.addAction(QtWidgets.QAction('导出CSV',self.MainResultTree, triggered=self.toCSV))
-        #self.MainResultTree.addAction(QtWidgets.QAction('导出Excel',self.MainResultTree, triggered=self.toExcel))
+        self.MainResultTree.addAction(QtWidgets.QAction('导出Excel',self.MainResultTree, triggered=self.toExcel))
         self.MainResultTree.addAction(QtWidgets.QAction('导入CSV',self.MainResultTree, triggered=self.fromCSV))
         # 设置 MainResultTable 的弹出菜单
         self.MainResultTable.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
@@ -284,15 +284,20 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
                 SelectedOutput.append((iKeyList, iValue))
             else:
                 SelectedOutput.extend(getNestedDictItems(iValue, iKeyList))
-        Output = {joinList(iKeyList,"-"):iOutput for iKeyList, iOutput in SelectedOutput}
-        if Output=={}:
-            return 0
-        exportOutput2Excel(Output)
+        FilePath, _ = QtWidgets.QFileDialog.getSaveFileName(parent=None, caption="导出 Excel", directory=os.getcwd(), filter="Excel (*.xls)")
+        if (not FilePath) or (not SelectedOutput): return 0
+        Writer = pd.ExcelWriter(FilePath)
+        for iKeyList, iOutput in SelectedOutput:
+            iSheetName = joinList(iKeyList, "-")
+            iOutput.to_excel(Writer, sheet_name=iSheetName, header=True, index=True, engine="xlwt")
+        Writer.save()
+        QtWidgets.QMessageBox.information(None, "完成", "导出数据完成!")
         return 0
     def fromCSV(self):# 将CSV数据导入变量, TODO
         Args = _FromCSVArgs()
-        if not Args.setArgs(): return 0
-        if Args["导入文件"]==[]: return 0
+        if (not Args.setArgs()) or (not Args["导入文件"]): return 0
+        if isinstance(Args["导入文件"], str): Files = [Args["导入文件"]]
+        else: Files = Args["导入文件"]
         SelectedItem = self.MainResultTree.selectedItems()
         if SelectedItem==[]: Parent = self.MainResultTree
         elif SelectedItem[0].childCount()==0: Parent = SelectedItem[0].parent()
@@ -303,14 +308,14 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
         else:
             ParentKeyList = Parent.data(0, QtCore.Qt.UserRole)
             ParentOutput = getNestedDictValue(self.Output, ParentKeyList)
-        for iFilePath in Args["导入文件"]:
+        for iFilePath in Files:
             iVar = os.path.split(iFilePath)[-1][:-4]
-            if (iVar in ParentOutput) and (QtWidgets.QMessageBox.Ok!=QtWidgets.QMessageBox.question(None, '警告', "变量: "+iVar+", 重名, 是否覆盖?", QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel, QtWidgets.QMessageBox.Cancel)):
+            if (iVar in ParentOutput) and (QtWidgets.QMessageBox.Ok!=QtWidgets.QMessageBox.question(None, "警告", "变量: "+iVar+", 重名, 是否覆盖?", QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel, QtWidgets.QMessageBox.Cancel)):
                 iVar = genAvailableName(iVar, list(ParentOutput.keys()))
             iData = readCSV2StdDF(iFilePath,index=Args["行索引"],col=Args["列索引"],encoding=(None if Args["字符编码"]=="自动检测" else Args["字符编码"]))
             ParentOutput[iVar] = iData
         self.populateMainResultTree()
-        QtWidgets.QMessageBox.information(None, '完成', '导入数据完成!')
+        QtWidgets.QMessageBox.information(None, "完成", "导入数据完成!")
         return 0
     # ------------------------MainResultTable 相关操作-------------------------
     def populateMainResultTable(self):# 刷新数据

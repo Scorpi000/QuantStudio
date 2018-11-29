@@ -53,6 +53,7 @@ setuptools.setup(
         "bs4>=0.0.1",
         "tushare>=1.2.12",
         "xlrd>=0.9.0",
+        "xlwt>=1.3.0",
         "PyQt5>=5.9.2",
     ]
 )

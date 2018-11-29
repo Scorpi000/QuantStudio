@@ -15,7 +15,6 @@ import matplotlib
 
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList
-from QuantStudio.Tools.ExcelFun import copyChart
 from QuantStudio.BackTest.BackTestModel import BaseModule
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 
@@ -93,32 +92,6 @@ class IndustryDistribution(BaseModule):
         self._Output["历史标准差"] = pd.DataFrame(self._Output["历史标准差"], columns=list(self.TestFactors))
         self._Output.pop("行业分类")
         self._Output.pop("时点")
-        return 0
-    def genExcelReport(self, xl_book, sheet_name):
-        xl_book.sheets["因子值行业分布"].api.Copy(Before=xl_book.sheets[0].api)
-        xl_book.sheets[0].name = sheet_name
-        CurSheet = xlBook.sheets[sheet_name]
-        nIndustry, nFactor = self._Output["历史平均值"].shape
-        # 写入数据
-        FormatFun = np.vectorize(lambda x:("%.2f%%" % x) if pd.notnull(x) else None)
-        CurSheet[1, 0].options(transpose=True).value = list(self._Output["历史平均值"].index)
-        CurSheet[0, 1].value = list(self._Output["历史平均值"].columns)
-        CurSheet[1, 1].value = FormatFun(self._Output["历史平均值"].values*100)
-        CurSheet[0, nFactor+1].value = list(self._Output["历史标准差"].columns)
-        CurSheet[1, nFactor+1].value = FormatFun(self._Output["历史标准差"].values*100)
-        CurSheet[0, 0].value = "行业"
-        # 绘制图线
-        StartRow = 4
-        for j,jFactor in enumerate(self._Output["历史平均值"].columns):
-            Chrt = copyChart(xl_book, sheet_name, "行业分布", StartRow-1, 1, sheet_name, jFactor+"-行业分布")
-            ChrtArea = Chrt.api[1]
-            ChrtArea.SeriesCollection(1).Values = CurSheet[1:nIndustry+1, j+1]
-            ChrtArea.SeriesCollection(1).Name = jFactor+"-均值"
-            ChrtArea.SeriesCollection(2).Values = CurSheet[1:nIndustry+1, j+1+nFactor]
-            ChrtArea.SeriesCollection(2).Name = jFactor+"-标准差"
-            ChrtArea.SeriesCollection(1).XValues = CurSheet[1:nIndustry+1, 0]
-            StartRow += 17
-        CurSheet.charts["行业分布"].delete()
         return 0
     def genMatplotlibFig(self, file_path=None):
         nRow, nCol = self._Output["历史平均值"].shape[1]//3+1, min(3, self._Output["历史平均值"].shape[1])

@@ -327,17 +327,6 @@ class Strategy(BaseModule):
             StrategyOutput["统计数据"] = pd.merge(StrategyOutput["统计数据"], BenchmarkStatistics, left_index=True, right_index=True)
         self._Output["Strategy"] = StrategyOutput
         return self._Output
-    def genExcelReport(self, xl_book, sheet_name):
-        xlBook = xw.Book(save_path)
-        NewSheet = xlBook.sheets.add(name="占位表")
-        for i, iModule in enumerate(self._Modules):
-            iModule.__QS_genExcelReport__(xlBook)
-        xlBook.app.display_alerts = False
-        if xlBook.sheets.count>1: xlBook.sheets["占位表"].delete()
-        xlBook.app.display_alerts = True
-        xlBook.save()
-        xlBook.app.quit()
-        return 0
     def _formatStatistics(self):
         Stats = self._Output["Strategy"]["统计数据"]
         FormattedStats = pd.DataFrame(index=Stats.index, columns=Stats.columns, dtype="O")

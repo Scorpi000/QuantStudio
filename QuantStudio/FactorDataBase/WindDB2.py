@@ -1429,7 +1429,7 @@ class _AnalystEstDetailTable(_DBTable):
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
         self.Deduplication = [self._InstituteField]
-    def __QS_genGroupInfo__(self, factors, operation_mode):# TODO
+    def __QS_genGroupInfo__(self, factors, operation_mode):
         FactorNames, RawFactorNames, StartDT = [], set(), dt.datetime.now()
         Args = {"附加字段": set(), "去重字段": set(), "周期":0}
         for iFactor in factors:

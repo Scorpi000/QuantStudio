@@ -15,7 +15,6 @@ from matplotlib.ticker import FuncFormatter
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.Tools.DataPreprocessingFun import prepareRegressData
-from QuantStudio.Tools.ExcelFun import copyChart
 from QuantStudio.BackTest.BackTestModel import BaseModule
 
 def _QS_formatMatplotlibPercentage(x, pos):
@@ -129,47 +128,6 @@ class IC(BaseModule):
         self._Output["统计数据"]["有效期数"] = 0.0
         for iFactor in self._Output["IC"]: self._Output["统计数据"].loc[iFactor,"有效期数"] = pd.notnull(self._Output["IC"][iFactor]).sum()
         self._Output["统计数据"]["t统计量"] = (self._Output["统计数据"]["有效期数"]**0.5)*self._Output["统计数据"]["IC_IR"]
-        return 0
-    def genExcelReport(self, xl_book, sheet_name):
-        xl_book.sheets["IC"].api.Copy(Before=xl_book.sheets[0].api)
-        xl_book.sheets[0].name = sheet_name
-        CurSheet = xl_book.sheets[sheet_name]
-        nDate = self._Output["IC"].shape[0]
-        # 写入统计数据
-        CurSheet[1,0].expand().clear_contents()
-        CurSheet[1,1].value = self._Output["统计数据"].values
-        CurSheet[1,0].options(transpose=True).value = list(self._Output["统计数据"].index)
-        Table = CurSheet.api.ListObjects(1)
-        Table.Resize(CurSheet[0:self._Output["统计数据"].shape[0]+1,0:self._Output["统计数据"].shape[1]+1].api)
-        # 写入日期序列
-        CurSheet[0, 11].expand().clear_contents()
-        CurSheet[0, 11].value = "时点"
-        CurSheet[1, 11].options(transpose=True).value = [iDT.strftime("%Y-%m-%d") for iDT in self._Output["IC"].index]
-        # 写入时间序列数据
-        FormatFun1 = np.vectorize(lambda x:("%.2f%%" % x) if pd.notnull(x) else None)
-        FormatFun2 = np.vectorize(lambda x:("%u" % x) if pd.notnull(x) else None)
-        for i,iFactor in enumerate(self._Output["统计数据"].index):
-            iCol = 13+i*3
-            CurSheet[0, iCol-1].value = iFactor+"-IC"
-            CurSheet[1, iCol-1].value = FormatFun1(self._Output["IC"][[iFactor]].values*100)
-            CurSheet[0, iCol].value = iFactor+"-IC的移动平均"
-            CurSheet[1, iCol].value = FormatFun1(self._Output["IC的移动平均"][[iFactor]].values*100)
-            CurSheet[0, iCol+1].value = iFactor+"-股票数"
-            CurSheet[1, iCol+1].value = FormatFun2(self._Output["股票数"][[iFactor]].values)
-            # 绘制图线
-            Chrt = copyChart(xl_book,sheet_name,"IC",6,iCol-1,sheet_name,iFactor+"-IC").api[1]
-            Chrt.SeriesCollection(1).Values = CurSheet[1:nDate+1, iCol-1].api
-            Chrt.SeriesCollection(1).Name = "='"+sheet_name+"'!R1C"+str(iCol)
-            Chrt.SeriesCollection(2).Values = CurSheet[1:nDate+1, iCol].api
-            Chrt.SeriesCollection(2).Name = "='"+sheet_name+"'!R1C"+str(iCol+1)
-            Chrt.SeriesCollection(1).XValues = CurSheet[1:nDate+1, 11].api
-            Chrt = copyChart(xl_book,sheet_name,"股票数",23,iCol-1,sheet_name,iFactor+"-股票数").api[1]
-            Chrt.SeriesCollection(1).Values = CurSheet[1:nDate+1, iCol+1].api
-            Chrt.SeriesCollection(1).Name = "='"+sheet_name+"'!R1C"+str(iCol+2)
-            Chrt.SeriesCollection(1).XValues = CurSheet[1:nDate+1, 11].api
-            Chrt.ChartTitle.Text = iFactor+"-股票数"
-        CurSheet.charts["IC"].delete()
-        CurSheet.charts["股票数"].delete()
         return 0
     def genMatplotlibFig(self, file_path=None):
         nRow, nCol = self._Output["IC"].shape[1]//3+1, min(3, self._Output["IC"].shape[1])
@@ -378,31 +336,6 @@ class ICDecay(BaseModule):
         self._Output["统计数据"]["IC_IR"] = self._Output["统计数据"]["IC平均值"] / self._Output["统计数据"]["标准差"]
         self._Output["统计数据"]["t统计量"] = self._Output["统计数据"]["IC_IR"] * nDT**0.5
         self._Output["统计数据"]["胜率"] = (self._Output["IC"]>0).sum() / nDT
-        return 0
-    def genExcelReport(self, xl_book, sheet_name):
-        xl_book.sheets["IC的衰减"].api.Copy(Before=xl_book.sheets[0].api)
-        xl_book.sheets[0].name = sheet_name
-        CurSheet = xl_book.sheets[sheet_name]
-        nDate = self._Output["IC"].shape[0]
-        # 写入统计数据
-        CurSheet[1, 0].expand().clear_contents()
-        CurSheet[1, 1].value = self._Output["统计数据"].values
-        CurSheet[1, 0].options(transpose=True).value = list(self._Output["统计数据"].index)
-        Table = CurSheet.api.ListObjects(1)
-        Table.Resize(CurSheet[0:self._Output["统计数据"].shape[0]+1,0:self._Output["统计数据"].shape[1]+1].api)
-        Chrt = CurSheet.charts["IC的衰减"].api[1]
-        Chrt.SeriesCollection(1).Values = CurSheet[1:self._Output["统计数据"].shape[0]+1,1].api
-        Chrt.SeriesCollection(1).Name = args["测试因子"]+"-IC均值"
-        Chrt.SeriesCollection(2).Values = CurSheet[1:self._Output["统计数据"].shape[0]+1,4].api
-        Chrt.SeriesCollection(2).Name = args["测试因子"]+"-胜率"
-        Chrt.SeriesCollection(1).XValues = CurSheet[1:self._Output["统计数据"].shape[0]+1,0].api
-        # 写入日期序列
-        CurSheet[0, 7].expand().clear_contents()
-        CurSheet[0, 7].value = "时点"
-        CurSheet[1, 7].options(transpose=True).value = [iDT.strftime("%Y-%m-%d") for iDT in self._Output["IC"].index]
-        # 写入时间序列数据
-        CurSheet[0, 8].value = list(self._Output["IC"].columns)
-        CurSheet[1, 8].value = np.vectorize(lambda x:("%.2f%%" % x) if pd.notnull(x) else None)(self._Output["IC"].values*100)
         return 0
     def genMatplotlibFig(self, file_path=None):
         Fig, Axes = plt.subplots(figsize=(16, 8))
