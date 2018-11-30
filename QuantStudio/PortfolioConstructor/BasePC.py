@@ -558,8 +558,6 @@ class PortfolioConstructor(__QS_Object__):
         self._HoldingExtra = pd.Series()# 当前持仓相对于TargetIDs多出来的证券ID权重，pd.Series(index=self._HoldingExtraIDs)
         self._HoldingExtraAmount = pd.Series()# 当前持仓相对于TargetIDs多出来的证券ID对应的因子数据，pd.Series(index=self._HoldingExtraIDs)
         return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
-    def __setstate__(self, state):
-        self.__dict__.update(state)
     @on_trait_change("OptimObjective")
     def _on_OptimObjective_changed(self, obj, name, old, new):
         self._ModelChanged = True

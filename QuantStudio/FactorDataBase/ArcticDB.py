@@ -83,7 +83,7 @@ class ArcticDB(WritableFactorDB):
         state["_Arctic"] = self.isAvailable()
         return state
     def __setstate__(self, state):
-        self.__dict__.update(state)
+        super().__setstate__(state)
         if self._Arctic: self.connect()
         else: self._Arctic = None
     def connect(self):

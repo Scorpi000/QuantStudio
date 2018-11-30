@@ -30,7 +30,7 @@ class MatlabPC(PortfolioConstructor):
             state["_MatlabEng"] = None
         return state
     def __setstate__(self, state):
-        self.__dict__.update(state)
+        super().__setstate__(state)
         if self._MatlabEng is not None:
             self._MatlabEng = matlab.engine.connect_matlab(name=self._MatlabEng)
     # 传递优化目标变量

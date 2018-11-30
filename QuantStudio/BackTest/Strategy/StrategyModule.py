@@ -220,8 +220,6 @@ class _Benchmark(__QS_Object__):
     def __QS_initArgs__(self):
         self.add_trait("PriceFactor", Enum(None, arg_type="SingleOption", label="价格因子", order=1))
         self.add_trait("BenchmarkID", Enum(None, arg_type="SingleOption", label="基准ID", order=2))
-    def __setstate__(self, state):
-        self.__dict__.update(state)
     @on_trait_change("FactorTable")
     def _on_FactorTable_changed(self, obj, name, old, new):
         if self.FactorTable is not None:

@@ -51,8 +51,6 @@ class PortfolioStrategy(Strategy):
         self.LongWeightAlloction = _WeightAllocation(ft=self._FT)
         self.ShortWeightAlloction = _WeightAllocation(ft=self._FT)
         return super().__QS_initArgs__()
-    def __setstate__(self, state):
-        self.__dict__.update(state)
     @on_trait_change("TargetAccount")
     def _on_TargetAccount_changed(self, obj, name, old, new):
         if (self.TargetAccount is not None) and (self.TargetAccount not in self.Accounts): self.Accounts.append(self.TargetAccount)
@@ -245,8 +243,6 @@ class _Filter(__QS_Object__):
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
         self.add_trait("TargetFactor", Enum(*DefaultNumFactorList, label="目标因子", arg_type="SingleOption", order=2))
         self.GroupFactors.option_range = tuple(self._FT.FactorNames)
-    def __setstate__(self, state):
-        self.__dict__.update(state)
     @on_trait_change("FiltrationType")
     def _on_FiltrationType_changed(self, obj, name, old, new):
         if new=="定量":
@@ -286,8 +282,6 @@ class HierarchicalFiltrationStrategy(PortfolioStrategy):
         elif new<old:# 减少了筛选层数
             for i in range(max(0, old)-1, max(0, new)-1, -1):
                 self.remove_trait("Level"+str(i))
-    def __setstate__(self, state):
-        self.__dict__.update(state)
     def _filtrateID(self, idt, ids, args):
         FactorData = self._FT.readData(dts=[idt], ids=ids, factor_names=[args.TargetFactor]).iloc[0,0,:]
         FactorData = FactorData[pd.notnull(FactorData)]

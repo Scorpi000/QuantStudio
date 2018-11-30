@@ -95,7 +95,7 @@ class WindAddinDB(FactorDB):
         state["w"] = (True if self.isDBAvailable() else False)
         return state
     def __setstate__(self, state):
-        self.__dict__.update(state)
+        super().__setstate__(state)
         if self.w:
             self.w = None
             self.connect()

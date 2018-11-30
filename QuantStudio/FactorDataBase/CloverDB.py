@@ -177,7 +177,7 @@ class CloverDB(FactorDB):
         state["_jConn"] = state["_jpype"] = (True if self.isAvailable() else False)
         return state
     def __setstate__(self, state):
-        self.__dict__.update(state)
+        super().__setstate__(state)
         isConnected = self._jpype
         self._jpype, self._jConn = None, None
         if isConnected: self.connect()

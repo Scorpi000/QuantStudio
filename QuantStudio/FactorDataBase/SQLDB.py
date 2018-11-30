@@ -113,7 +113,7 @@ class SQLDB(WritableFactorDB):
         state["_Connection"] = (True if self.isAvailable() else False)
         return state
     def __setstate__(self, state):
-        self.__dict__.update(state)
+        super().__setstate__(state)
         if self._Connection: self._connect()
         else: self._Connection = None
     # -------------------------------------------数据库相关---------------------------

@@ -58,6 +58,8 @@ class __QS_Object__(HasTraits):
         for iArgName, iArgVal in Config.items():
             if iArgName in self._ArgOrder.index: self[iArgName] = iArgVal
         self.trait_view(name="QSView", view_element=View(*self.getViewItems()[0], buttons=[OKButton, CancelButton], resizable=True, title=getattr(self, "Name", "设置参数")))
+    def __setstate__(self, state, trait_change_notify=False):
+        return super().__setstate__(state, trait_change_notify=trait_change_notify)
     @property
     def ArgNames(self):
         return self._ArgOrder.index.tolist()
