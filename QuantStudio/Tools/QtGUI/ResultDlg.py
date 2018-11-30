@@ -786,7 +786,8 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
         if nRow==0: return []
         SelectedColumns = []
         nSelectedIndexes = len(SelectedIndexes)
-        if (nSelectedIndexes==1) or (SelectedIndexes[0].column()!=SelectedIndexes[1].column()):
+        if nSelectedIndexes==0: return []
+        elif (nSelectedIndexes==1) or (SelectedIndexes[0].column()!=SelectedIndexes[1].column()):
             for i in range(0, int(nSelectedIndexes/nRow)):
                 SelectedColumns.append(SelectedIndexes[i].column())
         else:
@@ -795,13 +796,13 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
         return SelectedColumns
     def getSelectedDF(self, all_num=True):
         SelectedColumns = self.getSelectedColumns()
-        if SelectedColumns==[]: return (None,'没有选中数据列!')
-        SelectedDF = self.CurDF.iloc[:,SelectedColumns].copy()
+        if SelectedColumns==[]: return (None, "没有选中数据列!")
+        SelectedDF = self.CurDF.iloc[:, SelectedColumns].copy()
         if all_num:
             try:
                 SelectedDF = SelectedDF.astype("float")
             except:
-                return (None,'选择的数据中包含非数值型数据!')
+                return (None, "选择的数据中包含非数值型数据!")
         return (SelectedDF, "")
     @QtCore.pyqtSlot()
     def on_GenTableButton_clicked(self):
@@ -861,33 +862,24 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
     @QtCore.pyqtSlot()
     def on_PlotButton_clicked(self):
         # 获取绘图数据
-        PlotResult,Msg = self.getSelectedDF(all_num=True)
-        if PlotResult is None:
-            QtWidgets.QMessageBox.critical(None,'错误',Msg)
-            return 0
+        PlotResult, Msg = self.getSelectedDF(all_num=True)
+        if PlotResult is None: return QtWidgets.QMessageBox.critical(None, "错误", Msg)
         # 设置绘图模式
         PlotMode, PlotAxes = self._getPlotArgs(PlotResult)
-        if PlotMode is None:
-            return 0
+        if PlotMode is None: return 0
         # 设置要绘制的索引
         xData = self._getDataIndex(PlotResult.index)
-        if not xData:
-            QtWidgets.QMessageBox.critical(None,'错误','绘图数据为空!')
-            return 0
+        if not xData: return QtWidgets.QMessageBox.critical(None,'错误','绘图数据为空!')
         PlotResult = PlotResult.loc[xData]
         xTickLabels = []
         isStr = False
         for iData in xData:
             xTickLabels.append(str(iData))
-            if isinstance(iData, str):
-                isStr = True
-        if isStr:
-            xData = xTickLabels
+            if isinstance(iData, str): isStr = True
+        if isStr: xData = xTickLabels
         LayoutDict = {"title":','.join([str(iCol) for iCol in PlotResult.columns])}
-        if ('左轴' in PlotAxes):
-            LayoutDict['yaxis'] = dict(title='Left Axis')
-        if ('右轴' in PlotAxes):
-            LayoutDict['yaxis2'] = dict(title='Right Axis', titlefont=dict(color='rgb(148, 103, 189)'), tickfont=dict(color='rgb(148, 103, 189)'), overlaying='y', side='right')
+        if ('左轴' in PlotAxes): LayoutDict['yaxis'] = dict(title='Left Axis')
+        if ('右轴' in PlotAxes): LayoutDict['yaxis2'] = dict(title='Right Axis', titlefont=dict(color='rgb(148, 103, 189)'), tickfont=dict(color='rgb(148, 103, 189)'), overlaying='y', side='right')
         GraphObj = []
         for i in range(PlotResult.shape[1]):
             iArgs = ({} if PlotAxes[i]=="左轴" else {"yaxis":"y2"})
@@ -1171,18 +1163,14 @@ class MatplotlibResultDlg(PlotlyResultDlg):
     @QtCore.pyqtSlot()
     def on_PlotButton_clicked(self):
         # 获取绘图数据
-        PlotResult,Msg = self.getSelectedDF(all_num=True)
-        if PlotResult is None:
-            QMessageBox.critical(None,'错误',Msg)
-            return 0
+        PlotResult, Msg = self.getSelectedDF(all_num=True)
+        if PlotResult is None: return QtWidgets.QMessageBox.critical(None, "错误", Msg)
         # 设置绘图模式
         PlotMode, PlotAxes, PlotArgs = self._getPlotArgs(PlotResult)
         if PlotMode is None: return 0
         # 设置要绘制的索引
         xData = self._getDataIndex(PlotResult.index)
-        if not xData:
-            QtWidgets.QMessageBox.critical(None,'错误','绘图数据为空!')
-            return 0
+        if not xData: return QtWidgets.QMessageBox.critical(None, "错误", "绘图数据为空!")
         PlotResult = PlotResult.loc[xData]
         if (not PlotResult.index.is_mixed()) and isinstance(PlotResult.index[0], (dt.datetime, dt.date)):# index 是日期或者时间
             isDT = True
@@ -1207,8 +1195,7 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         Fig = FigDlg.Mpl.Fig
         if ('左轴' in PlotAxes):
             LeftAxe = Fig.add_subplot(111)
-            if ('右轴' in PlotAxes):
-                RightAxe = LeftAxe.twinx()
+            if ('右轴' in PlotAxes): RightAxe = LeftAxe.twinx()
         else:
             RightAxe = Fig.add_subplot(111)
             LeftAxe = RightAxe
@@ -1241,10 +1228,8 @@ class MatplotlibResultDlg(PlotlyResultDlg):
                     iAxe.stackplot(xData, yData.values, **PlotArgs[i])
                 iAxe.set_xticks(xTicks)
                 iAxe.set_xticklabels(xTickLabels)
-        if '左轴' in PlotAxes:
-            LeftAxe.legend(loc='upper left',shadow=True)
-        if '右轴' in PlotAxes:
-            RightAxe.legend(loc='upper right',shadow=True)
+        if '左轴' in PlotAxes: LeftAxe.legend(loc='upper left',shadow=True)
+        if '右轴' in PlotAxes: RightAxe.legend(loc='upper right',shadow=True)
         plt.title(','.join([str(iCol) for iCol in PlotResult.columns]))
         FigDlg.Mpl.draw()
         FigDlg.show()
