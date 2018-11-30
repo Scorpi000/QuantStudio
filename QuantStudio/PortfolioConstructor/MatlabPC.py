@@ -19,6 +19,20 @@ class MatlabPC(PortfolioConstructor):
         self._EngLock = lock
         self._MatlabScript = ""
         return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Remove the unpicklable entries.
+        if (self._MatlabEng is not None) and (self._MatlabEng._check_matlab()):
+            with self._EngLock:
+                if not self._MatlabEng.matlab.engine.isEngineShared(): self._MatlabEng.matlab.engine.shareEngine()
+                state["_MatlabEng"] = self._MatlabEng.matlab.engine.engineName()
+        else:
+            state["_MatlabEng"] = None
+        return state
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        if self._MatlabEng is not None:
+            self._MatlabEng = matlab.engine.connect_matlab(name=self._MatlabEng)
     # 传递优化目标变量
     def _transmitObjective(self, prepared_objective):
         MatlabVar = {}

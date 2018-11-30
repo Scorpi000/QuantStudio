@@ -75,7 +75,6 @@ class __QS_Object__(HasTraits):
     def getTrait(self, arg_name):
         return (self._LabelTrait[arg_name], self.trait(self._LabelTrait[arg_name]))
     def add_trait(self, name, *trait):
-        if name in self.visible_traits(): return super().add_trait(name, *trait)
         Rslt = super().add_trait(name, *trait)
         iTrait = self.trait(name)
         if iTrait.arg_type is None: return Rslt

@@ -6,7 +6,7 @@ from io import BytesIO
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-from traits.api import ListStr, Enum, List, ListInt, Int, Str, Dict, on_trait_change
+from traits.api import ListStr, Enum, List, ListInt, Int, Str, Dict
 from traitsui.api import SetEditor, Item
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec

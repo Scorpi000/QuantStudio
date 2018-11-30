@@ -6,7 +6,7 @@ from io import BytesIO
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-from traits.api import ListStr, Enum, List, Int, Str, Instance, Dict, Bool, on_trait_change
+from traits.api import ListStr, Enum, List, Int, Str, Instance, Dict, Bool
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.ticker import FuncFormatter

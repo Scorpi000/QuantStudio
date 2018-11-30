@@ -26,6 +26,8 @@ class TimingStrategy(Strategy):
         self._ValueAllocated = None
         self._CashAllocated = None
         return super().__init__(name=name, accounts=[], fts=([] if self._FT is None else [self._FT]), sys_args=sys_args, config_file=config_file, **kwargs)
+    def __setstate__(self, state):
+        self.__dict__.update(state)
     @on_trait_change("TargetAccount")
     def on_TargetAccount_changed(self, obj, name, old, new):
         if (self.TargetAccount is not None) and (self.TargetAccount not in self.Accounts): self.Accounts.append(self.TargetAccount)

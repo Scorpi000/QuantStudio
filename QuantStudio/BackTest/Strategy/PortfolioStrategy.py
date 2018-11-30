@@ -19,9 +19,9 @@ from QuantStudio.RiskModel.RiskDataSource import RiskDataSource, FactorRDS
 class _WeightAllocation(__QS_Object__):
     """权重分配"""
     ReAllocWeight = Bool(False, label="重配权重", arg_type="Bool", order=0)
-    WeightFactor = Enum("等权", label="权重因子", arg_type="SingleOption", order=1)
+    #WeightFactor = Enum("等权", label="权重因子", arg_type="SingleOption", order=1)
     GroupFactors = List(label="分类因子", arg_type="MultiOption", order=2, option_range=())
-    GroupWeight = Enum("等权", label="类别权重", arg_type="SingleOption", order=3)
+    #GroupWeight = Enum("等权", label="类别权重", arg_type="SingleOption", order=3)
     GroupMiss = Enum("忽略","全配", label="类别缺失", arg_type="SingleOption", order=4)
     WeightMiss = Enum("舍弃", "填充均值", label="权重缺失", arg_type="SingleOption", order=5)
     def __init__(self, ft=None, sys_args={}, config_file=None, **kwargs):
@@ -31,7 +31,7 @@ class _WeightAllocation(__QS_Object__):
         if self._FT is not None:
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
             self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=1))
-            self.add_trait("GroupFactor", Enum(*self._FT.FactorNames, arg_type="MultiOption", label="类别因子", order=2, option_range=("等权", )+tuple(DefaultNumFactorList)))
+            self.GroupFactors.option_range = tuple(self._FT.FactorNames)
             self.add_trait("GroupWeight", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="类别权重", order=3))
 
 # 投资组合策略
@@ -51,6 +51,8 @@ class PortfolioStrategy(Strategy):
         self.LongWeightAlloction = _WeightAllocation(ft=self._FT)
         self.ShortWeightAlloction = _WeightAllocation(ft=self._FT)
         return super().__QS_initArgs__()
+    def __setstate__(self, state):
+        self.__dict__.update(state)
     @on_trait_change("TargetAccount")
     def _on_TargetAccount_changed(self, obj, name, old, new):
         if (self.TargetAccount is not None) and (self.TargetAccount not in self.Accounts): self.Accounts.append(self.TargetAccount)
@@ -229,9 +231,9 @@ class _Filter(__QS_Object__):
     """筛选"""
     SignalType = Enum("多头信号", "空头信号", label="信号类型", arg_type="SingleOption", order=0)
     IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=1)
-    TargetFactor = Enum(None, label="目标因子", arg_type="SingleOption", order=2)
+    #TargetFactor = Enum(None, label="目标因子", arg_type="SingleOption", order=2)
     FactorOrder = Enum("降序", "升序", label="排序方向", arg_type="SingleOption", order=3)
-    FilterType = Enum("定量", "定比", "定量&定比", label="筛选方式", arg_type="SingleOption", order=4)
+    FiltrationType = Enum("定量", "定比", "定量&定比", label="筛选方式", arg_type="SingleOption", order=4)
     FilterNum = Int(30, label="筛选数目", arg_type="Integer", order=5)
     GroupFactors = List(label="分类因子", arg_type="MultiOption", order=6, option_range=())
     TurnoverBuffer = Instance(_TurnoverBuffer, arg_type="ArgObject", label="换手缓冲", order=7)
@@ -242,37 +244,40 @@ class _Filter(__QS_Object__):
         self.TurnoverBuffer = _TurnoverBuffer()
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
         self.add_trait("TargetFactor", Enum(*DefaultNumFactorList, label="目标因子", arg_type="SingleOption", order=2))
-        self.add_trait("GroupFactors", List(arg_type="MultiOption", label="类别因子", order=6, option_range=tuple(self._FT.FactorNames)))
-    @on_trait_change("FilterType")
-    def _on_FilterType_changed(self, obj, name, old, new):
-        if new=='定量':
+        self.GroupFactors.option_range = tuple(self._FT.FactorNames)
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+    @on_trait_change("FiltrationType")
+    def _on_FiltrationType_changed(self, obj, name, old, new):
+        if new=="定量":
             if "FilterUpLimit" in self.ArgNames:
                 self.remove_trait("FilterUpLimit")
                 self.remove_trait("FilterDownLimit")
             if "FilterNum" not in self.ArgNames:
                 self.add_trait("FilterNum", Int(30, label="筛选数目", arg_type="Integer", order=5))
-        elif new=='定比':
+        elif new=="定比":
             if "FilterNum" in self.ArgNames:
                 self.remove_trait("FilterNum")
             if "FilterUpLimit" not in self.ArgNames:
                 self.add_trait("FilterUpLimit", Float(0.1, label="筛选上限", arg_type="Double", order=5.1))
                 self.add_trait("FilterDownLimit", Float(0.0, label="筛选下限", arg_type="Double", order=5.2))
-        else:
+        elif new=="定量&定比":
             if "FilterNum" not in self.ArgNames:
                 self.add_trait("FilterNum", Int(30, label="筛选数目", arg_type="Integer", order=5))
             if "FilterUpLimit" not in self.ArgNames:
                 self.add_trait("FilterUpLimit", Float(0.1, label="筛选上限", arg_type="Double", order=5.1))
                 self.add_trait("FilterDownLimit", Float(0.0, label="筛选下限", arg_type="Double", order=5.2))
+
 class HierarchicalFiltrationStrategy(PortfolioStrategy):
-    FilterLevel = Int(1, label="筛选层数", arg_type="Integer", order=8)
+    FiltrationLevel = Int(1, label="筛选层数", arg_type="Integer", order=8)
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
         self.add_trait("Level0", Instance(_Filter, label="第0层", arg_type="ArgObject", order=9))
         self.Level0 = _Filter(ft=self._FT)
         self.LongWeightAlloction.ReAllocWeight = True
         self.ShortWeightAlloction.ReAllocWeight = True
-    @on_trait_change("FilterLevel")
-    def on_FilterLevel_changed(self, obj, name, old, new):
+    @on_trait_change("FiltrationLevel")
+    def on_FiltrationLevel_changed(self, obj, name, old, new):
         ArgNames = self.ArgNames
         if new>old:# 增加了筛选层数
             for i in range(max(0, old), max(0, new)):
@@ -281,18 +286,20 @@ class HierarchicalFiltrationStrategy(PortfolioStrategy):
         elif new<old:# 减少了筛选层数
             for i in range(max(0, old)-1, max(0, new)-1, -1):
                 self.remove_trait("Level"+str(i))
+    def __setstate__(self, state):
+        self.__dict__.update(state)
     def _filtrateID(self, idt, ids, args):
         FactorData = self._FT.readData(dts=[idt], ids=ids, factor_names=[args.TargetFactor]).iloc[0,0,:]
         FactorData = FactorData[pd.notnull(FactorData)]
         if args.FactorOrder=='降序': FactorData = -FactorData
         FactorData = FactorData.sort_values(ascending=True)
-        if args.FilterType=='定比':
+        if args.FiltrationType=='定比':
             UpLimit = FactorData.quantile(args.FilterUpLimit)
             DownLimit = FactorData.quantile(args.FilterDownLimit)
             NewIDs = FactorData[(FactorData>=DownLimit) & (FactorData<=UpLimit)].index.tolist()
-        elif args.FilterType=='定量':
+        elif args.FiltrationType=='定量':
             NewIDs = FactorData.iloc[:args.FilterNum].index.tolist()
-        elif args.FilterType=='定量&定比':
+        elif args.FiltrationType=='定量&定比':
             UpLimit = FactorData.quantile(args.FilterUpLimit)
             DownLimit = FactorData.quantile(args.FilterDownLimit)
             NewIDs = FactorData.iloc[:args.FilterNum].index.intersection(FactorData[(FactorData>=DownLimit) & (FactorData<=UpLimit)].index).tolist()
@@ -305,13 +312,13 @@ class HierarchicalFiltrationStrategy(PortfolioStrategy):
         else:
             if self._AllShortSignals=={}: LastIDs = set()
             else: LastIDs = set(self._AllShortSignals[max(self._AllShortSignals)].index)
-        if args.FilterType=='定比':
+        if args.FiltrationType=='定比':
             UpLimit = FactorData.quantile(min(1.0, args.FilterUpLimit+args.TurnoverBuffer.FilterUpBuffer))
             DownLimit = FactorData.quantile(max(0.0, args.FilterDownLimit-args.TurnoverBuffer.FilterDownBuffer))
             NewIDs = LastIDs.intersection(FactorData[(FactorData>=DownLimit) & (FactorData<=UpLimit)].index)
-        elif args.FilterType=='定量':
+        elif args.FiltrationType=='定量':
             NewIDs = LastIDs.intersection(FactorData.iloc[:args.FilterNum+args.TurnoverBuffer.FilterNumBuffer].index)
-        elif args.FilterType=='定量&定比':
+        elif args.FiltrationType=='定量&定比':
             UpLimit = FactorData.quantile(min(1.0, args.FilterUpLimit+args.TurnoverBuffer.FilterUpBuffer))
             DownLimit = FactorData.quantile(max(0.0, args.FilterDownLimit-args.TurnoverBuffer.FilterDownBuffer))
             NewIDs = LastIDs.intersection(FactorData.iloc[:args.FilterNum+args.TurnoverBuffer.FilterNumBuffer].index).intersection(FactorData[(FactorData>=DownLimit) & (FactorData<=UpLimit)].index)
@@ -325,7 +332,7 @@ class HierarchicalFiltrationStrategy(PortfolioStrategy):
         return list(NewIDs)+FactorData.iloc[:(nSignalID-len(NewIDs))].index.tolist()
     def _genSignalIDs(self, idt, original_ids, signal_type):
         IDs = original_ids
-        for i in range(self.FilterLevel):
+        for i in range(self.FiltrationLevel):
             iArgs = self["第"+str(i)+"层"]
             if iArgs.SignalType!=signal_type: continue
             if iArgs.IDFilter:

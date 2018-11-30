@@ -4,7 +4,7 @@ import datetime as dt
 
 import pandas as pd
 import numpy as np
-from traits.api import Enum, ListStr, Float, Str, Int, Bool, Instance, on_trait_change
+from traits.api import Enum, ListStr, Float, Str, Int, Bool, Instance
 
 from QuantStudio import __QS_Error__, __QS_Object__
 from QuantStudio.BackTest.Strategy.StrategyModule import Account, cutDateTime
