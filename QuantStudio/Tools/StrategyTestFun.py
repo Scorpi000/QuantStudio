@@ -752,7 +752,7 @@ def loadCSVFileTimingSignal(csv_path):
         return FileSignals
     with open(csv_path) as CSVFile:
         FirstLine = CSVFile.readline().split(",")
-    if (len(FirstLine)!=2) or (DateStr2Datetime(FirstLine[1]) is not None):
+    if (len(FirstLine)!=2) or (FirstLine[1] is not None):
         file_type="横向排列"
     else:
         file_type="纵向排列"

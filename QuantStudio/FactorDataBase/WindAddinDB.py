@@ -11,10 +11,8 @@ import pandas as pd
 from traits.api import File, Str, Int, on_trait_change
 
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName
-from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.FileFun import readJSONFile, listDirFile
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
-from QuantStudio.Tools.DateTimeFun import getDateSeries, getDateTimeSeries
 from QuantStudio import __QS_Error__, __QS_MainPath__, __QS_LibPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable, _adjustDateTime
 

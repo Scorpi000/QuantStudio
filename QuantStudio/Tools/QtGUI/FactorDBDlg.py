@@ -9,6 +9,7 @@ from PyQt5.QtCore import pyqtSlot, QModelIndex
 from PyQt5.QtWidgets import QDialog, QTreeWidgetItem, QMessageBox, QInputDialog, QFileDialog
 from QuantStudio.Tools.QtGUI.Ui_FactorDBDlg import Ui_FactorDBDlg
 
+from QuantStudio.Tools.QtGUI.PreviewFactorDlg import PreviewDlg
 from QuantStudio.Tools.FileFun import listDirFile, loadCSVFactorData
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName
 from QuantStudio.Tools.DataTypeConversionFun import DataFrame2Series
@@ -108,15 +109,21 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
         if isTableSelected:
             SelectedTableName = SelectedItem.text(0)
             Description = self.FactorDB.getTable(SelectedTableName).getMetaData(key="Description")
-            QMessageBox.information(None, "描述信息", str(Description))
-            return 0
+            return QMessageBox.information(None, "描述信息", str(Description))
         isFactorSelected, SelectedItem = self.isBottomItemSelected()
         if isFactorSelected:
             SelectedFactorName = SelectedItem.text(0)
             SelectedTableName = SelectedItem.parent().text(0)
             Description = self.FactorDB.getTable(SelectedTableName).getFactorMetaData([SelectedFactorName], key="Description").iloc[0]
-            QMessageBox.information(None, "描述信息", str(Description))
-            return 0
+            return QMessageBox.information(None, "描述信息", str(Description))
+        return 0
+    @pyqtSlot()
+    def on_ViewButton_clicked(self):
+        isFactorSelected, SelectedItem = self.isBottomItemSelected()
+        if not isFactorSelected: return QMessageBox.critical(None, "错误", "请选择一个因子!")
+        Factor = self.FactorDB.getTable(SelectedItem.parent().text(0)).getFactor(SelectedItem.text(0))
+        Dlg = PreviewDlg(factor=Factor)
+        Dlg.exec_()
         return 0
     def renameTable(self, selected_item):
         OldTableName = selected_item.text(0)
@@ -124,8 +131,7 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
         NewTableName, isOk = QInputDialog.getText(self, "表名", "请输入表名", text=OldTableName)
         if (not isOk) or (OldTableName==NewTableName): return 0
         if NewTableName in self.FactorDB.TableNames:
-            QMessageBox.critical(None, "错误", "当前包含重名表!")
-            return 0
+            return QMessageBox.critical(None, "错误", "当前包含重名表!")
         # 调整其他关联区的数据
         try:
             self.FactorDB.renameTable(OldTableName, NewTableName)
@@ -140,8 +146,7 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
         NewFactorName, isOK = QInputDialog.getText(self, "因子名", "请输入因子名", text=OldFactorName)
         if (not isOK) or (OldFactorName==NewFactorName): return 0
         if NewFactorName in self.FactorDB.getTable(TableName).FactorNames:
-            QMessageBox.critical(None, "错误", "该表中包含重名因子!")
-            return 0
+            return QMessageBox.critical(None, "错误", "该表中包含重名因子!")
         try:
             self.FactorDB.renameFactor(TableName, OldFactorName, NewFactorName)
             selected_item.setText(0, NewFactorName)
@@ -265,6 +270,6 @@ if __name__=='__main__':
     WDB.connect()
     
     app = QApplication(sys.argv)
-    TestWindow = FactorDBDlg(WDB, None)
+    TestWindow = FactorDBDlg(HDB)
     TestWindow.show()
     sys.exit(app.exec_())

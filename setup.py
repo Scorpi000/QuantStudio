@@ -21,7 +21,7 @@ setuptools.setup(
     python_requires=">=3.5",
     scripts=[],
     package_data={
-    "QuantStudio": ["Matlab/*", "Lib/*", "Resource/*"]
+    "QuantStudio": ["Matlab/*", "Lib/*.py", "Lib/*.hdf5", "Resource/*"]
     },
     packages=setuptools.find_packages(),
     classifiers=[

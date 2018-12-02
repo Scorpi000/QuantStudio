@@ -11,7 +11,6 @@ from traits.api import Enum, Int, Str, Range, Bool
 
 from QuantStudio.Tools.AuxiliaryFun import searchNameInStrList
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
-from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio import __QS_Object__, __QS_Error__, __QS_LibPath__, __QS_MainPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable

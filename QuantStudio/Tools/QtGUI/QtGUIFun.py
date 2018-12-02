@@ -41,3 +41,35 @@ def showOutput(output, plot_engine="matplotlib"):
     elif plot_engine=="matplotlib": Dlg = MatplotlibResultDlg(None, output)
     Dlg.show()
     App.exec_()
+# 以 GUI 的方式查看因子库
+def showFactorDB(fdb):
+    from QuantStudio.Tools.QtGUI.FactorDBDlg import FactorDBDlg
+    App = QtWidgets.QApplication(sys.argv)
+    Dlg = FactorDBDlg(fdb)
+    Dlg.show()
+    App.exec_()
+# 以 GUI 的方式查看因子
+def showFactor(factor):
+    from QuantStudio.Tools.QtGUI.PreviewFactorDlg import PreviewDlg
+    App = QtWidgets.QApplication(sys.argv)
+    Dlg = PreviewDlg(factor)
+    Dlg.show()
+    App.exec_()
+# 以 GUI 的方式设置日期时间
+def setDateTime(dts=[], dates=[], times=[], ft=None):
+    from QuantStudio.Tools.QtGUI.DateTimeSetup import DateTimeSetupDlg
+    App = QtWidgets.QApplication(sys.argv)
+    Dlg = DateTimeSetupDlg(dts=dts, dates=dates, times=times, ft=ft)
+    Dlg.show()
+    App.exec_()
+    if Dlg.isChanged: return (Dlg.DateTimes, Dlg.Dates, Dlg.Times)
+    else: return (dts, dates, times)
+# 以 GUI 的方式设置 ID
+def setID(ids=[], ft=None):
+    from QuantStudio.Tools.QtGUI.IDSetup import IDSetupDlg
+    App = QtWidgets.QApplication(sys.argv)
+    Dlg = IDSetupDlg(ids=ids, ft=ft)
+    Dlg.show()
+    App.exec_()
+    if Dlg.isChanged: return Dlg.IDs
+    else: return ids

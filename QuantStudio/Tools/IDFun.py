@@ -9,11 +9,12 @@ from QuantStudio import __QS_Error__
 
 # 给A股ID添加后缀
 def suffixAShareID(ids):
-    if isinstance(ids,str):
+    if isinstance(ids, str):
         if (ids[0] == '6') or (ids[0] == 'T'):
             return ids+'.SH'
-        else:
+        elif (ids[0] == '0') or (ids[0] == '3'):
             return ids+'.SZ'
+        return ids
     else:
         NewIDs = []
         for iID in ids:

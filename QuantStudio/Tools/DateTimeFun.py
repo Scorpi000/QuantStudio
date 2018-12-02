@@ -5,26 +5,6 @@ import datetime as dt
 import numpy as np
 import pandas as pd
 
-# 日期字符串(20120202)转成datetime(timestamp)，如果不是日期字符串，则返回None, depreciated
-def DateStr2Datetime(date_str):
-    try:
-        return pd.datetime(int(date_str[0:4]),int(date_str[4:6]),int(date_str[6:8]))
-    except:
-        return None
-# datetime(timestamp)转成日期字符串(20120202), depreciated
-def Datetime2DateStr(date):
-    Year = date.year
-    Month = date.month
-    Day = date.day
-    if Month<10:
-        Month = '0'+str(Month)
-    else:
-        Month = str(Month)
-    if Day<10:
-        Day = '0'+str(Day)
-    else:
-        Day = str(Day)
-    return str(Year)+Month+Day
 # 截取日期序列, depreciated
 def cutDate(dates, start_date=None, end_date=None):
     if (start_date is None) and (end_date is None):
@@ -229,15 +209,15 @@ def getFinancialQuarterLastDateTime(dts):
 
 # 获取日期序列
 def getDateSeries(start_date, end_date):
-    return (start_date-dt.timedelta(1)) + np.array([dt.timedelta(1)] * ((end_date-start_date).days+1)).cumsum()
+    return ((start_date-dt.timedelta(1)) + np.array([dt.timedelta(1)] * ((end_date-start_date).days+1)).cumsum()).tolist()
 # 获取日内连续的时间序列, start_time, end_time, timedelta 是 datetime.time 对象
 def getTimeSeries(start_time, end_time, timedelta):
     TimeSeries = getDateTimeSeries(dt.datetime.combine(dt.date.today(), start_time), dt.datetime.combine(dt.date.today(), end_time), timedelta)
-    return np.array(tuple(map(lambda x: x.time(), TimeSeries)))
+    return list(map(lambda x: x.time(), TimeSeries))
 # 获取连续的时间点序列
 def getDateTimeSeries(start_dt, end_dt, timedelta):
     nDelta = int((end_dt-start_dt)/timedelta)+1
-    return (start_dt-timedelta)+np.array([timedelta]*nDelta).cumsum()
+    return ((start_dt-timedelta)+np.array([timedelta]*nDelta).cumsum()).tolist()
 if __name__=="__main__":
     import time
     #DateTimes = list(pd.date_range(dt.datetime(2018,1,1,9,30), dt.datetime(2018,2,1,15), freq="min"))

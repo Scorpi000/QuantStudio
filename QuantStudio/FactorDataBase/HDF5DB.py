@@ -32,24 +32,19 @@ class _FactorTable(FactorTable):
     def FactorNames(self):
         return self._DataType.index.tolist()
     def getFactorMetaData(self, factor_names=None, key=None):
-        if factor_names is None:
-            factor_names = self.FactorNames
-        elif set(factor_names).isdisjoint(self.FactorNames):
-            return super().getFactorMetaData(factor_names=factor_names, key=key)
+        if factor_names is None: factor_names = self.FactorNames
+        elif set(factor_names).isdisjoint(self.FactorNames): return super().getFactorMetaData(factor_names=factor_names, key=key)
         if key=="DataType": return self._DataType.loc[factor_names]
         with self._FactorDB._DataLock:
             MetaData = {}
             for iFactorName in factor_names:
                 if iFactorName in self.FactorNames:
                     with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+iFactorName+"."+self._Suffix) as File:
-                        if key is None:
-                            MetaData[iFactorName] = pd.Series(File.attrs)
-                        elif key in File.attrs:
-                            MetaData[iFactorName] = File.attrs[key]
-        if key is None:
-            return pd.DataFrame(MetaData).loc[:, factor_names]
-        else:
-            return pd.Series(MetaData).loc[factor_names]
+                        if key is None: MetaData[iFactorName] = pd.Series(File.attrs)
+                        elif key in File.attrs: MetaData[iFactorName] = File.attrs[key]
+        if not MetaData: return super().getFactorMetaData(factor_names=factor_names, key=key)
+        if key is None: return pd.DataFrame(MetaData).loc[:, factor_names]
+        else: return pd.Series(MetaData).loc[factor_names]
     def getID(self, ifactor_name=None, idt=None, args={}):
         if ifactor_name is None: ifactor_name = self.FactorNames[0]
         with self._FactorDB._DataLock:

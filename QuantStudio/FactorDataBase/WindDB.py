@@ -182,7 +182,7 @@ class _ConstituentTable(_DBTable):
         for iStartDate, iEndDate in Data:
             iStartDT = dt.datetime.strptime(iStartDate, "%Y%m%d")
             if iEndDate is None: iEndDT = (dt.datetime.now() if end_dt is None else end_dt)
-            DateTimes = DateTimes.union(set(getDateTimeSeries(start_dt=iStartDT, end_dt=iEndDT, timedelta=dt.timedelta(1))))
+            DateTimes = DateTimes.union(getDateTimeSeries(start_dt=iStartDT, end_dt=iEndDT, timedelta=dt.timedelta(1)))
         return sorted(DateTimes)
     def __QS_readData__(self, factor_names=None, ids=None, dts=None, args={}):
         if dts: StartDate, EndDate = dts[0].date(), dts[-1].date()
@@ -392,10 +392,8 @@ class WindDB(FactorDB):
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d")))]
     # 给定指数名称和ID，获取指定日当前或历史上的指数中的股票ID，is_current=True:获取指定日当天的ID，False:获取截止指定日历史上出现的ID
     def getID(self, index_id="全体A股", date=None, is_current=True):
-        if date is None:
-            date = dt.date.today()
-        if index_id=="全体A股":
-            return self._getAllAStock(date=date,is_current=is_current)
+        if date is None: date = dt.date.today()
+        if index_id=="全体A股": return self._getAllAStock(date=date, is_current=is_current)
         # 获取指数在数据库内部的证券 ID
         SQLStr = 'SELECT f16_0001 FROM {Prefix}tb_object_0001 where f1_0001=\'{IndexID}\''
         IndexEquityID = self.fetchall(SQLStr.format(Prefix=self.TablePrefix, IndexID=index_id))[0][0]

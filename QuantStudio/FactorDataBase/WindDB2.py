@@ -465,7 +465,7 @@ class _ConstituentTable(_DBTable):
                 iStartDT = dt.datetime.strptime(iStartDate, "%Y%m%d")
                 if iEndDate is None: iEndDT = (dt.datetime.now() if end_dt is None else end_dt)
                 else: iEndDT = dt.datetime.strptime(iEndDate, "%Y%m%d")
-                DateTimes = DateTimes.union(set(getDateTimeSeries(start_dt=iStartDT, end_dt=iEndDT, timedelta=dt.timedelta(1))))
+                DateTimes = DateTimes.union(getDateTimeSeries(start_dt=iStartDT, end_dt=iEndDT, timedelta=dt.timedelta(1)))
             return sorted(DateTimes)
         SQLStr = "SELECT MIN("+DBTableName+"."+FieldDict[self._InDateField]+") "# 纳入日期
         SQLStr += "FROM "+DBTableName
@@ -476,7 +476,7 @@ class _ConstituentTable(_DBTable):
             StartDT = max((StartDT, start_dt))
         if end_dt is None:
             end_dt = dt.datetime.combine(dt.date.today(), dt.time(0))
-        return list(getDateTimeSeries(start_dt=start_dt, end_dt=end_dt, timedelta=dt.timedelta(1)))
+        return getDateTimeSeries(start_dt=start_dt, end_dt=end_dt, timedelta=dt.timedelta(1))
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
@@ -555,7 +555,7 @@ class _MappingTable(_DBTable):
         StartDT = dt.datetime.strptime(self._FactorDB.fetchall(SQLStr)[0][0], "%Y%m%d")
         if start_dt is not None: StartDT = max((StartDT, start_dt))
         if end_dt is None: end_dt = dt.datetime.combine(dt.date.today(), dt.time(0))
-        return list(getDateTimeSeries(start_dt=start_dt, end_dt=end_dt, timedelta=dt.timedelta(1)))
+        return getDateTimeSeries(start_dt=start_dt, end_dt=end_dt, timedelta=dt.timedelta(1))
         # 时间点默认是当天, ID 默认是 [000001.SH], 特别参数: 回溯天数
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
@@ -607,6 +607,12 @@ class _IndustryTable(_DBTable):
     @property
     def FactorNames(self):
         return ["行业名称", "行业代码"]
+    def getFactorMetaData(self, factor_names=None, key=None):
+        if factor_names is None: factor_names = self.FactorNames
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        if key=="DataType": return self._DataType.loc[factor_names]
+        elif key is None: return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType")})
+        else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
     # 返回在给定时点 idt 的有行业分类的证券
     # 如果 idt 为 None, 将返回所有曾经有行业分类的证券
     # 忽略 ifactor_name
@@ -659,7 +665,7 @@ class _IndustryTable(_DBTable):
                 iStartDT = dt.datetime.strptime(iStartDate, "%Y%m%d")
                 if iEndDate is None: iEndDT = (dt.datetime.now() if end_dt is None else end_dt)
                 else: iEndDT = dt.datetime.strptime(iEndDate, "%Y%m%d")
-                DateTimes = DateTimes.union(set(getDateTimeSeries(start_dt=iStartDT, end_dt=iEndDT, timedelta=dt.timedelta(1))))
+                DateTimes = DateTimes.union(getDateTimeSeries(start_dt=iStartDT, end_dt=iEndDT, timedelta=dt.timedelta(1)))
             return sorted(DateTimes)
         SQLStr = "SELECT MIN("+DBTableName+"."+FieldDict[self._InDateField]+") "# 纳入日期
         SQLStr += "FROM "+DBTableName
@@ -667,7 +673,7 @@ class _IndustryTable(_DBTable):
         StartDT = dt.datetime.strptime(self._FactorDB.fetchall(SQLStr)[0][0], "%Y%m%d")
         if start_dt is not None: StartDT = max((StartDT, start_dt))
         if end_dt is None: end_dt = dt.datetime.combine(dt.date.today(), dt.time(0))
-        return list(getDateTimeSeries(start_dt=start_dt, end_dt=end_dt, timedelta=dt.timedelta(1)))
+        return getDateTimeSeries(start_dt=start_dt, end_dt=end_dt, timedelta=dt.timedelta(1))
     def __QS_genGroupInfo__(self, factors, operation_mode):
         LevelGroup = {}
         StartDT = dt.datetime.now()
@@ -1666,6 +1672,13 @@ class WindDB2(WindDB):
                 return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=args)")
         raise __QS_Error__("因子库目前尚不支持表: '%s'" % table_name)
     # -----------------------------------------数据提取---------------------------------
+    # 给定起始日期和结束日期, 获取交易所交易日期, 目前仅支持："SSE", "SZSE"
+    def getTradeDay(self, start_date=None, end_date=None, exchange="SSE"):
+        if start_date is None: start_date = dt.datetime(1900, 1, 1)
+        if end_date is None: end_date = dt.datetime.today()
+        if exchange in ("SSE", "SZSE"): Dates = self.getTable("中国A股交易日历").getDateTime(iid=exchange, start_dt=start_date, end_dt=end_date)
+        else: raise __QS_Error__("不支持交易所: '%s' 的交易日序列!" % exchange)
+        return list(map(lambda x: x.date(), Dates))
     # 获取指定日当前在市或者历史上出现过的全体 A 股 ID
     def _getAllAStock(self, date, is_current=True):
         if is_current:
@@ -1675,26 +1688,9 @@ class WindDB2(WindDB):
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d")))]
     # 获取指定日当前或历史上的指数成份股ID, is_current=True: 获取指定日当天的ID, False:获取截止指定日历史上出现的 ID
     def getID(self, index_id="全体A股", date=None, is_current=True):
-        if date is None:
-            date = dt.date.today()
-        if index_id=="全体A股":
-            return self._getAllAStock(date=date, is_current=is_current)
-        # 查询该指数所在的表
-        for iTable in table_vs_index:
-            if index_id in table_vs_index[iTable]:
-                TargetTable = iTable
-                break
-        else:
-            raise __QS_Error__("不支持提取指数代码为：%s的成份股!")
-        TargetWindTable = self.TableName2DBTableName([TargetTable])[TargetTable]
-        WindFieldNames = self.FieldName2DBFieldName(table=TargetTable,fields=["指数Wind代码","成份股Wind代码","纳入日期","剔除日期","最新标志"])
-        # 获取指数中的股票ID
-        SQLStr = "SELECT "+WindFieldNames["成份股Wind代码"]+" FROM {Prefix}"+TargetWindTable+" WHERE "+WindFieldNames["指数Wind代码"]+"='"+index_id+"'"
-        SQLStr += " AND "+WindFieldNames["纳入日期"]+"<='"+date.strftime("%Y%m%d")+"'"# 纳入日期在date之前
-        if is_current:
-            SQLStr += " AND ("+WindFieldNames["最新标志"]+"=1 OR "+WindFieldNames["剔除日期"]+">'"+date.strftime("%Y%m%d")+"')"# 剔除日期在date之后
-        SQLStr += " ORDER BY "+WindFieldNames["成份股Wind代码"]
-        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix))]
+        if date is None: date = dt.date.today()
+        if index_id=="全体A股": return self._getAllAStock(date=date, is_current=is_current)
+        else: raise __QS_Error__("不支持提取指数代码为：'%s' 的成份股!" % index_id)
     # --------------------------------------------信息转换-----------------------------------
     # 获取行业名称和Wind内部查询代码
     def getIndustryDBInnerID(self,industry_class_name="中信行业",level=1):
