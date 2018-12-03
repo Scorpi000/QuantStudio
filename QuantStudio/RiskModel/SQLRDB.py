@@ -7,7 +7,7 @@ import datetime as dt
 import numpy as np
 import pandas as pd
 
-from QuantStudio import __QS_Error__, __QS_LibPath__
+from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.QSObjects import QSSQLObject
 from .RiskDataBase import RiskDataBase, FactorRDB
@@ -17,7 +17,7 @@ class SQLRDB(QSSQLObject, RiskDataBase):
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._TableAdditionalCols = {}# {表名:[额外的字段名]}
         self._Prefix = "QSR_"
-        super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"SQLRDBConfig.json" if config_file is None else config_file), **kwargs)
+        super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"SQLRDBConfig.json" if config_file is None else config_file), **kwargs)
         self.Name = "SQLRDB"
     def connect(self):
         super().connect()
@@ -122,7 +122,7 @@ class SQLFRDB(QSSQLObject, FactorRDB):
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._TableAdditionalCols = {}# {表名:[额外的字段名]}
         self._Prefix = "QSFR_"
-        super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"SQLRDBConfig.json" if config_file is None else config_file), **kwargs)
+        super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"SQLRDBConfig.json" if config_file is None else config_file), **kwargs)
         self.Name = "SQLRDB"
     def connect(self):
         super().connect()

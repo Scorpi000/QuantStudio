@@ -1,20 +1,20 @@
 # coding=utf-8
 """Wind 量化研究数据库"""
+import re
 import os
 import shelve
 import datetime as dt
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, Int, Str, Range, Bool, List, ListStr, Dict, Function
+from traits.api import Enum, Int, Str, Range, Bool, List, ListStr, Dict, Function, Password
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
-from QuantStudio.Tools.AuxiliaryFun import searchNameInStrList
-from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
-from QuantStudio import __QS_Object__, __QS_Error__, __QS_LibPath__, __QS_MainPath__
-from QuantStudio.FactorDataBase.WindDB import WindDB, _DBTable, _adjustDateTime
+from QuantStudio import __QS_Object__, __QS_Error__, __QS_LibPath__, __QS_MainPath__, __QS_ConfigPath__
+from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
+from QuantStudio.FactorDataBase.FDBFun import updateInfo, adjustDateTime
 
 def RollBackNPeriod(report_date, n_period):
     Date = report_date
@@ -88,6 +88,36 @@ def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_d
 def _DefaultOperator(f, idt, iid, x, args):
     return np.nan
 
+class _DBTable(FactorTable):
+    def getMetaData(self, key=None):
+        TableInfo = self._FactorDB._TableInfo.loc[self.Name]
+        if key is None:
+            return TableInfo
+        else:
+            return TableInfo.get(key, None)
+    @property
+    def FactorNames(self):
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        return FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()
+    def getFactorMetaData(self, factor_names=None, key=None):
+        if factor_names is None:
+            factor_names = self.FactorNames
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        if key=="DataType":
+            if hasattr(self, "_DataType"): return self._DataType.loc[factor_names]
+            MetaData = FactorInfo["DataType"].loc[factor_names]
+            for i in range(MetaData.shape[0]):
+                iDataType = MetaData.iloc[i].lower()
+                if iDataType.find("number")!=-1: MetaData.iloc[i] = "double"
+                else: MetaData.iloc[i] = "string"
+            return MetaData
+        elif key=="Description": return FactorInfo["Description"].loc[factor_names]
+        elif key is None:
+            return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType"),
+                                 "Description":self.getFactorMetaData(factor_names, key="Description")})
+        else:
+            return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
+
 class _CalendarTable(_DBTable):
     """交易日历因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
@@ -114,8 +144,8 @@ class _CalendarTable(_DBTable):
     # 如果 idt 为 None, 将返回表中的所有交易所
     # 忽略 ifactor_name
     def getID(self, ifactor_name=None, idt=None, args={}):
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._DateField, self._IDField])
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._DateField, self._IDField]]
         SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[self._IDField]+" "
         SQLStr += "FROM "+DBTableName+" "
         if idt is not None: SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._DateField]+"='"+idt.strftime("%Y%m%d")+"' "
@@ -125,8 +155,8 @@ class _CalendarTable(_DBTable):
     # 如果 iid 为 None, 将返回表中有记录数据的时间点序列
     # 忽略 ifactor_name
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._DateField, self._IDField])
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._IDField, self._DateField]]
         SQLStr = "SELECT "+DBTableName+"."+FieldDict[self._DateField]+" "
         SQLStr += "FROM "+DBTableName+" "
         if iid is not None: SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._IDField]+"='"+iid+"' "
@@ -136,8 +166,8 @@ class _CalendarTable(_DBTable):
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._DateField]
         return list(map(lambda x: dt.datetime.strptime(x[0], "%Y%m%d"), self._FactorDB.fetchall(SQLStr)))
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._DateField, self._IDField])
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._DateField, self._IDField]]
         SQLStr = "SELECT "+DBTableName+"."+FieldDict[self._DateField]+", "
         SQLStr += DBTableName+"."+FieldDict[self._IDField]+" "
         SQLStr += "FROM "+DBTableName+" "
@@ -153,7 +183,7 @@ class _CalendarTable(_DBTable):
         raw_data["交易日"] = 1
         Data = pd.Panel({"交易日":raw_data.set_index(["日期", "ID"])["交易日"].unstack()}).loc[factor_names]
         Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Data.major_axis]
-        return _adjustDateTime(Data, dts, fillna=True, value=0)
+        return adjustDateTime(Data, dts, fillna=True, value=0)
 
 class _MarketTable(_DBTable):
     """行情因子表"""
@@ -185,8 +215,8 @@ class _MarketTable(_DBTable):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         return FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()+self._DateFields
     def getCondition(self, icondition, ids=None, dts=None):
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._DateField, self._IDField, icondition])
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._DateField, self._IDField, icondition]]
         SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[icondition]+" "
         SQLStr += "FROM "+DBTableName+" "
         if ids is not None:
@@ -202,8 +232,8 @@ class _MarketTable(_DBTable):
     # 如果 idt 为 None, 将返回所有有历史数据记录的 ID
     # 忽略 ifactor_name
     def getID(self, ifactor_name=None, idt=None, args={}):
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self.DateField, self._IDField]+self._ConditionFields)
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self.DateField, self._IDField]+self._ConditionFields]
         SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[self._IDField]+" "
         SQLStr += "FROM "+DBTableName+" "
         if idt is not None: SQLStr += "WHERE "+DBTableName+"."+FieldDict[self.DateField]+"='"+idt.strftime("%Y%m%d")+"' "
@@ -220,8 +250,8 @@ class _MarketTable(_DBTable):
     # 如果 iid 为 None, 将返回所有有历史数据记录的时间点
     # 忽略 ifactor_name
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self.DateField, self._IDField]+self._ConditionFields)
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self.DateField, self._IDField]+self._ConditionFields]
         SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[self.DateField]+" "
         SQLStr += "FROM "+DBTableName+" "
         if iid is not None: SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._IDField]+"='"+iid+"' "
@@ -259,8 +289,8 @@ class _MarketTable(_DBTable):
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self.DateField, self._IDField]+self._ConditionFields+factor_names)
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self.DateField, self._IDField]+self._ConditionFields+factor_names]
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         # 形成SQL语句, 日期, ID, 因子数据
         SQLStr = "SELECT "+DBTableName+"."+FieldDict[self.DateField]+", "
@@ -329,7 +359,7 @@ class _DividendTable(_DBTable):
     # 如果 idt 为 None, 将返回所有有历史数据记录的 ID
     # 忽略 ifactor_name
     def getID(self, ifactor_name=None, idt=None, args={}):
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         SQLStr = "SELECT DISTINCT "+DBTableName+"."+self._IDField+" "
         SQLStr += "FROM "+DBTableName+" "
         if idt is not None: SQLStr += "WHERE "+DBTableName+"."+self._ExDateField+"='"+idt.strftime("%Y%m%d")+"' "
@@ -341,7 +371,7 @@ class _DividendTable(_DBTable):
     # 如果 iid 为 None, 将返回所有有历史数据记录的时间点
     # 忽略 ifactor_name
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         SQLStr = "SELECT DISTINCT "+DBTableName+"."+self._ExDateField+" "
         SQLStr += "FROM "+DBTableName+" "
         SQLStr += "WHERE "+DBTableName+"."+self._ExDateField+" IS NOT NULL "
@@ -353,7 +383,7 @@ class _DividendTable(_DBTable):
         return list(map(lambda x: dt.datetime.strptime(x[0], "%Y%m%d"), self._FactorDB.fetchall(SQLStr)))
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         # 形成SQL语句, 日期, ID, 因子数据
         SQLStr = "SELECT "+DBTableName+"."+self._ExDateField+", "
@@ -395,8 +425,8 @@ class _ConstituentTable(_DBTable):
     @property
     def FactorNames(self):
         if not hasattr(self, "_IndexIDs"):# [指数 ID]
-            DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
-            FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._GroupField])
+            DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+            FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._GroupField]]
             SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[self._GroupField]+" "# 指数 ID
             SQLStr += "FROM "+DBTableName+" "
             SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._GroupField]
@@ -417,10 +447,10 @@ class _ConstituentTable(_DBTable):
     # 如果 idt 为 None, 将返回指数 ifactor_name 的所有历史成份股
     # 如果 ifactor_name 为 None, 返回数据库表中有记录的所有 ID
     def getID(self, ifactor_name=None, idt=None, args={}):
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         Fields = [self._IDField, self._GroupField, self._InDateField, self._OutDateField]
         if self._CurSignField: Fields.append(self._CurSignField)
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=Fields)
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[Fields]
         SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[self._IDField]# ID
         SQLStr += "FROM "+DBTableName+" "
         if ifactor_name is not None:
@@ -441,10 +471,10 @@ class _ConstituentTable(_DBTable):
     # 如果 iid 为 None, 将返回指数 ifactor_name 的有记录数据的时间点序列
     # 如果 ifactor_name 为 None, 返回数据库表中有记录的所有时间点
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         Fields = [self._IDField, self._GroupField, self._InDateField, self._OutDateField]
         if self._CurSignField: Fields.append(self._CurSignField)
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=Fields)
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[Fields]
         if iid is not None:
             SQLStr = "SELECT "+DBTableName+"."+FieldDict[self._InDateField]+" "# 纳入日期
             SQLStr += DBTableName+"."+FieldDict[self._OutDateField]+" "# 剔除日期
@@ -479,10 +509,10 @@ class _ConstituentTable(_DBTable):
         return getDateTimeSeries(start_dt=start_dt, end_dt=end_dt, timedelta=dt.timedelta(1))
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         Fields = [self._GroupField, self._IDField, self._InDateField, self._OutDateField]
         if self._CurSignField: Fields.append(self._CurSignField)
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=Fields)
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[Fields]
         # 指数中成份股 ID, 指数证券 ID, 纳入日期, 剔除日期, 最新标志
         SQLStr = "SELECT "+DBTableName+"."+FieldDict[self._GroupField]+", "# 指数证券 ID
         SQLStr += DBTableName+"."+FieldDict[self._IDField]+", "# ID
@@ -519,7 +549,7 @@ class _ConstituentTable(_DBTable):
         Data = Data.loc[factor_names, :, ids]
         Data.major_axis = [dt.datetime.combine(iDate, dt.time(0)) for iDate in Data.major_axis]
         Data.fillna(value=0, inplace=True)
-        return _adjustDateTime(Data, dts, fillna=True, method="bfill")
+        return adjustDateTime(Data, dts, fillna=True, method="bfill")
 class _MappingTable(_DBTable):
     """映射因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
@@ -534,8 +564,8 @@ class _MappingTable(_DBTable):
     # 如果 idt 为 None, 将返回所有有记录的 ID
     # 忽略 ifactor_name
     def getID(self, ifactor_name=None, idt=None, args={}):
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._IDField, self._StartDateField, self._EndDateField])
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._IDField, self._StartDateField, self._EndDateField]]
         SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[self._IDField]+" "# ID
         SQLStr += "FROM "+DBTableName+" "
         if idt is not None:
@@ -547,8 +577,8 @@ class _MappingTable(_DBTable):
     # 如果 idt 为 None, 将以表中最小的起始日期作为起点
     # 忽略 ifactor_name    
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._IDField, self._StartDateField])
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._IDField, self._StartDateField]]
         SQLStr = "SELECT MIN("+DBTableName+"."+FieldDict[self._StartDateField]+") "# 起始日期
         SQLStr += "FROM "+DBTableName
         if iid is not None: SQLStr += " WHERE "+DBTableName+"."+FieldDict[self._IDField]+"='"+iid+"'"
@@ -559,8 +589,8 @@ class _MappingTable(_DBTable):
         # 时间点默认是当天, ID 默认是 [000001.SH], 特别参数: 回溯天数
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name,fields=[self._IDField, self._StartDateField, self._EndDateField]+factor_names)
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._IDField, self._StartDateField, self._EndDateField]+factor_names]
         SQLStr = "SELECT "+DBTableName+"."+FieldDict[self._IDField]+", "
         SQLStr += DBTableName+"."+FieldDict[self._StartDateField]+", "
         SQLStr += DBTableName+"."+FieldDict[self._EndDateField]+", "
@@ -623,8 +653,8 @@ class _IndustryTable(_DBTable):
         SubSQLStr += "FROM "+self._FactorDB.TablePrefix+"AShareIndustriesCode "
         SubSQLStr += "WHERE "+self._FactorDB.TablePrefix+"AShareIndustriesCode.industriescode LIKE '"+self._IndustryCodeStart+"%' "
         SubSQLStr += "AND "+self._FactorDB.TablePrefix+"AShareIndustriesCode.levelnum="+str(IndustryLevel+1)
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._IDField, self._IndustryCodeField, self._InDateField, self._OutDateField])
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._IDField, self._IndustryCodeField, self._InDateField, self._OutDateField]]
         SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[self._IDField]# ID
         SQLStr += "FROM "+DBTableName+" "
         SQLStr += "WHERE "+self._SubStrFun+"("+DBTableName+"."+FieldDict[self._IndustryCodeField]+",1,"+str(2*(IndustryLevel+1))+") IN ("+SubSQLStr+") "
@@ -645,8 +675,8 @@ class _IndustryTable(_DBTable):
         SubSQLStr += "FROM "+self._FactorDB.TablePrefix+"AShareIndustriesCode "
         SubSQLStr += "WHERE "+self._FactorDB.TablePrefix+"AShareIndustriesCode.industriescode LIKE '"+self._IndustryCodeStart+"%' "
         SubSQLStr += "AND "+self._FactorDB.TablePrefix+"AShareIndustriesCode.levelnum="+str(IndustryLevel+1)
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._IDField, self._IndustryCodeField, self._InDateField, self._OutDateField])
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._IDField, self._IndustryCodeField, self._InDateField, self._OutDateField]]
         if iid is not None:
             SQLStr = "SELECT "+DBTableName+"."+FieldDict[self._InDateField]+" "# 纳入日期
             SQLStr += DBTableName+"."+FieldDict[self._OutDateField]+" "# 剔除日期
@@ -705,8 +735,8 @@ class _IndustryTable(_DBTable):
         SQLStr += "AND "+self._FactorDB.TablePrefix+"AShareIndustriesCode.levelnum="+str(IndustryLevel+1)
         IndustryCodeName = {iCode:iName for iCode, iName in self._FactorDB.fetchall(SQLStr)}
         StartDate, EndDate = dts[0].date(), dts[-1].date()
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._IDField, self._IndustryCodeField, self._InDateField, self._OutDateField])
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._IDField, self._IndustryCodeField, self._InDateField, self._OutDateField]]
         # ID, 行业分类代码, 纳入日期, 剔除日期
         SQLStr = "SELECT "+DBTableName+"."+FieldDict[self._IDField]+", "
         SQLStr += self._SubStrFun+"("+DBTableName+"."+FieldDict[self._IndustryCodeField]+",1,"+str(2*(IndustryLevel+1))+"), "
@@ -747,8 +777,8 @@ class _FeatureTable(_DBTable):
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
     def getID(self, ifactor_name=None, idt=None, args={}):
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._IDField])
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._IDField]]
         SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[self._IDField]+" "# ID
         SQLStr += "FROM "+DBTableName+" "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._IDField]
@@ -757,8 +787,8 @@ class _FeatureTable(_DBTable):
         return []
         # 时间点默认是当天, ID 默认是 [000001.SH], 特别参数: 回溯天数
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._IDField]+factor_names)
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._IDField]+factor_names]
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         # 形成SQL语句, ID, 因子数据
         SQLStr = "SELECT "+DBTableName+"."+FieldDict[self._IDField]+", "
         for iField in factor_names: SQLStr += DBTableName+"."+FieldDict[iField]+", "
@@ -796,8 +826,8 @@ class _FinancialTable(_DBTable):
     # 如果 idt 为 None, 将返回所有有财务报告的 ID
     # 忽略 ifactor_name
     def getID(self, ifactor_name=None, idt=None, args={}):
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._IDField, self._ANNDateField])
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._IDField, self._ANNDateField]]
         SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[self._IDField]+" "# ID
         SQLStr += "FROM "+DBTableName+" "
         if idt is not None: SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._ANNDateField]+"<='"+idt.strftime("%Y%m%d")+"' "
@@ -807,8 +837,8 @@ class _FinancialTable(_DBTable):
     # 如果 iid 为 None, 将返回所有有财务报告的公告时点
     # 忽略 ifactor_name
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._ANNDateField, self._IDField])
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._IDField, self._ANNDateField]]
         SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[self._ANNDateField]+" "
         SQLStr += "FROM "+DBTableName+" "
         if iid is not None: SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._IDField]+"='"+iid+"' "
@@ -818,8 +848,8 @@ class _FinancialTable(_DBTable):
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._ANNDateField]
         return list(map(lambda x: dt.datetime.strptime(x[0], "%Y%m%d"), self._FactorDB.fetchall(SQLStr)))
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._IDField, self._ANNDateField, self._ReportDateField, self._ReportTypeField]+factor_names)
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._IDField, self._ANNDateField, self._ReportDateField, self._ReportTypeField]+factor_names]
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         if self._ReportTypeField is not None:
             # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
             SQLStr = "SELECT "+DBTableName+"."+FieldDict[self._IDField]+", "
@@ -867,7 +897,7 @@ class _FinancialTable(_DBTable):
         Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Dates]
         Data.minor_axis = factor_names
         Data = Data.swapaxes(0, 2)
-        Data = _adjustDateTime(Data, dts, fillna=True, method="pad")
+        Data = adjustDateTime(Data, dts, fillna=True, method="pad")
         Data = Data.loc[:, :, ids]
         return Data
     # 检索最大报告期的位置
@@ -1194,8 +1224,8 @@ class _AnalystConsensusTable(_DBTable):
         CalcType = args.get("计算方法", self.CalcType)
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._IDField, self._DateField, self._ReportDateField, self._PeriodField]+factor_names)
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._IDField, self._DateField, self._ReportDateField, self._PeriodField]+factor_names]
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         # 形成SQL语句, 日期, ID, 报告期, 数据
         SQLStr = 'SELECT '+DBTableName+"."+FieldDict[self._DateField]+", "
         SQLStr += DBTableName+"."+FieldDict[self._IDField]+", "
@@ -1365,8 +1395,8 @@ class _AnalystRatingDetailTable(_DBTable):
         AdditiveFields = args.get("附加字段", self.AdditionalFields)
         DeduplicationFields = args.get("去重字段", self.Deduplication)
         AllFields = list(set(factor_names+AdditiveFields+DeduplicationFields))
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._IDField, self._DateField]+AllFields)
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._IDField, self._DateField]+AllFields]
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         # 形成SQL语句, 日期, ID, 其他字段
         SQLStr = "SELECT "+DBTableName+"."+FieldDict[self._DateField]+", "
         SQLStr += DBTableName+"."+FieldDict[self._IDField]+", "
@@ -1457,8 +1487,8 @@ class _AnalystEstDetailTable(_DBTable):
         AdditiveFields = args.get("附加字段", self.AdditionalFields)
         DeduplicationFields = args.get("去重字段", self.Deduplication)
         AllFields = list(set(factor_names+AdditiveFields+DeduplicationFields))
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._IDField, self._DateField, self._ReportDateField, self._CapitalField]+AllFields)
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._IDField, self._DateField, self._ReportDateField, self._CapitalField]+AllFields]
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         # 形成SQL语句, 日期, ID, 报告期, 研究机构名称, 分析师名称, 预测基准股本(万股), 因子数据
         SQLStr = "SELECT "+DBTableName+"."+FieldDict[self._DateField]+", "
         SQLStr += DBTableName+"."+FieldDict[self._IDField]+", "
@@ -1551,8 +1581,8 @@ class _AnnTable(_DBTable):
     # 如果 idt 为 None, 将返回所有有历史数据记录的 ID
     # 忽略 ifactor_name
     def getID(self, ifactor_name=None, idt=None, args={}):
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._AnnDateField, self._EndDateField, self._IDField])
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._AnnDateField, self._EndDateField, self._IDField]]
         SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[self._IDField]+" "
         SQLStr += "FROM "+DBTableName+" "
         if idt is not None:
@@ -1565,8 +1595,8 @@ class _AnnTable(_DBTable):
     # 如果 iid 为 None, 将返回所有有历史数据记录的时间点
     # 忽略 ifactor_name
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._AnnDateField, self._EndDateField, self._IDField])
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._AnnDateField, self._EndDateField, self._IDField]]
         if self._EndDateField is not None:
             SQLStr = "SELECT DISTINCT CASE WHEN "+FieldDict[self._AnnDateField]+">="+FieldDict[self._EndDateField]+" THEN "+FieldDict[self._AnnDateField]+" "
             SQLStr += "WHEN "+FieldDict[self._AnnDateField]+"<"+FieldDict[self._EndDateField]+" THEN "+FieldDict[self._EndDateField]+" END AS DT "
@@ -1598,8 +1628,8 @@ class _AnnTable(_DBTable):
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
-        FieldDict = self._FactorDB.FieldName2DBFieldName(table=self.Name, fields=[self._AnnDateField, self._EndDateField, self._IDField]+factor_names)
-        DBTableName = self._FactorDB.TablePrefix+self._FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._AnnDateField, self._EndDateField, self._IDField]+factor_names]
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         if self._EndDateField is not None:
             SubSQLStr = "SELECT "+FieldDict[self._IDField]+", "
@@ -1656,15 +1686,108 @@ class _AnnTable(_DBTable):
         for i, iFactorName in enumerate(Data.items):
             Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
         return Data.loc[:, dts]
-class WindDB2(WindDB):
+class WindDB2(FactorDB):
     """Wind 量化研究数据库"""
+    DBType = Enum("SQL Server", "Oracle", "MySQL", arg_type="SingleOption", label="数据库类型", order=0)
+    DBName = Str("wind", arg_type="String", label="数据库名", order=1)
+    IPAddr = Str("127.0.0.1", arg_type="String", label="IP地址", order=2)
+    Port = Range(low=0, high=65535, value=1521, arg_type="Integer", label="端口", order=3)
+    User = Str("root", arg_type="String", label="用户名", order=4)
+    Pwd = Password("shuntai11", arg_type="String", label="密码", order=5)
+    TablePrefix = Str("", arg_type="String", label="表名前缀", order=6)
+    CharSet = Enum("utf8", "gbk", "gb2312", "gb18030", "cp936", "big5", arg_type="SingleOption", label="字符集", order=7)
+    Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
+    DSN = Str("", arg_type="String", label="数据源", order=9)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
-        super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"WindDB2Config.json" if config_file is None else config_file), **kwargs)
-        self.Name = "WindDB2"
-    def _updateInfo(self):
+        super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"WindDB2Config.json" if config_file is None else config_file), **kwargs)
+        self._Connection = None# 数据库链接
+        self._AllTables = []# 数据库中的所有表名, 用于查询时解决大小写敏感问题
         self._InfoFilePath = __QS_LibPath__+os.sep+"WindDB2Info.hdf5"# 数据库信息文件路径
         self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"WindDB2Info.xlsx"# 数据库信息源文件路径
-        return super()._updateInfo()
+        self._TableInfo, self._FactorInfo = updateInfo(self._InfoFilePath, self._InfoResourcePath)# 数据库表信息, 数据库字段信息
+        self.Name = "WindDB2"
+        return
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Remove the unpicklable entries.
+        state["_Connection"] = (True if self.isAvailable() else False)
+        return state
+    def __setstate__(self, state):
+        super().__setstate__(state)
+        if self._Connection:
+            self.connect()
+        else:
+            self._Connection = None
+        self._AllTables = state.get("_AllTables", [])
+    # -------------------------------------------数据库相关---------------------------
+    def connect(self):
+        if (self.Connector=='cx_Oracle') or ((self.Connector=='default') and (self.DBType=='Oracle')):
+            try:
+                import cx_Oracle
+                self._Connection = cx_Oracle.connect(self.User, self.Pwd, cx_Oracle.makedsn(self.IPAddr, str(self.Port), self.DBName))
+            except Exception as e:
+                if self.Connector!='default': raise e
+        elif (self.Connector=='pymssql') or ((self.Connector=='default') and (self.DBType=='SQL Server')):
+            try:
+                import pymssql
+                self._Connection = pymssql.connect(server=self.IPAddr, port=str(self.Port), user=self.User, password=self.Pwd, database=self.DBName, charset=self.CharSet)
+            except Exception as e:
+                if self.Connector!='default': raise e
+        elif (self.Connector=='mysql.connector') or ((self.Connector=='default') and (self.DBType=='MySQL')):
+            try:
+                import mysql.connector
+                self._Connection = mysql.connector.connect(host=self.IPAddr, port=str(self.Port), user=self.User, password=self.Pwd, database=self.DBName, charset=self.CharSet)
+            except Exception as e:
+                if self.Connector!='default': raise e
+        else:
+            if self.Connector not in ('default', 'pyodbc'):
+                self._Connection = None
+                raise __QS_Error__("不支持该连接器(connector) : "+self.Connector)
+            else:
+                import pyodbc
+                if self.DSN:
+                    self._Connection = pyodbc.connect('DSN=%s;PWD=%s' % (self.DSN, self.Pwd))
+                else:
+                    self._Connection = pyodbc.connect('DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s' % (self.DBType, self.DBName, self.IPAddr, self.User, self.Pwd))
+        self._Connection.autocommit = True
+        self._AllTables = []
+        return 0
+    def disconnect(self):
+        if self._Connection is not None:
+            try:
+                self._Connection.close()
+            except Exception as e:
+                raise e
+            finally:
+                self._Connection = None
+        return 0
+    def isAvailable(self):
+        return (self._Connection is not None)
+    def cursor(self, sql_str=None):
+        if self._Connection is None: raise __QS_Error__("%s尚未连接!" % self.__doc__)
+        Cursor = self._Connection.cursor()
+        if sql_str is None: return Cursor
+        if not self._AllTables:
+            if self.DBType=="SQL Server":
+                Cursor.execute("SELECT Name FROM SysObjects Where XType='U'")
+                self._AllTables = [rslt[0] for rslt in Cursor.fetchall()]
+            elif self.DBType=="MySQL":
+                Cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='"+self.DBName+"' AND table_type='base table'")
+                self._AllTables = [rslt[0] for rslt in Cursor.fetchall()]
+        for iTable in self._AllTables:
+            sql_str = re.sub(iTable, iTable, sql_str, flags=re.IGNORECASE)
+        Cursor.execute(sql_str)
+        return Cursor
+    def fetchall(self, sql_str):
+        Cursor = self.cursor(sql_str=sql_str)
+        Data = Cursor.fetchall()
+        Cursor.close()
+        return Data
+    # -------------------------------表的操作---------------------------------
+    @property
+    def TableNames(self):
+        if self._TableInfo is not None: return self._TableInfo.index.tolist()
+        else: return []
     def getTable(self, table_name, args={}):
         if table_name in self._TableInfo.index:
             TableClass = self._TableInfo.loc[table_name, "TableClass"]
@@ -1672,12 +1795,14 @@ class WindDB2(WindDB):
                 return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=args)")
         raise __QS_Error__("因子库目前尚不支持表: '%s'" % table_name)
     # -----------------------------------------数据提取---------------------------------
-    # 给定起始日期和结束日期, 获取交易所交易日期, 目前仅支持："SSE", "SZSE"
+    # 给定起始日期和结束日期, 获取交易所交易日期, 目前支持: "SSE", "SZSE", "SHFE", "DCE", "CZCE", "INE", "CFEEX"
     def getTradeDay(self, start_date=None, end_date=None, exchange="SSE"):
         if start_date is None: start_date = dt.datetime(1900, 1, 1)
         if end_date is None: end_date = dt.datetime.today()
-        if exchange in ("SSE", "SZSE"): Dates = self.getTable("中国A股交易日历").getDateTime(iid=exchange, start_dt=start_date, end_dt=end_date)
-        else: raise __QS_Error__("不支持交易所: '%s' 的交易日序列!" % exchange)
+        ExchangeInfo = self._TableInfo[self._TableInfo["TableClass"]=="CalendarTable"]
+        ExchangeInfo = ExchangeInfo[ExchangeInfo["Description"].str.contains(exchange)]
+        if ExchangeInfo.shape[0]==0: raise __QS_Error__("不支持交易所: '%s' 的交易日序列!" % exchange)
+        else: Dates = self.getTable(ExchangeInfo.index[0]).getDateTime(iid=exchange, start_dt=start_date, end_dt=end_date)
         return list(map(lambda x: x.date(), Dates))
     # 获取指定日当前在市或者历史上出现过的全体 A 股 ID
     def _getAllAStock(self, date, is_current=True):
@@ -1691,28 +1816,3 @@ class WindDB2(WindDB):
         if date is None: date = dt.date.today()
         if index_id=="全体A股": return self._getAllAStock(date=date, is_current=is_current)
         else: raise __QS_Error__("不支持提取指数代码为：'%s' 的成份股!" % index_id)
-    # --------------------------------------------信息转换-----------------------------------
-    # 获取行业名称和Wind内部查询代码
-    def getIndustryDBInnerID(self,industry_class_name="中信行业",level=1):
-        with shelve.open(self.LibPath+os.sep+"WindIndustryCode") as LibFile:
-            if industry_class_name=="中信一级行业":
-                IndustryWindID = LibFile["中信行业1"]
-            elif industry_class_name=="申万一级行业":
-                IndustryWindID = LibFile["申万行业1"]
-            elif industry_class_name=="Wind一级行业":
-                IndustryWindID = LibFile["Wind行业1"]
-            else:
-                IndustryWindID = LibFile.get(industry_class_name+str(level))
-        if IndustryWindID is not None:
-            return {IndustryWindID[iKey]:iKey for iKey in IndustryWindID.index}
-        else:
-            return None
-
-if __name__=="__main__":
-    WDB = WindDB2()
-    WDB.connect()
-    FT = WDB.getTable("中国A股公司公告")
-    IDs = FT.getID()
-    DTs = FT.getDateTime()
-    Data = FT.readData(factor_names=["摘要"], ids=IDs[:2], dts=DTs, args={"回溯天数":2})
-    print(Data)

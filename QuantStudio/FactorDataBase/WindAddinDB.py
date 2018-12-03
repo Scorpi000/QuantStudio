@@ -12,9 +12,9 @@ from traits.api import File, Str, Int, on_trait_change
 
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName
 from QuantStudio.Tools.FileFun import readJSONFile, listDirFile
-from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
-from QuantStudio import __QS_Error__, __QS_MainPath__, __QS_LibPath__
-from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable, _adjustDateTime
+from QuantStudio import __QS_Error__, __QS_MainPath__, __QS_ConfigPath__
+from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
+from QuantStudio.FactorDataBase.FDBFun import adjustDateTime, updateInfo
 
 class _WSD(FactorTable):
     CMD = Str('w.wsd("000001.SZ", "close", "2016-1-1", "2016-1-1", "")', arg_type="String", label="Wind命令", order=0)
@@ -80,8 +80,8 @@ class WindAddinDB(FactorDB):
     """Wind 插件"""
     NavigatorPath = File("", arg_type="File", label="代码生成器路径", order=0)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
+        super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"WindAddinDBConfig.json" if config_file is None else config_file), **kwargs)
         self.w = None
-        super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"WindDBConfig.json" if config_file is None else config_file), **kwargs)
         self.Name = "WindAddinDB"
         return
     def startNavigator(self):
@@ -99,23 +99,6 @@ class WindAddinDB(FactorDB):
             self.connect()
         else:
             self.w = None
-    def _updateInfo(self):
-        if not os.path.isfile(self._InfoResourcePath):
-            print("数据库信息文件: '%s' 缺失, 尝试从 '%s' 中导入信息." % (self._InfoFilePath, self._InfoResourcePath))
-        elif (os.path.getmtime(self._InfoResourcePath)>os.path.getmtime(self._InfoFilePath)):
-            print("数据库信息文件: '%s' 有更新, 尝试从中导入新信息." % self._InfoResourcePath)
-        else:
-            try:
-                self._TableInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/TableInfo")
-                self._FactorInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/FactorInfo")
-                return 0
-            except:
-                print("数据库信息文件: '%s' 损坏, 尝试从 '%s' 中导入信息." % (self._InfoFilePath, self._InfoResourcePath))
-        if not os.path.isfile(self._InfoResourcePath): raise __QS_Error__("缺失数据库信息文件: %s" % self._InfoResourcePath)
-        self.importInfo(self._InfoResourcePath)
-        self._TableInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/TableInfo")
-        self._FactorInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/FactorInfo")
-        return 0
     def connect(self):
         if self.w is None:
             try:

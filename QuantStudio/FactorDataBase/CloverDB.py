@@ -8,8 +8,9 @@ import numpy as np
 import pandas as pd
 from traits.api import File, List, Float, Int, Bool, Enum, Str, Range, Password
 
-from QuantStudio import __QS_Error__, __QS_LibPath__
-from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable, _adjustDateTime
+from QuantStudio import __QS_Error__, __QS_ConfigPath__
+from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
+from QuantStudio.FactorDataBase.FDBFun import adjustDateTime
 
 
 class _CalendarTable(FactorTable):
@@ -75,7 +76,7 @@ class _TickTable(FactorTable):
         EndDate = (EndDate + dt.timedelta(1)).strftime("%Y-%m-%d")
         if self._PriceFactors.intersection(set(factor_names)):
             TradeDates = self._FactorDB._jpype.JPackage("clover.epsilon.database").DatabaseUtil.getTradeDateList(self._FactorDB._jConn, "SHFE", StartDate, EndDate)
-            if len(TradeDates)==0: return _adjustDateTime(pd.Panel(Data, major_axis=tms, minor_axis=ids), dts=dts)
+            if len(TradeDates)==0: return adjustDateTime(pd.Panel(Data, major_axis=tms, minor_axis=ids), dts=dts)
             JPckg_util = self._FactorDB._jpype.JPackage("clover.model.util")
             PriceMultiplier = np.ones(len(SecDef))
             for j, jSecDef in enumerate(SecDef):
@@ -94,7 +95,7 @@ class _TickTable(FactorTable):
             if iField in self._PriceFactors: iData = iData * PriceMultiplier
             Data[iField] = iData
         Data = pd.Panel(Data, major_axis=tms, minor_axis=ids).loc[factor_names]
-        return _adjustDateTime(Data, dts=dts)
+        return adjustDateTime(Data, dts=dts)
 
 class _TimeBarTable(FactorTable):
     """Clover Time Bar 因子表"""
@@ -131,7 +132,7 @@ class _TimeBarTable(FactorTable):
                                                                                       depth=args.get("深度", self.Depth), 
                                                                                       dynamic_security_id=args.get("动态证券ID", self.DynamicSecID))
         Data = self._FactorDB.fetchTimeBarData(factor_names, TBs, AllSecurityIDs, SecurityIDs, PriceMultiplier)
-        return _adjustDateTime(Data, dts=dts)
+        return adjustDateTime(Data, dts=dts)
 
 class _FeatureTable(FactorTable):
     """特征因子表"""
@@ -152,7 +153,7 @@ class _FeatureTable(FactorTable):
             iDT = dt.datetime.combine(StartDate + dt.timedelta(i), dt.time(0))
             Data[iDT] = pd.DataFrame(self._FactorDB.getSecurityInfo(ids, idt=iDT), index=ids).loc[:, factor_names].T
         Data = pd.Panel(Data).swapaxes(0, 1)
-        Data = _adjustDateTime(Data, dts, fillna=True, method="bfill")
+        Data = adjustDateTime(Data, dts, fillna=True, method="bfill")
         return Data
 
 class CloverDB(FactorDB):
@@ -169,7 +170,7 @@ class CloverDB(FactorDB):
         self._jpype = None# jpype 模块
         self._jConn = None# epsilon 数据库连接
         self._ExchangeDict = {"上海证券交易所":"SHFE", "深圳证券交易所":"SZSE"}
-        super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
+        super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"CloverDBConfig.json" if config_file is None else config_file), **kwargs)
         self.Name = "CloverDB"
         return
     def __getstate__(self):

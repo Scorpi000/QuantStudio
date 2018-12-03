@@ -10,7 +10,7 @@ import pandas as pd
 import h5py
 from traits.api import Directory
 
-from QuantStudio import __QS_Error__, __QS_LibPath__
+from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
 from QuantStudio.Tools.FileFun import listDirDir, listDirFile, readJSONFile
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
@@ -130,7 +130,7 @@ class HDF5DB(WritableFactorDB):
         self._DataLock = Lock()# 访问该因子库资源的锁, 防止并发访问冲突
         self._isAvailable = False
         self._Suffix = "hdf5"# 文件的后缀名
-        super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"HDF5DBConfig.json" if config_file is None else config_file), **kwargs)
+        super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"HDF5DBConfig.json" if config_file is None else config_file), **kwargs)
         # 继承来的属性
         self.Name = "HDF5DB"
         return

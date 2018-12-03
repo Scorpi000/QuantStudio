@@ -8,9 +8,9 @@ import numpy as np
 import pandas as pd
 from traits.api import Str, Range, Directory, Password, Either, Int, Enum
 
-from QuantStudio import __QS_Error__, __QS_LibPath__, __QS_MainPath__
+from QuantStudio import __QS_Error__, __QS_LibPath__, __QS_MainPath__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
-from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
+from QuantStudio.FactorDataBase.FDBFun import updateInfo
 
 class _TSTable(FactorTable):
     def getMetaData(self, key=None):
@@ -193,32 +193,15 @@ class TinySoftDB(FactorDB):
     User = Str("Scorpio", arg_type="String", label="用户名", order=3)
     Pwd = Password("shuntai11", arg_type="String", label="密码", order=4)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
-        super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"TinySoftDBConfig.json" if config_file is None else config_file), **kwargs)
+        super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"TinySoftDBConfig.json" if config_file is None else config_file), **kwargs)
         self.Name = "TinySoftDB"
         self._TSLPy = None
         self._TableInfo = None# 数据库中的表信息
         self._FactorInfo = None# 数据库中的表字段信息
         self._InfoFilePath = __QS_LibPath__+os.sep+"TinySoftDBInfo.hdf5"# 数据库信息文件路径
         self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"TinySoftDBInfo.xlsx"# 数据库信息源文件路径
-        self._updateInfo()
+        self._TableInfo, self._FactorInfo = updateInfo(self._InfoFilePath, self._InfoResourcePath)
         return
-    def _updateInfo(self):
-        if not os.path.isfile(self._InfoFilePath):
-            print("数据库信息文件: '%s' 缺失, 尝试从 '%s' 中导入信息." % (self._InfoFilePath, self._InfoResourcePath))
-        elif (os.path.getmtime(self._InfoResourcePath)>os.path.getmtime(self._InfoFilePath)):
-            print("数据库信息文件: '%s' 有更新, 尝试从中导入新信息." % self._InfoResourcePath)
-        else:
-            try:
-                self._TableInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/TableInfo")
-                self._FactorInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/FactorInfo")
-                return 0
-            except:
-                print("数据库信息文件: '%s' 损坏, 尝试从 '%s' 中导入信息." % (self._InfoFilePath, self._InfoResourcePath))
-        if not os.path.isfile(self._InfoResourcePath): raise __QS_Error__("缺失数据库信息源文件: %s" % self._InfoResourcePath)
-        self.importInfo(self._InfoResourcePath)
-        self._TableInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/TableInfo")
-        self._FactorInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/FactorInfo")
-        return 0
     def __getstate__(self):
         state = self.__dict__.copy()
         state["_TSLPy"] = (True if self.isAvailable() else False)
@@ -295,10 +278,3 @@ class TinySoftDB(FactorDB):
             iID = iID.decode("gbk")
             IDs.append(iID[2:]+"."+iID[:2])
         return IDs
-    # 将 Excel 文件中的表和字段信息导入信息文件
-    def importInfo(self, excel_file_path):
-        TableInfo = pd.read_excel(excel_file_path, "TableInfo").set_index(["TableName"])
-        FactorInfo = pd.read_excel(excel_file_path, 'FactorInfo').set_index(['TableName', 'FieldName'])
-        writeNestedDict2HDF5(TableInfo, self._InfoFilePath, "/TableInfo")
-        writeNestedDict2HDF5(FactorInfo, self._InfoFilePath, "/FactorInfo")
-        return 0

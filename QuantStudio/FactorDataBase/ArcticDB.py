@@ -9,7 +9,7 @@ import arctic
 from traits.api import Password, Str, Range
 
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
-from QuantStudio import __QS_Error__, __QS_LibPath__
+from QuantStudio import __QS_Error__, __QS_ConfigPath__
 
 def _identifyDataType(dtypes):
     if np.dtype('O') in dtypes.values: return 'string'
@@ -74,7 +74,7 @@ class ArcticDB(WritableFactorDB):
     Pwd = Password("shuntai11", arg_type="String", label="密码", order=4)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._Arctic = None# Arctic 对象
-        super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"ArcticDBConfig.json" if config_file is None else config_file), **kwargs)
+        super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"ArcticDBConfig.json" if config_file is None else config_file), **kwargs)
         self.Name = "ArcticDB"
         return
     def __getstate__(self):

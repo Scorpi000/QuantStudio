@@ -9,11 +9,10 @@ import pandas as pd
 from traits.api import Enum, Int, Str, Range, Password, Bool
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
-from QuantStudio.Tools.FileFun import readJSONFile
-from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
 from QuantStudio.Tools.DateTimeFun import getDateSeries, getDateTimeSeries
-from QuantStudio import __QS_Error__, __QS_MainPath__, __QS_LibPath__
-from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable, _adjustDateTime
+from QuantStudio import __QS_Error__, __QS_MainPath__, __QS_LibPath__, __QS_ConfigPath__
+from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
+from QuantStudio.FactorDataBase.FDBFun import updateInfo, adjustDateTime
 
 class _DBTable(FactorTable):
     def getMetaData(self, key=None):
@@ -50,9 +49,9 @@ class _MarketTable(_DBTable):
     FillNa = Bool(True, arg_type="Bool", label="缺失填充", order=0)
     LookBack = Int(0, arg_type="Integer", label="回溯天数", order=1)
     def getID(self, ifactor_name=None, idt=None, args={}):
-        DBTableName = self.FactorDB.TablePrefix+self.FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         IDTable = self.FactorDB.TablePrefix+"tb_object_0001"
-        FieldDict = self.FactorDB.FieldName2DBFieldName(table=self.Name, fields=["日期",'证券ID'])
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[["日期", "证券ID"]]
         SQLStr = "SELECT DISTINCT "+IDTable+".f1_0001 "# ID
         SQLStr += "FROM "+IDTable+", "+DBTableName+" "
         SQLStr += 'WHERE '+IDTable+".F16_0001="+DBTableName+"."+FieldDict['证券ID']+" "
@@ -61,8 +60,8 @@ class _MarketTable(_DBTable):
         SQLStr += "ORDER BY "+IDTable+".f1_0001"
         return [iRslt[0] for iRslt in self.FactorDB.fetchall(SQLStr)]
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
-        DBTableName = self.FactorDB.TablePrefix+self.FactorDB.TableName2DBTableName([self.Name])[self.Name]
-        FieldDict = self.FactorDB.FieldName2DBFieldName(table=self.Name, fields=["日期", "证券ID"])
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[["日期", "证券ID"]]
         SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict["日期"]+" "# 日期
         SQLStr += "FROM "+DBTableName+" "
         if iid is not None:
@@ -78,9 +77,9 @@ class _MarketTable(_DBTable):
         return list(map(lambda x: dt.datetime.strptime(x[0], "%Y%m%d"), self.FactorDB.fetchall(SQLStr)))
      # 时间点默认是当天, ID 默认是 [000001.SH], 特别参数: 回溯天数
     def _getRawData(self, fields, ids=None, start_date=None, end_date=None, args={}):
-        DBTableName = self.FactorDB.TablePrefix+self.FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         IDTable = self.FactorDB.TablePrefix+"tb_object_0001"
-        FieldDict = self.FactorDB.FieldName2DBFieldName(table=self.Name,fields=["日期",'证券ID']+fields)
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[["日期", "证券ID"]+fields]
         # 日期, ID, 因子数据
         SQLStr = 'SELECT '+DBTableName+'.'+FieldDict["日期"]+', '# 日期
         SQLStr += IDTable+".f1_0001, "# ID
@@ -119,7 +118,7 @@ class _MarketTable(_DBTable):
             Data[iFactorName] = iRawData
         Data = pd.Panel(Data).loc[factor_names]
         Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Data.major_axis]
-        Data = _adjustDateTime(Data, dts, fillna=FillNa, method="pad")
+        Data = adjustDateTime(Data, dts, fillna=FillNa, method="pad")
         if ids is not None: Data = Data.loc[:, :, ids]
         return Data
 
@@ -128,9 +127,9 @@ class _ConstituentTable(_DBTable):
     @property
     def FactorNames(self):
         if not hasattr(self, "_IndexIDs"):# DataFrame(证券ID, index=[指数ID])
-            DBTableName = self.FactorDB.TablePrefix+self.FactorDB.TableName2DBTableName([self.Name])[self.Name]
+            DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
             IDTable = self.FactorDB.TablePrefix+"tb_object_0001"
-            FieldDict = self.FactorDB.FieldName2DBFieldName(table=self.Name, fields=["指数ID"])
+            FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[["指数ID"]]
             SQLStr = "SELECT DISTINCT "+IDTable+".f1_0001, "# 指数 ID
             SQLStr += DBTableName+"."+FieldDict['指数ID']+" "# 指数证券 ID
             SQLStr += 'FROM '+DBTableName+', '+IDTable+" "
@@ -143,9 +142,9 @@ class _ConstituentTable(_DBTable):
     # 如果 idt 为 None, 将返回指数 ifactor_name 的所有历史成份股
     # 如果 ifactor_name 为 None, 将返回表里所有成份股 ID
     def getID(self, ifactor_name=None, idt=None, args={}):
-        DBTableName = self.FactorDB.TablePrefix+self.FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         IDTable = self.FactorDB.TablePrefix+"tb_object_0001"
-        FieldDict = self.FactorDB.FieldName2DBFieldName(table=self.Name, fields=['证券ID','指数ID','纳入日期','剔除日期','最新标志'])
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[['证券ID','指数ID','纳入日期','剔除日期','最新标志']]
         SQLStr = "SELECT DISTINCT "+IDTable+".f1_0001 "# ID
         SQLStr += "FROM "+IDTable+", "+DBTableName+" "
         SQLStr += 'WHERE '+IDTable+'.F16_0001='+DBTableName+'.'+FieldDict['证券ID']+' '
@@ -159,8 +158,8 @@ class _ConstituentTable(_DBTable):
         SQLStr += "ORDER BY "+IDTable+".f1_0001"
         return [iRslt[0] for iRslt in self.FactorDB.fetchall(SQLStr)]
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
-        DBTableName = self.FactorDB.TablePrefix+self.FactorDB.TableName2DBTableName([self.Name])[self.Name]
-        FieldDict = self.FactorDB.FieldName2DBFieldName(table=self.Name, fields=['证券ID','指数ID','纳入日期','剔除日期','最新标志'])
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[['证券ID','指数ID','纳入日期','剔除日期','最新标志']]
         SQLStr = "SELECT "+DBTableName+"."+FieldDict["纳入日期"]+" "# 纳入日期
         SQLStr += DBTableName+"."+FieldDict["剔除日期"]+" "# 剔除日期
         SQLStr += "FROM "+DBTableName+" "
@@ -208,12 +207,12 @@ class _ConstituentTable(_DBTable):
         Data = pd.Panel(Data).loc[factor_names]
         Data.major_axis = [dt.datetime.combine(iDate, dt.time(0)) for iDate in Data.major_axis]
         Data.fillna(value=0, inplace=True)
-        return _adjustDateTime(Data, dts, fillna=True, method="bfill")
+        return adjustDateTime(Data, dts, fillna=True, method="bfill")
     def _getRawData(self, fields, ids=None, start_date=None, end_date=None, args={}):
         IndexEquityID = self.FactorDB.ID2EquityID(fields)
-        DBTableName = self.FactorDB.TablePrefix+self.FactorDB.TableName2DBTableName([self.Name])[self.Name]
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         IDTable = self.FactorDB.TablePrefix+"tb_object_0001"
-        FieldDict = self.FactorDB.FieldName2DBFieldName(table=self.Name, fields=['证券ID','指数ID','纳入日期','剔除日期','最新标志'])
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[['证券ID','指数ID','纳入日期','剔除日期','最新标志']]
         # 指数中成份股 ID, 指数证券 ID, 纳入日期, 剔除日期, 最新标志
         SQLStr = "SELECT "+DBTableName+'.'+FieldDict['指数ID']+', '# 指数证券 ID
         SQLStr += IDTable+".f1_0001, "# ID
@@ -256,14 +255,12 @@ class WindDB(FactorDB):
     Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
     DSN = Str("", arg_type="String", label="数据源", order=9)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
+        super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"WindDBConfig.json" if config_file is None else config_file), **kwargs)
         self._Connection = None# 数据库链接
-        self._TableInfo = None# 数据库中的表信息
-        self._FactorInfo = None# 数据库中的表字段信息
         self._AllTables = []# 数据库中的所有表名, 用于查询时解决大小写敏感问题
         self._InfoFilePath = __QS_LibPath__+os.sep+"WindDBInfo.hdf5"# 数据库信息文件路径
         self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"WindDBInfo.xlsx"# 数据库信息源文件路径
-        self._updateInfo()
-        super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"WindDBConfig.json" if config_file is None else config_file), **kwargs)
+        self._TableInfo, self._FactorInfo = updateInfo(self._InfoFilePath, self._InfoResourcePath)# 数据库中的表信息, 数据库中的字段信息
         self.Name = "WindDB"
         return
     def __getstate__(self):
@@ -278,23 +275,6 @@ class WindDB(FactorDB):
         else:
             self._Connection = None
         self._AllTables = state.get("_AllTables", [])
-    def _updateInfo(self):
-        if not os.path.isfile(self._InfoFilePath):
-            print("数据库信息文件: '%s' 缺失, 尝试从 '%s' 中导入信息." % (self._InfoFilePath, self._InfoResourcePath))
-        elif (os.path.getmtime(self._InfoResourcePath)>os.path.getmtime(self._InfoFilePath)):
-            print("数据库信息文件: '%s' 有更新, 尝试从中导入新信息." % self._InfoResourcePath)
-        else:
-            try:
-                self._TableInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/TableInfo")
-                self._FactorInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/FactorInfo")
-                return 0
-            except:
-                print("数据库信息文件: '%s' 损坏, 尝试从 '%s' 中导入信息." % (self._InfoFilePath, self._InfoResourcePath))
-        if not os.path.isfile(self._InfoResourcePath): raise __QS_Error__("缺失数据库信息源文件: %s" % self._InfoResourcePath)
-        self.importInfo(self._InfoResourcePath)
-        self._TableInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/TableInfo")
-        self._FactorInfo = readNestedDictFromHDF5(self._InfoFilePath, ref="/FactorInfo")
-        return 0
     # -------------------------------------------数据库相关---------------------------
     def connect(self):
         if (self.Connector=='cx_Oracle') or ((self.Connector=='default') and (self.DBType=='Oracle')):
@@ -406,13 +386,6 @@ class WindDB(FactorDB):
             SQLStr += 'AND ({Prefix}tb_object_1402.F5_1402=1 OR {Prefix}tb_object_1402.F4_1402>\'{Date}\') '# 剔除日期在date之后
         SQLStr += 'ORDER BY {Prefix}tb_object_0001.f1_0001'
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, IndexEquityID=IndexEquityID, Date=date.strftime("%Y%m%d")))]
-    # --------------------------------------------信息转换-----------------------------------
-    # 将表名转换成数据库内部表名
-    def TableName2DBTableName(self, table_names):
-        return dict(self._TableInfo['DBTableName'][table_names])
-    # 获取字段在数据库内部字段名
-    def FieldName2DBFieldName(self, table, fields=[]):
-        return dict(self._FactorInfo['DBFieldName'].loc[table].loc[fields])
     # ID 转换成证券 ID
     def ID2EquityID(self, ids):
         nID = len(ids)
@@ -428,40 +401,3 @@ class WindDB(FactorDB):
         Result = Cursor.fetchall()
         Cursor.close()
         return dict(Result)
-    # 证券 ID 转换成 ID
-    def EquityID2ID(self, equity_ids):
-        nID = len(equity_ids)
-        if nID<=1000:
-            SQLStr = 'SELECT f16_0001, f1_0001 FROM '+self.TablePrefix+'tb_object_0001 WHERE f16_0001 IN (\''+'\',\''.join(equity_ids)+'\')'
-        else:
-            SQLStr = 'SELECT f16_0001, f1_0001 FROM '+self.TablePrefix+'tb_object_0001 WHERE f16_0001 IN (\''+'\',\''.join(equity_ids[0:1000])+'\')'
-            i = 1000
-            while i<nID:
-                SQLStr += ' OR f16_0001 IN (\''+'\',\''.join(equity_ids[i:i+1000])+'\')'
-                i = i+1000
-        return dict(self.fetchall(SQLStr))
-    # 获取行业名称和对应的数据库内部代码, {行业名称:数据库内部代码}
-    def getIndustryDBInnerID(self, industry_class_name='中信行业', level=1):
-        if industry_class_name=='中信行业':
-            SQLStr = 'SELECT NAME, CODE FROM '+self.TablePrefix+'TB_OBJECT_1022 WHERE CODE LIKE \'b1%\' AND LEVELNUM='+str(level+1)
-        elif industry_class_name=='申万行业':
-            SQLStr = 'SELECT NAME, CODE FROM '+self.TablePrefix+'TB_OBJECT_1022 WHERE CODE LIKE \'61%\' AND LEVELNUM='+str(level+1)
-        elif industry_class_name=='Wind行业':
-            SQLStr = 'SELECT NAME, CODE FROM '+self.TablePrefix+'TB_OBJECT_1022 WHERE CODE LIKE \'62%\' AND LEVELNUM='+str(level+1)
-        elif industry_class_name=='中信一级行业':
-            SQLStr = 'SELECT NAME, CODE FROM '+self.TablePrefix+'TB_OBJECT_1022 WHERE CODE LIKE \'b1%\' AND LEVELNUM=2'
-        elif industry_class_name=='申万一级行业':
-            SQLStr = 'SELECT NAME, CODE FROM '+self.TablePrefix+'TB_OBJECT_1022 WHERE CODE LIKE \'61%\' AND LEVELNUM=2'
-        elif industry_class_name=='Wind一级行业':
-            SQLStr = 'SELECT NAME, CODE FROM '+self.TablePrefix+'TB_OBJECT_1022 WHERE CODE LIKE \'62%\' AND LEVELNUM=2'
-        Cursor = self.cursor(SQLStr)
-        Rslt = Cursor.fetchall()
-        Cursor.close()
-        return dict(Rslt)
-    # 将 Excel 文件中的表和字段信息导入信息文件
-    def importInfo(self, excel_file_path):
-        TableInfo = pd.read_excel(excel_file_path, "TableInfo").set_index(["TableName"])
-        FactorInfo = pd.read_excel(excel_file_path, 'FactorInfo').set_index(['TableName', 'FieldName'])
-        writeNestedDict2HDF5(TableInfo, self._InfoFilePath, "/TableInfo")
-        writeNestedDict2HDF5(FactorInfo, self._InfoFilePath, "/FactorInfo")
-        return 0

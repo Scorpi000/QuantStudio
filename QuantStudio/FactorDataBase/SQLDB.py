@@ -10,7 +10,7 @@ from traits.api import Enum, Str, Range, Password
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.FileFun import readJSONFile
-from QuantStudio import __QS_Error__, __QS_LibPath__
+from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
 
 def _identifyDataType(dtypes):
@@ -105,7 +105,7 @@ class SQLDB(WritableFactorDB):
         self._Connection = None# 数据库链接
         self._Prefix = "QS_"
         self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
-        super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"SQLDBConfig.json" if config_file is None else config_file), **kwargs)
+        super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"SQLDBConfig.json" if config_file is None else config_file), **kwargs)
         self.Name = "SQLDB"
         return
     def __getstate__(self):

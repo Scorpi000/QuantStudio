@@ -12,7 +12,7 @@ from traits.api import Directory
 from QuantStudio.Tools.FileFun import listDirFile
 from QuantStudio.Tools.DateTimeFun import cutDateTime
 from .RiskDataBase import RiskDataBase, FactorRDB
-from QuantStudio import __QS_Object__, __QS_Error__, __QS_LibPath__
+from QuantStudio import __QS_Object__, __QS_Error__, __QS_ConfigPath__
 
 class HDF5RDB(RiskDataBase):
     """基于 HDF5 文件的风险数据库"""
@@ -22,7 +22,7 @@ class HDF5RDB(RiskDataBase):
         self._DataLock = Lock()
         self._Suffix = "hdf5"
         self._isAvailable = False
-        super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"HDF5RDBConfig.json" if config_file is None else config_file), **kwargs)
+        super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"HDF5RDBConfig.json" if config_file is None else config_file), **kwargs)
         self.Name = "HDF5RDB"
     def connect(self):
         if not os.path.isdir(self.MainDir): raise __QS_Error__("不存在 HDF5RDB 的主目录: %s!" % self.MainDir)
@@ -133,7 +133,7 @@ class HDF5FRDB(FactorRDB):
         self._DataLock = Lock()
         self._Suffix = "h5"
         self._isAvailable = False
-        super().__init__(sys_args=sys_args, config_file=(__QS_LibPath__+os.sep+"HDF5FRDBConfig.json" if config_file is None else config_file), **kwargs)
+        super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"HDF5FRDBConfig.json" if config_file is None else config_file), **kwargs)
         self.Name = "HDF5FRDB"
     def connect(self):
         if not os.path.isdir(self.MainDir): raise __QS_Error__("不存在 HDF5FRDB 的主目录: %s!" % self.MainDir)

@@ -23,31 +23,6 @@ from QuantStudio.Tools.AuxiliaryFun import genAvailableName, partitionList, star
 from QuantStudio.Tools.FileFun import listDirDir
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 
-def _adjustDateTime(data, dts, fillna=False, **kwargs):
-    if isinstance(data, (pd.DataFrame, pd.Series)):
-        if data.shape[0]==0:
-            if isinstance(data, pd.DataFrame): data = pd.DataFrame(index=dts, columns=data.columns)
-            else: data = pd.Series(index=dts)
-        else:
-            if fillna:
-                AllDTs = data.index.union(dts)
-                AllDTs = AllDTs.sort_values()
-                data = data.loc[AllDTs]
-                data = data.fillna(**kwargs)
-            data = data.loc[dts]
-    else:
-        if data.shape[1]==0:
-            data = pd.Panel(items=data.items, major_axis=dts, minor_axis=data.minor_axis)
-        else:
-            FactorNames = data.items
-            if fillna:
-                AllDTs = data.major_axis.union(dts)
-                AllDTs = AllDTs.sort_values()
-                data = data.loc[:, AllDTs, :]
-                data = pd.Panel({data.items[i]:data.iloc[i].fillna(axis=0, **kwargs) for i in range(data.shape[0])})
-            data = data.loc[FactorNames, dts, :]
-    return data
-
 # 因子库, 只读, 接口类
 # 数据库由若干张因子表组成
 # 不支持某个操作时, 方法产生错误

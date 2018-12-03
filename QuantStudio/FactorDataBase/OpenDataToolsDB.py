@@ -1,12 +1,12 @@
 # coding=utf-8
-"""基于 tushare 的因子库"""
+"""基于 OpenDataTools 的因子库"""
+import re
 import os
 import datetime as dt
 
 import numpy as np
 import pandas as pd
-import tushare as ts
-from traits.api import Enum, Int, Str
+from opendatatools import stock
 
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio import __QS_Error__, __QS_LibPath__, __QS_MainPath__, __QS_ConfigPath__
@@ -198,16 +198,16 @@ class _MarketTable(_FactorTable):
             Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
         return Data.loc[:, dts]
 
-class TushareDB(FactorDB):
-    """tushare"""
-    Token = Str("", label="Token", arg_type="String", order=0)
+class OpenDataToolsDB(FactorDB):
+    """opendatatools"""
     def __init__(self, sys_args={}, config_file=None, **kwargs):
-        super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"TushareDBConfig.json" if config_file is None else config_file), **kwargs)
-        self.Name = "TushareDB"
+        super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"OpenDataToolsDBConfig.json" if config_file is None else config_file), **kwargs)
+        self.Name = "OpenDataToolsDB"
         self._ts = None
-        self._InfoFilePath = __QS_LibPath__+os.sep+"TushareDBInfo.hdf5"# 数据库信息文件路径
-        self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"TushareDBInfo.xlsx"# 数据库信息源文件路径
+        self._InfoFilePath = __QS_LibPath__+os.sep+"OpenDataToolsDBInfo.hdf5"# 数据库信息文件路径
+        self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"OpenDataToolsDBInfo.xlsx"# 数据库信息源文件路径
         self._TableInfo, self._FactorInfo = updateInfo(self._InfoFilePath, self._InfoResourcePath)
+        return
     def connect(self):
         ts.set_token(self.Token)
         self._ts = ts.pro_api()
@@ -262,3 +262,9 @@ class TushareDB(FactorDB):
         if index_id=="全体A股": return self._getAllAStock(date=date, is_current=is_current)
         if not is_current: raise __QS_Error__("不支持提取 '%s' 的历史成分股!" % index_id)
         return self._ts.index_weight(index_code=index_id, trade_date=date.strftime("%Y%m%d"), fields="con_code")["con_code"].tolist()
+    # 将 Excel 文件中的表和字段信息导入信息文件
+    def importInfo(self, excel_file_path):
+        DF = pd.read_excel(excel_file_path, "TableInfo").set_index(["TableName"])
+        writeNestedDict2HDF5(DF, self._InfoFilePath, "/TableInfo")
+        DF = pd.read_excel(excel_file_path, 'FactorInfo').set_index(['TableName', 'FieldName'])
+        writeNestedDict2HDF5(DF, self._InfoFilePath, "/FactorInfo")

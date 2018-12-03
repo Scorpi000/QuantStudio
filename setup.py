@@ -7,7 +7,7 @@ with open("README.rst", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="QuantStudio",
-    version="0.0.7",
+    version="0.0.8",
     author="scorpi000",
     author_email="scorpi000@sina.cn",
     maintainer="scorpi000",
@@ -21,7 +21,7 @@ setuptools.setup(
     python_requires=">=3.5",
     scripts=[],
     package_data={
-    "QuantStudio": ["Matlab/*", "Lib/*.py", "Lib/*.hdf5", "Resource/*"]
+    "QuantStudio": ["Matlab/*", "Lib/*", "Resource/*"]
     },
     packages=setuptools.find_packages(),
     classifiers=[
