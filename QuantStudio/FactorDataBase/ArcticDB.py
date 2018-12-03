@@ -70,8 +70,8 @@ class ArcticDB(WritableFactorDB):
     DBName = Str("arctic", arg_type="String", label="数据库名", order=0)
     IPAddr = Str("127.0.0.1", arg_type="String", label="IP地址", order=1)
     Port = Range(low=0, high=65535, value=27017, arg_type="Integer", label="端口", order=2)
-    User = Str("Scorpion", arg_type="String", label="用户名", order=3)
-    Pwd = Password("shuntai11", arg_type="String", label="密码", order=4)
+    User = Str("", arg_type="String", label="用户名", order=3)
+    Pwd = Password("", arg_type="String", label="密码", order=4)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._Arctic = None# Arctic 对象
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"ArcticDBConfig.json" if config_file is None else config_file), **kwargs)

@@ -159,7 +159,7 @@ class _FeatureTable(FactorTable):
 class CloverDB(FactorDB):
     """Clover 数据库"""
     DBName = Str("epsilon", arg_type="String", label="数据库名", order=0)
-    IPAddr = Str("192.168.100.2", arg_type="String", label="IP地址", order=1)
+    IPAddr = Str("127.0.0.1", arg_type="String", label="IP地址", order=1)
     Port = Range(low=0, high=65535, value=3306, arg_type="Integer", label="端口", order=2)
     User = Str("epsilon", arg_type="String", label="用户名", order=3)
     Pwd = Password("epsilon7777", arg_type="String", label="密码", order=4)

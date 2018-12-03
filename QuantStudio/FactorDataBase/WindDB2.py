@@ -1693,7 +1693,7 @@ class WindDB2(FactorDB):
     IPAddr = Str("127.0.0.1", arg_type="String", label="IP地址", order=2)
     Port = Range(low=0, high=65535, value=1521, arg_type="Integer", label="端口", order=3)
     User = Str("root", arg_type="String", label="用户名", order=4)
-    Pwd = Password("shuntai11", arg_type="String", label="密码", order=5)
+    Pwd = Password("", arg_type="String", label="密码", order=5)
     TablePrefix = Str("", arg_type="String", label="表名前缀", order=6)
     CharSet = Enum("utf8", "gbk", "gb2312", "gb18030", "cp936", "big5", arg_type="SingleOption", label="字符集", order=7)
     Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
