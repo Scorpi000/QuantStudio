@@ -434,7 +434,7 @@ class FactorTable(__QS_Object__):
                 else:# 当前缓存因子数等于最大缓存因子数，那么将检查最小读取次数的因子
                     CacheFactorReadNum = self.ErgodicMode._FactorReadNum[self.ErgodicMode._CacheData.keys()]
                     MinReadNumInd = CacheFactorReadNum.argmin()
-                    if CacheFactorReadNum.loc[MinReadNumInd]<self.ErgodicMode._FactorReadNum[ifactor_name]:# 当前读取的因子的读取次数超过了缓存因子读取次数的最小值，缓存该因子数据
+                    if CacheFactorReadNum.loc[MinReadNumInd]<self.ErgodicMode._FactorReadNum[iFactorName]:# 当前读取的因子的读取次数超过了缓存因子读取次数的最小值，缓存该因子数据
                         CacheFactorNames.append(iFactorName)
                         PopFactor = MinReadNumInd
                         self.ErgodicMode._CacheData.pop(PopFactor)
@@ -473,7 +473,7 @@ class FactorTable(__QS_Object__):
                     PopID = MinReadNumInd
                     self.ErgodicMode._CacheData.pop(PopID)
                     self.ErgodicMode._CacheData[iid] = IDData
-                    self.ErgodicMode._Queue2SubProcess.put((None,(iid, PopID)))
+                    self.ErgodicMode._Queue2SubProcess.put((None, (iid, PopID)))
                 else:# 当前读取的 ID 的读取次数没有超过缓存 ID 读取次数的最小值, 放弃缓存该 ID 数据
                     return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=factor_names, ids=[iid], dts=dts, args=args), factor_names=factor_names, ids=[iid], dts=dts, args=args).iloc[:, :, 0]
         return IDData.loc[dts, factor_names]

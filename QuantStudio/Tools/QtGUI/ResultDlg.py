@@ -1017,54 +1017,43 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         return 0
     def plotScatter(self):
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
-        if SelectedDF is None:
-            QtWidgets.QMessageBox.critical(None,'错误',Msg)
-            return 0
-        elif (SelectedDF.shape[1]<1) or (SelectedDF.shape[1]>3):
-            QtWidgets.QMessageBox.critical(None,'错误','请选择一到三列!')
-            return 0
-        isOK = QtWidgets.QMessageBox.question(None,'添加回归线','是否添加回归线?',QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel,QtWidgets.QMessageBox.Cancel)
+        if SelectedDF is None: return QtWidgets.QMessageBox.critical(None, "错误", Msg)
+        elif (SelectedDF.shape[1]<1) or (SelectedDF.shape[1]>3): return QtWidgets.QMessageBox.critical(None, "错误", "请选择一到三列!")
+        isOK = QtWidgets.QMessageBox.question(None, "回归线", "是否添加回归线?", QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel, QtWidgets.QMessageBox.Cancel)
         tempFigDlg = _MatplotlibWidget()
         Fig = tempFigDlg.Mpl.Fig
         Axes = Fig.add_subplot(111)
         SelectedDF.dropna()
         if SelectedDF.shape[1]==1:
-            xData = np.linspace(0,SelectedDF.shape[0]-1,SelectedDF.shape[0])
+            xData = np.linspace(0, SelectedDF.shape[0]-1, SelectedDF.shape[0])
             yData = SelectedDF.iloc[:,0].values
-            Axes.scatter(xData,yData,label='散点图',color='b')
+            Axes.scatter(xData, yData, label="散点图", color='b')
         if SelectedDF.shape[1]==2:
             xData = SelectedDF.iloc[:,0].values
             yData = SelectedDF.iloc[:,1].values
-            Axes.scatter(xData,yData,label='散点图',color='b')
+            Axes.scatter(xData, yData, label="散点图", color='b')
         elif SelectedDF.shape[1]==3:
             xData = SelectedDF.iloc[:,0].values
             yData = SelectedDF.iloc[:,1].values
             zData = SelectedDF.iloc[:,2].astype('float')
-            Size = ((zData-zData.mean())/zData.std()*50).values
-            Color = ((zData-zData.min())/(zData.max()-zData.min())).values
-            Axes.scatter(xData,yData,s=Size,c=Color,label='散点图')
+            Size = ((zData-zData.mean()) / zData.std()*50).values
+            Color = ((zData-zData.min()) / (zData.max()-zData.min())).values
+            Axes.scatter(xData, yData, s=Size, c=Color, label="散点图")
         if isOK==QtWidgets.QMessageBox.Ok:
-            xData = sm.add_constant(xData, prepend=True)
-            Model = sm.OLS(yData,xData,missing='drop')
-            Result = Model.fit()
-            xData = xData[:,1]
+            Result = sm.OLS(yData, sm.add_constant(xData, prepend=True), missing='drop').fit()
             xData.sort()
-            yRegressData = Result.params[0]+Result.params[1]*xData
-            Axes.plot(xData,yRegressData,label='回归线',color='r',linewidth=2)
-        Axes.legend(loc='upper left',shadow=True)
+            yRegressData = Result.params[0] + Result.params[1] * xData
+            Axes.plot(xData, yRegressData, label="回归线", color='r', linewidth=2)
+        Axes.legend(loc="upper left", shadow=True)
         tempFigDlg.Mpl.draw()
         tempFigDlg.show()
         return 0
     def plotScatter3D(self):
         from mpl_toolkits.mplot3d import Axes3D
         SelectedDF,Msg = self.getSelectedDF(all_num=True)
-        if SelectedDF is None:
-            QtWidgets.QMessageBox.critical(None,'错误',Msg)
-            return 0
-        elif SelectedDF.shape[1]!=3:
-            QtWidgets.QMessageBox.critical(None,'错误','请选择三列!')
-            return 0
-        isOK = QtWidgets.QMessageBox.question(None,'添加回归面','是否添加回归面?',QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel,QtWidgets.QMessageBox.Cancel)
+        if SelectedDF is None: return QtWidgets.QMessageBox.critical(None, '错误', Msg)
+        elif SelectedDF.shape[1]!=3: return QtWidgets.QMessageBox.critical(None, '错误', '请选择三列!')
+        isOK = QtWidgets.QMessageBox.question(None, '添加回归面', '是否添加回归面?', QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel, QtWidgets.QMessageBox.Cancel)
         tempFigDlg = _MatplotlibWidget()
         Fig = tempFigDlg.Mpl.Fig
         Axes = Axes3D(Fig)
@@ -1072,18 +1061,12 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         xData = SelectedDF.iloc[:,0].values
         yData = SelectedDF.iloc[:,1].values
         zData = SelectedDF.iloc[:,2].values
-        Axes.scatter(xData,yData,zData,label='散点图')
+        Axes.scatter(xData, yData, zData, label='散点图')
         if isOK==QtWidgets.QMessageBox.Ok:
-            xRegressData = np.ones((SelectedDF.shape[0],3))
-            xRegressData[:,1] = xData
-            xRegressData[:,2] = yData
-            Model = sm.OLS(zData,xRegressData,missing='drop')
-            Result = Model.fit()
-            xData.sort()
-            yData.sort()
-            X,Y = np.meshgrid(xData,yData)
-            zRegressData = Result.params[0]+Result.params[1]*X+Result.params[2]*Y
-            Axes.plot_surface(X,Y,zRegressData,label='回归面')
+            Result = sm.OLS(zData, sm.add_constant(np.c_[np.ones(SelectedDF.shape[0]), xData, yData], prepend=True), missing='drop').fit()
+            X, Y = np.meshgrid(np.sort(xData), np.sort(yData))
+            zRegressData = Result.params[0] + Result.params[1]*X + Result.params[2]*Y
+            Axes.plot_surface(X, Y, zRegressData, label='回归面')
         tempFigDlg.Mpl.draw()
         tempFigDlg.show()
         return 0
