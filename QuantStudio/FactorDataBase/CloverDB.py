@@ -2,6 +2,7 @@
 """clover 数据源"""
 import os
 import re
+import json
 import datetime as dt
 
 import numpy as np
@@ -49,11 +50,11 @@ class _TickTable(FactorTable):
     """Clover Tick 因子表"""
     TmsIntv = Float(3, arg_type="Double", label="时间间隔", order=0, low=0.5, high=86400, single_step=0.5)# 以秒为单位
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         self._FactorNames = ["lst","vol","amt","mid","bid","bsz","ask","asz","wmp","oin",
                              "buyVolume","sellVolume","bidSizeChange","askSizeChange",
                              "crossBidVolume","crossAskVolume","vi","ofi"]
         self._PriceFactors = {"lst", "amt", "mid", "bid", "ask", "wmp"}
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
     @property
     def FactorNames(self):
         return self._FactorNames
@@ -63,10 +64,23 @@ class _TickTable(FactorTable):
         if key is None: return MetaData
         elif key in MetaData: return MetaData.loc[:, key]
         else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
-    def getID(self, ifactor_name=None, idt=None):
+    def getID(self, ifactor_name=None, idt=None, args={}):
         return []
-    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None):
-        return []
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
+        if iid is None: return []
+        if end_dt is None: end_dt = dt.datetime.today()
+        if start_dt is None: start_dt = dt.datetime.combine(end_dt.date(), dt.time(0))
+        StartDate, EndDate = start_dt.date().strftime("%Y-%m-%d"), (end_dt.date() + dt.timedelta(1)).strftime("%Y-%m-%d")
+        SecDef = self._FactorDB.createSecDef([iid])
+        tms_intv = int(args.get("时间间隔", self.TmsIntv)*1000)
+        mdreader = self._FactorDB._jpype.JPackage("clover.epsilon.util").TestUtils.createMDReader("JavaSerialPT", "mdreader.SHFE")
+        JPckg_matlab = self._FactorDB._jpype.JPackage("clover.model.matlab")
+        sdm_def = JPckg_matlab.SecurityDataMatrixPT.generateSDMDataDef_CN(self._FactorDB._jConn, SecDef, StartDate, EndDate, tms_intv)
+        sdm = JPckg_matlab.SecurityDataMatrixPT()
+        sdm.fetchData(sdm_def, mdreader, tms_intv)
+        tms = np.array(sdm.tms) / 1000
+        start_dt, end_dt = start_dt.timestamp(), end_dt.timestamp()
+        return [dt.datetime.fromtimestamp(iTMS / 1000) for iTMS in sdm.tms if (iTMS/1000<=end_dt) and (iTMS/1000>=start_dt)]
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if not dts: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         StartDate, EndDate = dts[0].date(), dts[-1].date()
@@ -82,7 +96,7 @@ class _TickTable(FactorTable):
             for j, jSecDef in enumerate(SecDef):
                 jSecurity = JPckg_util.ModelUtils.parseSecurity(self._FactorDB._jConn, TradeDates[-1], JPckg_util.Json.parse(jSecDef))
                 PriceMultiplier[j] = jSecurity.getMinPriceIncrement()
-        mdreader = self._FactorDB._jpype.JPackage("clover.epsilon.util").TestUtils.createMDReader("JavaSerialPT", "mdreader.SHFE")
+        mdreader = self._FactorDB._jpype.JPackage("clover.epsilon.util").TestUtils.createMDReader("Kryo.IQuotePT", "mdreader.SHFE")
         JPckg_matlab = self._FactorDB._jpype.JPackage("clover.model.matlab")
         sdm_def = JPckg_matlab.SecurityDataMatrixPT.generateSDMDataDef_CN(self._FactorDB._jConn, SecDef, StartDate, EndDate, tms_intv)
         sdm = JPckg_matlab.SecurityDataMatrixPT()
@@ -169,7 +183,7 @@ class CloverDB(FactorDB):
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._jpype = None# jpype 模块
         self._jConn = None# epsilon 数据库连接
-        self._ExchangeDict = {"上海证券交易所":"SHFE", "深圳证券交易所":"SZSE"}
+        self._Suffix2Exchange = {"SH":"SSE", "SZ":"SZSE", "CFE":"CFFEX", "INE":"INE", "CZC":"CZCE", "DCE":"DCE", "SHF":"SHFE"}
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"CloverDBConfig.json" if config_file is None else config_file), **kwargs)
         self.Name = "CloverDB"
         return
@@ -197,7 +211,7 @@ class CloverDB(FactorDB):
         return 0
     def disconnect(self):
         self._jConn = None
-        self._jpype.shutdownJVM()
+        #self._jpype.shutdownJVM()
         self._jpype = None
         return 0
     def isAvailable(self):
@@ -219,22 +233,16 @@ class CloverDB(FactorDB):
             iID = iID.split(".")
             iSuffix = iID[-1]
             iCode = ".".join(iID[:-1])
-            if iSuffix=="SH":
-                SecDef.append('{"SecurityExchange":"SSE", "Symbol":"%s"}' % iCode)
-            elif iSuffix=="SZ":
-                SecDef.append('{"SecurityExchange":"SZSE", "Symbol":"%s"}' % iCode)
-            elif iSuffix=="CFE":
-                if iCode.isalpha():# 全是字母
-                    SecDef.append('{"SecurityExchange":"CFFEX", "Symbol":"%s", "MaturitySequence":"+1"}' % (iCode[:2], ))
-                elif iCode.isalnum():# 字母数字组合
-                    iSym = re.findall("\D+")[0]
-                    iNum = re.findall("\d+")[0]
-                    if len(iNum)==4:
-                        SecDef.append('{"SecurityExchange":"CFFEX", "Symbol":"%s", "MaturityMonthYear":"20%d"}' % (iSym, int(iNum)))
-                    else:
-                        raise __QS_Error__("ID: %s 解析失败!" % (ids[i], ))# TODO
-                else:
-                    raise __QS_Error__("ID: %s 解析失败!" % (ids[i], ))
+            iSecDef = {"SecurityExchange": self._Suffix2Exchange[iSuffix]}
+            if iCode.isnumeric():# 全是数字
+                iSecDef["Symbol"] = iCode
+            elif iCode.isalnum():# 字母数字组合
+                iSym, iNum = re.findall("\D+", iCode)[0], re.findall("\d+", iCode)[0]
+                iSecDef["Symbol"] = iSym
+                if len(iNum)==4: iSecDef["MaturityMonthYear"] = ("20%s" % (iNum, ))
+                else: iSecDef["MaturitySequence"] = ("+%d" % (int(iNum)+1, ))
+            else: raise __QS_Error__("ID: %s 解析失败!" % (ids[i], ))# TODO
+            SecDef.append(json.dumps(iSecDef))
         return SecDef
     # 获取证券的描述信息
     def getSecurityInfo(self, ids, idt=None):

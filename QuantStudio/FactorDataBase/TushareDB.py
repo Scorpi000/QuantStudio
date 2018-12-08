@@ -13,7 +13,7 @@ from QuantStudio import __QS_Error__, __QS_LibPath__, __QS_MainPath__, __QS_Conf
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
 from QuantStudio.FactorDataBase.FDBFun import updateInfo
 
-class _FactorTable(FactorTable):
+class _TSTable(FactorTable):
     def getMetaData(self, key=None):
         TableInfo = self._FactorDB._TableInfo.loc[self.Name]
         if key is None:
@@ -44,7 +44,7 @@ class _FactorTable(FactorTable):
             return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
 
 
-class _CalendarTable(_FactorTable):
+class _CalendarTable(_TSTable):
     """交易日历因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         FactorInfo = fdb._FactorInfo.loc[name]
@@ -55,7 +55,7 @@ class _CalendarTable(_FactorTable):
     # 返回交易所列表
     # 忽略 ifactor_name, idt
     def getID(self, ifactor_name=None, idt=None, args={}):
-        return ["SSE", "SZSE"]
+        if self._FactorDB._TableInfo.loc[self.Name, "Supplementary"]=="A股": return ["SSE", "SZSE"]
     # 返回交易所为 iid 的交易日列表
     # 如果 iid 为 None, 将返回表中有记录数据的时间点序列
     # 忽略 ifactor_name
@@ -95,8 +95,37 @@ class _CalendarTable(_FactorTable):
         Data = pd.Panel(Data).loc[factor_names]
         Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Data.major_axis]
         return Data.loc[:, dts, ids]
+class _FeatureTable(_TSTable):
+    """特征因子表"""
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        FactorInfo = fdb._FactorInfo.loc[name]
+        self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+    def getID(self, ifactor_name=None, idt=None, args={}):
+        if self._FactorDB._TableInfo.loc[self.Name, "Supplementary"]=="A股": return self._FactorDB.getStockID(index_id="全体A股", is_current=False)
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
+        return []
+        # 时间点默认是当天, ID 默认是 [000001.SH], 特别参数: 回溯天数
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        Fields = [self._IDField]+factor_names
+        DBFields = FactorInfo["DBFieldName"].loc[Fields].tolist()
+        DBTableName = self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        RawData = pd.DataFrame(columns=DBFields)
+        FieldStr = ",".join(DBFields)
+        RawData = self._FactorDB._ts.query(DBTableName, exchange="", list_status="L", fields=FieldStr)
+        RawData = RawData.append(self._FactorDB._ts.query(DBTableName, exchange="", list_status="D", fields=FieldStr))
+        RawData = RawData.append(self._FactorDB._ts.query(DBTableName, exchange="", list_status="P", fields=FieldStr))        
+        RawData = RawData.loc[:, DBFields]
+        RawData.columns = ["ID"]+factor_names
+        return RawData
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        raw_data = raw_data.set_index(["ID"])
+        if raw_data.index.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        raw_data = raw_data.loc[ids]
+        return pd.Panel(raw_data.values.T.reshape((raw_data.shape[1], raw_data.shape[0], 1)).repeat(len(dts), axis=2), items=factor_names, major_axis=ids, minor_axis=dts).swapaxes(1, 2)
 
-class _MarketTable(_FactorTable):
+class _MarketTable(_TSTable):
     """行情因子表"""
     LookBack = Int(0, arg_type="Integer", label="回溯天数", order=0)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
@@ -121,10 +150,8 @@ class _MarketTable(_FactorTable):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         return FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()+self._DateFields
     def getID(self, ifactor_name=None, idt=None, args={}):
-        return self._FactorDB.getID(index_id="全体A股", is_current=False)
+        if self._FactorDB._TableInfo.loc[self.Name, "Supplementary"]=="A股": return self._FactorDB.getStockID(index_id="全体A股", is_current=False)
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
-        if start_dt is not None: start_dt = start_dt.date()
-        if end_dt is not None: end_dt = end_dt.date()
         return self._FactorDB.getTradeDay(start_date=start_dt, end_date=end_dt, exchange="SSE", output_type="datetime")
     def __QS_genGroupInfo__(self, factors, operation_mode):
         DateConditionGroup = {}
@@ -249,15 +276,15 @@ class TushareDB(FactorDB):
             return [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Dates["cal_date"]]
     # 获取指定日当前在市或者历史上出现过的全体 A 股 ID
     def _getAllAStock(self, date, is_current=True):
-        Data = self._ts.stock_basic(exchange_id="", is_hs="", list_status="L", fields="ts_code, list_date, delist_date")
-        Data = Data.append(self._ts.stock_basic(exchange_id="", is_hs="", list_status="D", fields="ts_code, list_date, delist_date"))
-        Data = Data.append(self._ts.stock_basic(exchange_id="", is_hs="", list_status="P", fields="ts_code, list_date, delist_date"))
+        Data = self._ts.stock_basic(exchange="", list_status="L", fields="ts_code, list_date, delist_date")
+        Data = Data.append(self._ts.stock_basic(exchange="", list_status="D", fields="ts_code, list_date, delist_date"))
+        Data = Data.append(self._ts.stock_basic(exchange="", list_status="P", fields="ts_code, list_date, delist_date"))
         date = date.strftime("%Y%m%d")
         Data = Data[Data["list_date"]<=date]
         if is_current: Data = Data[pd.isnull(Data["delist_date"]) | (Data["delist_date"]>date)]
         return sorted(Data["ts_code"])
     # 获取指定日当前或历史上的指数成份股ID, is_current=True: 获取指定日当天的ID, False:获取截止指定日历史上出现的 ID
-    def getID(self, index_id="全体A股", date=None, is_current=True):
+    def getStockID(self, index_id="全体A股", date=None, is_current=True):
         if date is None: date = dt.date.today()
         if index_id=="全体A股": return self._getAllAStock(date=date, is_current=is_current)
         if not is_current: raise __QS_Error__("不支持提取 '%s' 的历史成分股!" % index_id)

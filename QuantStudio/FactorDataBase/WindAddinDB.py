@@ -150,7 +150,7 @@ class WindAddinDB(FactorDB):
         date = dt.datetime.combine(date, dt.time(20, 0, 0, 5000))
         return [IDs[i] for i, iDate in enumerate(Rslt.Data[0]) if iDate<=date]
     # 给定指数名称和ID，获取指定日当前或历史上的指数中的股票ID，is_current=True:获取指定日当天的ID，False:获取截止指定日历史上出现的ID
-    def getID(self, index_id="全体A股", date=None, is_current=True):
+    def getStockID(self, index_id="全体A股", date=None, is_current=True):
         if date is None: date = dt.date.today()
         if index_id=="全体A股": return self._getAllAStock(date=date, is_current=is_current)
         Res = self.w.wset("sectorconstituent","date="+date.strftime("%Y%m%d")+";windcode="+index_id)

@@ -513,12 +513,12 @@ class _ConstituentTable(_DBTable):
     # 返回指数 ID 为 ifactor_name 在给定时点 idt 的所有成份股
     # 如果 idt 为 None, 将返回指数 ifactor_name 的所有历史成份股
     # 如果 ifactor_name 为 None, 返回数据库表中有记录的所有 ID
-    def getID(self, ifactor_name=None, idt=None, args={}):
+    def getID(self, ifactor_name=None, idt=None, args={}, **kwargs):
         DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         Fields = [self._IDField, self._GroupField, self._InDateField, self._OutDateField]
         if self._CurSignField: Fields.append(self._CurSignField)
         FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[Fields]
-        SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[self._IDField]# ID
+        SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[self._IDField]+" "# ID
         SQLStr += "FROM "+DBTableName+" "
         if ifactor_name is not None:
             SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._GroupField]+"='"+ifactor_name+"' "
@@ -527,11 +527,12 @@ class _ConstituentTable(_DBTable):
         if idt is not None:
             idt = idt.strftime("%Y%m%d")
             SQLStr += "AND "+DBTableName+"."+FieldDict[self._InDateField]+"<='"+idt+"' "
-            SQLStr += "AND (("+DBTableName+"."+FieldDict[self._OutDateField]+">'"+idt+"') "
-        if self._CurSignField:
-            SQLStr += "OR ("+DBTableName+"."+FieldDict[self._CurSignField]+"=1)) "
-        else:
-            SQLStr += "OR ("+DBTableName+"."+FieldDict[self._OutDateField]+" IS NULL)) "
+            if kwargs.get("is_current", True):
+                SQLStr += "AND (("+DBTableName+"."+FieldDict[self._OutDateField]+">'"+idt+"') "
+                if self._CurSignField:
+                    SQLStr += "OR ("+DBTableName+"."+FieldDict[self._CurSignField]+"=1)) "
+                else:
+                    SQLStr += "OR ("+DBTableName+"."+FieldDict[self._OutDateField]+" IS NULL)) "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._IDField]
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     # 返回指数 ID 为 ifactor_name 包含成份股 iid 的时间点序列
@@ -1879,8 +1880,29 @@ class WindDB2(FactorDB):
         else:
             SQLStr = "SELECT S_INFO_WINDCODE FROM {Prefix}AShareDescription WHERE S_INFO_LISTDATE<='{Date}' ORDER BY S_INFO_WINDCODE"
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d")))]
-    # 获取指定日当前或历史上的指数成份股ID, is_current=True: 获取指定日当天的ID, False:获取截止指定日历史上出现的 ID
-    def getID(self, index_id="全体A股", date=None, is_current=True):
+    # 获取指定日当前或历史上的指数成份股 ID, is_current=True: 获取指定日当天的ID, False:获取截止指定日历史上出现的 ID
+    def getStockID(self, index_id="全体A股", date=None, is_current=True):
         if date is None: date = dt.date.today()
         if index_id=="全体A股": return self._getAllAStock(date=date, is_current=is_current)
-        else: raise __QS_Error__("不支持提取指数代码为：'%s' 的成份股!" % index_id)
+        for iTableName in self._TableInfo[(self._TableInfo["TableClass"]=="ConstituentTable") & self._TableInfo.index.str.contains("A股")].index:
+            IDs = self.getTable(iTableName).getID(ifactor_name=index_id, idt=date, is_current=is_current)
+            if IDs: return IDs
+        else: return []
+    # 给定期货标志, 获取指定日当前或历史上的该期货的所有 ID, is_current=True:获取指定日当天的 ID, False:获取截止指定日历史上出现的 ID, 目前仅支持提取当前在市的 ID
+    def getFutureID(self, future_code="IF", date=None, is_current=True):
+        if date is None: date = dt.date.today()
+        SQLStr = "SELECT DISTINCT s_info_windcode FROM {Prefix}CFuturesDescription "
+        SQLStr += "WHERE fs_info_sccode = '{FutureCode}' AND fs_info_type=1 "
+        SQLStr += "AND s_info_listdate<='{Date}' "
+        if is_current: SQLStr += "AND s_info_delistdate>='{Date}' "
+        SQLStr += "ORDER BY s_info_windcode"
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d"), FutureCode=future_code))]
+    # 给定期权代码, 获取指定日当前或历史上的该期权的所有 ID, is_current=True:获取指定日当天的 ID, False:获取截止指定日历史上出现的 ID, 目前仅支持提取当前在市的 ID
+    def getOptionID(self, option_code="510050OP", date=None, is_current=True):
+        if date is None: date = dt.date.today()
+        SQLStr = "SELECT DISTINCT s_info_windcode FROM {Prefix}ChinaOptionDescription "
+        SQLStr += "WHERE s_info_sccode LIKE '{OptionCode}%%' "
+        SQLStr += "AND s_info_ftdate<='{Date}' "
+        if is_current: SQLStr += "AND s_info_lasttradingdate>='{Date}' "
+        SQLStr += "ORDER BY s_info_windcode"
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d"), OptionCode=option_code))]    

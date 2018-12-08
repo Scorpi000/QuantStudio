@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>378</width>
-    <height>293</height>
+    <width>401</width>
+    <height>342</height>
    </rect>
   </property>
   <property name="focusPolicy">
@@ -160,23 +160,36 @@
     </widget>
    </item>
    <item row="2" column="0" colspan="3">
-    <widget class="QGroupBox" name="IndexGroupBox">
+    <widget class="QGroupBox" name="IDGroupBox">
      <property name="title">
-      <string>指数成分</string>
+      <string/>
      </property>
      <layout class="QGridLayout" name="gridLayout_2">
       <item row="0" column="0">
-       <widget class="QLabel" name="label_3">
+       <widget class="QLabel" name="CodeLabel_2">
         <property name="text">
-         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;指数代码&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;ID 类型&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
         </property>
         <property name="buddy">
-         <cstring>IndexIDEdit</cstring>
+         <cstring>CodeEdit</cstring>
         </property>
        </widget>
       </item>
       <item row="0" column="1" colspan="2">
-       <widget class="QLineEdit" name="IndexIDEdit">
+       <widget class="QComboBox" name="IDTypeComboBox"/>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="CodeLabel">
+        <property name="text">
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;指数代码&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+        </property>
+        <property name="buddy">
+         <cstring>CodeEdit</cstring>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1" colspan="2">
+       <widget class="QLineEdit" name="CodeEdit">
         <property name="focusPolicy">
          <enum>Qt::ClickFocus</enum>
         </property>
@@ -185,14 +198,14 @@
         </property>
        </widget>
       </item>
-      <item row="1" column="0">
+      <item row="2" column="0">
        <widget class="QLabel" name="label">
         <property name="text">
          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;截止日期&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="1" colspan="2">
+      <item row="2" column="1" colspan="2">
        <widget class="QDateEdit" name="DateEdit">
         <property name="currentSection">
          <enum>QDateTimeEdit::YearSection</enum>
@@ -202,7 +215,7 @@
         </property>
        </widget>
       </item>
-      <item row="2" column="0">
+      <item row="3" column="0">
        <widget class="QCheckBox" name="CurrentCheckBox">
         <property name="text">
          <string>历史成分</string>
@@ -212,7 +225,7 @@
         </property>
        </widget>
       </item>
-      <item row="2" column="1">
+      <item row="3" column="1">
        <widget class="QComboBox" name="SelectIDTypeComboBox">
         <item>
          <property name="text">
@@ -246,7 +259,7 @@
         </item>
        </widget>
       </item>
-      <item row="2" column="2">
+      <item row="3" column="2">
        <widget class="QPushButton" name="SelectIDButton">
         <property name="focusPolicy">
          <enum>Qt::NoFocus</enum>
@@ -302,7 +315,7 @@
   </layout>
  </widget>
  <tabstops>
-  <tabstop>IndexIDEdit</tabstop>
+  <tabstop>CodeEdit</tabstop>
   <tabstop>SelectFDBIDButton</tabstop>
  </tabstops>
  <resources/>

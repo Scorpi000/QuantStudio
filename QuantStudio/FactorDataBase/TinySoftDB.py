@@ -265,16 +265,25 @@ class TinySoftDB(FactorDB):
             iID = iID.decode("gbk")
             IDs.append(iID[2:]+"."+iID[:2])
         return IDs
-    # 给定指数名称和ID，获取指定日当前或历史上的指数中的股票ID，is_current=True:获取指定日当天的ID，False:获取截止指定日历史上出现的ID, 目前仅支持提取当前的指数成份股
-    def getID(self, index_id, date=None, is_current=True):# TODO
+    # 给定指数 ID, 获取指定日当前或历史上的指数中的股票 ID, is_current=True:获取指定日当天的 ID, False:获取截止指定日历史上出现的 ID, 目前仅支持提取当前的指数成份股
+    def getStockID(self, index_id, date=None, is_current=True):# TODO
         if index_id=="全体A股": return self._getAllAStock(date=date, is_current=is_current)
         if date is None: date = dt.date.today()
         CodeStr = "return GetBKByDate('{IndexID}',IntToDate({Date}));"
         CodeStr = CodeStr.format(IndexID="".join(reversed(index_id.split("."))), Date=date.strftime("%Y%m%d"))
-        ErrorCode, Data, Msg = self._TSLPy.RemoteExecute(CodeStr,{})
+        ErrorCode, Data, Msg = self._TSLPy.RemoteExecute(CodeStr, {})
         if ErrorCode!=0: raise __QS_Error__("TinySoft 执行错误: "+Msg.decode("gbk"))
         IDs = []
         for iID in Data:
             iID = iID.decode("gbk")
             IDs.append(iID[2:]+"."+iID[:2])
         return IDs
+    # 给定期货 ID, 获取指定日当前或历史上的该期货的所有 ID, is_current=True:获取指定日当天的 ID, False:获取截止指定日历史上出现的 ID, 目前仅支持提取当前在市的 ID
+    def getFutureID(future_id="IF", date=None, is_current=True):
+        if date is None: date = dt.date.today()
+        if is_current: CodeStr = "EndT:= {Date}T;return GetFuturesID('{FutureID}', EndT);"
+        else: raise __QS_Error__("目前不支持提取历史 ID")
+        CodeStr = CodeStr.format(IndexID="".join(future_id.split(".")), Date=date.strftime("%Y%m%d"))
+        ErrorCode, Data, Msg = self._TSLPy.RemoteExecute(CodeStr, {})
+        if ErrorCode!=0: raise __QS_Error__("TinySoft 执行错误: "+Msg.decode("gbk"))
+        return [iID.decode("gbk") for iID in Data]

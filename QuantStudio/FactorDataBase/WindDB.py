@@ -371,7 +371,7 @@ class WindDB(FactorDB):
             SQLStr += 'WHERE {Prefix}tb_object_1090.f21_1090=1 AND {Prefix}tb_object_1090.F4_1090=\'A\' AND {Prefix}tb_object_1090.F17_1090<=\'{Date}\' ORDER BY {Prefix}tb_object_0001.f1_0001'
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d")))]
     # 给定指数名称和ID，获取指定日当前或历史上的指数中的股票ID，is_current=True:获取指定日当天的ID，False:获取截止指定日历史上出现的ID
-    def getID(self, index_id="全体A股", date=None, is_current=True):
+    def getStockID(self, index_id="全体A股", date=None, is_current=True):
         if date is None: date = dt.date.today()
         if index_id=="全体A股": return self._getAllAStock(date=date, is_current=is_current)
         # 获取指数在数据库内部的证券 ID

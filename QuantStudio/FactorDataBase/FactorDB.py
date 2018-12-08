@@ -558,8 +558,8 @@ class FactorTable(__QS_Object__):
         return [(self, FactorNames, list(RawFactorNames), operation_mode.DTRuler[StartInd:EndInd+1], {})]
     def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock):
         if raw_data is None: return 0
-        if 'ID' in raw_data:# 如果原始数据有 ID 列，按照 ID 列划分后存入子进程的原始文件中
-            raw_data = raw_data.set_index(['ID'])
+        if isinstance(raw_data, pd.DataFrame) and ("ID" in raw_data):# 如果原始数据有 ID 列，按照 ID 列划分后存入子进程的原始文件中
+            raw_data = raw_data.set_index(["ID"])
             CommonCols = raw_data.columns.difference(factor_names).tolist()
             AllIDs = set(raw_data.index)
             for iPID, iIDs in pid_ids.items():

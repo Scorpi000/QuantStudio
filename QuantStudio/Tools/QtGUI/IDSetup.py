@@ -37,10 +37,16 @@ class IDSetupDlg(QDialog, Ui_IDSetupDlg):
         else:
             self.FDB = self.FT = None
             self.FDBGroupBox.setEnabled(False)
-        # 初始化指数成分设置
-        if not hasattr(self.FDB, "getID"): self.IndexGroupBox.setEnabled(False)
+        # 初始化 ID 设置
+        if hasattr(self.FDB, "getStockID"):
+            self.IDTypeComboBox.addItem("股票")
+        if hasattr(self.FDB, "getFutureID"):
+            self.IDTypeComboBox.addItem("期货")
+        if hasattr(self.FDB, "getOptionID"):
+            self.IDTypeComboBox.addItem("期权")
+        if self.IDTypeComboBox.count()==0:
+            self.IndexGroupBox.setEnabled(False)
         self.DateEdit.setDate(dt.date.today())
-        self.IndexIDEdit.setText("全体A股")
         self.populateIDListWidget(self.IDs)
         self.setIDListWidgetMenu()
     def showIDListWidgetMenu(self, pos):
@@ -113,16 +119,37 @@ class IDSetupDlg(QDialog, Ui_IDSetupDlg):
         if p0.strip(self.CurInputID)==".": self.IDInputEdit.setText(suffixAShareID(p0[:-1]))
         self.CurInputID = p0
         return 0
+    def _getStockID(self, idate, code, is_current):
+        try:
+            IDs = self.FDB.getStockID(index_id=code, date=idate, is_current=is_current)
+        except Exception as e:
+            return (-1, "提取 ID 失败: "+str(e))
+        if not IDs: return (1, "提取的成分为空!\n可能的原因:\n(1)指数代码不正确;\n(2)该日期处无指数成分数据;\n(3)该指数因子库不支持.")
+        return (0, IDs)
+    def _getFutureID(self, idate, code, is_current):
+        try:
+            IDs = self.FDB.getFutureID(future_code=code, date=idate, is_current=is_current)
+        except Exception as e:
+            return (-1, "提取 ID 失败: "+str(e))
+        if not IDs: return (1, "提取的 ID 为空!\n可能的原因:\n(1)期货标志不正确;\n(2)该日期处期货尚未上市;\n(3)该期货因子库不支持.")
+        return (0, IDs)
+    def _getOptionID(self, idate, code, is_current):
+        try:
+            IDs = self.FDB.getOptionID(option_code=code, date=idate, is_current=is_current)
+        except Exception as e:
+            return (-1, "提取 ID 失败: "+str(e))
+        if not IDs: return (1, "提取的 ID 为空!\n可能的原因:\n(1)期权标志不正确;\n(2)该日期处期权尚未上市;\n(3)该期权因子库不支持.")
+        return (0, IDs)
     @pyqtSlot()
     def on_SelectIDButton_clicked(self):
         Date = self.DateEdit.date().toPyDate()
-        IndexID = self.IndexIDEdit.text()
+        Code = self.CodeEdit.text()
         isCurrent = (not self.CurrentCheckBox.isChecked())
-        try:
-            IDs = self.FDB.getID(index_id=IndexID, date=Date, is_current=isCurrent)
-        except Exception as e:
-            return QMessageBox.critical(None, "错误", "提取成分失败: "+str(e))
-        if not IDs: return QMessageBox.warning(None, "警告", "提取的成分为空!\n可能的原因:\n(1)指数代码不正确;\n(2)该日期处无指数成分数据;\n(3)该指数因子库不支持.")
+        IDType = self.IDTypeComboBox.currentText()
+        if IDType=="股票": Error, IDs = self._getStockID(Date, Code, isCurrent)
+        elif IDType=="期货": Error, IDs = self._getFutureID(Date, Code, isCurrent)
+        elif IDType=="期权": Error, IDs = self._getOptionID(Date, Code, isCurrent)
+        if Error!=0: return QMessageBox.warning(None, "警告", IDs)
         self.IDs = sorted(mergeSet(set(IDs), set(self.IDs), merge_type=self.FIDSelectTypeComboBox.currentText()))
         return self.populateIDListWidget(self.IDs)
     @pyqtSlot()
@@ -137,6 +164,17 @@ class IDSetupDlg(QDialog, Ui_IDSetupDlg):
         self.FT = self.FDB.getTable(p0)
         self.FactorComboBox.clear()
         self.FactorComboBox.addItems(self.FT.FactorNames)
+    @pyqtSlot(str)
+    def on_IDTypeComboBox_currentTextChanged(self, p0):
+        if p0=="股票":
+            self.CodeLabel.setText('<html><head/><body><p align="center">指数 ID</p></body></html>')
+            self.CodeEdit.setText("全体A股")
+        elif p0=="期货":
+            self.CodeLabel.setText('<html><head/><body><p align="center">期货标志</p></body></html>')
+            self.CodeEdit.setText("IF")
+        elif p0=="期权":
+            self.CodeLabel.setText('<html><head/><body><p align="center">期权标志</p></body></html>')
+            self.CodeEdit.setText("510050OP")
 
 if __name__=="__main__":
     import QuantStudio.api as QS
