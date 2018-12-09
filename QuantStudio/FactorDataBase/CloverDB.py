@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 from traits.api import File, List, Float, Int, Bool, Enum, Str, Range, Password
 
+from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
 from QuantStudio.FactorDataBase.FDBFun import adjustDateTime
@@ -81,8 +82,7 @@ class _TickTable(FactorTable):
         tms = np.array(sdm.tms) / 1000
         start_dt, end_dt = start_dt.timestamp(), end_dt.timestamp()
         return [dt.datetime.fromtimestamp(iTMS / 1000) for iTMS in sdm.tms if (iTMS/1000<=end_dt) and (iTMS/1000>=start_dt)]
-    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if not dts: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         SecDef = self._FactorDB.createSecDef(ids)
         tms_intv = int(args.get("时间间隔", self.TmsIntv)*1000)
@@ -108,8 +108,15 @@ class _TickTable(FactorTable):
             iData = np.array(getattr(sdm, iField))
             if iField in self._PriceFactors: iData = iData * PriceMultiplier
             Data[iField] = iData
-        Data = pd.Panel(Data, major_axis=tms, minor_axis=ids).loc[factor_names]
-        return adjustDateTime(Data, dts=dts)
+        return pd.Panel(Data, major_axis=tms, minor_axis=ids).loc[factor_names]
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        if not dts: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        RawData = self.__QS_prepareRawData__(factor_names, ids, dts=[start_date, end_date], args=args)
+        return adjustDateTime(RawData, dts=dts)
+    def readDayData(self, factor_names, ids, start_date, end_date, args={}):
+        RawData = self.__QS_prepareRawData__(factor_names, ids, dts=[start_date, end_date], args=args)
+        if RawData.shape[2]==0: return pd.Panel(items=factor_names, major_axis=[], minor_axis=ids)
+        return RawData.loc[:, :, ids]
 
 class _TimeBarTable(FactorTable):
     """Clover Time Bar 因子表"""
@@ -169,7 +176,6 @@ class _FeatureTable(FactorTable):
         Data = pd.Panel(Data).swapaxes(0, 1)
         Data = adjustDateTime(Data, dts, fillna=True, method="bfill")
         return Data
-
 class CloverDB(FactorDB):
     """Clover 数据库"""
     DBName = Str("epsilon", arg_type="String", label="数据库名", order=0)
@@ -258,7 +264,7 @@ class CloverDB(FactorDB):
     # ID 转换成证券 ID
     def ID2SecurityID(self, ids, idt=None):
         SecInfo = self.getSecurityInfo(ids, idt=idt)
-        return [iSecInfo["SecurityID"] for iSecInfo in SecInfo]
+        return [str(iSecInfo["SecurityID"]) for iSecInfo in SecInfo]
     # 获取 Time Bar, 返回 (Time Bar 对象 Array, [所有的证券 ID], DataFrame(证券ID, index=[日期], columns=ids), DataFrame(价格乘数, index=[日期], columns=ids))
     def getTimeBar(self, ids, start_date, end_date, tms_intv, depth, time_period='0930~1130,1300~1500', dynamic_security_id=True):
         StartDate = start_date.strftime("%Y-%m-%d")
@@ -332,13 +338,199 @@ class CloverDB(FactorDB):
             Data[iField] = iData
         return pd.Panel(Data).loc[fields]
 
+class _security_information(FactorTable):
+    """特征因子表"""
+    def __init__(self, name, fdb=None, sys_args={}, config_file=None, **kwargs):
+        self._FactorNames = []
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, config_file=config_file, **kwargs)
+    @property
+    def FactorNames(self):
+        if not self._FactorNames:
+            SQLStr = "SELECT DetailInformation FROM security_information WHERE SecurityID=10001"
+            self._FactorNames = sorted(json.loads(self._FactorDB.fetchall(SQLStr)[0][0]))
+        return self._FactorNames
+    def getID(self, ifactor_name=None, idt=None, args={}):
+        SQLStr = "SELECT DISTINCT CAST(SecurityID AS CHAR) AS SecurityID FROM security_information ORDER BY SecurityID"
+        return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        SQLStr = "SELECT DISTINCT CAST(SecurityID AS CHAR) AS SecurityID, DetailInformation FROM security_information "
+        SQLStr += "WHERE ("+genSQLInCondition("SecurityID", ids, is_str=False, max_num=1000)+") "
+        SQLStr += "ORDER BY SecurityID"
+        RawData = {iID:json.loads(iInfo) for iID, iInfo in self._FactorDB.fetchall(SQLStr)}
+        RawData = pd.DataFrame(RawData).T
+        RawData.index.name = "ID"
+        return RawData.loc[:, factor_names].reset_index()
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        raw_data = raw_data.set_index(["ID"])
+        if raw_data.index.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        Data = pd.Panel(raw_data.values.T.reshape((raw_data.shape[1], raw_data.shape[0], 1)).repeat(len(dts), axis=2), items=factor_names, major_axis=raw_data.index, minor_axis=dts).swapaxes(1, 2)
+        return Data.loc[:, :, ids]
+
+class _market_data_daily(FactorTable):
+    """日行情因子表"""
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        self._DataType = None
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+    @property
+    def FactorNames(self):
+        #if not self._DataType:
+            #SQLStr = ("SELECT COLUMN_NAME, DATA_TYPE FROM market_data_daily.COLUMNS WHERE table_schema='%s' " % self._FactorDB.DBName)
+            #SQLStr += ("AND TABLE_NAME = '%s' " % self.Name)
+            #SQLStr += "AND COLUMN_NAME NOT IN ('SecurityID', 'TradeDate') "
+            #SQLStr += "ORDER BY COLUMN_NAME"
+            #Rslt = self._FactorDB.fetchall(SQLStr)
+            #self._DataType = pd.DataFrame(np.array(Rslt), columns=["因子", "DataType"]).set_index(["因子"])["DataType"]
+        #return self._DataType.index.tolist()
+        return ["OpeningPx", "HighPx", "LowPx", "ClosingPx", "LowLimitPx", "HighLimitPx", "TotalVolumeTraded", "OpenInterest"]
+    # 返回在给定时点 idt 的有数据记录的 ID
+    # 如果 idt 为 None, 将返回所有有历史数据记录的 ID
+    # 忽略 ifactor_name
+    def getID(self, ifactor_name=None, idt=None, args={}):
+        SQLStr = "SELECT DISTINCT CAST(SecurityID AS CHAR) AS SecurityID FROM market_data_daily "
+        if idt is not None: SQLStr += "WHERE TradeDate = '"+idt.strftime("%Y-%m-%d")+"' "
+        SQLStr += "ORDER BY SecurityID"
+        return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
+    # 返回在给定 ID iid 的有数据记录的时间点
+    # 如果 iid 为 None, 将返回所有有历史数据记录的时间点
+    # 忽略 ifactor_name
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
+        SQLStr = "SELECT DISTINCT TradeDate FROM market_data_daily "
+        if iid is not None: SQLStr += "WHERE SecurityID = "+iid+" "
+        else: SQLStr += "WHERE SecurityID IS NOT NULL "
+        if start_dt is not None: SQLStr += "AND TradeDate >= '"+start_dt.strftime("%Y-%m-%d")+"' "
+        if end_dt is not None: SQLStr += "AND TradeDate <= '"+end_dt.strftime("%Y-%m-%d")+"' "
+        SQLStr += "ORDER BY TradeDate"
+        return [dt.datetime.combine(x[0], dt.time(0)) for x in self._FactorDB.fetchall(SQLStr)]
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        StartDate, EndDate = dts[0].date(), dts[-1].date()
+        # 形成 SQL 语句, 日期, ID, 因子数据
+        SQLStr = "SELECT TradeDate, CAST(SecurityID AS CHAR) AS SecurityID, " + ", ".join(factor_names)+" FROM market_data_daily "
+        SQLStr += "WHERE ("+genSQLInCondition("SecurityID", ids, is_str=False, max_num=1000)+") "
+        SQLStr += "AND TradeDate >= '"+dts[0].strftime("%Y-%m-%d")+"' "
+        SQLStr += "AND TradeDate <= '"+dts[-1].strftime("%Y-%m-%d")+"' "
+        SQLStr += "ORDER BY SecurityID, TradeDate"
+        RawData = self._FactorDB.fetchall(SQLStr)
+        if not RawData: return pd.DataFrame(columns=["日期", "ID"]+factor_names)
+        return pd.DataFrame(np.array(RawData), columns=["日期", "ID"]+factor_names)
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        raw_data = raw_data.set_index(["日期", "ID"])
+        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
+        Data = {iFactorName: raw_data[iFactorName].unstack().astype("float") for iFactorName in raw_data.columns}
+        Data = pd.Panel(Data).loc[factor_names]
+        Data.major_axis = [dt.datetime.combine(iDate, dt.time(0)) for iDate in Data.major_axis]
+        return Data.loc[:, dts, ids]
+
+class EpsilonDB(FactorDB):
+    """epsilon 数据库"""
+    DBType = Enum("MySQL", "SQL Server", "Oracle", arg_type="SingleOption", label="数据库类型", order=0)
+    DBName = Str("epsilon", arg_type="String", label="数据库名", order=1)
+    IPAddr = Str("127.0.0.1", arg_type="String", label="IP地址", order=2)
+    Port = Range(low=0, high=65535, value=1521, arg_type="Integer", label="端口", order=3)
+    User = Str("root", arg_type="String", label="用户名", order=4)
+    Pwd = Password("", arg_type="String", label="密码", order=5)
+    TablePrefix = Str("", arg_type="String", label="表名前缀", order=6)
+    CharSet = Enum("utf8", "gbk", "gb2312", "gb18030", "cp936", "big5", arg_type="SingleOption", label="字符集", order=7)
+    Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
+    DSN = Str("", arg_type="String", label="数据源", order=9)
+    def __init__(self, sys_args={}, config_file=None, **kwargs):
+        super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"EpsilonDBConfig.json" if config_file is None else config_file), **kwargs)
+        self._Connection = None# 数据库链接
+        self._AllTables = []# 数据库中的所有表名, 用于查询时解决大小写敏感问题      
+        self.Name = "EpsilonDB"
+        return
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Remove the unpicklable entries.
+        state["_Connection"] = (True if self.isAvailable() else False)
+        return state
+    def __setstate__(self, state):
+        super().__setstate__(state)
+        if self._Connection:
+            self.connect()
+        else:
+            self._Connection = None
+        self._AllTables = state.get("_AllTables", [])
+    def connect(self):
+        if (self.Connector=='cx_Oracle') or ((self.Connector=='default') and (self.DBType=='Oracle')):
+            try:
+                import cx_Oracle
+                self._Connection = cx_Oracle.connect(self.User, self.Pwd, cx_Oracle.makedsn(self.IPAddr, str(self.Port), self.DBName))
+            except Exception as e:
+                if self.Connector!='default': raise e
+        elif (self.Connector=='pymssql') or ((self.Connector=='default') and (self.DBType=='SQL Server')):
+            try:
+                import pymssql
+                self._Connection = pymssql.connect(server=self.IPAddr, port=str(self.Port), user=self.User, password=self.Pwd, database=self.DBName, charset=self.CharSet)
+            except Exception as e:
+                if self.Connector!='default': raise e
+        elif (self.Connector=='mysql.connector') or ((self.Connector=='default') and (self.DBType=='MySQL')):
+            try:
+                import mysql.connector
+                self._Connection = mysql.connector.connect(host=self.IPAddr, port=str(self.Port), user=self.User, password=self.Pwd, database=self.DBName, charset=self.CharSet)
+            except Exception as e:
+                if self.Connector!='default': raise e
+        else:
+            if self.Connector not in ('default', 'pyodbc'):
+                self._Connection = None
+                raise __QS_Error__("不支持该连接器(connector) : "+self.Connector)
+            else:
+                import pyodbc
+                if self.DSN:
+                    self._Connection = pyodbc.connect('DSN=%s;PWD=%s' % (self.DSN, self.Pwd))
+                else:
+                    self._Connection = pyodbc.connect('DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s' % (self.DBType, self.DBName, self.IPAddr, self.User, self.Pwd))
+        self._AllTables = []
+        self._Connection.autocommit = True
+        return 0
+    def disconnect(self):
+        if self._Connection is not None:
+            try:
+                self._Connection.close()
+            except Exception as e:
+                raise e
+            finally:
+                self._Connection = None
+        return 0
+    def isAvailable(self):
+        return (self._Connection is not None)
+    def cursor(self, sql_str=None):
+        if self._Connection is None: raise __QS_Error__("%s尚未连接!" % self.__doc__)
+        Cursor = self._Connection.cursor()
+        if sql_str is None: return Cursor
+        if not self._AllTables:
+            if self.DBType=="SQL Server":
+                Cursor.execute("SELECT Name FROM SysObjects Where XType='U'")
+                self._AllTables = [rslt[0] for rslt in Cursor.fetchall()]
+            elif self.DBType=="MySQL":
+                Cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='"+self.DBName+"' AND table_type='base table'")
+                self._AllTables = [rslt[0] for rslt in Cursor.fetchall()]
+        for iTable in self._AllTables:
+            sql_str = re.sub(iTable, iTable, sql_str, flags=re.IGNORECASE)
+        Cursor.execute(sql_str)
+        return Cursor
+    def fetchall(self, sql_str):
+        Cursor = self.cursor(sql_str=sql_str)
+        Data = Cursor.fetchall()
+        Cursor.close()
+        return Data
+    @property
+    def TableNames(self):
+        return ["security_information", "market_data_daily"]
+    def getTable(self, table_name, args={}):
+        if table_name in self.TableNames: return eval("_"+table_name+"(name='"+table_name+"', fdb=self, sys_args=args)")
+        raise __QS_Error__("因子库目前尚不支持表: '%s'" % table_name)
+
 if __name__=="__main__":
     import time
     CDB = CloverDB()
     CDB.connect()
     
-    IDs = ["510050.SH", "IH.CFE"]
-    #IDs = ["IH1701.CFE", "IH1702.CFE"]
+    EDB = EpsilonDB()
+    EDB.connect()
+    
+    
+    #IDs = ["510050.SH", "IH.CFE", "IF1812.CFE"]
     #print(CDB.TableNames)
     #DTs = CDB.getTable("交易日历").getDateTime(start_dt=dt.datetime(2018,1,1), end_dt=dt.datetime(2018,1,5))
     #SecDef = CDB.createSecDef(ids=IDs)
@@ -347,10 +539,33 @@ if __name__=="__main__":
     #TBs = CDB.getTimeBar(IDs, start_date=dt.date(2017,1,1), end_date=dt.date(2017,1,31), tms_intv=60000, depth=5)
     #RawData = CDB.getTable("Time Bar 数据")._getRawData(IDs, ["vol","amt"], dt.date(2018,1,1), dt.date(2018,1,5), 60000, 5)
     
-    FT = CDB.getTable("Tick 数据")
-    print(FT.FactorNames)
-    Data = FT.readData(factor_names=["lst"], ids=["510050.SH"])
+    #FT = CDB.getTable("Tick 数据")
+    #print(FT.FactorNames)
+    #Data = FT.readData(factor_names=["lst"], ids=["510050.SH"])
     
     #FT = CDB.getTable("Time Bar 数据")
     #Data = FT.readData(factor_names=["mid", "amt"], ids=IDs, args={"时间间隔":60, "动态证券ID":False})
+    
+    
+    #IDs = ["000001.SZ", "510050.SH", "SC1810.INE", "IF1812.CFE"]
+    IDs = ["SC2112.INE", "SC1901.INE"]
+    
+    SecurityIDs = CDB.ID2SecurityID(IDs)
+    
+    #FT = EDB.getTable("security_information")
+    #print(FT.FactorNames)
+    #IDs = FT.getID()
+    #DTs = FT.getDateTime()
+    #Data = FT.readData(factor_names=FT.FactorNames, ids=IDs, dts=[dt.datetime.today()])
+    
+    FT = EDB.getTable("market_data_daily")
+    print(FT.FactorNames)
+    #IDs = FT.getID()
+    DTs = FT.getDateTime()
+    Data = FT.readData(factor_names=FT.FactorNames, ids=SecurityIDs, dts=DTs)
+    Data.minor_axis = IDs
+    
+    
+    
+    EDB.disconnect()
     CDB.disconnect()

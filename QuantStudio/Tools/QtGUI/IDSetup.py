@@ -45,7 +45,7 @@ class IDSetupDlg(QDialog, Ui_IDSetupDlg):
         if hasattr(self.FDB, "getOptionID"):
             self.IDTypeComboBox.addItem("期权")
         if self.IDTypeComboBox.count()==0:
-            self.IndexGroupBox.setEnabled(False)
+            self.IDGroupBox.setEnabled(False)
         self.DateEdit.setDate(dt.date.today())
         self.populateIDListWidget(self.IDs)
         self.setIDListWidgetMenu()

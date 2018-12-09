@@ -1889,12 +1889,16 @@ class WindDB2(FactorDB):
             if IDs: return IDs
         else: return []
     # 给定期货标志, 获取指定日当前或历史上的该期货的所有 ID, is_current=True:获取指定日当天的 ID, False:获取截止指定日历史上出现的 ID, 目前仅支持提取当前在市的 ID
-    def getFutureID(self, future_code="IF", date=None, is_current=True):
+    # kwargs: contract_type: 合约类型, "月合约", "连续合约", "所有", 默认值 "月合约"
+    def getFutureID(self, future_code="IF", date=None, is_current=True, **kwargs):
         if date is None: date = dt.date.today()
         SQLStr = "SELECT DISTINCT s_info_windcode FROM {Prefix}CFuturesDescription "
-        SQLStr += "WHERE fs_info_sccode = '{FutureCode}' AND fs_info_type=1 "
-        SQLStr += "AND s_info_listdate<='{Date}' "
-        if is_current: SQLStr += "AND s_info_delistdate>='{Date}' "
+        if future_code: SQLStr += "WHERE fs_info_sccode = '{FutureCode}'"
+        ContractType = kwargs.get("contract_type", "月合约")
+        if ContractType!="所有": SQLStr += "AND fs_info_type="+("2" if ContractType=="连续合约" else "1")+" "
+        if ContractType!="连续合约":
+            SQLStr += "AND ((s_info_listdate<='{Date}') OR (s_info_listdate IS NULL)) "
+            if is_current: SQLStr += "AND ((s_info_delistdate>='{Date}') OR (s_info_delistdate IS NULL)) "
         SQLStr += "ORDER BY s_info_windcode"
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d"), FutureCode=future_code))]
     # 给定期权代码, 获取指定日当前或历史上的该期权的所有 ID, is_current=True:获取指定日当天的 ID, False:获取截止指定日历史上出现的 ID, 目前仅支持提取当前在市的 ID
