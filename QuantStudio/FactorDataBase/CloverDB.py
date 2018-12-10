@@ -14,7 +14,6 @@ from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
 from QuantStudio.FactorDataBase.FDBFun import adjustDateTime
 
-
 class _CalendarTable(FactorTable):
     """交易日历因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
@@ -83,11 +82,10 @@ class _TickTable(FactorTable):
         start_dt, end_dt = start_dt.timestamp(), end_dt.timestamp()
         return [dt.datetime.fromtimestamp(iTMS / 1000) for iTMS in sdm.tms if (iTMS/1000<=end_dt) and (iTMS/1000>=start_dt)]
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        StartDate, EndDate = dts[0].date(), dts[-1].date()
         SecDef = self._FactorDB.createSecDef(ids)
         tms_intv = int(args.get("时间间隔", self.TmsIntv)*1000)
-        StartDate = StartDate.strftime("%Y-%m-%d")
-        EndDate = (EndDate + dt.timedelta(1)).strftime("%Y-%m-%d")
+        StartDate = dts[0].strftime("%Y-%m-%d")
+        EndDate = (dts[-1] + dt.timedelta(1)).strftime("%Y-%m-%d")
         if self._PriceFactors.intersection(set(factor_names)):
             TradeDates = self._FactorDB._jpype.JPackage("clover.epsilon.database").DatabaseUtil.getTradeDateList(self._FactorDB._jConn, "SHFE", StartDate, EndDate)
             if len(TradeDates)==0: return adjustDateTime(pd.Panel(Data, major_axis=tms, minor_axis=ids), dts=dts)
@@ -246,6 +244,7 @@ class CloverDB(FactorDB):
                 iSym, iNum = re.findall("\D+", iCode)[0], re.findall("\d+", iCode)[0]
                 iSecDef["Symbol"] = iSym
                 if len(iNum)==4: iSecDef["MaturityMonthYear"] = ("20%s" % (iNum, ))
+                elif len(iNum)==3: iSecDef["MaturityMonthYear"] = ("201%s" % (iNum, ))
                 else: iSecDef["MaturitySequence"] = ("+%d" % (int(iNum)+1, ))
             else: raise __QS_Error__("ID: %s 解析失败!" % (ids[i], ))# TODO
             SecDef.append(json.dumps(iSecDef))
@@ -258,13 +257,16 @@ class CloverDB(FactorDB):
         SecInfo = []
         jpckg = self._jpype.JPackage('clover.model.util')
         for iSecDef in sec_def:
-            iSecInfo = jpckg.ModelUtils.parseSecurity(self._jConn, idt, jpckg.Json.parse(iSecDef))
-            SecInfo.append(eval(iSecInfo.toString()))
+            try:
+                iSecInfo = jpckg.ModelUtils.parseSecurity(self._jConn, idt, jpckg.Json.parse(iSecDef))
+                SecInfo.append(json.loads(iSecInfo.toString()))
+            except:
+                SecInfo.append(None)
         return SecInfo
     # ID 转换成证券 ID
     def ID2SecurityID(self, ids, idt=None):
         SecInfo = self.getSecurityInfo(ids, idt=idt)
-        return [str(iSecInfo["SecurityID"]) for iSecInfo in SecInfo]
+        return [(str(iSecInfo["SecurityID"]) if iSecInfo is not None else None) for iSecInfo in SecInfo]
     # 获取 Time Bar, 返回 (Time Bar 对象 Array, [所有的证券 ID], DataFrame(证券ID, index=[日期], columns=ids), DataFrame(价格乘数, index=[日期], columns=ids))
     def getTimeBar(self, ids, start_date, end_date, tms_intv, depth, time_period='0930~1130,1300~1500', dynamic_security_id=True):
         StartDate = start_date.strftime("%Y-%m-%d")
@@ -365,6 +367,30 @@ class _security_information(FactorTable):
         if raw_data.index.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         Data = pd.Panel(raw_data.values.T.reshape((raw_data.shape[1], raw_data.shape[0], 1)).repeat(len(dts), axis=2), items=factor_names, major_axis=raw_data.index, minor_axis=dts).swapaxes(1, 2)
         return Data.loc[:, :, ids]
+class _security_index(FactorTable):
+    """证券索引表"""
+    def __init__(self, name, fdb=None, sys_args={}, config_file=None, **kwargs):
+        self._FactorNames = []
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, config_file=config_file, **kwargs)
+    @property
+    def FactorNames(self):
+        return ["SecurityType", "SecuritySubType", "CFICode", "SecurityExchange", "Symbol", "Currency", "MaturityMonthYear", "MaturityDate", "MaturityTime", "StrikePrice", "StrikeCurrency", "PutOrCall", "UnderlyingSecurityID"]
+    def getID(self, ifactor_name=None, idt=None, args={}):
+        SQLStr = "SELECT DISTINCT CAST(SecurityID AS CHAR) AS SecurityID FROM security_index ORDER BY SecurityID"
+        return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        SQLStr = "SELECT DISTINCT CAST(SecurityID AS CHAR) AS SecurityID, "+", ".join(factor_names)+" "
+        SQLStr += "FROM security_index "
+        SQLStr += "WHERE ("+genSQLInCondition("SecurityID", ids, is_str=False, max_num=1000)+") "
+        SQLStr += "ORDER BY SecurityID"
+        RawData = self._FactorDB.fetchall(SQLStr)
+        if RawData==[]: return pd.DataFrame(columns=["ID"]+factor_names)
+        return pd.DataFrame(np.array(RawData), columns=["ID"]+factor_names)
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        raw_data = raw_data.set_index(["ID"])
+        if raw_data.index.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        Data = pd.Panel(raw_data.values.T.reshape((raw_data.shape[1], raw_data.shape[0], 1)).repeat(len(dts), axis=2), items=factor_names, major_axis=raw_data.index, minor_axis=dts).swapaxes(1, 2)
+        return Data.loc[:, :, ids]
 
 class _market_data_daily(FactorTable):
     """日行情因子表"""
@@ -436,7 +462,8 @@ class EpsilonDB(FactorDB):
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"EpsilonDBConfig.json" if config_file is None else config_file), **kwargs)
         self._Connection = None# 数据库链接
-        self._AllTables = []# 数据库中的所有表名, 用于查询时解决大小写敏感问题      
+        self._AllTables = []# 数据库中的所有表名, 用于查询时解决大小写敏感问题
+        self._Suffix2Exchange = {"SH":"SSE", "SZ":"SZSE", "CFE":"CFFEX", "INE":"INE", "CZC":"CZCE", "DCE":"DCE", "SHF":"SHFE"}
         self.Name = "EpsilonDB"
         return
     def __getstate__(self):
@@ -516,10 +543,52 @@ class EpsilonDB(FactorDB):
         return Data
     @property
     def TableNames(self):
-        return ["security_information", "market_data_daily"]
+        return ["security_information", "security_index", "market_data_daily"]
     def getTable(self, table_name, args={}):
         if table_name in self.TableNames: return eval("_"+table_name+"(name='"+table_name+"', fdb=self, sys_args=args)")
         raise __QS_Error__("因子库目前尚不支持表: '%s'" % table_name)
+    # 创建证券定义
+    def _createSecDef(self, ids):
+        SecDef = []# DataFrame(columns=["SecurityExchange", "Symbol", "MaturityMonthYear"])
+        for i, iID in enumerate(ids):
+            iID = iID.split(".")
+            iSuffix = iID[-1]
+            iCode = ".".join(iID[:-1])
+            iSecDef = [self._Suffix2Exchange[iSuffix]]
+            if iCode.isnumeric():# 全是数字
+                iSecDef.extend([iCode, None])
+            elif iCode.isalnum():# 字母数字组合
+                iSym, iNum = re.findall("\D+", iCode)[0], re.findall("\d+", iCode)[0]
+                iSecDef.append(iSym)
+                if len(iNum)==4: iSecDef.append("20%s" % (iNum, ))
+                elif len(iNum)==3: iSecDef["MaturityMonthYear"] = ("201%s" % (iNum, ))
+                else: raise __QS_Error__("ID: %s 解析失败!" % (ids[i], ))# TODO
+            else: raise __QS_Error__("ID: %s 解析失败!" % (ids[i], ))# TODO
+            SecDef.append(iSecDef)
+        return pd.DataFrame(SecDef, columns=["SecurityExchange", "Symbol", "MaturityMonthYear"])
+    # ID 转换成证券 ID
+    def ID2SecurityID(self, ids):
+        SecDef = self._createSecDef(ids=ids)
+        SecurityExchanges, Symbols = set(SecDef["SecurityExchange"][pd.notnull(SecDef["SecurityExchange"])].values), set(SecDef["Symbol"][pd.notnull(SecDef["Symbol"])].values)
+        MaturityMonthYears = set(SecDef["MaturityMonthYear"][pd.notnull(SecDef["MaturityMonthYear"])].values)
+        SQLStr = "SELECT CAST(SecurityID AS CHAR) AS SecurityID, SecurityExchange, Symbol, MaturityMonthYear "
+        SQLStr += "FROM security_index "
+        SQLStr += "WHERE ("+genSQLInCondition("SecurityExchange", SecurityExchanges, is_str=True, max_num=1000)+") "
+        SQLStr += "AND ("+genSQLInCondition("Symbol", Symbols, is_str=True, max_num=1000)+") "
+        if MaturityMonthYears: SQLStr += "AND ("+genSQLInCondition("MaturityMonthYear", MaturityMonthYears, is_str=True, max_num=1000)+") "
+        SQLStr += "ORDER BY SecurityID"
+        SecurityIDs = [None] * len(ids)
+        Index = np.arange(len(ids))
+        for iSecurityID, iExchange, iSymbol, iMaturityMonthYear in self.fetchall(SQLStr):
+            iMask = ((SecDef["SecurityExchange"]==iExchange) & (SecDef["Symbol"]==iSymbol))
+            if pd.notnull(iMaturityMonthYear): iMask = (iMask & (SecDef["MaturityMonthYear"]==iMaturityMonthYear))
+            iIndex = Index[iMask.values]
+            if iIndex.shape[0]==0: continue
+            elif iIndex.shape[0]>1: raise __QS_Error__("Security ID 解析不唯一!")
+            else: SecurityIDs[iIndex] = iSecurityID
+        return SecurityIDs
+        
+            
 
 if __name__=="__main__":
     import time

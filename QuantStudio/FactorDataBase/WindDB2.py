@@ -1888,12 +1888,14 @@ class WindDB2(FactorDB):
             IDs = self.getTable(iTableName).getID(ifactor_name=index_id, idt=date, is_current=is_current)
             if IDs: return IDs
         else: return []
-    # 给定期货标志, 获取指定日当前或历史上的该期货的所有 ID, is_current=True:获取指定日当天的 ID, False:获取截止指定日历史上出现的 ID, 目前仅支持提取当前在市的 ID
-    # kwargs: contract_type: 合约类型, "月合约", "连续合约", "所有", 默认值 "月合约"
+    # 给定期货代码, 获取指定日当前或历史上的该期货的所有 ID, is_current=True:获取指定日当天的 ID, False:获取截止指定日历史上出现的 ID, 目前仅支持提取当前在市的 ID
+    # kwargs: contract_type: 合约类型, "月合约", "连续合约", "所有", 默认值 "月合约"; include_simulation: 是否包括仿真合约, 默认值 False
     def getFutureID(self, future_code="IF", date=None, is_current=True, **kwargs):
         if date is None: date = dt.date.today()
         SQLStr = "SELECT DISTINCT s_info_windcode FROM {Prefix}CFuturesDescription "
-        if future_code: SQLStr += "WHERE fs_info_sccode = '{FutureCode}'"
+        if future_code: SQLStr += "WHERE fs_info_sccode='{FutureCode}' "
+        else: SQLStr += "WHERE fs_info_sccode IS NOT NULL "
+        if not kwargs.get("include_simulation", False): SQLStr += "AND s_info_name NOT LIKE '%仿真%' "
         ContractType = kwargs.get("contract_type", "月合约")
         if ContractType!="所有": SQLStr += "AND fs_info_type="+("2" if ContractType=="连续合约" else "1")+" "
         if ContractType!="连续合约":
@@ -1901,6 +1903,17 @@ class WindDB2(FactorDB):
             if is_current: SQLStr += "AND ((s_info_delistdate>='{Date}') OR (s_info_delistdate IS NULL)) "
         SQLStr += "ORDER BY s_info_windcode"
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d"), FutureCode=future_code))]
+    # 获取期货代码
+    # kwargs: include_simulation: 是否包括仿真合约, 默认值 False
+    def getFutureCode(self, exchange=None, date=None, is_current=True, **kwargs):
+        if date is None: date = dt.date.today()
+        SQLStr = "SELECT DISTINCT fs_info_sccode FROM {Prefix}CFuturesDescription "
+        SQLStr += "WHERE s_info_listdate<='{Date}' "
+        if is_current: SQLStr += "AND s_info_delistdate>='{Date}' "
+        if exchange: SQLStr += "AND s_info_exchmarket='"+exchange+"' "
+        if not kwargs.get("include_simulation", False): SQLStr += "AND s_info_name NOT LIKE '%仿真%' "
+        SQLStr += "ORDER BY fs_info_sccode"
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d")))]
     # 给定期权代码, 获取指定日当前或历史上的该期权的所有 ID, is_current=True:获取指定日当天的 ID, False:获取截止指定日历史上出现的 ID, 目前仅支持提取当前在市的 ID
     def getOptionID(self, option_code="510050OP", date=None, is_current=True):
         if date is None: date = dt.date.today()
