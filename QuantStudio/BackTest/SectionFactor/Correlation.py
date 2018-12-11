@@ -155,7 +155,7 @@ class SectionCorrelation(BaseModule):
         return axes
     def genMatplotlibFig(self, file_path=None):
         nMethod = len(self.CorrMethod)
-        nRow, nCol = nMethod//3+1, min(3, nMethod)
+        nRow, nCol = nMethod//3+(nMethod%3!=0), min(3, nMethod)
         Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         AxesGrid = gridspec.GridSpec(nRow, nCol)
         for i, iMethod in enumerate(self.CorrMethod):
@@ -242,7 +242,7 @@ class FactorTurnover(BaseModule):
         self._Output["统计数据"]["中位数"] = self._Output["因子换手率"].median()
         return 0
     def genMatplotlibFig(self, file_path=None):
-        nRow, nCol = self._Output["因子换手率"].shape[1]//3+1, min(3, self._Output["因子换手率"].shape[1])
+        nRow, nCol = self._Output["因子换手率"].shape[1]//3+(self._Output["因子换手率"].shape[1]%3!=0), min(3, self._Output["因子换手率"].shape[1])
         Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         AxesGrid = gridspec.GridSpec(nRow, nCol)
         yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)

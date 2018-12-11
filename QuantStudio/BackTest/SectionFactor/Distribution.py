@@ -94,7 +94,7 @@ class IndustryDistribution(BaseModule):
         self._Output.pop("时点")
         return 0
     def genMatplotlibFig(self, file_path=None):
-        nRow, nCol = self._Output["历史平均值"].shape[1]//3+1, min(3, self._Output["历史平均值"].shape[1])
+        nRow, nCol = self._Output["历史平均值"].shape[1]//3+(self._Output["历史平均值"].shape[1]%3!=0), min(3, self._Output["历史平均值"].shape[1])
         Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         AxesGrid = gridspec.GridSpec(nRow, nCol)
         xData = np.arange(0, self._Output["历史平均值"].shape[0])

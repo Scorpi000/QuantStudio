@@ -130,7 +130,7 @@ class IC(BaseModule):
         self._Output["统计数据"]["t统计量"] = (self._Output["统计数据"]["有效期数"]**0.5)*self._Output["统计数据"]["IC_IR"]
         return 0
     def genMatplotlibFig(self, file_path=None):
-        nRow, nCol = self._Output["IC"].shape[1]//3+1, min(3, self._Output["IC"].shape[1])
+        nRow, nCol = self._Output["IC"].shape[1]//3+(self._Output["IC"].shape[1]%3!=0), min(3, self._Output["IC"].shape[1])
         Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         AxesGrid = gridspec.GridSpec(nRow, nCol)
         xData = np.arange(0, self._Output["IC"].shape[0])
