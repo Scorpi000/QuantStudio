@@ -34,7 +34,7 @@ class PreviewDlg(QDialog, Ui_PreviewDlg):
         self.PreviewTable.setHorizontalHeaderLabels(self.FactorData.columns.tolist())
         self.PreviewTable.setRowCount(nRow)
         if nRow==0: return 0
-        if int(np.diff(self.FactorData.index.values).min()/10**9/3600/24)<1:
+        if ((self.FactorData.shape[0]>1) and (int(np.diff(self.FactorData.index.values).min()/10**9/3600/24)<1)) or ((self.FactorData.shape[0]==1) and (self.FactorData.index[0].to_pydatetime().time()!=dt.time(0))):
             self.PreviewTable.setVerticalHeaderLabels([iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in self.FactorData.index])
         else:
             self.PreviewTable.setVerticalHeaderLabels([iDT.strftime("%Y-%m-%d") for iDT in self.FactorData.index])

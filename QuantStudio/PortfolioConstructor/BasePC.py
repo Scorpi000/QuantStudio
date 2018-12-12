@@ -70,7 +70,7 @@ class MeanVarianceObjective(OptimizationObjective):
             Mu = self.ExpectedReturnCoef * self._PC.ExpectedReturn.values.reshape((self._PC._nID, 1))
             if self.Benchmark:
                 self._ObjectiveConstant += -self.ExpectedReturnCoef * np.dot(self._PC.ExpectedReturn.values, self._PC.BenchmarkHolding.values)
-                self._ObjectiveConstant += -self.ExpectedReturnCoef * np.dot(self._PC.BenchmarkExtraExpectedReturn.values, self._PC._BenchmarkExtra.values)
+                self._ObjectiveConstant += -self.ExpectedReturnCoef * np.dot(self._PC._BenchmarkExtraExpectedReturn.values, self._PC._BenchmarkExtra.values)
         else:
             Mu = np.zeros((self._PC._nID, 1))
         if self.RiskAversionCoef!=0.0:
@@ -641,24 +641,24 @@ class PortfolioConstructor(__QS_Object__):
         else: self._TargetIDs = None
         if self._Dependency.get("预期收益", False):
             if self.ExpectedReturn is None: raise __QS_Error__("模型需要预期收益, 但尚未赋值!")
-            self.ExpectedReturn = self.ExpectedReturn.dropna()
-            if self._TargetIDs is None: self._TargetIDs = self.ExpectedReturn.index.tolist()
-            else: self._TargetIDs = self.ExpectedReturn.index.intersection(self._TargetIDs).tolist()
+            ExpectedReturn = self.ExpectedReturn.dropna()
+            if self._TargetIDs is None: self._TargetIDs = ExpectedReturn.index.tolist()
+            else: self._TargetIDs = ExpectedReturn.index.intersection(self._TargetIDs).tolist()
         if self._Dependency.get("协方差矩阵", False):
             if self.FactorCov is not None:
                 if self.RiskFactorData is None: raise __QS_Error__("模型需要风险因子, 但尚未赋值!")
                 if self.SpecificRisk is None: raise __QS_Error__("模型需要特异性风险, 但尚未赋值!")
-                self.RiskFactorData = self.RiskFactorData.dropna(how="any", axis=0)
-                self.SpecificRisk = self.SpecificRisk.dropna()
-                if self._TargetIDs is None: self._TargetIDs = self.RiskFactorData.index.intersection(self.SpecificRisk.index).tolist()
-                else: self._TargetIDs = self.RiskFactorData.index.intersection(self.SpecificRisk.index).intersection(self._TargetIDs).tolist()
+                RiskFactorData = self.RiskFactorData.dropna(how="any", axis=0)
+                SpecificRisk = self.SpecificRisk.dropna()
+                if self._TargetIDs is None: self._TargetIDs = RiskFactorData.index.intersection(SpecificRisk.index).tolist()
+                else: self._TargetIDs = RiskFactorData.index.intersection(SpecificRisk.index).intersection(self._TargetIDs).tolist()
             else:
                 if self.CovMatrix is None: raise __QS_Error__("模型需要协方差矩阵, 但尚未赋值!")
-                self.CovMatrix = self.CovMatrix.dropna(how="all", axis=0)
-                self.CovMatrix = self.CovMatrix.loc[:, self.CovMatrix.index]
-                self.CovMatrix = self.CovMatrix.dropna(how="any", axis=0)
-                if self._TargetIDs is None: self._TargetIDs = self.CovMatrix.index.tolist()
-                else: self._TargetIDs = self.CovMatrix.index.intersection(self._TargetIDs).tolist()
+                CovMatrix = self.CovMatrix.dropna(how="all", axis=0)
+                CovMatrix = CovMatrix.loc[:, CovMatrix.index]
+                CovMatrix = CovMatrix.dropna(how="any", axis=0)
+                if self._TargetIDs is None: self._TargetIDs = CovMatrix.index.tolist()
+                else: self._TargetIDs = CovMatrix.index.intersection(self._TargetIDs).tolist()
         if self._Dependency.get("成交金额", False):
             if self.AmountFactor is None: raise __QS_Error__("模型需要成交金额, 但尚未赋值!")
             if self._TargetIDs is None: self._TargetIDs = self.AmountFactor.index.tolist()
@@ -667,9 +667,9 @@ class PortfolioConstructor(__QS_Object__):
             MissingFactor = set(self._Dependency["因子"]).difference(self.FactorData.columns)
             if MissingFactor: raise __QS_Error__("模型需要因子: %s, 但尚未赋值!" % str(MissingFactor))
             self.FactorData = self.FactorData.loc[:, self._Dependency["因子"]]
-            self.FactorData = self.FactorData.dropna(how="any", axis=0)
-            if self._TargetIDs is None: self._TargetIDs = self.FactorData.index.tolist()
-            else: self._TargetIDs = self.FactorData.index.intersection(self._TargetIDs).tolist()
+            FactorData = self.FactorData.dropna(how="any", axis=0)
+            if self._TargetIDs is None: self._TargetIDs = FactorData.index.tolist()
+            else: self._TargetIDs = FactorData.index.intersection(self._TargetIDs).tolist()
         if self._TargetIDs is None: raise __QS_Error__("无法确定目标 ID 序列!")
         self._TargetIDs = sorted(self._TargetIDs)
         self._nID = len(self._TargetIDs)
@@ -700,30 +700,34 @@ class PortfolioConstructor(__QS_Object__):
             self.CovMatrix = self.CovMatrix.loc[self._TargetIDs, self._TargetIDs]
         if self._Dependency.get("预期收益", False):
             if self.ExpectedReturn is None: raise __QS_Error__("模型需要预期收益, 但尚未赋值!")
-            self._BenchmarkExtraExpectedReturn = self.ExpectedReturn.loc[self._BenchmarkExtraIDs]
+            ExpectedReturn = self.ExpectedReturn.loc[TargetBenchmarkExtraIDs]
+            self._BenchmarkExtraExpectedReturn = ExpectedReturn.loc[self._BenchmarkExtraIDs]
             self._BenchmarkExtraExpectedReturn = self._BenchmarkExtraExpectedReturn.fillna(0.0)
-            self.ExpectedReturn = self.ExpectedReturn.loc[self._TargetIDs]
+            self.ExpectedReturn = ExpectedReturn.loc[self._TargetIDs]
             self.ExpectedReturn = self.ExpectedReturn.fillna(0.0)
         if self._Dependency.get("因子", []):
-            self._BenchmarkExtraFactorData = self.FactorData.loc[self._BenchmarkExtraIDs]
+            FactorData = FactorData.loc[TargetBenchmarkExtraIDs, :]
+            self._BenchmarkExtraFactorData = FactorData.loc[self._BenchmarkExtraIDs]
             self._BenchmarkExtraFactorData = self._BenchmarkExtraFactorData.fillna(0.0)
-            self.FactorData = self.FactorData.loc[self._TargetIDs]
+            self.FactorData = FactorData.loc[self._TargetIDs]
             self.FactorData = self.FactorData.fillna(0.0)
         if self._Dependency.get("初始投资组合", False):
             if self.Holding is None: raise __QS_Error__("模型需要初始投资组合, 但尚未赋值!")
             self._HoldingExtraIDs = sorted(self.Holding[self.Holding>0].index.difference(self._TargetIDs))
             self._HoldingExtra = self.Holding[self._HoldingExtraIDs]
-            self.Holding = self.Holding.loc[self._TargetIDs]
+            Holding = self.Holding.loc[self._TargetIDs+self._HoldingExtraIDs]
+            self.Holding = Holding.loc[self._TargetIDs]
             self.Holding[pd.isnull(self.Holding)] = 0.0
         else:
             self._HoldingExtraIDs = []
             self.Holding = None
             self._HoldingExtra = pd.Series()
-        TargetHoldingExtraIDs = self._TargetIDs + self._HoldingExtraIDs
         if self._Dependency.get("成交金额", False):
-            self._HoldingExtraAmount = self.AmountFactor.loc[self._HoldingExtraIDs]
+            TargetHoldingExtraIDs = self._TargetIDs + self._HoldingExtraIDs
+            Amount = self.AmountFactor.loc[TargetHoldingExtraIDs]
+            self._HoldingExtraAmount = Amount.loc[self._HoldingExtraIDs]
             self._HoldingExtraAmount = self._HoldingExtraAmount.fillna(0.0)
-            self.AmountFactor = self.AmountFactor.loc[self._TargetIDs]
+            self.AmountFactor = Amount.loc[self._TargetIDs]
             self.AmountFactor = self.AmountFactor.fillna(0.0)
         self._DataChanged = False
         return 0
