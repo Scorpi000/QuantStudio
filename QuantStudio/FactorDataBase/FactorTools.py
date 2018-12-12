@@ -45,6 +45,13 @@ def _genOperatorData(f, idt, iid, x, args):
                 Data.append(x[args.get("SepInd"+str(i),0)])
     return Data
 # ----------------------时间点运算--------------------------------
+def _astype(f, idt, iid, x, args):
+    Data = _genOperatorData(f, idt, iid, x, args)[0]
+    return Data.astype(dtype=args["OperatorArg"]["dtype"])
+def astype(f, dtype, **kwargs):
+    Descriptors, Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"dtype":dtype}
+    return PointOperation(kwargs.get('factor_name',str(uuid.uuid1())), Descriptors, {"算子":_astype, "参数":Args, "运算时点":"多时点", "运算ID":"多ID"})
 def _log(f, idt, iid, x, args):
     Data = _genOperatorData(f, idt, iid, x, args)[0]
     Data[Data<=0] = np.nan
@@ -554,9 +561,11 @@ def _nav(f, idt, iid, x, args):
     Price = x[0]
     Return, = _genOperatorData(f, idt, iid, x[1:], args)
     if Price.shape[0]<=Return.shape[0]:
-        return np.nancumprod(Return + 1, axis=0)
+        NAV = np.nancumprod(Return + 1, axis=0)
     else:
-        return Price[-Return.shape[0]-1, :] * np.nancumprod(Return + 1, axis=0)
+        NAV = Price[-Return.shape[0]-1, :] * np.nancumprod(Return + 1, axis=0)
+    NAV[pd.isnull(Return)] = np.nan
+    return NAV
 def nav(ret, init=None, **kwargs):
     Descriptors, Args = _genMultivariateOperatorInfo(ret)
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_nav,"参数":Args,"回溯期数":[0]*len(Descriptors),"自身回溯期数":1,"自身回溯模式":"扩张窗口","自身初始值":init,"运算时点":"多时点","运算ID":"多ID"})

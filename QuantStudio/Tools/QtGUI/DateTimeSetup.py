@@ -124,7 +124,7 @@ class DateTimeSetupDlg(QDialog, Ui_Dialog):
     def toFinancialQuarterLastDay(self):
         return self._changeDT(dt_period="财报季末日")
     def sampleData(self):
-        SamplePeriod, isOk = QInputDialog.getInt(None, "间隔", "采样间隔", 10, 0, 2147483647, 1)
+        SamplePeriod, isOk = QInputDialog.getInt(self, "间隔", "采样间隔", 10, 0, 2147483647, 1)
         if not isOk: return 0
         ListWidget = self.sender().parent().parent().parent()
         if ListWidget is self.DateListWidget:
@@ -143,23 +143,23 @@ class DateTimeSetupDlg(QDialog, Ui_Dialog):
         elif ListWidget is self.TimeListWidget: Data = self.Times
         elif ListWidget is self.DateTimeListWidget: Data = self.DateTimes
         if not Data: return 0
-        FilePath, _ = QFileDialog.getSaveFileName(None, "导出数据", os.getcwd()+os.sep+"untitled.csv", "csv (*.csv)")
+        FilePath, _ = QFileDialog.getSaveFileName(self, "导出数据", os.getcwd()+os.sep+"untitled.csv", "csv (*.csv)")
         if not FilePath: return 0
         Data = pd.DataFrame(Data, columns=["Date"])
         Data.to_csv(FilePath, header=False, index=False)
-        return QMessageBox.information(None, "完成", "导出完成!")
+        return QMessageBox.information(self, "完成", "导出完成!")
     def importData(self):
-        FilePath, _ = QFileDialog.getOpenFileName(None, "导入数据", os.getcwd(), "csv (*.csv)")
+        FilePath, _ = QFileDialog.getOpenFileName(self, "导入数据", os.getcwd(), "csv (*.csv)")
         if not FilePath: return 0
         try:
             Data = readCSV2Pandas(FilePath, detect_file_encoding=True, index_col=None, header=None, parse_dates=True, infer_datetime_format=True)
         except Exception as e:
-            return QMessageBox.critical(None, "错误", "数据读取失败: "+str(e))
+            return QMessageBox.critical(self, "错误", "数据读取失败: "+str(e))
         ListWidget = self.sender().parent().parent().parent()
         if ListWidget is self.DateListWidget: FormatStr = "%Y-%m-%d"
         elif ListWidget is self.TimeListWidget: FormatStr = "%H:%M:%S"
         elif ListWidget is self.DateTimeListWidget: FormatStr = "%Y-%m-%d %H:%M:%S.%f"
-        FormatStr, isOk = QInputDialog.getText(None, "时间格式", "请输入文件的时间格式: ", text=FormatStr)
+        FormatStr, isOk = QInputDialog.getText(self, "时间格式", "请输入文件的时间格式: ", text=FormatStr)
         if not isOk: return 0
         try:
             if ListWidget is self.DateListWidget:
@@ -172,7 +172,7 @@ class DateTimeSetupDlg(QDialog, Ui_Dialog):
                 self.DateTimes = [dt.datetime.strptime(Data.iloc[i, 0], FormatStr) for i in range(Data.shape[0])]
                 return self.populateDateTimeListWidget(self.DateTimes)
         except Exception as e:
-            return QMessageBox.critical(None, "错误", "数据解析失败: "+str(e))
+            return QMessageBox.critical(self, "错误", "数据解析失败: "+str(e))
     def showDateListWidgetMenu(self, pos):
         self.DateListWidget.ContextMenu["主菜单"].move(QCursor.pos())
         self.DateListWidget.ContextMenu["主菜单"].show()
@@ -275,7 +275,7 @@ class DateTimeSetupDlg(QDialog, Ui_Dialog):
         elif dt_period=="财报季初日": return DateTimeFun.getFinancialQuarterFirstDateTime(dts)
         elif dt_period=="财报季末日": return DateTimeFun.getFinancialQuarterLastDateTime(dts)
         elif dt_period=="月中日":
-            Middle, isOK = QInputDialog.getInt(None, "月中日", "月中分界日: ", value=15, min=1, max=31, step=1)
+            Middle, isOK = QInputDialog.getInt(self, "月中日", "月中分界日: ", value=15, min=1, max=31, step=1)
             if isOK: return DateTimeFun.getMonthMiddleDateTime(dts, middle_day=Middle)
         return dts
     @pyqtSlot()
@@ -297,7 +297,7 @@ class DateTimeSetupDlg(QDialog, Ui_Dialog):
                 try:
                     Dates = self.FDB.getTradeDay(StartDate, EndDate, exchange=self.ExchangeEdit.text())
                 except Exception as e:
-                    return QMessageBox.critical(None, "错误", str(e))
+                    return QMessageBox.critical(self, "错误", str(e))
         Dates = self.changeDateTime(Dates, self.DatePeriodComboBox.currentText())
         self.Dates = sorted(mergeSet(set(Dates), set(self.Dates), merge_type=self.DateSelectTypeComboBox.currentText()))
         return self.populateDateListWidget(self.Dates)

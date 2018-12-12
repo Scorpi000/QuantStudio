@@ -91,18 +91,18 @@ class IDSetupDlg(QDialog, Ui_IDSetupDlg):
         return False
     def exportData(self):
         if len(self.IDs)==0: return 0
-        FilePath, _ = QFileDialog.getSaveFileName(None, "导出 ID", os.getcwd()+os.sep+"ID.csv", "csv (*.csv)")
+        FilePath, _ = QFileDialog.getSaveFileName(self, "导出 ID", os.getcwd()+os.sep+"ID.csv", "csv (*.csv)")
         if not FilePath: return 0
         Data = pd.DataFrame(self.IDs, columns=["ID"])
         Data.to_csv(FilePath, header=False, index=False)
-        return QMessageBox.information(None, "完成", "导出完成!")
+        return QMessageBox.information(self, "完成", "导出完成!")
     def importData(self):
-        FilePath, _ = QFileDialog.getOpenFileName(None, "导入 ID", os.getcwd(), "csv (*.csv)")
+        FilePath, _ = QFileDialog.getOpenFileName(self, "导入 ID", os.getcwd(), "csv (*.csv)")
         if not FilePath: return 0
         try:
             IDs = readCSV2Pandas(FilePath, detect_file_encoding=True, index_col=None, header=None)
         except Exception as e:
-            return QMessageBox.critical(None, "错误", "数据读取失败: "+str(e))
+            return QMessageBox.critical(self, "错误", "数据读取失败: "+str(e))
         self.IDs = IDs.values[:, 0].tolist()
         return self.populateIDListWidget(self.IDs)
     @pyqtSlot()
@@ -149,7 +149,7 @@ class IDSetupDlg(QDialog, Ui_IDSetupDlg):
         if IDType=="股票": Error, IDs = self._getStockID(Date, Code, isCurrent)
         elif IDType=="期货": Error, IDs = self._getFutureID(Date, Code, isCurrent)
         elif IDType=="期权": Error, IDs = self._getOptionID(Date, Code, isCurrent)
-        if Error!=0: return QMessageBox.warning(None, "警告", IDs)
+        if Error!=0: return QMessageBox.warning(self, "警告", IDs)
         self.IDs = sorted(mergeSet(set(IDs), set(self.IDs), merge_type=self.FIDSelectTypeComboBox.currentText()))
         return self.populateIDListWidget(self.IDs)
     @pyqtSlot()

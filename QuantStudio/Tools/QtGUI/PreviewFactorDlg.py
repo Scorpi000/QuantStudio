@@ -59,7 +59,7 @@ class PreviewDlg(QDialog, Ui_PreviewDlg):
         return 0
     @pyqtSlot()
     def on_DateTimeButton_clicked(self):
-        Dlg = DateTimeSetupDlg(None, dts=self.DTs, ft=self.Factor.FactorTable)
+        Dlg = DateTimeSetupDlg(self, dts=self.DTs, ft=self.Factor.FactorTable)
         Dlg.exec_()
         if Dlg.isChanged:
             self.DTs = Dlg.DateTimes
@@ -71,7 +71,7 @@ class PreviewDlg(QDialog, Ui_PreviewDlg):
         return 0
     @pyqtSlot()
     def on_IDButton_clicked(self):
-        Dlg = IDSetupDlg(None, ids=self.IDs, ft=self.Factor.FactorTable)
+        Dlg = IDSetupDlg(self, ids=self.IDs, ft=self.Factor.FactorTable)
         Dlg.exec_()
         if Dlg.isChanged:
             self.IDs = Dlg.IDs
@@ -79,13 +79,13 @@ class PreviewDlg(QDialog, Ui_PreviewDlg):
         return self.populateID()
     @pyqtSlot()
     def on_Export2CSVButton_clicked(self):
-        FilePath, _ = QFileDialog.getSaveFileName(None, "导出数据", os.getcwd()+os.sep+"untitled.csv", "csv (*.csv)")
+        FilePath, _ = QFileDialog.getSaveFileName(self, "导出数据", os.getcwd()+os.sep+"untitled.csv", "csv (*.csv)")
         if not FilePath: return 0
         if self.DimChanged:
             self.FactorData = self.Factor.readData(ids=self.IDs, dts=self.DTs)
             self.DimChanged = False
         self.FactorData.to_csv(FilePath)
-        return QMessageBox.information(None, "完成", "导出数据完成!")
+        return QMessageBox.information(self, "完成", "导出数据完成!")
     @pyqtSlot()
     def on_ArgSetButton_clicked(self):
         self.DimChanged = self.Factor.setArgs()

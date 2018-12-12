@@ -72,7 +72,7 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
         TableName, isOk = QInputDialog.getText(self, "新表名", "请输入新表名", text=TableName)
         if not isOk: return (False, "")
         if TableName in self.FactorDB.TableNames:
-            QMessageBox.critical(None, "错误", "当前包含重名表!")
+            QMessageBox.critical(self, "错误", "当前包含重名表!")
             return (False, "")
         return (True, TableName)
     def getNewFactorName(self, table_name):# 获取新因子名
@@ -81,7 +81,7 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
         NewFactorName, isOk = QInputDialog.getText(self, "新因子名", "请输入新因子名", text=NewFactorName)
         if not isOk: return (False, "")
         if NewFactorName in AllFactorNames:
-            QMessageBox.critical(None, "错误", "当前表包含重名因子!")
+            QMessageBox.critical(self, "错误", "当前表包含重名因子!")
             return (False, "")
         return (True, NewFactorName)    
     @pyqtSlot(QModelIndex)
@@ -100,7 +100,7 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
         try:
             self.FactorDB.connect()
         except Exception as e:
-            QMessageBox.critical(None, "错误", str(e))
+            QMessageBox.critical(self, "错误", str(e))
             return 0
         return self.populateFactorDBTree()
     @pyqtSlot()
@@ -109,20 +109,20 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
         if isTableSelected:
             SelectedTableName = SelectedItem.text(0)
             Description = self.FactorDB.getTable(SelectedTableName).getMetaData(key="Description")
-            return QMessageBox.information(None, "描述信息", str(Description))
+            return QMessageBox.information(self, "描述信息", str(Description))
         isFactorSelected, SelectedItem = self.isBottomItemSelected()
         if isFactorSelected:
             SelectedFactorName = SelectedItem.text(0)
             SelectedTableName = SelectedItem.parent().text(0)
             Description = self.FactorDB.getTable(SelectedTableName).getFactorMetaData([SelectedFactorName], key="Description").iloc[0]
-            return QMessageBox.information(None, "描述信息", str(Description))
+            return QMessageBox.information(self, "描述信息", str(Description))
         return 0
     @pyqtSlot()
     def on_ViewButton_clicked(self):
         isFactorSelected, SelectedItem = self.isBottomItemSelected()
-        if not isFactorSelected: return QMessageBox.critical(None, "错误", "请选择一个因子!")
+        if not isFactorSelected: return QMessageBox.critical(self, "错误", "请选择一个因子!")
         Factor = self.FactorDB.getTable(SelectedItem.parent().text(0)).getFactor(SelectedItem.text(0))
-        Dlg = PreviewDlg(factor=Factor)
+        Dlg = PreviewDlg(factor=Factor, parent=self)
         Dlg.exec_()
         return 0
     def renameTable(self, selected_item):
@@ -131,13 +131,13 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
         NewTableName, isOk = QInputDialog.getText(self, "表名", "请输入表名", text=OldTableName)
         if (not isOk) or (OldTableName==NewTableName): return 0
         if NewTableName in self.FactorDB.TableNames:
-            return QMessageBox.critical(None, "错误", "当前包含重名表!")
+            return QMessageBox.critical(self, "错误", "当前包含重名表!")
         # 调整其他关联区的数据
         try:
             self.FactorDB.renameTable(OldTableName, NewTableName)
             selected_item.setText(0, NewTableName)
         except Exception as e:
-            QMessageBox.critical(None, "错误", str(e))
+            QMessageBox.critical(self, "错误", str(e))
         return 0
     def renameFactor(self, selected_item):
         OldFactorName = selected_item.text(0)
@@ -146,12 +146,12 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
         NewFactorName, isOK = QInputDialog.getText(self, "因子名", "请输入因子名", text=OldFactorName)
         if (not isOK) or (OldFactorName==NewFactorName): return 0
         if NewFactorName in self.FactorDB.getTable(TableName).FactorNames:
-            return QMessageBox.critical(None, "错误", "该表中包含重名因子!")
+            return QMessageBox.critical(self, "错误", "该表中包含重名因子!")
         try:
             self.FactorDB.renameFactor(TableName, OldFactorName, NewFactorName)
             selected_item.setText(0, NewFactorName)
         except Exception as e:
-            QMessageBox.critical(None, "错误", str(e))
+            QMessageBox.critical(self, "错误", str(e))
         return 0
     @pyqtSlot()
     def on_RenameButton_clicked(self):
@@ -163,7 +163,7 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
         if isFactorSelected: return self.renameFactor(SelectedItem)
         return 0
     def deleteTableFactor(self):
-        isOK = QMessageBox.question(None, "删除", "删除后将无法恢复, 你是否能对自己的行为负责?", QMessageBox.Ok | QMessageBox.Cancel, QMessageBox.Cancel)
+        isOK = QMessageBox.question(self, "删除", "删除后将无法恢复, 你是否能对自己的行为负责?", QMessageBox.Ok | QMessageBox.Cancel, QMessageBox.Cancel)
         if isOK!=QMessageBox.Ok: return 0
         TableFactor = self.genTableFactor()
         for iTable in TableFactor:
@@ -173,7 +173,7 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
                 else:
                     self.FactorDB.deleteFactor(iTable, TableFactor[iTable])
             except Exception as e:
-                QMessageBox.critical(None, "错误", str(e))
+                QMessageBox.critical(self, "错误", str(e))
         return self.populateFactorDBTree()
     @pyqtSlot()
     def on_DeleteButton_clicked(self):
@@ -185,13 +185,13 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
         if not TableFactor: return 0
         # 获取表名
         TableList = self.FactorDB.TableNames
-        TargetTableName, isOk = QInputDialog.getItem(None, "目标表", "请选择目标表", ["新建..."]+TableList, editable=False)
+        TargetTableName, isOk = QInputDialog.getItem(self, "目标表", "请选择目标表", ["新建..."]+TableList, editable=False)
         if not isOk: return 0
         if TargetTableName=="新建...":
             TargetTableName, isOk = QInputDialog.getText(self, "新建表", "请输入表名", text=genAvailableName("NewTable", TableList))
             if not isOk: return 0
             if TargetTableName in TableList:
-                QMessageBox.critical(None, "错误", "当前包含重名表!")
+                QMessageBox.critical(self, "错误", "当前包含重名表!")
                 return 0
         self.setEnabled(False)
         for iTable, iFactorNames in TableFactor.items():
@@ -201,12 +201,12 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
             iData = iFT.readData(factor_names=iFactorNames, ids=iIDs, dts=iDTs)
             self.FactorDB.writeData(iData, TargetTableName, if_exists="update")
         self.populateFactorDBTree()
-        QMessageBox.information(None, "完成", "因子移动完成!")
+        QMessageBox.information(self, "完成", "因子移动完成!")
         self.setEnabled(True)
         return 0
     @pyqtSlot()
     def on_CSVExportButton_clicked(self):
-        DirPath = QFileDialog.getExistingDirectory(parent=None, caption="导出CSV", directory=os.getcwd())
+        DirPath = QFileDialog.getExistingDirectory(parent=self, caption="导出CSV", directory=os.getcwd())
         if not DirPath: return 0
         self.setEnabled(False)
         TableFactor = self.genTableFactor()
@@ -217,7 +217,7 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
             iData = iFT.readData(factor_names=iFactorNames, ids=iIDs, dts=iDTs)
             for j, jFactorName in enumerate(iData.items):
                 iData.iloc[j].to_csv(DirPath+os.sep+iTable+"-"+jFactorName+".csv", encoding="utf-8")
-        QMessageBox.information(None, "完成", "导出数据完成!")
+        QMessageBox.information(self, "完成", "导出数据完成!")
         self.setEnabled(True)
         return 0
     @pyqtSlot()
@@ -225,7 +225,7 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
         SelectedItems = self.FactorDBTree.selectedItems()
         nSelectedItems = len(SelectedItems)
         if (nSelectedItems>1):
-            QMessageBox.critical(None, "错误", "请选择一张表或一个因子!")
+            QMessageBox.critical(self, "错误", "请选择一张表或一个因子!")
             return 0
         elif nSelectedItems==0:
             # 获取新表名
@@ -240,10 +240,10 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
             else:
                 TableName = SelectedItems[0].parent().text(0)
                 NewFactorName = SelectedItems[0].text(0)
-        FilePath = QFileDialog.getOpenFileName(parent=None, caption="导入CSV", directory=".", filter="csv (*.csv)")
+        FilePath = QFileDialog.getOpenFileName(parent=self, caption="导入CSV", directory=".", filter="csv (*.csv)")
         if not FilePath: return 0
         if (TableName in self.FactorDB.TableNames) and (NewFactorName in self.FactorDB.getTable(TableName).FactorNames):
-            if_exists, isOk = QInputDialog.getItem(None, "因子合并", "因子合并方式:", ["replace", "append", "update"], editable=False)
+            if_exists, isOk = QInputDialog.getItem(self, "因子合并", "因子合并方式:", ["replace", "append", "update"], editable=False)
             if not isOk: return 0
         else:
             if_exists = "update"
@@ -252,9 +252,9 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
         try:
             self.FactorDB.writeData(pd.Panel({NewFactorName:FactorData}), TableName, if_exists=if_exists)
             self.populateFactorDBTree()
-            QMessageBox.information(None, '完成', '导入数据完成!')
+            QMessageBox.information(self, '完成', '导入数据完成!')
         except Exception as e:
-            QMessageBox.critical(None, "错误", str(e))
+            QMessageBox.critical(self, "错误", str(e))
         self.setEnabled(True)
         return 0
 

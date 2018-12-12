@@ -1893,7 +1893,9 @@ class WindDB2(FactorDB):
     def getFutureID(self, future_code="IF", date=None, is_current=True, **kwargs):
         if date is None: date = dt.date.today()
         SQLStr = "SELECT DISTINCT s_info_windcode FROM {Prefix}CFuturesDescription "
-        if future_code: SQLStr += "WHERE fs_info_sccode='{FutureCode}' "
+        if future_code:
+            if isinstance(future_code, str): SQLStr += "WHERE fs_info_sccode='"+future_code+"' "
+            else: SQLStr += "WHERE fs_info_sccode IN ('"+"', '".join(future_code)+"') "
         else: SQLStr += "WHERE fs_info_sccode IS NOT NULL "
         if not kwargs.get("include_simulation", False): SQLStr += "AND s_info_name NOT LIKE '%仿真%' "
         ContractType = kwargs.get("contract_type", "月合约")
@@ -1910,7 +1912,9 @@ class WindDB2(FactorDB):
         SQLStr = "SELECT DISTINCT fs_info_sccode FROM {Prefix}CFuturesDescription "
         SQLStr += "WHERE s_info_listdate<='{Date}' "
         if is_current: SQLStr += "AND s_info_delistdate>='{Date}' "
-        if exchange: SQLStr += "AND s_info_exchmarket='"+exchange+"' "
+        if exchange:
+            if isinstance(exchange, str): SQLStr += "AND s_info_exchmarket='"+exchange+"' "
+            else: SQLStr += "AND s_info_exchmarket IN ('"+"', '".join(exchange)+"') "
         if not kwargs.get("include_simulation", False): SQLStr += "AND s_info_name NOT LIKE '%仿真%' "
         SQLStr += "ORDER BY fs_info_sccode"
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d")))]
