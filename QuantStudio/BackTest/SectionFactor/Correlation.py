@@ -16,8 +16,9 @@ import matplotlib
 
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList
-from QuantStudio.RiskModel.RiskDataSource import RiskDataSource
+from QuantStudio.RiskDataBase.RiskDB import RiskTable
 from QuantStudio.BackTest.BackTestModel import BaseModule
+from QuantStudio.RiskModel.RiskModelFun import dropRiskMatrixNA
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 
 class SectionCorrelation(BaseModule):
@@ -26,7 +27,7 @@ class SectionCorrelation(BaseModule):
     FactorOrder = Dict(key_trait=Str(), value_trait=Enum("降序", "升序"), arg_type="ArgDict", label="排序方向", order=1)
     CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=2)
     CorrMethod = ListStr(["spearman"], arg_type="MultiOption", label="相关性算法", order=3, option_range=("spearman", "pearson", "kendall"))
-    RiskDS = Instance(RiskDataSource, arg_type="RiskDS", label="风险数据源", order=4)
+    RiskTable = Instance(RiskTable, arg_type="RiskTable", label="风险表", order=4)
     IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=5)
     def __init__(self, factor_table, name="因子截面相关性", sys_args={}, **kwargs):
         self._FactorTable = factor_table
@@ -38,7 +39,7 @@ class SectionCorrelation(BaseModule):
     @on_trait_change("TestFactors[]")
     def _on_TestFactors_changed(self, obj, name, old, new):
         self.FactorOrder = {iFactorName:self.FactorOrder.get(iFactorName, "降序") for iFactorName in self.TestFactors}
-    @on_trait_change("RiskDS")
+    @on_trait_change("RiskTable")
     def _on_RiskDS_changed(self, obj, name, old, new):
         if new is None:
             self.add_trait("CorrMethod", ListStr(arg_type="MultiOption", label="相关性算法", order=3, option_range=("spearman", "pearson", "kendall")))
@@ -59,7 +60,7 @@ class SectionCorrelation(BaseModule):
         nPair = len(self._Output["FactorPair"])
         self._Output.update({iMethod:[[] for i in range(nPair)] for iMethod in self.CorrMethod})
         self._CorrMatrixNeeded = (("factor-score correlation" in self.CorrMethod) or ("factor-portfolio correlation" in self.CorrMethod))
-        if self._CorrMatrixNeeded and (self.RiskDS is not None): self.RiskDS.start(dts=dts)
+        if self._CorrMatrixNeeded and (self.RiskTable is not None): self.RiskTable.start(dts=dts)
         self._Output["时点"] = []
         self._CurCalcInd = 0
         return (self._FactorTable, )
@@ -71,9 +72,9 @@ class SectionCorrelation(BaseModule):
             self._CurCalcInd = self._Model.DateTimeIndex
         IDs = self._FactorTable.getFilteredID(idt=idt, id_filter_str=self.IDFilter)
         FactorExpose = self._FactorTable.readData(dts=[idt], ids=IDs, factor_names=list(self.TestFactors)).iloc[:, 0, :].astype("float")
-        if self._CorrMatrixNeeded and (self.RiskDS is not None):
-            self.RiskDS.move(idt)
-            CovMatrix = self.RiskDS.getDateCov(idt, ids=IDs, drop_na=True)
+        if self._CorrMatrixNeeded and (self.RiskTable is not None):
+            self.RiskTable.move(idt)
+            CovMatrix = dropRiskMatrixNA(self.RiskTable.readCov(dts=[idt], ids=IDs).iloc[0])
             FactorIDs = {}
         else:
             CovMatrix = None
@@ -141,7 +142,7 @@ class SectionCorrelation(BaseModule):
                         self._Output[iAvgName].loc[iFactor, jFactor] = 1
         self._Output.pop("FactorPair")
         self._Output.pop("时点")
-        if (self.RiskDS is not None) and self._CorrMatrixNeeded: self.RiskDS.end()
+        if (self.RiskTable is not None) and self._CorrMatrixNeeded: self.RiskTable.end()
         return 0
     def _plotHeatMap(self, axes, df, title):
         axes.pcolor(df.values, cmap=matplotlib.cm.Reds)
@@ -169,9 +170,9 @@ class SectionCorrelation(BaseModule):
             HTML = "参数设置: "
             HTML += '<ul align="left">'
             for iArgName in self.ArgNames:
-                if iArgName=="风险数据源":
-                    if self.RiskDS is None: HTML += "<li>"+iArgName+": None</li>"
-                    else: HTML += "<li>"+iArgName+": "+self.RiskDS.Name+"</li>"
+                if iArgName=="风险表":
+                    if self.RiskTable is None: HTML += "<li>"+iArgName+": None</li>"
+                    else: HTML += "<li>"+iArgName+": "+self.RiskTable.Name+"</li>"
                 elif iArgName!="计算时点":
                     HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
                 elif self.Args[iArgName]:

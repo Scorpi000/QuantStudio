@@ -14,7 +14,8 @@ from matplotlib.ticker import FuncFormatter
 
 from QuantStudio import __QS_Error__
 from QuantStudio.BackTest.BackTestModel import BaseModule
-from QuantStudio.RiskModel.RiskDataSource import RiskDataSource
+from QuantStudio.RiskDataBase.RiskDB import RiskTable
+from QuantStudio.RiskModel.RiskModelFun import dropRiskMatrixNA
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.Tools.DataTypeConversionFun import DummyVarTo01Var
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
@@ -27,7 +28,7 @@ class FMPModel(BaseModule):
     AttributeFactors = ListStr(arg_type="MultiOption", label="特征因子", order=2, option_range=())
     #IndustryFactor = Enum("无", arg_type="SingleOption", label="行业因子", order=3)
     #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=4)
-    RiskDS = Instance(RiskDataSource, arg_type="RiskDS", label="风险数据源", order=5)
+    RiskTable = Instance(RiskTable, arg_type="RiskTable", label="风险表", order=5)
     CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=6)
     def __init__(self, factor_table, name="因子模拟组合绩效分析模型", sys_args={}, **kwargs):
         self._FactorTable = factor_table
@@ -54,7 +55,7 @@ class FMPModel(BaseModule):
     def __QS_start__(self, mdl, dts, **kwargs):
         if self._isStarted: return ()
         super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
-        self.RiskDS.start(dts=dts)
+        self.RiskTable.start(dts=dts)
         self._Output = {}
         self._Output["因子暴露"] = pd.DataFrame(columns=self.AttributeFactors)
         self._Output["风险调整的因子暴露"] = pd.DataFrame(columns=self.AttributeFactors)
@@ -92,8 +93,8 @@ class FMPModel(BaseModule):
                 BenchmarkPortfolio = pd.Series(0.0, index=IDs)
             Portfolio = Portfolio - BenchmarkPortfolio
         # 计算因子模拟组合
-        self.RiskDS.move(PreDT, **kwargs)
-        CovMatrix = self.RiskDS.readCov(PreDT, ids=Portfolio.index.tolist(), drop_na=True)
+        self.RiskTable.move(PreDT, **kwargs)
+        CovMatrix = dropRiskMatrixNA(self.RiskTable.readCov(dts=[PreDT], ids=Portfolio.index.tolist()).iloc[0])
         FactorExpose = self._FactorTable.readData(factor_names=list(self.AttributeFactors), ids=IDs, dts=[PreDT]).iloc[:,0].dropna(axis=0)
         IDs = FactorExpose.index.intersection(CovMatrix.index).tolist()
         CovMatrix, FactorExpose = CovMatrix.loc[IDs, IDs], FactorExpose.loc[IDs, :]
@@ -127,7 +128,7 @@ class FMPModel(BaseModule):
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
-        self.RiskDS.end()
+        self.RiskTable.end()
         self._Output["风险贡献占比"] = self._Output["风险贡献"].divide(self._Output["风险贡献"].sum(axis=1), axis=0)
         self._Output["历史均值"] = pd.DataFrame(columns=["因子暴露", "风险调整的因子暴露", "风险贡献", "风险贡献占比", "收益贡献"], index=self._Output["收益贡献"].columns)
         self._Output["历史均值"]["因子暴露"] = self._Output["因子暴露"].mean(axis=0)
@@ -158,8 +159,8 @@ class FMPModel(BaseModule):
             HTML = "参数设置: "
             HTML += '<ul align="left">'
             for iArgName in self.ArgNames:
-                if iArgName=="风险数据源":
-                    HTML += "<li>"+iArgName+": "+self.RiskDS.Name+"</li>"
+                if iArgName=="风险表":
+                    HTML += "<li>"+iArgName+": "+self.RiskTable.Name+"</li>"
                 elif iArgName!="计算时点":
                     HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
                 elif self.Args[iArgName]:

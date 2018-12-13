@@ -12,7 +12,8 @@ from QuantStudio.Tools.MathFun import CartesianProduct
 from QuantStudio.Tools.StrategyTestFun import loadCSVFilePortfolioSignal, writePortfolioSignal2CSV
 from QuantStudio import __QS_Error__, __QS_Object__
 from QuantStudio.BackTest.Strategy.StrategyModule import Strategy, Account
-from QuantStudio.RiskModel.RiskDataSource import RiskDataSource, FactorRDS
+from QuantStudio.RiskDataBase.RiskDB import RiskTable, FactorRT
+from QuantStudio.RiskModel.RiskModelFun import dropRiskMatrixNA
 
 # 信号数据格式: Series(权重, index=[ID]) 或者 None(表示无信号, 默认值)
 
@@ -368,7 +369,7 @@ class _SignalAdjustment(__QS_Object__):
 class OptimizerStrategy(PortfolioStrategy):
     TargetIDs = Str(arg_type="IDFilterStr", label="目标ID", order=4)
     #ExpectedReturn = Enum(None, arg_type="SingleOption", label="预期收益", order=5)
-    RDS = Instance(RiskDataSource, arg_type="RiskDS", label="风险数据源", order=6)
+    RiskTable = Instance(RiskTable, arg_type="RiskTable", label="风险表", order=6)
     #BenchmarkFactor = Enum(None, arg_type="SingleOption", label="基准权重", order=7)
     #AmountFactor = Enum(None, arg_type="SingleOption", label="成交金额", order=8)
     SignalAdjustment = Instance(_SignalAdjustment, arg_type="ArgObject", label="信号调整", order=9)
@@ -390,7 +391,7 @@ class OptimizerStrategy(PortfolioStrategy):
         return Strategy.__QS_initArgs__(self)
     def __QS_start__(self, mdl, dts, **kwargs):
         if self._isStarted: return ()
-        if self.RDS is not None: self.RDS.start(dts=dts)
+        if self.RiskTable is not None: self.RiskTable.start(dts=dts)
         self._Status = []# 记录求解失败的优化问题信息, [(时点, 结果信息)]
         self._ReleasedConstraint = []# 记录被舍弃的约束条件, [(时点, [舍弃的条件])]
         self._Dependency = self._PC.init()# PC 的依赖信息
@@ -408,7 +409,7 @@ class OptimizerStrategy(PortfolioStrategy):
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
-        if self.RDS is not None: self.RDS.end()
+        if self.RiskTable is not None: self.RiskTable.end()
         if not self.SignalAdjustment.Display:
             if self._Status:
                 print("以下时点组合优化问题的求解出现问题: ")
@@ -439,17 +440,17 @@ class OptimizerStrategy(PortfolioStrategy):
             ShortSignal = ShortSignal / ShortSignal.abs().sum() * abs(TotalShort)
         return LongSignal.add(ShortSignal, fill_value=0.0)
     def genSignal(self, idt, trading_record):
-        if self.RDS is not None: self.RDS.move(idt)
+        if self.RiskTable is not None: self.RiskTable.move(idt)
         IDs = self._PC.TargetIDs = self._FT.getID(idt=idt)
         if self.TargetIDs: self._PC.TargetIDs = self._FT.getFilteredID(idt=idt, id_filter_str=self.TargetIDs)
         if self._Dependency.get("预期收益", False): self._PC.ExpectedReturn = self._FT.readData(factor_names=[self.ExpectedReturn], ids=IDs, dts=[idt]).iloc[0, 0, :]
         if self._Dependency.get("协方差矩阵", False):
-            if isinstance(self.RDS, FactorRDS):
-                self._PC.FactorCov = self.RDS.readFactorCov(idt=idt)
-                self._PC.RiskFactorData = self.RDS.readFactorData(idt=idt, ids=IDs)
-                self._PC.SpecificRisk = self.RDS.readSpecificRisk(idt=idt, ids=IDs)
+            if isinstance(self.RiskTable, FactorRT):
+                self._PC.FactorCov = self.RiskTable.readFactorCov(dts=[idt]).iloc[0]
+                self._PC.RiskFactorData = self.RiskTable.readFactorData(dts=[idt], ids=IDs).iloc[:, 0]
+                self._PC.SpecificRisk = self.RiskTable.readSpecificRisk(dts=[idt], ids=IDs).iloc[0]
             else:
-                self._PC.CovMatrix = self.RDS.readCov(idt=idt, ids=IDs, drop_na=False)
+                self._PC.CovMatrix = dropRiskMatrixNA(self.RiskTable.readCov(dts=[idt], ids=IDs))
         if self._Dependency.get("成交金额", False): self._PC.AmountFactor = self._FT.readData(factor_names=[self.AmountFactor], ids=IDs, dts=[idt]).iloc[0, 0, :]
         if self._Dependency.get("因子", []): self._PC.FactorData = self._FT.readData(factor_names=self._Dependency["因子"], ids=IDs, dts=[idt]).iloc[:, 0, :]
         if self._Dependency.get("基准投资组合", False): self._PC.BenchmarkHolding = self._FT.readData(factor_names=[self.BenchmarkFactor], ids=IDs, dts=[idt]).iloc[0, 0, :]

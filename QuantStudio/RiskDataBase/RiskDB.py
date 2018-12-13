@@ -12,7 +12,7 @@ from traits.api import Str, Int, List, Instance
 from multiprocessing import Process, Queue
 
 from QuantStudio.Tools.DateTimeFun import cutDateTime
-from QuantStudio.BackTest.RiskModel.RiskModelFun import dropRiskMatrixNA, decomposeCov2Corr
+from QuantStudio.RiskModel.RiskModelFun import dropRiskMatrixNA, decomposeCov2Corr
 from QuantStudio import __QS_Object__, __QS_Error__
 
 # 风险数据库基类, 必须存储的数据有:
@@ -271,7 +271,7 @@ def _prepareFRTMMAPCacheData(rt, mmap_cache):
                     for iDT in NewCacheDTs:
                         CacheData[iDT] = {"FactorCov": FactorCov.loc[iDT],
                                           "SpecificRisk": SpecificRisk.loc[iDT],
-                                          "FactorData": FactorData.loc[iDT]}
+                                          "FactorData": FactorData.loc[:, iDT]}
                     FactorCov = SpecificRisk = FactorData = None
     return 0
 # 多因子风险表基类
@@ -300,9 +300,9 @@ class FactorRT(RiskTable):
         if SpecificReturn is not None: return cutDateTime(SpecificReturn.index, start_dt=start_dt, end_dt=end_dt)
         return []
     def __QS_readCov__(self, dts, ids=None):
-        FactorCov = self.readFactorCov(dts=dts)
-        FactorData = self.readFactorData(dts=dts, ids=ids)
-        SpecificRisk = self.readSpecificRisk(dts=dts, ids=ids)
+        FactorCov = self.__QS_readFactorCov__(dts=dts)
+        FactorData = self.__QS_readFactorData__(dts=dts, ids=ids)
+        SpecificRisk = self.__QS_readSpecificRisk__(dts=dts, ids=ids)
         Data = {}
         for iDT in FactorCov:
             if ids is None:
@@ -315,7 +315,24 @@ class FactorRT(RiskTable):
             Data[iDT] = pd.DataFrame(iCov, index=iIDs, columns=iIDs)
         return pd.Panel(Data).loc[dts]
     def readCov(self, dts, ids=None):
-        return self.__QS_readCov__(dts=dts, ids=ids)
+        Data = {}
+        CachedDTs = sorted(set(dts).intersection(self.ErgodicMode._CacheData))
+        if CachedDTs:
+            FactorCov = self.readFactorCov(dts=CachedDTs)
+            FactorData = self.readFactorData(dts=CachedDTs, ids=ids)
+            SpecificRisk = self.readSpecificRisk(dts=CachedDTs, ids=ids)
+            for iDT in FactorCov:
+                if ids is None:
+                    iIDs = SpecificRisk.loc[iDT].index
+                    iFactorData = FactorData.loc[:, iDT].loc[iIDs]
+                else:
+                    iIDs = ids
+                    iFactorData = FactorData.loc[:, iDT]
+                iCov = np.dot(np.dot(iFactorData.values, FactorCov[iDT].values), iFactorData.values.T) + np.diag(SpecificRisk.loc[iDT].values**2)
+                Data[iDT] = pd.DataFrame(iCov, index=iIDs, columns=iIDs)
+        NewDTs = sorted(set(dts).difference(self.ErgodicMode._CacheData))
+        if NewDTs: Data.update(dict(self.__QS_readCov__(dts=NewDTs, ids=ids)))
+        return pd.Panel(Data).loc[dts]
     # 读取因子风险矩阵
     def __QS_readFactorCov__(self, dts):
         return pd.Panel(items=dts)

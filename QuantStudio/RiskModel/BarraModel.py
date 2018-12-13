@@ -62,7 +62,8 @@ def _FactorAndSpecificReturnGeneration(args):
 
 # 估计因子协方差矩阵
 def _FactorCovarianceGeneration(args):
-    FactorReturnDTs = pd.Series(args["RiskDB"].getFactorReturnDateTime(args["TargetTable"]))
+    RT = args["RiskDB"].getTable(args["TargetTable"])
+    FactorReturnDTs = pd.Series(RT.getFactorReturnDateTime())
     iFactorReturn = None
     iFactorReturnDTs = []
     if args["ModelArgs"]['运行模式']=='串行':# 运行模式为串行
@@ -80,9 +81,9 @@ def _FactorCovarianceGeneration(args):
         iFactorReturnDTs = list(FactorReturnDTs.iloc[iInd-args["FactorCovESTArgs"]["样本长度"]+1:iInd+1])
         iNewDTs = sorted(set(iFactorReturnDTs).difference(set(iLastDTs)))
         if iFactorReturn is not None:
-            iFactorReturn = pd.concat([iFactorReturn, args["RiskDB"].readFactorReturn(args["TargetTable"], dts=iNewDTs)]).loc[iFactorReturnDTs, :]
+            iFactorReturn = pd.concat([iFactorReturn, RT.readFactorReturn(dts=iNewDTs)]).loc[iFactorReturnDTs, :]
         else:
-            iFactorReturn = args["RiskDB"].readFactorReturn(args["TargetTable"], dts=iNewDTs).loc[iFactorReturnDTs, :]
+            iFactorReturn = RT.readFactorReturn(dts=iNewDTs).loc[iFactorReturnDTs, :]
         iFactorCov = RiskModelFun.estimateFactorCov_CHE2(iFactorReturn, forcast_num=args["FactorCovESTArgs"]["预测期数"],
                                                          auto_corr_num=args["FactorCovESTArgs"]["自相关滞后期"],
                                                          half_life_corr=args["FactorCovESTArgs"]["相关系数半衰期"],
@@ -105,7 +106,8 @@ def _FactorCovarianceGeneration(args):
 
 # 估计特异性风险
 def _SpecificRiskGeneration(args):
-    SpecificReturnDTs = pd.Series(args["RiskDB"].getSpecificReturnDateTime(args["TargetTable"]))
+    RT = args["RiskDB"].getTable(args["TargetTable"])
+    SpecificReturnDTs = pd.Series(RT.getSpecificReturnDateTime())
     iSpecificReturnDTs = []
     iSpecificReturn = None
     if args["ModelArgs"]['运行模式']=='串行':# 运行模式为串行
@@ -123,11 +125,11 @@ def _SpecificRiskGeneration(args):
         iSpecificReturnDTs = list(SpecificReturnDTs.iloc[iInd-args["SpecificRiskESTArgs"]["样本长度"]+1:iInd+1])
         iNewDTs = sorted(set(iSpecificReturnDTs).difference(iLastDTs))
         if iSpecificReturn is None:
-            iSpecificReturn = args["RiskDB"].readSpecificReturn(args["TargetTable"], dts=iNewDTs).loc[iSpecificReturnDTs, :]
+            iSpecificReturn = RT.readSpecificReturn(dts=iNewDTs).loc[iSpecificReturnDTs, :]
         else:
-            iSpecificReturn = pd.concat([iSpecificReturn, args["RiskDB"].readSpecificReturn(args["TargetTable"], dts=iNewDTs)]).loc[iSpecificReturnDTs, :]
-        iFactorData = args["RiskDB"].readFactorData(args["TargetTable"], dts=[iDT]).iloc[:, 0, :]
-        iCap = args["RiskDB"].readData(args["TargetTable"], "Cap", dts=[iDT]).iloc[0]
+            iSpecificReturn = pd.concat([iSpecificReturn, RT.readSpecificReturn(dts=iNewDTs)]).loc[iSpecificReturnDTs, :]
+        iFactorData = RT.readFactorData(dts=[iDT]).iloc[:, 0, :]
+        iCap = RT.readData("Cap", dts=[iDT]).iloc[0]
         iFactorData = iFactorData.loc[iSpecificReturn.columns, args["SpecificRiskESTArgs"]["结构化模型回归风格因子"]+args["ModelArgs"]["所有行业"]]
         iCap = iCap.loc[iSpecificReturn.columns]
         iSpecificRisk = RiskModelFun.estimateSpecificRisk_EUE3(specific_ret=iSpecificReturn, factor_data=iFactorData, cap=iCap,
@@ -174,13 +176,15 @@ class BarraModel(object):
             StartInd = min(max(RiskESTStartInd-self.Config.SpecificRiskESTArgs["样本长度"]+1, 0), StartInd)
         self.RegressDTs = DSDTs.iloc[StartInd:]
         self.RegressDTs = list(self.RegressDTs[self.RegressDTs<=self.RiskESTDTs[-1]])
-        OldDTs = self.RiskDB.getFactorReturnDateTime(self.TargetTable)
-        self.RegressDTs = sorted(set(self.RegressDTs).difference(OldDTs))
+        if self.TargetTable in self.RiskDB.TableNames:
+            OldDTs = self.RiskDB.getTable(self.TargetTable).getFactorReturnDateTime()
+            self.RegressDTs = sorted(set(self.RegressDTs).difference(OldDTs))
         return 0
     # 调整风险数据的计算时点序列
     def _adjustRiskESTDateTime(self):
         AllReturnDTs = self.RegressDTs
-        AllReturnDTs = sorted(set(self.RiskDB.getFactorReturnDateTime(self.TargetTable)).union(AllReturnDTs))
+        if self.TargetTable in self.RiskDB.TableNames:
+            AllReturnDTs = sorted(set(self.RiskDB.getTable(self.TargetTable).getFactorReturnDateTime()).union(AllReturnDTs))
         RequiredLen = max(self.Config.FactorCovESTArgs["样本长度"], self.Config.SpecificRiskESTArgs["样本长度"])
         for i, iDT in enumerate(self.RiskESTDTs):
             iInd = AllReturnDTs.index(iDT)
@@ -261,23 +265,23 @@ class BarraModel(object):
             ProgBar.finish()
             for iPID,iPrcs in Procs.items():
                 iPrcs.join()
-        if self.Config.ModelArgs["FactorVolatilityRegimeAdjustment"]:# TODO
-            print("Factor Volatility Regime Adjustment进行中...")
-            FactorReturnDates = pd.Series(self.RiskDB.getFactorReturnDate(self.TargetTable))
-            iFactorReturn = None
-            iFactorReturnDates = []
-            FactorVolatility = []# 用于FactorVolatilityRegimeAdjustment
-            iSampleDates = []# 用于FactorVolatilityRegimeAdjustment
-            for iDate in self.RiskESTDTs:
-                iLastDates = iSampleDates
-                iSampleDates = self.getTableDate(self.TargetTable,end_date=iDate)
-                if self.Config.FactorVolatilityRegimeAdjustmentArgs["样本长度"]>0:
-                    iSampleDates = iSampleDates[max((0,len(iSampleDates)-1-self.Config.FactorVolatilityRegimeAdjustmentArgs["样本长度"])):]
-                iNewSampleDates = list(set(iSampleDates).difference(set(iLastDates)))
-                iNewSampleDates.sort()
-                FactorVolatility = self.RiskDB.readFactorReturn(self.TargetTable,dates=None)
-                iFactorVolatility = pd.Series(np.diag(iFactorCov)**0.5)
-            print("Factor Volatility Regime Adjustment完成")
+        #if self.Config.ModelArgs["FactorVolatilityRegimeAdjustment"]:# TODO
+            #print("Factor Volatility Regime Adjustment进行中...")
+            #FactorReturnDates = pd.Series(self.RiskDB.getFactorReturnDateTime(self.TargetTable))
+            #iFactorReturn = None
+            #iFactorReturnDates = []
+            #FactorVolatility = []# 用于FactorVolatilityRegimeAdjustment
+            #iSampleDates = []# 用于FactorVolatilityRegimeAdjustment
+            #for iDate in self.RiskESTDTs:
+                #iLastDates = iSampleDates
+                #iSampleDates = self.getTableDate(self.TargetTable,end_date=iDate)
+                #if self.Config.FactorVolatilityRegimeAdjustmentArgs["样本长度"]>0:
+                    #iSampleDates = iSampleDates[max((0,len(iSampleDates)-1-self.Config.FactorVolatilityRegimeAdjustmentArgs["样本长度"])):]
+                #iNewSampleDates = list(set(iSampleDates).difference(set(iLastDates)))
+                #iNewSampleDates.sort()
+                #FactorVolatility = self.RiskDB.readFactorReturn(self.TargetTable,dates=None)
+                #iFactorVolatility = pd.Series(np.diag(iFactorCov)**0.5)
+            #print("Factor Volatility Regime Adjustment完成")
         return 0
     # 生成特异性风险
     def _genSpecificRisk(self):

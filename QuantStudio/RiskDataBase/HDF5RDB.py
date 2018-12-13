@@ -133,12 +133,15 @@ class HDF5RDB(RiskDB):
 class _FactorRiskTable(FactorRT):
     def __init__(self, name, rdb, sys_args={}, config_file=None, **kwargs):
         super().__init__(name=name, rdb=rdb, sys_args=sys_args, config_file=config_file, **kwargs)
-        DTStr = self._RiskDB._TableDT[self._Name][-1].strftime("%Y-%m-%d %H:%M:%S.%f")
-        with self._RiskDB._DataLock:
-            with h5py.File(self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
-                Group = File["FactorCov"]
-                if DTStr in Group: self._FactorNames = sorted(Group[DTStr]["Factor"][...])
-                else: self._FactorNames = []
+        DTs = self._RiskDB._TableDT.get(self._Name, [])
+        if not DTs: self._FactorNames = []
+        else:
+            DTStr = DTs[-1].strftime("%Y-%m-%d %H:%M:%S.%f")
+            with self._RiskDB._DataLock:
+                with h5py.File(self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
+                    Group = File["FactorCov"]
+                    if DTStr in Group: self._FactorNames = sorted(Group[DTStr]["Factor"][...])
+                    else: self._FactorNames = []
     def getMetaData(self, key=None):
         return _RiskTable.getMetaData(self, key=key)
     @property

@@ -35,8 +35,7 @@ class _RiskTable(RiskTable):
         if not IDs: return []
         return json.loads(IDs[0][0])
     def __QS_readCov__(self, dts, ids=None):
-        # 形成 SQL 语句, DateTime, Cov
-        SQLStr = "SELECT DateTime, Cov"
+        SQLStr = "SELECT DateTime, Cov "
         SQLStr += "FROM "+self._DBTableName+" "
         SQLStr += "WHERE ("+genSQLInCondition("DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
         Data = {}
@@ -74,6 +73,8 @@ class SQLRDB(QSSQLObject, RiskDB):
     @property
     def TableNames(self):
         return sorted(self._TableAdditionalCols)
+    def getTable(self, table_name, args={}):
+        return _RiskTable(table_name, self)
     def renameTable(self, old_table_name, new_table_name):
         if old_table_name not in self._TableAdditionalCols: raise __QS_Error__("表: '%s' 不存在!" % old_table_name)
         if (new_table_name!=old_table_name) and (new_table_name in self._TableAdditionalCols): raise __QS_Error__("表: '"+new_table_name+"' 已存在!")
@@ -120,116 +121,102 @@ class SQLRDB(QSSQLObject, RiskDB):
 class _FactorRiskTable(FactorRT):
     def __init__(self, name, rdb, sys_args={}, config_file=None, **kwargs):
         super().__init__(name=name, rdb=rdb, sys_args=sys_args, config_file=config_file, **kwargs)
+        self._DBTableName = self._RiskDB.TablePrefix+self._RiskDB._Prefix+self._Name
     @property
     def FactorNames(self):
-        DBTableName = self._RiskDB.TablePrefix+self._RiskDB._Prefix+self._Name
-        SQLStr = "SELECT JSON_EXTRACT(FactorCov, '$.columns') AS IDs FROM "+DBTableName+" "
-        SQLStr += "WHERE DateTime=(SELECT MAX(DateTime) FROM "+DBTableName+" WHERE FactorCov IS NOT NULL)"
+        SQLStr = "SELECT JSON_EXTRACT(FactorCov, '$.columns') AS IDs FROM "+self._DBTableName+" "
+        SQLStr += "WHERE DateTime=(SELECT MAX(DateTime) FROM "+self._DBTableName+" WHERE FactorCov IS NOT NULL)"
         Factors = self._RiskDB.fetchall(SQLStr)
         if not Factors: return []
         return json.loads(Factors[0][0])
     def getDateTime(self, start_dt=None, end_dt=None):
-        DBTableName = self._RiskDB.TablePrefix+self._RiskDB._Prefix+self._Name
-        SQLStr = "SELECT DISTINCT "+DBTableName+".DateTime "
-        SQLStr += "FROM "+DBTableName+" "
+        SQLStr = "SELECT DISTINCT DateTime "
+        SQLStr += "FROM "+self._DBTableName+" "
         SQLStr += "WHERE SpecificRisk IS NOT NULL "
-        if start_dt is not None: SQLStr += "AND "+DBTableName+".DateTime>='"+start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
-        if end_dt is not None: SQLStr += "AND "+DBTableName+".DateTime<='"+end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
-        SQLStr += "ORDER BY "+DBTableName+".DateTime"
+        if start_dt is not None: SQLStr += "AND DateTime>='"+start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
+        if end_dt is not None: SQLStr += "AND DateTime<='"+end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
+        SQLStr += "ORDER BY DateTime"
         return [iRslt[0] for iRslt in self._RiskDB.fetchall(SQLStr)]
     def getID(self, idt=None):
-        DBTableName = self._RiskDB.TablePrefix+self._RiskDB._Prefix+self._Name
-        SQLStr = "SELECT JSON_EXTRACT(SpecificRisk, '$.index') AS IDs FROM "+DBTableName+" "
+        SQLStr = "SELECT JSON_EXTRACT(SpecificRisk, '$.index') AS IDs FROM "+self._DBTableName+" "
         if idt is not None: SQLStr += "WHERE DateTime='"+idt.strftime("%Y-%m-%d %H:%M:%S.%f")+"'"
-        else: SQLStr += "WHERE DateTime=(SELECT MAX(DateTime) FROM "+DBTableName+" WHERE SpecificRisk IS NOT NULL)"
+        else: SQLStr += "WHERE DateTime=(SELECT MAX(DateTime) FROM "+self._DBTableName+" WHERE SpecificRisk IS NOT NULL)"
         IDs = self._RiskDB.fetchall(SQLStr)
         if not IDs: return []
         return json.loads(IDs[0][0])
     def getFactorReturnDateTime(self, start_dt=None, end_dt=None):
-        DBTableName = self._RiskDB.TablePrefix+self._RiskDB._Prefix+self._Name
-        SQLStr = "SELECT DISTINCT "+DBTableName+".DateTime "
-        SQLStr += "FROM "+DBTableName+" "
+        SQLStr = "SELECT DISTINCT DateTime "
+        SQLStr += "FROM "+self._DBTableName+" "
         SQLStr += "WHERE FactorReturn IS NOT NULL "
-        if start_dt is not None: SQLStr += "AND "+DBTableName+".DateTime>='"+start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
-        if end_dt is not None: SQLStr += "AND "+DBTableName+".DateTime<='"+end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
-        SQLStr += "ORDER BY "+DBTableName+".DateTime"
-        return [iRslt[0] for iRslt in self.fetchall(SQLStr)]
+        if start_dt is not None: SQLStr += "AND DateTime>='"+start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
+        if end_dt is not None: SQLStr += "AND DateTime<='"+end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
+        SQLStr += "ORDER BY DateTime"
+        return [iRslt[0] for iRslt in self._RiskDB.fetchall(SQLStr)]
     def getSpecificReturnDateTime(self, start_dt=None, end_dt=None):
-        DBTableName = self.TablePrefix+self._Prefix+table_name
-        SQLStr = "SELECT DISTINCT "+DBTableName+".DateTime "
-        SQLStr += "FROM "+DBTableName+" "
+        SQLStr = "SELECT DISTINCT DateTime "
+        SQLStr += "FROM "+self._DBTableName+" "
         SQLStr += "WHERE SpecificReturn IS NOT NULL "
-        if start_dt is not None: SQLStr += "AND "+DBTableName+".DateTime>='"+start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
-        if end_dt is not None: SQLStr += "AND "+DBTableName+".DateTime<='"+end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
-        SQLStr += "ORDER BY "+DBTableName+".DateTime"
-        return [iRslt[0] for iRslt in self.fetchall(SQLStr)]
-    def __QS_readFactorCov__(self, idt):
-        DBTableName = self.TablePrefix+self._Prefix+table_name
-        SQLStr = "SELECT "+DBTableName+".DateTime, "
-        SQLStr += DBTableName+".FactorCov "
-        SQLStr += "FROM "+DBTableName+" "
-        SQLStr += "WHERE "+DBTableName+".FactorCov IS NOT NULL "
-        SQLStr += "AND ("+genSQLInCondition(DBTableName+".DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
+        if start_dt is not None: SQLStr += "AND DateTime>='"+start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
+        if end_dt is not None: SQLStr += "AND DateTime<='"+end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
+        SQLStr += "ORDER BY DateTime"
+        return [iRslt[0] for iRslt in self._RiskDB.fetchall(SQLStr)]
+    def __QS_readFactorCov__(self, dts):
+        SQLStr = "SELECT DateTime, FactorCov "
+        SQLStr += "FROM "+self._DBTableName+" "
+        SQLStr += "WHERE FactorCov IS NOT NULL "
+        SQLStr += "AND ("+genSQLInCondition("DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
         Data = {}
-        for iDT, iCov in self.fetchall(SQLStr):
+        for iDT, iCov in self._RiskDB.fetchall(SQLStr):
             iCov = pd.read_json(iCov, orient="split")
             iCov.index = iCov.columns
             Data[iDT] = iCov
         if Data: return pd.Panel(Data).loc[dts]
         return pd.Panel(items=dts)
-    def __QS_readSpecificRisk__(self, idt, ids=None):
-        DBTableName = self.TablePrefix+self._Prefix+table_name
-        SQLStr = "SELECT "+DBTableName+".DateTime, "
-        SQLStr += DBTableName+".SpecificRisk "
-        SQLStr += "FROM "+DBTableName+" "
-        SQLStr += "WHERE "+DBTableName+".SpecificRisk IS NOT NULL "
-        SQLStr += "AND ("+genSQLInCondition(DBTableName+".DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
+    def __QS_readSpecificRisk__(self, dts, ids=None):
+        SQLStr = "SELECT DateTime, SpecificRisk "
+        SQLStr += "FROM "+self._DBTableName+" "
+        SQLStr += "WHERE SpecificRisk IS NOT NULL "
+        SQLStr += "AND ("+genSQLInCondition("DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
         Data = {}
-        for iDT, iSepecificRisk in self.fetchall(SQLStr):
+        for iDT, iSepecificRisk in self._RiskDB.fetchall(SQLStr):
             Data[iDT] = pd.read_json(iSepecificRisk, orient="split", typ="series")
-        if not Data: return pd.DataFrame(index=dts, columns=([] if ids is None else ids))
+        if not Data: return pd.DataFrame(index=dts, columns=ids)
         Data = pd.DataFrame(Data).T.loc[dts]
         if ids is not None:
             if Data.columns.intersection(ids).shape[0]>0: Data = Data.loc[:, ids]
             else: Data = pd.DataFrame(index=dts, columns=ids)
         return Data
-    def __QS_readFactorData__(self, idt, ids=None):
-        DBTableName = self.TablePrefix+self._Prefix+table_name
-        SQLStr = "SELECT "+DBTableName+".DateTime, "
-        SQLStr += DBTableName+".FactorData "
-        SQLStr += "FROM "+DBTableName+" "
-        SQLStr += "WHERE "+DBTableName+".FactorData IS NOT NULL "
-        SQLStr += "AND ("+genSQLInCondition(DBTableName+".DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
+    def __QS_readFactorData__(self, dts, ids=None):
+        SQLStr = "SELECT DateTime, FactorData "
+        SQLStr += "FROM "+self._DBTableName+" "
+        SQLStr += "WHERE FactorData IS NOT NULL "
+        SQLStr += "AND ("+genSQLInCondition("DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
         Data = {}
-        for iDT, iData in self.fetchall(SQLStr):
+        for iDT, iData in self._RiskDB.fetchall(SQLStr):
             Data[iDT] = pd.read_json(iData, orient="split").T
-        if not Data: return pd.Panel(items=[], major_axis=dts, minor_axis=([] if ids is None else ids))
+        if not Data: return pd.Panel(items=[], major_axis=dts, minor_axis=ids)
         Data = pd.Panel(Data).swapaxes(0, 1).loc[:, dts, :]
         if ids is not None:
             if Data.minor_axis.intersection(ids).shape[0]>0: Data = Data.loc[:, :, ids]
             else: Data = pd.Panel(items=Data.items, major_axis=dts, minor_axis=ids)
         return Data
-    def readFactorReturn(self, idt):
-        DBTableName = self.TablePrefix+self._Prefix+table_name
-        SQLStr = "SELECT "+DBTableName+".DateTime, "
-        SQLStr += DBTableName+".FactorReturn "
-        SQLStr += "FROM "+DBTableName+" "
-        SQLStr += "WHERE "+DBTableName+".FactorReturn IS NOT NULL "
-        SQLStr += "AND ("+genSQLInCondition(DBTableName+".DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
+    def readFactorReturn(self, dts):
+        SQLStr = "SELECT DateTime, FactorReturn "
+        SQLStr += "FROM "+self._DBTableName+" "
+        SQLStr += "WHERE FactorReturn IS NOT NULL "
+        SQLStr += "AND ("+genSQLInCondition("DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
         Data = {}
-        for iDT, iFactorReturn in self.fetchall(SQLStr):
+        for iDT, iFactorReturn in self._RiskDB.fetchall(SQLStr):
             Data[iDT] = pd.read_json(iFactorReturn, orient="split", typ="series")
         if not Data: return pd.DataFrame(index=dts)
         return pd.DataFrame(Data).T.loc[dts]
-    def readSpecificReturn(self, idt, ids=None):
-        DBTableName = self.TablePrefix+self._Prefix+table_name
-        SQLStr = "SELECT "+DBTableName+".DateTime, "
-        SQLStr += DBTableName+".SpecificReturn "
-        SQLStr += "FROM "+DBTableName+" "
-        SQLStr += "WHERE "+DBTableName+".SpecificReturn IS NOT NULL "
-        SQLStr += "AND ("+genSQLInCondition(DBTableName+".DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
+    def readSpecificReturn(self, dts, ids=None):
+        SQLStr = "SELECT DateTime, SpecificReturn "
+        SQLStr += "FROM "+self._DBTableName+" "
+        SQLStr += "WHERE SpecificReturn IS NOT NULL "
+        SQLStr += "AND ("+genSQLInCondition("DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
         Data = {}
-        for iDT, iSpecificReturn in self.fetchall(SQLStr):
+        for iDT, iSpecificReturn in self._RiskDB.fetchall(SQLStr):
             Data[iDT] = pd.read_json(iSpecificReturn, orient="split", typ="series")
         if not Data: return pd.DataFrame(index=dts, columns=([] if ids is None else ids))
         Data = pd.DataFrame(Data).T.loc[dts]
@@ -238,15 +225,13 @@ class _FactorRiskTable(FactorRT):
             else: Data = pd.DataFrame(index=dts, columns=ids)
         return Data
     def readData(self, data_item, dts):
-        DBTableName = self.TablePrefix+self._Prefix+table_name
-        SQLStr = "SELECT "+DBTableName+".DateTime, "
-        SQLStr += DBTableName+"."+data_item+" "
-        SQLStr += "FROM "+DBTableName+" "
-        SQLStr += "WHERE "+DBTableName+"."+data_item+" IS NOT NULL "
-        SQLStr += "AND ("+genSQLInCondition(DBTableName+".DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
+        SQLStr = "SELECT DateTime, "+data_item+" "
+        SQLStr += "FROM "+self._DBTableName+" "
+        SQLStr += "WHERE "+data_item+" IS NOT NULL "
+        SQLStr += "AND ("+genSQLInCondition("DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
         Data = {}
         Type = None
-        for iDT, iData in self.fetchall(SQLStr):
+        for iDT, iData in self._RiskDB.fetchall(SQLStr):
             if Type is None:
                 try:
                     Data[iDT] = pd.read_json(iData, orient="split")
@@ -259,17 +244,13 @@ class _FactorRiskTable(FactorRT):
         if not Data: return None
         if Type=="series": return pd.DataFrame(Data).T.loc[dts]
         else: return pd.Panel(Data).loc[dts]
-    def readCov(self, table_name, dts, ids=None):
-        DBTableName = self.TablePrefix+self._Prefix+table_name
-        SQLStr = "SELECT "+DBTableName+".DateTime, "
-        SQLStr += DBTableName+".FactorCov, "
-        SQLStr += DBTableName+".FactorData, "
-        SQLStr += DBTableName+".SpecificRisk "
-        SQLStr += "FROM "+DBTableName+" "
-        SQLStr += "WHERE "+DBTableName+".FactorCov IS NOT NULL "
-        SQLStr += "AND ("+genSQLInCondition(DBTableName+".DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
+    def __QS_readCov__(self, dts, ids=None):
         Data = {}
-        for iDT, iFactorCov, iFactorData, iSpecificRisk in self.fetchall(SQLStr):
+        SQLStr = "SELECT DateTime, FactorCov, FactorData, SpecificRisk "
+        SQLStr += "FROM "+self._DBTableName+" "
+        SQLStr += "WHERE FactorCov IS NOT NULL "
+        SQLStr += "AND ("+genSQLInCondition("DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
+        for iDT, iFactorCov, iFactorData, iSpecificRisk in self._RiskDB.fetchall(SQLStr):
             iFactorCov = pd.read_json(iFactorCov, orient="split")
             iSpecificRisk = pd.read_json(iSpecificRisk, orient="split", typ="series")
             iFactorData = pd.read_json(iFactorData, orient="split")
@@ -311,6 +292,8 @@ class SQLFRDB(QSSQLObject, FactorRDB):
     @property
     def TableNames(self):
         return sorted(self._TableAdditionalCols)
+    def getTable(self, table_name, args={}):
+        return _FactorRiskTable(table_name, self)
     def renameTable(self, old_table_name, new_table_name):
         return SQLRDB.renameTable(self, old_table_name, new_table_name)
     def deleteTable(self, table_name):
