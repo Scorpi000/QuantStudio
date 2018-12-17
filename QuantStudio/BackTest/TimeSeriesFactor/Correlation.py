@@ -1,5 +1,4 @@
 # coding=utf-8
-"""TODO"""
 import datetime as dt
 import base64
 from io import BytesIO
@@ -23,7 +22,7 @@ class TimeSeriesCorrelation(BaseModule):
     #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
     ReturnType = Enum("简单收益率", "对数收益率", "价格变化量", arg_type="SingleOption", label="收益率类型", order=2)
     ForecastPeriod = Int(1, arg_type="Integer", label="预测期数", order=3)
-    IntervalPeriod = Int(0, arg_type="Integer", label="间隔期数", order=4)
+    Lag = Int(0, arg_type="Integer", label="滞后期数", order=4)
     CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=5)
     CorrMethod = Enum("pearson", "spearman", "kendall", arg_type="SingleOption", label="相关性算法", order=6)
     SummaryWindow = Int(np.inf, arg_type="Integer", label="统计窗口", order=7)
@@ -61,13 +60,13 @@ class TimeSeriesCorrelation(BaseModule):
         if self.CalcDTs:
             if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
             self._CurCalcInd = self.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
-            PreInd = self._CurCalcInd - self.ForecastPeriod - self.IntervalPeriod
+            PreInd = self._CurCalcInd - self.ForecastPeriod - self.Lag
             LastInd = self._CurCalcInd - self.ForecastPeriod
             PreDateTime = self.CalcDTs[PreInd]
             LastDateTime = self.CalcDTs[LastInd]
         else:
             self._CurCalcInd = self._Model.DateTimeIndex
-            PreInd = self._CurCalcInd - self.ForecastPeriod - self.IntervalPeriod
+            PreInd = self._CurCalcInd - self.ForecastPeriod - self.Lag
             LastInd = self._CurCalcInd - self.ForecastPeriod
             PreDateTime = self._Model.DateTimeSeries[PreInd]
             LastDateTime = self._Model.DateTimeSeries[LastInd]
