@@ -83,9 +83,8 @@ class IC(BaseModule):
             return 0
         PreIDs = self._FactorTable.getFilteredID(idt=PreDateTime, id_filter_str=self.IDFilter)
         FactorExpose = self._FactorTable.readData(dts=[PreDateTime], ids=PreIDs, factor_names=list(self.TestFactors)).iloc[:, 0, :]
-        CurPrice = self._FactorTable.readData(dts=[idt], ids=PreIDs, factor_names=[self.PriceFactor]).iloc[0, 0, :]
-        LastPrice = self._FactorTable.readData(dts=[LastDateTime], ids=PreIDs, factor_names=[self.PriceFactor]).iloc[0, 0, :]
-        Ret = CurPrice/LastPrice-1
+        Price = self._FactorTable.readData(dts=[LastDateTime, idt], ids=PreIDs, factor_names=[self.PriceFactor]).iloc[0, :, :]
+        Ret = Price.iloc[-1] / Price.iloc[0] - 1
         if self.IndustryFactor!="无":# 进行收益率的行业调整
             IndustryData = self._FactorTable.readData(dts=[LastDateTime], ids=PreIDs, factor_names=[self.IndustryFactor]).iloc[0, 0, :]
             AllIndustry = IndustryData.unique()

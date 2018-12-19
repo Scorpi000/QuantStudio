@@ -22,6 +22,8 @@ class AbnormalReturn(BaseModule):
     EventFilter = Str(arg_type="String", label="事件定义", order=0)
     #NormalReturn = Enum(None, arg_type="SingleOption", label="正常收益率", order=1)
     #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=2)
+    EventPreWindow = Int(20, arg_type="Integer", label="事件前窗长", order=3)
+    EventPostWindow = Int(20, arg_type="Integer", label="事件后窗长", order=4)
     def __init__(self, factor_table, name="异常收益率", sys_args={}, **kwargs):
         self._FactorTable = factor_table
         super().__init__(name=name, sys_args=sys_args, **kwargs)
@@ -34,78 +36,44 @@ class AbnormalReturn(BaseModule):
         if self._isStarted: return ()
         super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._Output = {}
-        self._Output["IC"] = {iFactorName:[] for iFactorName in self.TestFactors}
-        self._Output["股票数"] = {iFactorName:[] for iFactorName in self.TestFactors}
-        self._Output["时点"] = []
-        self._CurCalcInd = 0
+        self._Output["正常收益率"] = np.zeros(shape=(0, self.EventPreWindow+1+self.EventPostWindow))
+        self._Output["异常收益率"] = np.zeros(shape=(0, self.EventPreWindow+1+self.EventPostWindow))
+        self._Output["事件记录"] = np.full(shape=(0, 3), fill_value=None, dtype="O")# [ID, 时点, 事件后期数]
+        self._AllDTs = self._FactorTable.getDateTime()
+        if not self._AllDTs: self._AllDTs = dts
         return (self._FactorTable, )
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
-        if self.CalcDTs:
-            if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
-            self._CurCalcInd = self.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
-            PreInd = self._CurCalcInd - self.LookBack
-            LastInd = self._CurCalcInd - 1
-            PreDateTime = self.CalcDTs[PreInd]
-            LastDateTime = self.CalcDTs[LastInd]
-        else:
-            self._CurCalcInd = self._Model.DateTimeIndex
-            PreInd = self._CurCalcInd - self.LookBack
-            LastInd = self._CurCalcInd - 1
-            PreDateTime = self._Model.DateTimeSeries[PreInd]
-            LastDateTime = self._Model.DateTimeSeries[LastInd]
-        if (PreInd<0) or (LastInd<0):
-            for iFactorName in self.TestFactors:
-                self._Output["IC"][iFactorName].append(np.nan)
-                self._Output["股票数"][iFactorName].append(np.nan)
-            self._Output["时点"].append(idt)
-            return 0
-        PreIDs = self._FactorTable.getFilteredID(idt=PreDateTime, id_filter_str=self.IDFilter)
-        FactorExpose = self._FactorTable.readData(dts=[PreDateTime], ids=PreIDs, factor_names=list(self.TestFactors)).iloc[:, 0, :]
-        CurPrice = self._FactorTable.readData(dts=[idt], ids=PreIDs, factor_names=[self.PriceFactor]).iloc[0, 0, :]
-        LastPrice = self._FactorTable.readData(dts=[LastDateTime], ids=PreIDs, factor_names=[self.PriceFactor]).iloc[0, 0, :]
-        Ret = CurPrice/LastPrice-1
-        if self.IndustryFactor!="无":# 进行收益率的行业调整
-            IndustryData = self._FactorTable.readData(dts=[LastDateTime], ids=PreIDs, factor_names=[self.IndustryFactor]).iloc[0, 0, :]
-            AllIndustry = IndustryData.unique()
-            if self.WeightFactor=="等权":
-                for iIndustry in AllIndustry:
-                    iMask = (IndustryData==iIndustry)
-                    Ret[iMask] -= Ret[iMask].mean()
-            else:
-                WeightData = self._FactorTable.readData(dts=[LastDateTime], ids=PreIDs, factor_names=[self.WeightFactor]).iloc[0, 0, :]
-                for iIndustry in AllIndustry:
-                    iMask = (IndustryData==iIndustry)
-                    iWeight = WeightData[iMask]
-                    iRet = Ret[iMask]
-                    Ret[iMask] -= (iRet*iWeight).sum() / iWeight[pd.notnull(iWeight) & pd.notnull(iRet)].sum(skipna=False)
-        for iFactorName in self.TestFactors:
-            self._Output["IC"][iFactorName].append(FactorExpose[iFactorName].corr(Ret, method=self.CorrMethod))
-            self._Output["股票数"][iFactorName].append(pd.notnull(FactorExpose[iFactorName]).sum())
-        self._Output["时点"].append(idt)
+        CurInd = self._AllDTs.index(idt)
+        if CurInd==0: return 0
+        self._Output["事件记录"][:, 2] += 1
+        IDs = self._FactorTable.getFilteredID(idt=idt, id_filter_str=self.EventFilter)
+        nID = len(IDs)
+        if nID>0:
+            self._Output["事件记录"] = np.r_[self._Output["事件记录"], np.c_[IDs, [idt]*nID, np.zeros(shape=(nID, 1))]]
+            PreInd = max(0, CurInd - self.EventPreWindow - 1)
+            NormalReturn = self._FactorTable.readData(dts=[self._AllDTs[PreInd]], ids=IDs, factor_names=[self.NormalReturn]).iloc[0, :, :]
+            self._Output["正常收益率"] = np.r_[self._Output["正常收益率"], NormalReturn.values.T.repeat(self.EventPreWindow+1+self.EventPostWindow, axis=1)]
+            if CurInd-PreInd>1:
+                Price = self._FactorTable.readData(dts=self._AllDTs[PreInd:CurInd], ids=IDs, factor_names=[self.PriceFactor]).iloc[0, :, :]
+                AbnormalReturn = np.full(shape=(nID, self.EventPreWindow+1+self.EventPostWindow), fill_value=np.nan)
+                AbnormalReturn[:, self.EventPreWindow-Price.shape[0]+1:self.EventPreWindow] = (Price.iloc[1:].values / Price.iloc[:-1].values - 1 - NormalReturn.values).T
+                self._Output["异常收益率"] = np.r_[self._Output["异常收益率"], AbnormalReturn]
+        Mask = (self._Output["事件记录"][:, 2]<=self.EventPostWindow)
+        IDs = self._Output["事件记录"][:, 0][Mask]
+        Price = self._FactorTable.readData(dts=[self._AllDTs[CurInd-1], idt], ids=sorted(set(IDs)), factor_names=[self.PriceFactor]).iloc[0, :, :].loc[:, IDs]
+        AbnormalReturn = (Price.iloc[1].values / Price.iloc[0].values - 1 - self._Output["正常收益率"][Mask, 0])
+        RowPos, ColPos = np.arange(self._Output["异常收益率"].shape[0])[Mask].tolist(), (self._Output["事件记录"][Mask, 2]+self.EventPreWindow).astype(np.int)
+        self._Output["异常收益率"][RowPos, ColPos] = AbnormalReturn
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
-        CalcDateTimes = self._Output.pop("时点")
-        self._Output["股票数"] = pd.DataFrame(self._Output["股票数"], index=CalcDateTimes)
-        self._Output["IC"] = pd.DataFrame(self._Output["IC"], index=CalcDateTimes)
-        for i, iFactorName in enumerate(self.TestFactors):
-            if self.FactorOrder[iFactorName]=="升序": self._Output["IC"][iFactorName] = -self._Output["IC"][iFactorName]
-        self._Output["IC的移动平均"] = self._Output["IC"].copy()
-        for i in range(len(CalcDateTimes)):
-            if i<self.RollAvgPeriod-1: self._Output["IC的移动平均"].iloc[i,:] = np.nan
-            else: self._Output["IC的移动平均"].iloc[i,:] = self._Output["IC"].iloc[i-self.RollAvgPeriod+1:i+1, :].mean()
-        self._Output["统计数据"] = pd.DataFrame(index=self._Output["IC"].columns)
-        self._Output["统计数据"]["平均值"] = self._Output["IC"].mean()
-        self._Output["统计数据"]["标准差"] = self._Output["IC"].std()
-        self._Output["统计数据"]["最小值"] = self._Output["IC"].min()
-        self._Output["统计数据"]["最大值"] = self._Output["IC"].max()
-        self._Output["统计数据"]["IC_IR"] = self._Output["统计数据"]["平均值"] / self._Output["统计数据"]["标准差"]
-        self._Output["统计数据"]["t统计量"] = np.nan
-        self._Output["统计数据"]["平均股票数"] = self._Output["股票数"].mean()
-        self._Output["统计数据"]["IC×Sqrt(N)"] = self._Output["统计数据"]["平均值"]*np.sqrt(self._Output["统计数据"]["平均股票数"])
-        self._Output["统计数据"]["有效期数"] = 0.0
-        for iFactor in self._Output["IC"]: self._Output["统计数据"].loc[iFactor,"有效期数"] = pd.notnull(self._Output["IC"][iFactor]).sum()
-        self._Output["统计数据"]["t统计量"] = (self._Output["统计数据"]["有效期数"]**0.5)*self._Output["统计数据"]["IC_IR"]
+        Index = pd.MultiIndex.from_arrays(self._Output.pop("事件记录")[:,:2].T, names=["ID", "时点"])
+        self._Output["正常收益率"] = pd.DataFrame(self._Output["正常收益率"], columns=np.arange(-self.EventPreWindow, 1+self.EventPostWindow), index=Index)
+        self._Output["异常收益率"] = pd.DataFrame(self._Output["异常收益率"], columns=np.arange(-self.EventPreWindow, 1+self.EventPostWindow), index=Index)
+        self._Output["统计数据"] = pd.DataFrame(self._Output["异常收益率"].mean(), columns=["异常收益率"])
+        self._Output["统计数据"]["累积异常收益率"] = self._Output["异常收益率"].cumsum(axis=1).mean()
+        self._Output["统计数据"]["分段累积异常收益率"] = self._Output["统计数据"]["累积异常收益率"]
+        self._Output["统计数据"]["分段累积异常收益率"].iloc[self.EventPreWindow+1:] -= self._Output["统计数据"]["分段累积异常收益率"].iloc[self.EventPreWindow]
+        self._Output["正常收益率"], self._Output["异常收益率"] = self._Output["正常收益率"].reset_index(), self._Output["异常收益率"].reset_index()
         return 0
-

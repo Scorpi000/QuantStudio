@@ -1,6 +1,7 @@
 # coding=utf-8
-"""基于 tushare 的因子库"""
+"""基于 tushare 的因子库(TODO)"""
 import os
+from collections import OrderedDict
 import datetime as dt
 
 import numpy as np
@@ -9,6 +10,7 @@ import tushare as ts
 from traits.api import Enum, Int, Str
 
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
+from QuantStudio.Tools.MathFun import CartesianProduct
 from QuantStudio import __QS_Error__, __QS_LibPath__, __QS_MainPath__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
 from QuantStudio.FactorDataBase.FDBFun import updateInfo
@@ -102,9 +104,15 @@ class _FeatureTable(_TSTable):
         FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+    def __QS_initArgs__(self):
+        super().__QS_initArgs__()
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        ConditionField = FactorInfo[pd.notnull(FactorInfo["Supplementary"])]
+        for i, iCondition in enumerate(ConditionField.index):
+            self.add_trait("Condition"+str(i), Enum(*ConditionField["Supplementary"].iloc[i].split(","), arg_type="String", label=iCondition, order=i))
     def getID(self, ifactor_name=None, idt=None, args={}):
-        if self._FactorDB._TableInfo.loc[self.Name, "Supplementary"]=="A股": return self._FactorDB.getStockID(index_id="全体A股", is_current=False)
-        return []
+        RawData = self.__QS_prepareRawData__(factor_names=[], ids=[], dts=[], args=args)
+        return sorted(RawData["ID"].values)
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         return []
         # 时间点默认是当天, ID 默认是 [000001.SH], 特别参数: 回溯天数
@@ -115,14 +123,23 @@ class _FeatureTable(_TSTable):
         DBTableName = self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         RawData = pd.DataFrame(columns=DBFields)
         FieldStr = ",".join(DBFields)
-        if self._FactorDB._TableInfo.loc[self.Name, "Supplementary"]=="A股":
-            RawData = self._FactorDB._ts.query(DBTableName, exchange="", list_status="L", fields=FieldStr)
-            RawData = RawData.append(self._FactorDB._ts.query(DBTableName, exchange="", list_status="D", fields=FieldStr))
-            RawData = RawData.append(self._FactorDB._ts.query(DBTableName, exchange="", list_status="P", fields=FieldStr))
-        elif self._FactorDB._TableInfo.loc[self.Name, "Supplementary"]=="期货":
-            Exchanges = ["CFFEX", "SHFE", "DCE", "CZCE", "INE"]
-            for iExchange in Exchanges:
-                RawData = RawData.append(self._FactorDB._ts.query(DBTableName, exchange=iExchange, fields=FieldStr))
+        ConditionField = FactorInfo[pd.notnull(FactorInfo["Supplementary"])]
+        if ConditionField.shape[0]>0:
+            SingleCondition, MultiCondition = {}, OrderedDict()
+            for i, iCondition in enumerate(ConditionField.index):
+                iConditionValue = args.get(iCondition, self[iCondition])
+                if iConditionValue=="All": MultiCondition[ConditionField["DBFieldName"].iloc[i]] = ConditionField["Supplementary"].iloc[i].split(",")[1:]
+                else: SingleCondition[ConditionField["DBFieldName"].iloc[i]] = iConditionValue
+            if MultiCondition:
+                RawData = None
+                MultiCondition, MultiConditionValue = list(MultiCondition.keys()), CartesianProduct(list(MultiCondition.values()))
+                for iMultiConditionValue in MultiConditionValue:
+                    SingleCondition.update(dict(zip(MultiCondition, iMultiConditionValue)))
+                    if RawData is None: RawData = self._FactorDB._ts.query(DBTableName, fields=FieldStr, **SingleCondition)
+                    else: RawData = RawData.append(self._FactorDB._ts.query(DBTableName, fields=FieldStr, **SingleCondition))
+            else: RawData = self._FactorDB._ts.query(DBTableName, fields=FieldStr, **SingleCondition)
+        else:
+            RawData = self._FactorDB._ts.query(DBTableName, fields=FieldStr)
         RawData = RawData.loc[:, DBFields]
         RawData.columns = ["ID"]+factor_names
         return RawData
@@ -137,7 +154,9 @@ class _MarketTable(_TSTable):
     LookBack = Int(0, arg_type="Integer", label="回溯天数", order=0)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         FactorInfo = fdb._FactorInfo.loc[name]
-        self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
+        IDInfo = FactorInfo[FactorInfo["FieldType"]=="ID"]
+        if IDInfo.shape[0]==0: self._IDField = self._IDType = None            
+        else: self._IDField, self._IDType = IDInfo.index[0], IDInfo["Supplementary"].iloc[0]
         self._DateFields = FactorInfo[FactorInfo["FieldType"]=="Date"].index.tolist()
         self._ConditionFields = FactorInfo[FactorInfo["FieldType"]=="Condition"].index.tolist()# 所有的条件字段列表
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
@@ -151,13 +170,16 @@ class _MarketTable(_TSTable):
         else: self.DateField = self._DateFields[0]
         for i, iCondition in enumerate(self._ConditionFields):
             self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+2))
-            self[iCondition] = str(FactorInfo.loc[iCondition, "Supplementary"])        
+            self[iCondition] = str(FactorInfo.loc[iCondition, "Supplementary"])
     @property
     def FactorNames(self):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         return FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()+self._DateFields
     def getID(self, ifactor_name=None, idt=None, args={}):
-        if self._FactorDB._TableInfo.loc[self.Name, "Supplementary"]=="A股": return self._FactorDB.getStockID(index_id="全体A股", is_current=False)
+        if self._IDField is None: return ["000000.HST"]
+        TableType = self._FactorDB._TableInfo.loc[self.Name, "Supplementary"]
+        if TableType=="A股": return self._FactorDB.getStockID(index_id="全体A股", is_current=False)
+        elif TableType=="期货": return self._FactorDB.getFutureID(future_code="", is_current=False)
         return []
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         return self._FactorDB.getTradeDay(start_date=start_dt, end_date=end_dt, exchange="", output_type="datetime")
@@ -185,8 +207,9 @@ class _MarketTable(_TSTable):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
-        Fields = [self._IDField, self.DateField]+factor_names
-        DBFields = FactorInfo['DBFieldName'].loc[Fields].tolist()
+        Fields = [self.DateField]+factor_names
+        if self._IDField is not None: Fields.insert(0, self._IDField)
+        DBFields = FactorInfo["DBFieldName"].loc[Fields].tolist()
         DBTableName = self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         RawData = pd.DataFrame(columns=DBFields)
         FieldStr = ",".join(DBFields)
@@ -199,16 +222,17 @@ class _MarketTable(_TSTable):
                 Conditions[FactorInfo.loc[iConditionField, "DBFieldName"]] = float(args.get(iConditionField, self[iConditionField]))
             elif iDataType=="int":
                 Conditions[FactorInfo.loc[iConditionField, "DBFieldName"]] = int(args.get(iConditionField, self[iConditionField]))
-        if self._IDField=="ts_code":
-            StartDate, EndDate = StartDate.strftime("%Y%m%d"), EndDate.strftime("%Y%m%d")
+        StartDate, EndDate = StartDate.strftime("%Y%m%d"), EndDate.strftime("%Y%m%d")
+        if self._IDField is None:
+            RawData = self._FactorDB._ts.query(DBTableName, start_date=StartDate, end_date=EndDate, fields=FieldStr, **Conditions)
+            RawData.insert(0, "ID", "000000.HST")
+            DBFields.insert(0, "ID")
+        elif pd.isnull(self._IDType):
             for iID in ids:
-                iData = self._FactorDB._ts.query(DBTableName, ts_code=iID, start_date=StartDate, end_date=EndDate, fields=FieldStr, **Conditions)
-                RawData = RawData.append(iData)
-        else:
-            for i in range((EndDate-StartDate).days+1):
-                iDate = StartDate + dt.timedelta(i)
-                iData = self._FactorDB._ts.query(DBTableName, trade_date=iDate.strftime("%Y%m%d"), fields=FieldStr, **Conditions)
-                RawData = RawData.append(iData)
+                Conditions[DBFields[0]] = iID
+                RawData = RawData.append(self._FactorDB._ts.query(DBTableName, start_date=StartDate, end_date=EndDate, fields=FieldStr, **Conditions))
+        elif self._IDType=="Non-Finite":
+            RawData = self._FactorDB._ts.query(DBTableName, start_date=StartDate, end_date=EndDate, fields=FieldStr, **Conditions)
         RawData = RawData.loc[:, DBFields]
         RawData.columns = ["ID", "日期"]+factor_names
         return RawData.sort_values(by=["ID", "日期"])
