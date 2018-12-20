@@ -17,7 +17,7 @@ from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.Tools.MathFun import CartesianProduct
 from QuantStudio.BackTest.BackTestModel import BaseModule
-
+from .Correlation import _calcReturn
 
 class QuantileDifference(BaseModule):
     """分位数法"""
@@ -72,10 +72,7 @@ class QuantileDifference(BaseModule):
             LastDateTime = self._Model.DateTimeSeries[LastInd]
         if (PreInd<0) or (LastInd<0): return 0
         Price = self._PriceTable.readData(dts=[LastDateTime, idt], ids=self._Output["证券ID"], factor_names=[self.PriceFactor]).iloc[0, :, :].values
-        if self.ReturnType=="对数收益率": Return = np.log(Price[-1]) - np.log(Price[0])
-        elif self.ReturnType=="价格变化量": Return = Price[-1] - Price[0]
-        else: Return = Price[-1] / Price[0] - 1
-        self._Output["收益率"] = np.r_[self._Output["收益率"], Return.reshape((1, Return.shape[0]))]
+        self._Output["收益率"] = np.r_[self._Output["收益率"], _calcReturn(Price, return_type=self.ReturnType)]
         FactorData = self._FactorTable.readData(dts=[PreDateTime], ids=[self.FactorID], factor_names=[self.TestFactor]).iloc[0, 0, 0]
         self._Output["因子值"] = np.r_[self._Output["因子值"], FactorData]
         if self._Output["收益率"].shape[0]<self._nMinSample: return 0

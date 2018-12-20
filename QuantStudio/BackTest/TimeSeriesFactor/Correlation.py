@@ -16,6 +16,14 @@ from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.Tools.DataPreprocessingFun import prepareRegressData
 from QuantStudio.BackTest.BackTestModel import BaseModule
 
+def _calcReturn(price, return_type="简单收益率"):
+    if return_type=="对数收益率":
+        Return = np.log(1 + np.diff(price, axis=0) / np.abs(price0[:-1]))
+        Return[np.isinf(Return)] = np.nan
+        return Return
+    elif return_type=="价格变化量": return np.diff(price, axis=0)
+    else: return np.diff(price, axis=0) / np.abs(price[:-1])
+
 class TimeSeriesCorrelation(BaseModule):
     """时间序列相关性"""
     TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
@@ -72,13 +80,7 @@ class TimeSeriesCorrelation(BaseModule):
             LastDateTime = self._Model.DateTimeSeries[LastInd]
         if (PreInd<0) or (LastInd<0): return 0
         Price = self._PriceTable.readData(dts=[LastDateTime, idt], ids=self._Output["证券ID"], factor_names=[self.PriceFactor]).iloc[0, :, :].values
-        if self.ReturnType=="对数收益率":
-            Return = np.log(Price[-1]) - np.log(Price[0])
-        elif self.ReturnType=="价格变化量":
-            Return = Price[-1] - Price[0]
-        else:
-            Return = Price[-1] / Price[0] - 1
-        self._Output["收益率"] = np.r_[self._Output["收益率"], Return.reshape((1, Return.shape[0]))]
+        self._Output["收益率"] = np.r_[self._Output["收益率"], _calcReturn(Price, return_type=self.ReturnType)]
         FactorData = self._FactorTable.readData(dts=[PreDateTime], ids=self._Output["因子ID"], factor_names=list(self.TestFactors)).iloc[:, 0, :].values.T
         StartInd = max(0, self._Output["收益率"].shape[0] - self.SummaryWindow)
         for i, iFactorName in enumerate(self.TestFactors):
