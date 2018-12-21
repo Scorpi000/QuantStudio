@@ -31,8 +31,8 @@ class CMRM(BaseModule):
     EventPreWindow = Int(20, arg_type="Integer", label="事件前窗长", order=1)
     EventPostWindow = Int(20, arg_type="Integer", label="事件后窗长", order=2)
     #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=3)
-    ReturnType = Enum("简单收益率", "对数收益率", "价格变化量", arg_type="SingleOption", label="收益率类型", order=4)
-    #ExpectedReturn = Enum(None, arg_type="SingleOption", label="预期收益率", order=5)
+    ReturnType = Enum("对数收益率", "简单收益率", "价格变化量", arg_type="SingleOption", label="收益率类型", order=4)
+    EstWindow = Int(60, arg_type="Integer", label="估计窗口", order=5)
     def __init__(self, factor_table, name="均值常数模型", sys_args={}, **kwargs):
         self._FactorTable = factor_table
         return super().__init__(name=name, sys_args=sys_args, **kwargs)
@@ -40,13 +40,13 @@ class CMRM(BaseModule):
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FactorTable.getFactorMetaData(key="DataType")))
         self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=3))
         self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
-        self.add_trait("ExpectedReturn", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="预期收益率", order=5))
     def __QS_start__(self, mdl, dts, **kwargs):
         if self._isStarted: return ()
         super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._Output = {}
         self._Output["预期收益率"] = np.zeros(shape=(0, self.EventPreWindow+1+self.EventPostWindow))
         self._Output["异常收益率"] = np.zeros(shape=(0, self.EventPreWindow+1+self.EventPostWindow))
+        self._Output["异常方差"] = np.zeros(shape=(0, self.EventPreWindow+1+self.EventPostWindow))
         self._Output["事件记录"] = np.full(shape=(0, 3), fill_value=None, dtype="O")# [ID, 时点, 事件后期数]
         self._AllDTs = self._FactorTable.getDateTime()
         if not self._AllDTs: self._AllDTs = dts
@@ -54,34 +54,44 @@ class CMRM(BaseModule):
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
         CurInd = self._AllDTs.index(idt)
-        if CurInd<=self.EventPreWindow: return 0
+        if CurInd<=self.EventPreWindow+self.EstWindow: return 0
         self._Output["事件记录"][:, 2] += 1
         IDs = self._FactorTable.getFilteredID(idt=idt, id_filter_str=self.EventFilter)
         nID = len(IDs)
         if nID>0:
             self._Output["事件记录"] = np.r_[self._Output["事件记录"], np.c_[IDs, [idt]*nID, np.zeros(shape=(nID, 1))]]
-            ExpectedReturn = np.full(shape=(nID, self.EventPreWindow+1+self.EventPostWindow), fill_value=np.nan)
-            self._Output["预期收益率"] = np.r_[self._Output["预期收益率"], ExpectedReturn]
-            self._Output["异常收益率"] = np.r_[self._Output["异常收益率"], ExpectedReturn]
-            PreInd = CurInd - self.EventPreWindow - 1
-            ExpectedReturn = self._FactorTable.readData(dts=[self._AllDTs[PreInd]], ids=IDs, factor_names=[self.ExpectedReturn]).iloc[0, :, :].values
-            self._Output["预期收益率"][-nID:, :] = ExpectedReturn.T.repeat(self.EventPreWindow+1+self.EventPostWindow, axis=1)
-            if CurInd-PreInd>1:
-                Price = self._FactorTable.readData(dts=self._AllDTs[PreInd:CurInd], ids=IDs, factor_names=[self.PriceFactor]).iloc[0, :, :]
-                Return = _calcReturn(Price.values, return_type=self.ReturnType)
-                self._Output["异常收益率"][-nID:, :CurInd-PreInd-1] = (Return - ExpectedReturn).T
+            Temp = np.full(shape=(nID, self.EventPreWindow+1+self.EventPostWindow), fill_value=np.nan)
+            self._Output["预期收益率"] = np.r_[self._Output["预期收益率"], Temp]
+            self._Output["异常收益率"] = np.r_[self._Output["异常收益率"], Temp]
+            self._Output["异常方差"] = np.r_[self._Output["异常方差"], Temp]
+            EstStartInd = CurInd - self.EventPreWindow - self.EstWindow - 1
+            Price = self._FactorTable.readData(dts=self._AllDTs[EstStartInd:CurInd+1], ids=IDs, factor_names=[self.PriceFactor]).iloc[0, :, :]
+            Return = _calcReturn(Price.values, return_type=self.ReturnType)
+            ExpectedReturn, Var = np.nanmean(Return[:self.EstWindow], axis=0), np.nanvar(Return[:self.EstWindow], axis=0, ddof=1)
+            self._Output["预期收益率"][-nID:, :] = ExpectedReturn.reshape((nID, 1)).repeat(self.EventPreWindow+1+self.EventPostWindow, axis=1)
+            self._Output["异常收益率"][-nID:, :self.EventPreWindow+1] = (Return[self.EstWindow:] - ExpectedReturn).T
+            self._Output["异常方差"][-nID:, :] = Var.reshape((nID, 1)).repeat(self.EventPreWindow+1+self.EventPostWindow, axis=1)
         Mask = (self._Output["事件记录"][:, 2]<=self.EventPostWindow)
         IDs = self._Output["事件记录"][:, 0][Mask]
         RowPos, ColPos = np.arange(self._Output["异常收益率"].shape[0])[Mask].tolist(), (self._Output["事件记录"][Mask, 2]+self.EventPreWindow).astype(np.int)
         Price = self._FactorTable.readData(dts=[self._AllDTs[CurInd-1], idt], ids=sorted(set(IDs)), factor_names=[self.PriceFactor]).iloc[0, :, :].loc[:, IDs]
-        AbnormalReturn = (_calcReturn(Price.values, return_type=self.ReturnType)[0] - self._Output["预期收益率"][Mask, 0])
-        self._Output["异常收益率"][RowPos, ColPos] = AbnormalReturn
+        self._Output["异常收益率"][RowPos, ColPos] = (_calcReturn(Price.values, return_type=self.ReturnType)[0] - self._Output["预期收益率"][RowPos, ColPos])
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
         Index = pd.MultiIndex.from_arrays(self._Output.pop("事件记录")[:,:2].T, names=["ID", "时点"])
         self._Output["预期收益率"] = pd.DataFrame(self._Output["预期收益率"], columns=np.arange(-self.EventPreWindow, 1+self.EventPostWindow), index=Index)
         self._Output["异常收益率"] = pd.DataFrame(self._Output["异常收益率"], columns=np.arange(-self.EventPreWindow, 1+self.EventPostWindow), index=Index)
+        self._Output["异常方差"] = pd.DataFrame(self._Output["异常方差"], columns=np.arange(-self.EventPreWindow, 1+self.EventPostWindow), index=Index)
+        AR_Avg, AR_Std = self._Output["异常收益率"].mean(axis=0), (self._Output["异常方差"].mean(axis=1) / self._Output["异常方差"].count(axis=0))**0.5
+        CAR = self._Output["异常收益率"].cumsum(axis=1, skipna=True)
+        CAR_Avg, CAR_Std = CAR.mean(axis=0), None
+        
+        
+        
+        
+        
+        
         AR_Avg, AR_Std, AR_N = self._Output["异常收益率"].mean(axis=0), self._Output["异常收益率"].std(axis=0, ddof=1), self._Output["异常收益率"].count(axis=0)
         CAR = self._Output["异常收益率"].cumsum(axis=1, skipna=True)
         CAR_Avg, CAR_Std, CAR_N = CAR.mean(axis=0), CAR.std(axis=0), CAR.count(axis=0)
