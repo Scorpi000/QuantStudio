@@ -557,6 +557,13 @@ def lag(f, lag_period=1, window=1, dt_change_fun=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"lag_period":lag_period,"window":window,"dt_change_fun":dt_change_fun}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_lag,"参数":Args,"回溯期数":[window]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
+def _diff(f,idt,iid,x,args):
+    Data = _genOperatorData(f,idt,iid,x,args)[0]
+    return np.diff(Data, n=args["OperatorArg"]['n'], axis=0)
+def diff(f, n=1, **kwargs):
+    Descriptors,Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"n":n}
+    return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_diff,"参数":Args,"回溯期数":[n]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _nav(f, idt, iid, x, args):
     Price = x[0]
     Return, = _genOperatorData(f, idt, iid, x[1:], args)

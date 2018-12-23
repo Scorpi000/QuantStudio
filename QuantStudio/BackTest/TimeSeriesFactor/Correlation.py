@@ -18,7 +18,7 @@ from QuantStudio.BackTest.BackTestModel import BaseModule
 
 def _calcReturn(price, return_type="简单收益率"):
     if return_type=="对数收益率":
-        Return = np.log(1 + np.diff(price, axis=0) / np.abs(price0[:-1]))
+        Return = np.log(1 + np.diff(price, axis=0) / np.abs(price[:-1]))
         Return[np.isinf(Return)] = np.nan
         return Return
     elif return_type=="价格变化量": return np.diff(price, axis=0)

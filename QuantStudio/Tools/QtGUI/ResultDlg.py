@@ -317,6 +317,7 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
         if self.ColumnLimitCheckBox.isChecked():
             ColLimitNum = self.ColumnLimitSpinBox.value()
             TargetDF = TargetDF.iloc[:,:min((ColLimitNum,TargetDF.shape[1]))]
+        self.RowColLabel.setText("%d 行, %d 列" % self.CurDF.shape)
         return populateTableWithDataFrame(self.MainResultTable,TargetDF)    
     def showMainResultTableContextMenu(self,pos):# 显示MainResultTable的右键菜单
         self.MainResultTable.ContextMenu['主菜单'].move(QtGui.QCursor.pos())
