@@ -63,7 +63,7 @@ class _CalendarTable(_TSTable):
     # 忽略 ifactor_name
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         DBTableName = self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
-        DateField = self._FactorDB._FactorInfo['DBFieldName'].loc[self.Name].loc[self._DateField]
+        DateField = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[self._DateField]
         if start_dt is None: start_dt = dt.date(1900, 1, 1)
         start_dt = start_dt.strftime("%Y%m%d")
         if end_dt is None: end_dt = dt.date.today()
@@ -112,7 +112,7 @@ class _FeatureTable(_TSTable):
             self.add_trait("Condition"+str(i), Enum(*ConditionField["Supplementary"].iloc[i].split(","), arg_type="String", label=iCondition, order=i))
     def getID(self, ifactor_name=None, idt=None, args={}):
         RawData = self.__QS_prepareRawData__(factor_names=[], ids=[], dts=[], args=args)
-        return sorted(RawData["ID"].values)
+        return sorted(RawData["ID"])
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         return []
         # 时间点默认是当天, ID 默认是 [000001.SH], 特别参数: 回溯天数
@@ -142,6 +142,7 @@ class _FeatureTable(_TSTable):
             RawData = self._FactorDB._ts.query(DBTableName, fields=FieldStr)
         RawData = RawData.loc[:, DBFields]
         RawData.columns = ["ID"]+factor_names
+        RawData["ID"] = self._FactorDB.DBID2ID(RawData["ID"])
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         raw_data = raw_data.set_index(["ID"])
@@ -228,13 +229,14 @@ class _MarketTable(_TSTable):
             RawData.insert(0, "ID", "000000.HST")
             DBFields.insert(0, "ID")
         elif pd.isnull(self._IDType):
-            for iID in ids:
+            for iID in self._FactorDB.ID2DBID(ids):
                 Conditions[DBFields[0]] = iID
                 RawData = RawData.append(self._FactorDB._ts.query(DBTableName, start_date=StartDate, end_date=EndDate, fields=FieldStr, **Conditions))
         elif self._IDType=="Non-Finite":
             RawData = self._FactorDB._ts.query(DBTableName, start_date=StartDate, end_date=EndDate, fields=FieldStr, **Conditions)
         RawData = RawData.loc[:, DBFields]
         RawData.columns = ["ID", "日期"]+factor_names
+        RawData["ID"] = self._FactorDB.DBID2ID(RawData["ID"])
         return RawData.sort_values(by=["ID", "日期"])
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
@@ -303,6 +305,12 @@ class TushareDB(FactorDB):
         Dates = self._ts.query("trade_cal", exchange=exchange, start_date=start_date, end_date=end_date, fields="cal_date", is_open="1")
         if kwargs.get("output_type", "date")=="date": return [dt.datetime.strptime(iDate, "%Y%m%d").date() for iDate in Dates["cal_date"]]
         else: return [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Dates["cal_date"]]
+    # 将 QuantStudio 的 ID 转化成数据库内部 ID
+    def ID2DBID(self, ids):
+        return pd.Series(ids).str.replace(".CFE", ".CFX").str.replace(".CZC", ".ZCE").tolist()
+    # 将数据库内部 ID 转换成 QuantStudio 的 ID
+    def DBID2ID(self, ids):
+        return pd.Series(ids).str.replace(".CFX", ".CFE").str.replace(".ZCE", ".CZC").tolist()
     # 获取指定日当前在市或者历史上出现过的全体 A 股 ID
     def _getAllAStock(self, date, is_current=True):
         Data = self._ts.stock_basic(exchange="", list_status="L", fields="ts_code, list_date, delist_date")
@@ -340,4 +348,4 @@ class TushareDB(FactorDB):
                 Data = Data.append(self._ts.fut_basic(exchange=iExchange, fut_type=fut_type, fields="ts_code, list_date, delist_date"))
         Data = Data[(Data["list_date"]<=date) | pd.isnull(Data["list_date"])]
         if is_current: Data = Data[pd.isnull(Data["delist_date"]) | (Data["delist_date"]>date)]
-        return sorted(Data["ts_code"])
+        return self.DBID2ID(sorted(Data["ts_code"]))

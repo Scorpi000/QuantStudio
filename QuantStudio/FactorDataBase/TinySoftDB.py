@@ -279,11 +279,11 @@ class TinySoftDB(FactorDB):
             IDs.append(iID[2:]+"."+iID[:2])
         return IDs
     # 给定期货 ID, 获取指定日当前或历史上的该期货的所有 ID, is_current=True:获取指定日当天的 ID, False:获取截止指定日历史上出现的 ID, 目前仅支持提取当前在市的 ID
-    def getFutureID(future_id="IF", date=None, is_current=True):
+    def getFutureID(self, future_code="IF", date=None, is_current=True):
         if date is None: date = dt.date.today()
         if is_current: CodeStr = "EndT:= {Date}T;return GetFuturesID('{FutureID}', EndT);"
         else: raise __QS_Error__("目前不支持提取历史 ID")
-        CodeStr = CodeStr.format(IndexID="".join(future_id.split(".")), Date=date.strftime("%Y%m%d"))
+        CodeStr = CodeStr.format(FutureID="".join(future_code.split(".")), Date=date.strftime("%Y%m%d"))
         ErrorCode, Data, Msg = self._TSLPy.RemoteExecute(CodeStr, {})
         if ErrorCode!=0: raise __QS_Error__("TinySoft 执行错误: "+Msg.decode("gbk"))
         return [iID.decode("gbk") for iID in Data]
