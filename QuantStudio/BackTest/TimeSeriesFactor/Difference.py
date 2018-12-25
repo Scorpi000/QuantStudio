@@ -6,7 +6,7 @@ from io import BytesIO
 
 import numpy as np
 import pandas as pd
-from traits.api import ListStr, Enum, List, Int, Dict, Bool, Str
+from traits.api import Enum, List, Int, Str, Float
 from traitsui.api import SetEditor, Item
 from scipy import stats
 import matplotlib.pyplot as plt
@@ -28,7 +28,7 @@ class QuantileDifference(BaseModule):
     ForecastPeriod = Int(1, arg_type="Integer", label="预测期数", order=3)
     Lag = Int(0, arg_type="Integer", label="滞后期数", order=4)
     CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=5)
-    SummaryWindow = Int(np.inf, arg_type="Integer", label="统计窗口", order=6)
+    SummaryWindow = Float(np.inf, arg_type="Integer", label="统计窗口", order=6)
     MinSummaryWindow = Int(2, arg_type="Integer", label="最小统计窗口", order=7)
     GroupNum = Int(3, arg_type="Integer", label="分组数", order=8)
     def __init__(self, factor_table, price_table, name="分位数法", sys_args={}, **kwargs):
@@ -76,7 +76,7 @@ class QuantileDifference(BaseModule):
         FactorData = self._FactorTable.readData(dts=[PreDateTime], ids=[self.FactorID], factor_names=[self.TestFactor]).iloc[0, 0, 0]
         self._Output["因子值"] = np.r_[self._Output["因子值"], FactorData]
         if self._Output["收益率"].shape[0]<self._nMinSample: return 0
-        StartInd = max(0, self._Output["收益率"].shape[0] - self.SummaryWindow)
+        StartInd = int(max(0, self._Output["收益率"].shape[0] - self.SummaryWindow))
         FactorData, Return = self._Output["因子值"][StartInd:], self._Output["收益率"][StartInd:, :]
         Mask = np.full(shape=(FactorData.shape[0], self.GroupNum), fill_value=False)
         for j in range(self.GroupNum):

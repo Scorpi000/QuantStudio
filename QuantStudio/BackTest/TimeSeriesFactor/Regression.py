@@ -5,7 +5,7 @@ from io import BytesIO
 
 import numpy as np
 import pandas as pd
-from traits.api import ListStr, Enum, List, Int, Dict, Bool
+from traits.api import ListStr, Enum, List, Int, Bool, Float
 from traitsui.api import SetEditor, Item
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
@@ -27,7 +27,7 @@ class OLS(BaseModule):
     ForecastPeriod = Int(1, arg_type="Integer", label="预测期数", order=3)
     Lag = Int(0, arg_type="Integer", label="滞后期数", order=4)
     CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=5)
-    SummaryWindow = Int(np.inf, arg_type="Integer", label="统计窗口", order=6)
+    SummaryWindow = Float(np.inf, arg_type="Integer", label="统计窗口", order=6)
     MinSummaryWindow = Int(2, arg_type="Integer", label="最小统计窗口", order=7)
     Constant = Bool(True, arg_type="Bool", label="常数项", order=8)
     def __init__(self, factor_table, price_table, name="时间序列OLS", sys_args={}, **kwargs):
@@ -80,7 +80,7 @@ class OLS(BaseModule):
         FactorData = self._FactorTable.readData(dts=[PreDateTime], ids=self._Output["因子ID"], factor_names=list(self.TestFactors)).iloc[:, 0, :].values.flatten(order="F")
         self._Output["因子值"] = np.r_[self._Output["因子值"], FactorData.reshape((1, FactorData.shape[0]))]
         if self._Output["收益率"].shape[0]<self._nMinSample: return 0
-        StartInd = max(0, self._Output["收益率"].shape[0] - self.SummaryWindow)
+        StartInd = int(max(0, self._Output["收益率"].shape[0] - self.SummaryWindow))
         X = self._Output["因子值"][StartInd:]
         if self.Constant: X = sm.add_constant(X, prepend=True)
         nID = len(self._Output["证券ID"])

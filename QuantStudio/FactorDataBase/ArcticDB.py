@@ -11,10 +11,6 @@ from traits.api import Password, Str, Range
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 
-def _identifyDataType(dtypes):
-    if np.dtype('O') in dtypes.values: return 'string'
-    else: return 'double'
-
 class _FactorTable(FactorTable):
     """ArcticDB 因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):

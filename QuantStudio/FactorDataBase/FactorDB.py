@@ -251,7 +251,7 @@ class _OperationMode(__QS_Object__):
     def __init__(self, ft, sys_args={}, config_file=None, **kwargs):
         self._FT = ft
         self._isStarted = False
-        self._Factors = []# 因子列表
+        self._Factors = []# 因子列表, 只包含当前生成数据的因子
         self._FactorDict = {}# 因子字典, {因子名:因子}, 包括所有的因子, 即衍生因子所依赖的描述子也在内
         self._FactorID = {}# {因子名: 因子唯一的 ID 号(int)}, 比如防止操作系统文件大小写不敏感导致缓存文件重名
         self._FactorStartDT = {}# {因子名: 起始时点}
@@ -344,7 +344,7 @@ def _calculate(args):
 # 不支持某个操作时, 方法产生错误
 # 没有相关数据时, 方法返回 None
 class FactorTable(__QS_Object__):
-    ErgodicMode = Instance(_ErgodicMode, arg_type="ArgObject", label="遍历模式", order=-1)
+    ErgodicMode = Instance(_ErgodicMode, arg_type="ArgObject", label="遍历模式", order=-3)
     OperationMode = Instance(_OperationMode)
     def __init__(self, name, fdb=None, sys_args={}, config_file=None, **kwargs):
         self._Name = name
@@ -394,9 +394,10 @@ class FactorTable(__QS_Object__):
         if CompiledIDFilterStr is None: raise __QS_Error__("过滤条件字符串有误!")
         temp = self.readData(factor_names=IDFilterFactors, ids=ids, dts=[idt], args=args).loc[:, idt, :]
         return eval(CompiledIDFilterStr)
-    # 获取过滤后的ID
-    def getFilteredID(self, idt, id_filter_str=None, args={}):
+    # 获取过滤后的 ID
+    def getFilteredID(self, idt, ids=None, id_filter_str=None, args={}):
         if not id_filter_str: return self.getID(idt=idt, args=args)
+        if ids is None: ids = self.getID(idt=idt, args=args)
         CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(id_filter_str, self.FactorNames)
         if CompiledIDFilterStr is None: raise __QS_Error__("过滤条件字符串有误!")
         temp = self.readData(factor_names=IDFilterFactors, ids=ids, dts=[idt], args=args).loc[:, idt, :]
@@ -577,11 +578,12 @@ class FactorTable(__QS_Object__):
         return 0
     def _genFactorDict(self, factors, factor_dict={}):
         for iFactor in factors:
-            iFactor._QS_OperationMode = self.OperationMode
+            iFactor._OperationMode = self.OperationMode
             if (not isinstance(iFactor.Name, str)) or (iFactor.Name=="") or (iFactor is not factor_dict.get(iFactor.Name, iFactor)):# 该因子命名错误或者未命名, 或者有因子重名
                 iFactor.Name = genAvailableName("TempFactor", factor_dict)
             factor_dict[iFactor.Name] = iFactor
-            factor_dict.update(self._genFactorDict(getattr(iFactor, "Descriptors", []), factor_dict))
+            self.OperationMode._FactorID[iFactor.Name] = len(factor_dict)
+            factor_dict.update(self._genFactorDict(iFactor.Descriptors, factor_dict))
         return factor_dict
     def _initOperation(self):
         # 检查时点, ID 序列的合法性
@@ -598,11 +600,13 @@ class FactorTable(__QS_Object__):
         if not self.OperationMode.FactorNames: self.OperationMode.FactorNames = self.FactorNames
         self.OperationMode._Factors = []# 因子列表
         self.OperationMode._FactorDict = {}# 因子字典, {因子名:因子}, 包括所有的因子, 即衍生因子所依赖的描述子也在内
-        for iFactorName in self.OperationMode.FactorNames:
+        self.OperationMode._FactorID = {}# {因子名: 因子唯一的 ID 号(int)}
+        for i, iFactorName in enumerate(self.OperationMode.FactorNames):
             iFactor = self.getFactor(iFactorName)
-            iFactor._QS_OperationMode = self.OperationMode
+            iFactor._OperationMode = self.OperationMode
             self.OperationMode._Factors.append(iFactor)
             self.OperationMode._FactorDict[iFactorName] = iFactor
+            self.OperationMode._FactorID[iFactorName] = i
         self.OperationMode._FactorDict = self._genFactorDict(self.OperationMode._Factors, self.OperationMode._FactorDict)
         # 生成原始数据和缓存数据存储目录
         self.OperationMode._CacheDir = tempfile.TemporaryDirectory()
@@ -631,11 +635,10 @@ class FactorTable(__QS_Object__):
                 self.OperationMode._PID_Lock[iPID] = Lock()
         # 创建用于多进程的 Event 数据
         self.OperationMode._Event = {}# {因子名: (Sub2MainQueue, Event)}
-        # 给每个因子设置运算模式参数对象, 并生成因子唯一的 ID 号
-        self.OperationMode._FactorID = {}
-        for i, iFactorName in enumerate(self.OperationMode._FactorDict.keys()):
-            self.OperationMode._FactorDict[iFactorName]._OperationMode = self.OperationMode
-            self.OperationMode._FactorID[iFactorName] = i
+        # 给每个因子设置运算模式参数对象, 并生成因子唯一的 ID 号, TODEL
+        #for i, iFactorName in enumerate(self.OperationMode._FactorDict.keys()):
+            #self.OperationMode._FactorDict[iFactorName]._OperationMode = self.OperationMode
+            #self.OperationMode._FactorID[iFactorName] = i
         # 生成所有因子的起始时点信息
         self.OperationMode._FactorStartDT = {}# {因子名: 起始时点}
         for iFactor in self.OperationMode._FactorDict.values(): iFactor._QS_updateStartDT(self.OperationMode.DateTimes[0], self.OperationMode._FactorStartDT)
@@ -686,7 +689,7 @@ class FactorTable(__QS_Object__):
         self.OperationMode._CacheDir = None
         self.OperationMode._isStarted = False
         return 0
-    # 计算因子数据并写入因子库    
+    # 计算因子数据并写入因子库
     def write2FDB(self, factor_names, ids, dts, factor_db, table_name, if_exists="update", subprocess_num=cpu_count()-1, dt_ruler=None, **kwargs):
         if not isinstance(factor_db, WritableFactorDB): raise __QS_Error__("因子数据库: %s 不可写入!" % factor_db.Name)
         print("==========因子运算==========", "1. 原始数据准备", sep="\n", end="\n")
@@ -932,17 +935,20 @@ class Factor(__QS_Object__):
     @property
     def FactorTable(self):
         return self._FactorTable
+    @property
+    def Descriptors(self):
+        return []
     # 获取因子的元数据
     def getMetaData(self, key=None):
         return self._FactorTable.getFactorMetaData(factor_names=[self._NameInFT], key=key).loc[self._NameInFT]
     # 获取 ID 序列
     def getID(self, idt=None):
-        if self._OperationMode is not None: return self._OperationMode.IDs
+        if (self._OperationMode is not None) and (self._OperationMode._isStarted): return self._OperationMode.IDs
         if self._FactorTable is not None: return self._FactorTable.getID(ifactor_name=self._NameInFT, idt=idt, args=self.Args)
         return []
     # 获取时间点序列
     def getDateTime(self, iid=None, start_dt=None, end_dt=None):
-        if self._OperationMode is not None: return self._OperationMode.DateTimes
+        if (self._OperationMode is not None) and (self._OperationMode._isStarted): return self._OperationMode.DateTimes
         if self._FactorTable is not None: return self._FactorTable.getDateTime(ifactor_name=self._NameInFT, iid=iid, start_dt=start_dt, end_dt=end_dt, args=self.Args)
         return []
     # --------------------------------数据读取---------------------------------
@@ -1210,9 +1216,6 @@ class Factor(__QS_Object__):
         Descriptors, Args = self._genUnitaryOperatorInfo()
         Args["OperatorType"] = "not"
         return PointOperation("", Descriptors, {"算子":_UnitaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID"})
-def _identifyDataType(dtypes):
-    if np.dtype('O') in dtypes.values: return 'string'
-    else: return 'double'
 # 直接赋予数据产生的因子
 # data: DataFrame(index=[时点], columns=[ID])
 class DataFactor(Factor):
@@ -1221,17 +1224,17 @@ class DataFactor(Factor):
     def __init__(self, name, data, sys_args={}, config_file=None, **kwargs):
         if not isinstance(data, pd.DataFrame): raise __QS_Error__("数据必须是 pandas.DataFrame 类型!")
         self._Data = data
-        if "数据类型" not in sys_args: sys_args["数据类型"] = _identifyDataType(data.dtypes)
+        if "数据类型" not in sys_args: sys_args["数据类型"] = ("string" if np.dtype('O') in dtypes.values else "double")
         return super().__init__(name=name, ft=None, sys_args=sys_args, config_file=None, **kwargs)
     def getMetaData(self, key=None):
         if key is None: return pd.Series({"DataType":self.DataType})
         elif key=="DataType": return self.DataType
         return None
     def getID(self, idt=None):
-        if self._OperationMode is not None: return self._OperationMode.IDs
+        if (self._OperationMode is not None) and (self._OperationMode._isStarted): return self._OperationMode.IDs
         return self._Data.columns.tolist()
     def getDateTime(self, iid=None, start_dt=None, end_dt=None):
-        if self._OperationMode is not None: return self._OperationMode.DateTimes
+        if (self._OperationMode is not None) and (self._OperationMode._isStarted): return self._OperationMode.DateTimes
         return self._Data.index.tolist()
     def readData(self, ids, dts, **kwargs):
         if (self._Data.columns.intersection(ids).shape[0]==0) or (self._Data.index.intersection(dts).shape[0]==0):

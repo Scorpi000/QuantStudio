@@ -1873,14 +1873,19 @@ class WindDB2(FactorDB):
         if ExchangeInfo.shape[0]==0: raise __QS_Error__("不支持交易所: '%s' 的交易日序列!" % exchange)
         else: Dates = self.getTable(ExchangeInfo.index[0]).getDateTime(iid=exchange, start_dt=start_date, end_dt=end_date)
         return list(map(lambda x: x.date(), Dates))
-    # 获取指定日当前在市或者历史上出现过的全体 A 股 ID
+    # 获取指定日 date 的全体 A 股 ID
+    # date: 指定日, datetime.date
+    # is_current: False 表示上市日在指定日之前的 A 股, True 表示上市日在指定日之前且尚未退市的 A 股
     def _getAllAStock(self, date, is_current=True):
         if is_current:
             SQLStr = "SELECT S_INFO_WINDCODE FROM {Prefix}AShareDescription WHERE (S_INFO_DELISTDATE is NULL OR S_INFO_DELISTDATE>'{Date}') AND S_INFO_LISTDATE<='{Date}' ORDER BY S_INFO_WINDCODE"
         else:
             SQLStr = "SELECT S_INFO_WINDCODE FROM {Prefix}AShareDescription WHERE S_INFO_LISTDATE<='{Date}' ORDER BY S_INFO_WINDCODE"
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d")))]
-    # 获取指定日当前或历史上的指数成份股 ID, is_current=True: 获取指定日当天的ID, False:获取截止指定日历史上出现的 ID
+    # 获取指定日 date 指数 index_id 的成份股 ID
+    # index_id: 指数 ID, 默认值 "全体A股"
+    # date: 指定日, 默认值 None 表示今天
+    # is_current: False 表示进入指数的日期在指定日之前的成份股, True 表示进入指数的日期在指定日之前且尚未剔出指数的 A 股
     def getStockID(self, index_id="全体A股", date=None, is_current=True):
         if date is None: date = dt.date.today()
         if index_id=="全体A股": return self._getAllAStock(date=date, is_current=is_current)
@@ -1888,8 +1893,13 @@ class WindDB2(FactorDB):
             IDs = self.getTable(iTableName).getID(ifactor_name=index_id, idt=date, is_current=is_current)
             if IDs: return IDs
         else: return []
-    # 给定期货代码, 获取指定日当前或历史上的该期货的所有 ID, is_current=True:获取指定日当天的 ID, False:获取截止指定日历史上出现的 ID, 目前仅支持提取当前在市的 ID
-    # kwargs: contract_type: 合约类型, "月合约", "连续合约", "所有", 默认值 "月合约"; include_simulation: 是否包括仿真合约, 默认值 False
+    # 给定期货代码 future_code, 获取指定日 date 的期货 ID
+    # future_code: 期货代码(str)或者期货代码列表(list(str)), None 表示所有期货代码
+    # date: 指定日, 默认值 None 表示今天
+    # is_current: False 表示上市日在指定日之前的期货, True 表示上市日在指定日之前且尚未退市的期货
+    # kwargs:
+    # contract_type: 合约类型, 可选 "月合约", "连续合约", "所有", 默认值 "月合约"
+    # include_simulation: 是否包括仿真合约, 默认值 False
     def getFutureID(self, future_code="IF", date=None, is_current=True, **kwargs):
         if date is None: date = dt.date.today()
         SQLStr = "SELECT DISTINCT s_info_windcode FROM {Prefix}CFuturesDescription "
@@ -1905,8 +1915,12 @@ class WindDB2(FactorDB):
             if is_current: SQLStr += "AND ((s_info_delistdate>='{Date}') OR (s_info_delistdate IS NULL)) "
         SQLStr += "ORDER BY s_info_windcode"
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d"), FutureCode=future_code))]
-    # 获取期货代码
-    # kwargs: include_simulation: 是否包括仿真合约, 默认值 False
+    # 获取指定交易所 exchange 指定日 date 的期货代码
+    # exchange: 交易所(str)或者交易所列表(list(str)), 默认值 None 表示支持的所有交易所
+    # date: 指定日, 默认值 None 表示今天
+    # is_current: False 表示上市日在指定日之前的期货代码, True 表示上市日在指定日之前且尚未退市的期货代码
+    # kwargs:
+    # include_simulation: 是否包括仿真合约, 默认值 False
     def getFutureCode(self, exchange=None, date=None, is_current=True, **kwargs):
         if date is None: date = dt.date.today()
         SQLStr = "SELECT DISTINCT fs_info_sccode FROM {Prefix}CFuturesDescription "
@@ -1918,12 +1932,15 @@ class WindDB2(FactorDB):
         if not kwargs.get("include_simulation", False): SQLStr += "AND s_info_name NOT LIKE '%仿真%' "
         SQLStr += "ORDER BY fs_info_sccode"
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d")))]
-    # 给定期权代码, 获取指定日当前或历史上的该期权的所有 ID, is_current=True:获取指定日当天的 ID, False:获取截止指定日历史上出现的 ID, 目前仅支持提取当前在市的 ID
-    def getOptionID(self, option_code="510050OP", date=None, is_current=True):
+    # 给定期权代码 option_code, 获取指定日 date 的期权代码
+    # option_code: 期权代码(str)
+    # date: 指定日, 默认值 None 表示今天
+    # is_current: False 表示上市日在指定日之前的期权, True 表示上市日在指定日之前且尚未退市的期权
+    def getOptionID(self, option_code="510050OP", date=None, is_current=True, **kwargs):
         if date is None: date = dt.date.today()
         SQLStr = "SELECT DISTINCT s_info_windcode FROM {Prefix}ChinaOptionDescription "
         SQLStr += "WHERE s_info_sccode LIKE '{OptionCode}%%' "
         SQLStr += "AND s_info_ftdate<='{Date}' "
         if is_current: SQLStr += "AND s_info_lasttradingdate>='{Date}' "
         SQLStr += "ORDER BY s_info_windcode"
-        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d"), OptionCode=option_code))]    
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d"), OptionCode=option_code))]

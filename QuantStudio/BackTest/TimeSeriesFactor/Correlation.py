@@ -5,7 +5,7 @@ from io import BytesIO
 
 import numpy as np
 import pandas as pd
-from traits.api import ListStr, Enum, List, ListInt, Int, Str, Dict, on_trait_change
+from traits.api import ListStr, Enum, List, Int, Float
 from traitsui.api import SetEditor, Item
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
@@ -33,7 +33,7 @@ class TimeSeriesCorrelation(BaseModule):
     Lag = Int(0, arg_type="Integer", label="滞后期数", order=4)
     CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=5)
     CorrMethod = Enum("pearson", "spearman", "kendall", arg_type="SingleOption", label="相关性算法", order=6)
-    SummaryWindow = Int(np.inf, arg_type="Integer", label="统计窗口", order=7)
+    SummaryWindow = Float(np.inf, arg_type="Integer", label="统计窗口", order=7)
     MinSummaryWindow = Int(2, arg_type="Integer", label="最小统计窗口", order=8)
     def __init__(self, factor_table, price_table, name="时间序列相关性", sys_args={}, **kwargs):
         self._FactorTable = factor_table
@@ -82,7 +82,7 @@ class TimeSeriesCorrelation(BaseModule):
         Price = self._PriceTable.readData(dts=[LastDateTime, idt], ids=self._Output["证券ID"], factor_names=[self.PriceFactor]).iloc[0, :, :].values
         self._Output["收益率"] = np.r_[self._Output["收益率"], _calcReturn(Price, return_type=self.ReturnType)]
         FactorData = self._FactorTable.readData(dts=[PreDateTime], ids=self._Output["因子ID"], factor_names=list(self.TestFactors)).iloc[:, 0, :].values.T
-        StartInd = max(0, self._Output["收益率"].shape[0] - self.SummaryWindow)
+        StartInd = int(max(0, self._Output["收益率"].shape[0] - self.SummaryWindow))
         for i, iFactorName in enumerate(self.TestFactors):
             self._Output["因子值"][iFactorName] = np.r_[self._Output["因子值"][iFactorName], FactorData[i:i+1]]
             if self._Output["收益率"].shape[0]>=self._nMinSample:

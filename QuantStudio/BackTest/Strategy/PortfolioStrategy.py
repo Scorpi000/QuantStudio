@@ -442,7 +442,7 @@ class OptimizerStrategy(PortfolioStrategy):
     def genSignal(self, idt, trading_record):
         if self.RiskTable is not None: self.RiskTable.move(idt)
         IDs = self._PC.TargetIDs = self._FT.getID(idt=idt)
-        if self.TargetIDs: self._PC.TargetIDs = self._FT.getFilteredID(idt=idt, id_filter_str=self.TargetIDs)
+        if self.TargetIDs: self._PC.TargetIDs = self._FT.getFilteredID(idt=idt, ids=IDs, id_filter_str=self.TargetIDs)
         if self._Dependency.get("预期收益", False): self._PC.ExpectedReturn = self._FT.readData(factor_names=[self.ExpectedReturn], ids=IDs, dts=[idt]).iloc[0, 0, :]
         if self._Dependency.get("协方差矩阵", False):
             if isinstance(self.RiskTable, FactorRT):

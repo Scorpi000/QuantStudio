@@ -115,7 +115,6 @@ class _FeatureTable(_TSTable):
         return sorted(RawData["ID"])
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         return []
-        # 时间点默认是当天, ID 默认是 [000001.SH], 特别参数: 回溯天数
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         Fields = [self._IDField]+factor_names
@@ -180,7 +179,7 @@ class _MarketTable(_TSTable):
         if self._IDField is None: return ["000000.HST"]
         TableType = self._FactorDB._TableInfo.loc[self.Name, "Supplementary"]
         if TableType=="A股": return self._FactorDB.getStockID(index_id="全体A股", is_current=False)
-        elif TableType=="期货": return self._FactorDB.getFutureID(future_code="", is_current=False)
+        elif TableType=="期货": return self._FactorDB.getFutureID(future_code=None, is_current=False)
         return []
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         return self._FactorDB.getTradeDay(start_date=start_dt, end_date=end_dt, exchange="", output_type="datetime")
@@ -311,7 +310,9 @@ class TushareDB(FactorDB):
     # 将数据库内部 ID 转换成 QuantStudio 的 ID
     def DBID2ID(self, ids):
         return pd.Series(ids).str.replace(".CFX", ".CFE").str.replace(".ZCE", ".CZC").tolist()
-    # 获取指定日当前在市或者历史上出现过的全体 A 股 ID
+    # 获取指定日 date 的全体 A 股 ID
+    # date: 指定日, datetime.date
+    # is_current: False 表示上市日在指定日之前的 A 股, True 表示上市日在指定日之前且尚未退市的 A 股
     def _getAllAStock(self, date, is_current=True):
         Data = self._ts.stock_basic(exchange="", list_status="L", fields="ts_code, list_date, delist_date")
         Data = Data.append(self._ts.stock_basic(exchange="", list_status="D", fields="ts_code, list_date, delist_date"))
@@ -320,14 +321,21 @@ class TushareDB(FactorDB):
         Data = Data[Data["list_date"]<=date]
         if is_current: Data = Data[pd.isnull(Data["delist_date"]) | (Data["delist_date"]>date)]
         return sorted(Data["ts_code"])
-    # 获取指定日当前或历史上的指数成份股ID, is_current=True: 获取指定日当天的ID, False:获取截止指定日历史上出现的 ID
+    # 获取指定日 date 指数 index_id 的成份股 ID
+    # index_id: 指数 ID, 默认值 "全体A股"
+    # date: 指定日, 默认值 None 表示今天
+    # is_current: False 表示进入指数的日期在指定日之前的成份股, True 表示进入指数的日期在指定日之前且尚未剔出指数的 A 股, index_id 不是 "全体A股" 时不支持 False
     def getStockID(self, index_id="全体A股", date=None, is_current=True):
         if date is None: date = dt.date.today()
         if index_id=="全体A股": return self._getAllAStock(date=date, is_current=is_current)
         if not is_current: raise __QS_Error__("不支持提取 '%s' 的历史成分股!" % index_id)
         return self._ts.index_weight(index_code=index_id, trade_date=date.strftime("%Y%m%d"), fields="con_code")["con_code"].tolist()
-    # 给定期货标志, 获取指定日当前或历史上的该期货的所有 ID, is_current=True:获取指定日当天的 ID, False:获取截止指定日历史上出现的 ID, 目前仅支持提取当前在市的 ID
-    # kwargs: contract_type: 合约类型, "月合约" 或者 "连续合约", 默认值 "月合约"
+    # 给定期货代码 future_code, 获取指定日 date 的期货 ID
+    # future_code: 期货代码(str)或者期货代码列表(list(str)), None 表示所有期货代码
+    # date: 指定日, 默认值 None 表示今天
+    # is_current: False 表示上市日在指定日之前的期货, True 表示上市日在指定日之前且尚未退市的期货
+    # kwargs:
+    # contract_type: 合约类型, 可选 "月合约", "连续合约", "所有", 默认值 "月合约"
     def getFutureID(self, future_code="IF", date=None, is_current=True, **kwargs):
         if date is None: date = dt.date.today()
         date = date.strftime("%Y%m%d")
@@ -337,11 +345,18 @@ class TushareDB(FactorDB):
         else: fut_type = ""
         Exchanges = ["CFFEX", "SHFE", "DCE", "CZCE", "INE"]
         if future_code:
-            for iExchange in Exchanges:
-                Data = self._ts.fut_basic(exchange=iExchange, fut_type=fut_type, fields="ts_code, fut_code, list_date, delist_date")
-                Data = Data[Data["fut_code"]==future_code]
-                if Data.shape[0]>0: break
-            else: raise __QS_Error__("未找到期货: '%s'!" % (future_code, ))
+            if isinstance(future_code, str):
+                for iExchange in Exchanges:
+                    Data = self._ts.fut_basic(exchange=iExchange, fut_type=fut_type, fields="ts_code, fut_code, list_date, delist_date")
+                    Data = Data[Data["fut_code"]==future_code]
+                    if Data.shape[0]>0: break
+                else: raise __QS_Error__("未找到期货: '%s'!" % (future_code, ))
+            else:
+                Data = pd.DataFrame(columns=["ts_code", "list_date", "delist_date"])
+                for iExchange in Exchanges:
+                    iData = self._ts.fut_basic(exchange=iExchange, fut_type=fut_type, fields="ts_code, fut_code, list_date, delist_date")
+                    iData = iData[iData["fut_code"].isin(future_code)]
+                    Data = Data.append(iData)
         else:
             Data = pd.DataFrame(columns=["ts_code", "list_date", "delist_date"])
             for iExchange in Exchanges:
