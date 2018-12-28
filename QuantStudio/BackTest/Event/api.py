@@ -1,2 +1,2 @@
 # -*- coding: utf-8 -*-
-from .AbnormalReturn import CMRM, MAM
+from .AbnormalReturn import CMRM, MAM, MM

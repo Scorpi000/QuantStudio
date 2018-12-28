@@ -792,3 +792,57 @@ def genPortfolioByFiltration(factor_data, ascending=False, target_num=20, target
     Portfolio = weight[TargetIDs]
     Portfolio = Portfolio[pd.notnull(Portfolio) & (Portfolio!=0)]
     return Portfolio/Portfolio.sum()
+# 构造期货连续合约的价格序列
+# id_map: 连续合约每一期的月合约 ID, Series(ID)
+# price: 月合约的价格序列, DataFrame(价格, index=id_map.index, columns=[月合约ID])
+# adj_type: 调整方式, 可选: "前复权"(最后一期价格不变), "后复权"(第一期价格不变)
+# 返回: Series(价格, index=id_map.index)
+def genContinuousContractPrice(id_map, price, adj_type="前复权"):
+    if adj_type=="前复权":
+        AdjPrice = np.full(shape=id_map.shape, fill_value=price[id_map.iloc[-1]].iloc[-1])
+        for i in range(id_map.shape[0]-1, 0, -1):
+            iPrice = price[id_map.iloc[i]]
+            if pd.isnull(iPrice.iloc[i-1]): iPrice = price[id_map.iloc[i-1]]
+            AdjPrice[i-1] = AdjPrice[i] / iPrice.iloc[i] * iPrice.iloc[i-1]
+    elif adj_type=="后复权":
+        AdjPrice = np.full(shape=id_map.shape, fill_value=price[id_map.iloc[0]].iloc[0])
+        for i in range(1, id_map.shape[0]):
+            iPrice = price[id_map.iloc[i]]
+            if pd.isnull(iPrice.iloc[i-1]): iPrice = price[id_map.iloc[i-1]]
+            AdjPrice[i] = AdjPrice[i-1] * iPrice.iloc[i] / iPrice.iloc[i-1]
+    else: raise __QS_Error__("不支持的调整方式: '%s'" % adj_type)
+    return pd.Series(AdjPrice, index=id_map.index)
+
+# 给定持仓数量的策略向量化回测
+# num_units: 每期的持仓数量, array(shape=(nDT, nID)), nDT: 时点数, nID: ID 数
+# price: 价格序列, array(shape=num_units.shape)
+# fee: 手续费率
+# long_margin: 多头保证金率
+# short_margin: 空头保证金率
+# 返回: (Return, PNL, Margin, Amount), (array(shape=(nDT, )), array(shape=(nDT, nID)), array(shape=(nDT, nID)), array(shape=(nDT, nID)))
+def testNumStrategy(num_units, price, fee=0.0, long_margin=1.0, short_margin=1.0):
+    Amount = (num_units * price)# shape=(nDT, nID)
+    Margin = np.clip(Amount, 0, np.inf) * long_margin - np.clip(Amount, -np.inf, 0) * short_margin# shape=(nDT, nID)
+    MoneyIn = np.r_[0, np.nansum(np.clip(Margin, 0, np.inf), axis=1)]# shape=(nDT+1, )
+    MoneyIn[:-1][MoneyIn[:-1]==0] = np.diff(MoneyIn)[MoneyIn[:-1]==0]
+    num_units, price = np.r_[np.zeros((1, num_units.shape[1])), num_units], np.r_[np.zeros((1, num_units.shape[1])), price]# shape=(nDT+1, nID)
+    PNL = np.diff(price, axis=0) * num_units[:-1] - np.abs(np.diff(num_units, axis=0) * price[1:]) * fee# shape=(nDT, nID)
+    Return = np.nansum(PNL, axis=1) / MoneyIn[:-1]# shape=(nDT, )
+    Return[np.isinf(Return)] = np.sign(Return)[np.isinf(Return)]
+    Return[np.isnan(Return)] = 0.0
+    return (Return, PNL, Margin, Amount)
+# 给定持仓资金比例的策略向量化回测
+# portfolio: 每期的投资组合, array(shape=(nDT, nID)), nDT: 时点数, nID: ID 数
+# price: 价格序列, array(shape=portfolio.shape)
+# fee: 手续费率
+# long_margin: 多头保证金率
+# short_margin: 空头保证金率
+# 返回: (Return, Turnover), (array(shape=(nDT, )), array(shape=(nDT, )))
+def testPortfolioStrategy(portfolio, price, fee=0.0, long_margin=1.0, short_margin=1.0):
+    Return = np.zeros_like(price)
+    Return[:-1] = price[1:] / price[:-1] - 1
+    portfolio = np.r_[np.zeros((1, price.shape[1])), portfolio]
+    Return = np.clip(portfolio[:-1], 0, np.inf) * Return * 1 / long_margin + np.clip(portfolio[:-1], -np.inf, 0) * Return * 1 / short_margin
+    Turnover = np.abs(np.diff(portfolio, axis=0))
+    Return -=  Turnover* fee
+    return (np.nansum(Return, axis=1), np.nansum(Turnover, axis=1))
