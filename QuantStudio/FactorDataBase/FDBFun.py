@@ -5,15 +5,18 @@ import numpy as np
 import pandas as pd
 
 from QuantStudio import __QS_Error__
-from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
 
 # 将信息源文件中的表和字段信息导入信息文件
 def importInfo(info_file, info_resource):
     TableInfo = pd.read_excel(info_resource, "TableInfo").set_index(["TableName"])
     FactorInfo = pd.read_excel(info_resource, 'FactorInfo').set_index(['TableName', 'FieldName'])
-    writeNestedDict2HDF5(TableInfo, info_file, "/TableInfo")
-    writeNestedDict2HDF5(FactorInfo, info_file, "/FactorInfo")
-    return 0
+    try:
+        from QuantStudio.Tools.DataTypeFun import writeNestedDict2HDF5
+        writeNestedDict2HDF5(TableInfo, info_file, "/TableInfo")
+        writeNestedDict2HDF5(FactorInfo, info_file, "/FactorInfo")
+    except:
+        pass
+    return (TableInfo, FactorInfo)
 
 # 更新信息文件
 def updateInfo(info_file, info_resource):
@@ -23,12 +26,12 @@ def updateInfo(info_file, info_resource):
         print("数据库信息文件: '%s' 有更新, 尝试从中导入新信息." % info_resource)
     else:
         try:
+            from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5
             return (readNestedDictFromHDF5(info_file, ref="/TableInfo"), readNestedDictFromHDF5(info_file, ref="/FactorInfo"))
         except:
             print("数据库信息文件: '%s' 损坏, 尝试从 '%s' 中导入信息." % (info_file, info_resource))
     if not os.path.isfile(info_resource): raise __QS_Error__("缺失数据库信息源文件: %s" % info_resource)
-    importInfo(info_file, info_resource)
-    return (readNestedDictFromHDF5(info_file, ref="/TableInfo"), readNestedDictFromHDF5(info_file, ref="/FactorInfo"))
+    return importInfo(info_file, info_resource)
 
 def adjustDateTime(data, dts, fillna=False, **kwargs):
     if isinstance(data, (pd.DataFrame, pd.Series)):
