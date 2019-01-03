@@ -9,7 +9,6 @@ from traits.api import Enum, List, ListStr, Int, Float, Str, Bool, Dict, Instanc
 from QuantStudio.Tools.AuxiliaryFun import searchNameInStrList, getFactorList, genAvailableName, match2Series
 from QuantStudio.Tools.FileFun import listDirFile, writeFun2File
 from QuantStudio.Tools.MathFun import CartesianProduct
-from QuantStudio.Tools.StrategyTestFun import loadCSVFilePortfolioSignal, writePortfolioSignal2CSV
 from QuantStudio import __QS_Error__, __QS_Object__
 from QuantStudio.BackTest.Strategy.StrategyModule import Strategy, Account
 from QuantStudio.RiskDataBase.RiskDB import RiskTable, FactorRT

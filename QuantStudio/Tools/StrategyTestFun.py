@@ -24,7 +24,7 @@ from QuantStudio import __QS_Error__
 # epsilon: 容忍误差
 # 返回: 考虑交易费执行交易后的财富值
 # 算法: 迭代求解方程: x = wealth-sum(abs(x*p_target-wealth*p_holding))*transfee_rate, 其中x是未知量
-def calcWealthAfterTrade(p_holding,p_target,wealth,transfee_rate,epsilon=1e-6):
+def calcWealthAfterTrade(p_holding, p_target, wealth, transfee_rate, epsilon=1e-6):
     x_pre = 0.0
     x = wealth
     while abs(x-x_pre)>=epsilon:
@@ -752,14 +752,10 @@ def loadCSVFileTimingSignal(csv_path):
         return FileSignals
     with open(csv_path) as CSVFile:
         FirstLine = CSVFile.readline().split(",")
-    if (len(FirstLine)!=2) or (FirstLine[1] is not None):
-        file_type="横向排列"
-    else:
-        file_type="纵向排列"
-    if file_type=='横向排列':
+    if (len(FirstLine)!=2) or (FirstLine[1] is not None):# 横向排列
         CSVDF = readCSV2Pandas(csv_path,detect_file_encoding=True,header=0,index_col=None)
         CSVDF = CSVDF.T
-    else:
+    else:# 纵向排列
         CSVDF = readCSV2Pandas(csv_path,detect_file_encoding=True,header=None,index_col=0)
     CSVDF = CSVDF.iloc[:,0]
     for iDT in CSVDF.index:
