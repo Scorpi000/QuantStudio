@@ -192,7 +192,7 @@ class QuantilePortfolio(BaseModule):
         self._Output["统计数据"]["最大回撤结束时间"] = pd.Series(index=self._Output["统计数据"].index,dtype="O")
         for iCol in self._Output["净值"].columns:
             iMaxDD,iStartPos,iEndPos = calcMaxDrawdownRate(self._Output["净值"].loc[:, iCol].values)
-            self._Output["统计数据"].loc[iCol, "最大回撤率"] = iMaxDD
+            self._Output["统计数据"].loc[iCol, "最大回撤率"] = abs(iMaxDD)
             self._Output["统计数据"].loc[iCol, "最大回撤开始时间"] = (self._Output["净值"].index[iStartPos] if iStartPos is not None else None)
             self._Output["统计数据"].loc[iCol, "最大回撤结束时间"] = (self._Output["净值"].index[iEndPos] if iEndPos is not None else None)
         self._Output["统计数据"]["超额收益率"] = self._Output["超额净值"].iloc[-1,:]-1
@@ -206,7 +206,7 @@ class QuantilePortfolio(BaseModule):
         self._Output["统计数据"]["超额最大回撤结束时间"] = pd.Series(index=self._Output["统计数据"].index, dtype="O")
         for iCol in self._Output["超额净值"].columns:
             iMaxDD, iStartPos, iEndPos = calcMaxDrawdownRate(self._Output["超额净值"].loc[:, iCol].values)
-            self._Output["统计数据"].loc[iCol, "超额最大回撤率"] = iMaxDD
+            self._Output["统计数据"].loc[iCol, "超额最大回撤率"] = abs(iMaxDD)
             self._Output["统计数据"].loc[iCol, "超额最大回撤开始时间"] = (self._Output["超额净值"].index[iStartPos] if iStartPos is not None else None)
             self._Output["统计数据"].loc[iCol, "超额最大回撤结束时间"] = (self._Output["超额净值"].index[iEndPos] if iEndPos is not None else None)
         self._Output["统计数据"]["CAPM Alpha"], self._Output["统计数据"]["CAPM Beta"] = 0.0, 0.0
@@ -591,7 +591,7 @@ class PureFactorPortfolio(QuantilePortfolio):# TODO
         self._Output["统计数据"]["最大回撤结束时间"] = pd.Series(self._Output["统计数据"].index,dtype=np.dtype("O"))
         for iInd in self._Output["净值"].columns:
             iMaxDD,iStartPos,iEndPos = calcMaxDrawdownRate(self._Output["净值"].loc[:,iInd].values)
-            self._Output["统计数据"]["最大回撤率"].loc[iInd] = iMaxDD
+            self._Output["统计数据"]["最大回撤率"].loc[iInd] = abs(iMaxDD)
             self._Output["统计数据"]["最大回撤开始时间"].loc[iInd] = (self._Output["净值"].index[iStartPos] if iStartPos is not None else None)
             self._Output["统计数据"]["最大回撤结束时间"].loc[iInd] = (self._Output["净值"].index[iEndPos] if iEndPos is not None else None)
         if args["月度平均"]:

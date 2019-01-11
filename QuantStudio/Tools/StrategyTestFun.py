@@ -308,91 +308,45 @@ def calcDownPeriod(wealth_seq):
         elif (NowIsDown) and (not UpOrDownSeq[i]):
             NowIsDown = False
     return (np.array(DownWealth),np.array(DownDates))
-# 计算回撤序列, wealth_seq: 净值序列, array; 返回(最大回撤,最大回撤开始位置,最大回撤结束位置,回撤序列)
+# 计算回撤序列, wealth_seq: 净值序列, array; 返回: (回撤率序列, 回撤期序列), (array, array)
 def calcDrawdown(wealth_seq):
-    High = wealth_seq[0]
-    DrawdownSeq = np.zeros(wealth_seq.shape)
-    MaxDrawdownRate = 0.0
-    DrawdownStartDate = 0
-    MaxDrawdownStartDate = 0
-    MaxDrawdownEndDate = 0
-    for i,iWealth in enumerate(wealth_seq[1:]):
-        if iWealth<High:# 当前还未回复到历史高点
-            iDrawdownRate = iWealth/High-1
-            DrawdownSeq[i+1] = iDrawdownRate
-            if iDrawdownRate<MaxDrawdownRate:
-                MaxDrawdownRate = iDrawdownRate
-                MaxDrawdownStartDate = DrawdownStartDate
-                MaxDrawdownEndDate = i+1
-        else:
-            High = iWealth
-            DrawdownStartDate = i+1
-    if MaxDrawdownEndDate>MaxDrawdownStartDate:
-        return (MaxDrawdownRate,MaxDrawdownStartDate,MaxDrawdownEndDate,DrawdownSeq)
-    else:
-        return (MaxDrawdownRate,None,None,DrawdownSeq)
-# 计算最大回撤率, 最大回撤开始日期, 最大回撤结束日期, wealth_seq: 净值序列, array; 返回(最大回撤,最大回撤开始时间,最大回撤结束时间)
+    HighWater = wealth_seq[0]# 高水位线
+    Drawdown = np.zeros(wealth_seq.shape)# 回撤序列
+    DrawdownDuration = np.zeros(wealth_seq.shape)# 回撤期
+    for i, iWealth in enumerate(wealth_seq[1:]):
+        HighWater = np.maximum(HighWater, iWealth)
+        Drawdown[i+1] = iWealth / HighWater - 1
+        DrawdownDuration[i+1] = (DrawdownDuration[i] + 1) * (Drawdown[i+1] < 0)
+    return (Drawdown, DrawdownDuration)
+# 计算最大回撤率, wealth_seq: 净值序列, array; 返回(最大回撤, 最大回撤开始位置, 最大回撤结束位置)
 def calcMaxDrawdownRate(wealth_seq):
-    MaxDrawdownRate = 0
-    MaxDrawdownStartDate = 0
-    MaxDrawdownEndDate = 0
-    for i,iWealth in enumerate(wealth_seq[1:]):
-        iMaxInd = np.argmax(wealth_seq[:i+1])
-        iMaxWealth = wealth_seq[:i+1][iMaxInd]
-        if iMaxWealth!=0:
-            iMinInd = np.argmin(wealth_seq[i:])
-            iMinWealth = wealth_seq[i:][iMinInd]
-            iMaxDrawdownRate = (iMaxWealth-iMinWealth)/iMaxWealth
-        else:
-            continue
-        if iMaxDrawdownRate>MaxDrawdownRate:
-            MaxDrawdownStartDate = iMaxInd
-            MaxDrawdownEndDate = iMinInd
-            MaxDrawdownRate = iMaxDrawdownRate
-    return (MaxDrawdownRate,MaxDrawdownStartDate,MaxDrawdownEndDate)
-# 计算最大回撤率(加速版), 最大回撤开始日期, 最大回撤结束日期, wealth_seq: 净值序列, array; 返回(最大回撤,最大回撤开始时间,最大回撤结束时间)
-def calcMaxDrawdownRateEx(wealth_seq):
-    iBackwardMaxInd = 0
-    iBackwardMaxWealth = wealth_seq[0]
-    iForwardMinInd = np.argmin(wealth_seq)
-    iForwardMinWealth = wealth_seq[iForwardMinInd]
-    MaxDrawdownRate = (iBackwardMaxWealth-iForwardMinWealth)/iBackwardMaxWealth
-    BackwardMaxInd = iBackwardMaxInd
-    ForwardMinInd = iForwardMinInd
-    for i,iWealth in enumerate(wealth_seq[1:]):
-        if iWealth>iBackwardMaxWealth:
-            iBackwardMaxWealth = iWealth
-            iBackwardMaxInd = i+1
-        if iForwardMinInd==i:
-            iForwardMinInd = np.argmin(wealth_seq[i+1:])+i+1
-            iForwardMinWealth = wealth_seq[iForwardMinInd]
-        iMaxDrawdownRate = ((iBackwardMaxWealth-iForwardMinWealth)/iBackwardMaxWealth if iBackwardMaxWealth!=0 else np.nan)
-        if iMaxDrawdownRate>MaxDrawdownRate:
-            MaxDrawdownRate = iMaxDrawdownRate
-            BackwardMaxInd = iBackwardMaxInd
-            ForwardMinInd = iForwardMinInd
-    return (MaxDrawdownRate,BackwardMaxInd,ForwardMinInd)
-# 计算最大回撤率(二次加速版), 最大回撤开始日期, 最大回撤结束日期, wealth_seq: 净值序列, array; 返回(最大回撤,最大回撤开始时间,最大回撤结束时间)
-def calcMaxDrawdownRateExEx(wealth_seq):
-    High = wealth_seq[0]
+    HighWater = wealth_seq[0]# 高水位线
     MaxDrawdownRate = 0.0
-    DrawdownStartInd = 0
-    MaxDrawdownStartInd= 0
-    MaxDrawdownEndInd = 0
-    for i,iWealth in enumerate(wealth_seq[1:]):
-        if iWealth<=High:# 当前还未回复到历史高点
-            iDrawdownRate = iWealth/High-1
+    DrawdownStartInd = MaxDrawdownStartInd = MaxDrawdownEndInd = 0
+    for i, iWealth in enumerate(wealth_seq[1:]):
+        if iWealth<=HighWater:# 当前还未回复到历史高点
+            iDrawdownRate = iWealth / HighWater - 1
             if iDrawdownRate<MaxDrawdownRate:
                 MaxDrawdownRate = iDrawdownRate
                 MaxDrawdownStartInd = DrawdownStartInd
                 MaxDrawdownEndInd = i+1
         else:
-            High = iWealth
+            HighWater = iWealth
             DrawdownStartInd = i+1
-    if MaxDrawdownEndInd>MaxDrawdownStartInd:
-        return (abs(MaxDrawdownRate),MaxDrawdownStartInd,MaxDrawdownEndInd)
-    else:
-        return (abs(MaxDrawdownRate),None,None)
+    if MaxDrawdownEndInd>MaxDrawdownStartInd: return (MaxDrawdownRate, MaxDrawdownStartInd, MaxDrawdownEndInd)
+    else: return (MaxDrawdownRate, None, None)
+# 计算最长回撤期, wealth_seq: 净值序列, array; 返回(最长回撤期, 最长回撤开始位置, 最长回撤结束位置)
+def calcMaxDrawdownDuration(wealth_seq):
+    HighWater = wealth_seq[0]# 高水位线
+    MaxDrawdownDuration = DrawdownDuration = MaxDrawdownEndInd = 0
+    for i, iWealth in enumerate(wealth_seq[1:]):
+        HighWater = max(HighWater, iWealth)
+        DrawdownDuration = (DrawdownDuration + 1) * ( iWealth / HighWater < 1)
+        if DrawdownDuration>MaxDrawdownDuration:
+            MaxDrawdownDuration = DrawdownDuration
+            MaxDrawdownEndInd = i+1
+    if MaxDrawdownDuration>0: return (MaxDrawdownDuration, MaxDrawdownEndInd - MaxDrawdownDuration, MaxDrawdownEndInd)
+    else: return (MaxDrawdownRate, None, None)
 # 计算给定期限的最大回撤
 def calcPeriodDrawdown(wealth_seq, tau):
     # Returns the draw-down given time period tau
@@ -432,14 +386,13 @@ def calcAverageDrawdownSquared(wealth_seq, periods):
     return total_dd / periods
 # 计算 Calmar Ratio
 def calcCalmarRatio(wealth_seq, risk_free_rate=0.0, expected_return=None):
-    MaxDrawdownRate,MaxDrawdownStartDate,MaxDrawdownEndDate = calcMaxDrawdownRate(wealth_seq)
+    MaxDrawdownRate, _, _ = calcMaxDrawdownRate(wealth_seq)
     if expected_return is None:
         Denominator = np.nanmean(calcYieldSeq(wealth_seq)) - risk_free_rate
     else:
         Denominator = expected_return - risk_free_rate
-    if MaxDrawdownRate==0:
-        return np.sign(Denominator)*np.inf
-    return Denominator / MaxDrawdownRate
+    if MaxDrawdownRate==0: return np.sign(Denominator)*np.inf
+    return Denominator / abs(MaxDrawdownRate)
 # 计算 Sterling Ratio
 def calcSterlingRatio(wealth_seq, periods, risk_free_rate=0.0, expected_return=None):
     AverageDrawdown = calcAverageDrawdown(wealth_seq,periods)
@@ -501,12 +454,12 @@ def summaryStrategy(wealth_seq, dts, dt_ruler=None, init_wealth=None):
     SummaryData.append(np.sum(YieldSeq>=0, axis=0) / np.sum(pd.notnull(YieldSeq), axis=0))
     SummaryIndex.extend(("最大回撤率", "最大回撤开始时点", "最大回撤结束时点"))
     if wealth_seq.ndim==1:
-        MaxDrawdownRate, MaxDrawdownStartPos, MaxDrawdownEndPos, _ = calcDrawdown(wealth_seq=wealth_seq)
+        MaxDrawdownRate, MaxDrawdownStartPos, MaxDrawdownEndPos = calcMaxDrawdownRate(wealth_seq=wealth_seq)
         SummaryData.extend((np.abs(MaxDrawdownRate), dts[MaxDrawdownStartPos], dts[MaxDrawdownEndPos]))
     else:
         MaxDrawdownRate, MaxDrawdownStartDT, MaxDrawdownEndDT = [], [], []
         for i in range(nCol):
-            iMaxDrawdownRate, iMaxDrawdownStartPos, iMaxDrawdownEndPos, _ = calcDrawdown(wealth_seq=wealth_seq[:, i])
+            iMaxDrawdownRate, iMaxDrawdownStartPos, iMaxDrawdownEndPos = calcDrawdown(wealth_seq=wealth_seq[:, i])
             MaxDrawdownRate.append(np.abs(iMaxDrawdownRate))
             MaxDrawdownStartDT.append((dts[iMaxDrawdownStartPos] if iMaxDrawdownStartPos is not None else None))
             MaxDrawdownEndDT.append((dts[iMaxDrawdownEndPos] if iMaxDrawdownEndPos is not None else None))
@@ -552,17 +505,17 @@ def calcMaxDrawdownPerYear(wealth_seq, dts, dt_ruler=None):
             Years.append(str(PreDT.year))
             iWealthSeq = DenseWealthSeq[StartInd:i+1]
             if iWealthSeq.ndim==1:
-                YearMD.append(calcMaxDrawdownRateExEx(iWealthSeq)[0])
+                YearMD.append(abs(calcMaxDrawdownRate(iWealthSeq)[0]))
             else:
-                YearMD.append(np.array([calcMaxDrawdownRateExEx(iWealthSeq[:, j])[0] for j in range(iWealthSeq.shape[1])]))
+                YearMD.append(np.array([abs(calcMaxDrawdownRate(iWealthSeq[:, j])[0]) for j in range(iWealthSeq.shape[1])]))
             StartInd = i
         PreDT = iDT
     Years.append(str(iDT.year))
     iWealthSeq = DenseWealthSeq[StartInd:]
     if iWealthSeq.ndim==1:
-        YearMD.append(calcMaxDrawdownRateExEx(iWealthSeq)[0])
+        YearMD.append(abs(calcMaxDrawdownRate(iWealthSeq)[0]))
     else:
-        YearMD.append(np.array([calcMaxDrawdownRateExEx(iWealthSeq[:,j])[0] for j in range(iWealthSeq.shape[1])]))
+        YearMD.append(np.array([abs(calcMaxDrawdownRate(iWealthSeq[:,j])[0]) for j in range(iWealthSeq.shape[1])]))
     return pd.DataFrame(YearMD, index=Years)
 # 计算每年每月的收益率, wealth_seq: 净值序列, dts: 时间序列, dt_ruler: 时间标尺
 def calcReturnPerYearMonth(wealth_seq, dts, dt_ruler=None):
@@ -604,17 +557,17 @@ def calcMaxDrawdownPerYearMonth(wealth_seq, dts, dt_ruler=None):
             Months.append(PreDT.strftime("%Y%m"))
             iWealthSeq = DenseWealthSeq[StartInd:i+1]
             if iWealthSeq.ndim==1:
-                MonthMD.append(calcMaxDrawdownRateExEx(iWealthSeq)[0])
+                MonthMD.append(abs(calcMaxDrawdownRate(iWealthSeq)[0]))
             else:
-                MonthMD.append(np.array([calcMaxDrawdownRateExEx(iWealthSeq[:,j])[0] for j in range(iWealthSeq.shape[1])]))
+                MonthMD.append(np.array([abs(calcMaxDrawdownRate(iWealthSeq[:,j])[0]) for j in range(iWealthSeq.shape[1])]))
             StartInd = i
         PreDT = iDT
     Months.append(iDT.strftime("%Y%m"))
     iWealthSeq = DenseWealthSeq[StartInd:]
     if iWealthSeq.ndim==1:
-        MonthMD.append(calcMaxDrawdownRateExEx(iWealthSeq)[0])
+        MonthMD.append(abs(calcMaxDrawdownRate(iWealthSeq)[0]))
     else:
-        MonthMD.append(np.array([calcMaxDrawdownRateExEx(iWealthSeq[:,j])[0] for j in range(iWealthSeq.shape[1])]))
+        MonthMD.append(np.array([abs(calcMaxDrawdownRate(iWealthSeq[:,j])[0]) for j in range(iWealthSeq.shape[1])]))
     return pd.DataFrame(MonthMD, index=Months)
 # 计算每个年度月平均收益率, wealth_seq: 净值序列, dts: 时间序列, dt_ruler: 时间标尺
 def calcAvgReturnPerMonth(wealth_seq, dts, dt_ruler=None):
@@ -809,36 +762,45 @@ def genContinuousContractPrice(id_map, price, adj_type="前复权"):
     else: raise __QS_Error__("不支持的调整方式: '%s'" % adj_type)
     return pd.Series(AdjPrice, index=id_map.index)
 
-# 给定持仓数量的策略向量化回测
+# 给定持仓数量的策略向量化回测(非自融资策略)
 # num_units: 每期的持仓数量, array(shape=(nDT, nID)), nDT: 时点数, nID: ID 数
-# price: 价格序列, array(shape=num_units.shape)
-# fee: 手续费率
-# long_margin: 多头保证金率
-# short_margin: 空头保证金率
+# price: 价格序列, array(shape=(nDT, nID))
+# fee: 手续费率, scalar, array(shape=(nID,)), array(shape=(nDT, nID))
+# long_margin: 多头保证金率, scalar, array(shape=(nID,)), array(shape=(nDT, nID))
+# short_margin: 空头保证金率, scalar, array(shape=(nID,)), array(shape=(nDT, nID))
 # 返回: (Return, PNL, Margin, Amount), (array(shape=(nDT, )), array(shape=(nDT, nID)), array(shape=(nDT, nID)), array(shape=(nDT, nID)))
 def testNumStrategy(num_units, price, fee=0.0, long_margin=1.0, short_margin=1.0):
     Amount = (num_units * price)# shape=(nDT, nID)
     Margin = np.clip(Amount, 0, np.inf) * long_margin - np.clip(Amount, -np.inf, 0) * short_margin# shape=(nDT, nID)
     MoneyIn = np.r_[0, np.nansum(np.clip(Margin, 0, np.inf), axis=1)]# shape=(nDT+1, )
-    MoneyIn[:-1][MoneyIn[:-1]==0] = np.diff(MoneyIn)[MoneyIn[:-1]==0]
-    num_units, price = np.r_[np.zeros((1, num_units.shape[1])), num_units], np.r_[np.zeros((1, num_units.shape[1])), price]# shape=(nDT+1, nID)
+    Mask = (MoneyIn[:-1]==0)
+    MoneyIn[:-1][Mask] = np.diff(MoneyIn)[Mask]
+    num_units, price = np.r_[np.zeros((1, num_units.shape[1])), num_units], np.r_[np.zeros((1, price.shape[1])), price]# shape=(nDT+1, nID)
     PNL = np.diff(price, axis=0) * num_units[:-1] - np.abs(np.diff(num_units, axis=0) * price[1:]) * fee# shape=(nDT, nID)
     Return = np.nansum(PNL, axis=1) / MoneyIn[:-1]# shape=(nDT, )
-    Return[np.isinf(Return)] = np.sign(Return)[np.isinf(Return)]
+    Mask = np.isinf(Return)
+    Return[Mask] = np.sign(Return)[Mask]
     Return[np.isnan(Return)] = 0.0
     return (Return, PNL, Margin, Amount)
-# 给定持仓资金比例的策略向量化回测
+# 给定投资组合(持仓金额比例)的策略向量化回测(自融资策略)
 # portfolio: 每期的投资组合, array(shape=(nDT, nID)), nDT: 时点数, nID: ID 数
-# price: 价格序列, array(shape=portfolio.shape)
-# fee: 手续费率
-# long_margin: 多头保证金率
-# short_margin: 空头保证金率
+# price: 价格序列, array(shape=(nDT, nID))
+# fee: 手续费率, scalar, array(shape=(nID,)), array(shape=(nDT, nID))
+# long_margin: 多头保证金率, scalar, array(shape=(nID,)), array(shape=(nDT, nID))
+# short_margin: 空头保证金率, scalar, array(shape=(nID,)), array(shape=(nDT, nID))
+# borrowing_rate: 借款利率, scalar, array(shape=(nDT, ))
+# lending_rate: 贷款利率, scalar, array(shape=(nDT, ))
 # 返回: (Return, Turnover), (array(shape=(nDT, )), array(shape=(nDT, )))
-def testPortfolioStrategy(portfolio, price, fee=0.0, long_margin=1.0, short_margin=1.0):
+def testPortfolioStrategy(portfolio, price, fee=0.0, long_margin=1.0, short_margin=-1.0, borrowing_rate=0.0, lending_rate=0.0):
     Return = np.zeros_like(price)
     Return[:-1] = price[1:] / price[:-1] - 1
-    portfolio = np.r_[np.zeros((1, price.shape[1])), portfolio]
-    Return = np.clip(portfolio[:-1], 0, np.inf) * Return * 1 / long_margin + np.clip(portfolio[:-1], -np.inf, 0) * Return * 1 / short_margin
+    Mask = np.isinf(Return)
+    Return[Mask] = np.sign(Return)[Mask]
+    Return[np.isnan(Return)] = 0.0
+    portfolio = np.r_[np.zeros((1, portfolio.shape[1])), portfolio]
+    Return = np.nansum(portfolio[:-1] * Return, axis=1)
+    Margin = np.nansum(np.clip(portfolio[:-1], 0, np.inf) * long_margin - np.clip(portfolio[:-1], -np.inf, 0) * short_margin, axis=1)
+    Return += np.clip(1 - Margin, 0, np.inf) * borrowing_rate - np.clip(Margin - 1, 0, np.inf) * lending_rate
     Turnover = np.abs(np.diff(portfolio, axis=0))
-    Return -=  Turnover* fee
-    return (np.nansum(Return, axis=1), np.nansum(Turnover, axis=1))
+    Return -=  np.nansum(Turnover * fee, axis=1)
+    return (Return, np.nansum(Turnover, axis=1))
