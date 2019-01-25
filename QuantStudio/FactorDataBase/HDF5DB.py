@@ -87,8 +87,8 @@ class _FactorTable(FactorTable):
                 else:
                     if dts and isinstance(dts[0], pd.Timestamp) and (pd.__version__>="0.20.0"): dts = [idt.to_pydatetime().timestamp() for idt in dts]
                     else: dts = [idt.timestamp() for idt in dts]
-                    DateTimes = pd.Series(np.arange(0, DateTimes.shape[0]), index=DateTimes)
-                    DateTimes = DateTimes[DateTimes.index.intersection(dts)].astype('int')
+                    DateTimes = pd.Series(np.arange(0, DateTimes.shape[0]), index=DateTimes, dtype=np.int)
+                    DateTimes = DateTimes[DateTimes.index.intersection(dts)]
                     nDT = DateTimes.shape[0]
                     if nDT==0:
                         if ids is None: Rslt = pd.DataFrame(index=dts, columns=IDs).sort_index(axis=1)
@@ -102,9 +102,7 @@ class _FactorTable(FactorTable):
                         else:
                             IDRuler = pd.Series(np.arange(0,IDs.shape[0]), index=IDs)
                             IDRuler = IDRuler.loc[ids]
-                            IDRuler = IDRuler[pd.notnull(IDRuler)].astype('int')
-                            StartInd = IDRuler.min()
-                            EndInd = IDRuler.max()
+                            StartInd, EndInd = int(IDRuler.min()), int(IDRuler.max())
                             Rslt = pd.DataFrame(DataFile["Data"][Mask, StartInd:EndInd+1], index=DateTimes, columns=IDs[StartInd:EndInd+1]).loc[dts, ids]
                     else:
                         Rslt = pd.DataFrame(DataFile["Data"][...], index=DataFile["DateTime"][...], columns=IDs).loc[dts]
@@ -114,8 +112,7 @@ class _FactorTable(FactorTable):
         if DataType!="double":
             Rslt = Rslt.where(pd.notnull(Rslt), None)
             Rslt = Rslt.where(Rslt!="", None)
-        Rslt.sort_index(axis=0, inplace=True)
-        return Rslt
+        return Rslt.sort_index(axis=0)
 
 # 基于 HDF5 文件的因子数据库
 # 每一张表是一个文件夹, 每个因子是一个 HDF5 文件

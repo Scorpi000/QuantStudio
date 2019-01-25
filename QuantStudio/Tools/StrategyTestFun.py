@@ -433,10 +433,11 @@ def _densifyWealthSeq(wealth_seq, dts, dt_ruler=None):
     return (DenseWealthSeq, dt_ruler)
 # 生成策略的统计指标
 def summaryStrategy(wealth_seq, dts, dt_ruler=None, init_wealth=None):
+    nCol = (wealth_seq.shape[1] if wealth_seq.ndim>1 else 1)
+    if nCol==1: wealth_seq = wealth_seq.reshape((wealth_seq.shape[0], 1))
     wealth_seq, dts = _densifyWealthSeq(wealth_seq, dts, dt_ruler)
     YieldSeq = calcYieldSeq(wealth_seq, init_wealth)
     if init_wealth is None: init_wealth = wealth_seq[0]
-    nCol = (wealth_seq.shape[1] if wealth_seq.ndim>1 else 1)
     StartDT, EndDT = dts[0], dts[-1]
     SummaryIndex = ['起始时点', '结束时点']
     SummaryData = [np.array([StartDT]*nCol), np.array([EndDT]*nCol)]
@@ -453,17 +454,13 @@ def summaryStrategy(wealth_seq, dts, dt_ruler=None, init_wealth=None):
     SummaryIndex.append('胜率')
     SummaryData.append(np.sum(YieldSeq>=0, axis=0) / np.sum(pd.notnull(YieldSeq), axis=0))
     SummaryIndex.extend(("最大回撤率", "最大回撤开始时点", "最大回撤结束时点"))
-    if wealth_seq.ndim==1:
-        MaxDrawdownRate, MaxDrawdownStartPos, MaxDrawdownEndPos = calcMaxDrawdownRate(wealth_seq=wealth_seq)
-        SummaryData.extend((np.abs(MaxDrawdownRate), dts[MaxDrawdownStartPos], dts[MaxDrawdownEndPos]))
-    else:
-        MaxDrawdownRate, MaxDrawdownStartDT, MaxDrawdownEndDT = [], [], []
-        for i in range(nCol):
-            iMaxDrawdownRate, iMaxDrawdownStartPos, iMaxDrawdownEndPos = calcDrawdown(wealth_seq=wealth_seq[:, i])
-            MaxDrawdownRate.append(np.abs(iMaxDrawdownRate))
-            MaxDrawdownStartDT.append((dts[iMaxDrawdownStartPos] if iMaxDrawdownStartPos is not None else None))
-            MaxDrawdownEndDT.append((dts[iMaxDrawdownEndPos] if iMaxDrawdownEndPos is not None else None))
-        SummaryData.extend((np.array(MaxDrawdownRate), np.array(MaxDrawdownStartDT), np.array(MaxDrawdownEndDT)))
+    MaxDrawdownRate, MaxDrawdownStartDT, MaxDrawdownEndDT = [], [], []
+    for i in range(nCol):
+        iMaxDrawdownRate, iMaxDrawdownStartPos, iMaxDrawdownEndPos = calcMaxDrawdownRate(wealth_seq=wealth_seq[:, i])
+        MaxDrawdownRate.append(np.abs(iMaxDrawdownRate))
+        MaxDrawdownStartDT.append((dts[iMaxDrawdownStartPos] if iMaxDrawdownStartPos is not None else None))
+        MaxDrawdownEndDT.append((dts[iMaxDrawdownEndPos] if iMaxDrawdownEndPos is not None else None))
+    SummaryData.extend((np.array(MaxDrawdownRate), np.array(MaxDrawdownStartDT), np.array(MaxDrawdownEndDT)))
     return pd.DataFrame(SummaryData, index=SummaryIndex)
 # 计算每年的收益率, wealth_seq: 净值序列, dts: 时间序列, dt_ruler: 时间标尺
 def calcReturnPerYear(wealth_seq, dts, dt_ruler=None):
@@ -741,24 +738,48 @@ def genPortfolioByFiltration(factor_data, ascending=False, target_num=20, target
     Portfolio = weight[TargetIDs]
     Portfolio = Portfolio[pd.notnull(Portfolio) & (Portfolio!=0)]
     return Portfolio/Portfolio.sum()
-# 构造期货连续合约的价格序列
+# 生成期货连续合约的价格序列
 # id_map: 连续合约每一期的月合约 ID, Series(ID)
 # price: 月合约的价格序列, DataFrame(价格, index=id_map.index, columns=[月合约ID])
-# adj_type: 调整方式, 可选: "前复权"(最后一期价格不变), "后复权"(第一期价格不变)
+# adj_direction: 调整方向, 可选: "前复权"(最后一期价格不变), "后复权"(第一期价格不变)
+# adj_type: 调整方式, 可选: "收益率不变", "价差不变"
+# rollover_ahead: 合约展期是否提前一期, bool
 # 返回: Series(价格, index=id_map.index)
-def genContinuousContractPrice(id_map, price, adj_type="前复权"):
-    if adj_type=="前复权":
-        AdjPrice = np.full(shape=id_map.shape, fill_value=price[id_map.iloc[-1]].iloc[-1])
-        for i in range(id_map.shape[0]-1, 0, -1):
-            iPrice = price[id_map.iloc[i]]
-            if pd.isnull(iPrice.iloc[i-1]): iPrice = price[id_map.iloc[i-1]]
-            AdjPrice[i-1] = AdjPrice[i] / iPrice.iloc[i] * iPrice.iloc[i-1]
-    elif adj_type=="后复权":
-        AdjPrice = np.full(shape=id_map.shape, fill_value=price[id_map.iloc[0]].iloc[0])
-        for i in range(1, id_map.shape[0]):
-            iPrice = price[id_map.iloc[i]]
-            if pd.isnull(iPrice.iloc[i-1]): iPrice = price[id_map.iloc[i-1]]
-            AdjPrice[i] = AdjPrice[i-1] * iPrice.iloc[i] / iPrice.iloc[i-1]
+def genContinuousContractPrice(id_map, price, adj_direction="前复权", adj_type="收益率不变", rollover_ahead=False):
+    IDIndex = dict(zip(price.columns.tolist(), np.arange(price.shape[1])))
+    AdjPrice = price.values[np.arange(id_map.shape[0]), list(map(lambda x: IDIndex[x], id_map.tolist()))]
+    if adj_type=="收益率不变":
+        if adj_direction=="前复权":
+            for i in range(id_map.shape[0]-1, 0, -1):
+                iID, iPreID = id_map.iloc[i], id_map.iloc[i-1]
+                if iID==iPreID: continue
+                iAdj = price[iID].iloc[i-rollover_ahead] / price[iPreID].iloc[i-rollover_ahead]
+                if pd.isnull(iAdj): iAdj = price[iID].iloc[i] / price[iPreID].iloc[i-1]
+                AdjPrice[:i] = AdjPrice[:i] * iAdj
+        elif adj_direction=="后复权":
+            for i in range(1, id_map.shape[0]):
+                iID, iPreID = id_map.iloc[i], id_map.iloc[i-1]
+                if iID==iPreID: continue
+                iAdj = price[iPreID].iloc[i-rollover_ahead] / price[iID].iloc[i-rollover_ahead]
+                if pd.isnull(iAdj): iAdj = price[iPreID].iloc[i-1] / price[iID].iloc[i]
+                AdjPrice[i:] = AdjPrice[i:] * iAdj
+        else: raise __QS_Error__("不支持的调整方向: '%s'" % adj_direction)
+    elif adj_type=="价差不变":
+        if adj_direction=="前复权":
+            for i in range(id_map.shape[0]-1, 0, -1):
+                iID, iPreID = id_map.iloc[i], id_map.iloc[i-1]
+                if iID==iPreID: continue
+                iAdj = price[iPreID].iloc[i-rollover_ahead] - price[iID].iloc[i-rollover_ahead]
+                if pd.isnull(iAdj): iAdj = price[iPreID].iloc[i-1] - price[iID].iloc[i]
+                AdjPrice[:i] = AdjPrice[:i] - iAdj
+        elif adj_direction=="后复权":
+            for i in range(1, id_map.shape[0]):
+                iID, iPreID = id_map.iloc[i], id_map.iloc[i-1]
+                if iID==iPreID: continue
+                iAdj = price[iPreID].iloc[i-rollover_ahead] - price[iID].iloc[i-rollover_ahead]
+                if pd.isnull(iAdj): iAdj = price[iPreID].iloc[i-1] - price[iID].iloc[i]
+                AdjPrice[i:] = AdjPrice[i:] + iAdj
+        else: raise __QS_Error__("不支持的调整方向: '%s'" % adj_direction)
     else: raise __QS_Error__("不支持的调整方式: '%s'" % adj_type)
     return pd.Series(AdjPrice, index=id_map.index)
 
@@ -793,7 +814,7 @@ def testNumStrategy(num_units, price, fee=0.0, long_margin=1.0, short_margin=1.0
 # 返回: (Return, Turnover), (array(shape=(nDT, )), array(shape=(nDT, )))
 def testPortfolioStrategy(portfolio, price, fee=0.0, long_margin=1.0, short_margin=-1.0, borrowing_rate=0.0, lending_rate=0.0):
     Return = np.zeros_like(price)
-    Return[:-1] = price[1:] / price[:-1] - 1
+    Return[1:] = price[1:] / price[:-1] - 1
     Mask = np.isinf(Return)
     Return[Mask] = np.sign(Return)[Mask]
     Return[np.isnan(Return)] = 0.0
