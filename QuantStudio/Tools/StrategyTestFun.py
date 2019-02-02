@@ -742,24 +742,25 @@ def genPortfolioByFiltration(factor_data, ascending=False, target_num=20, target
 # id_map: 连续合约每一期的月合约 ID, Series(ID)
 # price: 月合约的价格序列, DataFrame(价格, index=id_map.index, columns=[月合约ID])
 # adj_direction: 调整方向, 可选: "前复权"(最后一期价格不变), "后复权"(第一期价格不变)
-# adj_type: 调整方式, 可选: "收益率不变", "价差不变"
+# adj_type: 调整方式, 可选: "收益率不变", "价差不变","价格不变"
 # rollover_ahead: 合约展期是否提前一期, bool
 # 返回: Series(价格, index=id_map.index)
 def genContinuousContractPrice(id_map, price, adj_direction="前复权", adj_type="收益率不变", rollover_ahead=False):
     IDIndex = dict(zip(price.columns.tolist(), np.arange(price.shape[1])))
-    AdjPrice = price.values[np.arange(id_map.shape[0]), list(map(lambda x: IDIndex[x], id_map.tolist()))]
+    AdjPrice = price.values[np.arange(id_map.shape[0]), list(map(lambda x: IDIndex.get(x, 0), id_map.tolist()))]
+    AdjPrice[pd.isnull(id_map)] = np.nan
     if adj_type=="收益率不变":
         if adj_direction=="前复权":
             for i in range(id_map.shape[0]-1, 0, -1):
                 iID, iPreID = id_map.iloc[i], id_map.iloc[i-1]
-                if iID==iPreID: continue
+                if pd.isnull(iID) or pd.isnull(iPreID)  or (iID==iPreID): continue
                 iAdj = price[iID].iloc[i-rollover_ahead] / price[iPreID].iloc[i-rollover_ahead]
                 if pd.isnull(iAdj): iAdj = price[iID].iloc[i] / price[iPreID].iloc[i-1]
                 AdjPrice[:i] = AdjPrice[:i] * iAdj
         elif adj_direction=="后复权":
             for i in range(1, id_map.shape[0]):
                 iID, iPreID = id_map.iloc[i], id_map.iloc[i-1]
-                if iID==iPreID: continue
+                if pd.isnull(iID) or pd.isnull(iPreID)  or (iID==iPreID): continue
                 iAdj = price[iPreID].iloc[i-rollover_ahead] / price[iID].iloc[i-rollover_ahead]
                 if pd.isnull(iAdj): iAdj = price[iPreID].iloc[i-1] / price[iID].iloc[i]
                 AdjPrice[i:] = AdjPrice[i:] * iAdj
@@ -768,19 +769,19 @@ def genContinuousContractPrice(id_map, price, adj_direction="前复权", adj_typ
         if adj_direction=="前复权":
             for i in range(id_map.shape[0]-1, 0, -1):
                 iID, iPreID = id_map.iloc[i], id_map.iloc[i-1]
-                if iID==iPreID: continue
+                if pd.isnull(iID) or pd.isnull(iPreID)  or (iID==iPreID): continue
                 iAdj = price[iPreID].iloc[i-rollover_ahead] - price[iID].iloc[i-rollover_ahead]
                 if pd.isnull(iAdj): iAdj = price[iPreID].iloc[i-1] - price[iID].iloc[i]
                 AdjPrice[:i] = AdjPrice[:i] - iAdj
         elif adj_direction=="后复权":
             for i in range(1, id_map.shape[0]):
                 iID, iPreID = id_map.iloc[i], id_map.iloc[i-1]
-                if iID==iPreID: continue
+                if pd.isnull(iID) or pd.isnull(iPreID)  or (iID==iPreID): continue
                 iAdj = price[iPreID].iloc[i-rollover_ahead] - price[iID].iloc[i-rollover_ahead]
                 if pd.isnull(iAdj): iAdj = price[iPreID].iloc[i-1] - price[iID].iloc[i]
                 AdjPrice[i:] = AdjPrice[i:] + iAdj
         else: raise __QS_Error__("不支持的调整方向: '%s'" % adj_direction)
-    else: raise __QS_Error__("不支持的调整方式: '%s'" % adj_type)
+    elif adj_type!="价格不变": raise __QS_Error__("不支持的调整方式: '%s'" % adj_type)
     return pd.Series(AdjPrice, index=id_map.index)
 
 # 给定持仓数量的策略向量化回测(非自融资策略)

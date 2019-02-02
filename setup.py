@@ -28,11 +28,12 @@ setuptools.setup(
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
         "Operating System :: OS Independent",
+        'Topic :: Office/Business :: Financial :: Investment'
     ],
     install_requires=[
         "numpy>=1.14.4+mkl",
         "numexpr>=2.6.1",
-        "pandas>=0.19.0",
+        "pandas>=0.19.0,<0.24.0",
         "scipy>=0.18.1",
         "matplotlib>=2.2.3",
         "plotly>=2.0.6",
