@@ -535,6 +535,8 @@ class FactorTable(__QS_Object__):
                 self.ErgodicMode._Queue2SubProcess.put((LastCacheInd+1, None))
                 self.ErgodicMode._CacheDTs = self.ErgodicMode._DateTimes[max((0, LastCacheInd+1-self.ErgodicMode.BackwardPeriod)):min((self.ErgodicMode._DTNum, LastCacheInd+1+self.ErgodicMode.ForwardPeriod+1))].tolist()
         return 0
+    def __QS_onBackTestMoveEvent__(self, event):
+        return self.move(**event.Data)
     # 结束遍历模式
     def end(self):
         if not self.ErgodicMode._isStarted: return 0
@@ -545,6 +547,8 @@ class FactorTable(__QS_Object__):
         self.ErgodicMode._CurDT = None
         self._MMAPCacheData = None
         return 0
+    def __QS_onBackTestEndEvent__(self, event):
+        return self.end()
     # ------------------------------------运算模式------------------------------------
     # 获取因子表准备原始数据的分组信息, [(因子表对象, [因子名], [原始因子名], [时点], {参数})]
     def __QS_genGroupInfo__(self, factors, operation_mode):

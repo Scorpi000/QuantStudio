@@ -804,6 +804,7 @@ def testNumStrategy(num_units, price, fee=0.0, long_margin=1.0, short_margin=1.0
     Return[Mask] = np.sign(Return)[Mask]
     Return[np.isnan(Return)] = 0.0
     return (Return, PNL, Margin, Amount)
+
 # 给定投资组合(持仓金额比例)的策略向量化回测(自融资策略)
 # portfolio: 每期的投资组合, array(shape=(nDT, nID)), nDT: 时点数, nID: ID 数
 # price: 价格序列, array(shape=(nDT, nID))
