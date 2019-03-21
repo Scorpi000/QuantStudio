@@ -133,13 +133,25 @@ class HDF5DB(WritableFactorDB):
         # 继承来的属性
         self.Name = "HDF5DB"
         return
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Remove the unpicklable entries.
+        state["_DataLock"] = (True if self._DataLock is not None else False)
+        return state
+    def __setstate__(self, state):
+        super().__setstate__(state)
+        if self._DataLock:
+            self._DataLock = fasteners.InterProcessLock(self._LockFile)
+        else:
+            self._DataLock = None
     def connect(self):
         if not os.path.isdir(self.MainDir): raise __QS_Error__("不存在主目录: %s!" % self.MainDir)
         AllTables = listDirDir(self.MainDir)
         _TableFactorDict = {}
         if not os.path.isfile(self.MainDir+os.sep+"LockFile"):
             open(self.MainDir+os.sep+"LockFile", mode="a").close()
-        self._DataLock = fasteners.InterProcessLock(self.MainDir+os.sep+"LockFile")
+        self._LockFile = self.MainDir+os.sep+"LockFile"
+        self._DataLock = fasteners.InterProcessLock(self._LockFile)
         with self._DataLock:
             for iTable in AllTables:
                 iTablePath = self.MainDir+os.sep+iTable
@@ -162,6 +174,7 @@ class HDF5DB(WritableFactorDB):
         return 0
     def disconnect(self):
         self._TableFactorDict = {}
+        self._DataLock = None
         self._isAvailable = False
     def isAvailable(self):
         return self._isAvailable
