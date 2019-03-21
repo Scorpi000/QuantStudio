@@ -184,7 +184,11 @@ class _CalendarTable(_DBTable):
         Data = pd.Panel({"交易日":raw_data.set_index(["日期", "ID"])["交易日"].unstack()}).loc[factor_names]
         Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Data.major_axis]
         return adjustDateTime(Data, dts, fillna=True, value=0)
-
+# 行情因子表, 表结构特征:
+# 日期字段, 表示数据填充的时点; 可能存在多个日期字段, 必须指定其中一个作为数据填充的时点
+# 条件字段, 作为条件过滤记录; 可能存在多个条件字段
+# 在设定某些条件下, 数据填充时点和 ID 可以唯一标志一行记录
+# 先填充表中已有的数据, 然后根据回溯天数参数填充缺失的时点
 class _MarketTable(_DBTable):
     """行情因子表"""
     LookBack = Int(0, arg_type="Integer", label="回溯天数", order=0)
@@ -338,6 +342,7 @@ class _MarketTable(_DBTable):
         for i, iFactorName in enumerate(Data.items):
             Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
         return Data.loc[:, dts]
+
 class _DividendTable(_DBTable):
     """分红因子表"""
     #DateField = Enum(None, arg_type="SingleOption", label="日期字段", order=0)
@@ -872,6 +877,9 @@ class _FeatureTable(_DBTable):
         if raw_data.index.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         Data = pd.Panel(raw_data.values.T.reshape((raw_data.shape[1], raw_data.shape[0], 1)).repeat(len(dts), axis=2), items=factor_names, major_axis=raw_data.index, minor_axis=dts).swapaxes(1, 2)
         return Data.loc[:, :, ids]
+# 财务因子表, 表结构特征:
+# 报告期字段, 表示财报的报告期
+# 公告日期字段, 表示财报公布的日期
 class _FinancialTable(_DBTable):
     """财务因子表"""
     ReportDate = Enum("所有", "年报", "中报", "一季报", "三季报", Dict(), Function(), label="报告期", arg_type="SingleOption", order=0)
@@ -879,6 +887,7 @@ class _FinancialTable(_DBTable):
     CalcType = Enum("最新", "单季度", "TTM", label="计算方法", arg_type="SingleOption", order=2)
     YearLookBack = Int(0, label="回溯年数", arg_type="Integer", order=3)
     PeriodLookBack = Int(0, label="回溯期数", arg_type="Integer", order=4)
+    IgnoreMissing = Bool(True, label="忽略缺失", arg_type="Bool", order=5)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
@@ -954,7 +963,7 @@ class _FinancialTable(_DBTable):
         return pd.DataFrame(np.array(RawData), columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         Dates = sorted({iDT.strftime("%Y%m%d") for iDT in dts})
-        CalcType, YearLookBack, PeriodLookBack, ReportDate = args.get("计算方法", self.CalcType), args.get("回溯年数", self.YearLookBack), args.get("回溯期数", self.PeriodLookBack), args.get("报告期", self.ReportDate)
+        CalcType, YearLookBack, PeriodLookBack, ReportDate, IgnoreMissing = args.get("计算方法", self.CalcType), args.get("回溯年数", self.YearLookBack), args.get("回溯期数", self.PeriodLookBack), args.get("报告期", self.ReportDate), args.get("忽略缺失", self.IgnoreMissing)
         if (YearLookBack==0) and (PeriodLookBack==0):
             if CalcType=="最新": CalcFun = self._calcIDData_LR
             elif CalcType=="单季度": CalcFun = self._calcIDData_SQ
@@ -970,7 +979,7 @@ class _FinancialTable(_DBTable):
         raw_data = raw_data.set_index(["ID"])
         Data = {}
         for iID in raw_data.index.unique():
-            Data[iID] = CalcFun(Dates, raw_data.loc[[iID]], factor_names, ReportDate, YearLookBack, PeriodLookBack)
+            Data[iID] = CalcFun(Dates, raw_data.loc[[iID]], factor_names, ReportDate, YearLookBack, PeriodLookBack, IgnoreMissing)
         Data = pd.Panel(Data)
         Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Dates]
         Data.minor_axis = factor_names
@@ -1056,8 +1065,9 @@ class _FinancialTable(_DBTable):
                     MaxReportDateInd = MaxNoteDateInd-i
                     Changed = True
         return (MaxReportDateInd, Changed)
-    def _calcIDData_LR(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback):
+    def _calcIDData_LR(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback, ignore_missing):
         StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan, dtype="O")
+        FillnaMethod = ("pad" if ignore_missing else "bfill")
         tempInd = -1# 指向目前看到的最大的公告期
         tempLen = raw_data.shape[0]
         MaxReportDateInd = -1# 指向目前看到的最大的报告期
@@ -1070,12 +1080,13 @@ class _FinancialTable(_DBTable):
                 continue
             MaxReportDate = raw_data['ReportDate'].iloc[MaxReportDateInd]# 当前最大报告期
             iRawData = raw_data.iloc[:tempInd+1]
-            StdData[i] = iRawData[iRawData["ReportDate"]==MaxReportDate][factor_names].fillna(method="pad").values[-1]
+            StdData[i] = iRawData[iRawData["ReportDate"]==MaxReportDate][factor_names].fillna(method=FillnaMethod).values[-1]
         self._TempData.pop("LastTargetReportDate", None)
         self._TempData.pop("LastTargetReportInd", None)
         return StdData
-    def _calcIDData_SQ(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback):
+    def _calcIDData_SQ(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback, ignore_missing):
         StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan)
+        FillnaMethod = ("pad" if ignore_missing else "bfill")
         raw_data[factor_names] = raw_data[factor_names].astype("float")
         tempInd = -1# 指向目前看到的最大的公告期
         tempLen = raw_data.shape[0]
@@ -1093,16 +1104,17 @@ class _FinancialTable(_DBTable):
             elif MaxReportDate[-4:]=="0930": iPreReportDate = MaxReportDate[0:4]+"0630"
             elif MaxReportDate[-4:]=="0630": iPreReportDate = MaxReportDate[0:4]+"0331"
             else:
-                StdData[i] = iRawData[iRawData["ReportDate"]==MaxReportDate][factor_names].fillna(method="pad").values[-1]
+                StdData[i] = iRawData[iRawData["ReportDate"]==MaxReportDate][factor_names].fillna(method=FillnaMethod).values[-1]
                 continue
-            iPreReportData = iRawData[iRawData["ReportDate"]==iPreReportDate][factor_names].fillna(method="pad").values# 前一个报告期数据
+            iPreReportData = iRawData[iRawData["ReportDate"]==iPreReportDate][factor_names].fillna(method=FillnaMethod).values# 前一个报告期数据
             if iPreReportData.shape[0]==0: continue
-            StdData[i] = iRawData[iRawData["ReportDate"]==MaxReportDate][factor_names].fillna(method="pad").values[-1] - iPreReportData[-1]
+            StdData[i] = iRawData[iRawData["ReportDate"]==MaxReportDate][factor_names].fillna(method=FillnaMethod).values[-1] - iPreReportData[-1]
         self._TempData.pop("LastTargetReportDate", None)
         self._TempData.pop("LastTargetReportInd", None)
         return StdData
-    def _calcIDData_TTM(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback):
+    def _calcIDData_TTM(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback, ignore_missing):
         StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan)
+        FillnaMethod = ("pad" if ignore_missing else "bfill")
         raw_data[factor_names] = raw_data[factor_names].astype("float")
         tempInd = -1# 指向目前看到的最大的公告期
         tempLen = raw_data.shape[0]
@@ -1117,18 +1129,19 @@ class _FinancialTable(_DBTable):
             MaxReportDate = raw_data['ReportDate'].iloc[MaxReportDateInd]# 当前最大报告期
             iRawData = raw_data.iloc[:tempInd+1]
             if MaxReportDate[-4:]=='1231':# 最新财报为年报
-                StdData[i] = iRawData[iRawData["ReportDate"]==MaxReportDate][factor_names].fillna(method="pad").values[-1]
+                StdData[i] = iRawData[iRawData["ReportDate"]==MaxReportDate][factor_names].fillna(method=FillnaMethod).values[-1]
             else:
                 iLastYear = str(int(MaxReportDate[0:4])-1)
-                iPreYearReport = iRawData[iRawData["ReportDate"]==iLastYear+"1231"][factor_names].fillna(method="pad").values# 去年年报数据
-                iPreReportData = iRawData[iRawData["ReportDate"]==iLastYear+MaxReportDate[-4:]][factor_names].fillna(method="pad").values# 去年同期数据
+                iPreYearReport = iRawData[iRawData["ReportDate"]==iLastYear+"1231"][factor_names].fillna(method=FillnaMethod).values# 去年年报数据
+                iPreReportData = iRawData[iRawData["ReportDate"]==iLastYear+MaxReportDate[-4:]][factor_names].fillna(method=FillnaMethod).values# 去年同期数据
                 if (iPreReportData.shape[0]==0) or (iPreYearReport.shape[0]==0): continue
-                StdData[i] = iRawData[iRawData["ReportDate"]==MaxReportDate][factor_names].fillna(method="pad").values[-1] + iPreYearReport[-1] - iPreReportData[-1]
+                StdData[i] = iRawData[iRawData["ReportDate"]==MaxReportDate][factor_names].fillna(method=FillnaMethod).values[-1] + iPreYearReport[-1] - iPreReportData[-1]
         self._TempData.pop("LastTargetReportDate", None)
         self._TempData.pop("LastTargetReportInd", None)
         return StdData
-    def _calcIDData_LR_NYear(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback):
+    def _calcIDData_LR_NYear(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback, ignore_missing):
         StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan, dtype="O")
+        FillnaMethod = ("pad" if ignore_missing else "bfill")
         tempInd = -1# 指向目前看到的最大的公告期
         tempLen = raw_data.shape[0]
         MaxReportDateInd = -1# 指向目前看到的最大的报告期
@@ -1142,13 +1155,14 @@ class _FinancialTable(_DBTable):
             MaxReportDate = raw_data['ReportDate'].iloc[MaxReportDateInd]# 当前最大报告期
             iLastNYear = str(int(MaxReportDate[0:4])-year_lookback)
             iRawData = raw_data.iloc[:tempInd+1]
-            iPreData = iRawData[iRawData["ReportDate"]==iLastNYear+MaxReportDate[-4:]][factor_names].fillna(method="pad").values
+            iPreData = iRawData[iRawData["ReportDate"]==iLastNYear+MaxReportDate[-4:]][factor_names].fillna(method=FillnaMethod).values
             if iPreData.shape[0]>0: StdData[i] = iPreData[-1]
         self._TempData.pop("LastTargetReportDate", None)
         self._TempData.pop("LastTargetReportInd", None)
         return StdData
-    def _calcIDData_SQ_NYear(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback):
+    def _calcIDData_SQ_NYear(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback, ignore_missing):
         StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan)
+        FillnaMethod = ("pad" if ignore_missing else "bfill")
         raw_data[factor_names] = raw_data[factor_names].astype("float")
         tempInd = -1# 指向目前看到的最大的公告期
         tempLen = raw_data.shape[0]
@@ -1172,18 +1186,19 @@ class _FinancialTable(_DBTable):
                 iPreReportDate1 = iLastNYear+"0630"
                 iPreReportDate2 = iLastNYear+"0331"
             else:
-                iPreReportData1 = iRawData[iRawData["ReportDate"]==iLastNYear+"0331"][factor_names].fillna(method="pad").values
+                iPreReportData1 = iRawData[iRawData["ReportDate"]==iLastNYear+"0331"][factor_names].fillna(method=FillnaMethod).values
                 if iPreReportData1.shape[0]>0: StdData[i] = iPreReportData1[-1]
                 continue
-            iPreReportData1 = iRawData[iRawData["ReportDate"]==iPreReportDate1][factor_names].fillna(method="pad").values# 上N年同期财报数据
-            iPreReportData2 = iRawData[iRawData["ReportDate"]==iPreReportDate2][factor_names].fillna(method="pad").values# 上N年同期的上一期财报数据
+            iPreReportData1 = iRawData[iRawData["ReportDate"]==iPreReportDate1][factor_names].fillna(method=FillnaMethod).values# 上N年同期财报数据
+            iPreReportData2 = iRawData[iRawData["ReportDate"]==iPreReportDate2][factor_names].fillna(method=FillnaMethod).values# 上N年同期的上一期财报数据
             if (iPreReportData1.shape[0]==0) or (iPreReportData2.shape[0]==0): continue
             StdData[i] = iPreReportData1[-1] - iPreReportData2[-1]
         self._TempData.pop("LastTargetReportDate", None)
         self._TempData.pop("LastTargetReportInd", None)
         return StdData
-    def _calcIDData_TTM_NYear(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback):
+    def _calcIDData_TTM_NYear(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback, ignore_missing):
         StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan)
+        FillnaMethod = ("pad" if ignore_missing else "bfill")
         raw_data[factor_names] = raw_data[factor_names].astype("float")
         tempInd = -1# 指向目前看到的最大的公告期
         tempLen = raw_data.shape[0]
@@ -1199,19 +1214,20 @@ class _FinancialTable(_DBTable):
             iLastNYear = int(MaxReportDate[0:4])-year_lookback
             iRawData = raw_data.iloc[:tempInd+1]
             if MaxReportDate[-4:]=="1231":# 最新财报为年报
-                iPreNReportData = iRawData[iRawData["ReportDate"]==str(iLastNYear)+"1231"][factor_names].fillna(method="pad").values
+                iPreNReportData = iRawData[iRawData["ReportDate"]==str(iLastNYear)+"1231"][factor_names].fillna(method=FillnaMethod).values
                 if iPreNReportData.shape[0]>0: StdData[i] = iPreNReportData[-1]
                 continue
-            iPreNReportData = iRawData[iRawData["ReportDate"]==str(iLastNYear)+MaxReportDate[-4:]][factor_names].fillna(method="pad").values# 上N年同期数据
-            iPreN_1YearReportData = iRawData[iRawData["ReportDate"]==str(iLastNYear-1)+"1231"][factor_names].fillna(method="pad").values# 上N+1年年报数据
-            iPreN_1ReportData = iRawData[iRawData["ReportDate"]==str(iLastNYear-1)+MaxReportDate[-4:]][factor_names].fillna(method="pad").values# 上N+1年同期数据
+            iPreNReportData = iRawData[iRawData["ReportDate"]==str(iLastNYear)+MaxReportDate[-4:]][factor_names].fillna(method=FillnaMethod).values# 上N年同期数据
+            iPreN_1YearReportData = iRawData[iRawData["ReportDate"]==str(iLastNYear-1)+"1231"][factor_names].fillna(method=FillnaMethod).values# 上N+1年年报数据
+            iPreN_1ReportData = iRawData[iRawData["ReportDate"]==str(iLastNYear-1)+MaxReportDate[-4:]][factor_names].fillna(method=FillnaMethod).values# 上N+1年同期数据
             if (iPreNReportData.shape[0]==0) or (iPreN_1YearReportData.shape[0]==0) or (iPreN_1ReportData.shape[0]==0): continue
             StdData[i] = iPreNReportData[-1] + iPreN_1YearReportData[-1] - iPreN_1ReportData[-1]
         self._TempData.pop("LastTargetReportDate", None)
         self._TempData.pop("LastTargetReportInd", None)
         return StdData
-    def _calcIDData_LR_NPeriod(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback):
+    def _calcIDData_LR_NPeriod(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback, ignore_missing):
         StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan, dtype="O")
+        FillnaMethod = ("pad" if ignore_missing else "bfill")
         tempInd = -1# 指向目前看到的最大的公告期
         tempLen = raw_data.shape[0]
         MaxReportDateInd = -1# 指向目前看到的最大的报告期
@@ -1224,13 +1240,14 @@ class _FinancialTable(_DBTable):
             MaxReportDate = raw_data['ReportDate'].iloc[MaxReportDateInd]# 当前最大报告期
             iRawData = raw_data.iloc[:tempInd+1]
             ObjectReportDate = RollBackNPeriod(MaxReportDate, period_lookback)
-            iPreData = iRawData[iRawData["ReportDate"]==ObjectReportDate][factor_names].fillna(method="pad").values
+            iPreData = iRawData[iRawData["ReportDate"]==ObjectReportDate][factor_names].fillna(method=FillnaMethod).values
             if iPreData.shape[0]>0: StdData[i] = iPreData[-1]
         self._TempData.pop("LastTargetReportDate", None)
         self._TempData.pop("LastTargetReportInd", None)
         return StdData
-    def _calcIDData_SQ_NPeriod(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback):
+    def _calcIDData_SQ_NPeriod(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback, ignore_missing):
         StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan)
+        FillnaMethod = ("pad" if ignore_missing else "bfill")
         raw_data[factor_names] = raw_data[factor_names].astype("float")
         tempInd = -1# 指向目前看到的最大的公告期
         tempLen = raw_data.shape[0]
@@ -1252,18 +1269,19 @@ class _FinancialTable(_DBTable):
             elif ObjectReportDate[-4:]=="0630":
                 iPreReportDate = ObjectReportDate[0:4]+"0331"
             else:
-                iPreReportData1 = iRawData[iRawData["ReportDate"]==ObjectReportDate][factor_names].fillna(method="pad").values
+                iPreReportData1 = iRawData[iRawData["ReportDate"]==ObjectReportDate][factor_names].fillna(method=FillnaMethod).values
                 if iPreReportData1.shape[0]>0: StdData[i] = iPreReportData1[-1]
                 continue
-            iPreReportData1 = iRawData[iRawData["ReportDate"]==ObjectReportDate][factor_names].fillna(method="pad").values# 上N期财报数据
-            iPreReportData2 = iRawData[iRawData["ReportDate"]==iPreReportDate][factor_names].fillna(method="pad").values# 上N+1期财报数据
+            iPreReportData1 = iRawData[iRawData["ReportDate"]==ObjectReportDate][factor_names].fillna(method=FillnaMethod).values# 上N期财报数据
+            iPreReportData2 = iRawData[iRawData["ReportDate"]==iPreReportDate][factor_names].fillna(method=FillnaMethod).values# 上N+1期财报数据
             if (iPreReportData1.shape[0]==0) or (iPreReportData2.shape[0]==0): continue
             StdData[i] = iPreReportData1[-1] - iPreReportData2[-1]
         self._TempData.pop("LastTargetReportDate", None)
         self._TempData.pop("LastTargetReportInd", None)
         return StdData
-    def _calcIDData_TTM_NPeriod(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback):
+    def _calcIDData_TTM_NPeriod(self, date_seq, raw_data, factor_names, report_date, year_lookback, period_lookback, ignore_missing):
         StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan)
+        FillnaMethod = ("pad" if ignore_missing else "bfill")
         raw_data[factor_names] = raw_data[factor_names].astype("float")
         tempInd = -1# 指向目前看到的最大的公告期
         tempLen = raw_data.shape[0]
@@ -1278,12 +1296,12 @@ class _FinancialTable(_DBTable):
             iRawData = raw_data.iloc[:tempInd+1]
             ObjectReportDate = RollBackNPeriod(MaxReportDate, period_lookback)
             if ObjectReportDate[-4:]=='1231':# 上N期财报为年报
-                iPreNPeriodReportData = iRawData[iRawData["ReportDate"]==ObjectReportDate][factor_names].fillna(method="pad").values
+                iPreNPeriodReportData = iRawData[iRawData["ReportDate"]==ObjectReportDate][factor_names].fillna(method=FillnaMethod).values
                 if iPreNPeriodReportData.shape[0]>0: StdData[i] = iPreNPeriodReportData[-1]
                 continue
-            iPreNPeriodReportData = iRawData[iRawData["ReportDate"]==ObjectReportDate][factor_names].fillna(method="pad").values# 上N期数据
-            iPreNPeriodYear_1YearReportData = iRawData[iRawData["ReportDate"]==str(int(ObjectReportDate[0:4])-1)+"1231"][factor_names].fillna(method="pad").values# 上N期上一年年报数据
-            iPreNPeriodYear_1ReportData = iRawData[iRawData["ReportDate"]==str(int(ObjectReportDate[0:4])-1)+ObjectReportDate[-4:]][factor_names].fillna(method="pad").values# 上N期上一年同期数据
+            iPreNPeriodReportData = iRawData[iRawData["ReportDate"]==ObjectReportDate][factor_names].fillna(method=FillnaMethod).values# 上N期数据
+            iPreNPeriodYear_1YearReportData = iRawData[iRawData["ReportDate"]==str(int(ObjectReportDate[0:4])-1)+"1231"][factor_names].fillna(method=FillnaMethod).values# 上N期上一年年报数据
+            iPreNPeriodYear_1ReportData = iRawData[iRawData["ReportDate"]==str(int(ObjectReportDate[0:4])-1)+ObjectReportDate[-4:]][factor_names].fillna(method=FillnaMethod).values# 上N期上一年同期数据
             if (iPreNPeriodReportData.shape[0]==0) or (iPreNPeriodYear_1YearReportData.shape[0]==0) or (iPreNPeriodYear_1ReportData.shape[0]==0): continue
             StdData[i] = iPreNPeriodReportData[-1] + iPreNPeriodYear_1YearReportData[-1] - iPreNPeriodYear_1ReportData[-1]
         self._TempData.pop("LastTargetReportDate", None)
@@ -1646,6 +1664,12 @@ class _AnalystEstDetailTable(_DBTable):
                     kData[i, j] = Operator(self, iDate, jID, x, ModelArgs)
             Data[kFactorName] = kData
         return pd.Panel(Data, major_axis=Dates, minor_axis=ids).loc[factor_names, dts]
+# 公告信息表, 表结构特征:
+# 公告日期, 表示获得信息的时点;
+# 截止日期, 表示信息有效的时点, 该字段可能没有;
+# 如果存在截止日期, 以截止日期和公告日期的最大值作为数据填充的时点; 如果不存在截止日期, 以公告日期作为数据填充的时点;
+# 数据填充时点和 ID 不能唯一标志一行记录, 对于每个 ID 每个数据填充时点可能存在多个数据, 将所有的数据以 list 组织, 如果算子参数不为 None, 以该算子作用在数据 list 上的结果为最终填充结果, 否则以数据 list 填充;
+# 先填充表中已有的数据, 然后根据回溯天数参数填充缺失的时点
 class _AnnTable(_DBTable):
     """公告信息表"""
     #ANNDate = Enum(None, arg_type="SingleOption", label="公告日期", order=0)

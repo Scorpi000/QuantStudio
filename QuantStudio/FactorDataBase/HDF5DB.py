@@ -3,7 +3,8 @@
 import os
 import datetime as dt
 import shutil
-from multiprocessing import Lock
+#from multiprocessing import Lock
+import fasteners
 
 import numpy as np
 import pandas as pd
@@ -124,7 +125,8 @@ class HDF5DB(WritableFactorDB):
     MainDir = Directory(label="主目录", arg_type="Directory", order=0)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
-        self._DataLock = Lock()# 访问该因子库资源的锁, 防止并发访问冲突
+        self._DataLock = None# 访问该因子库资源的锁, 防止并发访问冲突
+        #self._DataLock = Lock()
         self._isAvailable = False
         self._Suffix = "hdf5"# 文件的后缀名
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"HDF5DBConfig.json" if config_file is None else config_file), **kwargs)
@@ -135,6 +137,9 @@ class HDF5DB(WritableFactorDB):
         if not os.path.isdir(self.MainDir): raise __QS_Error__("不存在主目录: %s!" % self.MainDir)
         AllTables = listDirDir(self.MainDir)
         _TableFactorDict = {}
+        if not os.path.isfile(self.MainDir+os.sep+"LockFile"):
+            open(self.MainDir+os.sep+"LockFile", mode="a").close()
+        self._DataLock = fasteners.InterProcessLock(self.MainDir+os.sep+"LockFile")
         with self._DataLock:
             for iTable in AllTables:
                 iTablePath = self.MainDir+os.sep+iTable
@@ -147,7 +152,7 @@ class HDF5DB(WritableFactorDB):
                 if (iDataType is None) or (iFactors!=set(iDataType.index)):
                     iDataType = {}
                     for ijFactor in iFactors:
-                        with h5py.File(iTablePath+os.sep+ijFactor+"."+self._Suffix) as ijDataFile:
+                        with h5py.File(iTablePath+os.sep+ijFactor+"."+self._Suffix, mode="r") as ijDataFile:
                             iDataType[ijFactor] = ijDataFile.attrs["DataType"]
                     iDataType = pd.Series(iDataType)
                     writeNestedDict2HDF5(iDataType, iTablePath+os.sep+"_TableInfo.h5", "/DataType")

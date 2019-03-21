@@ -1,6 +1,7 @@
 # coding=utf-8
 """交易相关函数"""
 import numpy as np
+import pandas as pd
 
 # 模拟撮合成交, 使用订单簿数据
 # quantity: 委托单的数量, >0 表示买入, <0 表示卖出;
@@ -14,7 +15,7 @@ import numpy as np
 # * 当 bp≥sp≥cp，则最新成交价=sp；
 # * 当 bp≥cp≥sp，则最新成交价=cp；
 # * 当 cp≥bp≥sp，则最新成交价=bp。
-# 返回: array(shape=(n, 2)), 第一列表示成交价, 第二列表示对应成交价下的成交量
+# 返回: (成交价, 成交量), 成交价: array(shape=(n, )), 成交量: : array(shape=(n, ))
 def matchOrderByOrderBook(quantity, limit_price=np.nan, order_book=np.full(shape=(0,2), fill_value=np.nan), last_price=np.nan):
     Direction = np.sign(quantity)# 买卖方向, +1 买, -1 卖
     if not np.isnan(limit_price): order_book = order_book[order_book[:, 0] * Direction <= limit_price * Direction, :]
@@ -26,7 +27,7 @@ def matchOrderByOrderBook(quantity, limit_price=np.nan, order_book=np.full(shape
     if not np.isnan(last_price):
         if Direction>0: MatchPrice = np.minimum(limit_price, np.maximum(last_price, MatchPrice))
         else: MatchPrice = np.maximum(limit_price, np.minimum(last_price, MatchPrice))
-    return np.c_[MatchPrice, MatchVol]
+    return (MatchPrice, MatchVol)
 
 # 模拟撮合成交, 使用 Tick 数据, 模拟成交方式等同于订单簿只有买一和卖一的情况
 # quantity: 委托单的数量, >0 表示买入, <0 表示卖出;
@@ -36,19 +37,19 @@ def matchOrderByOrderBook(quantity, limit_price=np.nan, order_book=np.full(shape
 # ask_price: 最低卖出申报价格
 # ask_size: 最低卖出申报数量, 为 0 表示无卖盘
 # last_price: 最新价(前一成交价),
-# 返回: array(shape=(1, 2)), 第一列表示成交价, 第二列表示对应成交价下的成交量
+# 返回: (成交价, 成交量), 成交价: array(shape=(1, )), 成交量: : array(shape=(1, ))
 def matchOrderByTickData(quantity, limit_price=np.nan, bid_price=np.nan, bid_size=0, ask_price=np.nan, ask_size=0, last_price=np.nan):
     Direction = np.sign(quantity)# 买卖方向, +1 买, -1 卖
     if np.isnan(limit_price): limit_price = Direction * np.inf
     if Direction>0: bp, sp, Size = limit_price, ask_price, ask_size
     else: bp, sp, Size = bid_price, limit_price, bid_size
-    if not (bp>=sp): return np.array(((np.nan, 0), ))
+    if not (bp>=sp): return (np.nan, 0)
     if np.isnan(last_price):
-        if Direction>0: return np.array(((ask_price, min(ask_size, quantity)), ))
-        else: return np.array(((bid_price, min(bid_size, -quantity)), ))
-    if last_price<=sp: return np.array(((sp, min(Size, abs(quantity))), ))
-    elif last_price>=bp: return np.array(((bp, min(Size, abs(quantity))), ))
-    else: return np.array(((last_price, min(Size, abs(quantity))), ))
+        if Direction>0: return (ask_price, min(ask_size, quantity))
+        else: return (bid_price, min(bid_size, -quantity))
+    if last_price<=sp: return (sp, min(Size, abs(quantity)))
+    elif last_price>=bp: return (bp, min(Size, abs(quantity)))
+    else: return (last_price, min(Size, abs(quantity)))
 
 # 模拟撮合成交, 使用 Bar 数据, 等同于订单簿的价格从最低价到最高价以最小变动单位为间隔取值, 成交量均匀分布
 # quantity: 委托单的数量, >0 表示买入, <0 表示卖出;
@@ -57,7 +58,7 @@ def matchOrderByTickData(quantity, limit_price=np.nan, bid_price=np.nan, bid_siz
 # bar_vol: 成交量
 # min_chg: 最小变动单位, 0 表示假设连续价格
 # last_price: 最新价(前一成交价)
-# 返回: array(shape=(n, 2)), 第一列表示成交价, 第二列表示对应成交价下的成交量
+# 返回: (成交价, 成交量), 成交价: array(shape=(n, )), 成交量: : array(shape=(n, ))
 def matchOrderByBarData(quantity, limit_price=np.nan, bar_price=np.full(shape=(4,), fill_value=np.nan), bar_vol=0, min_chg=0, last_price=np.nan):
     Direction = np.sign(quantity)# 买卖方向, +1 买, -1 卖
     if np.isnan(limit_price): limit_price = Direction * np.inf
@@ -69,12 +70,18 @@ def matchOrderByBarData(quantity, limit_price=np.nan, bar_price=np.full(shape=(4
         else:
             MatchPrice = (max(limit_price, bar_price[2]) + bar_price[1]) / 2
             MatchVol = bar_vol * min(1, max(0, 2 * (High - MatchPrice) / (bar_price[1] - bar_price[2])))
-        return np.array(((MatchPrice, MatchVol), ))
+        return (MatchPrice, MatchVol)
     BookPrice = np.arange(bar_price[2], bar_price[1]+min_chg/2, min_chg)
     BookVol = np.full(shape=BookPrice.shape, fill_value=int(bar_vol / BookPrice.shape[0]))
     BookVol[int(BookVol.shape[0]/2)] += bar_vol - np.sum(BookVol)
     return matchOrderByOrderBook(quantity, limit_price, order_book=np.c_[BookPrice, BookVol], last_price=last_price)
 
+# 更新持仓
+# (成交价, 成交量), 成交价: array(shape=(n, )), 成交量: : array(shape=(n, ))
+# holding: 持仓, DataFrame(columns=["ID","数量","开仓时点","开仓价格"])
+# 返回: (成交记录, 持仓), 成交记录: DataFrame(columns=["ID","数量","开仓时点","开仓价格","平仓时点","平仓价格"]), 持仓: DataFrame(columns=["ID","数量","开仓时点","开仓价格"])
+def updateHolding(match_price, match_vol, holding):
+    pass
 # 给定交易行为的策略回测(非自融资策略)
 # num_units: 每个时点的交易数量, DataFrame(index=[DateTime], columns=[ID]), nDT: 时点数, nID: ID 数
 # simulator: 交易模拟器, callable, simulator(idt, iid, quantity), 返回: array(shape=(n, 2)), 第一列是成交价, 第二列是成交数量
