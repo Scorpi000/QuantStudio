@@ -883,7 +883,7 @@ class _FeatureTable(_DBTable):
 class _FinancialTable(_DBTable):
     """财务因子表"""
     ReportDate = Enum("所有", "年报", "中报", "一季报", "三季报", Dict(), Function(), label="报告期", arg_type="SingleOption", order=0)
-    ReportType = List(["408001000", "408004000"], label="报表类型", arg_type="MultiOption", order=1, option_range=("408001000", "408004000"))
+    ReportType = List(["408001000", "408004000", "408005000"], label="报表类型", arg_type="MultiOption", order=1, option_range=("408001000", "408004000"))
     CalcType = Enum("最新", "单季度", "TTM", label="计算方法", arg_type="SingleOption", order=2)
     YearLookBack = Int(0, label="回溯年数", arg_type="Integer", order=3)
     PeriodLookBack = Int(0, label="回溯期数", arg_type="Integer", order=4)
@@ -936,8 +936,9 @@ class _FinancialTable(_DBTable):
         if self._ReportTypeField is not None:
             # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
             SQLStr = "SELECT "+DBTableName+"."+FieldDict[self._IDField]+", "
-            SQLStr += "CASE WHEN "+DBTableName+"."+FieldDict[self._ReportTypeField]+"='408001000' THEN "+self._FactorDB.TablePrefix+"AShareIssuingDatePredict.s_stm_actual_issuingdate "
-            SQLStr += "WHEN "+DBTableName+"."+FieldDict[self._ReportTypeField]+"='408004000' THEN "+DBTableName+"."+FieldDict[self._ANNDateField]+" END AS ANNDate, "
+            SQLStr += "CASE WHEN ("+DBTableName+"."+FieldDict[self._ReportTypeField]+" = '408004000') OR (AShareIssuingDatePredict.s_stm_actual_issuingdate IS NULL) THEN "
+            SQLStr += DBTableName+"."+FieldDict[self._ANNDateField]+" "
+            SQLStr += "ELSE "+self._FactorDB.TablePrefix+"AShareIssuingDatePredict.s_stm_actual_issuingdate END AS ANNDate, "
             SQLStr += DBTableName+"."+FieldDict[self._ReportDateField]+", "
             SQLStr += DBTableName+"."+FieldDict[self._ReportTypeField]+", "
         else:
@@ -953,11 +954,13 @@ class _FinancialTable(_DBTable):
                 SQLStr += DBTableName+"."+FieldDict[iField]+", "
         SQLStr = SQLStr[:-2]+" "
         SQLStr += "FROM "+DBTableName+" "
-        SQLStr += "INNER JOIN "+self._FactorDB.TablePrefix+"AShareIssuingDatePredict ON ("+DBTableName+"."+FieldDict[self._IDField]+"="+self._FactorDB.TablePrefix+"AShareIssuingDatePredict.s_info_windcode AND "+self._FactorDB.TablePrefix+"AShareIssuingDatePredict.report_period="+DBTableName+"."+FieldDict[self._ReportDateField]+") "
+        if self._ReportTypeField is not None:
+            SQLStr += "LEFT JOIN "+self._FactorDB.TablePrefix+"AShareIssuingDatePredict ON ("+DBTableName+"."+FieldDict[self._IDField]+"="+self._FactorDB.TablePrefix+"AShareIssuingDatePredict.s_info_windcode AND "+self._FactorDB.TablePrefix+"AShareIssuingDatePredict.report_period="+DBTableName+"."+FieldDict[self._ReportDateField]+") "
         SQLStr += "WHERE ("+genSQLInCondition(DBTableName+"."+FieldDict[self._IDField], ids, is_str=True, max_num=1000)+") "
         if self._ReportTypeField is not None: SQLStr += "AND "+DBTableName+"."+FieldDict[self._ReportTypeField]+" IN ('"+"','".join(args.get("报表类型", self.ReportType))+"')"
         SQLStr = "SELECT t.* FROM ("+SQLStr+") t WHERE t.ANNDate IS NOT NULL "
         SQLStr += "ORDER BY t."+FieldDict[self._IDField]+", t.ANNDate, t."+FieldDict[self._ReportDateField]
+        if self._ReportTypeField is not None: SQLStr += ", t."+FieldDict[self._ReportTypeField]
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
         return pd.DataFrame(np.array(RawData), columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
