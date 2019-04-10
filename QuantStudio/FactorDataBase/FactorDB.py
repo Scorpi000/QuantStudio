@@ -276,7 +276,8 @@ class _OperationMode(__QS_Object__):
     def __getstate__(self):
         state = self.__dict__.copy()
         # Remove the unpicklable entries.
-        state["_CacheDir"] = self._CacheDir.name
+        if self._CacheDir is not None:
+            state["_CacheDir"] = self._CacheDir.name
         return state
 # 因子表准备子进程
 def _prepareRawData(args):
