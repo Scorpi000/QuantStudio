@@ -36,6 +36,7 @@ setuptools.setup(
         "pandas>=0.19.0,<0.24.0",# 数据分析
         "scipy>=0.18.1",# 科学计算
         "matplotlib>=2.2.3",# 绘图
+        "seaborn>=0.9.0",# 绘图
         "plotly>=2.0.6",# 绘图
         "patsy",# 描述统计模型
         "statsmodels>=0.9.0",# 概率统计

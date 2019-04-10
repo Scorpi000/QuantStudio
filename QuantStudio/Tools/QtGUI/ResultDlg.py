@@ -14,8 +14,10 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
-plt.style.use("ggplot")
+#plt.style.use("ggplot")
 import matplotlib.cm
+import seaborn as sns
+sns.set()
 import plotly
 from traits.api import File, Enum, List
 
@@ -829,24 +831,33 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
         return 0
 # 基于 matplotlib 绘图的 ResultDlg
 class _MplCanvas(FigureCanvas):
-    def __init__(self, parent=None, width=5, height=4, dpi=150):
-        self.Fig = Figure(figsize=(width, height), dpi=dpi)
+    def __init__(self, parent=None, fig=None, width=5, height=4, dpi=150):
+        if fig is None:
+            self.Fig = Figure(figsize=(width, height), dpi=dpi)
+        else:
+            self.Fig = fig
         #self.Axes = self.Fig.add_subplot(111)
         #self.Axes.hold(False)
         FigureCanvas.__init__(self, self.Fig)
         FigureCanvas.setSizePolicy(self,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         FigureCanvas.updateGeometry(self)
 class _MatplotlibWidget(QtWidgets.QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, fig=None):
         super(_MatplotlibWidget, self).__init__(parent)
         self.Layout = QtWidgets.QVBoxLayout(self)
-        self.Mpl = _MplCanvas(self)
+        self.Mpl = _MplCanvas(self, fig=fig)
         self.MplNTB = NavigationToolbar(self.Mpl, self)
         self.Layout.addWidget(self.Mpl)
         self.Layout.addWidget(self.MplNTB)
         self.setLayout(self.Layout)
         
 class MatplotlibResultDlg(PlotlyResultDlg):
+    def setMenu(self):# 设置弹出菜单
+        super().setMenu()
+        NewAction = self.MainResultTable.ContextMenu['绘制图像']['主菜单'].addAction('相关图')
+        NewAction.triggered.connect(self.plotCorr)
+        NewAction = self.MainResultTable.ContextMenu['绘制图像']['主菜单'].addAction('联合图')
+        NewAction.triggered.connect(self.plotJoint)
     def plotHist(self):
         SelectedColumn = self.getSelectedColumns()
         if len(SelectedColumn)!=1: return QtWidgets.QMessageBox.critical(self, "错误", "请选择一列!")
@@ -971,6 +982,24 @@ class MatplotlibResultDlg(PlotlyResultDlg):
             X, Y = np.meshgrid(np.sort(xData), np.sort(yData))
             zRegressData = Result.params[0] + Result.params[1]*X + Result.params[2]*Y
             Axes.plot_surface(X, Y, zRegressData, label='回归面')
+        tempFigDlg.Mpl.draw()
+        tempFigDlg.show()
+        return 0
+    def plotCorr(self):# 相关图
+        SelectedDF, Msg = self.getSelectedDF(all_num=True)
+        if SelectedDF is None: return QtWidgets.QMessageBox.critical(self, "错误", Msg)
+        elif (SelectedDF.shape[1]<2): return QtWidgets.QMessageBox.critical(self, "错误", "请选择至少两列!")
+        PairGrid = sns.pairplot(SelectedDF, kind='reg', dropna=True)
+        tempFigDlg = _MatplotlibWidget(fig=PairGrid.fig)
+        tempFigDlg.Mpl.draw()
+        tempFigDlg.show()
+        return 0
+    def plotJoint(self):# 联合图
+        SelectedDF, Msg = self.getSelectedDF(all_num=True)
+        if SelectedDF is None: return QtWidgets.QMessageBox.critical(self, "错误", Msg)
+        elif (SelectedDF.shape[1]!=2): return QtWidgets.QMessageBox.critical(self, "错误", "请选择两列!")
+        JointGrid = sns.jointplot(x=SelectedDF.columns[0], y=SelectedDF.columns[1], data=SelectedDF, kind='reg', dropna=True)
+        tempFigDlg = _MatplotlibWidget(fig=JointGrid.fig)
         tempFigDlg.Mpl.draw()
         tempFigDlg.show()
         return 0

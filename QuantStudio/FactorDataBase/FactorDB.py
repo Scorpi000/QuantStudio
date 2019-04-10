@@ -259,6 +259,7 @@ class _OperationMode(__QS_Object__):
         self._PIDs = []# 所有的计算进程 ID, 单进程下默认为"0", 多进程为"0-i"
         self._PID_IDs = {}# 每个计算进程分配的 ID 列表, {PID:[ID]}
         self._PID_Lock = {}# 每个计算进程分配的缓存数据锁, {PID:Lock}
+        self._CacheDir = None# 缓存数据的临时文件夹
         self._RawDataDir = ""# 原始数据存放根目录
         self._CacheDataDir = ""# 中间数据存放根目录
         self._Event = {}# {因子名: (Sub2MainQueue, Event)}
@@ -272,6 +273,11 @@ class _OperationMode(__QS_Object__):
         super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         self.add_trait("FactorNames", ListStr(arg_type="MultiOption", label="运算因子", order=2, option_range=tuple(self._FT.FactorNames)))
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Remove the unpicklable entries.
+        state["_CacheDir"] = self._CacheDir.name
+        return state
 # 因子表准备子进程
 def _prepareRawData(args):
     nGroup = len(args['GroupInfo'])
