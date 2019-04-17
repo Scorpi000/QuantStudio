@@ -149,7 +149,7 @@ def _prepareMMAPFactorCacheData(ft, mmap_cache):
             DataLen = len(CacheDataByte)
             for i in range(int(DataLen/CacheSize)+1):
                 iStartInd = i*CacheSize
-                iEndInd = max((i+1)*CacheSize, DataLen)
+                iEndInd = min((i+1)*CacheSize, DataLen)
                 if iEndInd>iStartInd:
                     MMAPCacheData.seek(0)
                     MMAPCacheData.write(CacheDataByte[iStartInd:iEndInd])
@@ -202,7 +202,7 @@ def _prepareMMAPIDCacheData(ft, mmap_cache):
             DataLen = len(CacheDataByte)
             for i in range(int(DataLen/CacheSize)+1):
                 iStartInd = i*CacheSize
-                iEndInd = max((i+1)*CacheSize, DataLen)
+                iEndInd = min((i+1)*CacheSize, DataLen)
                 if iEndInd>iStartInd:
                     MMAPCacheData.seek(0)
                     MMAPCacheData.write(CacheDataByte[iStartInd:iEndInd])
