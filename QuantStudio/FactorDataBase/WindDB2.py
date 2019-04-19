@@ -887,7 +887,9 @@ class _FinancialTable(_DBTable):
     CalcType = Enum("最新", "单季度", "TTM", label="计算方法", arg_type="SingleOption", order=2)
     YearLookBack = Int(0, label="回溯年数", arg_type="Integer", order=3)
     PeriodLookBack = Int(0, label="回溯期数", arg_type="Integer", order=4)
-    IgnoreMissing = Bool(True, label="忽略缺失", arg_type="Bool", order=5)
+    ExprFactor = Str("", label="业绩快报因子", arg_type="String", order=5)
+    NoticeFactor = Str("", label="业绩预告因子", arg_type="String", order=6)
+    IgnoreMissing = Bool(True, label="忽略缺失", arg_type="Bool", order=7)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
@@ -929,6 +931,55 @@ class _FinancialTable(_DBTable):
         if end_dt is not None: SQLStr += "AND "+DBTableName+"."+FieldDict[self._ANNDateField]+"<='"+end_dt.strftime("%Y%m%d")+"' "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._ANNDateField]
         return list(map(lambda x: dt.datetime.strptime(x[0], "%Y%m%d"), self._FactorDB.fetchall(SQLStr)))
+    # 生成业绩快报SQL查询语句
+    def _genExpressSQLStr(self, expr_factor, ids):
+        DBTableName = self._FactorDB.TablePrefix + "AShareProfitExpress"
+        # 将字段名转换成Wind内部的字段名
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc["中国A股业绩快报"].loc[['公告日期','Wind代码','报告期',expr_factor]]
+        # 形成SQL语句, ID, 公告日期, 报告期, 财务数据
+        SQLStr = 'SELECT '+DBTableName+'.'+FieldDict["Wind代码"]+', '
+        SQLStr += DBTableName+'.'+FieldDict['公告日期']+', '
+        SQLStr += DBTableName+'.'+FieldDict['报告期']+', '
+        SQLStr += DBTableName+'.'+FieldDict[expr_factor]+' '
+        SQLStr += 'FROM '+DBTableName+' '
+        SQLStr += "WHERE ("+genSQLInCondition(DBTableName+"."+FieldDict["Wind代码"], ids, is_str=True, max_num=1000)+") "
+        SQLStr += 'AND '+DBTableName+'.'+FieldDict['公告日期']+' IS NOT NULL '
+        SQLStr += 'ORDER BY '+DBTableName+'.'+FieldDict['Wind代码']+', '
+        SQLStr += DBTableName+'.'+FieldDict['公告日期']+', '
+        SQLStr += DBTableName+'.'+FieldDict['报告期']
+        return SQLStr
+    # 生成业绩预告SQL查询语句
+    def _genNoticeSQLStr(self, notice_factor, ids):
+        DBTableName = self._FactorDB.TablePrefix + "AShareProfitNotice"
+        # 将字段名转换成Wind内部的字段名
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc["中国A股业绩预告"].loc[['公告日期','Wind代码','报告期',notice_factor]]
+        # 形成SQL语句, ID, 公告日期, 报告期, 财务数据
+        SQLStr = 'SELECT '+DBTableName+'.'+FieldDict["Wind代码"]+', '
+        SQLStr += DBTableName+'.'+FieldDict['公告日期']+', '
+        SQLStr += DBTableName+'.'+FieldDict['报告期']+', '
+        SQLStr += DBTableName+'.'+FieldDict[notice_factor]+'*10000 '
+        SQLStr += 'FROM '+DBTableName+' '
+        SQLStr += "WHERE ("+genSQLInCondition(DBTableName+"."+FieldDict["Wind代码"], ids, is_str=True, max_num=1000)+") "
+        SQLStr +=     'AND '+DBTableName+'.'+FieldDict['公告日期']+' IS NOT NULL '
+        SQLStr += 'ORDER BY '+DBTableName+'.'+FieldDict['Wind代码']+', '
+        SQLStr += DBTableName+'.'+FieldDict['公告日期']+', '
+        SQLStr += DBTableName+'.'+FieldDict['报告期']
+        return SQLStr
+    def __QS_genGroupInfo__(self, factors, operation_mode):
+        ExprNoticeConditionGroup = {}
+        for iFactor in factors:
+            iExprNoticeConditions = (iFactor.ExprFactor, iFactor.NoticeFactor)
+            if iExprNoticeConditions not in ExprNoticeConditionGroup:
+                ExprNoticeConditionGroup[iExprNoticeConditions] = {"FactorNames":[iFactor.Name], 
+                                                                                              "RawFactorNames":{iFactor._NameInFT}, 
+                                                                                              "args":iFactor.Args.copy()}
+            else:
+                ExprNoticeConditionGroup[iExprNoticeConditions]["FactorNames"].append(iFactor.Name)
+                ExprNoticeConditionGroup[iExprNoticeConditions]["RawFactorNames"].add(iFactor._NameInFT)
+        Groups = []
+        for iExprNoticeConditions in ExprNoticeConditionGroup:
+            Groups.append((self, ExprNoticeConditionGroup[iExprNoticeConditions]["FactorNames"], list(ExprNoticeConditionGroup[iExprNoticeConditions]["RawFactorNames"]), [], ExprNoticeConditionGroup[iExprNoticeConditions]["args"]))
+        return Groups
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         Fields = list(set([self._IDField, self._ANNDateField, self._ReportDateField, self._ReportTypeField]+factor_names))
         FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[Fields]
@@ -962,8 +1013,31 @@ class _FinancialTable(_DBTable):
         SQLStr += "ORDER BY t."+FieldDict[self._IDField]+", t.ANNDate, t."+FieldDict[self._ReportDateField]
         if self._ReportTypeField is not None: SQLStr += ", t."+FieldDict[self._ReportTypeField]
         RawData = self._FactorDB.fetchall(SQLStr)
-        if not RawData: return pd.DataFrame(columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
-        return pd.DataFrame(np.array(RawData), columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
+        if not RawData: RawData = pd.DataFrame(columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
+        else: RawData = pd.DataFrame(np.array(RawData), columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
+        # 拼接业绩快报数据
+        ExprFactor = args.get("业绩快报因子", self.ExprFactor)
+        if ExprFactor:
+            SQLStr = self._genExpressSQLStr(ExprFactor, ids)
+            ExpressRawData = self._FactorDB.fetchall(SQLStr)
+            if not ExpressRawData: ExpressRawData = pd.DataFrame(columns=['ID', 'AnnDate', 'ReportDate', ExprFactor])
+            else: ExpressRawData = pd.DataFrame(np.array(ExpressRawData), columns=['ID', 'AnnDate', 'ReportDate', ExprFactor])
+            ExpressRawData["ReportType"] = "1ProfitExpress"
+            for iField in factor_names: ExpressRawData[iField] = ExpressRawData[ExprFactor]
+            ExpressRawData.pop(ExprFactor)
+            RawData = pd.concat([RawData, ExpressRawData])
+        NoticeFactor = args.get("业绩预告因子", self.NoticeFactor)
+        if NoticeFactor:
+            SQLStr = self._genNoticeSQLStr(NoticeFactor, ids)
+            NoticeRawData = self._FactorDB.fetchall(SQLStr)
+            if not NoticeRawData: NoticeRawData = pd.DataFrame(columns=['ID', 'AnnDate', 'ReportDate', NoticeFactor])
+            else: NoticeRawData = pd.DataFrame(np.array(NoticeRawData), columns=['ID', 'AnnDate', 'ReportDate', NoticeFactor])
+            NoticeRawData['ReportType'] = "0ProfitNotice"
+            for iField in factor_names: NoticeRawData[iField] = NoticeRawData[NoticeFactor]
+            NoticeRawData.pop(NoticeFactor)
+            RawData = pd.concat([RawData, NoticeRawData])
+        if ExprFactor or NoticeFactor: RawData = RawData.sort_values(by=["ID", "AnnDate", "ReportDate", "ReportType"])
+        return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         Dates = sorted({iDT.strftime("%Y%m%d") for iDT in dts})
         CalcType, YearLookBack, PeriodLookBack, ReportDate, IgnoreMissing = args.get("计算方法", self.CalcType), args.get("回溯年数", self.YearLookBack), args.get("回溯期数", self.PeriodLookBack), args.get("报告期", self.ReportDate), args.get("忽略缺失", self.IgnoreMissing)

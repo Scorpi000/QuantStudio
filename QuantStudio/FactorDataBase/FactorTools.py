@@ -254,7 +254,7 @@ def _single_quarter(f,idt,iid,x,args):
     Rslt[Mask] = Last[Mask]
     return Rslt
 def single_quarter(report_period, last, prev, **kwargs):
-    Descriptors,Args = _genMultivariateOperatorInfo(report_period, last, prev)
+    Descriptors, Args = _genMultivariateOperatorInfo(report_period, last, prev)
     return PointOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_single_quarter,"参数":Args,"运算时点":"多时点","运算ID":"多ID"})
 # ----------------------时间序列运算--------------------------------
 def _rolling_mean(f,idt,iid,x,args):
