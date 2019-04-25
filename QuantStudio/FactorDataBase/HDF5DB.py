@@ -282,14 +282,14 @@ class HDF5DB(WritableFactorDB):
                         NewData = factor_data.loc[OldDateTimes, NewIDs]
                         if data_type!="double": NewData = NewData.where(pd.notnull(NewData), None)
                         else: NewData = NewData.astype("float")
-                        DataFile["Data"][:, OldIDs.shape[0]:] = NewData.values
+                        DataFile["Data"][:nOldDT, OldIDs.shape[0]:] = NewData.values
                     CrossedIDs = factor_data.columns.intersection(OldIDs)
                     if CrossedIDs.shape[0]>0:
                         OldIDs = OldIDs.tolist()
                         CrossedIDPos = [OldIDs.index(iID) for iID in CrossedIDs]
                         CrossedIDs = CrossedIDs[np.argsort(CrossedIDPos)]
                         CrossedIDPos.sort()
-                        DataFile["Data"][:, CrossedIDPos] = factor_data.loc[OldDateTimes, CrossedIDs].values
+                        DataFile["Data"][:nOldDT, CrossedIDPos] = factor_data.loc[OldDateTimes, CrossedIDs].values
                     return 0
                 CrossedDateTimePos = [OldDateTimes.index(iDT) for iDT in CrossedDateTimes]
                 CrossedDateTimes = CrossedDateTimes[np.argsort(CrossedDateTimePos)]

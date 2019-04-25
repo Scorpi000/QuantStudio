@@ -15,7 +15,7 @@ setuptools.setup(
     description="Quant Studio",
     long_description=long_description,
     long_description_content_type="text/x-rst",
-    url="https://bitbucket.org/Scorpi000/quantstudio_v2/src/master/",
+    url="https://github.com/Scorpi000/QuantStudio/",
     license="GPLv3",
     platforms=["Windows"],
     python_requires=">=3.5",
