@@ -794,14 +794,15 @@ class CustomFT(FactorTable):
         temp = self.readData(factor_names=IDFilterFactors, ids=ids, dts=[idt], args=args).loc[:, idt, :]
         self._IDFilterStr = OldIDFilterStr
         return eval(CompiledFilterStr)
-    def getFilteredID(self, idt, id_filter_str=None, args={}):
+    def getFilteredID(self, idt, ids=None, id_filter_str=None, args={}):
         OldIDFilterStr = self.setIDFilter(id_filter_str)
+        if ids is None: ids = self.getID(idt=idt, args=args)
         if self._IDFilterStr is None:
             self._IDFilterStr = OldIDFilterStr
-            return self.getID(idt=idt)
+            return ids
         CompiledFilterStr, IDFilterFactors = self._CompiledIDFilter[self._IDFilterStr]
         if CompiledFilterStr is None: raise __QS_Error__("过滤条件字符串有误!")
-        temp = self.readData(factor_names=IDFilterFactors, ids=self._IDs, dts=[idt], args=args).loc[:, idt, :]
+        temp = self.readData(factor_names=IDFilterFactors, ids=ids, dts=[idt], args=args).loc[:, idt, :]
         self._IDFilterStr = OldIDFilterStr
         return eval("temp["+CompiledFilterStr+"].index.tolist()")
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
