@@ -322,7 +322,7 @@ class FactorExposeConstraint(Constraint):
         if self.UpLimit<self.DownLimit: raise __QS_Error__("限制上限必须大于等于限制下限!")
         Constraints = []
         if self._PC._Dependency.get("基准投资组合", False):
-            AllFactorData = self._PC.FactorData.append(self._BenchmarkExtraFactorData)
+            AllFactorData = self._PC.FactorData.append(self._PC._BenchmarkExtraFactorData)
         else:
             AllFactorData = self._PC.FactorData
         for iFactor in self.FactorNames:
