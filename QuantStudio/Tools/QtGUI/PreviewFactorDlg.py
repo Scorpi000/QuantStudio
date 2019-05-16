@@ -16,7 +16,8 @@ class PreviewDlg(QDialog, Ui_PreviewDlg):
         super().__init__(parent)
         self.setupUi(self)
         self.Factor = factor
-        self.DTs = self.Factor.getDateTime(start_dt=dt.datetime.combine(dt.date.today()-dt.timedelta(31), dt.time(0)), end_dt=dt.datetime.today())
+        #self.DTs = self.Factor.getDateTime(start_dt=dt.datetime.combine(dt.date.today()-dt.timedelta(31), dt.time(0)), end_dt=dt.datetime.today())
+        self.DTs = self.Factor.getDateTime()
         self.DTs = self.DTs[-min(60, len(self.DTs)):]
         self.IDs = self.Factor.getID()
         self.IDs = self.IDs[:min(10, len(self.IDs))]

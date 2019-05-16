@@ -14,10 +14,10 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
-#plt.style.use("ggplot")
+plt.style.use("ggplot")
 import matplotlib.cm
 import seaborn as sns
-sns.set()
+#sns.set()
 import plotly
 from traits.api import File, Enum, List
 
@@ -1156,7 +1156,7 @@ if __name__=='__main__':
     TestData = {"Bar1":{"a":{"a1":pd.DataFrame(np.random.rand(11,3),index=Dates[:11],columns=['b','c','d']),
                              "a2":pd.DataFrame(np.random.rand(10,2))},
                         "b":pd.DataFrame(['a']*150,columns=['c'])},
-                "Bar2":pd.DataFrame(np.random.randn(3,2), index=["中文", "b2", "b3"])}
+                "Bar2":pd.DataFrame(np.random.randn(3,2), index=["中文", "b2", "b3"], columns=["中文", "我是个例子"])}
     app = QtWidgets.QApplication(sys.argv)
     #TestWindow = PlotlyResultDlg(None, TestData)
     TestWindow = MatplotlibResultDlg(None, TestData)

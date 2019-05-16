@@ -1236,7 +1236,7 @@ class DataFactor(Factor):
     def __init__(self, name, data, sys_args={}, config_file=None, **kwargs):
         if not isinstance(data, pd.DataFrame): raise __QS_Error__("数据必须是 pandas.DataFrame 类型!")
         self._Data = data
-        if "数据类型" not in sys_args: sys_args["数据类型"] = ("string" if np.dtype('O') in dtypes.values else "double")
+        if "数据类型" not in sys_args: sys_args["数据类型"] = ("string" if np.dtype('O') in self._Data.dtypes.values else "double")
         return super().__init__(name=name, ft=None, sys_args=sys_args, config_file=None, **kwargs)
     def getMetaData(self, key=None):
         if key is None: return pd.Series({"DataType":self.DataType})

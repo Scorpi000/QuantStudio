@@ -240,7 +240,7 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
             else:
                 TableName = SelectedItems[0].parent().text(0)
                 NewFactorName = SelectedItems[0].text(0)
-        FilePath = QFileDialog.getOpenFileName(parent=self, caption="导入CSV", directory=".", filter="csv (*.csv)")
+        FilePath = QFileDialog.getOpenFileName(parent=self, caption="导入CSV", directory=".", filter="csv (*.csv)")[0]
         if not FilePath: return 0
         if (TableName in self.FactorDB.TableNames) and (NewFactorName in self.FactorDB.getTable(TableName).FactorNames):
             if_exists, isOk = QInputDialog.getItem(self, "因子合并", "因子合并方式:", ["replace", "append", "update"], editable=False)

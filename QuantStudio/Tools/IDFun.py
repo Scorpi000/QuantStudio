@@ -44,7 +44,7 @@ def adjustID(ids):
         tempLen = len(jIDStr)
         NewIDs.append('0'*(6-tempLen)+jIDStr)
     return NewIDs
-# 测试输入的条件字符串是否有语法错误
+# 测试输入的条件字符串是否有语法错误, 如果无错误返回编译后的条件字符串和用到的因子列表, 否则返回 (None, None)
 def testIDFilterStr(id_filter_str, factor_names=None):
     CompiledIDFilterStr = id_filter_str
     IDFilterFactors = []

@@ -4,10 +4,12 @@ import os
 import io
 import shutil
 import json
+import datetime as dt
 
 import numpy as np
 import pandas as pd
 
+from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName
 from QuantStudio.Tools.DataTypeConversionFun import Series2DataFrame
 
@@ -222,20 +224,28 @@ def loadCSVFactorData(csv_path):
             Horizon = False
     if Horizon:
         try:
-            CSVFactor = readCSV2Pandas(csv_path,index_col=0,header=0,encoding="utf-8")
+            CSVFactor = readCSV2Pandas(csv_path, index_col=0, header=0, encoding="utf-8", parse_dates=True, infer_datetime_format=True)
         except:
-            CSVFactor = readCSV2Pandas(csv_path,detect_file_encoding=True,index_col=0,header=0)
+            CSVFactor = readCSV2Pandas(csv_path, detect_file_encoding=True, index_col=0, header=0, parse_dates=True, infer_datetime_format=True)
     else:
         try:
-            CSVFactor = readCSV2Pandas(csv_path,header=0,encoding="utf-8")
+            CSVFactor = readCSV2Pandas(csv_path, header=0, index_col=[0,1], encoding="utf-8", parse_dates=True, infer_datetime_format=True)
         except:
-            CSVFactor = readCSV2Pandas(csv_path,detect_file_encoding=True,header=0)
-        Columns = list(CSVFactor.columns)
-        CSVFactor = CSVFactor.set_index(Columns[:2])[Columns[2]]
-        CSVFactor = Series2DataFrame(CSVFactor)
-    CSVDate = [str(int(float(iDate))) for iDate in CSVFactor.index]
+            CSVFactor = readCSV2Pandas(csv_path, detect_file_encoding=True, header=0, index_col=[0,1], parse_dates=True, infer_datetime_format=True)
+        #Columns = list(CSVFactor.columns)
+        #CSVFactor = CSVFactor.set_index(Columns[:2])[Columns[2]]
+        CSVFactor = Series2DataFrame(CSVFactor.iloc[:, 0])
+    try:
+        if CSVFactor.index.dtype==np.dtype("O"):
+            CSVDT = [dt.datetime.strptime(iDT, "%Y-%m-%D") for iDT in CSVFactor.index]
+        elif CSVFactor.index.is_all_dates:
+            CSVDT = [iDT.to_pydatetime() for iDT in CSVFactor.index]
+        else:
+            raise __QS_Error__("时间序列解析失败!")
+    except:
+        raise __QS_Error__("时间序列解析失败!")
     CSVID = [str(iID) for iID in CSVFactor.columns]
-    CSVFactor = pd.DataFrame(CSVFactor.values,index=CSVDate,columns=CSVID)
+    CSVFactor = pd.DataFrame(CSVFactor.values, index=CSVDT, columns=CSVID)
     return CSVFactor
 # 将结果集写入 CSV 文件, output: {文件名: DataFrame}
 def exportOutput2CSV(output, dir_path="."):
