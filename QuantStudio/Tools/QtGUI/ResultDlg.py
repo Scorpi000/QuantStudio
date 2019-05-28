@@ -872,7 +872,7 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         yData = SelectedDF[pd.notnull(SelectedDF)].values
         xData = np.linspace(np.min(yData),np.max(yData),len(yData)*10)
         yNormalData = norm.pdf(xData,loc=np.mean(yData),scale=np.std(yData))
-        Axes.hist(yData, GroupNum, normed=True, label='直方图', color="b")
+        Axes.hist(yData, GroupNum, density=True, label='直方图', color="b")
         Axes.plot(xData, yNormalData, label='Normal Distribution', linewidth=2, color='r')
         Axes.legend(loc='upper left', shadow=True)
         tempFigDlg.Mpl.draw()

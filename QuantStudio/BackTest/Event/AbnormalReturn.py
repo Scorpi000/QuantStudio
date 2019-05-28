@@ -122,7 +122,7 @@ class CMRM(BaseModule):
         self._Output["J1统计量"]["J1"] = pd.DataFrame(AR_Avg / AR_Avg_Var**0.5, index=self._Output["J1统计量"]["异常收益率"].index, columns=["单时点"])
         self._Output["J1统计量"]["J1"]["向前累积"] = CAR_Avg / CAR_Avg_Var**0.5
         self._Output["J1统计量"]["J1"]["向前向后累积"] = FBCAR_Avg / FBCAR_Avg_Var**0.5
-        self._Output["J1统计量"]["p值"] = pd.DataFrame(2 * norm.sf(np.abs(self._Output["J1统计量"]["J1"].values)), index=self._Output["J1统计量"]["J1"].index, columns=self._Output["J1统计量"]["J1"].columns)
+        self._Output["J1统计量"]["p值"] = pd.DataFrame(norm.sf(np.abs(self._Output["J1统计量"]["J1"].values)), index=self._Output["J1统计量"]["J1"].index, columns=self._Output["J1统计量"]["J1"].columns)
         SAR, SCAR, SFBCAR = AR / AR_Var**0.5, CAR / CAR_Var**0.5, FBCAR / FBCAR_Var**0.5
         SAR[np.isinf(SAR)] = SCAR[np.isinf(SCAR)] = SFBCAR[np.isinf(SFBCAR)] = np.nan
         SAR_Avg, SCAR_Avg, SFBCAR_Avg = np.nanmean(SAR, axis=0), np.nanmean(SCAR, axis=0), np.nanmean(SFBCAR, axis=0)
@@ -132,7 +132,23 @@ class CMRM(BaseModule):
         self._Output["J2统计量"]["J2"] = pd.DataFrame(SAR_Avg * (np.sum(~np.isnan(SAR), axis=0) * (self.EstSampleLen - 4) / (self.EstSampleLen - 2))**0.5, index=self._Output["J2统计量"]["标准化异常收益率"].index, columns=["单时点"])
         self._Output["J2统计量"]["J2"]["向前累积"] = SCAR_Avg * (np.sum(~np.isnan(SCAR), axis=0) * (self.EstSampleLen - 4) / (self.EstSampleLen - 2))**0.5
         self._Output["J2统计量"]["J2"]["向前向后累积"] = SFBCAR_Avg * (np.sum(~np.isnan(SFBCAR), axis=0) * (self.EstSampleLen - 4) / (self.EstSampleLen - 2))**0.5
-        self._Output["J2统计量"]["p值"] = pd.DataFrame(2 * norm.sf(np.abs(self._Output["J2统计量"]["J2"].values)), index=self._Output["J2统计量"]["J2"].index, columns=self._Output["J2统计量"]["J2"].columns)
+        self._Output["J2统计量"]["p值"] = pd.DataFrame(norm.sf(np.abs(self._Output["J2统计量"]["J2"].values)), index=self._Output["J2统计量"]["J2"].index, columns=self._Output["J2统计量"]["J2"].columns)
+        N = np.sum(~np.isnan(AR), axis=0)
+        self._Output["J3统计量"] = {"J3": pd.DataFrame((np.sum(AR>0, axis=0)/N - 0.5)*N**0.5/0.5, index=np.arange(-self.EventPreWindow, 1+self.EventPostWindow), columns=["单时点"])}
+        N = np.sum(~np.isnan(CAR), axis=0)
+        self._Output["J3统计量"] ["J3"]["向前累积"] = (np.sum(CAR>0, axis=0)/N - 0.5)*N**0.5/0.5
+        N = np.sum(~np.isnan(FBCAR), axis=0)
+        self._Output["J3统计量"] ["J3"]["向前向后累积"] = (np.sum(FBCAR>0, axis=0)/N - 0.5)*N**0.5/0.5
+        self._Output["J3统计量"]["p值"] = pd.DataFrame(norm.sf(np.abs(self._Output["J3统计量"]["J3"].values)), index=self._Output["J3统计量"]["J3"].index, columns=self._Output["J3统计量"]["J3"].columns)
+        AR = AR[np.sum(np.isnan(AR), axis=1)==0, :]
+        N = AR.shape[0]
+        L2 = self.EventPreWindow+1+self.EventPostWindow
+        K = np.full_like(AR, np.nan)
+        K[np.arange(N).repeat(L2), np.argsort(AR, axis=1).flatten()] = (np.arange(L2*N) % L2) + 1
+        J4 = np.nansum(K-(L2+1)/2, axis=0) / N
+        J4 = J4 / (np.nansum(J4**2) / L2)**0.5
+        self._Output["J4统计量"] = {"J4": pd.DataFrame(J4, index=np.arange(-self.EventPreWindow, 1+self.EventPostWindow), columns=["单时点"])}
+        self._Output["J4统计量"]["p值"] = pd.DataFrame(norm.sf(np.abs(self._Output["J4统计量"]["J4"].values)), index=self._Output["J4统计量"]["J4"].index, columns=self._Output["J4统计量"]["J4"].columns)
         Index = pd.MultiIndex.from_arrays(self._Output.pop("事件记录")[:,:2].T, names=["ID", "时点"])
         self._Output["正常收益率"] = pd.DataFrame(self._Output["正常收益率"], columns=np.arange(-self.EventPreWindow, 1+self.EventPostWindow), index=Index).reset_index()
         self._Output["异常收益率"] = pd.DataFrame(self._Output["异常收益率"], columns=np.arange(-self.EventPreWindow, 1+self.EventPostWindow), index=Index).reset_index()
