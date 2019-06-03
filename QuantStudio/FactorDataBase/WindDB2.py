@@ -1758,8 +1758,14 @@ class _AnnTable(_DBTable):
         self._AnnDateField = FactorInfo[FactorInfo["FieldType"]=="ANNDate"].index[0]# 所有的公告日期
         self._EndDateField = FactorInfo[FactorInfo["FieldType"]=="EndDate"].index# 截止日期
         self._EndDateField = (self._EndDateField[0] if self._EndDateField.shape[0]>0 else None)
-        super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
-        return
+        self._ConditionFields = FactorInfo[FactorInfo["FieldType"]=="Condition"].index.tolist()# 所有的条件字段列表
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+    def __QS_initArgs__(self):
+        super().__QS_initArgs__()
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        for i, iCondition in enumerate(self._ConditionFields):
+            self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+2))
+            self[iCondition] = str(FactorInfo.loc[iCondition, "Supplementary"])
     @property
     def FactorNames(self):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
@@ -1769,13 +1775,19 @@ class _AnnTable(_DBTable):
     # 忽略 ifactor_name
     def getID(self, ifactor_name=None, idt=None, args={}):
         DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
-        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._AnnDateField, self._EndDateField, self._IDField]]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._AnnDateField, self._EndDateField, self._IDField]+self._ConditionFields]
         SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[self._IDField]+" "
         SQLStr += "FROM "+DBTableName+" "
+        SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._IDField]+" IS NOT NULL "
         if idt is not None:
-            SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._AnnDateField]+"<='"+idt.strftime("%Y%m%d")+"' "
+            SQLStr += "AND "+DBTableName+"."+FieldDict[self._AnnDateField]+"<='"+idt.strftime("%Y%m%d")+"' "
             if self._EndDateField is not None:
                 SQLStr += "AND "+DBTableName+"."+FieldDict[self._EndDateField]+"<='"+idt.strftime("%Y%m%d")+"' "
+        for iConditionField in self._ConditionFields:
+            if FactorInfo.loc[iConditionField, "DataType"].find("CHAR")!=-1:
+                SQLStr += "AND "+DBTableName+"."+FieldDict[iConditionField]+"='"+str(args.get(iConditionField, self[iConditionField]))+"' "
+            else:
+                SQLStr += "AND "+DBTableName+"."+FieldDict[iConditionField]+"="+str(args.get(iConditionField, self[iConditionField]))+" "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._IDField]
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     # 返回在给定 ID iid 的有数据记录的时间点
@@ -1783,13 +1795,18 @@ class _AnnTable(_DBTable):
     # 忽略 ifactor_name
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
-        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._AnnDateField, self._EndDateField, self._IDField]]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._AnnDateField, self._EndDateField, self._IDField]+self._ConditionFields]
         if self._EndDateField is not None:
             SQLStr = "SELECT DISTINCT CASE WHEN "+FieldDict[self._AnnDateField]+">="+FieldDict[self._EndDateField]+" THEN "+FieldDict[self._AnnDateField]+" "
             SQLStr += "WHEN "+FieldDict[self._AnnDateField]+"<"+FieldDict[self._EndDateField]+" THEN "+FieldDict[self._EndDateField]+" END AS DT "
             SQLStr += "FROM "+DBTableName+" "
             if iid is not None: SQLStr += "WHERE "+FieldDict[self._IDField]+"='"+iid+"' "
             else: SQLStr += "WHERE "+FieldDict[self._IDField]+" IS NOT NULL "
+            for iConditionField in self._ConditionFields:
+                if FactorInfo.loc[iConditionField, "DataType"].find("CHAR")!=-1:
+                    SQLStr += "AND "+DBTableName+"."+FieldDict[iConditionField]+"='"+str(args.get(iConditionField, self[iConditionField]))+"' "
+                else:
+                    SQLStr += "AND "+DBTableName+"."+FieldDict[iConditionField]+"="+str(args.get(iConditionField, self[iConditionField]))+" "
             SQLStr = "SELECT t.DT FROM ("+SQLStr+") t "
             if start_dt is not None: SQLStr += "AND t.DT>='"+start_dt.strftime("%Y%m%d")+"' "
             if end_dt is not None: SQLStr += "AND t.DT<='"+end_dt.strftime("%Y%m%d")+"' "
@@ -1800,22 +1817,61 @@ class _AnnTable(_DBTable):
             else: SQLStr += "WHERE "+FieldDict[self._IDField]+" IS NOT NULL "
             if start_dt is not None: SQLStr += "AND "+FieldDict[self._AnnDateField]+">='"+start_dt.strftime("%Y%m%d")+"' "
             if end_dt is not None: SQLStr += "AND "+FieldDict[self._AnnDateField]+"<='"+end_dt.strftime("%Y%m%d")+"' "
+            for iConditionField in self._ConditionFields:
+                if FactorInfo.loc[iConditionField, "DataType"].find("CHAR")!=-1:
+                    SQLStr += "AND "+DBTableName+"."+FieldDict[iConditionField]+"='"+str(args.get(iConditionField, self[iConditionField]))+"' "
+                else:
+                    SQLStr += "AND "+DBTableName+"."+FieldDict[iConditionField]+"="+str(args.get(iConditionField, self[iConditionField]))+" "
             SQLStr += "ORDER BY "+FieldDict[self._AnnDateField]
         return list(map(lambda x: dt.datetime.strptime(x[0], "%Y%m%d"), self._FactorDB.fetchall(SQLStr)))
+    def getCondition(self, icondition, ids=None, dts=None):
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._AnnDateField, self._EndDateField, self._IDField, icondition]]
+        if (self._EndDateField is None) or (dts is None):
+            SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[icondition]+" "
+            SQLStr += "FROM "+DBTableName+" "
+            if ids is not None: SQLStr += "WHERE ("+genSQLInCondition(DBTableName+"."+FieldDict[self._IDField], ids, is_str=True, max_num=1000)+") "
+            else: SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._IDField]+" IS NOT NULL "
+            if dts is not None:
+                Dates = list({iDT.strftime("%Y%m%d") for iDT in dts})
+                SQLStr += "AND ("+genSQLInCondition(DBTableName+"."+FieldDict[self._AnnDateField], Dates, is_str=True, max_num=1000)+") "
+            SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[icondition]
+        else:
+            SQLStr = "SELECT CASE WHEN "+FieldDict[self._AnnDateField]+">="+FieldDict[self._EndDateField]+" THEN "+FieldDict[self._AnnDateField]+" "
+            SQLStr += "WHEN "+FieldDict[self._AnnDateField]+"<"+FieldDict[self._EndDateField]+" THEN "+FieldDict[self._EndDateField]+" END AS DT, "
+            SQLStr += FieldDict[icondition]+" "
+            SQLStr += "FROM "+DBTableName
+            if ids is not None: SQLStr += "WHERE ("+genSQLInCondition(DBTableName+"."+FieldDict[self._IDField], ids, is_str=True, max_num=1000)+") "
+            else: SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._IDField]+" IS NOT NULL "
+            Dates = list({iDT.strftime("%Y%m%d") for iDT in dts})
+            SQLStr += "AND ("+genSQLInCondition("DT", Dates, is_str=True, max_num=1000)+") "
+            SQLStr = "SELECT DISTINCT t."+FieldDict[icondition]+" FROM ("+SQLStr+") t "
+            SQLStr += "ORDER BY t."+FieldDict[icondition]
+        return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     def __QS_genGroupInfo__(self, factors, operation_mode):
-        FactorNames, RawFactorNames, LookBack, StartDT = [], set(), 0, dt.datetime.combine(dt.date.today(), dt.time(0))
+        ConditionGroup = {}
         for iFactor in factors:
-            FactorNames.append(iFactor.Name)
-            RawFactorNames.add(iFactor._NameInFT)
-            StartDT = min(StartDT, operation_mode._FactorStartDT[iFactor.Name])
-            LookBack = max(LookBack, iFactor.LookBack)
-        StartInd = operation_mode.DTRuler.index(StartDT)
+            iConditions = ";".join([iArgName+":"+iFactor[iArgName] for iArgName in iFactor.ArgNames if iArgName not in ("回溯天数", "算子")])
+            if iConditions not in ConditionGroup:
+                ConditionGroup[iConditions] = {"FactorNames":[iFactor.Name], 
+                                               "RawFactorNames":{iFactor._NameInFT}, 
+                                               "StartDT":operation_mode._FactorStartDT[iFactor.Name], 
+                                               "args":iFactor.Args.copy()}
+            else:
+                ConditionGroup[iConditions]["FactorNames"].append(iFactor.Name)
+                ConditionGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
+                ConditionGroup[iConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], ConditionGroup[iConditions]["StartDT"])
+                ConditionGroup[iConditions]["args"]["回溯天数"] = max(ConditionGroup[iConditions]["args"]["回溯天数"], iFactor.LookBack)
         EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
-        return [(self, FactorNames, list(RawFactorNames), operation_mode.DTRuler[StartInd:EndInd+1], {"回溯天数":LookBack})]
+        Groups = []
+        for iConditions in ConditionGroup:
+            StartInd = operation_mode.DTRuler.index(ConditionGroup[iConditions]["StartDT"])
+            Groups.append((self, ConditionGroup[iConditions]["FactorNames"], list(ConditionGroup[iConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], ConditionGroup[iConditions]["args"]))
+        return Groups
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
-        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._AnnDateField, self._EndDateField, self._IDField]+factor_names]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._AnnDateField, self._EndDateField, self._IDField]+self._ConditionFields+factor_names]
         DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         if self._EndDateField is not None:
@@ -1831,6 +1887,11 @@ class _AnnTable(_DBTable):
             SubSQLStr1 += "MAX("+FieldDict[self._EndDateField]+") AS EndDT "
             SubSQLStr1 += "FROM "+DBTableName+" "
             SubSQLStr1 += "WHERE ("+genSQLInCondition(FieldDict[self._IDField], ids, is_str=True, max_num=1000)+") "
+            for iConditionField in self._ConditionFields:
+                if FactorInfo.loc[iConditionField, "DataType"].find("CHAR")!=-1:
+                    SubSQLStr1 += "AND "+DBTableName+"."+FieldDict[iConditionField]+"='"+str(args.get(iConditionField, self[iConditionField]))+"' "
+                else:
+                    SubSQLStr1 += "AND "+DBTableName+"."+FieldDict[iConditionField]+"="+str(args.get(iConditionField, self[iConditionField]))+" "            
             SubSQLStr1 += "GROUP BY "+FieldDict[self._IDField]+", "+FieldDict[self._AnnDateField]
             SQLStr = "SELECT t."+FieldDict[self._IDField]+", "
             SQLStr += "t.DT, "
@@ -1851,6 +1912,11 @@ class _AnnTable(_DBTable):
             SQLStr += "WHERE ("+genSQLInCondition(FieldDict[self._IDField], ids, is_str=True, max_num=1000)+") "
             SQLStr += "AND "+FieldDict[self._AnnDateField]+">='"+StartDate.strftime("%Y%m%d")+"' "
             SQLStr += "AND "+FieldDict[self._AnnDateField]+"<='"+EndDate.strftime("%Y%m%d")+"' "
+            for iConditionField in self._ConditionFields:
+                if FactorInfo.loc[iConditionField, "DataType"].find("CHAR")!=-1:
+                    SQLStr += "AND "+DBTableName+"."+FieldDict[iConditionField]+"='"+str(args.get(iConditionField, self[iConditionField]))+"' "
+                else:
+                    SQLStr += "AND "+DBTableName+"."+FieldDict[iConditionField]+"="+str(args.get(iConditionField, self[iConditionField]))+" "
             SQLStr += "ORDER BY "+FieldDict[self._IDField]+", "+FieldDict[self._AnnDateField]
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["ID", "日期"]+factor_names)

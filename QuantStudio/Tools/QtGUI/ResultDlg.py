@@ -8,7 +8,7 @@ from PyQt5 import QtWidgets, QtCore, QtGui
 
 import numpy as np
 import pandas as pd
-from scipy.stats import norm
+from scipy import stats
 import statsmodels.api as sm
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
@@ -412,7 +412,7 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
         if not isOK: return 0
         yData = SelectedDF[pd.notnull(SelectedDF)].values
         xData = np.linspace(np.nanmin(yData),np.nanmax(yData),yData.shape[0]*10)
-        yNormalData = norm.pdf(xData,loc=np.nanmean(yData),scale=np.nanstd(yData))
+        yNormalData = stats.norm.pdf(xData,loc=np.nanmean(yData),scale=np.nanstd(yData))
         GraphObj = [plotly.graph_objs.Histogram(x=yData,histnorm='probability',name='直方图',nbinsx=GroupNum),plotly.graph_objs.Scatter(x=xData,y=yNormalData,name='Normal Distribution',line={'color':'rgb(255,0,0)','width':2})]
         with tempfile.TemporaryFile() as File:
             plotly.offline.plot({"data":GraphObj,"layout": plotly.graph_objs.Layout(title="直方图")}, filename=File.name)
@@ -460,7 +460,7 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
         yData[-1] = yData[-2]
         GraphObj = [plotly.graph_objs.Scatter(x=xData,y=yData,name="经验分布函数")]
         xNormalData = np.linspace(xData[0],xData[-1],(nData+2)*10)
-        yNormalData = norm.cdf(xNormalData,loc=np.mean(xData[1:-1]),scale=np.std(xData[1:-1]))
+        yNormalData = stats.norm.cdf(xNormalData,loc=np.mean(xData[1:-1]),scale=np.std(xData[1:-1]))
         GraphObj.append(plotly.graph_objs.Scatter(x=xNormalData,y=yNormalData,name="Normal Distribution"))
         with tempfile.TemporaryFile() as File:
             plotly.offline.plot({"data":GraphObj,"layout": plotly.graph_objs.Layout(title="经验分布")}, filename=File.name)
@@ -858,6 +858,8 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         NewAction.triggered.connect(self.plotCorr)
         NewAction = self.MainResultTable.ContextMenu['绘制图像']['主菜单'].addAction('联合图')
         NewAction.triggered.connect(self.plotJoint)
+        NewAction = self.MainResultTable.ContextMenu['绘制图像']['主菜单'].addAction('QQ图')
+        NewAction.triggered.connect(self.plotQQ)
     def plotHist(self):
         SelectedColumn = self.getSelectedColumns()
         if len(SelectedColumn)!=1: return QtWidgets.QMessageBox.critical(self, "错误", "请选择一列!")
@@ -871,7 +873,7 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         Axes = Fig.add_subplot(111)
         yData = SelectedDF[pd.notnull(SelectedDF)].values
         xData = np.linspace(np.min(yData),np.max(yData),len(yData)*10)
-        yNormalData = norm.pdf(xData,loc=np.mean(yData),scale=np.std(yData))
+        yNormalData = stats.norm.pdf(xData,loc=np.mean(yData),scale=np.std(yData))
         Axes.hist(yData, GroupNum, density=True, label='直方图', color="b")
         Axes.plot(xData, yNormalData, label='Normal Distribution', linewidth=2, color='r')
         Axes.legend(loc='upper left', shadow=True)
@@ -924,7 +926,7 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         yData[-1] = yData[-2]
         Axes.plot(xData,yData,label='经验分布函数',linewidth=2,color='b')
         xNormalData = np.linspace(xData[0],xData[-1],(nData+2)*10)
-        yNormalData = norm.cdf(xNormalData,loc=np.mean(xData[1:-1]),scale=np.std(xData[1:-1]))
+        yNormalData = stats.norm.cdf(xNormalData,loc=np.mean(xData[1:-1]),scale=np.std(xData[1:-1]))
         Axes.plot(xNormalData, yNormalData, label='Normal Distribution', linewidth=2, color='r')
         Axes.legend(loc='upper left',shadow=True)
         tempFigDlg.Mpl.draw()
@@ -1000,6 +1002,31 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         elif (SelectedDF.shape[1]!=2): return QtWidgets.QMessageBox.critical(self, "错误", "请选择两列!")
         JointGrid = sns.jointplot(x=SelectedDF.columns[0], y=SelectedDF.columns[1], data=SelectedDF, kind='reg', dropna=True)
         tempFigDlg = _MatplotlibWidget(fig=JointGrid.fig)
+        tempFigDlg.Mpl.draw()
+        tempFigDlg.show()
+        return 0
+    def plotQQ(self):# QQ 图
+        SelectedDF, Msg = self.getSelectedDF(all_num=True)
+        if SelectedDF is None: return QtWidgets.QMessageBox.critical(self, "错误", Msg)
+        elif (SelectedDF.shape[1]<1) or (SelectedDF.shape[1]>2): return QtWidgets.QMessageBox.critical(self, "错误", "请选择一列或者两列!")
+        RefLine, isOK = QtWidgets.QInputDialog.getItem(self, "参考线", "参考线", ["q", "45", "s", "r", "无"])
+        if not isOK: return 0
+        if RefLine=="无": RefLine = None
+        tempFigDlg = _MatplotlibWidget()
+        Fig = tempFigDlg.Mpl.Fig
+        Axes = Fig.add_subplot(111)
+        SelectedDF.dropna()
+        if SelectedDF.shape[1]==1:
+            DistNames, _ = stats._continuous_distns.get_distribution_names(list(vars(stats).items()), stats.rv_continuous)
+            DistNames.remove("norm")
+            DistNames = ["norm"]+sorted(DistNames)
+            Dist, isOK = QtWidgets.QInputDialog.getItem(self, "理论分布", "理论分布", DistNames)
+            if not isOK: return 0
+            sm.qqplot(data=SelectedDF.iloc[:,0].values, dist=eval("stats."+Dist), fit=True, line=RefLine, ax=Axes)
+        else:
+            pp_x = sm.ProbPlot(SelectedDF.iloc[:,0].values, fit=True)
+            pp_y = sm.ProbPlot(SelectedDF.iloc[:,1].values, fit=True)
+            pp_x.qqplot(xlabel="Sample Quantiles of "+str(SelectedDF.columns[0]), ylabel="Sample Quantiles of "+str(SelectedDF.columns[1]), other=pp_y, line=RefLine, ax=Axes)
         tempFigDlg.Mpl.draw()
         tempFigDlg.show()
         return 0
