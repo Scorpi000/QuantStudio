@@ -366,7 +366,8 @@ class WeightConstraint(Constraint):
     UpLimit = Float(1.0, arg_type="Double", label="限制上限", order=1)
     DownLimit = Float(0.0, arg_type="Double", label="限制下限", order=2)
     Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=3)
-    DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=4)
+    LimitType = Enum("固定值", "基准比例值", arg_type="SingleOption", label="限制类型", order=4)
+    DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=5)
     @property
     def Type(self):
         return "权重约束"
@@ -386,12 +387,16 @@ class WeightConstraint(Constraint):
         else:
             UpConstraint = pd.Series(np.inf, index=self._PC._TargetIDs)
             DownConstraint = pd.Series(-np.inf, index=self._PC._TargetIDs)
-            CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(self.TargetIDs)
-            TargetIDs = filterID(self._PC.FactorData.loc[:, IDFilterFactors])
+            TargetIDs = filterID(self._PC.FactorData, self.TargetIDs)
             TargetIDs = list(set(TargetIDs).intersection(self._PC._TargetIDs))
             UpConstraint[TargetIDs] = self.UpLimit
             DownConstraint[TargetIDs] = self.DownLimit
         if self.Benchmark:
+            if self.LimitType=="基准比例值":
+                Mask = (~np.isinf(UpConstraint))
+                UpConstraint[Mask] = UpConstraint[Mask] * self._PC.BenchmarkHolding[Mask]
+                Mask = (~np.isinf(DownConstraint))
+                DownConstraint[Mask] = DownConstraint[Mask] * self._PC.BenchmarkHolding[Mask]
             UpConstraint += self._PC.BenchmarkHolding
             DownConstraint += self._PC.BenchmarkHolding
         return [{"type":"Box", "lb":DownConstraint.values.reshape((self._PC._nID, 1)), "ub":UpConstraint.values.reshape((self._PC._nID, 1))}]
@@ -646,7 +651,7 @@ class PortfolioConstructor(__QS_Object__):
             else: self._TargetIDs = ExpectedReturn.index.intersection(self._TargetIDs).tolist()
         if self._Dependency.get("协方差矩阵", False):
             if self.FactorCov is not None:
-                if self.RiskFactorData is None: raise __QS_Error__("模型需要风险因子, 但尚未赋值!")
+                if self.RiskFactorData is None: raise __QS_Error__("模型需要风险因子暴露, 但尚未赋值!")
                 if self.SpecificRisk is None: raise __QS_Error__("模型需要特异性风险, 但尚未赋值!")
                 RiskFactorData = self.RiskFactorData.dropna(how="any", axis=0)
                 SpecificRisk = self.SpecificRisk.dropna()

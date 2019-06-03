@@ -49,7 +49,7 @@ def testIDFilterStr(id_filter_str, factor_names=None):
     CompiledIDFilterStr = id_filter_str
     IDFilterFactors = []
     if not factor_names:
-        factor_names = re.findall("@(\w+)")
+        factor_names = re.findall("@(\w+)", id_filter_str)
         if "_ID" in factor_names: factor_names.remove("_ID")
     factor_names = sorted(factor_names, key=len, reverse=True)
     for iFactorName in factor_names:
@@ -66,7 +66,7 @@ def testIDFilterStr(id_filter_str, factor_names=None):
 # 过滤 ID
 def filterID(factor_data, id_filter_str):
     if not id_filter_str: return factor_data.index.tolist()
-    CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(id_filter_str, factor_names=factor_data.columns)
+    CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(id_filter_str, factor_names=factor_data.columns.tolist())
     if CompiledIDFilterStr is None: raise __QS_Error__("ID 过滤字符串有误!")
-    temp = factor_data
+    temp = factor_data.loc[:, IDFilterFactors]
     return eval("temp["+CompiledIDFilterStr+"].index.tolist()")
