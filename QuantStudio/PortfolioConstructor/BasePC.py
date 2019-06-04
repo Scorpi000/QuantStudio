@@ -3,7 +3,7 @@ import os
 
 import pandas as pd
 import numpy as np
-from traits.api import Float, Bool, Int, Str, Instance, List, Enum, Dict, on_trait_change
+from traits.api import Float, Bool, Int, Str, Instance, List, Enum, Dict, Either, on_trait_change
 
 from QuantStudio.Tools.DataTypeConversionFun import DummyVarTo01Var
 from QuantStudio.Tools.AuxiliaryFun import getFactorList
@@ -363,11 +363,10 @@ class FactorExposeConstraint(Constraint):
 # 权重约束: (w-benchmark) <=(>=) a, 转换成 Box 约束
 class WeightConstraint(Constraint):
     TargetIDs = Str(arg_type="IDFilterStr", label="目标ID", order=0)
-    UpLimit = Float(1.0, arg_type="Double", label="限制上限", order=1)
-    DownLimit = Float(0.0, arg_type="Double", label="限制下限", order=2)
+    UpLimit = Either(Float(1.0), Str(), arg_type="Double", label="限制上限", order=1)
+    DownLimit = Either(Float(0.0), Str(), arg_type="Double", label="限制下限", order=2)
     Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=3)
-    LimitType = Enum("固定值", "基准比例值", arg_type="SingleOption", label="限制类型", order=4)
-    DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=5)
+    DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=4)
     @property
     def Type(self):
         return "权重约束"
@@ -379,24 +378,27 @@ class WeightConstraint(Constraint):
             CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(self.TargetIDs)
             if CompiledIDFilterStr is None: raise __QS_Error__("ID 过滤字符串有误!")
             Dependency["因子"] = IDFilterFactors
+        if isinstance(self.UpLimit, str):
+            Dependency["因子"] = Dependency.get("因子", [])+[self.UpLimit]
+        if isinstance(self.DownLimit, str):
+            Dependency["因子"] = Dependency.get("因子", [])+[self.DownLimit]
         return Dependency
     def genConstraint(self):
         if not self.TargetIDs:
-            UpConstraint = pd.Series(self.UpLimit, index=self._PC._TargetIDs)
-            DownConstraint = pd.Series(self.DownLimit, index=self._PC._TargetIDs)
+            if isinstance(self.UpLimit, str): UpConstraint = self._PC.FactorData.loc[:, self.UpLimit]
+            else: UpConstraint = pd.Series(self.UpLimit, index=self._PC._TargetIDs)
+            if isinstance(self.DownLimit, str): DownConstraint = self._PC.FactorData.loc[:, self.DownLimit]
+            else: DownConstraint = pd.Series(self.DownLimit, index=self._PC._TargetIDs)
         else:
             UpConstraint = pd.Series(np.inf, index=self._PC._TargetIDs)
             DownConstraint = pd.Series(-np.inf, index=self._PC._TargetIDs)
             TargetIDs = filterID(self._PC.FactorData, self.TargetIDs)
             TargetIDs = list(set(TargetIDs).intersection(self._PC._TargetIDs))
-            UpConstraint[TargetIDs] = self.UpLimit
-            DownConstraint[TargetIDs] = self.DownLimit
+            if isinstance(self.UpLimit, str): UpConstraint[TargetIDs] = self._PC.FactorData.loc[TargetIDs, self.UpLimit]
+            else: UpConstraint[TargetIDs] = self.UpLimit
+            if isinstance(self.DownLimit, str): DownConstraint[TargetIDs] = self._PC.FactorData.loc[TargetIDs, self.DownLimit]
+            else: DownConstraint[TargetIDs] = self.DownLimit
         if self.Benchmark:
-            if self.LimitType=="基准比例值":
-                Mask = (~np.isinf(UpConstraint))
-                UpConstraint[Mask] = UpConstraint[Mask] * self._PC.BenchmarkHolding[Mask]
-                Mask = (~np.isinf(DownConstraint))
-                DownConstraint[Mask] = DownConstraint[Mask] * self._PC.BenchmarkHolding[Mask]
             UpConstraint += self._PC.BenchmarkHolding
             DownConstraint += self._PC.BenchmarkHolding
         return [{"type":"Box", "lb":DownConstraint.values.reshape((self._PC._nID, 1)), "ub":UpConstraint.values.reshape((self._PC._nID, 1))}]
