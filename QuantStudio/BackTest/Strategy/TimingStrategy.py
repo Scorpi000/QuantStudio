@@ -21,7 +21,6 @@ class TimingStrategy(Strategy):
     TradeTarget = Enum("锁定买卖金额", "锁定目标仓位", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=6)
     def __init__(self, name, factor_table=None, sys_args={}, config_file=None, **kwargs):
         self._FT = factor_table# 因子表
-        self._AllSignals = {}# 存储所有生成的信号, {时点: 信号}
         self._AllAllocationReset = {}# 存储所有的资金分配信号, {时点: 信号}
         self._ValueAllocated = None
         self._CashAllocated = None
@@ -68,7 +67,6 @@ class TimingStrategy(Strategy):
     def __QS_start__(self, mdl, dts, **kwargs):
         if self._isStarted: return ()
         Rslt = super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
-        self._AllSignals = {}
         self._TradeTarget = None# 锁定的交易目标
         self._SignalExcutePeriod = 0# 信号已经执行的期数
         self._ValueAllocated = self._resetAllocation(self.ValueAllocated)
