@@ -1939,6 +1939,7 @@ class _AnnTable(_DBTable):
         for i, iFactorName in enumerate(Data.items):
             Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
         return Data.loc[:, dts]
+
 class WindDB2(FactorDB):
     """Wind 量化研究数据库"""
     DBType = Enum("SQL Server", "Oracle", "MySQL", arg_type="SingleOption", label="数据库类型", order=0)

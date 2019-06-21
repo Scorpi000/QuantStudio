@@ -218,18 +218,32 @@ def getTimeSeries(start_time, end_time, timedelta):
 def getDateTimeSeries(start_dt, end_dt, timedelta):
     nDelta = int((end_dt-start_dt)/timedelta)+1
     return ((start_dt-timedelta)+np.array([timedelta]*nDelta).cumsum()).tolist()
+# 时间序列按照年度分组
+# s: Series(index=[datetime]) -> DataFrame(index=["%m-%d"], columns=["%Y"])
+def groupbyYear(s):
+    Year, MonthDay = [], []
+    for iDT in s.index:
+        Year.append(iDT.strftime("%Y"))
+        MonthDay.append(iDT.strftime("%m-%d"))
+    return pd.DataFrame({"Year": Year, "MonthDay": MonthDay, "Data": s.values}).set_index(["MonthDay", "Year"]).unstack()
+
 if __name__=="__main__":
     import time
     #DateTimes = list(pd.date_range(dt.datetime(2018,1,1,9,30), dt.datetime(2018,2,1,15), freq="min"))
     #Dates = list(pd.date_range(dt.date(2018,1,1), dt.date(2018,2,1), freq="D"))
     #Index = getDateStartEndIndex(DateTimes, Dates)
     #DateTimes = getDateTimeSeries(dt.datetime(2018,1,1,9,30), dt.datetime(2018,2,1,15), dt.timedelta(minutes=5))
-    Dates = getDateSeries(dt.date(2018,1,1), dt.date(2018,1,3))
-    Times = getTimeSeries(dt.time(9,30), dt.time(11,30), dt.timedelta(minutes=1))
-    DateTimes = np.array(tuple(combineDateTime(Dates, Times)))
+    #Dates = getDateSeries(dt.date(2018,1,1), dt.date(2018,1,3))
+    #Times = getTimeSeries(dt.time(9,30), dt.time(11,30), dt.timedelta(minutes=1))
+    #DateTimes = np.array(tuple(combineDateTime(Dates, Times)))
     #DateIndex = getDateStartEndIndex(DateTimes, Dates)
     #LastDateTimes = DateTimes[DateIndex[:,1]-1]
     #StartT = time.clock()
     #DateTimes = getDateTimeSeries(dt.datetime(2018,1,1,9,30), dt.datetime(2018,12,31,15), dt.timedelta(seconds=1))
     #print(time.clock()-StartT)
-    pass
+    # 测试 groupbyYear
+    DTs = pd.date_range(dt.datetime(2018,1,1), dt.datetime(2019,12,30), freq="D")
+    s = pd.Series(np.random.randn(DTs.shape[0]), index=DTs)
+    df = groupbyYear(s)
+    print(df.head())
+    print("===")
