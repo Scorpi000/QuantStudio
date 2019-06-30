@@ -1716,7 +1716,10 @@ class _AnalystEstDetailTable(_DBTable):
                     for i, iDate in enumerate(Dates):
                         kData[i, j] = Operator(self, iDate, jID, x, ModelArgs)
                     continue
-                jReportNoteDate = ANNReportData.loc[[jID]].reset_index()
+                if ID in ANNReportData.index:
+                    jReportNoteDate = ANNReportData.loc[[jID]].reset_index()
+                else:
+                    jReportNoteDate = pd.DataFrame(columns=ANNReportData.columns)
                 jRawData = raw_data.loc[[jID], kFields]
                 ijNoteDate = None
                 for i, iDate in enumerate(Dates):
