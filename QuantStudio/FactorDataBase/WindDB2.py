@@ -221,14 +221,14 @@ class _MarketTable(_DBTable):
         return FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()+self._DateFields
     def getCondition(self, icondition, ids=None, dts=None):
         DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
-        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._DateField, self._IDField, icondition]]
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self.DateField, self._IDField, icondition]]
         SQLStr = "SELECT DISTINCT "+DBTableName+"."+FieldDict[icondition]+" "
         SQLStr += "FROM "+DBTableName+" "
         if ids is not None: SQLStr += "WHERE ("+genSQLInCondition(DBTableName+"."+FieldDict[self._IDField], ids, is_str=True, max_num=1000)+") "
         else: SQLStr += "WHERE "+DBTableName+"."+FieldDict[self._IDField]+" IS NOT NULL "
         if dts is not None:
             Dates = list({iDT.strftime("%Y%m%d") for iDT in dts})
-            SQLStr += "AND ("+genSQLInCondition(DBTableName+"."+FieldDict[self._DateField], Dates, is_str=True, max_num=1000)+") "
+            SQLStr += "AND ("+genSQLInCondition(DBTableName+"."+FieldDict[self.DateField], Dates, is_str=True, max_num=1000)+") "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[icondition]
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     # 返回在给定时点 idt 的有数据记录的 ID
@@ -883,7 +883,7 @@ class _FeatureTable(_DBTable):
 class _FinancialTable(_DBTable):
     """财务因子表"""
     ReportDate = Enum("所有", "年报", "中报", "一季报", "三季报", Dict(), Function(), label="报告期", arg_type="SingleOption", order=0)
-    ReportType = List(["408001000", "408004000", "408005000"], label="报表类型", arg_type="MultiOption", order=1, option_range=("408001000", "408004000"))
+    ReportType = List(["408001000", "408004000", "408005000"], label="报表类型", arg_type="MultiOption", order=1, option_range=("408001000", "408004000", "408005000"))
     CalcType = Enum("最新", "单季度", "TTM", label="计算方法", arg_type="SingleOption", order=2)
     YearLookBack = Int(0, label="回溯年数", arg_type="Integer", order=3)
     PeriodLookBack = Int(0, label="回溯期数", arg_type="Integer", order=4)
@@ -971,8 +971,8 @@ class _FinancialTable(_DBTable):
             iExprNoticeConditions = (iFactor.ExprFactor, iFactor.NoticeFactor)
             if iExprNoticeConditions not in ExprNoticeConditionGroup:
                 ExprNoticeConditionGroup[iExprNoticeConditions] = {"FactorNames":[iFactor.Name], 
-                                                                                              "RawFactorNames":{iFactor._NameInFT}, 
-                                                                                              "args":iFactor.Args.copy()}
+                                                                   "RawFactorNames":{iFactor._NameInFT}, 
+                                                                   "args":iFactor.Args.copy()}
             else:
                 ExprNoticeConditionGroup[iExprNoticeConditions]["FactorNames"].append(iFactor.Name)
                 ExprNoticeConditionGroup[iExprNoticeConditions]["RawFactorNames"].add(iFactor._NameInFT)
