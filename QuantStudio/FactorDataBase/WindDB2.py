@@ -1473,7 +1473,7 @@ class _AnalystConsensusTable(_DBTable):
             else:
                 iANNReportData = None
             Data[iID] = CalcFun(Dates, raw_data.loc[[iID]], iANNReportData, factor_names, LookBack, FYNum)
-        Data = pd.Panel(Data)
+        Data = pd.Panel(Data, minor_axis=factor_names)
         Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Dates]
         Data = Data.swapaxes(0, 2)
         if LookBack==0: return Data.loc[:, dts, ids]
