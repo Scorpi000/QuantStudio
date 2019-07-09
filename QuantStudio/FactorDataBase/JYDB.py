@@ -48,7 +48,7 @@ class _DBTable(FactorTable):
             MetaData = FactorInfo["DataType"].loc[factor_names]
             for i in range(MetaData.shape[0]):
                 iDataType = MetaData.iloc[i].lower()
-                if iDataType.find("number")!=-1: MetaData.iloc[i] = "double"
+                if (iDataType.find("number")!=-1) or (iDataType.find("int")!=-1) or (iDataType.find("decimal")!=-1) or (iDataType.find("float")!=-1): MetaData.iloc[i] = "double"
                 else: MetaData.iloc[i] = "string"
             return MetaData
         elif key=="Description": return FactorInfo["Description"].loc[factor_names]
@@ -68,6 +68,7 @@ class _MappingTable(_DBTable):
         self._EndDateField = FactorInfo[FactorInfo["FieldType"]=="EndDate"].index[0]
         self._EndDateIncluded = FactorInfo[FactorInfo["FieldType"]=="EndDate"]["Supplementary"].iloc[0]
         self._EndDateIncluded = (pd.isnull(self._EndDateIncluded) or (self._EndDateIncluded=="包含"))
+        self._ConditionFields = FactorInfo[FactorInfo["FieldType"]=="Condition"].index.tolist()# 所有的条件字段列表
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
@@ -177,7 +178,7 @@ class _MappingTable(_DBTable):
             iData = pd.DataFrame(index=dts, columns=factor_names)
             for j in range(iRawData.shape[0]):
                 ijRawData = iRawData.iloc[j]
-                jStartDate, jEndDate = dt.datetime.strptime(ijRawData[self._StartDateField], "%Y%m%d"), dt.datetime.strptime(ijRawData[self._EndDateField], "%Y%m%d")-DeltaDT
+                jStartDate, jEndDate = ijRawData[self._StartDateField], ijRawData[self._EndDateField]-DeltaDT
                 iData.loc[jStartDate:jEndDate] = np.repeat(ijRawData[factor_names].values.reshape((1, nFactor)), iData.loc[jStartDate:jEndDate].shape[0], axis=0)
             Data[iID] = iData
         return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
@@ -268,7 +269,7 @@ class _MarketTable(_DBTable):
     def __QS_genGroupInfo__(self, factors, operation_mode):
         DateConditionGroup = {}
         for iFactor in factors:
-            iDateConditions = (iFactor._DateField, ";".join([iArgName+":"+str(iFactor[iArgName]) for iArgName in iFactor.ArgNames if iArgName!="回溯天数"]))
+            iDateConditions = (self._DateField, ";".join([iArgName+":"+str(iFactor[iArgName]) for iArgName in iFactor.ArgNames if iArgName!="回溯天数"]))
             if iDateConditions not in DateConditionGroup:
                 DateConditionGroup[iDateConditions] = {"FactorNames":[iFactor.Name], 
                                                        "RawFactorNames":{iFactor._NameInFT}, 
@@ -460,8 +461,9 @@ class _FinancialTable(_DBTable):
             SQLStr += "AND "+DBTableName+"."+FieldDict[self._ReportTypeField]+" IN ("+", ".join(self.ReportType)+") "
         SQLStr += "AND ("+genSQLInCondition(self._FactorDB.TablePrefix+"SecuMain.SecuCode", deSuffixID(ids), is_str=True, max_num=1000)+") "
         SQLStr += "ORDER BY "+self._FactorDB.TablePrefix+"SecuMain.SecuCode, "+DBTableName+"."+FieldDict[self._ANNDateField]+", "
-        SQLStr += DBTableName+"."+FieldDict[self._ReportDateField]+", "
-        SQLStr += DBTableName+"."+FieldDict[self._ReportTypeField]+" DESC"
+        SQLStr += DBTableName+"."+FieldDict[self._ReportDateField]
+        if self._ReportTypeField is not None:
+            SQLStr += ", "+DBTableName+"."+FieldDict[self._ReportTypeField]+" DESC"
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
         else: RawData = pd.DataFrame(np.array(RawData), columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
@@ -493,7 +495,8 @@ class _FinancialTable(_DBTable):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         NewData = {}
         for i, iFactorName in enumerate(factor_names):
-            if FactorInfo.loc[iFactorName, "DataType"].find("NUMBER")!=-1:
+            iDataType = FactorInfo.loc[iFactorName, "DataType"]
+            if (iDataType.find("number")!=-1) or (iDataType.find("int")!=-1) or (iDataType.find("decimal")!=-1) or (iDataType.find("float")!=-1):
                 NewData[iFactorName] = Data.iloc[i].astype("float")
             else:
                 NewData[iFactorName] = Data.iloc[i]
