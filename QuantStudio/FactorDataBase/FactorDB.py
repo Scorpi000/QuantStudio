@@ -20,7 +20,7 @@ from traits.api import Instance, Str, File, List, Int, Bool, Directory, Enum, Li
 from QuantStudio import __QS_Object__, __QS_Error__
 from QuantStudio.Tools.IDFun import testIDFilterStr
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName, partitionList, startMultiProcess
-from QuantStudio.Tools.FileFun import listDirDir
+from QuantStudio.Tools.FileFun import listDirDir, getShelveFileSuffix
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 
 # 因子库, 只读, 接口类
@@ -263,13 +263,15 @@ class _OperationMode(__QS_Object__):
         self._RawDataDir = ""# 原始数据存放根目录
         self._CacheDataDir = ""# 中间数据存放根目录
         self._Event = {}# {因子名: (Sub2MainQueue, Event)}
-        System = platform.system()
-        if System=="Windows":
-            self._FileSuffix = ".dat"
-        elif System=="Darwin":
-            self._FileSuffix = ".db"
-        else:
-            self._FileSuffix = ""
+        self._FileSuffix = getShelveFileSuffix()
+        if self._FileSuffix: self._FileSuffix = "." + self._FileSuffix
+        #System = platform.system()
+        #if System=="Windows":
+            #self._FileSuffix = ".dat"
+        #elif System=="Darwin":
+            #self._FileSuffix = ".db"
+        #else:
+            #self._FileSuffix = ""
         super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         self.add_trait("FactorNames", ListStr(arg_type="MultiOption", label="运算因子", order=2, option_range=tuple(self._FT.FactorNames)))

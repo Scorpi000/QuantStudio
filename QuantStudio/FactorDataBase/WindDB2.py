@@ -12,6 +12,7 @@ from traits.api import Enum, Int, Str, Range, Bool, List, ListStr, Dict, Functio
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
+from QuantStudio.Tools.FileFun import getShelveFileSuffix
 from QuantStudio import __QS_Object__, __QS_Error__, __QS_LibPath__, __QS_MainPath__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
 from QuantStudio.FactorDataBase.FDBFun import updateInfo, adjustDateTime
@@ -58,7 +59,7 @@ def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_d
         PID = sorted(pid_lock)[0]
         ANN_ReportFilePath = raw_data_dir+os.sep+PID+os.sep+report_ann_file
         pid_lock[PID].acquire()
-        if not os.path.isfile(ANN_ReportFilePath+(".dat" if os.name=="nt" else "")):# 没有报告期-公告日期数据, 提取该数据
+        if not os.path.isfile(ANN_ReportFilePath+("."+ft._ANN_ReportFileSuffix if ft._ANN_ReportFileSuffix else "")):# 没有报告期-公告日期数据, 提取该数据
             with shelve.open(ANN_ReportFilePath) as ANN_ReportFile: pass
             pid_lock[PID].release()
             IDs = []
@@ -177,7 +178,7 @@ class _CalendarTable(_DBTable):
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._IDField]+", "
         SQLStr += DBTableName+"."+FieldDict[self._DateField]
         RawData = self._FactorDB.fetchall(SQLStr)
-        if RawData==[]: return pd.DataFrame(columns=["日期", "ID"])
+        if not RawData: return pd.DataFrame(columns=["日期", "ID"])
         return pd.DataFrame(np.array(RawData), columns=["日期", "ID"])
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         raw_data["交易日"] = 1
@@ -602,7 +603,8 @@ class _ConstituentTable(_DBTable):
         SQLStr += DBTableName+"."+FieldDict[self._IDField]+", "
         SQLStr += DBTableName+"."+FieldDict[self._InDateField]
         RawData = self._FactorDB.fetchall(SQLStr)
-        return pd.DataFrame((np.array(RawData) if RawData else RawData), columns=Fields)
+        if not RawData: return pd.DataFrame(columns=Fields)
+        else: return pd.DataFrame(np.array(RawData), columns=Fields)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         DateSeries = getDateSeries(StartDate, EndDate)
@@ -676,7 +678,8 @@ class _MappingTable(_DBTable):
         SQLStr += 'ORDER BY '+DBTableName+"."+FieldDict[self._IDField]+", "
         SQLStr += DBTableName+"."+FieldDict[self._StartDateField]
         RawData = self._FactorDB.fetchall(SQLStr)
-        return pd.DataFrame((np.array(RawData) if RawData else RawData), columns=["ID", self._StartDateField, self._EndDateField]+factor_names)
+        if not RawData: return pd.DataFrame(columns=["ID", self._StartDateField, self._EndDateField]+factor_names)
+        else: return pd.DataFrame(np.array(RawData), columns=["ID", self._StartDateField, self._EndDateField]+factor_names)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data[self._EndDateField] = raw_data[self._EndDateField].where(pd.notnull(raw_data[self._EndDateField]), dt.date.today().strftime("%Y%m%d"))
@@ -823,7 +826,8 @@ class _IndustryTable(_DBTable):
         SQLStr += "AND "+DBTableName+"."+FieldDict[self._InDateField]+"<='"+EndDate.strftime("%Y%m%d")+"' "        
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._IDField]+", "+DBTableName+"."+FieldDict[self._InDateField]
         RawData = self._FactorDB.fetchall(SQLStr)
-        RawData = pd.DataFrame((np.array(RawData) if RawData else RawData), columns=["ID", "行业代码", self._InDateField, self._OutDateField])
+        if not RawData: RawData = pd.DataFrame(columns=["ID", "行业代码", self._InDateField, self._OutDateField])
+        else: RawData = pd.DataFrame(np.array(RawData), columns=["ID", "行业代码", self._InDateField, self._OutDateField])
         RawData["行业名称"] = RawData["行业代码"]
         for iCode, iName in IndustryCodeName.items(): RawData["行业名称"][RawData["行业代码"]==iCode] = iName
         return RawData
@@ -870,7 +874,7 @@ class _FeatureTable(_DBTable):
         SQLStr += "WHERE ("+genSQLInCondition(DBTableName+"."+FieldDict[self._IDField], ids, is_str=True, max_num=1000)+") "
         SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._IDField]
         RawData = self._FactorDB.fetchall(SQLStr)
-        if RawData==[]: return pd.DataFrame(columns=["ID"]+factor_names)
+        if not RawData: return pd.DataFrame(columns=["ID"]+factor_names)
         return pd.DataFrame(np.array(RawData), columns=["ID"]+factor_names)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         raw_data = raw_data.set_index(["ID"])
@@ -1398,6 +1402,7 @@ class _AnalystConsensusTable(_DBTable):
         self._PeriodField = FactorInfo[FactorInfo["FieldType"]=="Period"].index[0]
         self._TempData = {}
         self._ANN_ReportFileName = 'W2财务年报-公告日期'
+        self._ANN_ReportFileSuffix = getShelveFileSuffix()
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         return
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
@@ -1456,7 +1461,7 @@ class _AnalystConsensusTable(_DBTable):
         else:
             CalcFun, FYNum = self._calcIDData_FY, int(CalcType[-1])
             ANNReportPath = raw_data.columns.name
-            if (ANNReportPath is not None) and os.path.isfile(ANNReportPath+(".dat" if os.name=="nt" else "")):
+            if (ANNReportPath is not None) and os.path.isfile(ANNReportPath+("."+self._ANN_ReportFileSuffix if self._ANN_ReportFileSuffix else "")):
                 with shelve.open(ANNReportPath) as ANN_ReportFile:
                     ANNReportData = ANN_ReportFile["RawData"]
             else:
@@ -1640,6 +1645,7 @@ class _AnalystEstDetailTable(_DBTable):
         self._CapitalField = FactorInfo[FactorInfo["FieldType"]=="Capital"].index[0]
         self._TempData = {}
         self._ANN_ReportFileName = 'W2财务年报-公告日期'
+        self._ANN_ReportFileSuffix = getShelveFileSuffix()
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         return
     def __QS_initArgs__(self):
@@ -1697,7 +1703,7 @@ class _AnalystEstDetailTable(_DBTable):
         ModelArgs = args.get("参数", self.ModelArgs)
         Operator = args.get("算子", self.Operator)
         DataType = args.get("数据类型", self.DataType)
-        if (ANNReportPath is not None) and os.path.isfile(ANNReportPath+(".dat" if os.name=="nt" else "")):
+        if (ANNReportPath is not None) and os.path.isfile(ANNReportPath+("."+self._ANN_ReportFileSuffix if self._ANN_ReportFileSuffix else "")):
             with shelve.open(ANNReportPath) as ANN_ReportFile:
                 ANNReportData = ANN_ReportFile["RawData"]
         else:

@@ -324,6 +324,7 @@ class HierarchicalFiltrationStrategy(PortfolioStrategy):
         return list(NewIDs)+FactorData.iloc[:(nSignalID-len(NewIDs))].index.tolist()
     def _genSignalIDs(self, idt, original_ids, signal_type):
         IDs = original_ids
+        FilterLevel = 0
         for i in range(self.FiltrationLevel):
             iArgs = self["第"+str(i)+"层"]
             if iArgs.SignalType!=signal_type: continue
@@ -345,13 +346,15 @@ class HierarchicalFiltrationStrategy(PortfolioStrategy):
                     IDs += jIDs
             else:
                 IDs = self._filtrateID(idt, IDs, iArgs)
-        return IDs
+            FilterLevel += 1
+        if FilterLevel>0: return IDs
+        else: return []
     def genSignal(self, idt, trading_record):
         OriginalIDs = self.TargetAccount.IDs
         IDs = self._genSignalIDs(idt, OriginalIDs, "多头信号")
-        LongSignal = pd.Series(1/len(IDs), index=IDs)
+        LongSignal = pd.Series(1, index=IDs) / len(IDs)
         IDs = self._genSignalIDs(idt, OriginalIDs, "空头信号")
-        ShortSignal = pd.Series(-1/len(IDs), index=IDs)
+        ShortSignal = pd.Series(-1, index=IDs) / len(IDs)
         return LongSignal.add(ShortSignal, fill_value=0.0)
 
 class _SignalAdjustment(__QS_Object__):

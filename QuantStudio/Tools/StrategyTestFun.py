@@ -80,7 +80,7 @@ def calcLSYield(long_yield, short_yield, rebalance_index=None):
             LSYield[i] = LNAV * long_yield[i] - SNAV * short_yield[i]
             LNAV *= (1 + long_yield[i])
             SNAV *= (1 + short_yield[i])
-        if i==rebalance_index[iPreRebalanceInd+1]:
+        if (iPreRebalanceInd<nRebalance-1) and (i==rebalance_index[iPreRebalanceInd+1]):
             LNAV, SNAV = 1.0, 1.0
             iPreRebalanceInd += 1
     return LSYield

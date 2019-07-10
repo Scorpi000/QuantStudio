@@ -5,6 +5,8 @@ import io
 import shutil
 import json
 import datetime as dt
+import shelve
+import tempfile
 
 import numpy as np
 import pandas as pd
@@ -267,6 +269,18 @@ def getWindowsDesktopPath():
     import winreg
     Key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Shell Folders")
     return winreg.QueryValueEx(Key, "Desktop")[0]
+# 获取 shelve 文件的后缀名
+def getShelveFileSuffix():
+    TestDir = tempfile.TemporaryDirectory()
+    with shelve.open(TestDir.name+os.sep+"TestFile") as TestFile:
+        TestFile["TestData"] = 0
+    Suffix = ""
+    for iFile in os.listdir(TestDir.name):
+        if iFile=="TestFile": iSuffix = ""
+        else: iSuffix = iFile.split(".")[-1]
+        if iSuffix=="dat": return "dat"
+        else: Suffix = iSuffix
+    return Suffix
 # 文件锁
 # LOCK_EX: Exclusive Lock, 拒绝其他所有进程的读取和写入的请求
 # LOCK_SH: Shared Lock(默认), 这种锁会拒绝所有进程的写入请求, 包括最初设定锁的进程. 但所有的进程都可以读取被锁定的文件.

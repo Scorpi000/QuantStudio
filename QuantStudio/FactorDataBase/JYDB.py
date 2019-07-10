@@ -12,6 +12,7 @@ from traits.api import Enum, Int, Str, Range, Bool, List, ListStr, Dict, Functio
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
+from QuantStudio.Tools.FileFun import getShelveFileSuffix
 from QuantStudio import __QS_Object__, __QS_Error__, __QS_LibPath__, __QS_MainPath__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
 from QuantStudio.FactorDataBase.FDBFun import updateInfo, adjustDateTime
@@ -164,7 +165,8 @@ class _MappingTable(_DBTable):
         SQLStr += "ORDER BY "+self._FactorDB.TablePrefix+"SecuMain.SecuCode, "
         SQLStr += DBTableName+"."+FieldDict[self._StartDateField]
         RawData = self._FactorDB.fetchall(SQLStr)
-        RawData = pd.DataFrame((np.array(RawData) if RawData else RawData), columns=["ID", self._StartDateField, self._EndDateField]+factor_names)
+        if not RawData: return pd.DataFrame(columns=["ID", self._StartDateField, self._EndDateField]+factor_names)
+        RawData = pd.DataFrame(np.array(RawData), columns=["ID", self._StartDateField, self._EndDateField]+factor_names)
         RawData["ID"] = suffixAShareID(RawData["ID"].tolist())
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
@@ -865,7 +867,7 @@ def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_d
         PID = sorted(pid_lock)[0]
         ANN_ReportFilePath = raw_data_dir+os.sep+PID+os.sep+report_ann_file
         pid_lock[PID].acquire()
-        if not os.path.isfile(ANN_ReportFilePath+(".dat" if os.name=="nt" else "")):# 没有报告期-公告日期数据, 提取该数据
+        if not os.path.isfile(ANN_ReportFilePath+("."+ft._ANN_ReportFileSuffix if ft._ANN_ReportFileSuffix else "")):# 没有报告期-公告日期数据, 提取该数据
             with shelve.open(ANN_ReportFilePath) as ANN_ReportFile: pass
             pid_lock[PID].release()
             IDs = []
@@ -899,6 +901,7 @@ class _AnalystConsensusTable(_DBTable):
         self._PeriodField = FactorInfo[FactorInfo["FieldType"]=="Period"].index[0]
         self._TempData = {}
         self._ANN_ReportFileName = 'JY财务年报-公告日期'
+        self._ANN_ReportFileSuffix = getShelveFileSuffix()
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         return
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
@@ -966,7 +969,7 @@ class _AnalystConsensusTable(_DBTable):
         else:
             CalcFun, FYNum = self._calcIDData_FY, int(CalcType[-1])
             ANNReportPath = raw_data.columns.name
-            if (ANNReportPath is not None) and os.path.isfile(ANNReportPath+(".dat" if os.name=="nt" else "")):
+            if (ANNReportPath is not None) and os.path.isfile(ANNReportPath+("."+self._ANN_ReportFileSuffix if self._ANN_ReportFileSuffix else "")):
                 with shelve.open(ANNReportPath) as ANN_ReportFile:
                     ANNReportData = ANN_ReportFile["RawData"]
             else:
@@ -1071,6 +1074,7 @@ class _AnalystEstDetailTable(_DBTable):
         self._ReportDateField = FactorInfo[FactorInfo["FieldType"]=="ReportDate"].index[0]
         self._TempData = {}
         self._ANN_ReportFileName = "JY财务年报-公告日期"
+        self._ANN_ReportFileSuffix = getShelveFileSuffix()
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
@@ -1135,7 +1139,7 @@ class _AnalystEstDetailTable(_DBTable):
         ModelArgs = args.get("参数", self.ModelArgs)
         Operator = args.get("算子", self.Operator)
         DataType = args.get("数据类型", self.DataType)
-        if (ANNReportPath is not None) and os.path.isfile(ANNReportPath+(".dat" if os.name=="nt" else "")):
+        if (ANNReportPath is not None) and os.path.isfile(ANNReportPath+("."+self._ANN_ReportFileSuffix if self._ANN_ReportFileSuffix else "")):
             with shelve.open(ANNReportPath) as ANN_ReportFile:
                 ANNReportData = ANN_ReportFile["RawData"]
         else:
@@ -1285,7 +1289,7 @@ class JYDB(FactorDB):
     Pwd = Password("", arg_type="String", label="密码", order=5)
     TablePrefix = Str("", arg_type="String", label="表名前缀", order=6)
     CharSet = Enum("utf8", "gbk", "gb2312", "gb18030", "cp936", "big5", arg_type="SingleOption", label="字符集", order=7)
-    Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
+    Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pymysql", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
     DSN = Str("", arg_type="String", label="数据源", order=9)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"JYDBConfig.json" if config_file is None else config_file), **kwargs)
@@ -1327,6 +1331,12 @@ class JYDB(FactorDB):
             try:
                 import mysql.connector
                 self._Connection = mysql.connector.connect(host=self.IPAddr, port=str(self.Port), user=self.User, password=self.Pwd, database=self.DBName, charset=self.CharSet)
+            except Exception as e:
+                if self.Connector!='default': raise e
+        elif self.Connector=='pymysql':
+            try:
+                import pymysql
+                self._Connection = pymysql.connect(host=self.IPAddr, port=self.Port, user=self.User, password=self.Pwd, db=self.DBName, charset=self.CharSet)
             except Exception as e:
                 if self.Connector!='default': raise e
         if self._Connection is None:
