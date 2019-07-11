@@ -7,6 +7,7 @@ import json
 import datetime as dt
 import shelve
 import tempfile
+from functools import lru_cache
 
 import numpy as np
 import pandas as pd
@@ -270,6 +271,7 @@ def getWindowsDesktopPath():
     Key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Shell Folders")
     return winreg.QueryValueEx(Key, "Desktop")[0]
 # 获取 shelve 文件的后缀名
+@lru_cache(maxsize=128)
 def getShelveFileSuffix():
     TestDir = tempfile.TemporaryDirectory()
     with shelve.open(TestDir.name+os.sep+"TestFile") as TestFile:
@@ -304,3 +306,8 @@ def getShelveFileSuffix():
         #fcntl.flock(file.fileno(), flags)
     #def unlockFile(file):
         #fcntl.flock(file.fileno(), fcntl.LOCK_UN)
+if __name__=="__main__":
+    print("===")
+    print(getShelveFileSuffix())
+    print(getShelveFileSuffix())
+    print("===")

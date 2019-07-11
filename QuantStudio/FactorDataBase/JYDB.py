@@ -1386,7 +1386,7 @@ class JYDB(FactorDB):
     # -------------------------------表的操作---------------------------------
     @property
     def TableNames(self):
-        if self._TableInfo is not None: return self._TableInfo.index.tolist()
+        if self._TableInfo is not None: return self._TableInfo[pd.notnull(self._TableInfo["TableClass"])].index.tolist()
         else: return []
     def getTable(self, table_name, args={}):
         if table_name in self._TableInfo.index:
@@ -1434,3 +1434,6 @@ class JYDB(FactorDB):
             IDs = self.getTable(iTableName).getID(ifactor_name=index_id, idt=date, is_current=is_current)
             if IDs: return IDs
         else: return []
+    # 获取宏观指标名称对应的指标 ID
+    def getMacroIndicatorID(self, indicators):
+        

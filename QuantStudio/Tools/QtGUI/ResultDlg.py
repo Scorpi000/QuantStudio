@@ -395,7 +395,7 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
     def sortData(self,ascending=True):
         SelectedColumns = self.getSelectedColumns()
         if len(SelectedColumns)==0: return QtWidgets.QMessageBox.critical(self, "错误", "请选择至少一列!")
-        self.CurDF = self.CurDF.sort(list(self.CurDF.columns[SelectedColumns]),ascending=ascending)
+        self.CurDF = self.CurDF.sort_values(by=list(self.CurDF.columns[SelectedColumns]), ascending=ascending)
         return self.populateMainResultTable()
     def sortDataAscending(self):# 升序
         return self.sortData()
