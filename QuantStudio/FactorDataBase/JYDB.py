@@ -28,7 +28,12 @@ def suffixAShareID(ids):
 # 给 ID 去后缀
 def deSuffixID(ids, sep='.'):
     return [(iID.split(sep)[0] if iID[0]!="T" else "99"+iID.split(sep)[0][2:]) for iID in ids]
-
+# 根据字段的数据类型确定 QS 的数据类型
+def _identifyDataType(field_data_type):
+    if (field_data_type.find("number")!=-1) or (field_data_type.find("int")!=-1) or (field_data_type.find("decimal")!=-1) or (field_data_type.find("float")!=-1):
+        return "double"
+    else:
+        return "string"
 class _DBTable(FactorTable):
     def getMetaData(self, key=None):
         TableInfo = self._FactorDB._TableInfo.loc[self.Name]
@@ -1435,5 +1440,5 @@ class JYDB(FactorDB):
             if IDs: return IDs
         else: return []
     # 获取宏观指标名称对应的指标 ID
-    def getMacroIndicatorID(self, indicators):
-        
+    def getMacroIndicatorID(self, indicators, table_name=None):
+        pass
