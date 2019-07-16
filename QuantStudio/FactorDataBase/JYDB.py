@@ -431,19 +431,19 @@ class _ConstituentTable(_DBTable):
         SQLStr += self._MainTableName+"."+self._MainTableID+", "
         SQLStr += self._DBTableName+"."+FieldDict[self._InDateField]
         RawData = self._FactorDB.fetchall(SQLStr)
-        if not RawData: RawData = pd.DataFrame(columns=["IndexID", "ID", "InDate", "OutDate", "CurSign"])
-        else: RawData = pd.DataFrame(np.array(RawData), columns=["IndexID", "ID", "InDate", "OutDate", "CurSign"])
-        if self._SecurityType=="A股": RawData["ID"] = suffixAShareID(RawData["ID"].tolist())
+        if not RawData: RawData = pd.DataFrame(columns=["IndexID", "SecurityID", "InDate", "OutDate", "CurSign"])
+        else: RawData = pd.DataFrame(np.array(RawData), columns=["IndexID", "SecurityID", "InDate", "OutDate", "CurSign"])
+        if self._SecurityType=="A股": RawData["SecurityID"] = suffixAShareID(RawData["SecurityID"].tolist())
         else:
-            RawData["ID"] = RawData["ID"].astype("O")
-            RawData["ID"] = [str(iID) for iID in RawData["ID"]]
+            RawData["SecurityID"] = RawData["SecurityID"].astype("O")
+            RawData["SecurityID"] = [str(iID) for iID in RawData["SecurityID"]]
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         DateSeries = getDateSeries(StartDate, EndDate)
         Data = {}
         for iIndexID in factor_names:
-            iRawData = raw_data[raw_data["IndexID"]==int(iIndexID)].set_index(["ID"])
+            iRawData = raw_data[raw_data["IndexID"]==int(iIndexID)].set_index(["SecurityID"])
             iData = pd.DataFrame(0, index=DateSeries, columns=pd.unique(iRawData.index))
             for jID in iData.columns:
                 jIDRawData = iRawData.loc[[jID]]
@@ -612,7 +612,7 @@ class _MarketTable(_DBTable):
             iRawData = raw_data[iFactorName].unstack()
             iDataType = _identifyDataType(FactorInfo.loc[iFactorName, "DataType"])
             if iDataType=="double": iRawData = iRawData.astype("float")
-            elif iDataType=="datetime": iRawData = iRawData.applymap(lambda x: x.strftime("%Y-%m-%d %H:%M:%S") if pd.notnull(x) else None)
+            #elif iDataType=="datetime": iRawData = iRawData.applymap(lambda x: x.strftime("%Y-%m-%d %H:%M:%S") if pd.notnull(x) else None)
             Data[iFactorName] = iRawData
         Data = pd.Panel(Data).loc[factor_names]
         LookBack = args.get("回溯天数", self.LookBack)
@@ -664,13 +664,17 @@ class _FinancialTable(_DBTable):
         self._SecurityType = fdb.TablePrefix + fdb._TableInfo.loc[name, "SecurityType"]
         FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="ID"].iloc[0]# ID 字段
-        self._ANNDateField = FactorInfo[FactorInfo["FieldType"]=="ANNDate"].index[0]
-        self._ANNTypeField = FactorInfo[FactorInfo["FieldType"]=="ANNType"].index[0]
+        self._ANNDateField = FactorInfo[FactorInfo["FieldType"]=="ANNDate"].index
+        if self._ANNDateField.shape[0]>0: self._ANNDateField = self._ANNDateField[0]
+        else: self._ANNDateField = None
+        self._ANNTypeField = FactorInfo[FactorInfo["FieldType"]=="ANNType"].index
+        if self._ANNTypeField.shape[0]>0: self._ANNTypeField = self._ANNTypeField[0]
+        else: self._ANNTypeField = None        
         self._ReportDateField = FactorInfo[FactorInfo["FieldType"]=="ReportDate"].index[0]
         self._ReportTypeField = FactorInfo[FactorInfo["FieldType"]=="ReportType"].index
-        self._TempData = {}
         if self._ReportTypeField.shape[0]==0: self._ReportTypeField = None
         else: self._ReportTypeField = self._ReportTypeField[0]
+        self._TempData = {}
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
     @property
     def FactorNames(self):
@@ -803,12 +807,9 @@ class _FinancialTable(_DBTable):
         NewData = {}
         for i, iFactorName in enumerate(factor_names):
             iDataType = _identifyDataType(FactorInfo.loc[iFactorName, "DataType"])
-            if iDataType=="double":
-                NewData[iFactorName] = Data.iloc[i].astype("float")
-            elif iDataType=="datetime":
-                NewData[iFactorName] = Data.iloc[i].applymap(lambda x: x.strftime("%Y-%m-%d %H:%M:%S") if pd.notnull(x) else None)
-            else:
-                NewData[iFactorName] = Data.iloc[i]
+            if iDataType=="double": NewData[iFactorName] = Data.iloc[i].astype("float")
+            #elif iDataType=="datetime": NewData[iFactorName] = Data.iloc[i].applymap(lambda x: x.strftime("%Y-%m-%d %H:%M:%S") if pd.notnull(x) else None)
+            else: NewData[iFactorName] = Data.iloc[i]
         Data = adjustDateTime(pd.Panel(NewData).loc[factor_names], dts, fillna=True, method="pad")
         Data = Data.loc[:, :, ids]
         return Data
@@ -1127,13 +1128,65 @@ class _FinancialTable(_DBTable):
         return StdData
 
 
-
-
-
-
-
-
-
+# 财务指标因子表, 表结构特征:
+# 报告期字段, 表示财报的报告期
+# 无公告日期字段, 需另外补充完整
+class _FinancialIndicatorTable(_FinancialTable):
+    """财务指标因子表"""
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+    @property
+    def FactorNames(self):
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        FactorNames = FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()
+        return [self._ReportDateField]+FactorNames
+    def getID(self, ifactor_name=None, idt=None, args={}):# TODO
+        return []
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):# TODO
+        return []
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        Fields = list(set([self._ReportDateField]+factor_names))
+        FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[Fields]
+        DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
+        SQLStr = "SELECT "+self._MainTableName+"."+self._MainTableID+", "
+        if self._FactorDB.DBType=="SQL Server":
+            SQLStr += "TO_CHAR(LC_BalanceSheetAll.InfoPublDate, 'YYYYMMDD'), "
+            SQLStr += "TO_CHAR("+DBTableName+"."+FieldDict[self._ReportDateField]+", 'YYYYMMDD'), "
+        elif self._FactorDB.DBType=="MySQL":
+            SQLStr += "DATE_FORMAT(LC_BalanceSheetAll.InfoPublDate, '%Y%m%d'), "
+            SQLStr += "DATE_FORMAT("+DBTableName+"."+FieldDict[self._ReportDateField]+",'%Y%m%d'), "
+        elif self._FactorDB.DBType=="Oracle":
+            SQLStr += "TO_CHAR(LC_BalanceSheetAll.InfoPublDate, 'yyyyMMdd'), "
+            SQLStr += "TO_CHAR("+DBTableName+"."+FieldDict[self._ReportDateField]+",'yyyyMMdd'), "
+        SQLStr += "NULL AS ReportType, "
+        for iField in factor_names:
+            if iField in (self._IDField, self._ReportDateField):
+                SQLStr += DBTableName+"."+FieldDict[iField]+" AS "+iField+", "
+            else:
+                SQLStr += DBTableName+"."+FieldDict[iField]+", "
+        SQLStr = SQLStr[:-2]+" FROM "+DBTableName+" "
+        SQLStr += "INNER JOIN "+self._MainTableName+" "
+        SQLStr += "ON "+self._JoinCondition+" "
+        SQLStr += "INNER JOIN LC_BalanceSheetAll "
+        SQLStr += "ON ("+DBTableName+"."+self._IDField+"=LC_BalanceSheetAll.CompanyCode "
+        SQLStr += "AND "+DBTableName+"."+FieldDict[self._ReportDateField]+"=LC_BalanceSheetAll.EndDate) "
+        SQLStr += "WHERE LC_BalanceSheetAll.BulletinType = 20 "
+        SQLStr += "AND LC_BalanceSheetAll.IfMerged = 1 "
+        SQLStr += "AND LC_BalanceSheetAll.IfAdjusted = 2 "
+        if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
+        if self._SecurityType=="A股": ids = deSuffixID(ids)
+        SQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, ids, is_str=True, max_num=1000)+") "
+        SQLStr += "ORDER BY "+self._MainTableName+"."+self._MainTableID+", LC_BalanceSheetAll.InfoPublDate, "
+        SQLStr += DBTableName+"."+FieldDict[self._ReportDateField]
+        RawData = self._FactorDB.fetchall(SQLStr)
+        if not RawData: return pd.DataFrame(columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
+        else: RawData = pd.DataFrame(np.array(RawData), columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
+        if self._SecurityType=="A股": RawData["ID"] = suffixAShareID(RawData["ID"].tolist())
+        else:
+            RawData["ID"] = RawData["ID"].astype("O")
+            RawData["ID"] = [str(iID) for iID in RawData["ID"]]
+        return RawData
 
 
 # 生成报告期-公告日期 SQL 查询语句
@@ -1919,12 +1972,9 @@ class _MacroTable(_DBTable):
         NewData = {}
         for i, iFactorName in enumerate(factor_names):
             iDataType = _identifyDataType(FactorInfo.loc[iFactorName, "DataType"])
-            if iDataType=="double":
-                NewData[iFactorName] = Data.iloc[i].astype("float")
-            elif iDataType=="datetime":
-                NewData[iFactorName] = Data.iloc[i].applymap(lambda x: x.strftime("%Y-%m-%d %H:%M:%S") if pd.notnull(x) else None)
-            else:
-                NewData[iFactorName] = Data.iloc[i]
+            if iDataType=="double": NewData[iFactorName] = Data.iloc[i].astype("float")
+            #elif iDataType=="datetime": NewData[iFactorName] = Data.iloc[i].applymap(lambda x: x.strftime("%Y-%m-%d %H:%M:%S") if pd.notnull(x) else None)
+            else: NewData[iFactorName] = Data.iloc[i]
         Data = adjustDateTime(pd.Panel(NewData).loc[factor_names], dts, fillna=True, method="pad")
         Data = Data.loc[:, :, ids]
         return Data
