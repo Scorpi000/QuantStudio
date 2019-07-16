@@ -45,7 +45,6 @@ class PortfolioStrategy(Strategy):
     TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=7)
     def __init__(self, name, factor_table=None, sys_args={}, config_file=None, **kwargs):
         self._FT = factor_table# 因子表
-        self._AllSignals = {}# 存储所有生成的信号, {时点:信号}
         return super().__init__(name=name, accounts=[], fts=([] if self._FT is None else [self._FT]), sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         self.LongWeightAlloction = _WeightAllocation(ft=self._FT)
@@ -61,7 +60,6 @@ class PortfolioStrategy(Strategy):
     def __QS_start__(self, mdl, dts, **kwargs):
         if self._isStarted: return ()
         if self.TargetAccount is None: raise __QS_Error__("必须设置目标账户!")
-        self._AllSignals = {}
         self._TradeTarget = None# 锁定的交易目标
         self._SignalExcutePeriod = 0# 信号已经执行的期数
         # 初始化信号滞后发生的控制变量
@@ -94,7 +92,7 @@ class PortfolioStrategy(Strategy):
         if recalculate: Output["Strategy"]["投资组合信号"] = pd.DataFrame(self._AllSignals).T
         return Output
     def genSignal(self, idt, trading_record):
-        return (None, None)
+        return None
     def trade(self, idt, trading_record, signal):
         if self.TargetAccount is None: return 0
         AccountValue = abs(self.TargetAccount.AccountValue)
@@ -326,6 +324,7 @@ class HierarchicalFiltrationStrategy(PortfolioStrategy):
         return list(NewIDs)+FactorData.iloc[:(nSignalID-len(NewIDs))].index.tolist()
     def _genSignalIDs(self, idt, original_ids, signal_type):
         IDs = original_ids
+        FilterLevel = 0
         for i in range(self.FiltrationLevel):
             iArgs = self["第"+str(i)+"层"]
             if iArgs.SignalType!=signal_type: continue
@@ -347,13 +346,15 @@ class HierarchicalFiltrationStrategy(PortfolioStrategy):
                     IDs += jIDs
             else:
                 IDs = self._filtrateID(idt, IDs, iArgs)
-        return IDs
+            FilterLevel += 1
+        if FilterLevel>0: return IDs
+        else: return []
     def genSignal(self, idt, trading_record):
         OriginalIDs = self.TargetAccount.IDs
         IDs = self._genSignalIDs(idt, OriginalIDs, "多头信号")
-        LongSignal = pd.Series(1/len(IDs), index=IDs)
+        LongSignal = pd.Series(1, index=IDs) / len(IDs)
         IDs = self._genSignalIDs(idt, OriginalIDs, "空头信号")
-        ShortSignal = pd.Series(-1/len(IDs), index=IDs)
+        ShortSignal = pd.Series(-1, index=IDs) / len(IDs)
         return LongSignal.add(ShortSignal, fill_value=0.0)
 
 class _SignalAdjustment(__QS_Object__):

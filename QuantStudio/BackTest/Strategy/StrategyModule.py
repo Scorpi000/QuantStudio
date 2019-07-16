@@ -20,8 +20,8 @@ from QuantStudio.Tools.StrategyTestFun import summaryStrategy, calcYieldSeq, cal
 from QuantStudio.FactorDataBase.FactorDB import FactorTable
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 
-_QS_MinPositionNum = 1e-8
-_QS_MinCash = 1e-8
+_QS_MinPositionNum = 1e-8# 会被忽略掉的最小持仓数量
+_QS_MinCash = 1e-8# 会被忽略掉的最小现金量
 
 def cutDateTime(df, dts=None, start_dt=None, end_dt=None):
     if dts is not None: df = df.loc[dts]
@@ -247,12 +247,14 @@ class Strategy(BaseModule):
         self.FactorTables = fts# 策略所用到的因子表
         self.ModelArgs = {}# 模型参数，即用户自定义参数
         self.UserData = {}# 用户数据存放
+        self._AllSignals = {}# 存储所有生成的信号, {时点:信号}
         return super().__init__(name=name, sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         self.Benchmark = _Benchmark()
     def __QS_start__(self, mdl, dts, **kwargs):
         if self._isStarted: return ()
         self.UserData = {}
+        self._AllSignals = {}
         Rslt = ()
         for iAccount in self.Accounts: Rslt += iAccount.__QS_start__(mdl=mdl, dts=dts, **kwargs)
         Rslt += super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
@@ -262,6 +264,7 @@ class Strategy(BaseModule):
         if self._iDT==idt: return 0
         iTradingRecord = {iAccount.Name:iAccount.__QS_move__(idt, **kwargs) for iAccount in self.Accounts}
         Signal = self.genSignal(idt, iTradingRecord)
+        self._AllSignals[idt] = Signal
         self.trade(idt, iTradingRecord, Signal)
         for iAccount in self.Accounts: iAccount.__QS_after_move__(idt, **kwargs)
         return 0
@@ -277,6 +280,9 @@ class Strategy(BaseModule):
             Groups.append(Group(*jItems, label=str(j)+"-"+jAccount.Name))
             Context.update(jContext)
         return ([Group(*Groups, orientation='horizontal', layout='tabbed', springy=True)], Context)
+    # 返回策略在时点 idt 生成的信号
+    def getSignal(self, idt): 
+        return self._AllSignals.get(idt, None)
     # 可选实现
     def init(self):
         return 0

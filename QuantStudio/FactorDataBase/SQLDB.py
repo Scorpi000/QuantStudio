@@ -118,6 +118,7 @@ class SQLDB(WritableFactorDB):
         else: self._Connection = None
     # -------------------------------------------数据库相关---------------------------
     def _connect(self):
+        self._Connection = None
         if (self.Connector=="cx_Oracle") or ((self.Connector=="default") and (self.DBType=="Oracle")):
             try:
                 import cx_Oracle
@@ -136,14 +137,15 @@ class SQLDB(WritableFactorDB):
                 self._Connection = mysql.connector.connect(host=self.IPAddr, port=str(self.Port), user=self.User, password=self.Pwd, database=self.DBName, charset=self.CharSet, autocommit=True)
             except Exception as e:
                 if self.Connector!="default": raise e
-        if self.Connector not in ("default", "pyodbc"):
-            self._Connection = None
-            raise __QS_Error__("不支持该连接器(connector) : "+self.Connector)
-        else:
-            import pyodbc
-            if self.DSN: self._Connection = pyodbc.connect("DSN=%s;PWD=%s" % (self.DSN, self.Pwd))
-            else: self._Connection = pyodbc.connect("DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s" % (self.DBType, self.DBName, self.IPAddr, self.User, self.Pwd))
-            self.Connector = "pyodbc"
+        if self._Connection is None:
+            if self.Connector not in ("default", "pyodbc"):
+                self._Connection = None
+                raise __QS_Error__("不支持该连接器(connector) : "+self.Connector)
+            else:
+                import pyodbc
+                if self.DSN: self._Connection = pyodbc.connect("DSN=%s;PWD=%s" % (self.DSN, self.Pwd))
+                else: self._Connection = pyodbc.connect("DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s" % (self.DBType, self.DBName, self.IPAddr+","+str(self.Port), self.User, self.Pwd))
+                self.Connector = "pyodbc"
         return 0
     def connect(self):
         self._connect()

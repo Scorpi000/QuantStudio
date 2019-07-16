@@ -7,7 +7,7 @@ import datetime as dt
 import numpy as np
 import pandas as pd
 import tushare as ts
-from traits.api import Enum, Int, Str
+from traits.api import Enum, Int, Str, Function
 
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.MathFun import CartesianProduct
@@ -249,6 +249,126 @@ class _MarketTable(_TSTable):
         Data = pd.Panel(Data).loc[factor_names]
         Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Data.major_axis]
         if Data.minor_axis.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        LookBack = args.get("回溯天数", self.LookBack)
+        if LookBack==0: return Data.loc[:, dts, ids]
+        AllDTs = Data.major_axis.union(dts).sort_values()
+        Data = Data.loc[:, AllDTs, ids]
+        Limits = LookBack*24.0*3600
+        for i, iFactorName in enumerate(Data.items):
+            Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
+        return Data.loc[:, dts]
+
+# 公告信息表, 表结构特征:
+# 公告日期, 表示获得信息的时点;
+# 截止日期, 表示信息有效的时点, 该字段可能没有;
+# 如果存在截止日期, 以截止日期和公告日期的最大值作为数据填充的时点; 如果不存在截止日期, 以公告日期作为数据填充的时点;
+# 数据填充时点和 ID 不能唯一标志一行记录, 对于每个 ID 每个数据填充时点可能存在多个数据, 将所有的数据以 list 组织, 如果算子参数不为 None, 以该算子作用在数据 list 上的结果为最终填充结果, 否则以数据 list 填充;
+# 先填充表中已有的数据, 然后根据回溯天数参数填充缺失的时点
+class _AnnTable(_TSTable):
+    """公告信息表"""
+    #ANNDate = Enum(None, arg_type="SingleOption", label="公告日期", order=0)
+    Operator = Function(None, arg_type="Function", label="算子", order=1)
+    LookBack = Int(0, arg_type="Integer", label="回溯天数", order=2)
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        FactorInfo = fdb._FactorInfo.loc[name]
+        IDInfo = FactorInfo[FactorInfo["FieldType"]=="ID"]
+        if IDInfo.shape[0]==0: self._IDField = self._IDType = None            
+        else: self._IDField, self._IDType = IDInfo.index[0], IDInfo["Supplementary"].iloc[0]
+        self._AnnDateField = FactorInfo[FactorInfo["FieldType"]=="ANNDate"].index[0]# 公告日期
+        self._ConditionFields = FactorInfo[FactorInfo["FieldType"]=="Condition"].index.tolist()# 所有的条件字段列表
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+    def __QS_initArgs__(self):
+        super().__QS_initArgs__()
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        for i, iCondition in enumerate(self._ConditionFields):
+            self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+2))
+            self[iCondition] = str(FactorInfo.loc[iCondition, "Supplementary"])
+    @property
+    def FactorNames(self):
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        return FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()+[self._AnnDateField]
+    def getID(self, ifactor_name=None, idt=None, args={}):
+        if self._IDField is None: return ["000000.HST"]
+        TableType = self._FactorDB._TableInfo.loc[self.Name, "Supplementary"]
+        if TableType=="A股": return self._FactorDB.getStockID(index_id="全体A股", is_current=False)
+        elif TableType=="期货": return self._FactorDB.getFutureID(future_code=None, is_current=False)
+        return []
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
+        return self._FactorDB.getTradeDay(start_date=start_dt, end_date=end_dt, exchange="", output_type="datetime")
+    def __QS_genGroupInfo__(self, factors, operation_mode):
+        ConditionGroup = {}
+        for iFactor in factors:
+            iConditions = ";".join([iArgName+":"+iFactor[iArgName] for iArgName in iFactor.ArgNames if iArgName not in ("回溯天数", "算子")])
+            if iConditions not in ConditionGroup:
+                ConditionGroup[iConditions] = {"FactorNames":[iFactor.Name], 
+                                               "RawFactorNames":{iFactor._NameInFT}, 
+                                               "StartDT":operation_mode._FactorStartDT[iFactor.Name], 
+                                               "args":iFactor.Args.copy()}
+            else:
+                ConditionGroup[iConditions]["FactorNames"].append(iFactor.Name)
+                ConditionGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
+                ConditionGroup[iConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], ConditionGroup[iConditions]["StartDT"])
+                ConditionGroup[iConditions]["args"]["回溯天数"] = max(ConditionGroup[iConditions]["args"]["回溯天数"], iFactor.LookBack)
+        EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
+        Groups = []
+        for iConditions in ConditionGroup:
+            StartInd = operation_mode.DTRuler.index(ConditionGroup[iConditions]["StartDT"])
+            Groups.append((self, ConditionGroup[iConditions]["FactorNames"], list(ConditionGroup[iConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], ConditionGroup[iConditions]["args"]))
+        return Groups
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        StartDate, EndDate = dts[0].date(), dts[-1].date()
+        StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
+        Fields = [self._AnnDateField]+factor_names
+        if self._IDField is not None: Fields.insert(0, self._IDField)
+        DBFields = FactorInfo["DBFieldName"].loc[Fields].tolist()
+        DBTableName = self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
+        RawData = pd.DataFrame(columns=DBFields)
+        FieldStr = ",".join(DBFields)
+        Conditions = {}
+        for iConditionField in self._ConditionFields:
+            iDataType = FactorInfo.loc[iConditionField, "DataType"]
+            if iDataType=="str":
+                Conditions[FactorInfo.loc[iConditionField, "DBFieldName"]] = args.get(iConditionField, self[iConditionField])
+            elif iDataType=="float":
+                Conditions[FactorInfo.loc[iConditionField, "DBFieldName"]] = float(args.get(iConditionField, self[iConditionField]))
+            elif iDataType=="int":
+                Conditions[FactorInfo.loc[iConditionField, "DBFieldName"]] = int(args.get(iConditionField, self[iConditionField]))
+        StartDate, EndDate = StartDate.strftime("%Y%m%d"), EndDate.strftime("%Y%m%d")
+        if self._IDField is None:
+            RawData = self._FactorDB._ts.query(DBTableName, start_date=StartDate, end_date=EndDate, fields=FieldStr, **Conditions)
+            RawData.insert(0, "ID", "000000.HST")
+            DBFields.insert(0, "ID")
+        elif pd.isnull(self._IDType):
+            for iID in self._FactorDB.ID2DBID(ids):
+                Conditions[DBFields[0]] = iID
+                iData = self._FactorDB._ts.query(DBTableName, start_date=StartDate, end_date=EndDate, fields=FieldStr, **Conditions)
+                while iData.shape[0]>0:
+                    RawData = RawData.append(iData)
+                    iEndDate = iData[DBFields[1]].min()
+                    iData = self._FactorDB._ts.query(DBTableName, start_date=StartDate, end_date=iEndDate, fields=FieldStr, **Conditions)
+                    iEndDateData = iData[iData[DBFields[1]]==iEndDate]
+                    iRawEndDateMask = (RawData[DBFields[1]]==iEndDate)
+                    if iEndDateData.shape[0]>iRawEndDateMask.sum():
+                        RawData = RawData[~iRawEndDateMask]
+                        RawData = RawData.append(iEndDateData)
+                    iData = iData[iData[DBFields[1]]<iEndDate]
+        elif self._IDType=="Non-Finite":
+            RawData = self._FactorDB._ts.query(DBTableName, start_date=StartDate, end_date=EndDate, fields=FieldStr, **Conditions)
+        RawData = RawData.loc[:, DBFields]
+        RawData.columns = ["ID", "日期"]+factor_names
+        RawData["ID"] = self._FactorDB.DBID2ID(RawData["ID"])
+        return RawData.sort_values(by=["ID", "日期"])
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        raw_data = raw_data.set_index(["日期", "ID"])
+        Operator = args.get("算子", self.Operator)
+        if Operator is None: Operator = (lambda x: x.tolist())
+        Data = {}
+        for iFactorName in factor_names:
+            Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
+        Data = pd.Panel(Data).loc[factor_names, :, ids]
+        Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Data.major_axis]
         LookBack = args.get("回溯天数", self.LookBack)
         if LookBack==0: return Data.loc[:, dts, ids]
         AllDTs = Data.major_axis.union(dts).sort_values()

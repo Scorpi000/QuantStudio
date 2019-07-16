@@ -5,7 +5,12 @@ import platform
 import json
 import operator
 import warnings
+from multiprocessing import set_start_method
 warnings.filterwarnings("ignore")
+try:
+    set_start_method("spawn")
+except:
+    pass
 
 import numpy as np
 import pandas as pd

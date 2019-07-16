@@ -3,7 +3,7 @@ import os
 
 import pandas as pd
 import numpy as np
-from traits.api import Float, Bool, Int, Str, Instance, List, Enum, Dict, on_trait_change
+from traits.api import Float, Bool, Int, Str, Instance, List, Enum, Dict, Either, on_trait_change
 
 from QuantStudio.Tools.DataTypeConversionFun import DummyVarTo01Var
 from QuantStudio.Tools.AuxiliaryFun import getFactorList
@@ -363,8 +363,8 @@ class FactorExposeConstraint(Constraint):
 # 权重约束: (w-benchmark) <=(>=) a, 转换成 Box 约束
 class WeightConstraint(Constraint):
     TargetIDs = Str(arg_type="IDFilterStr", label="目标ID", order=0)
-    UpLimit = Float(1.0, arg_type="Double", label="限制上限", order=1)
-    DownLimit = Float(0.0, arg_type="Double", label="限制下限", order=2)
+    UpLimit = Either(Float(1.0), Str(), arg_type="Double", label="限制上限", order=1)
+    DownLimit = Either(Float(0.0), Str(), arg_type="Double", label="限制下限", order=2)
     Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=3)
     DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=4)
     @property
@@ -378,19 +378,26 @@ class WeightConstraint(Constraint):
             CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(self.TargetIDs)
             if CompiledIDFilterStr is None: raise __QS_Error__("ID 过滤字符串有误!")
             Dependency["因子"] = IDFilterFactors
+        if isinstance(self.UpLimit, str):
+            Dependency["因子"] = Dependency.get("因子", [])+[self.UpLimit]
+        if isinstance(self.DownLimit, str):
+            Dependency["因子"] = Dependency.get("因子", [])+[self.DownLimit]
         return Dependency
     def genConstraint(self):
         if not self.TargetIDs:
-            UpConstraint = pd.Series(self.UpLimit, index=self._PC._TargetIDs)
-            DownConstraint = pd.Series(self.DownLimit, index=self._PC._TargetIDs)
+            if isinstance(self.UpLimit, str): UpConstraint = self._PC.FactorData.loc[:, self.UpLimit]
+            else: UpConstraint = pd.Series(self.UpLimit, index=self._PC._TargetIDs)
+            if isinstance(self.DownLimit, str): DownConstraint = self._PC.FactorData.loc[:, self.DownLimit]
+            else: DownConstraint = pd.Series(self.DownLimit, index=self._PC._TargetIDs)
         else:
             UpConstraint = pd.Series(np.inf, index=self._PC._TargetIDs)
             DownConstraint = pd.Series(-np.inf, index=self._PC._TargetIDs)
-            CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(self.TargetIDs)
-            TargetIDs = filterID(self._PC.FactorData.loc[:, IDFilterFactors])
+            TargetIDs = filterID(self._PC.FactorData, self.TargetIDs)
             TargetIDs = list(set(TargetIDs).intersection(self._PC._TargetIDs))
-            UpConstraint[TargetIDs] = self.UpLimit
-            DownConstraint[TargetIDs] = self.DownLimit
+            if isinstance(self.UpLimit, str): UpConstraint[TargetIDs] = self._PC.FactorData.loc[TargetIDs, self.UpLimit]
+            else: UpConstraint[TargetIDs] = self.UpLimit
+            if isinstance(self.DownLimit, str): DownConstraint[TargetIDs] = self._PC.FactorData.loc[TargetIDs, self.DownLimit]
+            else: DownConstraint[TargetIDs] = self.DownLimit
         if self.Benchmark:
             UpConstraint += self._PC.BenchmarkHolding
             DownConstraint += self._PC.BenchmarkHolding
@@ -646,7 +653,7 @@ class PortfolioConstructor(__QS_Object__):
             else: self._TargetIDs = ExpectedReturn.index.intersection(self._TargetIDs).tolist()
         if self._Dependency.get("协方差矩阵", False):
             if self.FactorCov is not None:
-                if self.RiskFactorData is None: raise __QS_Error__("模型需要风险因子, 但尚未赋值!")
+                if self.RiskFactorData is None: raise __QS_Error__("模型需要风险因子暴露, 但尚未赋值!")
                 if self.SpecificRisk is None: raise __QS_Error__("模型需要特异性风险, 但尚未赋值!")
                 RiskFactorData = self.RiskFactorData.dropna(how="any", axis=0)
                 SpecificRisk = self.SpecificRisk.dropna()
