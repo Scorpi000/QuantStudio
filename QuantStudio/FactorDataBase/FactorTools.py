@@ -1,5 +1,6 @@
 # coding=utf-8
 """内置的因子运算"""
+import datetime as dt
 import uuid
 
 import numpy as np
@@ -256,6 +257,25 @@ def _single_quarter(f,idt,iid,x,args):
 def single_quarter(report_period, last, prev, **kwargs):
     Descriptors, Args = _genMultivariateOperatorInfo(report_period, last, prev)
     return PointOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_single_quarter,"参数":Args,"运算时点":"多时点","运算ID":"多ID"})
+def _strftime(f, idt, iid, x, args):
+    Data = _genOperatorData(f, idt, iid, x, args)[0]
+    DTFormat = args["OperatorArg"]["dt_format"]
+    return pd.DataFrame(Data).applymap(lambda x: x.strftime(DTFormat) if pd.notnull(x) else None).values
+def strftime(f, dt_format="%Y%m%d", **kwargs):
+    Descriptors, Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"dt_format":dt_format}
+    return PointOperation(kwargs.get('factor_name',str(uuid.uuid1())), Descriptors, {"算子":_strftime, "参数":Args, "数据类型":"string", "运算时点":"多时点", "运算ID":"多ID"})
+def _strptime(f, idt, iid, x, args):
+    Data = _genOperatorData(f, idt, iid, x, args)[0]
+    DTFormat = args["OperatorArg"]["dt_format"]
+    if args["OperatorArg"]["is_datetime"]:
+        return pd.DataFrame(Data).applymap(lambda x: dt.datetime.strptime(x, DTFormat) if pd.notnull(x) else None).values
+    else:
+        return pd.DataFrame(Data).applymap(lambda x: dt.datetime.strptime(x, DTFormat).date() if pd.notnull(x) else None).values
+def strptime(f, dt_format="%Y%m%d", is_datetime=True, **kwargs):
+    Descriptors, Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"dt_format":dt_format, "is_datetime":is_datetime}
+    return PointOperation(kwargs.get('factor_name',str(uuid.uuid1())), Descriptors, {"算子":_strptime, "参数":Args, "数据类型":"string", "运算时点":"多时点", "运算ID":"多ID"})
 # ----------------------时间序列运算--------------------------------
 def _rolling_mean(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
