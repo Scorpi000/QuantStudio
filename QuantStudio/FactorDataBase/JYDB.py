@@ -278,7 +278,7 @@ class _MappingTable(_DBTable):
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-        raw_data[self._EndDateField] = raw_data[self._EndDateField].where(pd.notnull(raw_data[self._EndDateField]), dt.datetime.today())
+        #raw_data[self._EndDateField] = raw_data[self._EndDateField].where(pd.notnull(raw_data[self._EndDateField]), dt.datetime.today())
         raw_data.set_index(["ID"], inplace=True)
         DeltaDT = dt.timedelta(int(not self._EndDateIncluded))
         Data, nFactor = {}, len(factor_names)
@@ -287,8 +287,12 @@ class _MappingTable(_DBTable):
             iData = pd.DataFrame(index=dts, columns=factor_names)
             for j in range(iRawData.shape[0]):
                 ijRawData = iRawData.iloc[j]
-                jStartDate, jEndDate = ijRawData[self._StartDateField], ijRawData[self._EndDateField]-DeltaDT
-                iData.loc[jStartDate:jEndDate] = np.repeat(ijRawData[factor_names].values.reshape((1, nFactor)), iData.loc[jStartDate:jEndDate].shape[0], axis=0)
+                jStartDate, jEndDate = ijRawData[self._StartDateField], ijRawData[self._EndDateField]
+                if pd.notnull(jEndDate):
+                    jEndDate -= DeltaDT
+                    iData.loc[jStartDate:jEndDate] = np.repeat(ijRawData[factor_names].values.reshape((1, nFactor)), iData.loc[jStartDate:jEndDate].shape[0], axis=0)
+                else:
+                    iData.loc[jStartDate:] = np.repeat(ijRawData[factor_names].values.reshape((1, nFactor)), iData.loc[jStartDate:].shape[0], axis=0)
             Data[iID] = iData
         return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
 class _ConstituentTable(_DBTable):
@@ -799,10 +803,7 @@ class _FinancialTable(_DBTable):
         Data = {}
         for iID in raw_data.index.unique():
             Data[iID] = CalcFun(Dates, raw_data.loc[[iID]], factor_names, ReportDate, YearLookBack, PeriodLookBack, IgnoreMissing)
-        Data = pd.Panel(Data)
-        Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Dates]
-        Data.minor_axis = factor_names
-        Data = Data.swapaxes(0, 2)
+        Data = pd.Panel(Data, major_axis=[dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Dates], minor_axis=factor_names).swapaxes(0, 2)
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         NewData = {}
         for i, iFactorName in enumerate(factor_names):
@@ -1940,6 +1941,7 @@ class _MacroTable(_DBTable):
                 Changed = True
         return (MaxEndDateInd, Changed)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         DTs = sorted(dts)
         IgnoreTime = args.get("忽略时间", self.IgnoreTime)
         raw_data = raw_data.set_index(["ID"])
@@ -1964,10 +1966,7 @@ class _MacroTable(_DBTable):
                 jSubRawData = jRawData.iloc[:tempInd+1]
                 jData[i] = jSubRawData[jSubRawData["EndDate"]==MaxEndDate][factor_names].values[-1]
             Data[jID] = jData
-        Data = pd.Panel(Data)
-        Data.major_axis = DTs
-        Data.minor_axis = factor_names
-        Data = Data.swapaxes(0, 2)
+        Data = pd.Panel(Data, major_axis=DTs, minor_axis=factor_names).swapaxes(0, 2)
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         NewData = {}
         for i, iFactorName in enumerate(factor_names):

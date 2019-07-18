@@ -115,7 +115,7 @@ def _where(f,idt,iid,x,args):
     return np.where(Data[1],Data[0],Data[2])
 def where(f,mask,other,**kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f,mask,other)
-    return PointOperation(kwargs.get('factor_name',str(uuid.uuid1())), Descriptors, {"算子":_where, "参数":Args, "运算时点":"多时点", "运算ID":"多ID"})
+    return PointOperation(kwargs.get('factor_name',str(uuid.uuid1())), Descriptors, {"算子":_where, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "数据类型":kwargs.get("data_type", "double")})
 def _clip(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
     return np.clip(Data[0],Data[1],Data[2])
