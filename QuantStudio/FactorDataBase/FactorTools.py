@@ -454,9 +454,9 @@ def expanding_quantile(f, quantile=0.5, min_periods=1, **kwargs):
 def _expanding_count(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     return Data.expanding(**args["OperatorArg"]).count().values[args["OperatorArg"]["min_periods"]-1:]
-def expanding_count(f, **kwargs):
+def expanding_count(f, min_periods=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
-    Args["OperatorArg"] = {}
+    Args["OperatorArg"] = {"min_periods":min_periods}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_expanding_count,"参数":Args,"回溯期数":[min_periods-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _ewm_mean(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
@@ -926,7 +926,7 @@ def _winsorize(f,idt,iid,x,args):
                                                  **OperatorArg)
     return Rslt
 def winsorize(f, mask=None, cat_data=None, method='截断', avg_statistics="平均值", dispersion_statistics="标准差", std_multiplier=3, std_tmultiplier=3.5, other_handle='填充None', **kwargs):
-    Factors = [Y]
+    Factors = [f]
     OperatorArg = {}
     if mask is not None:
         Factors.append(mask)

@@ -113,8 +113,8 @@ def changeMultiClass2SingleClass(multi_class, sep=None):
             if pd.notnull(jSubClass):
                 iMask = iMask & (multi_class[:,j]==jSubClass)
             else:
-                iMask = iMask & pd.isnull(class_data[:,j])
-        SingleClassData[Mask] = iSingleClass
+                iMask = iMask & pd.isnull(multi_class[:,j])
+        SingleClassData[iMask] = iSingleClass
         ClassDict[iSingleClass] = iMultiClass
     return (SingleClassData,ClassDict)
 # 给定某一分类subclass, 返回class_data的属于该类别的Mask, 如果subclass是None，返回全选的Mask

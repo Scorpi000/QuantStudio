@@ -22,32 +22,6 @@ def cutDateTime(dts, start_dt=None, end_dt=None):
     if start_dt is not None: dts = dts[dts>=start_dt]
     if end_dt is not None: dts = dts[dts<=end_dt]
     return dts.tolist()
-# 日期变换, depreciated
-def changeDate(dates, change_type=None):
-    if change_type is None:
-        return ['月末日',"周末日","年末日","季末日","月初日","周初日","年初日","季初日","A股财报季初日","A股财报季末日","月中日"]
-    if change_type == '月末日':
-        return getMonthLastDay(dates)
-    elif change_type == '周末日':
-        return getWeekLastDay(dates)
-    elif change_type == '年末日':
-        return getYearLastDay(dates)
-    elif change_type == '季末日':
-        return getQuarterLastDay(dates)
-    elif change_type == '月初日':
-        return getMonthFirstDay(dates)
-    elif change_type == '周初日':
-        return getWeekFirstDay(dates)
-    elif change_type == '年初日':
-        return getYearFirstDay(dates)
-    elif change_type == '季初日':
-        return getQuarterFirstDay(dates)
-    elif change_type == '财报季初日':
-        return getFinancialQuarterFirstDay(dates)
-    elif change_type == '财报季末日':
-        return getFinancialQuarterLastDay(dates)
-    elif change_type == '月中日':
-        return getMonthMiddleDay(dates)
 # 获取连续的自然日序列, depreciated
 def getNaturalDay(start_date,end_date):
     if start_date>end_date:
@@ -56,7 +30,7 @@ def getNaturalDay(start_date,end_date):
     iDate = start_date
     while iDate<=end_date:
         Dates.append(iDate)
-        iDate = Datetime2DateStr(DateStr2Datetime(iDate)+dt.timedelta(days=1))
+        iDate += dt.timedelta(days=1)
     return Dates
 # -------------------------------新的基于 DateTime 的日期时间函数---------------------
 # 合并日期序列和时间序列, 形成 DateTime 序列, 生成器函数

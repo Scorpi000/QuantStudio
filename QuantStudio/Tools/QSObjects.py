@@ -28,6 +28,7 @@ class QSSQLObject(__QS_Object__):
     DSN = Str("", arg_type="String", label="数据源", order=9)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._Connection = None
+        self._PID = None# 保存数据库连接创建时的进程号
         return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -66,6 +67,7 @@ class QSSQLObject(__QS_Object__):
                 if self.DSN: self._Connection = pyodbc.connect("DSN=%s;PWD=%s" % (self.DSN, self.Pwd))
                 else: self._Connection = pyodbc.connect("DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s" % (self.DBType, self.DBName, self.IPAddr+","+str(self.Port), self.User, self.Pwd))
                 self.Connector = "pyodbc"
+        self._PID = os.getpid()
         return 0
     def disconnect(self):
         if self._Connection is not None:
@@ -80,6 +82,7 @@ class QSSQLObject(__QS_Object__):
         return (self._Connection is not None)
     def cursor(self, sql_str=None):
         if self._Connection is None: raise __QS_Error__("%s尚未连接!" % self.__doc__)
+        if os.getpid()!=self._PID: self.connect()# 如果进程号发生变化, 重连
         Cursor = self._Connection.cursor()
         if sql_str is None: return Cursor
         Cursor.execute(sql_str)

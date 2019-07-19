@@ -1968,6 +1968,7 @@ class WindDB2(FactorDB):
         self._InfoFilePath = __QS_LibPath__+os.sep+"WindDB2Info.hdf5"# 数据库信息文件路径
         self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"WindDB2Info.xlsx"# 数据库信息源文件路径
         self._TableInfo, self._FactorInfo = updateInfo(self._InfoFilePath, self._InfoResourcePath)# 数据库表信息, 数据库字段信息
+        self._PID = None# 保存数据库连接创建时的进程号
         self.Name = "WindDB2"
         return
     def __getstate__(self):
@@ -2015,6 +2016,7 @@ class WindDB2(FactorDB):
                     self._Connection = pyodbc.connect('DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s' % (self.DBType, self.DBName, self.IPAddr+","+str(self.Port), self.User, self.Pwd))
         self._Connection.autocommit = True
         self._AllTables = []
+        self._PID = os.getpid()
         return 0
     def disconnect(self):
         if self._Connection is not None:
@@ -2029,6 +2031,7 @@ class WindDB2(FactorDB):
         return (self._Connection is not None)
     def cursor(self, sql_str=None):
         if self._Connection is None: raise __QS_Error__("%s尚未连接!" % self.__doc__)
+        if os.getpid()!=self._PID: self.connect()# 如果进程号发生变化, 重连
         Cursor = self._Connection.cursor()
         if sql_str is None: return Cursor
         if not self._AllTables:

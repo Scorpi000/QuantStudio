@@ -165,7 +165,7 @@ class _MappingTable(_DBTable):
             self[iCondition] = str(FactorInfo.loc[iCondition, "Supplementary"])
     def getCondition(self, icondition, ids=None, dts=None):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
-        SQLStr = "SELECT DISTINCT "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+" "
+        SQLStr = "SELECT DISTINCT "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[icondition]+" "
         SQLStr += "FROM "+self._DBTableName+" "
         SQLStr += "INNER JOIN "+self._MainTableName+" "
         SQLStr += "ON "+self._JoinCondition+" "
@@ -177,7 +177,7 @@ class _MappingTable(_DBTable):
         if dts is not None:
             Dates = list({iDT.strftime("%Y-%m-%d") for iDT in dts})
             SQLStr += "AND ("+genSQLInCondition(self._DBTableName+"."+self._DateField, Dates, is_str=True, max_num=1000)+") "
-        SQLStr += "ORDER BY "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]
+        SQLStr += "ORDER BY "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[icondition]
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     # 返回给定时点 idt 有数据的所有 ID
     # 如果 idt 为 None, 将返回所有有记录的 ID
@@ -496,7 +496,7 @@ class _MarketTable(_DBTable):
             self[iCondition] = str(FactorInfo.loc[iCondition, "Supplementary"])
     def getCondition(self, icondition, ids=None, dts=None):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
-        SQLStr = "SELECT DISTINCT "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+" "
+        SQLStr = "SELECT DISTINCT "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[icondition]+" "
         SQLStr += "FROM "+self._DBTableName+" "
         SQLStr += "INNER JOIN "+self._MainTableName+" "
         SQLStr += "ON "+self._JoinCondition+" "
@@ -508,7 +508,7 @@ class _MarketTable(_DBTable):
         if dts is not None:
             Dates = list({iDT.strftime("%Y-%m-%d") for iDT in dts})
             SQLStr += "AND ("+genSQLInCondition(self._DBTableName+"."+self._DateField, Dates, is_str=True, max_num=1000)+") "
-        SQLStr += "ORDER BY "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]
+        SQLStr += "ORDER BY "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[icondition]
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     # 返回在给定时点 idt 的有数据记录的 ID
     # 如果 idt 为 None, 将返回所有有历史数据记录的 ID
@@ -1873,7 +1873,7 @@ class _MacroTable(_DBTable):
         SQLStr = "SELECT DISTINCT "+DateField+" "
         SQLStr += "FROM "+self._DBTableName+" "
         if iid is not None:
-            SQLStr += "WHERE "+self._IDField+"='"+iID+"' "
+            SQLStr += "WHERE "+self._IDField+"='"+iid+"' "
         else:
             SQLStr += "WHERE "+self._IDField+" IS NOT NULL "
         if IgnoreTime:
@@ -1997,6 +1997,7 @@ class JYDB(FactorDB):
         self._InfoFilePath = __QS_LibPath__+os.sep+"JYDBInfo.hdf5"# 数据库信息文件路径
         self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"JYDBInfo.xlsx"# 数据库信息源文件路径
         self._TableInfo, self._FactorInfo = updateInfo(self._InfoFilePath, self._InfoResourcePath)# 数据库表信息, 数据库字段信息
+        self._PID = None# 保存数据库连接创建时的进程号
         self.Name = "JYDB"
         return
     def __getstate__(self):
@@ -2050,6 +2051,7 @@ class JYDB(FactorDB):
                     self._Connection = pyodbc.connect('DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s' % (self.DBType, self.DBName, self.IPAddr+","+str(self.Port), self.User, self.Pwd))
         self._Connection.autocommit = True
         self._AllTables = []
+        self._PID = os.getpid()
         return 0
     def disconnect(self):
         if self._Connection is not None:
@@ -2064,6 +2066,7 @@ class JYDB(FactorDB):
         return (self._Connection is not None)
     def cursor(self, sql_str=None):
         if self._Connection is None: raise __QS_Error__("%s尚未连接!" % self.__doc__)
+        if os.getpid()!=self._PID: self.connect()# 如果进程号发生变化, 重连
         Cursor = self._Connection.cursor()
         if sql_str is None: return Cursor
         if not self._AllTables:

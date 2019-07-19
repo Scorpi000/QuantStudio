@@ -253,7 +253,7 @@ def calcVaR(wealth_seq, alpha=0.05, method="Historical"):
         VaR = norm.ppf(alpha,loc=Avg,scale=Std)
         CVaR = Avg-Std/alpha*norm.pdf((VaR-Avg)/Std)
     elif method=='Cornish-Fisher':
-        x = (x-Avg)/Std
+        x = (YieldSeq-Avg) / Std
         S = skew(x)
         K = kurtosis(x)-3
         q = norm.ppf(alpha)
@@ -346,7 +346,7 @@ def calcMaxDrawdownDuration(wealth_seq):
             MaxDrawdownDuration = DrawdownDuration
             MaxDrawdownEndInd = i+1
     if MaxDrawdownDuration>0: return (MaxDrawdownDuration, MaxDrawdownEndInd - MaxDrawdownDuration, MaxDrawdownEndInd)
-    else: return (MaxDrawdownRate, None, None)
+    else: return (MaxDrawdownDuration, None, None)
 # 计算给定期限的最大回撤
 def calcPeriodDrawdown(wealth_seq, tau):
     # Returns the draw-down given time period tau
