@@ -3,6 +3,7 @@ import os
 import sys
 import datetime as dt
 import tempfile
+from cycler import cycler
 
 from PyQt5 import QtWidgets, QtCore, QtGui
 
@@ -705,15 +706,9 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
         nRow = self.MainResultTable.rowCount()
         if nRow==0: return []
         SelectedColumns = []
-        nSelectedIndexes = len(SelectedIndexes)
-        if nSelectedIndexes==0: return []
-        elif (nSelectedIndexes==1) or (SelectedIndexes[0].column()!=SelectedIndexes[1].column()):
-            for i in range(0, int(nSelectedIndexes/nRow)):
-                SelectedColumns.append(SelectedIndexes[i].column())
-        else:
-            for i in range(0, nSelectedIndexes, nRow):
-                SelectedColumns.append(SelectedIndexes[i].column())
-        return SelectedColumns
+        Rngs = self.MainResultTable.selectedRanges()
+        for iRng in Rngs: SelectedColumns.extend(np.arange(iRng.leftColumn(), iRng.rightColumn()+1))
+        return sorted(SelectedColumns)
     def getSelectedDF(self, all_num=True):
         SelectedColumns = self.getSelectedColumns()
         if SelectedColumns==[]: return (None, "没有选中数据列!")
@@ -1092,7 +1087,9 @@ class MatplotlibResultDlg(PlotlyResultDlg):
             PlotMode[i] = DataTable.cellWidget(i,0).currentText()
             PlotAxes[i] = DataTable.cellWidget(i,1).currentText()
             iColor = DataTable.cellWidget(i,2).currentText()
-            if iColor!='默认':
+            if iColor=="默认":
+                if PlotMode[i] in ("Bar", "Stack"): PlotArgs[i]['color'] = "b"
+            else:
                 PlotArgs[i]['color'] = iColor
             PlotArgs[i]['linestyle'] = DataTable.cellWidget(i,3).currentText()
             iMarker = DataTable.cellWidget(i,4).currentText()
@@ -1133,12 +1130,19 @@ class MatplotlibResultDlg(PlotlyResultDlg):
             if isStr: xData = np.arange(0, PlotResult.shape[0])
         FigDlg = _MatplotlibWidget()
         Fig = FigDlg.Mpl.Fig
-        if ('左轴' in PlotAxes):
+        nLeftAxe, nRightAxe = PlotAxes.count("左轴"), PlotAxes.count("右轴")
+        if nLeftAxe>0:
             LeftAxe = Fig.add_subplot(111)
-            if ('右轴' in PlotAxes): RightAxe = LeftAxe.twinx()
+            if nRightAxe>0:
+                RightAxe = LeftAxe.twinx()
+                LeftAxe.set_prop_cycle(cycler('color', [plt.cm.Spectral(i) for i in np.arange(0, nLeftAxe)/PlotResult.shape[1]]))
+                RightAxe.set_prop_cycle(cycler('color', [plt.cm.Spectral(i) for i in np.arange(nLeftAxe, PlotResult.shape[1])/PlotResult.shape[1]]))
+            else:
+                LeftAxe.set_prop_cycle(cycler('color', [plt.cm.Spectral(i) for i in np.linspace(0, 1, PlotResult.shape[1])]))
         else:
             RightAxe = Fig.add_subplot(111)
             LeftAxe = RightAxe
+            LeftAxe.set_prop_cycle(cycler('color', [plt.cm.Spectral(i) for i in np.linspace(0, 1, PlotResult.shape[1])]))
         for i in range(PlotResult.shape[1]):
             iAxe = (LeftAxe if PlotAxes[i]=="左轴" else RightAxe)
             yData = PlotResult.iloc[:,i]
@@ -1168,8 +1172,8 @@ class MatplotlibResultDlg(PlotlyResultDlg):
                     iAxe.stackplot(xData, yData.values, **PlotArgs[i])
                 iAxe.set_xticks(xTicks)
                 iAxe.set_xticklabels(xTickLabels)
-        if '左轴' in PlotAxes: LeftAxe.legend(loc='upper left',shadow=True)
-        if '右轴' in PlotAxes: RightAxe.legend(loc='upper right',shadow=True)
+        if nLeftAxe>0: LeftAxe.legend(loc='upper left',shadow=True)
+        if nRightAxe>0: RightAxe.legend(loc='upper right',shadow=True)
         plt.title(','.join([str(iCol) for iCol in PlotResult.columns]))
         FigDlg.Mpl.draw()
         FigDlg.show()
@@ -1180,7 +1184,7 @@ if __name__=='__main__':
     from QuantStudio.Tools.DateTimeFun import getDateSeries
     
     Dates = getDateSeries(dt.date(2016,1,1), dt.date(2016,12,31))
-    TestData = {"Bar1":{"a":{"a1":pd.DataFrame(np.random.rand(11,3),index=Dates[:11],columns=['b','c','d']),
+    TestData = {"Bar1":{"a":{"a1":pd.DataFrame(np.random.rand(11,10),index=Dates[:11],columns=['a'+str(i) for i in range(10)]),
                              "a2":pd.DataFrame(np.random.rand(10,2))},
                         "b":pd.DataFrame(['a']*150,columns=['c'])},
                 "Bar2":pd.DataFrame(np.random.randn(3,2), index=["中文", "b2", "b3"], columns=["中文", "我是个例子"])}
