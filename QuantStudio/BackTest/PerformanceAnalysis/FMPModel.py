@@ -101,6 +101,7 @@ class FMPModel(BaseModule):
         if self.IndustryFactor!="无":
             IndustryData = self._FactorTable.readData(factor_names=[self.IndustryFactor], ids=IDs, dts=[PreDT]).iloc[0, 0, :]
             DummyData = DummyVarTo01Var(IndustryData, ignore_nonstring=True)
+            DummyData.columns.values[pd.isnull(DummyData.columns)] = "None"
             FactorExpose = pd.merge(FactorExpose, DummyData, left_index=True, right_index=True)
         CovMatrixInv = np.linalg.inv(CovMatrix.values)
         FMPHolding = np.dot(np.dot(np.linalg.inv(np.dot(np.dot(FactorExpose.values.T, CovMatrixInv), FactorExpose.values)), FactorExpose.values.T), CovMatrixInv)

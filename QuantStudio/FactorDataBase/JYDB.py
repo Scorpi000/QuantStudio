@@ -78,7 +78,7 @@ class _FeatureTable(_DBTable):
         self._MainTableCondition = fdb._TableInfo.loc[name, "MainTableCondition"]
         if pd.notnull(self._MainTableCondition):
             self._MainTableCondition = self._MainTableCondition.format(MainTable=self._MainTableName)
-        self._SecurityType = fdb.TablePrefix + fdb._TableInfo.loc[name, "SecurityType"]
+        self._SecurityType = fdb._TableInfo.loc[name, "SecurityType"]
         FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="ID"].iloc[0]
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
@@ -148,7 +148,7 @@ class _MappingTable(_DBTable):
         self._MainTableCondition = fdb._TableInfo.loc[name, "MainTableCondition"]
         if pd.notnull(self._MainTableCondition):
             self._MainTableCondition = self._MainTableCondition.format(MainTable=self._MainTableName)
-        self._SecurityType = fdb.TablePrefix + fdb._TableInfo.loc[name, "SecurityType"]
+        self._SecurityType = fdb._TableInfo.loc[name, "SecurityType"]
         FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="ID"].iloc[0]
         self._StartDateField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="StartDate"].iloc[0]
@@ -307,7 +307,7 @@ class _ConstituentTable(_DBTable):
         self._MainTableCondition = fdb._TableInfo.loc[name, "MainTableCondition"]
         if pd.notnull(self._MainTableCondition):
             self._MainTableCondition = self._MainTableCondition.format(MainTable=self._MainTableName)
-        self._SecurityType = fdb.TablePrefix + fdb._TableInfo.loc[name, "SecurityType"]        
+        self._SecurityType = fdb._TableInfo.loc[name, "SecurityType"]        
         FactorInfo = fdb._FactorInfo.loc[name]
         self._GroupField = FactorInfo[FactorInfo["FieldType"]=="Group"].index[0]
         self._IDField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="ID"].iloc[0]
@@ -482,7 +482,7 @@ class _MarketTable(_DBTable):
         self._JoinCondition = fdb._TableInfo.loc[name, "JoinCondition"].format(DBTable=self._DBTableName, MainTable=self._MainTableName)
         if pd.notnull(self._MainTableCondition):
             self._MainTableCondition = self._MainTableCondition.format(MainTable=self._MainTableName)
-        self._SecurityType = fdb.TablePrefix + fdb._TableInfo.loc[name, "SecurityType"]
+        self._SecurityType = fdb._TableInfo.loc[name, "SecurityType"]
         FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="ID"].iloc[0]# ID 字段
         self._DateField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="Date"].iloc[0]# 发布日期字段
@@ -503,8 +503,8 @@ class _MarketTable(_DBTable):
         SQLStr += "ON "+self._JoinCondition+" "
         if ids is not None:
             if self._SecurityType=="A股": ids = deSuffixID(ids)
-            SQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, ids, is_str=True, max_num=1000)+") "
-        else: SQLStr += "AND "+self._MainTableName+"."+self._IDField+" IS NOT NULL "        
+            SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, ids, is_str=True, max_num=1000)+") "
+        else: SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "        
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         if dts is not None:
             Dates = list({iDT.strftime("%Y-%m-%d") for iDT in dts})
@@ -695,7 +695,7 @@ class _FinancialTable(_DBTable):
         self._MainTableCondition = fdb._TableInfo.loc[name, "MainTableCondition"]
         if pd.notnull(self._MainTableCondition):
             self._MainTableCondition = self._MainTableCondition.format(MainTable=self._MainTableName)
-        self._SecurityType = fdb.TablePrefix + fdb._TableInfo.loc[name, "SecurityType"]
+        self._SecurityType = fdb._TableInfo.loc[name, "SecurityType"]
         FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="ID"].iloc[0]# ID 字段
         self._ANNDateField = FactorInfo[FactorInfo["FieldType"]=="ANNDate"].index
@@ -1293,7 +1293,7 @@ class _AnalystConsensusTable(_DBTable):
         self._MainTableCondition = fdb._TableInfo.loc[name, "MainTableCondition"]
         if pd.notnull(self._MainTableCondition):
             self._MainTableCondition = self._MainTableCondition.format(MainTable=self._MainTableName)
-        self._SecurityType = fdb.TablePrefix + fdb._TableInfo.loc[name, "SecurityType"]
+        self._SecurityType = fdb._TableInfo.loc[name, "SecurityType"]
         FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="ID"].iloc[0]# ID 字段
         self._DateField = FactorInfo[FactorInfo["FieldType"]=="Date"].index[0]
@@ -1479,7 +1479,7 @@ class _AnalystEstDetailTable(_DBTable):
         self._MainTableCondition = fdb._TableInfo.loc[name, "MainTableCondition"]
         if pd.notnull(self._MainTableCondition):
             self._MainTableCondition = self._MainTableCondition.format(MainTable=self._MainTableName)
-        self._SecurityType = fdb.TablePrefix + fdb._TableInfo.loc[name, "SecurityType"]
+        self._SecurityType = fdb._TableInfo.loc[name, "SecurityType"]
         FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="ID"].iloc[0]# ID 字段
         self._DateField = FactorInfo[FactorInfo["FieldType"]=="Date"].index[0]
@@ -1621,7 +1621,7 @@ class _AnalystRatingDetailTable(_DBTable):
         self._MainTableCondition = fdb._TableInfo.loc[name, "MainTableCondition"]
         if pd.notnull(self._MainTableCondition):
             self._MainTableCondition = self._MainTableCondition.format(MainTable=self._MainTableName)
-        self._SecurityType = fdb.TablePrefix + fdb._TableInfo.loc[name, "SecurityType"]
+        self._SecurityType = fdb._TableInfo.loc[name, "SecurityType"]
         FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
         self._DateField = FactorInfo[FactorInfo["FieldType"]=="Date"].index[0]
@@ -1723,7 +1723,7 @@ class _DividendTable(_DBTable):
         self._MainTableCondition = fdb._TableInfo.loc[name, "MainTableCondition"]
         if pd.notnull(self._MainTableCondition):
             self._MainTableCondition = self._MainTableCondition.format(MainTable=self._MainTableName)
-        self._SecurityType = fdb.TablePrefix + fdb._TableInfo.loc[name, "SecurityType"]
+        self._SecurityType = fdb._TableInfo.loc[name, "SecurityType"]
         FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
         self._DateFields = FactorInfo[FactorInfo["FieldType"]=="Date"].index.tolist()# 所有的日期字段列表
@@ -2166,6 +2166,19 @@ class JYDB(FactorDB):
             IDs = self.getTable(iTableName).getID(ifactor_name=index_id, idt=date, is_current=is_current)
             if IDs: return IDs
         else: return []
+    # 给定期权代码 option_code, 获取指定日 date 的期权代码
+    # option_code: 期权代码(str)
+    # date: 指定日, 默认值 None 表示今天
+    # is_current: False 表示上市日在指定日之前的期权, True 表示上市日在指定日之前且尚未退市的期权
+    def getOptionID(self, option_code="510050", date=None, is_current=True, **kwargs):
+        if date is None: date = dt.date.today()
+        SQLStr = "SELECT DISTINCT TradingCode FROM {Prefix}Opt_OptionContract "
+        SQLStr += "WHERE TradingCode LIKE '{OptionCode}%%' "
+        SQLStr += "AND ListingDate<='{Date}' "
+        SQLStr += "AND IfReal=1 "
+        if is_current: SQLStr += "AND LastTradingDate>='{Date}' "
+        SQLStr += "ORDER BY TradingCode"
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y-%m-%d"), OptionCode=option_code))]
     # 获取宏观指标名称对应的指标 ID
     def getMacroIndicatorID(self, indicators, table_name=None):
         pass
