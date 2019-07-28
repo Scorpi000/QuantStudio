@@ -12,7 +12,7 @@ from traits.api import Str, Int, List, Instance
 from multiprocessing import Process, Queue
 
 from QuantStudio.Tools.DateTimeFun import cutDateTime
-from QuantStudio.RiskModel.RiskModelFun import dropRiskMatrixNA, decomposeCov2Corr
+from QuantStudio.RiskModel.RiskModelFun import decomposeCov2Corr
 from QuantStudio import __QS_Object__, __QS_Error__
 
 # 风险数据库基类, 必须存储的数据有:

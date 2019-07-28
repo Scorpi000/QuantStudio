@@ -45,6 +45,7 @@ class Cointegration(BaseModule):
         return super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
+        self._iDT = idt
         Price = self._FactorTable.readData(dts=[idt], ids=self._IDs, factor_names=[self.PriceFactor]).iloc[0, :, :].values
         if self.PriceType=="对数价格":
             Price = np.log(Price)

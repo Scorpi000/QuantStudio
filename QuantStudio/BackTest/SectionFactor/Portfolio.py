@@ -75,6 +75,7 @@ class QuantilePortfolio(BaseModule):
         return (self._FactorTable, )
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
+        self._iDT = idt
         Price = self._FactorTable.readData(dts=[idt], ids=self._FactorTable.getID(ifactor_name=self.PriceFactor), factor_names=[self.PriceFactor]).iloc[0, 0, :]
         for i in range(self.GroupNum):
             if len(self._Output["QP_P_CurPos"][i])==0:

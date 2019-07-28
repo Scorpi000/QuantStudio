@@ -855,6 +855,8 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         NewAction.triggered.connect(self.plotJoint)
         NewAction = self.MainResultTable.ContextMenu['绘制图像']['主菜单'].addAction('QQ图')
         NewAction.triggered.connect(self.plotQQ)
+        NewAction = self.MainResultTable.ContextMenu['绘制图像']['主菜单'].addAction('雷达图')
+        NewAction.triggered.connect(self.plotRadar)
     def plotHist(self):
         SelectedColumn = self.getSelectedColumns()
         if len(SelectedColumn)!=1: return QtWidgets.QMessageBox.critical(self, "错误", "请选择一列!")
@@ -1025,6 +1027,28 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         tempFigDlg.Mpl.draw()
         tempFigDlg.show()
         return 0
+    def plotRadar(self):# 雷达图
+        SelectedDF, Msg = self.getSelectedDF(all_num=True)
+        if SelectedDF is None: return QtWidgets.QMessageBox.critical(self, "错误", Msg)
+        Data = SelectedDF.values
+        Min, isOK = QtWidgets.QInputDialog.getDouble(self, "最小值", "最小值: ", np.nanmin(Data))
+        if not isOK: return 0
+        Max, isOK = QtWidgets.QInputDialog.getDouble(self, "最大值", "最大值: ", np.nanmax(Data))
+        if not isOK: return 0
+        Angles = np.linspace(0, 2*np.pi, SelectedDF.shape[0], endpoint=False)
+        Angles = np.concatenate((Angles, [Angles[0]]))
+        Data = np.concatenate((Data, [Data[0, :]]))
+        tempFigDlg = _MatplotlibWidget()
+        Fig = tempFigDlg.Mpl.Fig
+        Axes = Fig.add_subplot(111, polar=True)
+        Axes.set_thetagrids(Angles*180/np.pi, SelectedDF.index.values)#设置网格标签
+        Axes.set_rlim(Min, Max)# 设置显示的极径范围
+        for i in range(Data.shape[1]): Axes.plot(Angles, Data[:, i], "o-")
+        Axes.set_theta_zero_location("NW")#设置极坐标0°位置
+        Axes.set_rlabel_position(255)#设置极径标签位置
+        tempFigDlg.Mpl.draw()
+        tempFigDlg.show()
+        return 0
     def plotHeatMap(self):
         SelectedDF, Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None: return QtWidgets.QMessageBox.critical(self, "错误", Msg)
@@ -1183,11 +1207,13 @@ if __name__=='__main__':
     # 测试代码
     from QuantStudio.Tools.DateTimeFun import getDateSeries
     
+    Bar2 = pd.DataFrame(np.random.randn(3,2), index=["中文", "b2", "b3"], columns=["中文", "我是个例子"])
+    Bar2.iloc[0,0] = np.nan
     Dates = getDateSeries(dt.date(2016,1,1), dt.date(2016,12,31))
     TestData = {"Bar1":{"a":{"a1":pd.DataFrame(np.random.rand(11,10),index=Dates[:11],columns=['a'+str(i) for i in range(10)]),
                              "a2":pd.DataFrame(np.random.rand(10,2))},
                         "b":pd.DataFrame(['a']*150,columns=['c'])},
-                "Bar2":pd.DataFrame(np.random.randn(3,2), index=["中文", "b2", "b3"], columns=["中文", "我是个例子"])}
+                "Bar2": Bar2}
     app = QtWidgets.QApplication(sys.argv)
     #TestWindow = PlotlyResultDlg(None, TestData)
     TestWindow = MatplotlibResultDlg(None, TestData)
