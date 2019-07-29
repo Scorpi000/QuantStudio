@@ -53,7 +53,6 @@ class QuantileDifference(BaseModule):
         self._Output["滚动t统计量"] = {iID: {} for iID in self._Output["证券ID"]}# {ID: {时点: DataFrame(index=[分位组], columns=[分位组])}}
         self._Output["滚动p值"] = deepcopy(self._Output["滚动t统计量"])# {ID: {时点: DataFrame(index=[分位组], columns=[分位组])}}
         self._CurCalcInd = 0
-        self._nMinSample = (max(2, self.MinSummaryWindow) if np.isinf(self.MinSummaryWindow) else max(2, self.MinSummaryWindow))
         return (self._FactorTable, self._PriceTable)
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
@@ -76,7 +75,7 @@ class QuantileDifference(BaseModule):
         self._Output["收益率"] = np.r_[self._Output["收益率"], _calcReturn(Price, return_type=self.ReturnType)]
         FactorData = self._FactorTable.readData(dts=[PreDateTime], ids=[self.FactorID], factor_names=[self.TestFactor]).iloc[0, 0, 0]
         self._Output["因子值"] = np.r_[self._Output["因子值"], FactorData]
-        if self._Output["收益率"].shape[0]<self._nMinSample: return 0
+        if self._Output["收益率"].shape[0]<self.MinSummaryWindow: return 0
         StartInd = int(max(0, self._Output["收益率"].shape[0] - self.SummaryWindow))
         FactorData, Return = self._Output["因子值"][StartInd:], self._Output["收益率"][StartInd:, :]
         Mask = np.full(shape=(FactorData.shape[0], self.GroupNum), fill_value=False)

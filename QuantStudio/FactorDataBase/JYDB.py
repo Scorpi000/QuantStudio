@@ -466,7 +466,7 @@ class _ConstituentTable(_DBTable):
 
 
 # 行情因子表, 表结构特征:
-# 日期字段, 表示数据填充的时点; 可能存在多个日期字段, 必须指定其中一个作为数据填充的时点
+# 日期字段, 表示数据填充的时点;
 # 条件字段, 作为条件过滤记录; 可能存在多个条件字段
 # 在设定某些条件下, 数据填充时点和 ID 可以唯一标志一行记录
 # 先填充表中已有的数据, 然后根据回溯天数参数填充缺失的时点
@@ -656,6 +656,127 @@ class _MarketTable(_DBTable):
             Limits = LookBack*24.0*3600
             for i, iFactorName in enumerate(Data.items): Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
         return Data.loc[:, dts]
+# 信息发布因子表, 表结构特征:
+# 公告日期, 表示信息发布的时点;
+# 截止日期, 表示信息有效的时点;
+# 以截止日期和公告日期的最大值作为数据填充的时点
+# 条件字段, 作为条件过滤记录; 可能存在多个条件字段
+# 在设定某些条件下, 数据填充时点和 ID 可以唯一标志一行记录
+# 先填充表中已有的数据, 然后根据回溯天数参数填充缺失的时点
+class _InfoPublTable(_DBTable):# TODO
+    LookBack = Float(0, arg_type="Integer", label="回溯天数", order=0)
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        self._DBTableName = fdb.TablePrefix + fdb._TableInfo.loc[name, "DBTableName"]
+        self._MainTableName = fdb._TableInfo.loc[name, "MainTableName"]
+        self._MainTableName = fdb.TablePrefix + self._MainTableName
+        self._MainTableID = fdb._TableInfo.loc[name, "MainTableID"]
+        self._MainTableCondition = fdb._TableInfo.loc[name, "MainTableCondition"]
+        self._JoinCondition = fdb._TableInfo.loc[name, "JoinCondition"].format(DBTable=self._DBTableName, MainTable=self._MainTableName)
+        if pd.notnull(self._MainTableCondition):
+            self._MainTableCondition = self._MainTableCondition.format(MainTable=self._MainTableName)
+        self._SecurityType = fdb._TableInfo.loc[name, "SecurityType"]
+        FactorInfo = fdb._FactorInfo.loc[name]
+        self._IDField = self._DBTableName+"."+FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="ID"].iloc[0]# ID 字段
+        self._AnnDateField = self._DBTableName+"."+FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="AnnDate"].iloc[0]# 发布日期字段
+        self._EndDateField = self._DBTableName+"."+FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="EndDate"].iloc[0]# 截止日期
+        self._ConditionFields = FactorInfo[FactorInfo["FieldType"]=="Condition"].index.tolist()# 所有的条件字段列表
+        super().__init__(name=name, fdb    =fdb, sys_args=sys_args, **kwargs)
+        return
+    def _genSubSQLStr(self, ids, start_date, end_date, args={}):
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        SubSQLStr = "SELECT "+self._IDField+", "
+        SubSQLStr += "MAX("+self._EndDateField+") "
+        SubSQLStr += "FROM "+self._DBTableName+" "
+        SubSQLStr += "INNER JOIN "+self._MainTableName+" "
+        SubSQLStr += "ON "+self._JoinCondition+" "
+        SubSQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, ids, is_str=True, max_num=1000)+") "
+        if pd.notnull(self._MainTableCondition): SubSQLStr += "AND "+self._MainTableCondition+" "
+        for iConditionField in self._ConditionFields:
+            if _identifyDataType(FactorInfo.loc[iConditionField, "DataType"])=="string":
+                SubSQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"='"+args.get(iConditionField, self[iConditionField])+"' "
+            else:
+                SubSQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"="+args.get(iConditionField, self[iConditionField])+""
+        SubSQLStr += "GROUP BY "+self._IDField+", "+self._AnnDateField+" "
+        if start_date is not None:
+            SubSQLStr += "HAVING ("+self._AnnDateField+">='"+start_date.strftime("%Y-%m-%d")+"' "
+            SubSQLStr += "OR "+self._EndDateField+">='"+start_date.strftime("%Y-%m-%d")+"') "
+        if end_date is not None:
+            SubSQLStr += "AND ("+self._AnnDateField+"<='"+end_date.strftime("%Y-%m-%d")+"' "
+            SubSQLStr += "AND "+self._EndDateField+"<='"+end_date.strftime("%Y-%m-%d")+"') "
+        return SubSQLStr
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        StartDate, EndDate = dts[0].date(), dts[-1].date()
+        LookBack = args.get("回溯天数", self.LookBack)
+        if not np.isinf(LookBack): StartDate -= dt.timedelta(LookBack)
+        if self._SecurityType=="A股": ids = deSuffixID(ids)
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        SQLStr = "SELECT CASE WHEN "+self._AnnDateField+">="+self._EndDateField+" THEN "+self._AnnDateField+" "
+        SQLStr += "ELSE "+self._EndDateField+" END AS DT, "
+        SQLStr += self._MainTableName+"."+self._MainTableID+", "
+        for iField in factor_names: SQLStr += self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iField]+", "
+        SQLStr = SQLStr[:-2]+" FROM "+self._DBTableName+" "
+        SQLStr += "INNER JOIN "+self._MainTableName+" "
+        SQLStr += "ON "+self._JoinCondition+" "
+        SQLStr += "WHERE ("+self._IDField+", "+self._EndDateField+") IN ("+self._genSubSQLStr(ids, StartDate, EndDate, args=args)+") "
+        SQLStr += "ORDER BY "+self._MainTableName+"."+self._MainTableID+", DT"
+        RawData = self._FactorDB.fetchall(SQLStr)
+        if not RawData: RawData = pd.DataFrame(columns=["日期", "ID"]+factor_names)
+        RawData = pd.DataFrame(np.array(RawData), columns=["日期", "ID"]+factor_names)
+        if np.isinf(LookBack):
+            NullIDs = set(ids).difference(set(RawData[RawData["日期"]==dt.datetime.combine(StartDate,dt.time(0))]["ID"]))
+            if NullIDs:
+                SubSQLStr = "SELECT "+self._IDField+", "
+                SubSQLStr += "MAX(CASE WHEN "+self._AnnDateField+">="+self._EndDateField+" THEN "+self._AnnDateField+" "
+                SubSQLStr += "ELSE "+self._EndDateField+" END) AS DT, "                
+                SubSQLStr += "FROM "+self._DBTableName+" "
+                SubSQLStr += "WHERE ("+self._IDField+", "+self._EndDateField+") IN ("+self._genSubSQLStr(list(NullIDs), None, StartDate-dt.timedelta(1), args=args)+") "
+                SubSQLStr += "GROUP BY "+self._IDField
+                SQLStr = "SELECT CASE WHEN "+self._AnnDateField+">="+self._EndDateField+" THEN "+self._AnnDateField+" "
+                SQLStr += "ELSE "+self._EndDateField+" END AS DT, "
+                SQLStr += self._MainTableName+"."+self._MainTableID+", "
+                for iField in factor_names: SQLStr += self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iField]+", "
+                SQLStr = SQLStr[:-2]+" FROM "+self._DBTableName+" "
+                SQLStr += "INNER JOIN "+self._MainTableName+" "
+                SQLStr += "ON "+self._JoinCondition+" "
+                SQLStr += "WHERE ("+self._MainTableName+"."+self._MainTableID+", "
+                SQLStr += "CASE WHEN "+self._AnnDateField+">="+self._EndDateField+" THEN "+self._AnnDateField+" "
+                SQLStr += "ELSE "+self._EndDateField+" END) IN ("+SubSQLStr+") "
+                if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
+                NullRawData = self._FactorDB.fetchall(SQLStr)
+                if NullRawData:
+                    NullRawData = pd.DataFrame(np.array(NullRawData), columns=["日期", "ID"]+factor_names)
+                    RawData = pd.concat([NullRawData, RawData], ignore_index=True)
+                    RawData.sort_values(by=["ID", "日期"])
+        if self._SecurityType=="A股": RawData["ID"] = suffixAShareID(RawData["ID"].tolist())
+        else:
+            RawData["ID"] = RawData["ID"].astype("O")
+            RawData["ID"] = [str(iID) for iID in RawData["ID"]]
+        return RawData
+
+
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        raw_data = raw_data.set_index(["日期", "ID"])
+        Data = {}
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        for iFactorName in raw_data.columns:
+            iRawData = raw_data[iFactorName].unstack()
+            iDataType = _identifyDataType(FactorInfo.loc[iFactorName, "DataType"])
+            if iDataType=="double": iRawData = iRawData.astype("float")
+            #elif iDataType=="datetime": iRawData = iRawData.applymap(lambda x: x.strftime("%Y-%m-%d %H:%M:%S") if pd.notnull(x) else None)
+            Data[iFactorName] = iRawData
+        Data = pd.Panel(Data).loc[factor_names]
+        LookBack = args.get("回溯天数", self.LookBack)
+        if LookBack==0: return Data.loc[:, dts, ids]
+        AllDTs = Data.major_axis.union(dts).sort_values()
+        Data = Data.loc[:, AllDTs, ids]
+        if np.isinf(LookBack):
+            for i, iFactorName in enumerate(Data.items): Data.iloc[i] = Data.iloc[i].fillna(method="pad")
+        else:
+            Limits = LookBack*24.0*3600
+            for i, iFactorName in enumerate(Data.items): Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
+        return Data.loc[:, dts]
+
 def RollBackNPeriod(report_date, n_period):
     Date = report_date
     for i in range(1, n_period+1):

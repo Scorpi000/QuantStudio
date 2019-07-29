@@ -61,7 +61,6 @@ class TimeSeriesCorrelation(BaseModule):
         nFactorID = len(self._Output["因子ID"])
         self._Output["因子值"] = {iFactorName:np.zeros(shape=(0, nFactorID)) for iFactorName in self.TestFactors}
         self._CurCalcInd = 0
-        self._nMinSample = (max(2, self.MinSummaryWindow) if np.isinf(self.MinSummaryWindow) else max(2, self.MinSummaryWindow))
         return (self._FactorTable, self._PriceTable)
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
@@ -86,8 +85,8 @@ class TimeSeriesCorrelation(BaseModule):
         StartInd = int(max(0, self._Output["收益率"].shape[0] - self.SummaryWindow))
         for i, iFactorName in enumerate(self.TestFactors):
             self._Output["因子值"][iFactorName] = np.r_[self._Output["因子值"][iFactorName], FactorData[i:i+1]]
-            if self._Output["收益率"].shape[0]>=self._nMinSample:
-                self._Output["滚动相关性"][iFactorName][idt] = pd.DataFrame(np.c_[self._Output["因子值"][iFactorName][StartInd:], self._Output["收益率"][StartInd:]]).corr(method=self.CorrMethod, min_periods=self._nMinSample).values[:FactorData.shape[1], FactorData.shape[1]:]
+            if self._Output["收益率"].shape[0]>=self.MinSummaryWindow:
+                self._Output["滚动相关性"][iFactorName][idt] = pd.DataFrame(np.c_[self._Output["因子值"][iFactorName][StartInd:], self._Output["收益率"][StartInd:]]).corr(method=self.CorrMethod, min_periods=self.MinSummaryWindow).values[:FactorData.shape[1], FactorData.shape[1]:]
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
@@ -96,7 +95,7 @@ class TimeSeriesCorrelation(BaseModule):
         self._Output["最后一期相关性"], self._Output["全样本相关性"] = {}, {}
         for iFactorName in self.TestFactors:
             self._Output["最后一期相关性"][iFactorName] = self._Output["滚动相关性"][iFactorName][LastDT].T
-            self._Output["全样本相关性"][iFactorName] = pd.DataFrame(np.c_[self._Output["因子值"][iFactorName], self._Output["收益率"]]).corr(method=self.CorrMethod, min_periods=self._nMinSample).values[:len(FactorIDs), len(FactorIDs):].T
+            self._Output["全样本相关性"][iFactorName] = pd.DataFrame(np.c_[self._Output["因子值"][iFactorName], self._Output["收益率"]]).corr(method=self.CorrMethod, min_periods=self.MinSummaryWindow).values[:len(FactorIDs), len(FactorIDs):].T
             self._Output["滚动相关性"][iFactorName] = pd.Panel(self._Output["滚动相关性"][iFactorName], major_axis=FactorIDs, minor_axis=PriceIDs).swapaxes(0, 2).to_frame(filter_observations=False).reset_index()
             self._Output["滚动相关性"][iFactorName].columns = ["因子ID", "时点"]+PriceIDs
         self._Output["最后一期相关性"] = pd.Panel(self._Output["最后一期相关性"], major_axis=PriceIDs, minor_axis=FactorIDs).swapaxes(0, 1).to_frame(filter_observations=False).reset_index()

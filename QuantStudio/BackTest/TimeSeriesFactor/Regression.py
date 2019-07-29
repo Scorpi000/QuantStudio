@@ -57,7 +57,6 @@ class OLS(BaseModule):
         nFactorID = len(self._Output["因子ID"])
         self._Output["因子值"] = np.zeros((0, nFactorID*len(self.TestFactors)))
         self._CurCalcInd = 0
-        self._nMinSample = (max(2, self.MinSummaryWindow) if np.isinf(self.MinSummaryWindow) else max(2, self.MinSummaryWindow))
         return (self._FactorTable, self._PriceTable)
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
@@ -80,7 +79,7 @@ class OLS(BaseModule):
         self._Output["收益率"] = np.r_[self._Output["收益率"], _calcReturn(Price, return_type=self.ReturnType)]
         FactorData = self._FactorTable.readData(dts=[PreDateTime], ids=self._Output["因子ID"], factor_names=list(self.TestFactors)).iloc[:, 0, :].values.flatten(order="F")
         self._Output["因子值"] = np.r_[self._Output["因子值"], FactorData.reshape((1, FactorData.shape[0]))]
-        if self._Output["收益率"].shape[0]<self._nMinSample: return 0
+        if self._Output["收益率"].shape[0]<self.MinSummaryWindow: return 0
         StartInd = int(max(0, self._Output["收益率"].shape[0] - self.SummaryWindow))
         X = self._Output["因子值"][StartInd:]
         if self.Constant: X = sm.add_constant(X, prepend=True)

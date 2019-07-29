@@ -4,6 +4,7 @@
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
+import cvxpy as cvx
 
 # 计算 Hurst 指数
 def genHurstExp(S, q=2, maxT=19):
@@ -168,9 +169,9 @@ def calcCorr(data1,data2,method='spearman',lag=0):
         iData2 = data2.iloc[i-max((0,-lag))]
         Corr.iloc[i] = iData1.corr(iData2,method=method)
     return Corr
-# 使用cvx优化器求解带约束的加权多元回归, x:np.array((N,K)), y:np.array((N,)), weight:None或者np.array((N,)), 返回回归系数, 目前支持线性等式和不等式约束
-def regressByCVX(y,x,weight=None,constraints={}):
-    Mask = ((np.sum(np.isnan(x),axis=1)==0) & (pd.notnull(y)))
+# 使用cvx优化器求解带约束的加权多元回归, x:np.array((N,K)), y:np.array((N,)), weight:None或者np.array((N,)), 返回回归系数, 目前支持 Box, 线性等式和不等式约束
+def regressByCVX(y, x, weight=None, constraints={}):
+    Mask = ((np.sum(np.isnan(x), axis=1)==0) & (pd.notnull(y)))
     if weight is not None:
         Mask = (Mask & pd.notnull(weight))
     else:
@@ -180,21 +181,22 @@ def regressByCVX(y,x,weight=None,constraints={}):
         return None
     y = y[Mask]
     weight = weight[Mask]
-    import cvxpy
-    beta = cvxpy.Variable(x.shape[1])
+    beta = cvx.Variable(x.shape[1])
     Constraints = []
-    for iConstraintType,iConstraint in constraints.items():
+    for iConstraintType, iConstraint in constraints.items():
         if iConstraintType=='LinearEq':
             Constraints.append(iConstraint["Aeq"]*beta==iConstraint["beq"])
         elif iConstraintType=='LinearIn':
             Constraints.append(iConstraint["A"]*beta<=iConstraint["b"])
-    u = y.reshape((y.shape[0],1))-x*beta
-    Prob = cvxpy.Problem(cvxpy.Minimize(cvxpy.quad_form(u,np.diag(weight))),Constraints)
+        elif iConstraintType=="Box":
+            Constraints.extend([beta<=iConstraint["ub"].flatten(), beta>=iConstraint["lb"].flatten()])
+    u = y - x * beta
+    Prob = cvx.Problem(cvx.Minimize(cvx.quad_form(u,np.diag(weight))), Constraints)
     Prob.solve()
-    return np.array(beta.value).T[0]
+    return beta.value
 
-if __name__=='__main__':
-    import time
+#if __name__=='__main__':
+    #import time
     #y = np.random.randn(3000)
     #x = np.random.randn(3000,40)
     ## 带约束的加权最小二乘回归
@@ -215,3 +217,4 @@ if __name__=='__main__':
     #print(b1)
     #print(b_real)
     #print(np.max(np.abs(b1-b_real)))
+    #print("===")
