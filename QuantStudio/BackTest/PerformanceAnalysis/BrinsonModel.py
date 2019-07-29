@@ -64,6 +64,7 @@ class BrinsonModel(BaseModule):
         return (self._FactorTable, )
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
+        self._iDT = idt
         PreDT = None
         if self.CalcDTs:
             if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
@@ -110,17 +111,17 @@ class BrinsonModel(BaseModule):
         self._Output["交互作用超额收益"] = self._Output["策略组合收益"] - self._Output["主动个券选择组合收益"] - self._Output["主动资产配置组合收益"] + self._Output["基准组合收益"] 
         self._Output["总超额收益"] = self._Output["策略组合收益"] - self._Output["基准组合收益"]
         self._Output["主动资产配置组合收益(修正)"] = (self._Output["策略组合资产权重"] - self._Output["基准组合资产权重"]) * (self._Output["基准组合资产收益"].T - self._Output["基准组合收益"].sum(axis=1)).T
-        self._Output["策略组合资产权重"]["总计"] = self._Output["策略组合资产权重"].sum(axis=1)
-        self._Output["基准组合资产权重"]["总计"] = self._Output["基准组合资产权重"].sum(axis=1)
-        self._Output["策略组合收益"]["总计"] = self._Output["策略组合收益"].sum(axis=1)
-        self._Output["基准组合收益"]["总计"] = self._Output["基准组合收益"].sum(axis=1)
-        self._Output["主动资产配置组合收益"]["总计"] = self._Output["主动资产配置组合收益"].sum(axis=1)
-        self._Output["主动个券选择组合收益"]["总计"] = self._Output["主动个券选择组合收益"].sum(axis=1)
-        self._Output["主动资产配置超额收益"]["总计"] = self._Output["主动资产配置超额收益"].sum(axis=1)
-        self._Output["主动个券选择超额收益"]["总计"] = self._Output["主动个券选择超额收益"].sum(axis=1)
-        self._Output["交互作用超额收益"]["总计"] = self._Output["交互作用超额收益"].sum(axis=1)
-        self._Output["总超额收益"]["总计"] = self._Output["总超额收益"].sum(axis=1)
-        self._Output["主动资产配置组合收益(修正)"]["总计"] = self._Output["主动资产配置组合收益(修正)"].sum(axis=1)
+        self._Output["总计"] = pd.DataFrame(self._Output["策略组合资产权重"].sum(axis=1), columns=["策略组合资产权重"])
+        self._Output["总计"]["基准组合资产权重"] = self._Output["基准组合资产权重"].sum(axis=1)
+        self._Output["总计"]["策略组合收益"] = self._Output["策略组合收益"].sum(axis=1)
+        self._Output["总计"]["基准组合收益"] = self._Output["基准组合收益"].sum(axis=1)
+        self._Output["总计"]["主动资产配置组合收益"] = self._Output["主动资产配置组合收益"].sum(axis=1)
+        self._Output["总计"]["主动资产配置组合收益(修正)"] = self._Output["主动资产配置组合收益(修正)"].sum(axis=1)
+        self._Output["总计"]["主动个券选择组合收益"] = self._Output["主动个券选择组合收益"].sum(axis=1)
+        self._Output["总计"]["主动资产配置超额收益"] = self._Output["主动资产配置超额收益"].sum(axis=1)
+        self._Output["总计"]["主动个券选择超额收益"] = self._Output["主动个券选择超额收益"].sum(axis=1)
+        self._Output["总计"]["交互作用超额收益"] = self._Output["交互作用超额收益"].sum(axis=1)
+        self._Output["总计"]["总超额收益"] = self._Output["总超额收益"].sum(axis=1)
         self._Output["多期综合"] = pd.DataFrame(dtype=np.float)
         self._Output["多期综合"]["策略组合收益"] = (self._Output["策略组合收益"] + 1).prod(axis=0) - 1
         self._Output["多期综合"]["基准组合收益"] = (self._Output["基准组合收益"] + 1).prod(axis=0) - 1
@@ -130,6 +131,17 @@ class BrinsonModel(BaseModule):
         self._Output["多期综合"]["主动个券选择超额收益"] = self._Output["多期综合"]["主动个券选择组合收益"] - self._Output["多期综合"]["基准组合收益"]
         self._Output["多期综合"]["交互作用超额收益"] = self._Output["多期综合"]["策略组合收益"] - self._Output["多期综合"]["主动资产配置组合收益"] - self._Output["多期综合"]["主动个券选择组合收益"] + self._Output["多期综合"]["基准组合收益"]
         self._Output["多期综合"]["总超额收益"] = self._Output["多期综合"]["策略组合收益"] - self._Output["多期综合"]["基准组合收益"]
+        self._Output["多期综合"].loc["总计"] = (self._Output["总计"] + 1).prod(axis=0) - 1
+        k_t = (np.log(1+self._Output["总计"]["策略组合收益"]) - np.log(1+self._Output["总计"]["基准组合收益"])) / (self._Output["总计"]["策略组合收益"] - self._Output["总计"]["基准组合收益"])
+        k_t[pd.isnull(k_t)] = 1.0
+        if self._Output["多期综合"].loc["总计", "策略组合收益"]!=self._Output["多期综合"].loc["总计", "基准组合收益"]:
+            k = (np.log(self._Output["多期综合"].loc["总计", "策略组合收益"]+1) - np.log(self._Output["多期综合"].loc["总计", "基准组合收益"]+1)) / (self._Output["多期综合"].loc["总计", "策略组合收益"] - self._Output["多期综合"].loc["总计", "基准组合收益"])
+        else:
+            k = 1.0
+        self._Output["多期综合"].loc["总计", "主动资产配置超额收益"] = (self._Output["总计"]["主动资产配置超额收益"] * k_t).sum() / k
+        self._Output["多期综合"].loc["总计", "主动个券选择超额收益"] = (self._Output["总计"]["主动个券选择超额收益"] * k_t).sum() / k
+        self._Output["多期综合"].loc["总计", "交互作用超额收益"] = (self._Output["总计"]["交互作用超额收益"] * k_t).sum() / k
+        self._Output["多期综合"].loc["总计", "总超额收益"] = self._Output["多期综合"].loc["总计", "策略组合收益"] - self._Output["多期综合"].loc["总计", "基准组合收益"]
         return 0
     def _repr_html_(self):
         if len(self.ArgNames)>0:

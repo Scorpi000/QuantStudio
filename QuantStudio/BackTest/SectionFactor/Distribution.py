@@ -52,6 +52,7 @@ class IndustryDistribution(BaseModule):
         return (self._FactorTable, )
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
+        self._iDT = idt
         if self.CalcDTs:
             if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
             self._CurCalcInd = self.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd

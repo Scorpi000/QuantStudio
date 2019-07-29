@@ -433,19 +433,19 @@ class FactorTable(__QS_Object__):
             return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args), factor_names=factor_names, ids=ids, dts=dts, args=args)
         Data = {}
         DataFactorNames = []
-        CacheFactorNames = []
+        CacheFactorNames = set()
         PopFactorNames = []
         for iFactorName in factor_names:
             iFactorData = self.ErgodicMode._CacheData.get(iFactorName)
             if iFactorData is None:# 尚未进入缓存
                 if self.ErgodicMode._CacheFactorNum<self.ErgodicMode.MaxFactorCacheNum:# 当前缓存因子数小于最大缓存因子数，那么将该因子数据读入缓存
                     self.ErgodicMode._CacheFactorNum += 1
-                    CacheFactorNames.append(iFactorName)
+                    CacheFactorNames.add(iFactorName)
                 else:# 当前缓存因子数等于最大缓存因子数，那么将检查最小读取次数的因子
                     CacheFactorReadNum = self.ErgodicMode._FactorReadNum[self.ErgodicMode._CacheData.keys()]
                     MinReadNumInd = CacheFactorReadNum.argmin()
                     if CacheFactorReadNum.loc[MinReadNumInd]<self.ErgodicMode._FactorReadNum[iFactorName]:# 当前读取的因子的读取次数超过了缓存因子读取次数的最小值，缓存该因子数据
-                        CacheFactorNames.append(iFactorName)
+                        CacheFactorNames.add(iFactorName)
                         PopFactor = MinReadNumInd
                         self.ErgodicMode._CacheData.pop(PopFactor)
                         PopFactorNames.append(PopFactor)
@@ -453,6 +453,7 @@ class FactorTable(__QS_Object__):
                         DataFactorNames.append(iFactorName)
             else:
                 Data[iFactorName] = iFactorData
+        CacheFactorNames = list(CacheFactorNames)
         if CacheFactorNames:
             #print("尚未进入缓存区读取: "+str(CacheFactorNames))# debug
             iData = dict(self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=CacheFactorNames, ids=self.ErgodicMode._IDs, dts=self.ErgodicMode._CacheDTs, args=args), factor_names=CacheFactorNames, ids=self.ErgodicMode._IDs, dts=self.ErgodicMode._CacheDTs, args=args))

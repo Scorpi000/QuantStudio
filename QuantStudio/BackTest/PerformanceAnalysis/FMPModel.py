@@ -67,6 +67,7 @@ class FMPModel(BaseModule):
         return (self._FactorTable, )
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
+        self._iDT = idt
         PreDT = None
         if self.CalcDTs:
             if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
@@ -101,6 +102,7 @@ class FMPModel(BaseModule):
         if self.IndustryFactor!="无":
             IndustryData = self._FactorTable.readData(factor_names=[self.IndustryFactor], ids=IDs, dts=[PreDT]).iloc[0, 0, :]
             DummyData = DummyVarTo01Var(IndustryData, ignore_nonstring=True)
+            DummyData.columns.values[pd.isnull(DummyData.columns)] = "None"
             FactorExpose = pd.merge(FactorExpose, DummyData, left_index=True, right_index=True)
         CovMatrixInv = np.linalg.inv(CovMatrix.values)
         FMPHolding = np.dot(np.dot(np.linalg.inv(np.dot(np.dot(FactorExpose.values.T, CovMatrixInv), FactorExpose.values)), FactorExpose.values.T), CovMatrixInv)

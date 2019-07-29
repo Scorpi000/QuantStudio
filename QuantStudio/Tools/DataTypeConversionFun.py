@@ -24,10 +24,10 @@ def DummyVarTo01Var(dummy_var,ignore_na=False,ignores=[],ignore_nonstring=False)
         return pd.DataFrame()
     NAMask = pd.isnull(dummy_var)
     if ignore_na:
-        AllClasses = list(dummy_var[~NAMask].unique())
+        AllClasses = dummy_var[~NAMask].unique()
     else:
         dummy_var[NAMask] = np.nan
-        AllClasses = list(dummy_var.unique())
+        AllClasses = dummy_var.unique()
     AllClasses = [iClass for iClass in AllClasses if (iClass not in ignores) and ((not ignore_nonstring) or isinstance(iClass,str) or pd.isnull(iClass))]
     OZVar = pd.DataFrame(0.0,index=dummy_var.index,columns=AllClasses,dtype='float')
     for iClass in AllClasses:

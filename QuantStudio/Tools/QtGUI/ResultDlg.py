@@ -3,6 +3,7 @@ import os
 import sys
 import datetime as dt
 import tempfile
+from cycler import cycler
 
 from PyQt5 import QtWidgets, QtCore, QtGui
 
@@ -705,15 +706,9 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
         nRow = self.MainResultTable.rowCount()
         if nRow==0: return []
         SelectedColumns = []
-        nSelectedIndexes = len(SelectedIndexes)
-        if nSelectedIndexes==0: return []
-        elif (nSelectedIndexes==1) or (SelectedIndexes[0].column()!=SelectedIndexes[1].column()):
-            for i in range(0, int(nSelectedIndexes/nRow)):
-                SelectedColumns.append(SelectedIndexes[i].column())
-        else:
-            for i in range(0, nSelectedIndexes, nRow):
-                SelectedColumns.append(SelectedIndexes[i].column())
-        return SelectedColumns
+        Rngs = self.MainResultTable.selectedRanges()
+        for iRng in Rngs: SelectedColumns.extend(np.arange(iRng.leftColumn(), iRng.rightColumn()+1))
+        return sorted(SelectedColumns)
     def getSelectedDF(self, all_num=True):
         SelectedColumns = self.getSelectedColumns()
         if SelectedColumns==[]: return (None, "没有选中数据列!")
@@ -860,6 +855,8 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         NewAction.triggered.connect(self.plotJoint)
         NewAction = self.MainResultTable.ContextMenu['绘制图像']['主菜单'].addAction('QQ图')
         NewAction.triggered.connect(self.plotQQ)
+        NewAction = self.MainResultTable.ContextMenu['绘制图像']['主菜单'].addAction('雷达图')
+        NewAction.triggered.connect(self.plotRadar)
     def plotHist(self):
         SelectedColumn = self.getSelectedColumns()
         if len(SelectedColumn)!=1: return QtWidgets.QMessageBox.critical(self, "错误", "请选择一列!")
@@ -1030,6 +1027,28 @@ class MatplotlibResultDlg(PlotlyResultDlg):
         tempFigDlg.Mpl.draw()
         tempFigDlg.show()
         return 0
+    def plotRadar(self):# 雷达图
+        SelectedDF, Msg = self.getSelectedDF(all_num=True)
+        if SelectedDF is None: return QtWidgets.QMessageBox.critical(self, "错误", Msg)
+        Data = SelectedDF.values
+        Min, isOK = QtWidgets.QInputDialog.getDouble(self, "最小值", "最小值: ", np.nanmin(Data))
+        if not isOK: return 0
+        Max, isOK = QtWidgets.QInputDialog.getDouble(self, "最大值", "最大值: ", np.nanmax(Data))
+        if not isOK: return 0
+        Angles = np.linspace(0, 2*np.pi, SelectedDF.shape[0], endpoint=False)
+        Angles = np.concatenate((Angles, [Angles[0]]))
+        Data = np.concatenate((Data, [Data[0, :]]))
+        tempFigDlg = _MatplotlibWidget()
+        Fig = tempFigDlg.Mpl.Fig
+        Axes = Fig.add_subplot(111, polar=True)
+        Axes.set_thetagrids(Angles*180/np.pi, SelectedDF.index.values)#设置网格标签
+        Axes.set_rlim(Min, Max)# 设置显示的极径范围
+        for i in range(Data.shape[1]): Axes.plot(Angles, Data[:, i], "o-")
+        Axes.set_theta_zero_location("NW")#设置极坐标0°位置
+        Axes.set_rlabel_position(255)#设置极径标签位置
+        tempFigDlg.Mpl.draw()
+        tempFigDlg.show()
+        return 0
     def plotHeatMap(self):
         SelectedDF, Msg = self.getSelectedDF(all_num=True)
         if SelectedDF is None: return QtWidgets.QMessageBox.critical(self, "错误", Msg)
@@ -1092,7 +1111,9 @@ class MatplotlibResultDlg(PlotlyResultDlg):
             PlotMode[i] = DataTable.cellWidget(i,0).currentText()
             PlotAxes[i] = DataTable.cellWidget(i,1).currentText()
             iColor = DataTable.cellWidget(i,2).currentText()
-            if iColor!='默认':
+            if iColor=="默认":
+                if PlotMode[i] in ("Bar", "Stack"): PlotArgs[i]['color'] = "b"
+            else:
                 PlotArgs[i]['color'] = iColor
             PlotArgs[i]['linestyle'] = DataTable.cellWidget(i,3).currentText()
             iMarker = DataTable.cellWidget(i,4).currentText()
@@ -1133,12 +1154,19 @@ class MatplotlibResultDlg(PlotlyResultDlg):
             if isStr: xData = np.arange(0, PlotResult.shape[0])
         FigDlg = _MatplotlibWidget()
         Fig = FigDlg.Mpl.Fig
-        if ('左轴' in PlotAxes):
+        nLeftAxe, nRightAxe = PlotAxes.count("左轴"), PlotAxes.count("右轴")
+        if nLeftAxe>0:
             LeftAxe = Fig.add_subplot(111)
-            if ('右轴' in PlotAxes): RightAxe = LeftAxe.twinx()
+            if nRightAxe>0:
+                RightAxe = LeftAxe.twinx()
+                LeftAxe.set_prop_cycle(cycler('color', [plt.cm.Spectral(i) for i in np.arange(0, nLeftAxe)/PlotResult.shape[1]]))
+                RightAxe.set_prop_cycle(cycler('color', [plt.cm.Spectral(i) for i in np.arange(nLeftAxe, PlotResult.shape[1])/PlotResult.shape[1]]))
+            else:
+                LeftAxe.set_prop_cycle(cycler('color', [plt.cm.Spectral(i) for i in np.linspace(0, 1, PlotResult.shape[1])]))
         else:
             RightAxe = Fig.add_subplot(111)
             LeftAxe = RightAxe
+            LeftAxe.set_prop_cycle(cycler('color', [plt.cm.Spectral(i) for i in np.linspace(0, 1, PlotResult.shape[1])]))
         for i in range(PlotResult.shape[1]):
             iAxe = (LeftAxe if PlotAxes[i]=="左轴" else RightAxe)
             yData = PlotResult.iloc[:,i]
@@ -1168,8 +1196,8 @@ class MatplotlibResultDlg(PlotlyResultDlg):
                     iAxe.stackplot(xData, yData.values, **PlotArgs[i])
                 iAxe.set_xticks(xTicks)
                 iAxe.set_xticklabels(xTickLabels)
-        if '左轴' in PlotAxes: LeftAxe.legend(loc='upper left',shadow=True)
-        if '右轴' in PlotAxes: RightAxe.legend(loc='upper right',shadow=True)
+        if nLeftAxe>0: LeftAxe.legend(loc='upper left',shadow=True)
+        if nRightAxe>0: RightAxe.legend(loc='upper right',shadow=True)
         plt.title(','.join([str(iCol) for iCol in PlotResult.columns]))
         FigDlg.Mpl.draw()
         FigDlg.show()
@@ -1179,11 +1207,13 @@ if __name__=='__main__':
     # 测试代码
     from QuantStudio.Tools.DateTimeFun import getDateSeries
     
+    Bar2 = pd.DataFrame(np.random.randn(3,2), index=["中文", "b2", "b3"], columns=["中文", "我是个例子"])
+    Bar2.iloc[0,0] = np.nan
     Dates = getDateSeries(dt.date(2016,1,1), dt.date(2016,12,31))
-    TestData = {"Bar1":{"a":{"a1":pd.DataFrame(np.random.rand(11,3),index=Dates[:11],columns=['b','c','d']),
+    TestData = {"Bar1":{"a":{"a1":pd.DataFrame(np.random.rand(11,10),index=Dates[:11],columns=['a'+str(i) for i in range(10)]),
                              "a2":pd.DataFrame(np.random.rand(10,2))},
                         "b":pd.DataFrame(['a']*150,columns=['c'])},
-                "Bar2":pd.DataFrame(np.random.randn(3,2), index=["中文", "b2", "b3"], columns=["中文", "我是个例子"])}
+                "Bar2": Bar2}
     app = QtWidgets.QApplication(sys.argv)
     #TestWindow = PlotlyResultDlg(None, TestData)
     TestWindow = MatplotlibResultDlg(None, TestData)

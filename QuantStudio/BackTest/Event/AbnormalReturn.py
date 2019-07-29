@@ -58,6 +58,7 @@ class CMRM(BaseModule):
         return (self._FactorTable, )
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
+        self._iDT = idt
         CurInd = self._AllDTs.index(idt)
         if CurInd<=self.EventPreWindow+self.EstWindow: return 0
         self._Output["事件记录"][:, 2] += 1
@@ -173,6 +174,7 @@ class MAM(CMRM):
         return super().__QS_start__(mdl=mdl, dts=dts, **kwargs) + (self._BenchmarkFT, )
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
+        self._iDT = idt
         CurInd = self._AllDTs.index(idt)
         if CurInd<=self.EventPreWindow+self.EstWindow: return 0
         self._Output["事件记录"][:, 2] += 1
@@ -245,6 +247,7 @@ class MM(CMRM):
         else: return Rslt + (self._BenchmarkFT, self._RateFT)
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
+        self._iDT = idt
         CurInd = self._AllDTs.index(idt)
         if CurInd<=self.EventPreWindow+self.EstWindow: return 0
         self._Output["事件记录"][:, 2] += 1

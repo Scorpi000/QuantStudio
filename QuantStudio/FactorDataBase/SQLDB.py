@@ -106,6 +106,7 @@ class SQLDB(WritableFactorDB):
         self._Prefix = "QS_"
         self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"SQLDBConfig.json" if config_file is None else config_file), **kwargs)
+        self._PID = None# 保存数据库连接创建时的进程号
         self.Name = "SQLDB"
         return
     def __getstate__(self):
@@ -146,6 +147,7 @@ class SQLDB(WritableFactorDB):
                 if self.DSN: self._Connection = pyodbc.connect("DSN=%s;PWD=%s" % (self.DSN, self.Pwd))
                 else: self._Connection = pyodbc.connect("DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s" % (self.DBType, self.DBName, self.IPAddr+","+str(self.Port), self.User, self.Pwd))
                 self.Connector = "pyodbc"
+        self._PID = os.getpid()
         return 0
     def connect(self):
         self._connect()
@@ -177,6 +179,7 @@ class SQLDB(WritableFactorDB):
         return (self._Connection is not None)
     def cursor(self, sql_str=None):
         if self._Connection is None: raise __QS_Error__("%s尚未连接!" % self.__doc__)
+        if os.getpid()!=self._PID: self.connect()# 如果进程号发生变化, 重连
         Cursor = self._Connection.cursor()
         if sql_str is None: return Cursor
         Cursor.execute(sql_str)
@@ -187,6 +190,8 @@ class SQLDB(WritableFactorDB):
         Cursor.close()
         return Data
     def execute(self, sql_str):
+        if self._Connection is None: raise __QS_Error__("%s尚未连接!" % self.__doc__)
+        if os.getpid()!=self._PID: self.connect()# 如果进程号发生变化, 重连
         Cursor = self._Connection.cursor()
         Cursor.execute(sql_str)
         self._Connection.commit()

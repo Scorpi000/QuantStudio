@@ -139,8 +139,10 @@ class _FactorRiskTable(FactorRT):
             DTStr = DTs[-1].strftime("%Y-%m-%d %H:%M:%S.%f")
             with self._RiskDB._DataLock:
                 with h5py.File(self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
-                    Group = File["FactorCov"]
-                    if DTStr in Group: self._FactorNames = sorted(Group[DTStr]["Factor"][...])
+                    if "FactorCov" in File:
+                        Group = File["FactorCov"]
+                        if DTStr in Group: self._FactorNames = sorted(Group[DTStr]["Factor"][...])
+                        else: self._FactorNames = []
                     else: self._FactorNames = []
     def getMetaData(self, key=None):
         return _RiskTable.getMetaData(self, key=key)

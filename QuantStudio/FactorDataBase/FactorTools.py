@@ -1,5 +1,6 @@
 # coding=utf-8
 """内置的因子运算"""
+import datetime as dt
 import uuid
 
 import numpy as np
@@ -114,7 +115,7 @@ def _where(f,idt,iid,x,args):
     return np.where(Data[1],Data[0],Data[2])
 def where(f,mask,other,**kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f,mask,other)
-    return PointOperation(kwargs.get('factor_name',str(uuid.uuid1())), Descriptors, {"算子":_where, "参数":Args, "运算时点":"多时点", "运算ID":"多ID"})
+    return PointOperation(kwargs.get('factor_name',str(uuid.uuid1())), Descriptors, {"算子":_where, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "数据类型":kwargs.get("data_type", "double")})
 def _clip(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
     return np.clip(Data[0],Data[1],Data[2])
@@ -256,6 +257,25 @@ def _single_quarter(f,idt,iid,x,args):
 def single_quarter(report_period, last, prev, **kwargs):
     Descriptors, Args = _genMultivariateOperatorInfo(report_period, last, prev)
     return PointOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_single_quarter,"参数":Args,"运算时点":"多时点","运算ID":"多ID"})
+def _strftime(f, idt, iid, x, args):
+    Data = _genOperatorData(f, idt, iid, x, args)[0]
+    DTFormat = args["OperatorArg"]["dt_format"]
+    return pd.DataFrame(Data).applymap(lambda x: x.strftime(DTFormat) if pd.notnull(x) else None).values
+def strftime(f, dt_format="%Y%m%d", **kwargs):
+    Descriptors, Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"dt_format":dt_format}
+    return PointOperation(kwargs.get('factor_name',str(uuid.uuid1())), Descriptors, {"算子":_strftime, "参数":Args, "数据类型":"string", "运算时点":"多时点", "运算ID":"多ID"})
+def _strptime(f, idt, iid, x, args):
+    Data = _genOperatorData(f, idt, iid, x, args)[0]
+    DTFormat = args["OperatorArg"]["dt_format"]
+    if args["OperatorArg"]["is_datetime"]:
+        return pd.DataFrame(Data).applymap(lambda x: dt.datetime.strptime(x, DTFormat) if pd.notnull(x) else None).values
+    else:
+        return pd.DataFrame(Data).applymap(lambda x: dt.datetime.strptime(x, DTFormat).date() if pd.notnull(x) else None).values
+def strptime(f, dt_format="%Y%m%d", is_datetime=True, **kwargs):
+    Descriptors, Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"dt_format":dt_format, "is_datetime":is_datetime}
+    return PointOperation(kwargs.get('factor_name',str(uuid.uuid1())), Descriptors, {"算子":_strptime, "参数":Args, "数据类型":"string", "运算时点":"多时点", "运算ID":"多ID"})
 # ----------------------时间序列运算--------------------------------
 def _rolling_mean(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
@@ -434,9 +454,9 @@ def expanding_quantile(f, quantile=0.5, min_periods=1, **kwargs):
 def _expanding_count(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     return Data.expanding(**args["OperatorArg"]).count().values[args["OperatorArg"]["min_periods"]-1:]
-def expanding_count(f, **kwargs):
+def expanding_count(f, min_periods=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
-    Args["OperatorArg"] = {}
+    Args["OperatorArg"] = {"min_periods":min_periods}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_expanding_count,"参数":Args,"回溯期数":[min_periods-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _ewm_mean(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
@@ -906,7 +926,7 @@ def _winsorize(f,idt,iid,x,args):
                                                  **OperatorArg)
     return Rslt
 def winsorize(f, mask=None, cat_data=None, method='截断', avg_statistics="平均值", dispersion_statistics="标准差", std_multiplier=3, std_tmultiplier=3.5, other_handle='填充None', **kwargs):
-    Factors = [Y]
+    Factors = [f]
     OperatorArg = {}
     if mask is not None:
         Factors.append(mask)
