@@ -266,9 +266,6 @@ if __name__=='__main__':
     HDB = QS.FactorDB.HDF5DB()
     HDB.connect()
     
-    WDB = QS.FactorDB.WindDB2()
-    WDB.connect()
-    
     app = QApplication(sys.argv)
     TestWindow = FactorDBDlg(HDB)
     TestWindow.show()
