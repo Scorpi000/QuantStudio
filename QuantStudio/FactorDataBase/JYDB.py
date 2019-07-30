@@ -663,29 +663,65 @@ class _MarketTable(_DBTable):
 # 条件字段, 作为条件过滤记录; 可能存在多个条件字段
 # 在设定某些条件下, 数据填充时点和 ID 可以唯一标志一行记录
 # 先填充表中已有的数据, 然后根据回溯天数参数填充缺失的时点
-class _InfoPublTable(_DBTable):# TODO
+class _InfoPublTable(_MarketTable):
     LookBack = Float(0, arg_type="Integer", label="回溯天数", order=0)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        self._DBTableName = fdb.TablePrefix + fdb._TableInfo.loc[name, "DBTableName"]
-        self._MainTableName = fdb._TableInfo.loc[name, "MainTableName"]
-        self._MainTableName = fdb.TablePrefix + self._MainTableName
-        self._MainTableID = fdb._TableInfo.loc[name, "MainTableID"]
-        self._MainTableCondition = fdb._TableInfo.loc[name, "MainTableCondition"]
-        self._JoinCondition = fdb._TableInfo.loc[name, "JoinCondition"].format(DBTable=self._DBTableName, MainTable=self._MainTableName)
-        if pd.notnull(self._MainTableCondition):
-            self._MainTableCondition = self._MainTableCondition.format(MainTable=self._MainTableName)
-        self._SecurityType = fdb._TableInfo.loc[name, "SecurityType"]
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         FactorInfo = fdb._FactorInfo.loc[name]
-        self._IDField = self._DBTableName+"."+FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="ID"].iloc[0]# ID 字段
-        self._AnnDateField = self._DBTableName+"."+FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="AnnDate"].iloc[0]# 发布日期字段
-        self._EndDateField = self._DBTableName+"."+FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="EndDate"].iloc[0]# 截止日期
-        self._ConditionFields = FactorInfo[FactorInfo["FieldType"]=="Condition"].index.tolist()# 所有的条件字段列表
-        super().__init__(name=name, fdb    =fdb, sys_args=sys_args, **kwargs)
-        return
-    def _genSubSQLStr(self, ids, start_date, end_date, args={}):
+        self._EndDateField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="EndDate"].iloc[0]# 截止日期
+    def getID(self, ifactor_name=None, idt=None, args={}):
+        IDField, AnnDateField, EndDateField = self._DBTableName+"."+self._IDField, self._DBTableName+"."+self._DateField, self._DBTableName+"."+self._EndDateField
+        SQLStr = "SELECT DISTINCT "+self._MainTableName+"."+self._MainTableID+" "
+        SQLStr += "FROM "+self._DBTableName+" "
+        SQLStr += "INNER JOIN "+self._MainTableName+" "
+        SQLStr += "ON "+self._JoinCondition+" "
+        if idt is not None:
+            SQLStr += "WHERE (CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END)='"+idt.strftime("%Y-%m-%d")+"' "
+        else:
+            SQLStr += "WHERE "+AnnDateField+" IS NOT NULL AND "+EndDateField+" IS NOT NULL "
+        if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
-        SubSQLStr = "SELECT "+self._IDField+", "
-        SubSQLStr += "MAX("+self._EndDateField+") "
+        for iConditionField in self._ConditionFields:
+            if _identifyDataType(FactorInfo.loc[iConditionField, "DataType"])=="string":
+                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"='"+args.get(iConditionField, self[iConditionField])+"' "
+            else:
+                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"="+args.get(iConditionField, self[iConditionField])+" "
+        SQLStr += "ORDER BY "+self._MainTableName+"."+self._MainTableID
+        if self._SecurityType=="A股": return suffixAShareID([iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)])
+        else: return [str(iRslt[0]) for iRslt in self._FactorDB.fetchall(SQLStr)]
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
+        IDField, AnnDateField, EndDateField = self._DBTableName+"."+self._IDField, self._DBTableName+"."+self._DateField, self._DBTableName+"."+self._EndDateField
+        SQLStr = "SELECT DISTINCT CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END AS DT"
+        SQLStr += "FROM "+self._DBTableName+" "
+        if iid is not None:
+            if self._SecurityType=="A股": iID = deSuffixID([iid])[0]
+            else: iID = iid
+            SQLStr += "INNER JOIN "+self._MainTableName+" "
+            SQLStr += "ON "+self._JoinCondition+" "
+            SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+"='"+iID+"' "
+            if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
+        else: SQLStr += "WHERE "+IDField+" IS NOT NULL "
+        if start_dt is not None:
+            SQLStr += "AND ("+AnnDateField+">='"+start_dt.strftime("%Y-%m-%d")+"' "
+            SQLStr += "OR "+EndDateField+">='"+start_dt.strftime("%Y-%m-%d")+"') "
+        if end_dt is not None:
+            SQLStr += "AND ("+AnnDateField+"<='"+end_dt.strftime("%Y-%m-%d")+"' "
+            SQLStr += "AND "+EndDateField+"<='"+end_dt.strftime("%Y-%m-%d")+"') "
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        for iConditionField in self._ConditionFields:
+            if _identifyDataType(FactorInfo.loc[iConditionField, "DataType"])=="string":
+                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"='"+args.get(iConditionField, self[iConditionField])+"' "
+            else:
+                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"="+args.get(iConditionField, self[iConditionField])+" "
+        SQLStr += "ORDER BY DT"
+        return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
+    def _genNullIDSQLStr(self, factor_names, ids, end_date, args={}):
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        IDField, AnnDateField, EndDateField = self._DBTableName+"."+self._IDField, self._DBTableName+"."+self._DateField, self._DBTableName+"."+self._EndDateField
+        SubSQLStr = "SELECT "+self._MainTableName+"."+self._MainTableID+", "
+        SubSQLStr += IDField+", "
+        SubSQLStr += AnnDateField+" AS AnnDate, "
+        SubSQLStr += "MAX("+EndDateField+") AS MaxEndDate "
         SubSQLStr += "FROM "+self._DBTableName+" "
         SubSQLStr += "INNER JOIN "+self._MainTableName+" "
         SubSQLStr += "ON "+self._JoinCondition+" "
@@ -695,54 +731,63 @@ class _InfoPublTable(_DBTable):# TODO
             if _identifyDataType(FactorInfo.loc[iConditionField, "DataType"])=="string":
                 SubSQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"='"+args.get(iConditionField, self[iConditionField])+"' "
             else:
-                SubSQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"="+args.get(iConditionField, self[iConditionField])+""
-        SubSQLStr += "GROUP BY "+self._IDField+", "+self._AnnDateField+" "
-        if start_date is not None:
-            SubSQLStr += "HAVING ("+self._AnnDateField+">='"+start_date.strftime("%Y-%m-%d")+"' "
-            SubSQLStr += "OR "+self._EndDateField+">='"+start_date.strftime("%Y-%m-%d")+"') "
-        if end_date is not None:
-            SubSQLStr += "AND ("+self._AnnDateField+"<='"+end_date.strftime("%Y-%m-%d")+"' "
-            SubSQLStr += "AND "+self._EndDateField+"<='"+end_date.strftime("%Y-%m-%d")+"') "
-        return SubSQLStr
+                SubSQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"="+args.get(iConditionField, self[iConditionField])+" "
+        SubSQLStr += "AND ("+AnnDateField+"<'"+end_date.strftime("%Y-%m-%d")+"' "
+        SubSQLStr += "AND "+EndDateField+"<'"+end_date.strftime("%Y-%m-%d")+"') "
+        SubSQLStr += "GROUP BY "+IDField+", "+AnnDateField
+        SubSQLStr1 = "SELECT t."+self._MainTableID+", "
+        SubSQLStr1 += "t."+self._IDField+", "
+        SubSQLStr1 += "MAX(CASE WHEN t.AnnDate>=t.MaxEndDate THEN t.AnnDate ELSE t.MaxEndDate END) AS DT "
+        SubSQLStr1 += "FROM ("+SubSQLStr+") t GROUP BY t."+self._IDField
+        SQLStr = "SELECT t1."+self._MainTableID+", "
+        SQLStr += "t1.DT, "
+        for iField in factor_names: SQLStr += self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iField]+", "
+        SQLStr = SQLStr[:-2]+" FROM "+self._DBTableName+" "
+        SQLStr += "INNER JOIN ("+SubSQLStr1+") t1 "
+        SQLStr += "ON (t1."+self._IDField+"="+IDField+") "
+        SQLStr += "AND (CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END=t1.DT)"
+        return SQLStr
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         LookBack = args.get("回溯天数", self.LookBack)
         if not np.isinf(LookBack): StartDate -= dt.timedelta(LookBack)
         if self._SecurityType=="A股": ids = deSuffixID(ids)
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
-        SQLStr = "SELECT CASE WHEN "+self._AnnDateField+">="+self._EndDateField+" THEN "+self._AnnDateField+" "
-        SQLStr += "ELSE "+self._EndDateField+" END AS DT, "
-        SQLStr += self._MainTableName+"."+self._MainTableID+", "
+        IDField, AnnDateField, EndDateField = self._DBTableName+"."+self._IDField, self._DBTableName+"."+self._DateField, self._DBTableName+"."+self._EndDateField
+        SubSQLStr = "SELECT "+self._MainTableName+"."+self._MainTableID+", "
+        SubSQLStr += IDField+", "
+        SubSQLStr += AnnDateField+" AS AnnDate, "
+        SubSQLStr += "MAX("+EndDateField+") AS MaxEndDate "
+        SubSQLStr += "FROM "+self._DBTableName+" "
+        SubSQLStr += "INNER JOIN "+self._MainTableName+" "
+        SubSQLStr += "ON "+self._JoinCondition+" "
+        SubSQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, ids, is_str=True, max_num=1000)+") "
+        if pd.notnull(self._MainTableCondition): SubSQLStr += "AND "+self._MainTableCondition+" "
+        for iConditionField in self._ConditionFields:
+            if _identifyDataType(FactorInfo.loc[iConditionField, "DataType"])=="string":
+                SubSQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"='"+args.get(iConditionField, self[iConditionField])+"' "
+            else:
+                SubSQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"="+args.get(iConditionField, self[iConditionField])+" "
+        SubSQLStr += "AND ("+AnnDateField+">='"+StartDate.strftime("%Y-%m-%d")+"' "
+        SubSQLStr += "OR "+EndDateField+">='"+StartDate.strftime("%Y-%m-%d")+"') "
+        SubSQLStr += "AND ("+AnnDateField+"<='"+EndDate.strftime("%Y-%m-%d")+"' "
+        SubSQLStr += "AND "+EndDateField+"<='"+EndDate.strftime("%Y-%m-%d")+"') "
+        SubSQLStr += "GROUP BY "+IDField+", "+AnnDateField
+        SQLStr = "SELECT CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END AS DT, "
+        SQLStr += "t."+self._MainTableID+", "
         for iField in factor_names: SQLStr += self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iField]+", "
         SQLStr = SQLStr[:-2]+" FROM "+self._DBTableName+" "
-        SQLStr += "INNER JOIN "+self._MainTableName+" "
-        SQLStr += "ON "+self._JoinCondition+" "
-        SQLStr += "WHERE ("+self._IDField+", "+self._EndDateField+") IN ("+self._genSubSQLStr(ids, StartDate, EndDate, args=args)+") "
-        SQLStr += "ORDER BY "+self._MainTableName+"."+self._MainTableID+", DT"
+        SQLStr += "INNER JOIN ("+SubSQLStr+") t "
+        SQLStr += "ON (t."+self._IDField+"="+IDField+") "
+        SQLStr += "AND (t.MaxEndDate="+EndDateField+") "
+        SQLStr += "ORDER BY t."+self._MainTableID+", DT"
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: RawData = pd.DataFrame(columns=["日期", "ID"]+factor_names)
         RawData = pd.DataFrame(np.array(RawData), columns=["日期", "ID"]+factor_names)
         if np.isinf(LookBack):
             NullIDs = set(ids).difference(set(RawData[RawData["日期"]==dt.datetime.combine(StartDate,dt.time(0))]["ID"]))
             if NullIDs:
-                SubSQLStr = "SELECT "+self._IDField+", "
-                SubSQLStr += "MAX(CASE WHEN "+self._AnnDateField+">="+self._EndDateField+" THEN "+self._AnnDateField+" "
-                SubSQLStr += "ELSE "+self._EndDateField+" END) AS DT, "                
-                SubSQLStr += "FROM "+self._DBTableName+" "
-                SubSQLStr += "WHERE ("+self._IDField+", "+self._EndDateField+") IN ("+self._genSubSQLStr(list(NullIDs), None, StartDate-dt.timedelta(1), args=args)+") "
-                SubSQLStr += "GROUP BY "+self._IDField
-                SQLStr = "SELECT CASE WHEN "+self._AnnDateField+">="+self._EndDateField+" THEN "+self._AnnDateField+" "
-                SQLStr += "ELSE "+self._EndDateField+" END AS DT, "
-                SQLStr += self._MainTableName+"."+self._MainTableID+", "
-                for iField in factor_names: SQLStr += self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iField]+", "
-                SQLStr = SQLStr[:-2]+" FROM "+self._DBTableName+" "
-                SQLStr += "INNER JOIN "+self._MainTableName+" "
-                SQLStr += "ON "+self._JoinCondition+" "
-                SQLStr += "WHERE ("+self._MainTableName+"."+self._MainTableID+", "
-                SQLStr += "CASE WHEN "+self._AnnDateField+">="+self._EndDateField+" THEN "+self._AnnDateField+" "
-                SQLStr += "ELSE "+self._EndDateField+" END) IN ("+SubSQLStr+") "
-                if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
-                NullRawData = self._FactorDB.fetchall(SQLStr)
+                NullRawData = self._FactorDB.fetchall(self._genNullIDSQLStr(factor_names, list(NullIDs), StartDate, args=args))
                 if NullRawData:
                     NullRawData = pd.DataFrame(np.array(NullRawData), columns=["日期", "ID"]+factor_names)
                     RawData = pd.concat([NullRawData, RawData], ignore_index=True)
@@ -752,30 +797,6 @@ class _InfoPublTable(_DBTable):# TODO
             RawData["ID"] = RawData["ID"].astype("O")
             RawData["ID"] = [str(iID) for iID in RawData["ID"]]
         return RawData
-
-
-    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-        raw_data = raw_data.set_index(["日期", "ID"])
-        Data = {}
-        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
-        for iFactorName in raw_data.columns:
-            iRawData = raw_data[iFactorName].unstack()
-            iDataType = _identifyDataType(FactorInfo.loc[iFactorName, "DataType"])
-            if iDataType=="double": iRawData = iRawData.astype("float")
-            #elif iDataType=="datetime": iRawData = iRawData.applymap(lambda x: x.strftime("%Y-%m-%d %H:%M:%S") if pd.notnull(x) else None)
-            Data[iFactorName] = iRawData
-        Data = pd.Panel(Data).loc[factor_names]
-        LookBack = args.get("回溯天数", self.LookBack)
-        if LookBack==0: return Data.loc[:, dts, ids]
-        AllDTs = Data.major_axis.union(dts).sort_values()
-        Data = Data.loc[:, AllDTs, ids]
-        if np.isinf(LookBack):
-            for i, iFactorName in enumerate(Data.items): Data.iloc[i] = Data.iloc[i].fillna(method="pad")
-        else:
-            Limits = LookBack*24.0*3600
-            for i, iFactorName in enumerate(Data.items): Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
-        return Data.loc[:, dts]
 
 def RollBackNPeriod(report_date, n_period):
     Date = report_date
