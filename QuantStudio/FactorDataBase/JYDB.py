@@ -1481,7 +1481,7 @@ class _AnalystConsensusTable(_DBTable):
             RawData["ID"] = [str(iID) for iID in RawData["ID"]]
         RawData._QS_ANNReport = (CalcType!="Fwd12M")
         return RawData
-    def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock):
+    def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock, **kwargs):
         return _saveRawDataWithReportANN(self, self._ANN_ReportFileName, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock)
     def __QS_genGroupInfo__(self, factors, operation_mode):
         PeriodGroup = {}
@@ -1648,7 +1648,7 @@ class _AnalystEstDetailTable(_DBTable):
         StartInd = operation_mode.DTRuler.index(StartDT)
         Args["附加字段"], Args["去重字段"] = list(Args["附加字段"]), list(Args["去重字段"])
         return [(self, FactorNames, list(RawFactorNames), operation_mode.DTRuler[StartInd:EndInd+1], Args)]
-    def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock):
+    def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock, **kwargs):
         return _saveRawDataWithReportANN(self, self._ANN_ReportFileName, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock)
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
