@@ -55,9 +55,10 @@ class PointOperation(DerivativeFactor):
     def readData(self, ids, dts, **kwargs):
         StdData = self._calcData(ids=ids, dts=dts, descriptor_data=[iDescriptor.readData(ids=ids, dts=dts, **kwargs).values for iDescriptor in self._Descriptors])
         return pd.DataFrame(StdData, index=dts, columns=ids)
-    def _QS_updateStartDT(self, start_dt, dt_dict):
-        super()._QS_updateStartDT(start_dt, dt_dict)
-        for i, iDescriptor in enumerate(self._Descriptors): iDescriptor._QS_updateStartDT(dt_dict[self.Name], dt_dict)
+    def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
+        super()._QS_initOperation(start_dt, dt_dict, prepare_ids, id_dict)
+        for i, iDescriptor in enumerate(self._Descriptors):
+            iDescriptor._QS_initOperation(dt_dict[self.Name], dt_dict, prepare_ids, id_dict)
     def _calcData(self, ids, dts, descriptor_data):
         if (self.DTMode=='多时点') and (self.IDMode=='多ID'):
             StdData = self.Operator(self, dts, ids, descriptor_data, self.ModelArgs)
@@ -75,18 +76,25 @@ class PointOperation(DerivativeFactor):
                 for i, iDT in enumerate(dts):
                     StdData[i, :] = self.Operator(self, iDT, ids, [iData[i, :] for iData in descriptor_data], self.ModelArgs)
         return StdData
-    def __QS_prepareCacheData__(self):
+    def __QS_prepareCacheData__(self, ids=None):
         PID = self._OperationMode._iPID
         StartDT = self._OperationMode._FactorStartDT[self.Name]
         EndDT = self._OperationMode.DateTimes[-1]
         StartInd, EndInd = self._OperationMode.DTRuler.index(StartDT), self._OperationMode.DTRuler.index(EndDT)
         DTs = list(self._OperationMode.DTRuler[StartInd:EndInd+1])
-        IDs = list(self._OperationMode._PID_IDs[PID])
-        StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor._QS_getData(DTs, pids=[PID]).values for iDescriptor in self._Descriptors])
-        StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
+        IDs = self._OperationMode._FactorPrepareIDs[self.Name]
+        if IDs is None: IDs = list(self._OperationMode._PID_IDs[PID])
+        else:
+            IDs = partitionList(IDs, len(self._OperationMode._PIDs))[self._OperationMode._PIDs.index(PID)]
+        if IDs:
+            StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor._QS_getData(DTs, pids=[PID]).values for iDescriptor in self._Descriptors])
+            StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
+        else:
+            StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self.DataType=="double" else "O"))
         with self._OperationMode._PID_Lock[PID]:
             with shelve.open(self._OperationMode._CacheDataDir+os.sep+PID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
                 CacheFile["StdData"] = StdData
+                CacheFile["_QS_IDs"] = IDs
         self._isCacheDataOK = True
         return StdData
 
@@ -112,8 +120,8 @@ class TimeOperation(DerivativeFactor):
     def __QS_initArgs__(self):
         self.LookBack = [0]*len(self._Descriptors)
         self.LookBackMode = ["滚动窗口"]*len(self._Descriptors)
-    def _QS_updateStartDT(self, start_dt, dt_dict):
-        super()._QS_updateStartDT(start_dt, dt_dict)
+    def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
+        super()._QS_initOperation(start_dt, dt_dict, prepare_ids, id_dict)
         if len(self._Descriptors)>len(self.LookBack): raise  __QS_Error__("时间序列运算因子 : '%s' 的参数'回溯期数'序列长度小于描述子个数!" % self.Name)
         StartDT = dt_dict[self.Name]
         StartInd = self._OperationMode.DTRuler.index(StartDT)
@@ -124,7 +132,7 @@ class TimeOperation(DerivativeFactor):
             iStartInd = StartInd - self.LookBack[i]
             if iStartInd<0: print("注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足, 不足的部分将填充 nan!" % (self.Name, iDescriptor.Name))
             iStartDT = self._OperationMode.DTRuler[max(0, iStartInd)]
-            iDescriptor._QS_updateStartDT(iStartDT, dt_dict)
+            iDescriptor._QS_initOperation(iStartDT, dt_dict, prepare_ids, id_dict)
     def readData(self, ids, dts, **kwargs):
         DTRuler = kwargs.get("dt_ruler", dts)
         StartInd = (DTRuler.index(dts[0]) if dts[0] in DTRuler else 0)
@@ -203,25 +211,32 @@ class TimeOperation(DerivativeFactor):
         else:
             return self.Operator(self, DTRuler, ids, descriptor_data, self.ModelArgs)
         return StdData[iStartInd:, :]
-    def __QS_prepareCacheData__(self):
+    def __QS_prepareCacheData__(self, ids=None):
         PID = self._OperationMode._iPID
         StartDT = self._OperationMode._FactorStartDT[self.Name]
         EndDT = self._OperationMode.DateTimes[-1]
         StartInd, EndInd = self._OperationMode.DTRuler.index(StartDT), self._OperationMode.DTRuler.index(EndDT)
         DTs = list(self._OperationMode.DTRuler[StartInd:EndInd+1])
-        IDs = list(self._OperationMode._PID_IDs[PID])
-        DescriptorData = []
-        for i, iDescriptor in enumerate(self._Descriptors):
-            iStartInd = StartInd - self.LookBack[i]
-            iDTs = list(self._OperationMode.DTRuler[max(0, iStartInd):StartInd]) + DTs
-            iDescriptorData = iDescriptor._QS_getData(iDTs, pids=[PID]).values
-            if iStartInd<0: iDescriptorData = np.r_[np.full(shape=(abs(iStartInd), iDescriptorData.shape[1]), fill_value=np.nan), iDescriptorData]
-            DescriptorData.append(iDescriptorData)
-        StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData, dt_ruler=self._OperationMode.DTRuler)
-        StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
+        IDs = self._OperationMode._FactorPrepareIDs[self.Name]
+        if IDs is None: IDs = list(self._OperationMode._PID_IDs[PID])
+        else:
+            IDs = partitionList(IDs, len(self._OperationMode._PIDs))[self._OperationMode._PIDs.index(PID)]
+        if IDs:
+            DescriptorData = []
+            for i, iDescriptor in enumerate(self._Descriptors):
+                iStartInd = StartInd - self.LookBack[i]
+                iDTs = list(self._OperationMode.DTRuler[max(0, iStartInd):StartInd]) + DTs
+                iDescriptorData = iDescriptor._QS_getData(iDTs, pids=[PID]).values
+                if iStartInd<0: iDescriptorData = np.r_[np.full(shape=(abs(iStartInd), iDescriptorData.shape[1]), fill_value=np.nan), iDescriptorData]
+                DescriptorData.append(iDescriptorData)
+            StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData, dt_ruler=self._OperationMode.DTRuler)
+            StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
+        else:
+            StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self.DataType=="double" else "O"))
         with self._OperationMode._PID_Lock[PID]:
             with shelve.open(self._OperationMode._CacheDataDir+os.sep+PID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
                 CacheFile["StdData"] = StdData
+                CacheFile["_QS_IDs"] = IDs
         self._isCacheDataOK = True
         return StdData
 
@@ -237,10 +252,14 @@ class SectionOperation(DerivativeFactor):
     """截面运算"""
     DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
     OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=4)
+    DescriptorSection = List(arg_type="List", label="描述子截面", order=5)
+    def __QS_initArgs__(self):
+        super().__QS_initArgs__()
+        self.add_trait("DescriptorSection", List([None]*len(self._Descriptors), arg_type="List", label="描述子截面", order=5))
     def readData(self, ids, dts, **kwargs):
         StdData = self._calcData(ids=ids, dts=dts, descriptor_data=[iDescriptor.readData(ids=ids, dts=dts).values for iDescriptor in self._Descriptors])
         return pd.DataFrame(StdData, index=dts, columns=ids)
-    def _QS_updateStartDT(self, start_dt, dt_dict):
+    def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
         OldStartDT = dt_dict.get(self.Name, None)
         if (OldStartDT is None) or (start_dt<OldStartDT):
             dt_dict[self.Name] = start_dt
@@ -248,7 +267,13 @@ class SectionOperation(DerivativeFactor):
             DTs = self._OperationMode.DTRuler[StartInd:EndInd+1]
             DTPartition = partitionList(DTs, len(self._OperationMode._PIDs))
             self._PID_DTs = {iPID:DTPartition[i] for i, iPID in enumerate(self._OperationMode._PIDs)}
-            for i, iDescriptor in enumerate(self._Descriptors): iDescriptor._QS_updateStartDT(start_dt, dt_dict)
+        PrepareIDs = id_dict.setdefault(self.Name, prepare_ids)
+        if prepare_ids != PrepareIDs: raise __QS_Error__("因子 %s 指定了不同的截面!" % self.Name)
+        for i, iDescriptor in enumerate(self._Descriptors):
+            if self.DescriptorSection[i] is None:
+                iDescriptor._QS_initOperation(start_dt, dt_dict, prepare_ids, id_dict)
+            else:
+                iDescriptor._QS_initOperation(start_dt, dt_dict, self.DescriptorSection[i], id_dict)
         if (self._OperationMode.SubProcessNum>0) and (self.Name not in self._OperationMode._Event):
             self._OperationMode._Event[self.Name] = (Queue(), Event())
     def _calcData(self, ids, dts, descriptor_data):
@@ -270,17 +295,20 @@ class SectionOperation(DerivativeFactor):
                 for j, jID in enumerate(ids):
                     StdData[:, j] = self.Operator(self, dts, jID, descriptor_data, self.ModelArgs)
         return StdData
-    def __QS_prepareCacheData__(self):
+    def __QS_prepareCacheData__(self, ids=None):
         DTs = list(self._PID_DTs[self._OperationMode._iPID])
-        IDs = list(self._OperationMode.IDs)
+        IDs = self._OperationMode._FactorPrepareIDs[self.Name]
+        if IDs is None: IDs = list(self._OperationMode.IDs)
         if len(DTs)==0:# 该进程未分配到计算任务
             iDTs = [self._OperationMode.DateTimes[-1]]
             for i, iDescriptor in enumerate(self._Descriptors):
                 iDescriptor._QS_getData(iDTs, pids=None)
             StdData = pd.DataFrame(columns=IDs, dtype=("float" if self.DataType=="double" else "O"))
-        else:
-            StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor._QS_getData(DTs, pids=None).values for iDescriptor in self._Descriptors])
+        elif IDs:
+            StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor._QS_getData(DTs, pids=None, ids=self.DescriptorSection[i]).values for i, iDescriptor in enumerate(self._Descriptors)])
             StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
+        else:
+            StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self.DataType=="double" else "O"))
         for iPID, iIDs in self._OperationMode._PID_IDs.items():
             with self._OperationMode._PID_Lock[iPID]:
                 with shelve.open(self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
@@ -288,6 +316,7 @@ class SectionOperation(DerivativeFactor):
                         CacheFile["StdData"] = pd.concat([CacheFile["StdData"], StdData.loc[:,iIDs]]).sort_index()
                     else:
                         CacheFile["StdData"] = StdData.loc[:, iIDs]
+                    CacheFile["_QS_IDs"] = iIDs
         StdData = None# 释放数据
         if self._OperationMode.SubProcessNum>0:
             Sub2MainQueue, PIDEvent = self._OperationMode._Event[self.Name]
@@ -313,10 +342,11 @@ class PanelOperation(DerivativeFactor):
     iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=7)
     iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=8)
     iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=9)
+    DescriptorSection = List(arg_type="List", label="描述子截面", order=10)
     def __QS_initArgs__(self):
         self.LookBack = [0]*len(self._Descriptors)
         self.LookBackMode = ["滚动窗口"]*len(self._Descriptors)
-    def _QS_updateStartDT(self, start_dt, dt_dict):
+    def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
         if len(self._Descriptors)>len(self.LookBack): raise  __QS_Error__("面板运算因子 : '%s' 的参数'回溯期数'序列长度小于描述子个数!" % self.Name)
         OldStartDT = dt_dict.get(self.Name, None)
         if (OldStartDT is None) or (start_dt<OldStartDT):
@@ -332,11 +362,15 @@ class PanelOperation(DerivativeFactor):
             else:
                 DTPartition = partitionList(DTs, len(self._OperationMode._PIDs))
             self._PID_DTs = {iPID:DTPartition[i] for i, iPID in enumerate(self._OperationMode._PIDs)}
-            for i, iDescriptor in enumerate(self._Descriptors):
-                iStartInd = StartInd - self.LookBack[i]
-                if iStartInd<0: print("注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足!" % (self.Name, iDescriptor.Name))
-                iStartDT = DTRuler[max(0, iStartInd)]
-                iDescriptor._QS_updateStartDT(iStartDT, dt_dict)
+        else:
+            StartInd = DTRuler.index(OldStartDT)
+        PrepareIDs = id_dict.setdefault(self.Name, prepare_ids)
+        if prepare_ids != PrepareIDs: raise __QS_Error__("因子 %s 指定了不同的截面!" % self.Name)
+        for i, iDescriptor in enumerate(self._Descriptors):
+            iStartInd = StartInd - self.LookBack[i]
+            if iStartInd<0: print("注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足!" % (self.Name, iDescriptor.Name))
+            iStartDT = DTRuler[max(0, iStartInd)]
+            iDescriptor._QS_initOperation(iStartDT, dt_dict, prepare_ids, id_dict)
         if (self._OperationMode.SubProcessNum>0) and (self.Name not in self._OperationMode._Event):
             self._OperationMode._Event[self.Name] = (Queue(), Event())
     def readData(self, ids, dts, **kwargs):
@@ -421,15 +455,16 @@ class PanelOperation(DerivativeFactor):
                 for j, jID in enumerate(ids):
                     StdData[iStartInd:, j] = self.Operator(self, DTRuler, jID, descriptor_data, self.ModelArgs)
         return StdData[iStartInd:, :]
-    def __QS_prepareCacheData__(self):
+    def __QS_prepareCacheData__(self, ids=None):
         DTs = list(self._PID_DTs[self._OperationMode._iPID])
-        IDs = list(self._OperationMode.IDs)
+        IDs = self._OperationMode._FactorPrepareIDs[self.Name]
+        if IDs is None: IDs = list(self._OperationMode.IDs)
         if len(DTs)==0:# 该进程未分配到计算任务
             iDTs = [self._OperationMode.DateTimes[-1]]
             for i, iDescriptor in enumerate(self._Descriptors):
                 iDescriptor._QS_getData(iDTs, pids=None)
-            StdData = pd.DataFrame(columns=IDs)
-        else:
+            StdData = pd.DataFrame(columns=IDs, dtype=("float" if self.DataType=="double" else "O"))
+        elif IDs:
             DescriptorData, StartInd = [], self._OperationMode.DTRuler.index(DTs[0])
             for i, iDescriptor in enumerate(self._Descriptors):
                 iStartInd = StartInd - self.LookBack[i]
@@ -439,6 +474,88 @@ class PanelOperation(DerivativeFactor):
                 DescriptorData.append(iDescriptorData)
             StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData, dt_ruler=self._OperationMode.DTRuler)
             DescriptorData, iDescriptorData, StdData = None, None, pd.DataFrame(StdData, index=DTs, columns=IDs)
+        else:
+            StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self.DataType=="double" else "O"))
+        for iPID, iIDs in self._OperationMode._PID_IDs.items():
+            with self._OperationMode._PID_Lock[iPID]:
+                with shelve.open(self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
+                    if "StdData" in CacheFile:
+                        CacheFile["StdData"] = pd.concat([CacheFile["StdData"], StdData.loc[:,iIDs]]).sort_index()
+                    else:
+                        CacheFile["StdData"] = StdData.loc[:, iIDs]
+                    CacheFile["_QS_IDs"] = iIDs
+        StdData = None# 释放数据
+        if self._OperationMode.SubProcessNum>0:
+            Sub2MainQueue, PIDEvent = self._OperationMode._Event[self.Name]
+            Sub2MainQueue.put(1)
+            PIDEvent.wait()
+        self._isCacheDataOK = True
+        return StdData
+
+# 截面聚合运算, TODO
+# f: 该算子所属的因子, 因子对象
+# idt: 当前待计算的时点, 如果运算日期为多时点，则该值为 [时点]
+# iid: 当前待计算的 ID 截面, [ID]
+# x: 描述子当期的数据, [array]
+# args: 参数, {参数名:参数值}
+class SectionAggregation(DerivativeFactor):
+    """截面聚合运算"""
+    OutputMode = Enum("单ID", "全截面", arg_type="SingleOption", label="输出形式", order=3)
+    DescriptorSection = List(arg_type="List", label="描述子截面", order=4)
+    #GroupFactor = Enum(None, arg_type="SingleOption", label="类别因子", order=5)
+    def __QS_initArgs__(self):
+        super().__QS_initArgs__()
+        self.add_trait("GroupFactor", Enum(*([None]+[i for i in range(len(self._Descriptors))]), arg_type="SingleOption", label="类别因子", order=3))
+    def readData(self, ids, dts, **kwargs):
+        IDs = list(self.DescriptorSection)
+        if not IDs: IDs = ids
+        StdData = self._calcData(ids=ids, dts=dts, descriptor_data=[iDescriptor.readData(ids=IDs, dts=dts).values for iDescriptor in self._Descriptors])
+        return pd.DataFrame(StdData, index=dts, columns=ids)
+    def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
+        OldStartDT = dt_dict.get(self.Name, None)
+        if (OldStartDT is None) or (start_dt<OldStartDT):
+            dt_dict[self.Name] = start_dt
+            StartInd, EndInd = self._OperationMode.DTRuler.index(dt_dict[self.Name]), self._OperationMode.DTRuler.index(self._OperationMode.DateTimes[-1])
+            DTs = self._OperationMode.DTRuler[StartInd:EndInd+1]
+            DTPartition = partitionList(DTs, len(self._OperationMode._PIDs))
+            self._PID_DTs = {iPID:DTPartition[i] for i, iPID in enumerate(self._OperationMode._PIDs)}
+        id_dict[self.Name] = id_dict.get(self.Name, set()).union(prepare_ids)
+        if self.DescriptorSection: PrepareIDs = set(self.DescriptorSection)
+        else: PrepareIDs = id_dict[self.Name]
+        for i, iDescriptor in enumerate(self._Descriptors):
+            iDescriptor._QS_initOperation(start_dt, dt_dict, PrepareIDs, id_dict)
+        if (self._OperationMode.SubProcessNum>0) and (self.Name not in self._OperationMode._Event): self._OperationMode._Event[self.Name] = (Queue(), Event())
+    def _calcData(self, ids, dts, descriptor_data):
+        if self.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
+        else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')
+        if self.GroupFactor is None:
+            for i, iDT in enumerate(dts):
+                x = [kDescriptorData[i] for kDescriptorData in descriptor_data]
+                StdData[i] = self.Operator(self, iDT, ids, x, self.ModelArgs)
+        else:
+            if self.OutputMode=="单ID":
+                GroupData = descriptor_data[self.GroupFactor]
+                for i, iDT in enumerate(dts):
+                    for j, jID in enumerate(ids):
+                        ijGroupMask = (GroupData[i]==jID)
+                        x = [kDescriptorData[i][ijGroupMask] for kDescriptorData in descriptor_data]
+                        StdData[i, j] = self.Operator(self, iDT, jID, x, self.ModelArgs)
+            else:
+                for i, iDT in enumerate(dts):
+                    x = [kDescriptorData[i] for kDescriptorData in descriptor_data]
+                    StdData[i] = self.Operator(self, iDT, ids, x, self.ModelArgs)
+        return StdData
+    def __QS_prepareCacheData__(self):
+        DTs = list(self._PID_DTs[self._OperationMode._iPID])
+        IDs = list(self._OperationMode.IDs)
+        if len(DTs)==0:# 该进程未分配到计算任务
+            iDTs = [self._OperationMode.DateTimes[-1]]
+            for i, iDescriptor in enumerate(self._Descriptors):
+                iDescriptor._QS_getData(iDTs, pids=None)
+            StdData = pd.DataFrame(columns=IDs, dtype=("float" if self.DataType=="double" else "O"))
+        else:
+            StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor._QS_getData(DTs, pids=None).values for iDescriptor in self._Descriptors])
+            StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
         for iPID, iIDs in self._OperationMode._PID_IDs.items():
             with self._OperationMode._PID_Lock[iPID]:
                 with shelve.open(self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
@@ -451,68 +568,5 @@ class PanelOperation(DerivativeFactor):
             Sub2MainQueue, PIDEvent = self._OperationMode._Event[self.Name]
             Sub2MainQueue.put(1)
             PIDEvent.wait()
-        self._isCacheDataOK = True
-        return StdData
-
-# 截面聚合运算
-# f: 该算子所属的因子, 因子对象
-# idt: 当前待计算的时点, 如果运算日期为多时点，则该值为 [时点]
-# iid: 当前待计算的 ID 截面, [ID]
-# x: 描述子当期的数据, [array]
-# args: 参数, {参数名:参数值}
-class SectionAggregation(DerivativeFactor):
-    """截面聚合运算"""
-    GroupFactor = Enum(None, arg_type="SingleOption", label="类别因子", order=3)
-    IDMap = Dict(arg_type="ArgDict", label="代码对照", order=4)
-    def __QS_initArgs__(self):
-        super().__QS_initArgs__()
-        self.add_trait("GroupFactor", Enum(*([None]+[i for i in range(len(self._Descriptors))]), arg_type="SingleOption", label="类别因子", order=3))
-    def readData(self, ids, dts, **kwargs):
-        StdData = self._calcData(ids=ids, dts=dts, descriptor_data=[iDescriptor.readData(ids=ids, dts=dts).values for iDescriptor in self._Descriptors])
-        return pd.DataFrame(StdData, index=dts, columns=ids)
-    def _QS_updateStartDT(self, start_dt, dt_dict):
-        OldStartDT = dt_dict.get(self.Name, None)
-        if (OldStartDT is None) or (start_dt<OldStartDT):
-            dt_dict[self.Name] = start_dt
-            StartInd, EndInd = self._OperationMode.DTRuler.index(dt_dict[self.Name]), self._OperationMode.DTRuler.index(self._OperationMode.DateTimes[-1])
-            DTs = self._OperationMode.DTRuler[StartInd:EndInd+1]
-            DTPartition = partitionList(DTs, len(self._OperationMode._PIDs))
-            self._PID_DTs = {iPID:DTPartition[i] for i, iPID in enumerate(self._OperationMode._PIDs)}
-            for i, iDescriptor in enumerate(self._Descriptors): iDescriptor._QS_updateStartDT(start_dt, dt_dict)
-        if (self._OperationMode.SubProcessNum>0) and (self.Name not in self._OperationMode._Event): self._OperationMode._Event[self.Name] = (Queue(), Event())
-    def _calcData(self, ids, dts, descriptor_data):
-        if self.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
-        else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')
-        if self.GroupFactor is None:
-            for i, iDT in enumerate(dts):
-                x = [kDescriptorData[i] for kDescriptorData in descriptor_data]
-                StdData[i] = self.Operator(self, iDT, ids, x, self.ModelArgs)
-        else:
-            GroupData = descriptor_data[self.GroupFactor]
-            for i, iDT in enumerate(dts):
-                for j, jID in enumerate(ids):
-                    jMappedID = self.IDMap.get(jID, jID)
-                    if pd.isnull(jMappedID): ijGroupMask = pd.isnull(GroupData[i])
-                    else: ijGroupMask = (GroupData[i]==jMappedID)
-                    x = [kDescriptorData[i][ijGroupMask] for kDescriptorData in descriptor_data]
-                    StdData[i, j] = self.Operator(self, iDT, jID, x, self.ModelArgs)
-        return StdData
-    def __QS_prepareCacheData__(self):
-        PID = self._OperationMode._iPID
-        StartDT = self._OperationMode._FactorStartDT[self.Name]
-        EndDT = self._OperationMode.DateTimes[-1]
-        StartInd, EndInd = self._OperationMode.DTRuler.index(StartDT), self._OperationMode.DTRuler.index(EndDT)
-        DTs = list(self._OperationMode.DTRuler[StartInd:EndInd+1])
-        IDs = list(self._OperationMode._PID_IDs[PID])
-        DescriptorData = []
-        for i, iDescriptor in enumerate(self._Descriptors):
-            iStartInd = StartInd - self.LookBack[i]
-            iDTs = list(self._OperationMode.DTRuler[iStartInd:StartInd]) + DTs
-            DescriptorData.append(iDescriptor._QS_getData(iDTs, pids=[PID]).values)
-        StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData)
-        StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
-        with self._OperationMode._PID_Lock[PID]:
-            with shelve.open(self._OperationMode._CacheDataDir+os.sep+PID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
-                CacheFile["StdData"] = StdData
         self._isCacheDataOK = True
         return StdData

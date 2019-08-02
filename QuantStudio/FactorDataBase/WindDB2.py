@@ -73,12 +73,13 @@ def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_d
     AllIDs = set(raw_data.index)
     for iPID, iIDs in pid_ids.items():
         with shelve.open(raw_data_dir+os.sep+iPID+os.sep+file_name) as iFile:
-            iIDs = sorted(AllIDs.intersection(set(iIDs)))
-            iData = raw_data.loc[iIDs]
+            iInterIDs = sorted(AllIDs.intersection(set(iIDs)))
+            iData = raw_data.loc[iInterIDs]
             for jFactorName in factor_names:
                 ijData = iData[CommonCols+[jFactorName]].reset_index()
                 if isANNReport: ijData.columns.name = raw_data_dir+os.sep+iPID+os.sep+report_ann_file
                 iFile[jFactorName] = ijData
+            iFile["_QS_IDs"] = iIDs
     return 0
 
 # f: 该算子所属的因子对象或因子表对象

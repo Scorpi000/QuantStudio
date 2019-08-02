@@ -780,6 +780,12 @@ class _InfoPublTable(_MarketTable):
         SQLStr += "INNER JOIN ("+SubSQLStr+") t "
         SQLStr += "ON (t."+self._IDField+"="+IDField+") "
         SQLStr += "AND (t.MaxEndDate="+EndDateField+") "
+        SQLStr += "WHERE TRUE "
+        for iConditionField in self._ConditionFields:
+            if _identifyDataType(FactorInfo.loc[iConditionField, "DataType"])=="string":
+                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"='"+args.get(iConditionField, self[iConditionField])+"' "
+            else:
+                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"="+args.get(iConditionField, self[iConditionField])+" "
         SQLStr += "ORDER BY t."+self._MainTableID+", DT"
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: RawData = pd.DataFrame(columns=["日期", "ID"]+factor_names)
@@ -1414,12 +1420,13 @@ def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_d
     AllIDs = set(raw_data.index)
     for iPID, iIDs in pid_ids.items():
         with shelve.open(raw_data_dir+os.sep+iPID+os.sep+file_name) as iFile:
-            iIDs = sorted(AllIDs.intersection(set(iIDs)))
-            iData = raw_data.loc[iIDs]
+            iInterIDs = sorted(AllIDs.intersection(iIDs))
+            iData = raw_data.loc[iInterIDs]
             for jFactorName in factor_names:
                 ijData = iData[CommonCols+[jFactorName]].reset_index()
                 if isANNReport: ijData.columns.name = raw_data_dir+os.sep+iPID+os.sep+report_ann_file
                 iFile[jFactorName] = ijData
+            iFIle["_QS_IDs"] = iIDs
     return 0
 class _AnalystConsensusTable(_DBTable):
     """分析师汇总表"""

@@ -20,9 +20,6 @@ setuptools.setup(
     platforms=["Windows"],
     python_requires=">=3.5",
     scripts=[],
-    package_data={
-    "QuantStudio": ["Matlab/*", "Lib/*", "Resource/*"]
-    },
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
@@ -59,5 +56,6 @@ setuptools.setup(
         "xlrd>=0.9.0",# 读 Excel 文件
         "xlwt>=1.3.0",# 写 Excel 文件
         "PyQt5>=5.9.2",# GUI
-    ]
+    ],
+    package_data={"QuantStudio": ["Matlab/*", "Lib/*", "Resource/*"]}    
 )

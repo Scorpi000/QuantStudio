@@ -255,6 +255,7 @@ class _OperationMode(__QS_Object__):
         self._FactorDict = {}# 因子字典, {因子名:因子}, 包括所有的因子, 即衍生因子所依赖的描述子也在内
         self._FactorID = {}# {因子名: 因子唯一的 ID 号(int)}, 比如防止操作系统文件大小写不敏感导致缓存文件重名
         self._FactorStartDT = {}# {因子名: 起始时点}
+        self._FactorPrepareIDs = {}# {因子名: 需要准备原始数据的 ID 序列}
         self._iPID = "0"# 对象所在的进程 ID
         self._PIDs = []# 所有的计算进程 ID, 单进程下默认为"0", 多进程为"0-i"
         self._PID_IDs = {}# 每个计算进程分配的 ID 列表, {PID:[ID]}
@@ -265,13 +266,6 @@ class _OperationMode(__QS_Object__):
         self._Event = {}# {因子名: (Sub2MainQueue, Event)}
         self._FileSuffix = getShelveFileSuffix()
         if self._FileSuffix: self._FileSuffix = "." + self._FileSuffix
-        #System = platform.system()
-        #if System=="Windows":
-            #self._FileSuffix = ".dat"
-        #elif System=="Darwin":
-            #self._FileSuffix = ".db"
-        #else:
-            #self._FileSuffix = ""
         super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         self.add_trait("FactorNames", ListStr(arg_type="MultiOption", label="运算因子", order=2, option_range=tuple(self._FT.FactorNames)))
@@ -288,14 +282,22 @@ def _prepareRawData(args):
         with ProgressBar(max_value=nGroup) as ProgBar:
             for i in range(nGroup):
                 iFT, iFactorNames, iRawFactorNames, iDTs, iArgs = args['GroupInfo'][i]
-                iRawData = iFT.__QS_prepareRawData__(iRawFactorNames, args["FT"].OperationMode.IDs, iDTs, iArgs)
-                iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"].OperationMode._RawDataDir, args["FT"].OperationMode._PID_IDs, args["RawDataFileNames"][i], args["FT"].OperationMode._PID_Lock)
+                iPrepareIDs = args["PrepareIDs"][i]
+                if iPrepareIDs is None: iPrepareIDs = args["FT"].OperationMode.IDs
+                iPID_PrepareIDs = args["PID_PrepareIDs"][i]
+                if iPID_PrepareIDs is None: iPID_PrepareIDs = args["FT"].OperationMode._PID_IDs
+                iRawData = iFT.__QS_prepareRawData__(iRawFactorNames, iPrepareIDs, iDTs, iArgs)
+                iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"].OperationMode._RawDataDir, iPID_PrepareIDs, args["RawDataFileNames"][i], args["FT"].OperationMode._PID_Lock)
                 ProgBar.update(i+1)
     else:# 运行模式为并行
         for i in range(nGroup):
             iFT, iFactorNames, iRawFactorNames, iDTs, iArgs = args['GroupInfo'][i]
-            iRawData = iFT.__QS_prepareRawData__(iRawFactorNames, args['FT'].OperationMode.IDs, iDTs, iArgs)
-            iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"].OperationMode._RawDataDir, args["FT"].OperationMode._PID_IDs, args["RawDataFileNames"][i], args["FT"].OperationMode._PID_Lock)
+            iPrepareIDs = args["PrepareIDs"][i]
+            if iPrepareIDs is None: iPrepareIDs = args["FT"].OperationMode.IDs
+            iPID_PrepareIDs = args["PID_PrepareIDs"][i]
+            if iPID_PrepareIDs is None: iPID_PrepareIDs = args["FT"].OperationMode._PID_IDs
+            iRawData = iFT.__QS_prepareRawData__(iRawFactorNames, iPrepareIDs, iDTs, iArgs)
+            iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"].OperationMode._RawDataDir, iPID_PrepareIDs, args["RawDataFileNames"][i], args["FT"].OperationMode._PID_Lock)
             args['Sub2MainQueue'].put((args["PID"], 1, None))
     return 0
 # 因子表运算子进程
@@ -571,7 +573,7 @@ class FactorTable(__QS_Object__):
         EndDT = operation_mode.DateTimes[-1]
         StartInd, EndInd = operation_mode.DTRuler.index(StartDT), operation_mode.DTRuler.index(EndDT)
         return [(self, FactorNames, list(RawFactorNames), operation_mode.DTRuler[StartInd:EndInd+1], {})]
-    def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock):
+    def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock, **kwargs):
         if raw_data is None: return 0
         if isinstance(raw_data, pd.DataFrame) and ("ID" in raw_data):# 如果原始数据有 ID 列，按照 ID 列划分后存入子进程的原始文件中
             raw_data = raw_data.set_index(["ID"])
@@ -579,16 +581,18 @@ class FactorTable(__QS_Object__):
             AllIDs = set(raw_data.index)
             for iPID, iIDs in pid_ids.items():
                 with shelve.open(raw_data_dir+os.sep+iPID+os.sep+file_name) as iFile:
-                    iIDs = sorted(AllIDs.intersection(set(iIDs)))
-                    iData = raw_data.loc[iIDs]
+                    iInterIDs = sorted(AllIDs.intersection(iIDs))
+                    iData = raw_data.loc[iInterIDs]
                     if factor_names:
                         for jFactorName in factor_names: iFile[jFactorName] = iData[CommonCols+[jFactorName]].reset_index()
                     else:
                         iFile["RawData"] = iData[CommonCols].reset_index()
+                    iFIle["_QS_IDs"] = iIDs
         else:# 如果原始数据没有 ID 列，则将所有数据分别存入子进程的原始文件中
-            for iPID in pid_ids:
+            for iPID, iIDs in pid_ids.items():
                 with shelve.open(raw_data_dir+os.sep+iPID+os.sep+file_name) as iFile:
                     iFile["RawData"] = raw_data
+                    iFIle["_QS_IDs"] = iIDs
         return 0
     def _genFactorDict(self, factors, factor_dict={}):
         for iFactor in factors:
@@ -612,7 +616,7 @@ class FactorTable(__QS_Object__):
         elif (DTs.diff().iloc[1:]!=1).sum()>0: raise __QS_Error__("运算时点序列的频率与时点标尺不一致!")
         # 检查因子的合法性, 解析出所有的因子(衍生因子所依赖的描述子也在内)
         if not self.OperationMode.FactorNames: self.OperationMode.FactorNames = self.FactorNames
-        self.OperationMode._Factors = []# 因子列表
+        self.OperationMode._Factors = []# 因子列表, 只包括需要输出数据的因子对象
         self.OperationMode._FactorDict = {}# 因子字典, {因子名:因子}, 包括所有的因子, 即衍生因子所依赖的描述子也在内
         self.OperationMode._FactorID = {}# {因子名: 因子唯一的 ID 号(int)}
         for i, iFactorName in enumerate(self.OperationMode.FactorNames):
@@ -622,7 +626,8 @@ class FactorTable(__QS_Object__):
             self.OperationMode._FactorDict[iFactorName] = iFactor
             self.OperationMode._FactorID[iFactorName] = i
         self.OperationMode._FactorDict = self._genFactorDict(self.OperationMode._Factors, self.OperationMode._FactorDict)
-        # 生成原始数据和缓存数据存储目录
+        # 分配每个子进程的计算 ID 序列, 生成原始数据和缓存数据存储目录
+        self.OperationMode._Event = {}# {因子名: (Sub2MainQueue, Event)}, 用于多进程同步的 Event 数据
         self.OperationMode._CacheDir = tempfile.TemporaryDirectory()
         self.OperationMode._RawDataDir = self.OperationMode._CacheDir.name+os.sep+"RawData"# 原始数据存放根目录
         self.OperationMode._CacheDataDir = self.OperationMode._CacheDir.name+os.sep+"CacheData"# 中间数据存放根目录
@@ -647,38 +652,48 @@ class FactorTable(__QS_Object__):
                 os.mkdir(self.OperationMode._RawDataDir+os.sep+iPID)
                 os.mkdir(self.OperationMode._CacheDataDir+os.sep+iPID)
                 self.OperationMode._PID_Lock[iPID] = Lock()
-        # 创建用于多进程的 Event 数据
-        self.OperationMode._Event = {}# {因子名: (Sub2MainQueue, Event)}
-        # 给每个因子设置运算模式参数对象, 并生成因子唯一的 ID 号, TODEL
-        #for i, iFactorName in enumerate(self.OperationMode._FactorDict.keys()):
-            #self.OperationMode._FactorDict[iFactorName]._OperationMode = self.OperationMode
-            #self.OperationMode._FactorID[iFactorName] = i
-        # 生成所有因子的起始时点信息
+        # 遍历所有因子对象, 调用其初始化方法, 生成所有因子的起始时点信息, 生成其需要准备原始数据的截面 ID
         self.OperationMode._FactorStartDT = {}# {因子名: 起始时点}
-        for iFactor in self.OperationMode._FactorDict.values(): iFactor._QS_updateStartDT(self.OperationMode.DateTimes[0], self.OperationMode._FactorStartDT)
+        self.OperationMode._FactorPrepareIDs = {}# {因子名: 需要准备原始数据的 ID 序列}
+        for iFactor in self.OperationMode._Factors:
+            iFactor._QS_initOperation(self.OperationMode.DateTimes[0], self.OperationMode._FactorStartDT, None, self.OperationMode._FactorPrepareIDs)
     def _prepare(self, factor_names, ids, dts):
         self.OperationMode.FactorNames = factor_names
         self.OperationMode.DateTimes = dts
         self.OperationMode.IDs = ids
         self._initOperation()
         # 分组准备数据
-        FTs, FT_Factors = {}, {}# {id(因子表) : 因子表}, {id(因子表) : [因子]}
+        InitGroups = {}# {id(因子表) : [(因子表, [因子], [ID])]}
         for iFactor in self.OperationMode._FactorDict.values():
-            if iFactor.FactorTable is not None:
-                iFTID = id(iFactor.FactorTable)
-                iFactorList = FT_Factors.setdefault(iFTID, [])
-                iFactorList.append(iFactor)
-                FTs[iFTID] = iFactor.FactorTable
-        GroupInfo, RawDataFileNames = [], []#[(因子表对象, [因子名], [原始因子名], [时点], {参数})], [原始数据文件名]
-        for iFTID, iFT in FTs.items():
-            iGroupInfo = iFT.__QS_genGroupInfo__(FT_Factors[iFTID], self.OperationMode)
-            iRawDataFileNames = ["-".join((iFT.Name, str(iFTID), str(i))) for i in range(len(iGroupInfo))]
+            if iFactor.FactorTable is None: continue
+            iFTID = id(iFactor.FactorTable)
+            iPrepareIDs = self.OperationMode._FactorPrepareIDs[iFactor.Name]
+            if iFTID not in InitGroups: InitGroups[iFTID] = [(iFactor.FactorTable, [iFactor], iPrepareIDs)]
+            else:
+                iGroups = InitGroups[iFTID]
+                for j in range(len(iGroups)):
+                    if iPrepareIDs==iGroups[j][2]:
+                        iGroups[j][1].append(iFactor)
+                        break
+                else:
+                    iGroups.append((iFactor.FactorTable, [iFactor], iPrepareIDs))
+        GroupInfo, RawDataFileNames, PrepareIDs, PID_PrepareIDs = [], [], [], []#[(因子表对象, [因子名], [原始因子名], [时点], {参数})], [原始数据文件名], [准备数据的ID序列]
+        for iFTID, iGroups in InitGroups.items():
+            iGroupInfo = []
+            iFT = iGroups[j][0]
+            jStartInd = 0
+            for j in range(len(iGroups)):
+                ijGroupInfo = iFT.__QS_genGroupInfo__(iGroups[j][1], self.OperationMode)
+                iGroupInfo.extend(ijGroupInfo)
+                RawDataFileNames += ["-".join((iFT.Name, str(iFTID), str(jStartInd+k))) for k in range(len(ijGroupInfo))]
+                PrepareIDs += [iGroups[j][2]] * len(ijGroupInfo)
+                if iGroups[j][2] is not None:
+                    PID_PrepareIDs += [{self.OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in enumerate(partitionList(iGroups[j][2], len(self.OperationMode._PIDs)))}]*len(ijGroupInfo)
+                else:
+                    PID_PrepareIDs += [None] * len(ijGroupInfo)
+                jStartInd += len(ijGroupInfo)
             GroupInfo.extend(iGroupInfo)
-            RawDataFileNames.extend(iRawDataFileNames)
-            for j in range(len(iGroupInfo)):
-                for kFactorName in iGroupInfo[j][1]:
-                    self.OperationMode._FactorDict[kFactorName]._RawDataFile = iRawDataFileNames[j]
-        args = {"GroupInfo":GroupInfo, "FT":self, "RawDataFileNames":RawDataFileNames}
+        args = {"GroupInfo":GroupInfo, "FT":self, "RawDataFileNames":RawDataFileNames, "PrepareIDs":PrepareIDs, "PID_PrepareIDs":PID_PrepareIDs}
         if self.OperationMode.SubProcessNum==0:
             Error = _prepareRawData(args)
         else:
@@ -984,12 +999,15 @@ class Factor(__QS_Object__):
             self._CacheData = pd.merge(self._CacheData, NewCacheData, left_index=True, right_index=True)
         return self._CacheData.loc[dts, ids]
     # ------------------------------------运算模式------------------------------------
-    # 获取数据的开始时点, start_dt:新起始时点, dt_dict: 当前所有因子的时点信息: {因子名 : 开始时点}
-    def _QS_updateStartDT(self, start_dt, dt_dict):
+    # 获取数据的开始时点, start_dt:新起始时点, dt_dict: 当前所有因子的时点信息: {因子名 : 开始时点}, id_dict: 当前所有因子的准备原始数据的截面 ID 信息: {因子名 : ID 序列}
+    def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
         OldStartDT = dt_dict.get(self.Name, start_dt)
         dt_dict[self.Name] = (start_dt if start_dt<OldStartDT else OldStartDT)
+        PrepareIDs = id_dict.setdefault(self.Name, prepare_ids)
+        if prepare_ids != PrepareIDs:
+            raise __QS_Error__("因子 %s 指定了不同的截面!" % self.Name)
     # 准备缓存数据
-    def __QS_prepareCacheData__(self):
+    def __QS_prepareCacheData__(self, ids=None):
         StartDT = self._OperationMode._FactorStartDT[self.Name]
         EndDT = self._OperationMode.DateTimes[-1]
         StartInd, EndInd = self._OperationMode.DTRuler.index(StartDT), self._OperationMode.DTRuler.index(EndDT)
@@ -997,33 +1015,44 @@ class Factor(__QS_Object__):
         RawDataFilePath = self._OperationMode._RawDataDir+os.sep+self._OperationMode._iPID+os.sep+self._RawDataFile
         if os.path.isfile(RawDataFilePath+self._OperationMode._FileSuffix):
             with shelve.open(RawDataFilePath, "r") as File:
+                PrepareIDs = File["_QS_IDs"]
                 if self._NameInFT in File: RawData = File[self._NameInFT]
-                else: RawData = File["RawData"]
-            StdData = self._FactorTable.__QS_calcData__(RawData, factor_names=[self._NameInFT], ids=self._OperationMode._PID_IDs[self._OperationMode._iPID], dts=DTs, args=self.Args).iloc[0]
+                elif "RawData" in File: RawData = File["RawData"]
+                else: RawData =None
+            if PrepareIDs is None: PrepareIDs = self._OperationMode._PID_IDs[self._OperationMode._iPID]
+            if RawData is not None:
+                StdData = self._FactorTable.__QS_calcData__(RawData, factor_names=[self._NameInFT], ids=PrepareIDs, dts=DTs, args=self.Args).iloc[0]
+            else:
+                StdData = self._FactorTable.readData(factor_names=[self._NameInFT], ids=PrepareIDs, dts=DTs, args=self.Args).iloc[0]
         else:
-            StdData = self._FactorTable.readData(factor_names=[self._NameInFT], ids=self._OperationMode._PID_IDs[self._OperationMode._iPID], dts=DTs, args=self.Args).iloc[0]
+            if ids is None:
+                PrepareIDs = self._OperationMode._PID_IDs[self._OperationMode._iPID]
+            else:
+                PrepareIDs = ids
+            StdData = self._FactorTable.readData(factor_names=[self._NameInFT], ids=PrepareIDs, dts=DTs, args=self.Args).iloc[0]
         with self._OperationMode._PID_Lock[self._OperationMode._iPID]:
             with shelve.open(self._OperationMode._CacheDataDir+os.sep+self._OperationMode._iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
                 CacheFile["StdData"] = StdData
+                CacheFile["_QS_IDs"] = PrepareIDs
         self._isCacheDataOK = True
         return StdData
     # 获取因子数据, pid=None表示取所有进程的数据
-    def _QS_getData(self, dts, pids=None):
+    def _QS_getData(self, dts, pids=None, **kwargs):
         if pids is None:
-            IDs = list(self._OperationMode.IDs)
             pids = set(self._OperationMode._PID_IDs)
         else:
-            IDs = []
-            for iPID in pids: IDs.extend(self._OperationMode._PID_IDs[iPID])
             pids = set(pids)
         if not self._isCacheDataOK:# 若没有准备好缓存数据, 准备缓存数据
-            StdData = self.__QS_prepareCacheData__()
+            StdData = self.__QS_prepareCacheData__(ids=kwargs.get("ids", None))
             if (StdData is not None) and (self._OperationMode._iPID in pids):
                 pids.remove(self._OperationMode._iPID)
+                IDs = StdData.columns.tolist()
             else:
                 StdData = None
+                IDs = []
         else:
             StdData = None
+            IDs = []
         while len(pids)>0:
             iPID = pids.pop()
             iFilePath = self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])
@@ -1033,11 +1062,12 @@ class Factor(__QS_Object__):
             with self._OperationMode._PID_Lock[iPID]:
                 with shelve.open(iFilePath, 'r') as CacheFile:
                     iStdData = CacheFile["StdData"]
+                    IDs.extend(CacheFile.get("_QS_IDs", self._OperationMode._PID_IDs[iPID]))
             if StdData is None:
                 StdData = iStdData
             else:
                 StdData = pd.merge(StdData, iStdData, how='inner', left_index=True, right_index=True)
-        StdData = StdData.loc[list(dts), IDs]
+        StdData = StdData.loc[list(dts), sorted(IDs)]
         gc.collect()
         return StdData
     # ------------------------------------遍历模式------------------------------------
@@ -1256,13 +1286,15 @@ class DataFactor(Factor):
             return pd.DataFrame(index=dts, columns=ids, dtype=("O" if self.DataType=="string" else np.float))
         if self.LookBack==0: return self._Data.loc[dts, ids]
         else: return fillNaByLookback(self._Data.loc[sorted(self._Data.index.union(dts)), ids], lookback=self.LookBack*24.0*3600).loc[dts, :]
-    def __QS_prepareCacheData__(self):
+    def __QS_prepareCacheData__(self, ids=None):
         return self._Data
-    def _QS_getData(self, dts, pids=None):
-        if pids is None: IDs = list(self._OperationMode.IDs)
-        else:
-            IDs = []
-            for iPID in pids: IDs.extend(self._OperationMode._PID_IDs[iPID])
+    def _QS_getData(self, dts, pids=None, **kwargs):
+        IDs = kwargs.get("ids", None)
+        if IDs is None:
+            if pids is None: IDs = list(self._OperationMode.IDs)
+            else:
+                IDs = []
+                for iPID in pids: IDs.extend(self._OperationMode._PID_IDs[iPID])
         dts = list(dts)
         if (self._Data.columns.intersection(IDs).shape[0]==0) or (self._Data.index.intersection(dts).shape[0]==0):
             return pd.DataFrame(index=dts, columns=IDs, dtype=("O" if self.DataType=="string" else np.float))
