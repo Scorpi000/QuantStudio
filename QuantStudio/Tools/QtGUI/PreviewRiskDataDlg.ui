@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Dialog</class>
+ <widget class="QDialog" name="Dialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1161</width>
+    <height>760</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>预览风险数据</string>
+  </property>
+  <property name="sizeGripEnabled">
+   <bool>true</bool>
+  </property>
+  <layout class="QGridLayout" name="gridLayout">
+   <item row="3" column="3" colspan="2">
+    <widget class="QSpinBox" name="ColNumSpinBox">
+     <property name="maximum">
+      <number>9999</number>
+     </property>
+     <property name="value">
+      <number>50</number>
+     </property>
+    </widget>
+   </item>
+   <item row="0" column="4">
+    <widget class="QLabel" name="IDListLabel">
+     <property name="text">
+      <string>ID</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
+    </widget>
+   </item>
+   <item row="0" column="0" rowspan="7">
+    <widget class="QTableWidget" name="PreviewTable">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <property name="minimumSize">
+      <size>
+       <width>400</width>
+       <height>0</height>
+      </size>
+     </property>
+     <property name="contextMenuPolicy">
+      <enum>Qt::ActionsContextMenu</enum>
+     </property>
+     <property name="editTriggers">
+      <set>QAbstractItemView::NoEditTriggers</set>
+     </property>
+     <property name="defaultDropAction">
+      <enum>Qt::IgnoreAction</enum>
+     </property>
+     <property name="selectionBehavior">
+      <enum>QAbstractItemView::SelectRows</enum>
+     </property>
+     <attribute name="verticalHeaderDefaultSectionSize">
+      <number>30</number>
+     </attribute>
+    </widget>
+   </item>
+   <item row="4" column="4">
+    <widget class="QPushButton" name="PreviewSpecificRiskButton">
+     <property name="font">
+      <font>
+       <family>Aharoni</family>
+       <pointsize>9</pointsize>
+       <weight>75</weight>
+       <bold>true</bold>
+      </font>
+     </property>
+     <property name="text">
+      <string>特异风险</string>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="1" colspan="3">
+    <widget class="QListWidget" name="FactorList">
+     <property name="maximumSize">
+      <size>
+       <width>200</width>
+       <height>16777215</height>
+      </size>
+     </property>
+    </widget>
+   </item>
+   <item row="5" column="1" colspan="3">
+    <widget class="QPushButton" name="PreviewRiskButton">
+     <property name="font">
+      <font>
+       <family>Aharoni</family>
+       <pointsize>9</pointsize>
+       <weight>75</weight>
+       <bold>true</bold>
+      </font>
+     </property>
+     <property name="text">
+      <string>ID 协方差阵</string>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="4">
+    <widget class="QListWidget" name="IDList">
+     <property name="maximumSize">
+      <size>
+       <width>150</width>
+       <height>16777215</height>
+      </size>
+     </property>
+    </widget>
+   </item>
+   <item row="5" column="4">
+    <widget class="QPushButton" name="Export2CSVButton">
+     <property name="font">
+      <font>
+       <family>Aharoni</family>
+       <pointsize>9</pointsize>
+       <weight>75</weight>
+       <bold>true</bold>
+      </font>
+     </property>
+     <property name="text">
+      <string>导出 CSV</string>
+     </property>
+    </widget>
+   </item>
+   <item row="4" column="1" colspan="3">
+    <widget class="QPushButton" name="PreviewFactorRiskButton">
+     <property name="font">
+      <font>
+       <family>Aharoni</family>
+       <pointsize>9</pointsize>
+       <weight>75</weight>
+       <bold>true</bold>
+      </font>
+     </property>
+     <property name="text">
+      <string>因子协方差阵</string>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="3" colspan="2">
+    <widget class="QSpinBox" name="RowNumSpinBox">
+     <property name="maximum">
+      <number>9999</number>
+     </property>
+     <property name="value">
+      <number>50</number>
+     </property>
+    </widget>
+   </item>
+   <item row="3" column="1" colspan="2">
+    <widget class="QCheckBox" name="ColNumLimitCheckBox">
+     <property name="text">
+      <string>列数限制</string>
+     </property>
+     <property name="checked">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item row="0" column="1" colspan="3">
+    <widget class="QLabel" name="FactorListLabel">
+     <property name="text">
+      <string>因子</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="1" colspan="2">
+    <widget class="QCheckBox" name="RowNumLimitCheckBox">
+     <property name="text">
+      <string>行数限制</string>
+     </property>
+     <property name="checked">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

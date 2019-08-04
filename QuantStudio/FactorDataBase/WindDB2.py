@@ -2064,14 +2064,15 @@ class WindDB2(FactorDB):
         raise __QS_Error__("因子库目前尚不支持表: '%s'" % table_name)
     # -----------------------------------------数据提取---------------------------------
     # 给定起始日期和结束日期, 获取交易所交易日期, 目前支持: "SSE", "SZSE", "SHFE", "DCE", "CZCE", "INE", "CFEEX"
-    def getTradeDay(self, start_date=None, end_date=None, exchange="SSE"):
+    def getTradeDay(self, start_date=None, end_date=None, exchange="SSE", **kwargs):
         if start_date is None: start_date = dt.datetime(1900, 1, 1)
         if end_date is None: end_date = dt.datetime.today()
         ExchangeInfo = self._TableInfo[self._TableInfo["TableClass"]=="CalendarTable"]
         ExchangeInfo = ExchangeInfo[ExchangeInfo["Description"].str.contains(exchange)]
         if ExchangeInfo.shape[0]==0: raise __QS_Error__("不支持交易所: '%s' 的交易日序列!" % exchange)
         else: Dates = self.getTable(ExchangeInfo.index[0]).getDateTime(iid=exchange, start_dt=start_date, end_dt=end_date)
-        return list(map(lambda x: x.date(), Dates))
+        if kwargs.get("output_type", "date")=="date": return list(map(lambda x: x.date(), Dates))
+        else: return Dates
     # 获取指定日 date 的全体 A 股 ID
     # date: 指定日, datetime.date
     # is_current: False 表示上市日在指定日之前的 A 股, True 表示上市日在指定日之前且尚未退市的 A 股

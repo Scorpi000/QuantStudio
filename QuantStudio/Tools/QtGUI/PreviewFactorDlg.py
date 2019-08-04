@@ -6,8 +6,8 @@ import numpy as np
 import pandas as pd
 from PyQt5.QtCore import pyqtSlot
 from PyQt5.QtWidgets import QDialog, QMessageBox, QTableWidgetItem, QFileDialog
-from QuantStudio.Tools.QtGUI.Ui_PreviewFactorDlg import Ui_PreviewDlg
 
+from QuantStudio.Tools.QtGUI.Ui_PreviewFactorDlg import Ui_PreviewDlg
 from QuantStudio.Tools.QtGUI.DateTimeSetup import DateTimeSetupDlg
 from QuantStudio.Tools.QtGUI.IDSetup import IDSetupDlg
 
@@ -105,4 +105,3 @@ if __name__=="__main__":
     TestWindow.show()
     app.exec_()
     sys.exit()
-        

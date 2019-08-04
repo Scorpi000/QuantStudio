@@ -587,12 +587,12 @@ class FactorTable(__QS_Object__):
                         for jFactorName in factor_names: iFile[jFactorName] = iData[CommonCols+[jFactorName]].reset_index()
                     else:
                         iFile["RawData"] = iData[CommonCols].reset_index()
-                    iFIle["_QS_IDs"] = iIDs
+                    iFile["_QS_IDs"] = iIDs
         else:# 如果原始数据没有 ID 列，则将所有数据分别存入子进程的原始文件中
             for iPID, iIDs in pid_ids.items():
                 with shelve.open(raw_data_dir+os.sep+iPID+os.sep+file_name) as iFile:
                     iFile["RawData"] = raw_data
-                    iFIle["_QS_IDs"] = iIDs
+                    iFile["_QS_IDs"] = iIDs
         return 0
     def _genFactorDict(self, factors, factor_dict={}):
         for iFactor in factors:

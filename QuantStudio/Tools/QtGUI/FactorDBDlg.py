@@ -1,18 +1,15 @@
 # -*- coding: utf-8 -*-
-import shutil
 import os
 
 import numpy as np
 import pandas as pd
-from progressbar import ProgressBar
 from PyQt5.QtCore import pyqtSlot, QModelIndex
 from PyQt5.QtWidgets import QDialog, QTreeWidgetItem, QMessageBox, QInputDialog, QFileDialog
 from QuantStudio.Tools.QtGUI.Ui_FactorDBDlg import Ui_FactorDBDlg
 
 from QuantStudio.Tools.QtGUI.PreviewFactorDlg import PreviewDlg
-from QuantStudio.Tools.FileFun import listDirFile, loadCSVFactorData
+from QuantStudio.Tools.FileFun import loadCSVFactorData
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName
-from QuantStudio.Tools.DataTypeConversionFun import DataFrame2Series
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB
 
 class FactorDBDlg(QDialog, Ui_FactorDBDlg):
@@ -43,7 +40,7 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
     def isTopItemSelected(self):
         SelectedItem = self.FactorDBTree.selectedItems()
         if (len(SelectedItem)==0) or (SelectedItem[0].parent() is not None):
-            return (False, "选择的不是一张表!")
+            return (False, "选择的不是一张因子表!")
         else:
             return (True, SelectedItem[0])
     def genTableFactor(self):# 产生当前 FactorDBTree 中选择的 TableFactor: {表名：[因子名]}
@@ -83,7 +80,7 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
         if NewFactorName in AllFactorNames:
             QMessageBox.critical(self, "错误", "当前表包含重名因子!")
             return (False, "")
-        return (True, NewFactorName)    
+        return (True, NewFactorName)
     @pyqtSlot(QModelIndex)
     def on_FactorDBTree_expanded(self, index):
         Item = self.FactorDBTree.itemFromIndex(index)
@@ -162,7 +159,8 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
         isFactorSelected, SelectedItem = self.isBottomItemSelected()
         if isFactorSelected: return self.renameFactor(SelectedItem)
         return 0
-    def deleteTableFactor(self):
+    @pyqtSlot()
+    def on_DeleteButton_clicked(self):
         isOK = QMessageBox.question(self, "删除", "删除后将无法恢复, 你是否能对自己的行为负责?", QMessageBox.Ok | QMessageBox.Cancel, QMessageBox.Cancel)
         if isOK!=QMessageBox.Ok: return 0
         TableFactor = self.genTableFactor()
@@ -175,10 +173,6 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
             except Exception as e:
                 QMessageBox.critical(self, "错误", str(e))
         return self.populateFactorDBTree()
-    @pyqtSlot()
-    def on_DeleteButton_clicked(self):
-        return self.deleteTableFactor()
-    
     @pyqtSlot()
     def on_MoveButton_clicked(self):
         TableFactor = self.genTableFactor()
