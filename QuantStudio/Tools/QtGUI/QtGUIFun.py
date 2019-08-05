@@ -58,6 +58,13 @@ def showFactor(factor):
     Dlg.show()
     App.exec_()
     return 0
+# 以 GUI 的方式查看风险库
+def showRiskDB(rdb):
+    from QuantStudio.Tools.QtGUI.RiskDBDlg import RiskDBDlg
+    Dlg = RiskDBDlg(rdb)
+    Dlg.show()
+    App.exec_()
+    return 0
 # 以 GUI 的方式设置日期时间
 def setDateTime(dts=[], dates=[], times=[], ft=None):
     from QuantStudio.Tools.QtGUI.DateTimeSetup import DateTimeSetupDlg

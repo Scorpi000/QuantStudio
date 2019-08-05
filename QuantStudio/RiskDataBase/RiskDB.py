@@ -296,7 +296,7 @@ class FactorRT(RiskTable):
         return []
     # 获取特异性收益的时点
     def getSpecificReturnDateTime(self, start_dt=None, end_dt=None):
-        SpecificReturn = self.readSpecificReturn(table_name)
+        SpecificReturn = self.readSpecificReturn()
         if SpecificReturn is not None: return cutDateTime(SpecificReturn.index, start_dt=start_dt, end_dt=end_dt)
         return []
     def __QS_readCov__(self, dts, ids=None):

@@ -880,9 +880,9 @@ class MatplotlibResultDlg(PlotlyResultDlg):
     def plotHist3D(self):
         from mpl_toolkits.mplot3d import Axes3D
         SelectedColumn = self.getSelectedColumns()
-        if len(SelectedColumn)!=2: return QMessageBox.critical(self, "错误", "请选择两列!")
+        if len(SelectedColumn)!=2: return QtWidgets.QMessageBox.critical(self, "错误", "请选择两列!")
         SelectedDF, Msg = self.getSelectedDF(all_num=True)
-        if SelectedDF is None: return QMessageBox.critical(self, "错误", Msg)
+        if SelectedDF is None: return QtWidgets.QMessageBox.critical(self, "错误", Msg)
         SelectedDF.dropna()
         xData = SelectedDF.iloc[:,0].astype('float').values
         yData = SelectedDF.iloc[:,1].astype('float').values

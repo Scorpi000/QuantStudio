@@ -57,5 +57,5 @@ setuptools.setup(
         "xlwt>=1.3.0",# 写 Excel 文件
         "PyQt5>=5.9.2",# GUI
     ],
-    package_data={"QuantStudio": ["Matlab/*", "Lib/*", "Resource/*"]}    
+    package_data={"QuantStudio": ["Matlab/*", "Lib/*", "Resource/*"]}
 )

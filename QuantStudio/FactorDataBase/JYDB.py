@@ -1426,7 +1426,7 @@ def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_d
                 ijData = iData[CommonCols+[jFactorName]].reset_index()
                 if isANNReport: ijData.columns.name = raw_data_dir+os.sep+iPID+os.sep+report_ann_file
                 iFile[jFactorName] = ijData
-            iFIle["_QS_IDs"] = iIDs
+            iFile["_QS_IDs"] = iIDs
     return 0
 class _AnalystConsensusTable(_DBTable):
     """分析师汇总表"""

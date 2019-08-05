@@ -379,38 +379,6 @@ def VolatilityRegimeAdjustment(ret, forcast_volitility, half_life=90, forcast_nu
     Weight = Weight[BiasStats.index]/Weight[BiasStats.index].sum()
     return (Weight*BiasStats**2).sum()**0.5
 
-# 偏差统计检验, TODO
-def BiasTest(risk_ds, dates, ret_data, test_portfolios):
-    AllPortfolioNames = list(test_portfolios.keys())
-    ZScore = pd.DataFrame(np.nan,index=dates,columns=AllPortfolioNames)# Z-Score
-    RobustZScore = pd.DataFrame(np.nan,index=dates,columns=AllPortfolioNames)# Robust Z-Score
-    BiasStats = pd.DataFrame(np.nan,index=dates,columns=AllPortfolioNames)# Bias 统计量
-    RobustBiasStats = pd.DataFrame(np.nan,index=dates,columns=AllPortfolioNames)# Robust Bias 统计量
-    risk_ds.start()
-    risk_ds.MoveOn(dates[0])
-    for i,iDate in enumerate(dates[1:]):
-        iPreDate = dates[i]
-        iCovMatrix = risk_ds.getDateCov(iPreDate)
-        iIDs = list(iCovMatrix.index)
-        iReturn = ret_data.loc[iDate]
-        for jPortfolioName,jPortfolio in test_portfolios.items():
-            ijCovMatrix = iCovMatrix.loc[jPortfolio[iDate].index,jPortfolio[iDate].index]
-            ijStd = np.dot(np.dot(jPortfolio.values,ijCovMatrix.values),jPortfolio.values)**0.5
-            ijReturn = (iReturn[jPortfolio.index]*jPortfolio).sum()
-            ZScore.loc[iDate,jPortfolioName] = ijReturn/ijStd
-            RobustZScore.loc[iDate,jPortfolioName] = max((-3,min((3,ijReturn/ijStd))))
-            if i>=11:
-                BiasStats.loc[iDate,jPortfolioName] = ZScore[jPortfolioName].iloc[i+2-12:i+2].std()
-                RobustBiasStats.loc[iDate,jPortfolioName] = RobustZScore[jPortfolioName].iloc[i+2-12:i+2].std()
-        risk_ds.MoveOn(iDate)
-        iIDs = MainDS.getID(iDate,is_filtered=True)
-        iCovMatrix = MainRiskDS.getDateCov(iDate,ids=iIDs)
-        iIDs = list(iCovMatrix.index)
-        iPortfolioDict = genPortfolio(MainDS,iDate,iIDs,style_factors=BarraFactors)
-        print(iDate)
-        RADStats = (BiasStats-1).abs().mean()# RAD 统计量
-        RobustRADStats = (RobustBiasStats-1).abs().mean()# Robust RAD 统计量
-
 # 去掉风险矩阵的缺失值
 def dropRiskMatrixNA(risk_matrix):
     risk_matrix = risk_matrix.dropna(how='all',axis=0)

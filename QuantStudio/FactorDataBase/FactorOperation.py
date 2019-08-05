@@ -349,9 +349,9 @@ class PanelOperation(DerivativeFactor):
     def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
         if len(self._Descriptors)>len(self.LookBack): raise  __QS_Error__("面板运算因子 : '%s' 的参数'回溯期数'序列长度小于描述子个数!" % self.Name)
         OldStartDT = dt_dict.get(self.Name, None)
+        DTRuler = self._OperationMode.DTRuler
         if (OldStartDT is None) or (start_dt<OldStartDT):
             StartDT = dt_dict[self.Name] = start_dt
-            DTRuler = self._OperationMode.DTRuler
             StartInd, EndInd = DTRuler.index(StartDT), DTRuler.index(self._OperationMode.DateTimes[-1])
             if (self.iLookBackMode=="扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0]>0):
                 if self.iInitData.index[-1] not in self._OperationMode.DTRuler: print("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name, ))

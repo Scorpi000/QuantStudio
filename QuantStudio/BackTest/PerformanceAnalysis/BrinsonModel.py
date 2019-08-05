@@ -39,16 +39,6 @@ class BrinsonModel(BaseModule):
         self.add_trait("GroupFactor", Enum(*DefaultStrFactorList, arg_type="SingleOption", label="资产类别", order=2))
         self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=3))
         self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
-    def _normalizePortfolio(self, portfolio):
-        TotalWeight = portfolio.sum()
-        portfolio["现金"]
-        if TotalNegWeight!=0: portfolio[NegMask] = portfolio[NegMask] / TotalNegWeight
-        PosMask = (portfolio>0)
-        TotalPosWeight = portfolio[PosMask].sum()
-        if TotalPosWeight!=0:
-            portfolio[PosMask] = portfolio[PosMask] / TotalPosWeight
-            portfolio[NegMask] = portfolio[NegMask] * TotalNegWeight / TotalPosWeight
-        return portfolio
     def __QS_start__(self, mdl, dts, **kwargs):
         if self._isStarted: return ()
         super().__QS_start__(mdl=mdl, dts=dts, **kwargs)

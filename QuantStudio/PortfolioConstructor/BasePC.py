@@ -414,7 +414,7 @@ class TurnoverConstraint(Constraint):
     @property
     def Dependency(self):
         Dependency = {"初始投资组合":True}
-        if (self.ConstraintType in ["买卖限制", "买入限制", "卖出限制"]) and (iConstraint.AmtMultiple!=0.0):
+        if (self.ConstraintType in ["买卖限制", "买入限制", "卖出限制"]) and (self.AmtMultiple!=0.0):
             Dependency["成交金额"] = True
             Dependency["总财富"] = True
         return Dependency
