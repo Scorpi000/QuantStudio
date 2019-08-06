@@ -9,7 +9,7 @@ import statsmodels.api as sm
 
 from QuantStudio import __QS_Error__
 from QuantStudio.FactorDataBase.FactorDB import Factor
-from QuantStudio.FactorDataBase.FactorOperation import PointOperation, TimeOperation, SectionOperation, SectionAggregation
+from QuantStudio.FactorDataBase.FactorOperation import PointOperation, TimeOperation, SectionOperation
 from QuantStudio.Tools import DataPreprocessingFun
 
 
@@ -116,6 +116,23 @@ def _where(f,idt,iid,x,args):
 def where(f,mask,other,**kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f,mask,other)
     return PointOperation(kwargs.get('factor_name',str(uuid.uuid1())), Descriptors, {"算子":_where, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "数据类型":kwargs.get("data_type", "double")})
+def _replace(f,idt,iid,x,args):
+    Data = _genOperatorData(f,idt,iid,x,args)[0]
+    ValueMap = args["OperatorArg"]["value_map"]
+    if f.DataType=="double":
+        Rslt = np.full_like(Data, fill_value=np.nan, dtype="float")
+    else:
+        Rslt = np.full_like(Data, fill_value=None, dtype="O")
+    for iKey, iVal in ValueMap.items():
+        if pd.isnull(iKey):
+            Rslt[pd.isnull(Data)] = iVal
+        else:
+            Rslt[Data==iKey] = iVal
+    return Rslt
+def replace(f, value_map, **kwargs):
+    Descriptors,Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"value_map":value_map}
+    return PointOperation(kwargs.get('factor_name',str(uuid.uuid1())), Descriptors, {"算子":_replace, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "数据类型":kwargs.get("data_type", "double")})
 def _clip(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
     return np.clip(Data[0],Data[1],Data[2])
@@ -1029,22 +1046,29 @@ def disaggregate(f, target_id=None, cat_data=None, **kwargs):# 将聚合因子�
 def _aggr_sum(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
     FactorData = Data[0]
-    if args["OperatorArg"]["Mask"]: Mask = Data[1]
-    return np.nansum(FactorData[Mask==1])
-def aggr_sum(f, mask=None, cat_data=None, code_map=None, **kwargs):
+    if args["OperatorArg"]["Mask"]:
+        Mask = (Data[1]==1)
+    else:
+        Mask = np.full(FactorData.shape, fill_value=True)
+    if args["OperatorArg"]["CatData"]:
+        CatData = Data[-1]
+        Rslt = np.full(shape=(len(idt), len(iid)), fill_value=np.nan)
+        for i, iID in enumerate(iid):
+            iMask = ((CatData==iID) & Mask)
+            Rslt[:, i] = np.nansum(iMask * FactorData, axis=1)
+    else:
+        Rslt = np.nansum(FactorData * Mask, axis=1).reshape((len(idt), 1)).repeat(len(iid), axis=1)
+    return Rslt
+def aggr_sum(f, mask=None, cat_data=None, descriptor_ids=None, **kwargs):
     Factors = [f]
-    cat_pos = 1
     if mask is not None:
         Factors.append(mask)
-        cat_pos += 1
     if cat_data is not None:
         Factors.append(cat_data)
-    else:
-        cat_pos = None
-    Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
-    Args["OperatorArg"] = {"Mask":(mask is not None)}
+    Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
+    Args["OperatorArg"] = {"Mask":(mask is not None), "CatData":(cat_data is not None)}
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
-    return SectionAggregation(FactorName,Descriptors,{"算子":_aggr_sum,"参数":Args,"代码对照":code_map, "分类因子":cat_pos})
+    return SectionOperation(FactorName, Descriptors, {"算子":_aggr_sum, "参数":Args, "运算时点":"多时点", "描述子截面":[descriptor_ids]*len(Descriptors)})
 def _aggr_prod(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
     FactorData = Data[0]

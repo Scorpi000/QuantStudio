@@ -305,7 +305,7 @@ class SectionOperation(DerivativeFactor):
                 iDescriptor._QS_getData(iDTs, pids=None)
             StdData = pd.DataFrame(columns=IDs, dtype=("float" if self.DataType=="double" else "O"))
         elif IDs:
-            StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor._QS_getData(DTs, pids=None, ids=self.DescriptorSection[i]).values for i, iDescriptor in enumerate(self._Descriptors)])
+            StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor._QS_getData(DTs, pids=None).values for i, iDescriptor in enumerate(self._Descriptors)])
             StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
         else:
             StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self.DataType=="double" else "O"))
@@ -484,85 +484,6 @@ class PanelOperation(DerivativeFactor):
                     else:
                         CacheFile["StdData"] = StdData.loc[:, iIDs]
                     CacheFile["_QS_IDs"] = iIDs
-        StdData = None# 释放数据
-        if self._OperationMode.SubProcessNum>0:
-            Sub2MainQueue, PIDEvent = self._OperationMode._Event[self.Name]
-            Sub2MainQueue.put(1)
-            PIDEvent.wait()
-        self._isCacheDataOK = True
-        return StdData
-
-# 截面聚合运算, TODO
-# f: 该算子所属的因子, 因子对象
-# idt: 当前待计算的时点, 如果运算日期为多时点，则该值为 [时点]
-# iid: 当前待计算的 ID 截面, [ID]
-# x: 描述子当期的数据, [array]
-# args: 参数, {参数名:参数值}
-class SectionAggregation(DerivativeFactor):
-    """截面聚合运算"""
-    OutputMode = Enum("单ID", "全截面", arg_type="SingleOption", label="输出形式", order=3)
-    DescriptorSection = List(arg_type="List", label="描述子截面", order=4)
-    #GroupFactor = Enum(None, arg_type="SingleOption", label="类别因子", order=5)
-    def __QS_initArgs__(self):
-        super().__QS_initArgs__()
-        self.add_trait("GroupFactor", Enum(*([None]+[i for i in range(len(self._Descriptors))]), arg_type="SingleOption", label="类别因子", order=3))
-    def readData(self, ids, dts, **kwargs):
-        IDs = list(self.DescriptorSection)
-        if not IDs: IDs = ids
-        StdData = self._calcData(ids=ids, dts=dts, descriptor_data=[iDescriptor.readData(ids=IDs, dts=dts).values for iDescriptor in self._Descriptors])
-        return pd.DataFrame(StdData, index=dts, columns=ids)
-    def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
-        OldStartDT = dt_dict.get(self.Name, None)
-        if (OldStartDT is None) or (start_dt<OldStartDT):
-            dt_dict[self.Name] = start_dt
-            StartInd, EndInd = self._OperationMode.DTRuler.index(dt_dict[self.Name]), self._OperationMode.DTRuler.index(self._OperationMode.DateTimes[-1])
-            DTs = self._OperationMode.DTRuler[StartInd:EndInd+1]
-            DTPartition = partitionList(DTs, len(self._OperationMode._PIDs))
-            self._PID_DTs = {iPID:DTPartition[i] for i, iPID in enumerate(self._OperationMode._PIDs)}
-        id_dict[self.Name] = id_dict.get(self.Name, set()).union(prepare_ids)
-        if self.DescriptorSection: PrepareIDs = set(self.DescriptorSection)
-        else: PrepareIDs = id_dict[self.Name]
-        for i, iDescriptor in enumerate(self._Descriptors):
-            iDescriptor._QS_initOperation(start_dt, dt_dict, PrepareIDs, id_dict)
-        if (self._OperationMode.SubProcessNum>0) and (self.Name not in self._OperationMode._Event): self._OperationMode._Event[self.Name] = (Queue(), Event())
-    def _calcData(self, ids, dts, descriptor_data):
-        if self.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
-        else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')
-        if self.GroupFactor is None:
-            for i, iDT in enumerate(dts):
-                x = [kDescriptorData[i] for kDescriptorData in descriptor_data]
-                StdData[i] = self.Operator(self, iDT, ids, x, self.ModelArgs)
-        else:
-            if self.OutputMode=="单ID":
-                GroupData = descriptor_data[self.GroupFactor]
-                for i, iDT in enumerate(dts):
-                    for j, jID in enumerate(ids):
-                        ijGroupMask = (GroupData[i]==jID)
-                        x = [kDescriptorData[i][ijGroupMask] for kDescriptorData in descriptor_data]
-                        StdData[i, j] = self.Operator(self, iDT, jID, x, self.ModelArgs)
-            else:
-                for i, iDT in enumerate(dts):
-                    x = [kDescriptorData[i] for kDescriptorData in descriptor_data]
-                    StdData[i] = self.Operator(self, iDT, ids, x, self.ModelArgs)
-        return StdData
-    def __QS_prepareCacheData__(self):
-        DTs = list(self._PID_DTs[self._OperationMode._iPID])
-        IDs = list(self._OperationMode.IDs)
-        if len(DTs)==0:# 该进程未分配到计算任务
-            iDTs = [self._OperationMode.DateTimes[-1]]
-            for i, iDescriptor in enumerate(self._Descriptors):
-                iDescriptor._QS_getData(iDTs, pids=None)
-            StdData = pd.DataFrame(columns=IDs, dtype=("float" if self.DataType=="double" else "O"))
-        else:
-            StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor._QS_getData(DTs, pids=None).values for iDescriptor in self._Descriptors])
-            StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
-        for iPID, iIDs in self._OperationMode._PID_IDs.items():
-            with self._OperationMode._PID_Lock[iPID]:
-                with shelve.open(self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
-                    if "StdData" in CacheFile:
-                        CacheFile["StdData"] = pd.concat([CacheFile["StdData"], StdData.loc[:,iIDs]]).sort_index()
-                    else:
-                        CacheFile["StdData"] = StdData.loc[:, iIDs]
         StdData = None# 释放数据
         if self._OperationMode.SubProcessNum>0:
             Sub2MainQueue, PIDEvent = self._OperationMode._Event[self.Name]

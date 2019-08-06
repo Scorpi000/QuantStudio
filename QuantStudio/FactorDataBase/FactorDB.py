@@ -1025,10 +1025,9 @@ class Factor(__QS_Object__):
             else:
                 StdData = self._FactorTable.readData(factor_names=[self._NameInFT], ids=PrepareIDs, dts=DTs, args=self.Args).iloc[0]
         else:
-            if ids is None:
-                PrepareIDs = self._OperationMode._PID_IDs[self._OperationMode._iPID]
-            else:
-                PrepareIDs = ids
+            PrepareIDs = self._OperationMode._FactorPrepareIDs[self.Name]
+            if PrepareIDs is None: PrepareIDs = self._OperationMode._PID_IDs[self._OperationMode._iPID]
+            else: PrepareIDs = partitionList(PrepareIDs, len(self._OperationMode._PID_IDs))[self._OperationMode._PIDs.index(self._OperationMode._iPID)]
             StdData = self._FactorTable.readData(factor_names=[self._NameInFT], ids=PrepareIDs, dts=DTs, args=self.Args).iloc[0]
         with self._OperationMode._PID_Lock[self._OperationMode._iPID]:
             with shelve.open(self._OperationMode._CacheDataDir+os.sep+self._OperationMode._iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
@@ -1043,7 +1042,7 @@ class Factor(__QS_Object__):
         else:
             pids = set(pids)
         if not self._isCacheDataOK:# 若没有准备好缓存数据, 准备缓存数据
-            StdData = self.__QS_prepareCacheData__(ids=kwargs.get("ids", None))
+            StdData = self.__QS_prepareCacheData__()
             if (StdData is not None) and (self._OperationMode._iPID in pids):
                 pids.remove(self._OperationMode._iPID)
                 IDs = StdData.columns.tolist()
