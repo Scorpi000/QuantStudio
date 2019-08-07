@@ -30,7 +30,7 @@ setuptools.setup(
     install_requires=[
         "numpy>=1.14.4+mkl",# 矩阵运算
         "numexpr>=2.6.1",# 加速数值计算
-        "pandas>=0.19.0,<0.24.0",# 数据分析
+        "pandas>=0.19.0,<0.25.0",# 数据分析
         "scipy>=0.18.1",# 科学计算
         "cvxpy>=1.0.0",# 凸规划
         "matplotlib>=2.2.3",# 绘图

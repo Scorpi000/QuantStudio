@@ -309,7 +309,11 @@ class SectionOperation(DerivativeFactor):
             StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
         else:
             StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self.DataType=="double" else "O"))
-        for iPID, iIDs in self._OperationMode._PID_IDs.items():
+        if self._OperationMode._FactorPrepareIDs[self.Name] is None:
+            PID_IDs = self._OperationMode._PID_IDs
+        else:
+            PID_IDs = {self._OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in enumerate(partitionList(IDs, len(self._OperationMode._PIDs)))}
+        for iPID, iIDs in PID_IDs.items():
             with self._OperationMode._PID_Lock[iPID]:
                 with shelve.open(self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
                     if "StdData" in CacheFile:
@@ -476,7 +480,11 @@ class PanelOperation(DerivativeFactor):
             DescriptorData, iDescriptorData, StdData = None, None, pd.DataFrame(StdData, index=DTs, columns=IDs)
         else:
             StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self.DataType=="double" else "O"))
-        for iPID, iIDs in self._OperationMode._PID_IDs.items():
+        if self._OperationMode._FactorPrepareIDs[self.Name] is None:
+            PID_IDs = self._OperationMode._PID_IDs
+        else:
+            PID_IDs = {self._OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in enumerate(partitionList(IDs, len(self._OperationMode._PIDs)))}
+        for iPID, iIDs in PID_IDs.items():
             with self._OperationMode._PID_Lock[iPID]:
                 with shelve.open(self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
                     if "StdData" in CacheFile:

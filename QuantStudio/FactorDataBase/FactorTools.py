@@ -1022,29 +1022,70 @@ def orthogonalize(Y, X, mask=None, constant=False, dummy_data=None, drop_dummy_n
     return SectionOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_orthogonalize,"参数":Args,"运算时点":"多时点","输出形式":"全截面"})
 
 # ----------------------聚合运算--------------------------------
-def _disaggregate(f,idt,iid,x,args):
-    if "target_id" in args["OperatorArg"]:
-        Data = args["OperatorArg"]["f"].readData(dts=idt, ids=[args["OperatorArg"]["target_id"]])
-        return np.repeat(Data.values, len(iid), axis=1)
-    CatData = _genOperatorData(f,idt,iid,x,args)
-    Data = args["OperatorArg"]["f"].readData(dts=idt, ids=args["OperatorArg"]["f"].getID())
-    if f.DataType=="string": Rslt = np.full(shape=CatData.shape, fill_value=None, dtype=np.dtype("O"))
-    else: Rslt = np.full(shape=CatData.shape, fill_value=np.nan, dtype="float")
-    for i, iCat in enumerate(Data.dtypes.index):
-        iMask = (CatData==iCat)
-        Rslt[iMask] = np.repeat(Data.iloc[:, [i]].values, len(iid), axis=1)[iMask]
-    return Rslt
-def disaggregate(f, target_id=None, cat_data=None, **kwargs):# 将聚合因子分解成为普通因子
-    if (target_id is None) and (cat_data is None): raise __QS_Error__("目标ID或者类别因子不能全为 None!")
-    elif target_id is not None:
-        Args = {"OperatorArg":{"f":f, "target_id":target_id}}
-        return PointOperation(kwargs.get('factor_name',str(uuid.uuid1())),[],{"算子":_disaggregate,"参数":Args,"运算时点":"多时点","运算ID":"多ID", "数据类型":f.getMetaData(key="DataType")})
+def _aggregate(f,idt,iid,x,args):
+    Data = _genOperatorData(f,idt,iid,x,args)
+    nID = len(iid)
+    FactorData = Data[0]
+    if args["OperatorArg"]["Mask"]:
+        Mask = (Data[1]==1)
     else:
-        Descriptors, Args = _genMultivariateOperatorInfo(cat_data)
-        Args["OperatorArg"] = {"f":f}
-        return PointOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_disaggregate,"参数":Args,"运算时点":"多时点","运算ID":"多ID", "数据类型":f.getMetaData(key="DataType")})
+        Mask = np.full(FactorData.shape, fill_value=True)
+    AggrFun = args["OperatorArg"]["aggr_fun"]
+    if args["OperatorArg"]["CatData"]:
+        CatData = Data[-1]
+        Rslt = np.full(shape=(nID, ), fill_value=np.nan)
+        if args["OperatorArg"]["SectionChged"]:
+            for i, iID in enumerate(iid):
+                iMask = ((CatData==iID) & Mask)
+                Rslt[i] = AggrFun(FactorData[iMask])
+        else:
+            AllCats = pd.unique(CatData.flatten())
+            for i, iCat in enumerate(AllCats):
+                if pd.isnull(iCat):
+                    iMask = (pd.isnull(CatData) & Mask)
+                else:
+                    iMask = ((CatData==iCat) & Mask)
+                Rslt[iMask] = AggrFun(FactorData[iMask])
+    else:
+        Rslt = np.full(shape=(nID, ), fill_value=AggrFun(FactorData[Mask]))
+    return Rslt
+def aggregate(f, aggr_fun=np.nansum, mask=None, cat_data=None, descriptor_ids=None, **kwargs):
+    Factors = [f]
+    if mask is not None:
+        Factors.append(mask)
+    if cat_data is not None:
+        Factors.append(cat_data)
+    Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
+    Args["OperatorArg"] = {"aggr_fun":aggr_fun, "Mask":(mask is not None), "CatData":(cat_data is not None), "SectionChged":(descriptor_ids is not None)}
+    FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
+    return SectionOperation(FactorName, Descriptors, {"算子":_aggregate, "参数":Args, "运算时点":"单时点", "描述子截面":[descriptor_ids]*len(Descriptors)})
+def _disaggregate(f,idt,iid,x,args):
+    Data = _genOperatorData(f,idt,iid,x,args)
+    nDT, nID = len(idt), len(iid)
+    FactorData = Data[0]
+    if args["OperatorArg"]["CatData"]:
+        CatData = Data[-1]
+        Rslt = np.full(shape=(nDT, nID), fill_value=np.nan)
+        for i, iID in enumerate(args["OperatorArg"]["aggr_ids"]):
+            iMask = (CatData==iID)
+            Rslt[iMask] = FactorData[:, [i]].repeat(nID, axis=1)[iMask]
+    else:
+        Rslt = FactorData.repeat(nID, axis=1)
+    return Rslt
+def disaggregate(f, aggr_ids, cat_data=None, disaggr_ids=None, **kwargs):# 将聚合因子分解成为普通因子
+    if (len(ids)>1) and (cat_data is None): raise __QS_Error__("解聚合算子 disaggregate: 缺少类别因子!")
+    Factors = [f]
+    DescriptorIDs = [aggr_ids]
+    if cat_data is not None:
+        Factors.append(cat_data)
+        DescriptorIDs.append(disaggr_ids)
+    Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
+    Args["OperatorArg"] = {"aggr_ids":aggr_ids, "CatData":(cat_data is not None)}
+    FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
+    return SectionOperation(FactorName, Descriptors, {"算子":_disaggregate, "参数":Args, "运算时点":"多时点", "描述子截面":DescriptorIDs})
 def _aggr_sum(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
+    nDT, nID = len(idt), len(iid)
     FactorData = Data[0]
     if args["OperatorArg"]["Mask"]:
         Mask = (Data[1]==1)
@@ -1052,12 +1093,21 @@ def _aggr_sum(f,idt,iid,x,args):
         Mask = np.full(FactorData.shape, fill_value=True)
     if args["OperatorArg"]["CatData"]:
         CatData = Data[-1]
-        Rslt = np.full(shape=(len(idt), len(iid)), fill_value=np.nan)
-        for i, iID in enumerate(iid):
-            iMask = ((CatData==iID) & Mask)
-            Rslt[:, i] = np.nansum(iMask * FactorData, axis=1)
+        Rslt = np.full(shape=(nDT, nID), fill_value=np.nan)
+        if args["OperatorArg"]["SectionChged"]:
+            for i, iID in enumerate(iid):
+                iMask = ((CatData==iID) & Mask)
+                Rslt[:, i] = np.nansum(iMask * FactorData, axis=1)
+        else:
+            AllCats = pd.unique(CatData.flatten())
+            for i, iCat in enumerate(AllCats):
+                if pd.isnull(iCat):
+                    iMask = (pd.isnull(CatData) & Mask)
+                else:
+                    iMask = ((CatData==iCat) & Mask)
+                Rslt[iMask] = np.nansum(iMask * FactorData, axis=1).reshape((nDT, 1)).repeat(nID, axis=1)[iMask]
     else:
-        Rslt = np.nansum(FactorData * Mask, axis=1).reshape((len(idt), 1)).repeat(len(iid), axis=1)
+        Rslt = np.nansum(FactorData * Mask, axis=1).reshape((nDT, 1)).repeat(nID, axis=1)
     return Rslt
 def aggr_sum(f, mask=None, cat_data=None, descriptor_ids=None, **kwargs):
     Factors = [f]
@@ -1066,195 +1116,381 @@ def aggr_sum(f, mask=None, cat_data=None, descriptor_ids=None, **kwargs):
     if cat_data is not None:
         Factors.append(cat_data)
     Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
-    Args["OperatorArg"] = {"Mask":(mask is not None), "CatData":(cat_data is not None)}
+    Args["OperatorArg"] = {"Mask":(mask is not None), "CatData":(cat_data is not None), "SectionChged":(descriptor_ids is not None)}
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
     return SectionOperation(FactorName, Descriptors, {"算子":_aggr_sum, "参数":Args, "运算时点":"多时点", "描述子截面":[descriptor_ids]*len(Descriptors)})
 def _aggr_prod(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
+    nDT, nID = len(idt), len(iid)
     FactorData = Data[0]
     if args["OperatorArg"]["Mask"]:
-        Mask = Data[1]
-    return np.nanprod(FactorData[Mask==1])
-def aggr_prod(f, mask=None, cat_data=None, code_map=None, **kwargs):
+        Mask = (Data[1]==1)
+    else:
+        Mask = np.full(FactorData.shape, fill_value=True)
+    if args["OperatorArg"]["CatData"]:
+        CatData = Data[-1]
+        Rslt = np.full(shape=(nDT, nID), fill_value=np.nan)
+        iData = np.full(shape=FactorData.shape, fill_value=np.nan)
+        if args["OperatorArg"]["SectionChged"]:
+            for i, iID in enumerate(iid):
+                iMask = ((CatData==iID) & Mask)
+                iData[:] = np.nan
+                iData[iMask] = FactorData[iMask]
+                Rslt[:, i] = np.nanprod(iData, axis=1)
+        else:
+            AllCats = pd.unique(CatData.flatten())
+            iData = np.full(shape=FactorData.shape, fill_value=np.nan)
+            for i, iCat in enumerate(AllCats):
+                if pd.isnull(iCat):
+                    iMask = (pd.isnull(CatData) & Mask)
+                else:
+                    iMask = ((CatData==iCat) & Mask)
+                iData[:] = np.nan
+                iData[iMask] = FactorData[iMask]
+                Rslt[iMask] = np.nanprod(iData, axis=1).reshape((nDT, 1)).repeat(nID, axis=1)[iMask]
+    else:
+        FactorData[~Mask] = np.nan
+        Rslt = np.nanprod(FactorData, axis=1).reshape((nDT, 1)).repeat(nID, axis=1)
+    return Rslt
+def aggr_prod(f, mask=None, cat_data=None, descriptor_ids=None, **kwargs):
     Factors = [f]
-    cat_pos = 1
     if mask is not None:
         Factors.append(mask)
-        cat_pos += 1
     if cat_data is not None:
         Factors.append(cat_data)
-    else:
-        cat_pos = None
-    Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
-    Args["OperatorArg"] = {"Mask":(mask is not None)}
+    Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
+    Args["OperatorArg"] = {"Mask":(mask is not None), "CatData":(cat_data is not None), "SectionChged":(descriptor_ids is not None)}
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
-    return SectionAggregation(FactorName,Descriptors,{"算子":_aggr_prod,"参数":Args,"代码对照":code_map,"分类因子":cat_pos})
+    return SectionOperation(FactorName, Descriptors, {"算子":_aggr_prod, "参数":Args, "运算时点":"多时点", "描述子截面":[descriptor_ids]*len(Descriptors)})
 def _aggr_max(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
+    nDT, nID = len(idt), len(iid)
     FactorData = Data[0]
-    if args["OperatorArg"]["Mask"]: Mask = Data[1]
-    return np.nanmax(FactorData[Mask==1])
-def aggr_max(f, mask=None, cat_data=None, code_map=None, **kwargs):
+    if FactorData.shape[1]==0: return np.full(shape=(nDT, nID), fill_value=np.nan)
+    if args["OperatorArg"]["Mask"]:
+        Mask = (Data[1]==1)
+    else:
+        Mask = np.full(FactorData.shape, fill_value=True)
+    if args["OperatorArg"]["CatData"]:
+        CatData = Data[-1]
+        Rslt = np.full(shape=(nDT, nID), fill_value=np.nan)
+        iData = np.full(shape=FactorData.shape, fill_value=np.nan)
+        if args["OperatorArg"]["SectionChged"]:
+            for i, iID in enumerate(iid):
+                iMask = ((CatData==iID) & Mask)
+                iData[:] = np.nan
+                iData[iMask] = FactorData[iMask]
+                Rslt[:, i] = np.nanmax(iData, axis=1)
+        else:
+            AllCats = pd.unique(CatData.flatten())
+            for i, iCat in enumerate(AllCats):
+                if pd.isnull(iCat):
+                    iMask = (pd.isnull(CatData) & Mask)
+                else:
+                    iMask = ((CatData==iCat) & Mask)
+                iData[:] = np.nan
+                iData[iMask] = FactorData[iMask]
+                Rslt[iMask] = np.nanmax(iData, axis=1).reshape((nDT, 1)).repeat(nID, axis=1)[iMask]
+    else:
+        FactorData[~Mask] = np.nan
+        Rslt = np.nanmax(FactorData, axis=1).reshape((nDT, 1)).repeat(nID, axis=1)
+    return Rslt
+def aggr_max(f, mask=None, cat_data=None, descriptor_ids=None, **kwargs):
     Factors = [f]
-    cat_pos = 1
     if mask is not None:
         Factors.append(mask)
-        cat_pos += 1
     if cat_data is not None:
         Factors.append(cat_data)
-    else:
-        cat_pos = None
-    Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
-    Args["OperatorArg"] = {"Mask":(mask is not None)}
+    Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
+    Args["OperatorArg"] = {"Mask":(mask is not None), "CatData":(cat_data is not None), "SectionChged":(descriptor_ids is not None)}
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
-    return SectionAggregation(FactorName,Descriptors,{"算子":_aggr_max,"参数":Args,"代码对照":code_map,"分类因子":cat_pos})
+    return SectionOperation(FactorName, Descriptors, {"算子":_aggr_max, "参数":Args, "运算时点":"多时点", "描述子截面":[descriptor_ids]*len(Descriptors)})
 def _aggr_min(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
+    nDT, nID = len(idt), len(iid)
     FactorData = Data[0]
-    if args["OperatorArg"]["Mask"]: Mask = Data[1]
-    return np.nanmin(FactorData[Mask==1])
-def aggr_min(f, mask=None, cat_data=None, code_map=None, **kwargs):
+    if FactorData.shape[1]==0: return np.full(shape=(nDT, nID), fill_value=np.nan)
+    if args["OperatorArg"]["Mask"]:
+        Mask = (Data[1]==1)
+    else:
+        Mask = np.full(FactorData.shape, fill_value=True)
+    if args["OperatorArg"]["CatData"]:
+        CatData = Data[-1]
+        Rslt = np.full(shape=(nDT, nID), fill_value=np.nan)
+        iData = np.full(shape=FactorData.shape, fill_value=np.nan)
+        if args["OperatorArg"]["SectionChged"]:
+            for i, iID in enumerate(iid):
+                iMask = ((CatData==iID) & Mask)
+                iData[:] = np.nan
+                iData[iMask] = FactorData[iMask]
+                Rslt[:, i] = np.nanmin(iData, axis=1)
+        else:
+            AllCats = pd.unique(CatData.flatten())
+            for i, iCat in enumerate(AllCats):
+                if pd.isnull(iCat):
+                    iMask = (pd.isnull(CatData) & Mask)
+                else:
+                    iMask = ((CatData==iCat) & Mask)
+                iData[:] = np.nan
+                iData[iMask] = FactorData[iMask]
+                Rslt[iMask] = np.nanmin(iData, axis=1).reshape((nDT, 1)).repeat(nID, axis=1)[iMask]
+    else:
+        FactorData[~Mask] = np.nan
+        Rslt = np.nanmin(FactorData, axis=1).reshape((nDT, 1)).repeat(nID, axis=1)
+    return Rslt
+def aggr_min(f, mask=None, cat_data=None, descriptor_ids=None, **kwargs):
     Factors = [f]
-    cat_pos = 1
     if mask is not None:
         Factors.append(mask)
-        cat_pos += 1
     if cat_data is not None:
         Factors.append(cat_data)
-    else:
-        cat_pos = None
-    Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
-    Args["OperatorArg"] = {"Mask":(mask is not None)}
+    Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
+    Args["OperatorArg"] = {"Mask":(mask is not None), "CatData":(cat_data is not None), "SectionChged":(descriptor_ids is not None)}
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
-    return SectionAggregation(FactorName,Descriptors,{"算子":_aggr_min,"参数":Args,"代码对照":code_map,"分类因子":cat_pos})
+    return SectionOperation(FactorName, Descriptors, {"算子":_aggr_min, "参数":Args, "运算时点":"多时点", "描述子截面":[descriptor_ids]*len(Descriptors)})
 def _aggr_mean(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
+    nDT, nID = len(idt), len(iid)
     FactorData = Data[0]
-    if args["OperatorArg"]["WeightPos"]!=-1:
-        Weight = Data[args["OperatorArg"]["WeightPos"]]
+    if args["OperatorArg"]["Mask"]:
+        Mask = (Data[1]==1)
     else:
-        Weight = np.ones(FactorData.shape)
-    if args["OperatorArg"]["MaskPos"]!=-1:
-        Mask = (Data[args["OperatorArg"]["MaskPos"]]==1)
-        FactorData = FactorData[Mask]
-        Weight = Weight[Mask]
-    if args["OperatorArg"]["ignore_na"]:
-        Mask = pd.notnull(FactorData)
-        return np.nansum((FactorData*Weight)[Mask])/np.nansum(Weight[Mask])
+        Mask = np.full(FactorData.shape, fill_value=True)
+    if args["OperatorArg"]["Weight"]:
+        WeightData = Data[2-args["OperatorArg"]["Mask"]]
     else:
-        return np.nansum(FactorData*Weight)/np.nansum(Weight)
-def aggr_mean(f, mask=None, cat_data=None, weight_data=None, ignore_na=False, code_map=None, **kwargs):
+        WeightData = np.ones(FactorData.shape)
+    if args["OperatorArg"]["CatData"]:
+        CatData = Data[-1]
+        Rslt = np.full(shape=(nDT, nID), fill_value=np.nan)
+        if args["OperatorArg"]["SectionChged"]:
+            for i, iID in enumerate(iid):
+                iMask = ((CatData==iID) & Mask)
+                Rslt[:, i] = np.nansum(iMask * WeightData * FactorData, axis=1) / np.nansum(iMask * WeightData, axis=1)
+        else:
+            AllCats = pd.unique(CatData.flatten())
+            for i, iCat in enumerate(AllCats):
+                if pd.isnull(iCat):
+                    iMask = (pd.isnull(CatData) & Mask)
+                else:
+                    iMask = ((CatData==iCat) & Mask)
+                Rslt[iMask] = (np.nansum(iMask * WeightData * FactorData, axis=1) / np.nansum(iMask * WeightData, axis=1)).reshape((nDT, 1)).repeat(nID, axis=1)[iMask]
+    else:
+        Rslt = (np.nansum(FactorData * WeightData * Mask, axis=1) / np.nansum(WeightData * Mask, axis=1)).reshape((nDT, 1)).repeat(nID, axis=1)
+    return Rslt
+def aggr_mean(f, mask=None, cat_data=None, weight_data=None, descriptor_ids=None, **kwargs):
     Factors = [f]
-    OperatorArg = {"MaskPos":-1,"WeightPos":-1,"ignore_na":ignore_na}
-    cat_pos = 1
     if mask is not None:
         Factors.append(mask)
-        OperatorArg["MaskPos"] = cat_pos
-        cat_pos += 1
     if weight_data is not None:
         Factors.append(weight_data)
-        OperatorArg["WeightPos"] = cat_pos
-        cat_pos += 1
     if cat_data is not None:
         Factors.append(cat_data)
-    else:
-        cat_pos = None
-    Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
-    Args["OperatorArg"] = OperatorArg
+    Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
+    Args["OperatorArg"] = {"Mask":(mask is not None), "Weight":(weight_data is not None), "CatData":(cat_data is not None), "SectionChged":(descriptor_ids is not None)}
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
-    return SectionAggregation(FactorName,Descriptors,{"算子":_aggr_mean,"参数":Args,"代码对照":code_map,"分类因子":cat_pos})
+    return SectionOperation(FactorName, Descriptors, {"算子":_aggr_mean, "参数":Args, "运算时点":"多时点", "描述子截面":[descriptor_ids]*len(Descriptors)})
 def _aggr_std(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
+    nDT, nID = len(idt), len(iid)
     FactorData = Data[0]
-    if args["OperatorArg"]["Mask"]: Mask = Data[1]
-    return np.nanstd(FactorData[Mask==1],ddof=args["OperatorArg"]["ddof"])
-def aggr_std(f, ddof=1, mask=None, cat_data=None, code_map=None, **kwargs):
+    if args["OperatorArg"]["Mask"]:
+        Mask = (Data[1]==1)
+    else:
+        Mask = np.full(FactorData.shape, fill_value=True)
+    if args["OperatorArg"]["CatData"]:
+        CatData = Data[-1]
+        Rslt = np.full(shape=(nDT, nID), fill_value=np.nan)
+        iData = np.full(shape=FactorData.shape, fill_value=np.nan)
+        if args["OperatorArg"]["SectionChged"]:
+            for i, iID in enumerate(iid):
+                iMask = ((CatData==iID) & Mask)
+                iData[:] = np.nan
+                iData[iMask] = FactorData[iMask]
+                Rslt[:, i] = np.nanstd(iData, axis=1, ddof=args["OperatorArg"]["ddof"])
+        else:
+            AllCats = pd.unique(CatData.flatten())
+            for i, iCat in enumerate(AllCats):
+                if pd.isnull(iCat):
+                    iMask = (pd.isnull(CatData) & Mask)
+                else:
+                    iMask = ((CatData==iCat) & Mask)
+                iData[:] = np.nan
+                iData[iMask] = FactorData[iMask]
+                Rslt[iMask] = np.nanstd(iData, axis=1, ddof=args["OperatorArg"]["ddof"]).reshape((nDT, 1)).repeat(nID, axis=1)[iMask]
+    else:
+        FactorData[~Mask] = np.nan
+        Rslt = np.nanstd(FactorData, axis=1, ddof=args["OperatorArg"]["ddof"]).reshape((nDT, 1)).repeat(nID, axis=1)
+    return Rslt
+def aggr_std(f, ddof=1, mask=None, cat_data=None, descriptor_ids=None, **kwargs):
     Factors = [f]
-    cat_pos = 1
     if mask is not None:
         Factors.append(mask)
-        cat_pos += 1
     if cat_data is not None:
         Factors.append(cat_data)
-    else:
-        cat_pos = None
-    Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
-    Args["OperatorArg"] = {"Mask":(mask is not None),"ddof":ddof}
+    Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
+    Args["OperatorArg"] = {"ddof":ddof, "Mask":(mask is not None), "CatData":(cat_data is not None), "SectionChged":(descriptor_ids is not None)}
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
-    return SectionAggregation(FactorName,Descriptors,{"算子":_aggr_std,"参数":Args,"代码对照":code_map,"分类因子":cat_pos})
+    return SectionOperation(FactorName, Descriptors, {"算子":_aggr_std, "参数":Args, "运算时点":"多时点", "描述子截面":[descriptor_ids]*len(Descriptors)})
 def _aggr_var(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
+    nDT, nID = len(idt), len(iid)
     FactorData = Data[0]
-    if args["OperatorArg"]["Mask"]: Mask = Data[1]
-    return np.nanvar(FactorData[Mask==1],ddof=args["OperatorArg"]["ddof"])
-def aggr_var(f, ddof=1, mask=None, cat_data=None, code_map=None, **kwargs):
+    if args["OperatorArg"]["Mask"]:
+        Mask = (Data[1]==1)
+    else:
+        Mask = np.full(FactorData.shape, fill_value=True)
+    if args["OperatorArg"]["CatData"]:
+        CatData = Data[-1]
+        Rslt = np.full(shape=(nDT, nID), fill_value=np.nan)
+        iData = np.full(shape=FactorData.shape, fill_value=np.nan)
+        if args["OperatorArg"]["SectionChged"]:
+            for i, iID in enumerate(iid):
+                iMask = ((CatData==iID) & Mask)
+                iData[:] = np.nan
+                iData[iMask] = FactorData[iMask]
+                Rslt[:, i] = np.nanvar(iData, axis=1, ddof=args["OperatorArg"]["ddof"])
+        else:
+            AllCats = pd.unique(CatData.flatten())
+            for i, iCat in enumerate(AllCats):
+                if pd.isnull(iCat):
+                    iMask = (pd.isnull(CatData) & Mask)
+                else:
+                    iMask = ((CatData==iCat) & Mask)
+                iData[:] = np.nan
+                iData[iMask] = FactorData[iMask]
+                Rslt[iMask] = np.nanvar(iData, axis=1, ddof=args["OperatorArg"]["ddof"]).reshape((nDT, 1)).repeat(nID, axis=1)[iMask]
+    else:
+        FactorData[~Mask] = np.nan
+        Rslt = np.nanvar(FactorData, axis=1, ddof=args["OperatorArg"]["ddof"]).reshape((nDT, 1)).repeat(nID, axis=1)
+    return Rslt
+def aggr_var(f, ddof=1, mask=None, cat_data=None, descriptor_ids=None, **kwargs):
     Factors = [f]
-    cat_pos = 1
     if mask is not None:
         Factors.append(mask)
-        cat_pos += 1
     if cat_data is not None:
         Factors.append(cat_data)
-    else:
-        cat_pos = None
-    Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
-    Args["OperatorArg"] = {"Mask":(mask is not None),"ddof":ddof}
+    Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
+    Args["OperatorArg"] = {"ddof":ddof, "Mask":(mask is not None), "CatData":(cat_data is not None), "SectionChged":(descriptor_ids is not None)}
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
-    return SectionAggregation(FactorName,Descriptors,{"算子":_aggr_var,"参数":Args,"代码对照":code_map,"分类因子":cat_pos})
+    return SectionOperation(FactorName, Descriptors, {"算子":_aggr_var, "参数":Args, "运算时点":"多时点", "描述子截面":[descriptor_ids]*len(Descriptors)})
 def _aggr_median(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
+    nDT, nID = len(idt), len(iid)
     FactorData = Data[0]
-    if args["OperatorArg"]["Mask"]: Mask = Data[1]
-    return np.nanmedian(FactorData[Mask==1])
-def aggr_median(f, mask=None, cat_data=None, code_map=None, **kwargs):
+    if args["OperatorArg"]["Mask"]:
+        Mask = (Data[1]==1)
+    else:
+        Mask = np.full(FactorData.shape, fill_value=True)
+    if args["OperatorArg"]["CatData"]:
+        CatData = Data[-1]
+        Rslt = np.full(shape=(nDT, nID), fill_value=np.nan)
+        iData = np.full(shape=FactorData.shape, fill_value=np.nan)
+        if args["OperatorArg"]["SectionChged"]:
+            for i, iID in enumerate(iid):
+                iMask = ((CatData==iID) & Mask)
+                iData[:] = np.nan
+                iData[iMask] = FactorData[iMask]
+                Rslt[:, i] = np.nanmedian(iData, axis=1)
+        else:
+            AllCats = pd.unique(CatData.flatten())
+            for i, iCat in enumerate(AllCats):
+                if pd.isnull(iCat):
+                    iMask = (pd.isnull(CatData) & Mask)
+                else:
+                    iMask = ((CatData==iCat) & Mask)
+                iData[:] = np.nan
+                iData[iMask] = FactorData[iMask]
+                Rslt[iMask] = np.nanmedian(iData, axis=1).reshape((nDT, 1)).repeat(nID, axis=1)[iMask]
+    else:
+        FactorData[~Mask] = np.nan
+        Rslt = np.nanmedian(FactorData, axis=1).reshape((nDT, 1)).repeat(nID, axis=1)
+    return Rslt
+def aggr_median(f, mask=None, cat_data=None, descriptor_ids=None, **kwargs):
     Factors = [f]
-    cat_pos = 1
     if mask is not None:
         Factors.append(mask)
-        cat_pos += 1
     if cat_data is not None:
         Factors.append(cat_data)
-    else:
-        cat_pos = None
-    Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
-    Args["OperatorArg"] = {"Mask":(mask is not None)}
+    Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
+    Args["OperatorArg"] = {"Mask":(mask is not None), "CatData":(cat_data is not None), "SectionChged":(descriptor_ids is not None)}
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
-    return SectionAggregation(FactorName,Descriptors,{"算子":_aggr_median,"参数":Args,"代码对照":code_map,"分类因子":cat_pos})
+    return SectionOperation(FactorName, Descriptors, {"算子":_aggr_median, "参数":Args, "运算时点":"多时点", "描述子截面":[descriptor_ids]*len(Descriptors)})
 def _aggr_quantile(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
+    nDT, nID = len(idt), len(iid)
     FactorData = Data[0]
-    if args["OperatorArg"]["Mask"]: Mask = Data[1]
-    return np.nanpercentile(FactorData[Mask==1],args["OperatorArg"]["quantile"]*100)
-def aggr_quantile(f, quantile=0.5, mask=None, cat_data=None, code_map=None, **kwargs):
+    if args["OperatorArg"]["Mask"]:
+        Mask = (Data[1]==1)
+    else:
+        Mask = np.full(FactorData.shape, fill_value=True)
+    if args["OperatorArg"]["CatData"]:
+        CatData = Data[-1]
+        Rslt = np.full(shape=(nDT, nID), fill_value=np.nan)
+        iData = np.full(shape=FactorData.shape, fill_value=np.nan)
+        if args["OperatorArg"]["SectionChged"]:
+            for i, iID in enumerate(iid):
+                iMask = ((CatData==iID) & Mask)
+                iData[:] = np.nan
+                iData[iMask] = FactorData[iMask]
+                Rslt[:, i] = np.nanpercentile(iData, q=args["OperatorArg"]["quantile"]*100, axis=1)
+        else:
+            AllCats = pd.unique(CatData.flatten())
+            for i, iCat in enumerate(AllCats):
+                if pd.isnull(iCat):
+                    iMask = (pd.isnull(CatData) & Mask)
+                else:
+                    iMask = ((CatData==iCat) & Mask)
+                iData[:] = np.nan
+                iData[iMask] = FactorData[iMask]
+                Rslt[iMask] = np.nanpercentile(iData, q=args["OperatorArg"]["quantile"]*100, axis=1).reshape((nDT, 1)).repeat(nID, axis=1)[iMask]
+    else:
+        FactorData[~Mask] = np.nan
+        Rslt = np.nanpercentile(FactorData, q=args["OperatorArg"]["quantile"]*100, axis=1).reshape((nDT, 1)).repeat(nID, axis=1)
+    return Rslt
+def aggr_quantile(f, quantile=0.5, mask=None, cat_data=None, descriptor_ids=None, **kwargs):
     Factors = [f]
-    cat_pos = 1
     if mask is not None:
         Factors.append(mask)
-        cat_pos += 1
     if cat_data is not None:
         Factors.append(cat_data)
-    else:
-        cat_pos = None
-    Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
-    Args["OperatorArg"] = {"Mask":(mask is not None),"quantile":quantile}
+    Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
+    Args["OperatorArg"] = {"quantile":quantile, "Mask":(mask is not None), "CatData":(cat_data is not None), "SectionChged":(descriptor_ids is not None)}
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
-    return SectionAggregation(FactorName,Descriptors,{"算子":_aggr_median,"参数":Args,"代码对照":code_map,"分类因子":cat_pos})
+    return SectionOperation(FactorName, Descriptors, {"算子":_aggr_quantile, "参数":Args, "运算时点":"多时点", "描述子截面":[descriptor_ids]*len(Descriptors)})
 def _aggr_count(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
-    FactorData = Data[0]
-    if args["OperatorArg"]["Mask"]: Mask = Data[1]
-    return pd.notnull(FactorData[Mask==1]).sum()
-def aggr_count(f, mask=None, cat_data=None, code_map=None, **kwargs):
+    nDT, nID = len(idt), len(iid)
+    FactorData = pd.notnull(Data[0])
+    if args["OperatorArg"]["Mask"]:
+        Mask = (Data[1]==1)
+    else:
+        Mask = np.full(FactorData.shape, fill_value=True)
+    if args["OperatorArg"]["CatData"]:
+        CatData = Data[-1]
+        Rslt = np.full(shape=(nDT, nID), fill_value=np.nan)
+        if args["OperatorArg"]["SectionChged"]:
+            for i, iID in enumerate(iid):
+                iMask = ((CatData==iID) & Mask)
+                Rslt[:, i] = np.nansum(iMask * FactorData, axis=1)
+        else:
+            AllCats = pd.unique(CatData.flatten())
+            for i, iCat in enumerate(AllCats):
+                if pd.isnull(iCat):
+                    iMask = (pd.isnull(CatData) & Mask)
+                else:
+                    iMask = ((CatData==iCat) & Mask)
+                Rslt[iMask] = np.nansum(iMask * FactorData, axis=1).reshape((nDT, 1)).repeat(nID, axis=1)[iMask]
+    else:
+        Rslt = np.nansum(FactorData * Mask, axis=1).reshape((nDT, 1)).repeat(nID, axis=1)
+    return Rslt
+def aggr_count(f, mask=None, cat_data=None, descriptor_ids=None, **kwargs):
     Factors = [f]
-    cat_pos = 1
     if mask is not None:
         Factors.append(mask)
-        cat_pos += 1
     if cat_data is not None:
         Factors.append(cat_data)
-    else:
-        cat_pos = None
-    Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
-    Args["OperatorArg"] = {"Mask":(mask is not None)}
+    Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
+    Args["OperatorArg"] = {"Mask":(mask is not None), "CatData":(cat_data is not None), "SectionChged":(descriptor_ids is not None)}
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
-    return SectionAggregation(FactorName,Descriptors,{"算子":_aggr_count,"参数":Args,"代码对照":code_map,"分类因子":cat_pos})
+    return SectionOperation(FactorName, Descriptors, {"算子":_aggr_count, "参数":Args, "运算时点":"多时点", "描述子截面":[descriptor_ids]*len(Descriptors)})

@@ -162,6 +162,7 @@ class _FeatureTable(_DBTable):
 
 class _MappingTable(_DBTable):
     """映射因子表"""
+    OnlyStartFilled = Bool(False, label="只填起始日", arg_type="Bool", order=0)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         self._DBTableName = fdb.TablePrefix + fdb._TableInfo.loc[name, "DBTableName"]
         self._MainTableName = fdb._TableInfo.loc[name, "MainTableName"]
@@ -184,8 +185,29 @@ class _MappingTable(_DBTable):
         super().__QS_initArgs__()
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         for i, iCondition in enumerate(self._ConditionFields):
-            self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+2))
-            self[iCondition] = str(FactorInfo.loc[iCondition, "Supplementary"])
+            self.add_trait("Condition"+str(i), Either(Str(""), ListStr([]), arg_type="String", label=iCondition, order=i+2))
+            iConditionVal = FactorInfo.loc[iCondition, "Supplementary"]
+            if not iConditionVal:
+                self[iCondition] = ""
+            else:
+                iConditionVal = str(iConditionVal).strip().split(",")
+                if len(iConditionVal)==1: self[iCondition] = iConditionVal[0]
+                else: self[iCondition] = iConditionVal
+    @property
+    def FactorNames(self):
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        return FactorInfo.index.tolist()
+    def _genConditionSQLStr(self, args={}):
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        SQLStr = ""
+        for iConditionField in self._ConditionFields:
+            iConditionVal = args.get(iConditionField, self[iConditionField])
+            if not iConditionVal: continue
+            if _identifyDataType(FactorInfo.loc[iConditionField, "DataType"])=="string":
+                SQLStr += self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"='"+iConditionVal+"' AND "
+            else:
+                SQLStr += self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"="+iConditionVal+" AND "
+        return SQLStr[:-5]
     def getCondition(self, icondition, ids=None, dts=None):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         SQLStr = "SELECT DISTINCT "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[icondition]+" "
@@ -219,12 +241,8 @@ class _MappingTable(_DBTable):
                 SQLStr += "AND "+self._DBTableName+"."+self._EndDateField+">'"+idt.strftime("%Y-%m-%d")+"' "        
         else: SQLStr += "WHERE "+self._DBTableName+"."+self._StartDateField+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
-        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
-        for iConditionField in self._ConditionFields:
-            if _identifyDataType(FactorInfo.loc[iConditionField, "DataType"])=="string":
-                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"='"+args.get(iConditionField, self[iConditionField])+"' "
-            else:
-                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"="+args.get(iConditionField, self[iConditionField])+" "
+        SubSQLStr = self._genConditionSQLStr(args=args)
+        if SubSQLStr: SQLStr += "AND "+SubSQLStr+" "
         SQLStr += "ORDER BY ID"
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     # 返回给定 ID iid 的起始日期距今的时点序列
@@ -242,6 +260,8 @@ class _MappingTable(_DBTable):
             SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+"='"+iID+"' "
             if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         else: SQLStr += "WHERE "+self._DBTableName+"."+self._IDField+" IS NOT NULL "
+        SubSQLStr = self._genConditionSQLStr(args=args)
+        if SubSQLStr: SQLStr += "AND "+SubSQLStr
         StartDT = dt.datetime.strptime(self._FactorDB.fetchall(SQLStr)[0][0], "%Y-%m-%d")
         if start_dt is not None: StartDT = max((StartDT, start_dt))
         if end_dt is None: end_dt = dt.datetime.combine(dt.date.today(), dt.time(0))
@@ -281,40 +301,82 @@ class _MappingTable(_DBTable):
         ids = deSuffixID(ids)
         SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, ids, is_str=True, max_num=1000)+") "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
-        SQLStr += "AND (("+self._DBTableName+"."+self._EndDateField+">='"+StartDate.strftime("%Y%m%d")+"') "
+        SQLStr += "AND (("+self._DBTableName+"."+self._EndDateField+">='"+StartDate.strftime("%Y-%m-%d")+"') "
         SQLStr += "OR ("+self._DBTableName+"."+self._EndDateField+" IS NULL) "
         SQLStr += "OR ("+self._DBTableName+"."+self._EndDateField+"<"+self._DBTableName+"."+self._StartDateField+")) "
-        SQLStr += "AND "+self._DBTableName+"."+self._StartDateField+"<='"+EndDate.strftime("%Y%m%d")+"' "
-        for iConditionField in self._ConditionFields:
-            if _identifyDataType(FactorInfo.loc[iConditionField, "DataType"])=="string":
-                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"='"+args.get(iConditionField, self[iConditionField])+"' "
-            else:
-                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"="+args.get(iConditionField, self[iConditionField])+" "        
+        SQLStr += "AND "+self._DBTableName+"."+self._StartDateField+"<='"+EndDate.strftime("%Y-%m-%d")+"' "
+        SubSQLStr = self._genConditionSQLStr(args=args)
+        if SubSQLStr: SQLStr += "AND "+SubSQLStr+" "
         SQLStr += "ORDER BY ID, "
         SQLStr += self._DBTableName+"."+self._StartDateField
         RawData = self._FactorDB.fetchall(SQLStr)
-        if not RawData: return pd.DataFrame(columns=["ID", self._StartDateField, self._EndDateField]+factor_names)
-        RawData = pd.DataFrame(np.array(RawData), columns=["ID", self._StartDateField, self._EndDateField]+factor_names)
+        if not RawData: return pd.DataFrame(columns=["ID", "QS_起始日", "QS_结束日"]+factor_names)
+        RawData = pd.DataFrame(np.array(RawData), columns=["ID", "QS_起始日", "QS_结束日"]+factor_names)
         return RawData
+    def _checkMultiMapping(self, args={}):
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        SQLStr = ""
+        for iConditionField in self._ConditionFields:
+            iConditionVal = args.get(iConditionField, self[iConditionField])
+            if (not isinstance(iConditionVal, str)) or (iConditionVal==""):
+                return True
+        return False
+    def _calcMultiMappingData(self, raw_data, factor_names, ids, dts, args={}):
+        Data, nFactor = {}, len(factor_names)
+        raw_data.set_index(["ID"], inplace=True)
+        raw_data["QS_结束日"] = raw_data["QS_结束日"].where(pd.notnull(raw_data["QS_结束日"]), dts[-1]+dt.timedelta(1))
+        if args.get("只填起始日", self.OnlyStartFilled):
+            raw_data["QS_起始日"] = raw_data["QS_起始日"].where(raw_data["QS_起始日"]>=dts[0], dts[0])
+            for iID in raw_data.index.unique():
+                iRawData = raw_data.loc[[iID]].set_index(["QS_起始日"])
+                iData = pd.DataFrame(index=dts, columns=factor_names, dtype="O")
+                for jStartDate in iRawData.index.drop_duplicates():
+                    iData.iloc[iData.index.searchsorted(jStartDate)] = iRawData.loc[[jStartDate], factor_names].values.T.tolist()
+                Data[iID] = iData
+                return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
+        else:
+            DeltaDT = dt.timedelta(int(not self._EndDateIncluded))
+            for iID in raw_data.index.unique():
+                iRawData = raw_data.loc[[iID]].set_index(["QS_起始日", "QS_结束日"])
+                iData = pd.DataFrame(index=dts, columns=factor_names, dtype="O")
+                for jStartDate, jEndDate in iRawData.index.drop_duplicates():
+                    ijRawData = iRawData.loc[jStartDate].loc[[jEndDate], factor_names].values.T.tolist()
+                    if pd.isnull(jEndDate) or (jEndDate<jStartDate):
+                        iData.loc[jStartDate:] = [ijRawData] * iData.loc[jStartDate:].shape[0]
+                    else:
+                        jEndDate -= DeltaDT
+                        iData.loc[jStartDate:jEndDate] = [ijRawData] * iData.loc[jStartDate:jEndDate].shape[0]
+                Data[iID] = iData
+                return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-        #raw_data[self._EndDateField] = raw_data[self._EndDateField].where(pd.notnull(raw_data[self._EndDateField]), dt.datetime.today())
+        if self._checkMultiMapping(args=args): return self._calcMultiMappingData(raw_data, factor_names, ids, dts, args=args)
         raw_data.set_index(["ID"], inplace=True)
-        DeltaDT = dt.timedelta(int(not self._EndDateIncluded))
         Data, nFactor = {}, len(factor_names)
-        for iID in raw_data.index.unique():
-            iRawData = raw_data.loc[[iID]]
-            iData = pd.DataFrame(index=dts, columns=factor_names)
-            for j in range(iRawData.shape[0]):
-                ijRawData = iRawData.iloc[j]
-                jStartDate, jEndDate = ijRawData[self._StartDateField], ijRawData[self._EndDateField]
-                if pd.isnull(jEndDate) or (jEndDate<jStartDate):
-                    iData.loc[jStartDate:] = np.repeat(ijRawData[factor_names].values.reshape((1, nFactor)), iData.loc[jStartDate:].shape[0], axis=0)
-                else:
-                    jEndDate -= DeltaDT
-                    iData.loc[jStartDate:jEndDate] = np.repeat(ijRawData[factor_names].values.reshape((1, nFactor)), iData.loc[jStartDate:jEndDate].shape[0], axis=0)
-            Data[iID] = iData
-        return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
+        if args.get("只填起始日", self.OnlyStartFilled):
+            raw_data["QS_起始日"] = raw_data["QS_起始日"].where(raw_data["QS_起始日"]>=dts[0], dts[0])
+            for iID in raw_data.index.unique():
+                iRawData = raw_data.loc[[iID]].set_index(["QS_起始日"])
+                iData = pd.DataFrame(index=dts, columns=factor_names)
+                for jStartDate in iRawData.index:
+                    iData.iloc[iData.index.searchsorted(jStartDate)] = iRawData.loc[jStartDate, factor_names]
+                Data[iID] = iData
+                return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
+        else:
+            DeltaDT = dt.timedelta(int(not self._EndDateIncluded))
+            for iID in raw_data.index.unique():
+                iRawData = raw_data.loc[[iID]]
+                iData = pd.DataFrame(index=dts, columns=factor_names)
+                for j in range(iRawData.shape[0]):
+                    ijRawData = iRawData.iloc[j]
+                    jStartDate, jEndDate = ijRawData["QS_起始日"], ijRawData["QS_结束日"]
+                    if pd.isnull(jEndDate) or (jEndDate<jStartDate):
+                        iData.loc[jStartDate:] = np.repeat(ijRawData[factor_names].values.reshape((1, nFactor)), iData.loc[jStartDate:].shape[0], axis=0)
+                    else:
+                        jEndDate -= DeltaDT
+                        iData.loc[jStartDate:jEndDate] = np.repeat(ijRawData[factor_names].values.reshape((1, nFactor)), iData.loc[jStartDate:jEndDate].shape[0], axis=0)
+                Data[iID] = iData
+            return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
 class _ConstituentTable(_DBTable):
     """成份因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
@@ -674,8 +736,8 @@ class _MarketTable(_DBTable):
 # 在设定某些条件下, 数据填充时点和 ID 可以唯一标志一行记录
 # 先填充表中已有的数据, 然后根据回溯天数参数填充缺失的时点
 class _InfoPublTable(_MarketTable):
-    IgnorePublDate = Bool(False, label="忽略公告日", arg_type="Bool", order=-1)
     LookBack = Float(0, arg_type="Integer", label="回溯天数", order=0)
+    IgnorePublDate = Bool(False, label="忽略公告日", arg_type="Bool", order=1)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         FactorInfo = fdb._FactorInfo.loc[name]

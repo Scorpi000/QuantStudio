@@ -1039,19 +1039,21 @@ class Factor(__QS_Object__):
     def _QS_getData(self, dts, pids=None, **kwargs):
         if pids is None:
             pids = set(self._OperationMode._PID_IDs)
+            AllPID = True
         else:
             pids = set(pids)
+            AllPID = False
         if not self._isCacheDataOK:# 若没有准备好缓存数据, 准备缓存数据
             StdData = self.__QS_prepareCacheData__()
             if (StdData is not None) and (self._OperationMode._iPID in pids):
                 pids.remove(self._OperationMode._iPID)
-                IDs = StdData.columns.tolist()
+                #IDs = StdData.columns.tolist()
             else:
                 StdData = None
-                IDs = []
+                #IDs = []
         else:
             StdData = None
-            IDs = []
+            #IDs = []
         while len(pids)>0:
             iPID = pids.pop()
             iFilePath = self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])
@@ -1061,12 +1063,17 @@ class Factor(__QS_Object__):
             with self._OperationMode._PID_Lock[iPID]:
                 with shelve.open(iFilePath, 'r') as CacheFile:
                     iStdData = CacheFile["StdData"]
-                    IDs.extend(CacheFile.get("_QS_IDs", self._OperationMode._PID_IDs[iPID]))
+                    #IDs.extend(CacheFile.get("_QS_IDs", self._OperationMode._PID_IDs[iPID]))
             if StdData is None:
                 StdData = iStdData
             else:
                 StdData = pd.merge(StdData, iStdData, how='inner', left_index=True, right_index=True)
-        StdData = StdData.loc[list(dts), sorted(IDs)]
+        if not AllPID:
+            StdData = StdData.loc[list(dts), :]
+        elif self._OperationMode._FactorPrepareIDs[self.Name] is None:
+            StdData = StdData.loc[list(dts), self._OperationMode._IDs]
+        else:
+            StdData = StdData.loc[list(dts), self._OperationMode._FactorPrepareIDs[self.Name]]
         gc.collect()
         return StdData
     # ------------------------------------遍历模式------------------------------------
