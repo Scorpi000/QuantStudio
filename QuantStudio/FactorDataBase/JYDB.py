@@ -48,7 +48,7 @@ def _updateInfo(info_file, info_resource):
 
 # 给 ID 去后缀
 def deSuffixID(ids, sep='.'):
-    return [".".join(iID.split(".")[:-1]) for iID in ids]
+    return [(".".join(iID.split(".")[:-1]) if iID.find(".")!=-1 else iID) for iID in ids]
 # 根据字段的数据类型确定 QS 的数据类型
 def _identifyDataType(field_data_type):
     if (field_data_type.find("number")!=-1) or (field_data_type.find("int")!=-1) or (field_data_type.find("decimal")!=-1) or (field_data_type.find("float")!=-1):
@@ -61,7 +61,7 @@ class _DBTable(FactorTable):
     def _getIDField(self):
         if self._MainTableName is None: return self._DBTableName+"."+self._IDField
         Exchange = self._FactorDB._TableInfo.loc[self.Name, "Exchange"]
-        if Exchange is None: return self._MainTableName+"."+self._MainTableID
+        if pd.isnull(Exchange): return self._MainTableName+"."+self._MainTableID
         ExchangeField, ExchangeCodes = Exchange.split(":")
         ExchangeField = self._MainTableName + "." + ExchangeField
         ExchangeCodes = ExchangeCodes.split(",")
@@ -152,6 +152,7 @@ class _FeatureTable(_DBTable):
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["ID"]+factor_names)
         RawData = pd.DataFrame(np.array(RawData), columns=["ID"]+factor_names)
+        RawData["ID"] = [str(iID) for iID in RawData["ID"]]
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         raw_data = raw_data.set_index(["ID"])
@@ -2135,7 +2136,7 @@ class _MacroTable(_DBTable):
             SQLStr = "SELECT DATE("+self._DateField+"), "
         else:
             SQLStr = "SELECT "+self._DateField+", "
-        SQLStr += self._IDField+", "
+        SQLStr += self._IDField+" AS ID, "
         SQLStr += self._EndDateField+", "
         for iField in factor_names: SQLStr += self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iField]+", "
         SQLStr = SQLStr[:-2]+" FROM "+self._DBTableName+" "
@@ -2146,7 +2147,7 @@ class _MacroTable(_DBTable):
         else:
             SQLStr += "AND "+self._DateField+">='"+StartDate.strftime("%Y-%m-%d %H:%M:%S")+"' "
             SQLStr += "AND "+self._DateField+"<='"+EndDate.strftime("%Y-%m-%d %H:%M:%S")+"' "
-        SQLStr += "ORDER BY "+self._IDField+", "+self._DateField+", "+self._EndDateField
+        SQLStr += "ORDER BY ID, "+self._DateField+", "+self._EndDateField
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["AnnDate", "ID", "EndDate"]+factor_names)
         RawData = pd.DataFrame(np.array(RawData), columns=["AnnDate", "ID", "EndDate"]+factor_names)

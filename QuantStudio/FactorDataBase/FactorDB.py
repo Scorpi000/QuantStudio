@@ -1071,7 +1071,7 @@ class Factor(__QS_Object__):
         if not AllPID:
             StdData = StdData.loc[list(dts), :]
         elif self._OperationMode._FactorPrepareIDs[self.Name] is None:
-            StdData = StdData.loc[list(dts), self._OperationMode._IDs]
+            StdData = StdData.loc[list(dts), self._OperationMode.IDs]
         else:
             StdData = StdData.loc[list(dts), self._OperationMode._FactorPrepareIDs[self.Name]]
         gc.collect()

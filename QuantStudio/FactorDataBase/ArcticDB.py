@@ -227,5 +227,3 @@ class ArcticDB(WritableFactorDB):
         Lib.write("_FactorInfo", DataType, chunker=arctic.chunkstore.passthrough_chunker.PassthroughChunker())
         data.items = FactorNames
         return 0
-        
-            

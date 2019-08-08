@@ -45,7 +45,7 @@ def _genOperatorData(f, idt, iid, x, args):
             else:
                 Data.append(x[args.get("SepInd"+str(i),0)])
     return Data
-# ----------------------时间点运算--------------------------------
+# ----------------------单点运算--------------------------------
 def _astype(f, idt, iid, x, args):
     Data = _genOperatorData(f, idt, iid, x, args)[0]
     return Data.astype(dtype=args["OperatorArg"]["dtype"])
@@ -611,6 +611,14 @@ def diff(f, n=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"n":n}
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_diff,"参数":Args,"回溯期数":[n]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
+def _fillna(f,idt,iid,x,args):
+    Data = _genOperatorData(f,idt,iid,x,args)[0]
+    LookBack = args["OperatorArg"]["lookback"]
+    return pd.DataFrame(Data).fillna(method="pad", limit=LookBack).values[LookBack:]
+def fillna(f, lookback=1, **kwargs):
+    Descriptors, Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"lookback":lookback}
+    return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_fillna,"参数":Args,"回溯期数":[lookback]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"})
 def _nav(f, idt, iid, x, args):
     Price = x[0]
     Return, = _genOperatorData(f, idt, iid, x[1:], args)
@@ -623,7 +631,7 @@ def _nav(f, idt, iid, x, args):
 def nav(ret, init=None, **kwargs):
     Descriptors, Args = _genMultivariateOperatorInfo(ret)
     return TimeOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_nav,"参数":Args,"回溯期数":[0]*len(Descriptors),"自身回溯期数":1,"自身回溯模式":"扩张窗口","自身初始值":init,"运算时点":"多时点","运算ID":"多ID"})
-# ----------------------截面运算--------------------------------
+# ----------------------单截面运算--------------------------------
 def _standardizeZScore(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
     OperatorArg = args["OperatorArg"].copy()
@@ -1021,7 +1029,7 @@ def orthogonalize(Y, X, mask=None, constant=False, dummy_data=None, drop_dummy_n
     Args["OperatorArg"].update(OperatorArg)
     return SectionOperation(kwargs.get('factor_name',str(uuid.uuid1())),Descriptors,{"算子":_orthogonalize,"参数":Args,"运算时点":"多时点","输出形式":"全截面"})
 
-# ----------------------聚合运算--------------------------------
+# ----------------------多截面运算--------------------------------
 def _aggregate(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
     nID = len(iid)
@@ -1073,7 +1081,7 @@ def _disaggregate(f,idt,iid,x,args):
         Rslt = FactorData.repeat(nID, axis=1)
     return Rslt
 def disaggregate(f, aggr_ids, cat_data=None, disaggr_ids=None, **kwargs):# 将聚合因子分解成为普通因子
-    if (len(ids)>1) and (cat_data is None): raise __QS_Error__("解聚合算子 disaggregate: 缺少类别因子!")
+    if (len(aggr_ids)>1) and (cat_data is None): raise __QS_Error__("解聚合算子 disaggregate: 缺少类别因子!")
     Factors = [f]
     DescriptorIDs = [aggr_ids]
     if cat_data is not None:
@@ -1494,3 +1502,34 @@ def aggr_count(f, mask=None, cat_data=None, descriptor_ids=None, **kwargs):
     Args["OperatorArg"] = {"Mask":(mask is not None), "CatData":(cat_data is not None), "SectionChged":(descriptor_ids is not None)}
     FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
     return SectionOperation(FactorName, Descriptors, {"算子":_aggr_count, "参数":Args, "运算时点":"多时点", "描述子截面":[descriptor_ids]*len(Descriptors)})
+def _merge(f,idt,iid,x,args):
+    Data = _genOperatorData(f,idt,iid,x,args)
+    Rslt = np.concatenate(Data, axis=1)
+    IDs = np.sum(f.DescriptorSection)
+    return pd.DataFrame(Rslt, columns=IDs).loc[:, iid].values
+def merge(factors, descriptor_ids, **kwargs):
+    if len(factors)!=len(descriptor_ids): raise __QS_Error__("描述子个数与描述子截面个数不一致!")
+    Descriptors, Args = _genMultivariateOperatorInfo(*factors)
+    DescriptorIDs = []
+    for i in range(len(factors)):
+        StartInd, EndInd = Args.get("SepInd"+str(i), 0), Args.get("SepInd"+str(i+1), 0)
+        DescriptorIDs += [descriptor_ids[i]] * (EndInd - StartInd)
+    FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
+    return SectionOperation(FactorName, Descriptors, {"算子":_merge, "参数":Args, "运算时点":"多时点", "描述子截面":DescriptorIDs})
+def _chg_ids(f,idt,iid,x,args):
+    Data = _genOperatorData(f,idt,iid,x,args)[0]
+    IDMap = args["OperatorArg"]["id_map"]
+    OldIDs = f.DescriptorSection[0]
+    Rslt = np.full(shape=(len(idt), len(iid)), fill_value=np.nan, dtype=Data.dtype)
+    for i, iID in enumerate(iid):
+        iOldID = IDMap.get(iID, None)
+        if iOldID not in OldIDs: continue
+        Rslt[:, i] = Data[:, OldIDs.index(iOldID)]
+    return Rslt
+def chg_ids(f, old_ids, id_map={}, **kwargs):
+    Descriptors, Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"id_map":id_map}
+    FactorName = kwargs.get('factor_name',str(uuid.uuid1()))
+    DataType = f.getMetaData(key="DataType")
+    if DataType is None: DataType = "string"
+    return SectionOperation(FactorName, Descriptors, {"算子":_chg_ids, "参数":Args, "运算时点":"多时点", "描述子截面":[old_ids]*len(Descriptors), "数据类型":DataType})
