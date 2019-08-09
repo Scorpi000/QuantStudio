@@ -2357,13 +2357,56 @@ class JYDB(FactorDB):
     # index_id: 指数 ID, 默认值 "全体A股"
     # date: 指定日, 默认值 None 表示今天
     # is_current: False 表示进入指数的日期在指定日之前的成份股, True 表示进入指数的日期在指定日之前且尚未剔出指数的 A 股
-    def getStockID(self, index_id="全体A股", date=None, is_current=True):
+    def getStockID(self, index_id="全体A股", date=None, is_current=True):# TODO
         if date is None: date = dt.date.today()
         if index_id=="全体A股": return self._getAllAStock(date=date, is_current=is_current)
         for iTableName in self._TableInfo[(self._TableInfo["TableClass"]=="ConstituentTable") & self._TableInfo.index.str.contains("A股")].index:
             IDs = self.getTable(iTableName).getID(ifactor_name=index_id, idt=date, is_current=is_current)
             if IDs: return IDs
         else: return []
+    # 给定期货代码 future_code, 获取指定日 date 的期货 ID
+    # future_code: 期货代码(str)或者期货代码列表(list(str)), None 表示所有期货代码
+    # date: 指定日, 默认值 None 表示今天
+    # is_current: False 表示上市日在指定日之前的期货, True 表示上市日在指定日之前且尚未退市的期货
+    # kwargs:
+    # contract_type: 合约类型, 可选 "月合约", "连续合约", "所有", 默认值 "月合约"
+    # include_simulation: 是否包括仿真合约, 默认值 False
+    def getFutureID(self, future_code="IF", exchange="CFFEX", date=None, is_current=True, **kwargs):# TODO
+        if date is None: date = dt.date.today()
+        SQLStr = "SELECT DISTINCT s_info_windcode FROM {Prefix}Fut_ContractMain "
+        if future_code:
+            if isinstance(future_code, str): SQLStr += "WHERE fs_info_sccode='"+future_code+"' "
+            else: SQLStr += "WHERE fs_info_sccode IN ('"+"', '".join(future_code)+"') "
+        else: SQLStr += "WHERE fs_info_sccode IS NOT NULL "
+        if not kwargs.get("include_simulation", False): SQLStr += "AND s_info_name NOT LIKE '%仿真%' "
+        ContractType = kwargs.get("contract_type", "月合约")
+        if ContractType!="所有": SQLStr += "AND fs_info_type="+("2" if ContractType=="连续合约" else "1")+" "
+        if ContractType!="连续合约":
+            SQLStr += "AND ((s_info_listdate<='{Date}') OR (s_info_listdate IS NULL)) "
+            if is_current: SQLStr += "AND ((s_info_delistdate>='{Date}') OR (s_info_delistdate IS NULL)) "
+        SQLStr += "ORDER BY s_info_windcode"
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d"), FutureCode=future_code))]
+    # 获取指定交易所 exchange 的期货代码
+    # exchange: 交易所(str)或者交易所列表(list(str))
+    # date: 指定日, 默认值 None 表示今天
+    # is_listed: True 表示只返回当前上市的期货代码
+    # kwargs:
+    # include_simulation: 是否包括仿真合约, 默认值 False
+    def getFutureCode(self, exchange=["SHFE", "INE", "DCE", "CZCE", "CFFEX"], is_listed=True, **kwargs):# TODO
+        SQLStr = "SELECT DISTINCT TradingCode FROM {Prefix}Fut_FuturesContract "
+        if exchange:
+            if isinstance(exchange, str): exchange = [exchange]
+            ExchgCodes = set()
+            for iExchg in exchange:
+                iExchgCode = self._ExchangeInfo[self._ExchangeInfo["Exchange"]==iExchg]
+                if iExchgCode.shape[0]==0: raise __QS_Error__("不支持的交易所: %s" % iExchg)
+                ExchgCodes.add(str(iExchgCode[0]))
+            SQLStr += "WHERE Exchange IN ("+", ".join(ExchgCodes)+") "
+        else:
+            SQLStr += "WHERE Exchange IS NOT NULL "
+        if is_listed: SQLStr += "AND ContractState=1 "
+        SQLStr += "ORDER BY TradingCode"
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix))]
     # 给定期权代码 option_code, 获取指定日 date 的期权代码
     # option_code: 期权代码(str)
     # date: 指定日, 默认值 None 表示今天
