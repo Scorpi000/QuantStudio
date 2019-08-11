@@ -181,7 +181,7 @@ class ZarrDB(WritableFactorDB):
         return 0
     def setTableMetaData(self, table_name, key=None, value=None, meta_data=None):
         with self._DataLock:
-            iZTable = zarr.open(self.MainDir+os.sep+table_name, mode="w")
+            iZTable = zarr.open(self.MainDir+os.sep+table_name, mode="a")
             if key is not None:
                 if key in iZTable.attrs:
                     del iZTable.attrs[key]
@@ -203,7 +203,7 @@ class ZarrDB(WritableFactorDB):
         if (new_factor_name!=old_factor_name) and (new_factor_name in self._TableFactorDict[table_name]): raise __QS_Error__("表中的因子: '%s' 已存在!" % new_factor_name)
         TablePath = self.MainDir+os.sep+table_name
         with self._DataLock:
-            iZTable = zarr.open(self.MainDir+os.sep+table_name, mode="w")
+            iZTable = zarr.open(TablePath, mode="a")
             iZTable[new_factor_name] = iZTable.pop(old_factor_name)
         self._TableFactorDict[table_name][new_factor_name] = self._TableFactorDict[table_name].pop(old_factor_name)
         return 0
@@ -214,7 +214,7 @@ class ZarrDB(WritableFactorDB):
             if FactorNames.issubset(set(factor_names)):
                 shutil.rmtree(TablePath, ignore_errors=True)
             else:
-                iZTable = zarr.open(TablePath, mode="w")
+                iZTable = zarr.open(TablePath, mode="a")
                 for iFactor in factor_names:
                     if iFactor in iZTable: del iZTable[iFactor]
         FactorIndex = list(set(self._TableFactorDict.get(table_name, pd.Series()).index).difference(set(factor_names)))
@@ -223,7 +223,7 @@ class ZarrDB(WritableFactorDB):
         return 0
     def setFactorMetaData(self, table_name, ifactor_name, key=None, value=None, meta_data=None):
         with self._DataLock:
-            iZTable = zarr.open(self.MainDir+os.sep+table_name, mode="w")
+            iZTable = zarr.open(self.MainDir+os.sep+table_name, mode="a")
             iZFactor = iZTable[ifactor_name]
             if key is not None:
                 if key in iZFactor.attrs:

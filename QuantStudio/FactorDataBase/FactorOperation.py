@@ -257,8 +257,14 @@ class SectionOperation(DerivativeFactor):
         super().__QS_initArgs__()
         self.add_trait("DescriptorSection", List([None]*len(self._Descriptors), arg_type="List", label="描述子截面", order=5))
     def readData(self, ids, dts, **kwargs):
-        StdData = self._calcData(ids=ids, dts=dts, descriptor_data=[iDescriptor.readData(ids=ids, dts=dts).values for iDescriptor in self._Descriptors])
-        return pd.DataFrame(StdData, index=dts, columns=ids)
+        SectionIDs = kwargs.pop("section_ids", ids)
+        DescriptorData = []
+        for i, iDescriptor in enumerate(self._Descriptors):
+            iSectionIDs = self.DescriptorSection[i]
+            if iSectionIDs is None: iSectionIDs = SectionIDs
+            DescriptorData.append(iDescriptor.readData(ids=iSectionIDs, dts=dts, **kwargs).values)
+        StdData = self._calcData(ids=SectionIDs, dts=dts, descriptor_data=DescriptorData)
+        return pd.DataFrame(StdData, index=dts, columns=SectionIDs).loc[:, ids]
     def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
         OldStartDT = dt_dict.get(self.Name, None)
         if (OldStartDT is None) or (start_dt<OldStartDT):
@@ -379,26 +385,29 @@ class PanelOperation(DerivativeFactor):
             self._OperationMode._Event[self.Name] = (Queue(), Event())
     def readData(self, ids, dts, **kwargs):
         DTRuler = kwargs.get("dt_ruler", dts)
+        SectionIDs = kwargs.pop("section_ids", ids)
         StartInd = (DTRuler.index(dts[0]) if dts[0] in DTRuler else 0)
         if (self.iLookBackMode=="扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0]>0):
             if self.iInitData.index[-1] not in DTRuler: print("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name, ))
             else: StartInd = min(StartInd, DTRuler.index(self.iInitData.index[-1]) + 1)
         EndInd = (DTRuler.index(dts[-1]) if dts[-1] in DTRuler else len(DTRuler)-1)
         if StartInd>EndInd: return pd.DataFrame(index=dts, columns=ids)
-        nID = len(ids)
         DescriptorData = []
         for i, iDescriptor in enumerate(self._Descriptors):
             iDTs = DTRuler[max(StartInd-self.LookBack[i], 0):EndInd+1]
+            iSectionIDs = self.DescriptorSection[i]
+            if iSectionIDs is None: iSectionIDs = SectionIDs
+            iIDNum = len(iSectionIDs)
             if iDTs:
-                iDescriptorData = iDescriptor.readData(ids=ids, dts=iDTs, **kwargs).values
+                iDescriptorData = iDescriptor.readData(ids=iSectionIDs, dts=iDTs, **kwargs).values
             else:
-                iDescriptorData = np.full((0, nID), np.nan)
+                iDescriptorData = np.full((0, iIDNum), np.nan)
             if StartInd<self.LookBack[i]:
-                iLookBackData = np.full((self.LookBack[i]-StartInd, nID), np.nan)
+                iLookBackData = np.full((self.LookBack[i]-StartInd, iIDNum), np.nan)
                 iDescriptorData = np.r_[iLookBackData, iDescriptorData]
             DescriptorData.append(iDescriptorData)
-        StdData = self._calcData(ids=ids, dts=DTRuler[StartInd:EndInd+1], descriptor_data=DescriptorData, dt_ruler=DTRuler)
-        return pd.DataFrame(StdData, index=DTRuler[StartInd:EndInd+1], columns=ids).loc[dts, :]
+        StdData = self._calcData(ids=SectionIDs, dts=DTRuler[StartInd:EndInd+1], descriptor_data=DescriptorData, dt_ruler=DTRuler)
+        return pd.DataFrame(StdData, index=DTRuler[StartInd:EndInd+1], columns=SectionIDs).loc[dts, ids]
     def _calcData(self, ids, dts, descriptor_data, dt_ruler):
         if self.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
         else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')
