@@ -151,7 +151,7 @@ class _FeatureTable(_DBTable):
         SQLStr += "ORDER BY ID"
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["ID"]+factor_names)
-        RawData = pd.DataFrame(np.array(RawData), columns=["ID"]+factor_names)
+        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID"]+factor_names)
         RawData["ID"] = [str(iID) for iID in RawData["ID"]]
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
@@ -312,7 +312,7 @@ class _MappingTable(_DBTable):
         SQLStr += self._DBTableName+"."+self._StartDateField
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["ID", "QS_起始日", "QS_结束日"]+factor_names)
-        RawData = pd.DataFrame(np.array(RawData), columns=["ID", "QS_起始日", "QS_结束日"]+factor_names)
+        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "QS_起始日", "QS_结束日"]+factor_names)
         return RawData
     def _checkMultiMapping(self, args={}):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
@@ -519,7 +519,7 @@ class _ConstituentTable(_DBTable):
         SQLStr += self._DBTableName+"."+FieldDict[self._InDateField]
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: RawData = pd.DataFrame(columns=["IndexID", "SecurityID", "InDate", "OutDate", "CurSign"])
-        else: RawData = pd.DataFrame(np.array(RawData), columns=["IndexID", "SecurityID", "InDate", "OutDate", "CurSign"])
+        else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["IndexID", "SecurityID", "InDate", "OutDate", "CurSign"])
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
@@ -680,7 +680,7 @@ class _MarketTable(_DBTable):
         SQLStr += "ORDER BY ID, "+self._DBTableName+"."+self._DateField
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: RawData = pd.DataFrame(columns=["日期", "ID"]+factor_names)
-        RawData = pd.DataFrame(np.array(RawData), columns=["日期", "ID"]+factor_names)
+        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["日期", "ID"]+factor_names)
         if np.isinf(LookBack):
             NullIDs = set(ids).difference(set(RawData[RawData["日期"]==dt.datetime.combine(StartDate,dt.time(0))]["ID"]))
             if NullIDs:
@@ -703,7 +703,7 @@ class _MarketTable(_DBTable):
                 if pd.notnull(self._MainTableCondition): SubSQLStr += "AND "+self._MainTableCondition+" "
                 NullRawData = self._FactorDB.fetchall(SQLStr)
                 if NullRawData:
-                    NullRawData = pd.DataFrame(np.array(NullRawData), columns=["日期", "ID"]+factor_names)
+                    NullRawData = pd.DataFrame(np.array(NullRawData, dtype="O"), columns=["日期", "ID"]+factor_names)
                     RawData = pd.concat([NullRawData, RawData], ignore_index=True)
                     RawData.sort_values(by=["ID", "日期"])
         return RawData
@@ -864,13 +864,13 @@ class _InfoPublTable(_MarketTable):
         SQLStr += "ORDER BY t.ID, DT"
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: RawData = pd.DataFrame(columns=["日期", "ID"]+factor_names)
-        RawData = pd.DataFrame(np.array(RawData), columns=["日期", "ID"]+factor_names)
+        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["日期", "ID"]+factor_names)
         if np.isinf(LookBack):
             NullIDs = set(ids).difference(set(RawData[RawData["日期"]==dt.datetime.combine(StartDate,dt.time(0))]["ID"]))
             if NullIDs:
                 NullRawData = self._FactorDB.fetchall(self._genNullIDSQLStr(factor_names, list(NullIDs), StartDate, args=args))
                 if NullRawData:
-                    NullRawData = pd.DataFrame(np.array(NullRawData), columns=["日期", "ID"]+factor_names)
+                    NullRawData = pd.DataFrame(np.array(NullRawData, dtype="O"), columns=["日期", "ID"]+factor_names)
                     RawData = pd.concat([NullRawData, RawData], ignore_index=True)
                     RawData.sort_values(by=["ID", "日期"])
         return RawData
@@ -1025,7 +1025,7 @@ class _FinancialTable(_DBTable):
             SQLStr += ", "+self._DBTableName+"."+FieldDict[self._ReportTypeField]+" DESC"
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
-        else: RawData = pd.DataFrame(np.array(RawData), columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
+        else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         Dates = sorted({iDT.strftime("%Y%m%d") for iDT in dts})
@@ -1424,7 +1424,7 @@ class _FinancialIndicatorTable(_FinancialTable):
         SQLStr += self._DBTableName+"."+FieldDict[self._ReportDateField]
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
-        else: RawData = pd.DataFrame(np.array(RawData), columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
+        else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
         return RawData
 
 # 生成报告期-公告日期 SQL 查询语句
@@ -1458,7 +1458,7 @@ def _prepareReportANNRawData(fdb, ids):
     SQLStr = genANN_ReportSQLStr(fdb.DBType, fdb.TablePrefix, ids, report_period="1231")
     RawData = fdb.fetchall(SQLStr)
     if not RawData: RawData =  pd.DataFrame(columns=["ID", "公告日期", "报告期"])
-    else: RawData = pd.DataFrame(np.array(RawData), columns=["ID", "公告日期", "报告期"])
+    else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "公告日期", "报告期"])
     return RawData
 def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock):
     isANNReport = raw_data._QS_ANNReport
@@ -1541,7 +1541,7 @@ class _AnalystConsensusTable(_DBTable):
         SQLStr += "ORDER BY ID, "+self._DBTableName+"."+FieldDict[self._DateField]+", "+self._DBTableName+"."+FieldDict[self._ReportDateField]
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: RawData = pd.DataFrame(columns=['日期','ID','报告期']+factor_names)
-        else: RawData = pd.DataFrame(np.array(RawData), columns=['日期','ID','报告期']+factor_names)
+        else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=['日期','ID','报告期']+factor_names)
         RawData._QS_ANNReport = (CalcType!="Fwd12M")
         return RawData
     def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock, **kwargs):
@@ -1741,7 +1741,7 @@ class _AnalystEstDetailTable(_DBTable):
         SQLStr += "ORDER BY ID, "+self._DBTableName+"."+FieldDict[self._DateField]+", "+self._DBTableName+"."+FieldDict[self._ReportDateField]
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: RawData = pd.DataFrame(columns=["日期", "ID", self._ReportDateField]+AllFields)
-        else: RawData = pd.DataFrame(np.array(RawData), columns=["日期", "ID", self._ReportDateField]+AllFields)
+        else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["日期", "ID", self._ReportDateField]+AllFields)
         RawData._QS_ANNReport = True
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
@@ -1872,7 +1872,7 @@ class _AnalystRatingDetailTable(_DBTable):
         SQLStr += "ORDER BY "+self._FactorDB.TablePrefix+"SecuMain.SecuCode, "+DBTableName+"."+FieldDict[self._DateField]
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: RawData = pd.DataFrame(columns=["日期", "ID"]+AllFields)
-        else: RawData = pd.DataFrame(np.array(RawData), columns=["日期", "ID"]+AllFields)
+        else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["日期", "ID"]+AllFields)
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
@@ -2035,7 +2035,7 @@ class _DividendTable(_DBTable):
         SQLStr += "ORDER BY ID, "+self._DBTableName+"."+FieldDict[self.DateField]
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["日期", "ID"]+factor_names)
-        RawData = pd.DataFrame(np.array(RawData), columns=["日期", "ID"]+factor_names)
+        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["日期", "ID"]+factor_names)
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
@@ -2150,7 +2150,7 @@ class _MacroTable(_DBTable):
         SQLStr += "ORDER BY ID, "+self._DateField+", "+self._EndDateField
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["AnnDate", "ID", "EndDate"]+factor_names)
-        RawData = pd.DataFrame(np.array(RawData), columns=["AnnDate", "ID", "EndDate"]+factor_names)
+        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["AnnDate", "ID", "EndDate"]+factor_names)
         return RawData
     # 检索最大截止日期的位置
     def _findMaxReportDateInd(self, raw_data, MaxEndDateInd, MaxNoteDateInd, PreMaxNoteDateInd):
@@ -2427,13 +2427,12 @@ class JYDB(FactorDB):
         SQLStr = "SELECT CASE WHEN {Prefix}SecuMain.SecuMarket=83 THEN CONCAT({Prefix}SecuMain.SecuCode, '.SH') "
         SQLStr += "WHEN {Prefix}SecuMain.SecuMarket=90 THEN CONCAT({Prefix}SecuMain.SecuCode, '.SZ') "
         SQLStr += "ELSE {Prefix}SecuMain.SecuCode END AS ID FROM {Prefix}mf_fundarchives "
-        SQLStr += "INNER JOIN {Prefix}SecuMain ON {Prefix}SecuMain.InnerCode={Prefix}mf_fundarchives.InnerCode"
+        SQLStr += "INNER JOIN {Prefix}SecuMain ON {Prefix}SecuMain.InnerCode={Prefix}mf_fundarchives.InnerCode "
         SQLStr += "WHERE {Prefix}mf_fundarchives.EstablishmentDate <= '{Date}' "
         if is_current:
             SQLStr += "AND ({Prefix}mf_fundarchives.EnClearingDate IS NULL "
             SQLStr += "OR {Prefix}mf_fundarchives.EnClearingDate > '{Date}') "
         SQLStr += "ORDER BY ID"
-        #return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y-%m-%d")))]
         Rslt = np.array(self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y-%m-%d"))))
         if Rslt.shape[0]>0: return Rslt[:, 0].tolist()
         else: return []
