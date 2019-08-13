@@ -838,8 +838,9 @@ class CustomFT(FactorTable):
         return pd.Panel({iFactorName:self._Factors[iFactorName].readData(ids=ids, dts=dts, dt_ruler=self._DateTimes, section_ids=self._IDs) for iFactorName in factor_names}).loc[factor_names]
     def write2FDB(self, factor_names, ids, dts, factor_db, table_name, if_exists="update", subprocess_num=cpu_count()-1, dt_ruler=None, section_ids=None, **kwargs):
         if dt_ruler is None: dt_ruler = self._DateTimes
+        if not dt_ruler: dt_ruler = None
         if section_ids is None: section_ids = self._IDs
-        if section_ids==ids: section_ids = None
+        if (not section_ids) or (section_ids==ids): section_ids = None
         return super().write2FDB(factor_names, ids, dts, factor_db, table_name, if_exists, subprocess_num, dt_ruler=dt_ruler, section_ids=section_ids)
     # ---------------新的接口------------------
     # 添加因子, factor_list: 因子对象列表

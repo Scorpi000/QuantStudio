@@ -75,6 +75,26 @@ class _DBTable(FactorTable):
         else:
             IDField += "ELSE CONCAT("+self._MainTableName+"."+self._MainTableID+", '"+DefaultSuffix+"') END"
         return IDField
+    def _adjustRawDataByRelatedField(self, raw_data, fields):
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        RelatedFields = FactorInfo["RelatedSQL"].loc[fields]
+        RelatedFields = RelatedFields[pd.notnull(RelatedFields)]
+        if RelatedFields.shape[0]==0: return raw_data
+        for iField in RelatedFields.index:
+            iSQLStr = FactorInfo.loc[iField, "RelatedSQL"]
+            if _identifyDataType(FactorInfo.loc[iField, "DataType"])=="double":
+                iNewData = pd.Series(np.nan, index=raw_data.index, dtype="float")
+            else:
+                iNewData = pd.Series(None, index=raw_data.index, dtype="O")
+            iOldData = raw_data.pop(iField)
+            iMapInfo = self._FactorDB.fetchall(iSQLStr.format(TablePrefix=self._FactorDB.TablePrefix))
+            for jVal, jRelatedVal in iMapInfo:
+                if pd.notnull(jVal):
+                    iNewData[iOldData==jVal] = jRelatedVal
+                else:
+                    iNewData[pd.isnull(iOldData)] = jRelatedVal
+            raw_data[iField] = iNewData
+        return raw_data
     def getMetaData(self, key=None):
         TableInfo = self._FactorDB._TableInfo.loc[self.Name]
         if key is None:
@@ -152,11 +172,13 @@ class _FeatureTable(_DBTable):
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["ID"]+factor_names)
         RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID"]+factor_names)
+        RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         RawData["ID"] = [str(iID) for iID in RawData["ID"]]
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         raw_data = raw_data.set_index(["ID"])
         if raw_data.index.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        raw_data = raw_data.loc[:, factor_names]
         Data = pd.Panel(raw_data.values.T.reshape((raw_data.shape[1], raw_data.shape[0], 1)).repeat(len(dts), axis=2), items=factor_names, major_axis=raw_data.index, minor_axis=dts).swapaxes(1, 2)
         return Data.loc[:, :, ids]
 
@@ -1897,9 +1919,10 @@ class _AnalystRatingDetailTable(_DBTable):
                 for i, iDate in enumerate(Dates):
                     iStartDate = (iDate - dt.timedelta(Period)).strftime("%Y%m%d")
                     ijRawData = jRawData[(jRawData["日期"]<=iDate.strftime("%Y%m%d")) & (jRawData["日期"]>iStartDate)]
-                    if DeduplicationFields:
+                    if (ijRawData.shape[0]>0) and (DeduplicationFields):
                         ijTemp = ijRawData.groupby(by=DeduplicationFields)[["日期"]].max()
                         ijTemp = ijTemp.reset_index()
+                        ijTemp[DeduplicationFields] = ijTemp[DeduplicationFields].astype("O")
                         ijRawData = pd.merge(ijTemp, ijRawData, how='left', left_on=DeduplicationFields+["日期"], right_on=DeduplicationFields+["日期"])
                     kData[i, j] = Operator(self, iDate, jID, ijRawData, ModelArgs)
             Data[kFactorName] = kData
