@@ -87,7 +87,10 @@ class _DBTable(FactorTable):
             else:
                 iNewData = pd.Series(None, index=raw_data.index, dtype="O")
             iOldData = raw_data.pop(iField)
-            iMapInfo = self._FactorDB.fetchall(iSQLStr.format(TablePrefix=self._FactorDB.TablePrefix))
+            if iSQLStr[0]=="{":
+                iMapInfo = eval(iSQLStr).items()
+            else:
+                iMapInfo = self._FactorDB.fetchall(iSQLStr.format(TablePrefix=self._FactorDB.TablePrefix))
             for jVal, jRelatedVal in iMapInfo:
                 if pd.notnull(jVal):
                     iNewData[iOldData==jVal] = jRelatedVal
