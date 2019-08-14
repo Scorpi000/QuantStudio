@@ -11,6 +11,8 @@ import pandas as pd
 
 from QuantStudio.FactorDataBase.JYDB import JYDB
 
+__TestDirPath__ = os.path.split(os.path.realpath(__file__))[0]
+
 def AnalystEstDetailTable4StockFun(f, idt, iid, x, args):
     return np.nanmean(x[0]["每股收益"].values.astype("float"))
 def AnalystRatingDetailTable4StockFun(f, idt, iid, x, args):
@@ -20,7 +22,7 @@ def AnalystRatingDetailTable4StockFun(f, idt, iid, x, args):
 class TestJYDB(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        TestJYDB.TargetDataFile = "."+os.sep+"JYTestData.zip"
+        TestJYDB.TargetDataFile = __TestDirPath__+os.sep+"JYTestData.zip"
         with zipfile.ZipFile(TestJYDB.TargetDataFile, mode="a") as ZIPFile:
             TestJYDB.DataFileList = ZIPFile.namelist()
         TestJYDB.FDB = JYDB()
@@ -36,7 +38,7 @@ class TestJYDB(unittest.TestCase):
         TestJYDB.OptionIDs = ["510050C1811M02850", "cu1909C45000", "m1811-C-2650"]
     def _saveTargetData(self, fun_name, data):
         if fun_name+".csv" not in self.DataFileList:
-            iCSVFile = "."+os.sep+fun_name+".csv"
+            iCSVFile = __TestDirPath__+os.sep+fun_name+".csv"
             data.to_csv(iCSVFile, encoding="utf-8")
             with zipfile.ZipFile(self.TargetDataFile, mode='a') as ZIPFile:
                 ZIPFile.write(iCSVFile, arcname=iCSVFile)
@@ -44,9 +46,9 @@ class TestJYDB(unittest.TestCase):
     def _readTargetData(self, fun_name, **kwargs):
         iCSVFile = fun_name+".csv"
         with zipfile.ZipFile(self.TargetDataFile, mode='r') as ZIPFile:
-            ZIPFile.extract(iCSVFile, ".")
-        Data = pd.read_csv("."+os.sep+iCSVFile, index_col=0, header=0, encoding="utf-8", engine="python", **kwargs)
-        os.remove("."+os.sep+iCSVFile)
+            ZIPFile.extract(iCSVFile, __TestDirPath__)
+        Data = pd.read_csv(__TestDirPath__+os.sep+iCSVFile, index_col=0, header=0, encoding="utf-8", engine="python", **kwargs)
+        os.remove(__TestDirPath__+os.sep+iCSVFile)
         return Data
     def _compareDataFrame(self, df1, df2, dtype="double"):
         m1, m2 = pd.isnull(df1), pd.isnull(df2)
@@ -150,7 +152,7 @@ class TestJYDB(unittest.TestCase):
     def test_005_MarketTable4Index(self):
         FunName = sys._getframe().f_code.co_name.split("_")[-1]
         FT = self.FDB.getTable("指数行情")
-        TestData = FT.readData(factor_names=["收盘价"], ids=self.IndexIDs, dts=self.DTs).iloc[0]
+        TestData = FT.readData(factor_names=["收盘价(元-点)"], ids=self.IndexIDs, dts=self.DTs).iloc[0]
         self._saveTargetData(FunName, TestData)
         TargetData = self._readTargetData(FunName, parse_dates=True)
         Err = self._compareDataFrame(TestData, TargetData)

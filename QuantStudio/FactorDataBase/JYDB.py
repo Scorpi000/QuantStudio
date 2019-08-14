@@ -81,16 +81,21 @@ class _DBTable(FactorTable):
         RelatedFields = RelatedFields[pd.notnull(RelatedFields)]
         if RelatedFields.shape[0]==0: return raw_data
         for iField in RelatedFields.index:
-            iSQLStr = FactorInfo.loc[iField, "RelatedSQL"]
-            if _identifyDataType(FactorInfo.loc[iField, "DataType"])=="double":
+            iOldData = raw_data.pop(iField)
+            iDataType = _identifyDataType(FactorInfo.loc[iField, "DataType"])
+            if iDataType=="double":
                 iNewData = pd.Series(np.nan, index=raw_data.index, dtype="float")
             else:
                 iNewData = pd.Series(None, index=raw_data.index, dtype="O")
-            iOldData = raw_data.pop(iField)
+            iSQLStr = FactorInfo.loc[iField, "RelatedSQL"]
             if iSQLStr[0]=="{":
                 iMapInfo = eval(iSQLStr).items()
             else:
-                iMapInfo = self._FactorDB.fetchall(iSQLStr.format(TablePrefix=self._FactorDB.TablePrefix))
+                if iSQLStr.find("{Keys}")==-1:
+                    iMapInfo = self._FactorDB.fetchall(iSQLStr.format(TablePrefix=self._FactorDB.TablePrefix))
+                else:
+                    Keys = ", ".join([str(iKey) for iKey in iOldData[pd.notnull(iOldData)].unique()])
+                    iMapInfo = self._FactorDB.fetchall(iSQLStr.format(TablePrefix=self._FactorDB.TablePrefix, Keys=Keys))
             for jVal, jRelatedVal in iMapInfo:
                 if pd.notnull(jVal):
                     iNewData[iOldData==jVal] = jRelatedVal

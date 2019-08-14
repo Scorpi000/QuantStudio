@@ -324,9 +324,13 @@ def _calculate(args):
                 for i in range(nTask):
                     iDTs = list(FT.OperationMode.DateTimes[i*iDTLen:(i+1)*iDTLen])
                     if iDTs:
-                        iData = pd.Panel({iFactor.Name:iFactor._QS_getData(dts=iDTs, pids=[args["PID"]]) for iFactor in FT.OperationMode._Factors}).loc[FactorNames]
-                        if FT.OperationMode._FactorPrepareIDs[iFactor.Name] is not None:
-                            iData = iData.loc[:, :, FT.OperationMode.IDs]
+                        iData = {}
+                        for jFactor in FT.OperationMode._Factors:
+                            ijData = jFactor._QS_getData(dts=iDTs, pids=[args["PID"]])
+                            if FT.OperationMode._FactorPrepareIDs[jFactor.Name] is not None:
+                                ijData = ijData.loc[:, FT.OperationMode.IDs]
+                            iData[jFactor.Name] = ijData
+                        iData = pd.Panel(iData).loc[FactorNames]
                         args["FactorDB"].writeData(iData, args["TableName"], if_exists=args["if_exists"], data_type=DataTypes)
                         iData = None
                     ProgBar.update(i+1)
@@ -351,9 +355,13 @@ def _calculate(args):
             for i in range(nTask):
                 iDTs = list(FT.OperationMode.DateTimes[i*iDTLen:(i+1)*iDTLen])
                 if iDTs:
-                    iData = pd.Panel({iFactor.Name:iFactor._QS_getData(dts=iDTs, pids=[args["PID"]]) for iFactor in FT.OperationMode._Factors}).loc[FactorNames]
-                    if FT.OperationMode._FactorPrepareIDs[iFactor.Name] is not None:
-                        iData = iData.loc[:, :, FT.OperationMode.IDs]
+                    iData = {}
+                    for jFactor in FT.OperationMode._Factors:
+                        ijData = jFactor._QS_getData(dts=iDTs, pids=[args["PID"]])
+                        if FT.OperationMode._FactorPrepareIDs[jFactor.Name] is not None:
+                            ijData = ijData.loc[:, FT.OperationMode.IDs]
+                        iData[jFactor.Name] = ijData
+                    iData = pd.Panel(iData).loc[FactorNames]
                     args["FactorDB"].writeData(iData, args["TableName"], if_exists=args["if_exists"], data_type=DataTypes)
                     iData = None
                 args['Sub2MainQueue'].put((args["PID"], 1, None))
