@@ -698,9 +698,9 @@ class FactorTable(__QS_Object__):
         GroupInfo, RawDataFileNames, PrepareIDs, PID_PrepareIDs = [], [], [], []#[(因子表对象, [因子名], [原始因子名], [时点], {参数})], [原始数据文件名], [准备数据的ID序列]
         for iFTID, iGroups in InitGroups.items():
             iGroupInfo = []
-            iFT = iGroups[j][0]
             jStartInd = 0
             for j in range(len(iGroups)):
+                iFT = iGroups[j][0]
                 ijGroupInfo = iFT.__QS_genGroupInfo__(iGroups[j][1], self.OperationMode)
                 iGroupInfo.extend(ijGroupInfo)
                 RawDataFileNames += ["-".join((iFT.Name, str(iFTID), str(jStartInd+k))) for k in range(len(ijGroupInfo))]

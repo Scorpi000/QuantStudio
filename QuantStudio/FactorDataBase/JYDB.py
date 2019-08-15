@@ -300,7 +300,7 @@ class _MappingTable(_DBTable):
     def __QS_genGroupInfo__(self, factors, operation_mode):
         ConditionGroup = {}
         for iFactor in factors:
-            iConditions = ";".join([iArgName+":"+iFactor[iArgName] for iArgName in iFactor.ArgNames])
+            iConditions = ";".join([iArgName+":"+str(iFactor[iArgName]) for iArgName in iFactor.ArgNames if iArgName not in ("只填起始日",)])
             if iConditions not in ConditionGroup:
                 ConditionGroup[iConditions] = {"FactorNames":[iFactor.Name], 
                                                "RawFactorNames":{iFactor._NameInFT}, 
@@ -843,8 +843,8 @@ class _InfoPublTable(_MarketTable):
         SubSQLStr1 += "t."+self._IDField+", "
         SubSQLStr1 += "MAX(CASE WHEN t.AnnDate>=t.MaxEndDate THEN t.AnnDate ELSE t.MaxEndDate END) AS DT "
         SubSQLStr1 += "FROM ("+SubSQLStr+") t GROUP BY t."+self._IDField
-        SQLStr = "SELECT t1.ID, "
-        SQLStr += "t1.DT, "
+        SQLStr = "SELECT t1.DT, "
+        SQLStr += "t1.ID, "
         for iField in factor_names: SQLStr += self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iField]+", "
         SQLStr = SQLStr[:-2]+" FROM "+self._DBTableName+" "
         SQLStr += "INNER JOIN ("+SubSQLStr1+") t1 "
