@@ -7,11 +7,12 @@ from collections import OrderedDict
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, Str, Range, Password, File
+from traits.api import Enum, Str, Range, Password, File, Float, Bool
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.FileFun import readJSONFile
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName
+from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
 
@@ -25,6 +26,9 @@ def _identifyDataType(db_type, dtypes):
 
 class _FactorTable(FactorTable):
     """SQLDB 因子表"""
+    FilterCondition = Str("", arg_type="Dict", label="筛选条件", order=0)
+    LookBack = Float(0, arg_type="Integer", label="回溯天数", order=1)
+    ValueType = Enum("scalar", "list", "scalar or list", arg_type="SingleOption", label="因子值类型", order=2)
     def __init__(self, name, fdb, data_type, sys_args={}, **kwargs):
         self._DataType = data_type
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
@@ -36,7 +40,7 @@ class _FactorTable(FactorTable):
         if key=="DataType": return self._DataType.loc[factor_names]
         if key is None: return pd.DataFrame(self._DataType.loc[factor_names], columns=["DataType"])
         else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
-    def getID(self, ifactor_name=None, idt=None):
+    def getID(self, ifactor_name=None, idt=None, args={}):
         DBTableName = self._FactorDB.TablePrefix+self._FactorDB._Prefix+self.Name
         SQLStr = "SELECT DISTINCT "+DBTableName+".ID "
         SQLStr += "FROM "+DBTableName+" "
@@ -48,7 +52,7 @@ class _FactorTable(FactorTable):
         if ifactor_name is not None: SQLStr += JoinStr+DBTableName+"."+ifactor_name+" IS NOT NULL "
         SQLStr += "ORDER BY "+DBTableName+".ID"
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
-    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None):
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         DBTableName = self._FactorDB.TablePrefix+self._FactorDB._Prefix+self.Name
         SQLStr = "SELECT DISTINCT "+DBTableName+".DateTime "
         SQLStr += "FROM "+DBTableName+" "
@@ -65,38 +69,105 @@ class _FactorTable(FactorTable):
         SQLStr += "ORDER BY "+DBTableName+".DateTime"
         if self._FactorDB.DBType!="sqlite3": return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
         else: return [dt.datetime.strptime(iRslt[0], "%Y-%m-%d %H:%M:%S.%f") for iRslt in self._FactorDB.fetchall(SQLStr)]
+    def _genNullIDSQLStr(self, factor_names, ids, end_date, args={}):
+        DBTableName = self._FactorDB.TablePrefix+self._FactorDB._Prefix+self.Name
+        SubSQLStr = "SELECT "+DBTableName+".ID, "
+        SubSQLStr += "MAX("+DBTableName+".DateTime) "
+        SubSQLStr += "FROM "+DBTableName+" "
+        SubSQLStr += "WHERE "+DBTableName+".DateTime<'"+end_date.strftime("%Y-%m-%d:%H:%M:%S.%f")+"' "
+        SubSQLStr += "AND ("+genSQLInCondition(DBTableName+".ID", ids, is_str=True, max_num=1000)+") "
+        FilterStr = args.get("筛选条件", self.FilterCondition)
+        if FilterStr: SubSQLStr += "AND "+FilterStr+" "
+        SubSQLStr += "GROUP BY "+DBTableName+".ID"
+        SQLStr = "SELECT "+DBTableName+".DateTime, "
+        SQLStr += DBTableName+".ID, "
+        for iField in factor_names: SQLStr += DBTableName+"."+iField+", "
+        SQLStr = SQLStr[:-2]+" FROM "+DBTableName+" "
+        SQLStr += "WHERE ("+DBTableName+".ID, "+DBTableName+".DateTime) IN ("+SubSQLStr+") "
+        if FilterStr: SQLStr += "AND "+FilterStr+" "
+        return SQLStr
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         if (not dts) or (not ids): return pd.DataFrame(columns=["DateTime", "ID"]+factor_names)
+        dts = sorted(dts)
+        LookBack = args.get("回溯天数", self.LookBack)
+        StartDate, EndDate = dts[0].date(), dts[-1].date()
+        if not np.isinf(LookBack): StartDate -= dt.timedelta(LookBack)
         DBTableName = self._FactorDB.TablePrefix+self._FactorDB._Prefix+self.Name
         # 形成 SQL 语句, 时点, ID, 因子数据
         SQLStr = "SELECT "+DBTableName+".DateTime, "
         SQLStr += DBTableName+".ID, "
         for iField in factor_names: SQLStr += DBTableName+"."+iField+", "
         SQLStr = SQLStr[:-2]+" FROM "+DBTableName+" "
-        if (len(dts)==1) or (np.nanmax(np.diff(np.array(dts))).days<=1):
-            SQLStr += "WHERE "+DBTableName+".DateTime>='"+dts[0].strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
-            SQLStr += "AND "+DBTableName+".DateTime<='"+dts[-1].strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
+        if (LookBack>0) or (len(dts)==1) or (np.nanmax(np.diff(dts)).days<=10):
+            SQLStr += "WHERE "+DBTableName+".DateTime>='"+StartDate.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
+            SQLStr += "AND "+DBTableName+".DateTime<='"+EndDate.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
         else:
             SQLStr += "WHERE ("+genSQLInCondition(DBTableName+".DateTime", [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts], is_str=True, max_num=1000)+") "
         if len(ids)<=1000:
             SQLStr += "AND ("+genSQLInCondition(DBTableName+".ID", ids, is_str=True, max_num=1000)+") "
+        FilterStr = args.get("筛选条件", self.FilterCondition)
+        if FilterStr: SQLStr += "AND "+FilterStr+" "
         SQLStr += "ORDER BY "+DBTableName+".DateTime, "+DBTableName+".ID"
         RawData = self._FactorDB.fetchall(SQLStr)
-        if not RawData: return pd.DataFrame(columns=["DateTime", "ID"]+factor_names)
+        if not RawData: RawData = pd.DataFrame(columns=["DateTime", "ID"]+factor_names)
         RawData = pd.DataFrame(np.array(RawData), columns=["DateTime", "ID"]+factor_names)
+        if np.isinf(LookBack):
+            NullIDs = set(ids).difference(set(RawData[RawData["DateTime"]==dt.datetime.combine(StartDate, dt.time(0))]["ID"]))
+            if NullIDs:
+                NullRawData = self._FactorDB.fetchall(self._genNullIDSQLStr(factor_names, list(NullIDs), StartDate, args=args))
+                if NullRawData:
+                    NullRawData = pd.DataFrame(np.array(NullRawData, dtype="O"), columns=["DateTime", "ID"]+factor_names)
+                    RawData = pd.concat([NullRawData, RawData], ignore_index=True)
+                    RawData.sort_values(by=["DateTime", "ID"])
         if self._FactorDB.DBType=="sqlite3": RawData["DateTime"] = [dt.datetime.strptime(iDT, "%Y-%m-%d %H:%M:%S.%f") for iDT in RawData.pop("DateTime")]
         return RawData
+    def _calcListData(self, raw_data, factor_names, ids, dts, args={}):
+        Operator = (lambda x: x.tolist())
+        Data = {}
+        for iFactorName in factor_names:
+            Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
+        Data = pd.Panel(Data).loc[factor_names, :, ids]
+        LookBack = args.get("回溯天数", self.LookBack)
+        if LookBack==0: return Data.loc[:, dts, :]
+        AllDTs = Data.major_axis.union(dts).sort_values()
+        Data = Data.loc[:, AllDTs, :]
+        if np.isinf(LookBack):
+            for i, iFactorName in enumerate(Data.items): Data.iloc[i] = Data.iloc[i].fillna(method="pad")
+        else:
+            Limits = LookBack*24.0*3600
+            for i, iFactorName in enumerate(Data.items): Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
+        return Data.loc[:, dts]
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data = raw_data.set_index(["DateTime", "ID"])
+        ValueType = args.get("因子值类型", self.ValueType)
+        if ValueType=="list":
+            return self._calcListData(raw_data, factor_names, ids, dts, args=args)
+        elif ValueType=="scalar":
+            if not raw_data.index.is_unique:
+                FilterStr = args.get("筛选条件", self.FilterCondition)
+                raise __QS_Error__("筛选条件: '%s' 无法保证唯一性!" % FilterStr)
+        else:
+            if not raw_data.index.is_unique:
+                return self._calcListData(raw_data, factor_names, ids, dts, args=args)
         DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
         Data = {}
         for iFactorName in raw_data.columns:
             iRawData = raw_data[iFactorName].unstack()
             if DataType[iFactorName]=="double": iRawData = iRawData.astype("float")
             Data[iFactorName] = iRawData
-        Data = pd.Panel(Data).loc[factor_names]
-        return Data.loc[:, dts, ids]
+        Data = pd.Panel(Data).loc[factor_names, :, ids]
+        LookBack = args.get("回溯天数", self.LookBack)
+        if LookBack==0: return Data.loc[:, dts]
+        AllDTs = Data.major_axis.union(dts).sort_values()
+        Data = Data.loc[:, AllDTs, :]
+        if np.isinf(LookBack):
+            for i, iFactorName in enumerate(Data.items): Data.iloc[i] = Data.iloc[i].fillna(method="pad")
+        else:
+            Limits = LookBack*24.0*3600
+            for i, iFactorName in enumerate(Data.items): Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
+        return Data.loc[:, dts]
+
 
 class SQLDB(WritableFactorDB):
     """SQLDB"""
@@ -111,6 +182,7 @@ class SQLDB(WritableFactorDB):
     Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "sqlite3", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
     DSN = Str("", arg_type="String", label="数据源", order=9)
     SQLite3File = File(label="sqlite3文件", arg_type="File", order=10)
+    CheckWriteData = Bool(False, arg_type="Bool", label="检查写入值", order=11)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._Connection = None# 数据库链接
         self._Connector = None# 实际使用的数据库链接器
@@ -286,6 +358,12 @@ class SQLDB(WritableFactorDB):
         self.execute(SQLStr)
         self._TableFactorDict.pop(table_name, None)
         return 0
+    # 清空表
+    def truncateTable(self, table_name):
+        if table_name not in self._TableFactorDict: raise __QS_Error__("表: '%s' 不存在!" % table_name)
+        SQLStr = "TRUNCATE TABLE %s" % (self.TablePrefix+self._Prefix+table_name)
+        self.execute(SQLStr)
+        return 0
     # ----------------------------因子操作---------------------------------
     def renameFactor(self, table_name, old_factor_name, new_factor_name):
         if old_factor_name not in self._TableFactorDict[table_name]: raise __QS_Error__("因子: '%s' 不存在!" % old_factor_name)
@@ -361,6 +439,14 @@ class SQLDB(WritableFactorDB):
         if ids is not None:
             SQLStr += "AND "+genSQLInCondition(DBTableName+".ID", ids, is_str=True, max_num=1000)
         return self.execute(SQLStr)
+    def _adjustWriteData(self, data):
+        NewData = []
+        DataLen = data.applymap(lambda x: len(x) if isinstance(x, list) else 1).max(axis=1)
+        for i in range(data.shape[0]):
+            iDataLen = DataLen.iloc[i]
+            iData = data.iloc[i].apply(lambda x: x * int(np.ceil(iDataLen / len(x))) if isinstance(x, list) else [x]*iDataLen).tolist()
+            NewData.extend(zip(*iData))
+        return NewData
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
         FieldTypes = {iFactorName:_identifyDataType(self.DBType, data.iloc[i].dtypes) for i, iFactorName in enumerate(data.items)}
         if table_name not in self._TableFactorDict:
@@ -374,7 +460,10 @@ class SQLDB(WritableFactorDB):
                 NewDataType = pd.Series({iFactorName: ("string" if FieldTypes[iFactorName].find("char")!=-1 else "double") for iFactorName in NewFactorNames})
                 self._TableFactorDict[table_name] = self._TableFactorDict[table_name].append(NewDataType)
             AllFactorNames = self._TableFactorDict[table_name].index.tolist()
-            OldData = self.getTable(table_name).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
+            if self.CheckWriteData:
+                OldData = self.getTable(table_name, args={"因子值类型":"list"}).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
+            else:
+                OldData = self.getTable(table_name).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
             if if_exists=="append":
                 for iFactorName in AllFactorNames:
                     if iFactorName in data:
@@ -405,7 +494,11 @@ class SQLDB(WritableFactorDB):
             SQLStr = SQLStr[:-2] + ") VALUES (" + "%s, " * (NewData.shape[1]+2)
         SQLStr = SQLStr[:-2]+") "
         Cursor = self._Connection.cursor()
-        Cursor.executemany(SQLStr, NewData.reset_index().values.tolist())
+        if self.CheckWriteData:
+            NewData = self._adjustWriteData(NewData.reset_index())
+            Cursor.executemany(SQLStr, NewData)
+        else:
+            Cursor.executemany(SQLStr, NewData.reset_index().values.tolist())
         self._Connection.commit()
         Cursor.close()
         return 0

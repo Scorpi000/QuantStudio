@@ -703,13 +703,17 @@ class FactorTable(__QS_Object__):
                 iFT = iGroups[j][0]
                 ijGroupInfo = iFT.__QS_genGroupInfo__(iGroups[j][1], self.OperationMode)
                 iGroupInfo.extend(ijGroupInfo)
-                RawDataFileNames += ["-".join((iFT.Name, str(iFTID), str(jStartInd+k))) for k in range(len(ijGroupInfo))]
-                PrepareIDs += [iGroups[j][2]] * len(ijGroupInfo)
+                ijGroupNum = len(ijGroupInfo)
+                for k in range(ijGroupNum):
+                    ijkRawDataFileName = iFT.Name+"-"+str(iFTID)+"-"+str(jStartInd+k)
+                    for m in range(len(ijGroupInfo[k][1])): self.OperationMode._FactorDict[ijGroupInfo[k][1][m]]._RawDataFile = ijkRawDataFileName
+                    RawDataFileNames.append(ijkRawDataFileName)
+                jStartInd += ijGroupNum
+                PrepareIDs += [iGroups[j][2]] * ijGroupNum
                 if iGroups[j][2] is not None:
-                    PID_PrepareIDs += [{self.OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in enumerate(partitionList(iGroups[j][2], len(self.OperationMode._PIDs)))}]*len(ijGroupInfo)
+                    PID_PrepareIDs += [{self.OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in enumerate(partitionList(iGroups[j][2], len(self.OperationMode._PIDs)))}] * ijGroupNum
                 else:
-                    PID_PrepareIDs += [None] * len(ijGroupInfo)
-                jStartInd += len(ijGroupInfo)
+                    PID_PrepareIDs += [None] * ijGroupNum
             GroupInfo.extend(iGroupInfo)
         args = {"GroupInfo":GroupInfo, "FT":self, "RawDataFileNames":RawDataFileNames, "PrepareIDs":PrepareIDs, "PID_PrepareIDs":PID_PrepareIDs}
         if self.OperationMode.SubProcessNum==0:
@@ -976,7 +980,7 @@ def _BinaryOperator(f, idt, iid, x, args):
 class Factor(__QS_Object__):
     Name = Str("因子")
     def __init__(self, name, ft, sys_args={}, config_file=None, **kwargs):
-        self._FactorTable = ft# 因子所属的因子表, None 表示独立的衍生因子
+        self._FactorTable = ft# 因子所属的因子表, None 表示衍生因子
         self._NameInFT = name# 因子在所属的因子表中的名字
         self.Name = name# 因子对外显示的名称
         # 遍历模式下的对象

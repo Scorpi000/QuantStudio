@@ -602,7 +602,19 @@ class _MarketTable(_DBTable):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         for i, iCondition in enumerate(self._ConditionFields):
             self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+3))
-            self[iCondition] = str(FactorInfo.loc[iCondition, "Supplementary"])
+            iConditionVal = FactorInfo.loc[iCondition, "Supplementary"]
+            if iConditionVal: self[iCondition] = str(iConditionVal)
+    def _genConditionSQLStr(self, args={}):
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        SQLStr = ""
+        for iConditionField in self._ConditionFields:
+            iConditionVal = args.get(iConditionField, self[iConditionField])
+            if iConditionVal:
+                if _identifyDataType(FactorInfo.loc[iConditionField, "DataType"])=="string":
+                    SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"='"+iConditionVal+"' "
+                else:
+                    SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"="+iConditionVal+" "
+        return SQLStr[:-1]
     def getCondition(self, icondition, ids=None, dts=None):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         SQLStr = "SELECT DISTINCT "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[icondition]+" "
@@ -634,12 +646,7 @@ class _MarketTable(_DBTable):
         if idt is not None: SQLStr += "WHERE "+self._DBTableName+"."+self._DateField+"='"+idt.strftime("%Y-%m-%d")+"' "
         else: SQLStr += "WHERE "+self._DBTableName+"."+self._DateField+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
-        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
-        for iConditionField in self._ConditionFields:
-            if _identifyDataType(FactorInfo.loc[iConditionField, "DataType"])=="string":
-                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"='"+args.get(iConditionField, self[iConditionField])+"' "
-            else:
-                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"="+args.get(iConditionField, self[iConditionField])+" "
+        SQLStr += self._genConditionSQLStr(args=args)+" "
         SQLStr += "ORDER BY ID"
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     # 返回在给定 ID iid 的有数据记录的时间点
@@ -657,12 +664,7 @@ class _MarketTable(_DBTable):
         else: SQLStr += "WHERE "+self._DBTableName+"."+self._IDField+" IS NOT NULL "
         if start_dt is not None: SQLStr += "AND "+self._DBTableName+"."+self._DateField+">='"+start_dt.strftime("%Y-%m-%d")+"' "
         if end_dt is not None: SQLStr += "AND "+self._DBTableName+"."+self._DateField+"<='"+end_dt.strftime("%Y-%m-%d")+"' "
-        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
-        for iConditionField in self._ConditionFields:
-            if _identifyDataType(FactorInfo.loc[iConditionField, "DataType"])=="string":
-                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"='"+args.get(iConditionField, self[iConditionField])+"' "
-            else:
-                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"="+args.get(iConditionField, self[iConditionField])+" "
+        SQLStr += self._genConditionSQLStr(args=args)+" "
         SQLStr += "ORDER BY "+self._DBTableName+"."+self._DateField
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     def __QS_genGroupInfo__(self, factors, operation_mode):
@@ -705,11 +707,7 @@ class _MarketTable(_DBTable):
         SQLStr += "ON "+self._JoinCondition+" "
         SQLStr += "WHERE ("+self._MainTableName+"."+self._MainTableID+", "+self._DBTableName+"."+self._DateField+") IN ("+SubSQLStr+")"
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
-        for iConditionField in self._ConditionFields:
-            if _identifyDataType(FactorInfo.loc[iConditionField, "DataType"])=="string":
-                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"='"+args.get(iConditionField, self[iConditionField])+"' "
-            else:
-                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"="+args.get(iConditionField, self[iConditionField])+" "
+        SQLStr += self._genConditionSQLStr(args=args)
         return SQLStr
     def _genSQLStr(self, factor_names, ids, start_date, end_date, args={}):
         IDField = self._getIDField()
@@ -725,11 +723,7 @@ class _MarketTable(_DBTable):
         SQLStr += "AND "+self._DBTableName+"."+self._DateField+"<='"+end_date.strftime("%Y-%m-%d")+"' "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=True, max_num=1000)+") "
-        for iConditionField in self._ConditionFields:
-            if _identifyDataType(FactorInfo.loc[iConditionField, "DataType"])=="string":
-                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"='"+args.get(iConditionField, self[iConditionField])+"' "
-            else:
-                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"="+args.get(iConditionField, self[iConditionField])+" "
+        SQLStr += self._genConditionSQLStr(args=args)+" "
         SQLStr += "ORDER BY ID, "+self._DBTableName+"."+self._DateField
         return SQLStr
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
@@ -800,12 +794,7 @@ class _InfoPublTable(_MarketTable):
         else:
             SQLStr += "WHERE "+AnnDateField+" IS NOT NULL AND "+EndDateField+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
-        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
-        for iConditionField in self._ConditionFields:
-            if _identifyDataType(FactorInfo.loc[iConditionField, "DataType"])=="string":
-                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"='"+args.get(iConditionField, self[iConditionField])+"' "
-            else:
-                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"="+args.get(iConditionField, self[iConditionField])+" "
+        SQLStr += self._genConditionSQLStr(args=args)+" "
         SQLStr += "ORDER BY ID"
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
@@ -825,12 +814,7 @@ class _InfoPublTable(_MarketTable):
         if end_dt is not None:
             SQLStr += "AND ("+AnnDateField+"<='"+end_dt.strftime("%Y-%m-%d")+"' "
             SQLStr += "AND "+EndDateField+"<='"+end_dt.strftime("%Y-%m-%d")+"') "
-        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
-        for iConditionField in self._ConditionFields:
-            if _identifyDataType(FactorInfo.loc[iConditionField, "DataType"])=="string":
-                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"='"+args.get(iConditionField, self[iConditionField])+"' "
-            else:
-                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"="+args.get(iConditionField, self[iConditionField])+" "
+        SQLStr += self._genConditionSQLStr(args=args)+" "
         SQLStr += "ORDER BY DT"
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     def _genNullIDSQLStr_InfoPubl(self, factor_names, ids, end_date, args={}):
@@ -846,11 +830,7 @@ class _InfoPublTable(_MarketTable):
         SubSQLStr += "ON "+self._JoinCondition+" "
         SubSQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=True, max_num=1000)+") "
         if pd.notnull(self._MainTableCondition): SubSQLStr += "AND "+self._MainTableCondition+" "
-        for iConditionField in self._ConditionFields:
-            if _identifyDataType(FactorInfo.loc[iConditionField, "DataType"])=="string":
-                SubSQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"='"+args.get(iConditionField, self[iConditionField])+"' "
-            else:
-                SubSQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"="+args.get(iConditionField, self[iConditionField])+" "
+        SubSQLStr += self._genConditionSQLStr(args=args)+" "
         SubSQLStr += "AND ("+AnnDateField+"<'"+end_date.strftime("%Y-%m-%d")+"' "
         SubSQLStr += "AND "+EndDateField+"<'"+end_date.strftime("%Y-%m-%d")+"') "
         SubSQLStr += "GROUP BY "+self._DBTableName+"."+self._IDField+", "+AnnDateField
@@ -883,11 +863,8 @@ class _InfoPublTable(_MarketTable):
         SubSQLStr += "ON "+self._JoinCondition+" "
         SubSQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=True, max_num=1000)+") "
         if pd.notnull(self._MainTableCondition): SubSQLStr += "AND "+self._MainTableCondition+" "
-        for iConditionField in self._ConditionFields:
-            if _identifyDataType(FactorInfo.loc[iConditionField, "DataType"])=="string":
-                SubSQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"='"+args.get(iConditionField, self[iConditionField])+"' "
-            else:
-                SubSQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"="+args.get(iConditionField, self[iConditionField])+" "
+        ConditionSQLStr = self._genConditionSQLStr(args=args)
+        SubSQLStr += ConditionSQLStr+" "
         SubSQLStr += "AND ("+AnnDateField+">='"+StartDate.strftime("%Y-%m-%d")+"' "
         SubSQLStr += "OR "+EndDateField+">='"+StartDate.strftime("%Y-%m-%d")+"') "
         SubSQLStr += "AND ("+AnnDateField+"<='"+EndDate.strftime("%Y-%m-%d")+"' "
@@ -901,11 +878,7 @@ class _InfoPublTable(_MarketTable):
         SQLStr += "ON (t."+self._IDField+"="+self._DBTableName+"."+self._IDField+") "
         SQLStr += "AND (t.MaxEndDate="+EndDateField+") "
         SQLStr += "WHERE TRUE "
-        for iConditionField in self._ConditionFields:
-            if _identifyDataType(FactorInfo.loc[iConditionField, "DataType"])=="string":
-                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"='"+args.get(iConditionField, self[iConditionField])+"' "
-            else:
-                SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"="+args.get(iConditionField, self[iConditionField])+" "
+        SQLStr += ConditionSQLStr+" "
         SQLStr += "ORDER BY t.ID, DT"
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: RawData = pd.DataFrame(columns=["日期", "ID"]+factor_names)
@@ -933,7 +906,7 @@ class _MultiInfoPublTable(_InfoPublTable):
     """多重信息发布表"""
     LookBack = Float(0, arg_type="Integer", label="回溯天数", order=0)
     IgnorePublDate = Bool(False, label="忽略公告日", arg_type="Bool", order=1)
-    Operator = Function(None, arg_type="Function", label="算子", order=2)
+    Operator = Function(lambda x: x.tolist(), arg_type="Function", label="算子", order=2)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         FactorInfo = fdb._FactorInfo.loc[name]
@@ -2522,9 +2495,10 @@ class JYDB(FactorDB):
     # date: 指定日, 默认值 None 表示今天
     # is_current: False 表示成立日在指定日之前的基金, True 表示成立日在指定日之前且尚未清盘的基金
     def getMutualFundID(self, date=None, is_current=True, **kwargs):
-        SQLStr = "SELECT CASE WHEN {Prefix}SecuMain.SecuMarket=83 THEN CONCAT({Prefix}SecuMain.SecuCode, '.SH') "
-        SQLStr += "WHEN {Prefix}SecuMain.SecuMarket=90 THEN CONCAT({Prefix}SecuMain.SecuCode, '.SZ') "
-        SQLStr += "ELSE {Prefix}SecuMain.SecuCode END AS ID FROM {Prefix}mf_fundarchives "
+        if date is None: date = dt.date.today()
+        SQLStr = "SELECT CASE {Prefix}SecuMain.SecuMarket WHEN 83 THEN CONCAT({Prefix}SecuMain.SecuCode, '.SH') "
+        SQLStr += "WHEN 90 THEN CONCAT({Prefix}SecuMain.SecuCode, '.SZ') "
+        SQLStr += "ELSE CONCAT({Prefix}SecuMain.SecuCode, '.MF') END AS ID FROM {Prefix}mf_fundarchives "
         SQLStr += "INNER JOIN {Prefix}SecuMain ON {Prefix}SecuMain.InnerCode={Prefix}mf_fundarchives.InnerCode "
         SQLStr += "WHERE {Prefix}mf_fundarchives.EstablishmentDate <= '{Date}' "
         if is_current:

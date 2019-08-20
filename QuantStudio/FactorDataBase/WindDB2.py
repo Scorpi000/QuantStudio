@@ -1760,7 +1760,7 @@ class _AnalystEstDetailTable(_DBTable):
 class _AnnTable(_DBTable):
     """公告信息表"""
     #ANNDate = Enum(None, arg_type="SingleOption", label="公告日期", order=0)
-    Operator = Function(None, arg_type="Function", label="算子", order=1)
+    Operator = Function(lambda x: x.tolist(), arg_type="Function", label="算子", order=1)
     LookBack = Int(0, arg_type="Integer", label="回溯天数", order=2)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         FactorInfo = fdb._FactorInfo.loc[name]
