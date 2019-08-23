@@ -69,6 +69,7 @@ class PortfolioStrategy(Strategy):
         return (self._FT, ) + super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
+        self._iDT = idt
         iTradingRecord = {iAccount.Name:iAccount.__QS_move__(idt, **kwargs) for iAccount in self.Accounts}
         Signal = None
         if (not self.SignalDTs) or (idt in self.SignalDTs):
@@ -398,6 +399,7 @@ class OptimizerStrategy(PortfolioStrategy):
         return super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
+        self._iDT = idt
         iTradingRecord = {iAccount.Name:iAccount.__QS_move__(idt, **kwargs) for iAccount in self.Accounts}
         Signal = None
         if (not self.SignalDTs) or (idt in self.SignalDTs):

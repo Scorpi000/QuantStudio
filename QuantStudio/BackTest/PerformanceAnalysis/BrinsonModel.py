@@ -88,6 +88,7 @@ class BrinsonModel(BaseModule):
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
+        super().__QS_end__()
         self._Output["策略组合资产权重"].where(pd.notnull(self._Output["策略组合资产权重"]), 0.0, inplace=True)
         self._Output["基准组合资产权重"].where(pd.notnull(self._Output["基准组合资产权重"]), 0.0, inplace=True)
         self._Output["策略组合资产收益"].where(pd.notnull(self._Output["策略组合资产收益"]), 0.0, inplace=True)

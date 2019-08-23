@@ -131,6 +131,18 @@ class _DBTable(FactorTable):
                                  "Description":self.getFactorMetaData(factor_names, key="Description")})
         else:
             return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
+    def _adjustDataDTID(self, data, look_back, factor_names, ids, dts):
+        if look_back==0: return data.loc[:, dts, ids]
+        AllDTs = data.major_axis.union(dts).sort_values()
+        data = data.loc[:, AllDTs, ids]
+        if np.isinf(look_back):
+            for i, iFactorName in enumerate(data.items): data.iloc[i].fillna(method="pad", inplace=True)
+        else:
+            Limits = look_back*24.0*3600
+            data = dict(data)
+            for iFactorName in data: data[iFactorName] = fillNaByLookback(data[iFactorName], lookback=Limits)
+            data = pd.Panel(data).loc[factor_names]
+        return data.loc[:, dts]
 
 
 class _FeatureTable(_DBTable):
@@ -604,6 +616,10 @@ class _MarketTable(_DBTable):
             self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+3))
             iConditionVal = FactorInfo.loc[iCondition, "Supplementary"]
             if iConditionVal: self[iCondition] = str(iConditionVal)
+    @property
+    def FactorNames(self):
+        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+        return FactorInfo[pd.notnull(FactorInfo["FieldType"])].index.tolist()
     def _genConditionSQLStr(self, args={}):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         SQLStr = ""
@@ -757,15 +773,7 @@ class _MarketTable(_DBTable):
             Data[iFactorName] = iRawData
         Data = pd.Panel(Data).loc[factor_names]
         LookBack = args.get("回溯天数", self.LookBack)
-        if LookBack==0: return Data.loc[:, dts, ids]
-        AllDTs = Data.major_axis.union(dts).sort_values()
-        Data = Data.loc[:, AllDTs, ids]
-        if np.isinf(LookBack):
-            for i, iFactorName in enumerate(Data.items): Data.iloc[i] = Data.iloc[i].fillna(method="pad")
-        else:
-            Limits = LookBack*24.0*3600
-            for i, iFactorName in enumerate(Data.items): Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
-        return Data.loc[:, dts]
+        return self._adjustDataDTID(Data, LookBack, factor_names, ids, dts)
 # 信息发布表, 表结构特征:
 # 公告日期, 表示信息发布的时点;
 # 截止日期, 表示信息有效的时点;
@@ -926,15 +934,7 @@ class _MultiInfoPublTable(_InfoPublTable):
             Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
         Data = pd.Panel(Data).loc[factor_names, :, ids]
         LookBack = args.get("回溯天数", self.LookBack)
-        if LookBack==0: return Data.loc[:, dts, ids]
-        AllDTs = Data.major_axis.union(dts).sort_values()
-        Data = Data.loc[:, AllDTs, ids]
-        if np.isinf(LookBack):
-            for i, iFactorName in enumerate(Data.items): Data.iloc[i] = Data.iloc[i].fillna(method="pad")
-        else:
-            Limits = LookBack*24.0*3600
-            for i, iFactorName in enumerate(Data.items): Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
-        return Data.loc[:, dts]
+        return self._adjustDataDTID(Data, LookBack, factor_names, ids, dts)
 
 def RollBackNPeriod(report_date, n_period):
     Date = report_date
@@ -1663,13 +1663,7 @@ class _AnalystConsensusTable(_DBTable):
         Data = pd.Panel(Data, minor_axis=factor_names)
         Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Dates]
         Data = Data.swapaxes(0, 2)
-        if LookBack==0: return Data.loc[:, dts, ids]
-        AllDTs = Data.major_axis.union(set(dts)).sort_values()
-        Data = Data.loc[:, AllDTs, ids]
-        Limits = LookBack*24.0*3600
-        for i, iFactorName in enumerate(Data.items):
-            Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
-        return Data.loc[:, dts]
+        return self._adjustDataDTID(Data, LookBack, factor_names, ids, dts)
     def _calcIDData_FY(self, date_seq, raw_data, report_ann_data, factor_names, lookback, fy_num):
         StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan)
         tempInd = -1
@@ -2117,13 +2111,7 @@ class _DividendTable(_DBTable):
             Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
         Data = pd.Panel(Data).loc[factor_names, :, ids]
         LookBack = args.get("回溯天数", self.LookBack)
-        if LookBack==0: return Data.loc[:, dts, :]
-        AllDTs = Data.major_axis.union(dts).sort_values()
-        Data = Data.loc[:, AllDTs, ids]
-        Limits = LookBack*24.0*3600
-        for i, iFactorName in enumerate(Data.items):
-            Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
-        return Data.loc[:, dts]
+        return self._adjustDataDTID(Data, LookBack, factor_names, ids, dts)
 
 
 # 宏观因子表
@@ -2283,6 +2271,7 @@ class JYDB(FactorDB):
     CharSet = Enum("utf8", "gbk", "gb2312", "gb18030", "cp936", "big5", arg_type="SingleOption", label="字符集", order=7)
     Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pymysql", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
     DSN = Str("", arg_type="String", label="数据源", order=9)
+    AdjustTableName = Bool(True, arg_type="Bool", label="调整表名", order=10)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"JYDBConfig.json" if config_file is None else config_file), **kwargs)
         self._Connection = None# 数据库链接
@@ -2295,18 +2284,14 @@ class JYDB(FactorDB):
         return
     def __getstate__(self):
         state = self.__dict__.copy()
-        # Remove the unpicklable entries.
         state["_Connection"] = (True if self.isAvailable() else False)
         return state
     def __setstate__(self, state):
         super().__setstate__(state)
-        if self._Connection:
-            self.connect()
-        else:
-            self._Connection = None
-        self._AllTables = state.get("_AllTables", [])
+        if self._Connection: self._connect()
+        else: self._Connection = None
     # -------------------------------------------数据库相关---------------------------
-    def connect(self):
+    def _connect(self):
         self._Connection = None
         if (self.Connector=='cx_Oracle') or ((self.Connector=='default') and (self.DBType=='Oracle')):
             try:
@@ -2342,16 +2327,28 @@ class JYDB(FactorDB):
                     self._Connection = pyodbc.connect('DSN=%s;PWD=%s' % (self.DSN, self.Pwd))
                 else:
                     self._Connection = pyodbc.connect('DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s' % (self.DBType, self.DBName, self.IPAddr+","+str(self.Port), self.User, self.Pwd))
-        self._Connection.autocommit = True
-        self._AllTables = []
         self._PID = os.getpid()
+        return 0
+    def connect(self):
+        self._connect()
+        Cursor = self._Connection.cursor()
+        if not self.AdjustTableName:
+            self._AllTables = []
+        elif self.DBType=="SQL Server":
+            Cursor.execute("SELECT Name FROM SysObjects Where XType='U'")
+            self._AllTables = [rslt[0] for rslt in Cursor.fetchall()]
+        elif self.DBType=="MySQL":
+            Cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='"+self.DBName+"' AND table_type='base table'")
+            self._AllTables = [rslt[0] for rslt in Cursor.fetchall()]
+        else:
+            self._AllTables = []
         return 0
     def disconnect(self):
         if self._Connection is not None:
             try:
                 self._Connection.close()
             except Exception as e:
-                raise e
+                print(str(e))
             finally:
                 self._Connection = None
         return 0
@@ -2359,16 +2356,13 @@ class JYDB(FactorDB):
         return (self._Connection is not None)
     def cursor(self, sql_str=None):
         if self._Connection is None: raise __QS_Error__("%s尚未连接!" % self.__doc__)
-        if os.getpid()!=self._PID: self.connect()# 如果进程号发生变化, 重连
-        Cursor = self._Connection.cursor()
+        if os.getpid()!=self._PID: self._connect()# 如果进程号发生变化, 重连
+        try:# 连接断开后重连
+            Cursor = self._Connection.cursor()
+        except:
+            self._connect()
+            Cursor = self._Connection.cursor()
         if sql_str is None: return Cursor
-        if not self._AllTables:
-            if self.DBType=="SQL Server":
-                Cursor.execute("SELECT Name FROM SysObjects Where XType='U'")
-                self._AllTables = [rslt[0] for rslt in Cursor.fetchall()]
-            elif self.DBType=="MySQL":
-                Cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='"+self.DBName+"' AND table_type='base table'")
-                self._AllTables = [rslt[0] for rslt in Cursor.fetchall()]
         for iTable in self._AllTables:
             sql_str = re.sub(iTable, iTable, sql_str, flags=re.IGNORECASE)
         Cursor.execute(sql_str)
@@ -2435,6 +2429,9 @@ class JYDB(FactorDB):
             IDs = self.getTable(iTableName).getID(ifactor_name=index_id, idt=date, is_current=is_current)
             if IDs: return IDs
         else: return []
+    # 获取指定日 date 的债券 ID
+    def getBondID(self, exchange=None, date=None, is_current=True, **kwargs):# TODO
+        return []
     # 给定期货代码 future_code, 获取指定日 date 的期货 ID
     # future_code: 期货代码(str)或者期货代码列表(list(str)), None 表示所有期货代码
     # date: 指定日, 默认值 None 表示今天

@@ -90,6 +90,7 @@ class ReturnBasedStyleModel(BaseModule):
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
+        super().__QS_end__()
         DTs, StyleIDs, TargetIDs = self._Output.pop("时点"), self._Output.pop("风格ID"), self._Output.pop("目标ID")
         nTargetID, nStyleID = len(TargetIDs), len(StyleIDs)
         X = _calcReturn(self._Output["风格指数净值"], return_type=self.ReturnType)

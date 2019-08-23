@@ -121,6 +121,7 @@ class Account(BaseModule):
         self._Debt[iIndex+1] = self._Debt[iIndex]
         return self._TradingRecord
     def __QS_after_move__(self, idt, **kwargs):# 晚于策略运行
+        self._iDT = idt
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
@@ -262,6 +263,7 @@ class Strategy(BaseModule):
         return Rslt+tuple(self.FactorTables)
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
+        self._iDT = idt
         iTradingRecord = {iAccount.Name:iAccount.__QS_move__(idt, **kwargs) for iAccount in self.Accounts}
         Signal = self.genSignal(idt, iTradingRecord)
         self._AllSignals[idt] = Signal

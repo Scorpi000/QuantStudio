@@ -110,6 +110,7 @@ class FamaMacBethRegression(BaseModule):
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
+        super().__QS_end__()
         FactorNames = list(self.TestFactors)
         self._Output["Pure Return"] = pd.DataFrame(self._Output["Pure Return"], index=self._Output["时点"], columns=FactorNames)
         self._Output["Raw Return"] = pd.DataFrame(self._Output["Raw Return"], index=self._Output["时点"], columns=FactorNames)

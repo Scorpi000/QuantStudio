@@ -129,6 +129,8 @@ class SectionCorrelation(BaseModule):
         self._Output["时点"].append(idt)
         return 0
     def __QS_end__(self):
+        if not self._isStarted: return 0
+        super().__QS_end__()
         for iMethod in self.CorrMethod:
             self._Output[iMethod] = pd.DataFrame(np.array(self._Output[iMethod]).T, columns=self._Output["FactorPair"], index=self._Output["时点"])
             iAvgName = iMethod+"均值"

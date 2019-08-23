@@ -90,6 +90,7 @@ class TimeSeriesCorrelation(BaseModule):
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
+        super().__QS_end__()
         FactorIDs, PriceIDs = self._Output.pop("因子ID"), self._Output.pop("证券ID")
         LastDT = max(self._Output["滚动相关性"][self.TestFactors[0]])
         self._Output["最后一期相关性"], self._Output["全样本相关性"] = {}, {}

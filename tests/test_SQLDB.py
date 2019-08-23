@@ -36,7 +36,7 @@ class TestSQLDB(unittest.TestCase):
         FT = self.FDB.getTable(self.TargetTable)
         self.assertEqual(FT.Name, self.TargetTable)
         FactorNames = FT.FactorNames
-        self.assertEqual(FactorNames, self.FactorNames)
+        self.assertSetEqual(set(FactorNames), set(self.FactorNames+["datetime", "code"]))
         IDs = FT.getID()
         self.assertEqual(IDs, self.IDs)
         DTs = FT.getDateTime()
@@ -51,10 +51,10 @@ class TestSQLDB(unittest.TestCase):
         # 重命名因子
         OldFactorName, self.FactorNames[1] = self.FactorNames[1], "New"+self.FactorNames[1]
         self.FDB.renameFactor(self.TargetTable, OldFactorName, self.FactorNames[1])
-        self.assertSetEqual(set(self.FDB.getTable(self.TargetTable).FactorNames), set(self.FactorNames))
+        self.assertSetEqual(set(self.FDB.getTable(self.TargetTable).FactorNames), set(self.FactorNames+["datetime", "code"]))
         # 删除因子
         self.FDB.deleteFactor(self.TargetTable, [self.FactorNames[1]])
-        self.assertSetEqual(set(self.FDB.getTable(self.TargetTable).FactorNames), {self.FactorNames[0]})
+        self.assertSetEqual(set(self.FDB.getTable(self.TargetTable).FactorNames), {self.FactorNames[0], "datetime", "code"})
         # 重命名表
         OldTargetTable, self.TargetTable = self.TargetTable, "New"+self.TargetTable
         self.FDB.renameTable(OldTargetTable, self.TargetTable)

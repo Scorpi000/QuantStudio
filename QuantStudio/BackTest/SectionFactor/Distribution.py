@@ -85,6 +85,7 @@ class IndustryDistribution(BaseModule):
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
+        super().__QS_end__()
         for iFactorName in self.TestFactors:
             self._Output[iFactorName] = pd.DataFrame(self._Output[iFactorName], index=self._Output["时点"], columns=self._Output["行业分类"])
             self._Output["历史平均值"][iFactorName] = self._Output[iFactorName].mean()

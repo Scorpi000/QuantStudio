@@ -1962,8 +1962,9 @@ class WindDB2(FactorDB):
     Pwd = Password("", arg_type="String", label="密码", order=5)
     TablePrefix = Str("", arg_type="String", label="表名前缀", order=6)
     CharSet = Enum("utf8", "gbk", "gb2312", "gb18030", "cp936", "big5", arg_type="SingleOption", label="字符集", order=7)
-    Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
+    Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pymysql", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
     DSN = Str("", arg_type="String", label="数据源", order=9)
+    AdjustTableName = Bool(True, arg_type="Bool", label="调整表名", order=10)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"WindDB2Config.json" if config_file is None else config_file), **kwargs)
         self._Connection = None# 数据库链接
@@ -1976,18 +1977,14 @@ class WindDB2(FactorDB):
         return
     def __getstate__(self):
         state = self.__dict__.copy()
-        # Remove the unpicklable entries.
         state["_Connection"] = (True if self.isAvailable() else False)
         return state
     def __setstate__(self, state):
         super().__setstate__(state)
-        if self._Connection:
-            self.connect()
-        else:
-            self._Connection = None
-        self._AllTables = state.get("_AllTables", [])
+        if self._Connection: self._connect()
+        else: self._Connection = None
     # -------------------------------------------数据库相关---------------------------
-    def connect(self):
+    def _connect(self):
         self._Connection = None
         if (self.Connector=='cx_Oracle') or ((self.Connector=='default') and (self.DBType=='Oracle')):
             try:
@@ -2007,6 +2004,12 @@ class WindDB2(FactorDB):
                 self._Connection = mysql.connector.connect(host=self.IPAddr, port=str(self.Port), user=self.User, password=self.Pwd, database=self.DBName, charset=self.CharSet)
             except Exception as e:
                 if self.Connector!='default': raise e
+        elif self.Connector=='pymysql':
+            try:
+                import pymysql
+                self._Connection = pymysql.connect(host=self.IPAddr, port=self.Port, user=self.User, password=self.Pwd, db=self.DBName, charset=self.CharSet)
+            except Exception as e:
+                if self.Connector!='default': raise e
         if self._Connection is None:
             if self.Connector not in ('default', 'pyodbc'):
                 self._Connection = None
@@ -2017,16 +2020,29 @@ class WindDB2(FactorDB):
                     self._Connection = pyodbc.connect('DSN=%s;PWD=%s' % (self.DSN, self.Pwd))
                 else:
                     self._Connection = pyodbc.connect('DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s' % (self.DBType, self.DBName, self.IPAddr+","+str(self.Port), self.User, self.Pwd))
-        self._Connection.autocommit = True
-        self._AllTables = []
         self._PID = os.getpid()
+        return 0
+    def connect(self):
+        self._connect()
+        Cursor = self._Connection.cursor()
+        if not self.AdjustTableName:
+            self._AllTables = []
+        elif self.DBType=="SQL Server":
+            Cursor.execute("SELECT Name FROM SysObjects Where XType='U'")
+            self._AllTables = [rslt[0] for rslt in Cursor.fetchall()]
+        elif self.DBType=="MySQL":
+            Cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='"+self.DBName+"' AND table_type='base table'")
+            self._AllTables = [rslt[0] for rslt in Cursor.fetchall()]
+        else:
+            self._AllTables = []
+        Cursor.close()
         return 0
     def disconnect(self):
         if self._Connection is not None:
             try:
                 self._Connection.close()
             except Exception as e:
-                raise e
+                print(str(e))
             finally:
                 self._Connection = None
         return 0
@@ -2034,16 +2050,13 @@ class WindDB2(FactorDB):
         return (self._Connection is not None)
     def cursor(self, sql_str=None):
         if self._Connection is None: raise __QS_Error__("%s尚未连接!" % self.__doc__)
-        if os.getpid()!=self._PID: self.connect()# 如果进程号发生变化, 重连
-        Cursor = self._Connection.cursor()
+        if os.getpid()!=self._PID: self._connect()# 如果进程号发生变化, 重连
+        try:# 连接断开后重连
+            Cursor = self._Connection.cursor()
+        except:
+            self._connect()
+            Cursor = self._Connection.cursor()
         if sql_str is None: return Cursor
-        if not self._AllTables:
-            if self.DBType=="SQL Server":
-                Cursor.execute("SELECT Name FROM SysObjects Where XType='U'")
-                self._AllTables = [rslt[0] for rslt in Cursor.fetchall()]
-            elif self.DBType=="MySQL":
-                Cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='"+self.DBName+"' AND table_type='base table'")
-                self._AllTables = [rslt[0] for rslt in Cursor.fetchall()]
         for iTable in self._AllTables:
             sql_str = re.sub(iTable, iTable, sql_str, flags=re.IGNORECASE)
         Cursor.execute(sql_str)

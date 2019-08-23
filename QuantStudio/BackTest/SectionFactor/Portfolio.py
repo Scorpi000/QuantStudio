@@ -160,6 +160,7 @@ class QuantilePortfolio(BaseModule):
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
+        super().__QS_end__()
         self._Output.pop("QP_P_CurPos")
         self._Output.pop("QP_P_MarketPos")
         for i in range(self.GroupNum):

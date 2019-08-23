@@ -98,6 +98,7 @@ class CMRM(BaseModule):
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
+        super().__QS_end__()
         AR = self._Output["异常收益率"]# 单时点累积异常收益率
         CAR = np.nancumsum(AR, axis=1)# 向前累积异常收益率
         FBCAR = np.c_[np.fliplr(np.nancumsum(np.fliplr(AR[:, :self.EventPreWindow+1]), axis=1))[:, :self.EventPreWindow], np.nancumsum(AR[:, self.EventPreWindow:], axis=1)]# 向前向后累积异常收益率
@@ -319,6 +320,8 @@ class MM(CMRM):
             self._Output["异常协方差"][RowPos[i], :, :] = (np.eye(EventWindow)+np.dot(np.dot(X, np.linalg.inv(np.dot(X.T, X))), X.T)) * self._Output["Var"][RowPos[i]]
         return 0
     def __QS_end__(self):
+        if not self._isStarted: return 0
+        super().__QS_end__()
         Mask = (self._Output["事件记录"][:, 2]<=self.EventPostWindow)
         if np.sum(Mask)>0:
             RowPos, ColPos = np.arange(self._Output["异常收益率"].shape[0])[Mask].tolist(), (self._Output["事件记录"][Mask, 2]+self.EventPreWindow).astype(np.int)
@@ -332,7 +335,7 @@ class MM(CMRM):
         self._Output["回归估计量"]["Beta"] = self._Output.pop("Beta")
         self._Output["回归估计量"]["Sigma2"] = self._Output.pop("Var")
         self._Output.pop("市场超额收益率")
-        return super().__QS_end__()
+        return 0
 
 class CBBM(CMRM):# TODO
     """特征基准模型"""

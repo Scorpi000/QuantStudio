@@ -78,6 +78,7 @@ class Cointegration(BaseModule):
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
+        super().__QS_end__()
         DTs = sorted(self._Output["统计量"])
         self._Output["最后一期检验"] = {"统计量": self._Output["统计量"][DTs[-1]], "p值": self._Output["p值"][DTs[-1]]}
         Price = self._Output.pop("价格")

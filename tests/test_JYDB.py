@@ -41,7 +41,7 @@ class TestJYDB(unittest.TestCase):
             iCSVFile = __TestDirPath__+os.sep+fun_name+".csv"
             data.to_csv(iCSVFile, encoding="utf-8")
             with zipfile.ZipFile(self.TargetDataFile, mode='a') as ZIPFile:
-                ZIPFile.write(iCSVFile, arcname=iCSVFile)
+                ZIPFile.write(iCSVFile, arcname="."+os.sep+fun_name+".csv")
             os.remove(iCSVFile)
     def _readTargetData(self, fun_name, **kwargs):
         iCSVFile = fun_name+".csv"

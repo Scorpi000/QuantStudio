@@ -84,6 +84,7 @@ class TimingStrategy(Strategy):
         return (self._FT, )+Rslt
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
+        self._iDT = idt
         TradingRecord = {iAccount.Name:iAccount.__QS_move__(idt, **kwargs) for iAccount in self.Accounts}
         if (not self.SigalDTs) or (idt in self.SigalDTs):
             Signal = self.genSignal(idt, TradingRecord)

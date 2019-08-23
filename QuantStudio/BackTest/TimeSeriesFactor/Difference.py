@@ -93,6 +93,7 @@ class QuantileDifference(BaseModule):
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
+        super().__QS_end__()
         FactorData, Return, PriceIDs = self._Output.pop("因子值"), self._Output.pop("收益率"), self._Output.pop("证券ID")
         self._Output["全样本t统计量"], self._Output["全样本p值"] = {}, {}
         Mask = np.full(shape=(FactorData.shape[0], self.GroupNum), fill_value=False)

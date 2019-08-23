@@ -102,6 +102,7 @@ class OLS(BaseModule):
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
+        super().__QS_end__()
         FactorIDs, PriceIDs = self._Output.pop("因子ID"), self._Output.pop("证券ID")
         DTs = sorted(self._Output["滚动统计量"]["t统计量"])
         self._Output["最后一期统计量"] = pd.DataFrame({"R平方": self._Output["滚动统计量"]["R平方"][-1], "调整R平方": self._Output["滚动统计量"]["调整R平方"][-1],

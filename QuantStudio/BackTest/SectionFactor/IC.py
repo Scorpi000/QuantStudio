@@ -107,6 +107,7 @@ class IC(BaseModule):
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
+        super().__QS_end__()
         CalcDateTimes = self._Output.pop("时点")
         self._Output["股票数"] = pd.DataFrame(self._Output["股票数"], index=CalcDateTimes)
         self._Output["IC"] = pd.DataFrame(self._Output["IC"], index=CalcDateTimes)
@@ -329,6 +330,7 @@ class ICDecay(BaseModule):
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
+        super().__QS_end__()
         self._Output["IC"] = pd.DataFrame(np.array(self._Output["IC"]).T, index=self._Output.pop("时点"), columns=list(self.LookBack))
         if self.FactorOrder=="升序": self._Output["IC"] = -self._Output["IC"]
         self._Output["统计数据"] = pd.DataFrame(index=self._Output["IC"].columns)

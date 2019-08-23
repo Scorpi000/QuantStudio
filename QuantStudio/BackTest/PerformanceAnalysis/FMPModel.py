@@ -130,6 +130,7 @@ class FMPModel(BaseModule):
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
+        super().__QS_end__()
         self.RiskTable.end()
         self._Output["风险贡献占比"] = self._Output["风险贡献"].divide(self._Output["风险贡献"].sum(axis=1), axis=0)
         self._Output["历史均值"] = pd.DataFrame(columns=["因子暴露", "风险调整的因子暴露", "风险贡献", "风险贡献占比", "收益贡献"], index=self._Output["收益贡献"].columns)

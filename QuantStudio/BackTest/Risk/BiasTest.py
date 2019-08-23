@@ -148,6 +148,7 @@ class BiasTest(BaseModule):
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
+        super().__QS_end__()
         self._Output["汇总统计量"] = pd.DataFrame(index=self._Output["Bias 统计量"].columns) 
         self._Output["汇总统计量"]["RAD 统计量"] = (self._Output["Bias 统计量"] - 1).abs().mean()
         self._Output["汇总统计量"]["Robust RAD 统计量"] = (self._Output["Robust Bias 统计量"] - 1).abs().mean()

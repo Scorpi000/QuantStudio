@@ -268,7 +268,7 @@ class _OperationMode(__QS_Object__):
         if self._FileSuffix: self._FileSuffix = "." + self._FileSuffix
         super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
-        self.add_trait("FactorNames", ListStr(arg_type="MultiOption", label="运算因子", order=2, option_range=tuple(self._FT.FactorNames)))
+        self.add_trait("FactorNames", ListStr(arg_type="MultiOption", label="运算因子", order=2))
     def __getstate__(self):
         state = self.__dict__.copy()
         # Remove the unpicklable entries.
