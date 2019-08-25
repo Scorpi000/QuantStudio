@@ -132,7 +132,11 @@ class _DBTable(FactorTable):
         else:
             return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
     def _adjustDataDTID(self, data, look_back, factor_names, ids, dts):
-        if look_back==0: return data.loc[:, dts, ids]
+        if look_back==0:
+            if (data.major_axis.intersection(dts).shape[0]==0) or (data.minor_axis.intersection(ids).shape[0]==0):
+                return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+            else:
+                return data.loc[:, dts, ids]
         AllDTs = data.major_axis.union(dts).sort_values()
         data = data.loc[:, AllDTs, ids]
         if np.isinf(look_back):
@@ -2430,8 +2434,33 @@ class JYDB(FactorDB):
             if IDs: return IDs
         else: return []
     # 获取指定日 date 的债券 ID
-    def getBondID(self, exchange=None, date=None, is_current=True, **kwargs):# TODO
-        return []
+    def getBondID(self, exchange=None, **kwargs):
+        Exchange = self._TableInfo.loc["债券证券主表", "Exchange"]
+        ExchangeField, ExchangeCodes = Exchange.split(":")
+        ExchangeCodes = ExchangeCodes.split(",")
+        ExchangeInfo = self._ExchangeInfo
+        IDField = "CASE "+ExchangeField+" "
+        for iCode in ExchangeCodes:
+            IDField += "WHEN "+iCode+" THEN CONCAT(SecuCode, '"+ExchangeInfo.loc[iCode, "Suffix"]+"') "
+        DefaultSuffix = self._TableInfo.loc["债券证券主表", "DefaultSuffix"]
+        if pd.isnull(DefaultSuffix):
+            IDField += "ELSE SecuCode END"
+        else:
+            IDField += "ELSE CONCAT(SecuCode, '"+DefaultSuffix+"') END"
+        SQLStr = "SELECT "+IDField+" AS ID FROM {Prefix}SecuMain "
+        SQLStr += "WHERE {Prefix}SecuMain.SecuCategory IN (6,7,9,11,14,17,18,23,28,29,31,33) "
+        if not exchange:
+            SQLStr += "AND {Prefix}SecuMain.SecuMarket IN (71,73,83,84,89,90,310) "
+        else:
+            if isinstance(exchange, str): exchange = [exchange]
+            ExchgCodes = set()
+            for iExchg in exchange:
+                iExchgCode = ExchangeInfo[ExchangeInfo["Exchange"]==iExchg]
+                if iExchgCode.shape[0]==0: raise __QS_Error__("不支持的交易所: %s" % iExchg)
+                ExchgCodes.add(str(iExchgCode[0]))
+            SQLStr += "AND {Prefix}SecuMain.SecuMarket IN ("+", ".join(ExchgCodes)+") "
+        SQLStr += "ORDER BY ID"
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix))]
     # 给定期货代码 future_code, 获取指定日 date 的期货 ID
     # future_code: 期货代码(str)或者期货代码列表(list(str)), None 表示所有期货代码
     # date: 指定日, 默认值 None 表示今天
