@@ -414,13 +414,13 @@ class OptimizerStrategy(PortfolioStrategy):
         if self.RiskTable is not None: self.RiskTable.end()
         if not self.SignalAdjustment.Display:
             if self._Status:
-                print("以下时点组合优化问题的求解出现问题: ")
+                self._QS_Logger.warning("以下时点组合优化问题的求解出现问题: ")
                 for iDT, iResultInfo in self._Status:
-                    print(iDT.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 错误代码-"+str(iResultInfo["ErrorCode"])+"    "+iResultInfo["Msg"])
+                    self._QS_Logger.error(iDT.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 错误代码-"+str(iResultInfo["ErrorCode"])+"    "+iResultInfo["Msg"])
             if self._ReleasedConstraint!=[]:
-                print("以下时点组合优化问题的求解舍弃了约束条件: ")
+                self._QS_Logger.warning("以下时点组合优化问题的求解舍弃了约束条件: ")
                 for iDT, iReleasedConstraint in self._ReleasedConstraint:
-                    print(iDT.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 舍弃约束-"+str(iReleasedConstraint))
+                    self._QS_Logger.warning(iDT.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 舍弃约束-"+str(iReleasedConstraint))
         return super().__QS_end__()
     # 调整信号
     def _adjustSignal(self, raw_signal):
@@ -467,8 +467,8 @@ class OptimizerStrategy(PortfolioStrategy):
         RawSignal, ResultInfo = self._PC.solve()
         if ResultInfo.get("Status", 1)!=1:
             self._Status.append((idt, ResultInfo))
-            if self.SignalAdjustment.Display: print(idt.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 错误代码-"+str(ResultInfo["ErrorCode"])+"    "+ResultInfo["Msg"])# debug
+            if self.SignalAdjustment.Display: self._QS_Logger.error(idt.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 错误代码-"+str(ResultInfo["ErrorCode"])+"    "+ResultInfo["Msg"])# debug
         if ResultInfo["ReleasedConstraint"]:
             self._ReleasedConstraint.append((idt, ResultInfo["ReleasedConstraint"]))
-            if self.SignalAdjustment.Display: print(idt.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 舍弃约束-"+str(ResultInfo["ReleasedConstraint"]))# debug
+            if self.SignalAdjustment.Display: self._QS_Logger.error(idt.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 舍弃约束-"+str(ResultInfo["ReleasedConstraint"]))# debug
         return self._adjustSignal(RawSignal)

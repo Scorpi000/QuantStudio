@@ -400,7 +400,7 @@ class FactorTable(__QS_Object__):
         return []
     # 获取因子对象
     def getFactor(self, ifactor_name, args={}, new_name=None):
-        iFactor = Factor(name=ifactor_name, ft=self)
+        iFactor = Factor(name=ifactor_name, ft=self, logger=self._QS_Logger)
         for iArgName in self.ArgNames:
             if iArgName not in ("遍历模式", "运算模式"):
                 iTraitName, iTrait = self.getTrait(iArgName)

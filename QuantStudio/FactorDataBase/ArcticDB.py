@@ -95,7 +95,7 @@ class ArcticDB(WritableFactorDB):
         return sorted(self._Arctic.list_libraries())
     def getTable(self, table_name, args={}):
         if table_name not in self._Arctic.list_libraries(): raise __QS_Error__("表 '%s' 不存在!" % table_name)
-        return _FactorTable(name=table_name, fdb=self, sys_args=args)
+        return _FactorTable(name=table_name, fdb=self, sys_args=args, logger=self._QS_Logger)
     def renameTable(self, old_table_name, new_table_name):
         self._Arctic.rename_library(old_table_name, new_table_name)
         return 0

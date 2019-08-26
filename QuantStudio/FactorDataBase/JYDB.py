@@ -32,17 +32,17 @@ def _importInfo(info_file, info_resource):
     return (TableInfo, FactorInfo, ExchangeInfo)
 
 # 更新信息文件
-def _updateInfo(info_file, info_resource):
+def _updateInfo(info_file, info_resource, logger):
     if not os.path.isfile(info_file):
-        print("数据库信息文件: '%s' 缺失, 尝试从 '%s' 中导入信息." % (info_file, info_resource))
+        logger.warning("数据库信息文件: '%s' 缺失, 尝试从 '%s' 中导入信息." % (info_file, info_resource))
     elif (os.path.getmtime(info_resource)>os.path.getmtime(info_file)):
-        print("数据库信息文件: '%s' 有更新, 尝试从中导入新信息." % info_resource)
+        logger.warning("数据库信息文件: '%s' 有更新, 尝试从中导入新信息." % info_resource)
     else:
         try:
             from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5
             return (readNestedDictFromHDF5(info_file, ref="/TableInfo"), readNestedDictFromHDF5(info_file, ref="/FactorInfo"), readNestedDictFromHDF5(info_file, ref="/ExchangeInfo"))
         except:
-            print("数据库信息文件: '%s' 损坏, 尝试从 '%s' 中导入信息." % (info_file, info_resource))
+            logger.warning("数据库信息文件: '%s' 损坏, 尝试从 '%s' 中导入信息." % (info_file, info_resource))
     if not os.path.isfile(info_resource): raise __QS_Error__("缺失数据库信息源文件: %s" % info_resource)
     return _importInfo(info_file, info_resource)
 
@@ -133,10 +133,11 @@ class _DBTable(FactorTable):
             return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
     def _adjustDataDTID(self, data, look_back, factor_names, ids, dts):
         if look_back==0:
-            if (data.major_axis.intersection(dts).shape[0]==0) or (data.minor_axis.intersection(ids).shape[0]==0):
-                return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-            else:
+            try:
                 return data.loc[:, dts, ids]
+            except KeyError as e:
+                self._QS_Logger.warning("待提取的因子数据超出了因子表 '%s' 原始数据的时点或 ID 范围, 将填充缺失值!" % self.Name)
+                return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         AllDTs = data.major_axis.union(dts).sort_values()
         data = data.loc[:, AllDTs, ids]
         if np.isinf(look_back):
@@ -2352,7 +2353,7 @@ class JYDB(FactorDB):
             try:
                 self._Connection.close()
             except Exception as e:
-                print(str(e))
+                self._QS_Logger.warning("因子库 ’%s' 断开错误: %s" % (self.Name, str(e)))
             finally:
                 self._Connection = None
         return 0
@@ -2385,7 +2386,7 @@ class JYDB(FactorDB):
         if table_name in self._TableInfo.index:
             TableClass = self._TableInfo.loc[table_name, "TableClass"]
             if pd.notnull(TableClass):
-                return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=args)")
+                return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=args, logger=self._QS_Logger)")
         raise __QS_Error__("因子库目前尚不支持表: '%s'" % table_name)
     # -----------------------------------------数据提取---------------------------------
     # 给定起始日期和结束日期, 获取交易所交易日期, 目前支持: "SSE", "SZSE", "SHFE", "DCE", "CZCE", "INE", "CFFEX"

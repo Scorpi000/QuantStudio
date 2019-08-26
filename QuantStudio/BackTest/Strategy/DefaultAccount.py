@@ -162,10 +162,10 @@ class DefaultAccount(Account):
     def order(self, target_id=None, num=0, target_price=np.nan, combined_order=None):
         if target_id is not None:
             self._Orders.loc[self._Orders.shape[0]] = (target_id, num, target_price)
-            if pd.notnull(target_price): print("警告: 本账户: '%s' 不支持限价单, 限价单将自动转为市价单!" % self.Name)
+            if pd.notnull(target_price): self._QS_Logger.warning("账户: '%s' 不支持限价单, 限价单将自动转为市价单!" % self.Name)
             return (self._Orders.shape[0], target_id, num, target_price)
         if combined_order is not None:
-            if pd.notnull(combined_order["目标价"]).sum()>0: print("警告: 本账户: '%s' 不支持限价单, 限价单将自动转为市价单!" % self.Name)
+            if pd.notnull(combined_order["目标价"]).sum()>0: self._QS_Logger.warning("本账户: '%s' 不支持限价单, 限价单将自动转为市价单!" % self.Name)
             combined_order.index.name = "ID"
             combined_order = combined_order.reset_index()
             combined_order.index = np.arange(self._Orders.shape[0], self._Orders.shape[0]+combined_order.shape[0])

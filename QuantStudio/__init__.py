@@ -2,15 +2,11 @@
 import os
 import sys
 import platform
+import logging
 import json
 import operator
 import warnings
 warnings.filterwarnings("ignore")
-#from multiprocessing import set_start_method
-#try:
-    #set_start_method("spawn")
-#except:
-    #pass
 
 import numpy as np
 import pandas as pd
@@ -42,6 +38,8 @@ class __QS_Error__(Exception):
 class __QS_Object__(HasTraits):
     """Quant Studio 系统对象"""
     def __init__(self, sys_args={}, config_file=None, **kwargs):
+        if "logger" in kwargs: self._QS_Logger = kwargs.pop("logger")
+        else: self._QS_Logger = logging.getLogger(__name__)
         super().__init__(**kwargs)
         self._LabelTrait = {}
         self._ArgOrder = pd.Series()

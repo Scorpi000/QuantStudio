@@ -126,18 +126,18 @@ class TimeOperation(DerivativeFactor):
         StartDT = dt_dict[self.Name]
         StartInd = self._OperationMode.DTRuler.index(StartDT)
         if (self.iLookBackMode=="扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0]>0):
-            if self.iInitData.index[-1] not in self._OperationMode.DTRuler: print("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name, ))
+            if self.iInitData.index[-1] not in self._OperationMode.DTRuler: self._QS_Logger.warning("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name, ))
             else: StartInd = min(StartInd, self._OperationMode.DTRuler.index(self.iInitData.index[-1]) + 1)
         for i, iDescriptor in enumerate(self._Descriptors):
             iStartInd = StartInd - self.LookBack[i]
-            if iStartInd<0: print("注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足, 不足的部分将填充 nan!" % (self.Name, iDescriptor.Name))
+            if iStartInd<0: self._QS_Logger.warning("注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足, 不足的部分将填充 nan!" % (self.Name, iDescriptor.Name))
             iStartDT = self._OperationMode.DTRuler[max(0, iStartInd)]
             iDescriptor._QS_initOperation(iStartDT, dt_dict, prepare_ids, id_dict)
     def readData(self, ids, dts, **kwargs):
         DTRuler = kwargs.get("dt_ruler", dts)
         StartInd = (DTRuler.index(dts[0]) if dts[0] in DTRuler else 0)
         if (self.iLookBackMode=="扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0]>0):
-            if self.iInitData.index[-1] not in DTRuler: print("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name, ))
+            if self.iInitData.index[-1] not in DTRuler: self._QS_Logger.warning("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name, ))
             else: StartInd = min(StartInd, DTRuler.index(self.iInitData.index[-1]) + 1)
         EndInd = (DTRuler.index(dts[-1]) if dts[-1] in DTRuler else len(DTRuler)-1)
         if StartInd>EndInd: return pd.DataFrame(index=dts, columns=ids)
@@ -364,7 +364,7 @@ class PanelOperation(DerivativeFactor):
             StartDT = dt_dict[self.Name] = start_dt
             StartInd, EndInd = DTRuler.index(StartDT), DTRuler.index(self._OperationMode.DateTimes[-1])
             if (self.iLookBackMode=="扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0]>0):
-                if self.iInitData.index[-1] not in self._OperationMode.DTRuler: print("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name, ))
+                if self.iInitData.index[-1] not in self._OperationMode.DTRuler: self._QS_Logger.warning("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name, ))
                 else: StartInd = min(StartInd, self._OperationMode.DTRuler.index(self.iInitData.index[-1]) + 1)
             DTs = DTRuler[StartInd:EndInd+1]
             if self.iLookBackMode=="扩张窗口":
@@ -378,7 +378,7 @@ class PanelOperation(DerivativeFactor):
         if prepare_ids != PrepareIDs: raise __QS_Error__("因子 %s 指定了不同的截面!" % self.Name)
         for i, iDescriptor in enumerate(self._Descriptors):
             iStartInd = StartInd - self.LookBack[i]
-            if iStartInd<0: print("注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足!" % (self.Name, iDescriptor.Name))
+            if iStartInd<0: self._QS_Logger.warning("注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足!" % (self.Name, iDescriptor.Name))
             iStartDT = DTRuler[max(0, iStartInd)]
             iDescriptor._QS_initOperation(iStartDT, dt_dict, prepare_ids, id_dict)
         if (self._OperationMode.SubProcessNum>0) and (self.Name not in self._OperationMode._Event):
@@ -388,7 +388,7 @@ class PanelOperation(DerivativeFactor):
         SectionIDs = kwargs.pop("section_ids", ids)
         StartInd = (DTRuler.index(dts[0]) if dts[0] in DTRuler else 0)
         if (self.iLookBackMode=="扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0]>0):
-            if self.iInitData.index[-1] not in DTRuler: print("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name, ))
+            if self.iInitData.index[-1] not in DTRuler: self._QS_Logger.warning("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name, ))
             else: StartInd = min(StartInd, DTRuler.index(self.iInitData.index[-1]) + 1)
         EndInd = (DTRuler.index(dts[-1]) if dts[-1] in DTRuler else len(DTRuler)-1)
         if StartInd>EndInd: return pd.DataFrame(index=dts, columns=ids)

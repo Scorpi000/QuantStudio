@@ -2,6 +2,7 @@
 import os
 import imp
 import time
+import logging
 
 import pandas as pd
 import numpy as np
@@ -145,7 +146,9 @@ def _SpecificRiskGeneration(args):
 
 class BarraModel(object):
     """Barra 风险模型"""
-    def __init__(self, name, factor_table, risk_db, table_name, config_file=None):
+    def __init__(self, name, factor_table, risk_db, table_name, config_file=None, **kwargs):
+        if "logger" in kwargs: self._QS_Logger = kwargs.pop("logger")
+        else: self._QS_Logger = logging.getLogger(__name__)
         self.ModelType = "多因子风险模型"
         self.Name = name
         if config_file is None: config_file = __QS_LibPath__+os.sep+"BarraModelConfig.py"
@@ -225,7 +228,7 @@ class BarraModel(object):
                     if iErrorCode==-1:
                         for iProc in Procs:
                             if iProc.is_alive(): iProc.terminate()
-                        print('进程 '+iPID+' :运行失败:'+str(iMsg))
+                        self._QS_Logger.error("进程: "+iPID+" 运行失败: "+str(iMsg))
                         break
                     else:
                         iProg += 1
@@ -257,7 +260,7 @@ class BarraModel(object):
                 if iErrorCode==-1:
                     for iProc in Procs:
                         if iProc.is_alive(): iProc.terminate()
-                    print('进程 '+iPID+' :运行失败:'+str(iMsg))
+                    self._QS_Logger.error("进程 "+iPID+" 运行失败: "+str(iMsg))
                     break
                 else:
                     iProg += 1
@@ -307,7 +310,7 @@ class BarraModel(object):
                 if iErrorCode==-1:
                     for iProc in Procs:
                         if iProc.is_alive(): iProc.terminate()
-                    print('进程 '+iPID+' :运行失败:'+str(iMsg))
+                    self._QS_Logger.error("进程 "+iPID+" 运行失败: "+str(iMsg))
                     break
                 else:
                     iProg += 1

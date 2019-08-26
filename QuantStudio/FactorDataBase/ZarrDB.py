@@ -161,7 +161,7 @@ class ZarrDB(WritableFactorDB):
         return sorted(self._TableFactorDict)
     def getTable(self, table_name, args={}):
         if table_name not in self._TableFactorDict: raise __QS_Error__("表 '%s' 不存在!" % table_name)
-        return _FactorTable(name=table_name, fdb=self, data_type=self._TableFactorDict[table_name], sys_args=args)
+        return _FactorTable(name=table_name, fdb=self, data_type=self._TableFactorDict[table_name], sys_args=args, logger=self._QS_Logger)
     def renameTable(self, old_table_name, new_table_name):
         if old_table_name not in self._TableFactorDict: raise __QS_Error__("表: '%s' 不存在!" % old_table_name)
         if (new_table_name!=old_table_name) and (new_table_name in self._TableFactorDict): raise __QS_Error__("表: '"+new_table_name+"' 已存在!")

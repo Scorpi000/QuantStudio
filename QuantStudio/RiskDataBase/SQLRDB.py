@@ -105,7 +105,7 @@ class SQLRDB(QSSQLObject, RiskDB):
         try:
             self.addIndex(table_name+"_index", self._Prefix+table_name, fields=["DateTime"])
         except Exception as e:
-            print("索引创建失败: "+str(e))
+            self._QS_Logger.warning("风险表 '%s' 索引创建失败: %s" % (table_name, str(e)))
         return 0
     def writeData(self, table_name, idt, icov):
         DBTableName = self.TablePrefix+self._Prefix+table_name
@@ -308,7 +308,7 @@ class SQLFRDB(QSSQLObject, FactorRDB):
         try:
             self.addIndex(table_name+"_index", self._Prefix+table_name, fields=["DateTime"])
         except Exception as e:
-            print("索引创建失败: "+str(e))
+            self._QS_Logger.warning("风险表 '%s' 索引创建失败: %s", % (table_name, str(e)))
         return 0
     def writeData(self, table_name, idt, factor_data=None, factor_cov=None, specific_risk=None, factor_ret=None, specific_ret=None, **kwargs):
         if table_name not in self._TableAdditionalCols: self.createTable(table_name)

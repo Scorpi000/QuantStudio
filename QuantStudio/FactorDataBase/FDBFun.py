@@ -19,17 +19,17 @@ def importInfo(info_file, info_resource):
     return (TableInfo, FactorInfo)
 
 # 更新信息文件
-def updateInfo(info_file, info_resource):
+def updateInfo(info_file, info_resource, logger):
     if not os.path.isfile(info_file):
-        print("数据库信息文件: '%s' 缺失, 尝试从 '%s' 中导入信息." % (info_file, info_resource))
+        logger.warning("数据库信息文件: '%s' 缺失, 尝试从 '%s' 中导入信息." % (info_file, info_resource))
     elif (os.path.getmtime(info_resource)>os.path.getmtime(info_file)):
-        print("数据库信息文件: '%s' 有更新, 尝试从中导入新信息." % info_resource)
+        logger.warning("数据库信息文件: '%s' 有更新, 尝试从中导入新信息." % info_resource)
     else:
         try:
             from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5
             return (readNestedDictFromHDF5(info_file, ref="/TableInfo"), readNestedDictFromHDF5(info_file, ref="/FactorInfo"))
         except:
-            print("数据库信息文件: '%s' 损坏, 尝试从 '%s' 中导入信息." % (info_file, info_resource))
+            logger.warning("数据库信息文件: '%s' 损坏, 尝试从 '%s' 中导入信息." % (info_file, info_resource))
     if not os.path.isfile(info_resource): raise __QS_Error__("缺失数据库信息源文件: %s" % info_resource)
     return importInfo(info_file, info_resource)
 

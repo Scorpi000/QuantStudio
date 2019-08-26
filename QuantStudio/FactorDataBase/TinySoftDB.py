@@ -200,7 +200,7 @@ class TinySoftDB(FactorDB):
         self._FactorInfo = None# 数据库中的表字段信息
         self._InfoFilePath = __QS_LibPath__+os.sep+"TinySoftDBInfo.hdf5"# 数据库信息文件路径
         self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"TinySoftDBInfo.xlsx"# 数据库信息源文件路径
-        self._TableInfo, self._FactorInfo = updateInfo(self._InfoFilePath, self._InfoResourcePath)
+        self._TableInfo, self._FactorInfo = updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger)
         return
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -243,7 +243,7 @@ class TinySoftDB(FactorDB):
     def getTable(self, table_name, args={}):
         if table_name=="交易日历": return _CalendarTable(name=table_name, fdb=self, sys_args=args)
         TableClass = self._TableInfo.loc[table_name, "TableClass"]
-        return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=args)")
+        return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=args, logger=self._QS_Logger)")
     # 给定起始日期和结束日期, 获取交易所交易日期
     def getTradeDay(self, start_date=None, end_date=None, exchange="SSE", **kwargs):
         if exchange not in ("SSE", "SZSE"): raise __QS_Error__("不支持交易所: '%s' 的交易日序列!" % exchange)

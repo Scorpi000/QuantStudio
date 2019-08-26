@@ -260,7 +260,7 @@ class WindDB(FactorDB):
         self._AllTables = []# 数据库中的所有表名, 用于查询时解决大小写敏感问题
         self._InfoFilePath = __QS_LibPath__+os.sep+"WindDBInfo.hdf5"# 数据库信息文件路径
         self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"WindDBInfo.xlsx"# 数据库信息源文件路径
-        self._TableInfo, self._FactorInfo = updateInfo(self._InfoFilePath, self._InfoResourcePath)# 数据库中的表信息, 数据库中的字段信息
+        self._TableInfo, self._FactorInfo = updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger)# 数据库中的表信息, 数据库中的字段信息
         self.Name = "WindDB"
         return
     def __getstate__(self):
@@ -313,7 +313,7 @@ class WindDB(FactorDB):
             try:
                 self._Connection.close()
             except Exception as e:
-                raise e
+                self._QS_Logger.warning("因子库 ’%s' 断开错误: %s" % (self.Name, str(e)))
             finally:
                 self._Connection = None
         return 0
@@ -346,7 +346,7 @@ class WindDB(FactorDB):
         else: return []
     def getTable(self, table_name, args={}):
         TableClass = self._TableInfo.loc[table_name, "TableClass"]
-        return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=args)")
+        return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=args, logger=self._QS_Logger)")
     # -----------------------------------------数据提取---------------------------------
     # 给定起始日期和结束日期, 获取交易所交易日期, 目前仅支持："SSE", "SZSE"
     def getTradeDay(self, start_date=None, end_date=None, exchange="SSE"):

@@ -283,6 +283,7 @@ def getShelveFileSuffix():
         if iSuffix=="dat": return "dat"
         else: Suffix = iSuffix
     return Suffix
+
 # 文件锁
 # LOCK_EX: Exclusive Lock, 拒绝其他所有进程的读取和写入的请求
 # LOCK_SH: Shared Lock(默认), 这种锁会拒绝所有进程的写入请求, 包括最初设定锁的进程. 但所有的进程都可以读取被锁定的文件.
@@ -306,8 +307,3 @@ def getShelveFileSuffix():
         #fcntl.flock(file.fileno(), flags)
     #def unlockFile(file):
         #fcntl.flock(file.fileno(), fcntl.LOCK_UN)
-if __name__=="__main__":
-    print("===")
-    print(getShelveFileSuffix())
-    print(getShelveFileSuffix())
-    print("===")

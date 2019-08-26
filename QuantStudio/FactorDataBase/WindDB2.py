@@ -1971,7 +1971,7 @@ class WindDB2(FactorDB):
         self._AllTables = []# 数据库中的所有表名, 用于查询时解决大小写敏感问题
         self._InfoFilePath = __QS_LibPath__+os.sep+"WindDB2Info.hdf5"# 数据库信息文件路径
         self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"WindDB2Info.xlsx"# 数据库信息源文件路径
-        self._TableInfo, self._FactorInfo = updateInfo(self._InfoFilePath, self._InfoResourcePath)# 数据库表信息, 数据库字段信息
+        self._TableInfo, self._FactorInfo = updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger)# 数据库表信息, 数据库字段信息
         self._PID = None# 保存数据库连接创建时的进程号
         self.Name = "WindDB2"
         return
@@ -2042,7 +2042,7 @@ class WindDB2(FactorDB):
             try:
                 self._Connection.close()
             except Exception as e:
-                print(str(e))
+                self._QS_Logger.warning("因子库 ’%s' 断开错误: %s" % (self.Name, str(e)))
             finally:
                 self._Connection = None
         return 0
@@ -2075,7 +2075,7 @@ class WindDB2(FactorDB):
         if table_name in self._TableInfo.index:
             TableClass = self._TableInfo.loc[table_name, "TableClass"]
             if pd.notnull(TableClass):
-                return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=args)")
+                return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=args, logger=self._QS_Logger)")
         raise __QS_Error__("因子库目前尚不支持表: '%s'" % table_name)
     # -----------------------------------------数据提取---------------------------------
     # 给定起始日期和结束日期, 获取交易所交易日期, 目前支持: "SSE", "SZSE", "SHFE", "DCE", "CZCE", "INE", "CFEEX"

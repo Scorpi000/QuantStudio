@@ -548,7 +548,7 @@ class SQLDB(WritableFactorDB):
             try:
                 self._Connection.close()
             except Exception as e:
-                print(str(e))
+                self._QS_Logger.error("因子库 '%s' 断开错误: %s" % (self.Name, str(e)))
             finally:
                 self._Connection = None
         return 0
@@ -589,9 +589,9 @@ class SQLDB(WritableFactorDB):
     def getTable(self, table_name, args={}):
         if table_name not in self._TableFactorDict: raise __QS_Error__("表 '%s' 不存在!" % table_name)
         if args.get("因子表类型", "宽表")=="宽表":
-            return _WideTable(name=table_name, fdb=self, sys_args=args)
+            return _WideTable(name=table_name, fdb=self, sys_args=args, logger=self._QS_Logger)
         else:
-            return _NarrowTable(name=table_name, fdb=self, sys_args=args)
+            return _NarrowTable(name=table_name, fdb=self, sys_args=args, logger=self._QS_Logger)
     def renameTable(self, old_table_name, new_table_name):
         if old_table_name not in self._TableFactorDict: raise __QS_Error__("表: '%s' 不存在!" % old_table_name)
         if (new_table_name!=old_table_name) and (new_table_name in self._TableFactorDict): raise __QS_Error__("表: '"+new_table_name+"' 已存在!")
@@ -623,7 +623,7 @@ class SQLDB(WritableFactorDB):
         try:
             self.addIndex(table_name+"_index", table_name, index_type=IndexType)
         except Exception as e:
-            print("索引创建失败: "+str(e))
+            self._QS_Logger.warning("因子表 '%s' 索引创建失败: %s" % (table_name, str(e)))
         return 0
     # 增加字段，field_types: {字段名: 数据类型}
     def addField(self, table_name, field_types):
