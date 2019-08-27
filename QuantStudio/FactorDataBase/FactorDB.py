@@ -917,9 +917,10 @@ class CustomFT(FactorTable):
 
 # ---------- 内置的因子运算----------
 # 将运算结果转换成真正的可以存储的因子
-def Factorize(factor_object, factor_name, args={}):
+def Factorize(factor_object, factor_name, args={}, **kwargs):
     factor_object.Name = factor_name
     for iArg, iVal in args.items(): factor_object[iArg] = iVal
+    if "logger" in kwargs: factor_object._QS_Logger = kwargs.logger
     return factor_object
 def _UnitaryOperator(f, idt, iid, x, args):
     Fun = args.get("Fun", None)

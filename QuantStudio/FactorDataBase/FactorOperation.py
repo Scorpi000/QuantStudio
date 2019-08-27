@@ -22,6 +22,7 @@ class DerivativeFactor(Factor):
     def __init__(self, name="", descriptors=[], sys_args={}, **kwargs):
         self._Descriptors = descriptors
         self.UserData = {}
+        if descriptors: kwargs.setdefault("logger", descriptors[0]._QS_Logger)
         return super().__init__(name=name, ft=None, sys_args=sys_args, config_file=None, **kwargs)
     @property
     def Descriptors(self):

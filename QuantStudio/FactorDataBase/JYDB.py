@@ -631,10 +631,11 @@ class _MarketTable(_DBTable):
         for iConditionField in self._ConditionFields:
             iConditionVal = args.get(iConditionField, self[iConditionField])
             if iConditionVal:
+                iConditionVal = iConditionVal.split(",")
                 if _identifyDataType(FactorInfo.loc[iConditionField, "DataType"])=="string":
-                    SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"='"+iConditionVal+"' "
+                    SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+" IN ('"+"','".join(iConditionVal)+"') "
                 else:
-                    SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+"="+iConditionVal+" "
+                    SQLStr += "AND "+self._DBTableName+"."+FactorInfo["DBFieldName"].loc[iConditionField]+" IN ("+",".join(iConditionVal)+") "
         return SQLStr[:-1]
     def getCondition(self, icondition, ids=None, dts=None):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
@@ -2283,7 +2284,7 @@ class JYDB(FactorDB):
         self._AllTables = []# 数据库中的所有表名, 用于查询时解决大小写敏感问题
         self._InfoFilePath = __QS_LibPath__+os.sep+"JYDBInfo.hdf5"# 数据库信息文件路径
         self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"JYDBInfo.xlsx"# 数据库信息源文件路径
-        self._TableInfo, self._FactorInfo, self._ExchangeInfo = _updateInfo(self._InfoFilePath, self._InfoResourcePath)# 数据库表信息, 数据库字段信息
+        self._TableInfo, self._FactorInfo, self._ExchangeInfo = _updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger)# 数据库表信息, 数据库字段信息
         self._PID = None# 保存数据库连接创建时的进程号
         self.Name = "JYDB"
         return
