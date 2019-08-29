@@ -75,6 +75,13 @@ class _DBTable(FactorTable):
         else:
             IDField += "ELSE CONCAT("+self._MainTableName+"."+self._MainTableID+", '"+DefaultSuffix+"') END"
         return IDField
+    def _getSecuMainIDField(self):
+        ExchangeInfo = self._FactorDB._ExchangeInfo
+        IDField = "CASE SecuMarket "
+        for iCode in ExchangeInfo[pd.notnull(ExchangeInfo["Suffix"])].index:
+            IDField += "WHEN "+iCode+" THEN CONCAT(SecuCode, '"+ExchangeInfo.loc[iCode, "Suffix"]+"') "
+        IDField += "ELSE SecuCode END"
+        return IDField
     def _adjustRawDataByRelatedField(self, raw_data, fields):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         RelatedFields = FactorInfo["RelatedSQL"].loc[fields]
@@ -91,11 +98,26 @@ class _DBTable(FactorTable):
             if iSQLStr[0]=="{":
                 iMapInfo = eval(iSQLStr).items()
             else:
-                if iSQLStr.find("{Keys}")==-1:
-                    iMapInfo = self._FactorDB.fetchall(iSQLStr.format(TablePrefix=self._FactorDB.TablePrefix))
+                iStartIdx = iSQLStr.find("{KeyCondition}")
+                if iStartIdx!=-1:
+                    iEndIdx = iSQLStr[iStartIdx:].find(" ")
+                    if iEndIdx==-1: iEndIdx = len(iSQLStr)
+                    iStartIdx += 14
+                    KeyField = iSQLStr[iStartIdx:iEndIdx]
+                    iOldDataType = _identifyDataType(FactorInfo.loc[iField[:-2], "DataType"])
+                    KeyCondition = genSQLInCondition(KeyField, iOldData[pd.notnull(iOldData)].unique().tolist(), is_str=(iOldDataType!="double"))
+                    iSQLStr = iSQLStr[:iStartIdx] + iSQLStr[iEndIdx:]
                 else:
+                    KeyCondition = ""
+                if iSQLStr.find("{Keys}")!=-1:
                     Keys = ", ".join([str(iKey) for iKey in iOldData[pd.notnull(iOldData)].unique()])
-                    iMapInfo = self._FactorDB.fetchall(iSQLStr.format(TablePrefix=self._FactorDB.TablePrefix, Keys=Keys))
+                else:
+                    Keys = ""
+                if iSQLStr.find("{SecuCode}")!=-1:
+                    SecuCode = self._getSecuMainIDField()
+                else:
+                    SecuCode = ""
+                iMapInfo = self._FactorDB.fetchall(iSQLStr.format(TablePrefix=self._FactorDB.TablePrefix, Keys=Keys, KeyCondition=KeyCondition, SecuCode=SecuCode))
             for jVal, jRelatedVal in iMapInfo:
                 if pd.notnull(jVal):
                     iNewData[iOldData==jVal] = jRelatedVal
@@ -795,7 +817,11 @@ class _InfoPublTable(_MarketTable):
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         FactorInfo = fdb._FactorInfo.loc[name]
-        self._AnnDateField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="AnnDate"].iloc[0]# 公告日期
+        self._AnnDateField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="AnnDate"]
+        if self._AnnDateField.shape[0]>0:
+            self._AnnDateField = self._AnnDateField.iloc[0]# 公告日期
+        else:
+            self._AnnDateField = self._DateField
     def getID(self, ifactor_name=None, idt=None, args={}):
         IDField = self._getIDField()
         AnnDateField, EndDateField = self._DBTableName+"."+self._AnnDateField, self._DBTableName+"."+self._DateField
@@ -803,17 +829,26 @@ class _InfoPublTable(_MarketTable):
         SQLStr += "FROM "+self._DBTableName+" "
         SQLStr += "INNER JOIN "+self._MainTableName+" "
         SQLStr += "ON "+self._JoinCondition+" "
-        if idt is not None:
-            SQLStr += "WHERE (CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END)='"+idt.strftime("%Y-%m-%d")+"' "
+        if AnnDateField!=EndDateField:
+            if idt is not None:
+                SQLStr += "WHERE (CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END)='"+idt.strftime("%Y-%m-%d")+"' "
+            else:
+                SQLStr += "WHERE "+AnnDateField+" IS NOT NULL AND "+EndDateField+" IS NOT NULL "
         else:
-            SQLStr += "WHERE "+AnnDateField+" IS NOT NULL AND "+EndDateField+" IS NOT NULL "
+            if idt is not None:
+                SQLStr += "WHERE "+AnnDateField+"='"+idt.strftime("%Y-%m-%d")+"' "
+            else:
+                SQLStr += "WHERE "+AnnDateField+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += self._genConditionSQLStr(args=args)+" "
         SQLStr += "ORDER BY ID"
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         AnnDateField, EndDateField = self._DBTableName+"."+self._AnnDateField, self._DBTableName+"."+self._DateField
-        SQLStr = "SELECT DISTINCT CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END AS DT"
+        if AnnDateField!=EndDateField:
+            SQLStr = "SELECT DISTINCT CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END AS DT"
+        else:
+            SQLStr = "SELECT DISTINCT "+AnnDateField+" AS DT"
         SQLStr += "FROM "+self._DBTableName+" "
         if iid is not None:
             iID = deSuffixID([iid])[0]
@@ -822,12 +857,18 @@ class _InfoPublTable(_MarketTable):
             SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+"='"+iID+"' "
             if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         else: SQLStr += "WHERE "+self._DBTableName+"."+self._IDField+" IS NOT NULL "
-        if start_dt is not None:
-            SQLStr += "AND ("+AnnDateField+">='"+start_dt.strftime("%Y-%m-%d")+"' "
-            SQLStr += "OR "+EndDateField+">='"+start_dt.strftime("%Y-%m-%d")+"') "
-        if end_dt is not None:
-            SQLStr += "AND ("+AnnDateField+"<='"+end_dt.strftime("%Y-%m-%d")+"' "
-            SQLStr += "AND "+EndDateField+"<='"+end_dt.strftime("%Y-%m-%d")+"') "
+        if AnnDateField!=EndDateField:
+            if start_dt is not None:
+                SQLStr += "AND ("+AnnDateField+">='"+start_dt.strftime("%Y-%m-%d")+"' "
+                SQLStr += "OR "+EndDateField+">='"+start_dt.strftime("%Y-%m-%d")+"') "
+            if end_dt is not None:
+                SQLStr += "AND ("+AnnDateField+"<='"+end_dt.strftime("%Y-%m-%d")+"' "
+                SQLStr += "AND "+EndDateField+"<='"+end_dt.strftime("%Y-%m-%d")+"') "
+        else:
+            if start_dt is not None:
+                SQLStr += "AND "+AnnDateField+">='"+start_dt.strftime("%Y-%m-%d")+"' "
+            if end_dt is not None:
+                SQLStr += "AND "+AnnDateField+"<='"+end_dt.strftime("%Y-%m-%d")+"' "
         SQLStr += self._genConditionSQLStr(args=args)+" "
         SQLStr += "ORDER BY DT"
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
@@ -861,7 +902,7 @@ class _InfoPublTable(_MarketTable):
         SQLStr += "AND (CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END=t1.DT)"
         return SQLStr
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        if self.IgnorePublDate: return super().__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args={})
+        if self.IgnorePublDate or (self._AnnDateField==self._DateField): return super().__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args={})
         IDField = self._getIDField()
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         LookBack = args.get("回溯天数", self.LookBack)
