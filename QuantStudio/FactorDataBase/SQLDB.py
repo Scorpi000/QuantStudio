@@ -764,8 +764,7 @@ class SQLDB(WritableFactorDB):
                     else:
                         data[iFactorName] = OldData[iFactorName]
             SQLStr = "REPLACE INTO "+self.TablePrefix+self.InnerPrefix+table_name+" (`datetime`, `code`, "
-        if self.DBType=="sqlite3":
-            data.major_axis = [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in data.major_axis]
+        data.major_axis = [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in data.major_axis]
         NewData = {}
         for iFactorName in data.items:
             iData = data.loc[iFactorName].stack(dropna=False)

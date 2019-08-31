@@ -70,6 +70,9 @@ class __QS_Object__(HasTraits):
     @property
     def Args(self):
         return {iArgName:self[iArgName] for iArgName in self.ArgNames}
+    @property
+    def Logger(self):
+        return self._QS_Logger
     def getViewItems(self, context_name=""):
         Prefix = (context_name+"." if context_name else "")
         Context = ({} if not Prefix else {context_name:self})

@@ -102,11 +102,12 @@ class _DBTable(FactorTable):
                 if iStartIdx!=-1:
                     iEndIdx = iSQLStr[iStartIdx:].find(" ")
                     if iEndIdx==-1: iEndIdx = len(iSQLStr)
+                    else: iEndIdx += iStartIdx
                     iStartIdx += 14
                     KeyField = iSQLStr[iStartIdx:iEndIdx]
                     iOldDataType = _identifyDataType(FactorInfo.loc[iField[:-2], "DataType"])
                     KeyCondition = genSQLInCondition(KeyField, iOldData[pd.notnull(iOldData)].unique().tolist(), is_str=(iOldDataType!="double"))
-                    iSQLStr = iSQLStr[:iStartIdx] + iSQLStr[iEndIdx:]
+                    iSQLStr = iSQLStr.replace("{KeyCondition}"+KeyField, "{KeyCondition}")
                 else:
                     KeyCondition = ""
                 if iSQLStr.find("{Keys}")!=-1:

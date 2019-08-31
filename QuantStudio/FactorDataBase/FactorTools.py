@@ -97,6 +97,14 @@ def _fix(f,idt,iid,x,args):
 def fix(f, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_fix,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
+def _applymap(f,idt,iid,x,args):
+    Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
+    Func = args["OperatorArg"]["func"]
+    return Data.applymap(Func).values
+def applymap(f, func=id, data_type="double", **kwargs):
+    Descriptors,Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"func":func}
+    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_applymap,"参数":Args,"运算时点":"多时点","运算ID":"多ID","数据类型":data_type}, **kwargs)
 def _fetch(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)[0]
     if isinstance(args["OperatorArg"]["pos"], str):
