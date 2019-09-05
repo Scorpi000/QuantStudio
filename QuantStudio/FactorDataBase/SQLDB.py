@@ -57,6 +57,7 @@ class _WideTable(FactorTable):
     FilterCondition = Str("", arg_type="Dict", label="筛选条件", order=3)
     #DTField = Enum("datetime", arg_type="SingleOption", label="时点字段", order=4)
     #IDField = Enum("code", arg_type="SingleOption", label="ID字段", order=5)
+    DT2Str = Bool(False, arg_type="Bool", label="时间转字符串", order=6)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         self._DataType = fdb._TableFactorDict[name]
         self._DBDataType = fdb._TableFieldDataType[name]
@@ -126,6 +127,7 @@ class _WideTable(FactorTable):
     def _genNullIDSQLStr(self, factor_names, ids, end_date, args={}):
         IDField = args.get("ID字段", self.IDField)
         DTField = args.get("时点字段", self.DTField)
+        DT2Str = args.get("时间转字符串", self.DT2Str)
         SubSQLStr = "SELECT "+IDField+", "
         SubSQLStr += "MAX("+DTField+") "
         SubSQLStr += "FROM "+self._DBTableName+" "
@@ -136,7 +138,12 @@ class _WideTable(FactorTable):
         SubSQLStr += "GROUP BY "+IDField
         SQLStr = "SELECT "+DTField+", "
         SQLStr += IDField+", "
-        for iField in factor_names: SQLStr += iField+", "
+        for iField in factor_names:
+            iDBDataType = self._FactorDB._TableFieldDataType[self._Name][iField]
+            if (iDBDataType.lower().find("date")!=-1) and DT2Str:
+                SQLStr += "DATE_FORMAT("+iField+", '%Y-%m-%d %H:%i:%s'), "
+            else:
+                SQLStr += iField+", "
         SQLStr = SQLStr[:-2]+" FROM "+self._DBTableName+" "
         SQLStr += "WHERE ("+IDField+", "+DTField+") IN ("+SubSQLStr+") "
         if FilterStr: SQLStr += "AND "+FilterStr+" "
@@ -146,6 +153,7 @@ class _WideTable(FactorTable):
         IDField = args.get("ID字段", self.IDField)
         DTField = args.get("时点字段", self.DTField)
         LookBack = args.get("回溯天数", self.LookBack)
+        DT2Str = args.get("时间转字符串", self.DT2Str)
         if dts is not None:
             dts = sorted(dts)
             StartDate, EndDate = dts[0].date(), dts[-1].date()
@@ -155,7 +163,12 @@ class _WideTable(FactorTable):
         # 形成 SQL 语句, 时点, ID, 因子数据
         SQLStr = "SELECT "+self._DBTableName+"."+DTField+", "
         SQLStr += self._DBTableName+"."+IDField+", "
-        for iField in factor_names: SQLStr += self._DBTableName+"."+iField+", "
+        for iField in factor_names:
+            iDBDataType = self._FactorDB._TableFieldDataType[self._Name][iField]
+            if (iDBDataType.lower().find("date")!=-1) and DT2Str:
+                SQLStr += "DATE_FORMAT("+self._DBTableName+"."+iField+", '%Y-%m-%d %H:%i:%s'), "
+            else:
+                SQLStr += self._DBTableName+"."+iField+", "
         SQLStr = SQLStr[:-2]+" FROM "+self._DBTableName+" "
         if StartDate is not None:
             SQLStr += "WHERE "+self._DBTableName+"."+DTField+">='"+StartDate.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
@@ -748,9 +761,9 @@ class SQLDB(WritableFactorDB):
                 self._TableFieldDataType[table_name] = self._TableFieldDataType[table_name].append(pd.Series(FieldTypes))
             AllFactorNames = self._TableFactorDict[table_name].index.tolist()
             if self.CheckWriteData:
-                OldData = self.getTable(table_name, args={"因子值类型":"list"}).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
+                OldData = self.getTable(table_name, args={"因子值类型":"list", "时间转字符串":True}).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
             else:
-                OldData = self.getTable(table_name).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
+                OldData = self.getTable(table_name, args={"时间转字符串":True}).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
             if if_exists=="append":
                 for iFactorName in AllFactorNames:
                     if iFactorName in data:
