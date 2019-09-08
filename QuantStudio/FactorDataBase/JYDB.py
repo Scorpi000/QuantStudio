@@ -93,7 +93,7 @@ class _DBTable(FactorTable):
             if iDataType=="double":
                 iNewData = pd.Series(np.nan, index=raw_data.index, dtype="float")
             else:
-                iNewData = pd.Series(None, index=raw_data.index, dtype="O")
+                iNewData = pd.Series(np.full(shape=(raw_data.shape[0], ), fill_value=None, dtype="O"), index=raw_data.index, dtype="O")
             iSQLStr = FactorInfo.loc[iField, "RelatedSQL"]
             if iSQLStr[0]=="{":
                 iMapInfo = eval(iSQLStr).items()
@@ -2127,6 +2127,7 @@ class _DividendTable(_DBTable):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
         FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self.DateField]+self._ConditionFields+factor_names]
+        FieldDict = FieldDict.drop_duplicates()
         # 形成SQL语句, 日期, ID, 因子数据
         SQLStr = "SELECT "+self._DBTableName+"."+FieldDict[self.DateField]+", "
         SQLStr += IDField+" AS ID, "
