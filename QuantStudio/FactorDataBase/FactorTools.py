@@ -316,6 +316,15 @@ def rolling_sum(f, window, min_periods=1, win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
     return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_sum,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
+def _rolling_prod(f,idt,iid,x,args):
+    Data = _genOperatorData(f,idt,iid,x,args)[0]
+    Rslt = np.nanprod(Data, axis=0)
+    Rslt[np.sum(pd.notnull(Data), axis=0)<args["OperatorArg"]["min_periods"]] = np.nan
+    return Rslt
+def rolling_prod(f, window, min_periods=1, **kwargs):
+    Descriptors,Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"window":window,"min_periods":min_periods}
+    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_prod,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"单时点","运算ID":"多ID"}, **kwargs)
 def _rolling_std(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     OperatorArg = args["OperatorArg"].copy()

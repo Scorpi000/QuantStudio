@@ -175,7 +175,7 @@ class _DBTable(FactorTable):
                                  "Description":self.getFactorMetaData(factor_names, key="Description")})
         else:
             return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
-    def _adjustDataDTID(self, data, look_back, factor_names, ids, dts):
+    def _adjustDataDTID(self, data, look_back, factor_names, ids, dts, only_start_lookback=False):
         if look_back==0:
             try:
                 return data.loc[:, dts, ids]
@@ -183,15 +183,22 @@ class _DBTable(FactorTable):
                 self._QS_Logger.warning("待提取的因子数据超出了因子表 '%s' 原始数据的时点或 ID 范围, 将填充缺失值!" % self.Name)
                 return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         AllDTs = data.major_axis.union(dts).sort_values()
-        data = data.loc[:, AllDTs, ids]
+        AdjData = data.loc[:, AllDTs, ids]
+        if only_start_lookback:
+            AllAdjData = AdjData
+            AdjData = AllAdjData.loc[:, :dts[0], :]
         if np.isinf(look_back):
-            for i, iFactorName in enumerate(data.items): data.iloc[i].fillna(method="pad", inplace=True)
+            for i, iFactorName in enumerate(AdjData.items): AdjData.iloc[i].fillna(method="pad", inplace=True)
         else:
             Limits = look_back*24.0*3600
-            data = dict(data)
-            for iFactorName in data: data[iFactorName] = fillNaByLookback(data[iFactorName], lookback=Limits)
-            data = pd.Panel(data).loc[factor_names]
-        return data.loc[:, dts]
+            AdjData = dict(AdjData)
+            for iFactorName in AdjData: AdjData[iFactorName] = fillNaByLookback(AdjData[iFactorName], lookback=Limits)
+            AdjData = pd.Panel(AdjData).loc[factor_names]
+        if only_start_lookback:
+            AllAdjData.loc[:, dts[0], :] = AdjData.loc[:, dts[0], :]
+            return AllAdjData.loc[:, dts]
+        else:
+            return AdjData.loc[:, dts]
 
 
 class _FeatureTable(_DBTable):
@@ -648,6 +655,7 @@ class _ConstituentTable(_DBTable):
 class _MarketTable(_DBTable):
     """行情因子表"""
     LookBack = Float(0, arg_type="Integer", label="回溯天数", order=0)
+    OnlyStartLookBack = Bool(False, label="只起始日回溯", arg_type="Bool", order=1)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         self._DBTableName = fdb.TablePrefix + fdb._TableInfo.loc[name, "DBTableName"]
         FactorInfo = fdb._FactorInfo.loc[name]
@@ -674,7 +682,7 @@ class _MarketTable(_DBTable):
         super().__QS_initArgs__()
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         for i, iCondition in enumerate(self._ConditionFields):
-            self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+3))
+            self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+5))
             iConditionVal = FactorInfo.loc[iCondition, "Supplementary"]
             if pd.notnull(iConditionVal): self[iCondition] = str(iConditionVal)
     @property
@@ -847,7 +855,7 @@ class _MarketTable(_DBTable):
             Data[iFactorName] = iRawData
         Data = pd.Panel(Data).loc[factor_names]
         LookBack = args.get("回溯天数", self.LookBack)
-        return self._adjustDataDTID(Data, LookBack, factor_names, ids, dts)
+        return self._adjustDataDTID(Data, LookBack, factor_names, ids, dts, args.get("只起始日回溯", self.OnlyStartLookBack))
 # 信息发布表, 表结构特征:
 # 公告日期, 表示信息发布的时点;
 # 截止日期, 表示信息有效的时点;
@@ -859,8 +867,9 @@ class _MarketTable(_DBTable):
 class _InfoPublTable(_MarketTable):
     """信息发布表"""
     LookBack = Float(0, arg_type="Integer", label="回溯天数", order=0)
-    IgnorePublDate = Bool(False, label="忽略公告日", arg_type="Bool", order=1)
-    IgnoreTime = Bool(True, label="忽略时间", arg_type="Bool", order=2)
+    OnlyStartLookBack = Bool(False, label="只起始日回溯", arg_type="Bool", order=1)
+    IgnorePublDate = Bool(False, label="忽略公告日", arg_type="Bool", order=2)
+    IgnoreTime = Bool(True, label="忽略时间", arg_type="Bool", order=3)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         FactorInfo = fdb._FactorInfo.loc[name]
@@ -1043,9 +1052,10 @@ class _InfoPublTable(_MarketTable):
 class _MultiInfoPublTable(_InfoPublTable):
     """多重信息发布表"""
     LookBack = Float(0, arg_type="Integer", label="回溯天数", order=0)
-    IgnorePublDate = Bool(False, label="忽略公告日", arg_type="Bool", order=1)
-    IgnoreTime = Bool(True, label="忽略时间", arg_type="Bool", order=2)
-    Operator = Function(lambda x: x.tolist(), arg_type="Function", label="算子", order=3)
+    OnlyStartLookBack = Bool(False, label="只起始日回溯", arg_type="Bool", order=1)
+    IgnorePublDate = Bool(False, label="忽略公告日", arg_type="Bool", order=2)
+    IgnoreTime = Bool(True, label="忽略时间", arg_type="Bool", order=3)
+    Operator = Function(lambda x: x.tolist(), arg_type="Function", label="算子", order=4)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         FactorInfo = fdb._FactorInfo.loc[name]
@@ -1065,7 +1075,7 @@ class _MultiInfoPublTable(_InfoPublTable):
             Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
         Data = pd.Panel(Data).loc[factor_names, :, ids]
         LookBack = args.get("回溯天数", self.LookBack)
-        return self._adjustDataDTID(Data, LookBack, factor_names, ids, dts)
+        return self._adjustDataDTID(Data, LookBack, factor_names, ids, dts, args.get("只起始日回溯", self.OnlyStartLookBack))
 
 def RollBackNPeriod(report_date, n_period):
     Date = report_date
