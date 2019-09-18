@@ -638,7 +638,7 @@ def calcHMModel(wealth_seq, market_wealth_seq, risk_free_rate=0.0):
     Y = calcYieldSeq(wealth_seq)-risk_free_rate
     X = np.ones((Y.shape[0],3))
     X[:,1] = calcYieldSeq(market_wealth_seq)-risk_free_rate
-    X[:,2] = X[:,1]*(X[:,1]>0)
+    X[:,2] = X[:,1]**2*(X[:,1]>0)
     Rslt = sm.OLS(Y,X,missing='drop').fit()
     return Rslt.params
 # C-L 模型, 评价择时能力和选股能力

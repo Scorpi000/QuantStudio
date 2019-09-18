@@ -1100,11 +1100,10 @@ def _disaggregate(f,idt,iid,x,args):
 def disaggregate(f, aggr_ids, cat_data=None, disaggr_ids=None, **kwargs):# 将聚合因子分解成为普通因子
     if (len(aggr_ids)>1) and (cat_data is None): raise __QS_Error__("解聚合算子 disaggregate: 缺少类别因子!")
     Factors = [f]
-    DescriptorIDs = [aggr_ids]
     if cat_data is not None:
         Factors.append(cat_data)
-        DescriptorIDs.append(disaggr_ids)
     Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
+    DescriptorIDs = [aggr_ids] * Args.get("SepInd1", 0) + [disaggr_ids] * (len(Descriptors) - Args.get("SepInd1", 0))
     Args["OperatorArg"] = {"aggr_ids":aggr_ids, "CatData":(cat_data is not None)}
     FactorName = kwargs.pop("factor_name", str(uuid.uuid1()))
     return SectionOperation(FactorName, Descriptors, {"算子":_disaggregate, "参数":Args, "运算时点":"多时点", "描述子截面":DescriptorIDs}, **kwargs)
