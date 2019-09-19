@@ -143,15 +143,28 @@ class _DBTable(FactorTable):
         return raw_data
     def _genFieldSQLStr(self, factor_names):
         FactorInfo = self._FactorDB._FactorInfo.loc[self._Name]
-        SETable = False
         SQLStr = ""
+        JoinStr = []
+        SETables = set()
         for iField in factor_names:
-            if FactorInfo.loc[iField, "Supplementary"]=="从表":
-                SQLStr += self._DBTableName+"_SE.Code, "
-                SETable = True
+            iInfo = FactorInfo.loc[iField, "Supplementary"]
+            if isinstance(iInfo, str) and (iInfo.find("从表")!=-1):
+                iInfo = iInfo.split(":")
+                if len(iInfo)==1:
+                    iSETable = self._DBTableName+"_SE"
+                    SQLStr += iSETable+".Code, "
+                    if iSETable not in SETables:
+                        JoinStr.append("LEFT JOIN "+iSETable+" ON "+self._DBTableName+".ID="+iSETable+".ID AND "+iSETable+".TypeCode=1")
+                        SETables.add(iSETable)
+                else:
+                    iSETable, iJoinField = iInfo[-1].split(".")
+                    SQLStr += iSETable+"."+FactorInfo.loc[iField, "DBFieldName"]+", "
+                    if iSETable not in SETables:
+                        JoinStr.append("LEFT JOIN "+iSETable+" ON "+self._DBTableName+".ID="+iSETable+"."+iJoinField)
+                        SETables.add(iSETable)
             else:
                 SQLStr += self._DBTableName+"."+FactorInfo.loc[iField, "DBFieldName"]+", "
-        return (SQLStr[:-2], SETable)
+        return (SQLStr[:-2], JoinStr)
     def _genConditionSQLStr(self, args={}):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         SQLStr = ""
@@ -252,11 +265,9 @@ class _FeatureTable(_DBTable):
         IDField = self._getIDField()
         # 形成SQL语句, ID, 因子数据
         SQLStr = "SELECT "+IDField+" AS ID, "
-        FieldSQLStr, SETable = self._genFieldSQLStr(factor_names)
+        FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" FROM "+self._DBTableName+" "
-        if SETable:
-            SQLStr += "LEFT JOIN "+self._DBTableName+"_SE ON "+self._DBTableName+".ID="+self._DBTableName+"_SE.ID "
-            SQLStr += "AND "+self._DBTableName+"_SE.TypeCode=1 "
+        for iJoinStr in SETableJoinStr: SQLStr += iJoinStr+" "
         ids = deSuffixID(ids)
         if self._MainTableName==self._DBTableName:
             SQLStr += "WHERE ("+genSQLInCondition(self._DBTableName+"."+self._IDField, ids, is_str=self._IDFieldIsStr, max_num=1000)+") "
@@ -399,11 +410,9 @@ class _MappingTable(_DBTable):
         SQLStr = "SELECT "+IDField+" AS ID, "
         SQLStr += self._DBTableName+"."+self._StartDateField+", "
         SQLStr += self._DBTableName+"."+self._EndDateField+", "
-        FieldSQLStr, SETable = self._genFieldSQLStr(factor_names)
+        FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" FROM "+self._DBTableName+" "
-        if SETable:
-            SQLStr += "LEFT JOIN "+self._DBTableName+"_SE ON "+self._DBTableName+".ID="+self._DBTableName+"_SE.ID "
-            SQLStr += "AND "+self._DBTableName+"_SE.TypeCode=1 "
+        for iJoinStr in SETableJoinStr: SQLStr += iJoinStr+" "
         SQLStr += "INNER JOIN "+self._MainTableName+" "
         SQLStr += "ON "+self._JoinCondition+" "
         ids = deSuffixID(ids)
@@ -793,11 +802,9 @@ class _MarketTable(_DBTable):
         SubSQLStr += "GROUP BY "+self._MainTableName+"."+self._MainTableID
         SQLStr = "SELECT "+DateField+", "
         SQLStr += IDField+" AS ID, "
-        FieldSQLStr, SETable = self._genFieldSQLStr(factor_names)
+        FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" FROM "+self._DBTableName+" "
-        if SETable:
-            SQLStr += "LEFT JOIN "+self._DBTableName+"_SE ON "+self._DBTableName+".ID="+self._DBTableName+"_SE.ID "
-            SQLStr += "AND "+self._DBTableName+"_SE.TypeCode=1 "
+        for iJoinStr in SETableJoinStr: SQLStr += iJoinStr+" "
         if self._DBTableName!=self._MainTableName:
             SQLStr += "INNER JOIN "+self._MainTableName+" "
             SQLStr += "ON "+self._JoinCondition+" "
@@ -811,11 +818,9 @@ class _MarketTable(_DBTable):
         # 形成SQL语句, 日期, ID, 因子数据
         SQLStr = "SELECT "+DateField+", "
         SQLStr += IDField+" AS ID, "
-        FieldSQLStr, SETable = self._genFieldSQLStr(factor_names)
+        FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" FROM "+self._DBTableName+" "
-        if SETable:
-            SQLStr += "LEFT JOIN "+self._DBTableName+"_SE ON "+self._DBTableName+".ID="+self._DBTableName+"_SE.ID "
-            SQLStr += "AND "+self._DBTableName+"_SE.TypeCode=1 "
+        for iJoinStr in SETableJoinStr: SQLStr += iJoinStr+" "
         if self._DBTableName!=self._MainTableName:
             SQLStr += "INNER JOIN "+self._MainTableName+" "
             SQLStr += "ON "+self._JoinCondition+" "
@@ -984,11 +989,9 @@ class _InfoPublTable(_MarketTable):
         SubSQLStr1 += "FROM ("+SubSQLStr+") t GROUP BY t."+self._IDField
         SQLStr = "SELECT t1.DT, "
         SQLStr += "t1.ID, "
-        FieldSQLStr, SETable = self._genFieldSQLStr(factor_names)
+        FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" FROM "+self._DBTableName+" "
-        if SETable:
-            SQLStr += "LEFT JOIN "+self._DBTableName+"_SE ON "+self._DBTableName+".ID="+self._DBTableName+"_SE.ID "
-            SQLStr += "AND "+self._DBTableName+"_SE.TypeCode=1 "
+        for iJoinStr in SETableJoinStr: SQLStr += iJoinStr+" "
         SQLStr += "INNER JOIN ("+SubSQLStr1+") t1 "
         SQLStr += "ON (t1."+self._IDField+"="+self._DBTableName+"."+self._IDField+") "
         SQLStr += "AND (CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END=t1.DT)"
@@ -1029,11 +1032,9 @@ class _InfoPublTable(_MarketTable):
         else:
             SQLStr = "SELECT CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END AS DT, "
         SQLStr += "t.ID, "
-        FieldSQLStr, SETable = self._genFieldSQLStr(factor_names)
+        FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" FROM "+self._DBTableName+" "
-        if SETable:
-            SQLStr += "LEFT JOIN "+self._DBTableName+"_SE ON "+self._DBTableName+".ID="+self._DBTableName+"_SE.ID "
-            SQLStr += "AND "+self._DBTableName+"_SE.TypeCode=1 "
+        for iJoinStr in SETableJoinStr: SQLStr += iJoinStr+" "
         SQLStr += "INNER JOIN ("+SubSQLStr+") t "
         SQLStr += "ON (t."+self._IDField+"="+self._DBTableName+"."+self._IDField+") "
         SQLStr += "AND (t.MaxEndDate="+EndDateField+") "
