@@ -13,7 +13,8 @@ from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.FileFun import getShelveFileSuffix
-from QuantStudio import __QS_Object__, __QS_Error__, __QS_LibPath__, __QS_MainPath__, __QS_ConfigPath__
+from QuantStudio.Tools.QSObjects import QSSQLObject
+from QuantStudio import __QS_Error__, __QS_LibPath__, __QS_MainPath__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
 from QuantStudio.FactorDataBase.FDBFun import adjustDateTime
 
@@ -205,7 +206,7 @@ class _DBTable(FactorTable):
                                  "Description":self.getFactorMetaData(factor_names, key="Description")})
         else:
             return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
-    def _adjustDataDTID(self, data, look_back, factor_names, ids, dts, only_start_lookback=False):
+    def _adjustDataDTID(self, data, look_back, factor_names, ids, dts, only_start_lookback=False, only_lookback_nontarget=False):
         if look_back==0:
             try:
                 return data.loc[:, dts, ids]
@@ -214,13 +215,28 @@ class _DBTable(FactorTable):
                 return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         AllDTs = data.major_axis.union(dts).sort_values()
         AdjData = data.loc[:, AllDTs, ids]
-        if only_start_lookback:
+        if only_start_lookback:# 只在起始时点回溯填充缺失
             AllAdjData = AdjData
             AdjData = AllAdjData.loc[:, :dts[0], :]
-        if np.isinf(look_back):
-            for i, iFactorName in enumerate(AdjData.items): AdjData.iloc[i].fillna(method="pad", inplace=True)
+            TargetDTs = dts[:1]
+        else:
+            TargetDTs = dts
+        if only_lookback_nontarget:# 只用非目标时间序列的数据回溯填充
+            Mask = pd.Series(np.full(shape=(AdjData.shape[1], ), fill_value=False, dtype=np.bool), index=AdjData.major_axis)
+            Mask[TargetDTs] = True
+            FillMask = Mask.copy()
+            FillMask[Mask.astype("int").diff()!=1] = False
+            TimeDelta = pd.Series(np.r_[0, np.diff(Mask.index.values) / np.timedelta64(1, "D")], index=Mask.index)
+            TimeDelta[(Mask & (~FillMask)) | (Mask.astype("int").diff()==-1)] = 0
+            TimeDelta = TimeDelta.cumsum().loc[TargetDTs].diff().fillna(value=0)
+            Limits = pd.DataFrame(0, index=AdjData.major_axis, columns=AdjData.minor_axis)
+            Limits.loc[TargetDTs, :] = np.minimum(TimeDelta.values, look_back).reshape((TimeDelta.shape[0], 1)).repeat(Limits.shape[1], axis=1)
+            Limits = Limits*24.0*3600
         else:
             Limits = look_back*24.0*3600
+        if np.isinf(look_back) and (not only_lookback_nontarget):
+            for i, iFactorName in enumerate(AdjData.items): AdjData.iloc[i].fillna(method="pad", inplace=True)
+        else:
             AdjData = dict(AdjData)
             for iFactorName in AdjData: AdjData[iFactorName] = fillNaByLookback(AdjData[iFactorName], lookback=Limits)
             AdjData = pd.Panel(AdjData).loc[factor_names]
@@ -668,7 +684,8 @@ class _MarketTable(_DBTable):
     """行情因子表"""
     LookBack = Float(0, arg_type="Integer", label="回溯天数", order=0)
     OnlyStartLookBack = Bool(False, label="只起始日回溯", arg_type="Bool", order=1)
-    #DateField = Enum(None, arg_type="SingleOption", label="日期字段", order=2)
+    OnlyLookBackNontarget = Bool(False, label="只回溯非目标日", arg_type="Bool", order=2)
+    #DateField = Enum(None, arg_type="SingleOption", label="日期字段", order=3)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         self._DBTableName = fdb.TablePrefix + fdb._TableInfo.loc[name, "DBTableName"]
         FactorInfo = fdb._FactorInfo.loc[name]
@@ -695,7 +712,7 @@ class _MarketTable(_DBTable):
         super().__QS_initArgs__()
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         DateFields = FactorInfo[FactorInfo["FieldType"]=="Date"].index.tolist()# 所有的日期字段列表
-        self.add_trait("DateField", Enum(*DateFields, arg_type="SingleOption", label="日期字段", order=2))
+        self.add_trait("DateField", Enum(*DateFields, arg_type="SingleOption", label="日期字段", order=3))
         iFactorInfo = FactorInfo[(FactorInfo["FieldType"]=="Date") & pd.notnull(FactorInfo["Supplementary"])]
         iFactorInfo = iFactorInfo[iFactorInfo["Supplementary"].str.contains("Default")]
         if iFactorInfo.shape[0]>0: self.DateField = iFactorInfo.index[0]
@@ -862,7 +879,7 @@ class _MarketTable(_DBTable):
             Data[iFactorName] = iRawData
         Data = pd.Panel(Data).loc[factor_names]
         LookBack = args.get("回溯天数", self.LookBack)
-        return self._adjustDataDTID(Data, LookBack, factor_names, ids, dts, args.get("只起始日回溯", self.OnlyStartLookBack))
+        return self._adjustDataDTID(Data, LookBack, factor_names, ids, dts, args.get("只起始日回溯", self.OnlyStartLookBack), args.get("只回溯非目标日", self.OnlyLookBackNontarget))
 
 
 # 信息发布表, 表结构特征:
@@ -877,9 +894,10 @@ class _InfoPublTable(_MarketTable):
     """信息发布表"""
     LookBack = Float(0, arg_type="Integer", label="回溯天数", order=0)
     OnlyStartLookBack = Bool(False, label="只起始日回溯", arg_type="Bool", order=1)
-    #DateField = Enum(None, arg_type="SingleOption", label="日期字段", order=2)
-    IgnorePublDate = Bool(False, label="忽略公告日", arg_type="Bool", order=3)
-    IgnoreTime = Bool(True, label="忽略时间", arg_type="Bool", order=4)
+    OnlyLookBackNontarget = Bool(False, label="只回溯非目标日", arg_type="Bool", order=2)
+    #DateField = Enum(None, arg_type="SingleOption", label="日期字段", order=3)
+    IgnorePublDate = Bool(False, label="忽略公告日", arg_type="Bool", order=4)
+    IgnoreTime = Bool(True, label="忽略时间", arg_type="Bool", order=5)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         FactorInfo = fdb._FactorInfo.loc[name]
@@ -1068,10 +1086,11 @@ class _MultiInfoPublTable(_InfoPublTable):
     """多重信息发布表"""
     LookBack = Float(0, arg_type="Integer", label="回溯天数", order=0)
     OnlyStartLookBack = Bool(False, label="只起始日回溯", arg_type="Bool", order=1)
-    #DateField = Enum(None, arg_type="SingleOption", label="日期字段", order=2)
-    IgnorePublDate = Bool(False, label="忽略公告日", arg_type="Bool", order=3)
-    IgnoreTime = Bool(True, label="忽略时间", arg_type="Bool", order=4)
-    Operator = Function(lambda x: x.tolist(), arg_type="Function", label="算子", order=5)
+    OnlyLookBackNontarget = Bool(False, label="只回溯非目标日", arg_type="Bool", order=2)
+    #DateField = Enum(None, arg_type="SingleOption", label="日期字段", order=3)
+    IgnorePublDate = Bool(False, label="忽略公告日", arg_type="Bool", order=4)
+    IgnoreTime = Bool(True, label="忽略时间", arg_type="Bool", order=5)
+    Operator = Either(Function(None), None, arg_type="Function", label="算子", order=6)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         FactorInfo = fdb._FactorInfo.loc[name]
@@ -1091,7 +1110,7 @@ class _MultiInfoPublTable(_InfoPublTable):
             Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
         Data = pd.Panel(Data).loc[factor_names, :, ids]
         LookBack = args.get("回溯天数", self.LookBack)
-        return self._adjustDataDTID(Data, LookBack, factor_names, ids, dts, args.get("只起始日回溯", self.OnlyStartLookBack))
+        return self._adjustDataDTID(Data, LookBack, factor_names, ids, dts, args.get("只起始日回溯", self.OnlyStartLookBack), args.get("只回溯非目标日", self.OnlyLookBackNontarget))
 
 
 # 窄因子表

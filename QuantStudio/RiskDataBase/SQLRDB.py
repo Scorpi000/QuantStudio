@@ -107,6 +107,9 @@ class SQLRDB(QSSQLObject, RiskDB):
         except Exception as e:
             self._QS_Logger.warning("风险表 '%s' 索引创建失败: %s" % (table_name, str(e)))
         return 0
+    def addIndex(self, index_name, table_name, fields, index_type="BTREE"):
+        SQLStr = "CREATE INDEX "+index_name+" USING "+index_type+" ON "+self.TablePrefix+table_name+"("+", ".join(fields)+")"
+        return self.execute(SQLStr)
     def writeData(self, table_name, idt, icov):
         DBTableName = self.TablePrefix+self._Prefix+table_name
         SQLStr = "INSERT INTO "+DBTableName+" (`DateTime`, `Cov`) VALUES ("+", ".join([("?" if self.Connector=="pyodbc" else "%s")]*2)+")"
@@ -310,6 +313,9 @@ class SQLFRDB(QSSQLObject, FactorRDB):
         except Exception as e:
             self._QS_Logger.warning("风险表 '%s' 索引创建失败: %s" % (table_name, str(e)))
         return 0
+    def addIndex(self, index_name, table_name, fields, index_type="BTREE"):
+        SQLStr = "CREATE INDEX "+index_name+" USING "+index_type+" ON "+self.TablePrefix+table_name+"("+", ".join(fields)+")"
+        return self.execute(SQLStr)
     def writeData(self, table_name, idt, factor_data=None, factor_cov=None, specific_risk=None, factor_ret=None, specific_ret=None, **kwargs):
         if table_name not in self._TableAdditionalCols: self.createTable(table_name)
         DBTableName = self.TablePrefix+self._Prefix+table_name
