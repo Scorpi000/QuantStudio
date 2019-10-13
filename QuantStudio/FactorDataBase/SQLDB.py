@@ -12,6 +12,7 @@ from traits.api import Enum, Str, Range, Password, File, Float, Bool, ListStr, o
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
+from QuantStudio.Tools.QSObjects import QSSQLObject
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
 
@@ -75,8 +76,8 @@ class _WideTable(FactorTable):
         return self._DataType.index.tolist()+["datetime", "code"]
     def getFactorMetaData(self, factor_names=None, key=None):
         if factor_names is None: factor_names = self.FactorNames
-        if key=="DataType": return self._DataType.loc[factor_names]
-        if key is None: return pd.DataFrame(self._DataType.loc[factor_names], columns=["DataType"])
+        if key=="DataType": return self._DataType.append(pd.Series(["string", "string"], index=["datetime","code"])).loc[factor_names]
+        if key is None: return pd.DataFrame(self._DataType.append(pd.Series(["string", "string"], index=["datetime","code"])).loc[factor_names], columns=["DataType"])
         else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
     def getID(self, ifactor_name=None, idt=None, args={}):
         IDField = args.get("ID字段", self.IDField)
@@ -106,6 +107,7 @@ class _WideTable(FactorTable):
         ArgNames = self.ArgNames
         ArgNames.remove("回溯天数")
         ArgNames.remove("因子值类型")
+        ArgNames.remove("遍历模式")
         for iFactor in factors:
             iArgConditions = (";".join([iArgName+":"+str(iFactor[iArgName]) for iArgName in ArgNames]))
             if iArgConditions not in ArgConditionGroup:
@@ -139,8 +141,10 @@ class _WideTable(FactorTable):
         SQLStr = "SELECT "+DTField+", "
         SQLStr += IDField+", "
         for iField in factor_names:
-            iDBDataType = self._FactorDB._TableFieldDataType[self._Name][iField]
-            if (iDBDataType.lower().find("date")!=-1) and DT2Str:
+            if iField=="datetime": iDBDataType = "datetime"
+            elif iField=="code": iDBDataType = "varchar(40)"
+            else: iDBDataType = self._FactorDB._TableFieldDataType[self._Name][iField]            
+            if DT2Str and (iDBDataType.lower().find("date")!=-1):
                 SQLStr += "DATE_FORMAT("+iField+", '%Y-%m-%d %H:%i:%s'), "
             else:
                 SQLStr += iField+", "
@@ -164,8 +168,10 @@ class _WideTable(FactorTable):
         SQLStr = "SELECT "+self._DBTableName+"."+DTField+", "
         SQLStr += self._DBTableName+"."+IDField+", "
         for iField in factor_names:
-            iDBDataType = self._FactorDB._TableFieldDataType[self._Name][iField]
-            if (iDBDataType.lower().find("date")!=-1) and DT2Str:
+            if iField=="datetime": iDBDataType = "datetime"
+            elif iField=="code": iDBDataType = "varchar(40)"
+            else: iDBDataType = self._FactorDB._TableFieldDataType[self._Name][iField]
+            if DT2Str and (iDBDataType.lower().find("date")!=-1):
                 SQLStr += "DATE_FORMAT("+self._DBTableName+"."+iField+", '%Y-%m-%d %H:%i:%s'), "
             else:
                 SQLStr += self._DBTableName+"."+iField+", "
@@ -432,89 +438,19 @@ class _NarrowTable(FactorTable):
         return _adjustData(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts)
 
 
-class SQLDB(WritableFactorDB):
+class SQLDB(QSSQLObject, WritableFactorDB):
     """SQLDB"""
-    DBType = Enum("MySQL", "SQL Server", "Oracle", "sqlite3", arg_type="SingleOption", label="数据库类型", order=0)
-    DBName = Str("Scorpion", arg_type="String", label="数据库名", order=1)
-    IPAddr = Str("127.0.0.1", arg_type="String", label="IP地址", order=2)
-    Port = Range(low=0, high=65535, value=3306, arg_type="Integer", label="端口", order=3)
-    User = Str("root", arg_type="String", label="用户名", order=4)
-    Pwd = Password("", arg_type="String", label="密码", order=5)
-    TablePrefix = Str("", arg_type="String", label="表名前缀", order=6)
-    CharSet = Enum("utf8", "gbk", "gb2312", "gb18030", "cp936", "big5", arg_type="SingleOption", label="字符集", order=7)
-    Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pymysql", "sqlite3", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
-    DSN = Str("", arg_type="String", label="数据源", order=9)
-    SQLite3File = File(label="sqlite3文件", arg_type="File", order=10)
-    CheckWriteData = Bool(False, arg_type="Bool", label="检查写入值", order=11)
-    IgnoreFields = ListStr(arg_type="List", label="忽略字段", order=12)
-    InnerPrefix = Str("qs_", arg_type="String", label="内部前缀", order=13)
+    CheckWriteData = Bool(False, arg_type="Bool", label="检查写入值", order=100)
+    IgnoreFields = ListStr(arg_type="List", label="忽略字段", order=101)
+    InnerPrefix = Str("qs_", arg_type="String", label="内部前缀", order=102)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
-        self._Connection = None# 数据库链接
-        self._Connector = None# 实际使用的数据库链接器
-        self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
-        self._TableFieldDataType = {}# {表名: pd.Series(数据库数据类型, index=[因子名])}
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"SQLDBConfig.json" if config_file is None else config_file), **kwargs)
-        self._PID = None# 保存数据库连接创建时的进程号
+        self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
+        self._TableFieldDataType = {}# {表名: pd.Series(        数据库数据类型, index=[因子名])}
         self.Name = "SQLDB"
         return
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        state["_Connection"] = (True if self.isAvailable() else False)
-        return state
-    def __setstate__(self, state):
-        super().__setstate__(state)
-        if self._Connection: self._connect()
-        else: self._Connection = None
-    # -------------------------------------------数据库相关---------------------------
-    def _connect(self):
-        self._Connection = None
-        if (self.Connector=="cx_Oracle") or ((self.Connector=="default") and (self.DBType=="Oracle")):
-            try:
-                import cx_Oracle
-                self._Connection = cx_Oracle.connect(self.User, self.Pwd, cx_Oracle.makedsn(self.IPAddr, str(self.Port), self.DBName))
-            except Exception as e:
-                if self.Connector!="default": raise e
-            else:
-                self._Connector = "cx_Oracle"
-        elif (self.Connector=="pymssql") or ((self.Connector=="default") and (self.DBType=="SQL Server")):
-            try:
-                import pymssql
-                self._Connection = pymssql.connect(server=self.IPAddr, port=str(self.Port), user=self.User, password=self.Pwd, database=self.DBName, charset=self.CharSet)
-            except Exception as e:
-                if self.Connector!="default": raise e
-            else:
-                self._Connector = "pymssql"
-        elif (self.Connector=="mysql.connector") or ((self.Connector=="default") and (self.DBType=="MySQL")):
-            try:
-                import mysql.connector
-                self._Connection = mysql.connector.connect(host=self.IPAddr, port=str(self.Port), user=self.User, password=self.Pwd, database=self.DBName, charset=self.CharSet, autocommit=True)
-            except Exception as e:
-                if self.Connector!="default": raise e
-            else:
-                self._Connector = "mysql.connector"
-        elif self.Connector=='pymysql':
-            try:
-                import pymysql
-                self._Connection = pymysql.connect(host=self.IPAddr, port=self.Port, user=self.User, password=self.Pwd, db=self.DBName, charset=self.CharSet)
-            except Exception as e:
-                if self.Connector!='default': raise e
-        elif (self.Connector=="sqlite3") or ((self.Connector=="default") and (self.DBType=="sqlite3")):
-            import sqlite3
-            self._Connection = sqlite3.connect(self.SQLite3File)
-            self._Connector = "sqlite3"
-        if self._Connection is None:
-            if self.Connector not in ("default", "pyodbc"):
-                self._Connection = None
-                raise __QS_Error__("不支持该连接器(connector) : "+self.Connector)
-            else:
-                import pyodbc
-                if self.DSN: self._Connection = pyodbc.connect("DSN=%s;PWD=%s" % (self.DSN, self.Pwd))
-                else: self._Connection = pyodbc.connect("DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s" % (self.DBType, self.DBName, self.IPAddr+","+str(self.Port), self.User, self.Pwd))
-                self._Connector = "pyodbc"
-        self._PID = os.getpid()
-        return 0
     def connect(self):
-        self._connect()
+        super().connect()
         nPrefix = len(self.InnerPrefix)
         if self._Connector=="sqlite3":
             SQLStr = "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%s%%' ORDER BY name"
@@ -556,140 +492,69 @@ class SQLDB(WritableFactorDB):
                 self._TableFactorDict = {iTable[nPrefix:]:self._TableFactorDict.loc[iTable] for iTable in self._TableFactorDict.index.levels[0]}
                 self._TableFieldDataType = {iTable[nPrefix:]:self._TableFieldDataType.loc[iTable] for iTable in self._TableFieldDataType.index.levels[0]}
         return 0
-    def disconnect(self):
-        if self._Connection is not None:
-            try:
-                self._Connection.close()
-            except Exception as e:
-                self._QS_Logger.error("因子库 '%s' 断开错误: %s" % (self.Name, str(e)))
-            finally:
-                self._Connection = None
-        return 0
-    def isAvailable(self):
-        return (self._Connection is not None)
-    def cursor(self, sql_str=None):
-        if self._Connection is None: raise __QS_Error__("%s尚未连接!" % self.__doc__)
-        if os.getpid()!=self._PID: self._connect()# 如果进程号发生变化, 重连
-        try:# 连接断开后重连
-            Cursor = self._Connection.cursor()
-        except:
-            self._connect()
-            Cursor = self._Connection.cursor()
-        if sql_str is None: return Cursor
-        Cursor.execute(sql_str)
-        return Cursor
-    def fetchall(self, sql_str):
-        Cursor = self.cursor(sql_str=sql_str)
-        Data = Cursor.fetchall()
-        Cursor.close()
-        return Data
-    def execute(self, sql_str):
-        if self._Connection is None: raise __QS_Error__("%s尚未连接!" % self.__doc__)
-        if os.getpid()!=self._PID: self._connect()# 如果进程号发生变化, 重连
-        try:
-            Cursor = self._Connection.cursor()
-        except:
-            self._connect()
-            Cursor = self._Connection.cursor()
-        Cursor.execute(sql_str)
-        self._Connection.commit()
-        Cursor.close()
-        return 0
-    # -------------------------------表的操作---------------------------------
     @property
     def TableNames(self):
         return sorted(self._TableFactorDict)
     def getTable(self, table_name, args={}):
-        if table_name not in self._TableFactorDict: raise __QS_Error__("表 '%s' 不存在!" % table_name)
+        if table_name not in self._TableFactorDict:
+            Msg = ("因子库 '%s' 调用方法 getTable 错误: 不存在因子表: '%s'!" % (self.Name, table_name))
+            self._QS_Logger.error(Msg)
+            raise __QS_Error__(Msg)
         if args.get("因子表类型", "宽表")=="宽表":
             return _WideTable(name=table_name, fdb=self, sys_args=args, logger=self._QS_Logger)
         else:
             return _NarrowTable(name=table_name, fdb=self, sys_args=args, logger=self._QS_Logger)
     def renameTable(self, old_table_name, new_table_name):
-        if old_table_name not in self._TableFactorDict: raise __QS_Error__("表: '%s' 不存在!" % old_table_name)
-        if (new_table_name!=old_table_name) and (new_table_name in self._TableFactorDict): raise __QS_Error__("表: '"+new_table_name+"' 已存在!")
-        SQLStr = "ALTER TABLE "+self.TablePrefix+self.InnerPrefix+old_table_name+" RENAME TO "+self.TablePrefix+self.InnerPrefix+new_table_name
-        self.execute(SQLStr)
+        if old_table_name not in self._TableFactorDict:
+            Msg = ("因子库 '%s' 调用方法 renameTable 错误: 不存在因子表 '%s'!" % (self.Name, old_table_name))
+            self._QS_Logger.error(Msg)
+            raise __QS_Error__(Msg)
+        if (new_table_name!=old_table_name) and (new_table_name in self._TableFactorDict):
+            Msg = ("因子库 '%s' 调用方法 renameTable 错误: 新因子表名 '%s' 已经存在于库中!" % (self.Name, new_table_name))
+            self._QS_Logger.error(Msg)
+            raise __QS_Error__(Msg)
+        self.renameDBTable(self.InnerPrefix+old_table_name, self.InnerPrefix+new_table_name)
         self._TableFactorDict[new_table_name] = self._TableFactorDict.pop(old_table_name)
         self._TableFieldDataType[new_table_name] = self._TableFieldDataType.pop(old_table_name)
         return 0
-    # 为某张表增加索引
-    def addIndex(self, index_name, table_name, fields=["datetime", "code"], index_type="BTREE"):
-        if index_type is not None:
-            SQLStr = "CREATE INDEX "+index_name+" USING "+index_type+" ON "+self.TablePrefix+self.InnerPrefix+table_name+"("+", ".join(fields)+")"
-        else:
-            SQLStr = "CREATE INDEX "+index_name+" ON "+self.TablePrefix+self.InnerPrefix+table_name+"("+", ".join(fields)+")"
-        return self.execute(SQLStr)
-    # 创建表, field_types: {字段名: 数据类型}
+    # 创建表, field_types: {字段名: 数据库数据类型}
     def createTable(self, table_name, field_types):
+        FieldTypes = field_types.copy()
         if self.DBType=="MySQL":
-            SQLStr = "CREATE TABLE IF NOT EXISTS %s (`datetime` DATETIME(6) NOT NULL, `code` VARCHAR(40) NOT NULL, " % (self.TablePrefix+self.InnerPrefix+table_name)
-            for iField in field_types: SQLStr += "`%s` %s, " % (iField, field_types[iField])
-            SQLStr += "PRIMARY KEY (`datetime`, `code`)) ENGINE=InnoDB DEFAULT CHARSET=utf8"
-            IndexType = "BTREE"
+            FieldTypes["datetime"] = field_types.pop("datetime", "DATETIME(6) NOT NULL")
+            FieldTypes["code"] = field_types.pop("code", "VARCHAR(40) NOT NULL")
         elif self.DBType=="sqlite3":
-            SQLStr = "CREATE TABLE IF NOT EXISTS %s (`datetime` text NOT NULL, `code` text NOT NULL, " % (self.TablePrefix+self.InnerPrefix+table_name)
-            for iField in field_types: SQLStr += "`%s` %s, " % (iField, field_types[iField])
-            SQLStr += "PRIMARY KEY (`datetime`, `code`))"
-            IndexType = None
-        self.execute(SQLStr)
-        try:
-            self.addIndex(table_name+"_index", table_name, index_type=IndexType)
-        except Exception as e:
-            self._QS_Logger.warning("因子表 '%s' 索引创建失败: %s" % (table_name, str(e)))
+            FieldTypes["datetime"] = field_types.pop("datetime", "text NOT NULL")
+            FieldTypes["code"] = field_types.pop("code", "text NOT NULL")
+        self.createDBTable(self.InnerPrefix+table_name, FieldTypes, primary_keys=["datetime", "code"], index_fields=["datetime", "code"])
+        self._TableFactorDict[table_name] = pd.Series({iFactorName: ("string" if field_types[iFactorName].find("char")!=-1 else "double") for iFactorName in field_types})
+        self._TableFieldDataType[table_name] = pd.Series(field_types)
         return 0
-    # 增加字段，field_types: {字段名: 数据类型}
-    def addField(self, table_name, field_types):
+    # 增加因子，field_types: {字段名: 数据库数据类型}
+    def addFactor(self, table_name, field_types):
         if table_name not in self._TableFactorDict: return self.createTable(table_name, field_types)
-        SQLStr = "ALTER TABLE %s " % (self.TablePrefix+self.InnerPrefix+table_name)
-        SQLStr += "ADD COLUMN ("
-        for iField in field_types: SQLStr += "%s %s," % (iField, field_types[iField])
-        SQLStr = SQLStr[:-1]+")"
-        self.execute(SQLStr)
+        self.addField(self.InnerPrefix+table_name, field_types)
+        NewDataType = pd.Series({iFactorName: ("string" if field_types[iFactorName].find("char")!=-1 else "double") for iFactorName in field_types})
+        self._TableFactorDict[table_name] = self._TableFactorDict[table_name].append(NewDataType)
+        self._TableFieldDataType[table_name] = self._TableFieldDataType[table_name].append(pd.Series(field_types))
         return 0
     def deleteTable(self, table_name):
         if table_name not in self._TableFactorDict: return 0
-        SQLStr = 'DROP TABLE %s' % (self.TablePrefix+self.InnerPrefix+table_name)
-        self.execute(SQLStr)
+        self.deleteDBTable(self.InnerPrefix+table_name)
         self._TableFactorDict.pop(table_name, None)
         self._TableFieldDataType.pop(table_name, None)
         return 0
-    # 清空表
-    def truncateTable(self, table_name):
-        if table_name not in self._TableFactorDict: raise __QS_Error__("表: '%s' 不存在!" % table_name)
-        SQLStr = "TRUNCATE TABLE %s" % (self.TablePrefix+self.InnerPrefix+table_name)
-        self.execute(SQLStr)
-        return 0
     # ----------------------------因子操作---------------------------------
     def renameFactor(self, table_name, old_factor_name, new_factor_name):
-        if old_factor_name not in self._TableFactorDict[table_name]: raise __QS_Error__("因子: '%s' 不存在!" % old_factor_name)
-        if (new_factor_name!=old_factor_name) and (new_factor_name in self._TableFactorDict[table_name]): raise __QS_Error__("表中的因子: '%s' 已存在!" % new_factor_name)
-        if self.DBType!="sqlite3":
-            SQLStr = "ALTER TABLE "+self.TablePrefix+self.InnerPrefix+table_name
-            SQLStr += " CHANGE COLUMN `"+old_factor_name+"` `"+new_factor_name+"`"
-            self.execute(SQLStr)
-        else:
-            # 将表名改为临时表
-            SQLStr = "ALTER TABLE %s RENAME TO %s"
-            TempTableName = genAvailableName("TempTable", self.TableNames)
-            self.execute(SQLStr % (self.TablePrefix+self.InnerPrefix+table_name, self.TablePrefix+self.InnerPrefix+TempTableName))
-            # 创建新表
-            FieldTypes = OrderedDict()
-            for iFactorName, iDataType in self._TableFactorDict[table_name].items():
-                iDataType = ("text" if iDataType=="string" else "real")
-                if iFactorName==old_factor_name: FieldTypes[new_factor_name] = iDataType
-                else: FieldTypes[iFactorName] = iDataType
-            self.createTable(table_name, field_types=FieldTypes)
-            # 导入数据
-            OldFactorNames = ", ".join(self._TableFactorDict[table_name].index)
-            NewFactorNames = ", ".join(FieldTypes)
-            SQLStr = "INSERT INTO %s (datetime, code, %s) SELECT datetime, code, %s FROM %s"
-            Cursor = self.cursor(SQLStr % (self.TablePrefix+self.InnerPrefix+table_name, NewFactorNames, OldFactorNames, self.TablePrefix+self.InnerPrefix+TempTableName))
-            self._Connection.commit()
-            # 删除临时表
-            Cursor.execute("DROP TABLE %s" % (self.TablePrefix+self.InnerPrefix+TempTableName, ))
-            self._Connection.commit()
-            Cursor.close()
+        if old_factor_name not in self._TableFactorDict[table_name]:
+            Msg = ("因子库 '%s' 调用方法 renameFactor 错误: 因子表 '%s' 中不存在因子 '%s'!" % (self.Name, table_name, old_factor_name))
+            self._QS_Logger.error(Msg)
+            raise __QS_Error__(Msg)
+        if (new_factor_name!=old_factor_name) and (new_factor_name in self._TableFactorDict[table_name]):
+            Msg = ("因子库 '%s' 调用方法 renameFactor 错误: 新因子名 '%s' 已经存在于因子表 '%s' 中!" % (self.Name, new_factor_name, table_name))
+            self._QS_Logger.error(Msg)
+            raise __QS_Error__(Msg)
+        self.renameField(self.InnerPrefix+table_name, old_factor_name, new_factor_name)
         self._TableFactorDict[table_name][new_factor_name] = self._TableFactorDict[table_name].pop(old_factor_name)
         self._TableFieldDataType[table_name][new_factor_name] = self._TableFieldDataType[table_name].pop(old_factor_name)
         return 0
@@ -697,38 +562,18 @@ class SQLDB(WritableFactorDB):
         if not factor_names: return 0
         FactorIndex = self._TableFactorDict.get(table_name, pd.Series()).index.difference(factor_names).tolist()
         if not FactorIndex: return self.deleteTable(table_name)
-        if self.DBType!="sqlite3":
-            SQLStr = "ALTER TABLE "+self.TablePrefix+self.InnerPrefix+table_name
-            for iFactorName in factor_names: SQLStr += " DROP COLUMN `"+iFactorName+"`,"
-            self.execute(SQLStr[:-1])
-        else:
-            # 将表名改为临时表
-            SQLStr = "ALTER TABLE %s RENAME TO %s"
-            TempTableName = genAvailableName("TempTable", self.TableNames)
-            self.execute(SQLStr % (self.TablePrefix+self.InnerPrefix+table_name, self.TablePrefix+self.InnerPrefix+TempTableName))
-            # 创建新表
-            FieldTypes = OrderedDict()
-            for iFactorName in FactorIndex:
-                FieldTypes[iFactorName] = ("text" if self._TableFactorDict[table_name].loc[iFactorName]=="string" else "real")
-            self.createTable(table_name, field_types=FieldTypes)
-            # 导入数据
-            FactorNameStr = ", ".join(FactorIndex)
-            SQLStr = "INSERT INTO %s (datetime, code, %s) SELECT datetime, code, %s FROM %s"
-            Cursor = self.cursor(SQLStr % (self.TablePrefix+self.InnerPrefix+table_name, FactorNameStr, FactorNameStr, self.TablePrefix+self.InnerPrefix+TempTableName))
-            self._Connection.commit()
-            # 删除临时表
-            Cursor.execute("DROP TABLE %s" % (self.TablePrefix+self.InnerPrefix+TempTableName, ))
-            self._Connection.commit()
-            Cursor.close()
+        self.deleteField(self.InnerPrefix+table_name, factor_names)
         self._TableFactorDict[table_name] = self._TableFactorDict[table_name][FactorIndex]
         self._TableFieldDataType[table_name] = self._TableFieldDataType[table_name][FactorIndex]
         return 0
     def deleteData(self, table_name, ids=None, dts=None):
+        if table_name not in self._TableFactorDict:
+            Msg = ("因子库 '%s' 调用方法 deleteData 错误: 不存在因子表 '%s'!" % (self.Name, table_name))
+            self._QS_Logger.error(Msg)
+            raise __QS_Error__(Msg)
+        if (ids is None) and (dts is None): return self.truncateDBTable(self.InnerPrefix+table_name)
         DBTableName = self.TablePrefix+self.InnerPrefix+table_name
-        if (self.DBType!="sqlite3") and (ids is None) and (dts is None):
-            SQLStr = "TRUNCATE TABLE "+DBTableName
-            return self.execute(SQLStr)
-        SQLStr = "DELETE * FROM "+DBTableName
+        SQLStr = "DELETE FROM "+DBTableName
         if dts is not None:
             DTs = [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts]
             SQLStr += "WHERE "+genSQLInCondition(DBTableName+".datetime", DTs, is_str=True, max_num=1000)+" "
@@ -736,34 +581,37 @@ class SQLDB(WritableFactorDB):
             SQLStr += "WHERE "+DBTableName+".datetime IS NOT NULL "
         if ids is not None:
             SQLStr += "AND "+genSQLInCondition(DBTableName+".code", ids, is_str=True, max_num=1000)
-        return self.execute(SQLStr)
+        try:
+            self.execute(SQLStr)
+        except Exception as e:
+            Msg = ("'%s' 调用方法 deleteData 删除表 '%s' 中数据时错误: %s" % (self.Name, table_name, str(e)))
+            self._QS_Logger.error(Msg)
+            raise e
+        return 0
     def _adjustWriteData(self, data):
         NewData = []
         DataLen = data.applymap(lambda x: len(x) if isinstance(x, list) else 1)
         DataLenMax = DataLen.max(axis=1)
         DataLenMin = DataLen.min(axis=1)
         if (DataLenMax!=DataLenMin).sum()>0:
-            self._QS_Logger.warning("SQLDB: '%s' 在写入因子: '%s' 时出现因子值长度不一致的情况, 将填充缺失!" % (self.Name, str(data.columns.tolist())))
+            self._QS_Logger.warning("'%s' 在写入因子 '%s' 时出现因子值长度不一致的情况, 将填充缺失!" % (self.Name, str(data.columns.tolist())))
         for i in range(data.shape[0]):
             iDataLen = DataLen.iloc[i]
             if iDataLen>0:
                 iData = data.iloc[i].apply(lambda x: [None]*(iDataLen-len(x))+x if isinstance(x, list) else [x]*iDataLen).tolist()
                 NewData.extend(zip(*iData))
-        return NewData
+        NewData = pd.DataFrame(NewData, dtype="O")
+        return NewData.where(pd.notnull(NewData), None).to_records(index=False).tolist()
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
-        FieldTypes = {iFactorName:_identifyDataType(self.DBType, data.iloc[i].dtypes) for i, iFactorName in enumerate(data.items)}
         if table_name not in self._TableFactorDict:
+            FieldTypes = {iFactorName:_identifyDataType(self.DBType, data.iloc[i].dtypes) for i, iFactorName in enumerate(data.items)}
             self.createTable(table_name, field_types=FieldTypes)
-            self._TableFactorDict[table_name] = pd.Series({iFactorName: ("string" if FieldTypes[iFactorName].find("char")!=-1 else "double") for iFactorName in FieldTypes})
-            self._TableFieldDataType[table_name] = pd.Series(FieldTypes)
             SQLStr = "INSERT INTO "+self.TablePrefix+self.InnerPrefix+table_name+" (`datetime`, `code`, "
         else:
             NewFactorNames = data.items.difference(self._TableFactorDict[table_name].index).tolist()
             if NewFactorNames:
-                self.addField(table_name, {iFactorName:FieldTypes[iFactorName] for iFactorName in NewFactorNames})
-                NewDataType = pd.Series({iFactorName: ("string" if FieldTypes[iFactorName].find("char")!=-1 else "double") for iFactorName in NewFactorNames})
-                self._TableFactorDict[table_name] = self._TableFactorDict[table_name].append(NewDataType)
-                self._TableFieldDataType[table_name] = self._TableFieldDataType[table_name].append(pd.Series(FieldTypes))
+                FieldTypes = {iFactorName:_identifyDataType(self.DBType, data.iloc[i].dtypes) for i, iFactorName in enumerate(NewFactorNames)}
+                self.addFactor(table_name, FieldTypes)
             AllFactorNames = self._TableFactorDict[table_name].index.tolist()
             if self.CheckWriteData:
                 OldData = self.getTable(table_name, args={"因子值类型":"list", "时间转字符串":True}).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
@@ -791,7 +639,6 @@ class SQLDB(WritableFactorDB):
         NewData = pd.DataFrame(NewData).loc[:, data.items]
         NewData = NewData[pd.notnull(NewData).any(axis=1)]
         if NewData.shape[0]==0: return 0
-        NewData = NewData.astype("O").where(pd.notnull(NewData), None)
         if self._Connector in ("pyodbc", "sqlite3"):
             SQLStr = SQLStr[:-2] + ") VALUES (" + "?, " * (NewData.shape[1]+2)
         else:
@@ -802,6 +649,7 @@ class SQLDB(WritableFactorDB):
             NewData = self._adjustWriteData(NewData.reset_index())
             Cursor.executemany(SQLStr, NewData)
         else:
+            NewData = NewData.astype("O").where(pd.notnull(NewData), None)
             Cursor.executemany(SQLStr, NewData.reset_index().values.tolist())
         self._Connection.commit()
         Cursor.close()

@@ -52,8 +52,6 @@ class FactorDB(__QS_Object__):
 # 支持写入的因子库, 接口类
 class WritableFactorDB(FactorDB):
     """可写入的因子数据库"""
-    def __init__(self, sys_args={}, config_file=None, **kwargs):
-        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     # -------------------------------表的操作---------------------------------
     # 重命名表. 必须具体化
     def renameTable(self, old_table_name, new_table_name):

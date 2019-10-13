@@ -638,7 +638,7 @@ def calcHMModel(wealth_seq, market_wealth_seq, risk_free_rate=0.0):
     Y = calcYieldSeq(wealth_seq)-risk_free_rate
     X = np.ones((Y.shape[0],3))
     X[:,1] = calcYieldSeq(market_wealth_seq)-risk_free_rate
-    X[:,2] = X[:,1]**2*(X[:,1]>0)
+    X[:,2] = X[:,1] * (X[:,1]>0)
     Rslt = sm.OLS(Y,X,missing='drop').fit()
     return Rslt.params
 # C-L 模型, 评价择时能力和选股能力
@@ -646,8 +646,8 @@ def calcCLModel(wealth_seq, market_wealth_seq, risk_free_rate=0.0):
     Y = calcYieldSeq(wealth_seq)-risk_free_rate
     X = np.ones((Y.shape[0],3))
     rM = calcYieldSeq(market_wealth_seq)-risk_free_rate
-    X[:,1] = rM*(rM<0)
-    X[:,2] = rM*(rM>=0)
+    X[:,1] = rM * (rM<0)
+    X[:,2] = rM * (rM>=0)
     Rslt = sm.OLS(Y,X,missing='drop').fit()
     return Rslt.params
 # 加载CSV文件投资组合信号, 返回: {时点: 信号}

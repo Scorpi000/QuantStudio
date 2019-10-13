@@ -13,6 +13,7 @@ from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.FileFun import getShelveFileSuffix
+from QuantStudio.Tools.QSObjects import QSSQLObject
 from QuantStudio import __QS_Object__, __QS_Error__, __QS_LibPath__, __QS_MainPath__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
 from QuantStudio.FactorDataBase.FDBFun import updateInfo, adjustDateTime
@@ -1952,121 +1953,15 @@ class _AnnTable(_DBTable):
             Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
         return Data.loc[:, dts]
 
-class WindDB2(FactorDB):
+class WindDB2(QSSQLObject, FactorDB):
     """Wind 量化研究数据库"""
-    DBType = Enum("SQL Server", "Oracle", "MySQL", arg_type="SingleOption", label="数据库类型", order=0)
-    DBName = Str("wind", arg_type="String", label="数据库名", order=1)
-    IPAddr = Str("127.0.0.1", arg_type="String", label="IP地址", order=2)
-    Port = Range(low=0, high=65535, value=1521, arg_type="Integer", label="端口", order=3)
-    User = Str("root", arg_type="String", label="用户名", order=4)
-    Pwd = Password("", arg_type="String", label="密码", order=5)
-    TablePrefix = Str("", arg_type="String", label="表名前缀", order=6)
-    CharSet = Enum("utf8", "gbk", "gb2312", "gb18030", "cp936", "big5", arg_type="SingleOption", label="字符集", order=7)
-    Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pymysql", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
-    DSN = Str("", arg_type="String", label="数据源", order=9)
-    AdjustTableName = Bool(True, arg_type="Bool", label="调整表名", order=10)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"WindDB2Config.json" if config_file is None else config_file), **kwargs)
-        self._Connection = None# 数据库链接
-        self._AllTables = []# 数据库中的所有表名, 用于查询时解决大小写敏感问题
         self._InfoFilePath = __QS_LibPath__+os.sep+"WindDB2Info.hdf5"# 数据库信息文件路径
         self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"WindDB2Info.xlsx"# 数据库信息源文件路径
         self._TableInfo, self._FactorInfo = updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger)# 数据库表信息, 数据库字段信息
-        self._PID = None# 保存数据库连接创建时的进程号
         self.Name = "WindDB2"
         return
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        state["_Connection"] = (True if self.isAvailable() else False)
-        return state
-    def __setstate__(self, state):
-        super().__setstate__(state)
-        if self._Connection: self._connect()
-        else: self._Connection = None
-    # -------------------------------------------数据库相关---------------------------
-    def _connect(self):
-        self._Connection = None
-        if (self.Connector=='cx_Oracle') or ((self.Connector=='default') and (self.DBType=='Oracle')):
-            try:
-                import cx_Oracle
-                self._Connection = cx_Oracle.connect(self.User, self.Pwd, cx_Oracle.makedsn(self.IPAddr, str(self.Port), self.DBName))
-            except Exception as e:
-                if self.Connector!='default': raise e
-        elif (self.Connector=='pymssql') or ((self.Connector=='default') and (self.DBType=='SQL Server')):
-            try:
-                import pymssql
-                self._Connection = pymssql.connect(server=self.IPAddr, port=str(self.Port), user=self.User, password=self.Pwd, database=self.DBName, charset=self.CharSet)
-            except Exception as e:
-                if self.Connector!='default': raise e
-        elif (self.Connector=='mysql.connector') or ((self.Connector=='default') and (self.DBType=='MySQL')):
-            try:
-                import mysql.connector
-                self._Connection = mysql.connector.connect(host=self.IPAddr, port=str(self.Port), user=self.User, password=self.Pwd, database=self.DBName, charset=self.CharSet)
-            except Exception as e:
-                if self.Connector!='default': raise e
-        elif self.Connector=='pymysql':
-            try:
-                import pymysql
-                self._Connection = pymysql.connect(host=self.IPAddr, port=self.Port, user=self.User, password=self.Pwd, db=self.DBName, charset=self.CharSet)
-            except Exception as e:
-                if self.Connector!='default': raise e
-        if self._Connection is None:
-            if self.Connector not in ('default', 'pyodbc'):
-                self._Connection = None
-                raise __QS_Error__("不支持该连接器(connector) : "+self.Connector)
-            else:
-                import pyodbc
-                if self.DSN:
-                    self._Connection = pyodbc.connect('DSN=%s;PWD=%s' % (self.DSN, self.Pwd))
-                else:
-                    self._Connection = pyodbc.connect('DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s' % (self.DBType, self.DBName, self.IPAddr+","+str(self.Port), self.User, self.Pwd))
-        self._PID = os.getpid()
-        return 0
-    def connect(self):
-        self._connect()
-        Cursor = self._Connection.cursor()
-        if not self.AdjustTableName:
-            self._AllTables = []
-        elif self.DBType=="SQL Server":
-            Cursor.execute("SELECT Name FROM SysObjects Where XType='U'")
-            self._AllTables = [rslt[0] for rslt in Cursor.fetchall()]
-        elif self.DBType=="MySQL":
-            Cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='"+self.DBName+"' AND table_type='base table'")
-            self._AllTables = [rslt[0] for rslt in Cursor.fetchall()]
-        else:
-            self._AllTables = []
-        Cursor.close()
-        return 0
-    def disconnect(self):
-        if self._Connection is not None:
-            try:
-                self._Connection.close()
-            except Exception as e:
-                self._QS_Logger.warning("因子库 ’%s' 断开错误: %s" % (self.Name, str(e)))
-            finally:
-                self._Connection = None
-        return 0
-    def isAvailable(self):
-        return (self._Connection is not None)
-    def cursor(self, sql_str=None):
-        if self._Connection is None: raise __QS_Error__("%s尚未连接!" % self.__doc__)
-        if os.getpid()!=self._PID: self._connect()# 如果进程号发生变化, 重连
-        try:# 连接断开后重连
-            Cursor = self._Connection.cursor()
-        except:
-            self._connect()
-            Cursor = self._Connection.cursor()
-        if sql_str is None: return Cursor
-        for iTable in self._AllTables:
-            sql_str = re.sub(iTable, iTable, sql_str, flags=re.IGNORECASE)
-        Cursor.execute(sql_str)
-        return Cursor
-    def fetchall(self, sql_str):
-        Cursor = self.cursor(sql_str=sql_str)
-        Data = Cursor.fetchall()
-        Cursor.close()
-        return Data
-    # -------------------------------表的操作---------------------------------
     @property
     def TableNames(self):
         if self._TableInfo is not None: return self._TableInfo.index.tolist()
@@ -2076,7 +1971,9 @@ class WindDB2(FactorDB):
             TableClass = self._TableInfo.loc[table_name, "TableClass"]
             if pd.notnull(TableClass):
                 return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=args, logger=self._QS_Logger)")
-        raise __QS_Error__("因子库目前尚不支持表: '%s'" % table_name)
+        Msg = ("因子库 ‘%s' 目前尚不支持因子表: '%s'" % (self.Name, table_name))
+        self._QS_Logger.error(Msg)
+        raise __QS_Error__(Msg)
     # -----------------------------------------数据提取---------------------------------
     # 给定起始日期和结束日期, 获取交易所交易日期, 目前支持: "SSE", "SZSE", "SHFE", "DCE", "CZCE", "INE", "CFEEX"
     def getTradeDay(self, start_date=None, end_date=None, exchange="SSE", **kwargs):
