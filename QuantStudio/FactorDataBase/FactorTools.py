@@ -272,6 +272,12 @@ def _regress_change_rate(f,idt,iid,x,args):
 def regress_change_rate(*factors, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(*factors)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_regress_change_rate,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
+def _tolist(f,idt,iid,x,args):
+    Data = _genOperatorData(f,idt,iid,x,args)
+    return pd.Panel({i: iData for i, iData in enumerate(Data)}).sort_index(axis=0).to_frame().apply(lambda s: s.tolist(), axis=1).unstack().values
+def tolist(*factors,**kwargs):
+    Descriptors,Args = _genMultivariateOperatorInfo(*factors)
+    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_tolist,"参数":Args,"运算时点":"多时点","运算ID":"多ID","数据类型":"string"}, **kwargs)
 def _single_quarter(f,idt,iid,x,args):
     ReportPeriod, Last, Prev = _genOperatorData(f,idt,iid,x,args)
     f = np.vectorize(lambda x: x[-4:]=="0331")

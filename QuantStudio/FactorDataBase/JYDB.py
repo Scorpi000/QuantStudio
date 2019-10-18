@@ -2,12 +2,13 @@
 """聚源数据库"""
 import re
 import os
+import json
 import shelve
 import datetime as dt
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, Int, Str, Range, Bool, List, ListStr, Dict, Function, Password, Either, Float, on_trait_change
+from traits.api import Enum, Int, Str, Range, Bool, List, ListStr, Dict, Function, Password, Either, Float, File, on_trait_change
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
@@ -19,21 +20,35 @@ from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
 from QuantStudio.FactorDataBase.FDBFun import adjustDateTime
 
 # 将信息源文件中的表和字段信息导入信息文件
-def _importInfo(info_file, info_resource):
-    TableInfo = pd.read_excel(info_resource, "TableInfo").set_index(["TableName"])
-    FactorInfo = pd.read_excel(info_resource, "FactorInfo").set_index(['TableName', 'FieldName'])
-    ExchangeInfo = pd.read_excel(info_resource, "ExchangeInfo", dtype={"ExchangeCode":"O"}).set_index(["ExchangeCode"])
-    try:
-        from QuantStudio.Tools.DataTypeFun import writeNestedDict2HDF5
-        writeNestedDict2HDF5(TableInfo, info_file, "/TableInfo")
-        writeNestedDict2HDF5(FactorInfo, info_file, "/FactorInfo")
-        writeNestedDict2HDF5(ExchangeInfo, info_file, "/ExchangeInfo")
-    except:
-        pass
+def _importInfo(info_file, info_resource, logger, out_info=False):
+    Suffix = info_resource.split(".")[-1]
+    if Suffix in ("xlsx", "xls"):
+        TableInfo = pd.read_excel(info_resource, "TableInfo").set_index(["TableName"])
+        FactorInfo = pd.read_excel(info_resource, "FactorInfo").set_index(['TableName', 'FieldName'])
+        ExchangeInfo = pd.read_excel(info_resource, "ExchangeInfo", dtype={"ExchangeCode":"O"}).set_index(["ExchangeCode"])
+    elif Suffix=="json":
+        Info = json.load(open(info_resource, "r"))
+        TableInfo = pd.DataFrame(Info["TableInfo"]).T
+        ExchangeInfo = pd.DataFrame(Info["ExchangeInfo"]).T
+        TableNames = sorted(Info["FactorInfo"].keys())
+        FactorInfo = pd.concat([pd.DataFrame(Info["FactorInfo"][iTableName]).T for iTableName in TableNames], keys=TableNames)
+    else:
+        Msg = ("不支持的库信息文件 : '%s'" % (info_resource, ))
+        logger.error(Msg)
+        raise __QS_Error__(Msg)
+    if not out_info:
+        try:
+            from QuantStudio.Tools.DataTypeFun import writeNestedDict2HDF5
+            writeNestedDict2HDF5(TableInfo, info_file, "/TableInfo")
+            writeNestedDict2HDF5(FactorInfo, info_file, "/FactorInfo")
+            writeNestedDict2HDF5(ExchangeInfo, info_file, "/ExchangeInfo")
+        except Exception as e:
+            logger.warning("更新数据库信息文件 '%s' 失败 : %s" % (info_file, str(e)))
     return (TableInfo, FactorInfo, ExchangeInfo)
 
 # 更新信息文件
-def _updateInfo(info_file, info_resource, logger):
+def _updateInfo(info_file, info_resource, logger, out_info=False):
+    if out_info: return _importInfo(info_file, info_resource, logger, out_info=out_info)
     if not os.path.isfile(info_file):
         logger.warning("数据库信息文件: '%s' 缺失, 尝试从 '%s' 中导入信息." % (info_file, info_resource))
     elif (os.path.getmtime(info_resource)>os.path.getmtime(info_file)):
@@ -45,7 +60,7 @@ def _updateInfo(info_file, info_resource, logger):
         except:
             logger.warning("数据库信息文件: '%s' 损坏, 尝试从 '%s' 中导入信息." % (info_file, info_resource))
     if not os.path.isfile(info_resource): raise __QS_Error__("缺失数据库信息源文件: %s" % info_resource)
-    return _importInfo(info_file, info_resource)
+    return _importInfo(info_file, info_resource, logger, out_info=out_info)
 
 # 给 ID 去后缀
 def deSuffixID(ids, sep='.'):
@@ -2134,11 +2149,17 @@ class _AnalystRatingDetailTable(_DBTable):
 
 class JYDB(QSSQLObject, FactorDB):
     """聚源数据库"""
+    DBInfoFile = File(label="库信息文件", arg_type="File", order=100)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"JYDBConfig.json" if config_file is None else config_file), **kwargs)
         self._InfoFilePath = __QS_LibPath__+os.sep+"JYDBInfo.hdf5"# 数据库信息文件路径
-        self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"JYDBInfo.xlsx"# 数据库信息源文件路径
-        self._TableInfo, self._FactorInfo, self._ExchangeInfo = _updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger)# 数据库表信息, 数据库字段信息
+        if not os.path.isfile(self.DBInfoFile):
+            if self.DBInfoFile: self._QS_Logger.warning("找不到指定的库信息文件 : '%s'" % self.DBInfoFile)
+            self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"JYDBInfo.xlsx"# 默认数据库信息源文件路径
+            self._TableInfo, self._FactorInfo, self._ExchangeInfo = _updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger)# 数据库表信息, 数据库字段信息
+        else:
+            self._InfoResourcePath = self.DBInfoFile
+            self._TableInfo, self._FactorInfo, self._ExchangeInfo = _updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger, out_info=True)# 数据库表信息, 数据库字段信息
         self.Name = "JYDB"
         return
     @property

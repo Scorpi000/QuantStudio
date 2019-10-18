@@ -1303,9 +1303,33 @@ class DataFactor(Factor):
     DataType = Enum("double", "string", arg_type="SingleOption", label="数据类型", order=0)
     LookBack = Int(0, arg_type="Integer", label="回溯天数", order=1)
     def __init__(self, name, data, sys_args={}, config_file=None, **kwargs):
-        if not isinstance(data, pd.DataFrame): raise __QS_Error__("数据必须是 pandas.DataFrame 类型!")
+        if  isinstance(data, pd.Series):
+            if data.index.is_all_dates:
+                self._DataContent = "DateTime"
+            else:
+                self._DataContent = "ID"
+            if "数据类型" not in sys_args:
+                try:
+                    data = data.astype(np.float)
+                except:
+                    sys_args["数据类型"] = "string"
+                else:
+                    sys_args["数据类型"] = "double"
+        elif isinstance(self, pd.DataFrame):
+            self._DataContent = "Factor"
+            if "数据类型" not in sys_args: sys_args["数据类型"] = ("string" if np.dtype('O') in data.dtypes.values else "double")
+        else:
+            self._DataContent = "Value"
+            if "数据类型" not in sys_args:
+                if isinstance(data, str): sys_args["数据类型"] = "string"
+                else:
+                    try:
+                        data = float(data)
+                    except:
+                        sys_args["数据类型"] = "string"
+                    else:
+                        sys_args["数据类型"] = "double"
         self._Data = data
-        if "数据类型" not in sys_args: sys_args["数据类型"] = ("string" if np.dtype('O') in self._Data.dtypes.values else "double")
         return super().__init__(name=name, ft=None, sys_args=sys_args, config_file=None, **kwargs)
     def getMetaData(self, key=None):
         if key is None: return pd.Series({"DataType":self.DataType})
@@ -1313,15 +1337,31 @@ class DataFactor(Factor):
         return None
     def getID(self, idt=None):
         if (self._OperationMode is not None) and (self._OperationMode._isStarted): return self._OperationMode.IDs
-        return self._Data.columns.tolist()
+        if self._DataContent=="Factor":
+            return self._Data.columns.tolist()
+        elif self._DataContent=="ID":
+            return self._Data.index.tolist()
+        else:
+            return []
     def getDateTime(self, iid=None, start_dt=None, end_dt=None):
         if (self._OperationMode is not None) and (self._OperationMode._isStarted): return self._OperationMode.DateTimes
-        return self._Data.index.tolist()
+        if self._DataContent in ("DateTime", "Factor"):
+            return self._Data.index.tolist()
+        else:
+            return []
     def readData(self, ids, dts, **kwargs):
-        if (self._Data.columns.intersection(ids).shape[0]==0) or (self._Data.index.intersection(dts).shape[0]==0):
+        if self._DataContent=="Value":
+            return pd.DataFrame([(self._Data,)*len(ids)]*len(dts), index=dts, columns=ids)
+        elif self._DataContent=="ID":
+            Data = pd.DataFrame(self._Data.values.reshape((1, self._Data.shape[0])).repeat(len(dts), axis=0), index=dts, columns=self._Data.index)
+        elif self._DataContent=="DateTime":
+            Data = pd.DataFrame(self._Data.values.reshape((self._Data.shape[0], 1)).repeat(len(ids), axis=1), index=self._Data.index, columns=ids)
+        else:
+            Data = self._Data
+        if (Data.columns.intersection(ids).shape[0]==0) or (Data.index.intersection(dts).shape[0]==0):
             return pd.DataFrame(index=dts, columns=ids, dtype=("O" if self.DataType=="string" else np.float))
-        if self.LookBack==0: return self._Data.loc[dts, ids]
-        else: return fillNaByLookback(self._Data.loc[sorted(self._Data.index.union(dts)), ids], lookback=self.LookBack*24.0*3600).loc[dts, :]
+        if self.LookBack==0: return Data.loc[dts, ids]
+        else: return fillNaByLookback(Data.loc[sorted(Data.index.union(dts)), ids], lookback=self.LookBack*24.0*3600).loc[dts, :]
     def __QS_prepareCacheData__(self, ids=None):
         return self._Data
     def _QS_getData(self, dts, pids=None, **kwargs):
@@ -1332,6 +1372,4 @@ class DataFactor(Factor):
                 IDs = []
                 for iPID in pids: IDs.extend(self._OperationMode._PID_IDs[iPID])
         dts = list(dts)
-        if (self._Data.columns.intersection(IDs).shape[0]==0) or (self._Data.index.intersection(dts).shape[0]==0):
-            return pd.DataFrame(index=dts, columns=IDs, dtype=("O" if self.DataType=="string" else np.float))
-        return self._Data.loc[dts, IDs].sort_index(axis=1)
+        return self.readData(sorted(IDs), dts)

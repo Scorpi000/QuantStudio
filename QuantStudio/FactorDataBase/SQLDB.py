@@ -55,7 +55,7 @@ class _WideTable(FactorTable):
     TableType = Enum("宽表", arg_type="SingleOption", label="因子表类型", order=0)
     LookBack = Float(0, arg_type="Integer", label="回溯天数", order=1)
     ValueType = Enum("scalar", "list", "scalar or list", arg_type="SingleOption", label="因子值类型", order=2)
-    FilterCondition = Str("", arg_type="Dict", label="筛选条件", order=3)
+    FilterCondition = Str("", arg_type="String", label="筛选条件", order=3)
     #DTField = Enum("datetime", arg_type="SingleOption", label="时点字段", order=4)
     #IDField = Enum("code", arg_type="SingleOption", label="ID字段", order=5)
     DT2Str = Bool(False, arg_type="Bool", label="时间转字符串", order=6)
@@ -136,7 +136,7 @@ class _WideTable(FactorTable):
         SubSQLStr += "WHERE "+DTField+"<'"+end_date.strftime("%Y-%m-%d:%H:%M:%S.%f")+"' "
         SubSQLStr += "AND ("+genSQLInCondition(IDField, ids, is_str=True, max_num=1000)+") "
         FilterStr = args.get("筛选条件", self.FilterCondition)
-        if FilterStr: SubSQLStr += "AND "+FilterStr+" "
+        if FilterStr: SubSQLStr += "AND "+FilterStr.format(Table=self._DBTableName)+" "
         SubSQLStr += "GROUP BY "+IDField
         SQLStr = "SELECT "+DTField+", "
         SQLStr += IDField+", "
@@ -184,7 +184,7 @@ class _WideTable(FactorTable):
         if ids is not None:
             SQLStr += "AND ("+genSQLInCondition(self._DBTableName+"."+IDField, ids, is_str=True, max_num=1000)+") "
         FilterStr = args.get("筛选条件", self.FilterCondition)
-        if FilterStr: SQLStr += "AND "+FilterStr+" "
+        if FilterStr: SQLStr += "AND "+FilterStr.format(Table=self._DBTableName)+" "
         SQLStr += "ORDER BY "+self._DBTableName+"."+DTField+", "+self._DBTableName+"."+IDField
         if args.get("因子值类型", self.ValueType)!="scalar":
             SQLStr += ", "+self._DBTableName+"."+factor_names[0]
@@ -233,7 +233,7 @@ class _NarrowTable(FactorTable):
     TableType = Enum("窄表", arg_type="SingleOption", label="因子表类型", order=0)
     LookBack = Float(0, arg_type="Integer", label="回溯天数", order=1)
     ValueType = Enum("scalar", "list", "scalar or list", arg_type="SingleOption", label="因子值类型", order=2)
-    FilterCondition = Str("", arg_type="Dict", label="筛选条件", order=3)
+    FilterCondition = Str("", arg_type="String", label="筛选条件", order=3)
     #DTField = Enum("datetime", arg_type="SingleOption", label="时点字段", order=4)
     #IDField = Enum("code", arg_type="SingleOption", label="ID字段", order=5)
     #FactorField = Enum("code", arg_type="SingleOption", label="因子字段", order=6)
@@ -342,7 +342,7 @@ class _NarrowTable(FactorTable):
         else:
             SubSQLStr += "AND "+FactorField+" IS NOT NULL "
         FilterStr = args.get("筛选条件", self.FilterCondition)
-        if FilterStr: SubSQLStr += "AND "+FilterStr+" "
+        if FilterStr: SubSQLStr += "AND "+FilterStr.format(Table=self._DBTableName)+" "
         SubSQLStr += "GROUP BY "+IDField+", "+FactorField
         SQLStr = "SELECT "+DTField+", "
         SQLStr += IDField+", "
@@ -389,7 +389,7 @@ class _NarrowTable(FactorTable):
         else:
             SQLStr += "AND "+FactorField+" IS NOT NULL "
         FilterStr = args.get("筛选条件", self.FilterCondition)
-        if FilterStr: SQLStr += "AND "+FilterStr+" "
+        if FilterStr: SQLStr += "AND "+FilterStr.format(Table=self._DBTableName)+" "
         SQLStr += "ORDER BY "+DTField+", "+IDField+", "+FactorField
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: RawData = pd.DataFrame(columns=["QS_DT", "ID", "QS_Factor", "QS_FactorValue"])
