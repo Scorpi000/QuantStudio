@@ -104,7 +104,7 @@ class _DBTable(FactorTable):
         for i, iCondition in enumerate(self._ConditionFields):
             self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+101))
             iConditionVal = self._FactorInfo.loc[iCondition, "Supplementary"]
-            if not iConditionVal:
+            if pd.isnull(iConditionVal) or (isinstance(iConditionVal, str) and iConditionVal.lower()=="nan"):
                 self[iCondition] = ""
             else:
                 iConditionVal = str(iConditionVal).strip().split(",")
@@ -112,7 +112,7 @@ class _DBTable(FactorTable):
                 else: self[iCondition] = iConditionVal
     def _genFromSQLStr(self, setable_join_str=[]):
         SQLStr = "FROM "+self._DBTableName+" "
-        for iJoinStr in SETableJoinStr: SQLStr += iJoinStr+" "
+        for iJoinStr in setable_join_str: SQLStr += iJoinStr+" "
         if self._DBTableName!=self._MainTableName:
             SQLStr += "INNER JOIN "+self._MainTableName+" "
             SQLStr += "ON "+self._JoinCondition+" "
@@ -225,7 +225,7 @@ class _DBTable(FactorTable):
         return (SQLStr[:-2], JoinStr)
     def _genConditionSQLStr(self, args={}):
         FilterStr = args.get("筛选条件", self.FilterCondition)
-        if FilterStr: SQLStr = "AND "+FilterStr+" "
+        if FilterStr: SQLStr = "AND "+FilterStr.format(Table=self._DBTableName, TablePrefix=self._FactorDB.TablePrefix)+" "
         else: SQLStr = ""
         for iConditionField in self._ConditionFields:
             iConditionVal = args.get(iConditionField, self[iConditionField])
@@ -737,7 +737,7 @@ class _MarketTable(_DBTable):
         SQLStr += IDField+" AS ID, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
-        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)
+        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
         SQLStr += "WHERE "+DateField+">='"+start_date.strftime("%Y-%m-%d")+"' "
         SQLStr += "AND "+DateField+"<='"+end_date.strftime("%Y-%m-%d")+"' "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
@@ -1311,7 +1311,7 @@ class _FinancialTable(_DBTable):
         else: SQLStr += "NULL AS ReportType, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
-        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)
+        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
         SQLStr += "WHERE "+ANNTypeField+" = 20 "
         if self._ReportTypeField is not None: SQLStr += "AND "+ReportTypeField+" IN ("+", ".join(self.ReportType)+") "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
@@ -1693,7 +1693,7 @@ class _FinancialIndicatorTable(_FinancialTable):
         SQLStr += "NULL AS ReportType, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
-        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)
+        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
         SQLStr += "INNER JOIN LC_BalanceSheetAll "
         SQLStr += "ON ("+self._DBTableName+"."+self._IDField+"=LC_BalanceSheetAll.CompanyCode "
         SQLStr += "AND "+ReportDateField+"=LC_BalanceSheetAll.EndDate) "
@@ -1802,7 +1802,7 @@ class _AnalystConsensusTable(_DBTable):
         SQLStr += "CONCAT("+ReportDateField+", '1231') AS ReportDate, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
-        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)
+        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
         SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += "AND "+PeriodField+"="+str(args.get("周期", self.Period))+" "
@@ -1986,7 +1986,7 @@ class _AnalystEstDetailTable(_DBTable):
         SQLStr += "CONCAT("+ReportDateField+", '1231') AS ReportDate, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(AllFields)
         SQLStr += FieldSQLStr+" "
-        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)
+        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
         SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += "AND "+DateField+">='"+StartDate.strftime("%Y-%m-%d")+"' "
@@ -2104,7 +2104,7 @@ class _AnalystRatingDetailTable(_DBTable):
         SQLStr += self._getIDField()+" AS ID, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(AllFields)
         SQLStr += FieldSQLStr+" "
-        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)
+        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
         SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += "AND "+DateField+">='"+StartDate.strftime("%Y-%m-%d")+"' "
