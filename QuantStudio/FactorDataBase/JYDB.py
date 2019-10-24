@@ -357,6 +357,7 @@ class _FeatureTable(_DBTable):
 class _MappingTable(_DBTable):
     """映射因子表"""
     OnlyStartFilled = Bool(False, label="只填起始日", arg_type="Bool", order=0)
+    MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=1)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         self._StartDateField = self._FactorInfo["DBFieldName"][self._FactorInfo["FieldType"]=="StartDate"].iloc[0]
@@ -440,42 +441,38 @@ class _MappingTable(_DBTable):
         RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "QS_起始日", "QS_结束日"]+factor_names)
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
-    def _checkMultiMapping(self, args={}):
-        for iConditionField in self._ConditionFields:
-            iConditionVal = args.get(iConditionField, self[iConditionField])
-            if (not isinstance(iConditionVal, str)) or (iConditionVal==""):
-                return True
-        return False
     def _calcMultiMappingData(self, raw_data, factor_names, ids, dts, args={}):
-        Data, nFactor = {}, len(factor_names)
+        Data, nDT, nFactor = {}, len(dts), len(factor_names)
         raw_data.set_index(["ID"], inplace=True)
         raw_data["QS_结束日"] = raw_data["QS_结束日"].where(pd.notnull(raw_data["QS_结束日"]), dts[-1]+dt.timedelta(1))
         if args.get("只填起始日", self.OnlyStartFilled):
             raw_data["QS_起始日"] = raw_data["QS_起始日"].where(raw_data["QS_起始日"]>=dts[0], dts[0])
             for iID in raw_data.index.unique():
                 iRawData = raw_data.loc[[iID]].set_index(["QS_起始日"])
-                iData = pd.DataFrame(index=dts, columns=factor_names, dtype="O")
+                iData = pd.DataFrame([([],)*nFactor]*nDT, index=dts, columns=factor_names, dtype="O")
                 for jStartDate in iRawData.index.drop_duplicates():
-                    iData.iloc[iData.index.searchsorted(jStartDate)] = iRawData.loc[[jStartDate], factor_names].values.T.tolist()
+                    iData.iloc[iData.index.searchsorted(jStartDate)] += pd.Series(iRawData.loc[[jStartDate], factor_names].values.T.tolist(), index=factor_names)
                 Data[iID] = iData
-                return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
+            return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
         else:
             DeltaDT = dt.timedelta(int(not self._EndDateIncluded))
             for iID in raw_data.index.unique():
                 iRawData = raw_data.loc[[iID]].set_index(["QS_起始日", "QS_结束日"])
-                iData = pd.DataFrame(index=dts, columns=factor_names, dtype="O")
+                iData = pd.DataFrame([([],)*nFactor]*nDT, index=dts, columns=factor_names, dtype="O")
                 for jStartDate, jEndDate in iRawData.index.drop_duplicates():
                     ijRawData = iRawData.loc[jStartDate].loc[[jEndDate], factor_names].values.T.tolist()
                     if pd.isnull(jEndDate) or (jEndDate<jStartDate):
-                        iData.loc[jStartDate:] = [ijRawData] * iData.loc[jStartDate:].shape[0]
+                        ijOldData = iData.loc[jStartDate:]
+                        iData.loc[jStartDate:] += pd.DataFrame([ijRawData] * ijOldData.shape[0], index=ijOldData.index, columns=ijOldData.columns, dtype="O")
                     else:
                         jEndDate -= DeltaDT
-                        iData.loc[jStartDate:jEndDate] = [ijRawData] * iData.loc[jStartDate:jEndDate].shape[0]
+                        ijOldData = iData.loc[jStartDate:jEndDate]
+                        iData.loc[jStartDate:jEndDate] += pd.DataFrame([ijRawData] * ijOldData.shape[0], index=ijOldData.index, columns=ijOldData.columns, dtype="O")
                 Data[iID] = iData
-                return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
+            return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-        if self._checkMultiMapping(args=args): return self._calcMultiMappingData(raw_data, factor_names, ids, dts, args=args)
+        if args.get("多重映射", self.MultiMapping): return self._calcMultiMappingData(raw_data, factor_names, ids, dts, args=args)
         raw_data.set_index(["ID"], inplace=True)
         Data, nFactor = {}, len(factor_names)
         if args.get("只填起始日", self.OnlyStartFilled):
@@ -486,7 +483,7 @@ class _MappingTable(_DBTable):
                 for jStartDate in iRawData.index:
                     iData.iloc[iData.index.searchsorted(jStartDate)] = iRawData.loc[jStartDate, factor_names]
                 Data[iID] = iData
-                return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
+            return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
         else:
             DeltaDT = dt.timedelta(int(not self._EndDateIncluded))
             for iID in raw_data.index.unique():

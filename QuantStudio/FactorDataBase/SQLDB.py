@@ -150,7 +150,7 @@ class _WideTable(FactorTable):
                 SQLStr += iField+", "
         SQLStr = SQLStr[:-2]+" FROM "+self._DBTableName+" "
         SQLStr += "WHERE ("+IDField+", "+DTField+") IN ("+SubSQLStr+") "
-        if FilterStr: SQLStr += "AND "+FilterStr+" "
+        if FilterStr: SQLStr += "AND "+FilterStr.format(Table=self._DBTableName)+" "
         return SQLStr
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         if (dts==[]) or (ids==[]): return pd.DataFrame(columns=["QS_DT", "ID"]+factor_names)
@@ -353,7 +353,7 @@ class _NarrowTable(FactorTable):
             SQLStr += "1 "
         SQLStr += "FROM "+self._DBTableName+" "
         SQLStr += "WHERE ("+IDField+", "+FactorField+", "+DTField+") IN ("+SubSQLStr+") "
-        if FilterStr: SQLStr += "AND "+FilterStr+" "
+        if FilterStr: SQLStr += "AND "+FilterStr.format(Table=self._DBTableName)+" "
         return SQLStr
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         if (dts==[]) or (ids==[]): return pd.DataFrame(columns=["QS_DT", "ID"]+factor_names)
