@@ -2231,17 +2231,31 @@ class JYDB(QSSQLObject, FactorDB):
             IDField += "ELSE SecuCode END"
         else:
             IDField += "ELSE CONCAT(SecuCode, '"+DefaultSuffix+"') END"
-        SQLStr = "SELECT "+IDField+" AS ID FROM {Prefix}SecuMain "
-        SQLStr += "WHERE {Prefix}SecuMain.SecuCategory IN (6,7,9,11,14,17,18,23,28,29,31,33) "
         if not exchange:
-            SQLStr += "AND {Prefix}SecuMain.SecuMarket IN (71,73,83,84,89,90,310) "
+            ExchgCodes = []
         else:
             if isinstance(exchange, str): exchange = [exchange]
             ExchgCodes = set()
             for iExchg in exchange:
                 iExchgCode = ExchangeInfo[ExchangeInfo["Exchange"]==iExchg]
-                if iExchgCode.shape[0]==0: raise __QS_Error__("不支持的交易所: %s" % iExchg)
+                if iExchgCode.shape[0]==0:
+                    Msg = ("外部因子库 '%s' 调用 getBondID 时错误: 尚不支持交易所 '%s'" % (self.Name, iExchg))
+                    self._QS_Logger.error(Msg)
+                    raise __QS_Error__(Msg)
                 ExchgCodes.add(str(iExchgCode[0]))
+        # 先使用债券代码对照表进行查询, 出错后使用证券主表查询
+        SQLStr = "SELECT "+IDField+" AS ID FROM {Prefix}Bond_Code "
+        if ExchgCodes: SQLStr += "AND {Prefix}Bond_Code.SecuMarket IN ("+", ".join(ExchgCodes)+") "
+        SQLStr += "ORDER BY ID"
+        try:
+            return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix))]
+        except Exception as e:
+            self._QS_Logger.warning("使用债券代码对照表(Bond_Code)提取债券 ID 失败: %s, 将使用证券主表(SecuMain)提取债券 ID!" % (str(e), ))
+        SQLStr = "SELECT "+IDField+" AS ID FROM {Prefix}SecuMain "
+        SQLStr += "WHERE {Prefix}SecuMain.SecuCategory IN (6,7,9,11,14,17,18,23,28,29,31,33) "
+        if not ExchgCodes:
+            SQLStr += "AND {Prefix}SecuMain.SecuMarket IN (16,71,73,83,84,89,90,310) "
+        else:
             SQLStr += "AND {Prefix}SecuMain.SecuMarket IN ("+", ".join(ExchgCodes)+") "
         SQLStr += "ORDER BY ID"
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix))]
