@@ -863,30 +863,29 @@ class _InfoPublTable(_MarketTable):
         else: AnnDateField = self._DBTableName+"."+self._AnnDateField
         SubSQLStr = "SELECT "+self._getIDField()+" AS ID, "
         SubSQLStr += self._DBTableName+"."+self._IDField+", "
-        SubSQLStr += AnnDateField+" AS AnnDate, "
         SubSQLStr += "MAX("+EndDateField+") AS MaxEndDate "
         SubSQLStr += self._genFromSQLStr()+" "
         SubSQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
         if pd.notnull(self._MainTableCondition): SubSQLStr += "AND "+self._MainTableCondition+" "
         ConditionSQLStr = self._genConditionSQLStr(args=args)
         SubSQLStr += ConditionSQLStr+" "
-        if args.get("忽略时间", self.IgnoreTime): DTFormat = "%Y-%m-%d"
+        IgnoreTime = args.get("忽略时间", self.IgnoreTime)
+        if IgnoreTime: DTFormat = "%Y-%m-%d"
         else: DTFormat = "%Y-%m-%d %H:%M:%S"
         SubSQLStr += "AND ("+AnnDateField+"<'"+end_date.strftime(DTFormat)+"' "
         SubSQLStr += "AND "+EndDateField+"<'"+end_date.strftime(DTFormat)+"') "
-        SubSQLStr += "GROUP BY "+self._DBTableName+"."+self._IDField+", "+AnnDateField
-        SubSQLStr1 = "SELECT t.ID, "
-        SubSQLStr1 += "t."+self._IDField+", "
-        SubSQLStr1 += "MAX(CASE WHEN t.AnnDate>=t.MaxEndDate THEN t.AnnDate ELSE t.MaxEndDate END) AS DT "
-        SubSQLStr1 += "FROM ("+SubSQLStr+") t GROUP BY t."+self._IDField
-        SQLStr = "SELECT t1.DT, "
-        SQLStr += "t1.ID, "
+        SubSQLStr += "GROUP BY "+self._DBTableName+"."+self._IDField
+        if IgnoreTime:
+            SQLStr = "SELECT DATE(CASE WHEN "+AnnDateField+">=t.MaxEndDate THEN "+AnnDateField+" ELSE t.MaxEndDate END) AS DT, "
+        else:
+            SQLStr = "SELECT CASE WHEN "+AnnDateField+">=t.MaxEndDate THEN "+AnnDateField+" ELSE t.MaxEndDate END AS DT, "
+        SQLStr += "t.ID, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" FROM "+self._DBTableName+" "
         for iJoinStr in SETableJoinStr: SQLStr += iJoinStr+" "
-        SQLStr += "INNER JOIN ("+SubSQLStr1+") t1 "
-        SQLStr += "ON (t1."+self._IDField+"="+self._DBTableName+"."+self._IDField+") "
-        SQLStr += "AND (CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END=t1.DT)"
+        SQLStr += "INNER JOIN ("+SubSQLStr+") t "
+        SQLStr += "ON (t."+self._IDField+"="+self._DBTableName+"."+self._IDField+" "
+        SQLStr += "AND "+EndDateField+"=t.MaxEndDate)"
         if ConditionSQLStr: SQLStr += " WHERE"+ConditionSQLStr[3:]
         return SQLStr
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
@@ -901,7 +900,7 @@ class _InfoPublTable(_MarketTable):
         AnnDateField = self._DBTableName+"."+self._AnnDateField
         SubSQLStr = "SELECT "+self._getIDField()+" AS ID, "
         SubSQLStr += self._DBTableName+"."+self._IDField+", "
-        SubSQLStr += AnnDateField+" AS AnnDate, "
+        SubSQLStr += "CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END AS AnnDate, "
         SubSQLStr += "MAX("+EndDateField+") AS MaxEndDate "
         SubSQLStr += self._genFromSQLStr()+" "
         SubSQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
@@ -912,11 +911,11 @@ class _InfoPublTable(_MarketTable):
         SubSQLStr += "OR "+EndDateField+">='"+StartDate.strftime(DTFormat)+"') "
         SubSQLStr += "AND ("+AnnDateField+"<='"+EndDate.strftime(DTFormat)+"' "
         SubSQLStr += "AND "+EndDateField+"<='"+EndDate.strftime(DTFormat)+"') "
-        SubSQLStr += "GROUP BY "+self._DBTableName+"."+self._IDField+", "+AnnDateField
+        SubSQLStr += "GROUP BY "+self._DBTableName+"."+self._IDField+", AnnDate"
         if IgnoreTime:
-            SQLStr = "SELECT DATE(CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END) AS DT, "
+            SQLStr = "SELECT DATE(t.AnnDate) AS DT, "
         else:
-            SQLStr = "SELECT CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END AS DT, "
+            SQLStr = "SELECT t.AnnDate AS DT, "
         SQLStr += "t.ID, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" FROM "+self._DBTableName+" "

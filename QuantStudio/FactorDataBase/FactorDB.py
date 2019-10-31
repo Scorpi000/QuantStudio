@@ -719,7 +719,7 @@ class FactorTable(__QS_Object__):
         else:
             nPrcs = min((self.OperationMode.SubProcessNum, len(args["GroupInfo"])))
             Procs,Main2SubQueue,Sub2MainQueue = startMultiProcess(pid="0", n_prc=nPrcs, target_fun=_prepareRawData,
-                                                                  arg=args, partition_arg=["GroupInfo", "RawDataFileNames"],
+                                                                  arg=args, partition_arg=["GroupInfo", "RawDataFileNames", "PrepareIDs", "PID_PrepareIDs"],
                                                                   n_partition_head=0, n_partition_tail=0,
                                                                   main2sub_queue="None", sub2main_queue="Single")
             nGroup = len(GroupInfo)

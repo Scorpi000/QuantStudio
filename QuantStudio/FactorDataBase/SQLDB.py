@@ -7,7 +7,7 @@ from collections import OrderedDict
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, Str, Range, Password, File, Float, Bool, ListStr, on_trait_change
+from traits.api import Enum, Str, Range, Password, File, Float, Bool, ListStr, on_trait_change, Either, Date
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName
@@ -438,6 +438,37 @@ class _NarrowTable(FactorTable):
         return _adjustData(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts)
 
 
+class _FeatureTable(_WideTable):
+    """截面宽表"""
+    TableType = Enum("截面宽表", arg_type="SingleOption", label="因子表类型", order=0)
+    LookBack = Float(np.inf, arg_type="Integer", label="回溯天数", order=1)
+    TargetDT = Either(None, Date, arg_type="DateTime", label="目标时点", order=7)
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
+        return []
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        if ids==[]: return pd.DataFrame(columns=["ID"]+factor_names)
+        IDField = args.get("ID字段", self.IDField)
+        DTField = args.get("时点字段", self.DTField)
+        TargetDT = args.get("目标时点", self.TargetDT)
+        if TargetDT is None:
+            SQLStr = "SELECT MAX("+self._DBTableName+"."+DTField+") FROM "+self._DBTableName+" "
+            SQLStr += "WHERE "+self._DBTableName+"."+DTField+" IS NOT NULL "
+            if ids is not None: SQLStr += "AND ("+genSQLInCondition(self._DBTableName+"."+IDField, ids, is_str=True, max_num=1000)+") "
+            FilterStr = args.get("筛选条件", self.FilterCondition)
+            if FilterStr: SQLStr += "AND "+FilterStr.format(Table=self._DBTableName)+" "
+            TargetDT =  self._FactorDB.fetchall(SQLStr)
+            if not TargetDT: return pd.DataFrame(columns=["ID"]+factor_names)
+            TargetDT = TargetDT[0][0]
+        RawData = super().__QS_prepareRawData__(factor_names, ids, [TargetDT], args=args)
+        RawData["QS_TargetDT"] = TargetDT
+        return RawData
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        TargetDT = raw_data.pop("QS_TargetDT").iloc[0].to_pydatetime()
+        Data = super().__QS_calcData__(raw_data, factor_names, ids, [TargetDT], args=args)
+        Data = Data.iloc[:, 0, :]
+        return pd.Panel(Data.values.T.reshape((Data.shape[1], Data.shape[0], 1)).repeat(len(dts), axis=2), items=factor_names, major_axis=Data.index, minor_axis=dts).swapaxes(1, 2)
+
 class SQLDB(QSSQLObject, WritableFactorDB):
     """SQLDB"""
     CheckWriteData = Bool(False, arg_type="Bool", label="检查写入值", order=100)
@@ -500,10 +531,17 @@ class SQLDB(QSSQLObject, WritableFactorDB):
             Msg = ("因子库 '%s' 调用方法 getTable 错误: 不存在因子表: '%s'!" % (self.Name, table_name))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
-        if args.get("因子表类型", "宽表")=="宽表":
+        TableType = args.get("因子表类型", "宽表")
+        if TableType=="宽表":
             return _WideTable(name=table_name, fdb=self, sys_args=args, logger=self._QS_Logger)
-        else:
+        elif TableType=="窄表":
             return _NarrowTable(name=table_name, fdb=self, sys_args=args, logger=self._QS_Logger)
+        elif TableType=="截面宽表":
+            return _FeatureTable(name=table_name, fdb=self, sys_args=args, logger=self._QS_Logger)
+        else:
+            Msg = ("因子库 '%s' 调用方法 getTable 错误: 不支持的因子表类型: '%s'" % (self.Name, TableType))
+            self._QS_Logger.error(Msg)
+            raise __QS_Error__(Msg)
     def renameTable(self, old_table_name, new_table_name):
         if old_table_name not in self._TableFactorDict:
             Msg = ("因子库 '%s' 调用方法 renameTable 错误: 不存在因子表 '%s'!" % (self.Name, old_table_name))

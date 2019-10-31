@@ -256,7 +256,7 @@ class SectionOperation(DerivativeFactor):
     DescriptorSection = List(arg_type="List", label="描述子截面", order=5)
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
-        self.add_trait("DescriptorSection", List([None]*len(self._Descriptors), arg_type="List", label="描述子截面", order=5))
+        self.DescriptorSection = [None]*len(self._Descriptors)
     def readData(self, ids, dts, **kwargs):
         SectionIDs = kwargs.pop("section_ids", ids)
         DescriptorData = []
@@ -355,8 +355,10 @@ class PanelOperation(DerivativeFactor):
     iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=9)
     DescriptorSection = List(arg_type="List", label="描述子截面", order=10)
     def __QS_initArgs__(self):
+        super().__QS_initArgs__()
         self.LookBack = [0]*len(self._Descriptors)
         self.LookBackMode = ["滚动窗口"]*len(self._Descriptors)
+        self.DescriptorSection = [None]*len(self._Descriptors)
     def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
         if len(self._Descriptors)>len(self.LookBack): raise  __QS_Error__("面板运算因子 : '%s' 的参数'回溯期数'序列长度小于描述子个数!" % self.Name)
         OldStartDT = dt_dict.get(self.Name, None)
@@ -381,7 +383,10 @@ class PanelOperation(DerivativeFactor):
             iStartInd = StartInd - self.LookBack[i]
             if iStartInd<0: self._QS_Logger.warning("注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足!" % (self.Name, iDescriptor.Name))
             iStartDT = DTRuler[max(0, iStartInd)]
-            iDescriptor._QS_initOperation(iStartDT, dt_dict, prepare_ids, id_dict)
+            if self.DescriptorSection[i] is None:
+                iDescriptor._QS_initOperation(iStartDT, dt_dict, prepare_ids, id_dict)
+            else:
+                iDescriptor._QS_initOperation(iStartDT, dt_dict, self.DescriptorSection[i], id_dict)
         if (self._OperationMode.SubProcessNum>0) and (self.Name not in self._OperationMode._Event):
             self._OperationMode._Event[self.Name] = (Queue(), Event())
     def readData(self, ids, dts, **kwargs):
