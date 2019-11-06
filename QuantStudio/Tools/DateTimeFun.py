@@ -212,9 +212,9 @@ if __name__=="__main__":
     #DateTimes = np.array(tuple(combineDateTime(Dates, Times)))
     #DateIndex = getDateStartEndIndex(DateTimes, Dates)
     #LastDateTimes = DateTimes[DateIndex[:,1]-1]
-    #StartT = time.clock()
+    #StartT = time.perf_counter()
     #DateTimes = getDateTimeSeries(dt.datetime(2018,1,1,9,30), dt.datetime(2018,12,31,15), dt.timedelta(seconds=1))
-    #print(time.clock()-StartT)
+    #print(time.perf_counter()-StartT)
     # 测试 groupbyYear
     DTs = pd.date_range(dt.datetime(2018,1,1), dt.datetime(2019,12,30), freq="D")
     s = pd.Series(np.random.randn(DTs.shape[0]), index=DTs)

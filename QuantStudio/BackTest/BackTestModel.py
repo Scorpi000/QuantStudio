@@ -122,15 +122,15 @@ class BackTestModel(__QS_Object__):
     def run(self, dts, subprocess_num=0):
         self._QS_TestDateTimes = sorted(dts)
         if subprocess_num>0: return self._runMultiProcs(subprocess_num)
-        TotalStartT = time.clock()
+        TotalStartT = time.perf_counter()
         print("==========历史回测==========", "1. 初始化", sep="\n", end="\n")
         FactorDBs = set()
         for jModule in self.Modules:
             jDBs = jModule.__QS_start__(mdl=self, dts=self._QS_TestDateTimes)
             if jDBs is not None: FactorDBs.update(set(jDBs))
         for jDB in FactorDBs: jDB.start(dts=self._QS_TestDateTimes)
-        print(("耗时 : %.2f" % (time.clock()-TotalStartT, )), "2. 循环计算", sep="\n", end="\n")
-        StartT = time.clock()
+        print(("耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "2. 循环计算", sep="\n", end="\n")
+        StartT = time.perf_counter()
         with ProgressBar(max_value=len(self._QS_TestDateTimes)) as ProgBar:
             for i, iDT in enumerate(self._QS_TestDateTimes):
                 self._TestDateTimeIndex = i
@@ -138,17 +138,17 @@ class BackTestModel(__QS_Object__):
                 for jDB in FactorDBs: jDB.move(iDT)
                 for jModule in self.Modules: jModule.__QS_move__(iDT)
                 ProgBar.update(i+1)
-        print(("耗时 : %.2f" % (time.clock()-StartT, )), "3. 结果生成", sep="\n", end="\n")
-        StartT = time.clock()
+        print(("耗时 : %.2f" % (time.perf_counter()-StartT, )), "3. 结果生成", sep="\n", end="\n")
+        StartT = time.perf_counter()
         for jModule in self.Modules: jModule.__QS_end__()
         for jDB in FactorDBs: jDB.end()
-        print(("耗时 : %.2f" % (time.clock()-StartT, )), ("总耗时 : %.2f" % (time.clock()-TotalStartT, )), "="*28, sep="\n", end="\n")
+        print(("耗时 : %.2f" % (time.perf_counter()-StartT, )), ("总耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "="*28, sep="\n", end="\n")
         self._Output = self.output(recalculate=True)
         return 0
     def _runMultiProcs(self, subprocess_num):
         nPrcs = min(subprocess_num, len(self.Modules))
         Args = {"mdl":self, "module_inds":np.arange(len(self.Modules)).tolist(), "OutputPipe":QSPipe()}
-        TotalStartT = time.clock()
+        TotalStartT = time.perf_counter()
         print("==========历史回测==========", "1. 初始化", sep="\n", end="\n")
         Procs, Main2SubQueue, Sub2MainQueue = startMultiProcess(pid="0", n_prc=nPrcs, target_fun=_runModel,
                                                                 arg=Args, partition_arg=["module_inds"],
@@ -159,17 +159,17 @@ class BackTestModel(__QS_Object__):
         while True:
             if CalcStage>=nTask:
                 ProgBar.finish()
-                print(("耗时 : %.2f" % (time.clock()-CalcStageStartT, )), "3. 结果生成", sep="\n", end="\n")
+                print(("耗时 : %.2f" % (time.perf_counter()-CalcStageStartT, )), "3. 结果生成", sep="\n", end="\n")
                 CalcStage = -1
-                EndStageStartT = time.clock()
+                EndStageStartT = time.perf_counter()
             if EndStage>=nPrcs:
-                print(("耗时 : %.2f" % (time.clock()-EndStageStartT, )), ("总耗时 : %.2f" % (time.clock()-TotalStartT, )), "="*28, sep="\n", end="\n")
+                print(("耗时 : %.2f" % (time.perf_counter()-EndStageStartT, )), ("总耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "="*28, sep="\n", end="\n")
                 break
             iStage = Sub2MainQueue.get()
             if iStage==0:# 初始化阶段
                 if InitStage==0:
-                    print(("耗时 : %.2f" % (time.clock()-TotalStartT, )), "2. 循环计算", sep="\n", end="\n")
-                    CalcStageStartT = time.clock()
+                    print(("耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "2. 循环计算", sep="\n", end="\n")
+                    CalcStageStartT = time.perf_counter()
                     ProgBar = ProgressBar(max_value=nTask)
                     ProgBar.start()
                 InitStage += 1

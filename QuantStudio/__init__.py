@@ -38,8 +38,8 @@ class __QS_Error__(Exception):
 class __QS_Object__(HasTraits):
     """Quant Studio 系统对象"""
     def __init__(self, sys_args={}, config_file=None, **kwargs):
-        if "logger" in kwargs: self._QS_Logger = kwargs.pop("logger")
-        else: self._QS_Logger = logging.getLogger()
+        self._QS_Logger = kwargs.pop("logger", None)
+        if self._QS_Logger is None: logging.getLogger()
         super().__init__(**kwargs)
         self._LabelTrait = {}
         self._ArgOrder = pd.Series()
@@ -53,11 +53,13 @@ class __QS_Object__(HasTraits):
         self._ArgOrder.sort_values(inplace=True)
         self.__QS_initArgs__()
         self._ConfigFile, Config = None, {}
-        if config_file and os.path.isfile(config_file):
-            self._ConfigFile = config_file
-            with open(self._ConfigFile, "r", encoding="utf-8") as File:
-                FileStr = File.read()
-                if FileStr: Config = json.loads(FileStr)
+        if config_file:
+            if not os.path.isfile(config_file): config_file = __QS_ConfigPath__+os.sep+config_file
+            if os.path.isfile(config_file):
+                self._ConfigFile = config_file
+                with open(self._ConfigFile, "r", encoding="utf-8") as File:
+                    FileStr = File.read()
+                    if FileStr: Config = json.loads(FileStr)
         Config.update(sys_args)
         for iArgName, iArgVal in Config.items():
             if iArgName in self._ArgOrder.index: self[iArgName] = iArgVal

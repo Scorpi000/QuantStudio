@@ -742,13 +742,13 @@ class FactorTable(__QS_Object__):
     def write2FDB(self, factor_names, ids, dts, factor_db, table_name, if_exists="update", subprocess_num=cpu_count()-1, dt_ruler=None, section_ids=None, **kwargs):
         if not isinstance(factor_db, WritableFactorDB): raise __QS_Error__("因子数据库: %s 不可写入!" % factor_db.Name)
         print("==========因子运算==========", "1. 原始数据准备", sep="\n", end="\n")
-        TotalStartT = time.clock()
+        TotalStartT = time.perf_counter()
         self.OperationMode.SubProcessNum = subprocess_num
         self.OperationMode.DTRuler = (dts if dt_ruler is None else dt_ruler)
         self.OperationMode.SectionIDs = section_ids
         self._prepare(factor_names, ids, dts)
-        print(("耗时 : %.2f" % (time.clock()-TotalStartT, )), "2. 因子数据计算", end="\n", sep="\n")
-        StartT = time.clock()
+        print(("耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "2. 因子数据计算", end="\n", sep="\n")
+        StartT = time.perf_counter()
         Args = {"FT":self, "PID":"0", "FactorDB":factor_db, "TableName":table_name, "if_exists":if_exists}
         if self.OperationMode.SubProcessNum==0:
             _calculate(Args)
@@ -783,11 +783,11 @@ class FactorTable(__QS_Object__):
                             ProgBar.update(iProg)
                     if iProg>=nTask: break
             for iPID, iPrcs in Procs.items(): iPrcs.join()
-        print(("耗时 : %.2f" % (time.clock()-StartT, )), "3. 清理缓存", end="\n", sep="\n")
-        StartT = time.clock()
+        print(("耗时 : %.2f" % (time.perf_counter()-StartT, )), "3. 清理缓存", end="\n", sep="\n")
+        StartT = time.perf_counter()
         factor_db.connect()
         self._exit()
-        print(('耗时 : %.2f' % (time.clock()-StartT, )), ("总耗时 : %.2f" % (time.clock()-TotalStartT, )), "="*28, sep="\n", end="\n")
+        print(('耗时 : %.2f' % (time.perf_counter()-StartT, )), ("总耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "="*28, sep="\n", end="\n")
         return 0
 
 # 自定义因子表
