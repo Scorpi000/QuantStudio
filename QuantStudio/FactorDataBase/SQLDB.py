@@ -87,6 +87,8 @@ class _WideTable(FactorTable):
         SQLStr += "WHERE "+self._DBTableName+"."+IDField+" IS NOT NULL "
         if idt is not None: SQLStr += "AND "+self._DBTableName+"."+DTField+"='"+idt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
         if ifactor_name is not None: SQLStr += "AND "+self._DBTableName+"."+ifactor_name+" IS NOT NULL "
+        FilterStr = args.get("筛选条件", self.FilterCondition)
+        if FilterStr: SQLStr += "AND "+FilterStr.format(Table=self._DBTableName)+" "
         SQLStr += "ORDER BY "+self._DBTableName+"."+IDField
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
@@ -99,6 +101,8 @@ class _WideTable(FactorTable):
         if start_dt is not None: SQLStr += "AND "+self._DBTableName+"."+DTField+">='"+start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
         if end_dt is not None: SQLStr += "AND "+self._DBTableName+"."+DTField+"<='"+end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
         if ifactor_name is not None: SQLStr += "AND "+self._DBTableName+"."+ifactor_name+" IS NOT NULL "
+        FilterStr = args.get("筛选条件", self.FilterCondition)
+        if FilterStr: SQLStr += "AND "+FilterStr.format(Table=self._DBTableName)+" "
         SQLStr += "ORDER BY "+self._DBTableName+"."+DTField
         if self._FactorDB.DBType!="sqlite3": return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
         else: return [dt.datetime.strptime(iRslt[0], "%Y-%m-%d %H:%M:%S.%f") for iRslt in self._FactorDB.fetchall(SQLStr)]
@@ -287,6 +291,8 @@ class _NarrowTable(FactorTable):
         SQLStr += "WHERE "+self._DBTableName+"."+IDField+" IS NOT NULL "
         if idt is not None: SQLStr += "AND "+self._DBTableName+"."+DTField+"='"+idt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
         if ifactor_name is not None: SQLStr += "AND "+self._DBTableName+"."+FactorField+"='"+ifactor_name+"' "
+        FilterStr = args.get("筛选条件", self.FilterCondition)
+        if FilterStr: SQLStr += "AND "+FilterStr.format(Table=self._DBTableName)+" "
         SQLStr += "ORDER BY "+self._DBTableName+"."+IDField
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
@@ -300,6 +306,8 @@ class _NarrowTable(FactorTable):
         if start_dt is not None: SQLStr += "AND "+self._DBTableName+"."+DTField+">='"+start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
         if end_dt is not None: SQLStr += "AND "+self._DBTableName+"."+DTField+"<='"+end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
         if ifactor_name is not None: SQLStr += "AND "+self._DBTableName+"."+FactorField+"='"+ifactor_name+"' "
+        FilterStr = args.get("筛选条件", self.FilterCondition)
+        if FilterStr: SQLStr += "AND "+FilterStr.format(Table=self._DBTableName)+" "
         SQLStr += "ORDER BY "+self._DBTableName+"."+DTField
         if self._FactorDB.DBType!="sqlite3": return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
         else: return [dt.datetime.strptime(iRslt[0], "%Y-%m-%d %H:%M:%S.%f") for iRslt in self._FactorDB.fetchall(SQLStr)]
@@ -443,22 +451,29 @@ class _FeatureTable(_WideTable):
     TableType = Enum("截面宽表", arg_type="SingleOption", label="因子表类型", order=0)
     LookBack = Float(np.inf, arg_type="Integer", label="回溯天数", order=1)
     TargetDT = Either(None, Date, arg_type="DateTime", label="目标时点", order=7)
+    def _getMaxDT(self, args={}):
+        DTField = args.get("时点字段", self.DTField)
+        SQLStr = "SELECT MAX("+self._DBTableName+"."+DTField+") FROM "+self._DBTableName+" "
+        SQLStr += "WHERE "+self._DBTableName+"."+DTField+" IS NOT NULL "
+        FilterStr = args.get("筛选条件", self.FilterCondition)
+        if FilterStr: SQLStr += "AND "+FilterStr.format(Table=self._DBTableName)+" "
+        MaxDT =  self._FactorDB.fetchall(SQLStr)
+        if not MaxDT: return None
+        return MaxDT[0][0]
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         return []
+    def getID(self, ifactor_name=None, idt=None, args={}):
+        TargetDT = args.get("目标时点", self.TargetDT)
+        if TargetDT is None: TargetDT = self._getMaxDT(args=args)
+        if TargetDT is None: return []
+        return super().getID(ifactor_name=ifactor_name, idt=TargetDT, args=args)
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         if ids==[]: return pd.DataFrame(columns=["ID"]+factor_names)
         IDField = args.get("ID字段", self.IDField)
         DTField = args.get("时点字段", self.DTField)
         TargetDT = args.get("目标时点", self.TargetDT)
-        if TargetDT is None:
-            SQLStr = "SELECT MAX("+self._DBTableName+"."+DTField+") FROM "+self._DBTableName+" "
-            SQLStr += "WHERE "+self._DBTableName+"."+DTField+" IS NOT NULL "
-            if ids is not None: SQLStr += "AND ("+genSQLInCondition(self._DBTableName+"."+IDField, ids, is_str=True, max_num=1000)+") "
-            FilterStr = args.get("筛选条件", self.FilterCondition)
-            if FilterStr: SQLStr += "AND "+FilterStr.format(Table=self._DBTableName)+" "
-            TargetDT =  self._FactorDB.fetchall(SQLStr)
-            if not TargetDT: return pd.DataFrame(columns=["ID"]+factor_names)
-            TargetDT = TargetDT[0][0]
+        if TargetDT is None: TargetDT = self._getMaxDT(args=args)
+        if TargetDT is None: return pd.DataFrame(columns=["ID"]+factor_names)
         RawData = super().__QS_prepareRawData__(factor_names, ids, [TargetDT], args=args)
         RawData["QS_TargetDT"] = TargetDT
         return RawData

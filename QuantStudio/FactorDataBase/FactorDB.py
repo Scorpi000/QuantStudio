@@ -332,7 +332,6 @@ def _calculate(args):
                         args["FactorDB"].writeData(iData, args["TableName"], if_exists=args["if_exists"], data_type=DataTypes)
                         iData = None
                     ProgBar.update(i+1)
-            
     else:
         if hasattr(args["FactorDB"], "writeFactorData"):
             for i, iFactor in enumerate(FT.OperationMode._Factors):
@@ -737,6 +736,8 @@ class FactorTable(__QS_Object__):
     def _exit(self):
         self.OperationMode._CacheDir = None
         self.OperationMode._isStarted = False
+        for iFactorName, iFactor in self.OperationMode._FactorDict.items():
+            iFactor._exit()
         return 0
     # 计算因子数据并写入因子库
     def write2FDB(self, factor_names, ids, dts, factor_db, table_name, if_exists="update", subprocess_num=cpu_count()-1, dt_ruler=None, section_ids=None, **kwargs):
@@ -1106,6 +1107,10 @@ class Factor(__QS_Object__):
             StdData = StdData.loc[list(dts), self._OperationMode._FactorPrepareIDs[self.Name]]
         gc.collect()
         return StdData
+    def _exit(self):
+        self._OperationMode = None# 运算模式对象
+        self._RawDataFile = ""# 原始数据存放地址
+        self._isCacheDataOK = False# 是否准备好了缓存数据
     # ------------------------------------遍历模式------------------------------------
     # 启动遍历模式, dts: 遍历的时间点序列或者迭代器
     def start(self, dts, **kwargs):

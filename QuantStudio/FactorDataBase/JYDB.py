@@ -208,14 +208,15 @@ class _DBTable(FactorTable):
             iInfo = self._FactorInfo.loc[iField, "Supplementary"]
             if isinstance(iInfo, str) and (iInfo.find("从表")!=-1):
                 iInfo = iInfo.split(":")
-                if len(iInfo)==1:
+                if len(iInfo)==2:
                     iSETable = self._DBTableName+"_SE"
-                    SQLStr += iSETable+".Code, "
-                    if iSETable not in SETables:
-                        JoinStr.append("LEFT JOIN "+iSETable+" ON "+self._DBTableName+".ID="+iSETable+".ID AND "+iSETable+".TypeCode=1")
-                        SETables.add(iSETable)
+                    iSETableAlias = "t"+iInfo[1]
+                    SQLStr += iSETableAlias+".Code, "
+                    if iSETableAlias not in SETables:
+                        JoinStr.append("LEFT JOIN "+iSETable+" "+iSETableAlias+" ON ("+self._DBTableName+".ID="+iSETableAlias+".ID AND "+iSETableAlias+".TypeCode="+iInfo[1]+")")
+                        SETables.add(iSETableAlias)
                 else:
-                    iSETable, iJoinField = iInfo[-1].split(".")
+                    iSETable, iJoinField = iInfo[-2:]
                     SQLStr += iSETable+"."+self._FactorInfo.loc[iField, "DBFieldName"]+", "
                     if iSETable not in SETables:
                         JoinStr.append("LEFT JOIN "+iSETable+" ON "+self._DBTableName+".ID="+iSETable+"."+iJoinField)
@@ -378,6 +379,7 @@ class _MappingTable(_DBTable):
             else:
                 SQLStr += "AND "+self._DBTableName+"."+self._EndDateField+">'"+idt.strftime("%Y-%m-%d")+"' "        
         else: SQLStr += "WHERE "+self._DBTableName+"."+self._StartDateField+" IS NOT NULL "
+        SQLStr += "AND "+self._DBTableName+"."+self._IDField+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += self._genConditionSQLStr(args=args)+" "
         SQLStr += "ORDER BY ID"
@@ -547,6 +549,7 @@ class _ConstituentTable(_DBTable):
                     SQLStr += "OR ("+self._DBTableName+"."+self._FactorInfo.loc[self._CurSignField, "DBFieldName"]+"=1)) "
                 else:
                     SQLStr += "OR ("+self._DBTableName+"."+self._FactorInfo.loc[self._OutDateField, "DBFieldName"]+" IS NULL)) "
+        SQLStr += "AND "+self._DBTableName+"."+self._IDField+" IS NOT NULL "
         SQLStr += self._genConditionSQLStr(args=args)+" "
         SQLStr += "ORDER BY ID"
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
@@ -664,6 +667,7 @@ class _MarketTable(_DBTable):
         if idt is not None: SQLStr += "WHERE "+DateField+"='"+idt.strftime("%Y-%m-%d")+"' "
         else: SQLStr += "WHERE "+DateField+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
+        SQLStr += "AND "+self._DBTableName+"."+self._IDField+" IS NOT NULL "
         SQLStr += self._genConditionSQLStr(args=args)+" "
         SQLStr += "ORDER BY ID"
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
@@ -815,6 +819,7 @@ class _InfoPublTable(_MarketTable):
             else:
                 SQLStr += "WHERE "+AnnDateField+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
+        SQLStr += "AND "+self._DBTableName+"."+self._IDField+" IS NOT NULL "
         SQLStr += self._genConditionSQLStr(args=args)+" "
         SQLStr += "ORDER BY ID"
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
@@ -1042,6 +1047,7 @@ class _NarrowTable(_DBTable):
         SQLStr += self._genFromSQLStr()+" "
         if idt is not None: SQLStr += "WHERE "+DateField+"='"+idt.strftime("%Y-%m-%d")+"' "
         else: SQLStr += "WHERE "+DateField+" IS NOT NULL "
+        SQLStr += "AND "+self._DBTableName+"."+self._IDField+" IS NOT NULL "
         FactorField = args.get("因子字段", self.FactorField)
         DBFactorField = self._DBTableName+"."+self._FactorInfo.loc[FactorField, "DBFieldName"]
         if ifactor_name is not None:
@@ -1253,6 +1259,7 @@ class _FinancialTable(_DBTable):
         if idt is not None: SQLStr += "WHERE "+ANNDateField+"<='"+idt.strftime("%Y-%m-%d")+"' "
         else: SQLStr += "WHERE "+ANNDateField+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
+        SQLStr += "AND "+self._DBTableName+"."+self._IDField+" IS NOT NULL "
         SQLStr += "ORDER BY ID"
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     # 返回在给定 ID iid 的有财务报告的公告时点
