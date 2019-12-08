@@ -636,12 +636,19 @@ def diff(f, n=1, **kwargs):
     return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_diff,"参数":Args,"回溯期数":[n]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _fillna(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)[0]
-    LookBack = args["OperatorArg"]["lookback"]
-    return pd.DataFrame(Data).fillna(method="pad", limit=LookBack).values[LookBack:]
-def fillna(f, lookback=1, **kwargs):
+    if args["OperatorArg"]["value"] is None:
+        LookBack = args["OperatorArg"]["lookback"]
+        return pd.DataFrame(Data).fillna(method="pad", limit=LookBack).values[LookBack:]
+    else:
+        Data[pd.isnull(Data)] = args["OperatorArg"]["value"]
+        return Data
+def fillna(f, value=None, lookback=1, **kwargs):
     Descriptors, Args = _genMultivariateOperatorInfo(f)
-    Args["OperatorArg"] = {"lookback":lookback}
-    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_fillna,"参数":Args,"回溯期数":[lookback]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
+    Args["OperatorArg"] = {"lookback":lookback, "value":value}
+    if value is None:
+        return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_fillna,"参数":Args,"回溯期数":[lookback]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
+    else:
+        return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_fillna,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _nav(f, idt, iid, x, args):
     Price = x[0]
     Return, = _genOperatorData(f, idt, iid, x[1:], args)
