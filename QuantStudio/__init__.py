@@ -39,7 +39,7 @@ class __QS_Object__(HasTraits):
     """Quant Studio 系统对象"""
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._QS_Logger = kwargs.pop("logger", None)
-        if self._QS_Logger is None: logging.getLogger()
+        if self._QS_Logger is None: self._QS_Logger = logging.getLogger()
         super().__init__(**kwargs)
         self._LabelTrait = {}
         self._ArgOrder = pd.Series()
