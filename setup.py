@@ -41,7 +41,7 @@ setuptools.setup(
         "h5py>=2.6.0",# HDF5 文件
         "cx-Oracle>=5.2.1",# Oracle 数据库
         "pymssql>=2.1.3",# SQL Server 数据库
-        "mysql-connector-python",# MySQL 数据库
+        "mysql-connector-python<=8.0.16",# MySQL 数据库
         "pyodbc>=4.0.14",# ODBC
         "pymongo>=3.4.0",# mongodb
         "arctic>=1.67.0",# Arctic 时间序列数据库
