@@ -1213,61 +1213,60 @@ def RollBackNPeriod(report_date, n_period):
         elif Date[-4:]=='0331':
             Date = str(int(Date[0:4])-1)+'1231'
     return Date
-# 查找某个报告期对应的公告期
-def findNoteDate(report_date, report_note_dates):
-    for i in range(0, report_note_dates.shape[0]):
-        if report_date==report_note_dates['报告期'].iloc[i]: return report_note_dates['公告日期'].iloc[i]
-    return None
 # 财务因子表, 表结构特征:
 # 报告期字段, 表示财报的报告期
 # 公告日期字段, 表示财报公布的日期
 class _FinancialTable(_DBTable):
     """财务因子表"""
     ReportDate = Enum("所有", "年报", "中报", "一季报", "三季报", Dict(), Function(), label="报告期", arg_type="SingleOption", order=0)
-    ReportType = ListStr(["1"], label="报表类型", arg_type="MultiOption", order=1, option_range=("1", "2"))
-    CalcType = Enum("最新", "单季度", "TTM", label="计算方法", arg_type="SingleOption", order=2)
-    YearLookBack = Int(0, label="回溯年数", arg_type="Integer", order=3)
-    PeriodLookBack = Int(0, label="回溯期数", arg_type="Integer", order=4)
-    ExprFactor = Str("", label="业绩快报因子", arg_type="String", order=5)
-    NoticeFactor = Str("", label="业绩预告因子", arg_type="String", order=6)
-    IgnoreMissing = Bool(True, label="忽略缺失", arg_type="Bool", order=7)
+    CalcType = Enum("最新", "单季度", "TTM", label="计算方法", arg_type="SingleOption", order=1)
+    YearLookBack = Int(0, label="回溯年数", arg_type="Integer", order=2)
+    PeriodLookBack = Int(0, label="回溯期数", arg_type="Integer", order=3)
+    ExprFactor = Str("", label="业绩快报因子", arg_type="String", order=4)
+    NoticeFactor = Str("", label="业绩预告因子", arg_type="String", order=5)
+    IgnoreMissing = Bool(True, label="忽略缺失", arg_type="Bool", order=6)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
-        # 公告日期字段
-        self._ANNDateField = self._FactorInfo[self._FactorInfo["FieldType"]=="ANNDate"].index
-        if self._ANNDateField.shape[0]>0: self._ANNDateField = self._ANNDateField[0]
-        else: self._ANNDateField = None
-        # 公告类型字段
-        self._ANNTypeField = self._FactorInfo[self._FactorInfo["FieldType"]=="ANNType"].index
-        if self._ANNTypeField.shape[0]>0: self._ANNTypeField = self._ANNTypeField[0]
-        else: self._ANNTypeField = None
         # 报告期字段
-        self._ReportDateField = self._FactorInfo[self._FactorInfo["FieldType"]=="ReportDate"].index[0]
-        # 报表类型字段
-        self._ReportTypeField = self._FactorInfo[self._FactorInfo["FieldType"]=="ReportType"].index
-        if self._ReportTypeField.shape[0]==0: self._ReportTypeField = None
-        else: self._ReportTypeField = self._ReportTypeField[0]
+        self._DateField = self._FactorInfo[self._FactorInfo["FieldType"]=="Date"].index[0]
+        # 公告日期字段
+        self._AnnDateField = self._FactorInfo[self._FactorInfo["FieldType"]=="AnnDate"].index
+        if self._AnnDateField.shape[0]>0: self._AnnDateField = self._AnnDateField[0]
+        else: self._AnnDateField = None
+        # 调整类型字段
+        self._AdjustTypeField = self._FactorInfo[self._FactorInfo["FieldType"]=="AdjustType"].index
+        if self._AdjustTypeField.shape[0]==0: self._AdjustTypeField = None
+        else: self._AdjustTypeField = self._AdjustTypeField[0]
         self._TempData = {}
         return
+    def _genConditionSQLStr(self, args={}):
+        SQLStr = super()._genConditionSQLStr(args=args)
+        if self._AdjustTypeField is not None:
+            iConditionVal = self._FactorInfo.loc[self._AdjustTypeField, "Supplementary"]
+            if iConditionVal:
+                iConditionVal = iConditionVal.split(",")
+                SQLStr += " AND "+self._DBTableName+"."+self._FactorInfo.loc[self._AdjustTypeField, "DBFieldName"]+" IN ("+",".join(iConditionVal)+")"
+        return SQLStr
     # 返回在给定时点 idt 之前有财务报告的 ID
     # 如果 idt 为 None, 将返回所有有财务报告的 ID
     # 忽略 ifactor_name
     def getID(self, ifactor_name=None, idt=None, args={}):
-        ANNDateField = self._DBTableName+"."+self._FactorInfo.loc[self._ANNDateField, "DBFieldName"]
+        AnnDateField = self._DBTableName+"."+self._FactorInfo.loc[self._AnnDateField, "DBFieldName"]
         SQLStr = "SELECT DISTINCT "+self._getIDField()+" AS ID "
         SQLStr += self._genFromSQLStr()+" "
-        if idt is not None: SQLStr += "WHERE "+ANNDateField+"<='"+idt.strftime("%Y-%m-%d")+"' "
-        else: SQLStr += "WHERE "+ANNDateField+" IS NOT NULL "
+        if idt is not None: SQLStr += "WHERE "+AnnDateField+"<='"+idt.strftime("%Y-%m-%d")+"' "
+        else: SQLStr += "WHERE "+AnnDateField+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += "AND "+self._DBTableName+"."+self._IDField+" IS NOT NULL "
+        SQLStr += self._genConditionSQLStr(args=args)+" "
         SQLStr += "ORDER BY ID"
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     # 返回在给定 ID iid 的有财务报告的公告时点
     # 如果 iid 为 None, 将返回所有有财务报告的公告时点
     # 忽略 ifactor_name
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
-        ANNDateField = self._DBTableName+"."+self._FactorInfo.loc[self._ANNDateField, "DBFieldName"]
-        SQLStr = "SELECT DISTINCT "+ANNDateField+" "
+        AnnDateField = self._DBTableName+"."+self._FactorInfo.loc[self._AnnDateField, "DBFieldName"]
+        SQLStr = "SELECT DISTINCT "+AnnDateField+" "
         if iid is not None:
             SQLStr += self._genFromSQLStr()+" "
             SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+"='"+deSuffixID([iid])[0]+"' "
@@ -1275,9 +1274,10 @@ class _FinancialTable(_DBTable):
         else:
             SQLStr += "FROM "+self._DBTableName+" "
             SQLStr += "WHERE "+self._DBTableName+"."+self._IDField+" IS NOT NULL "
-        if start_dt is not None: SQLStr += "AND "+ANNDateField+">='"+start_dt.strftime("%Y-%m-%d")+"' "
-        if end_dt is not None: SQLStr += "AND "+ANNDateField+"<='"+end_dt.strftime("%Y-%m-%d")+"' "
-        SQLStr += "ORDER BY "+ANNDateField
+        if start_dt is not None: SQLStr += "AND "+AnnDateField+">='"+start_dt.strftime("%Y-%m-%d")+"' "
+        if end_dt is not None: SQLStr += "AND "+AnnDateField+"<='"+end_dt.strftime("%Y-%m-%d")+"' "
+        SQLStr += self._genConditionSQLStr(args=args)+" "
+        SQLStr += "ORDER BY "+AnnDateField
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     def __QS_genGroupInfo__(self, factors, operation_mode):
         ExprNoticeConditionGroup = {}
@@ -1295,36 +1295,32 @@ class _FinancialTable(_DBTable):
             Groups.append((self, ExprNoticeConditionGroup[iExprNoticeConditions]["FactorNames"], list(ExprNoticeConditionGroup[iExprNoticeConditions]["RawFactorNames"]), [], ExprNoticeConditionGroup[iExprNoticeConditions]["args"]))
         return Groups
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        ANNDateField = self._DBTableName+"."+self._FactorInfo.loc[self._ANNDateField, "DBFieldName"]
-        ANNTypeField = self._DBTableName+"."+self._FactorInfo.loc[self._ANNTypeField, "DBFieldName"]
-        ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._ReportDateField, "DBFieldName"]
-        if self._ReportTypeField is not None: ReportTypeField = self._DBTableName+"."+self._FactorInfo.loc[self._ReportTypeField, "DBFieldName"]
+        AnnDateField = self._DBTableName+"."+self._FactorInfo.loc[self._AnnDateField, "DBFieldName"]
+        ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
+        if self._AdjustTypeField is not None: AdjustTypeField = self._DBTableName+"."+self._FactorInfo.loc[self._AdjustTypeField, "DBFieldName"]
         # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
         SQLStr = "SELECT "+self._getIDField()+" AS ID, "
         if self._FactorDB.DBType=="SQL Server":
-            SQLStr += "TO_CHAR("+ANNDateField+",'YYYYMMDD'), "
+            SQLStr += "TO_CHAR("+AnnDateField+",'YYYYMMDD'), "
             SQLStr += "TO_CHAR("+ReportDateField+",'YYYYMMDD'), "
         elif self._FactorDB.DBType=="MySQL":
-            SQLStr += "DATE_FORMAT("+ANNDateField+",'%Y%m%d'), "
+            SQLStr += "DATE_FORMAT("+AnnDateField+",'%Y%m%d'), "
             SQLStr += "DATE_FORMAT("+ReportDateField+",'%Y%m%d'), "
         elif self._FactorDB.DBType=="Oracle":
-            SQLStr += "TO_CHAR("+ANNDateField+",'yyyyMMdd'), "
+            SQLStr += "TO_CHAR("+AnnDateField+",'yyyyMMdd'), "
             SQLStr += "TO_CHAR("+ReportDateField+",'yyyyMMdd'), "
-        if self._ReportTypeField is not None: SQLStr += ReportTypeField+" AS ReportType, "
-        else: SQLStr += "NULL AS ReportType, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
-        SQLStr += "WHERE "+ANNTypeField+" = 20 "
-        if self._ReportTypeField is not None: SQLStr += "AND "+ReportTypeField+" IN ("+", ".join(self.ReportType)+") "
+        SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        SQLStr += self._genConditionSQLStr(args=args)+" "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
-        SQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
-        SQLStr += "ORDER BY ID, "+ANNDateField+", "
+        SQLStr += "ORDER BY ID, "+AnnDateField+", "
         SQLStr += ReportDateField
-        if self._ReportTypeField is not None: SQLStr += ", "+ReportTypeField+" DESC"
+        if self._AdjustTypeField is not None: SQLStr += ", "+AdjustTypeField+" DESC"
         RawData = self._FactorDB.fetchall(SQLStr)
-        if not RawData: return pd.DataFrame(columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
-        else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
+        if not RawData: return pd.DataFrame(columns=["ID", "AnnDate", "ReportDate"]+factor_names)
+        else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "AnnDate", "ReportDate"]+factor_names)
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
@@ -1681,7 +1677,7 @@ class _FinancialIndicatorTable(_FinancialTable):
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):# TODO
         return []
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._ReportDateField, "DBFieldName"]
+        ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
         # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
         SQLStr = "SELECT "+self._getIDField()+" AS ID, "
         if self._FactorDB.DBType=="SQL Server":
@@ -1693,7 +1689,6 @@ class _FinancialIndicatorTable(_FinancialTable):
         elif self._FactorDB.DBType=="Oracle":
             SQLStr += "TO_CHAR(LC_BalanceSheetAll.InfoPublDate, 'yyyyMMdd'), "
             SQLStr += "TO_CHAR("+ReportDateField+",'yyyyMMdd'), "
-        SQLStr += "NULL AS ReportType, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
@@ -1703,16 +1698,22 @@ class _FinancialIndicatorTable(_FinancialTable):
         SQLStr += "WHERE LC_BalanceSheetAll.BulletinType = 20 "
         SQLStr += "AND LC_BalanceSheetAll.IfMerged = 1 "
         SQLStr += "AND LC_BalanceSheetAll.IfAdjusted = 2 "
+        SQLStr += self._genConditionSQLStr(args=args)+" "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
         SQLStr += "ORDER BY ID, LC_BalanceSheetAll.InfoPublDate, "
         SQLStr += ReportDateField
         RawData = self._FactorDB.fetchall(SQLStr)
-        if not RawData: return pd.DataFrame(columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
-        else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
+        if not RawData: return pd.DataFrame(columns=["ID", "AnnDate", "ReportDate"]+factor_names)
+        else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "AnnDate", "ReportDate"]+factor_names)
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
 
+# 查找某个报告期对应的公告期
+def findNoteDate(report_date, report_note_dates):
+    for i in range(0, report_note_dates.shape[0]):
+        if report_date==report_note_dates['报告期'].iloc[i]: return report_note_dates['公告日期'].iloc[i]
+    return None
 # 生成报告期-公告日期 SQL 查询语句
 def genANN_ReportSQLStr(db_type, table_prefix, ids, report_period="1231"):
     DBTableName = table_prefix+"LC_BalanceSheetAll"
