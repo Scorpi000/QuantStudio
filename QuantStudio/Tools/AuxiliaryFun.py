@@ -64,6 +64,13 @@ def partitionList(data,m,n_head=0,n_tail=0):
         EndInd = min((EndInd+n_tail,n+1))
         SubData.append(data[StartInd:EndInd])
     return SubData
+# 将一个list或者tuple平均分成m段, 移动抽样方式
+def partitionListMovingSampling(data,m):
+    n = len(data)
+    SubData = []
+    for i in range(m):
+        SubData.append(data[i:n:m])
+    return SubData
 # 给定数据类型字典，产生数值和字符串因子列表
 def getFactorList(data_type):
     DataTypeFactor = DictKeyValueTurn_List(data_type)

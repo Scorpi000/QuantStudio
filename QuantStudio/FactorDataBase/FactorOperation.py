@@ -10,7 +10,7 @@ from traits.api import Function, Dict, Enum, List, Int, Instance
 
 from QuantStudio import __QS_Error__
 from QuantStudio.FactorDataBase.FactorDB import Factor
-from QuantStudio.Tools.AuxiliaryFun import partitionList
+from QuantStudio.Tools.AuxiliaryFun import partitionList, partitionListMovingSampling
 
 def _DefaultOperator(f, idt, iid, x, args):
     return np.nan
@@ -86,7 +86,7 @@ class PointOperation(DerivativeFactor):
         IDs = self._OperationMode._FactorPrepareIDs[self.Name]
         if IDs is None: IDs = list(self._OperationMode._PID_IDs[PID])
         else:
-            IDs = partitionList(IDs, len(self._OperationMode._PIDs))[self._OperationMode._PIDs.index(PID)]
+            IDs = partitionListMovingSampling(IDs, len(self._OperationMode._PIDs))[self._OperationMode._PIDs.index(PID)]
         if IDs:
             StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor._QS_getData(DTs, pids=[PID]).values for iDescriptor in self._Descriptors])
             StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
@@ -221,7 +221,7 @@ class TimeOperation(DerivativeFactor):
         IDs = self._OperationMode._FactorPrepareIDs[self.Name]
         if IDs is None: IDs = list(self._OperationMode._PID_IDs[PID])
         else:
-            IDs = partitionList(IDs, len(self._OperationMode._PIDs))[self._OperationMode._PIDs.index(PID)]
+            IDs = partitionListMovingSampling(IDs, len(self._OperationMode._PIDs))[self._OperationMode._PIDs.index(PID)]
         if IDs:
             DescriptorData = []
             for i, iDescriptor in enumerate(self._Descriptors):
@@ -319,7 +319,7 @@ class SectionOperation(DerivativeFactor):
         if self._OperationMode._FactorPrepareIDs[self.Name] is None:
             PID_IDs = self._OperationMode._PID_IDs
         else:
-            PID_IDs = {self._OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in enumerate(partitionList(IDs, len(self._OperationMode._PIDs)))}
+            PID_IDs = {self._OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in enumerate(partitionListMovingSampling(IDs, len(self._OperationMode._PIDs)))}
         for iPID, iIDs in PID_IDs.items():
             with self._OperationMode._PID_Lock[iPID]:
                 with shelve.open(self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
@@ -498,7 +498,7 @@ class PanelOperation(DerivativeFactor):
         if self._OperationMode._FactorPrepareIDs[self.Name] is None:
             PID_IDs = self._OperationMode._PID_IDs
         else:
-            PID_IDs = {self._OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in enumerate(partitionList(IDs, len(self._OperationMode._PIDs)))}
+            PID_IDs = {self._OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in enumerate(partitionListMovingSampling(IDs, len(self._OperationMode._PIDs)))}
         for iPID, iIDs in PID_IDs.items():
             with self._OperationMode._PID_Lock[iPID]:
                 with shelve.open(self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:

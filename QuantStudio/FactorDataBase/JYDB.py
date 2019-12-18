@@ -1948,7 +1948,6 @@ class _AnalystEstDetailTable(_DBTable):
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         self._DateField = self._FactorInfo[self._FactorInfo["FieldType"]=="Date"].index[0]
-        self._InstituteField = self._FactorInfo[self._FactorInfo["FieldType"]=="Institute"].index[0]
         self._ReportDateField = self._FactorInfo[self._FactorInfo["FieldType"]=="ReportDate"].index[0]
         self._TempData = {}
         self._ANN_ReportFileName = "JY财务年报-公告日期"
@@ -1956,6 +1955,7 @@ class _AnalystEstDetailTable(_DBTable):
         return
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
+        self._InstituteField = self._FactorInfo[self._FactorInfo["FieldType"]=="Institute"].index[0]
         self.Deduplication = [self._InstituteField]
     def __QS_genGroupInfo__(self, factors, operation_mode):
         FactorNames, RawFactorNames, StartDT = [], set(), dt.datetime.now()
@@ -2074,11 +2074,11 @@ class _AnalystRatingDetailTable(_DBTable):
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         self._DateField = self._FactorInfo[self._FactorInfo["FieldType"]=="Date"].index[0]
-        self._InstituteField = self._FactorInfo[self._FactorInfo["FieldType"]=="Institute"].index[0]
         self._TempData = {}
         return
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
+        self._InstituteField = self._FactorInfo[self._FactorInfo["FieldType"]=="Institute"].index[0]
         self.Deduplication = [self._InstituteField]
     def __QS_genGroupInfo__(self, factors, operation_mode):
         FactorNames, RawFactorNames, StartDT = [], set(), dt.datetime.now()

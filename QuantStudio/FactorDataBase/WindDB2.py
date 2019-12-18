@@ -708,6 +708,8 @@ class _IndustryTable(_DBTable):
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
         self._InDateField = FactorInfo[FactorInfo["FieldType"]=="InDate"].index[0]
         self._OutDateField = FactorInfo[FactorInfo["FieldType"]=="OutDate"].index[0]
+        self._OutDateIncluded = FactorInfo[FactorInfo["FieldType"]=="OutDate"]["Supplementary"].iloc[0]
+        self._OutDateIncluded = (pd.isnull(self._OutDateIncluded) or (self._OutDateIncluded=="包含"))
         if fdb.DBType=="Oracle": self._SubStrFun = 'SUBSTR'
         else: self._SubStrFun = 'SUBSTRING'
         self._DataType = pd.Series("string", index=["行业名称", "行业代码"])
@@ -837,7 +839,7 @@ class _IndustryTable(_DBTable):
         if raw_data.shape[0]==0: return pd.Panel(np.full(shape=(len(factor_names), len(dts), len(ids)), fill_value=None, dtype="O"), items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data[self._OutDateField] = raw_data[self._OutDateField].where(pd.notnull(raw_data[self._OutDateField]), dt.date.today().strftime("%Y%m%d"))
         raw_data.set_index(["ID"], inplace=True)
-        DeltaDT = dt.timedelta(1)
+        DeltaDT = dt.timedelta(int(not self._OutDateIncluded))
         Data, nFactor = {}, len(factor_names)
         for iID in raw_data.index.unique():
             iRawData = raw_data.loc[[iID]]

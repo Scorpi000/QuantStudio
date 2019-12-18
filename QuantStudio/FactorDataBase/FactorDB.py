@@ -20,9 +20,10 @@ from traits.api import Instance, Str, File, List, Int, Bool, Directory, Enum, Li
 
 from QuantStudio import __QS_Object__, __QS_Error__
 from QuantStudio.Tools.IDFun import testIDFilterStr
-from QuantStudio.Tools.AuxiliaryFun import genAvailableName, partitionList, startMultiProcess
+from QuantStudio.Tools.AuxiliaryFun import genAvailableName, startMultiProcess, partitionListMovingSampling
 from QuantStudio.Tools.FileFun import listDirDir, getShelveFileSuffix
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
+
 
 # 因子库, 只读, 接口类
 # 数据库由若干张因子表组成
@@ -392,6 +393,7 @@ def _calculate(args):
                         jData = None
                     args["Sub2MainQueue"].put((args["PID"], 0.5, None))
     return 0
+
 # 因子表, 接口类
 # 因子表可看做一个独立的数据集或命名空间, 可看做 Panel(items=[因子], major_axis=[时间点], minor_axis=[ID])
 # 因子表的数据有三个维度: 时间点, ID, 因子
@@ -687,7 +689,7 @@ class FactorTable(__QS_Object__):
             self.OperationMode._PIDs = []
             self.OperationMode._PID_IDs = {}
             nPrcs = min((self.OperationMode.SubProcessNum, len(self.OperationMode.IDs)))
-            SubIDs = partitionList(list(self.OperationMode.IDs), nPrcs)
+            SubIDs = partitionListMovingSampling(list(self.OperationMode.IDs), nPrcs)
             self.OperationMode._PID_Lock = {}
             for i in range(nPrcs):
                 iPID = "0-"+str(i)
@@ -737,7 +739,7 @@ class FactorTable(__QS_Object__):
                 jStartInd += ijGroupNum
                 PrepareIDs += [iGroups[j][2]] * ijGroupNum
                 if iGroups[j][2] is not None:
-                    PID_PrepareIDs += [{self.OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in enumerate(partitionList(iGroups[j][2], len(self.OperationMode._PIDs)))}] * ijGroupNum
+                    PID_PrepareIDs += [{self.OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in enumerate(partitionListMovingSampling(iGroups[j][2], len(self.OperationMode._PIDs)))}] * ijGroupNum
                 else:
                     PID_PrepareIDs += [None] * ijGroupNum
             GroupInfo.extend(iGroupInfo)
@@ -1082,7 +1084,7 @@ class Factor(__QS_Object__):
         else:
             PrepareIDs = self._OperationMode._FactorPrepareIDs[self.Name]
             if PrepareIDs is None: PrepareIDs = self._OperationMode._PID_IDs[self._OperationMode._iPID]
-            else: PrepareIDs = partitionList(PrepareIDs, len(self._OperationMode._PID_IDs))[self._OperationMode._PIDs.index(self._OperationMode._iPID)]
+            else: PrepareIDs = partitionListMovingSampling(PrepareIDs, len(self._OperationMode._PID_IDs))[self._OperationMode._PIDs.index(self._OperationMode._iPID)]
             StdData = self._FactorTable.readData(factor_names=[self._NameInFT], ids=PrepareIDs, dts=DTs, args=self.Args).iloc[0]
         with self._OperationMode._PID_Lock[self._OperationMode._iPID]:
             with shelve.open(self._OperationMode._CacheDataDir+os.sep+self._OperationMode._iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
