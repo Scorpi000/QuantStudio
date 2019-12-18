@@ -601,7 +601,7 @@ class _ConstituentTable(_DBTable):
         if self._CurSignField: SQLStr += self._DBTableName+"."+FieldDict[self._CurSignField]+" "# 最新标志
         else: SQLStr += "NULL AS CurSign "# 最新标志
         SQLStr += self._genFromSQLStr()+" "
-        SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._ID, max_num=1000)+")                 "
+        SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+")                 "
         SQLStr += "AND ("+genSQLInCondition(self._DBTableName+"."+FieldDict[self._GroupField], factor_names, is_str=False, max_num=1000)+") "
         SQLStr += "AND (("+self._DBTableName+"."+FieldDict[self._OutDateField]+">'"+StartDate.strftime("%Y%m%d")+"') "
         SQLStr += "OR ("+self._DBTableName+"."+FieldDict[self._OutDateField]+" IS NULL)) "
