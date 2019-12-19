@@ -1828,15 +1828,8 @@ class _FinancialIndicatorTable(_FinancialTable):
         ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
         # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
         SQLStr = "SELECT "+self._getIDField()+" AS ID, "
-        if self._FactorDB.DBType=="SQL Server":
-            SQLStr += "TO_CHAR(LC_BalanceSheetAll.InfoPublDate, 'YYYYMMDD'), "
-            SQLStr += "TO_CHAR("+ReportDateField+", 'YYYYMMDD'), "
-        elif self._FactorDB.DBType=="MySQL":
-            SQLStr += "DATE_FORMAT(LC_BalanceSheetAll.InfoPublDate, '%Y%m%d'), "
-            SQLStr += "DATE_FORMAT("+ReportDateField+",'%Y%m%d'), "
-        elif self._FactorDB.DBType=="Oracle":
-            SQLStr += "TO_CHAR(LC_BalanceSheetAll.InfoPublDate, 'yyyyMMdd'), "
-            SQLStr += "TO_CHAR("+ReportDateField+",'yyyyMMdd'), "
+        SQLStr += "LC_BalanceSheetAll.InfoPublDate, "
+        SQLStr += ReportDateField+", "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
