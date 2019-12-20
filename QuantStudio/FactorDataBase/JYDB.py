@@ -1313,6 +1313,12 @@ class _FinancialTable(_DBTable):
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
         SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        if self._FactorDB.DBType=="SQL Server":
+            SQLStr += "AND TO_CHAR("+ReportDateField+",'MMDD') IN ('0331','0630','0930','1231') "
+        elif self._FactorDB.DBType=="MySQL":
+            SQLStr += "AND DATE_FORMAT("+ReportDateField+",'%m%d') IN ('0331','0630','0930','1231') "
+        elif self._FactorDB.DBType=="Oracle":
+            SQLStr += "AND TO_CHAR("+ReportDateField+",'MMdd') IN ('0331','0630','0930','1231') "
         SQLStr += self._genConditionSQLStr(args=args)+" "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += "ORDER BY ID, "+AnnDateField+", "
