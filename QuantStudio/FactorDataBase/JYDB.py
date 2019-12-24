@@ -1355,7 +1355,7 @@ class _FinancialTable(_DBTable):
             if iDataType=="double": NewData[iFactorName] = Data.iloc[i].astype("float")
             #elif iDataType=="datetime": NewData[iFactorName] = Data.iloc[i].applymap(lambda x: x.strftime("%Y-%m-%d %H:%M:%S") if pd.notnull(x) else None)
             else: NewData[iFactorName] = Data.iloc[i]
-        Data = adjustDateTime(pd.Panel(NewData).loc[factor_names], dts, fillna=True, method="pad")
+        Data = adjustDateTime(pd.Panel(NewData).loc[factor_names], dts, fillna=False)
         Data = Data.loc[:, :, ids]
         return Data
     # 检索最大报告期的位置
