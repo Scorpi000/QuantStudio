@@ -1219,7 +1219,7 @@ def RollBackNPeriod(report_date, n_period):
 # 公告日期字段, 表示财报公布的日期
 class _FinancialTable(_DBTable):
     """财务因子表"""
-    ReportDate = Enum("所有", "年报", "中报", "一季报", "三季报", Dict(), Function(), label="报告期", arg_type="SingleOption", order=0)
+    ReportDate = Enum("所有", "定期报告", "年报", "中报", "一季报", "三季报", Dict(), Function(), label="报告期", arg_type="SingleOption", order=0)
     CalcType = Enum("最新", "单季度", "TTM", label="计算方法", arg_type="SingleOption", order=1)
     YearLookBack = Int(0, label="回溯年数", arg_type="Integer", order=2)
     PeriodLookBack = Int(0, label="回溯期数", arg_type="Integer", order=3)
@@ -1240,6 +1240,16 @@ class _FinancialTable(_DBTable):
         return
     def _genConditionSQLStr(self, args={}):
         SQLStr = super()._genConditionSQLStr(args=args)
+        ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
+        if not ((args.get("报告期", self.ReportDate)=="所有") and (args.get("计算方法", self.CalcType)=="最新") and (args.get("回溯年数", self.YearLookBack)==0) and (args.get("回溯期数", self.PeriodLookBack)==0)):
+            if self._FactorDB.DBType=="SQL Server":
+                SQLStr += " AND TO_CHAR("+ReportDateField+",'MMDD') IN ('0331','0630','0930','1231')"
+            elif self._FactorDB.DBType=="MySQL":
+                SQLStr += " AND DATE_FORMAT("+ReportDateField+",'%m%d') IN ('0331','0630','0930','1231')"
+            elif self._FactorDB.DBType=="Oracle":
+                SQLStr += " AND TO_CHAR("+ReportDateField+",'MMdd') IN ('0331','0630','0930','1231')"
+            else:
+                raise __QS_Error__("JYDB._FinancialTable._genConditionSQLStr 不支持的数据库类型: '%s'" % (self._FactorDB.DBType, ))
         if self._AdjustTypeField is not None:
             iConditionVal = self._FactorInfo.loc[self._AdjustTypeField, "Supplementary"]
             if iConditionVal:
@@ -1330,8 +1340,8 @@ class _FinancialTable(_DBTable):
                 iData = iData.loc[:, factor_name].where(pd.notnull(iData.loc[:, factor_name]), np.inf).unstack().T
                 iIndex = iData.index.union(dts).sort_values()
                 Data[iPeriod] = iData.loc[iIndex].fillna(method="pad").loc[dts, ids]
-                Data[iPeriod] = Data[iPeriod].where(Data[iPeriod]!=np.inf, np.nan)
                 ReportPeriod = ReportPeriod.loc[iIndex].fillna(method="pad").loc[dts, ids]
+                Data[iPeriod] = Data[iPeriod].where(Data[iPeriod]!=np.inf, np.nan)
                 ReportPeriod = ReportPeriod.where(ReportPeriod!="None", None)
             else:
                 iData = iData.loc[:, ["ID", "AnnDate", factor_name]].groupby(by=["ID", "AnnDate"], as_index=True).last()
