@@ -1323,25 +1323,29 @@ class _FinancialTable(_DBTable):
         for i, iPeriod in enumerate(periods):
             if iPeriod>0: TargetReportDate["ReportDate"] = MaxReportDate.apply(RollBackNPeriod)
             iData = TargetReportDate.merge(raw_data, how="left", on=["ID", "ReportDate"], suffixes=("", "_y"))
-            iData = iData[iData["AnnDate"]>=iData["AnnDate_y"]].sort_values(by=["ID", "AnnDate", "AnnDate_y"])
+            iData = iData[(iData["AnnDate"]>=iData["AnnDate_y"]) | pd.isnull(iData["AnnDate_y"])].sort_values(by=["ID", "AnnDate", "AnnDate_y"])
             if (i==0) and (calc_type!="最新"):
                 iData = iData.loc[:, ["ID", "AnnDate", "ReportPeriod", factor_name]].groupby(by=["ID", "AnnDate"], as_index=True).last()
-                ReportPeriod = iData.loc[:, "ReportPeriod"].unstack().T
-                iData = iData.loc[:, factor_name].unstack().T
+                ReportPeriod = iData.loc[:, "ReportPeriod"].where(pd.notnull(iData.loc[:, "ReportPeriod"]), "None").unstack().T
+                iData = iData.loc[:, factor_name].where(pd.notnull(iData.loc[:, factor_name]), np.inf).unstack().T
                 iIndex = iData.index.union(dts).sort_values()
                 Data[iPeriod] = iData.loc[iIndex].fillna(method="pad").loc[dts, ids]
+                Data[iPeriod] = Data[iPeriod].where(Data[iPeriod]!=np.inf, np.nan)
                 ReportPeriod = ReportPeriod.loc[iIndex].fillna(method="pad").loc[dts, ids]
+                ReportPeriod = ReportPeriod.where(ReportPeriod!="None", None)
             else:
                 iData = iData.loc[:, ["ID", "AnnDate", factor_name]].groupby(by=["ID", "AnnDate"], as_index=True).last()
-                iData = iData.loc[:, factor_name].unstack().T
+                iData = iData.loc[:, factor_name].where(pd.notnull(iData.loc[:, factor_name]), np.inf).unstack().T
                 iIndex = iData.index.union(dts).sort_values()
                 Data[iPeriod] = iData.loc[iIndex].fillna(method="pad").loc[dts, ids]
+                Data[iPeriod] = Data[iPeriod].where(Data[iPeriod]!=np.inf, np.nan)
             iData = None
         if calc_type=="最新": return Data[periods[0]]
         elif calc_type=="单季度":
             Rslt = Data[periods[0]] - Data[periods[1]]
             Mask = (ReportPeriod=="03-31")
             Rslt[Mask] = Data[periods[0]][Mask]
+            Rslt[pd.isnull(ReportPeriod)] = None
         elif calc_type=="TTM":
             Rslt = Data[periods[0]].copy()
             Mask = (ReportPeriod=="03-31")
@@ -1350,6 +1354,7 @@ class _FinancialTable(_DBTable):
             Rslt[Mask] = (Data[periods[0]] + Data[periods[2]] - Data[periods[4]])[Mask]
             Mask = (ReportPeriod=="09-30")
             Rslt[Mask] = (Data[periods[0]] + Data[periods[3]] - Data[periods[4]])[Mask]
+            Rslt[pd.isnull(ReportPeriod)] = None
         return Rslt
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
@@ -1357,7 +1362,7 @@ class _FinancialTable(_DBTable):
         if CalcType=="最新": Periods = np.array([0], dtype=np.int)
         elif CalcType=="单季度": Periods = np.array([0, 1], dtype=np.int)
         elif CalcType=="TTM": Periods = np.array([0, 1, 2, 3, 4], dtype=np.int)
-        Periods -= YearLookBack * 4 + PeriodLookBack
+        Periods += YearLookBack * 4 + PeriodLookBack
         raw_data["ReportPeriod"] = raw_data["ReportDate"].astype(str).str.slice(start=5)
         Data = {}
         for iFactorName in factor_names:
