@@ -44,6 +44,11 @@ class QSSQLObject(__QS_Object__):
         super().__setstate__(state)
         if self._Connection: self._connect()
         else: self._Connection = None
+    @property
+    def Connection(self):
+        if self._Connection is not None:
+            if os.getpid()!=self._PID: self._connect()# 如果进程号发生变化, 重连
+        return self._Connection
     def _connect(self):
         self._Connection = None
         if (self.Connector=="cx_Oracle") or ((self.Connector=="default") and (self.DBType=="Oracle")):
