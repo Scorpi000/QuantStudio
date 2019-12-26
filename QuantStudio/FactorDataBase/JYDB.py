@@ -2254,6 +2254,7 @@ class _AnalystRatingDetailTable(_DBTable):
             StartDT = min(operation_mode._FactorStartDT[iFactor.Name], StartDT)
         EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
         StartInd = operation_mode.DTRuler.index(StartDT)
+        Args["附加字段"], Args["去重字段"] = list(Args["附加字段"]), list(Args["去重字段"])
         return [(self, FactorNames, list(RawFactorNames), operation_mode.DTRuler[StartInd:EndInd+1], Args)]
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
