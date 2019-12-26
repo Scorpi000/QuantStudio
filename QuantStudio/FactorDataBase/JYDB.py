@@ -2283,7 +2283,7 @@ class _AnalystRatingDetailTable(_DBTable):
         RawData = self._adjustRawDataByRelatedField(RawData, AllFields)
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return pd.Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
+        #if raw_data.shape[0]==0: return pd.Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
         Dates = sorted({dt.datetime.combine(iDT.date(), dt.time(0)) for iDT in dts})
         DeduplicationFields = args.get("去重字段", self.Deduplication)
         AdditionalFields = list(set(args.get("附加字段", self.AdditionalFields)+DeduplicationFields))
@@ -2300,7 +2300,11 @@ class _AnalystRatingDetailTable(_DBTable):
             else: kData = np.full(shape=(len(Dates), len(ids)), fill_value=None, dtype="O")
             kFields = ["日期", kFactorName]+AdditionalFields
             for j, jID in enumerate(ids):
-                if jID not in AllIDs: continue
+                if jID not in AllIDs:
+                    ijRawData = pd.DataFrame(columns=kFields)
+                    for i, iDate in enumerate(Dates):
+                        kData[i, j] = Operator(self, iDate, jID, ijRawData, ModelArgs)
+                    continue
                 jRawData = raw_data.loc[[jID]][kFields]
                 for i, iDate in enumerate(Dates):
                     iStartDate = (iDate - dt.timedelta(Period)).strftime("%Y%m%d")
