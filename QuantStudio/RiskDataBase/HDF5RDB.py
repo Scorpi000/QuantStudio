@@ -17,7 +17,7 @@ from QuantStudio import __QS_Error__, __QS_ConfigPath__
 class _RiskTable(RiskTable):
     def getMetaData(self, key=None):
         with self._RiskDB._DataLock:
-            with h5py.File(self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix) as File:
+            with h5py.File(self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
                 if key is None: return pd.Series(File.attrs)
                 elif key in File.attrs: return File.attrs[key]
                 else: return None
@@ -77,7 +77,7 @@ class HDF5RDB(RiskDB):
         return _RiskTable(table_name, self)
     def setTableMetaData(self, table_name, key=None, value=None, meta_data=None):
         with self._DataLock:
-            with h5py.File(self.MainDir+os.sep+table_name+"."+self._Suffix) as File:
+            with h5py.File(self.MainDir+os.sep+table_name+"."+self._Suffix, mode="a") as File:
                 if meta_data is None: meta_data = {}
                 if key is not None: meta_data[key] = value
                 for iKey, iValue in meta_data.items():
@@ -103,7 +103,7 @@ class HDF5RDB(RiskDB):
         return 0
     def deleteDateTime(self, table_name, dts):
         with self._DataLock:
-            with h5py.File(self.MainDir+os.sep+table_name+"."+self._Suffix) as File:
+            with h5py.File(self.MainDir+os.sep+table_name+"."+self._Suffix, mode="a") as File:
                 CovGroup = File["Cov"]
                 for iDT in dts:
                     if iDT not in self._TableDT[table_name]: continue
@@ -116,7 +116,7 @@ class HDF5RDB(RiskDB):
         FilePath = self.MainDir+os.sep+table_name+"."+self._Suffix
         with self._DataLock:
             if not os.path.isfile(FilePath): open(FilePath, mode="a").close()# h5py 直接创建文件名包含中文的文件会报错.
-            with h5py.File(FilePath) as File:
+            with h5py.File(FilePath, mode="a") as File:
                 iDTStr = idt.strftime("%Y-%m-%d %H:%M:%S.%f")
                 if "Cov" not in File: CovGroup = File.create_group("Cov")
                 else: CovGroup = File["Cov"]
@@ -316,7 +316,7 @@ class HDF5FRDB(FactorRDB):
         FilePath = self.MainDir+os.sep+table_name+"."+self._Suffix
         with self._DataLock:
             if not os.path.isfile(FilePath): open(FilePath, mode="a").close()# h5py 直接创建文件名包含中文的文件会报错.
-            with h5py.File(FilePath) as File:
+            with h5py.File(FilePath, mode="a") as File:
                 if factor_data is not None:
                     if "FactorData" not in File: Group = File.create_group("FactorData")
                     else: Group = File["FactorData"]

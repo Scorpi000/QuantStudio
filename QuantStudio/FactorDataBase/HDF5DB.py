@@ -40,7 +40,7 @@ class _FactorTable(FactorTable):
             MetaData = {}
             for iFactorName in factor_names:
                 if iFactorName in self.FactorNames:
-                    with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+iFactorName+"."+self._Suffix) as File:
+                    with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+iFactorName+"."+self._Suffix, mode="r") as File:
                         if key is None: MetaData[iFactorName] = pd.Series(File.attrs)
                         elif key in File.attrs: MetaData[iFactorName] = File.attrs[key]
         if not MetaData: return super().getFactorMetaData(factor_names=factor_names, key=key)
@@ -49,12 +49,12 @@ class _FactorTable(FactorTable):
     def getID(self, ifactor_name=None, idt=None, args={}):
         if ifactor_name is None: ifactor_name = self.FactorNames[0]
         with self._FactorDB._DataLock:
-            with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix) as ijFile:
+            with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix, mode="r") as ijFile:
                 return sorted(ijFile["ID"][...])
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         if ifactor_name is None: ifactor_name = self.FactorNames[0]
         with self._FactorDB._DataLock:
-            with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix) as ijFile:
+            with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix, mode="r") as ijFile:
                 Timestamps = ijFile["DateTime"][...]
         if start_dt is not None:
             if isinstance(start_dt, pd.Timestamp) and (pd.__version__>="0.20.0"): start_dt = start_dt.to_pydatetime().timestamp()
@@ -205,7 +205,7 @@ class HDF5DB(WritableFactorDB):
         return 0
     def setTableMetaData(self, table_name, key=None, value=None, meta_data=None):
         with self._DataLock:
-            with h5py.File(self.MainDir+os.sep+table_name+os.sep+"_TableInfo.h5") as File:
+            with h5py.File(self.MainDir+os.sep+table_name+os.sep+"_TableInfo.h5", mode="a") as File:
                 if key is not None:
                     if key in File:
                         del File[key]
@@ -245,7 +245,7 @@ class HDF5DB(WritableFactorDB):
         return 0
     def setFactorMetaData(self, table_name, ifactor_name, key=None, value=None, meta_data=None):
         with self._DataLock:
-            with h5py.File(self.MainDir+os.sep+table_name+os.sep+ifactor_name+"."+self._Suffix) as File:
+            with h5py.File(self.MainDir+os.sep+table_name+os.sep+ifactor_name+"."+self._Suffix, mode="a") as File:
                 if key is not None:
                     if key in File.attrs:
                         del File.attrs[key]
@@ -260,7 +260,7 @@ class HDF5DB(WritableFactorDB):
     def _updateFactorData(self, factor_data, table_name, ifactor_name, data_type):
         FilePath = self.MainDir+os.sep+table_name+os.sep+ifactor_name+"."+self._Suffix
         with self._DataLock:
-            with h5py.File(FilePath) as DataFile:
+            with h5py.File(FilePath, mode="a") as DataFile:
                 nOldDT, OldDateTimes = DataFile["DateTime"].shape[0], DataFile["DateTime"][...].tolist()
                 NewDateTimes = factor_data.index.difference(OldDateTimes).values
                 OldIDs = DataFile["ID"][...]
@@ -330,7 +330,7 @@ class HDF5DB(WritableFactorDB):
             if not os.path.isfile(FilePath):
                 open(FilePath, mode="a").close()# h5py 直接创建文件名包含中文的文件会报错.
                 StrDataType = h5py.special_dtype(vlen=str)
-                with h5py.File(FilePath) as DataFile:
+                with h5py.File(FilePath, mode="a") as DataFile:
                     DataFile.attrs["DataType"] = data_type
                     DataFile.create_dataset("ID", shape=(factor_data.shape[1],), maxshape=(None,), dtype=StrDataType, 
                                             data=factor_data.columns)

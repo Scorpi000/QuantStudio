@@ -1865,9 +1865,11 @@ class _FinancialIndicatorTable(_FinancialTable):
         SQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
         SQLStr += "ORDER BY ID, LC_BalanceSheetAll.InfoPublDate, "
         SQLStr += ReportDateField
-        RawData = self._FactorDB.fetchall(SQLStr)
-        if not RawData: return pd.DataFrame(columns=["ID", "AnnDate", "ReportDate"]+factor_names)
-        else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "AnnDate", "ReportDate"]+factor_names)
+        #RawData = self._FactorDB.fetchall(SQLStr)
+        #if not RawData: return pd.DataFrame(columns=["ID", "AnnDate", "ReportDate"]+factor_names)
+        #else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "AnnDate", "ReportDate"]+factor_names)
+        RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)
+        RawData.columns = ["ID", "AnnDate", "ReportDate"]+factor_names
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
 

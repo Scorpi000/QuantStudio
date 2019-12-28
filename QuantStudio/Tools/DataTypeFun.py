@@ -61,7 +61,7 @@ def removeNestedDictItem(nested_dict, key_tuple):
     return nested_dict
 # 将嵌套字典存入 HDF5 文件
 def writeNestedDict2HDF5(nested_dict_or_value, file_path, ref):
-    with h5py.File(file_path) as File:
+    with h5py.File(file_path, mode="a") as File:
         if (ref in File) and (ref!="/"):
             del File[ref]
         if isinstance(nested_dict_or_value, dict):
@@ -83,7 +83,7 @@ def _readNestedDictFromHDF5(h5_group_or_dataset):
         iBytes = bytes(h5_group_or_dataset[...])
         return pickle.loads(iBytes)
 def readNestedDictFromHDF5(file_path, ref="/"):
-    with h5py.File(file_path) as File:
+    with h5py.File(file_path, mode="r") as File:
         if ref not in File:
             return None
         return _readNestedDictFromHDF5(File[ref])
