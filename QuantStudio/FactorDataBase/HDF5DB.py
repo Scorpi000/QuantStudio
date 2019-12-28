@@ -1,13 +1,14 @@
 # coding=utf-8
 """基于 HDF5 文件的因子库"""
 import os
-import datetime as dt
 import shutil
+import pickle
+import datetime as dt
 #from multiprocessing import Lock
-import fasteners
 
 import numpy as np
 import pandas as pd
+import fasteners
 import h5py
 from traits.api import Directory
 
@@ -17,7 +18,7 @@ from QuantStudio.Tools.FileFun import listDirDir, listDirFile, readJSONFile
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
 
 def _identifyDataType(dtypes):
-    if np.dtype('O') in dtypes.values: return 'string'
+    if np.dtype('O') in dtypes.values: return 'object'
     else: return 'double'
 
 class _FactorTable(FactorTable):
@@ -110,9 +111,11 @@ class _FactorTable(FactorTable):
                         if ids is not None: Rslt = Rslt.loc[:, ids]
                         else: Rslt.sort_index(axis=1, inplace=True)
                     Rslt.index = [dt.datetime.fromtimestamp(itms) for itms in Rslt.index]
-        if DataType!="double":
+        if DataType=="string":
             Rslt = Rslt.where(pd.notnull(Rslt), None)
             Rslt = Rslt.where(Rslt!="", None)
+        elif DataType=="object":
+            Rslt = Rslt.applymap(lambda x: pickle.loads(bytes(x)) if isinstance(x, np.ndarray) and (x.shape[0]>0) else None)
         return Rslt.sort_index(axis=0)
 
 # 基于 HDF5 文件的因子数据库
@@ -272,16 +275,18 @@ class HDF5DB(WritableFactorDB):
                 DataFile["Data"].resize((DataFile["DateTime"].shape[0], DataFile["ID"].shape[0]))
                 if NewDateTimes.shape[0]>0:
                     NewData = factor_data.loc[NewDateTimes, np.r_[OldIDs, NewIDs]]
-                    if data_type!="double": NewData = NewData.where(pd.notnull(NewData), None)
-                    else: NewData = NewData.astype("float")
+                    if data_type=="string": NewData = NewData.where(pd.notnull(NewData), None)
+                    elif data_type=="double": NewData = NewData.astype("float")
+                    elif data_type=="object": NewData = NewData.applymap(lambda x: x if isinstance(x, np.ndarray) else np.fromiter(pickle.dumps(x), dtype=np.uint8))
                     DataFile["Data"][nOldDT:, :] = NewData.values
                 CrossedDateTimes = factor_data.index.intersection(OldDateTimes)
                 if CrossedDateTimes.shape[0]==0: return 0
                 if len(CrossedDateTimes)==len(OldDateTimes):
                     if NewIDs.shape[0]>0:
                         NewData = factor_data.loc[OldDateTimes, NewIDs]
-                        if data_type!="double": NewData = NewData.where(pd.notnull(NewData), None)
-                        else: NewData = NewData.astype("float")
+                        if data_type=="string": NewData = NewData.where(pd.notnull(NewData), None)
+                        elif data_type=="double": NewData = NewData.astype("float")
+                        elif data_type=="object": NewData = NewData.applymap(lambda x: x if isinstance(x, np.ndarray) else np.fromiter(pickle.dumps(x), dtype=np.uint8))
                         DataFile["Data"][:nOldDT, OldIDs.shape[0]:] = NewData.values
                     CrossedIDs = factor_data.columns.intersection(OldIDs)
                     if CrossedIDs.shape[0]>0:
@@ -296,28 +301,34 @@ class HDF5DB(WritableFactorDB):
                 CrossedDateTimePos.sort()
                 if NewIDs.shape[0]>0:
                     NewData = factor_data.loc[CrossedDateTimes, NewIDs]
-                    if data_type!="double": NewData = NewData.where(pd.notnull(NewData), None)
-                    else: NewData = NewData.astype("float")
+                    if data_type=="string": NewData = NewData.where(pd.notnull(NewData), None)
+                    elif data_type=="double": NewData = NewData.astype("float")
+                    elif data_type=="object": NewData = NewData.applymap(lambda x: x if isinstance(x, np.ndarray) else np.fromiter(pickle.dumps(x), dtype=np.uint8))
                     DataFile["Data"][CrossedDateTimePos, OldIDs.shape[0]:] = NewData.values
                 CrossedIDs = factor_data.columns.intersection(OldIDs)
                 if CrossedIDs.shape[0]>0:
                     NewData = factor_data.loc[CrossedDateTimes, CrossedIDs].values
                     OldIDs = OldIDs.tolist()
-                    for i, iID in enumerate(CrossedIDs):
-                        iPos = OldIDs.index(iID)
-                        DataFile["Data"][CrossedDateTimePos, iPos] = NewData[:, i]
+                    if data_type=="object":
+                        for i, iID in enumerate(CrossedIDs):
+                            iPos = OldIDs.index(iID)
+                            DataFile["Data"][CrossedDateTimePos, iPos:iPos+1] = NewData[:, i:i+1]
+                    else:
+                        for i, iID in enumerate(CrossedIDs):
+                            iPos = OldIDs.index(iID)
+                            DataFile["Data"][CrossedDateTimePos, iPos] = NewData[:, i]
         return 0
     def writeFactorData(self, factor_data, table_name, ifactor_name, if_exists="update", data_type=None):
         if data_type is None: data_type = _identifyDataType(factor_data.dtypes)
         if data_type=='double':
             try:
                 factor_data = factor_data.astype('float')
-                data_type = 'double'
             except:
-                factor_data = factor_data.where(pd.notnull(factor_data), None)
-                data_type = 'string'
-        else:
+                data_type = 'object'
+        if data_type=="string":
             factor_data = factor_data.where(pd.notnull(factor_data), None)
+        elif data_type=="object":
+            factor_data = factor_data.applymap(lambda x: np.fromiter(pickle.dumps(x), dtype=np.uint8))
         DTs = factor_data.index
         if pd.__version__>="0.20.0": factor_data.index = [idt.to_pydatetime().timestamp() for idt in factor_data.index]
         else: factor_data.index = [idt.timestamp() for idt in factor_data.index]
@@ -329,19 +340,18 @@ class HDF5DB(WritableFactorDB):
                 self._TableFactorDict[table_name] = self._TableFactorDict.get(table_name, pd.Series()).append(pd.Series(data_type, index=[ifactor_name]))
             if not os.path.isfile(FilePath):
                 open(FilePath, mode="a").close()# h5py 直接创建文件名包含中文的文件会报错.
-                StrDataType = h5py.special_dtype(vlen=str)
-                with h5py.File(FilePath) as DataFile:
+                #StrDataType = h5py.special_dtype(vlen=str)
+                StrDataType = h5py.string_dtype(encoding="utf-8")
+                with h5py.File(FilePath, mode="r+") as DataFile:
                     DataFile.attrs["DataType"] = data_type
-                    DataFile.create_dataset("ID", shape=(factor_data.shape[1],), maxshape=(None,), dtype=StrDataType, 
-                                            data=factor_data.columns)
-                    DataFile.create_dataset("DateTime", shape=(factor_data.shape[0],), maxshape=(None,),
-                                            data=factor_data.index)
-                    if data_type=='double':
-                        DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=np.float, 
-                                                fillvalue=np.nan, data=factor_data.values)
-                    else:
-                        DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=StrDataType,
-                                                fillvalue=None, data=factor_data.values)
+                    DataFile.create_dataset("ID", shape=(factor_data.shape[1],), maxshape=(None,), dtype=StrDataType, data=factor_data.columns)
+                    DataFile.create_dataset("DateTime", shape=(factor_data.shape[0],), maxshape=(None,), data=factor_data.index)
+                    if data_type=="double":
+                        DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=np.float, fillvalue=np.nan, data=factor_data.values)
+                    elif data_type=="string":
+                        DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=StrDataType, fillvalue=None, data=factor_data.values)
+                    elif data_type=="object":
+                        DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=h5py.vlen_dtype(np.uint8), data=factor_data.values)
                 factor_data.index = DTs
                 return 0
         if if_exists=="update":

@@ -277,7 +277,7 @@ def _tolist(f,idt,iid,x,args):
     return pd.Panel({i: iData for i, iData in enumerate(Data)}).sort_index(axis=0).to_frame(filter_observations=False).apply(lambda s: s.tolist(), axis=1).unstack().values
 def tolist(*factors,**kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(*factors)
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_tolist,"参数":Args,"运算时点":"多时点","运算ID":"多ID","数据类型":"string"}, **kwargs)
+    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_tolist,"参数":Args,"运算时点":"多时点","运算ID":"多ID","数据类型":"object"}, **kwargs)
 def _single_quarter(f,idt,iid,x,args):
     ReportPeriod, Last, Prev = _genOperatorData(f,idt,iid,x,args)
     f = np.vectorize(lambda x: x[-4:]=="0331")
@@ -306,7 +306,7 @@ def _strptime(f, idt, iid, x, args):
 def strptime(f, dt_format="%Y%m%d", is_datetime=True, **kwargs):
     Descriptors, Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"dt_format":dt_format, "is_datetime":is_datetime}
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors, {"算子":_strptime, "参数":Args, "数据类型":"string", "运算时点":"多时点", "运算ID":"多ID"}, **kwargs)
+    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors, {"算子":_strptime, "参数":Args, "数据类型":"object", "运算时点":"多时点", "运算ID":"多ID"}, **kwargs)
 # ----------------------时间序列运算--------------------------------
 def _rolling_mean(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
@@ -567,7 +567,7 @@ def rolling_regress(Y, *X, window=20, constant=True, half_life=np.inf, **kwargs)
     Descriptors,Args = _genMultivariateOperatorInfo(*((Y,)+X))
     Args["OperatorArg"] = {"window":window,"constant":constant,"half_life":half_life}
     nX = len(X)
-    f = TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_regress,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID","数据类型":"string"}, **kwargs)
+    f = TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_regress,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID","数据类型":"object"}, **kwargs)
     if constant:
         DataType = [('alpha',np.float)]+[('beta'+str(i),np.float) for i in range(nX)]
         DataType += [('t_alpha',np.float)]+[('t_beta'+str(i),np.float) for i in range(nX)]
@@ -617,7 +617,7 @@ def _lag(f,idt,iid,x,args):
     Data = pd.DataFrame(x[0], index=idt)
     TargetData = Data.loc[TargetDTs].values
     TargetData[args["OperatorArg"]['lag_period']:] = TargetData[:-args["OperatorArg"]['lag_period']]
-    if f.FactorDataType=="string":
+    if f.FactorDataType!="double":
         Data = pd.DataFrame(np.empty(Data.shape,dtype="O"),index=Data.index,columns=iid)
     else:
         Data = pd.DataFrame(index=Data.index,columns=iid,dtype="float")
@@ -1561,5 +1561,5 @@ def chg_ids(f, old_ids, id_map={}, **kwargs):
     Args["OperatorArg"] = {"id_map":id_map}
     FactorName = kwargs.pop("factor_name", str(uuid.uuid1()))
     DataType = f.getMetaData(key="DataType")
-    if DataType is None: DataType = "string"
+    if DataType is None: DataType = "object"
     return SectionOperation(FactorName, Descriptors, {"算子":_chg_ids, "参数":Args, "运算时点":"多时点", "描述子截面":[old_ids]*len(Descriptors), "数据类型":DataType}, **kwargs)
