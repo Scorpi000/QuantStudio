@@ -56,7 +56,7 @@ def astype(f, dtype, **kwargs):
 def _log(f, idt, iid, x, args):
     Data = _genOperatorData(f, idt, iid, x, args)[0]
     Data[Data<=0] = np.nan
-    return np.log(Data)/np.log(args["OperatorArg"]["base"])
+    return np.log(Data.astype(float))/np.log(args["OperatorArg"]["base"])
 def log(f, base=np.e, **kwargs):
     Descriptors, Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"base":base}
@@ -75,25 +75,25 @@ def notnull(f, **kwargs):
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors, {"算子":_notnull, "参数":Args, "运算时点":"多时点", "运算ID":"多ID"}, **kwargs)
 def _sign(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)[0]
-    return np.sign(Data)
+    return np.sign(Data.astype(float))
 def sign(f, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors, {"算子":_sign,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _ceil(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)[0]
-    return np.ceil(Data)
+    return np.ceil(Data.astype(float))
 def ceil(f, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_ceil,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _floor(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)[0]
-    return np.floor(Data)
+    return np.floor(Data.astype(float))
 def floor(f, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_floor,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _fix(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)[0]
-    return np.fix(Data)
+    return np.fix(Data.astype(float))
 def fix(f, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_fix,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
@@ -143,7 +143,7 @@ def replace(f, value_map, data_type="double",**kwargs):
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors, {"算子":_replace, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "数据类型":data_type}, **kwargs)
 def _clip(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
-    return np.clip(Data[0],Data[1],Data[2])
+    return np.clip(Data[0].atype(float),Data[1],Data[2])
 def clip(f,a_min,a_max,**kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f,a_min,a_max)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_clip,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
@@ -415,6 +415,13 @@ def rolling_change_rate(f, window, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window}
     return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_change_rate,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
+def _rolling_rank(f,idt,iid,x,args):
+    Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
+    return Data.rolling(**args["OperatorArg"]).apply(lambda s: np.sort(s).searchsorted(s[-1])).values[args["OperatorArg"]["window"]-1:]
+def rolling_rank(f, window, min_periods=1, win_type=None, **kwargs):
+    Descriptors,Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
+    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_rank,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _expanding_mean(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     return Data.expanding(**args["OperatorArg"]).mean().values[args["OperatorArg"]["min_periods"]-1:]
@@ -537,11 +544,20 @@ def rolling_cov(f1, f2, window, min_periods=1, win_type=None, ddof=1, **kwargs):
     return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_cov,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _rolling_corr(f,idt,iid,x,args):
     Data1,Data2 = _genOperatorData(f,idt,iid,x,args)
-    return pd.DataFrame(Data1).rolling(**args["OperatorArg"]).corr(pd.DataFrame(Data2)).values[args["OperatorArg"]["window"]-1:]
-def rolling_corr(f1, f2, window, min_periods=1, win_type=None, **kwargs):
+    Method = args["OperatorArg"]["method"]
+    if Method=="pearson":
+        return pd.DataFrame(Data1).rolling(window=args["OperatorArg"]["window"], min_periods=args["OperatorArg"]["min_periods"], win_type=args["OperatorArg"]["win_type"]).corr(pd.DataFrame(Data2)).values[args["OperatorArg"]["window"]-1:]
+    Mask = np.sum(pd.notnull(Data1) & pd.notnull(Data2), axis=0)
+    Rslt = pd.DataFrame(Data1).corrwith(pd.DataFrame(Data2), axis=0, drop=False, method=Method).values
+    Rslt[Mask<args["OperatorArg"]["min_periods"]] = np.nan
+    return Rslt
+def rolling_corr(f1, f2, window, min_periods=1, method="pearson", win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f1,f2)
-    Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
-    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_corr,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
+    Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type,"method":method}
+    if method=="pearson":
+        return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_corr,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
+    else:
+        return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_corr,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"单时点","运算ID":"多ID"}, **kwargs)
 def _rolling_regress(f,idt,iid,x,args):
     X = _genOperatorData(f,idt,iid,x,args)
     Y = X[0]

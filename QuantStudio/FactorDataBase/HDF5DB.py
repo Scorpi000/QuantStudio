@@ -4,7 +4,6 @@ import os
 import shutil
 import pickle
 import datetime as dt
-#from multiprocessing import Lock
 
 import numpy as np
 import pandas as pd
@@ -128,8 +127,8 @@ class HDF5DB(WritableFactorDB):
     MainDir = Directory(label="主目录", arg_type="Directory", order=0)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
+        self._LockFile = None# 文件锁的目标文件
         self._DataLock = None# 访问该因子库资源的锁, 防止并发访问冲突
-        #self._DataLock = Lock()
         self._isAvailable = False
         self._Suffix = "hdf5"# 文件的后缀名
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"HDF5DBConfig.json" if config_file is None else config_file), **kwargs)

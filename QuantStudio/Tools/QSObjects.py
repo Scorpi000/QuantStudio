@@ -348,10 +348,11 @@ class QSSQLObject(__QS_Object__):
                 NewFieldNames = ", ".join(FieldTypes)
                 SQLStr = "INSERT INTO %s (datetime, code, %s) SELECT datetime, code, %s FROM %s"
                 Cursor = self.cursor(SQLStr % (self.TablePrefix+table_name, NewFieldNames, OldFieldNames, self.TablePrefix+TempTableName))
-                self._Connection.commit()
+                Conn = self.Connection
+                Conn.commit()
                 # 删除临时表
                 Cursor.execute("DROP TABLE %s" % (self.TablePrefix+TempTableName, ))
-                self._Connection.commit()
+                Conn.commit()
                 Cursor.close()
         except Exception as e:
             Msg = ("'%s' 调用方法 renameField 将表 '%s' 中的字段 '%s' 重命名为 '%s' 时错误: %s" % (self.Name, table_name, old_field_name, new_field_name, str(e)))
@@ -383,10 +384,11 @@ class QSSQLObject(__QS_Object__):
                 FactorNameStr = ", ".join(FactorIndex)
                 SQLStr = "INSERT INTO %s (datetime, code, %s) SELECT datetime, code, %s FROM %s"
                 Cursor = self.cursor(SQLStr % (self.TablePrefix+table_name, FactorNameStr, FactorNameStr, self.TablePrefix+TempTableName))
-                self._Connection.commit()
+                Conn = self.Connection
+                Conn.commit()
                 # 删除临时表
                 Cursor.execute("DROP TABLE %s" % (self.TablePrefix+TempTableName, ))
-                self._Connection.commit()
+                Conn.commit()
                 Cursor.close()
         except Exception as e:
             Msg = ("'%s' 调用方法 deleteField 删除表 '%s' 中的字段 '%s' 时错误: %s" % (self.Name, table_name, str(field_names), str(e)))

@@ -697,13 +697,14 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         else:
             SQLStr = SQLStr[:-2] + ") VALUES (" + "%s, " * (NewData.shape[1]+2)
         SQLStr = SQLStr[:-2]+") "
-        Cursor = self._Connection.cursor()
+        Conn = self.Connection
+        Cursor = Conn.cursor()
         if self.CheckWriteData:
             NewData = self._adjustWriteData(NewData.reset_index())
             Cursor.executemany(SQLStr, NewData)
         else:
             NewData = NewData.astype("O").where(pd.notnull(NewData), None)
             Cursor.executemany(SQLStr, NewData.reset_index().values.tolist())
-        self._Connection.commit()
+        Conn.commit()
         Cursor.close()
         return 0
