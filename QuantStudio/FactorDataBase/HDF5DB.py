@@ -16,9 +16,19 @@ from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
 from QuantStudio.Tools.FileFun import listDirDir, listDirFile, readJSONFile
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
 
-def _identifyDataType(dtypes):
-    if np.dtype('O') in dtypes.values: return 'object'
-    else: return 'double'
+def _identifyDataType(factor_data, data_type=None):
+    if (data_type is None) or (data_type=="double"):
+        try:
+            factor_data = factor_data.astype(float)
+        except:
+            data_type = "object"
+        else:
+            data_type = "double"
+    if data_type=="string":
+        factor_data = factor_data.where(pd.notnull(factor_data), None)
+    elif data_type=="object":
+        factor_data = factor_data.applymap(lambda x: np.fromiter(pickle.dumps(x), dtype=np.uint8))
+    return (factor_data, data_type)
 
 class _FactorTable(FactorTable):
     """HDF5DB 因子表"""
@@ -235,6 +245,10 @@ class HDF5DB(WritableFactorDB):
         FilePath = self.MainDir+os.sep+table_name+os.sep+ifactor_name+"."+self._Suffix
         with self._DataLock:
             with h5py.File(FilePath) as DataFile:
+                OldDataType = DataFile.attrs["DataType"]
+                if data_type is None: data_type = OldDataType
+                factor_data, data_type = _identifyDataType(factor_data, data_type)
+                if OldDataType!=data_type: raise __QS_Error__("HDF5DB.writeFactorData: 新数据无法转换成已有数据的数据类型 '%s'!" % OldDataType)
                 nOldDT, OldDateTimes = DataFile["DateTime"].shape[0], DataFile["DateTime"][...].tolist()
                 NewDateTimes = factor_data.index.difference(OldDateTimes).values
                 OldIDs = DataFile["ID"][...]
@@ -290,16 +304,6 @@ class HDF5DB(WritableFactorDB):
                             DataFile["Data"][CrossedDateTimePos, iPos] = NewData[:, i]
         return 0
     def writeFactorData(self, factor_data, table_name, ifactor_name, if_exists="update", data_type=None):
-        if data_type is None: data_type = _identifyDataType(factor_data.dtypes)
-        if data_type=='double':
-            try:
-                factor_data = factor_data.astype('float')
-            except:
-                data_type = 'object'
-        if data_type=="string":
-            factor_data = factor_data.where(pd.notnull(factor_data), None)
-        elif data_type=="object":
-            factor_data = factor_data.applymap(lambda x: np.fromiter(pickle.dumps(x), dtype=np.uint8))
         DTs = factor_data.index
         if pd.__version__>="0.20.0": factor_data.index = [idt.to_pydatetime().timestamp() for idt in factor_data.index]
         else: factor_data.index = [idt.timestamp() for idt in factor_data.index]
@@ -308,6 +312,7 @@ class HDF5DB(WritableFactorDB):
         with self._DataLock:
             if not os.path.isdir(TablePath): os.mkdir(TablePath)
             if not os.path.isfile(FilePath):
+                factor_data, data_type = _identifyDataType(factor_data, data_type)
                 open(FilePath, mode="a").close()# h5py 直接创建文件名包含中文的文件会报错.
                 #StrDataType = h5py.special_dtype(vlen=str)
                 StrDataType = h5py.string_dtype(encoding="utf-8")
@@ -325,16 +330,15 @@ class HDF5DB(WritableFactorDB):
                 return 0
         if if_exists=="update":
             self._updateFactorData(factor_data, table_name, ifactor_name, data_type)
-            factor_data.index = DTs
         elif if_exists=="append":
             OldData = self.getTable(table_name).readFactorData(ifactor_name=ifactor_name, ids=factor_data.columns.tolist(), dts=DTs.tolist())
             OldData.index = factor_data.index
             factor_data = OldData.where(pd.notnull(OldData), factor_data)
             self._updateFactorData(factor_data, table_name, ifactor_name, data_type)
-            factor_data.index = DTs
+        factor_data.index = DTs
         return 0
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
         for i, iFactor in enumerate(data.items):
-            iDataType = data_type.get(iFactor, _identifyDataType(data.iloc[i].dtypes))
+            iDataType = data_type.get(iFactor, None)
             self.writeFactorData(data.iloc[i], table_name, iFactor, if_exists=if_exists, data_type=iDataType)
         return 0

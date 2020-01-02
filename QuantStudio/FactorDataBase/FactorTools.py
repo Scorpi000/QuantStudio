@@ -310,11 +310,21 @@ def strptime(f, dt_format="%Y%m%d", is_datetime=True, **kwargs):
 # ----------------------时间序列运算--------------------------------
 def _rolling_mean(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
-    return Data.rolling(**args["OperatorArg"]).mean().values[args["OperatorArg"]["window"]-1:]
-def rolling_mean(f, window, min_periods=1, win_type=None, **kwargs):
+    if "weights" not in args["OperatorArg"]:
+        return Data.rolling(**args["OperatorArg"]).mean().values[args["OperatorArg"]["window"]-1:]
+    else:
+        weights = np.array(args["OperatorArg"]["weights"])
+        TotalWeight = np.nansum(weights)
+        return Data.rolling(**args["OperatorArg"]).apply(lambda x: np.nansum(x * weights) / np.nansum(pd.notnull(x) * weights),raw=True).values[args["OperatorArg"]["window"]-1:]
+def rolling_mean(f, window, min_periods=1, win_type=None, weights=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
-    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_mean,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
+    if weights is None:
+        return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_mean,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
+    else:
+        Args["OperatorArg"]["window"] = len(weights)
+        Args["OperatorArg"]["weights"] = weights
+        return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_mean,"参数":Args,"回溯期数":[len(weights)-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _rolling_sum(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     return Data.rolling(**args["OperatorArg"]).sum().values[args["OperatorArg"]["window"]-1:]
@@ -593,6 +603,21 @@ def rolling_regress(Y, *X, window=20, constant=True, half_life=np.inf, **kwargs)
     DataType += [('fvalue',np.float),('rsquared',np.float),('rsquared_adj',np.float)]
     f.TempData["dtype"] = DataType
     return f
+def _rolling_regress_change(f,idt,iid,x,args):
+    Y = _genOperatorData(f,idt,iid,x,args)[0]
+    X = np.arange(Y.shape[0]).astype("float").reshape((Y.shape[0], 1)).repeat(Y.shape[1], axis=1)
+    Mask = pd.isnull(Y)
+    X[Mask] = np.nan
+    X = X - np.nanmean(X, axis=0)
+    Y = Y - np.nanmean(Y, axis=0)
+    Rslt = np.nansum(X * Y, axis=0) / np.nansum(X ** 2, axis=0)
+    Rslt[Y.shape[0] - np.sum(Mask)<args["OperatorArg"]["min_periods"]] = np.nan
+    Rslt[np.isinf(Rslt)] = np.nan
+    return Rslt
+def rolling_regress_change(f, window=20, min_periods=2, **kwargs):
+    Descriptors,Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"min_periods":min_periods}
+    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_regress_change,"参数":Args,"运算时点":"单时点","运算ID":"多ID"}, **kwargs)
 def _expanding_cov(f,idt,iid,x,args):
     Data1,Data2 = _genOperatorData(f,idt,iid,x,args)
     OperatorArg = args["OperatorArg"].copy()
