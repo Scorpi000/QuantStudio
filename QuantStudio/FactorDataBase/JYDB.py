@@ -861,32 +861,31 @@ class _InfoPublTable(_MarketTable):
         EndDateField = self._DBTableName+"."+self._FactorInfo.loc[args.get("日期字段", self.DateField), "DBFieldName"]
         if self._AnnDateField is None: AnnDateField = EndDateField
         else: AnnDateField = self._DBTableName+"."+self._AnnDateField
-        SubSQLStr = "SELECT "+self._getIDField()+" AS ID, "
-        SubSQLStr += self._DBTableName+"."+self._IDField+", "
+        SubSQLStr = "SELECT "+self._DBTableName+"."+self._IDField+", "
         SubSQLStr += "MAX("+EndDateField+") AS MaxEndDate "
-        SubSQLStr += self._genFromSQLStr()+" "
-        SubSQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
-        if pd.notnull(self._MainTableCondition): SubSQLStr += "AND "+self._MainTableCondition+" "
-        ConditionSQLStr = self._genConditionSQLStr(args=args)
-        SubSQLStr += ConditionSQLStr+" "
+        SubSQLStr += "FROM "+self._DBTableName+" "
         IgnoreTime = args.get("忽略时间", self.IgnoreTime)
         if IgnoreTime: DTFormat = "%Y-%m-%d"
         else: DTFormat = "%Y-%m-%d %H:%M:%S"
-        SubSQLStr += "AND ("+AnnDateField+"<'"+end_date.strftime(DTFormat)+"' "
+        SubSQLStr += "WHERE ("+AnnDateField+"<'"+end_date.strftime(DTFormat)+"' "
         SubSQLStr += "AND "+EndDateField+"<'"+end_date.strftime(DTFormat)+"') "
+        ConditionSQLStr = self._genConditionSQLStr(args=args)
+        SubSQLStr += ConditionSQLStr+" "
         SubSQLStr += "GROUP BY "+self._DBTableName+"."+self._IDField
         if IgnoreTime:
             SQLStr = "SELECT DATE(CASE WHEN "+AnnDateField+">=t.MaxEndDate THEN "+AnnDateField+" ELSE t.MaxEndDate END) AS DT, "
         else:
             SQLStr = "SELECT CASE WHEN "+AnnDateField+">=t.MaxEndDate THEN "+AnnDateField+" ELSE t.MaxEndDate END AS DT, "
-        SQLStr += "t.ID, "
+        SQLStr += self._getIDField()+" AS ID, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
-        SQLStr += FieldSQLStr+" FROM "+self._DBTableName+" "
-        for iJoinStr in SETableJoinStr: SQLStr += iJoinStr+" "
+        SQLStr += FieldSQLStr+" "
+        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "        
         SQLStr += "INNER JOIN ("+SubSQLStr+") t "
         SQLStr += "ON (t."+self._IDField+"="+self._DBTableName+"."+self._IDField+" "
-        SQLStr += "AND "+EndDateField+"=t.MaxEndDate)"
-        if ConditionSQLStr: SQLStr += " WHERE"+ConditionSQLStr[3:]
+        SQLStr += "AND "+EndDateField+"=t.MaxEndDate) "
+        SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
+        SQLStr += ConditionSQLStr
         return SQLStr
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         if self.IgnorePublDate or (self._AnnDateField is None): return super().__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args)
@@ -898,33 +897,32 @@ class _InfoPublTable(_MarketTable):
         if not np.isinf(LookBack): StartDate -= dt.timedelta(LookBack)
         EndDateField = self._DBTableName+"."+self._FactorInfo.loc[args.get("日期字段", self.DateField), "DBFieldName"]
         AnnDateField = self._DBTableName+"."+self._AnnDateField
-        SubSQLStr = "SELECT "+self._getIDField()+" AS ID, "
-        SubSQLStr += self._DBTableName+"."+self._IDField+", "
+        SubSQLStr = "SELECT "+self._DBTableName+"."+self._IDField+", "
         SubSQLStr += "CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END AS AnnDate, "
         SubSQLStr += "MAX("+EndDateField+") AS MaxEndDate "
-        SubSQLStr += self._genFromSQLStr()+" "
-        SubSQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
-        if pd.notnull(self._MainTableCondition): SubSQLStr += "AND "+self._MainTableCondition+" "
-        ConditionSQLStr = self._genConditionSQLStr(args=args)
-        SubSQLStr += ConditionSQLStr+" "
-        SubSQLStr += "AND ("+AnnDateField+">='"+StartDate.strftime(DTFormat)+"' "
+        SubSQLStr += "FROM "+self._DBTableName+" "
+        SubSQLStr += "WHERE ("+AnnDateField+">='"+StartDate.strftime(DTFormat)+"' "
         SubSQLStr += "OR "+EndDateField+">='"+StartDate.strftime(DTFormat)+"') "
         SubSQLStr += "AND ("+AnnDateField+"<='"+EndDate.strftime(DTFormat)+"' "
         SubSQLStr += "AND "+EndDateField+"<='"+EndDate.strftime(DTFormat)+"') "
+        ConditionSQLStr = self._genConditionSQLStr(args=args)
+        SubSQLStr += ConditionSQLStr+" "
         SubSQLStr += "GROUP BY "+self._DBTableName+"."+self._IDField+", AnnDate"
         if IgnoreTime:
             SQLStr = "SELECT DATE(t.AnnDate) AS DT, "
         else:
             SQLStr = "SELECT t.AnnDate AS DT, "
-        SQLStr += "t.ID, "
+        SQLStr += self._getIDField()+" AS ID, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
-        SQLStr += FieldSQLStr+" FROM "+self._DBTableName+" "
-        for iJoinStr in SETableJoinStr: SQLStr += iJoinStr+" "
+        SQLStr += FieldSQLStr+" "
+        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
         SQLStr += "INNER JOIN ("+SubSQLStr+") t "
         SQLStr += "ON (t."+self._IDField+"="+self._DBTableName+"."+self._IDField+") "
         SQLStr += "AND (t.MaxEndDate="+EndDateField+") "
-        if ConditionSQLStr: SQLStr += "WHERE TRUE "+ConditionSQLStr+" "
-        SQLStr += "ORDER BY t.ID, DT"
+        SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
+        SQLStr += ConditionSQLStr+" "
+        SQLStr += "ORDER BY ID, DT"
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: RawData = pd.DataFrame(columns=["日期", "ID"]+factor_names)
         RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["日期", "ID"]+factor_names)
