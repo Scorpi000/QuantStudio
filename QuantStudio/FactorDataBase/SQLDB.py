@@ -492,7 +492,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"SQLDBConfig.json" if config_file is None else config_file), **kwargs)
         self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
-        self._TableFieldDataType = {}# {表名: pd.Series(        数据库数据类型, index=[因子名])}
+        self._TableFieldDataType = {}# {表名: pd.Series(数据库数据类型, index=[因子名])}
         self.Name = "SQLDB"
         return
     def connect(self):

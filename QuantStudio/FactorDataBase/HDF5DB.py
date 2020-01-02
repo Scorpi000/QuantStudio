@@ -22,24 +22,23 @@ def _identifyDataType(dtypes):
 
 class _FactorTable(FactorTable):
     """HDF5DB 因子表"""
-    def __init__(self, name, fdb, data_type, sys_args={}, **kwargs):
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
         self._Suffix = fdb._Suffix# 文件后缀名
-        self._DataType = data_type
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+    @property
+    def FactorNames(self):
+        return sorted(listDirFile(self._FactorDB.MainDir+os.sep+self.Name, suffix=self._Suffix))
     def getMetaData(self, key=None):
         with self._FactorDB._DataLock:
             return readNestedDictFromHDF5(self._FactorDB.MainDir+os.sep+self.Name+os.sep+"_TableInfo.h5", "/"+("" if key is None else key))
-    @property
-    def FactorNames(self):
-        return self._DataType.index.tolist()
     def getFactorMetaData(self, factor_names=None, key=None):
-        if factor_names is None: factor_names = self.FactorNames
-        elif set(factor_names).isdisjoint(self.FactorNames): return super().getFactorMetaData(factor_names=factor_names, key=key)
-        if key=="DataType": return self._DataType.loc[factor_names]
+        AllFactorNames = self.FactorNames
+        if factor_names is None: factor_names = AllFactorNames
+        elif set(factor_names).isdisjoint(AllFactorNames): return super().getFactorMetaData(factor_names=factor_names, key=key)
         with self._FactorDB._DataLock:
             MetaData = {}
             for iFactorName in factor_names:
-                if iFactorName in self.FactorNames:
+                if iFactorName in AllFactorNames:
                     with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+iFactorName+"."+self._Suffix) as File:
                         if key is None: MetaData[iFactorName] = pd.Series(File.attrs)
                         elif key in File.attrs: MetaData[iFactorName] = File.attrs[key]
@@ -69,9 +68,10 @@ class _FactorTable(FactorTable):
         Data = {iFactor: self.readFactorData(ifactor_name=iFactor, ids=ids, dts=dts, args=args) for iFactor in factor_names}
         return pd.Panel(Data).loc[factor_names]
     def readFactorData(self, ifactor_name, ids, dts, args={}):
-        if ifactor_name not in self.FactorNames: raise __QS_Error__("因子库 '%s' 的因子表 '%s' 中不存在因子 '%s'!" % (self._FactorDB.Name, self.Name, ifactor_name))
+        FilePath = self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix
+        if not os.path.isfile(FilePath): raise __QS_Error__("因子库 '%s' 的因子表 '%s' 中不存在因子 '%s'!" % (self._FactorDB.Name, self.Name, ifactor_name))
         with self._FactorDB._DataLock:
-            with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix, mode="r") as DataFile:
+            with h5py.File(FilePath, mode="r") as DataFile:
                 DataType = DataFile.attrs["DataType"]
                 DateTimes = DataFile["DateTime"][...]
                 IDs = DataFile["ID"][...]
@@ -126,7 +126,6 @@ class HDF5DB(WritableFactorDB):
     """HDF5DB"""
     MainDir = Directory(label="主目录", arg_type="Directory", order=0)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
-        self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
         self._LockFile = None# 文件锁的目标文件
         self._DataLock = None# 访问该因子库资源的锁, 防止并发访问冲突
         self._isAvailable = False
@@ -147,35 +146,15 @@ class HDF5DB(WritableFactorDB):
         else:
             self._DataLock = None
     def connect(self):
-        if not os.path.isdir(self.MainDir): raise __QS_Error__("不存在主目录: %s!" % self.MainDir)
-        AllTables = listDirDir(self.MainDir)
-        _TableFactorDict = {}
+        if not os.path.isdir(self.MainDir): raise __QS_Error__("HDF5DB.connect: 不存在主目录 '%s'!" % self.MainDir)
         if not os.path.isfile(self.MainDir+os.sep+"LockFile"):
             open(self.MainDir+os.sep+"LockFile", mode="a").close()
         self._LockFile = self.MainDir+os.sep+"LockFile"
         self._DataLock = fasteners.InterProcessLock(self._LockFile)
-        with self._DataLock:
-            for iTable in AllTables:
-                iTablePath = self.MainDir+os.sep+iTable
-                iFactors = set(listDirFile(iTablePath, suffix=self._Suffix))
-                if not iFactors: continue
-                try:
-                    iDataType = readNestedDictFromHDF5(iTablePath+os.sep+"_TableInfo.h5", "/DataType")
-                except:
-                    iDataType = None
-                if (iDataType is None) or (iFactors!=set(iDataType.index)):
-                    iDataType = {}
-                    for ijFactor in iFactors:
-                        with h5py.File(iTablePath+os.sep+ijFactor+"."+self._Suffix, mode="r") as ijDataFile:
-                            iDataType[ijFactor] = ijDataFile.attrs["DataType"]
-                    iDataType = pd.Series(iDataType)
-                    writeNestedDict2HDF5(iDataType, iTablePath+os.sep+"_TableInfo.h5", "/DataType")
-                _TableFactorDict[iTable] = iDataType
-        self._TableFactorDict = _TableFactorDict
         self._isAvailable = True
         return 0
     def disconnect(self):
-        self._TableFactorDict = {}
+        self._LockFile = None
         self._DataLock = None
         self._isAvailable = False
     def isAvailable(self):
@@ -183,27 +162,24 @@ class HDF5DB(WritableFactorDB):
     # -------------------------------表的操作---------------------------------
     @property
     def TableNames(self):
-        return sorted(self._TableFactorDict)
+        return sorted(listDirDir(self.MainDir))
     def getTable(self, table_name, args={}):
-        if table_name not in self._TableFactorDict: raise __QS_Error__("表 '%s' 不存在!" % table_name)
-        return _FactorTable(name=table_name, fdb=self, data_type=self._TableFactorDict[table_name], sys_args=args, logger=self._QS_Logger)
+        if not os.path.isdir(self.MainDir+os.sep+table_name): raise __QS_Error__("HDF5DB.getTable: 表 '%s' 不存在!" % table_name)
+        return _FactorTable(name=table_name, fdb=self, sys_args=args, logger=self._QS_Logger)
     def renameTable(self, old_table_name, new_table_name):
-        if old_table_name not in self._TableFactorDict: raise __QS_Error__("表: '%s' 不存在!" % old_table_name)
-        if (new_table_name!=old_table_name) and (new_table_name in self._TableFactorDict): raise __QS_Error__("表: '"+new_table_name+"' 已存在!")
+        if old_table_name==new_table_name: return 0
         OldPath = self.MainDir+os.sep+old_table_name
         NewPath = self.MainDir+os.sep+new_table_name
-        if OldPath==NewPath: pass
-        elif os.path.isdir(NewPath): raise __QS_Error__("目录: '%s' 被占用!" % NewPath)
         with self._DataLock:
+            if not os.path.isdir(OldPath): raise __QS_Error__("HDF5DB.renameTable: 表: '%s' 不存在!" % old_table_name)
+            if os.path.isdir(NewPath): raise __QS_Error__("HDF5DB.renameTable: 表 '"+new_table_name+"' 已存在!")
             os.rename(OldPath, NewPath)
-        self._TableFactorDict[new_table_name] = self._TableFactorDict.pop(old_table_name)
         return 0
     def deleteTable(self, table_name):
         TablePath = self.MainDir+os.sep+table_name
         with self._DataLock:
             if os.path.isdir(TablePath):
                 shutil.rmtree(TablePath, ignore_errors=True)
-        self._TableFactorDict.pop(table_name, None)
         return 0
     def setTableMetaData(self, table_name, key=None, value=None, meta_data=None):
         with self._DataLock:
@@ -221,16 +197,17 @@ class HDF5DB(WritableFactorDB):
         return 0
     # ----------------------------因子操作---------------------------------
     def renameFactor(self, table_name, old_factor_name, new_factor_name):
-        if old_factor_name not in self._TableFactorDict[table_name]: raise __QS_Error__("因子: '%s' 不存在!" % old_factor_name)
-        if (new_factor_name!=old_factor_name) and (new_factor_name in self._TableFactorDict[table_name]): raise __QS_Error__("表中的因子: '%s' 已存在!" % new_factor_name)
-        TablePath = self.MainDir+os.sep+table_name
+        if old_factor_name==new_factor_name: return 0
+        OldPath = self.MainDir+os.sep+table_name+os.sep+old_factor_name+"."+self._Suffix
+        NewPath = self.MainDir+os.sep+table_name+os.sep+new_factor_name+"."+self._Suffix
         with self._DataLock:
-            os.rename(TablePath+os.sep+old_factor_name+"."+self._Suffix, TablePath+os.sep+new_factor_name+"."+self._Suffix)
-        self._TableFactorDict[table_name][new_factor_name] = self._TableFactorDict[table_name].pop(old_factor_name)
+            if not os.path.isfile(OldPath): raise __QS_Error__("HDF5DB.renameFactor: 表 ’%s' 中不存在因子 '%s'!" % (table_name, old_factor_name))
+            if os.path.isfile(NewPath): raise __QS_Error__("HDF5DB.renameFactor: 表 ’%s' 中的因子 '%s' 已存在!" % (table_name, new_factor_name))
+            os.rename(OldPath, NewPath)
         return 0
     def deleteFactor(self, table_name, factor_names):
         TablePath = self.MainDir+os.sep+table_name
-        FactorNames = set(self.getTable(table_name).FactorNames)
+        FactorNames = set(listDirFile(TablePath, suffix=self._Suffix))
         with self._DataLock:
             if FactorNames.issubset(set(factor_names)):
                 shutil.rmtree(TablePath, ignore_errors=True)
@@ -239,11 +216,6 @@ class HDF5DB(WritableFactorDB):
                     iFilePath = TablePath+os.sep+iFactor+"."+self._Suffix
                     if os.path.isfile(iFilePath):
                         os.remove(iFilePath)
-        FactorIndex = list(set(self._TableFactorDict.get(table_name, pd.Series()).index).difference(set(factor_names)))
-        if not FactorIndex:
-            self._TableFactorDict.pop(table_name, None)
-        else:
-            self._TableFactorDict[table_name] = self._TableFactorDict[table_name][FactorIndex]
         return 0
     def setFactorMetaData(self, table_name, ifactor_name, key=None, value=None, meta_data=None):
         with self._DataLock:
@@ -335,8 +307,6 @@ class HDF5DB(WritableFactorDB):
         FilePath = TablePath+os.sep+ifactor_name+"."+self._Suffix
         with self._DataLock:
             if not os.path.isdir(TablePath): os.mkdir(TablePath)
-            if ifactor_name not in self._TableFactorDict.get(table_name, {}):
-                self._TableFactorDict[table_name] = self._TableFactorDict.get(table_name, pd.Series()).append(pd.Series(data_type, index=[ifactor_name]))
             if not os.path.isfile(FilePath):
                 open(FilePath, mode="a").close()# h5py 直接创建文件名包含中文的文件会报错.
                 #StrDataType = h5py.special_dtype(vlen=str)

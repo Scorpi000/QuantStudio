@@ -3,10 +3,10 @@
 import os
 import shutil
 import datetime as dt
-from multiprocessing import Lock
 
 import numpy as np
 import pandas as pd
+import fasteners
 import numcodecs
 import zarr
 from traits.api import Directory
@@ -21,9 +21,6 @@ def _identifyDataType(dtypes):
 
 class _FactorTable(FactorTable):
     """ZarrDB 因子表"""
-    def __init__(self, name, fdb, data_type, sys_args={}, **kwargs):
-        self._DataType = data_type
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
     def getMetaData(self, key=None):
         iZTable = zarr.open(self._FactorDB.MainDir+os.sep+self.Name, mode="r")
         with self._FactorDB._DataLock:
@@ -43,16 +40,19 @@ class _FactorTable(FactorTable):
         return MetaData
     @property
     def FactorNames(self):
-        return self._DataType.index.tolist()
+        with self._FactorDB._DataLock:
+            ZTable = zarr.open(self._FactorDB.MainDir+os.sep+self.Name, mode="r")
+            DataType = ZTable.attrs.get("DataType", {})
+        return sorted(DataType)
     def getFactorMetaData(self, factor_names=None, key=None):
-        if factor_names is None: factor_names = self.FactorNames
-        elif set(factor_names).isdisjoint(self.FactorNames): return super().getFactorMetaData(factor_names=factor_names, key=key)
-        if key=="DataType": return self._DataType.loc[factor_names]
+        AllFactorNames = self.FactorNames
+        if factor_names is None: factor_names = AllFactorNames
+        elif set(factor_names).isdisjoint(AllFactorNames): return super().getFactorMetaData(factor_names=factor_names, key=key)
         with self._FactorDB._DataLock:
             MetaData = {}
             ZTable = zarr.open(self._FactorDB.MainDir+os.sep+self.Name, mode="r")
             for iFactorName in factor_names:
-                if iFactorName in self.FactorNames:
+                if iFactorName in AllFactorNames:
                     iZFactor = ZTable[iFactorName]
                     if key is None: MetaData[iFactorName] = pd.Series(iZFactor.attrs)
                     elif key in iZFactor.attrs: MetaData[iFactorName] = iZFactor.attrs[key]
@@ -84,9 +84,9 @@ class _FactorTable(FactorTable):
         Data = {iFactor: self.readFactorData(ifactor_name=iFactor, ids=ids, dts=dts, args=args) for iFactor in factor_names}
         return pd.Panel(Data).loc[factor_names]
     def readFactorData(self, ifactor_name, ids, dts, args={}):
-        if ifactor_name not in self._DataType.index: raise __QS_Error__("因子库 '%s' 的因子表 '%s' 中不存在因子 '%s'!" % (self._FactorDB.Name, self.Name, ifactor_name))
         with self._FactorDB._DataLock:
             ZTable = zarr.open(self._FactorDB.MainDir+os.sep+self.Name, mode="r")
+            if ifactor_name not in ZTable: raise __QS_Error__("因子库 '%s' 的因子表 '%s' 中不存在因子 '%s'!" % (self._FactorDB.Name, self.Name, ifactor_name))
             ZFactor = ZTable[ifactor_name]
             DataType = ZFactor.attrs["DataType"]
             DateTimes = ZFactor["DateTime"][:]
@@ -129,55 +129,48 @@ class ZarrDB(WritableFactorDB):
     """ZarrDB"""
     MainDir = Directory(label="主目录", arg_type="Directory", order=0)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
-        self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
+        self._LockFile = None# 文件锁的目标文件
+        self._DataLock = None# 访问该因子库资源的锁, 防止并发访问冲突
         self._isAvailable = False
-        self._DataLock = Lock()
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"ZarrDBConfig.json" if config_file is None else config_file), **kwargs)
         # 继承来的属性
         self.Name = "ZarrDB"
         return
     def connect(self):
-        if not os.path.isdir(self.MainDir): raise __QS_Error__("不存在主目录: %s!" % self.MainDir)
-        AllTables = listDirDir(self.MainDir)
-        _TableFactorDict = {}
-        with self._DataLock:
-            for iTable in AllTables:
-                iTablePath = self.MainDir+os.sep+iTable
-                iZTable = zarr.open(iTablePath, mode="r")
-                iDataType = pd.Series(iZTable.attrs.get("DataType", {})).sort_index()
-                if iDataType.shape[0]==0: continue
-                _TableFactorDict[iTable] = iDataType
-        self._TableFactorDict = _TableFactorDict
+        if not os.path.isdir(self.MainDir): raise __QS_Error__("ZarrDB.connect: 不存在主目录 '%s'!" % self.MainDir)
+        if not os.path.isfile(self.MainDir+os.sep+"LockFile"):
+            open(self.MainDir+os.sep+"LockFile", mode="a").close()
+        self._LockFile = self.MainDir+os.sep+"LockFile"
+        self._DataLock = fasteners.InterProcessLock(self._LockFile)
         self._isAvailable = True
         return 0
     def disconnect(self):
-        self._TableFactorDict = {}
+        self._LockFile = None
+        self._DataLock = None
         self._isAvailable = False
     def isAvailable(self):
         return self._isAvailable
     # -------------------------------表的操作---------------------------------
     @property
     def TableNames(self):
-        return sorted(self._TableFactorDict)
+        return sorted(listDirDir(self.MainDir))
     def getTable(self, table_name, args={}):
-        if table_name not in self._TableFactorDict: raise __QS_Error__("表 '%s' 不存在!" % table_name)
-        return _FactorTable(name=table_name, fdb=self, data_type=self._TableFactorDict[table_name], sys_args=args, logger=self._QS_Logger)
+        if not os.path.isdir(self.MainDir+os.sep+table_name): raise __QS_Error__("ZarrDB.getTable: 表 '%s' 不存在!" % table_name)
+        return _FactorTable(name=table_name, fdb=self, sys_args=args, logger=self._QS_Logger)
     def renameTable(self, old_table_name, new_table_name):
-        if old_table_name not in self._TableFactorDict: raise __QS_Error__("表: '%s' 不存在!" % old_table_name)
-        if (new_table_name!=old_table_name) and (new_table_name in self._TableFactorDict): raise __QS_Error__("表: '"+new_table_name+"' 已存在!")
+        if old_table_name==new_table_name: return 0
         OldPath = self.MainDir+os.sep+old_table_name
         NewPath = self.MainDir+os.sep+new_table_name
-        if OldPath==NewPath: pass
-        elif os.path.isdir(NewPath): raise __QS_Error__("目录: '%s' 被占用!" % NewPath)
         with self._DataLock:
+            if not os.path.isdir(OldPath): raise __QS_Error__("ZarrDB.renameTable: 表: '%s' 不存在!" % old_table_name)
+            if os.path.isdir(NewPath): raise __QS_Error__("ZarrDB.renameTable: 表 '"+new_table_name+"' 已存在!")
             os.rename(OldPath, NewPath)
-        self._TableFactorDict[new_table_name] = self._TableFactorDict.pop(old_table_name)
         return 0
     def deleteTable(self, table_name):
         TablePath = self.MainDir+os.sep+table_name
         with self._DataLock:
-            if os.path.isdir(TablePath): shutil.rmtree(TablePath, ignore_errors=True)
-        self._TableFactorDict.pop(table_name, None)
+            if os.path.isdir(TablePath):
+                shutil.rmtree(TablePath, ignore_errors=True)
         return 0
     def setTableMetaData(self, table_name, key=None, value=None, meta_data=None):
         with self._DataLock:
@@ -199,27 +192,28 @@ class ZarrDB(WritableFactorDB):
         return 0
     # ----------------------------因子操作---------------------------------
     def renameFactor(self, table_name, old_factor_name, new_factor_name):
-        if old_factor_name not in self._TableFactorDict[table_name]: raise __QS_Error__("因子: '%s' 不存在!" % old_factor_name)
-        if (new_factor_name!=old_factor_name) and (new_factor_name in self._TableFactorDict[table_name]): raise __QS_Error__("表中的因子: '%s' 已存在!" % new_factor_name)
-        TablePath = self.MainDir+os.sep+table_name
+        if old_factor_name==new_factor_name: return 0
         with self._DataLock:
-            iZTable = zarr.open(TablePath, mode="a")
+            iZTable = zarr.open(self.MainDir+os.sep+table_name, mode="a")
+            if old_factor_name not in iZTable: raise __QS_Error__("ZarrDB.renameFactor: 表 ’%s' 中不存在因子 '%s'!" % (table_name, old_factor_name))
+            if new_factor_name in iZTable: raise __QS_Error__("ZarrDB.renameFactor: 表 ’%s' 中的因子 '%s' 已存在!" % (table_name, new_factor_name))
             iZTable[new_factor_name] = iZTable.pop(old_factor_name)
-        self._TableFactorDict[table_name][new_factor_name] = self._TableFactorDict[table_name].pop(old_factor_name)
+            DataType = iZTable.attrs.get("DataType", {})
+            DataType[new_factor_name] = DataType.pop(old_factor_name)
+            iZTable.attrs["DataType"] = DataType
         return 0
     def deleteFactor(self, table_name, factor_names):
         TablePath = self.MainDir+os.sep+table_name
-        FactorNames = set(self.getTable(table_name).FactorNames)
         with self._DataLock:
-            if FactorNames.issubset(set(factor_names)):
+            iZTable = zarr.open(TablePath, mode="a")
+            DataType = iZTable.attrs.get("DataType", {})
+            if set(DataType).issubset(set(factor_names)):
                 shutil.rmtree(TablePath, ignore_errors=True)
             else:
-                iZTable = zarr.open(TablePath, mode="a")
                 for iFactor in factor_names:
                     if iFactor in iZTable: del iZTable[iFactor]
-        FactorIndex = list(set(self._TableFactorDict.get(table_name, pd.Series()).index).difference(set(factor_names)))
-        if not FactorIndex: self._TableFactorDict.pop(table_name, None)
-        else: self._TableFactorDict[table_name] = self._TableFactorDict[table_name][FactorIndex]
+                    DataType.pop(iFactor, None)
+                iZTable.attrs["DataType"] = DataType
         return 0
     def setFactorMetaData(self, table_name, ifactor_name, key=None, value=None, meta_data=None):
         with self._DataLock:
@@ -273,8 +267,6 @@ class ZarrDB(WritableFactorDB):
         else: factor_data.index = [idt.timestamp() for idt in factor_data.index]
         TablePath = self.MainDir+os.sep+table_name
         with self._DataLock:
-            if ifactor_name not in self._TableFactorDict.get(table_name, {}):
-                self._TableFactorDict[table_name] = self._TableFactorDict.get(table_name, pd.Series()).append(pd.Series(data_type, index=[ifactor_name]))
             ZTable = zarr.open(TablePath, mode="a")
             if ifactor_name not in ZTable:
                 ZFactor = ZTable.create_group(ifactor_name, overwrite=True)
@@ -285,7 +277,9 @@ class ZarrDB(WritableFactorDB):
                 elif data_type=="string":
                     ZFactor.create_dataset("Data", shape=factor_data.shape, data=factor_data.values, dtype=object, object_codec=numcodecs.VLenUTF8(), overwrite=True)
                 ZFactor.attrs["DataType"] = data_type
-                ZTable.attrs["DataType"] = self._TableFactorDict[table_name].to_dict()
+                DataType = ZTable.attrs.get("DataType", {})
+                DataType[ifactor_name] = data_type
+                ZTable.attrs["DataType"] = DataType
                 factor_data.index = DTs
                 return 0
         if if_exists=="update":
