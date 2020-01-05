@@ -339,6 +339,5 @@ class HDF5DB(WritableFactorDB):
         return 0
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
         for i, iFactor in enumerate(data.items):
-            iDataType = data_type.get(iFactor, None)
-            self.writeFactorData(data.iloc[i], table_name, iFactor, if_exists=if_exists, data_type=iDataType)
+            self.writeFactorData(data.iloc[i], table_name, iFactor, if_exists=if_exists, data_type=data_type.get(iFactor, None))
         return 0

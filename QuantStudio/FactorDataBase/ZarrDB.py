@@ -15,9 +15,19 @@ from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
 from QuantStudio.Tools.FileFun import listDirDir
 
-def _identifyDataType(dtypes):
-    if np.dtype('O') in dtypes.values: return 'string'
-    else: return 'double'
+def _identifyDataType(factor_data, data_type=None):
+    if (data_type is None) or (data_type=="double"):
+        try:
+            factor_data = factor_data.astype(float)
+        except:
+            data_type = "object"
+        else:
+            data_type = "double"
+    if data_type=="string":
+        factor_data = factor_data.where(pd.notnull(factor_data), None)
+    elif data_type=="object":
+        pass
+    return (factor_data, data_type)
 
 class _FactorTable(FactorTable):
     """ZarrDB 因子表"""
@@ -97,8 +107,6 @@ class _FactorTable(FactorTable):
             else:
                 IDIndices = slice(None)
             if dts is not None:
-                if dts and isinstance(dts[0], pd.Timestamp) and (pd.__version__>="0.20.0"): dts = [idt.to_pydatetime().timestamp() for idt in dts]
-                else: dts = [idt.timestamp() for idt in dts]
                 DTIndices = pd.Series(np.arange(0, DateTimes.shape[0]), index=DateTimes)
                 DTIndices = DTIndices[DTIndices.index.intersection(dts)].astype('int')
             else:
@@ -114,8 +122,7 @@ class _FactorTable(FactorTable):
             else: Rslt = pd.DataFrame(index=dts, columns=Rslt.columns)
         else:
             Rslt = Rslt.sort_index(axis=0)
-        Rslt.index = [dt.datetime.fromtimestamp(itms) for itms in Rslt.index]
-        if DataType!="double":
+        if DataType=="string":
             Rslt = Rslt.where(pd.notnull(Rslt), None)
             Rslt = Rslt.where(Rslt!="", None)
         return Rslt
@@ -252,47 +259,34 @@ class ZarrDB(WritableFactorDB):
             ZFactor["Data"].set_orthogonal_selection((DTIndices, IDIndices), factor_data.values)
         return 0
     def writeFactorData(self, factor_data, table_name, ifactor_name, if_exists="update", data_type=None):
-        if data_type is None: data_type = _identifyDataType(factor_data.dtypes)
-        if data_type=='double':
-            try:
-                factor_data = factor_data.astype('float')
-                data_type = 'double'
-            except:
-                factor_data = factor_data.where(pd.notnull(factor_data), None)
-                data_type = 'string'
-        else:
-            factor_data = factor_data.where(pd.notnull(factor_data), None)
-        DTs = factor_data.index
-        if pd.__version__>="0.20.0": factor_data.index = [idt.to_pydatetime().timestamp() for idt in factor_data.index]
-        else: factor_data.index = [idt.timestamp() for idt in factor_data.index]
         TablePath = self.MainDir+os.sep+table_name
         with self._DataLock:
             ZTable = zarr.open(TablePath, mode="a")
             if ifactor_name not in ZTable:
+                factor_data, data_type = _identifyDataType(factor_data, data_type)
                 ZFactor = ZTable.create_group(ifactor_name, overwrite=True)
                 ZFactor.create_dataset("ID", shape=(factor_data.shape[1], ), data=factor_data.columns.values, dtype=object, object_codec=numcodecs.VLenUTF8(), overwrite=True)
-                ZFactor.create_dataset("DateTime", shape=(factor_data.shape[0], ), data=factor_data.index.values, dtype="f8", overwrite=True)
+                ZFactor.create_dataset("DateTime", shape=(factor_data.shape[0], ), data=factor_data.index.values, dtype="M8[ns]", overwrite=True)
                 if data_type=="double":
                     ZFactor.create_dataset("Data", shape=factor_data.shape, data=factor_data.values, dtype="f8", fill_value=np.nan, overwrite=True)
                 elif data_type=="string":
                     ZFactor.create_dataset("Data", shape=factor_data.shape, data=factor_data.values, dtype=object, object_codec=numcodecs.VLenUTF8(), overwrite=True)
+                elif data_type=="object":
+                    ZFactor.create_dataset("Data", shape=factor_data.shape, data=factor_data.values, dtype=object, object_codec=numcodecs.Pickle(), overwrite=True)
                 ZFactor.attrs["DataType"] = data_type
                 DataType = ZTable.attrs.get("DataType", {})
                 DataType[ifactor_name] = data_type
                 ZTable.attrs["DataType"] = DataType
-                factor_data.index = DTs
                 return 0
         if if_exists=="update":
             self._updateFactorData(factor_data, table_name, ifactor_name, data_type)
         elif if_exists=="append":
-            OldData = self.getTable(table_name).readFactorData(ifactor_name=ifactor_name, ids=factor_data.columns.tolist(), dts=DTs.tolist())
+            OldData = self.getTable(table_name).readFactorData(ifactor_name=ifactor_name, ids=factor_data.columns.tolist(), dts=factor_data.index.tolist())
             OldData.index = factor_data.index
             factor_data = OldData.where(pd.notnull(OldData), factor_data)
             self._updateFactorData(factor_data, table_name, ifactor_name, data_type)
-        factor_data.index = DTs
         return 0
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
         for i, iFactor in enumerate(data.items):
-            iDataType = data_type.get(iFactor, _identifyDataType(data.iloc[i].dtypes))
-            self.writeFactorData(data.iloc[i], table_name, iFactor, if_exists=if_exists, data_type=iDataType)
+            self.writeFactorData(data.iloc[i], table_name, iFactor, if_exists=if_exists, data_type=data_type.get(iFactor, None))
         return 0

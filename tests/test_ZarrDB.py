@@ -52,7 +52,7 @@ class TestZarrDB(unittest.TestCase):
         Err = compareDataFrame(TestData.iloc[1], TargetData.iloc[1], dtype="double")
         self.assertAlmostEqual(Err.max().max(), 0)
     # 测试 object 类型的数据读写
-    def _test_ObjectDataIO(self):
+    def test_ObjectDataIO(self):
         TestTable = "TestTable_ObjectDataIO"
         TestFactor = "TestFactor_ObjectDataIO"
         DTs = [dt.datetime(2019,1,1), dt.datetime(2019,1,2), dt.datetime(2019,1,3)]
@@ -152,9 +152,9 @@ class TestZarrDB(unittest.TestCase):
 
 
 if __name__=="__main__":
-    unittest.main()
+    #unittest.main()
     
-    #Suite = unittest.TestSuite()
-    #Suite.addTest(TestZarrDB("test_getDateTime"))
-    #Runner = unittest.TextTestRunner()
-    #Runner.run(Suite)
+    Suite = unittest.TestSuite()
+    Suite.addTest(TestZarrDB("test_DataIO"))
+    Runner = unittest.TextTestRunner()
+    Runner.run(Suite)
