@@ -317,7 +317,26 @@ class _DBTable(FactorTable):
             return AllAdjData.loc[:, dts]
         else:
             return AdjData.loc[:, dts]
-
+    def __QS_genGroupInfo__(self, factors, operation_mode):
+        ConditionGroup = {}
+        for iFactor in factors:
+            iConditions = ";".join([iCondition+":"+str(iFactor[iCondition]) for i, iCondition in enumerate(self._ConditionFields)]+["筛选条件:"+iFactor["筛选条件"]])
+            if iConditions not in ConditionGroup:
+                ConditionGroup[iConditions] = {"FactorNames":[iFactor.Name], 
+                                                       "RawFactorNames":{iFactor._NameInFT}, 
+                                                       "StartDT":operation_mode._FactorStartDT[iFactor.Name], 
+                                                       "args":iFactor.Args.copy()}
+            else:
+                ConditionGroup[iConditions]["FactorNames"].append(iFactor.Name)
+                ConditionGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
+                ConditionGroup[iConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], ConditionGroup[iConditions]["StartDT"])
+                ConditionGroup[iConditions]["args"]["回溯天数"] = max(ConditionGroup[iConditions]["args"]["回溯天数"], iFactor.LookBack)
+        EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
+        Groups = []
+        for iConditions in ConditionGroup:
+            StartInd = operation_mode.DTRuler.index(ConditionGroup[iConditions]["StartDT"])
+            Groups.append((self, ConditionGroup[iConditions]["FactorNames"], list(ConditionGroup[iConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], ConditionGroup[iConditions]["args"]))
+        return Groups
 
 class _FeatureTable(_DBTable):
     """特征因子表"""
@@ -401,25 +420,6 @@ class _MappingTable(_DBTable):
         if start_dt is not None: StartDT = max((StartDT, start_dt))
         if end_dt is None: end_dt = dt.datetime.combine(dt.date.today(), dt.time(0))
         return getDateTimeSeries(start_dt=StartDT, end_dt=end_dt, timedelta=dt.timedelta(1))
-    def __QS_genGroupInfo__(self, factors, operation_mode):
-        ConditionGroup = {}
-        for iFactor in factors:
-            iConditions = ";".join([iArgName+":"+str(iFactor[iArgName]) for iArgName in iFactor.ArgNames if iArgName not in ("只填起始日",)])
-            if iConditions not in ConditionGroup:
-                ConditionGroup[iConditions] = {"FactorNames":[iFactor.Name], 
-                                               "RawFactorNames":{iFactor._NameInFT}, 
-                                               "StartDT":operation_mode._FactorStartDT[iFactor.Name], 
-                                               "args":iFactor.Args.copy()}
-            else:
-                ConditionGroup[iConditions]["FactorNames"].append(iFactor.Name)
-                ConditionGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
-                ConditionGroup[iConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], ConditionGroup[iConditions]["StartDT"])
-        EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
-        Groups = []
-        for iConditions in ConditionGroup:
-            StartInd = operation_mode.DTRuler.index(ConditionGroup[iConditions]["StartDT"])
-            Groups.append((self, ConditionGroup[iConditions]["FactorNames"], list(ConditionGroup[iConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], ConditionGroup[iConditions]["args"]))
-        return Groups
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         # 形成SQL语句, ID, 开始日期, 结束日期, 因子数据
@@ -692,7 +692,7 @@ class _MarketTable(_DBTable):
     def __QS_genGroupInfo__(self, factors, operation_mode):
         DateConditionGroup = {}
         for iFactor in factors:
-            iDateConditions = (iFactor.DateField, ";".join([iArgName+":"+str(iFactor[iArgName]) for iArgName in iFactor.ArgNames if iArgName!="回溯天数"]))
+            iDateConditions = (iFactor.DateField, ";".join([iArgName+":"+str(iFactor[iArgName]) for iArgName in iFactor.ArgNames if iArgName not in ("回溯天数", "只起始日回溯", "只回溯非目标日")]))
             if iDateConditions not in DateConditionGroup:
                 DateConditionGroup[iDateConditions] = {"FactorNames":[iFactor.Name], 
                                                        "RawFactorNames":{iFactor._NameInFT}, 
@@ -1094,7 +1094,7 @@ class _NarrowTable(_DBTable):
     def __QS_genGroupInfo__(self, factors, operation_mode):
         DateConditionGroup = {}
         for iFactor in factors:
-            iDateConditions = (self._DateField, ";".join([iArgName+":"+str(iFactor[iArgName]) for iArgName in iFactor.ArgNames if iArgName!="回溯天数"]))
+            iDateConditions = (self._DateField, ";".join([iArgName+":"+str(iFactor[iArgName]) for iArgName in iFactor.ArgNames if iArgName not in ("回溯天数", "只起始日回溯")]))
             if iDateConditions not in DateConditionGroup:
                 DateConditionGroup[iDateConditions] = {"FactorNames":[iFactor.Name], 
                                                        "RawFactorNames":{iFactor._NameInFT}, 
