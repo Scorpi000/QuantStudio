@@ -330,7 +330,6 @@ class _DBTable(FactorTable):
                 ConditionGroup[iConditions]["FactorNames"].append(iFactor.Name)
                 ConditionGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
                 ConditionGroup[iConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], ConditionGroup[iConditions]["StartDT"])
-                ConditionGroup[iConditions]["args"]["回溯天数"] = max(ConditionGroup[iConditions]["args"]["回溯天数"], iFactor.LookBack)
         EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
         Groups = []
         for iConditions in ConditionGroup:
