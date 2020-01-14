@@ -364,6 +364,20 @@ def rolling_min(f, window, min_periods=1, win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
     return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_min,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
+def _rolling_argmax(f,idt,iid,x,args):
+    Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
+    return Data.rolling(**args["OperatorArg"]).apply(np.nanargmax).values[args["OperatorArg"]["window"]-1:]
+def rolling_argmax(f, window, min_periods=1, win_type=None, **kwargs):
+    Descriptors,Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
+    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_argmax,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
+def _rolling_argmin(f,idt,iid,x,args):
+    Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
+    return Data.rolling(**args["OperatorArg"]).apply(np.nanargmin).values[args["OperatorArg"]["window"]-1:]
+def rolling_argmin(f, window, min_periods=1, win_type=None, **kwargs):
+    Descriptors,Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
+    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_argmin,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _rolling_median(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     return Data.rolling(**args["OperatorArg"]).median().values[args["OperatorArg"]["window"]-1:]
