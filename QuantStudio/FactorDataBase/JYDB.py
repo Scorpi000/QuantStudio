@@ -1213,6 +1213,15 @@ def RollBackNPeriod(report_date, n_period):
             Date = str(int(Date[0:4])-1)+'1231'
     return Date
 
+def RollBackNPeriod_New(report_date, n_period):
+    nYear, nPeriod = n_period // 4, n_period % 4
+    TargetYear = report_date.year - nYear
+    TargetMonth = report_date.month - nPeriod * 3
+    TargetYear -= (TargetMonth<=0)
+    TargetMonth += (TargetMonth<=0) * 12
+    TargetDay = (31 if (TargetMonth==12) or (TargetMonth==3) else 30)
+    return dt.datetime(TargetYear, TargetMonth, TargetDay)
+
 # 财务因子表, 表结构特征:
 # 报告期字段, 表示财报的报告期
 # 公告日期字段, 表示财报公布的日期
@@ -1223,6 +1232,7 @@ class _FinancialTable(_DBTable):
     YearLookBack = Int(0, label="回溯年数", arg_type="Integer", order=2)
     PeriodLookBack = Int(0, label="回溯期数", arg_type="Integer", order=3)
     IgnoreMissing = Bool(True, label="忽略缺失", arg_type="Bool", order=4)
+    IgnoreNonQuarter = Bool(False, label="忽略非季末报告", arg_type="Bool", order=5)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         # 报告期字段
@@ -1240,7 +1250,7 @@ class _FinancialTable(_DBTable):
     def _genConditionSQLStr(self, args={}):
         SQLStr = super()._genConditionSQLStr(args=args)
         ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
-        if not ((args.get("报告期", self.ReportDate)=="所有") and (args.get("计算方法", self.CalcType)=="最新") and (args.get("回溯年数", self.YearLookBack)==0) and (args.get("回溯期数", self.PeriodLookBack)==0)):
+        if args.get("忽略非季末报告", self.IgnoreNonQuarter) or (not ((args.get("报告期", self.ReportDate)=="所有") and (args.get("计算方法", self.CalcType)=="最新") and (args.get("回溯年数", self.YearLookBack)==0) and (args.get("回溯期数", self.PeriodLookBack)==0))):
             if self._FactorDB.DBType=="SQL Server":
                 SQLStr += " AND TO_CHAR("+ReportDateField+",'MMDD') IN ('0331','0630','0930','1231')"
             elif self._FactorDB.DBType=="MySQL":
@@ -1255,6 +1265,26 @@ class _FinancialTable(_DBTable):
                 iConditionVal = iConditionVal.split(",")
                 SQLStr += " AND "+self._DBTableName+"."+self._FactorInfo.loc[self._AdjustTypeField, "DBFieldName"]+" IN ("+",".join(iConditionVal)+")"
         return SQLStr
+    def __QS_genGroupInfo__(self, factors, operation_mode):
+        ConditionGroup = {}
+        for iFactor in factors:
+            iConditions = (iFactor.IgnoreNonQuarter or (not ((iFactor.ReportDate=="所有") and (iFactor.CalcType=="最新") and (iFactor.YearLookBack==0) and (iFactor.PeriodLookBack==0))))
+            iConditions = (iConditions, ";".join([iCondition+":"+str(iFactor[iCondition]) for i, iCondition in enumerate(self._ConditionFields)]+["筛选条件:"+iFactor["筛选条件"]]))
+            if iConditions not in ConditionGroup:
+                ConditionGroup[iConditions] = {"FactorNames":[iFactor.Name], 
+                                                       "RawFactorNames":{iFactor._NameInFT}, 
+                                                       "StartDT":operation_mode._FactorStartDT[iFactor.Name], 
+                                                       "args":iFactor.Args.copy()}
+            else:
+                ConditionGroup[iConditions]["FactorNames"].append(iFactor.Name)
+                ConditionGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
+                ConditionGroup[iConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], ConditionGroup[iConditions]["StartDT"])
+        EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
+        Groups = []
+        for iConditions in ConditionGroup:
+            StartInd = operation_mode.DTRuler.index(ConditionGroup[iConditions]["StartDT"])
+            Groups.append((self, ConditionGroup[iConditions]["FactorNames"], list(ConditionGroup[iConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], ConditionGroup[iConditions]["args"]))
+        return Groups
     # 返回在给定时点 idt 之前有财务报告的 ID
     # 如果 idt 为 None, 将返回所有有财务报告的 ID
     # 忽略 ifactor_name
@@ -1313,6 +1343,7 @@ class _FinancialTable(_DBTable):
         return RawData
     def _calcData(self, raw_data, periods, factor_name, ids, dts, calc_type, report_date, ignore_missing):
         if ignore_missing: raw_data = raw_data[pd.notnull(raw_data[factor_name])]
+        # TargetReportDate: 每个 ID 每个公告日对应的最大报告期
         TargetReportDate = raw_data.loc[:, ["ID", "AnnDate", "ReportDate"]]
         if report_date=="年报": TargetReportDate.loc[raw_data["ReportPeriod"]!="12-31", "ReportDate"] = dt.datetime(1899,12,31)
         elif report_date=="中报": TargetReportDate.loc[raw_data["ReportPeriod"]!="06-30", "ReportDate"] = dt.datetime(1899,12,31)
@@ -1320,17 +1351,11 @@ class _FinancialTable(_DBTable):
         elif report_date=="三季报": TargetReportDate.loc[raw_data["ReportPeriod"]!="09-30", "ReportDate"] = dt.datetime(1899,12,31)
         TargetReportDate = TargetReportDate.set_index(["ID"]).groupby(level=0).cummax().reset_index().groupby(by=["ID", "AnnDate"], as_index=False).max()
         MaxReportDate = TargetReportDate["ReportDate"].copy()
-        def RollBackNPeriod(report_date):
-            nYear, nPeriod = iPeriod // 4, iPeriod % 4
-            TargetYear = report_date.year - nYear
-            TargetMonth = report_date.month - nPeriod * 3
-            TargetYear -= (TargetMonth<=0)
-            TargetMonth += (TargetMonth<=0) * 12
-            TargetDay = (31 if (TargetMonth==12) or (TargetMonth==3) else 30)
-            return dt.datetime(TargetYear, TargetMonth, TargetDay)
         Data = {}
         for i, iPeriod in enumerate(periods):
-            if iPeriod>0: TargetReportDate["ReportDate"] = MaxReportDate.apply(RollBackNPeriod)
+            # TargetReportDate: 每个 ID 每个公告日对应的目标报告期
+            if iPeriod>0: TargetReportDate["ReportDate"] = MaxReportDate.apply(RollBackNPeriod_New, args=(iPeriod,))
+            # iData: 每个 ID 每个公告日对应的目标报告期及其因子值
             iData = TargetReportDate.merge(raw_data, how="left", on=["ID", "ReportDate"], suffixes=("", "_y"))
             iData = iData[(iData["AnnDate"]>=iData["AnnDate_y"]) | pd.isnull(iData["AnnDate_y"])].sort_values(by=["ID", "AnnDate", "AnnDate_y"])
             if (i==0) and (calc_type!="最新"):
