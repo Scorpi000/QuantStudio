@@ -56,7 +56,7 @@ def astype(f, dtype, **kwargs):
 def _log(f, idt, iid, x, args):
     Data = _genOperatorData(f, idt, iid, x, args)[0]
     Data[Data<=0] = np.nan
-    return np.log(Data)/np.log(args["OperatorArg"]["base"])
+    return np.log(Data.astype(float))/np.log(args["OperatorArg"]["base"])
 def log(f, base=np.e, **kwargs):
     Descriptors, Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"base":base}
@@ -75,25 +75,25 @@ def notnull(f, **kwargs):
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors, {"算子":_notnull, "参数":Args, "运算时点":"多时点", "运算ID":"多ID"}, **kwargs)
 def _sign(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)[0]
-    return np.sign(Data)
+    return np.sign(Data.astype(float))
 def sign(f, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors, {"算子":_sign,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _ceil(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)[0]
-    return np.ceil(Data)
+    return np.ceil(Data.astype(float))
 def ceil(f, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_ceil,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _floor(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)[0]
-    return np.floor(Data)
+    return np.floor(Data.astype(float))
 def floor(f, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_floor,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _fix(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)[0]
-    return np.fix(Data)
+    return np.fix(Data.astype(float))
 def fix(f, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_fix,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
@@ -143,12 +143,12 @@ def replace(f, value_map, data_type="double",**kwargs):
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors, {"算子":_replace, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "数据类型":data_type}, **kwargs)
 def _clip(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
-    return np.clip(Data[0],Data[1],Data[2])
+    return np.clip(Data[0].atype(float),Data[1],Data[2])
 def clip(f,a_min,a_max,**kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f,a_min,a_max)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_clip,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _nansum(f,idt,iid,x,args):
-    Data = _genOperatorData(f,idt,iid,x,args)
+    Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for iData in _genOperatorData(f,idt,iid,x,args)]
     Data = np.array(Data)
     Rslt = np.nansum(Data,axis=0)
     Mask = (np.sum(pd.notnull(Data),axis=0)==0)
@@ -158,25 +158,25 @@ def nansum(*factors,**kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(*factors)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_nansum,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _nanprod(f,idt,iid,x,args):
-    Data = _genOperatorData(f,idt,iid,x,args)
+    Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for iData in _genOperatorData(f,idt,iid,x,args)]
     return np.nanprod(np.array(Data),axis=0)
 def nanprod(*factors,**kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(*factors)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_nanprod,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _nanmax(f,idt,iid,x,args):
-    Data = _genOperatorData(f,idt,iid,x,args)
+    Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for iData in _genOperatorData(f,idt,iid,x,args)]
     return np.nanmax(np.array(Data),axis=0)
 def nanmax(*factors,**kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(*factors)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_nanmax,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _nanmin(f,idt,iid,x,args):
-    Data = _genOperatorData(f,idt,iid,x,args)
+    Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for iData in _genOperatorData(f,idt,iid,x,args)]
     return np.nanmin(np.array(Data),axis=0)
 def nanmin(*factors,**kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(*factors)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_nanmin,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _nanargmax(f,idt,iid,x,args):
-    Data = _genOperatorData(f,idt,iid,x,args)
+    Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for iData in _genOperatorData(f,idt,iid,x,args)]
     Data = np.array(Data)
     Mask = pd.isnull(Data)
     Data[Mask] = -np.inf
@@ -188,7 +188,7 @@ def nanargmax(*factors,**kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(*factors)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_nanargmax,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _nanargmin(f,idt,iid,x,args):
-    Data = _genOperatorData(f,idt,iid,x,args)
+    Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for iData in _genOperatorData(f,idt,iid,x,args)]
     Data = np.array(Data)
     Mask = pd.isnull(Data)
     Data[Mask] = np.inf
@@ -200,7 +200,7 @@ def nanargmin(*factors,**kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(*factors)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_nanargmin,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _nanmean(f,idt,iid,x,args):
-    Data = _genOperatorData(f,idt,iid,x,args)
+    Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for iData in _genOperatorData(f,idt,iid,x,args)]
     Weights = args["OperatorArg"]["weights"]
     if Weights is None:
         if args["OperatorArg"]["ignore_nan_weight"]:
@@ -224,40 +224,40 @@ def nanmean(*factors,weights=None,ignore_nan_weight=True,**kwargs):
     Args["OperatorArg"] = {"weights":weights,"ignore_nan_weight":ignore_nan_weight}
     return PointOperation(kwargs.get("factor_name",str(uuid.uuid1())),Descriptors,{"算子":_nanmean,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _nanstd(f,idt,iid,x,args):
-    Data = _genOperatorData(f,idt,iid,x,args)
+    Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for iData in _genOperatorData(f,idt,iid,x,args)]
     return np.nanstd(np.array(Data),axis=0,ddof=args["OperatorArg"]["ddof"])
 def nanstd(*factors,ddof=1,**kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(*factors)
     Args["OperatorArg"] = {"ddof":ddof}
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_nanstd,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _nanvar(f,idt,iid,x,args):
-    Data = _genOperatorData(f,idt,iid,x,args)
+    Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for iData in _genOperatorData(f,idt,iid,x,args)]
     return np.nanvar(np.array(Data),axis=0,ddof=args["OperatorArg"]["ddof"])
 def nanvar(*factors, ddof=1, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(*factors)
     Args["OperatorArg"] = {"ddof":ddof}
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_nanvar,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _nanmedian(f,idt,iid,x,args):
-    Data = _genOperatorData(f,idt,iid,x,args)
+    Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for iData in _genOperatorData(f,idt,iid,x,args)]
     return np.nanmedian(np.array(Data),axis=0)
 def nanmedian(*factors, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(*factors)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_nanmedian,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _nanquantile(f,idt,iid,x,args):
-    Data = _genOperatorData(f,idt,iid,x,args)
+    Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for iData in _genOperatorData(f,idt,iid,x,args)]
     return np.nanpercentile(np.array(Data),args["OperatorArg"]["quantile"]*100,axis=0)
 def nanquantile(*factors, quantile=0.5, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(*factors)
     Args["OperatorArg"] = {"quantile":quantile}
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_nanquantile,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _nancount(f,idt,iid,x,args):
-    Data = _genOperatorData(f,idt,iid,x,args)
+    Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for iData in _genOperatorData(f,idt,iid,x,args)]
     return np.nansum(pd.isnull(np.array(Data)),axis=0)
 def nancount(*factors, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(*factors)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_nancount,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _regress_change_rate(f,idt,iid,x,args):
-    Y = np.array(_genOperatorData(f,idt,iid,x,args))
+    Y = np.array([(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for iData in _genOperatorData(f,idt,iid,x,args)])
     X = np.arange(Y.shape[0]).astype("float").reshape((Y.shape[0],1,1)).repeat(Y.shape[1],axis=1).repeat(Y.shape[2],axis=2)
     Denominator = np.abs(np.nanmean(Y,axis=0))
     X[pd.isnull(Y)] = np.nan
@@ -273,11 +273,11 @@ def regress_change_rate(*factors, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(*factors)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_regress_change_rate,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _tolist(f,idt,iid,x,args):
-    Data = _genOperatorData(f,idt,iid,x,args)
+    Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for iData in _genOperatorData(f,idt,iid,x,args)]
     return pd.Panel({i: iData for i, iData in enumerate(Data)}).sort_index(axis=0).to_frame(filter_observations=False).apply(lambda s: s.tolist(), axis=1).unstack().values
 def tolist(*factors,**kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(*factors)
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_tolist,"参数":Args,"运算时点":"多时点","运算ID":"多ID","数据类型":"string"}, **kwargs)
+    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_tolist,"参数":Args,"运算时点":"多时点","运算ID":"多ID","数据类型":"object"}, **kwargs)
 def _single_quarter(f,idt,iid,x,args):
     ReportPeriod, Last, Prev = _genOperatorData(f,idt,iid,x,args)
     f = np.vectorize(lambda x: x[-4:]=="0331")
@@ -306,15 +306,25 @@ def _strptime(f, idt, iid, x, args):
 def strptime(f, dt_format="%Y%m%d", is_datetime=True, **kwargs):
     Descriptors, Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"dt_format":dt_format, "is_datetime":is_datetime}
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors, {"算子":_strptime, "参数":Args, "数据类型":"string", "运算时点":"多时点", "运算ID":"多ID"}, **kwargs)
+    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors, {"算子":_strptime, "参数":Args, "数据类型":"object", "运算时点":"多时点", "运算ID":"多ID"}, **kwargs)
 # ----------------------时间序列运算--------------------------------
 def _rolling_mean(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
-    return Data.rolling(**args["OperatorArg"]).mean().values[args["OperatorArg"]["window"]-1:]
-def rolling_mean(f, window, min_periods=1, win_type=None, **kwargs):
+    if "weights" not in args["OperatorArg"]:
+        return Data.rolling(**args["OperatorArg"]).mean().values[args["OperatorArg"]["window"]-1:]
+    else:
+        weights = np.array(args["OperatorArg"]["weights"])
+        TotalWeight = np.nansum(weights)
+        return Data.rolling(**args["OperatorArg"]).apply(lambda x: np.nansum(x * weights) / np.nansum(pd.notnull(x) * weights),raw=True).values[args["OperatorArg"]["window"]-1:]
+def rolling_mean(f, window, min_periods=1, win_type=None, weights=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
-    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_mean,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
+    if weights is None:
+        return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_mean,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
+    else:
+        Args["OperatorArg"]["window"] = len(weights)
+        Args["OperatorArg"]["weights"] = weights
+        return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_mean,"参数":Args,"回溯期数":[len(weights)-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _rolling_sum(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     return Data.rolling(**args["OperatorArg"]).sum().values[args["OperatorArg"]["window"]-1:]
@@ -354,6 +364,20 @@ def rolling_min(f, window, min_periods=1, win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
     return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_min,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
+def _rolling_argmax(f,idt,iid,x,args):
+    Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
+    return Data.rolling(**args["OperatorArg"]).apply(np.nanargmax).values[args["OperatorArg"]["window"]-1:]
+def rolling_argmax(f, window, min_periods=1, win_type=None, **kwargs):
+    Descriptors,Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
+    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_argmax,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
+def _rolling_argmin(f,idt,iid,x,args):
+    Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
+    return Data.rolling(**args["OperatorArg"]).apply(np.nanargmin).values[args["OperatorArg"]["window"]-1:]
+def rolling_argmin(f, window, min_periods=1, win_type=None, **kwargs):
+    Descriptors,Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
+    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_argmin,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _rolling_median(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     return Data.rolling(**args["OperatorArg"]).median().values[args["OperatorArg"]["window"]-1:]
@@ -415,6 +439,13 @@ def rolling_change_rate(f, window, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"window":window}
     return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_change_rate,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
+def _rolling_rank(f,idt,iid,x,args):
+    Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
+    return Data.rolling(**args["OperatorArg"]).apply(lambda s: np.sort(s).searchsorted(s[-1])).values[args["OperatorArg"]["window"]-1:]
+def rolling_rank(f, window, min_periods=1, win_type=None, **kwargs):
+    Descriptors,Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
+    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_rank,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _expanding_mean(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     return Data.expanding(**args["OperatorArg"]).mean().values[args["OperatorArg"]["min_periods"]-1:]
@@ -537,11 +568,20 @@ def rolling_cov(f1, f2, window, min_periods=1, win_type=None, ddof=1, **kwargs):
     return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_cov,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _rolling_corr(f,idt,iid,x,args):
     Data1,Data2 = _genOperatorData(f,idt,iid,x,args)
-    return pd.DataFrame(Data1).rolling(**args["OperatorArg"]).corr(pd.DataFrame(Data2)).values[args["OperatorArg"]["window"]-1:]
-def rolling_corr(f1, f2, window, min_periods=1, win_type=None, **kwargs):
+    Method = args["OperatorArg"]["method"]
+    if Method=="pearson":
+        return pd.DataFrame(Data1).rolling(window=args["OperatorArg"]["window"], min_periods=args["OperatorArg"]["min_periods"], win_type=args["OperatorArg"]["win_type"]).corr(pd.DataFrame(Data2)).values[args["OperatorArg"]["window"]-1:]
+    Mask = np.sum(pd.notnull(Data1) & pd.notnull(Data2), axis=0)
+    Rslt = pd.DataFrame(Data1).corrwith(pd.DataFrame(Data2), axis=0, drop=False, method=Method).values
+    Rslt[Mask<args["OperatorArg"]["min_periods"]] = np.nan
+    return Rslt
+def rolling_corr(f1, f2, window, min_periods=1, method="pearson", win_type=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f1,f2)
-    Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
-    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_corr,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
+    Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type,"method":method}
+    if method=="pearson":
+        return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_corr,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
+    else:
+        return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_corr,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"单时点","运算ID":"多ID"}, **kwargs)
 def _rolling_regress(f,idt,iid,x,args):
     X = _genOperatorData(f,idt,iid,x,args)
     Y = X[0]
@@ -567,7 +607,7 @@ def rolling_regress(Y, *X, window=20, constant=True, half_life=np.inf, **kwargs)
     Descriptors,Args = _genMultivariateOperatorInfo(*((Y,)+X))
     Args["OperatorArg"] = {"window":window,"constant":constant,"half_life":half_life}
     nX = len(X)
-    f = TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_regress,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID","数据类型":"string"}, **kwargs)
+    f = TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_regress,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID","数据类型":"object"}, **kwargs)
     if constant:
         DataType = [('alpha',np.float)]+[('beta'+str(i),np.float) for i in range(nX)]
         DataType += [('t_alpha',np.float)]+[('t_beta'+str(i),np.float) for i in range(nX)]
@@ -577,6 +617,21 @@ def rolling_regress(Y, *X, window=20, constant=True, half_life=np.inf, **kwargs)
     DataType += [('fvalue',np.float),('rsquared',np.float),('rsquared_adj',np.float)]
     f.TempData["dtype"] = DataType
     return f
+def _rolling_regress_change(f,idt,iid,x,args):
+    Y = _genOperatorData(f,idt,iid,x,args)[0]
+    X = np.arange(Y.shape[0]).astype("float").reshape((Y.shape[0], 1)).repeat(Y.shape[1], axis=1)
+    Mask = pd.isnull(Y)
+    X[Mask] = np.nan
+    X = X - np.nanmean(X, axis=0)
+    Y = Y - np.nanmean(Y, axis=0)
+    Rslt = np.nansum(X * Y, axis=0) / np.nansum(X ** 2, axis=0)
+    Rslt[Y.shape[0] - np.sum(Mask)<args["OperatorArg"]["min_periods"]] = np.nan
+    Rslt[np.isinf(Rslt)] = np.nan
+    return Rslt
+def rolling_regress_change(f, window=20, min_periods=2, **kwargs):
+    Descriptors,Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"min_periods":min_periods}
+    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_regress_change,"参数":Args,"运算时点":"单时点","运算ID":"多ID"}, **kwargs)
 def _expanding_cov(f,idt,iid,x,args):
     Data1,Data2 = _genOperatorData(f,idt,iid,x,args)
     OperatorArg = args["OperatorArg"].copy()
@@ -617,7 +672,7 @@ def _lag(f,idt,iid,x,args):
     Data = pd.DataFrame(x[0], index=idt)
     TargetData = Data.loc[TargetDTs].values
     TargetData[args["OperatorArg"]['lag_period']:] = TargetData[:-args["OperatorArg"]['lag_period']]
-    if f.FactorDataType=="string":
+    if f.FactorDataType!="double":
         Data = pd.DataFrame(np.empty(Data.shape,dtype="O"),index=Data.index,columns=iid)
     else:
         Data = pd.DataFrame(index=Data.index,columns=iid,dtype="float")
@@ -1561,5 +1616,5 @@ def chg_ids(f, old_ids, id_map={}, **kwargs):
     Args["OperatorArg"] = {"id_map":id_map}
     FactorName = kwargs.pop("factor_name", str(uuid.uuid1()))
     DataType = f.getMetaData(key="DataType")
-    if DataType is None: DataType = "string"
+    if DataType is None: DataType = "object"
     return SectionOperation(FactorName, Descriptors, {"算子":_chg_ids, "参数":Args, "运算时点":"多时点", "描述子截面":[old_ids]*len(Descriptors), "数据类型":DataType}, **kwargs)
