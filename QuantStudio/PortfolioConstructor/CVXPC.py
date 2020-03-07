@@ -21,9 +21,9 @@ class CVXPC(PortfolioConstructor):
             if iType=="Box":
                 CVXConstraints.extend([x<=iConstraint["ub"].flatten(), x>=iConstraint["lb"].flatten()])
             elif iType=="LinearIn":
-                CVXConstraints.append(iConstraint["A"] * x <= iConstraint["b"].flatten())
+                CVXConstraints.append(iConstraint["A"] @ x <= iConstraint["b"].flatten())
             elif iType=="LinearEq":
-                CVXConstraints.append(iConstraint["Aeq"] * x == iConstraint["beq"].flatten())
+                CVXConstraints.append(iConstraint["Aeq"] @ x == iConstraint["beq"].flatten())
             elif iType=="Quadratic":
                 for jSubConstraint in iConstraint:
                     if "X" in jSubConstraint:
@@ -31,7 +31,7 @@ class CVXPC(PortfolioConstructor):
                         jSigma = (jSigma + jSigma.T) / 2
                     elif "Sigma" in jSubConstraint:
                         jSigma = jSubConstraint["Sigma"]
-                    CVXConstraints.append(cvx.quad_form(x, jSigma) + jSubConstraint["Mu"].T * x <= jSubConstraint["q"])
+                    CVXConstraints.append(cvx.quad_form(x, jSigma) + jSubConstraint["Mu"].T @ x <= jSubConstraint["q"])
             elif iType=="L1":
                 for jSubConstraint in iConstraint:
                     CVXConstraints.append(cvx.norm(x - jSubConstraint["c"].flatten(), p=1) <= jSubConstraint["l"])
@@ -47,14 +47,14 @@ class CVXPC(PortfolioConstructor):
     def _solveMeanVarianceModel(self, nvar, prepared_objective, prepared_constraints, prepared_option):
         x = cvx.Variable(nvar)
         Obj = 0
-        if "f" in prepared_objective: Obj += prepared_objective["f"].T * x
+        if "f" in prepared_objective: Obj += prepared_objective["f"].T @ x
         if "X" in prepared_objective:
             Sigma = np.dot(np.dot(prepared_objective["X"], prepared_objective["F"]), prepared_objective["X"].T) + np.diag(prepared_objective["Delta"].flatten())
             Sigma = (Sigma + Sigma.T) / 2
             Obj += cvx.quad_form(x, Sigma)
         elif "Sigma" in prepared_objective:
             Obj += cvx.quad_form(x, prepared_objective["Sigma"])
-        if "Mu" in prepared_objective: Obj += prepared_objective["Mu"].T * x
+        if "Mu" in prepared_objective: Obj += prepared_objective["Mu"].T @ x
         if "lambda1" in prepared_objective:
             Obj += prepared_objective["lambda1"] * cvx.norm(x - prepared_objective["c"].flatten(), p=1)
         if "lambda2" in prepared_objective:
@@ -79,8 +79,8 @@ class CVXPC(PortfolioConstructor):
             Obj += cvx.quad_form(x, Sigma)
         elif "Sigma" in prepared_objective:
             Obj += cvx.quad_form(x, prepared_objective["Sigma"])
-        c = np.dot(prepared_objective["b"].T * np.log(prepared_objective["b"])) - min(1e-4, 1/nvar)
-        CVXConstraints = [x >= np.zeros(nvar), prepared_objective["b"].T * cvx.log(x) >= c]
+        c = np.dot(prepared_objective["b"].T, np.log(prepared_objective["b"])) - min(1e-4, 1/nvar)
+        CVXConstraints = [x >= np.zeros(nvar), prepared_objective["b"].T @ cvx.log(x) >= c]
         self._Model = cvx.Problem(cvx.Minimize(Obj), CVXConstraints)
         self._x = x
         self._Model.solve(**prepared_option)
