@@ -16,7 +16,7 @@ from QuantStudio.Tools.FileFun import getShelveFileSuffix
 from QuantStudio.Tools.QSObjects import QSSQLObject
 from QuantStudio import __QS_Object__, __QS_Error__, __QS_LibPath__, __QS_MainPath__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
-from QuantStudio.FactorDataBase.FDBFun import updateInfo, adjustDateTime
+from QuantStudio.FactorDataBase.FDBFun import updateInfo, adjustDateTime, adjustDataDTID
 
 def RollBackNPeriod(report_date, n_period):
     Date = report_date
@@ -195,7 +195,10 @@ class _CalendarTable(_DBTable):
 class _MarketTable(_DBTable):
     """行情因子表"""
     LookBack = Int(0, arg_type="Integer", label="回溯天数", order=0)
-    #DateField = Enum(None, arg_type="SingleOption", label="日期字段", order=1)
+    OnlyStartLookBack = Bool(False, label="只起始日回溯", arg_type="Bool", order=1)
+    OnlyLookBackNontarget = Bool(False, label="只回溯非目标日", arg_type="Bool", order=2)
+    OnlyLookBackDT = Bool(False, label="只回溯时点", arg_type="Bool", order=3)
+    #DateField = Enum(None, arg_type="SingleOption", label="日期字段", order=4)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
@@ -210,7 +213,7 @@ class _MarketTable(_DBTable):
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
-        self.add_trait("DateField", Enum(*self._DateFields, arg_type="SingleOption", label="日期字段", order=1))
+        self.add_trait("DateField", Enum(*self._DateFields, arg_type="SingleOption", label="日期字段", order=4))
         iFactorInfo = FactorInfo[(FactorInfo["FieldType"]=="Date") & pd.notnull(FactorInfo["Supplementary"])]
         iFactorInfo = iFactorInfo[iFactorInfo["Supplementary"].str.contains("DefaultDate")]
         if iFactorInfo.shape[0]>0: self.DateField = iFactorInfo.index[0]
@@ -275,7 +278,7 @@ class _MarketTable(_DBTable):
     def __QS_genGroupInfo__(self, factors, operation_mode):
         DateConditionGroup = {}
         for iFactor in factors:
-            iDateConditions = (iFactor.DateField, ";".join([iArgName+":"+iFactor[iArgName] for iArgName in iFactor.ArgNames if iArgName!="回溯天数"]))
+            iDateConditions = (iFactor.DateField, ";".join([iArgName+":"+iFactor[iArgName] for iArgName in iFactor.ArgNames if iArgName not in ("回溯天数", "只起始日回溯", "只回溯非目标日", "只回溯时点")]))
             if iDateConditions not in DateConditionGroup:
                 DateConditionGroup[iDateConditions] = {"FactorNames":[iFactor.Name], 
                                                        "RawFactorNames":{iFactor._NameInFT}, 
@@ -338,13 +341,10 @@ class _MarketTable(_DBTable):
         Data = pd.Panel(Data).loc[factor_names]
         Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Data.major_axis]
         LookBack = args.get("回溯天数", self.LookBack)
-        if LookBack==0: return Data.loc[:, dts, ids]
-        AllDTs = Data.major_axis.union(dts).sort_values()
-        Data = Data.loc[:, AllDTs, ids]
-        Limits = LookBack*24.0*3600
-        for i, iFactorName in enumerate(Data.items):
-            Data.iloc[i] = fillNaByLookback(Data.iloc[i], lookback=Limits)
-        return Data.loc[:, dts]
+        return adjustDataDTID(Data, LookBack, factor_names, ids, dts, 
+                              args.get("只起始日回溯", self.OnlyStartLookBack), 
+                              args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
+                              args.get("只回溯时点", self.OnlyLookBackDT), logger=self._QS_Logger)
 
 class _DividendTable(_DBTable):
     """分红因子表"""
