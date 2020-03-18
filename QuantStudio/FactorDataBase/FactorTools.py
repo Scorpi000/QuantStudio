@@ -1611,7 +1611,7 @@ def _chg_ids(f,idt,iid,x,args):
         if iOldID not in OldIDs: continue
         Rslt[:, i] = Data[:, OldIDs.index(iOldID)]
     return Rslt
-def chg_ids(f, old_ids, id_map={}, **kwargs):
+def chg_ids(f, old_ids, id_map={}, **kwargs):# id_map: {新ID:旧ID}
     Descriptors, Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"id_map":id_map}
     FactorName = kwargs.pop("factor_name", str(uuid.uuid1()))

@@ -131,7 +131,7 @@ class QSSQLObject(__QS_Object__):
         if not self.AdjustTableName:
             self._AllTables = []
         else:
-            self._AllTables = self.getAllDBTable()
+            self._AllTables = self.getDBTable()
         return 0
     def disconnect(self):
         if self._Connection is not None:
@@ -201,7 +201,7 @@ class QSSQLObject(__QS_Object__):
                 SQLStr += (" WHERE %s LIKE '%s' " % (TableField, table_format))
             AllTables = self.fetchall(SQLStr)
         except Exception as e:
-            Msg = ("'%s' 调用方法 getAllDBTable 时错误: %s" % (self.Name, str(e)))
+            Msg = ("'%s' 调用方法 getDBTable 时错误: %s" % (self.Name, str(e)))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
         else:
@@ -333,7 +333,7 @@ class QSSQLObject(__QS_Object__):
             else:
                 # 将表名改为临时表
                 SQLStr = "ALTER TABLE %s RENAME TO %s"
-                TempTableName = genAvailableName("TempTable", self.getAllDBTable())
+                TempTableName = genAvailableName("TempTable", self.getDBTable())
                 self.execute(SQLStr % (self.TablePrefix+table_name, self.TablePrefix+TempTableName))
                 # 创建新表
                 FieldTypes = OrderedDict()
@@ -370,7 +370,7 @@ class QSSQLObject(__QS_Object__):
             else:
                 # 将表名改为临时表
                 SQLStr = "ALTER TABLE %s RENAME TO %s"
-                TempTableName = genAvailableName("TempTable", self.getAllDBTable())
+                TempTableName = genAvailableName("TempTable", self.getDBTable())
                 self.execute(SQLStr % (self.TablePrefix+table_name, self.TablePrefix+TempTableName))
                 # 创建新表
                 FieldTypes = OrderedDict()
