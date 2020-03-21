@@ -405,24 +405,53 @@ class _MappingTable(_DBTable):
         return RawData
     def _calcMultiMappingData(self, raw_data, factor_names, ids, dts, args={}):
         Data, nDT, nFactor = {}, len(dts), len(factor_names)
+        DeltaDT = dt.timedelta(int(not self._EndDateIncluded))
         raw_data.set_index(["ID"], inplace=True)
         raw_data["QS_结束日"] = raw_data["QS_结束日"].where(pd.notnull(raw_data["QS_结束日"]), dts[-1]+dt.timedelta(1))
         if args.get("只填起始日", self.OnlyStartFilled):
             raw_data["QS_起始日"] = raw_data["QS_起始日"].where(raw_data["QS_起始日"]>=dts[0], dts[0])
             for iID in raw_data.index.unique():
-                iRawData = raw_data.loc[[iID]].set_index(["QS_起始日"])
-                iData = pd.DataFrame([([],)*nFactor]*nDT, index=dts, columns=factor_names, dtype="O")
-                for jStartDate in iRawData.index.drop_duplicates():
-                    iData.iloc[iData.index.searchsorted(jStartDate)] += pd.Series(iRawData.loc[[jStartDate], factor_names].values.T.tolist(), index=factor_names)
+                #iRawData = raw_data.loc[[iID]].set_index(["QS_起始日"])
+                #iData = pd.DataFrame([([],)*nFactor]*nDT, index=dts, columns=factor_names, dtype="O")
+                #for jStartDate in iRawData.index.drop_duplicates():
+                    #iData.iloc[iData.index.searchsorted(jStartDate)] += pd.Series(iRawData.loc[[jStartDate], factor_names].values.T.tolist(), index=factor_names)
+                #Data[iID] = iData
+                iRawData = raw_data.loc[[iID]]
+                iStartEndDates = sorted(pd.unique(np.r_[iRawData["QS_起始日"].values, iRawData["QS_结束日"].values]))
+                iTempData = pd.DataFrame([([],)*nFactor]*len(iStartEndDates), index=iStartEndDates, columns=factor_names, dtype="O")
+                iRawData = iRawData.set_index(["QS_起始日", "QS_结束日"])
+                for jStartDate, jEndDate in iRawData.index.drop_duplicates():
+                    ijRawData = iRawData.loc[jStartDate]
+                    if pd.notnull(jEndDate):
+                        ijRawData = ijRawData.loc[pd.notnull(ijRawData.index), factor_names]
+                        ijRawData = ijRawData.loc[[jEndDate]].values.T.tolist()
+                    else:
+                        ijRawData = ijRawData.loc[pd.isnull(ijRawData.index), factor_names].values.T.tolist()
+                    if pd.isnull(jEndDate) or (jEndDate<jStartDate):
+                        ijOldData = iTempData.loc[jStartDate:]
+                        iTempData.loc[jStartDate:] += pd.DataFrame([ijRawData] * ijOldData.shape[0], index=ijOldData.index, columns=ijOldData.columns, dtype="O")
+                    else:
+                        jEndDate -= DeltaDT
+                        ijOldData = iTempData.loc[jStartDate:jEndDate]
+                        iTempData.loc[jStartDate:jEndDate] += pd.DataFrame([ijRawData] * ijOldData.shape[0], index=ijOldData.index, columns=ijOldData.columns, dtype="O")
+                iData = pd.DataFrame([(None,)*nFactor]*nDT, index=dts, columns=factor_names, dtype="O")
+                for j, jDate in enumerate(iStartEndDates):
+                    jIdx = iData.index.searchsorted(jDate)
+                    if jIdx<iData.shape[0]:
+                        iData.iloc[jIdx] = iTempData.iloc[j]
                 Data[iID] = iData
             return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
         else:
-            DeltaDT = dt.timedelta(int(not self._EndDateIncluded))
             for iID in raw_data.index.unique():
                 iRawData = raw_data.loc[[iID]].set_index(["QS_起始日", "QS_结束日"])
                 iData = pd.DataFrame([([],)*nFactor]*nDT, index=dts, columns=factor_names, dtype="O")
                 for jStartDate, jEndDate in iRawData.index.drop_duplicates():
-                    ijRawData = iRawData.loc[jStartDate].loc[[jEndDate], factor_names].values.T.tolist()
+                    ijRawData = iRawData.loc[jStartDate]
+                    if pd.notnull(jEndDate):
+                        ijRawData = ijRawData.loc[pd.notnull(ijRawData.index), factor_names]
+                        ijRawData = ijRawData.loc[[jEndDate]].values.T.tolist()
+                    else:
+                        ijRawData = ijRawData.loc[pd.isnull(ijRawData.index), factor_names].values.T.tolist()
                     if pd.isnull(jEndDate) or (jEndDate<jStartDate):
                         ijOldData = iData.loc[jStartDate:]
                         iData.loc[jStartDate:] += pd.DataFrame([ijRawData] * ijOldData.shape[0], index=ijOldData.index, columns=ijOldData.columns, dtype="O")
@@ -437,17 +466,36 @@ class _MappingTable(_DBTable):
         if args.get("多重映射", self.MultiMapping): return self._calcMultiMappingData(raw_data, factor_names, ids, dts, args=args)
         raw_data.set_index(["ID"], inplace=True)
         Data, nFactor = {}, len(factor_names)
+        DeltaDT = dt.timedelta(int(not self._EndDateIncluded))
         if args.get("只填起始日", self.OnlyStartFilled):
             raw_data["QS_起始日"] = raw_data["QS_起始日"].where(raw_data["QS_起始日"]>=dts[0], dts[0])
             for iID in raw_data.index.unique():
-                iRawData = raw_data.loc[[iID]].set_index(["QS_起始日"])
+                #iRawData = raw_data.loc[[iID]].set_index(["QS_起始日"])
+                #iData = pd.DataFrame(index=dts, columns=factor_names)
+                #for jStartDate in iRawData.index:
+                    #iData.iloc[iData.index.searchsorted(jStartDate)] = iRawData.loc[jStartDate, factor_names]
+                #Data[iID] = iData
+                iRawData = raw_data.loc[[iID]]
+                iStartEndDates = np.r_[iRawData["QS_起始日"].values, iRawData["QS_结束日"].values]
+                iStartEndDates = sorted(pd.unique(iStartEndDates[pd.notnull(iStartEndDates)]))
+                iTempData = pd.DataFrame(index=iStartEndDates, columns=factor_names)
+                #iRawData = iRawData.set_index(["QS_起始日", "QS_结束日"])
+                for j in range(iRawData.shape[0]):
+                    ijRawData = iRawData.iloc[j]
+                    jStartDate, jEndDate = ijRawData["QS_起始日"], ijRawData["QS_结束日"]
+                    if pd.isnull(jEndDate) or (jEndDate<jStartDate):
+                        iTempData.loc[jStartDate:] = np.repeat(ijRawData[factor_names].values.reshape((1, nFactor)), iTempData.loc[jStartDate:].shape[0], axis=0)
+                    else:
+                        jEndDate -= DeltaDT
+                        iTempData.loc[jStartDate:jEndDate] = np.repeat(ijRawData[factor_names].values.reshape((1, nFactor)), iTempData.loc[jStartDate:jEndDate].shape[0], axis=0)
                 iData = pd.DataFrame(index=dts, columns=factor_names)
-                for jStartDate in iRawData.index:
-                    iData.iloc[iData.index.searchsorted(jStartDate)] = iRawData.loc[jStartDate, factor_names]
+                for j, jDate in enumerate(iStartEndDates):
+                    jIdx = iData.index.searchsorted(jDate)
+                    if jIdx<iData.shape[0]:
+                        iData.iloc[jIdx] = iTempData.iloc[j]
                 Data[iID] = iData
             return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
         else:
-            DeltaDT = dt.timedelta(int(not self._EndDateIncluded))
             for iID in raw_data.index.unique():
                 iRawData = raw_data.loc[[iID]]
                 iData = pd.DataFrame(index=dts, columns=factor_names)

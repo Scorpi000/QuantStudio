@@ -619,7 +619,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         self._TableFactorDict[table_name] = self._TableFactorDict[table_name][FactorIndex]
         self._TableFieldDataType[table_name] = self._TableFieldDataType[table_name][FactorIndex]
         return 0
-    def deleteData(self, table_name, ids=None, dts=None):
+    def deleteData(self, table_name, ids=None, dts=None, dt_ids=None):
         if table_name not in self._TableFactorDict:
             Msg = ("因子库 '%s' 调用方法 deleteData 错误: 不存在因子表 '%s'!" % (self.Name, table_name))
             self._QS_Logger.error(Msg)
@@ -634,6 +634,9 @@ class SQLDB(QSSQLObject, WritableFactorDB):
             SQLStr += "WHERE "+DBTableName+".datetime IS NOT NULL "
         if ids is not None:
             SQLStr += "AND "+genSQLInCondition(DBTableName+".code", ids, is_str=True, max_num=1000)
+        if dt_ids is not None:
+            dt_ids = ["('"+iDTIDs[0].strftime("%Y-%m-%d %H:%M:%S.%f")+"', '"+iDTIDs[1]+"')" for iDTIDs in dt_ids]
+            SQLStr += "AND "+genSQLInCondition("("+DBTableName+".datetime, "+DBTableName+".code)", dt_ids, is_str=False, max_num=1000)
         try:
             self.execute(SQLStr)
         except Exception as e:
@@ -690,7 +693,12 @@ class SQLDB(QSSQLObject, WritableFactorDB):
             NewData[iFactorName] = iData
             SQLStr += "`"+iFactorName+"`, "
         NewData = pd.DataFrame(NewData).loc[:, data.items]
-        NewData = NewData[pd.notnull(NewData).any(axis=1)]
+        Mask = pd.notnull(NewData).any(axis=1)
+        NewData = NewData[Mask]
+        # TODEBUG: 删除全部缺失的行
+        #Mask = Mask[~Mask]
+        #if Mask.shape[0]>0:
+            #self.deleteData(table_name, dt_ids=Mask.index.tolist())
         if NewData.shape[0]==0: return 0
         if self._Connector in ("pyodbc", "sqlite3"):
             SQLStr = SQLStr[:-2] + ") VALUES (" + "?, " * (NewData.shape[1]+2)

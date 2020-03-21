@@ -2,6 +2,7 @@
 """内置的因子运算"""
 import datetime as dt
 import uuid
+import json
 
 import numpy as np
 import pandas as pd
@@ -278,6 +279,12 @@ def _tolist(f,idt,iid,x,args):
 def tolist(*factors,**kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(*factors)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_tolist,"参数":Args,"运算时点":"多时点","运算ID":"多ID","数据类型":"object"}, **kwargs)
+def _to_json(f, idt, iid, x, args):
+    Data = _genOperatorData(f, idt, iid, x, args)[0]
+    return pd.DataFrame(Data).applymap(lambda v: json.dumps(v, ensure_ascii=False) if pd.notnull(v) else None).values
+def to_json(f, **kwargs):
+    Descriptors, Args = _genMultivariateOperatorInfo(f)
+    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors, {"算子":_to_json, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "数据类型":"string"}, **kwargs)
 def _single_quarter(f,idt,iid,x,args):
     ReportPeriod, Last, Prev = _genOperatorData(f,idt,iid,x,args)
     f = np.vectorize(lambda x: x[-4:]=="0331")
