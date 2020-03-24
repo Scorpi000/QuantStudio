@@ -599,7 +599,7 @@ class FactorTable(__QS_Object__):
     def end(self):
         if not self.ErgodicMode._isStarted: return 0
         self.ErgodicMode._CacheData, self.ErgodicMode._FactorReadNum, self.ErgodicMode._IDReadNum = None, None, None
-        self.ErgodicMode._Queue2SubProcess.put(None)
+        if self.ErgodicMode.CacheSize>0: self.ErgodicMode._Queue2SubProcess.put(None)
         self.ErgodicMode._Queue2SubProcess = self.ErgodicMode._Queue2MainProcess = self.ErgodicMode._CacheDataProcess = None
         self.ErgodicMode._isStarted = False
         self.ErgodicMode._CurDT = None
@@ -1346,7 +1346,7 @@ class DataFactor(Factor):
                     sys_args["数据类型"] = "string"
                 else:
                     sys_args["数据类型"] = "double"
-        elif isinstance(self, pd.DataFrame):
+        elif isinstance(data, pd.DataFrame):
             self._DataContent = "Factor"
             if "数据类型" not in sys_args: sys_args["数据类型"] = ("string" if np.dtype('O') in data.dtypes.values else "double")
         else:

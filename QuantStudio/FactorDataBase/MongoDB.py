@@ -1,18 +1,15 @@
 # coding=utf-8
 """基于 Mongo 数据库的因子库"""
-import re
 import os
 import datetime as dt
-from collections import OrderedDict
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, Str, Range, Password, File, Float, Bool, ListStr, Either, Date, List
+from traits.api import Enum, Str, Range, Password, Float, ListStr, List
 
-from QuantStudio.Tools.AuxiliaryFun import genAvailableName
-from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
+from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 
 def _identifyDataType(dtypes):
     if np.dtype('O') in dtypes.values: return 'string'
@@ -284,9 +281,20 @@ class MongoDB(WritableFactorDB):
         return 0
     # 创建表, field_types: {字段名: 数据类型}
     def createTable(self, table_name, field_types):
-        Doc = {iField: {"DataType": iDataType} for iField, iDataType in field_types.items()}
-        Doc.update({"datetime": None, "code": "_TableInfo"})
-        self._DB[self.InnerPrefix+table_name].insert(Doc)
+        if self.InnerPrefix+table_name not in self._DB.collection_names():
+            Doc = {iField: {"DataType": iDataType} for iField, iDataType in field_types.items()}
+            Doc.update({"datetime": None, "code": "_TableInfo"})
+            Collection = self._DB[self.InnerPrefix+table_name]
+            Collection.insert(Doc)
+            # 添加索引
+            if self._Connector=="pymongo":
+                import pymongo
+                Index1 = pymongo.IndexModel([("datetime", pymongo.ASCENDING), ("code", pymongo.ASCENDING)], name=self.InnerPrefix+"datetime_code")
+                Index2 = pymongo.IndexModel([("code", pymongo.HASHED)], name=self.InnerPrefix+"code")
+                try:
+                    Collection.create_indexes([Index1, Index2])
+                except Exception as e:
+                    self._QS_Logger.warning("'%s' 调用方法 createTable 在数据库中创建表 '%s' 的索引时错误: %s" % (self.Name, table_name, str(e)))
         self._TableFactorDict[table_name] = pd.Series(field_types)
         return 0
     # ----------------------------因子操作---------------------------------
@@ -361,7 +369,6 @@ class MongoDB(WritableFactorDB):
         for iFactorName in data.items:
             iData = data.loc[iFactorName].stack(dropna=False)
             NewData[iFactorName] = iData
-            SQLStr += "`"+iFactorName+"`, "
         NewData = pd.DataFrame(NewData).loc[:, data.items]
         Mask = pd.notnull(NewData).any(axis=1)
         NewData = NewData[Mask]

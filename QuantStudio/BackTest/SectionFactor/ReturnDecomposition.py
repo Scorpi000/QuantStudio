@@ -23,7 +23,7 @@ class FamaMacBethRegression(BaseModule):
     """Fama-MacBeth 回归"""
     TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
     #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
-    #IndustryFactor = Enum("无", arg_type="SingleOption", label="行业因子", order=2)
+    #ClassFactor = Enum("无", arg_type="SingleOption", label="类别因子", order=2)
     CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=3)
     IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=4)
     RollAvgPeriod = Int(12, arg_type="Integer", label="滚动平均期数", order=5)
@@ -36,7 +36,7 @@ class FamaMacBethRegression(BaseModule):
         self.TestFactors.append(DefaultNumFactorList[0])
         self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1))
         self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
-        self.add_trait("IndustryFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="行业因子", order=2))
+        self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=2))
     def getViewItems(self, context_name=""):
         Items, Context = super().getViewItems(context_name=context_name)
         Items[0].editor = SetEditor(values=self.trait("TestFactors").option_range)
@@ -74,15 +74,15 @@ class FamaMacBethRegression(BaseModule):
         Price = self._FactorTable.readData(dts=[LastDateTime, idt], ids=LastIDs, factor_names=[self.PriceFactor]).iloc[0]
         Ret = Price.iloc[1] / Price.iloc[0] - 1
         # 展开Dummy因子
-        if self.IndustryFactor!="无":
-            DummyFactorData = self._FactorTable.readData(dts=[LastDateTime], ids=LastIDs, factor_names=[self.IndustryFactor]).iloc[0,0,:]
+        if self.ClassFactor!="无":
+            DummyFactorData = self._FactorTable.readData(dts=[LastDateTime], ids=LastIDs, factor_names=[self.ClassFactor]).iloc[0,0,:]
             Mask = pd.notnull(DummyFactorData)
             DummyFactorData = DummyVarTo01Var(DummyFactorData[Mask], ignore_na=True)
             FactorData = pd.merge(FactorData.loc[Mask], DummyFactorData, left_index=True, right_index=True)
         # 回归
         yData = Ret[FactorData.index].values
         xData = FactorData.values
-        if self.IndustryFactor=="无":
+        if self.ClassFactor=="无":
             xData = sm.add_constant(xData, prepend=False)
             LastInds = [nFactor]
         else:

@@ -26,7 +26,7 @@ class IC(BaseModule):
     TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
     FactorOrder = Dict(key_trait=Str(), value_trait=Enum("降序", "升序"), arg_type="ArgDict", label="排序方向", order=1)
     #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=2)
-    #IndustryFactor = Enum("无", arg_type="SingleOption", label="行业因子", order=3)
+    #ClassFactor = Enum("无", arg_type="SingleOption", label="类别因子", order=3)
     #WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=4)
     CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=5)
     LookBack = Int(1, arg_type="Integer", label="回溯期数", order=6)
@@ -42,7 +42,7 @@ class IC(BaseModule):
         self.TestFactors.append(DefaultNumFactorList[0])
         self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=2))
         self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
-        self.add_trait("IndustryFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="行业因子", order=3))
+        self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=3))
         self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=4))
     @on_trait_change("TestFactors[]")
     def _on_TestFactors_changed(self, obj, name, old, new):
@@ -56,7 +56,7 @@ class IC(BaseModule):
         super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._Output = {}
         self._Output["IC"] = {iFactorName:[] for iFactorName in self.TestFactors}
-        self._Output["股票数"] = {iFactorName:[] for iFactorName in self.TestFactors}
+        self._Output["截面宽度"] = {iFactorName:[] for iFactorName in self.TestFactors}
         self._Output["时点"] = []
         self._CurCalcInd = 0
         return (self._FactorTable, )
@@ -79,15 +79,15 @@ class IC(BaseModule):
         if (PreInd<0) or (LastInd<0):
             for iFactorName in self.TestFactors:
                 self._Output["IC"][iFactorName].append(np.nan)
-                self._Output["股票数"][iFactorName].append(np.nan)
+                self._Output["截面宽度"][iFactorName].append(np.nan)
             self._Output["时点"].append(idt)
             return 0
         PreIDs = self._FactorTable.getFilteredID(idt=PreDateTime, id_filter_str=self.IDFilter)
         FactorExpose = self._FactorTable.readData(dts=[PreDateTime], ids=PreIDs, factor_names=list(self.TestFactors)).iloc[:, 0, :]
         Price = self._FactorTable.readData(dts=[LastDateTime, idt], ids=PreIDs, factor_names=[self.PriceFactor]).iloc[0, :, :]
         Ret = Price.iloc[-1] / Price.iloc[0] - 1
-        if self.IndustryFactor!="无":# 进行收益率的行业调整
-            IndustryData = self._FactorTable.readData(dts=[LastDateTime], ids=PreIDs, factor_names=[self.IndustryFactor]).iloc[0, 0, :]
+        if self.ClassFactor!="无":# 进行收益率的类别调整
+            IndustryData = self._FactorTable.readData(dts=[LastDateTime], ids=PreIDs, factor_names=[self.ClassFactor]).iloc[0, 0, :]
             AllIndustry = IndustryData.unique()
             if self.WeightFactor=="等权":
                 for iIndustry in AllIndustry:
@@ -102,14 +102,14 @@ class IC(BaseModule):
                     Ret[iMask] -= (iRet*iWeight).sum() / iWeight[pd.notnull(iWeight) & pd.notnull(iRet)].sum(skipna=False)
         for iFactorName in self.TestFactors:
             self._Output["IC"][iFactorName].append(FactorExpose[iFactorName].corr(Ret, method=self.CorrMethod))
-            self._Output["股票数"][iFactorName].append(pd.notnull(FactorExpose[iFactorName]).sum())
+            self._Output["截面宽度"][iFactorName].append(pd.notnull(FactorExpose[iFactorName]).sum())
         self._Output["时点"].append(idt)
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
         super().__QS_end__()
         CalcDateTimes = self._Output.pop("时点")
-        self._Output["股票数"] = pd.DataFrame(self._Output["股票数"], index=CalcDateTimes)
+        self._Output["截面宽度"] = pd.DataFrame(self._Output["截面宽度"], index=CalcDateTimes)
         self._Output["IC"] = pd.DataFrame(self._Output["IC"], index=CalcDateTimes)
         for i, iFactorName in enumerate(self.TestFactors):
             if self.FactorOrder[iFactorName]=="升序": self._Output["IC"][iFactorName] = -self._Output["IC"][iFactorName]
@@ -124,8 +124,8 @@ class IC(BaseModule):
         self._Output["统计数据"]["最大值"] = self._Output["IC"].max()
         self._Output["统计数据"]["IC_IR"] = self._Output["统计数据"]["平均值"] / self._Output["统计数据"]["标准差"]
         self._Output["统计数据"]["t统计量"] = np.nan
-        self._Output["统计数据"]["平均股票数"] = self._Output["股票数"].mean()
-        self._Output["统计数据"]["IC×Sqrt(N)"] = self._Output["统计数据"]["平均值"]*np.sqrt(self._Output["统计数据"]["平均股票数"])
+        self._Output["统计数据"]["平均截面宽度"] = self._Output["截面宽度"].mean()
+        self._Output["统计数据"]["IC×Sqrt(N)"] = self._Output["统计数据"]["平均值"]*np.sqrt(self._Output["统计数据"]["平均截面宽度"])
         self._Output["统计数据"]["有效期数"] = 0.0
         for iFactor in self._Output["IC"]: self._Output["统计数据"].loc[iFactor,"有效期数"] = pd.notnull(self._Output["IC"][iFactor]).sum()
         self._Output["统计数据"]["t统计量"] = (self._Output["统计数据"]["有效期数"]**0.5)*self._Output["统计数据"]["IC_IR"]
@@ -205,7 +205,7 @@ class RiskAdjustedIC(IC):
         if (PreInd<0) or (LastInd<0):
             for iFactorName in self.TestFactors:
                 self._Output["IC"][iFactorName].append(np.nan)
-                self._Output["股票数"][iFactorName].append(np.nan)
+                self._Output["截面宽度"][iFactorName].append(np.nan)
             self._Output["时点"].append(idt)
             return 0
         PreIDs = self._FactorTable.getFilteredID(idt=PreDateTime, id_filter_str=self.IDFilter)
@@ -220,13 +220,13 @@ class RiskAdjustedIC(IC):
         Ret = CurPrice/LastPrice-1
         Mask = (pd.isnull(RiskExpose).sum(axis=1)==0)
         # 展开Dummy因子
-        if self.IndustryFactor!="无":
-            DummyFactorData = self._FactorTable.readData(dts=[PreDateTime], ids=PreIDs, factor_names=[self.IndustryFactor]).iloc[0,0,:]
+        if self.ClassFactor!="无":
+            DummyFactorData = self._FactorTable.readData(dts=[PreDateTime], ids=PreIDs, factor_names=[self.ClassFactor]).iloc[0,0,:]
             _,_,_,DummyFactorData = prepareRegressData(np.ones(DummyFactorData.shape[0]), dummy_data=DummyFactorData.values)
         iMask = (pd.notnull(Ret) & Mask)
         Ret = Ret[iMask]
         iX = RiskExpose.loc[iMask].values
-        if self.IndustryFactor!="无":
+        if self.ClassFactor!="无":
             iDummy = DummyFactorData[iMask.values]
             iDummy = iDummy[:,(np.sum(iDummy==0,axis=0)<iDummy.shape[0])]
             iX = np.hstack((iX,iDummy[:,:-1]))
@@ -240,7 +240,7 @@ class RiskAdjustedIC(IC):
             iMask = (Mask & pd.notnull(iFactorExpose))
             iFactorExpose = iFactorExpose[iMask]
             iX = RiskExpose.loc[iMask].values
-            if self.IndustryFactor!="无":
+            if self.ClassFactor!="无":
                 iDummy = DummyFactorData[iMask.values]
                 iDummy = iDummy[:,(np.sum(iDummy==0,axis=0)<iDummy.shape[0])]
                 iX = np.hstack((iX,iDummy[:,:-1]))
@@ -248,11 +248,11 @@ class RiskAdjustedIC(IC):
                 Result = sm.OLS(iFactorExpose.values,iX,missing="drop").fit()
             except:
                 self._Output["IC"][iFactorName].append(np.nan)
-                self._Output["股票数"][iFactorName].append(0)
+                self._Output["截面宽度"][iFactorName].append(0)
                 continue
             iFactorExpose = pd.Series(Result.resid,index=iFactorExpose.index)
             self._Output["IC"][iFactorName].append(iFactorExpose.corr(RiskAdjustedRet, method=self.CorrMethod))
-            self._Output["股票数"][iFactorName].append(pd.notnull(iFactorExpose).sum())
+            self._Output["截面宽度"][iFactorName].append(pd.notnull(iFactorExpose).sum())
         self._Output["时点"].append(idt)
         return 0
 
@@ -261,7 +261,7 @@ class ICDecay(BaseModule):
     #TestFactor = Enum(None, arg_type="SingleOption", label="测试因子", order=0)
     FactorOrder = Enum("降序","升序", arg_type="SingleOption", label="排序方向", order=1)
     #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=2)
-    #IndustryFactor = Enum("无", arg_type="SingleOption", label="行业因子", order=3)
+    #ClassFactor = Enum("无", arg_type="SingleOption", label="类别因子", order=3)
     #WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=4)
     CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=5)
     LookBack = ListInt(np.arange(1,13).tolist(), arg_type="NultiOpotion", label="回溯期数", order=6)
@@ -275,7 +275,7 @@ class ICDecay(BaseModule):
         self.add_trait("TestFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="测试因子", order=0))
         self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=2))
         self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
-        self.add_trait("IndustryFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="行业因子", order=3))
+        self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=3))
         self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=4))
     def __QS_start__(self, mdl, dts, **kwargs):
         if self._isStarted: return ()
@@ -311,10 +311,10 @@ class ICDecay(BaseModule):
             iPreDT = self.CalcDTs[iPreInd]
             iPreIDs = self._FactorTable.getFilteredID(idt=iPreDT, id_filter_str=self.IDFilter)
             iRet = Ret.loc[iPreIDs].copy()
-            if self.IndustryFactor!="无":
-                IndustryData = self._FactorTable.readData(dts=[iPreDT], ids=iPreIDs, factor_names=[self.IndustryFactor]).iloc[0,0,:]
+            if self.ClassFactor!="无":
+                IndustryData = self._FactorTable.readData(dts=[iPreDT], ids=iPreIDs, factor_names=[self.ClassFactor]).iloc[0,0,:]
                 AllIndustry = IndustryData.unique()
-                # 进行收益率的行业调整
+                # 进行收益率的类别调整
                 if self.WeightFactor=="等权":
                     for iIndustry in AllIndustry:
                         iRet[IndustryData==iIndustry] -= iRet[IndustryData==iIndustry].mean()

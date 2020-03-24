@@ -45,7 +45,7 @@ class QuantilePortfolio(BaseModule):
     FactorOrder = Enum("降序", "升序", arg_type="SingleOption", label="排序方向", order=1)
     GroupNum = Int(10, arg_type="Integer", label="分组数", order=2)
     #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=3)
-    #IndustryFactor = Enum("无", arg_type="SingleOption", label="行业因子", order=4)
+    #ClassFactor = Enum("无", arg_type="SingleOption", label="类别因子", order=4)
     #WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=5)
     CalcDTs = List(dt.datetime, arg_type="DateList", label="调仓时点", order=6)
     MarketIDFilter = Str(arg_type="IDFilter", label="市场组合", order=7)
@@ -59,7 +59,7 @@ class QuantilePortfolio(BaseModule):
         self.add_trait("TestFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="测试因子", order=0))
         self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=3))
         self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
-        self.add_trait("IndustryFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="行业因子", order=4))
+        self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=4))
         self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=5))
     def __QS_start__(self, mdl, dts, **kwargs):
         if self._isStarted: return ()
@@ -108,7 +108,7 @@ class QuantilePortfolio(BaseModule):
             WeightData = self._FactorTable.readData(dts=[idt], ids=self._FactorTable.getID(ifactor_name=self.WeightFactor), factor_names=[self.WeightFactor]).iloc[0, 0, :]
         else:
             WeightData = pd.Series(1.0, index=self._FactorTable.getID())
-        if self.IndustryFactor=="无":
+        if self.ClassFactor=="无":
             nSubID = distributeEqual(nID, self.GroupNum, remainder_pos="middle")
             for i in range(self.GroupNum):
                 iWealth = self._Output["净值"][i][-1]
@@ -126,7 +126,7 @@ class QuantilePortfolio(BaseModule):
                     self._Output["换手率"][i][-1] = 1
         else:
             Portfolio = [{} for i in range(self.GroupNum)]
-            IndustryData = self._FactorTable.readData(dts=[idt], ids=IDs, factor_names=[self.IndustryFactor]).iloc[0, 0, :]
+            IndustryData = self._FactorTable.readData(dts=[idt], ids=IDs, factor_names=[self.ClassFactor]).iloc[0, 0, :]
             AllIndustry = IndustryData.unique()
             for iIndustry in AllIndustry:
                 iMask = (IndustryData==iIndustry)
