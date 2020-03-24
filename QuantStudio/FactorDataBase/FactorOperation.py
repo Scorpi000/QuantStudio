@@ -18,7 +18,7 @@ def _DefaultOperator(f, idt, iid, x, args):
 class DerivativeFactor(Factor):
     Operator = Function(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
     ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
-    DataType = Enum("double", "string", arg_type="SingleOption", label="数据类型", order=2)
+    DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=2)
     def __init__(self, name="", descriptors=[], sys_args={}, **kwargs):
         self._Descriptors = descriptors
         self.UserData = {}

@@ -66,10 +66,11 @@ def deSuffixID(ids, sep='.'):
     return [(".".join(iID.split(".")[:-1]) if iID.find(".")!=-1 else iID) for iID in ids]
 # 根据字段的数据类型确定 QS 的数据类型
 def _identifyDataType(field_data_type):
-    if (field_data_type.find("number")!=-1) or (field_data_type.find("int")!=-1) or (field_data_type.find("decimal")!=-1) or (field_data_type.find("float")!=-1):
+    field_data_type = field_data_type.lower()
+    if (field_data_type.find("num")!=-1) or (field_data_type.find("int")!=-1) or (field_data_type.find("decimal")!=-1) or (field_data_type.find("double")!=-1) or (field_data_type.find("float")!=-1):
         return "double"
     elif field_data_type.find("date")!=-1:
-        return "datetime"
+        return "object"
     else:
         return "string"
 
@@ -232,7 +233,7 @@ class _DBTable(FactorTable):
             iConditionVal = args.get(iConditionField, self[iConditionField])
             if iConditionVal:
                 iConditionVal = iConditionVal.split(",")
-                if _identifyDataType(self._FactorInfo.loc[iConditionField, "DataType"])=="string":
+                if _identifyDataType(self._FactorInfo.loc[iConditionField, "DataType"])!="double":
                     SQLStr += "AND "+self._DBTableName+"."+self._FactorInfo["DBFieldName"].loc[iConditionField]+" IN ('"+"','".join(iConditionVal)+"') "
                 else:
                     SQLStr += "AND "+self._DBTableName+"."+self._FactorInfo["DBFieldName"].loc[iConditionField]+" IN ("+",".join(iConditionVal)+") "
@@ -266,12 +267,7 @@ class _DBTable(FactorTable):
             factor_names = self.FactorNames
         if key=="DataType":
             if hasattr(self, "_DataType"): return self._DataType.loc[factor_names]
-            MetaData = self._FactorInfo["DataType"].loc[factor_names]
-            for i in range(MetaData.shape[0]):
-                iDataType = MetaData.iloc[i].lower()
-                if (iDataType.find("number")!=-1) or (iDataType.find("int")!=-1) or (iDataType.find("decimal")!=-1) or (iDataType.find("float")!=-1): MetaData.iloc[i] = "double"
-                else: MetaData.iloc[i] = "string"
-            return MetaData
+            return self._FactorInfo["DataType"].loc[factor_names].apply(_identifyDataType)
         elif key=="Description": return self._FactorInfo["Description"].loc[factor_names]
         elif key is None:
             return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType"),
@@ -781,7 +777,6 @@ class _MarketTable(_DBTable):
             iRawData = raw_data[iFactorName].unstack()
             iDataType = _identifyDataType(self._FactorInfo.loc[iFactorName, "DataType"])
             if iDataType=="double": iRawData = iRawData.astype("float")
-            #elif iDataType=="datetime": iRawData = iRawData.applymap(lambda x: x.strftime("%Y-%m-%d %H:%M:%S") if pd.notnull(x) else None)
             Data[iFactorName] = iRawData
         Data = pd.Panel(Data).loc[factor_names]
         LookBack = args.get("回溯天数", self.LookBack)
@@ -879,32 +874,31 @@ class _InfoPublTable(_MarketTable):
         EndDateField = self._DBTableName+"."+self._FactorInfo.loc[args.get("日期字段", self.DateField), "DBFieldName"]
         if self._AnnDateField is None: AnnDateField = EndDateField
         else: AnnDateField = self._DBTableName+"."+self._AnnDateField
-        SubSQLStr = "SELECT "+self._getIDField()+" AS ID, "
-        SubSQLStr += self._DBTableName+"."+self._IDField+", "
+        SubSQLStr = "SELECT "+self._DBTableName+"."+self._IDField+", "
         SubSQLStr += "MAX("+EndDateField+") AS MaxEndDate "
-        SubSQLStr += self._genFromSQLStr()+" "
-        SubSQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
-        if pd.notnull(self._MainTableCondition): SubSQLStr += "AND "+self._MainTableCondition+" "
-        ConditionSQLStr = self._genConditionSQLStr(args=args)
-        SubSQLStr += ConditionSQLStr+" "
+        SubSQLStr += "FROM "+self._DBTableName+" "
         IgnoreTime = args.get("忽略时间", self.IgnoreTime)
         if IgnoreTime: DTFormat = "%Y-%m-%d"
         else: DTFormat = "%Y-%m-%d %H:%M:%S"
-        SubSQLStr += "AND ("+AnnDateField+"<'"+end_date.strftime(DTFormat)+"' "
+        SubSQLStr += "WHERE ("+AnnDateField+"<'"+end_date.strftime(DTFormat)+"' "
         SubSQLStr += "AND "+EndDateField+"<'"+end_date.strftime(DTFormat)+"') "
+        ConditionSQLStr = self._genConditionSQLStr(args=args)
+        SubSQLStr += ConditionSQLStr+" "
         SubSQLStr += "GROUP BY "+self._DBTableName+"."+self._IDField
         if IgnoreTime:
             SQLStr = "SELECT DATE(CASE WHEN "+AnnDateField+">=t.MaxEndDate THEN "+AnnDateField+" ELSE t.MaxEndDate END) AS DT, "
         else:
             SQLStr = "SELECT CASE WHEN "+AnnDateField+">=t.MaxEndDate THEN "+AnnDateField+" ELSE t.MaxEndDate END AS DT, "
-        SQLStr += "t.ID, "
+        SQLStr += self._getIDField()+" AS ID, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
-        SQLStr += FieldSQLStr+" FROM "+self._DBTableName+" "
-        for iJoinStr in SETableJoinStr: SQLStr += iJoinStr+" "
+        SQLStr += FieldSQLStr+" "
+        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "        
         SQLStr += "INNER JOIN ("+SubSQLStr+") t "
         SQLStr += "ON (t."+self._IDField+"="+self._DBTableName+"."+self._IDField+" "
-        SQLStr += "AND "+EndDateField+"=t.MaxEndDate)"
-        if ConditionSQLStr: SQLStr += " WHERE"+ConditionSQLStr[3:]
+        SQLStr += "AND "+EndDateField+"=t.MaxEndDate) "
+        SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
+        SQLStr += ConditionSQLStr
         return SQLStr
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         if self.IgnorePublDate or (self._AnnDateField is None): return super().__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args)
@@ -916,33 +910,32 @@ class _InfoPublTable(_MarketTable):
         if not np.isinf(LookBack): StartDate -= dt.timedelta(LookBack)
         EndDateField = self._DBTableName+"."+self._FactorInfo.loc[args.get("日期字段", self.DateField), "DBFieldName"]
         AnnDateField = self._DBTableName+"."+self._AnnDateField
-        SubSQLStr = "SELECT "+self._getIDField()+" AS ID, "
-        SubSQLStr += self._DBTableName+"."+self._IDField+", "
+        SubSQLStr = "SELECT "+self._DBTableName+"."+self._IDField+", "
         SubSQLStr += "CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END AS AnnDate, "
         SubSQLStr += "MAX("+EndDateField+") AS MaxEndDate "
-        SubSQLStr += self._genFromSQLStr()+" "
-        SubSQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
-        if pd.notnull(self._MainTableCondition): SubSQLStr += "AND "+self._MainTableCondition+" "
-        ConditionSQLStr = self._genConditionSQLStr(args=args)
-        SubSQLStr += ConditionSQLStr+" "
-        SubSQLStr += "AND ("+AnnDateField+">='"+StartDate.strftime(DTFormat)+"' "
+        SubSQLStr += "FROM "+self._DBTableName+" "
+        SubSQLStr += "WHERE ("+AnnDateField+">='"+StartDate.strftime(DTFormat)+"' "
         SubSQLStr += "OR "+EndDateField+">='"+StartDate.strftime(DTFormat)+"') "
         SubSQLStr += "AND ("+AnnDateField+"<='"+EndDate.strftime(DTFormat)+"' "
         SubSQLStr += "AND "+EndDateField+"<='"+EndDate.strftime(DTFormat)+"') "
+        ConditionSQLStr = self._genConditionSQLStr(args=args)
+        SubSQLStr += ConditionSQLStr+" "
         SubSQLStr += "GROUP BY "+self._DBTableName+"."+self._IDField+", AnnDate"
         if IgnoreTime:
             SQLStr = "SELECT DATE(t.AnnDate) AS DT, "
         else:
             SQLStr = "SELECT t.AnnDate AS DT, "
-        SQLStr += "t.ID, "
+        SQLStr += self._getIDField()+" AS ID, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
-        SQLStr += FieldSQLStr+" FROM "+self._DBTableName+" "
-        for iJoinStr in SETableJoinStr: SQLStr += iJoinStr+" "
+        SQLStr += FieldSQLStr+" "
+        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
         SQLStr += "INNER JOIN ("+SubSQLStr+") t "
         SQLStr += "ON (t."+self._IDField+"="+self._DBTableName+"."+self._IDField+") "
         SQLStr += "AND (t.MaxEndDate="+EndDateField+") "
-        if ConditionSQLStr: SQLStr += "WHERE TRUE "+ConditionSQLStr+" "
-        SQLStr += "ORDER BY t.ID, DT"
+        SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
+        SQLStr += ConditionSQLStr+" "
+        SQLStr += "ORDER BY ID, DT"
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: RawData = pd.DataFrame(columns=["日期", "ID"]+factor_names)
         RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["日期", "ID"]+factor_names)
@@ -980,6 +973,12 @@ class _MultiInfoPublTable(_InfoPublTable):
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         self._OrderFields = self._FactorInfo[self._FactorInfo["Supplementary"]=="OrderField"].index.tolist()
+    def getFactorMetaData(self, factor_names=None, key=None):
+        if key=="DataType":
+            if factor_names is None: factor_names = self.FactorNames
+            return pd.Series(["object"]*len(factor_names), index=factor_names)
+        else:
+            return super().getFactorMetaData(factor_names=factor_names, key=key)
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         FactorNames = list(set(factor_names).union(self._OrderFields))
         RawData = super().__QS_prepareRawData__(FactorNames, ids, dts, args=args)
@@ -1071,7 +1070,7 @@ class _NarrowTable(_DBTable):
             FactorNames = self._getFactorNames(FactorField, check_list=True)
             if isinstance(FactorNames, dict):
                 ifactor_name = FactorNames[ifactor_name]
-            if _identifyDataType(self._FactorInfo.loc[FactorField, "DataType"])=="string":
+            if _identifyDataType(self._FactorInfo.loc[FactorField, "DataType"])!="double":
                 SQLStr += "AND "+DBFactorField+"='"+ifactor_name+"' "
             else:
                 SQLStr += "AND "+DBFactorField+"="+str(ifactor_name)+" "
@@ -1099,7 +1098,7 @@ class _NarrowTable(_DBTable):
             FactorNames = self._getFactorNames(FactorField, check_list=True)
             if isinstance(FactorNames, dict):
                 ifactor_name = FactorNames[ifactor_name]
-            if _identifyDataType(self._FactorInfo.loc[FactorField, "DataType"])=="string":
+            if _identifyDataType(self._FactorInfo.loc[FactorField, "DataType"])!="double":
                 SQLStr += "AND "+DBFactorField+"='"+ifactor_name+"' "
             else:
                 SQLStr += "AND "+DBFactorField+"="+str(ifactor_name)+" "
@@ -1132,7 +1131,7 @@ class _NarrowTable(_DBTable):
         DateField = self._DBTableName+"."+self._FactorInfo.loc[args.get("日期字段", self.DateField), "DBFieldName"]
         FactorField = args.get("因子字段", self.FactorField)
         DBFactorField = self._DBTableName+"."+self._FactorInfo.loc[FactorField, "DBFieldName"]
-        FactorFieldStr = (_identifyDataType(self._FactorInfo.loc[FactorField, "DataType"])=="string")
+        FactorFieldStr = (_identifyDataType(self._FactorInfo.loc[FactorField, "DataType"])!="double")
         SubSQLStr = "SELECT "+self._MainTableName+"."+self._MainTableID+", "
         SubSQLStr += "MAX("+DateField+") "
         SubSQLStr += self._genFromSQLStr()+" "
@@ -1160,7 +1159,7 @@ class _NarrowTable(_DBTable):
         DateField = self._DBTableName+"."+self._FactorInfo.loc[args.get("日期字段", self.DateField), "DBFieldName"]
         FactorField = args.get("因子字段", self.FactorField)
         DBFactorField = self._DBTableName+"."+self._FactorInfo.loc[FactorField, "DBFieldName"]
-        FactorFieldStr = (_identifyDataType(self._FactorInfo.loc[FactorField, "DataType"])=="string")
+        FactorFieldStr = (_identifyDataType(self._FactorInfo.loc[FactorField, "DataType"])!="double")
         # 形成SQL语句, 日期, ID, 因子数据
         SQLStr = "SELECT "+DateField+", "
         SQLStr += self._getIDField()+" AS ID, "
@@ -1558,7 +1557,6 @@ class _FinancialTable_Old(_DBTable):
         for i, iFactorName in enumerate(factor_names):
             iDataType = _identifyDataType(self._FactorInfo.loc[iFactorName, "DataType"])
             if iDataType=="double": NewData[iFactorName] = Data.iloc[i].astype("float")
-            #elif iDataType=="datetime": NewData[iFactorName] = Data.iloc[i].applymap(lambda x: x.strftime("%Y-%m-%d %H:%M:%S") if pd.notnull(x) else None)
             else: NewData[iFactorName] = Data.iloc[i]
         Data = adjustDateTime(pd.Panel(NewData).loc[factor_names], dts, fillna=False)
         Data = Data.loc[:, :, ids]
@@ -2150,7 +2148,7 @@ class _AnalystEstDetailTable(_DBTable):
     AdditionalFields = ListStr(arg_type="MultiOption", label="附加字段", order=3, option_range=())
     Deduplication = ListStr(arg_type="MultiOption", label="去重字段", order=4, option_range=())
     Period = Int(180, arg_type="Integer", label="周期", order=5)
-    DataType = Enum("double", "string", arg_type="SingleOption", label="数据类型", order=6)
+    DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=6)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         self._DateField = self._FactorInfo[self._FactorInfo["FieldType"]=="Date"].index[0]
@@ -2276,7 +2274,7 @@ class _AnalystRatingDetailTable(_DBTable):
     AdditionalFields = ListStr(arg_type="MultiOption", label="附加字段", order=2, option_range=())
     Deduplication = ListStr(arg_type="MultiOption", label="去重字段", order=3, option_range=())
     Period = Int(180, arg_type="Integer", label="周期", order=4)
-    DataType = Enum("double", "string", arg_type="SingleOption", label="数据类型", order=5)
+    DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=5)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         self._DateField = self._FactorInfo[self._FactorInfo["FieldType"]=="Date"].index[0]

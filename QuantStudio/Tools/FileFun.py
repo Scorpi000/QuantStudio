@@ -49,12 +49,7 @@ def clearDir(dir_path):
     return nFailed
 # 获取一个目录下所有的文件夹名称列表
 def listDirDir(dir_path='.'):
-    AllFileNames = os.listdir(path=dir_path)
-    Rslt = []
-    for iFileName in AllFileNames:
-        if os.path.isdir(dir_path+os.sep+iFileName):
-            Rslt.append(iFileName)
-    return Rslt
+    return [iDir for iDir in os.listdir(path=dir_path) if os.path.isdir(dir_path+os.sep+iDir)]
 # 获取一个目录下给定后缀的文件名称列表
 def listDirFile(dir_path='.',suffix='csv'):
     suffix = suffix.lower()

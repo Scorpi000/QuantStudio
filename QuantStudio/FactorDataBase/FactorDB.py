@@ -1331,7 +1331,7 @@ class Factor(__QS_Object__):
 # 直接赋予数据产生的因子
 # data: DataFrame(index=[时点], columns=[ID])
 class DataFactor(Factor):
-    DataType = Enum("double", "string", arg_type="SingleOption", label="数据类型", order=0)
+    DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=0)
     LookBack = Int(0, arg_type="Integer", label="回溯天数", order=1)
     def __init__(self, name, data, sys_args={}, config_file=None, **kwargs):
         if  isinstance(data, pd.Series):
@@ -1343,12 +1343,18 @@ class DataFactor(Factor):
                 try:
                     data = data.astype(np.float)
                 except:
-                    sys_args["数据类型"] = "string"
+                    sys_args["数据类型"] = "object"
                 else:
                     sys_args["数据类型"] = "double"
         elif isinstance(data, pd.DataFrame):
             self._DataContent = "Factor"
-            if "数据类型" not in sys_args: sys_args["数据类型"] = ("string" if np.dtype('O') in data.dtypes.values else "double")
+            if "数据类型" not in sys_args:
+                try:
+                    data = data.astype(np.float)
+                except:
+                    sys_args["数据类型"] = "object"
+                else:
+                    sys_args["数据类型"] = "double"
         else:
             self._DataContent = "Value"
             if "数据类型" not in sys_args:
@@ -1357,7 +1363,7 @@ class DataFactor(Factor):
                     try:
                         data = float(data)
                     except:
-                        sys_args["数据类型"] = "string"
+                        sys_args["数据类型"] = "object"
                     else:
                         sys_args["数据类型"] = "double"
         self._Data = data
@@ -1390,7 +1396,7 @@ class DataFactor(Factor):
         else:
             Data = self._Data
         if (Data.columns.intersection(ids).shape[0]==0) or (Data.index.intersection(dts).shape[0]==0):
-            return pd.DataFrame(index=dts, columns=ids, dtype=("O" if self.DataType=="string" else np.float))
+            return pd.DataFrame(index=dts, columns=ids, dtype=("O" if self.DataType!="double" else np.float))
         if self.LookBack==0: return Data.loc[dts, ids]
         else: return fillNaByLookback(Data.loc[sorted(Data.index.union(dts)), ids], lookback=self.LookBack*24.0*3600).loc[dts, :]
     def __QS_prepareCacheData__(self, ids=None):
