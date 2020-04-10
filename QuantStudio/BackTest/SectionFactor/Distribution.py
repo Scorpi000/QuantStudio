@@ -7,8 +7,7 @@ import numpy as np
 import pandas as pd
 from traits.api import ListStr, Enum, List, ListInt, Int, Str, Dict
 from traitsui.api import SetEditor, Item
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
+from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 import matplotlib.dates as mdate
 import matplotlib
@@ -97,13 +96,12 @@ class IndustryDistribution(BaseModule):
         return 0
     def genMatplotlibFig(self, file_path=None):
         nRow, nCol = self._Output["历史平均值"].shape[1]//3+(self._Output["历史平均值"].shape[1]%3!=0), min(3, self._Output["历史平均值"].shape[1])
-        Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
-        AxesGrid = gridspec.GridSpec(nRow, nCol)
+        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         xData = np.arange(0, self._Output["历史平均值"].shape[0])
         xTickLabels = [str(iIndustry) for iIndustry in self._Output["历史平均值"].index]
         yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
         for i, iFactorName in enumerate(self._Output["历史平均值"].columns):
-            iAxes = plt.subplot(AxesGrid[i//nCol, i%nCol])
+            iAxes = Fig.add_subplot(nRow, nCol, i+1)
             iAxes.yaxis.set_major_formatter(yMajorFormatter)
             iAxes.bar(xData, self._Output["历史平均值"].iloc[:, i].values, color="b", label="历史平均值")
             iAxes.set_title(iFactorName+"-历史平均值")
@@ -132,7 +130,7 @@ class IndustryDistribution(BaseModule):
         Fig = self.genMatplotlibFig()
         # figure 保存为二进制文件
         Buffer = BytesIO()
-        plt.savefig(Buffer, bbox_inches='tight')
+        Fig.savefig(Buffer, bbox_inches='tight')
         PlotData = Buffer.getvalue()
         # 图像数据转化为 HTML 格式
         ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()

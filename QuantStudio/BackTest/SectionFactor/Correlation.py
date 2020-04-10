@@ -8,8 +8,7 @@ import pandas as pd
 import statsmodels.api as sm
 from traits.api import ListStr, Enum, List, Int, Str, Instance, Dict, Bool, on_trait_change
 from traitsui.api import SetEditor, Item
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
+from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 import matplotlib.dates as mdate
 import matplotlib
@@ -162,11 +161,10 @@ class SectionCorrelation(BaseModule):
     def genMatplotlibFig(self, file_path=None):
         nMethod = len(self.CorrMethod)
         nRow, nCol = nMethod//3+(nMethod%3!=0), min(3, nMethod)
-        Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
-        AxesGrid = gridspec.GridSpec(nRow, nCol)
+        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         for i, iMethod in enumerate(self.CorrMethod):
             iAvgName = iMethod+"均值"
-            iAxes = plt.subplot(AxesGrid[i//nCol, i%nCol])
+            iAxes = Fig.add_subplot(nRow, nCol, i+1)
             self._plotHeatMap(iAxes, self._Output[iAvgName], iAvgName)
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
@@ -250,11 +248,10 @@ class FactorTurnover(BaseModule):
         return 0
     def genMatplotlibFig(self, file_path=None):
         nRow, nCol = self._Output["因子换手率"].shape[1]//3+(self._Output["因子换手率"].shape[1]%3!=0), min(3, self._Output["因子换手率"].shape[1])
-        Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
-        AxesGrid = gridspec.GridSpec(nRow, nCol)
+        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
         for i in range(self._Output["因子换手率"].shape[1]):
-            iAxes = plt.subplot(AxesGrid[i//nCol, i%nCol])
+            iAxes = Fig.add_subplot(nRow, nCol, i+1)
             iAxes.yaxis.set_major_formatter(yMajorFormatter)
             iAxes.xaxis_date()
             iAxes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
@@ -282,7 +279,7 @@ class FactorTurnover(BaseModule):
         Fig = self.genMatplotlibFig()
         # figure 保存为二进制文件
         Buffer = BytesIO()
-        plt.savefig(Buffer, bbox_inches='tight')
+        Fig.savefig(Buffer, bbox_inches='tight')
         PlotData = Buffer.getvalue()
         # 图像数据转化为 HTML 格式
         ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()

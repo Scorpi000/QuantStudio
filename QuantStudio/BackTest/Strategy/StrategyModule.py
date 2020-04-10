@@ -9,8 +9,7 @@ import numpy as np
 import pandas as pd
 from traits.api import ListStr, Enum, List, Int, Float, Str, Instance, Dict, on_trait_change
 from traitsui.api import Item, Group, View
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
+from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 
 from QuantStudio import __QS_Error__, __QS_Object__
@@ -354,13 +353,12 @@ class Strategy(BaseModule):
         hasBenchmark = ("基准" in StrategyOutput["统计数据"])
         if hasBenchmark: nRow, nCol = 1, 3
         else: nRow, nCol = 1, 2
-        Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
-        AxesGrid = gridspec.GridSpec(nRow, nCol)
+        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         xData = np.arange(0, StrategyOutput["日期序列"].shape[0])
         xTicks = np.arange(0, StrategyOutput["日期序列"].shape[0], int(StrategyOutput["日期序列"].shape[0]/10))
         xTickLabels = [StrategyOutput["日期序列"].index[i].strftime("%Y-%m-%d") for i in xTicks]
         yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
-        iAxes = plt.subplot(AxesGrid[0, 0])
+        iAxes = Fig.add_subplot(nRow, nCol, 1)
         iAxes.plot(xData, StrategyOutput["日期序列"]["账户价值"].values, label="账户价值", color="r", alpha=0.6, lw=3)
         iRAxes = iAxes.twinx()
         iRAxes.bar(xData, StrategyOutput["日期序列"]["收益"].values, label="账户收益", color="b")
@@ -369,7 +367,7 @@ class Strategy(BaseModule):
         iAxes.set_xticklabels(xTickLabels)
         iAxes.legend(loc='upper left')
         iAxes.set_title("策略表现")
-        iAxes = plt.subplot(AxesGrid[0, 1])
+        iAxes = Fig.add_subplot(nRow, nCol, 2)
         iAxes.plot(xData, StrategyOutput["日期序列"]["无杠杆净值"].values, label="无杠杆净值", color="r", alpha=0.6, lw=3)
         if hasBenchmark: iAxes.plot(xData, StrategyOutput["日期序列"]["基准净值"].values, label="基准净值", color="g", alpha=0.6, lw=3)
         iRAxes = iAxes.twinx()
@@ -381,7 +379,7 @@ class Strategy(BaseModule):
         iAxes.legend(loc='upper left')
         iAxes.set_title("策略无杠杆表现")
         if hasBenchmark:
-            iAxes = plt.subplot(AxesGrid[0, 2])
+            iAxes = Fig.add_subplot(nRow, nCol, 3)
             iAxes.plot(xData, StrategyOutput["日期序列"]["相对净值"].values, label="相对净值", color="r", alpha=0.6, lw=3)
             iRAxes = iAxes.twinx()
             iRAxes.yaxis.set_major_formatter(yMajorFormatter)
@@ -400,7 +398,7 @@ class Strategy(BaseModule):
         Fig = self.genMatplotlibFig()
         # figure 保存为二进制文件
         Buffer = BytesIO()
-        plt.savefig(Buffer)
+        Fig.savefig(Buffer)
         PlotData = Buffer.getvalue()
         # 图像数据转化为 HTML 格式
         ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()

@@ -8,8 +8,7 @@ import pandas as pd
 import statsmodels.api as sm
 from traits.api import ListStr, Enum, List, ListInt, Int, Str, Dict
 from traitsui.api import SetEditor, Item
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
+from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 import matplotlib.dates as mdate
 
@@ -174,13 +173,12 @@ class FamaMacBethRegression(BaseModule):
         return axes
     def genMatplotlibFig(self, file_path=None):
         nRow, nCol = 1, 3
-        Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
-        AxesGrid = gridspec.GridSpec(nRow, nCol)
+        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         PercentageFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
         FloatFormatter = FuncFormatter(lambda x, pos: '%.2f' % (x, ))
         xData = np.arange(0, self._Output["统计数据"].shape[0])
         xTickLabels = [str(iInd) for iInd in self._Output["统计数据"].index]
-        iAxes = plt.subplot(AxesGrid[0, 0])
+        iAxes = Fig.add_subplot(nRow, nCol, 1)
         iAxes.yaxis.set_major_formatter(PercentageFormatter)
         iAxes.bar(xData, self._Output["统计数据"]["年化收益率(Raw)"].values, width=-0.25, align="edge", color="r", label="年化收益率(Raw)")
         iAxes.bar(xData, self._Output["统计数据"]["年化收益率(Pure)"].values, width=0.25, align="edge", color="b", label="年化收益率(Pure)")
@@ -188,7 +186,7 @@ class FamaMacBethRegression(BaseModule):
         iAxes.set_xticklabels(xTickLabels)
         iAxes.legend(loc='best')
         iAxes.set_title("年化收益率")
-        iAxes = plt.subplot(AxesGrid[0, 1])
+        iAxes = Fig.add_subplot(nRow, nCol, 2)
         iAxes.yaxis.set_major_formatter(FloatFormatter)
         iAxes.bar(xData, self._Output["统计数据"]["t统计量(Raw)"].values, width=-0.25, align="edge", color="r", label="t统计量(Raw)")
         iAxes.bar(xData, self._Output["统计数据"]["t统计量(Pure)"].values, width=0.25, align="edge", color="b", label="t统计量(Pure)")
@@ -196,7 +194,7 @@ class FamaMacBethRegression(BaseModule):
         iAxes.set_xticklabels(xTickLabels)
         iAxes.legend(loc='best')
         iAxes.set_title("t统计量")
-        iAxes = plt.subplot(AxesGrid[0, 2])
+        iAxes = Fig.add_subplot(nRow, nCol, 3)
         iAxes.yaxis.set_major_formatter(PercentageFormatter)
         iAxes.bar(xData, self._Output["统计数据"]["年化收益率(Pure-Naive)"].values, color="r", label="年化收益率(Pure-Naive)")
         iAxes.set_xticks(xData)
@@ -237,7 +235,7 @@ class FamaMacBethRegression(BaseModule):
         Fig = self.genMatplotlibFig()
         # figure 保存为二进制文件
         Buffer = BytesIO()
-        plt.savefig(Buffer, bbox_inches='tight')
+        Fig.savefig(Buffer, bbox_inches='tight')
         PlotData = Buffer.getvalue()
         # 图像数据转化为 HTML 格式
         ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()

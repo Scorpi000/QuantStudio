@@ -153,16 +153,22 @@ def _nansum(f,idt,iid,x,args):
     Data = np.array(Data)
     Rslt = np.nansum(Data,axis=0)
     Mask = (np.sum(pd.notnull(Data),axis=0)==0)
-    Rslt[Mask] = 0
+    Rslt[Mask] = args["OperatorArg"]["all_nan"]
     return Rslt
-def nansum(*factors,**kwargs):
+def nansum(*factors,all_nan=0,**kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(*factors)
+    Args["OperatorArg"] = {"all_nan":all_nan}
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_nansum,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _nanprod(f,idt,iid,x,args):
     Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for iData in _genOperatorData(f,idt,iid,x,args)]
-    return np.nanprod(np.array(Data),axis=0)
-def nanprod(*factors,**kwargs):
+    Data = np.array(Data)
+    Rslt = np.nanprod(Data,axis=0)
+    Mask = (np.sum(pd.notnull(Data),axis=0)==0)
+    Rslt[Mask] = args["OperatorArg"]["all_nan"]
+    return Rslt
+def nanprod(*factors,all_nan=1,**kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(*factors)
+    Args["OperatorArg"] = {"all_nan":all_nan}
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_nanprod,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _nanmax(f,idt,iid,x,args):
     Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for iData in _genOperatorData(f,idt,iid,x,args)]

@@ -9,8 +9,6 @@ import pandas as pd
 from traits.api import Enum, List, Int, Str, Float
 from traitsui.api import SetEditor, Item
 from scipy import stats
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 from matplotlib.ticker import FuncFormatter
 
 from QuantStudio import __QS_Error__

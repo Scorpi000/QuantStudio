@@ -9,7 +9,7 @@ from traits.api import ListStr, Enum, List, ListInt, Int, Str, Dict, on_trait_ch
 from traitsui.api import SetEditor, Item
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
+from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 
 from QuantStudio import __QS_Error__
@@ -132,14 +132,13 @@ class IC(BaseModule):
         return 0
     def genMatplotlibFig(self, file_path=None):
         nRow, nCol = self._Output["IC"].shape[1]//3+(self._Output["IC"].shape[1]%3!=0), min(3, self._Output["IC"].shape[1])
-        Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
-        AxesGrid = gridspec.GridSpec(nRow, nCol)
+        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         xData = np.arange(0, self._Output["IC"].shape[0])
         xTicks = np.arange(0, self._Output["IC"].shape[0], max(1, int(self._Output["IC"].shape[0]/10)))
         xTickLabels = [self._Output["IC"].index[i].strftime("%Y-%m-%d") for i in xTicks]
         yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
         for i in range(self._Output["IC"].shape[1]):
-            iAxes = plt.subplot(AxesGrid[i//nCol, i%nCol])
+            iAxes = Fig.add_subplot(nRow, nCol, i+1)
             iAxes.yaxis.set_major_formatter(yMajorFormatter)
             iAxes.plot(xData, self._Output["IC的移动平均"].iloc[:, i].values, label="IC的移动平均", color="r", alpha=0.6, lw=3)
             iAxes.bar(xData, self._Output["IC"].iloc[:, i].values, label="IC", color="b")
@@ -170,7 +169,7 @@ class IC(BaseModule):
         Fig = self.genMatplotlibFig()
         # figure 保存为二进制文件
         Buffer = BytesIO()
-        plt.savefig(Buffer, bbox_inches='tight')
+        Fig.savefig(Buffer, bbox_inches='tight')
         PlotData = Buffer.getvalue()
         # 图像数据转化为 HTML 格式
         ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
@@ -342,10 +341,11 @@ class ICDecay(BaseModule):
         self._Output["统计数据"]["胜率"] = (self._Output["IC"]>0).sum() / nDT
         return 0
     def genMatplotlibFig(self, file_path=None):
-        Fig, Axes = plt.subplots(figsize=(16, 8))
+        Fig = Figure(figsize=(16, 8))
         xData = np.arange(0, self._Output["统计数据"].shape[0])
         xTickLabels = [str(i) for i in self._Output["统计数据"].index]
         yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
+        Axes = Fig.add_subplot(1, 1, 1)
         Axes.yaxis.set_major_formatter(yMajorFormatter)
         Axes.bar(xData, self._Output["统计数据"]["IC平均值"].values, label="IC", color="b")
         Axes.set_xticks(xData)
@@ -379,7 +379,7 @@ class ICDecay(BaseModule):
         Fig = self.genMatplotlibFig()
         # figure 保存为二进制文件
         Buffer = BytesIO()
-        plt.savefig(Buffer, bbox_inches='tight')
+        Fig.savefig(Buffer, bbox_inches='tight')
         PlotData = Buffer.getvalue()
         # 图像数据转化为 HTML 格式
         ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()

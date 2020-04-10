@@ -8,8 +8,7 @@ import pandas as pd
 import numpy as np
 import statsmodels.api as sm
 from traits.api import ListStr, Enum, List, ListInt, Int, Str, Dict, Instance
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
+from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 
 from QuantStudio import __QS_Error__
@@ -143,18 +142,17 @@ class FMPModel(BaseModule):
         return 0
     def genMatplotlibFig(self, file_path=None):
         nRow, nCol = 2, 3
-        Fig = plt.figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
-        AxesGrid = gridspec.GridSpec(nRow, nCol)
+        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         xData = np.arange(1, self._Output["历史均值"].shape[0])
         xTickLabels = [str(iInd) for iInd in self._Output["历史均值"].index]
         PercentageFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
         FloatFormatter = FuncFormatter(lambda x, pos: '%.2f' % (x, ))
-        _QS_plotStatistics(plt.subplot(AxesGrid[0, 0]), xData[:-1], xTickLabels[:-1], self._Output["历史均值"]["因子暴露"].iloc[:-1], FloatFormatter)
-        _QS_plotStatistics(plt.subplot(AxesGrid[0, 1]), xData[:-1], xTickLabels[:-1], self._Output["历史均值"]["风险调整的因子暴露"].iloc[:-1], FloatFormatter)
-        _QS_plotStatistics(plt.subplot(AxesGrid[0, 2]), xData[:-1], xTickLabels[:-1], self._Output["历史均值"]["因子收益"].iloc[:-1], PercentageFormatter)
-        _QS_plotStatistics(plt.subplot(AxesGrid[1, 0]), xData, xTickLabels, self._Output["历史均值"]["收益贡献"], PercentageFormatter)
-        _QS_plotStatistics(plt.subplot(AxesGrid[1, 1]), xData, xTickLabels, self._Output["历史均值"]["风险贡献"], FloatFormatter)
-        _QS_plotStatistics(plt.subplot(AxesGrid[1, 2]), xData, xTickLabels, self._Output["历史均值"]["风险贡献占比"], PercentageFormatter)
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 1), xData[:-1], xTickLabels[:-1], self._Output["历史均值"]["因子暴露"].iloc[:-1], FloatFormatter)
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 2), xData[:-1], xTickLabels[:-1], self._Output["历史均值"]["风险调整的因子暴露"].iloc[:-1], FloatFormatter)
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 3), xData[:-1], xTickLabels[:-1], self._Output["历史均值"]["因子收益"].iloc[:-1], PercentageFormatter)
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 4), xData, xTickLabels, self._Output["历史均值"]["收益贡献"], PercentageFormatter)
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 5), xData, xTickLabels, self._Output["历史均值"]["风险贡献"], FloatFormatter)
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 6), xData, xTickLabels, self._Output["历史均值"]["风险贡献占比"], PercentageFormatter)
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
@@ -180,7 +178,7 @@ class FMPModel(BaseModule):
         Fig = self.genMatplotlibFig()
         # figure 保存为二进制文件
         Buffer = BytesIO()
-        plt.savefig(Buffer, bbox_inches='tight')
+        Fig.savefig(Buffer, bbox_inches='tight')
         PlotData = Buffer.getvalue()
         # 图像数据转化为 HTML 格式
         ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()

@@ -401,10 +401,11 @@ class _MappingTable(_DBTable):
         return RawData
     def _calcMultiMappingData(self, raw_data, factor_names, ids, dts, args={}):
         Data, nDT, nFactor = {}, len(dts), len(factor_names)
-        DeltaDT = dt.timedelta(int(not self._EndDateIncluded))
         raw_data.set_index(["ID"], inplace=True)
         raw_data["QS_结束日"] = raw_data["QS_结束日"].where(pd.notnull(raw_data["QS_结束日"]), dts[-1]+dt.timedelta(1))
         if args.get("只填起始日", self.OnlyStartFilled):
+            if self._EndDateIncluded:
+                raw_data["QS_结束日"] = (raw_data["QS_结束日"] + dt.timedelta(1)).astype("O")
             raw_data["QS_起始日"] = raw_data["QS_起始日"].where(raw_data["QS_起始日"]>=dts[0], dts[0])
             for iID in raw_data.index.unique():
                 #iRawData = raw_data.loc[[iID]].set_index(["QS_起始日"])
@@ -423,11 +424,11 @@ class _MappingTable(_DBTable):
                         ijRawData = ijRawData.loc[[jEndDate]].values.T.tolist()
                     else:
                         ijRawData = ijRawData.loc[pd.isnull(ijRawData.index), factor_names].values.T.tolist()
-                    if pd.isnull(jEndDate) or (jEndDate<jStartDate):
+                    if jEndDate<jStartDate:
                         ijOldData = iTempData.loc[jStartDate:]
                         iTempData.loc[jStartDate:] += pd.DataFrame([ijRawData] * ijOldData.shape[0], index=ijOldData.index, columns=ijOldData.columns, dtype="O")
                     else:
-                        jEndDate -= DeltaDT
+                        jEndDate -= dt.timedelta(1)
                         ijOldData = iTempData.loc[jStartDate:jEndDate]
                         iTempData.loc[jStartDate:jEndDate] += pd.DataFrame([ijRawData] * ijOldData.shape[0], index=ijOldData.index, columns=ijOldData.columns, dtype="O")
                 iData = pd.DataFrame([(None,)*nFactor]*nDT, index=dts, columns=factor_names, dtype="O")
@@ -438,6 +439,7 @@ class _MappingTable(_DBTable):
                 Data[iID] = iData
             return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
         else:
+            DeltaDT = dt.timedelta(int(not self._EndDateIncluded))
             for iID in raw_data.index.unique():
                 iRawData = raw_data.loc[[iID]].set_index(["QS_起始日", "QS_结束日"])
                 iData = pd.DataFrame([([],)*nFactor]*nDT, index=dts, columns=factor_names, dtype="O")
@@ -448,7 +450,7 @@ class _MappingTable(_DBTable):
                         ijRawData = ijRawData.loc[[jEndDate]].values.T.tolist()
                     else:
                         ijRawData = ijRawData.loc[pd.isnull(ijRawData.index), factor_names].values.T.tolist()
-                    if pd.isnull(jEndDate) or (jEndDate<jStartDate):
+                    if jEndDate<jStartDate:
                         ijOldData = iData.loc[jStartDate:]
                         iData.loc[jStartDate:] += pd.DataFrame([ijRawData] * ijOldData.shape[0], index=ijOldData.index, columns=ijOldData.columns, dtype="O")
                     else:
@@ -462,8 +464,10 @@ class _MappingTable(_DBTable):
         if args.get("多重映射", self.MultiMapping): return self._calcMultiMappingData(raw_data, factor_names, ids, dts, args=args)
         raw_data.set_index(["ID"], inplace=True)
         Data, nFactor = {}, len(factor_names)
-        DeltaDT = dt.timedelta(int(not self._EndDateIncluded))
+        raw_data["QS_结束日"] = raw_data["QS_结束日"].where(pd.notnull(raw_data["QS_结束日"]), dts[-1]+dt.timedelta(1))
         if args.get("只填起始日", self.OnlyStartFilled):
+            if self._EndDateIncluded:
+                raw_data["QS_结束日"] = (raw_data["QS_结束日"] + dt.timedelta(1)).astype("O")
             raw_data["QS_起始日"] = raw_data["QS_起始日"].where(raw_data["QS_起始日"]>=dts[0], dts[0])
             for iID in raw_data.index.unique():
                 #iRawData = raw_data.loc[[iID]].set_index(["QS_起始日"])
@@ -479,10 +483,10 @@ class _MappingTable(_DBTable):
                 for j in range(iRawData.shape[0]):
                     ijRawData = iRawData.iloc[j]
                     jStartDate, jEndDate = ijRawData["QS_起始日"], ijRawData["QS_结束日"]
-                    if pd.isnull(jEndDate) or (jEndDate<jStartDate):
+                    if jEndDate<jStartDate:
                         iTempData.loc[jStartDate:] = np.repeat(ijRawData[factor_names].values.reshape((1, nFactor)), iTempData.loc[jStartDate:].shape[0], axis=0)
                     else:
-                        jEndDate -= DeltaDT
+                        jEndDate -= dt.timedelta(1)
                         iTempData.loc[jStartDate:jEndDate] = np.repeat(ijRawData[factor_names].values.reshape((1, nFactor)), iTempData.loc[jStartDate:jEndDate].shape[0], axis=0)
                 iData = pd.DataFrame(index=dts, columns=factor_names)
                 for j, jDate in enumerate(iStartEndDates):
@@ -492,13 +496,14 @@ class _MappingTable(_DBTable):
                 Data[iID] = iData
             return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
         else:
+            DeltaDT = dt.timedelta(int(not self._EndDateIncluded))
             for iID in raw_data.index.unique():
                 iRawData = raw_data.loc[[iID]]
                 iData = pd.DataFrame(index=dts, columns=factor_names)
                 for j in range(iRawData.shape[0]):
                     ijRawData = iRawData.iloc[j]
                     jStartDate, jEndDate = ijRawData["QS_起始日"], ijRawData["QS_结束日"]
-                    if pd.isnull(jEndDate) or (jEndDate<jStartDate):
+                    if jEndDate<jStartDate:
                         iData.loc[jStartDate:] = np.repeat(ijRawData[factor_names].values.reshape((1, nFactor)), iData.loc[jStartDate:].shape[0], axis=0)
                     else:
                         jEndDate -= DeltaDT

@@ -8,8 +8,6 @@ import pandas as pd
 import numpy as np
 import statsmodels.api as sm
 from traits.api import ListStr, Enum, List, ListInt, Int, Str, Dict, Instance
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 from matplotlib.ticker import FuncFormatter
 
 from QuantStudio import __QS_Error__
