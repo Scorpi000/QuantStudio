@@ -255,7 +255,7 @@ class FactorTurnover(BaseModule):
             iAxes.yaxis.set_major_formatter(yMajorFormatter)
             iAxes.xaxis_date()
             iAxes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
-            iAxes.stackplot(self._Output["因子换手率"].index, self._Output["因子换手率"].iloc[:, i].values, color="b")
+            iAxes.stackplot(self._Output["因子换手率"].index, self._Output["因子换手率"].iloc[:, i].values, color="steelblue")
             iAxes.set_title(self._Output["因子换手率"].columns[i])
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig

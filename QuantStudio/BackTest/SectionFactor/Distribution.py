@@ -103,7 +103,7 @@ class IndustryDistribution(BaseModule):
         for i, iFactorName in enumerate(self._Output["历史平均值"].columns):
             iAxes = Fig.add_subplot(nRow, nCol, i+1)
             iAxes.yaxis.set_major_formatter(yMajorFormatter)
-            iAxes.bar(xData, self._Output["历史平均值"].iloc[:, i].values, color="b", label="历史平均值")
+            iAxes.bar(xData, self._Output["历史平均值"].iloc[:, i].values, color="steelblue", label="历史平均值")
             iAxes.set_title(iFactorName+"-历史平均值")
             iAxes.set_xticks(xData)
             iAxes.set_xticklabels(xTickLabels)

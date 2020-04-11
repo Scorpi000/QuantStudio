@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>829</width>
-    <height>512</height>
+    <width>1041</width>
+    <height>832</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -21,7 +21,7 @@
     <widget class="QTableWidget" name="PreviewTable">
      <property name="minimumSize">
       <size>
-       <width>631</width>
+       <width>861</width>
        <height>0</height>
       </size>
      </property>
@@ -36,7 +36,22 @@
      </attribute>
     </widget>
    </item>
-   <item row="0" column="1" colspan="2">
+   <item row="0" column="1">
+    <widget class="QPushButton" name="DTExecuteButton">
+     <property name="font">
+      <font>
+       <family>Aharoni</family>
+       <pointsize>9</pointsize>
+       <weight>75</weight>
+       <bold>true</bold>
+      </font>
+     </property>
+     <property name="text">
+      <string>&lt;&lt;&lt;</string>
+     </property>
+    </widget>
+   </item>
+   <item row="0" column="2">
     <widget class="QPushButton" name="DateTimeButton">
      <property name="font">
       <font>
@@ -52,9 +67,28 @@
     </widget>
    </item>
    <item row="1" column="1" colspan="2">
-    <widget class="QListWidget" name="DateTimeList"/>
+    <widget class="QListWidget" name="DateTimeList">
+     <property name="selectionMode">
+      <enum>QAbstractItemView::ExtendedSelection</enum>
+     </property>
+    </widget>
    </item>
-   <item row="2" column="1" colspan="2">
+   <item row="2" column="1">
+    <widget class="QPushButton" name="IDExecuteButton">
+     <property name="font">
+      <font>
+       <family>Aharoni</family>
+       <pointsize>9</pointsize>
+       <weight>75</weight>
+       <bold>true</bold>
+      </font>
+     </property>
+     <property name="text">
+      <string>&lt;&lt;&lt;</string>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="2">
     <widget class="QPushButton" name="IDButton">
      <property name="font">
       <font>
@@ -70,9 +104,28 @@
     </widget>
    </item>
    <item row="3" column="1" colspan="2">
-    <widget class="QListWidget" name="IDList"/>
+    <widget class="QListWidget" name="IDList">
+     <property name="selectionMode">
+      <enum>QAbstractItemView::ExtendedSelection</enum>
+     </property>
+    </widget>
    </item>
    <item row="4" column="1">
+    <widget class="QPushButton" name="ExecuteButton">
+     <property name="font">
+      <font>
+       <family>Aharoni</family>
+       <pointsize>9</pointsize>
+       <weight>75</weight>
+       <bold>true</bold>
+      </font>
+     </property>
+     <property name="text">
+      <string>刷新</string>
+     </property>
+    </widget>
+   </item>
+   <item row="4" column="2">
     <widget class="QPushButton" name="ArgSetButton">
      <property name="font">
       <font>
@@ -84,21 +137,6 @@
      </property>
      <property name="text">
       <string>参数</string>
-     </property>
-    </widget>
-   </item>
-   <item row="4" column="2">
-    <widget class="QPushButton" name="ExecuteButton">
-     <property name="font">
-      <font>
-       <family>Aharoni</family>
-       <pointsize>9</pointsize>
-       <weight>75</weight>
-       <bold>true</bold>
-      </font>
-     </property>
-     <property name="text">
-      <string>预览</string>
      </property>
     </widget>
    </item>

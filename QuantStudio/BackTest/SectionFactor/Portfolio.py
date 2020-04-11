@@ -21,16 +21,16 @@ from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage
 
 def _QS_plotStatistics(axes, x_data, x_ticklabels, left_data, left_formatter, right_data=None, right_formatter=None, right_axes=True):
     axes.yaxis.set_major_formatter(left_formatter)
-    axes.bar(x_data, left_data.values, label=left_data.name, color="b")
+    axes.bar(x_data, left_data.values, label=left_data.name, color="steelblue")
     if right_data is not None:
         if right_axes:
             axes.legend(loc='upper left')
             right_axes = axes.twinx()
             right_axes.yaxis.set_major_formatter(right_formatter)
-            right_axes.plot(x_data, right_data.values, label=right_data.name, color="r", alpha=0.6, lw=3)
+            right_axes.plot(x_data, right_data.values, label=right_data.name, color="indianred", lw=2.5)
             right_axes.legend(loc="upper right")
         else:
-            axes.plot(x_data, right_data.values, label=right_data.name, color="r", alpha=0.6, lw=3)
+            axes.plot(x_data, right_data.values, label=right_data.name, color="indianred", lw=2.5)
             axes.legend(loc='best')
     else:
         axes.legend(loc='best')
@@ -239,19 +239,19 @@ class QuantilePortfolio(BaseModule):
         Axes = Fig.add_subplot(nRow, nCol, 7)
         Axes.xaxis_date()
         Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
-        Axes.plot(self._Output["净值"].index, self._Output["净值"].iloc[:, 0].values, label=str(self._Output["净值"].iloc[:, 0].name), color="r", alpha=0.6, lw=3)
-        Axes.plot(self._Output["净值"].index, self._Output["净值"].iloc[:, -3].values, label=str(self._Output["净值"].iloc[:, -3].name), color="b", alpha=0.6, lw=3)
-        Axes.plot(self._Output["净值"].index, self._Output["净值"]["市场"].values, label="市场", color="g", alpha=0.6, lw=3)
+        Axes.plot(self._Output["净值"].index, self._Output["净值"].iloc[:, 0].values, label=str(self._Output["净值"].iloc[:, 0].name), color="indianred", lw=2.5)
+        Axes.plot(self._Output["净值"].index, self._Output["净值"].iloc[:, -3].values, label=str(self._Output["净值"].iloc[:, -3].name), color="steelblue", lw=2.5)
+        Axes.plot(self._Output["净值"].index, self._Output["净值"]["市场"].values, label="市场", color="forestgreen", lw=2.5)
         Axes.legend(loc='best')
         Axes = Fig.add_subplot(nRow, nCol, 8)
         xData = np.arange(0, self._Output["净值"].shape[0])
         xTicks = np.arange(0, self._Output["净值"].shape[0], max(1, int(self._Output["净值"].shape[0]/8)))
         xTickLabels = [self._Output["净值"].index[i].strftime("%Y-%m-%d") for i in xTicks]
-        Axes.plot(xData, self._Output["净值"]["L-S"].values, label="多空净值", color="r", alpha=0.6, lw=3)
+        Axes.plot(xData, self._Output["净值"]["L-S"].values, label="多空净值", color="indianred", lw=2.5)
         Axes.legend(loc='upper left')
         RAxes = Axes.twinx()
         RAxes.yaxis.set_major_formatter(PercentageFormatter)
-        RAxes.bar(xData, self._Output["收益率"]["L-S"].values, label="多空收益率", color="b")
+        RAxes.bar(xData, self._Output["收益率"]["L-S"].values, label="多空收益率", color="steelblue")
         RAxes.legend(loc="upper right")
         Axes.set_xticks(xTicks)
         Axes.set_xticklabels(xTickLabels)
@@ -259,7 +259,7 @@ class QuantilePortfolio(BaseModule):
         Axes.xaxis_date()
         Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
         for i in range(self._Output["净值"].shape[1] - 2):
-            Axes.plot(self._Output["净值"].index, self._Output["净值"].iloc[:, i].values, label=str(self._Output["净值"].iloc[:, i].name), alpha=0.6, lw=3)
+            Axes.plot(self._Output["净值"].index, self._Output["净值"].iloc[:, i].values, label=str(self._Output["净值"].iloc[:, i].name), lw=2.5)
         Axes.legend(loc='best')
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
