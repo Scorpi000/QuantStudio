@@ -228,7 +228,11 @@ class _WideTable(FactorTable):
         Data = {}
         for iFactorName in raw_data.columns:
             iRawData = raw_data[iFactorName].unstack()
-            if DataType[iFactorName]=="double": iRawData = iRawData.astype("float")
+            if DataType[iFactorName]=="double":
+                try:
+                    iRawData = iRawData.astype("float")
+                except:
+                    pass
             Data[iFactorName] = iRawData
         return _adjustData(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts)
 
@@ -532,7 +536,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
             else:
                 self._TableFieldDataType = pd.DataFrame(np.array(Rslt), columns=["表", "因子", "DataType"]).set_index(["表", "因子"])["DataType"]
                 self._TableFactorDict = self._TableFieldDataType.copy()
-                Mask = (self._TableFactorDict.str.contains("char") | self._TableFactorDict.str.contains("date"))
+                Mask = (self._TableFactorDict.str.contains("char") | self._TableFactorDict.str.contains("date") | self._TableFactorDict.str.contains("text"))
                 self._TableFactorDict[Mask] = "string"
                 self._TableFactorDict[~Mask] = "double"
                 self._TableFactorDict = {iTable[nPrefix:]:self._TableFactorDict.loc[iTable] for iTable in self._TableFactorDict.index.levels[0]}

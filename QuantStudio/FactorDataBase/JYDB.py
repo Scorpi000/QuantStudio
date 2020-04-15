@@ -79,6 +79,7 @@ def _identifyDataType(field_data_type):
 # 100 - 199: 条件参数, 100: 通用筛选条件
 class _DBTable(FactorTable):
     FilterCondition = Str("", arg_type="Dict", label="筛选条件", order=100)
+    TableType = Str("", arg_type="SingleOption", label="因子表类型", order=200)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         self._DBTableName = fdb.TablePrefix + fdb._TableInfo.loc[name, "DBTableName"]
         self._FactorInfo = fdb._FactorInfo.loc[name]
@@ -159,6 +160,7 @@ class _DBTable(FactorTable):
         if RelatedFields.shape[0]==0: return raw_data
         for iField in RelatedFields.index:
             iOldData = raw_data.pop(iField)
+            iOldDataType = _identifyDataType(self._FactorInfo.loc[iField[:-2], "DataType"])
             iDataType = _identifyDataType(self._FactorInfo.loc[iField, "DataType"])
             if iDataType=="double":
                 iNewData = pd.Series(np.nan, index=raw_data.index, dtype="float")
@@ -175,7 +177,6 @@ class _DBTable(FactorTable):
                     else: iEndIdx += iStartIdx
                     iStartIdx += 14
                     KeyField = iSQLStr[iStartIdx:iEndIdx]
-                    iOldDataType = _identifyDataType(self._FactorInfo.loc[iField[:-2], "DataType"])
                     iKeys = iOldData[pd.notnull(iOldData)].unique().tolist()
                     if iKeys:
                         KeyCondition = genSQLInCondition(KeyField, iKeys, is_str=(iOldDataType!="double"))
@@ -196,7 +197,10 @@ class _DBTable(FactorTable):
                 iMapInfo = self._FactorDB.fetchall(iSQLStr.format(TablePrefix=self._FactorDB.TablePrefix, Keys=Keys, KeyCondition=KeyCondition, SecuCode=SecuCode))
             for jVal, jRelatedVal in iMapInfo:
                 if pd.notnull(jVal):
-                    iNewData[iOldData==jVal] = jRelatedVal
+                    if iOldDataType!="double":
+                        iNewData[iOldData==str(jVal)] = jRelatedVal
+                    else:
+                        iNewData[iOldData==jVal] = jRelatedVal
                 else:
                     iNewData[pd.isnull(iOldData)] = jRelatedVal
             raw_data[iField] = iNewData
@@ -294,8 +298,11 @@ class _DBTable(FactorTable):
             Groups.append((self, ConditionGroup[iConditions]["FactorNames"], list(ConditionGroup[iConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], ConditionGroup[iConditions]["args"]))
         return Groups
 
+# 特征因子表
 class _FeatureTable(_DBTable):
     """特征因子表"""
+    MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=0)
+    Operator = Either(Function(None), None, arg_type="Function", label="算子", order=1)
     def getID(self, ifactor_name=None, idt=None, args={}):
         SQLStr = "SELECT DISTINCT "+self._getIDField()+" AS ID "
         SQLStr += self._genFromSQLStr()+" "
@@ -306,6 +313,25 @@ class _FeatureTable(_DBTable):
         return [str(iRslt[0]) for iRslt in self._FactorDB.fetchall(SQLStr)]
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         return []
+    def __QS_genGroupInfo__(self, factors, operation_mode):
+        ConditionGroup = {}
+        for iFactor in factors:
+            iConditions = ";".join([iArgName+":"+str(iFactor[iArgName]) for iArgName in iFactor.ArgNames if iArgName not in ("算子", )])
+            if iConditions not in ConditionGroup:
+                ConditionGroup[iConditions] = {"FactorNames":[iFactor.Name], 
+                                                       "RawFactorNames":{iFactor._NameInFT}, 
+                                                       "StartDT":operation_mode._FactorStartDT[iFactor.Name], 
+                                                       "args":iFactor.Args.copy()}
+            else:
+                ConditionGroup[iConditions]["FactorNames"].append(iFactor.Name)
+                ConditionGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
+                ConditionGroup[iConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], ConditionGroup[iConditions]["StartDT"])
+        EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
+        Groups = []
+        for iConditions in ConditionGroup:
+            StartInd = operation_mode.DTRuler.index(ConditionGroup[iConditions]["StartDT"])
+            Groups.append((self, ConditionGroup[iConditions]["FactorNames"], list(ConditionGroup[iConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], ConditionGroup[iConditions]["args"]))
+        return Groups
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         # 形成SQL语句, ID, 因子数据
         SQLStr = "SELECT "+self._getIDField()+" AS ID, "
@@ -325,18 +351,26 @@ class _FeatureTable(_DBTable):
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         raw_data = raw_data.set_index(["ID"])
         if raw_data.index.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-        raw_data = raw_data.loc[:, factor_names]
-        Data = pd.Panel(raw_data.values.T.reshape((raw_data.shape[1], raw_data.shape[0], 1)).repeat(len(dts), axis=2), items=factor_names, major_axis=raw_data.index, minor_axis=dts).swapaxes(1, 2)
+        if args.get("多重映射", self.MultiMapping):
+            Operator = args.get("算子", self.Operator)
+            if Operator is None: Operator = (lambda x: x.tolist())
+            Data = {}
+            for iFactorName in factor_names:
+                Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=0).apply(Operator)
+            Data = pd.DataFrame(Data).loc[:, factor_names]
+        else:
+            Data = raw_data.loc[:, factor_names]
+        Data = pd.Panel(Data.values.T.reshape((Data.shape[1], Data.shape[0], 1)).repeat(len(dts), axis=2), items=factor_names, major_axis=Data.index, minor_axis=dts).swapaxes(1, 2)
         return Data.loc[:, :, ids]
 
-
+# 映射因子表
 class _MappingTable(_DBTable):
     """映射因子表"""
     OnlyStartFilled = Bool(False, label="只填起始日", arg_type="Bool", order=0)
     MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=1)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
-        self._StartDateField = self._FactorInfo["DBFieldName"][self._FactorInfo["FieldType"]=="StartDate"].iloc[0]
+        self._StartDateField = self._FactorInfo["DBFieldName"][self._FactorInfo["FieldType"]=="Date"].iloc[0]
         self._EndDateField = self._FactorInfo["DBFieldName"][self._FactorInfo["FieldType"]=="EndDate"].iloc[0]
         self._EndDateIncluded = self._FactorInfo[self._FactorInfo["FieldType"]=="EndDate"]["Supplementary"].iloc[0]
         self._EndDateIncluded = (pd.isnull(self._EndDateIncluded) or (self._EndDateIncluded=="包含"))
@@ -511,14 +545,15 @@ class _MappingTable(_DBTable):
                 Data[iID] = iData
             return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
 
+# 成份因子表
 class _ConstituentTable(_DBTable):
     """成份因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         self._GroupField = self._FactorInfo[self._FactorInfo["FieldType"]=="Group"].index[0]
         self._AllGroups = None
-        self._InDateField = self._FactorInfo[self._FactorInfo["FieldType"]=="InDate"].index[0]
-        self._OutDateField = self._FactorInfo[self._FactorInfo["FieldType"]=="OutDate"].index[0]
+        self._InDateField = self._FactorInfo[self._FactorInfo["FieldType"]=="Date"].index[0]
+        self._OutDateField = self._FactorInfo[self._FactorInfo["FieldType"]=="EndDate"].index[0]
         self._CurSignField = self._FactorInfo[self._FactorInfo["FieldType"]=="CurSign"].index
         if self._CurSignField.shape[0]==0: self._CurSignField = None
         else: self._CurSignField = self._CurSignField[0]
@@ -1283,7 +1318,7 @@ class _FinancialTable(_DBTable):
                 raise __QS_Error__("JYDB._FinancialTable._genConditionSQLStr 不支持的数据库类型: '%s'" % (self._FactorDB.DBType, ))
         if self._AdjustTypeField is not None:
             iConditionVal = self._FactorInfo.loc[self._AdjustTypeField, "Supplementary"]
-            if iConditionVal:
+            if pd.notnull(iConditionVal) and isinstance(iConditionVal, str) and (iConditionVal.lower() not in ("", "nan")):
                 iConditionVal = iConditionVal.split(",")
                 SQLStr += " AND "+self._DBTableName+"."+self._FactorInfo.loc[self._AdjustTypeField, "DBFieldName"]+" IN ("+",".join(iConditionVal)+")"
         return SQLStr
@@ -1344,10 +1379,12 @@ class _FinancialTable(_DBTable):
         AnnDateField = self._DBTableName+"."+self._FactorInfo.loc[self._AnnDateField, "DBFieldName"]
         ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
         if self._AdjustTypeField is not None: AdjustTypeField = self._DBTableName+"."+self._FactorInfo.loc[self._AdjustTypeField, "DBFieldName"]
+        else: AdjustTypeField = "2"
         # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
         SQLStr = "SELECT "+self._getIDField()+" AS ID, "
         SQLStr += AnnDateField+" AS AnnDate, "
         SQLStr += ReportDateField+" AS ReportDate, "
+        SQLStr += "2-"+AdjustTypeField+" AS AdjustType, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
@@ -1358,9 +1395,9 @@ class _FinancialTable(_DBTable):
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += "ORDER BY ID, "+AnnDateField+", "
         SQLStr += ReportDateField
-        if self._AdjustTypeField is not None: SQLStr += ", "+AdjustTypeField+" DESC"
+        if self._AdjustTypeField is not None: SQLStr += ", AdjustType ASC"
         RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)
-        RawData.columns = ["ID", "AnnDate", "ReportDate"]+factor_names
+        RawData.columns = ["ID", "AnnDate", "ReportDate", "AdjustType"]+factor_names
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
     def _calcData(self, raw_data, periods, factor_name, ids, dts, calc_type, report_date, ignore_missing):
@@ -1379,7 +1416,7 @@ class _FinancialTable(_DBTable):
             if iPeriod>0: TargetReportDate["ReportDate"] = MaxReportDate.apply(RollBackNPeriod_New, args=(iPeriod,))
             # iData: 每个 ID 每个公告日对应的目标报告期及其因子值
             iData = TargetReportDate.merge(raw_data, how="left", on=["ID", "ReportDate"], suffixes=("", "_y"))
-            iData = iData[(iData["AnnDate"]>=iData["AnnDate_y"]) | pd.isnull(iData["AnnDate_y"])].sort_values(by=["ID", "AnnDate", "AnnDate_y"])
+            iData = iData[(iData["AnnDate"]>=iData["AnnDate_y"]) | pd.isnull(iData["AnnDate_y"])].sort_values(by=["ID", "AnnDate", "AnnDate_y", "AdjustType"])
             if (i==0) and (calc_type!="最新"):
                 iData = iData.loc[:, ["ID", "AnnDate", "ReportPeriod", factor_name]].groupby(by=["ID", "AnnDate"], as_index=True).last()
                 ReportPeriod = iData.loc[:, "ReportPeriod"].where(pd.notnull(iData.loc[:, "ReportPeriod"]), "None").unstack().T
@@ -1422,9 +1459,9 @@ class _FinancialTable(_DBTable):
         raw_data["ReportPeriod"] = raw_data["ReportDate"].astype(str).str.slice(start=5)
         Data = {}
         for iFactorName in factor_names:
-            Data[iFactorName] = self._calcData(raw_data.loc[:, ["ID", "AnnDate", "ReportDate", "ReportPeriod", iFactorName]], Periods, iFactorName, ids, dts, CalcType, ReportDate, IgnoreMissing)
+            Data[iFactorName] = self._calcData(raw_data.loc[:, ["ID", "AnnDate", "ReportDate", "AdjustType", "ReportPeriod", iFactorName]], Periods, iFactorName, ids, dts, CalcType, ReportDate, IgnoreMissing)
         return pd.Panel(Data).loc[factor_names]
-
+# 财务因子表(旧), Deprecated
 class _FinancialTable_Old(_DBTable):
     """财务因子表"""
     ReportDate = Enum("所有", "年报", "中报", "一季报", "三季报", Dict(), Function(), label="报告期", arg_type="SingleOption", order=0)
@@ -1886,11 +1923,23 @@ class _FinancialTable_Old(_DBTable):
 # 无公告日期字段, 需另外补充完整
 class _FinancialIndicatorTable(_FinancialTable):
     """财务指标因子表"""
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+        if self._SecurityType not in ("A股", "公募基金"):
+            raise __QS_Error__("FinancialIndicatorTable 类型的因子表 '%s' 中的证券为不支持的证券类型!" % (name, ))
+        return
     def getID(self, ifactor_name=None, idt=None, args={}):# TODO
         return []
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):# TODO
         return []
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        if self._SecurityType=="A股":
+            return self._prepareRawDataAStock(factor_names=factor_names, ids=ids, dts=dts, args=args)
+        elif self._SecurityType=="公募基金":
+            return self._prepareRawDataMF(factor_names=factor_names, ids=ids, dts=dts, args=args)
+        else:
+            raise __QS_Error__("FinancialIndicatorTable 类型的因子表 '%s' 中的证券为不支持的证券类型!" % (self.Name, ))
+    def _prepareRawDataAStock(self, factor_names, ids, dts, args={}):
         ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
         # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
         SQLStr = "SELECT "+self._getIDField()+" AS ID, "
@@ -1915,6 +1964,33 @@ class _FinancialIndicatorTable(_FinancialTable):
         #else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "AnnDate", "ReportDate"]+factor_names)
         RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)
         RawData.columns = ["ID", "AnnDate", "ReportDate"]+factor_names
+        RawData["AdjustType"] = 0
+        RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
+        return RawData
+    def _prepareRawDataMF(self, factor_names, ids, dts, args={}):
+        ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
+        # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
+        SQLStr = "SELECT "+self._getIDField()+" AS ID, "
+        SQLStr += "MF_BalanceSheetNew.InfoPublDate, "
+        SQLStr += ReportDateField+", "
+        FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
+        SQLStr += FieldSQLStr+" "
+        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
+        SQLStr += "INNER JOIN MF_BalanceSheetNew "
+        SQLStr += "ON ("+self._DBTableName+"."+self._IDField+"=MF_BalanceSheetNew.InnerCode "
+        SQLStr += "AND "+ReportDateField+"=MF_BalanceSheetNew.EndDate) "
+        SQLStr += "WHERE MF_BalanceSheetNew.Mark = 2 "
+        SQLStr += self._genConditionSQLStr(args=args)+" "
+        if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
+        SQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        SQLStr += "ORDER BY ID, MF_BalanceSheetNew.InfoPublDate, "
+        SQLStr += ReportDateField
+        #RawData = self._FactorDB.fetchall(SQLStr)
+        #if not RawData: return pd.DataFrame(columns=["ID", "AnnDate", "ReportDate"]+factor_names)
+        #else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "AnnDate", "ReportDate"]+factor_names)
+        RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)
+        RawData.columns = ["ID", "AnnDate", "ReportDate"]+factor_names
+        RawData["AdjustType"] = 0
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
 
@@ -2386,8 +2462,8 @@ class JYDB(QSSQLObject, FactorDB):
         else: return []
     def getTable(self, table_name, args={}):
         if table_name in self._TableInfo.index:
-            TableClass = self._TableInfo.loc[table_name, "TableClass"]
-            if pd.notnull(TableClass):
+            TableClass = args.get("因子表类型", self._TableInfo.loc[table_name, "TableClass"])
+            if pd.notnull(TableClass) and (TableClass!=""):
                 return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=args, logger=self._QS_Logger)")
         Msg = ("因子库 ‘%s' 目前尚不支持因子表: '%s'" % (self.Name, table_name))
         self._QS_Logger.error(Msg)
