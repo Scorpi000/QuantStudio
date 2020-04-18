@@ -106,12 +106,10 @@ class _DBTable(FactorTable):
         for i, iCondition in enumerate(self._ConditionFields):
             self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+101))
             iConditionVal = self._FactorInfo.loc[iCondition, "Supplementary"]
-            if pd.isnull(iConditionVal) or (isinstance(iConditionVal, str) and iConditionVal.lower()=="nan"):
+            if pd.isnull(iConditionVal) or (isinstance(iConditionVal, str) and (iConditionVal.lower() in ("", "nan"))):
                 self[iCondition] = ""
             else:
-                iConditionVal = str(iConditionVal).strip().split(",")
-                if len(iConditionVal)==1: self[iCondition] = iConditionVal[0]
-                else: self[iCondition] = iConditionVal
+                self[iCondition] = str(iConditionVal).strip()
     def _genFromSQLStr(self, setable_join_str=[]):
         SQLStr = "FROM "+self._DBTableName+" "
         for iJoinStr in setable_join_str: SQLStr += iJoinStr+" "
@@ -236,11 +234,10 @@ class _DBTable(FactorTable):
         for iConditionField in self._ConditionFields:
             iConditionVal = args.get(iConditionField, self[iConditionField])
             if iConditionVal:
-                iConditionVal = iConditionVal.split(",")
                 if _identifyDataType(self._FactorInfo.loc[iConditionField, "DataType"])!="double":
                     SQLStr += "AND "+self._DBTableName+"."+self._FactorInfo["DBFieldName"].loc[iConditionField]+" IN ('"+"','".join(iConditionVal)+"') "
                 else:
-                    SQLStr += "AND "+self._DBTableName+"."+self._FactorInfo["DBFieldName"].loc[iConditionField]+" IN ("+",".join(iConditionVal)+") "
+                    SQLStr += "AND "+self._DBTableName+"."+self._FactorInfo["DBFieldName"].loc[iConditionField]+" IN ("+iConditionVal+") "
         return SQLStr[:-1]
     def getCondition(self, icondition, ids=None, dts=None):
         SQLStr = "SELECT DISTINCT "+self._DBTableName+"."+self._FactorInfo["DBFieldName"].loc[icondition]+" "
@@ -1290,6 +1287,7 @@ class _FinancialTable(_DBTable):
     PeriodLookBack = Int(0, label="回溯期数", arg_type="Integer", order=3)
     IgnoreMissing = Bool(True, label="忽略缺失", arg_type="Bool", order=4)
     IgnoreNonQuarter = Bool(False, label="忽略非季末报告", arg_type="Bool", order=5)
+    #AdjustType = Str("1,2", label="调整类型", arg_type="String", order=6)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         # 报告期字段
@@ -1298,12 +1296,21 @@ class _FinancialTable(_DBTable):
         self._AnnDateField = self._FactorInfo[self._FactorInfo["FieldType"]=="AnnDate"].index
         if self._AnnDateField.shape[0]>0: self._AnnDateField = self._AnnDateField[0]
         else: self._AnnDateField = None
+        self._TempData = {}
+        return
+    def __QS_initArgs__(self):
+        super().__QS_initArgs__()
         # 调整类型字段
         self._AdjustTypeField = self._FactorInfo[self._FactorInfo["FieldType"]=="AdjustType"].index
         if self._AdjustTypeField.shape[0]==0: self._AdjustTypeField = None
         else: self._AdjustTypeField = self._AdjustTypeField[0]
-        self._TempData = {}
-        return
+        self.add_trait("AdjustType", Str("", label="调整类型", arg_type="String", order=6))
+        if self._AdjustTypeField is not None:
+            iConditionVal = self._FactorInfo.loc[self._AdjustTypeField, "Supplementary"]
+            if pd.isnull(iConditionVal) or (isinstance(iConditionVal, str) and (iConditionVal.lower() in ("", "nan"))):
+                self.AdjustType = ""
+            else:
+                self.AdjustType = str(iConditionVal).strip()
     def _genConditionSQLStr(self, args={}):
         SQLStr = super()._genConditionSQLStr(args=args)
         ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
@@ -1317,16 +1324,18 @@ class _FinancialTable(_DBTable):
             else:
                 raise __QS_Error__("JYDB._FinancialTable._genConditionSQLStr 不支持的数据库类型: '%s'" % (self._FactorDB.DBType, ))
         if self._AdjustTypeField is not None:
-            iConditionVal = self._FactorInfo.loc[self._AdjustTypeField, "Supplementary"]
-            if pd.notnull(iConditionVal) and isinstance(iConditionVal, str) and (iConditionVal.lower() not in ("", "nan")):
-                iConditionVal = iConditionVal.split(",")
-                SQLStr += " AND "+self._DBTableName+"."+self._FactorInfo.loc[self._AdjustTypeField, "DBFieldName"]+" IN ("+",".join(iConditionVal)+")"
+            iConditionVal = args.get("调整类型", self.AdjustType)
+            if iConditionVal:
+                if _identifyDataType(self._FactorInfo.loc[self._AdjustTypeField, "DataType"])!="double":
+                    SQLStr += "AND "+self._DBTableName+"."+self._FactorInfo.loc[self._AdjustTypeField, "DBFieldName"]+" IN ('"+"','".join(iConditionVal.split(","))+"') "
+                else:
+                    SQLStr += "AND "+self._DBTableName+"."+self._FactorInfo.loc[self._AdjustTypeField, "DBFieldName"]+" IN ("+iConditionVal+") "
         return SQLStr
     def __QS_genGroupInfo__(self, factors, operation_mode):
         ConditionGroup = {}
         for iFactor in factors:
             iConditions = (iFactor.IgnoreNonQuarter or (not ((iFactor.ReportDate=="所有") and (iFactor.CalcType=="最新") and (iFactor.YearLookBack==0) and (iFactor.PeriodLookBack==0))))
-            iConditions = (iConditions, ";".join([iCondition+":"+str(iFactor[iCondition]) for i, iCondition in enumerate(self._ConditionFields)]+["筛选条件:"+iFactor["筛选条件"]]))
+            iConditions = (iConditions, iFactor.AdjustType, ";".join([iCondition+":"+str(iFactor[iCondition]) for i, iCondition in enumerate(self._ConditionFields)]+["筛选条件:"+iFactor["筛选条件"]]))
             if iConditions not in ConditionGroup:
                 ConditionGroup[iConditions] = {"FactorNames":[iFactor.Name], 
                                                        "RawFactorNames":{iFactor._NameInFT}, 
@@ -1394,8 +1403,7 @@ class _FinancialTable(_DBTable):
         SQLStr += self._genConditionSQLStr(args=args)+" "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += "ORDER BY ID, "+AnnDateField+", "
-        SQLStr += ReportDateField
-        if self._AdjustTypeField is not None: SQLStr += ", AdjustType ASC"
+        SQLStr += ReportDateField + ", AdjustType ASC"
         RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)
         RawData.columns = ["ID", "AnnDate", "ReportDate", "AdjustType"]+factor_names
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
@@ -1985,9 +1993,6 @@ class _FinancialIndicatorTable(_FinancialTable):
         SQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
         SQLStr += "ORDER BY ID, MF_BalanceSheetNew.InfoPublDate, "
         SQLStr += ReportDateField
-        #RawData = self._FactorDB.fetchall(SQLStr)
-        #if not RawData: return pd.DataFrame(columns=["ID", "AnnDate", "ReportDate"]+factor_names)
-        #else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "AnnDate", "ReportDate"]+factor_names)
         RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)
         RawData.columns = ["ID", "AnnDate", "ReportDate"]+factor_names
         RawData["AdjustType"] = 0
