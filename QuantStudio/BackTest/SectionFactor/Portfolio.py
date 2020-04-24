@@ -19,7 +19,7 @@ from QuantStudio.BackTest.BackTestModel import BaseModule
 from QuantStudio.PortfolioConstructor import BasePC
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 
-def _QS_plotStatistics(axes, x_data, x_ticklabels, left_data, left_formatter, right_data=None, right_formatter=None, right_axes=True):
+def _QS_plotStatistics(axes, x_data, x_ticklabels, left_data, left_formatter, right_data=None, right_formatter=None, right_axes=True, title=None):
     axes.yaxis.set_major_formatter(left_formatter)
     axes.bar(x_data, left_data.values, label=left_data.name, color="steelblue")
     if right_data is not None:
@@ -36,6 +36,8 @@ def _QS_plotStatistics(axes, x_data, x_ticklabels, left_data, left_formatter, ri
         axes.legend(loc='best')
     axes.set_xticks(x_data)
     axes.set_xticklabels(x_ticklabels)
+    if title is not None:
+        axes.set_title(title)
     return axes
 
 class QuantilePortfolio(BaseModule):
@@ -283,6 +285,157 @@ class QuantilePortfolio(BaseModule):
         iHTML = self._Output["统计数据"].to_html(formatters=Formatters)
         Pos = iHTML.find(">")
         HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        Fig = self.genMatplotlibFig()
+        # figure 保存为二进制文件
+        Buffer = BytesIO()
+        Fig.savefig(Buffer, bbox_inches='tight')
+        PlotData = Buffer.getvalue()
+        # 图像数据转化为 HTML 格式
+        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+        HTML += ('<img src="%s">' % ImgStr)
+        return HTML
+
+class MultiPortfolio(BaseModule):
+    """组合对比"""
+    PortfolioModules = List(QuantilePortfolio, arg_type="List", label="对比模块", order=0)
+    def __init__(self, name="组合对比", sys_args={}, **kwargs):
+        return super().__init__(name=name, sys_args=sys_args, **kwargs)
+    def __QS_start__(self, mdl, dts, **kwargs):
+        if self._isStarted: return ()
+        super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
+        FactorTables = ()
+        for iModule in self.PortfolioModules:
+            FactorTables += iModule.__QS_start__(mdl=mdl, dts=dts, **kwargs)
+        return FactorTables
+    def __QS_move__(self, idt, **kwargs):
+        for iModule in self.PortfolioModules:
+            iModule.__QS_move__(idt)
+        return 0
+    def __QS_end__(self):
+        if not self._isStarted: return 0
+        super().__QS_end__()
+        self._Output = {"净值": {"L-S": pd.DataFrame(), "Top": pd.DataFrame(), "Bottom": pd.DataFrame(), "市场": pd.DataFrame()}, 
+                        "收益率": {"L-S": pd.DataFrame(), "Top": pd.DataFrame(), "Bottom": pd.DataFrame(), "市场": pd.DataFrame()}, 
+                        "超额净值": {"Top": pd.DataFrame(), "Bottom": pd.DataFrame()},
+                        "超额收益率": {"Top": pd.DataFrame(), "Bottom": pd.DataFrame()},
+                        "换手率": {"Top": pd.DataFrame(), "Bottom": pd.DataFrame()},
+                        "统计数据": {"Top": None, "Bottom": None, "L-S": None, "市场": None}}
+        for i, iModule in enumerate(self.PortfolioModules):
+            iModule.__QS_end__()
+            iOutput = iModule.output(recalculate=True)
+            iName = str(i)+"-"+iModule.Name
+            self._Output[iName] = iOutput
+            self._Output["净值"]["Top"][iName] = iOutput["净值"].iloc[:, 0]
+            self._Output["净值"]["Bottom"][iName] = iOutput["净值"].iloc[:, -3]
+            self._Output["净值"]["市场"][iName] = iOutput["净值"]["市场"]
+            self._Output["净值"]["L-S"][iName] = iOutput["净值"]["L-S"]
+            self._Output["收益率"]["Top"][iName] = iOutput["收益率"].iloc[:, 0]
+            self._Output["收益率"]["Bottom"][iName] = iOutput["收益率"].iloc[:, -3]
+            self._Output["收益率"]["市场"][iName] = iOutput["收益率"]["市场"]
+            self._Output["收益率"]["L-S"][iName] = iOutput["收益率"]["L-S"]
+            self._Output["超额净值"]["Top"][iName] = iOutput["超额净值"].iloc[:, 0]
+            self._Output["超额净值"]["Bottom"][iName] = iOutput["超额净值"].iloc[:, -3]
+            self._Output["超额收益率"]["Top"][iName] = iOutput["超额收益率"].iloc[:, 0]
+            self._Output["超额收益率"]["Bottom"][iName] = iOutput["超额收益率"].iloc[:, -3]
+            self._Output["换手率"]["Top"][iName] = iOutput["换手率"].iloc[:, 0]
+            self._Output["换手率"]["Bottom"][iName] = iOutput["换手率"].iloc[:, -1]
+            if self._Output["统计数据"]["Top"] is None:
+                self._Output["统计数据"]["Top"] = pd.DataFrame(columns=iOutput["统计数据"].columns)
+                self._Output["统计数据"]["Bottom"] = pd.DataFrame(columns=iOutput["统计数据"].columns)
+                self._Output["统计数据"]["L-S"] = pd.DataFrame(columns=iOutput["统计数据"].columns)
+                self._Output["统计数据"]["市场"] = pd.DataFrame(columns=iOutput["统计数据"].columns)
+            self._Output["统计数据"]["Top"].loc[iName] = iOutput["统计数据"].iloc[0, :]
+            self._Output["统计数据"]["Bottom"].loc[iName] = iOutput["统计数据"].iloc[-3, :]
+            self._Output["统计数据"]["L-S"].loc[iName] = iOutput["统计数据"].loc["L-S", :]
+            self._Output["统计数据"]["市场"].loc[iName] = iOutput["统计数据"].loc["市场", :]
+        return 0
+    def genMatplotlibFig(self, file_path=None):
+        nRow, nCol = 8, 3
+        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
+        xData = np.arange(1, self._Output["统计数据"]["Top"].shape[0]+1)
+        xTickLabels = [str(iInd) for iInd in self._Output["统计数据"]["Top"].index]
+        PercentageFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
+        FloatFormatter = FuncFormatter(lambda x, pos: '%.2f' % (x, ))
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 1), xData, xTickLabels, self._Output["统计数据"]["Top"]["年化超额收益率"], PercentageFormatter, self._Output["统计数据"]["Top"]["胜率"], PercentageFormatter, True, title="Top 组合年化超额收益率")
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 2), xData, xTickLabels, self._Output["统计数据"]["Top"]["信息比率"], PercentageFormatter, None, title="Top 组合信息比率")
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 3), xData, xTickLabels, self._Output["统计数据"]["Top"]["超额最大回撤率"], PercentageFormatter, None, title="Top 组合超额最大回撤率")
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 4), xData, xTickLabels, self._Output["统计数据"]["Top"]["年化收益率"], PercentageFormatter, None, title="Top 组合年化收益率")
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 5), xData, xTickLabels, self._Output["统计数据"]["Top"]["Sharpe比率"], FloatFormatter, None, title="Top 组合 Sharpe 比率")
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 6), xData, xTickLabels, self._Output["统计数据"]["Top"]["平均换手率"], PercentageFormatter, None, title="Top 组合平均换手率")
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 7), xData, xTickLabels, self._Output["统计数据"]["Bottom"]["年化超额收益率"], PercentageFormatter, self._Output["统计数据"]["Bottom"]["胜率"], PercentageFormatter, True, title="Bottom 组合年化超额收益率")
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 8), xData, xTickLabels, self._Output["统计数据"]["Bottom"]["信息比率"], PercentageFormatter, None, title="Bottom 组合信息比率")
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 9), xData, xTickLabels, self._Output["统计数据"]["Bottom"]["超额最大回撤率"], PercentageFormatter, None, title="Bottom 组合超额最大回撤率")
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 10), xData, xTickLabels, self._Output["统计数据"]["Bottom"]["年化收益率"], PercentageFormatter, None, title="Bottom 组合年化收益率")
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 11), xData, xTickLabels, self._Output["统计数据"]["Bottom"]["Sharpe比率"], FloatFormatter, None, title="Bottom 组合 Sharpe 比率")
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 12), xData, xTickLabels, self._Output["统计数据"]["Bottom"]["平均换手率"], PercentageFormatter, None, title="Bottom 组合平均换手率")
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 13), xData, xTickLabels, self._Output["统计数据"]["L-S"]["年化收益率"], PercentageFormatter, None, title="L-S 组合年化收益率")
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 14), xData, xTickLabels, self._Output["统计数据"]["L-S"]["Sharpe比率"], FloatFormatter, None, title="L-S 组合 Sharpe 比率")
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 15), xData, xTickLabels, self._Output["统计数据"]["L-S"]["最大回撤率"], PercentageFormatter, None, title="L-S 组合最大回撤Æ率")
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 16), xData, xTickLabels, self._Output["统计数据"]["市场"]["年化收益率"], PercentageFormatter, None, title="市场组合年化收益率")
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 17), xData, xTickLabels, self._Output["统计数据"]["市场"]["Sharpe比率"], FloatFormatter, None, title="市场组合 Sharpe 比率")
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 18), xData, xTickLabels, self._Output["统计数据"]["市场"]["最大回撤率"], PercentageFormatter, None, title="市场组合最大回撤率")
+        Axes = Fig.add_subplot(nRow, nCol, 19)
+        Axes.xaxis_date()
+        Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
+        for i in range(self._Output["净值"]["Top"].shape[1]):
+            Axes.plot(self._Output["净值"]["Top"].index, self._Output["净值"]["Top"].iloc[:, i].values, label=str(self._Output["净值"]["Top"].columns[i]), lw=2.5)
+        Axes.legend(loc='best')
+        Axes.set_title("Top 组合净值")
+        Axes = Fig.add_subplot(nRow, nCol, 20)
+        Axes.xaxis_date()
+        Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
+        for i in range(self._Output["净值"]["Bottom"].shape[1]):
+            Axes.plot(self._Output["净值"]["Bottom"].index, self._Output["净值"]["Bottom"].iloc[:, i].values, label=str(self._Output["净值"]["Bottom"].columns[i]), lw=2.5)
+        Axes.legend(loc='best')
+        Axes.set_title("Bottom 组合净值")
+        Axes = Fig.add_subplot(nRow, nCol, 21)
+        Axes.xaxis_date()
+        Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
+        for i in range(self._Output["净值"]["市场"].shape[1]):
+            Axes.plot(self._Output["净值"]["市场"].index, self._Output["净值"]["市场"].iloc[:, i].values, label=str(self._Output["净值"]["市场"].columns[i]), lw=2.5)
+        Axes.legend(loc='best')
+        Axes.set_title("市场组合净值")
+        Axes = Fig.add_subplot(nRow, nCol, 22)
+        Axes.xaxis_date()
+        Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
+        for i in range(self._Output["超额净值"]["Top"].shape[1]):
+            Axes.plot(self._Output["超额净值"]["Top"].index, self._Output["超额净值"]["Top"].iloc[:, i].values, label=str(self._Output["超额净值"]["Top"].columns[i]), lw=2.5)
+        Axes.legend(loc='best')
+        Axes.set_title("Top 组合超额净值")
+        Axes = Fig.add_subplot(nRow, nCol, 23)
+        Axes.xaxis_date()
+        Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
+        for i in range(self._Output["超额净值"]["Bottom"].shape[1]):
+            Axes.plot(self._Output["超额净值"]["Bottom"].index, self._Output["超额净值"]["Bottom"].iloc[:, i].values, label=str(self._Output["超额净值"]["Bottom"].columns[i]), lw=2.5)
+        Axes.legend(loc='best')
+        Axes.set_title("Bottom 组合超额净值")
+        Axes = Fig.add_subplot(nRow, nCol, 24)
+        Axes.xaxis_date()
+        Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
+        for i in range(self._Output["净值"]["L-S"].shape[1]):
+            Axes.plot(self._Output["净值"]["L-S"].index, self._Output["净值"]["L-S"].iloc[:, i].values, label=str(self._Output["净值"]["L-S"].columns[i]), lw=2.5)
+        Axes.legend(loc='best')
+        Axes.set_title("L-S 组合净值")
+        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
+        return Fig
+    def _repr_html_(self):
+        if len(self.ArgNames)>0:
+            HTML = "参数设置: "
+            HTML += '<ul align="left">'
+            for iArgName in self.ArgNames:
+                if iArgName=="对比模块":
+                    HTML += "<li>"+iArgName+": "+",".join([iModule.Name for iModule in self.PortfolioModules])+"</li>"
+            HTML += "</ul>"
+        else:
+            HTML = ""
+        Formatters = [_QS_formatPandasPercentage]*3+[lambda x:'{0:.2f}'.format(x)]*2+[_QS_formatPandasPercentage]*2+[lambda x: x.strftime("%Y-%m-%d")]*2
+        Formatters += [_QS_formatPandasPercentage]*3+[lambda x:'{0:.2f}'.format(x)]*2+[_QS_formatPandasPercentage]*2+[lambda x: x.strftime("%Y-%m-%d")]*2
+        Formatters += [lambda x:'{0:.2f}'.format(x)]*2
+        for iKey in self._Output["统计数据"]:
+            HTML += iKey+" 组合: "
+            iHTML = self._Output["统计数据"][iKey].to_html(formatters=Formatters)
+            Pos = iHTML.find(">")
+            HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         Fig = self.genMatplotlibFig()
         # figure 保存为二进制文件
         Buffer = BytesIO()
