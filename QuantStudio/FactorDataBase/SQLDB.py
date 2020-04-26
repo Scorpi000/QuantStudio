@@ -31,7 +31,10 @@ def _adjustData(data, look_back, factor_names, ids, dts):
         data = pd.Panel(data).loc[factor_names, :, :]
     if look_back==0:
         if dts is not None:
-            return data.loc[:, dts]
+            try:
+                return data.loc[:, dts]
+            except Exception as e:
+                return pd.Panel(items=factor_names, major_axis=dts, minor_axis=data.minor_axis)
         else:
             return data
     if dts is not None:

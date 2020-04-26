@@ -27,7 +27,7 @@ def cutDateTime(df, dts=None, start_dt=None, end_dt=None):
     if start_dt is not None: df = df[df.index>=start_dt]
     if end_dt is not None: df = df[df.index<=end_dt]
     return df
-def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, debt_record, date_index):
+def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, cash_record, debt_record, date_index):
     Output = {}
     # 以时间点为索引的序列
     Output["时间序列"] = pd.DataFrame(cash_series, columns=["现金"])
@@ -36,6 +36,9 @@ def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, 
     Output["时间序列"]["账户价值"] = account_value_series
     AccountEarnings = account_value_series.diff()
     AccountEarnings.iloc[0] = account_value_series.iloc[0] - init_cash
+    # 现金流调整
+    CashDelta = cash_record.loc[:, ["时间点", "现金流"]].groupby(by=["时间点"]).sum()["现金流"]
+    AccountEarnings[CashDelta.index] -= CashDelta
     Output["时间序列"]["收益"] = AccountEarnings
     PreAccountValue = np.r_[init_cash, account_value_series.values[:-1]]
     AccountReturn = AccountEarnings / np.abs(PreAccountValue)
@@ -44,7 +47,8 @@ def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, 
     AccountReturn[np.isinf(AccountReturn)] = np.nan
     Output["时间序列"]["累计收益率"] = AccountReturn.cumsum()
     Output["时间序列"]["净值"] = (AccountReturn + 1).cumprod()
-    DebtDelta = debt_record.groupby(by=["时间点"]).sum()["融资"]
+    # 负债调整
+    DebtDelta = debt_record.loc[:, ["时间点", "融资"]].groupby(by=["时间点"]).sum()["融资"]
     PreUnleveredValue = pd.Series(np.r_[init_cash, (account_value_series.values + debt_series.values)[:-1]], index=AccountEarnings.index)
     PreUnleveredValue[DebtDelta.index] += DebtDelta.clip(0, np.inf)
     UnleveredReturn = AccountEarnings / np.abs(PreUnleveredValue)
@@ -64,9 +68,14 @@ def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, 
         DebtSeries = Output["日期序列"]["负债"]
         AccountEarnings = AccountValueSeries.diff()
         AccountEarnings.iloc[0] = AccountValueSeries.iloc[0]-init_cash
+        # 现金流调整
+        cash_record = cash_record.copy()
+        cash_record["时间点"]= [iDateTime.date() for iDateTime in cash_record["时间点"]]
+        CashDelta = cash_record.loc[:, ["时间点", "现金流"]].groupby(by=["时间点"]).sum()["现金流"]
+        AccountEarnings[CashDelta.index] -= CashDelta
         Output["日期序列"]["收益"] = AccountEarnings
         PreAccountValue = np.append(np.array(init_cash), AccountValueSeries.values[:-1])
-        AccountReturn = AccountEarnings/np.abs(PreAccountValue)
+        AccountReturn = AccountEarnings / np.abs(PreAccountValue)
         AccountReturn[AccountEarnings==0] = 0.0
         Output["日期序列"]["收益率"] = AccountReturn
         AccountReturn[np.isinf(AccountReturn)] = np.nan
@@ -74,10 +83,10 @@ def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, 
         Output["日期序列"]["净值"] = (AccountReturn+1).cumprod()
         debt_record = debt_record.copy()
         debt_record["时间点"] = [iDateTime.date() for iDateTime in debt_record["时间点"]]
-        DebtDelta = debt_record.groupby(by=["时间点"]).sum()["融资"]
+        DebtDelta = debt_record.loc[:, ["时间点", "融资"]].groupby(by=["时间点"]).sum()["融资"]
         PreUnleveredValue = pd.Series(np.append(np.array(init_cash), (AccountValueSeries.values+DebtSeries.values)[:-1]), index=AccountEarnings.index)
         PreUnleveredValue[DebtDelta.index] += DebtDelta.clip(0, np.inf)
-        UnleveredReturn = AccountEarnings/np.abs(PreUnleveredValue)
+        UnleveredReturn = AccountEarnings / np.abs(PreUnleveredValue)
         UnleveredReturn[AccountEarnings==0] = 0.0
         Output["日期序列"]["无杠杆收益率"] = UnleveredReturn
         UnleveredReturn[np.isinf(UnleveredReturn)] = np.nan
@@ -127,7 +136,7 @@ class Account(BaseModule):
         CashSeries = self.getCashSeries()
         DebtSeries = self.getDebtSeries()
         AccountValueSeries = self.getAccountValueSeries()
-        self._Output = genAccountOutput(self.InitCash, CashSeries, DebtSeries, AccountValueSeries, self._DebtRecord, self._Model.DateIndexSeries)
+        self._Output = genAccountOutput(self.InitCash, CashSeries, DebtSeries, AccountValueSeries, self._CashRecord, self._DebtRecord, self._Model.DateIndexSeries)
         self._Output["现金流记录"] = self._CashRecord
         self._Output["融资记录"] = self._DebtRecord
         self._Output["交易记录"] = self._TradingRecord
@@ -298,14 +307,15 @@ class Strategy(BaseModule):
         for i, iAccount in enumerate(self.Accounts):
             iOutput = iAccount.output(recalculate=True)
             if iOutput: self._Output[str(i)+"-"+iAccount.Name] = iOutput
-        AccountValueSeries, CashSeries, DebtSeries, InitCash, DebtRecord = 0, 0, 0, 0, None
+        AccountValueSeries, CashSeries, DebtSeries, InitCash, DebtRecord, CashRecord = 0, 0, 0, 0, None, None
         for iAccount in self.Accounts:
             AccountValueSeries += iAccount.getAccountValueSeries()
             CashSeries += iAccount.getCashSeries()
             DebtSeries += iAccount.getDebtSeries()
             InitCash += iAccount.InitCash
             DebtRecord = iAccount.DebtRecord.append(DebtRecord)
-        StrategyOutput = genAccountOutput(InitCash, CashSeries, DebtSeries, AccountValueSeries, DebtRecord, self._Model.DateIndexSeries)
+            CashRecord = iAccount.CashRecord.append(CashRecord)
+        StrategyOutput = genAccountOutput(InitCash, CashSeries, DebtSeries, AccountValueSeries, CashRecord, DebtRecord, self._Model.DateIndexSeries)
         StrategyOutput["统计数据"].columns = ["策略表现", "无杠杆表现"]
         if self.Benchmark.FactorTable is not None:# 设置了基准
             BenchmarkPrice = self.Benchmark.FactorTable.readData(factor_names=[self.Benchmark.PriceFactor], dts=AccountValueSeries.index.tolist(), ids=[self.Benchmark.BenchmarkID]).iloc[0,:,0]

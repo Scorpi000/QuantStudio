@@ -845,8 +845,11 @@ class CustomFT(FactorTable):
         return iFactor
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         DateTimes = self._DateTimes
-        if start_dt is not None: DateTimes = DateTimes[DateTimes>=start_dt]
-        if end_dt is not None: DateTimes = DateTimes[DateTimes<=end_dt]
+        if (start_dt is not None) or (end_dt is not None):
+            DateTimes = np.array(DateTimes, dtype="O")
+            if start_dt is not None: DateTimes = DateTimes[DateTimes>=start_dt]
+            if end_dt is not None: DateTimes = DateTimes[DateTimes<=end_dt]
+            DateTimes = DateTimes.tolist()
         return DateTimes
     def getID(self, ifactor_name=None, idt=None, args={}):
         return self._IDs
