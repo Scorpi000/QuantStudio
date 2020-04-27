@@ -27,9 +27,10 @@ class DerivativeFactor(Factor):
     @property
     def Descriptors(self):
         return self._Descriptors
-    def getMetaData(self, key=None):
-        if key is None: return pd.Series({"DataType":self.DataType})
-        elif key=="DataType": return self.DataType
+    def getMetaData(self, key=None, args={}):
+        DataType = args.get("数据类型", self.DataType)
+        if key is None: return pd.Series({"DataType": DataType})
+        elif key=="DataType": return DataType
         return None
     def start(self, dts, **kwargs):
         for iDescriptor in self._Descriptors: iDescriptor.start(dts=dts, **kwargs)

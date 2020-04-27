@@ -81,7 +81,7 @@ class WritableFactorDB(FactorDB):
     # 时间平移, 沿着时间轴将所有数据纵向移动 lag 期, lag>0 向前移动, lag<0 向后移动, 空出来的地方填 nan
     def offsetDateTime(self, lag, table_name, factor_names, args={}):
         if lag==0: return 0
-        FT = self.getTable(table_name)
+        FT = self.getTable(table_name, args=args)
         Data = FT.readData(factor_names=factor_names, ids=self.getID(), dts=self.getDateTime(), args=args)
         if lag>0:
             Data.iloc[:, lag:, :] = Data.iloc[:,:-lag,:].values
@@ -89,15 +89,15 @@ class WritableFactorDB(FactorDB):
         elif lag<0:
             Data.iloc[:, :lag, :] = Data.iloc[:,-lag:,:].values
             Data.iloc[:, :lag, :] = None
-        DataType = FT.getFactorMetaData(factor_names, key="DataType").to_dict()
+        DataType = FT.getFactorMetaData(factor_names, key="DataType", args=args).to_dict()
         self.deleteFactor(table_name, factor_names)
         self.writeData(Data, table_name, data_type=DataType)
         return 0
     # 数据变换, 对原来的时间和ID序列通过某种变换函数得到新的时间序列和ID序列, 调整数据
     def changeData(self, table_name, factor_names, ids, dts, args={}):
-        FT = self.getTable(table_name)
+        FT = self.getTable(table_name, args=args)
         Data = FT.readData(factor_names=factor_names, ids=ids, dts=dts, args=args)
-        DataType = FT.getFactorMetaData(factor_names, key="DataType").to_dict()
+        DataType = FT.getFactorMetaData(factor_names, key="DataType", args=args).to_dict()
         self.deleteFactor(table_name, factor_names)
         self.writeData(Data, table_name, data_type=DataType)
         return 0
@@ -418,7 +418,7 @@ class FactorTable(__QS_Object__):
         return self._FactorDB
     # -------------------------------表的信息---------------------------------
     # 获取表的元数据
-    def getMetaData(self, key=None):
+    def getMetaData(self, key=None, args={}):
         if key is None: return {}
         return None
     # -------------------------------维度信息-----------------------------------
@@ -437,7 +437,7 @@ class FactorTable(__QS_Object__):
         if new_name is not None: iFactor.Name = new_name
         return iFactor
     # 获取因子的元数据
-    def getFactorMetaData(self, factor_names, key=None):
+    def getFactorMetaData(self, factor_names, key=None, args={}):
         if key is None: return pd.DataFrame(index=factor_names, dtype=np.dtype("O"))
         else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
     # 获取 ID 序列
@@ -835,7 +835,7 @@ class CustomFT(FactorTable):
     @property
     def FactorNames(self):
         return sorted(self._Factors)
-    def getFactorMetaData(self, factor_names=None, key=None):
+    def getFactorMetaData(self, factor_names=None, key=None, args={}):
         if factor_names is None: factor_names = self.FactorNames
         if key is not None: return pd.Series({iFactorName: self._Factors[iFactorName].getMetaData(key) for iFactorName in factor_names})
         else: return pd.DataFrame({iFactorName: self._Factors[iFactorName].getMetaData(key) for iFactorName in factor_names}).T
@@ -1029,8 +1029,10 @@ class Factor(__QS_Object__):
     def Descriptors(self):
         return []
     # 获取因子的元数据
-    def getMetaData(self, key=None):
-        return self._FactorTable.getFactorMetaData(factor_names=[self._NameInFT], key=key).loc[self._NameInFT]
+    def getMetaData(self, key=None, args={}):
+        Args = self.Args
+        Args.update(args)
+        return self._FactorTable.getFactorMetaData(factor_names=[self._NameInFT], key=key, args=Args).loc[self._NameInFT]
     # 获取 ID 序列
     def getID(self, idt=None):
         if (self._OperationMode is not None) and (self._OperationMode._isStarted): return self._OperationMode.IDs
@@ -1371,9 +1373,10 @@ class DataFactor(Factor):
                         sys_args["数据类型"] = "double"
         self._Data = data
         return super().__init__(name=name, ft=None, sys_args=sys_args, config_file=None, **kwargs)
-    def getMetaData(self, key=None):
-        if key is None: return pd.Series({"DataType":self.DataType})
-        elif key=="DataType": return self.DataType
+    def getMetaData(self, key=None, args={}):
+        DataType = args.get("数据类型", self.DataType)
+        if key is None: return pd.Series({"DataType":DataType})
+        elif key=="DataType": return DataType
         return None
     def getID(self, idt=None):
         if (self._OperationMode is not None) and (self._OperationMode._isStarted): return self._OperationMode.IDs

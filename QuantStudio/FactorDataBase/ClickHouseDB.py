@@ -1,5 +1,5 @@
 # coding=utf-8
-"""基于 ClickHouse 数据库的因子库"""
+"""基于 ClickHouse 数据库的因子库(TODO)"""
 import re
 import os
 import datetime as dt
@@ -42,7 +42,7 @@ class _WideTable(FactorTable):
     @property
     def FactorNames(self):
         return self._DataType.index.tolist()+["dt", "code"]
-    def getFactorMetaData(self, factor_names=None, key=None):
+    def getFactorMetaData(self, factor_names=None, key=None, args={}):
         if factor_names is None: factor_names = self.FactorNames
         if key=="DataType": return self._DataType.append(pd.Series(["string", "string"], index=["dt","code"])).loc[factor_names]
         if key is None: return pd.DataFrame(self._DataType.append(pd.Series(["string", "string"], index=["dt","code"])).loc[factor_names], columns=["DataType"])
@@ -176,7 +176,7 @@ class _WideTable(FactorTable):
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data = raw_data.set_index(["QS_DT", "ID"])
-        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
+        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
         Data = {}
         for iFactorName in raw_data.columns:
             iRawData = raw_data[iFactorName].unstack()

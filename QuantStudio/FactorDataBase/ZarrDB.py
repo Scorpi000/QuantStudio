@@ -31,7 +31,7 @@ def _identifyDataType(factor_data, data_type=None):
 
 class _FactorTable(FactorTable):
     """ZarrDB 因子表"""
-    def getMetaData(self, key=None):
+    def getMetaData(self, key=None, args={}):
         iZTable = zarr.open(self._FactorDB.MainDir+os.sep+self.Name, mode="r")
         with self._FactorDB._DataLock:
             if key is not None:
@@ -46,7 +46,7 @@ class _FactorTable(FactorTable):
                 else: return MetaData
         MetaData = {}
         for iKey in iZTable.attrs:
-            MetaData[iKey] = self.getMetaData(key=iKey)
+            MetaData[iKey] = self.getMetaData(key=iKey, args=args)
         return MetaData
     @property
     def FactorNames(self):
@@ -54,10 +54,10 @@ class _FactorTable(FactorTable):
             ZTable = zarr.open(self._FactorDB.MainDir+os.sep+self.Name, mode="r")
             DataType = ZTable.attrs.get("DataType", {})
         return sorted(DataType)
-    def getFactorMetaData(self, factor_names=None, key=None):
+    def getFactorMetaData(self, factor_names=None, key=None, args={}):
         AllFactorNames = self.FactorNames
         if factor_names is None: factor_names = AllFactorNames
-        elif set(factor_names).isdisjoint(AllFactorNames): return super().getFactorMetaData(factor_names=factor_names, key=key)
+        elif set(factor_names).isdisjoint(AllFactorNames): return super().getFactorMetaData(factor_names=factor_names, key=key, args=args)
         with self._FactorDB._DataLock:
             MetaData = {}
             ZTable = zarr.open(self._FactorDB.MainDir+os.sep+self.Name, mode="r")
@@ -66,7 +66,7 @@ class _FactorTable(FactorTable):
                     iZFactor = ZTable[iFactorName]
                     if key is None: MetaData[iFactorName] = pd.Series(iZFactor.attrs)
                     elif key in iZFactor.attrs: MetaData[iFactorName] = iZFactor.attrs[key]
-        if not MetaData: return super().getFactorMetaData(factor_names=factor_names, key=key)
+        if not MetaData: return super().getFactorMetaData(factor_names=factor_names, key=key, args=args)
         if key is None: return pd.DataFrame(MetaData).loc[:, factor_names]
         else: return pd.Series(MetaData).loc[factor_names]
     def getID(self, ifactor_name=None, idt=None, args={}):

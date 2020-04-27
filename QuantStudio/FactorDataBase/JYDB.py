@@ -254,7 +254,7 @@ class _DBTable(FactorTable):
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += "ORDER BY "+self._DBTableName+"."+self._FactorInfo["DBFieldName"].loc[icondition]
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
-    def getMetaData(self, key=None):
+    def getMetaData(self, key=None, args={}):
         TableInfo = self._FactorDB._TableInfo.loc[self.Name]
         if key is None:
             return TableInfo
@@ -263,7 +263,7 @@ class _DBTable(FactorTable):
     @property
     def FactorNames(self):
         return self._FactorInfo[pd.notnull(self._FactorInfo["FieldType"])].index.tolist()
-    def getFactorMetaData(self, factor_names=None, key=None):
+    def getFactorMetaData(self, factor_names=None, key=None, args={}):
         if factor_names is None:
             factor_names = self.FactorNames
         if key=="DataType":
@@ -271,8 +271,8 @@ class _DBTable(FactorTable):
             return self._FactorInfo["DataType"].loc[factor_names].apply(_identifyDataType)
         elif key=="Description": return self._FactorInfo["Description"].loc[factor_names]
         elif key is None:
-            return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType"),
-                                 "Description":self.getFactorMetaData(factor_names, key="Description")})
+            return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType", args=args),
+                                 "Description":self.getFactorMetaData(factor_names, key="Description", args=args)})
         else:
             return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
     def __QS_genGroupInfo__(self, factors, operation_mode):
@@ -300,6 +300,7 @@ class _FeatureTable(_DBTable):
     """特征因子表"""
     MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=0)
     Operator = Either(Function(None), None, arg_type="Function", label="算子", order=1)
+    OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=2)
     def getID(self, ifactor_name=None, idt=None, args={}):
         SQLStr = "SELECT DISTINCT "+self._getIDField()+" AS ID "
         SQLStr += self._genFromSQLStr()+" "
@@ -310,6 +311,18 @@ class _FeatureTable(_DBTable):
         return [str(iRslt[0]) for iRslt in self._FactorDB.fetchall(SQLStr)]
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         return []
+    def getFactorMetaData(self, factor_names=None, key=None, args={}):
+        if key=="DataType":
+            if factor_names is None: factor_names = self.FactorNames
+            if args.get("算子", self.Operator) is None:
+                if args.get("多重映射", self.MultiMapping):
+                    return pd.Series(["object"]*len(factor_names), index=factor_names)
+                else:
+                    return super().getFactorMetaData(factor_names=factor_names, key=key, args=args)
+            else:
+                return pd.Series([args.get("算子数据类型", self.OperatorDataType)]*len(factor_names), index=factor_names)
+        else:
+            return super().getFactorMetaData(factor_names=factor_names, key=key, args=args)
     def __QS_genGroupInfo__(self, factors, operation_mode):
         ConditionGroup = {}
         for iFactor in factors:
@@ -407,6 +420,15 @@ class _MappingTable(_DBTable):
         if start_dt is not None: StartDT = max((StartDT, start_dt))
         if end_dt is None: end_dt = dt.datetime.combine(dt.date.today(), dt.time(0))
         return getDateTimeSeries(start_dt=StartDT, end_dt=end_dt, timedelta=dt.timedelta(1))
+    def getFactorMetaData(self, factor_names=None, key=None, args={}):
+        if key=="DataType":
+            if factor_names is None: factor_names = self.FactorNames
+            if args.get("多重映射", self.MultiMapping):
+                return pd.Series(["object"]*len(factor_names), index=factor_names)
+            else:
+                return super().getFactorMetaData(factor_names=factor_names, key=key, args=args)
+        else:
+            return super().getFactorMetaData(factor_names=factor_names, key=key, args=args)
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         # 形成SQL语句, ID, 开始日期, 结束日期, 因子数据
@@ -563,14 +585,14 @@ class _ConstituentTable(_DBTable):
             SQLStr += "ORDER BY "+self._DBTableName+"."+self._FactorInfo.loc[self._GroupField, "DBFieldName"]
             self._AllGroups = [str(iRslt[0]) for iRslt in self._FactorDB.fetchall(SQLStr)]
         return self._AllGroups
-    def getFactorMetaData(self, factor_names=None, key=None):
+    def getFactorMetaData(self, factor_names=None, key=None, args={}):
         if factor_names is None: factor_names = self.FactorNames
         if key=="DataType":
             return pd.Series("double", index=factor_names)
         elif key=="Description": return pd.Series(["0 or nan: 非成分; 1: 是成分"]*len(factor_names), index=factor_names)
         elif key is None:
-            return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType"),
-                                 "Description":self.getFactorMetaData(factor_names, key="Description")})
+            return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType", args=args),
+                                 "Description":self.getFactorMetaData(factor_names, key="Description", args=args)})
         else:
             return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
     # 返回指数 ID 为 ifactor_name 在给定时点 idt 的所有成份股
@@ -1007,15 +1029,19 @@ class _MultiInfoPublTable(_InfoPublTable):
     IgnorePublDate = Bool(False, label="忽略公告日", arg_type="Bool", order=5)
     IgnoreTime = Bool(True, label="忽略时间", arg_type="Bool", order=6)
     Operator = Either(Function(None), None, arg_type="Function", label="算子", order=7)
+    OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=8)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         self._OrderFields = self._FactorInfo[self._FactorInfo["Supplementary"]=="OrderField"].index.tolist()
-    def getFactorMetaData(self, factor_names=None, key=None):
+    def getFactorMetaData(self, factor_names=None, key=None, args={}):
         if key=="DataType":
             if factor_names is None: factor_names = self.FactorNames
-            return pd.Series(["object"]*len(factor_names), index=factor_names)
+            if args.get("算子", self.Operator) is None:
+                return pd.Series(["object"]*len(factor_names), index=factor_names)
+            else:
+                return pd.Series([args.get("算子数据类型", self.OperatorDataType)]*len(factor_names), index=factor_names)
         else:
-            return super().getFactorMetaData(factor_names=factor_names, key=key)
+            return super().getFactorMetaData(factor_names=factor_names, key=key, args=args)
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         FactorNames = list(set(factor_names).union(self._OrderFields))
         RawData = super().__QS_prepareRawData__(FactorNames, ids, dts, args=args)

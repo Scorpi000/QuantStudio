@@ -61,9 +61,9 @@ class _WideTable(FactorTable):
     @property
     def FactorNames(self):
         return sorted(self._DataType.index.union({"datetime", "code"}).difference({self.DTField, self.IDField}))
-    def getFactorMetaData(self, factor_names=None, key=None):
+    def getFactorMetaData(self, factor_names=None, key=None, args={}):
         if factor_names is None: factor_names = self.FactorNames
-        elif set(factor_names).isdisjoint(self.FactorNames): return super().getFactorMetaData(factor_names=factor_names, key=key)
+        elif set(factor_names).isdisjoint(self.FactorNames): return super().getFactorMetaData(factor_names=factor_names, key=key, args=args)
         if key=="DataType": return self._DataType.loc[factor_names]
         MetaData = {}
         Doc = self._Collection.find_one({"code": "_TableInfo"}, {"datetime": 0, "code": 0, "_id": 0})
@@ -72,7 +72,7 @@ class _WideTable(FactorTable):
                 MetaData[iFactorName] = pd.Series(Doc.get(iFactorName, {}))
             else:
                 MetaData[iFactorName] = Doc.get(iFactorName, {}).get(key, None)
-        if not MetaData: return super().getFactorMetaData(factor_names=factor_names, key=key)
+        if not MetaData: return super().getFactorMetaData(factor_names=factor_names, key=key, args=args)
         if key is None: return pd.DataFrame(MetaData).loc[:, factor_names]
         else: return pd.Series(MetaData).loc[factor_names]
     def getID(self, ifactor_name=None, idt=None, args={}):
@@ -176,7 +176,7 @@ class _WideTable(FactorTable):
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data = raw_data.set_index(["QS_DT", "ID"])
-        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
+        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
         Data = {}
         for iFactorName in raw_data.columns:
             iRawData = raw_data[iFactorName].unstack()

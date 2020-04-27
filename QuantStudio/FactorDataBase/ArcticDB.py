@@ -25,7 +25,7 @@ class _FactorTable(FactorTable):
     @property
     def FactorNames(self):
         return self._DataType.index.tolist()
-    def getFactorMetaData(self, factor_names=None, key=None):
+    def getFactorMetaData(self, factor_names=None, key=None, args={}):
         if key=="DataType": return self._DataType
         elif key is not None: MetaData = self._Lib.read(symbol="_FactorInfo", columns=["FactorName", key]).set_index(["FactorName"])[key]
         else: MetaData = self._Lib.read(symbol="_FactorInfo").set_index(["FactorName"])

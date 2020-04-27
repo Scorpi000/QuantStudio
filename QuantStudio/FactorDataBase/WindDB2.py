@@ -92,7 +92,7 @@ def _DefaultOperator(f, idt, iid, x, args):
     return np.nan
 
 class _DBTable(FactorTable):
-    def getMetaData(self, key=None):
+    def getMetaData(self, key=None, args={}):
         TableInfo = self._FactorDB._TableInfo.loc[self.Name]
         if key is None:
             return TableInfo
@@ -102,7 +102,7 @@ class _DBTable(FactorTable):
     def FactorNames(self):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         return FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()
-    def getFactorMetaData(self, factor_names=None, key=None):
+    def getFactorMetaData(self, factor_names=None, key=None, args={}):
         if factor_names is None:
             factor_names = self.FactorNames
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
@@ -116,8 +116,8 @@ class _DBTable(FactorTable):
             return MetaData
         elif key=="Description": return FactorInfo["Description"].loc[factor_names]
         elif key is None:
-            return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType"),
-                                 "Description":self.getFactorMetaData(factor_names, key="Description")})
+            return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType", args=args),
+                                 "Description":self.getFactorMetaData(factor_names, key="Description", args=args)})
         else:
             return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
 
@@ -133,14 +133,14 @@ class _CalendarTable(_DBTable):
     @property
     def FactorNames(self):
         return ["交易日"]
-    def getFactorMetaData(self, factor_names=None, key=None):
+    def getFactorMetaData(self, factor_names=None, key=None, args={}):
         if factor_names is None: factor_names = self.FactorNames
         if key=="DataType":
             return self._DataType.loc[factor_names]
         elif key=="Description": return pd.Series(["0 or nan: 非交易日; 1: 交易日"]*len(factor_names), index=factor_names)
         elif key is None:
-            return pd.DataFrame({"DataType": self.getFactorMetaData(factor_names, key="DataType"),
-                                 "Description": self.getFactorMetaData(factor_names, key="Description")})
+            return pd.DataFrame({"DataType": self.getFactorMetaData(factor_names, key="DataType", args=args),
+                                 "Description": self.getFactorMetaData(factor_names, key="Description", args=args)})
         else:
             return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
     # 返回给定时点 idt 有交易的交易所列表
@@ -332,7 +332,7 @@ class _MarketTable(_DBTable):
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data = raw_data.set_index(["日期", "ID"])
-        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
+        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
         Data = {}
         for iFactorName in raw_data.columns:
             iRawData = raw_data[iFactorName].unstack()
@@ -507,15 +507,15 @@ class _ConstituentTable(_DBTable):
             SQLStr += "ORDER BY "+DBTableName+"."+FieldDict[self._GroupField]
             self._IndexIDs = [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
         return self._IndexIDs
-    def getFactorMetaData(self, factor_names=None, key=None):
+    def getFactorMetaData(self, factor_names=None, key=None, args={}):
         if factor_names is None: factor_names = self.FactorNames
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         if key=="DataType":
             return pd.Series("double", index=factor_names)
         elif key=="Description": return pd.Series(["0 or nan: 非成分; 1: 是成分"]*len(factor_names), index=factor_names)
         elif key is None:
-            return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType"),
-                                 "Description":self.getFactorMetaData(factor_names, key="Description")})
+            return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType", args=args),
+                                 "Description":self.getFactorMetaData(factor_names, key="Description", args=args)})
         else:
             return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
     # 返回指数 ID 为 ifactor_name 在给定时点 idt 的所有成份股
@@ -717,11 +717,11 @@ class _IndustryTable(_DBTable):
     @property
     def FactorNames(self):
         return ["行业名称", "行业代码"]
-    def getFactorMetaData(self, factor_names=None, key=None):
+    def getFactorMetaData(self, factor_names=None, key=None, args={}):
         if factor_names is None: factor_names = self.FactorNames
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         if key=="DataType": return self._DataType.loc[factor_names]
-        elif key is None: return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType")})
+        elif key is None: return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType", args=args)})
         else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
     # 返回在给定时点 idt 的有行业分类的证券
     # 如果 idt 为 None, 将返回所有曾经有行业分类的证券

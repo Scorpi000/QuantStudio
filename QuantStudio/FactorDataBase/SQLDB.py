@@ -77,10 +77,14 @@ class _WideTable(FactorTable):
     @property
     def FactorNames(self):
         return self._DataType.index.tolist()+["datetime", "code"]
-    def getFactorMetaData(self, factor_names=None, key=None):
+    def getFactorMetaData(self, factor_names=None, key=None, args={}):
         if factor_names is None: factor_names = self.FactorNames
-        if key=="DataType": return self._DataType.append(pd.Series(["string", "string"], index=["datetime","code"])).loc[factor_names]
-        if key is None: return pd.DataFrame(self._DataType.append(pd.Series(["string", "string"], index=["datetime","code"])).loc[factor_names], columns=["DataType"])
+        if key=="DataType":
+            if args.get("因子值类型", self.ValueType)=="scalar":
+                return self._DataType.append(pd.Series(["string", "string"], index=["datetime","code"])).loc[factor_names]
+            else:
+                return pd.Series(["object"] * len(factor_names), index=factor_names)
+        if key is None: return pd.DataFrame(self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args), columns=["DataType"])
         else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
     def getID(self, ifactor_name=None, idt=None, args={}):
         IDField = args.get("ID字段", self.IDField)
@@ -227,7 +231,7 @@ class _WideTable(FactorTable):
         else:
             if not raw_data.index.is_unique:
                 return self._calcListData(raw_data, factor_names, ids, dts, args=args)
-        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
+        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
         Data = {}
         for iFactorName in raw_data.columns:
             iRawData = raw_data[iFactorName].unstack()
@@ -284,10 +288,14 @@ class _NarrowTable(FactorTable):
             SQLStr += "ORDER BY "+self._DBTableName+"."+self.FactorField
             self._FactorNames = [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
         return self._FactorNames
-    def getFactorMetaData(self, factor_names=None, key=None):
+    def getFactorMetaData(self, factor_names=None, key=None, args={}):
         if factor_names is None: factor_names = self.FactorNames
-        if key=="DataType": return pd.Series(self._DataType, index=factor_names, dtype=np.dtype("O"))
-        if key is None: return pd.DataFrame(self._DataType, index=factor_names, columns=["DataType"], dtype=np.dtype("O"))
+        if key=="DataType":
+            if args.get("因子值类型", self.ValueType)=="scalar":
+                return pd.Series(self._DataType, index=factor_names, dtype=np.dtype("O"))
+            else:
+                return pd.Series(["object"] * len(factor_names), index=factor_names)
+        if key is None: return pd.DataFrame(self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args), columns=["DataType"])
         else: return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
     def getID(self, ifactor_name=None, idt=None, args={}):
         IDField = args.get("ID字段", self.IDField)
@@ -442,7 +450,7 @@ class _NarrowTable(FactorTable):
             if not raw_data.index.is_unique:
                 return self._calcListData(raw_data, factor_names, ids, dts, args=args)
         raw_data = raw_data.unstack()
-        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
+        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
         Data = {}
         for iFactorName in factor_names:
             if iFactorName in raw_data:

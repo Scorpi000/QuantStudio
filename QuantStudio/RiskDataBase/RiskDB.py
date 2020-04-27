@@ -123,7 +123,7 @@ class RiskTable(__QS_Object__):
     def RiskDB(self):
         return self._FactorDB
     # 获取表的元数据
-    def getMetaData(self, key=None):
+    def getMetaData(self, key=None, args={}):
         if key is None: return {}
         return None
     # -------------------------------维度信息-----------------------------------

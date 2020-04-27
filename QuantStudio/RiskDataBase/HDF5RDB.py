@@ -15,7 +15,7 @@ from QuantStudio.RiskDataBase.RiskDB import RiskDB, RiskTable, FactorRDB, Factor
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 
 class _RiskTable(RiskTable):
-    def getMetaData(self, key=None):
+    def getMetaData(self, key=None, args={}):
         with self._RiskDB._DataLock:
             with h5py.File(self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
                 if key is None: return pd.Series(File.attrs)
@@ -144,8 +144,8 @@ class _FactorRiskTable(FactorRT):
                         if DTStr in Group: self._FactorNames = sorted(Group[DTStr]["Factor"][...])
                         else: self._FactorNames = []
                     else: self._FactorNames = []
-    def getMetaData(self, key=None):
-        return _RiskTable.getMetaData(self, key=key)
+    def getMetaData(self, key=None, args={}):
+        return _RiskTable.getMetaData(self, key=key, args=args)
     @property
     def FactorNames(self):
         return self._FactorNames

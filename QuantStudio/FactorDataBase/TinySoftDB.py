@@ -13,7 +13,7 @@ from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
 from QuantStudio.FactorDataBase.FDBFun import updateInfo
 
 class _TSTable(FactorTable):
-    def getMetaData(self, key=None):
+    def getMetaData(self, key=None, args={}):
         TableInfo = self._FactorDB._TableInfo.loc[self.Name]
         if key is None: return TableInfo
         else: return TableInfo.get(key, None)
@@ -21,7 +21,7 @@ class _TSTable(FactorTable):
     def FactorNames(self):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         return FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()
-    def getFactorMetaData(self, factor_names=None, key=None):
+    def getFactorMetaData(self, factor_names=None, key=None, args={}):
         if factor_names is None: factor_names = self.FactorNames
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         if key=="DataType":
@@ -34,8 +34,8 @@ class _TSTable(FactorTable):
             return MetaData
         elif key=="Description": return FactorInfo["Description"].loc[factor_names]
         elif key is None:
-            return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType"),
-                                 "Description":self.getFactorMetaData(factor_names, key="Description")})
+            return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType", args=args),
+                                 "Description":self.getFactorMetaData(factor_names, key="Description", args=args)})
         else:
             return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
     def getID(self, ifactor_name=None, idt=None, args={}):
@@ -46,13 +46,13 @@ class _CalendarTable(FactorTable):
     @property
     def FactorNames(self):
         return ["交易日"]
-    def getFactorMetaData(self, factor_names=None, key=None):
+    def getFactorMetaData(self, factor_names=None, key=None, args={}):
         if factor_names is None: factor_names = self.FactorNames
         if key=="DataType": return pd.Series(["double"]*len(factor_names), index=factor_names)
         elif key=="Description": return pd.Series(["0 or nan: 非交易日; 1: 交易日"]*len(factor_names), index=factor_names)
         elif key is None:
-            return pd.DataFrame({"DataType": self.getFactorMetaData(factor_names, key="DataType"),
-                                 "Description": self.getFactorMetaData(factor_names, key="Description")})
+            return pd.DataFrame({"DataType": self.getFactorMetaData(factor_names, key="DataType", args=args),
+                                 "Description": self.getFactorMetaData(factor_names, key="Description", args=args)})
         else:
             return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
     # 返回交易所列表

@@ -16,7 +16,7 @@ from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
 from QuantStudio.FactorDataBase.FDBFun import updateInfo
 
 class _TSTable(FactorTable):
-    def getMetaData(self, key=None):
+    def getMetaData(self, key=None, args={}):
         TableInfo = self._FactorDB._TableInfo.loc[self.Name]
         if key is None:
             return TableInfo
@@ -26,7 +26,7 @@ class _TSTable(FactorTable):
     def FactorNames(self):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         return FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()
-    def getFactorMetaData(self, factor_names=None, key=None):
+    def getFactorMetaData(self, factor_names=None, key=None, args={}):
         if factor_names is None:
             factor_names = self.FactorNames
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
@@ -40,8 +40,8 @@ class _TSTable(FactorTable):
             return MetaData
         elif key=="Description": return FactorInfo["Description"].loc[factor_names]
         elif key is None:
-            return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType"),
-                                 "Description":self.getFactorMetaData(factor_names, key="Description")})
+            return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType", args=args),
+                                 "Description":self.getFactorMetaData(factor_names, key="Description", args=args)})
         else:
             return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
 
@@ -88,7 +88,7 @@ class _CalendarTable(_TSTable):
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data = raw_data.set_index(["日期", "ID"])
-        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
+        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
         Data = {}
         for iFactorName in raw_data.columns:
             iRawData = raw_data[iFactorName].unstack()
@@ -240,7 +240,7 @@ class _MarketTable(_TSTable):
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data = raw_data.set_index(["日期", "ID"])
-        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
+        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
         Data = {}
         for iFactorName in raw_data.columns:
             iRawData = raw_data[iFactorName].unstack()
