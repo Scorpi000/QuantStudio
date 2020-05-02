@@ -24,11 +24,13 @@ def _identifyDataType(factor_data, data_type=None):
             data_type = "object"
         else:
             data_type = "double"
-    if data_type=="string":
-        factor_data = factor_data.where(pd.notnull(factor_data), None)
-    elif data_type=="object":
-        factor_data = factor_data.applymap(lambda x: np.fromiter(pickle.dumps(x), dtype=np.uint8))
     return (factor_data, data_type)
+
+def _adjustData(data, data_type):
+    if data_type=="string": return data.where(pd.notnull(data), None).values
+    elif data_type=="double": return data.astype("float").values
+    elif data_type=="object": return data.applymap(lambda x: np.frombuffer(pickle.dumps(x), dtype=np.uint8)).values.copy(order="C")
+    else: raise __QS_Error__("不支持的数据类型: %s" % data_type)
 
 class _FactorTable(FactorTable):
     """HDF5DB 因子表"""
@@ -259,40 +261,28 @@ class HDF5DB(WritableFactorDB):
                 DataFile["ID"][OldIDs.shape[0]:] = NewIDs
                 DataFile["Data"].resize((DataFile["DateTime"].shape[0], DataFile["ID"].shape[0]))
                 if NewDateTimes.shape[0]>0:
-                    NewData = factor_data.loc[NewDateTimes, np.r_[OldIDs, NewIDs]]
-                    if data_type=="string": NewData = NewData.where(pd.notnull(NewData), None)
-                    elif data_type=="double": NewData = NewData.astype("float")
-                    elif data_type=="object": NewData = NewData.applymap(lambda x: x if isinstance(x, np.ndarray) else np.fromiter(pickle.dumps(x), dtype=np.uint8))
-                    DataFile["Data"][nOldDT:, :] = NewData.values
+                    DataFile["Data"][nOldDT:, :] = _adjustData(factor_data.loc[NewDateTimes, np.r_[OldIDs, NewIDs]], data_type)
                 CrossedDateTimes = factor_data.index.intersection(OldDateTimes)
                 if CrossedDateTimes.shape[0]==0: return 0
                 if len(CrossedDateTimes)==len(OldDateTimes):
                     if NewIDs.shape[0]>0:
-                        NewData = factor_data.loc[OldDateTimes, NewIDs]
-                        if data_type=="string": NewData = NewData.where(pd.notnull(NewData), None)
-                        elif data_type=="double": NewData = NewData.astype("float")
-                        elif data_type=="object": NewData = NewData.applymap(lambda x: x if isinstance(x, np.ndarray) else np.fromiter(pickle.dumps(x), dtype=np.uint8))
-                        DataFile["Data"][:nOldDT, OldIDs.shape[0]:] = NewData.values
+                        DataFile["Data"][:nOldDT, OldIDs.shape[0]:] = _adjustData(factor_data.loc[OldDateTimes, NewIDs], data_type)
                     CrossedIDs = factor_data.columns.intersection(OldIDs)
                     if CrossedIDs.shape[0]>0:
                         OldIDs = OldIDs.tolist()
                         CrossedIDPos = [OldIDs.index(iID) for iID in CrossedIDs]
                         CrossedIDs = CrossedIDs[np.argsort(CrossedIDPos)]
                         CrossedIDPos.sort()
-                        DataFile["Data"][:nOldDT, CrossedIDPos] = factor_data.loc[OldDateTimes, CrossedIDs].values
+                        DataFile["Data"][:nOldDT, CrossedIDPos] = _adjustData(factor_data.loc[OldDateTimes, CrossedIDs], data_type)
                     return 0
                 CrossedDateTimePos = [OldDateTimes.index(iDT) for iDT in CrossedDateTimes]
                 CrossedDateTimes = CrossedDateTimes[np.argsort(CrossedDateTimePos)]
                 CrossedDateTimePos.sort()
                 if NewIDs.shape[0]>0:
-                    NewData = factor_data.loc[CrossedDateTimes, NewIDs]
-                    if data_type=="string": NewData = NewData.where(pd.notnull(NewData), None)
-                    elif data_type=="double": NewData = NewData.astype("float")
-                    elif data_type=="object": NewData = NewData.applymap(lambda x: x if isinstance(x, np.ndarray) else np.fromiter(pickle.dumps(x), dtype=np.uint8))
-                    DataFile["Data"][CrossedDateTimePos, OldIDs.shape[0]:] = NewData.values
+                    DataFile["Data"][CrossedDateTimePos, OldIDs.shape[0]:] = _adjustData(factor_data.loc[CrossedDateTimes, NewIDs], data_type)
                 CrossedIDs = factor_data.columns.intersection(OldIDs)
                 if CrossedIDs.shape[0]>0:
-                    NewData = factor_data.loc[CrossedDateTimes, CrossedIDs].values
+                    NewData = _adjustData(factor_data.loc[CrossedDateTimes, CrossedIDs], data_type)
                     OldIDs = OldIDs.tolist()
                     if data_type=="object":
                         for i, iID in enumerate(CrossedIDs):
@@ -313,6 +303,7 @@ class HDF5DB(WritableFactorDB):
             if not os.path.isdir(TablePath): os.mkdir(TablePath)
             if not os.path.isfile(FilePath):
                 factor_data, data_type = _identifyDataType(factor_data, data_type)
+                NewData = _adjustData(factor_data, data_type)
                 open(FilePath, mode="a").close()# h5py 直接创建文件名包含中文的文件会报错.
                 #StrDataType = h5py.special_dtype(vlen=str)
                 StrDataType = h5py.string_dtype(encoding="utf-8")
@@ -321,11 +312,11 @@ class HDF5DB(WritableFactorDB):
                     DataFile.create_dataset("ID", shape=(factor_data.shape[1],), maxshape=(None,), dtype=StrDataType, data=factor_data.columns)
                     DataFile.create_dataset("DateTime", shape=(factor_data.shape[0],), maxshape=(None,), data=factor_data.index)
                     if data_type=="double":
-                        DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=np.float, fillvalue=np.nan, data=factor_data.values)
+                        DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=np.float, fillvalue=np.nan, data=NewData)
                     elif data_type=="string":
-                        DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=StrDataType, fillvalue=None, data=factor_data.values)
+                        DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=StrDataType, fillvalue=None, data=NewData)
                     elif data_type=="object":
-                        DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=h5py.vlen_dtype(np.uint8), data=factor_data.values)
+                        DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=h5py.vlen_dtype(np.uint8), data=NewData)
                 factor_data.index = DTs
                 return 0
         if if_exists=="update":
