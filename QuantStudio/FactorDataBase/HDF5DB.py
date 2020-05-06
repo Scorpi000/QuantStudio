@@ -29,7 +29,7 @@ def _identifyDataType(factor_data, data_type=None):
 def _adjustData(data, data_type):
     if data_type=="string": return data.where(pd.notnull(data), None).values
     elif data_type=="double": return data.astype("float").values
-    elif data_type=="object": return data.applymap(lambda x: np.frombuffer(pickle.dumps(x), dtype=np.uint8)).values.copy(order="C")
+    elif data_type=="object": return np.ascontiguousarray(data.applymap(lambda x: np.frombuffer(pickle.dumps(x), dtype=np.uint8)).values)
     else: raise __QS_Error__("不支持的数据类型: %s" % data_type)
 
 class _FactorTable(FactorTable):
@@ -158,7 +158,8 @@ class HDF5DB(WritableFactorDB):
         else:
             self._DataLock = None
     def connect(self):
-        if not os.path.isdir(self.MainDir): raise __QS_Error__("HDF5DB.connect: 不存在主目录 '%s'!" % self.MainDir)
+        if not os.path.isdir(self.MainDir):
+            raise __QS_Error__("HDF5DB.connect: 不存在主目录 '%s'!" % self.MainDir)
         if not os.path.isfile(self.MainDir+os.sep+"LockFile"):
             open(self.MainDir+os.sep+"LockFile", mode="a").close()
         self._LockFile = self.MainDir+os.sep+"LockFile"
