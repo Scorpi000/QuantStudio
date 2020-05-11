@@ -26,10 +26,16 @@ def _identifyDataType(factor_data, data_type=None):
             data_type = "double"
     return (factor_data, data_type)
 
-def _adjustData(data, data_type):
+def _adjustData(data, data_type, order="C"):
     if data_type=="string": return data.where(pd.notnull(data), None).values
     elif data_type=="double": return data.astype("float").values
-    elif data_type=="object": return np.ascontiguousarray(data.applymap(lambda x: np.frombuffer(pickle.dumps(x), dtype=np.uint8)).values)
+    elif data_type=="object":
+        if order=="C":
+            return np.ascontiguousarray(data.applymap(lambda x: np.frombuffer(pickle.dumps(x), dtype=np.uint8)).values)
+        elif order=="F":
+            return np.asfortranarray(data.applymap(lambda x: np.frombuffer(pickle.dumps(x), dtype=np.uint8)).values)
+        else:
+            raise __QS_Error__("不支持的参数 order 值: %s" % order)
     else: raise __QS_Error__("不支持的数据类型: %s" % data_type)
 
 class _FactorTable(FactorTable):
@@ -283,7 +289,7 @@ class HDF5DB(WritableFactorDB):
                     DataFile["Data"][CrossedDateTimePos, OldIDs.shape[0]:] = _adjustData(factor_data.loc[CrossedDateTimes, NewIDs], data_type)
                 CrossedIDs = factor_data.columns.intersection(OldIDs)
                 if CrossedIDs.shape[0]>0:
-                    NewData = _adjustData(factor_data.loc[CrossedDateTimes, CrossedIDs], data_type)
+                    NewData = _adjustData(factor_data.loc[CrossedDateTimes, CrossedIDs], data_type, order="F")
                     OldIDs = OldIDs.tolist()
                     if data_type=="object":
                         for i, iID in enumerate(CrossedIDs):
@@ -332,4 +338,18 @@ class HDF5DB(WritableFactorDB):
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
         for i, iFactor in enumerate(data.items):
             self.writeFactorData(data.iloc[i], table_name, iFactor, if_exists=if_exists, data_type=data_type.get(iFactor, None))
+        return 0
+    def optimizeData(self, table_name, factor_names):
+        for iFactorName in factor_names:
+            iFilePath = self.MainDir+os.sep+table_name+os.sep+iFactorName+"."+self._Suffix
+            with self._DataLock:
+                with h5py.File(iFilePath, mode="a") as DataFile:
+                    DTs = DataFile["DateTime"][...]
+                    if np.any(np.diff(DTs)<0):
+                        iData = pd.DataFrame(DataFile["Data"][...], index=DTs).sort_index()
+                        DataFile["Data"][:, :] = iData.values
+                        DataFile["DateTime"][:] = iData.index.values
+                        self._QS_Logger.info("因子 '%s' : ’%s' 数据存储完成优化!" % (table_name, iFactorName))
+                    else:
+                        self._QS_Logger.info("因子 '%s' : ’%s' 数据存储不需要优化!" % (table_name, iFactorName))
         return 0

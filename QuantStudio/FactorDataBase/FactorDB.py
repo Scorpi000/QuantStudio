@@ -113,8 +113,8 @@ class WritableFactorDB(FactorDB):
         Data = Data.where(Data!=old_value, new_value)
         self.writeData(Data, table_name, if_exists='update')
         return 0
-    # 压缩数据
-    def compressData(self, table_name, factor_names):
+    # 优化数据
+    def optimizeData(self, table_name, factor_names):
         return 0
 
 # 因子表的遍历模式参数对象

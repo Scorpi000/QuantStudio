@@ -370,6 +370,10 @@ class _FeatureTable(_DBTable):
             Data = pd.DataFrame(Data).loc[:, factor_names]
         else:
             Data = raw_data.loc[:, factor_names]
+            DupMask = Data.index.duplicated()
+            if np.any(DupMask):
+                self._QS_Logger.warning("JYDB 的表 %s 提取的数据中包含重复 ID: %s" % (self.Name, str(Data.index[DupMask])))
+                Data = Data[~DupMask]
         Data = pd.Panel(Data.values.T.reshape((Data.shape[1], Data.shape[0], 1)).repeat(len(dts), axis=2), items=factor_names, major_axis=Data.index, minor_axis=dts).swapaxes(1, 2)
         return Data.loc[:, :, ids]
 
@@ -897,14 +901,14 @@ class _InfoPublTable(_MarketTable):
         else: AnnDateField = self._DBTableName+"."+self._AnnDateField
         if AnnDateField!=EndDateField:
             if IgnoreTime:
-                SQLStr = "SELECT DISTINCT DATE(CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END) AS DT"
+                SQLStr = "SELECT DISTINCT STR_TO_DATE(CONCAT(DATE(CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END), ' ', TIME(0)), '%Y-%m-%d %H:%i:%s') AS DT "
             else:
-                SQLStr = "SELECT DISTINCT CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END AS DT"
+                SQLStr = "SELECT DISTINCT CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END AS DT "
         else:
             if IgnoreTime:
-                SQLStr = "SELECT DISTINCT DATE("+AnnDateField+") AS DT"
+                SQLStr = "SELECT DISTINCT STR_TO_DATE(CONCAT(DATE("+AnnDateField+"), ' ', TIME(0)), '%Y-%m-%d %H:%i:%s') AS DT "
             else:
-                SQLStr = "SELECT DISTINCT "+AnnDateField+" AS DT"
+                SQLStr = "SELECT DISTINCT "+AnnDateField+" AS DT "
         if iid is not None:
             SQLStr += self._genFromSQLStr()+" "
             SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+"='"+deSuffixID([iid])[0]+"' "
@@ -943,6 +947,8 @@ class _InfoPublTable(_MarketTable):
         SubSQLStr += "AND "+EndDateField+"<'"+end_date.strftime(DTFormat)+"') "
         ConditionSQLStr = self._genConditionSQLStr(args=args)
         SubSQLStr += ConditionSQLStr+" "
+        if (self._MainTableName is None) or (self._MainTableName==self._DBTableName):
+            SubSQLStr += "AND ("+genSQLInCondition(self._DBTableName+"."+self._IDField, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
         SubSQLStr += "GROUP BY "+self._DBTableName+"."+self._IDField
         if IgnoreTime:
             SQLStr = "SELECT DATE(CASE WHEN "+AnnDateField+">=t.MaxEndDate THEN "+AnnDateField+" ELSE t.MaxEndDate END) AS DT, "
@@ -955,7 +961,10 @@ class _InfoPublTable(_MarketTable):
         SQLStr += "INNER JOIN ("+SubSQLStr+") t "
         SQLStr += "ON (t."+self._IDField+"="+self._DBTableName+"."+self._IDField+" "
         SQLStr += "AND "+EndDateField+"=t.MaxEndDate) "
-        SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        if not ((self._MainTableName is None) or (self._MainTableName==self._DBTableName)):
+            SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        else:
+            SQLStr += "WHERE TRUE "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += ConditionSQLStr
         return SQLStr
@@ -970,7 +979,10 @@ class _InfoPublTable(_MarketTable):
         EndDateField = self._DBTableName+"."+self._FactorInfo.loc[args.get("日期字段", self.DateField), "DBFieldName"]
         AnnDateField = self._DBTableName+"."+self._AnnDateField
         SubSQLStr = "SELECT "+self._DBTableName+"."+self._IDField+", "
-        SubSQLStr += "CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END AS AnnDate, "
+        if IgnoreTime:
+            SubSQLStr += "DATE(CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END) AS AnnDate, "
+        else:
+            SubSQLStr += "CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END AS AnnDate, "
         SubSQLStr += "MAX("+EndDateField+") AS MaxEndDate "
         SubSQLStr += "FROM "+self._DBTableName+" "
         SubSQLStr += "WHERE ("+AnnDateField+">='"+StartDate.strftime(DTFormat)+"' "
@@ -979,11 +991,13 @@ class _InfoPublTable(_MarketTable):
         SubSQLStr += "AND "+EndDateField+"<='"+EndDate.strftime(DTFormat)+"') "
         ConditionSQLStr = self._genConditionSQLStr(args=args)
         SubSQLStr += ConditionSQLStr+" "
-        SubSQLStr += "GROUP BY "+self._DBTableName+"."+self._IDField+", AnnDate"
+        if (self._MainTableName is None) or (self._MainTableName==self._DBTableName):
+            SubSQLStr += "AND ("+genSQLInCondition(self._DBTableName+"."+self._IDField, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
         if IgnoreTime:
-            SQLStr = "SELECT DATE(t.AnnDate) AS DT, "
+            SubSQLStr += "GROUP BY "+self._DBTableName+"."+self._IDField+", DATE(AnnDate)"
         else:
-            SQLStr = "SELECT t.AnnDate AS DT, "
+            SubSQLStr += "GROUP BY "+self._DBTableName+"."+self._IDField+", AnnDate"
+        SQLStr = "SELECT t.AnnDate AS DT, "
         SQLStr += self._getIDField()+" AS ID, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
@@ -991,7 +1005,10 @@ class _InfoPublTable(_MarketTable):
         SQLStr += "INNER JOIN ("+SubSQLStr+") t "
         SQLStr += "ON (t."+self._IDField+"="+self._DBTableName+"."+self._IDField+") "
         SQLStr += "AND (t.MaxEndDate="+EndDateField+") "
-        SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        if not ((self._MainTableName is None) or (self._MainTableName==self._DBTableName)):
+            SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        else:
+            SQLStr += "WHERE TRUE "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += ConditionSQLStr+" "
         SQLStr += "ORDER BY ID, DT"
