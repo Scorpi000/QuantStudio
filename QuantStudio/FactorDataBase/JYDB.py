@@ -716,9 +716,9 @@ class _MarketTable(_DBTable):
     #DateField = Enum(None, arg_type="SingleOption", label="日期字段", order=4)
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
-        DateFields = self._FactorInfo[self._FactorInfo["FieldType"]=="Date"].index.tolist()# 所有的日期字段列表
+        DateFields = self._FactorInfo[self._FactorInfo["FieldType"].str.contains("Date")].index.tolist()# 所有的日期字段列表
         self.add_trait("DateField", Enum(*DateFields, arg_type="SingleOption", label="日期字段", order=4))
-        iFactorInfo = self._FactorInfo[(self._FactorInfo["FieldType"]=="Date") & pd.notnull(self._FactorInfo["Supplementary"])]
+        iFactorInfo = self._FactorInfo[self._FactorInfo["FieldType"].str.contains("Date") & pd.notnull(self._FactorInfo["Supplementary"])]
         iFactorInfo = iFactorInfo[iFactorInfo["Supplementary"].str.contains("Default")]
         if iFactorInfo.shape[0]>0: self.DateField = iFactorInfo.index[0]
         else: self.DateField = DateFields[0]

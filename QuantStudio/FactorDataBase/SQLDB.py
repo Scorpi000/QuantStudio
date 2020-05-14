@@ -667,7 +667,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         if (DataLenMax!=DataLenMin).sum()>0:
             self._QS_Logger.warning("'%s' 在写入因子 '%s' 时出现因子值长度不一致的情况, 将填充缺失!" % (self.Name, str(data.columns.tolist())))
         for i in range(data.shape[0]):
-            iDataLen = DataLen.iloc[i]
+            iDataLen = DataLenMax.iloc[i]
             if iDataLen>0:
                 iData = data.iloc[i].apply(lambda x: [None]*(iDataLen-len(x))+x if isinstance(x, list) else [x]*iDataLen).tolist()
                 NewData.extend(zip(*iData))

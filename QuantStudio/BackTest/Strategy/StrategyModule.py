@@ -347,7 +347,7 @@ class Strategy(BaseModule):
     def _formatStatistics(self):
         Stats = self._Output["Strategy"]["统计数据"]
         FormattedStats = pd.DataFrame(index=Stats.index, columns=Stats.columns, dtype="O")
-        DateFormatFun = np.vectorize(lambda x: x.strftime("%Y-%m-%d") if x is not None else "-")
+        DateFormatFun = np.vectorize(lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else "NaT")
         IntFormatFun = np.vectorize(lambda x: ("%d" % (x, )))
         FloatFormatFun = np.vectorize(lambda x: ("%.2f" % (x, )))
         PercentageFormatFun = np.vectorize(lambda x: ("%.2f%%" % (x*100, )))
