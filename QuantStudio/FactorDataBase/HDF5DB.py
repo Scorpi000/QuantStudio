@@ -353,3 +353,56 @@ class HDF5DB(WritableFactorDB):
                     else:
                         self._QS_Logger.info("因子 '%s' : ’%s' 数据存储不需要优化!" % (table_name, iFactorName))
         return 0
+    def fixData(self, table_name, factor_names):
+        for iFactorName in factor_names:
+            iFilePath = self.MainDir+os.sep+table_name+os.sep+iFactorName+"."+self._Suffix
+            FixMask = np.full(shape=(4, ), fill_value=True, dtype=np.bool)
+            with self._DataLock:
+                with h5py.File(iFilePath, mode="a") as DataFile:
+                    # 修复 ID 长度和数据长度不符
+                    if DataFile["ID"].shape[0]>DataFile["Data"].shape[1]:
+                        DataFile["ID"].resize((DataFile["Data"].shape[1], ))
+                    elif DataFile["ID"].shape[0]<DataFile["Data"].shape[1]:
+                        DataFile["Data"].resize((DataFile["Data"].shape[0], DataFile["ID"].shape[0]))
+                    else:
+                        FixMask[0] = False
+                    # 修复 DT 长度和数据长度不符
+                    if DataFile["DateTime"].shape[0]>DataFile["Data"].shape[0]:
+                        DataFile["DateTime"].resize((DataFile["Data"].shape[0], ))
+                    elif DataFile["DateTime"].shape[0]<DataFile["Data"].shape[0]:
+                        DataFile["Data"].resize((DataFile["DateTime"].shape[0], DataFile["Data"].shape[1]))
+                    else:
+                        FixMask[1] = False
+                    # 修复 ID 重复值
+                    IDs = pd.Series(np.arange(DataFile["ID"].shape[0]), index=DataFile["ID"][...])
+                    DuplicatedMask = IDs.index.duplicated()
+                    if np.any(DuplicatedMask):
+                        iData = DataFile["Data"][...]
+                        for jID in set(IDs.index[DuplicatedMask]):
+                            jIdx = IDs[jID].tolist()
+                            iData[:, jIdx[0]] = pd.DataFrame(iData[:, jIdx].T).fillna(method="bfill").values[0, :]
+                        nID = DuplicatedMask.shape[0] - np.sum(DuplicatedMask)
+                        DataFile["ID"].resize((nID, ))
+                        DataFile["ID"][:] = IDs.index.values[~DuplicatedMask]
+                        DataFile["Data"].resize((DataFile["Data"].shape[0], nID))
+                        DataFile["Data"][:, :] = iData[:, ~DuplicatedMask]
+                    else:
+                        FixMask[2] = False
+                    # 修复 DT 重复值
+                    DTs = pd.Series(np.arange(DataFile["DateTime"].shape[0]), index=DataFile["DateTime"][...])
+                    DuplicatedMask = DTs.index.duplicated()
+                    if np.any(DuplicatedMask):
+                        iData = DataFile["Data"][...]
+                        for jDT in set(DTs.index[DuplicatedMask]):
+                            jIdx = DTs[jDT].tolist()
+                            iData[jIdx[0], :] = pd.DataFrame(iData[jIdx, :]).fillna(method="bfill").values[0, :]
+                        nDT = DuplicatedMask.shape[0] - np.sum(DuplicatedMask)
+                        DataFile["DateTime"].resize((nDT, ))
+                        DataFile["DateTime"][:] = DTs.index.values[~DuplicatedMask]
+                        DataFile["Data"].resize((nDT, DataFile["Data"].shape[1]))
+                        DataFile["Data"][:, :] = iData[~DuplicatedMask, :]
+                    else:
+                        FixMask[3] = False
+                    if np.any(FixMask):
+                        self._QS_Logger.info("因子 '%s' : ’%s' 数据修复完成!" % (table_name, iFactorName))
+        return 0

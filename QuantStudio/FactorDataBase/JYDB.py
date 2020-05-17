@@ -239,7 +239,7 @@ class _DBTable(FactorTable):
                 else:
                     SQLStr += "AND "+self._DBTableName+"."+self._FactorInfo["DBFieldName"].loc[iConditionField]+" IN ("+iConditionVal+") "
         return SQLStr[:-1]
-    def getCondition(self, icondition, ids=None, dts=None):
+    def getCondition(self, icondition, ids=None, dts=None, args={}):
         SQLStr = "SELECT DISTINCT "+self._DBTableName+"."+self._FactorInfo["DBFieldName"].loc[icondition]+" "
         SQLStr += "FROM "+self._DBTableName+" "
         if self._MainTableName!=self._DBTableName:
@@ -248,7 +248,7 @@ class _DBTable(FactorTable):
         if ids is not None: SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
         else: SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         if (dts is not None) and hasattr(self, "DateField"):
-            DateField = self._DBTableName+"."+self._FactorInfo.loc[self.DateField, "DBFieldName"]
+            DateField = self._DBTableName+"."+self._FactorInfo.loc[args.get("日期字段", self.DateField), "DBFieldName"]
             Dates = list({iDT.strftime("%Y-%m-%d") for iDT in dts})
             SQLStr += "AND ("+genSQLInCondition(DateField, Dates, is_str=True, max_num=1000)+") "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "

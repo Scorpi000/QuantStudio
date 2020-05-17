@@ -116,6 +116,9 @@ class WritableFactorDB(FactorDB):
     # 优化数据
     def optimizeData(self, table_name, factor_names):
         return 0
+    # 修复数据, 依赖具体实现, 不保证一定修复
+    def fixData(self, table_name, factor_names):
+        return 0
 
 # 因子表的遍历模式参数对象
 class _ErgodicMode(__QS_Object__):
