@@ -65,7 +65,7 @@ def adjustDataDTID(data, look_back, factor_names, ids, dts, only_start_lookback=
             return data.loc[:, dts, ids]
         except KeyError as e:
             if logger is not None:
-                logger.warning("待提取的因子 数据超出了原始数据的时点或 ID 范围, 将填充缺失值!" % (str(list(data.items)), ))
+                logger.warning("待提取的因子 %s 数据超出了原始数据的时点或 ID 范围, 将填充缺失值!" % (str(list(data.items)), ))
             return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
     AllDTs = data.major_axis.union(dts).sort_values()
     AdjData = data.loc[:, AllDTs, ids]

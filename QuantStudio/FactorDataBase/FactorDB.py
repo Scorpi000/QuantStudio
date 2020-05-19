@@ -275,7 +275,7 @@ class _OperationMode(__QS_Object__):
     def __getstate__(self):
         state = self.__dict__.copy()
         # Remove the unpicklable entries.
-        if self._CacheDir is not None:
+        if (self._CacheDir is not None) and (not isinstance(self._CacheDir, str)):
             state["_CacheDir"] = self._CacheDir.name
         return state
 # 因子表准备子进程
@@ -652,7 +652,7 @@ class FactorTable(__QS_Object__):
             self.OperationMode._FactorID[iFactor.Name] = len(factor_dict)
             factor_dict.update(self._genFactorDict(iFactor.Descriptors, factor_dict))
         return factor_dict
-    def _initOperation(self):
+    def _initOperation(self, **kwargs):
         # 检查时点, ID 序列的合法性
         if not self.OperationMode.DateTimes: raise __QS_Error__("运算时点序列不能为空!")
         if not self.OperationMode.IDs: raise __QS_Error__("运算 ID 序列不能为空!")
@@ -677,9 +677,14 @@ class FactorTable(__QS_Object__):
         self.OperationMode._FactorDict = self._genFactorDict(self.OperationMode._Factors, self.OperationMode._FactorDict)
         # 分配每个子进程的计算 ID 序列, 生成原始数据和缓存数据存储目录
         self.OperationMode._Event = {}# {因子名: (Sub2MainQueue, Event)}, 用于多进程同步的 Event 数据
-        self.OperationMode._CacheDir = tempfile.TemporaryDirectory()
-        self.OperationMode._RawDataDir = self.OperationMode._CacheDir.name+os.sep+"RawData"# 原始数据存放根目录
-        self.OperationMode._CacheDataDir = self.OperationMode._CacheDir.name+os.sep+"CacheData"# 中间数据存放根目录
+        if "cache_dir" not in kwargs:
+            self.OperationMode._CacheDir = tempfile.TemporaryDirectory()
+            self.OperationMode._RawDataDir = self.OperationMode._CacheDir.name+os.sep+"RawData"# 原始数据存放根目录
+            self.OperationMode._CacheDataDir = self.OperationMode._CacheDir.name+os.sep+"CacheData"# 中间数据存放根目录
+        else:
+            self.OperationMode._CacheDir = kwargs["cache_dir"]
+            self.OperationMode._RawDataDir = self.OperationMode._CacheDir+os.sep+"RawData"# 原始数据存放根目录
+            self.OperationMode._CacheDataDir = self.OperationMode._CacheDir+os.sep+"CacheData"# 中间数据存放根目录
         os.mkdir(self.OperationMode._RawDataDir)
         os.mkdir(self.OperationMode._CacheDataDir)
         if self.OperationMode.SubProcessNum==0:# 串行模式
@@ -706,11 +711,11 @@ class FactorTable(__QS_Object__):
         self.OperationMode._FactorPrepareIDs = {}# {因子名: 需要准备原始数据的 ID 序列}
         for iFactor in self.OperationMode._Factors:
             iFactor._QS_initOperation(self.OperationMode.DateTimes[0], self.OperationMode._FactorStartDT, self.OperationMode.SectionIDs, self.OperationMode._FactorPrepareIDs)
-    def _prepare(self, factor_names, ids, dts):
+    def _prepare(self, factor_names, ids, dts, **kwargs):
         self.OperationMode.FactorNames = factor_names
         self.OperationMode.DateTimes = dts
         self.OperationMode.IDs = ids
-        self._initOperation()
+        self._initOperation(**kwargs)
         # 分组准备数据
         InitGroups = {}# {id(因子表) : [(因子表, [因子], [ID])]}
         for iFactor in self.OperationMode._FactorDict.values():
@@ -768,6 +773,12 @@ class FactorTable(__QS_Object__):
         self.OperationMode._isStarted = True
         return 0
     def _exit(self):
+        if isinstance(self.OperationMode._CacheDir, str):
+            try:
+                shutil.rmtree(self.OperationMode._CacheDataDir)
+                shutil.rmtree(self.OperationMode._RawDataDir)
+            except:
+                self._QS_Logger.warning("缓存文件: (%s, %s) 清理失败!" % (self.OperationMode._CacheDataDir, self.OperationMode._RawDataDir))
         self.OperationMode._CacheDir = None
         self.OperationMode._isStarted = False
         for iFactorName, iFactor in self.OperationMode._FactorDict.items():
@@ -781,7 +792,7 @@ class FactorTable(__QS_Object__):
         self.OperationMode.SubProcessNum = subprocess_num
         self.OperationMode.DTRuler = (dts if dt_ruler is None else dt_ruler)
         self.OperationMode.SectionIDs = section_ids
-        self._prepare(factor_names, ids, dts)
+        self._prepare(factor_names, ids, dts, **kwargs)
         print(("耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "2. 因子数据计算", end="\n", sep="\n")
         StartT = time.perf_counter()
         Args = {"FT":self, "PID":"0", "FactorDB":factor_db, "TableName":table_name, "if_exists":if_exists, "specific_target": specific_target}
