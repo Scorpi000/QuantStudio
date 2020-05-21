@@ -3,6 +3,7 @@ import os
 import shutil
 import base64
 from io import BytesIO
+from copy import deepcopy
 import datetime as dt
 
 import numpy as np
@@ -48,15 +49,17 @@ def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, 
     Output["时间序列"]["累计收益率"] = AccountReturn.cumsum()
     Output["时间序列"]["净值"] = (AccountReturn + 1).cumprod()
     # 负债调整
-    DebtDelta = debt_record.loc[:, ["时间点", "融资"]].groupby(by=["时间点"]).sum()["融资"]
-    PreUnleveredValue = pd.Series(np.r_[init_cash, (account_value_series.values + debt_series.values)[:-1]], index=AccountEarnings.index)
-    PreUnleveredValue[DebtDelta.index] += DebtDelta.clip(0, np.inf)
-    UnleveredReturn = AccountEarnings / np.abs(PreUnleveredValue)
-    UnleveredReturn[AccountEarnings==0] = 0.0
-    Output["时间序列"]["无杠杆收益率"] = UnleveredReturn
-    UnleveredReturn[np.isinf(UnleveredReturn)] = np.nan
-    Output["时间序列"]["无杠杆累计收益率"] = UnleveredReturn.cumsum()
-    Output["时间序列"]["无杠杆净值"] = (1+UnleveredReturn).cumprod()
+    debt_record = debt_record[debt_record["融资"]!=0]
+    if debt_record.shape[0]>0:
+        DebtDelta = debt_record.loc[:, ["时间点", "融资"]].groupby(by=["时间点"]).sum()["融资"]
+        PreUnleveredValue = pd.Series(np.r_[init_cash, (account_value_series.values + debt_series.values)[:-1]], index=AccountEarnings.index)
+        PreUnleveredValue[DebtDelta.index] += DebtDelta.clip(0, np.inf)
+        UnleveredReturn = AccountEarnings / np.abs(PreUnleveredValue)
+        UnleveredReturn[AccountEarnings==0] = 0.0
+        Output["时间序列"]["无杠杆收益率"] = UnleveredReturn
+        UnleveredReturn[np.isinf(UnleveredReturn)] = np.nan
+        Output["时间序列"]["无杠杆累计收益率"] = UnleveredReturn.cumsum()
+        Output["时间序列"]["无杠杆净值"] = (1+UnleveredReturn).cumprod()
     # 以日期为索引的序列
     if date_index.shape[0]==Output["时间序列"].shape[0]:# 判断回测序列为日级别, 直接将时间点索引更改为日期索引
         Output["日期序列"] = Output.pop("时间序列")
@@ -67,7 +70,7 @@ def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, 
         AccountValueSeries = Output["日期序列"]["账户价值"]
         DebtSeries = Output["日期序列"]["负债"]
         AccountEarnings = AccountValueSeries.diff()
-        AccountEarnings.iloc[0] = AccountValueSeries.iloc[0]-init_cash
+        AccountEarnings.iloc[0] = AccountValueSeries.iloc[0] - init_cash
         # 现金流调整
         cash_record = cash_record.copy()
         cash_record["时间点"]= [iDateTime.date() for iDateTime in cash_record["时间点"]]
@@ -81,20 +84,26 @@ def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, 
         AccountReturn[np.isinf(AccountReturn)] = np.nan
         Output["日期序列"]["累计收益率"] = AccountReturn.cumsum()
         Output["日期序列"]["净值"] = (AccountReturn+1).cumprod()
-        debt_record = debt_record.copy()
-        debt_record["时间点"] = [iDateTime.date() for iDateTime in debt_record["时间点"]]
-        DebtDelta = debt_record.loc[:, ["时间点", "融资"]].groupby(by=["时间点"]).sum()["融资"]
-        PreUnleveredValue = pd.Series(np.append(np.array(init_cash), (AccountValueSeries.values+DebtSeries.values)[:-1]), index=AccountEarnings.index)
-        PreUnleveredValue[DebtDelta.index] += DebtDelta.clip(0, np.inf)
-        UnleveredReturn = AccountEarnings / np.abs(PreUnleveredValue)
-        UnleveredReturn[AccountEarnings==0] = 0.0
-        Output["日期序列"]["无杠杆收益率"] = UnleveredReturn
-        UnleveredReturn[np.isinf(UnleveredReturn)] = np.nan
-        Output["日期序列"]["无杠杆累计收益率"] = UnleveredReturn.cumsum()
-        Output["日期序列"]["无杠杆净值"] = (1 + UnleveredReturn).cumprod()
+        # 负债调整
+        if debt_record.shape[0]>0:
+            debt_record = debt_record.copy()
+            debt_record["时间点"] = [iDateTime.date() for iDateTime in debt_record["时间点"]]
+            DebtDelta = debt_record.loc[:, ["时间点", "融资"]].groupby(by=["时间点"]).sum()["融资"]
+            PreUnleveredValue = pd.Series(np.append(np.array(init_cash), (AccountValueSeries.values+DebtSeries.values)[:-1]), index=AccountEarnings.index)
+            PreUnleveredValue[DebtDelta.index] += DebtDelta.clip(0, np.inf)
+            UnleveredReturn = AccountEarnings / np.abs(PreUnleveredValue)
+            UnleveredReturn[AccountEarnings==0] = 0.0
+            Output["日期序列"]["无杠杆收益率"] = UnleveredReturn
+            UnleveredReturn[np.isinf(UnleveredReturn)] = np.nan
+            Output["日期序列"]["无杠杆累计收益率"] = UnleveredReturn.cumsum()
+            Output["日期序列"]["无杠杆净值"] = (1 + UnleveredReturn).cumprod()
     # 统计数据
-    Output["统计数据"] = summaryStrategy(Output["日期序列"][["净值", "无杠杆净值"]].values, list(Output["日期序列"].index), init_wealth=[1, 1])
-    Output["统计数据"].columns = ["账户价值", "无杠杆价值"]
+    if debt_record.shape[0]>0:
+        Output["统计数据"] = summaryStrategy(Output["日期序列"][["净值", "无杠杆净值"]].values, list(Output["日期序列"].index), init_wealth=[1, 1])
+        Output["统计数据"].columns = ["账户价值", "无杠杆价值"]
+    else:
+        Output["统计数据"] = summaryStrategy(Output["日期序列"][["净值"]].values, list(Output["日期序列"].index), init_wealth=[1])
+        Output["统计数据"].columns = ["账户价值"]
     return Output
 
 
@@ -140,7 +149,6 @@ class Account(BaseModule):
         self._Output["现金流记录"] = self._CashRecord
         self._Output["融资记录"] = self._DebtRecord
         self._Output["交易记录"] = self._TradingRecord
-        self._Output = self.output(recalculate=True)
         return super().__QS_end__()
     # 当前账户的剩余现金
     @property
@@ -245,6 +253,7 @@ class _Benchmark(__QS_Object__):
             self.add_trait("BenchmarkID", Enum(*self.FactorTable.getID(ifactor_name=self.PriceFactor), arg_type="SingleOption", label="基准ID", order=2))
         else:
             self.add_trait("BenchmarkID", Enum(None, arg_type="SingleOption", label="基准ID", order=2))
+
 # 策略基类
 class Strategy(BaseModule):
     """策略基类"""
@@ -281,6 +290,7 @@ class Strategy(BaseModule):
     def __QS_end__(self):
         if not self._isStarted: return 0
         for iAccount in self.Accounts: iAccount.__QS_end__()
+        self._Output = self._output()
         return super().__QS_end__()
     def getViewItems(self, context_name=""):
         Prefix = (context_name+"." if context_name else "")
@@ -303,10 +313,13 @@ class Strategy(BaseModule):
     def trade(self, idt, trading_record, signal):
         return 0
     def output(self, recalculate=False):
-        if not recalculate: return self._Output
+        if recalculate: self._Output = self._output()
+        return self._Output
+    def _output(self):
+        Output = {}
         for i, iAccount in enumerate(self.Accounts):
-            iOutput = iAccount.output(recalculate=True)
-            if iOutput: self._Output[str(i)+"-"+iAccount.Name] = iOutput
+            iOutput = iAccount.output()
+            if iOutput: Output[str(i)+"-"+iAccount.Name] = iOutput
         AccountValueSeries, CashSeries, DebtSeries, InitCash, DebtRecord, CashRecord = 0, 0, 0, 0, None, None
         for iAccount in self.Accounts:
             AccountValueSeries += iAccount.getAccountValueSeries()
@@ -315,14 +328,18 @@ class Strategy(BaseModule):
             InitCash += iAccount.InitCash
             DebtRecord = iAccount.DebtRecord.append(DebtRecord)
             CashRecord = iAccount.CashRecord.append(CashRecord)
+        DebtRecord = DebtRecord[DebtRecord["融资"]!=0]
         StrategyOutput = genAccountOutput(InitCash, CashSeries, DebtSeries, AccountValueSeries, CashRecord, DebtRecord, self._Model.DateIndexSeries)
-        StrategyOutput["统计数据"].columns = ["策略表现", "无杠杆表现"]
+        StrategyOutput["统计数据"] = StrategyOutput["统计数据"].rename(columns={"账户价值": "策略表现", "无杠杆价值": "无杠杆表现"})
         if self.Benchmark.FactorTable is not None:# 设置了基准
             BenchmarkPrice = self.Benchmark.FactorTable.readData(factor_names=[self.Benchmark.PriceFactor], dts=AccountValueSeries.index.tolist(), ids=[self.Benchmark.BenchmarkID]).iloc[0,:,0]
             BenchmarkOutput = pd.DataFrame(calcYieldSeq(wealth_seq=BenchmarkPrice.values), index=BenchmarkPrice.index, columns=["基准收益率"])
             BenchmarkOutput["基准累计收益率"] = BenchmarkOutput["基准收益率"].cumsum()
             BenchmarkOutput["基准净值"] = BenchmarkPrice / BenchmarkPrice.iloc[0]
-            LYield = (StrategyOutput["日期序列"]["无杠杆收益率"].values if "时间序列" not in StrategyOutput else StrategyOutput["时间序列"]["无杠杆收益率"].values)
+            if DebtRecord.shape[0]>0:
+                LYield = (StrategyOutput["日期序列"]["无杠杆收益率"].values if "时间序列" not in StrategyOutput else StrategyOutput["时间序列"]["无杠杆收益率"].values)
+            else:
+                LYield = (StrategyOutput["日期序列"]["收益率"].values if "时间序列" not in StrategyOutput else StrategyOutput["时间序列"]["收益率"].values)
             if not self.Benchmark.RebalanceDTs: RebalanceIndex = None
             else:
                 RebalanceIndex = pd.Series(np.arange(BenchmarkOutput["基准收益率"].shape[0]), index=BenchmarkOutput["基准收益率"].index, dtype=int)
@@ -342,8 +359,8 @@ class Strategy(BaseModule):
             BenchmarkStatistics = summaryStrategy(BenchmarkOutput[["基准净值", "相对净值"]].values, list(BenchmarkOutput.index), init_wealth=[1, 1])
             BenchmarkStatistics.columns = ["基准", "相对表现"]
             StrategyOutput["统计数据"] = pd.merge(StrategyOutput["统计数据"], BenchmarkStatistics, left_index=True, right_index=True)
-        self._Output["Strategy"] = StrategyOutput
-        return self._Output
+        Output["Strategy"] = StrategyOutput
+        return Output
     def _formatStatistics(self):
         Stats = self._Output["Strategy"]["统计数据"]
         FormattedStats = pd.DataFrame(index=Stats.index, columns=Stats.columns, dtype="O")
@@ -375,19 +392,23 @@ class Strategy(BaseModule):
         iRAxes.legend(loc="upper right")
         iAxes.set_xticks(xTicks)
         iAxes.set_xticklabels(xTickLabels)
-        iAxes.legend(loc='upper left')
-        iAxes.set_title("策略表现")
+        iAxes.legend(loc="upper left")
+        iAxes.set_title("策略账户表现")
         iAxes = Fig.add_subplot(nRow, nCol, 2)
-        iAxes.plot(xData, StrategyOutput["日期序列"]["无杠杆净值"].values, label="无杠杆净值", color="indianred", lw=2.5)
-        if hasBenchmark: iAxes.plot(xData, StrategyOutput["日期序列"]["基准净值"].values, label="基准净值", color="forestgreen", lw=2.5)
         iRAxes = iAxes.twinx()
         iRAxes.yaxis.set_major_formatter(yMajorFormatter)
-        iRAxes.bar(xData, StrategyOutput["日期序列"]["无杠杆收益率"].values, label="无杠杆收益率", color="steelblue")
+        if "无杠杆净值" in StrategyOutput["日期序列"]:
+            iAxes.plot(xData, StrategyOutput["日期序列"]["无杠杆净值"].values, label="无杠杆净值", color="indianred", lw=2.5)
+            iRAxes.bar(xData, StrategyOutput["日期序列"]["无杠杆收益率"].values, label="无杠杆收益率", color="steelblue")
+        else:
+            iAxes.plot(xData, StrategyOutput["日期序列"]["净值"].values, label="净值", color="indianred", lw=2.5)
+            iRAxes.bar(xData, StrategyOutput["日期序列"]["收益率"].values, label="收益率", color="steelblue")
+        if hasBenchmark: iAxes.plot(xData, StrategyOutput["日期序列"]["基准净值"].values, label="基准净值", color="forestgreen", lw=2.5)
         iRAxes.legend(loc="upper right")
         iAxes.set_xticks(xTicks)
         iAxes.set_xticklabels(xTickLabels)
-        iAxes.legend(loc='upper left')
-        iAxes.set_title("策略无杠杆表现")
+        iAxes.legend(loc="upper left")
+        iAxes.set_title("策略净值表现")
         if hasBenchmark:
             iAxes = Fig.add_subplot(nRow, nCol, 3)
             iAxes.plot(xData, StrategyOutput["日期序列"]["相对净值"].values, label="相对净值", color="indianred", lw=2.5)
@@ -397,7 +418,7 @@ class Strategy(BaseModule):
             iRAxes.legend(loc="upper right")
             iAxes.set_xticks(xTicks)
             iAxes.set_xticklabels(xTickLabels)
-            iAxes.legend(loc='upper left')
+            iAxes.legend(loc="upper left")
             iAxes.set_title("策略相对表现")
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
@@ -405,6 +426,151 @@ class Strategy(BaseModule):
         HTML = self._formatStatistics().to_html()
         Pos = HTML.find(">")
         HTML = HTML[:Pos]+' align="center"'+HTML[Pos:]
+        Fig = self.genMatplotlibFig()
+        # figure 保存为二进制文件
+        Buffer = BytesIO()
+        Fig.savefig(Buffer)
+        PlotData = Buffer.getvalue()
+        # 图像数据转化为 HTML 格式
+        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+        HTML += ('<img src="%s">' % ImgStr)
+        return HTML
+
+# 多策略对比
+class MultiStrategy(BaseModule):
+    """多策略对比"""
+    StrategyModules = List(Strategy, arg_type="List", label="对比策略", order=0)
+    def __init__(self, name="多策略对比", sys_args={}, **kwargs):
+        return super().__init__(name=name, sys_args=sys_args, **kwargs)
+    def __QS_start__(self, mdl, dts, **kwargs):
+        if self._isStarted: return ()
+        FactorTables = super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
+        for iModule in self.StrategyModules:
+            FactorTables += iModule.__QS_start__(mdl=mdl, dts=dts, **kwargs)
+        return FactorTables
+    def __QS_move__(self, idt, **kwargs):
+        for iModule in self.StrategyModules:
+            iModule.__QS_move__(idt, **kwargs)
+        return 0
+    def __QS_end__(self):
+        if not self._isStarted: return 0
+        super().__QS_end__()
+        for i, iModule in enumerate(self.StrategyModules):
+            iModule.__QS_end__()
+        if len(self.StrategyModules)==0:
+            self._Output = {}
+            return 0
+        self._Output = {"日期序列": {"现金": {}, "负债": {}, "证券": {}, "账户价值":{},
+                                                       "收益率": {}, "无杠杆收益率":{}, "相对收益率": {},
+                                                       "累计收益率": {}, "无杠杆累计收益率": {}, "相对累计收益率": {},
+                                                       "净值": {}, "无杠杆净值":{}, "相对净值": {}},
+                                  "统计数据": {"策略表现": {}, "无杠杆表现": {}, "相对表现": {}}}
+        SeriesDefault = {"无杠杆收益率": "收益率", "无杠杆累计收益率": "累计收益率", "无杠杆净值": "净值"}
+        SeriesAnyExist = {jKey: False for jKey in self._Output["日期序列"]}
+        SummaryAnyExist = False
+        StrategyNames = []
+        for i, iModule in enumerate(self.StrategyModules):
+            iOutput = iModule.output()
+            iName = str(i)+"-"+iModule.Name
+            StrategyNames.append(iName)
+            self._Output[iName] = iOutput
+            if (i==0) and ("时间序列" in iOutput):
+                self._Output["时间序列"] = deepcopy(self._Output["日期序列"])
+            for jKey in self._Output["日期序列"]:
+                if jKey in iOutput["Strategy"]["日期序列"]:
+                    self._Output["日期序列"][jKey][iName] = iOutput["Strategy"]["日期序列"][jKey]
+                    SeriesAnyExist[jKey] = True
+                elif jKey in SeriesDefault:
+                    self._Output["日期序列"][jKey][iName] = iOutput["Strategy"]["日期序列"][SeriesDefault[jKey]]
+                if "时间序列" in iOutput:
+                    if jKey in iOutput["Strategy"]["时间序列"]:
+                        self._Output["时间序列"][jKey][iName] = iOutput["Strategy"]["时间序列"][jKey]
+                        SeriesAnyExist[jKey] = True
+                    elif jKey in SeriesDefault:
+                        self._Output["时间序列"][jKey][iName] = iOutput["Strategy"]["时间序列"][SeriesDefault[jKey]]
+            self._Output["统计数据"]["策略表现"][iName] = iOutput["Strategy"]["统计数据"]["策略表现"]
+            if "无杠杆表现" in iOutput["Strategy"]["统计数据"]:
+                self._Output["统计数据"]["无杠杆表现"][iName] = iOutput["Strategy"]["统计数据"]["无杠杆表现"]
+                SummaryAnyExist = True
+            else:
+                self._Output["统计数据"]["无杠杆表现"][iName] = iOutput["Strategy"]["统计数据"]["策略表现"]
+            if "相对表现" in iOutput["Strategy"]["统计数据"]:
+                self._Output["统计数据"]["相对表现"][iName] = iOutput["Strategy"]["统计数据"]["相对表现"]
+        for jKey in list(self._Output["日期序列"]):
+            if SeriesAnyExist.get(jKey, True):
+                self._Output["日期序列"][jKey] = pd.DataFrame(self._Output["日期序列"][jKey]).loc[:, StrategyNames]
+                if "时间序列" in self._Output: self._Output["时间序列"][jKey] = pd.DataFrame(self._Output["时间序列"][jKey]).loc[:, StrategyNames]
+            else:
+                self._Output["日期序列"].pop(jKey)
+                if "时间序列" in self._Output: self._Output["时间序列"].pop(jKey)
+        self._Output["统计数据"]["策略表现"] = pd.DataFrame(self._Output["统计数据"]["策略表现"]).loc[:, StrategyNames]
+        if SummaryAnyExist:
+            self._Output["统计数据"]["无杠杆表现"] = pd.DataFrame(self._Output["统计数据"]["无杠杆表现"]).loc[:, StrategyNames]
+        else:
+            self._Output["统计数据"].pop("无杠杆表现")
+        if not self._Output["统计数据"]["相对表现"]:
+            self._Output["统计数据"].pop("相对表现")
+        else:
+            self._Output["统计数据"]["相对表现"] = pd.DataFrame(self._Output["统计数据"]["相对表现"]).loc[:, StrategyNames]
+        return 0
+    def _formatStatistics(self, stats):
+        FormattedStats = pd.DataFrame(index=stats.index, columns=stats.columns, dtype="O")
+        DateFormatFun = np.vectorize(lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else "NaT")
+        IntFormatFun = np.vectorize(lambda x: ("%d" % (x, )))
+        FloatFormatFun = np.vectorize(lambda x: ("%.2f" % (x, )))
+        PercentageFormatFun = np.vectorize(lambda x: ("%.2f%%" % (x*100, )))
+        FormattedStats.iloc[:2] = DateFormatFun(stats.iloc[:2, :].values)
+        FormattedStats.iloc[2] = IntFormatFun(stats.iloc[2, :].values)
+        FormattedStats.iloc[3:6] = PercentageFormatFun(stats.iloc[3:6, :].values)
+        FormattedStats.iloc[6] = FloatFormatFun(stats.iloc[6, :].values)
+        FormattedStats.iloc[7:9] = PercentageFormatFun(stats.iloc[7:9, :].values)
+        FormattedStats.iloc[9:] = DateFormatFun(stats.iloc[9:, :].values)
+        return FormattedStats
+    def genMatplotlibFig(self, file_path=None):
+        StrategyOutput = self._Output
+        hasBenchmark = ("相对表现" in StrategyOutput["统计数据"])
+        if hasBenchmark: nRow, nCol = 1, 3
+        else: nRow, nCol = 1, 2
+        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
+        xData = np.arange(0, StrategyOutput["日期序列"]["账户价值"].shape[0])
+        xTicks = np.arange(0, StrategyOutput["日期序列"]["账户价值"].shape[0], int(StrategyOutput["日期序列"]["账户价值"].shape[0]/10))
+        xTickLabels = [StrategyOutput["日期序列"]["账户价值"].index[i].strftime("%Y-%m-%d") for i in xTicks]
+        yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
+        iAxes = Fig.add_subplot(nRow, nCol, 1)
+        for i, iCol in enumerate(StrategyOutput["日期序列"]["账户价值"].columns):
+            iAxes.plot(xData, StrategyOutput["日期序列"]["账户价值"].values[:, i], label=iCol+"-账户价值", lw=2.5)
+        iAxes.set_xticks(xTicks)
+        iAxes.set_xticklabels(xTickLabels)
+        iAxes.legend(loc="upper left")
+        iAxes.set_title("策略账户表现")
+        iAxes = Fig.add_subplot(nRow, nCol, 2)
+        if "无杠杆净值" in StrategyOutput["日期序列"]:
+            for i, iCol in enumerate(StrategyOutput["日期序列"]["无杠杆净值"].columns):
+                iAxes.plot(xData, StrategyOutput["日期序列"]["无杠杆净值"].values[:, i], label=iCol+"-无杠杆净值", lw=2.5)
+        else:
+            for i, iCol in enumerate(StrategyOutput["日期序列"]["净值"].columns):
+                iAxes.plot(xData, StrategyOutput["日期序列"]["净值"].values[:, i], label=iCol+"-净值", lw=2.5)
+        iAxes.set_xticks(xTicks)
+        iAxes.set_xticklabels(xTickLabels)
+        iAxes.legend(loc="upper left")
+        iAxes.set_title("策略净值表现")
+        if hasBenchmark:
+            iAxes = Fig.add_subplot(nRow, nCol, 3)
+            for i, iCol in enumerate(StrategyOutput["日期序列"]["相对净值"].columns):
+                iAxes.plot(xData, StrategyOutput["日期序列"]["相对净值"].values[:, i], label=iCol+"-相对净值", lw=2.5)
+            iAxes.set_xticks(xTicks)
+            iAxes.set_xticklabels(xTickLabels)
+            iAxes.legend(loc="upper left")
+            iAxes.set_title("策略相对表现")
+        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
+        return Fig
+    def _repr_html_(self):
+        HTML = ""
+        for iKey in ["策略表现", "无杠杆表现", "相对表现"]:
+            if iKey in self._Output["统计数据"]:
+                iHTML = self._formatStatistics(self._Output["统计数据"][iKey]).to_html()
+                iPos = iHTML.find(">")
+                HTML += iKey+": "+iHTML[:iPos]+' align="center"'+iHTML[iPos:]
         Fig = self.genMatplotlibFig()
         # figure 保存为二进制文件
         Buffer = BytesIO()

@@ -62,23 +62,23 @@ class BaseModule(__QS_Object__):
 
 def _runModel(args):
     Sub2MainQueue, OutputPipe = args.pop("Sub2MainQueue"), args.pop("OutputPipe")
-    FactorDBs = set()
+    FTs = set()
     for j in args["module_inds"]:
-        jDBs = args["mdl"].Modules[j].__QS_start__(mdl=args["mdl"], dts=args["mdl"]._QS_TestDateTimes)
-        if jDBs is not None: FactorDBs.update(set(jDBs))
-    for jDB in FactorDBs: jDB.start(dts=args["mdl"]._QS_TestDateTimes)
+        jFTs = args["mdl"].Modules[j].__QS_start__(mdl=args["mdl"], dts=args["mdl"]._QS_TestDateTimes)
+        if jFTs is not None: FTs.update(set(jFTs))
+    for jFT in FTs: jFT.start(dts=args["mdl"]._QS_TestDateTimes)
     Sub2MainQueue.put(0)
     for i, iDT in enumerate(args["mdl"]._QS_TestDateTimes):
         args["mdl"]._TestDateTimeIndex = i
         args["mdl"]._TestDateIndex.loc[iDT.date()] = i
-        for jDB in FactorDBs: jDB.move(iDT)
+        for jFT in FTs: jFT.move(iDT)
         for j in args["module_inds"]: args["mdl"].Modules[j].__QS_move__(iDT)
         Sub2MainQueue.put(1)
     for j in args["module_inds"]: args["mdl"].Modules[j].__QS_end__()
-    for jDB in FactorDBs: jDB.end()
+    for jFT in FTs: jFT.end()
     Output = {}
     for j in args["module_inds"]:
-        iOutput = args["mdl"].Modules[j].output(recalculate=True)
+        iOutput = args["mdl"].Modules[j].output()
         if iOutput: Output[str(j)+"-"+args["mdl"].Modules[j].Name] = iOutput
     Sub2MainQueue.put(2)
     OutputPipe.put(Output)
@@ -124,26 +124,26 @@ class BackTestModel(__QS_Object__):
         if subprocess_num>0: return self._runMultiProcs(subprocess_num)
         TotalStartT = time.perf_counter()
         print("==========历史回测==========", "1. 初始化", sep="\n", end="\n")
-        FactorDBs = set()
+        FTs = set()
         for jModule in self.Modules:
-            jDBs = jModule.__QS_start__(mdl=self, dts=self._QS_TestDateTimes)
-            if jDBs is not None: FactorDBs.update(set(jDBs))
-        for jDB in FactorDBs: jDB.start(dts=self._QS_TestDateTimes)
+            jFTs = jModule.__QS_start__(mdl=self, dts=self._QS_TestDateTimes)
+            if jFTs is not None: FTs.update(set(jFTs))
+        for jFT in FTs: jFT.start(dts=self._QS_TestDateTimes)
         print(("耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "2. 循环计算", sep="\n", end="\n")
         StartT = time.perf_counter()
         with ProgressBar(max_value=len(self._QS_TestDateTimes)) as ProgBar:
             for i, iDT in enumerate(self._QS_TestDateTimes):
                 self._TestDateTimeIndex = i
                 self._TestDateIndex.loc[iDT.date()] = i
-                for jDB in FactorDBs: jDB.move(iDT)
+                for jFT in FTs: jFT.move(iDT)
                 for jModule in self.Modules: jModule.__QS_move__(iDT)
                 ProgBar.update(i+1)
         print(("耗时 : %.2f" % (time.perf_counter()-StartT, )), "3. 结果生成", sep="\n", end="\n")
         StartT = time.perf_counter()
         for jModule in self.Modules: jModule.__QS_end__()
-        for jDB in FactorDBs: jDB.end()
+        for jFT in FTs: jFT.end()
         print(("耗时 : %.2f" % (time.perf_counter()-StartT, )), ("总耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "="*28, sep="\n", end="\n")
-        self._Output = self.output(recalculate=True)
+        self._Output = self.output()
         return 0
     def _runMultiProcs(self, subprocess_num):
         nPrcs = min(subprocess_num, len(self.Modules))
@@ -183,10 +183,9 @@ class BackTestModel(__QS_Object__):
         return 0
     # 计算并输出测试的结果集
     def output(self, recalculate=False):
-        if not recalculate: return self._Output
         self._Output = {}
         for j, jModule in enumerate(self.Modules):
-            iOutput = jModule.output(recalculate=True)
+            iOutput = jModule.output(recalculate=recalculate)
             if iOutput: self._Output[str(j)+"-"+jModule.Name] = iOutput
         return self._Output
     # 对象的 HTML 表示

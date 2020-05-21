@@ -296,9 +296,9 @@ class QuantilePortfolio(BaseModule):
         return HTML
 
 class MultiPortfolio(BaseModule):
-    """组合对比"""
+    """多组合对比"""
     PortfolioModules = List(QuantilePortfolio, arg_type="List", label="对比模块", order=0)
-    def __init__(self, name="组合对比", sys_args={}, **kwargs):
+    def __init__(self, name="多组合对比", sys_args={}, **kwargs):
         return super().__init__(name=name, sys_args=sys_args, **kwargs)
     def __QS_start__(self, mdl, dts, **kwargs):
         if self._isStarted: return ()
@@ -309,7 +309,7 @@ class MultiPortfolio(BaseModule):
         return FactorTables
     def __QS_move__(self, idt, **kwargs):
         for iModule in self.PortfolioModules:
-            iModule.__QS_move__(idt)
+            iModule.__QS_move__(idt, **kwargs)
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
@@ -322,7 +322,7 @@ class MultiPortfolio(BaseModule):
                         "统计数据": {"Top": None, "Bottom": None, "L-S": None, "市场": None}}
         for i, iModule in enumerate(self.PortfolioModules):
             iModule.__QS_end__()
-            iOutput = iModule.output(recalculate=True)
+            iOutput = iModule.output()
             iName = str(i)+"-"+iModule.Name
             self._Output[iName] = iOutput
             self._Output["净值"]["Top"][iName] = iOutput["净值"].iloc[:, 0]
