@@ -109,11 +109,10 @@ class TimingStrategy(Strategy):
         self.trade(idt, TradingRecord, Signal)
         for iAccount in self.Accounts: iAccount.__QS_after_move__(idt, **kwargs)
         return 0
-    def output(self, recalculate=False):
-        Output = super().output(recalculate=recalculate)
-        if recalculate:
-            Output["Strategy"]["择时信号"] = pd.DataFrame(self._AllSignals).T
-            Output["Strategy"]["资金分配"] = pd.DataFrame(self._AllAllocationReset).T
+    def _output(self):
+        Output = super()._output()
+        Output["Strategy"]["择时信号"] = pd.DataFrame(self._AllSignals).T
+        Output["Strategy"]["资金分配"] = pd.DataFrame(self._AllAllocationReset).T
         return Output
     def genSignal(self, idt, trading_record):
         return None

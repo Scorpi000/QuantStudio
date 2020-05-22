@@ -58,64 +58,54 @@ def calcMinVarPortfolio(cov, allow_short=True):
 # max mu' * w - risk_aversion * w' * cov * w
 # s.t. 1' * w = 1
 #        0<=w<=1, if allow_short=False
-def calcEfficientPortfolio(cov, mu, allow_short=True, r=None, sigma=None, risk_aversion=None):
-    if (r is None) and (sigma is None) and (risk_aversion is None):
-        raise Exception("One of the target return, target volatility and risk aversion must be given!")
+def calcEfficientPortfolio(cov, mu, allow_short=True, lb=None, ub=None, r=None, sigma=None, risk_aversion=None, **kwargs):
+    # 有解析解的情形
+    if (r is not None) and allow_short and (lb is None) and (ub is None):
+        return calcCharacteristicPortfolio(cov, np.ones(shape=np.shape(mu)), mu / r)
+    if (r is None) and (sigma is None) and (risk_aversion is not None) and allow_short and (lb is None) and (ub is None):
+        InvCov = np.linalg.inv(cov)
+        l = np.ones(shape=np.shape(mu))
+        return 1 / (2*risk_aversion) * np.dot(InvCov, mu) + (1 - np.dot(l, np.dot(InvCov, mu)) / (2*risk_aversion)) / np.dot(l, np.dot(InvCov, l)) * np.dot(InvCov, l)
+    # 无解析解的情形
+    verbose  = kwargs.pop("verbose", False)
+    w = cvx.Variable(np.shape(mu)[0])
+    Constraints = [cvx.sum(w)==1]
+    if not allow_short:
+        Constraints += [w>=0, w<=1]
+    if lb is not None:
+        Constraints.append(w>=lb)
+    if ub is not None:
+        Constraints.append(w<=ub)
     if r is not None:
-        if allow_short:
-            return calcCharacteristicPortfolio(cov, np.ones(shape=np.shape(mu)), mu)
-        elif r<np.min(mu):
+        if r<np.min(mu):
             raise Exception("Target return is less than the minimum of all returns")
         elif r>np.max(mu):
             raise Exception("Target return is greater than the maximum of all returns")
         else:
-            w = cvx.Variable(np.shape(mu)[0])
-            Prob = cvx.Problem(cvx.Minimize(cvx.quad_form(w, cov)), [mu @ w == r, cvx.sum(w)==1, w>=0, w<=1])
-            Prob.solve(verbose=False)
-            if Prob.status == cvx.OPTIMAL:
-                return w.value
+            Constraints.append(mu @ w == r)
+            Prob = cvx.Problem(cvx.Minimize(cvx.quad_form(w, cov)), Constraints)
+    elif sigma is not None:
+        Constraints.append(cvx.quad_form(w, cov) <= sigma**2)
+        Prob = cvx.Problem(cvx.Maximize(mu @ w), Constraints)
+        Prob.solve(verbose=verbose, **kwargs)
+        if Prob.status == cvx.OPTIMAL:
+            return w.value
+        else:
+            MinVarPortfolio = calcMinVarPortfolio(cov, allow_short=allow_short)
+            if sigma < np.dot(MinVarPortfolio, np.dot(cov, MinVarPortfolio))**0.5:
+                raise Exception("Target volatility is less than the minimum volatility!")
             else:
                 raise Exception("Efficient portfolio problem solving fails!")
-    if sigma is not None:
-        if allow_short:
-            w = cvx.Variable(np.shape(mu)[0])
-            Prob = cvx.Problem(cvx.Maximize(mu @ w), [cvx.quad_form(w, cov) <= sigma**2, cvx.sum(w)==1])
-            Prob.solve(verbose=False)
-            if Prob.status == cvx.OPTIMAL:
-                return w.value
-            else:
-                MinVarPortfolio = calcMinVarPortfolio(cov, allow_short=True)
-                if sigma < np.dot(MinVarPortfolio, np.dot(cov, MinVarPortfolio))**0.5:
-                    raise Exception("Target volatility is less than the minimum volatility!")
-                else:
-                    raise Exception("Efficient portfolio problem solving fails!")
-        else:
-            w = cvx.Variable(np.shape(mu)[0])
-            Prob = cvx.Problem(cvx.Maximize(mu @ w), [cvx.quad_form(w, cov) <= sigma**2, cvx.sum(w)==1, w>=0, w<=1])
-            Prob.solve(verbose=False)
-            if Prob.status == cvx.OPTIMAL:
-                return w.value
-            else:
-                MinVarPortfolio = calcMinVarPortfolio(cov, allow_short=False)
-                if sigma < np.dot(MinVarPortfolio, np.dot(cov, MinVarPortfolio))**0.5:
-                    raise Exception("Target volatility is less than the minimum volatility!")
-                elif sigma>np.max(np.diag(cov))**0.5:
-                    raise Exception("Target volatility is less than the minimum volatility!")
-                else:
-                    raise Exception("Efficient portfolio problem solving fails!")
-    if risk_aversion is not None:
-        if allow_short:
-            InvCov = np.linalg.inv(cov)
-            l = np.ones(shape=np.shape(mu))
-            return 1 / (2*risk_aversion) * np.dot(InvCov, mu) + (1 - np.dot(l, np.dot(InvCov, mu)) / (2*risk_aversion)) / np.dot(l, np.dot(InvCov, l)) * np.dot(InvCov, l)
-        else:
-            w = cvx.Variable(np.shape(mu)[0])
-            Prob = cvx.Problem(cvx.Maximize(mu @ w - cvx.quad_form(w, risk_aversion * cov)), [cvx.sum(w)==1, w>=0, w<=1])
-            Prob.solve(verbose=False)
-            if Prob.status == cvx.OPTIMAL:
-                return w.value
-            else:
-                raise Exception("Efficient portfolio problem solving fails!")
+    elif risk_aversion is not None:
+        Prob = cvx.Problem(cvx.Maximize(mu @ w - cvx.quad_form(w, risk_aversion * cov)), Constraints)
+    else:
+        raise Exception("One of the target return, target volatility and risk aversion must be given!")
+    Prob.solve(verbose=verbose, **kwargs)
+    if Prob.status == cvx.OPTIMAL:
+        return w.value
+    else:
+        raise Exception("Efficient portfolio problem solving fails!")
+
 # 最大夏普率组合
 # min (mu' * w - rf) / (w' * cov * w) ** (1/2)
 # s.t. 1' * w = 1

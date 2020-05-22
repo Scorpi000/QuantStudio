@@ -88,9 +88,9 @@ class PortfolioStrategy(Strategy):
         self.trade(idt, iTradingRecord, Signal)
         for iAccount in self.Accounts: iAccount.__QS_after_move__(idt, **kwargs)
         return 0
-    def output(self, recalculate=False):
-        Output = super().output(recalculate=recalculate)
-        if recalculate: Output["Strategy"]["投资组合信号"] = pd.DataFrame(self._AllSignals).T
+    def _output(self):
+        Output = super()._output()
+        Output["Strategy"]["投资组合信号"] = pd.DataFrame(self._AllSignals).T
         return Output
     def genSignal(self, idt, trading_record):
         return None
