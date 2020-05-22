@@ -235,7 +235,7 @@ class _DBTable(FactorTable):
             iConditionVal = args.get(iConditionField, self[iConditionField])
             if iConditionVal:
                 if _identifyDataType(self._FactorInfo.loc[iConditionField, "DataType"])!="double":
-                    SQLStr += "AND "+self._DBTableName+"."+self._FactorInfo["DBFieldName"].loc[iConditionField]+" IN ('"+"','".join(iConditionVal)+"') "
+                    SQLStr += "AND "+self._DBTableName+"."+self._FactorInfo["DBFieldName"].loc[iConditionField]+" IN ('"+"','".join(iConditionVal.split(","))+"') "
                 else:
                     SQLStr += "AND "+self._DBTableName+"."+self._FactorInfo["DBFieldName"].loc[iConditionField]+" IN ("+iConditionVal+") "
         return SQLStr[:-1]
