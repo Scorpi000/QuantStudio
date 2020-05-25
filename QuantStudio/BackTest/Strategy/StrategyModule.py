@@ -28,7 +28,7 @@ def cutDateTime(df, dts=None, start_dt=None, end_dt=None):
     if start_dt is not None: df = df[df.index>=start_dt]
     if end_dt is not None: df = df[df.index<=end_dt]
     return df
-def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, cash_record, debt_record, date_index):
+def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, cash_record, debt_record, date_index, risk_free_rate=0.0):
     Output = {}
     # 以时间点为索引的序列
     Output["时间序列"] = pd.DataFrame(cash_series, columns=["现金"])
@@ -114,8 +114,8 @@ def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, 
             Output["日期序列"]["无杠杆累计收益率"] = UnleveredReturn.cumsum()
             Output["日期序列"]["无杠杆净值"] = (1 + UnleveredReturn).cumprod()
     # 统计数据
-    TargetCols = ["净值"] + ["净值(考虑资金投入)"] * (CashDelta.shape[0]>0) + ["无杠杆净值"] * (debt_record.shape[0]>0)
-    Output["统计数据"] = summaryStrategy(Output["日期序列"][TargetCols].values, list(Output["日期序列"].index), init_wealth=[1] * len(TargetCols))
+    TargetCols = ["净值"] + ["考虑资金投入的净值"] * (CashDelta.shape[0]>0) + ["无杠杆净值"] * (debt_record.shape[0]>0)
+    Output["统计数据"] = summaryStrategy(Output["日期序列"][TargetCols].values, list(Output["日期序列"].index), init_wealth=[1] * len(TargetCols), risk_free_rate=risk_free_rate)
     Output["统计数据"].columns = ["绝对表现"] + ["考虑资金投入的表现"] * (CashDelta.shape[0]>0) + ["无杠杆表现"] * (debt_record.shape[0]>0)
     return Output
 
@@ -123,6 +123,7 @@ def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, 
 # 账户基类, 本身只能存放现金
 class Account(BaseModule):
     """账户"""
+    RiskFreeRate = Float(0.0, arg_type="Float", label="无风险利率", order=-1)
     InitCash = Float(1e8, arg_type="Double", label="初始资金", order=0, low=0.0, high=np.inf, single_step=0.00001, decimals=5)
     DebtLimit = Float(0.0, arg_type="Double", label="负债上限", order=1, low=0.0, high=np.inf, single_step=0.00001, decimals=5)
     def __init__(self, name="Account", sys_args={}, config_file=None, **kwargs):
@@ -158,7 +159,7 @@ class Account(BaseModule):
         CashSeries = self.getCashSeries()
         DebtSeries = self.getDebtSeries()
         AccountValueSeries = self.getAccountValueSeries()
-        self._Output = genAccountOutput(self.InitCash, CashSeries, DebtSeries, AccountValueSeries, self._CashRecord, self._DebtRecord, self._Model.DateIndexSeries)
+        self._Output = genAccountOutput(self.InitCash, CashSeries, DebtSeries, AccountValueSeries, self._CashRecord, self._DebtRecord, self._Model.DateIndexSeries, risk_free_rate=self.RiskFreeRate)
         self._Output["现金流记录"] = self._CashRecord
         self._Output["融资记录"] = self._DebtRecord
         self._Output["交易记录"] = self._TradingRecord
@@ -247,6 +248,7 @@ class _Benchmark(__QS_Object__):
     #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
     #BenchmarkID = Enum(None, arg_type="SingleOption", label="基准ID", order=2)
     RebalanceDTs = List(dt.datetime, arg_type="DateTimeList", label="再平衡时点", order=3)
+    RiskFreeRate = Float(0.0, arg_type="Float", label="无风险利率", order=4)
     def __QS_initArgs__(self):
         self.add_trait("PriceFactor", Enum(None, arg_type="SingleOption", label="价格因子", order=1))
         self.add_trait("BenchmarkID", Enum(None, arg_type="SingleOption", label="基准ID", order=2))
@@ -342,7 +344,7 @@ class Strategy(BaseModule):
             DebtRecord = iAccount.DebtRecord.append(DebtRecord)
             CashRecord = iAccount.CashRecord.append(CashRecord)
         DebtRecord = DebtRecord[DebtRecord["融资"]!=0]
-        StrategyOutput = genAccountOutput(InitCash, CashSeries, DebtSeries, AccountValueSeries, CashRecord, DebtRecord, self._Model.DateIndexSeries)
+        StrategyOutput = genAccountOutput(InitCash, CashSeries, DebtSeries, AccountValueSeries, CashRecord, DebtRecord, self._Model.DateIndexSeries, risk_free_rate=self.Benchmark.RiskFreeRate)
         if self.Benchmark.FactorTable is not None:# 设置了基准
             BenchmarkPrice = self.Benchmark.FactorTable.readData(factor_names=[self.Benchmark.PriceFactor], dts=AccountValueSeries.index.tolist(), ids=[self.Benchmark.BenchmarkID]).iloc[0,:,0]
             BenchmarkOutput = pd.DataFrame(calcYieldSeq(wealth_seq=BenchmarkPrice.values), index=BenchmarkPrice.index, columns=["基准收益率"])
@@ -368,7 +370,7 @@ class Strategy(BaseModule):
                 BenchmarkOutput["相对累计收益率"] = BenchmarkOutput["相对收益率"].cumsum()
             BenchmarkOutput.index = StrategyOutput["日期序列"].index
             StrategyOutput["日期序列"] = pd.merge(StrategyOutput["日期序列"], BenchmarkOutput, left_index=True, right_index=True)
-            BenchmarkStatistics = summaryStrategy(BenchmarkOutput[["基准净值", "相对净值"]].values, list(BenchmarkOutput.index), init_wealth=[1, 1])
+            BenchmarkStatistics = summaryStrategy(BenchmarkOutput[["基准净值", "相对净值"]].values, list(BenchmarkOutput.index), init_wealth=[1, 1], risk_free_rate=self.Benchmark.RiskFreeRate)
             BenchmarkStatistics.columns = ["基准表现", "相对表现"]
             StrategyOutput["统计数据"] = pd.merge(StrategyOutput["统计数据"], BenchmarkStatistics, left_index=True, right_index=True)
         Output["Strategy"] = StrategyOutput
@@ -383,9 +385,9 @@ class Strategy(BaseModule):
         FormattedStats.iloc[:2] = DateFormatFun(Stats.iloc[:2, :].values)
         FormattedStats.iloc[2] = IntFormatFun(Stats.iloc[2, :].values)
         FormattedStats.iloc[3:6] = PercentageFormatFun(Stats.iloc[3:6, :].values)
-        FormattedStats.iloc[6] = FloatFormatFun(Stats.iloc[6, :].values)
-        FormattedStats.iloc[7:9] = PercentageFormatFun(Stats.iloc[7:9, :].values)
-        FormattedStats.iloc[9:] = DateFormatFun(Stats.iloc[9:, :].values)
+        FormattedStats.iloc[6:8] = FloatFormatFun(Stats.iloc[6:8, :].values)
+        FormattedStats.iloc[8:10] = PercentageFormatFun(Stats.iloc[8:10, :].values)
+        FormattedStats.iloc[10:] = DateFormatFun(Stats.iloc[10:, :].values)
         return FormattedStats
     def genMatplotlibFig(self, file_path=None):
         StrategyOutput = self._Output["Strategy"]
@@ -558,9 +560,9 @@ class MultiStrategy(BaseModule):
         FormattedStats.iloc[:2] = DateFormatFun(stats.iloc[:2, :].values)
         FormattedStats.iloc[2] = IntFormatFun(stats.iloc[2, :].values)
         FormattedStats.iloc[3:6] = PercentageFormatFun(stats.iloc[3:6, :].values)
-        FormattedStats.iloc[6] = FloatFormatFun(stats.iloc[6, :].values)
-        FormattedStats.iloc[7:9] = PercentageFormatFun(stats.iloc[7:9, :].values)
-        FormattedStats.iloc[9:] = DateFormatFun(stats.iloc[9:, :].values)
+        FormattedStats.iloc[6:8] = FloatFormatFun(stats.iloc[6:8, :].values)
+        FormattedStats.iloc[8:10] = PercentageFormatFun(stats.iloc[8:10, :].values)
+        FormattedStats.iloc[10:] = DateFormatFun(stats.iloc[10:, :].values)
         return FormattedStats
     def genMatplotlibFig(self, file_path=None):
         StrategyOutput = self._Output

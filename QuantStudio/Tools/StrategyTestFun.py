@@ -435,7 +435,7 @@ def _densifyWealthSeq(wealth_seq, dts, dt_ruler=None):
         DenseWealthSeq[iStartInd+1:iInd+1] = iWealthSeq
     return (DenseWealthSeq, dt_ruler)
 # 生成策略的统计指标
-def summaryStrategy(wealth_seq, dts, dt_ruler=None, init_wealth=None):
+def summaryStrategy(wealth_seq, dts, dt_ruler=None, init_wealth=None, risk_free_rate=0.0):
     nCol = (wealth_seq.shape[1] if wealth_seq.ndim>1 else 1)
     if nCol==1: wealth_seq = wealth_seq.reshape((wealth_seq.shape[0], 1))
     wealth_seq, dts = _densifyWealthSeq(wealth_seq, dts, dt_ruler)
@@ -453,6 +453,8 @@ def summaryStrategy(wealth_seq, dts, dt_ruler=None, init_wealth=None):
     SummaryIndex.append('年化波动率')
     SummaryData.append(calcAnnualVolatility(wealth_seq, start_dt=StartDT, end_dt=EndDT))
     SummaryIndex.append('Sharpe比率')
+    SummaryData.append((SummaryData[4] - risk_free_rate) / SummaryData[5])
+    SummaryIndex.append('收益风险比')
     SummaryData.append(SummaryData[4] / SummaryData[5])
     SummaryIndex.append('胜率')
     SummaryData.append(np.sum(YieldSeq>=0, axis=0) / np.sum(pd.notnull(YieldSeq), axis=0))
