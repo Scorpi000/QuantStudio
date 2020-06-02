@@ -47,13 +47,13 @@ class _FactorTable(FactorTable):
     def FactorNames(self):
         return sorted(listDirFile(self._FactorDB.MainDir+os.sep+self.Name, suffix=self._Suffix))
     def getMetaData(self, key=None, args={}):
-        with self._FactorDB._DataLock:
+        with self._FactorDB._getLock(self._Name):
             return readNestedDictFromHDF5(self._FactorDB.MainDir+os.sep+self.Name+os.sep+"_TableInfo.h5", "/"+("" if key is None else key))
     def getFactorMetaData(self, factor_names=None, key=None, args={}):
         AllFactorNames = self.FactorNames
         if factor_names is None: factor_names = AllFactorNames
         elif set(factor_names).isdisjoint(AllFactorNames): return super().getFactorMetaData(factor_names=factor_names, key=key, args=args)
-        with self._FactorDB._DataLock:
+        with self._FactorDB._getLock(self._Name):
             MetaData = {}
             for iFactorName in factor_names:
                 if iFactorName in AllFactorNames:
@@ -65,12 +65,12 @@ class _FactorTable(FactorTable):
         else: return pd.Series(MetaData).loc[factor_names]
     def getID(self, ifactor_name=None, idt=None, args={}):
         if ifactor_name is None: ifactor_name = self.FactorNames[0]
-        with self._FactorDB._DataLock:
+        with self._FactorDB._getLock(self._Name):
             with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix, mode="r") as ijFile:
                 return sorted(ijFile["ID"][...])
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         if ifactor_name is None: ifactor_name = self.FactorNames[0]
-        with self._FactorDB._DataLock:
+        with self._FactorDB._getLock(self._Name):
             with h5py.File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix, mode="r") as ijFile:
                 Timestamps = ijFile["DateTime"][...]
         if start_dt is not None:
@@ -88,7 +88,7 @@ class _FactorTable(FactorTable):
     def readFactorData(self, ifactor_name, ids, dts, args={}):
         FilePath = self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix
         if not os.path.isfile(FilePath): raise __QS_Error__("因子库 '%s' 的因子表 '%s' 中不存在因子 '%s'!" % (self._FactorDB.Name, self.Name, ifactor_name))
-        with self._FactorDB._DataLock:
+        with self._FactorDB._getLock(self._Name):
             with h5py.File(FilePath, mode="r") as DataFile:
                 DataType = DataFile.attrs["DataType"]
                 DateTimes = DataFile["DateTime"][...]
@@ -178,6 +178,19 @@ class HDF5DB(WritableFactorDB):
         self._isAvailable = False
     def isAvailable(self):
         return self._isAvailable
+    def _getLock(self, table_name=None):
+        if table_name is None:
+            return self._DataLock
+        TablePath = self.MainDir + os.sep + table_name
+        if not os.path.isdir(TablePath):
+            Msg = ("因子库 '%s' 调用 _getLock 时错误, 不存在因子表: '%s'" % (self.Name, table_name))
+            self._QS_Logger.error(Msg)
+            raise __QS_Error__(Msg)
+        LockFile = TablePath + os.sep + "LockFile"
+        if not os.path.isfile(LockFile):
+            with self._DataLock:
+                if not os.path.isfile(LockFile): open(LockFile, mode="a").close()
+        return fasteners.InterProcessLock(LockFile)
     # -------------------------------表的操作---------------------------------
     @property
     def TableNames(self):
@@ -237,7 +250,7 @@ class HDF5DB(WritableFactorDB):
                         os.remove(iFilePath)
         return 0
     def setFactorMetaData(self, table_name, ifactor_name, key=None, value=None, meta_data=None):
-        with self._DataLock:
+        with self._getLock(table_name):
             with h5py.File(self.MainDir+os.sep+table_name+os.sep+ifactor_name+"."+self._Suffix, mode="a") as File:
                 if key is not None:
                     if key in File.attrs:
@@ -252,7 +265,7 @@ class HDF5DB(WritableFactorDB):
         return 0
     def _updateFactorData(self, factor_data, table_name, ifactor_name, data_type):
         FilePath = self.MainDir+os.sep+table_name+os.sep+ifactor_name+"."+self._Suffix
-        with self._DataLock:
+        with self._getLock(table_name):
             with h5py.File(FilePath, mode="a") as DataFile:
                 OldDataType = DataFile.attrs["DataType"]
                 if data_type is None: data_type = OldDataType
@@ -306,8 +319,10 @@ class HDF5DB(WritableFactorDB):
         else: factor_data.index = [idt.timestamp() for idt in factor_data.index]
         TablePath = self.MainDir+os.sep+table_name
         FilePath = TablePath+os.sep+ifactor_name+"."+self._Suffix
-        with self._DataLock:
-            if not os.path.isdir(TablePath): os.mkdir(TablePath)
+        if not os.path.isdir(TablePath):
+            with self._DataLock:
+                if not os.path.isdir(TablePath): os.mkdir(TablePath)
+        with self._getLock(table_name=table_name):
             if not os.path.isfile(FilePath):
                 factor_data, data_type = _identifyDataType(factor_data, data_type)
                 NewData = _adjustData(factor_data, data_type)

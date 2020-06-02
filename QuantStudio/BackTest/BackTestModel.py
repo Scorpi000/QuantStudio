@@ -92,6 +92,7 @@ class BackTestModel(__QS_Object__):
         self._TestDateTimeIndex = -1# 测试时间点索引
         self._TestDateIndex = pd.Series([], dtype=np.int64)# 测试日期最后一个时间点位于 _QS_TestDateTimes 中的索引
         self._Output = {}# 生成的结果集
+        self.UserData = {}# 用户数据存放
         return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     # 当前时点, datetime.datetime
     @property
@@ -124,6 +125,7 @@ class BackTestModel(__QS_Object__):
         if subprocess_num>0: return self._runMultiProcs(subprocess_num)
         TotalStartT = time.perf_counter()
         print("==========历史回测==========", "1. 初始化", sep="\n", end="\n")
+        self.UserData = {}# 清空上次运行生成的用户数据
         FTs = set()
         for jModule in self.Modules:
             jFTs = jModule.__QS_start__(mdl=self, dts=self._QS_TestDateTimes)

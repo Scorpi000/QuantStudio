@@ -31,17 +31,24 @@ def calcFactorPortfolio(cov, target_factor, *other_factor):
 # 最小方差组合
 # min w' * cov * w
 # # s.t. 1' * w = 1
-def calcMinVarPortfolio(cov, allow_short=True):
-    if allow_short:
+def calcMinVarPortfolio(cov, allow_short=True, lb=None, ub=None):
+    if allow_short and (lb is None) and (ub is None):
         return calcCharacteristicPortfolio(cov, np.ones((cov.shape[0], )))
     else:
         w = cvx.Variable(np.shape(cov)[0])
+        Constraints = [cvx.sum(w)==1]
+        if not allow_short:
+            Constraints += [w>=0, w<=1]
+        if lb is not None:
+            Constraints.append(w>=lb)
+        if ub is not None:
+            Constraints.append(w<=ub)
         # 假设默认精度为 1e-6, 通过 adj_coef 调整目标函数值使其不要过小
         adj_coef = max((1, 1e-4 / np.min(np.diag(cov))))
-        Prob = cvx.Problem(cvx.Minimize(cvx.quad_form(w, adj_coef * cov)), [cvx.sum(w)==1, w>=0, w<=1])
+        Prob = cvx.Problem(cvx.Minimize(cvx.quad_form(w, adj_coef * cov)), Constraints)
         Prob.solve(verbose=False)
         if Prob.status != cvx.OPTIMAL:
-            raise Exception("Min variance problem solving fails!")
+            raise Exception("Min variance problem solving fails: '%s'" % (str(Prob.status, )))
         return w.value
 # 有效组合
 # 如果给定目标收益率 r：
@@ -91,11 +98,11 @@ def calcEfficientPortfolio(cov, mu, allow_short=True, lb=None, ub=None, r=None, 
         if Prob.status == cvx.OPTIMAL:
             return w.value
         else:
-            MinVarPortfolio = calcMinVarPortfolio(cov, allow_short=allow_short)
+            MinVarPortfolio = calcMinVarPortfolio(cov, allow_short=allow_short, lb=lb, ub=ub)
             if sigma < np.dot(MinVarPortfolio, np.dot(cov, MinVarPortfolio))**0.5:
                 raise Exception("Target volatility is less than the minimum volatility!")
             else:
-                raise Exception("Efficient portfolio problem solving fails!")
+                raise Exception("Efficient portfolio problem solving fails: '%s'" % (str(Prob.status, )))
     elif risk_aversion is not None:
         Prob = cvx.Problem(cvx.Maximize(mu @ w - cvx.quad_form(w, risk_aversion * cov)), Constraints)
     else:
@@ -104,14 +111,14 @@ def calcEfficientPortfolio(cov, mu, allow_short=True, lb=None, ub=None, r=None, 
     if Prob.status == cvx.OPTIMAL:
         return w.value
     else:
-        raise Exception("Efficient portfolio problem solving fails!")
+        raise Exception("Efficient portfolio problem solving fails: '%s'" % (str(Prob.status, )))
 
 # 最大夏普率组合
 # min (mu' * w - rf) / (w' * cov * w) ** (1/2)
 # s.t. 1' * w = 1
 #        0<=w<=1, if allow_short=False
-def calcMaxSharpeRatioPortfolio(cov, mu, rf, allow_short=True):
-    if allow_short:
+def calcMaxSharpeRatioPortfolio(cov, mu, rf, allow_short=True, lb=None, ub=None):
+    if allow_short and (lb is None) and (ub is None):
         h = np.dot(np.linalg.inv(cov), mu - rf)
         l = np.dot(np.ones(np.shape(h)), h)
         if l<=0:
@@ -121,7 +128,14 @@ def calcMaxSharpeRatioPortfolio(cov, mu, rf, allow_short=True):
     TargetReturn = cvx.Parameter(1)
     # 假设默认精度为 1e-6, 通过 adj_coef 调整目标函数值使其不要过小
     adj_coef = max((1, 1e-4 / np.min(np.diag(cov))))
-    Prob = cvx.Problem(cvx.Minimize(cvx.quad_form(w, adj_coef * cov)), [mu @ w == TargetReturn, cvx.sum(w)==1, w>=0, w<=1])
+    Constraints = [mu @ w == TargetReturn, cvx.sum(w)==1]
+    if not allow_short:
+        Constraints += [w>=0, w<=1]
+    if lb is not None:
+        Constraints.append(w>=lb)
+    if ub is not None:
+        Constraints.append(w<=ub)
+    Prob = cvx.Problem(cvx.Minimize(cvx.quad_form(w, adj_coef * cov)), Constraints)
     def _maxSharpeRatio(target_r):
         TargetReturn.value = np.array([target_r])
         Prob.solve(warm_start=True, verbose=False)
@@ -130,7 +144,14 @@ def calcMaxSharpeRatioPortfolio(cov, mu, rf, allow_short=True):
             return - (target_r - rf) / (Prob.value / adj_coef) ** 0.5
         else:
             return 9999
-    Res = minimize_scalar(_maxSharpeRatio, bounds=(np.min(mu), np.max(mu)), method="bounded")
+    if (lb is None) and (ub is None):
+        MaxReturn, MinReturn = np.max(mu), np.min(mu)
+    else:
+        MaxReturnProb = cvx.Problem(cvx.Maximize(mu @ w), Constraints[1:])
+        MaxReturn = MaxReturnProb.solve() - 1e-5
+        MinReturnProb = cvx.Problem(cvx.Minimize(mu @ w), Constraints[1:])
+        MinReturn = MinReturnProb.solve() + 1e-5
+    Res = minimize_scalar(_maxSharpeRatio, bounds=(MinReturn, MaxReturn), method="bounded")
     if not Res.success:
         raise Exception("Max Sharpe ratio problem solving fails!")
     TargetReturn.value = np.array([Res.x])
@@ -140,7 +161,7 @@ def calcMaxSharpeRatioPortfolio(cov, mu, rf, allow_short=True):
         w[w<=0] = 0
         return w / np.sum(w)
     else:
-        raise Exception("Max Sharpe ratio problem solving fails!")
+        raise Exception("Max Sharpe ratio problem solving fails: '%s'" % (str(Prob.status, )))
 
 # 无约束的有效前沿
 # min w' * cov * w
