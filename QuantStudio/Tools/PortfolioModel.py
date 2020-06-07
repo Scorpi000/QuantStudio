@@ -48,7 +48,7 @@ def calcMinVarPortfolio(cov, allow_short=True, lb=None, ub=None):
         Prob = cvx.Problem(cvx.Minimize(cvx.quad_form(w, adj_coef * cov)), Constraints)
         Prob.solve(verbose=False)
         if Prob.status != cvx.OPTIMAL:
-            raise Exception("Min variance problem solving fails: '%s'" % (str(Prob.status, )))
+            raise Exception("Min variance problem solving fails: '%s'" % (str(Prob.status), ))
         return w.value
 # 有效组合
 # 如果给定目标收益率 r：
@@ -102,7 +102,7 @@ def calcEfficientPortfolio(cov, mu, allow_short=True, lb=None, ub=None, r=None, 
             if sigma < np.dot(MinVarPortfolio, np.dot(cov, MinVarPortfolio))**0.5:
                 raise Exception("Target volatility is less than the minimum volatility!")
             else:
-                raise Exception("Efficient portfolio problem solving fails: '%s'" % (str(Prob.status, )))
+                raise Exception("Efficient portfolio problem solving fails: '%s'" % (str(Prob.status), ))
     elif risk_aversion is not None:
         Prob = cvx.Problem(cvx.Maximize(mu @ w - cvx.quad_form(w, risk_aversion * cov)), Constraints)
     else:
@@ -111,7 +111,7 @@ def calcEfficientPortfolio(cov, mu, allow_short=True, lb=None, ub=None, r=None, 
     if Prob.status == cvx.OPTIMAL:
         return w.value
     else:
-        raise Exception("Efficient portfolio problem solving fails: '%s'" % (str(Prob.status, )))
+        raise Exception("Efficient portfolio problem solving fails: '%s'" % (str(Prob.status), ))
 
 # 最大夏普率组合
 # min (mu' * w - rf) / (w' * cov * w) ** (1/2)
@@ -161,7 +161,7 @@ def calcMaxSharpeRatioPortfolio(cov, mu, rf, allow_short=True, lb=None, ub=None)
         w[w<=0] = 0
         return w / np.sum(w)
     else:
-        raise Exception("Max Sharpe ratio problem solving fails: '%s'" % (str(Prob.status, )))
+        raise Exception("Max Sharpe ratio problem solving fails: '%s'" % (str(Prob.status), ))
 
 # 无约束的有效前沿
 # min w' * cov * w

@@ -15,6 +15,7 @@ from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.QSObjects import QSSQLObject
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
+from QuantStudio.FactorDataBase.FDBFun import adjustDataDTID
 
 def _identifyDataType(db_type, dtypes):
     if db_type!="sqlite3":
@@ -62,6 +63,9 @@ class _WideTable(FactorTable):
     #DTField = Enum("datetime", arg_type="SingleOption", label="时点字段", order=4)
     #IDField = Enum("code", arg_type="SingleOption", label="ID字段", order=5)
     DT2Str = Bool(False, arg_type="Bool", label="时间转字符串", order=6)
+    OnlyStartLookBack = Bool(False, label="只起始日回溯", arg_type="Bool", order=7)
+    OnlyLookBackNontarget = Bool(False, label="只回溯非目标日", arg_type="Bool", order=8)
+    OnlyLookBackDT = Bool(False, label="只回溯时点", arg_type="Bool", order=9)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         self._DataType = fdb._TableFactorDict[name]
         self._DBDataType = fdb._TableFieldDataType[name]
@@ -115,12 +119,8 @@ class _WideTable(FactorTable):
         else: return [dt.datetime.strptime(iRslt[0], "%Y-%m-%d %H:%M:%S.%f") for iRslt in self._FactorDB.fetchall(SQLStr)]
     def __QS_genGroupInfo__(self, factors, operation_mode):
         ArgConditionGroup = {}
-        ArgNames = self.ArgNames
-        ArgNames.remove("回溯天数")
-        ArgNames.remove("因子值类型")
-        ArgNames.remove("遍历模式")
         for iFactor in factors:
-            iArgConditions = (";".join([iArgName+":"+str(iFactor[iArgName]) for iArgName in ArgNames]))
+            iArgConditions = (";".join([iArgName+":"+str(iFactor[iArgName]) for iArgName in iFactor.ArgNames if iArgName not in ("遍历模式", "因子值类型", "时间转字符串", "回溯天数", "只起始日回溯", "只回溯非目标日", "只回溯时点")]))
             if iArgConditions not in ArgConditionGroup:
                 ArgConditionGroup[iArgConditions] = {"FactorNames":[iFactor.Name], 
                                                      "RawFactorNames":{iFactor._NameInFT}, 
@@ -217,7 +217,11 @@ class _WideTable(FactorTable):
         Data = {}
         for iFactorName in factor_names:
             Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
-        return _adjustData(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts)
+        Data = pd.Panel(Data).loc[factor_names]
+        return adjustDataDTID(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts, 
+                              args.get("只起始日回溯", self.OnlyStartLookBack), 
+                              args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
+                              args.get("只回溯时点", self.OnlyLookBackDT), logger=self._QS_Logger)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data = raw_data.set_index(["QS_DT", "ID"])
@@ -241,7 +245,11 @@ class _WideTable(FactorTable):
                 except:
                     pass
             Data[iFactorName] = iRawData
-        return _adjustData(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts)
+        Data = pd.Panel(Data).loc[factor_names]
+        return adjustDataDTID(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts, 
+                              args.get("只起始日回溯", self.OnlyStartLookBack), 
+                              args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
+                              args.get("只回溯时点", self.OnlyLookBackDT), logger=self._QS_Logger)
 
 class _NarrowTable(FactorTable):
     """SQLDB 窄因子表"""
