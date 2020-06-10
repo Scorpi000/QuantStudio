@@ -844,18 +844,41 @@ class _MarketTable(_DBTable):
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data = raw_data.set_index(["日期", "ID"])
-        Data = {}
-        for iFactorName in raw_data.columns:
-            iRawData = raw_data[iFactorName].unstack()
-            iDataType = _identifyDataType(self._FactorInfo.loc[iFactorName, "DataType"])
-            if iDataType=="double": iRawData = iRawData.astype("float")
-            Data[iFactorName] = iRawData
-        Data = pd.Panel(Data).loc[factor_names]
-        LookBack = args.get("回溯天数", self.LookBack)
-        return adjustDataDTID(Data, LookBack, factor_names, ids, dts, 
-                              args.get("只起始日回溯", self.OnlyStartLookBack), 
-                              args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
-                              args.get("只回溯时点", self.OnlyLookBackDT), logger=self._QS_Logger)
+        if args.get("只回溯时点", self.OnlyLookBackDT):
+            RowIdxMask = pd.Series(False, index=raw_data.index).unstack(fill_value=True).astype(bool)
+            RawIDs = RowIdxMask.columns
+            if RawIDs.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+            RowIdx = pd.DataFrame(np.arange(RowIdxMask.shape[0]).reshape((RowIdxMask.shape[0], 1)).repeat(RowIdxMask.shape[1], axis=1), index=RowIdxMask.index, columns=RawIDs)
+            RowIdx[RowIdxMask] = np.nan
+            RowIdx = adjustDataDTID(pd.Panel({"RowIdx": RowIdx}), args.get("回溯天数", self.LookBack), ["RowIdx"], RowIdx.columns.tolist(), dts, 
+                                              args.get("只起始日回溯", self.OnlyStartLookBack), 
+                                              args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
+                                              logger=self._QS_Logger).iloc[0].values
+            RowIdx[pd.isnull(RowIdx)] = -1
+            RowIdx = RowIdx.astype(int)
+            ColIdx = np.arange(RowIdx.shape[1]).reshape((1, RowIdx.shape[1])).repeat(RowIdx.shape[0], axis=0)
+            RowIdxMask = (RowIdx==-1)
+            Data = {}
+            for iFactorName in raw_data.columns:
+                iRawData = raw_data[iFactorName].unstack()
+                iDataType = _identifyDataType(self._FactorInfo.loc[iFactorName, "DataType"])
+                if iDataType=="double": iRawData = iRawData.astype("float")
+                iRawData = iRawData.values[RowIdx, ColIdx]
+                iRawData[RowIdxMask] = None
+                Data[iFactorName] = pd.DataFrame(iRawData, index=dts, columns=RawIDs)
+            return pd.Panel(Data).loc[factor_names, :, ids]
+        else:
+            Data = {}
+            for iFactorName in raw_data.columns:
+                iRawData = raw_data[iFactorName].unstack()
+                iDataType = _identifyDataType(self._FactorInfo.loc[iFactorName, "DataType"])
+                if iDataType=="double": iRawData = iRawData.astype("float")
+                Data[iFactorName] = iRawData
+            Data = pd.Panel(Data).loc[factor_names]
+            return adjustDataDTID(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts, 
+                                  args.get("只起始日回溯", self.OnlyStartLookBack), 
+                                  args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
+                                  logger=self._QS_Logger)
 
 
 # 信息发布表, 表结构特征:
@@ -1079,15 +1102,36 @@ class _MultiInfoPublTable(_InfoPublTable):
         raw_data = raw_data.set_index(["日期", "ID"])
         Operator = args.get("算子", self.Operator)
         if Operator is None: Operator = (lambda x: x.tolist())
-        Data = {}
-        for iFactorName in factor_names:
-            Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
-        Data = pd.Panel(Data).loc[factor_names, :, ids]
-        LookBack = args.get("回溯天数", self.LookBack)
-        return adjustDataDTID(Data, LookBack, factor_names, ids, dts, 
-                              args.get("只起始日回溯", self.OnlyStartLookBack), 
-                              args.get("只回溯非目标日", self.OnlyLookBackNontarget),
-                              args.get("只回溯时点", self.OnlyLookBackDT), logger=self._QS_Logger)
+        if args.get("只回溯时点", self.OnlyLookBackDT):
+            DeduplicatedIndex = raw_data.index(~raw_data.index.duplicated())
+            RowIdxMask = pd.Series(False, index=DeduplicatedIndex).unstack(fill_value=True).astype(bool)
+            RawIDs = RowIdxMask.columns
+            if RawIDs.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+            RowIdx = pd.DataFrame(np.arange(RowIdxMask.shape[0]).reshape((RowIdxMask.shape[0], 1)).repeat(RowIdxMask.shape[1], axis=1), index=RowIdxMask.index, columns=RawIDs)
+            RowIdx[RowIdxMask] = np.nan
+            RowIdx = adjustDataDTID(pd.Panel({"RowIdx": RowIdx}), args.get("回溯天数", self.LookBack), ["RowIdx"], RowIdx.columns.tolist(), dts, 
+                                              args.get("只起始日回溯", self.OnlyStartLookBack), 
+                                              args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
+                                              logger=self._QS_Logger).iloc[0].values
+            RowIdx[pd.isnull(RowIdx)] = -1
+            RowIdx = RowIdx.astype(int)
+            ColIdx = np.arange(RowIdx.shape[1]).reshape((1, RowIdx.shape[1])).repeat(RowIdx.shape[0], axis=0)
+            RowIdxMask = (RowIdx==-1)
+            for iFactorName in factor_names:
+                iRawData = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
+                iRawData = iRawData.values[RowIdx, ColIdx]
+                iRawData[RowIdxMask] = None
+                Data[iFactorName] = pd.DataFrame(iRawData, index=dts, columns=RawIDs)
+            return pd.Panel(Data).loc[factor_names, :, ids]
+        else:
+            Data = {}
+            for iFactorName in factor_names:
+                Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
+            Data = pd.Panel(Data).loc[factor_names, :, ids]
+            return adjustDataDTID(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts, 
+                                  args.get("只起始日回溯", self.OnlyStartLookBack), 
+                                  args.get("只回溯非目标日", self.OnlyLookBackNontarget),
+                                  logger=self._QS_Logger)
 
 # 时序因子表(TOTEST)
 # 无 ID 字段
@@ -2760,10 +2804,10 @@ class JYDB(QSSQLObject, FactorDB):
     # index_id: 指数 ID, 默认值 "全体A股"
     # date: 指定日, 默认值 None 表示今天
     # is_current: False 表示进入指数的日期在指定日之前的成份股, True 表示进入指数的日期在指定日之前且尚未剔出指数的 A 股
-    def getStockID(self, index_id="全体A股", date=None, is_current=True):# TODO
+    def getStockID(self, index_id="全体A股", date=None, is_current=True, **kwargs):
         if date is None: date = dt.date.today()
         if index_id=="全体A股": return self._getAllAStock(date=date, is_current=is_current)
-        for iTableName in self._TableInfo[(self._TableInfo["TableClass"]=="ConstituentTable") & self._TableInfo.index.str.contains("A股")].index:
+        for iTableName in self._TableInfo[(self._TableInfo["TableClass"]=="ConstituentTable") & (self._TableInfo["SecurityType"]=="A股")].index:
             IDs = self.getTable(iTableName).getID(ifactor_name=index_id, idt=date, is_current=is_current)
             if IDs: return IDs
         else: return []
@@ -2815,29 +2859,56 @@ class JYDB(QSSQLObject, FactorDB):
     # is_current: False 表示上市日在指定日之前的期货, True 表示上市日在指定日之前且尚未退市的期货
     # kwargs:
     # contract_type: 合约类型, 可选 "月合约", "连续合约", "所有", 默认值 "月合约"
-    # include_simulation: 是否包括仿真合约, 默认值 False
-    def getFutureID(self, future_code="IF", exchange="CFFEX", date=None, is_current=True, **kwargs):# TODO
+    def getFutureID(self, future_code="IF", exchange="CFFEX", date=None, is_current=True, **kwargs):
         if date is None: date = dt.date.today()
-        SQLStr = "SELECT DISTINCT s_info_windcode FROM {Prefix}Fut_ContractMain "
+        ExchangeInfo = self._ExchangeInfo
+        Exchange = self._TableInfo.loc["期货合约", "Exchange"]
+        ExchangeField, ExchangeCodes = Exchange.split(":")
+        if exchange:
+            if isinstance(exchange, str): exchange = [exchange]
+            ExchangeCodes = set()
+            for iExchg in exchange:
+                iExchgCode = ExchangeInfo[ExchangeInfo["Exchange"]==iExchg].index
+                if iExchgCode.shape[0]==0: raise __QS_Error__("不支持的交易所: %s" % iExchg)
+                ExchangeCodes.add(str(iExchgCode[0]))
+        else:
+            ExchangeCodes = ExchangeCodes.split(",")
+        Suffix = "CASE "+ExchangeField+" "
+        for iCode in ExchangeCodes:
+            Suffix += "WHEN "+iCode+" THEN '"+ExchangeInfo.loc[iCode, "Suffix"]+"' "
+        DefaultSuffix = self._TableInfo.loc["期货合约", "DefaultSuffix"]
+        if pd.isnull(DefaultSuffix):
+            Suffix += "ELSE '' END"
+        else:
+            Suffix += "ELSE '"+DefaultSuffix+"' END"
+        SQLStr = "SELECT DISTINCT CONCAT(ContractCode, "+Suffix+") AS ID FROM {Prefix}Fut_ContractMain "
+        SQLStr += "WHERE "+ExchangeField+" IN ("+",".join(ExchangeCodes)+") "
         if future_code:
-            if isinstance(future_code, str): SQLStr += "WHERE fs_info_sccode='"+future_code+"' "
-            else: SQLStr += "WHERE fs_info_sccode IN ('"+"', '".join(future_code)+"') "
-        else: SQLStr += "WHERE fs_info_sccode IS NOT NULL "
-        if not kwargs.get("include_simulation", False): SQLStr += "AND s_info_name NOT LIKE '%仿真%' "
+            if isinstance(future_code, str):
+                SQLStr += "AND LEFT(ContractCode, "+str(len(future_code))+")='"+future_code+"' "
+            else:
+                SQLStr += "AND (LEFT(ContractCode, 1) IN ('"+"','".join(future_code)+"') OR LEFT(ContractCode, 2) IN ('"+"','".join(future_code)+"')) "
         ContractType = kwargs.get("contract_type", "月合约")
-        if ContractType!="所有": SQLStr += "AND fs_info_type="+("2" if ContractType=="连续合约" else "1")+" "
+        if ContractType!="所有": SQLStr += "AND IfReal="+("2" if ContractType=="连续合约" else "1")+" "
         if ContractType!="连续合约":
-            SQLStr += "AND ((s_info_listdate<='{Date}') OR (s_info_listdate IS NULL)) "
-            if is_current: SQLStr += "AND ((s_info_delistdate>='{Date}') OR (s_info_delistdate IS NULL)) "
-        SQLStr += "ORDER BY s_info_windcode"
-        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d"), FutureCode=future_code))]
+            SQLStr += "AND ((EffectiveDate<='{Date}') OR (EffectiveDate IS NULL)) "
+            if is_current: SQLStr += "AND ((LastTradingDate>='{Date}') OR (LastTradingDate IS NULL)) "
+        SQLStr += "ORDER BY ID"
+        if future_code:
+            if isinstance(future_code, str):
+                return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d"))) if re.findall("\D+", iRslt[0][:2])[0] == future_code]
+            else:
+                return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d"))) if re.findall("\D+", iRslt[0][:2])[0] in future_code]
+        else:
+            return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d")))]
     # 获取指定交易所 exchange 的期货代码
     # exchange: 交易所(str)或者交易所列表(list(str))
     # date: 指定日, 默认值 None 表示今天
-    # is_listed: True 表示只返回当前上市的期货代码
+    # is_current: True 表示只返回当前上市的期货代码
     # kwargs:
-    # include_simulation: 是否包括仿真合约, 默认值 False
-    def getFutureCode(self, exchange=["SHFE", "INE", "DCE", "CZCE", "CFFEX"], is_listed=True, **kwargs):# TODO
+    def getFutureCode(self, exchange=["SHFE", "INE", "DCE", "CZCE", "CFFEX"], date=None, is_current=True, **kwargs):
+        if date is not None:
+            raise __QS_Error__("尚不支持获取指定日期上市的期货品种!")
         SQLStr = "SELECT DISTINCT TradingCode FROM {Prefix}Fut_FuturesContract "
         if exchange:
             if isinstance(exchange, str): exchange = [exchange]
@@ -2849,7 +2920,7 @@ class JYDB(QSSQLObject, FactorDB):
             SQLStr += "WHERE Exchange IN ("+", ".join(ExchgCodes)+") "
         else:
             SQLStr += "WHERE Exchange IS NOT NULL "
-        if is_listed: SQLStr += "AND ContractState=1 "
+        if is_current: SQLStr += "AND ContractState<>5 "
         SQLStr += "ORDER BY TradingCode"
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix))]
     # 给定期权代码 option_code, 获取指定日 date 的期权代码

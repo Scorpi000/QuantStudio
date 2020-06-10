@@ -214,14 +214,36 @@ class _WideTable(FactorTable):
         return RawData
     def _calcListData(self, raw_data, factor_names, ids, dts, args={}):
         Operator = (lambda x: x.tolist())
-        Data = {}
-        for iFactorName in factor_names:
-            Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
-        Data = pd.Panel(Data).loc[factor_names]
-        return adjustDataDTID(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts, 
-                              args.get("只起始日回溯", self.OnlyStartLookBack), 
-                              args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
-                              args.get("只回溯时点", self.OnlyLookBackDT), logger=self._QS_Logger)
+        if args.get("只回溯时点", self.OnlyLookBackDT):
+            DeduplicatedIndex = raw_data.index(~raw_data.index.duplicated())
+            RowIdxMask = pd.Series(False, index=DeduplicatedIndex).unstack(fill_value=True).astype(bool)
+            RawIDs = RowIdxMask.columns
+            if RawIDs.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+            RowIdx = pd.DataFrame(np.arange(RowIdxMask.shape[0]).reshape((RowIdxMask.shape[0], 1)).repeat(RowIdxMask.shape[1], axis=1), index=RowIdxMask.index, columns=RawIDs)
+            RowIdx[RowIdxMask] = np.nan
+            RowIdx = adjustDataDTID(pd.Panel({"RowIdx": RowIdx}), args.get("回溯天数", self.LookBack), ["RowIdx"], RowIdx.columns.tolist(), dts, 
+                                              args.get("只起始日回溯", self.OnlyStartLookBack), 
+                                              args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
+                                              logger=self._QS_Logger).iloc[0].values
+            RowIdx[pd.isnull(RowIdx)] = -1
+            RowIdx = RowIdx.astype(int)
+            ColIdx = np.arange(RowIdx.shape[1]).reshape((1, RowIdx.shape[1])).repeat(RowIdx.shape[0], axis=0)
+            RowIdxMask = (RowIdx==-1)
+            for iFactorName in factor_names:
+                iRawData = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
+                iRawData = iRawData.values[RowIdx, ColIdx]
+                iRawData[RowIdxMask] = None
+                Data[iFactorName] = pd.DataFrame(iRawData, index=dts, columns=RawIDs)
+            return pd.Panel(Data).loc[factor_names, :, ids]
+        else:
+            Data = {}
+            for iFactorName in factor_names:
+                Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
+            Data = pd.Panel(Data).loc[factor_names]
+            return adjustDataDTID(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts, 
+                                  args.get("只起始日回溯", self.OnlyStartLookBack), 
+                                  args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
+                                  logger=self._QS_Logger)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data = raw_data.set_index(["QS_DT", "ID"])
@@ -236,20 +258,47 @@ class _WideTable(FactorTable):
             if not raw_data.index.is_unique:
                 return self._calcListData(raw_data, factor_names, ids, dts, args=args)
         DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
-        Data = {}
-        for iFactorName in raw_data.columns:
-            iRawData = raw_data[iFactorName].unstack()
-            if DataType[iFactorName]=="double":
-                try:
-                    iRawData = iRawData.astype("float")
-                except:
-                    pass
-            Data[iFactorName] = iRawData
-        Data = pd.Panel(Data).loc[factor_names]
-        return adjustDataDTID(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts, 
-                              args.get("只起始日回溯", self.OnlyStartLookBack), 
-                              args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
-                              args.get("只回溯时点", self.OnlyLookBackDT), logger=self._QS_Logger)
+        if args.get("只回溯时点", self.OnlyLookBackDT):
+            RowIdxMask = pd.Series(False, index=raw_data.index).unstack(fill_value=True).astype(bool)
+            RawIDs = RowIdxMask.columns
+            if RawIDs.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+            RowIdx = pd.DataFrame(np.arange(RowIdxMask.shape[0]).reshape((RowIdxMask.shape[0], 1)).repeat(RowIdxMask.shape[1], axis=1), index=RowIdxMask.index, columns=RawIDs)
+            RowIdx[RowIdxMask] = np.nan
+            RowIdx = adjustDataDTID(pd.Panel({"RowIdx": RowIdx}), args.get("回溯天数", self.LookBack), ["RowIdx"], RowIdx.columns.tolist(), dts, 
+                                              args.get("只起始日回溯", self.OnlyStartLookBack), 
+                                              args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
+                                              logger=self._QS_Logger).iloc[0].values
+            RowIdx[pd.isnull(RowIdx)] = -1
+            RowIdx = RowIdx.astype(int)
+            ColIdx = np.arange(RowIdx.shape[1]).reshape((1, RowIdx.shape[1])).repeat(RowIdx.shape[0], axis=0)
+            RowIdxMask = (RowIdx==-1)
+            Data = {}
+            for iFactorName in raw_data.columns:
+                iRawData = raw_data[iFactorName].unstack()
+                if DataType[iFactorName]=="double":
+                    try:
+                        iRawData = iRawData.astype("float")
+                    except:
+                        pass
+                iRawData = iRawData.values[RowIdx, ColIdx]
+                iRawData[RowIdxMask] = None
+                Data[iFactorName] = pd.DataFrame(iRawData, index=dts, columns=RawIDs)
+            return pd.Panel(Data).loc[factor_names, :, ids]
+        else:
+            Data = {}
+            for iFactorName in raw_data.columns:
+                iRawData = raw_data[iFactorName].unstack()
+                if DataType[iFactorName]=="double":
+                    try:
+                        iRawData = iRawData.astype("float")
+                    except:
+                        pass
+                Data[iFactorName] = iRawData
+            Data = pd.Panel(Data).loc[factor_names]
+            return adjustDataDTID(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts, 
+                                  args.get("只起始日回溯", self.OnlyStartLookBack), 
+                                  args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
+                                  logger=self._QS_Logger)
 
 class _NarrowTable(FactorTable):
     """SQLDB 窄因子表"""

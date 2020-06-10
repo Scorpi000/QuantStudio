@@ -1,6 +1,7 @@
 # coding=utf-8
 """基于 HDF5 文件的因子库"""
 import os
+import stat
 import shutil
 import pickle
 import datetime as dt
@@ -166,9 +167,10 @@ class HDF5DB(WritableFactorDB):
     def connect(self):
         if not os.path.isdir(self.MainDir):
             raise __QS_Error__("HDF5DB.connect: 不存在主目录 '%s'!" % self.MainDir)
-        if not os.path.isfile(self.MainDir+os.sep+"LockFile"):
-            open(self.MainDir+os.sep+"LockFile", mode="a").close()
         self._LockFile = self.MainDir+os.sep+"LockFile"
+        if not os.path.isfile(self._LockFile):
+            open(self._LockFile, mode="a").close()
+            os.chmod(self._LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
         self._DataLock = fasteners.InterProcessLock(self._LockFile)
         self._isAvailable = True
         return 0
@@ -189,7 +191,9 @@ class HDF5DB(WritableFactorDB):
         LockFile = TablePath + os.sep + "LockFile"
         if not os.path.isfile(LockFile):
             with self._DataLock:
-                if not os.path.isfile(LockFile): open(LockFile, mode="a").close()
+                if not os.path.isfile(LockFile):
+                    open(LockFile, mode="a").close()
+                    os.chmod(LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
         return fasteners.InterProcessLock(LockFile)
     # -------------------------------表的操作---------------------------------
     @property
