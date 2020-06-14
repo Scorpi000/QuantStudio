@@ -1424,9 +1424,16 @@ class DataFactor(Factor):
     def _QS_getData(self, dts, pids=None, **kwargs):
         IDs = kwargs.get("ids", None)
         if IDs is None:
-            if pids is None: IDs = list(self._OperationMode.IDs)
+            IDs = self._OperationMode._FactorPrepareIDs[self.Name]
+            if IDs is None:
+                if pids is None:
+                    IDs = list(self._OperationMode.IDs)
+                else:
+                    IDs = []
+                    for iPID in pids: IDs.extend(self._OperationMode._PID_IDs[iPID])
             else:
-                IDs = []
-                for iPID in pids: IDs.extend(self._OperationMode._PID_IDs[iPID])
-        dts = list(dts)
-        return self.readData(sorted(IDs), dts)
+                if pids is not None:
+                    PrepareIDs = partitionListMovingSampling(IDs, len(self._OperationMode._PID_IDs))
+                    IDs = []
+                    for iPID in pids: IDs.extend(PrepareIDs[self._OperationMode._PIDs.index(iPID)])
+        return self.readData(sorted(IDs), dts = list(dts))

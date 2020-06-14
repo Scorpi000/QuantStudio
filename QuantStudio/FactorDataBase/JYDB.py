@@ -898,6 +898,7 @@ class _InfoPublTable(_MarketTable):
     #DateField = Enum(None, arg_type="SingleOption", label="日期字段", order=4)
     IgnorePublDate = Bool(False, label="忽略公告日", arg_type="Bool", order=5)
     IgnoreTime = Bool(True, label="忽略时间", arg_type="Bool", order=6)
+    EndDateASC = Bool(False, label="截止日期递增", arg_type="Bool", order=7)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         self._AnnDateField = self._FactorInfo["DBFieldName"][self._FactorInfo["FieldType"]=="AnnDate"]
@@ -987,6 +988,7 @@ class _InfoPublTable(_MarketTable):
         else:
             SQLStr = "SELECT CASE WHEN "+AnnDateField+">=t.MaxEndDate THEN "+AnnDateField+" ELSE t.MaxEndDate END AS DT, "
         SQLStr += self._getIDField(args=args)+" AS ID, "
+        SQLStr += "t.MaxEndDate AS MaxEndDate, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "        
@@ -1031,6 +1033,7 @@ class _InfoPublTable(_MarketTable):
             SubSQLStr += "GROUP BY "+self._DBTableName+"."+self._IDField+", AnnDate"
         SQLStr = "SELECT t.AnnDate AS DT, "
         SQLStr += self._getIDField(args=args)+" AS ID, "
+        SQLStr += "t.MaxEndDate AS MaxEndDate, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
@@ -1045,17 +1048,21 @@ class _InfoPublTable(_MarketTable):
         SQLStr += ConditionSQLStr+" "
         SQLStr += "ORDER BY ID, DT"
         RawData = self._FactorDB.fetchall(SQLStr)
-        if not RawData: RawData = pd.DataFrame(columns=["日期", "ID"]+factor_names)
-        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["日期", "ID"]+factor_names)
+        if not RawData: RawData = pd.DataFrame(columns=["日期", "ID", "MaxEndDate"]+factor_names)
+        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["日期", "ID", "MaxEndDate"]+factor_names)
         if np.isinf(LookBack):
             NullIDs = set(ids).difference(set(RawData[RawData["日期"]==dt.datetime.combine(StartDate,dt.time(0))]["ID"]))
             if NullIDs:
                 NullRawData = self._FactorDB.fetchall(self._genNullIDSQLStr_InfoPubl(factor_names, list(NullIDs), StartDate, args=args))
                 if NullRawData:
-                    NullRawData = pd.DataFrame(np.array(NullRawData, dtype="O"), columns=["日期", "ID"]+factor_names)
+                    NullRawData = pd.DataFrame(np.array(NullRawData, dtype="O"), columns=["日期", "ID", "MaxEndDate"]+factor_names)
                     RawData = pd.concat([NullRawData, RawData], ignore_index=True)
                     RawData.sort_values(by=["ID", "日期"])
-        if RawData.shape[0]==0: return RawData
+        if RawData.shape[0]==0: return RawData.loc[:, ["日期", "ID"]+factor_names]
+        if args.get("截止日期递增", self.EndDateASC):# 删除截止日期非递增的记录
+            DTRank = RawData.loc[:, ["ID", "日期", "MaxEndDate"]].groupby(by=["ID"]).rank(method="min")
+            RawData = RawData[DTRank["日期"]>=DTRank["MaxEndDate"]]
+        RawData = RawData.loc[:, ["日期", "ID"]+factor_names]
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
 
@@ -1077,8 +1084,9 @@ class _MultiInfoPublTable(_InfoPublTable):
     #DateField = Enum(None, arg_type="SingleOption", label="日期字段", order=4)
     IgnorePublDate = Bool(False, label="忽略公告日", arg_type="Bool", order=5)
     IgnoreTime = Bool(True, label="忽略时间", arg_type="Bool", order=6)
-    Operator = Either(Function(None), None, arg_type="Function", label="算子", order=7)
-    OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=8)
+    EndDateASC = Bool(False, label="截止日期递增", arg_type="Bool", order=7)
+    Operator = Either(Function(None), None, arg_type="Function", label="算子", order=8)
+    OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=9)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         self._OrderFields = self._FactorInfo[self._FactorInfo["Supplementary"]=="OrderField"].index.tolist()
@@ -1143,9 +1151,10 @@ class _TimeSeriesTable(_DBTable):
     #DateField = Enum(None, arg_type="SingleOption", label="日期字段", order=4)
     IgnorePublDate = Bool(False, label="忽略公告日", arg_type="Bool", order=5)
     IgnoreTime = Bool(True, label="忽略时间", arg_type="Bool", order=6)
-    MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=7)
-    Operator = Either(Function(None), None, arg_type="Function", label="算子", order=8)
-    OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=9)
+    EndDateASC = Bool(False, label="截止日期递增", arg_type="Bool", order=7)
+    MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=8)
+    Operator = Either(Function(None), None, arg_type="Function", label="算子", order=9)
+    OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=10)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         self._OrderFields = self._FactorInfo[self._FactorInfo["Supplementary"]=="OrderField"].index.tolist()
@@ -1251,6 +1260,7 @@ class _TimeSeriesTable(_DBTable):
             SQLStr = "SELECT DATE(CASE WHEN "+AnnDateField+">=t.MaxEndDate THEN "+AnnDateField+" ELSE t.MaxEndDate END) AS DT, "
         else:
             SQLStr = "SELECT CASE WHEN "+AnnDateField+">=t.MaxEndDate THEN "+AnnDateField+" ELSE t.MaxEndDate END AS DT, "
+        SQLStr += "t.MaxEndDate AS MaxEndDate, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "        
@@ -1287,6 +1297,7 @@ class _TimeSeriesTable(_DBTable):
         else:
             SubSQLStr += "GROUP BY AnnDate"
         SQLStr = "SELECT t.AnnDate AS DT, "
+        SQLStr += "t.MaxEndDate AS MaxEndDate, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
@@ -1297,13 +1308,16 @@ class _TimeSeriesTable(_DBTable):
         SQLStr += ConditionSQLStr+" "
         SQLStr += "ORDER BY DT"
         RawData = self._FactorDB.fetchall(SQLStr)
-        if not RawData: RawData = pd.DataFrame(columns=["日期"]+factor_names)
-        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["日期"]+factor_names)
+        if not RawData: RawData = pd.DataFrame(columns=["日期", "MaxEndDate"]+factor_names)
+        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["日期", "MaxEndDate"]+factor_names)
         if np.isinf(LookBack):
-            NullRawData = pd.DataFrame(np.array(NullRawData, dtype="O"), columns=["日期"]+factor_names)
+            NullRawData = pd.DataFrame(np.array(NullRawData, dtype="O"), columns=["日期", "MaxEndDate"]+factor_names)
             RawData = pd.concat([NullRawData, RawData], ignore_index=True)
             RawData.sort_values(by=["日期"])
-        if RawData.shape[0]==0: return RawData
+        if RawData.shape[0]==0: return RawData.loc[:, ["日期"]+factor_names]
+        if args.get("截止日期递增", self.EndDateASC):# 删除截止日期非递增的记录
+            DTRank = RawData.loc[:, ["日期", "MaxEndDate"]].rank(method="min")
+            RawData = RawData[DTRank["日期"]>=DTRank["MaxEndDate"]]
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):

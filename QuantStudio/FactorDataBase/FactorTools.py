@@ -320,6 +320,13 @@ def strptime(f, dt_format="%Y%m%d", is_datetime=True, **kwargs):
     Descriptors, Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"dt_format":dt_format, "is_datetime":is_datetime}
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors, {"算子":_strptime, "参数":Args, "数据类型":"object", "运算时点":"多时点", "运算ID":"多ID"}, **kwargs)
+def _fromtimestamp(f, idt, iid, x, args):
+    Data = _genOperatorData(f, idt, iid, x, args)[0]
+    return pd.DataFrame(Data).applymap(lambda x: dt.datetime.fromtimestamp(x / args["OperatorArg"]["unit"]) if pd.notnull(x) else None).values
+def fromtimestamp(f, unit=1e9, **kwargs):
+    Descriptors, Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"unit":unit}
+    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors, {"算子":_fromtimestamp, "参数":Args, "数据类型":"object", "运算时点":"多时点", "运算ID":"多ID"}, **kwargs)
 # ----------------------时间序列运算--------------------------------
 def _rolling_mean(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
@@ -1605,7 +1612,7 @@ def _merge(f,idt,iid,x,args):
     IDs = []
     [IDs.extend(iIDs) for iIDs in f.DescriptorSection]
     return pd.DataFrame(Rslt, columns=IDs).loc[:, iid].values
-def merge(factors, descriptor_ids, **kwargs):
+def merge(factors, descriptor_ids, data_type="object", **kwargs):
     if len(factors)!=len(descriptor_ids): raise __QS_Error__("描述子个数与描述子截面个数不一致!")
     Descriptors, Args = _genMultivariateOperatorInfo(*factors)
     DescriptorIDs = []
@@ -1613,7 +1620,7 @@ def merge(factors, descriptor_ids, **kwargs):
         StartInd, EndInd = Args.get("SepInd"+str(i), 0), Args.get("SepInd"+str(i+1), 0)
         DescriptorIDs += [descriptor_ids[i]] * (EndInd - StartInd)
     FactorName = kwargs.pop("factor_name", str(uuid.uuid1()))
-    return SectionOperation(FactorName, Descriptors, {"算子":_merge, "参数":Args, "运算时点":"多时点", "描述子截面":DescriptorIDs}, **kwargs)
+    return SectionOperation(FactorName, Descriptors, {"算子":_merge, "参数":Args, "运算时点":"多时点", "描述子截面":DescriptorIDs, "数据类型": data_type}, **kwargs)
 def _chg_ids(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)[0]
     IDMap = args["OperatorArg"]["id_map"]
