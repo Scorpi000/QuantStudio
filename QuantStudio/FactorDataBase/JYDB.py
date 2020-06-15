@@ -1060,8 +1060,8 @@ class _InfoPublTable(_MarketTable):
                     RawData.sort_values(by=["ID", "日期"])
         if RawData.shape[0]==0: return RawData.loc[:, ["日期", "ID"]+factor_names]
         if args.get("截止日期递增", self.EndDateASC):# 删除截止日期非递增的记录
-            DTRank = RawData.loc[:, ["ID", "日期", "MaxEndDate"]].groupby(by=["ID"]).rank(method="min")
-            RawData = RawData[DTRank["日期"]>=DTRank["MaxEndDate"]]
+            DTRank = RawData.loc[:, ["ID", "日期", "MaxEndDate"]].set_index(["ID"]).astype(np.datetime64).groupby(axis=0, level=0).rank(method="min")
+            RawData = RawData[(DTRank["日期"]<=DTRank["MaxEndDate"]).values]
         RawData = RawData.loc[:, ["日期", "ID"]+factor_names]
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
@@ -1316,8 +1316,8 @@ class _TimeSeriesTable(_DBTable):
             RawData.sort_values(by=["日期"])
         if RawData.shape[0]==0: return RawData.loc[:, ["日期"]+factor_names]
         if args.get("截止日期递增", self.EndDateASC):# 删除截止日期非递增的记录
-            DTRank = RawData.loc[:, ["日期", "MaxEndDate"]].rank(method="min")
-            RawData = RawData[DTRank["日期"]>=DTRank["MaxEndDate"]]
+            DTRank = RawData.loc[:, ["日期", "MaxEndDate"]].astype(np.datetime64).rank(method="min")
+            RawData = RawData[(DTRank["日期"]<=DTRank["MaxEndDate"]).values]
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
