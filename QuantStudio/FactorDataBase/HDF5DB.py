@@ -271,6 +271,7 @@ class HDF5DB(WritableFactorDB):
         FilePath = self.MainDir+os.sep+table_name+os.sep+ifactor_name+"."+self._Suffix
         with self._getLock(table_name):
             with h5py.File(FilePath, mode="a") as DataFile:
+                print("未创建文件写入数据")
                 OldDataType = DataFile.attrs["DataType"]
                 if data_type is None: data_type = OldDataType
                 factor_data, data_type = _identifyDataType(factor_data, data_type)
@@ -287,7 +288,9 @@ class HDF5DB(WritableFactorDB):
                 if NewDateTimes.shape[0]>0:
                     DataFile["Data"][nOldDT:, :] = _adjustData(factor_data.loc[NewDateTimes, np.r_[OldIDs, NewIDs]], data_type)
                 CrossedDateTimes = factor_data.index.intersection(OldDateTimes)
-                if CrossedDateTimes.shape[0]==0: return 0
+                if CrossedDateTimes.shape[0]==0:
+                    DataFile.flush()
+                    return 0
                 if len(CrossedDateTimes)==len(OldDateTimes):
                     if NewIDs.shape[0]>0:
                         DataFile["Data"][:nOldDT, OldIDs.shape[0]:] = _adjustData(factor_data.loc[OldDateTimes, NewIDs], data_type)
@@ -298,6 +301,7 @@ class HDF5DB(WritableFactorDB):
                         CrossedIDs = CrossedIDs[np.argsort(CrossedIDPos)]
                         CrossedIDPos.sort()
                         DataFile["Data"][:nOldDT, CrossedIDPos] = _adjustData(factor_data.loc[OldDateTimes, CrossedIDs], data_type)
+                    DataFile.flush()
                     return 0
                 CrossedDateTimePos = [OldDateTimes.index(iDT) for iDT in CrossedDateTimes]
                 CrossedDateTimes = CrossedDateTimes[np.argsort(CrossedDateTimePos)]
@@ -316,6 +320,7 @@ class HDF5DB(WritableFactorDB):
                         for i, iID in enumerate(CrossedIDs):
                             iPos = OldIDs.index(iID)
                             DataFile["Data"][CrossedDateTimePos, iPos] = NewData[:, i]
+                DataFile.flush()
         return 0
     def writeFactorData(self, factor_data, table_name, ifactor_name, if_exists="update", data_type=None):
         DTs = factor_data.index
@@ -343,7 +348,9 @@ class HDF5DB(WritableFactorDB):
                         DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=StrDataType, fillvalue=None, data=NewData)
                     elif data_type=="object":
                         DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=h5py.vlen_dtype(np.uint8), data=NewData)
+                    DataFile.flush()
                 factor_data.index = DTs
+                print("创建文件并写入数据")
                 return 0
         if if_exists=="update":
             self._updateFactorData(factor_data, table_name, ifactor_name, data_type)
