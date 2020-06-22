@@ -1087,9 +1087,9 @@ class _MultiInfoPublTable(_InfoPublTable):
     EndDateASC = Bool(False, label="截止日期递增", arg_type="Bool", order=7)
     Operator = Either(Function(None), None, arg_type="Function", label="算子", order=8)
     OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=9)
+    OrderFields = List(arg_type="List", label="排序字段", order=10)# [("字段名", "ASC" 或者 "DESC")]
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
-        self._OrderFields = self._FactorInfo[self._FactorInfo["Supplementary"]=="OrderField"].index.tolist()
         self._QS_IgnoredGroupArgs = ("遍历模式", "回溯天数", "只起始日回溯", "只回溯非目标日", "只回溯时点", "算子", "算子数据类型")
     def getFactorMetaData(self, factor_names=None, key=None, args={}):
         if key=="DataType":
@@ -1101,9 +1101,14 @@ class _MultiInfoPublTable(_InfoPublTable):
         else:
             return super().getFactorMetaData(factor_names=factor_names, key=key, args=args)
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        FactorNames = list(set(factor_names).union(self._OrderFields))
+        OrderFields = args.get("排序字段", self.OrderFields)
+        if OrderFields:
+            OrderFields, Orders = np.array(OrderFields).T.tolist()
+        else:
+            OrderFields, Orders = [], []
+        FactorNames = list(set(factor_names).union(OrderFields))
         RawData = super().__QS_prepareRawData__(FactorNames, ids, dts, args=args)
-        RawData = RawData.sort_values(by=["ID", "日期"]+self._OrderFields)
+        RawData = RawData.sort_values(by=["ID", "日期"]+OrderFields, ascending=[True, True]+[(iOrder.lower()=="asc") for iOrder in Orders])
         return RawData.loc[:, ["日期", "ID"]+factor_names]
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
@@ -1155,9 +1160,9 @@ class _TimeSeriesTable(_DBTable):
     MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=8)
     Operator = Either(Function(None), None, arg_type="Function", label="算子", order=9)
     OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=10)
+    OrderFields = List(arg_type="List", label="排序字段", order=11)# [("字段名", "ASC" 或者 "DESC")]
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
-        self._OrderFields = self._FactorInfo[self._FactorInfo["Supplementary"]=="OrderField"].index.tolist()
         self._QS_IgnoredGroupArgs = ("遍历模式", "回溯天数", "只起始日回溯", "只回溯非目标日", "只回溯时点", "算子", "算子数据类型", "多重映射")
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
@@ -1243,7 +1248,7 @@ class _TimeSeriesTable(_DBTable):
         if RawData.shape[0]==0: return RawData
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
-    def _genNullIDSQLStr(self, factor_names, ids, end_date, args={}):
+    def _genNullIDSQLStr_WithPublDate(self, factor_names, ids, end_date, args={}):
         EndDateField = self._DBTableName+"."+self._FactorInfo.loc[args.get("日期字段", self.DateField), "DBFieldName"]
         if self._AnnDateField is None: AnnDateField = EndDateField
         else: AnnDateField = self._DBTableName+"."+self._AnnDateField
@@ -1270,8 +1275,7 @@ class _TimeSeriesTable(_DBTable):
         else: SQLStr += "WHERE TRUE "
         SQLStr += ConditionSQLStr
         return SQLStr
-    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        if args.get("忽略公告日", self.IgnorePublDate) or (self._AnnDateField is None): return self._prepareRawData_IgnorePublDate(factor_names=factor_names, ids=ids, dts=dts, args=args)
+    def _prepareRawData_WithPublDate(self, factor_names, ids, dts, args={}):
         IgnoreTime = args.get("忽略时间", self.IgnoreTime)
         if IgnoreTime: DTFormat = "%Y-%m-%d"
         else: DTFormat = "%Y-%m-%d %H:%M:%S"
@@ -1311,6 +1315,7 @@ class _TimeSeriesTable(_DBTable):
         if not RawData: RawData = pd.DataFrame(columns=["日期", "MaxEndDate"]+factor_names)
         RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["日期", "MaxEndDate"]+factor_names)
         if np.isinf(LookBack):
+            NullRawData = self._FactorDB.fetchall(self._genNullIDSQLStr_WithPublDate(factor_names, [], StartDate, args=args))
             NullRawData = pd.DataFrame(np.array(NullRawData, dtype="O"), columns=["日期", "MaxEndDate"]+factor_names)
             RawData = pd.concat([NullRawData, RawData], ignore_index=True)
             RawData.sort_values(by=["日期"])
@@ -1320,6 +1325,19 @@ class _TimeSeriesTable(_DBTable):
             RawData = RawData[(DTRank["日期"]<=DTRank["MaxEndDate"]).values]
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        OrderFields = args.get("排序字段", self.OrderFields)
+        if OrderFields:
+            OrderFields, Orders = np.array(OrderFields).T.tolist()
+        else:
+            OrderFields, Orders = [], []
+        FactorNames = list(set(factor_names).union(OrderFields))
+        if args.get("忽略公告日", self.IgnorePublDate) or (self._AnnDateField is None):
+            RawData = self._prepareRawData_IgnorePublDate(factor_names=FactorNames, ids=ids, dts=dts, args=args)
+        else:
+            RawData = self._prepareRawData_WithPublDate(factor_names=FactorNames, ids=ids, dts=dts, args=args)
+        RawData = RawData.sort_values(by=["日期"]+OrderFields, ascending=[True, True]+[(iOrder.lower()=="asc") for iOrder in Orders])
+        return RawData.loc[:, ["日期"]+factor_names]
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data = raw_data.set_index(["日期"])

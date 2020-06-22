@@ -416,7 +416,7 @@ class OptimizerStrategy(PortfolioStrategy):
             if self._Status:
                 self._QS_Logger.warning("以下时点组合优化问题的求解出现问题: ")
                 for iDT, iResultInfo in self._Status:
-                    self._QS_Logger.error(iDT.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 错误代码-"+str(iResultInfo["ErrorCode"])+"    "+iResultInfo["Msg"])
+                    self._QS_Logger.error(iDT.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 错误代码-"+str(iResultInfo["Status"])+"    "+iResultInfo["Msg"])
             if self._ReleasedConstraint!=[]:
                 self._QS_Logger.warning("以下时点组合优化问题的求解舍弃了约束条件: ")
                 for iDT, iReleasedConstraint in self._ReleasedConstraint:
@@ -467,7 +467,7 @@ class OptimizerStrategy(PortfolioStrategy):
         RawSignal, ResultInfo = self._PC.solve()
         if ResultInfo.get("Status", 1)!=1:
             self._Status.append((idt, ResultInfo))
-            if self.SignalAdjustment.Display: self._QS_Logger.error(idt.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 错误代码-"+str(ResultInfo["ErrorCode"])+"    "+ResultInfo["Msg"])# debug
+            if self.SignalAdjustment.Display: self._QS_Logger.error(idt.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 错误代码-"+str(ResultInfo["Status"])+"    "+ResultInfo["Msg"])# debug
         if ResultInfo["ReleasedConstraint"]:
             self._ReleasedConstraint.append((idt, ResultInfo["ReleasedConstraint"]))
             if self.SignalAdjustment.Display: self._QS_Logger.error(idt.strftime("%Y-%m-%d %H:%M:%S.%f")+" : 舍弃约束-"+str(ResultInfo["ReleasedConstraint"]))# debug

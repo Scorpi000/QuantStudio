@@ -271,7 +271,6 @@ class HDF5DB(WritableFactorDB):
         FilePath = self.MainDir+os.sep+table_name+os.sep+ifactor_name+"."+self._Suffix
         with self._getLock(table_name):
             with h5py.File(FilePath, mode="a") as DataFile:
-                print("未创建文件写入数据")
                 OldDataType = DataFile.attrs["DataType"]
                 if data_type is None: data_type = OldDataType
                 factor_data, data_type = _identifyDataType(factor_data, data_type)
@@ -350,7 +349,6 @@ class HDF5DB(WritableFactorDB):
                         DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=h5py.vlen_dtype(np.uint8), data=NewData)
                     DataFile.flush()
                 factor_data.index = DTs
-                print("创建文件并写入数据")
                 return 0
         if if_exists=="update":
             self._updateFactorData(factor_data, table_name, ifactor_name, data_type)
