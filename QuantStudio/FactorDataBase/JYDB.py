@@ -83,6 +83,7 @@ def _identifyDataType(field_data_type):
 class _DBTable(FactorTable):
     FilterCondition = Str("", arg_type="Dict", label="筛选条件", order=100)
     TableType = Str("", arg_type="SingleOption", label="因子表类型", order=200)
+    PreFilterID = Bool(True, arg_type="Bool", label="预筛选ID", order=201)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         self._DBTableName = fdb.TablePrefix + fdb._TableInfo.loc[name, "DBTableName"]
         self._FactorInfo = fdb._FactorInfo.loc[name]
@@ -354,7 +355,10 @@ class _FeatureTable(_DBTable):
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
-        SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        if args.get("预筛选ID", self.PreFilterID):
+            SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        else:
+            SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += self._genConditionSQLStr(args=args)+" "
         SQLStr += "ORDER BY ID"
@@ -362,7 +366,7 @@ class _FeatureTable(_DBTable):
         if not RawData: return pd.DataFrame(columns=["ID"]+factor_names)
         RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID"]+factor_names)
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
-        RawData["ID"] = [str(iID) for iID in RawData["ID"]]
+        #RawData["ID"] = [str(iID) for iID in RawData["ID"]]
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         raw_data = raw_data.set_index(["ID"])
@@ -448,7 +452,10 @@ class _MappingTable(_DBTable):
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
-        SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        if args.get("预筛选ID", self.PreFilterID):
+            SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        else:
+            SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += "AND (("+self._DBTableName+"."+self._EndDateField+">='"+StartDate.strftime("%Y-%m-%d")+"') "
         SQLStr += "OR ("+self._DBTableName+"."+self._EndDateField+" IS NULL) "
@@ -674,7 +681,10 @@ class _ConstituentTable(_DBTable):
         if self._CurSignField: SQLStr += self._DBTableName+"."+FieldDict[self._CurSignField]+" "# 最新标志
         else: SQLStr += "NULL AS CurSign "# 最新标志
         SQLStr += self._genFromSQLStr()+" "
-        SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+")                 "
+        if args.get("预筛选ID", self.PreFilterID):
+            SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+")                 "
+        else:
+            SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         SQLStr += "AND ("+genSQLInCondition(self._DBTableName+"."+FieldDict[self._GroupField], factor_names, is_str=False, max_num=1000)+") "
         SQLStr += "AND (("+self._DBTableName+"."+FieldDict[self._OutDateField]+">'"+StartDate.strftime("%Y%m%d")+"') "
         SQLStr += "OR ("+self._DBTableName+"."+FieldDict[self._OutDateField]+" IS NULL)) "
@@ -793,7 +803,10 @@ class _MarketTable(_DBTable):
         SubSQLStr += "MAX("+DateField+") "
         SubSQLStr += self._genFromSQLStr()+" "
         SubSQLStr += "WHERE "+DateField+"<'"+end_date.strftime("%Y-%m-%d")+"' "
-        SubSQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        if args.get("预筛选ID", self.PreFilterID):
+            SubSQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        else:
+            SubSQLStr += "AND "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SubSQLStr += "AND "+self._MainTableCondition+" "
         ConditionSQLStr = self._genConditionSQLStr(args=args)
         SubSQLStr += ConditionSQLStr+" "
@@ -819,7 +832,10 @@ class _MarketTable(_DBTable):
         SQLStr += "WHERE "+DateField+">='"+start_date.strftime("%Y-%m-%d")+"' "
         SQLStr += "AND "+DateField+"<='"+end_date.strftime("%Y-%m-%d")+"' "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
-        SQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        if args.get("预筛选ID", self.PreFilterID):
+            SQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        else:
+            SQLStr += "AND "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         SQLStr += self._genConditionSQLStr(args=args)+" "
         SQLStr += "ORDER BY ID, "+DateField
         return SQLStr
@@ -981,7 +997,10 @@ class _InfoPublTable(_MarketTable):
         ConditionSQLStr = self._genConditionSQLStr(args=args)
         SubSQLStr += ConditionSQLStr+" "
         if (self._MainTableName is None) or (self._MainTableName==self._DBTableName):
-            SubSQLStr += "AND ("+genSQLInCondition(self._DBTableName+"."+self._IDField, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+            if args.get("预筛选ID", self.PreFilterID):
+                SubSQLStr += "AND ("+genSQLInCondition(self._DBTableName+"."+self._IDField, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+            else:
+                SubSQLStr += "AND "+self._DBTableName+"."+self._IDField+" IS NOT NULL "
         SubSQLStr += "GROUP BY "+self._DBTableName+"."+self._IDField
         if IgnoreTime:
             SQLStr = "SELECT DATE(CASE WHEN "+AnnDateField+">=t.MaxEndDate THEN "+AnnDateField+" ELSE t.MaxEndDate END) AS DT, "
@@ -996,7 +1015,10 @@ class _InfoPublTable(_MarketTable):
         SQLStr += "ON (t."+self._IDField+"="+self._DBTableName+"."+self._IDField+" "
         SQLStr += "AND "+EndDateField+"=t.MaxEndDate) "
         if not ((self._MainTableName is None) or (self._MainTableName==self._DBTableName)):
-            SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+            if args.get("预筛选ID", self.PreFilterID):
+                SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+            else:
+                SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         else:
             SQLStr += "WHERE TRUE "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
@@ -1026,7 +1048,10 @@ class _InfoPublTable(_MarketTable):
         ConditionSQLStr = self._genConditionSQLStr(args=args)
         SubSQLStr += ConditionSQLStr+" "
         if (self._MainTableName is None) or (self._MainTableName==self._DBTableName):
-            SubSQLStr += "AND ("+genSQLInCondition(self._DBTableName+"."+self._IDField, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+            if args.get("预筛选ID", self.PreFilterID):
+                SubSQLStr += "AND ("+genSQLInCondition(self._DBTableName+"."+self._IDField, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+            else:
+                SubSQLStr += "AND "+self._DBTableName+"."+self._IDField+" IS NOT NULL "
         if IgnoreTime:
             SubSQLStr += "GROUP BY "+self._DBTableName+"."+self._IDField+", DATE(AnnDate)"
         else:
@@ -1041,7 +1066,10 @@ class _InfoPublTable(_MarketTable):
         SQLStr += "ON (t."+self._IDField+"="+self._DBTableName+"."+self._IDField+") "
         SQLStr += "AND (t.MaxEndDate="+EndDateField+") "
         if not ((self._MainTableName is None) or (self._MainTableName==self._DBTableName)):
-            SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+            if args.get("预筛选ID", self.PreFilterID):
+                SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+            else:
+                SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         else:
             SQLStr += "WHERE TRUE "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
@@ -1497,7 +1525,10 @@ class _NarrowTable(_DBTable):
         SubSQLStr += "MAX("+DateField+") "
         SubSQLStr += self._genFromSQLStr()+" "
         SubSQLStr += "WHERE "+DateField+"<'"+end_date.strftime("%Y-%m-%d")+"' "
-        SubSQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        if args.get("预筛选ID", self.PreFilterID):
+            SubSQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        else:
+            SubSQLStr += "AND "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SubSQLStr += "AND "+self._MainTableCondition+" "
         ConditionSQLStr = self._genConditionSQLStr(args=args)
         SubSQLStr += ConditionSQLStr+" "
@@ -1530,7 +1561,10 @@ class _NarrowTable(_DBTable):
         SQLStr += "WHERE "+DateField+">='"+start_date.strftime("%Y-%m-%d")+"' "
         SQLStr += "AND "+DateField+"<='"+end_date.strftime("%Y-%m-%d")+"' "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
-        SQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        if args.get("预筛选ID", self.PreFilterID):
+            SQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        else:
+            SQLStr += "AND "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         FactorNames = self._getFactorNames(FactorField, check_list=True)
         if isinstance(FactorNames, list):
             SQLStr += "AND ("+genSQLInCondition(DBFactorField, factor_names, is_str=FactorFieldStr, max_num=1000)+") "
@@ -1658,7 +1692,7 @@ class _FinancialTable(_DBTable):
         ConditionGroup = {}
         for iFactor in factors:
             iConditions = (iFactor.IgnoreNonQuarter or (not ((iFactor.ReportDate=="所有") and (iFactor.CalcType=="最新") and (iFactor.YearLookBack==0) and (iFactor.PeriodLookBack==0))))
-            iConditions = (iConditions, iFactor.AdjustType, ";".join([iCondition+":"+str(iFactor[iCondition]) for i, iCondition in enumerate(self._ConditionFields)]+["筛选条件:"+iFactor["筛选条件"]]))
+            iConditions = (iConditions, iFactor.AdjustType, iFactor.PreFilterID, ";".join([iCondition+":"+str(iFactor[iCondition]) for i, iCondition in enumerate(self._ConditionFields)]+["筛选条件:"+iFactor["筛选条件"]]))
             if iConditions not in ConditionGroup:
                 ConditionGroup[iConditions] = {"FactorNames":[iFactor.Name], 
                                                        "RawFactorNames":{iFactor._NameInFT}, 
@@ -1720,7 +1754,10 @@ class _FinancialTable(_DBTable):
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
-        SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        if args.get("预筛选ID", self.PreFilterID):
+            SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        else:
+            SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         SQLStr += "AND "+AnnDateField+"<='"+EndDate.strftime("%Y-%m-%d")+"' "
         SQLStr += "AND "+ReportDateField+" IS NOT NULL "
         SQLStr += self._genConditionSQLStr(args=args)+" "
@@ -2288,7 +2325,10 @@ class _FinancialIndicatorTable(_FinancialTable):
         SQLStr += "AND LC_BalanceSheetAll.IfAdjusted = 2 "
         SQLStr += self._genConditionSQLStr(args=args)+" "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
-        SQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        if args.get("预筛选ID", self.PreFilterID):
+            SQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        else:
+            SQLStr += "AND "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         SQLStr += "ORDER BY ID, LC_BalanceSheetAll.InfoPublDate, "
         SQLStr += ReportDateField
         #RawData = self._FactorDB.fetchall(SQLStr)
@@ -2314,7 +2354,10 @@ class _FinancialIndicatorTable(_FinancialTable):
         SQLStr += "WHERE MF_BalanceSheetNew.Mark = 2 "
         SQLStr += self._genConditionSQLStr(args=args)+" "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
-        SQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        if args.get("预筛选ID", self.PreFilterID):
+            SQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        else:
+            SQLStr += "AND "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         SQLStr += "ORDER BY ID, MF_BalanceSheetNew.InfoPublDate, "
         SQLStr += ReportDateField
         RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)
@@ -2329,7 +2372,7 @@ def findNoteDate(report_date, report_note_dates):
         if report_date==report_note_dates['报告期'].iloc[i]: return report_note_dates['公告日期'].iloc[i]
     return None
 # 生成报告期-公告日期 SQL 查询语句
-def genANN_ReportSQLStr(db_type, table_prefix, ids, report_period="1231"):
+def genANN_ReportSQLStr(db_type, table_prefix, ids, report_period="1231", pre_filter_id=True):
     DBTableName = table_prefix+"LC_BalanceSheetAll"
     # 提取财报的公告期数据, ID, 公告日期, 报告期
     SQLStr = "SELECT CASE WHEN "+table_prefix+"SecuMain.SecuMarket=83 THEN CONCAT("+table_prefix+"SecuMain.SecuCode, '.SH') "
@@ -2348,20 +2391,23 @@ def genANN_ReportSQLStr(db_type, table_prefix, ids, report_period="1231"):
     SQLStr += "FROM "+DBTableName+" "
     SQLStr += "INNER JOIN "+table_prefix+"SecuMain "
     SQLStr += "ON "+table_prefix+"SecuMain.CompanyCode="+DBTableName+".CompanyCode "
-    SQLStr += "WHERE "+table_prefix+"SecuMain.SecuCategory=1 AND "+table_prefix+"SecuMain.SecuMarket IN (83,90) "    
-    SQLStr += "AND ("+genSQLInCondition(table_prefix+"SecuMain.SecuCode", deSuffixID(ids), is_str=True, max_num=1000)+") "
+    SQLStr += "WHERE "+table_prefix+"SecuMain.SecuCategory=1 AND "+table_prefix+"SecuMain.SecuMarket IN (83,90) "
+    if pre_filter_id:
+        SQLStr += "AND ("+genSQLInCondition(table_prefix+"SecuMain.SecuCode", deSuffixID(ids), is_str=True, max_num=1000)+") "
+    else:
+        SQLStr += "AND "+table_prefix+"SecuMain.SecuCode IS NOT NULL "
     if report_period is not None:
         SQLStr += "AND "+ReportDateStr+" LIKE '%"+report_period+"' "
     SQLStr += "ORDER BY "+table_prefix+"SecuMain.SecuCode, "
     SQLStr += DBTableName+".InfoPublDate, "+DBTableName+".EndDate"
     return SQLStr
-def _prepareReportANNRawData(fdb, ids):
-    SQLStr = genANN_ReportSQLStr(fdb.DBType, fdb.TablePrefix, ids, report_period="1231")
+def _prepareReportANNRawData(fdb, ids, pre_filter_id=True):
+    SQLStr = genANN_ReportSQLStr(fdb.DBType, fdb.TablePrefix, ids, report_period="1231", pre_filter_id=pre_filter_id)
     RawData = fdb.fetchall(SQLStr)
     if not RawData: RawData =  pd.DataFrame(columns=["ID", "公告日期", "报告期"])
     else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "公告日期", "报告期"])
     return RawData
-def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock):
+def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock, pre_filter_id=True):
     isANNReport = raw_data._QS_ANNReport
     if isANNReport:
         PID = sorted(pid_lock)[0]
@@ -2372,7 +2418,7 @@ def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_d
             pid_lock[PID].release()
             IDs = []
             for iPID in sorted(pid_ids): IDs.extend(pid_ids[iPID])
-            RawData = _prepareReportANNRawData(ft.FactorDB, ids=IDs)
+            RawData = _prepareReportANNRawData(ft.FactorDB, ids=IDs, pre_filter_id=pre_filter_id)
             super(_DBTable, ft).__QS_saveRawData__(RawData, [], raw_data_dir, pid_ids, report_ann_file, pid_lock)
         else:
             pid_lock[PID].release()
@@ -2421,7 +2467,10 @@ class _AnalystConsensusTable(_DBTable):
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
-        SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        if args.get("预筛选ID", self.PreFilterID):
+            SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        else:
+            SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += "AND "+PeriodField+"="+str(args.get("周期", self.Period))+" "
         SQLStr += "AND "+DateField+">='"+StartDate.strftime("%Y-%m-%d")+"' "
@@ -2431,33 +2480,34 @@ class _AnalystConsensusTable(_DBTable):
         if not RawData: RawData = pd.DataFrame(columns=['日期','ID','报告期']+factor_names)
         else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=['日期','ID','报告期']+factor_names)
         RawData._QS_ANNReport = (args.get("计算方法", self.CalcType)!="Fwd12M")
+        RawData._QS_PreFilterID = args.get("预筛选ID", self.PreFilterID)
         if RawData.shape[0]==0: return RawData
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
     def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock, **kwargs):
-        return _saveRawDataWithReportANN(self, self._ANN_ReportFileName, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock)
+        return _saveRawDataWithReportANN(self, self._ANN_ReportFileName, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock, pre_filter_id=raw_data._QS_PreFilterID)
     def __QS_genGroupInfo__(self, factors, operation_mode):
         PeriodGroup = {}
         StartDT = dt.datetime.now()
         FactorNames, RawFactorNames = [], set()
         for iFactor in factors:
-            iPeriod = iFactor.Period
-            if iPeriod not in PeriodGroup:
-                PeriodGroup[iPeriod] = {"FactorNames":[iFactor.Name], 
+            iConditions = (iFactor.Period, iFactor.PreFilterID)
+            if iConditions not in PeriodGroup:
+                PeriodGroup[iConditions] = {"FactorNames":[iFactor.Name], 
                                         "RawFactorNames":{iFactor._NameInFT}, 
                                         "StartDT":operation_mode._FactorStartDT[iFactor.Name], 
-                                        "args":{"周期":iPeriod, "计算方法":iFactor.CalcType, "回溯天数":iFactor.LookBack}}
+                                        "args":{"周期": iFactor.Period, "计算方法":iFactor.CalcType, "回溯天数":iFactor.LookBack}}
             else:
-                PeriodGroup[iPeriod]["FactorNames"].append(iFactor.Name)
-                PeriodGroup[iPeriod]["RawFactorNames"].add(iFactor._NameInFT)
-                PeriodGroup[iPeriod]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], PeriodGroup[iPeriod]["StartDT"])
-                if iFactor.CalcType!="Fwd12M": PeriodGroup[iPeriod]["args"]["计算方法"] = iFactor.CalcType
-                PeriodGroup[iPeriod]["args"]["回溯天数"] = max(PeriodGroup[iPeriod]["args"]["回溯天数"], iFactor.LookBack)
+                PeriodGroup[iConditions]["FactorNames"].append(iFactor.Name)
+                PeriodGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
+                PeriodGroup[iConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], PeriodGroup[iConditions]["StartDT"])
+                if iFactor.CalcType!="Fwd12M": PeriodGroup[iConditions]["args"]["计算方法"] = iFactor.CalcType
+                PeriodGroup[iConditions]["args"]["回溯天数"] = max(PeriodGroup[iConditions]["args"]["回溯天数"], iFactor.LookBack)
         EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
         Groups = []
-        for iPeriod in PeriodGroup:
-            StartInd = operation_mode.DTRuler.index(PeriodGroup[iPeriod]["StartDT"])
-            Groups.append((self, PeriodGroup[iPeriod]["FactorNames"], list(PeriodGroup[iPeriod]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], PeriodGroup[iPeriod]["args"]))
+        for iConditions in PeriodGroup:
+            StartInd = operation_mode.DTRuler.index(PeriodGroup[iConditions]["StartDT"])
+            Groups.append((self, PeriodGroup[iConditions]["FactorNames"], list(PeriodGroup[iConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], PeriodGroup[iConditions]["args"]))
         return Groups
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
@@ -2472,7 +2522,7 @@ class _AnalystConsensusTable(_DBTable):
                 with shelve.open(ANNReportPath) as ANN_ReportFile:
                     ANNReportData = ANN_ReportFile["RawData"]
             else:
-                ANNReportData = _prepareReportANNRawData(self._FactorDB, ids)
+                ANNReportData = _prepareReportANNRawData(self._FactorDB, ids, pre_filter_id=args.get("预筛选ID", self.PreFilterID))
             ANNReportData = ANNReportData.set_index(["ID"])
         raw_data = raw_data.set_index(["ID"])
         Data = {}
@@ -2586,7 +2636,7 @@ class _AnalystEstDetailTable(_DBTable):
         Args["附加字段"], Args["去重字段"] = list(Args["附加字段"]), list(Args["去重字段"])
         return [(self, FactorNames, list(RawFactorNames), operation_mode.DTRuler[StartInd:EndInd+1], Args)]
     def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock, **kwargs):
-        return _saveRawDataWithReportANN(self, self._ANN_ReportFileName, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock)
+        return _saveRawDataWithReportANN(self, self._ANN_ReportFileName, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock, pre_filter_id=raw_data._QS_PreFilterID)
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         StartDate -= dt.timedelta(args.get("周期", self.Period))
@@ -2605,7 +2655,10 @@ class _AnalystEstDetailTable(_DBTable):
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(AllFields)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
-        SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        if args.get("预筛选ID", self.PreFilterID):
+            SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        else:
+            SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += "AND "+DateField+">='"+StartDate.strftime("%Y-%m-%d")+"' "
         SQLStr += "AND "+DateField+"<='"+EndDate.strftime("%Y-%m-%d")+"' "
@@ -2614,6 +2667,7 @@ class _AnalystEstDetailTable(_DBTable):
         if not RawData: RawData = pd.DataFrame(columns=["日期", "ID", self._ReportDateField]+AllFields)
         else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["日期", "ID", self._ReportDateField]+AllFields)
         RawData._QS_ANNReport = True
+        RawData._QS_PreFilterID = args.get("预筛选ID", self.PreFilterID)
         if RawData.shape[0]==0: return RawData
         RawData = self._adjustRawDataByRelatedField(RawData, AllFields)
         return RawData
@@ -2633,7 +2687,7 @@ class _AnalystEstDetailTable(_DBTable):
             with shelve.open(ANNReportPath) as ANN_ReportFile:
                 ANNReportData = ANN_ReportFile["RawData"]
         else:
-            ANNReportData = _prepareReportANNRawData(self._FactorDB, ids)
+            ANNReportData = _prepareReportANNRawData(self._FactorDB, ids, pre_filter_id=args.get("预筛选ID", self.PreFilterID))
         ANNReportData = ANNReportData.set_index(["ID"])
         AllIDs = set(raw_data.index)
         Data = {}
@@ -2724,7 +2778,10 @@ class _AnalystRatingDetailTable(_DBTable):
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(AllFields)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
-        SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        if args.get("预筛选ID", self.PreFilterID):
+            SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        else:
+            SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += "AND "+DateField+">='"+StartDate.strftime("%Y-%m-%d")+"' "
         SQLStr += "AND "+DateField+"<='"+EndDate.strftime("%Y-%m-%d")+"' "
@@ -2773,6 +2830,7 @@ class _AnalystRatingDetailTable(_DBTable):
 class JYDB(QSSQLObject, FactorDB):
     """聚源数据库"""
     DBInfoFile = File(label="库信息文件", arg_type="File", order=100)
+    FTArgs = Dict(label="因子表参数", arg_type="Dict", order=101)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"JYDBConfig.json" if config_file is None else config_file), **kwargs)
         self._InfoFilePath = __QS_LibPath__+os.sep+"JYDBInfo.hdf5"# 数据库信息文件路径
@@ -2793,7 +2851,9 @@ class JYDB(QSSQLObject, FactorDB):
         if table_name in self._TableInfo.index:
             TableClass = args.get("因子表类型", self._TableInfo.loc[table_name, "TableClass"])
             if pd.notnull(TableClass) and (TableClass!=""):
-                return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=args, logger=self._QS_Logger)")
+                Args = self.FTArgs.copy()
+                Args.update(args)
+                return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=Args, logger=self._QS_Logger)")
         Msg = ("因子库 ‘%s' 目前尚不支持因子表: '%s'" % (self.Name, table_name))
         self._QS_Logger.error(Msg)
         raise __QS_Error__(Msg)

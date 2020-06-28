@@ -7,7 +7,7 @@ from collections import OrderedDict
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, Str, Range, Password, File, Float, Bool, ListStr, on_trait_change, Either, Date
+from traits.api import Enum, Str, Range, Password, File, Float, Bool, ListStr, on_trait_change, Either, Date, Dict
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName
@@ -66,6 +66,7 @@ class _WideTable(FactorTable):
     OnlyStartLookBack = Bool(False, label="只起始日回溯", arg_type="Bool", order=7)
     OnlyLookBackNontarget = Bool(False, label="只回溯非目标日", arg_type="Bool", order=8)
     OnlyLookBackDT = Bool(False, label="只回溯时点", arg_type="Bool", order=9)
+    PreFilterID = Bool(True, arg_type="Bool", label="预筛选ID", order=10)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         self._DataType = fdb._TableFactorDict[name]
         self._DBDataType = fdb._TableFieldDataType[name]
@@ -145,7 +146,10 @@ class _WideTable(FactorTable):
         SubSQLStr += "MAX("+DTField+") "
         SubSQLStr += "FROM "+self._DBTableName+" "
         SubSQLStr += "WHERE "+DTField+"<'"+end_date.strftime("%Y-%m-%d:%H:%M:%S.%f")+"' "
-        SubSQLStr += "AND ("+genSQLInCondition(IDField, ids, is_str=True, max_num=1000)+") "
+        if args.get("预筛选ID", self.PreFilterID):
+            SubSQLStr += "AND ("+genSQLInCondition(IDField, ids, is_str=True, max_num=1000)+") "
+        else:
+            SubSQLStr += "AND "+IDField+" IS NOT NULL "
         FilterStr = args.get("筛选条件", self.FilterCondition)
         if FilterStr: SubSQLStr += "AND "+FilterStr.format(Table=self._DBTableName)+" "
         SubSQLStr += "GROUP BY "+IDField
@@ -192,8 +196,10 @@ class _WideTable(FactorTable):
             SQLStr += "AND "+self._DBTableName+"."+DTField+"<='"+EndDate.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
         else:
             SQLStr += "WHERE "+self._DBTableName+"."+DTField+" IS NOT NULL "
-        if ids is not None:
+        if (ids is not None) and args.get("预筛选ID", self.PreFilterID):
             SQLStr += "AND ("+genSQLInCondition(self._DBTableName+"."+IDField, ids, is_str=True, max_num=1000)+") "
+        else:
+            SQLStr += "AND "+self._DBTableName+"."+IDField+" IS NOT NULL "
         FilterStr = args.get("筛选条件", self.FilterCondition)
         if FilterStr: SQLStr += "AND "+FilterStr.format(Table=self._DBTableName)+" "
         SQLStr += "ORDER BY "+self._DBTableName+"."+DTField+", "+self._DBTableName+"."+IDField
@@ -203,6 +209,7 @@ class _WideTable(FactorTable):
         if not RawData: RawData = pd.DataFrame(columns=["QS_DT", "ID"]+factor_names)
         RawData = pd.DataFrame(np.array(RawData), columns=["QS_DT", "ID"]+factor_names)
         if (StartDate is not None) and np.isinf(LookBack):
+            if ids is None: ids = self.getID(args=args)
             NullIDs = set(ids).difference(set(RawData[RawData["QS_DT"]==dt.datetime.combine(StartDate, dt.time(0))]["ID"]))
             if NullIDs:
                 NullRawData = self._FactorDB.fetchall(self._genNullIDSQLStr(factor_names, list(NullIDs), StartDate, args=args))
@@ -246,6 +253,7 @@ class _WideTable(FactorTable):
                                   logger=self._QS_Logger)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        if ids is None: ids = sorted(raw_data["ID"].unique())
         raw_data = raw_data.set_index(["QS_DT", "ID"])
         ValueType = args.get("因子值类型", self.ValueType)
         if ValueType=="list":
@@ -310,6 +318,7 @@ class _NarrowTable(FactorTable):
     #IDField = Enum("code", arg_type="SingleOption", label="ID字段", order=5)
     #FactorField = Enum("code", arg_type="SingleOption", label="因子字段", order=6)
     #FactorValueField = Enum(None, arg_type="SingleOption", label="因子值字段", order=7)
+    PreFilterID = Bool(True, arg_type="Bool", label="预筛选ID", order=8)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         self._DataType = "double"
         self._DBDataType = fdb._TableFieldDataType[name]
@@ -319,13 +328,13 @@ class _NarrowTable(FactorTable):
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
         Fields = ["datetime"] + self._DBDataType[self._DBDataType.str.contains("date")].index.tolist()
-        self.add_trait("DTField", Enum(*Fields, arg_type="SingleOption", label="时点字段", order=3))
+        self.add_trait("DTField", Enum(*Fields, arg_type="SingleOption", label="时点字段", order=4))
         StrMask = (self._DBDataType.str.contains("char") | self._DBDataType.str.contains("text"))
         Fields = ["code"] + self._DBDataType[StrMask].index.tolist()
-        self.add_trait("IDField", Enum(*Fields, arg_type="SingleOption", label="ID字段", order=4))
-        self.add_trait("FactorField", Enum(*Fields, arg_type="SingleOption", label="因子字段", order=5))
+        self.add_trait("IDField", Enum(*Fields, arg_type="SingleOption", label="ID字段", order=5))
+        self.add_trait("FactorField", Enum(*Fields, arg_type="SingleOption", label="因子字段", order=6))
         Fields = [None] + self._DBDataType.index.tolist()
-        self.add_trait("FactorValueField", Enum(*Fields, arg_type="SingleOption", label="因子值字段", order=6))
+        self.add_trait("FactorValueField", Enum(*Fields, arg_type="SingleOption", label="因子值字段", order=7))
     @on_trait_change("FactorField")
     def _on_FactorField_changed(self, obj, name, old, new):
         if self.FactorField is not None:
@@ -416,7 +425,10 @@ class _NarrowTable(FactorTable):
         SubSQLStr += "MAX("+DTField+") "
         SubSQLStr += "FROM "+self._DBTableName+" "
         SubSQLStr += "WHERE "+DTField+"<'"+end_date.strftime("%Y-%m-%d:%H:%M:%S.%f")+"' "
-        SubSQLStr += "AND ("+genSQLInCondition(IDField, ids, is_str=True, max_num=1000)+") "
+        if args.get("预筛选ID", self.PreFilterID):
+            SubSQLStr += "AND ("+genSQLInCondition(IDField, ids, is_str=True, max_num=1000)+") "
+        else:
+            SubSQLStr += "AND "+IDField+" IS NOT NULL "
         if len(factor_names)<1000:
             SubSQLStr += "AND ("+genSQLInCondition(FactorField, factor_names, is_str=True, max_num=1000)+") "
         else:
@@ -462,8 +474,10 @@ class _NarrowTable(FactorTable):
             SQLStr += "AND "+DTField+"<='"+EndDate.strftime("%Y-%m-%d %H:%M:%S.%f")+"' "
         else:
             SQLStr += "WHERE "+DTField+" IS NOT NULL "
-        if ids is not None:
+        if (ids is not None) and args.get("预筛选ID", self.PreFilterID):
             SQLStr += "AND ("+genSQLInCondition(IDField, ids, is_str=True, max_num=1000)+") "
+        else:
+            SQLStr += "AND "+IDField+" IS NOT NULL "
         if len(factor_names)<1000:
             SQLStr += "AND ("+genSQLInCondition(FactorField, factor_names, is_str=True, max_num=1000)+") "
         else:
@@ -475,6 +489,7 @@ class _NarrowTable(FactorTable):
         if not RawData: RawData = pd.DataFrame(columns=["QS_DT", "ID", "QS_Factor", "QS_FactorValue"])
         RawData = pd.DataFrame(np.array(RawData), columns=["QS_DT", "ID", "QS_Factor", "QS_FactorValue"])
         if (StartDate is not None) and np.isinf(LookBack):
+            if ids is None: ids = self.getID(args=args)
             NullIDs = set(ids).difference(set(RawData[RawData["QS_DT"]==dt.datetime.combine(StartDate, dt.time(0))]["ID"]))
             if NullIDs:
                 NullRawData = self._FactorDB.fetchall(self._genNullIDSQLStr(factor_names, list(NullIDs), StartDate, args=args))
@@ -495,6 +510,7 @@ class _NarrowTable(FactorTable):
         return _adjustData(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        if ids is None: ids = sorted(raw_data["ID"].unique())
         raw_data = raw_data.set_index(["QS_DT", "ID", "QS_Factor"]).iloc[:, 0]
         ValueType = args.get("因子值类型", self.ValueType)
         if ValueType=="list":
@@ -522,7 +538,7 @@ class _FeatureTable(_WideTable):
     """截面宽表"""
     TableType = Enum("截面宽表", arg_type="SingleOption", label="因子表类型", order=0)
     LookBack = Float(np.inf, arg_type="Integer", label="回溯天数", order=1)
-    TargetDT = Either(None, Date, arg_type="DateTime", label="目标时点", order=7)
+    TargetDT = Either(None, Date, arg_type="DateTime", label="目标时点", order=11)
     def _getMaxDT(self, args={}):
         DTField = args.get("时点字段", self.DTField)
         SQLStr = "SELECT MAX("+self._DBTableName+"."+DTField+") FROM "+self._DBTableName+" "
@@ -561,6 +577,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
     CheckWriteData = Bool(False, arg_type="Bool", label="检查写入值", order=100)
     IgnoreFields = ListStr(arg_type="List", label="忽略字段", order=101)
     InnerPrefix = Str("qs_", arg_type="String", label="内部前缀", order=102)
+    FTArgs = Dict(label="因子表参数", arg_type="Dict", order=103)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"SQLDBConfig.json" if config_file is None else config_file), **kwargs)
         self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
@@ -618,13 +635,15 @@ class SQLDB(QSSQLObject, WritableFactorDB):
             Msg = ("因子库 '%s' 调用方法 getTable 错误: 不存在因子表: '%s'!" % (self.Name, table_name))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
-        TableType = args.get("因子表类型", "宽表")
+        Args = self.FTArgs.copy()
+        Args.update(args)
+        TableType = Args.get("因子表类型", "宽表")
         if TableType=="宽表":
-            return _WideTable(name=table_name, fdb=self, sys_args=args, logger=self._QS_Logger)
+            return _WideTable(name=table_name, fdb=self, sys_args=Args, logger=self._QS_Logger)
         elif TableType=="窄表":
-            return _NarrowTable(name=table_name, fdb=self, sys_args=args, logger=self._QS_Logger)
+            return _NarrowTable(name=table_name, fdb=self, sys_args=Args, logger=self._QS_Logger)
         elif TableType=="截面宽表":
-            return _FeatureTable(name=table_name, fdb=self, sys_args=args, logger=self._QS_Logger)
+            return _FeatureTable(name=table_name, fdb=self, sys_args=Args, logger=self._QS_Logger)
         else:
             Msg = ("因子库 '%s' 调用方法 getTable 错误: 不支持的因子表类型: '%s'" % (self.Name, TableType))
             self._QS_Logger.error(Msg)

@@ -210,7 +210,7 @@ def _calcEfficientFrontierNoShort(cov, mu, r=None, sigma=None, num=100):
         #r = r[Idx:]
     else:
         TargetVar = cvx.Parameter(1)
-        Prob = cvx.Problem(cvx.Maximize(mu @ w), [cvx.quad_form(w, V) <= TargetVar, cvx.sum(w)==1, w>=0, w<=1])
+        Prob = cvx.Problem(cvx.Maximize(mu @ w), [cvx.quad_form(w, cov) <= TargetVar, cvx.sum(w)==1, w>=0, w<=1])
         r = np.full(shape=np.shape(sigma), fill_value=np.nan)
         for i, isigma in enumerate(sigma):
             TargetVar.value = np.array([isigma**2])
