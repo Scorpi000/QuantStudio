@@ -219,6 +219,8 @@ class _DBTable(FactorTable):
                 if pd.notnull(jVal):
                     if iOldDataType!="double":
                         iNewData[iOldData==str(jVal)] = jRelatedVal
+                    elif isinstance(jVal, str):
+                        iNewData[iOldData==float(jVal)] = jRelatedVal
                     else:
                         iNewData[iOldData==jVal] = jRelatedVal
                 else:
@@ -944,6 +946,7 @@ class _InfoPublTable(_MarketTable):
         SQLStr += "ORDER BY ID"
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
+        if args.get("忽略公告日", self.IgnorePublDate) or (self._AnnDateField is None): return super().getDateTime(ifactor_name=ifactor_name, iid=iid, start_dt=start_dt, end_dt=end_dt, args=args)
         IgnoreTime = args.get("忽略时间", self.IgnoreTime)
         EndDateField = self._DBTableName+"."+self._FactorDB._FactorInfo.loc[self.Name].loc[args.get("日期字段", self.DateField), "DBFieldName"]
         if self._AnnDateField is None: AnnDateField = EndDateField
@@ -1191,6 +1194,9 @@ class _TimeSeriesTable(_DBTable):
     OrderFields = List(arg_type="List", label="排序字段", order=11)# [("字段名", "ASC" 或者 "DESC")]
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+        self._AnnDateField = self._FactorInfo["DBFieldName"][self._FactorInfo["FieldType"]=="AnnDate"]
+        if self._AnnDateField.shape[0]>0: self._AnnDateField = self._AnnDateField.iloc[0]# 公告日期
+        else: self._AnnDateField = None
         self._QS_IgnoredGroupArgs = ("遍历模式", "回溯天数", "只起始日回溯", "只回溯非目标日", "只回溯时点", "算子", "算子数据类型", "多重映射")
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
@@ -1364,7 +1370,7 @@ class _TimeSeriesTable(_DBTable):
             RawData = self._prepareRawData_IgnorePublDate(factor_names=FactorNames, ids=ids, dts=dts, args=args)
         else:
             RawData = self._prepareRawData_WithPublDate(factor_names=FactorNames, ids=ids, dts=dts, args=args)
-        RawData = RawData.sort_values(by=["日期"]+OrderFields, ascending=[True, True]+[(iOrder.lower()=="asc") for iOrder in Orders])
+        RawData = RawData.sort_values(by=["日期"]+OrderFields, ascending=[True]+[(iOrder.lower()=="asc") for iOrder in Orders])
         return RawData.loc[:, ["日期"]+factor_names]
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)

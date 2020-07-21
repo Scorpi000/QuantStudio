@@ -45,7 +45,7 @@ class QuantileTiming(BaseModule):
         self._Output["证券ID"] = SecurityIDs
         self._Output["证券收益率"] = np.zeros(shape=(nDT, nSecurityID))
         self._Output["因子值"] = np.full(shape=(nDT, nFactorID), fill_value=np.nan)
-        self._Output["因子符号"] = [(self.FactorOrder.get(iID, "降序")=="升序") for i, iID in enumerate(self.FactorIDs)]
+        self._Output["因子符号"] = 2 * np.array([(self.FactorOrder.get(iID, "降序")=="升序") for i, iID in enumerate(self.FactorIDs)]).astype(float) - 1
         self._Output["最新信号"] = np.full(shape=(nFactorID, self.GroupNum), fill_value=np.nan)
         self._Output["信号"] = np.full(shape=(nDT, nFactorID, self.GroupNum), fill_value=np.nan)
         self._Output["信号收益率"] = np.full(shape=(nFactorID, nSecurityID, nDT, self.GroupNum), fill_value=np.nan)
@@ -69,7 +69,7 @@ class QuantileTiming(BaseModule):
         else:
             self._CurCalcInd = self._Model.DateTimeIndex
         if DTIdx+1<self.MinSummaryWindow: return 0
-        FactorData = self._Output["因子值"][int(max(0, DTIdx + 1 - self.SummaryWindow)):DTIdx+1, :]
+        FactorData = self._Output["因子值"][int(max(0, DTIdx + 1 - self.SummaryWindow)):DTIdx+1, :] * self._Output["因子符号"]
         Quantiles = np.nanpercentile(FactorData, np.arange(1, self.GroupNum+1) / self.GroupNum * 100, axis=0)
         Signal = np.sum(Quantiles<FactorData[-1, :], axis=0).astype(float)
         Signal[pd.isnull(FactorData[-1, :])] = np.nan
