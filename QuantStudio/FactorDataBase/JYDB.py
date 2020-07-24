@@ -8,7 +8,7 @@ import datetime as dt
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, Int, Str, Range, Bool, List, ListStr, ListInt, Dict, Function, Password, Either, Float, File, on_trait_change
+from traits.api import Enum, Int, Str, Bool, List, ListStr, Dict, Function, Either, Float, File, on_trait_change
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
@@ -1161,6 +1161,7 @@ class _MultiInfoPublTable(_InfoPublTable):
             RowIdx = RowIdx.astype(int)
             ColIdx = np.arange(RowIdx.shape[1]).reshape((1, RowIdx.shape[1])).repeat(RowIdx.shape[0], axis=0)
             RowIdxMask = (RowIdx==-1)
+            Data = {}
             for iFactorName in factor_names:
                 iRawData = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
                 iRawData = iRawData.values[RowIdx, ColIdx]
@@ -1286,7 +1287,7 @@ class _TimeSeriesTable(_DBTable):
         EndDateField = self._DBTableName+"."+self._FactorInfo.loc[args.get("日期字段", self.DateField), "DBFieldName"]
         if self._AnnDateField is None: AnnDateField = EndDateField
         else: AnnDateField = self._DBTableName+"."+self._AnnDateField
-        SubSQLStr += "SELECT MAX("+EndDateField+") AS MaxEndDate "
+        SubSQLStr = "SELECT MAX("+EndDateField+") AS MaxEndDate "
         SubSQLStr += "FROM "+self._DBTableName+" "
         IgnoreTime = args.get("忽略时间", self.IgnoreTime)
         if IgnoreTime: DTFormat = "%Y-%m-%d"
@@ -1319,9 +1320,9 @@ class _TimeSeriesTable(_DBTable):
         EndDateField = self._DBTableName+"."+self._FactorInfo.loc[args.get("日期字段", self.DateField), "DBFieldName"]
         AnnDateField = self._DBTableName+"."+self._AnnDateField
         if IgnoreTime:
-            SubSQLStr += "SELECT DATE(CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END) AS AnnDate, "
+            SubSQLStr = "SELECT DATE(CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END) AS AnnDate, "
         else:
-            SubSQLStr += "SELECT CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END AS AnnDate, "
+            SubSQLStr = "SELECT CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END AS AnnDate, "
         SubSQLStr += "MAX("+EndDateField+") AS MaxEndDate "
         SubSQLStr += "FROM "+self._DBTableName+" "
         SubSQLStr += "WHERE ("+AnnDateField+">='"+StartDate.strftime(DTFormat)+"' "

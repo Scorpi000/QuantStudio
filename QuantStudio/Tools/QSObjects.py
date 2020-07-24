@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 import os
+import re
 import mmap
 import uuid
 from multiprocessing import Queue, Lock
+from collections import OrderedDict
 import pickle
 import datetime as dt
 
@@ -404,10 +406,10 @@ class QSSQLObject(__QS_Object__):
             SQLStr = "TRUNCATE TABLE %s" % (self.TablePrefix+table_name)
         try:
             self.execute(SQLStr)
-        except:
+        except Exception as e:
             Msg = ("'%s' 调用方法 truncateDBTable 清空数据库中的表 '%s' 时错误: %s" % (self.Name, table_name, str(e)))
             self._QS_Logger.error(Msg)
-            raise e
+            raise __QS_Error__(Msg)
         else:
             self._QS_Logger.info("'%s' 调用方法 truncateDBTable 清空数据库中的表 '%s'" % (self.Name, table_name))
         return 0
