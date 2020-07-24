@@ -236,6 +236,7 @@ class _WideTable(FactorTable):
             RowIdx = RowIdx.astype(int)
             ColIdx = np.arange(RowIdx.shape[1]).reshape((1, RowIdx.shape[1])).repeat(RowIdx.shape[0], axis=0)
             RowIdxMask = (RowIdx==-1)
+            Data = {}
             for iFactorName in factor_names:
                 iRawData = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
                 iRawData = iRawData.values[RowIdx, ColIdx]
@@ -717,7 +718,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
             raise __QS_Error__(Msg)
         if (ids is None) and (dts is None): return self.truncateDBTable(self.InnerPrefix+table_name)
         DBTableName = self.TablePrefix+self.InnerPrefix+table_name
-        SQLStr = "DELETE FROM "+DBTableName
+        SQLStr = "DELETE FROM "+DBTableName+" "
         if dts is not None:
             DTs = [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts]
             SQLStr += "WHERE "+genSQLInCondition(DBTableName+".datetime", DTs, is_str=True, max_num=1000)+" "
@@ -759,25 +760,40 @@ class SQLDB(QSSQLObject, WritableFactorDB):
             if NewFactorNames:
                 FieldTypes = {iFactorName:_identifyDataType(self.DBType, data.iloc[i].dtypes) for i, iFactorName in enumerate(NewFactorNames)}
                 self.addFactor(table_name, FieldTypes)
-            AllFactorNames = self._TableFactorDict[table_name].index.tolist()
-            if self.CheckWriteData:
-                OldData = self.getTable(table_name, args={"因子值类型":"list", "时间转字符串":True}).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
+            if if_exists=="update":
+                OldFactorNames = self._TableFactorDict[table_name].index.difference(data.items).tolist()
+                if OldFactorNames:
+                    if self.CheckWriteData:
+                        OldData = self.getTable(table_name, args={"因子值类型": "list", "时间转字符串": True}).readData(factor_names=OldFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
+                    else:
+                        OldData = self.getTable(table_name, args={"时间转字符串": True}).readData(factor_names=OldFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
+                    for iFactorName in OldFactorNames: data[iFactorName] = OldData[iFactorName]
             else:
-                OldData = self.getTable(table_name, args={"时间转字符串":True}).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
-            if if_exists=="append":
-                for iFactorName in AllFactorNames:
-                    if iFactorName in data:
-                        data[iFactorName] = OldData[iFactorName].where(pd.notnull(OldData[iFactorName]), data[iFactorName])
-                    else:
-                        data[iFactorName] = OldData[iFactorName]
-            elif if_exists=="update":
-                for iFactorName in AllFactorNames:
-                    if iFactorName in data:
-                        data[iFactorName] = data[iFactorName].where(pd.notnull(data[iFactorName]), OldData[iFactorName])
-                    else:
-                        data[iFactorName] = OldData[iFactorName]
+                AllFactorNames = self._TableFactorDict[table_name].index.tolist()
+                if self.CheckWriteData:
+                    OldData = self.getTable(table_name, args={"因子值类型":"list", "时间转字符串":True}).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
+                else:
+                    OldData = self.getTable(table_name, args={"时间转字符串":True}).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
+                if if_exists=="append":
+                    for iFactorName in AllFactorNames:
+                        if iFactorName in data:
+                            data[iFactorName] = OldData[iFactorName].where(pd.notnull(OldData[iFactorName]), data[iFactorName])
+                        else:
+                            data[iFactorName] = OldData[iFactorName]
+                elif if_exists=="update_notnull":
+                    for iFactorName in AllFactorNames:
+                        if iFactorName in data:
+                            data[iFactorName] = data[iFactorName].where(pd.notnull(data[iFactorName]), OldData[iFactorName])
+                        else:
+                            data[iFactorName] = OldData[iFactorName]
+                else:
+                    Msg = ("因子库 '%s' 调用方法 writeData 错误: 不支持的写入方式 '%s'!" % (self.Name, str(if_exists)))
+                    self._QS_Logger.error(Msg)
+                    raise __QS_Error__(Msg)
             SQLStr = "REPLACE INTO "+self.TablePrefix+self.InnerPrefix+table_name+" (`datetime`, `code`, "
-        data.major_axis = [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in data.major_axis]
+        DTs = data.major_axis
+        # data.major_axis = [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in DTs]
+        data.major_axis = DTs.astype(str)
         NewData = {}
         for iFactorName in data.items:
             iData = data.loc[iFactorName].stack(dropna=False)
@@ -786,10 +802,6 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         NewData = pd.DataFrame(NewData).loc[:, data.items]
         Mask = pd.notnull(NewData).any(axis=1)
         NewData = NewData[Mask]
-        # TODEBUG: 删除全部缺失的行
-        #Mask = Mask[~Mask]
-        #if Mask.shape[0]>0:
-            #self.deleteData(table_name, dt_ids=Mask.index.tolist())
         if NewData.shape[0]==0: return 0
         if self._Connector in ("pyodbc", "sqlite3"):
             SQLStr = SQLStr[:-2] + ") VALUES (" + "?, " * (NewData.shape[1]+2)
@@ -800,6 +812,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         Cursor = Conn.cursor()
         if self.CheckWriteData:
             NewData = self._adjustWriteData(NewData.reset_index())
+            self.deleteData(table_name, ids=data.minor_axis.tolist(), dts=DTs.tolist())
             Cursor.executemany(SQLStr, NewData)
         else:
             NewData = NewData.astype("O").where(pd.notnull(NewData), None)

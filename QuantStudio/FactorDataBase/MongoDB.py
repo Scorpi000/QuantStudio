@@ -347,24 +347,30 @@ class MongoDB(WritableFactorDB):
             if NewFactorNames:
                 FieldTypes = {iFactorName:_identifyDataType(data.iloc[i].dtypes) for i, iFactorName in enumerate(NewFactorNames)}
                 self.addFactor(table_name, FieldTypes)
-            AllFactorNames = self._TableFactorDict[table_name].index.tolist()
-            OldData = self.getTable(table_name).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
-            if if_exists=="append":
-                for iFactorName in AllFactorNames:
-                    if iFactorName in data:
-                        data[iFactorName] = OldData[iFactorName].where(pd.notnull(OldData[iFactorName]), data[iFactorName])
-                    else:
-                        data[iFactorName] = OldData[iFactorName]
-            elif if_exists=="update":
-                for iFactorName in AllFactorNames:
-                    if iFactorName in data:
-                        data[iFactorName] = data[iFactorName].where(pd.notnull(data[iFactorName]), OldData[iFactorName])
-                    else:
-                        data[iFactorName] = OldData[iFactorName]
+            if if_exists=="update":
+                OldFactorNames = self._TableFactorDict[table_name].index.difference(data.items).tolist()
+                if OldFactorNames:
+                    OldData = self.getTable(table_name).readData(factor_names=OldFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
+                    for iFactorName in OldFactorNames: data[iFactorName] = OldData[iFactorName]
             else:
-                Msg = ("因子库 '%s' 调用方法 writeData 错误: 不支持的写入方式 '%s'!" % (self.Name, if_exists))
-                self._QS_Logger.error(Msg)
-                raise __QS_Error__(Msg)
+                AllFactorNames = self._TableFactorDict[table_name].index.tolist()
+                OldData = self.getTable(table_name).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
+                if if_exists=="append":
+                    for iFactorName in AllFactorNames:
+                        if iFactorName in data:
+                            data[iFactorName] = OldData[iFactorName].where(pd.notnull(OldData[iFactorName]), data[iFactorName])
+                        else:
+                            data[iFactorName] = OldData[iFactorName]
+                elif if_exists=="update_notnull":
+                    for iFactorName in AllFactorNames:
+                        if iFactorName in data:
+                            data[iFactorName] = data[iFactorName].where(pd.notnull(data[iFactorName]), OldData[iFactorName])
+                        else:
+                            data[iFactorName] = OldData[iFactorName]
+                else:
+                    Msg = ("因子库 '%s' 调用方法 writeData 错误: 不支持的写入方式 '%s'!" % (self.Name, if_exists))
+                    self._QS_Logger.error(Msg)
+                    raise __QS_Error__(Msg)
         NewData = {}
         for iFactorName in data.items:
             iData = data.loc[iFactorName].stack(dropna=False)

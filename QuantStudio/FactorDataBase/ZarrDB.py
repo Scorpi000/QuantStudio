@@ -280,10 +280,16 @@ class ZarrDB(WritableFactorDB):
                 return 0
         if if_exists=="update":
             self._updateFactorData(factor_data, table_name, ifactor_name, data_type)
-        elif if_exists=="append":
+        else:
             OldData = self.getTable(table_name).readFactorData(ifactor_name=ifactor_name, ids=factor_data.columns.tolist(), dts=factor_data.index.tolist())
-            OldData.index = factor_data.index
-            factor_data = OldData.where(pd.notnull(OldData), factor_data)
+            if if_exists=="append":
+                factor_data = OldData.where(pd.notnull(OldData), factor_data)
+            elif if_exists=="update_notnull":
+                factor_data = factor_data.where(pd.notnull(factor_data), OldData)
+            else:
+                Msg = ("因子库 '%s' 调用方法 writeData 错误: 不支持的写入方式 '%s'!" % (self.Name, str(if_exists)))
+                self._QS_Logger.error(Msg)
+                raise __QS_Error__(Msg)
             self._updateFactorData(factor_data, table_name, ifactor_name, data_type)
         return 0
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
