@@ -37,10 +37,10 @@ class CVXPC(PortfolioConstructor):
                     CVXConstraints.append(cvx.norm(x - jSubConstraint["c"].flatten(), p=1) <= jSubConstraint["l"])
             elif iType=="Pos":
                 for jSubConstraint in iConstraint:
-                    CVXConstraints.append(cvx.pos(x - jSubConstraint["c_pos"].flatten()) <= jSubConstraint["l_pos"])
+                    CVXConstraints.append(cvx.sum(cvx.pos(x - jSubConstraint["c_pos"].flatten())) <= jSubConstraint["l_pos"])
             elif iType=="Neg":
                 for jSubConstraint in iConstraint:
-                    CVXConstraints.append(cvx.neg(x - jSubConstraint["c_neg"].flatten()) <= jSubConstraint["l_neg"])
+                    CVXConstraints.append(cvx.sum(cvx.neg(x - jSubConstraint["c_neg"].flatten())) <= jSubConstraint["l_neg"])
             elif iType=="NonZeroNum": raise __QS_Error__("不支持的约束条件: '非零数目约束'!")
         return CVXConstraints
     # 均值方差模型
@@ -58,9 +58,9 @@ class CVXPC(PortfolioConstructor):
         if "lambda1" in prepared_objective:
             Obj += prepared_objective["lambda1"] * cvx.norm(x - prepared_objective["c"].flatten(), p=1)
         if "lambda2" in prepared_objective:
-            Obj += prepared_objective["lambda2"] * cvx.pos(x - prepared_objective["c_pos"].flatten())
+            Obj += prepared_objective["lambda2"] * cvx.sum(cvx.pos(x - prepared_objective["c_pos"].flatten()))
         if "lambda3" in prepared_objective:
-            Obj += prepared_objective["lambda3"] * cvx.neg(x - prepared_objective["c_neg"].flatten())
+            Obj += prepared_objective["lambda3"] * cvx.sum(cvx.neg(x - prepared_objective["c_neg"].flatten()))
         CVXConstraints = self._genModelConstraints(x, prepared_constraints, prepared_option)
         self._Model = cvx.Problem(cvx.Minimize(Obj), CVXConstraints)
         self._x = x

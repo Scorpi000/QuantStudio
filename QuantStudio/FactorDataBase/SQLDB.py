@@ -808,8 +808,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         else:
             SQLStr = SQLStr[:-2] + ") VALUES (" + "%s, " * (NewData.shape[1]+2)
         SQLStr = SQLStr[:-2]+") "
-        Conn = self.Connection
-        Cursor = Conn.cursor()
+        Cursor = self.cursor()
         if self.CheckWriteData:
             NewData = self._adjustWriteData(NewData.reset_index())
             self.deleteData(table_name, ids=data.minor_axis.tolist(), dts=DTs.tolist())
@@ -817,6 +816,6 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         else:
             NewData = NewData.astype("O").where(pd.notnull(NewData), None)
             Cursor.executemany(SQLStr, NewData.reset_index().values.tolist())
-        Conn.commit()
+        self.Connection.commit()
         Cursor.close()
         return 0
