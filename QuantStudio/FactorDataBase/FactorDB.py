@@ -343,10 +343,10 @@ def _calculate(args):
                         TaskCount += 1
                         ProgBar.update(TaskCount)
                 else:
-                    iFactoNum = len(iFactors)
-                    iDTLen= int(np.ceil(nDT / iFactoNum))
+                    iFactorNum = len(iFactors)
+                    iDTLen= int(np.ceil(nDT / iFactorNum))
                     iDataTypes = {iTargetFactorNames[j]:jFactor.getMetaData(key="DataType") for j, jFactor in enumerate(iFactors)}
-                    for j in range(iFactoNum):
+                    for j in range(iFactorNum):
                         jDTs = list(FT.OperationMode.DateTimes[j*iDTLen:(j+1)*iDTLen])
                         if jDTs:
                             jData = {}
@@ -378,10 +378,10 @@ def _calculate(args):
                     jData = None
                     args["Sub2MainQueue"].put((args["PID"], 1, None))
             else:
-                iFactoNum = len(iFactors)
-                iDTLen= int(np.ceil(nDT / iFactoNum))
+                iFactorNum = len(iFactors)
+                iDTLen= int(np.ceil(nDT / iFactorNum))
                 iDataTypes = {iTargetFactorNames[j]:jFactor.getMetaData(key="DataType") for j, jFactor in enumerate(iFactors)}
-                for j in range(iFactoNum):
+                for j in range(iFactorNum):
                     jDTs = list(FT.OperationMode.DateTimes[j*iDTLen:(j+1)*iDTLen])
                     if jDTs:
                         jData = {}

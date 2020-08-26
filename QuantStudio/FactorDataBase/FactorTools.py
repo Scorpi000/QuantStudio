@@ -98,6 +98,13 @@ def _fix(f,idt,iid,x,args):
 def fix(f, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_fix,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
+def _isin(f,idt,iid,x,args):
+    Data = _genOperatorData(f,idt,iid,x,args)[0]
+    return np.isin(Data, args["OperatorArg"]["test_elements"]).astype(float)
+def isin(f, test_elements, **kwargs):
+    Descriptors,Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"test_elements":test_elements}
+    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_isin,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _applymap(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
     Func = args["OperatorArg"]["func"]
