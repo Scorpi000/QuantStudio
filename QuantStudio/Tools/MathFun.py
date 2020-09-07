@@ -132,7 +132,7 @@ def log(x,base):
     else:
         return np.log10(x)/np.log10(base)
 
-# 计算若干向量的笛卡尔积
+# 计算若干向量的笛卡尔积, deprecated, 用 itertools.product 替代
 # data:[[向量1元素], [向量2元素], ...]
 # 返回: [[向量1元素, 向量2元素, ...], ...]
 def CartesianProduct(data):

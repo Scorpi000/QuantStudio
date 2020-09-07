@@ -1013,7 +1013,7 @@ class _InfoPublTable(_MarketTable):
         SQLStr += "t.MaxEndDate AS MaxEndDate, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
-        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "        
+        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
         SQLStr += "INNER JOIN ("+SubSQLStr+") t "
         SQLStr += "ON (t."+self._IDField+"="+self._DBTableName+"."+self._IDField+" "
         SQLStr += "AND "+EndDateField+"=t.MaxEndDate) "
