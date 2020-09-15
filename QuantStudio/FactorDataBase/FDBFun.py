@@ -136,7 +136,7 @@ def adjustDataDTID(data, look_back, factor_names, ids, dts, only_start_lookback=
 # 0 - 100: 因子表特定参数
 # 100 - 199: 条件参数, 100: 通用筛选条件
 # 200 - 299: 通用参数
-class _SQLDBTable(FactorTable):
+class SQL_Table(FactorTable):
     FilterCondition = Str("", arg_type="Dict", label="筛选条件", order=100)
     TableType = Str("", arg_type="SingleOption", label="因子表类型", order=200)
     PreFilterID = Bool(True, arg_type="Bool", label="预筛选ID", order=201)
@@ -147,6 +147,7 @@ class _SQLDBTable(FactorTable):
         self._SecurityInfo = security_info
         self._ExchangeInfo = exchange_info
         self._QS_IgnoredGroupArgs = ("遍历模式", )
+        self._DTFormat = "'%Y-%m-%d'"
         self._DBTableName = self._TablePrefix + self._TableInfo.loc["DBTableName"]
         self._SecurityType = self._TableInfo.loc["SecurityType"]
         # 解析 ID 字段, 至多一个 ID 字段
@@ -193,8 +194,10 @@ class _SQLDBTable(FactorTable):
             return "string"
     def __QS_adjustID(self, ids):
         return ids
+    def __QS_restoreID(self, ids):
+        return ids
     def __QS_adjustDT(self, dts):
-        return [iDT.strftime("%Y-%m-%d") for iDT in dts]
+        return [iDT.strftime(self._DTFormat) for iDT in dts]
     def _genFromSQLStr(self, setable_join_str=[]):
         SQLStr = "FROM "+self._DBTableName+" "
         for iJoinStr in setable_join_str: SQLStr += iJoinStr+" "
@@ -329,7 +332,7 @@ class _SQLDBTable(FactorTable):
         else: SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         if (dts is not None) and hasattr(self, "DateField"):
             DateField = self._DBTableName+"."+self._FactorInfo.loc[args.get("日期字段", self.DateField), "DBFieldName"]
-            SQLStr += "AND ("+genSQLInCondition(DateField, self.__QS_adjustDT(dts), is_str=True, max_num=1000)+") "
+            SQLStr += "AND ("+genSQLInCondition(DateField, self.__QS_adjustDT(dts), is_str=False, max_num=1000)+") "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += "ORDER BY "+self._DBTableName+"."+self._FactorInfo.loc[icondition, "DBFieldName"]
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
@@ -374,13 +377,12 @@ class _SQLDBTable(FactorTable):
             Groups.append((self, ConditionGroup[iConditions]["FactorNames"], list(ConditionGroup[iConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], ConditionGroup[iConditions]["args"]))
         return Groups
 
-# TODO
 # 行情因子表, 表结构特征:
 # 日期字段, 表示数据填充的时点;
 # 条件字段, 作为条件过滤记录; 可能存在多个条件字段
 # 在设定某些条件下, 数据填充时点和 ID 可以唯一标志一行记录
 # 先填充表中已有的数据, 然后根据回溯天数参数填充缺失的时点
-class _SQL_MarketTable(_SQLDBTable):
+class SQL_MarketTable(SQL_Table):
     """行情因子表"""
     LookBack = Float(0, arg_type="Integer", label="回溯天数", order=0)
     OnlyStartLookBack = Bool(False, label="只起始日回溯", arg_type="Bool", order=1)
@@ -408,13 +410,13 @@ class _SQL_MarketTable(_SQLDBTable):
         DateField = self._DBTableName+"."+self._FactorInfo.loc[args.get("日期字段", self.DateField), "DBFieldName"]
         SQLStr = "SELECT DISTINCT "+self._getIDField(args=args)+" AS ID "
         SQLStr += self._genFromSQLStr()+" "
-        if idt is not None: SQLStr += "WHERE "+DateField+"='"+idt.strftime("%Y-%m-%d")+"' "
+        if idt is not None: SQLStr += "WHERE "+DateField+"="+idt.strftime(self._DTFormat)+" "
         else: SQLStr += "WHERE "+DateField+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += "AND "+self._DBTableName+"."+self._IDField+" IS NOT NULL "
         SQLStr += self._genConditionSQLStr(args=args)+" "
         SQLStr += "ORDER BY ID"
-        return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
+        return self.__QS_restoreID([iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)])
     # 返回在给定 ID iid 的有数据记录的时间点
     # 如果 iid 为 None, 将返回所有有历史数据记录的时间点
     # 忽略 ifactor_name
@@ -428,8 +430,8 @@ class _SQL_MarketTable(_SQLDBTable):
         else:
             SQLStr += "FROM "+self._DBTableName+" "
             SQLStr += "WHERE "+self._DBTableName+"."+self._IDField+" IS NOT NULL "
-        if start_dt is not None: SQLStr += "AND "+DateField+">='"+start_dt.strftime("%Y-%m-%d")+"' "
-        if end_dt is not None: SQLStr += "AND "+DateField+"<='"+end_dt.strftime("%Y-%m-%d")+"' "
+        if start_dt is not None: SQLStr += "AND "+DateField+">="+start_dt.strftime(self._DTFormat)+" "
+        if end_dt is not None: SQLStr += "AND "+DateField+"<="+end_dt.strftime(self._DTFormat)+" "
         SQLStr += self._genConditionSQLStr(args=args)+" "
         SQLStr += "ORDER BY "+DateField
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
@@ -439,9 +441,9 @@ class _SQL_MarketTable(_SQLDBTable):
             iConditions = ";".join([iArgName+":"+str(iFactor[iArgName]) for iArgName in iFactor.ArgNames if iArgName not in self._QS_IgnoredGroupArgs])
             if iConditions not in ConditionGroup:
                 ConditionGroup[iConditions] = {"FactorNames":[iFactor.Name], 
-                                                       "RawFactorNames":{iFactor._NameInFT}, 
-                                                       "StartDT":operation_mode._FactorStartDT[iFactor.Name], 
-                                                       "args":iFactor.Args.copy()}
+                                               "RawFactorNames":{iFactor._NameInFT}, 
+                                               "StartDT":operation_mode._FactorStartDT[iFactor.Name], 
+                                               "args":iFactor.Args.copy()}
             else:
                 ConditionGroup[iConditions]["FactorNames"].append(iFactor.Name)
                 ConditionGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
@@ -459,7 +461,7 @@ class _SQL_MarketTable(_SQLDBTable):
         SubSQLStr = "SELECT "+self._MainTableName+"."+self._MainTableID+", "
         SubSQLStr += "MAX("+DateField+") "
         SubSQLStr += self._genFromSQLStr()+" "
-        SubSQLStr += "WHERE "+DateField+"<'"+end_date.strftime("%Y-%m-%d")+"' "
+        SubSQLStr += "WHERE "+DateField+"<"+end_date.strftime(self._DTFormat)+" "
         if args.get("预筛选ID", self.PreFilterID):
             SubSQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, self.__QS_adjustID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
         else:
@@ -486,8 +488,8 @@ class _SQL_MarketTable(_SQLDBTable):
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
-        SQLStr += "WHERE "+DateField+">='"+start_date.strftime("%Y-%m-%d")+"' "
-        SQLStr += "AND "+DateField+"<='"+end_date.strftime("%Y-%m-%d")+"' "
+        SQLStr += "WHERE "+DateField+">="+start_date.strftime(self._DTFormat)+" "
+        SQLStr += "AND "+DateField+"<="+end_date.strftime(self._DTFormat)+" "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         if args.get("预筛选ID", self.PreFilterID):
             SQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, self.__QS_adjustID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
@@ -554,7 +556,6 @@ class _SQL_MarketTable(_SQLDBTable):
                                   logger=self._QS_Logger)
 
 
-# TODO
 # 信息发布表, 表结构特征:
 # 公告日期, 表示信息发布的时点;
 # 截止日期, 表示信息有效的时点;
@@ -563,7 +564,7 @@ class _SQL_MarketTable(_SQLDBTable):
 # 条件字段, 作为条件过滤记录; 可能存在多个条件字段
 # 在设定某些条件下, 数据填充时点和 ID 可以唯一标志一行记录
 # 先填充表中已有的数据, 然后根据回溯天数参数填充缺失的时点
-class _SQL_InfoPublTable(_SQL_MarketTable):
+class SQL_InfoPublTable(SQL_MarketTable):
     """信息发布表"""
     LookBack = Float(0, arg_type="Integer", label="回溯天数", order=0)
     OnlyStartLookBack = Bool(False, label="只起始日回溯", arg_type="Bool", order=1)
@@ -573,8 +574,8 @@ class _SQL_InfoPublTable(_SQL_MarketTable):
     IgnorePublDate = Bool(False, label="忽略公告日", arg_type="Bool", order=5)
     IgnoreTime = Bool(True, label="忽略时间", arg_type="Bool", order=6)
     EndDateASC = Bool(False, label="截止日期递增", arg_type="Bool", order=7)
-    def __init__(self, name, fdb, sys_args={}, **kwargs):
-        super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+    def __init__(self, name, fdb, sys_args={}, table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
         self._AnnDateField = self._FactorInfo["DBFieldName"][self._FactorInfo["FieldType"]=="AnnDate"]
         if self._AnnDateField.shape[0]>0: self._AnnDateField = self._AnnDateField.iloc[0]# 公告日期
         else: self._AnnDateField = None
@@ -584,16 +585,16 @@ class _SQL_InfoPublTable(_SQL_MarketTable):
         else: AnnDateField = self._DBTableName+"."+self._AnnDateField
         SQLStr = "SELECT DISTINCT "+self._getIDField(args=args)+" AS ID "
         SQLStr += self._genFromSQLStr()+" "
-        if args.get("忽略时间", self.IgnoreTime): DTFormat = "%Y-%m-%d"
-        else: DTFormat = "%Y-%m-%d %H:%M:%S"
+        if args.get("忽略时间", self.IgnoreTime): DTFormat = self._DTFormat
+        else: DTFormat = "'%Y-%m-%d %H:%M:%S'"
         if AnnDateField!=EndDateField:
             if idt is not None:
-                SQLStr += "WHERE (CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END)='"+idt.strftime(DTFormat)+"' "
+                SQLStr += "WHERE (CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END)="+idt.strftime(DTFormat)+" "
             else:
                 SQLStr += "WHERE "+AnnDateField+" IS NOT NULL AND "+EndDateField+" IS NOT NULL "
         else:
             if idt is not None:
-                SQLStr += "WHERE "+AnnDateField+"='"+idt.strftime(DTFormat)+"' "
+                SQLStr += "WHERE "+AnnDateField+"="+idt.strftime(DTFormat)+" "
             else:
                 SQLStr += "WHERE "+AnnDateField+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
@@ -624,20 +625,20 @@ class _SQL_InfoPublTable(_SQL_MarketTable):
         else:
             SQLStr += "FROM "+self._DBTableName+" "
             SQLStr += "WHERE "+self._DBTableName+"."+self._IDField+" IS NOT NULL "
-        if IgnoreTime: DTFormat = "%Y-%m-%d"
-        else: DTFormat = "%Y-%m-%d %H:%M:%S"
+        if IgnoreTime: DTFormat = self._DTFormat
+        else: DTFormat = "'%Y-%m-%d %H:%M:%S'"
         if AnnDateField!=EndDateField:
             if start_dt is not None:
-                SQLStr += "AND ("+AnnDateField+">='"+start_dt.strftime(DTFormat)+"' "
-                SQLStr += "OR "+EndDateField+">='"+start_dt.strftime(DTFormat)+"') "
+                SQLStr += "AND ("+AnnDateField+">="+start_dt.strftime(DTFormat)+" "
+                SQLStr += "OR "+EndDateField+">="+start_dt.strftime(DTFormat)+") "
             if end_dt is not None:
-                SQLStr += "AND ("+AnnDateField+"<='"+end_dt.strftime(DTFormat)+"' "
-                SQLStr += "AND "+EndDateField+"<='"+end_dt.strftime(DTFormat)+"') "
+                SQLStr += "AND ("+AnnDateField+"<="+end_dt.strftime(DTFormat)+" "
+                SQLStr += "AND "+EndDateField+"<="+end_dt.strftime(DTFormat)+") "
         else:
             if start_dt is not None:
-                SQLStr += "AND "+AnnDateField+">='"+start_dt.strftime(DTFormat)+"' "
+                SQLStr += "AND "+AnnDateField+">="+start_dt.strftime(DTFormat)+" "
             if end_dt is not None:
-                SQLStr += "AND "+AnnDateField+"<='"+end_dt.strftime(DTFormat)+"' "
+                SQLStr += "AND "+AnnDateField+"<="+end_dt.strftime(DTFormat)+" "
         SQLStr += self._genConditionSQLStr(args=args)+" "
         SQLStr += "ORDER BY DT"
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
@@ -649,10 +650,10 @@ class _SQL_InfoPublTable(_SQL_MarketTable):
         SubSQLStr += "MAX("+EndDateField+") AS MaxEndDate "
         SubSQLStr += "FROM "+self._DBTableName+" "
         IgnoreTime = args.get("忽略时间", self.IgnoreTime)
-        if IgnoreTime: DTFormat = "%Y-%m-%d"
-        else: DTFormat = "%Y-%m-%d %H:%M:%S"
-        SubSQLStr += "WHERE ("+AnnDateField+"<'"+end_date.strftime(DTFormat)+"' "
-        SubSQLStr += "AND "+EndDateField+"<'"+end_date.strftime(DTFormat)+"') "
+        if IgnoreTime: DTFormat = self._DTFormat
+        else: DTFormat = "'%Y-%m-%d %H:%M:%S'"
+        SubSQLStr += "WHERE ("+AnnDateField+"<"+end_date.strftime(DTFormat)+" "
+        SubSQLStr += "AND "+EndDateField+"<"+end_date.strftime(DTFormat)+") "
         ConditionSQLStr = self._genConditionSQLStr(args=args)
         SubSQLStr += ConditionSQLStr+" "
         if (self._MainTableName is None) or (self._MainTableName==self._DBTableName):
@@ -686,8 +687,8 @@ class _SQL_InfoPublTable(_SQL_MarketTable):
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         if args.get("忽略公告日", self.IgnorePublDate) or (self._AnnDateField is None): return super().__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args)
         IgnoreTime = args.get("忽略时间", self.IgnoreTime)
-        if IgnoreTime: DTFormat = "%Y-%m-%d"
-        else: DTFormat = "%Y-%m-%d %H:%M:%S"
+        if IgnoreTime: DTFormat = self._DTFormat
+        else: DTFormat = "'%Y-%m-%d %H:%M:%S'"
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         LookBack = args.get("回溯天数", self.LookBack)
         if not np.isinf(LookBack): StartDate -= dt.timedelta(LookBack)
@@ -700,10 +701,10 @@ class _SQL_InfoPublTable(_SQL_MarketTable):
             SubSQLStr += "CASE WHEN "+AnnDateField+">="+EndDateField+" THEN "+AnnDateField+" ELSE "+EndDateField+" END AS AnnDate, "
         SubSQLStr += "MAX("+EndDateField+") AS MaxEndDate "
         SubSQLStr += "FROM "+self._DBTableName+" "
-        SubSQLStr += "WHERE ("+AnnDateField+">='"+StartDate.strftime(DTFormat)+"' "
-        SubSQLStr += "OR "+EndDateField+">='"+StartDate.strftime(DTFormat)+"') "
-        SubSQLStr += "AND ("+AnnDateField+"<='"+EndDate.strftime(DTFormat)+"' "
-        SubSQLStr += "AND "+EndDateField+"<='"+EndDate.strftime(DTFormat)+"') "
+        SubSQLStr += "WHERE ("+AnnDateField+">="+StartDate.strftime(DTFormat)+" "
+        SubSQLStr += "OR "+EndDateField+">="+StartDate.strftime(DTFormat)+") "
+        SubSQLStr += "AND ("+AnnDateField+"<="+EndDate.strftime(DTFormat)+" "
+        SubSQLStr += "AND "+EndDateField+"<="+EndDate.strftime(DTFormat)+") "
         ConditionSQLStr = self._genConditionSQLStr(args=args)
         SubSQLStr += ConditionSQLStr+" "
         if (self._MainTableName is None) or (self._MainTableName==self._DBTableName):
@@ -752,8 +753,6 @@ class _SQL_InfoPublTable(_SQL_MarketTable):
         RawData = RawData.loc[:, ["日期", "ID"]+factor_names]
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
-
-# TODO
 # 多重信息发布表, 表结构特征:
 # 公告日期, 表示获得信息的时点;
 # 截止日期, 表示信息有效的时点;
@@ -762,7 +761,7 @@ class _SQL_InfoPublTable(_SQL_MarketTable):
 # 条件字段, 作为条件过滤记录; 可能存在多个条件字段
 # 数据填充时点和 ID 不能唯一标志一行记录, 对于每个 ID 每个数据填充时点可能存在多个数据, 将所有的数据以 list 组织, 如果算子参数不为 None, 以该算子作用在数据 list 上的结果为最终填充结果, 否则以数据 list 填充;
 # 先填充表中已有的数据, 然后根据回溯天数参数填充缺失的时点
-class _SQL_MultiInfoPublTable(_SQL_InfoPublTable):
+class SQL_MultiInfoPublTable(SQL_InfoPublTable):
     """多重信息发布表"""
     LookBack = Float(0, arg_type="Integer", label="回溯天数", order=0)
     OnlyStartLookBack = Bool(False, label="只起始日回溯", arg_type="Bool", order=1)
