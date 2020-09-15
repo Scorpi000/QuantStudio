@@ -185,6 +185,7 @@ class _MarketTable(_TSTable):
         if RawData.shape[2]==0: return pd.Panel(items=factor_names, major_axis=[], minor_axis=ids)
         return RawData.loc[:, :, ids]
 
+
 class TinySoftDB(FactorDB):
     """TinySoft"""
     InstallDir = Directory(label="安装目录", arg_type="Directory", order=0)
