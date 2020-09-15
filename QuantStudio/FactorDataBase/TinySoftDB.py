@@ -7,14 +7,14 @@ import datetime as dt
 
 import numpy as np
 import pandas as pd
-from traits.api import Str, Range, Directory, File, Password, Either, Int, Enum, Dict
+from traits.api import Str, Range, Directory, File, Password, Either, Int, Enum, Dict, Float, Function, Bool, List
 
 from QuantStudio import __QS_Error__, __QS_LibPath__, __QS_MainPath__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
 from QuantStudio.FactorDataBase.FDBFun import updateInfo, SQL_InfoPublTable, SQL_MarketTable, SQL_MultiInfoPublTable
 
-def _adjustID(self, ids):
-    return pd.Series(ids, index=["".join(reversed(iID.split("."))) for iID in IDs])
+def _adjustID(ids):
+    return pd.Series(ids, index=["".join(reversed(iID.split("."))) for iID in ids])
 
 class _TSTable(FactorTable):
     def getMetaData(self, key=None, args={}):
@@ -192,7 +192,7 @@ class _QuoteTable(_TSTable):
 class _MarketTable(SQL_MarketTable):
     """行情因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix="", table_info=fdb._TableInfo, factor_info=fdb._FactorInfo, security_info=None, exchange_info=None, **kwargs)
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix="", table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
         self._DTFormat = "%Y%m%d"
     def getID(self, ifactor_name=None, idt=None, args={}):
         return []
@@ -221,7 +221,7 @@ class _MarketTable(SQL_MarketTable):
         IDStr ="','".join(IDMapping.index)
         DateField = "['"+self._FactorInfo.loc[args.get("日期字段", self.DateField), "DBFieldName"]+"']"
         SubSQLStr = "SELECT "+IDField+", "
-        SubSQLStr += "MAX("+DateField+") AS 'MaxEndDate'"
+        SubSQLStr += "MAXOF("+DateField+") AS 'MaxEndDate'"
         SubSQLStr += "FROM INFOTABLE "+self._DBTableName+" "
         SubSQLStr += "OF ARRAY('"+IDStr+"') "
         SubSQLStr += "WHERE "+DateField+"<"+end_date.strftime(self._DTFormat)+" "
@@ -231,7 +231,7 @@ class _MarketTable(SQL_MarketTable):
         SQLStr = "SELECT [1]."+DateField+" AS '日期', "
         SQLStr += "[1]."+IDField+" AS 'ID', "
         for iField in factor_names: SQLStr += "[1].['"+self._FactorInfo.loc[iField, "DBFieldName"]+"'], "
-        SQLStr += SQLStr[:-2]+" FROM INFOTABLE "+self._DBTableName+" "
+        SQLStr = SQLStr[:-2]+" FROM INFOTABLE "+self._DBTableName+" "
         SQLStr += "OF ARRAY('"+IDStr+"') "
         SQLStr += "JOIN ("+SubSQLStr+") WITH ([1]."+IDField+", [1]."+DateField+" ON [2]."+IDField+", [2].['MaxEndDate']) END"
         TSLStr = "RETURN exportjsonstring("+SQLStr+");"
@@ -240,6 +240,7 @@ class _MarketTable(SQL_MarketTable):
         else:
             RawData = pd.DataFrame(RawData).loc[:, ["日期", "ID"]+factor_names]
             RawData["ID"] = IDMapping.loc[RawData["ID"].values].values
+            RawData["日期"] = RawData["日期"].apply(lambda x: dt.datetime.strptime(str(x), "%Y%m%d"))
         return RawData
     def _genSQLStr(self, factor_names, ids, start_date, end_date, args={}):
         IDField = "['stockid']"
@@ -254,13 +255,14 @@ class _MarketTable(SQL_MarketTable):
         SQLStr += "WHERE "+DateField+">="+start_date.strftime(self._DTFormat)+" "
         SQLStr += "AND "+DateField+"<="+end_date.strftime(self._DTFormat)+" "
         SQLStr += self._genConditionSQLStr(args=args)+" "
-        SQLStr += "ORDER BY ID, "+DateField
+        SQLStr += "ORDER BY ID, "+DateField+" END"
         TSLStr = "RETURN exportjsonstring("+SQLStr+");"
         RawData = json.loads(self._FactorDB.fetchall(TSLStr).decode("gbk"))
         if not RawData: RawData = pd.DataFrame(columns=["日期", "ID"]+factor_names)
         else:
             RawData = pd.DataFrame(RawData).loc[:, ["日期", "ID"]+factor_names]
             RawData["ID"] = IDMapping.loc[RawData["ID"].values].values
+            RawData["日期"] = RawData["日期"].apply(lambda x: dt.datetime.strptime(str(x), "%Y%m%d"))
         return RawData
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()

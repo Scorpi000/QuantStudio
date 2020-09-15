@@ -3,6 +3,7 @@ import os
 
 import numpy as np
 import pandas as pd
+from traits.api import Str, Bool, Float, Function, Either, List, Enum
 
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
@@ -148,8 +149,8 @@ class SQL_Table(FactorTable):
         self._ExchangeInfo = exchange_info
         self._QS_IgnoredGroupArgs = ("遍历模式", )
         self._DTFormat = "'%Y-%m-%d'"
-        self._DBTableName = self._TablePrefix + self._TableInfo.loc["DBTableName"]
-        self._SecurityType = self._TableInfo.loc["SecurityType"]
+        self._DBTableName = self._TablePrefix + str(self._TableInfo.loc["DBTableName"])
+        self._SecurityType = self._TableInfo.get("SecurityType", None)
         # 解析 ID 字段, 至多一个 ID 字段
         Idx = np.where(self._FactorInfo["FieldType"]=="ID")[0]
         if Idx.shape[0]==0:
@@ -157,7 +158,7 @@ class SQL_Table(FactorTable):
             self._IDFieldIsStr = True
         else:
             self._IDField = self._FactorInfo["DBFieldName"].iloc[Idx[0]]
-            self._IDFieldIsStr = (self.__QS_identifyDataType(self._FactorInfo["DataType"].iloc[Idx[0]])!="double")
+            self._IDFieldIsStr = (self.__QS_identifyDataType__(self._FactorInfo["DataType"].iloc[Idx[0]])!="double")
         # 解析条件字段
         self._ConditionFields = self._FactorInfo[self._FactorInfo["FieldType"]=="Condition"].index.tolist()
         # 解析主表
@@ -184,7 +185,7 @@ class SQL_Table(FactorTable):
                 self[iCondition] = ""
             else:
                 self[iCondition] = str(iConditionVal).strip()
-    def __QS_identifyDataType(self, data_type):
+    def __QS_identifyDataType__(self, field_data_type):
         field_data_type = field_data_type.lower()
         if (field_data_type.find("num")!=-1) or (field_data_type.find("int")!=-1) or (field_data_type.find("decimal")!=-1) or (field_data_type.find("double")!=-1) or (field_data_type.find("float")!=-1):
             return "double"
@@ -251,8 +252,8 @@ class SQL_Table(FactorTable):
         if RelatedFields.shape[0]==0: return raw_data
         for iField in RelatedFields.index:
             iOldData = raw_data.pop(iField)
-            iOldDataType = self.__QS_identifyDataType(self._FactorInfo.loc[iField[:-2], "DataType"])
-            iDataType = self.__QS_identifyDataType(self._FactorInfo.loc[iField, "DataType"])
+            iOldDataType = self.__QS_identifyDataType__(self._FactorInfo.loc[iField[:-2], "DataType"])
+            iDataType = self.__QS_identifyDataType__(self._FactorInfo.loc[iField, "DataType"])
             if iDataType=="double":
                 iNewData = pd.Series(np.nan, index=raw_data.index, dtype="float")
             else:
@@ -317,7 +318,7 @@ class SQL_Table(FactorTable):
         for iConditionField in self._ConditionFields:
             iConditionVal = args.get(iConditionField, self[iConditionField])
             if iConditionVal:
-                if self.__QS_identifyDataType(self._FactorInfo.loc[iConditionField, "DataType"])!="double":
+                if self.__QS_identifyDataType__(self._FactorInfo.loc[iConditionField, "DataType"])!="double":
                     SQLStr += "AND "+self._DBTableName+"."+self._FactorInfo.loc[iConditionField, "DBFieldName"]+" IN ('"+"','".join(iConditionVal.split(","))+"') "
                 else:
                     SQLStr += "AND "+self._DBTableName+"."+self._FactorInfo.loc[iConditionField, "DBFieldName"]+" IN ("+iConditionVal+") "
@@ -349,7 +350,7 @@ class SQL_Table(FactorTable):
             factor_names = self.FactorNames
         if key=="DataType":
             if hasattr(self, "_DataType"): return self._DataType.loc[factor_names]
-            return self._FactorInfo["DataType"].loc[factor_names].apply(self.__QS_identifyDataType)
+            return self._FactorInfo["DataType"].loc[factor_names].apply(self.__QS_identifyDataType__)
         elif key=="Description": return self._FactorInfo["Description"].loc[factor_names]
         elif key is None:
             return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType", args=args),
@@ -536,7 +537,7 @@ class SQL_MarketTable(SQL_Table):
             Data = {}
             for iFactorName in raw_data.columns:
                 iRawData = raw_data[iFactorName].unstack()
-                iDataType = self.__QS_identifyDataType(self._FactorInfo.loc[iFactorName, "DataType"])
+                iDataType = self.__QS_identifyDataType__(self._FactorInfo.loc[iFactorName, "DataType"])
                 if iDataType=="double": iRawData = iRawData.astype("float")
                 iRawData = iRawData.values[RowIdx, ColIdx]
                 iRawData[RowIdxMask] = None
@@ -546,7 +547,7 @@ class SQL_MarketTable(SQL_Table):
             Data = {}
             for iFactorName in raw_data.columns:
                 iRawData = raw_data[iFactorName].unstack()
-                iDataType = self.__QS_identifyDataType(self._FactorInfo.loc[iFactorName, "DataType"])
+                iDataType = self.__QS_identifyDataType__(self._FactorInfo.loc[iFactorName, "DataType"])
                 if iDataType=="double": iRawData = iRawData.astype("float")
                 Data[iFactorName] = iRawData
             Data = pd.Panel(Data).loc[factor_names]
