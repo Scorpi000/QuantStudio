@@ -223,7 +223,7 @@ class QSSQLObject(__QS_Object__):
     def createDBTable(self, table_name, field_types, primary_keys=[], index_fields=[]):
         if self.DBType=="MySQL":
             SQLStr = "CREATE TABLE IF NOT EXISTS %s (" % (self.TablePrefix+table_name)
-            for iField in field_types: SQLStr += "`%s` %s, " % (iField, field_types[iField])
+            for iField, iDataType in field_types.items():SQLStr += "`%s` %s, " % (iField, iDataType)
             if primary_keys:
                 SQLStr += "PRIMARY KEY (`"+"`,`".join(primary_keys)+"`))"
             else:
@@ -232,7 +232,7 @@ class QSSQLObject(__QS_Object__):
             IndexType = "BTREE"
         elif self.DBType=="sqlite3":
             SQLStr = "CREATE TABLE IF NOT EXISTS %s (" % (self.TablePrefix+table_name)
-            for iField in field_types: SQLStr += "`%s` %s, " % (iField, field_types[iField])
+            for iField, iDataType in field_types.items(): SQLStr += "`%s` %s, " % (iField, iDataType)
             if primary_keys:
                 SQLStr += "PRIMARY KEY (`"+"`,`".join(primary_keys)+"`))"
             else:

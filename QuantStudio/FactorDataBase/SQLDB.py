@@ -946,7 +946,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
             SQLStr = SQLStr[:-2] + ") VALUES (" + "?, " * (NewData.shape[1]+2)
         else:
             SQLStr = SQLStr[:-2] + ") VALUES (" + "%s, " * (NewData.shape[1]+2)
-        SQLStr = SQLStr[:-2]+") "
+        SQLStr = SQLStr[:-2]+")"
         Cursor = self.cursor()
         if self.CheckWriteData:
             NewData = self._adjustWriteData(NewData.reset_index())

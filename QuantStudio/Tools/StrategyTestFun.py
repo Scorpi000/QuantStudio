@@ -837,7 +837,7 @@ def testPortfolioStrategy(portfolio, price, fee=0.0, long_margin=1.0, short_marg
 # price: 价格序列, DataFrame(index=DTs, columns=IDs), DTs: 时间序列, IDs: 证券代码
 # 说明: price 的 DTs 和 portfolio 的 DTs 可能不一致，price 的 IDs 包含 portfolio 的 IDs
 # 返回: Series(index=DTs), DTs 和 price 的 DTs 保持一致
-def testPortfolioStrategy(portfolio, price):
+def testPortfolioStrategy_pd(portfolio, price):
     portfolio = portfolio.fillna(0.0)
     AllDTs = sorted(price.index.union(portfolio.index))
     AllPrice = price.loc[AllDTs, portfolio.columns].fillna(method="ffill").fillna(method="bfill")

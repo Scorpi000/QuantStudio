@@ -16,3 +16,4 @@ TestCoverage.bat
 *.hdf5
 *.wpr
 *.wpu
+*.code-workspace
