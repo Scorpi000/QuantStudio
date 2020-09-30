@@ -113,6 +113,14 @@ def applymap(f, func=id, data_type="double", **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"func":func}
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_applymap,"参数":Args,"运算时点":"多时点","运算ID":"多ID","数据类型":data_type}, **kwargs)
+def _map_value(f,idt,iid,x,args):
+    Data = _genOperatorData(f,idt,iid,x,args)[0]
+    Mapping = pd.Series(args["OperatorArg"]["mapping"])
+    return Mapping.loc[Data.flatten(order="C")].values.reshape(Data.shape)
+def map_value(f, mapping, data_type="double", **kwargs):
+    Descriptors,Args = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"mapping":mapping}
+    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_map_value,"参数":Args,"运算时点":"多时点","运算ID":"多ID","数据类型":data_type}, **kwargs)
 def _fetch(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)[0]
     if isinstance(args["OperatorArg"]["pos"], str):
