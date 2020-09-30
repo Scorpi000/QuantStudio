@@ -20,7 +20,7 @@ from traits.api import on_trait_change, Enum, Str, Range, Float, Bool, ListStr, 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
-from QuantStudio.Tools.QSObjects import QSSQLObject
+from QuantStudio.Tools.QSObjects import QSSQLObject, QSSQLite3Object
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
 from QuantStudio.FactorDataBase.FDBFun import adjustDataDTID
@@ -727,25 +727,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
     def connect(self):
         super().connect()
         nPrefix = len(self.InnerPrefix)
-        if self._Connector=="sqlite3":
-            SQLStr = "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%s%%' ORDER BY name"
-            Cursor = self.cursor(SQLStr % self.InnerPrefix)
-            AllTables = Cursor.fetchall()
-            self._TableFactorDict = {}
-            self._TableFieldDataType = {}
-            IgnoreFields = ["code", "datetime"]+list(self.IgnoreFields)
-            for iTableName in AllTables:
-                iTableName = iTableName[0][nPrefix:]
-                Cursor.execute("PRAGMA table_info([%s])" % self.InnerPrefix+iTableName)
-                iDataType = np.array(Cursor.fetchall())
-                iDataType = pd.Series(iDataType[:, 2], index=iDataType[:, 1])
-                iDataType = iDataType[iDataType.index.difference(IgnoreFields)]
-                if iDataType.shape[0]>0:
-                    self._TableFieldDataType[iTableName] = iDataType.copy()
-                    iDataType[iDataType=="text"] = "string"
-                    iDataType[iDataType=="real"] = "double"
-                    self._TableFactorDict[iTableName] = iDataType
-        elif self.DBType=="MySQL":
+        if self.DBType=="MySQL":
             SQLStr = ("SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE table_schema='%s' " % self.DBName)
             SQLStr += ("AND TABLE_NAME LIKE '%s%%' " % self.InnerPrefix)
             SQLStr += "AND COLUMN_NAME NOT IN ('code', 'datetime'"
@@ -766,6 +748,8 @@ class SQLDB(QSSQLObject, WritableFactorDB):
                 self._TableFactorDict[~Mask] = "double"
                 self._TableFactorDict = {iTable[nPrefix:]:self._TableFactorDict.loc[iTable] for iTable in self._TableFactorDict.index.levels[0]}
                 self._TableFieldDataType = {iTable[nPrefix:]:self._TableFieldDataType.loc[iTable] for iTable in self._TableFieldDataType.index.levels[0]}
+        else:
+            raise NotImplementedError("'%s' 调用方法 connect 时错误: 尚不支持的数据库类型" % (self.Name, self.DBType))
         return 0
     @property
     def TableNames(self):
@@ -807,9 +791,8 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         if self.DBType=="MySQL":
             FieldTypes["datetime"] = field_types.pop("datetime", "DATETIME(6) NOT NULL")
             FieldTypes["code"] = field_types.pop("code", "VARCHAR(40) NOT NULL")
-        elif self.DBType=="sqlite3":
-            FieldTypes["datetime"] = field_types.pop("datetime", "text NOT NULL")
-            FieldTypes["code"] = field_types.pop("code", "text NOT NULL")
+        else:
+            raise NotImplementedError("'%s' 调用方法 createTable 时错误: 尚不支持的数据库类型" % (self.Name, self.DBType))
         self.createDBTable(self.InnerPrefix+table_name, FieldTypes, primary_keys=["datetime", "code"], index_fields=["datetime", "code"])
         self._TableFactorDict[table_name] = pd.Series({iFactorName: ("string" if field_types[iFactorName].find("char")!=-1 else "double") for iFactorName in field_types})
         self._TableFieldDataType[table_name] = pd.Series(field_types)
@@ -942,10 +925,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         Mask = pd.notnull(NewData).any(axis=1)
         NewData = NewData[Mask]
         if NewData.shape[0]==0: return 0
-        if self._Connector in ("pyodbc", "sqlite3"):
-            SQLStr = SQLStr[:-2] + ") VALUES (" + "?, " * (NewData.shape[1]+2)
-        else:
-            SQLStr = SQLStr[:-2] + ") VALUES (" + "%s, " * (NewData.shape[1]+2)
+        SQLStr = SQLStr[:-2] + ") VALUES (" + (self._PlaceHolder+", ") * (NewData.shape[1]+2)
         SQLStr = SQLStr[:-2]+")"
         Cursor = self.cursor()
         if self.CheckWriteData:
@@ -957,4 +937,40 @@ class SQLDB(QSSQLObject, WritableFactorDB):
             Cursor.executemany(SQLStr, NewData.reset_index().values.tolist())
         self.Connection.commit()
         Cursor.close()
+        return 0
+
+class SQLite3DB(QSSQLite3Object, SQLDB):
+    """SQLite3DB"""
+    def __init__(self, sys_args={}, config_file=None, **kwargs):
+        super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"SQLite3DBConfig.json" if config_file is None else config_file), **kwargs)
+        self.Name = "SQLite3DB"
+        return
+    def connect(self):
+        QSSQLite3Object.connect(self)
+        nPrefix = len(self.InnerPrefix)
+        SQLStr = "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%s%%' ORDER BY name"
+        Cursor = self.cursor(SQLStr % self.InnerPrefix)
+        AllTables = Cursor.fetchall()
+        self._TableFactorDict = {}
+        self._TableFieldDataType = {}
+        IgnoreFields = ["code", "datetime"]+list(self.IgnoreFields)
+        for iTableName in AllTables:
+            iTableName = iTableName[0][nPrefix:]
+            Cursor.execute("PRAGMA table_info([%s])" % self.InnerPrefix+iTableName)
+            iDataType = np.array(Cursor.fetchall())
+            iDataType = pd.Series(iDataType[:, 2], index=iDataType[:, 1])
+            iDataType = iDataType[iDataType.index.difference(IgnoreFields)]
+            if iDataType.shape[0]>0:
+                self._TableFieldDataType[iTableName] = iDataType.copy()
+                iDataType[iDataType=="text"] = "string"
+                iDataType[iDataType=="real"] = "double"
+                self._TableFactorDict[iTableName] = iDataType
+        return 0
+    def createTable(self, table_name, field_types):
+        FieldTypes = field_types.copy()
+        FieldTypes["datetime"] = field_types.pop("datetime", "text NOT NULL")
+        FieldTypes["code"] = field_types.pop("code", "text NOT NULL")
+        self.createDBTable(self.InnerPrefix+table_name, FieldTypes, primary_keys=["datetime", "code"], index_fields=["datetime", "code"])
+        self._TableFactorDict[table_name] = pd.Series({iFactorName: ("string" if field_types[iFactorName].find("char")!=-1 else "double") for iFactorName in field_types})
+        self._TableFieldDataType[table_name] = pd.Series(field_types)
         return 0
