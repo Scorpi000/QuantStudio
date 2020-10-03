@@ -284,7 +284,7 @@ class SQL_Table(FactorTable):
         Suffix = Suffix.format(ElseSuffix=("''" if pd.isnull(DefaultSuffix) else "'"+DefaultSuffix+"'"))
         if Suffix=="''": return RawIDField
         else: return "CONCAT("+RawIDField+", "+Suffix+")"
-    def _adjustRawDataByRelatedField(self, raw_data, fields):# TODO JYDB
+    def _adjustRawDataByRelatedField(self, raw_data, fields):
         if "RelatedSQL" not in self._FactorInfo: return raw_data
         RelatedFields = self._FactorInfo["RelatedSQL"].loc[fields]
         RelatedFields = RelatedFields[pd.notnull(RelatedFields)]
@@ -334,7 +334,7 @@ class SQL_Table(FactorTable):
                     iNewData[pd.isnull(iOldData)] = jRelatedVal
             raw_data[iField] = iNewData
         return raw_data
-    def _genFieldSQLStr(self, factor_names):# TODO JYDB
+    def _genFieldSQLStr(self, factor_names):
         SQLStr = ""
         JoinStr = []
         SETables = set()
@@ -379,7 +379,7 @@ class SQL_Table(FactorTable):
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     def getMetaData(self, key=None, args={}):
         if key is None:
-            return self._TableInfo
+            return self._TableInfo.copy()
         else:
             return self._TableInfo.get(key, None)
     @property
@@ -504,7 +504,8 @@ class SQL_WideTable(SQL_Table):
         SQLStr += "INNER JOIN ("+SubSQLStr+") t "
         SQLStr += "ON (t.ID="+IDField+" "
         SQLStr += "AND "+EndDTField+"=t.MaxEndDate) "
-        SQLStr += self._genIDSQLStr(ids, init_keyword="WHERE", args=args)+" "
+        SQLStr += "WHERE "+AnnDTField+"<"+end_date.strftime(DTFormat)+" "
+        SQLStr += self._genIDSQLStr(args=args)+" "
         SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)
         return SQLStr
     def _prepareRawData_WithPublDT(self, factor_names, ids, dts, args={}):
@@ -543,7 +544,7 @@ class SQL_WideTable(SQL_Table):
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
         SQLStr += "INNER JOIN ("+SubSQLStr+") t "
-        SQLStr += "ON (t.ID="+IDField+") "
+        SQLStr += "ON (t.ID="+IDField+") AND (t.AnnDate>="+AnnDTField+") "
         SQLStr += "AND (t.MaxEndDate="+EndDTField+") "
         SQLStr += self._genIDSQLStr(ids, init_keyword="WHERE", args=args)+" "
         SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
@@ -1194,7 +1195,7 @@ class SQL_TimeSeriesTable(SQL_Table):
 
 
 
-# 映射因子表
+# 基于 SQL 数据库表的映射因子表
 # 一个字段标识 ID, 一个字段标识起始时点, 一个字段标识截止时点, 其余字段为因子
 class SQL_MappingTable(SQL_Table):
     """SQL 映射因子表"""
@@ -1387,3 +1388,359 @@ class SQL_MappingTable(SQL_Table):
                         iData.loc[jStartDate:jEndDate] = np.repeat(ijRawData[factor_names].values.reshape((1, nFactor)), iData.loc[jStartDate:jEndDate].shape[0], axis=0)
                 Data[iID] = iData
             return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
+
+# 基于 SQL 数据库表的成份因子表
+# 一个字段标识 ID, 一个字段标识起始时点, 一个字段标识截止时点, 其余字段为因子
+class SQL_ConstituentTable(SQL_Table):
+    """SQL 成份因子表"""
+    GroupField = Enum(None, arg_type="SingleOption", label="类别字段", order=0)
+    EndDTField = Enum(None, arg_type="SingleOption", label="截止时点字段", order=1)
+    CurSignField = Enum(None, arg_type="SingleOption", label="当前状态字段", order=2)
+    def __init__(self, name, fdb, sys_args={},  table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
+        self._AllGroups = None
+    def __QS_initArgs__(self):
+        super().__QS_initArgs__()
+        # 解析类别字段
+        Fields = self._FactorInfo[pd.notnull(self._FactorInfo["FieldType"])].index.tolist()+[None]# 所有字段列表
+        self.add_trait("GroupField", Enum(*Fields, arg_type="SingleOption", label="类别字段", order=0))
+        GroupField = self._FactorInfo["DBFieldName"][self._FactorInfo["FieldType"]=="Group"]
+        if GroupField.shape[0]==0: self.GroupField = None
+        else: self.GroupField = GroupField.index[0]
+        # 解析当前状态字段
+        self.add_trait("CurSignField", Enum(*Fields, arg_type="SingleOption", label="当前状态字段", order=2))
+        CurSignField = self._FactorInfo["DBFieldName"][self._FactorInfo["FieldType"]=="CurSign"]
+        if CurSignField.shape[0]==0: self.CurSignField = None
+        else: self.CurSignField = CurSignField.index[0]
+        # 解析截止时点字段
+        Fields = self._FactorInfo[self._FactorInfo["FieldType"].str.lower().str.contains("date")].index.tolist()# 所有的时点字段列表
+        self.add_trait("EndDTField", Enum(*Fields, arg_type="SingleOption", label="截止时点字段", order=1))
+        EndDTField = self._FactorInfo["DBFieldName"][self._FactorInfo["FieldType"]=="EndDate"]
+        if EndDTField.shape[0]==0: self.EndDTField = Fields[0]
+        else: self.EndDTField = EndDTField.index[0]
+    @property
+    def FactorNames(self):
+        if self._AllGroups is None:
+            GroupField = self._DBTableName+"."+self._FactorInfo.loc[self.GroupField, "DBFieldName"]
+            SQLStr = f"SELECT DISTINCT {GroupField} FROM {self._DBTableName} ORDER BY {GroupField}"
+            self._AllGroups = [str(iRslt[0]) for iRslt in self._FactorDB.fetchall(SQLStr)]
+        return self._AllGroups
+    def getFactorMetaData(self, factor_names=None, key=None, args={}):
+        if factor_names is None: factor_names = self.FactorNames
+        if key=="DataType":
+            return pd.Series("double", index=factor_names)
+        elif key=="Description": return pd.Series(["0 or nan: 非成分; 1: 是成分"]*len(factor_names), index=factor_names)
+        elif key is None:
+            return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType", args=args),
+                                 "Description":self.getFactorMetaData(factor_names, key="Description", args=args)})
+        else:
+            return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
+    # 返回指数 ID 为 ifactor_name 在给定时点 idt 的所有成份股
+    # 如果 idt 为 None, 将返回指数 ifactor_name 的所有历史成份股
+    # 如果 ifactor_name 为 None, 返回数据库表中有记录的所有 ID
+    def getID(self, ifactor_name=None, idt=None, args={}, **kwargs):
+        GroupField = self._DBTableName+"."+self._FactorInfo.loc[args.get("类别字段", self.GroupField), "DBFieldName"]
+        InDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
+        OutDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("截止时点字段", self.EndDTField), "DBFieldName"]
+        CurSignField = self._DBTableName+"."+self._FactorInfo.loc[args.get("当前状态字段", self.CurSignField), "DBFieldName"]
+        SQLStr = "SELECT DISTINCT "+self._getIDField(args=args)+" AS ID "
+        SQLStr += self._genFromSQLStr()+" "
+        if ifactor_name is not None: SQLStr += "WHERE "+GroupField+"='"+ifactor_name+"' "
+        else: SQLStr += "WHERE "+GroupField+" IS NOT NULL "
+        if idt is not None:
+            SQLStr += "AND "+InDTField+"<="+idt.strftime(self._DTFormat)+" "
+            if kwargs.get("is_current", True):
+                SQLStr += "AND (("+OutDTField+">'"+idt.strftime(self._DTFormat)+"') "
+                if self._CurSignField:
+                    SQLStr += "OR ("+CurSignField+"=1)) "
+                else:
+                    SQLStr += "OR ("+OutDTField+" IS NULL)) "
+        SQLStr += "AND "+self._DBTableName+"."+self._IDField+" IS NOT NULL "
+        SQLStr += self._genConditionSQLStr(args=args)+" "
+        SQLStr += "ORDER BY ID"
+        return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
+    # 返回指数 ID 为 ifactor_name 包含成份股 iid 的时间点序列
+    # 如果 iid 为 None, 将返回指数 ifactor_name 的有记录数据的时间点序列
+    # 如果 ifactor_name 为 None, 返回数据库表中有记录的所有时间点
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
+        GroupField = self._DBTableName+"."+self._FactorInfo.loc[args.get("类别字段", self.GroupField), "DBFieldName"]
+        InDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
+        OutDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("截止时点字段", self.EndDTField), "DBFieldName"]
+        if iid is not None:
+            SQLStr = "SELECT "+InDTField+", "# 纳入日期
+            SQLStr += OutDTField+" "# 剔除日期
+            SQLStr += self._genFromSQLStr()+" "
+            SQLStr += "WHERE "+InDTField+" IS NOT NULL "
+            if ifactor_name is not None: SQLStr += "AND "+GroupField+"='"+ifactor_name+"' "
+            SQLStr += "AND "+self._MainTableName+"."+self._MainTableID+"='"+self.__QS_adjustID__([iid])[0]+"' "
+            if start_dt is not None:
+                SQLStr += "AND (("+OutDTField+">"+start_dt.strftime(self._DTFormat)+") "
+                SQLStr += "OR ("+OutDTField+" IS NULL))"
+            if end_dt is not None:
+                SQLStr += "AND "+InDTField+"<="+end_dt.strftime(self._DTFormat)+" "
+            SQLStr += self._genConditionSQLStr(args=args)+" "
+            SQLStr += "ORDER BY "+InDTField
+            Data = self._FactorDB.fetchall(SQLStr)
+            DateTimes = set()
+            for iStartDT, iEndDT in Data:
+                if iEndDT is None: iEndDT = (dt.datetime.now() if end_dt is None else end_dt)
+                DateTimes = DateTimes.union(getDateTimeSeries(start_dt=iStartDT, end_dt=iEndDT, timedelta=dt.timedelta(1)))
+            return sorted(DateTimes)
+        SQLStr = "SELECT MIN("+InDTField+") "# 纳入日期
+        SQLStr += "FROM "+self._DBTableName+" "
+        if ifactor_name is not None: SQLStr += "WHERE "+GroupField+"='"+ifactor_name+"'"
+        else: SQLStr += "WHERE "+GroupField+" IS NOT NULL"
+        SQLStr += self._genConditionSQLStr(args=args)
+        StartDT = self._FactorDB.fetchall(SQLStr)[0][0]
+        if start_dt is not None: StartDT = max((StartDT, start_dt))
+        if end_dt is None: end_dt = dt.datetime.combine(dt.date.today(), dt.time(0))
+        return getDateTimeSeries(start_dt=start_dt, end_dt=end_dt, timedelta=dt.timedelta(1))
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        GroupField = self._DBTableName+"."+self._FactorInfo.loc[args.get("类别字段", self.GroupField), "DBFieldName"]
+        InDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
+        OutDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("截止时点字段", self.EndDTField), "DBFieldName"]
+        CurSignField = self._DBTableName+"."+self._FactorInfo.loc[args.get("当前状态字段", self.CurSignField), "DBFieldName"]
+        StartDate, EndDate = dts[0].date(), dts[-1].date()
+        Fields = [self._GroupField, self._InDateField, self._OutDateField]
+        if self._CurSignField: Fields.append(self._CurSignField)
+        FieldDict = self._FactorInfo["DBFieldName"].loc[Fields]
+        # 指数中成份股 ID, 指数证券 ID, 纳入日期, 剔除日期, 最新标志
+        SQLStr = "SELECT CAST("+GroupField+" AS CHAR) AS Group, "# 指数证券 ID
+        SQLStr += self._getIDField(args=args)+" AS SecurityID, "# ID
+        SQLStr += InDTField+" AS InDate, "# 纳入日期
+        SQLStr += OutDTField+" AS OutDate, "# 剔除日期
+        if CurSignField: SQLStr += CurSignField+" AS CurSign "# 最新标志
+        else: SQLStr += "NULL AS CurSign "# 最新标志
+        SQLStr += self._genFromSQLStr()+" "
+        SQLStr += "WHERE ("+genSQLInCondition(GroupField, factor_names, is_str=False, max_num=1000)+") "
+        SQLStr += self._genIDSQLStr(ids, args=args)
+        SQLStr += "AND (("+OutDTField+">"+StartDate.strftime(self._DTFormat)+") "
+        SQLStr += "OR ("+OutDTField+" IS NULL)) "
+        SQLStr += "AND "+InDTField+"<="+EndDate.strftime(self._DTFormat)+" "
+        SQLStr += self._genConditionSQLStr(args=args)+" "
+        SQLStr += "ORDER BY Group, SecurityID, InDate"
+        RawData = self._FactorDB.fetchall(SQLStr)
+        if not RawData: RawData = pd.DataFrame(columns=["Group", "SecurityID", "InDate", "OutDate", "CurSign"])
+        else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["Group", "SecurityID", "InDate", "OutDate", "CurSign"])
+        return RawData
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        StartDate, EndDate = dts[0].date(), dts[-1].date()
+        DateSeries = getDateSeries(StartDate, EndDate)
+        Data = {}
+        for iGroup in factor_names:
+            iRawData = raw_data[raw_data["Group"]==iGroup].set_index(["SecurityID"])
+            iData = pd.DataFrame(0, index=DateSeries, columns=pd.unique(iRawData.index))
+            for jID in iData.columns:
+                jIDRawData = iRawData.loc[[jID]]
+                for k in range(jIDRawData.shape[0]):
+                    kStartDate = jIDRawData["InDate"].iloc[k].date()
+                    kEndDate = (jIDRawData["OutDate"].iloc[k].date()-dt.timedelta(1) if jIDRawData["OutDate"].iloc[k] is not None else dt.date.today())
+                    iData[jID].loc[kStartDate:kEndDate] = 1
+            Data[iGroup] = iData
+        Data = pd.Panel(Data)
+        if Data.minor_axis.intersection(ids).shape[0]==0: return pd.Panel(0.0, items=factor_names, major_axis=dts, minor_axis=ids)
+        Data = Data.loc[factor_names, :, ids]
+        Data.major_axis = [dt.datetime.combine(iDate, dt.time(0)) for iDate in Data.major_axis]
+        Data.fillna(value=0, inplace=True)
+        return adjustDateTime(Data, dts, fillna=True, method="bfill")
+
+
+def RollBackNPeriod(report_date, n_period):
+    nYear, nPeriod = n_period // 4, n_period % 4
+    TargetYear = report_date.year - nYear
+    TargetMonth = report_date.month - nPeriod * 3
+    TargetYear -= (TargetMonth<=0)
+    TargetMonth += (TargetMonth<=0) * 12
+    TargetDay = (31 if (TargetMonth==12) or (TargetMonth==3) else 30)
+    return dt.datetime(TargetYear, TargetMonth, TargetDay)
+
+# 基于 SQL 数据库表的财务因子表(TODO)
+# 一个字段标识 ID, 一个字段标识报告期字段, 表示财报的报告期, 一个字段标识公告日期字段, 表示财报公布的日期, 其余字段为因子
+class SQL_FinancialTable(SQL_Table):
+    """财务因子表"""
+    ReportDate = Enum("所有", "定期报告", "年报", "中报", "一季报", "三季报", Dict(), Function(), label="报告期", arg_type="SingleOption", order=0)
+    CalcType = Enum("最新", "单季度", "TTM", label="计算方法", arg_type="SingleOption", order=1)
+    YearLookBack = Int(0, label="回溯年数", arg_type="Integer", order=2)
+    PeriodLookBack = Int(0, label="回溯期数", arg_type="Integer", order=3)
+    IgnoreMissing = Bool(True, label="忽略缺失", arg_type="Bool", order=4)
+    IgnoreNonQuarter = Bool(False, label="忽略非季末报告", arg_type="Bool", order=5)
+    #AdjustType = Str("1,2", label="调整类型", arg_type="String", order=6)
+    def __init__(self, name, fdb, sys_args={},  table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
+        self._TempData = {}
+    def __QS_initArgs__(self):
+        super().__QS_initArgs__()
+        # 调整类型字段
+        self._AdjustTypeField = self._FactorInfo[self._FactorInfo["FieldType"]=="AdjustType"].index
+        if self._AdjustTypeField.shape[0]==0: self._AdjustTypeField = None
+        else: self._AdjustTypeField = self._AdjustTypeField[0]
+        self.add_trait("AdjustType", Str("", label="调整类型", arg_type="String", order=6))
+        if self._AdjustTypeField is not None:
+            iConditionVal = self._FactorInfo.loc[self._AdjustTypeField, "Supplementary"]
+            if pd.isnull(iConditionVal) or (isinstance(iConditionVal, str) and (iConditionVal.lower() in ("", "nan"))):
+                self.AdjustType = ""
+            else:
+                self.AdjustType = str(iConditionVal).strip()
+    def _genConditionSQLStr(self, use_main_table=True, init_keyword="AND", args={}):
+        SQLStr = super()._genConditionSQLStr(use_main_table=use_main_table, init_keyword=init_keyword, args=args)
+        if SQLStr: init_keyword = "AND"
+        ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
+        if args.get("忽略非季末报告", self.IgnoreNonQuarter) or (not ((args.get("报告期", self.ReportDate)=="所有") and (args.get("计算方法", self.CalcType)=="最新") and (args.get("回溯年数", self.YearLookBack)==0) and (args.get("回溯期数", self.PeriodLookBack)==0))):
+            if self._FactorDB.DBType=="SQL Server":
+                SQLStr += " "+init_keyword+" TO_CHAR("+ReportDateField+",'MMDD') IN ('0331','0630','0930','1231')"
+            elif self._FactorDB.DBType=="MySQL":
+                SQLStr += " "+init_keyword+" DATE_FORMAT("+ReportDateField+",'%m%d') IN ('0331','0630','0930','1231')"
+            elif self._FactorDB.DBType=="Oracle":
+                SQLStr += " "+init_keyword+" TO_CHAR("+ReportDateField+",'MMdd') IN ('0331','0630','0930','1231')"
+            else:
+                raise __QS_Error__("JYDB._FinancialTable._genConditionSQLStr 不支持的数据库类型: '%s'" % (self._FactorDB.DBType, ))
+            init_keyword = "AND"
+        if self._AdjustTypeField is not None:
+            iConditionVal = args.get("调整类型", self.AdjustType)
+            if iConditionVal:
+                if _identifyDataType(self._FactorInfo.loc[self._AdjustTypeField, "DataType"])!="double":
+                    SQLStr += " "+init_keyword+" "+self._DBTableName+"."+self._FactorInfo.loc[self._AdjustTypeField, "DBFieldName"]+" IN ('"+"','".join(iConditionVal.split(","))+"') "
+                else:
+                    SQLStr += " "+init_keyword+" "+self._DBTableName+"."+self._FactorInfo.loc[self._AdjustTypeField, "DBFieldName"]+" IN ("+iConditionVal+") "
+        return SQLStr
+    def __QS_genGroupInfo__(self, factors, operation_mode):
+        ConditionGroup = {}
+        for iFactor in factors:
+            iConditions = (iFactor.IgnoreNonQuarter or (not ((iFactor.ReportDate=="所有") and (iFactor.CalcType=="最新") and (iFactor.YearLookBack==0) and (iFactor.PeriodLookBack==0))))
+            iConditions = (iConditions, iFactor.AdjustType, iFactor.PreFilterID, ";".join([iCondition+":"+str(iFactor[iCondition]) for i, iCondition in enumerate(self._ConditionFields)]+["筛选条件:"+iFactor["筛选条件"]]))
+            if iConditions not in ConditionGroup:
+                ConditionGroup[iConditions] = {"FactorNames":[iFactor.Name], 
+                                                       "RawFactorNames":{iFactor._NameInFT}, 
+                                                       "StartDT":operation_mode._FactorStartDT[iFactor.Name], 
+                                                       "args":iFactor.Args.copy()}
+            else:
+                ConditionGroup[iConditions]["FactorNames"].append(iFactor.Name)
+                ConditionGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
+                ConditionGroup[iConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], ConditionGroup[iConditions]["StartDT"])
+        EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
+        Groups = []
+        for iConditions in ConditionGroup:
+            StartInd = operation_mode.DTRuler.index(ConditionGroup[iConditions]["StartDT"])
+            Groups.append((self, ConditionGroup[iConditions]["FactorNames"], list(ConditionGroup[iConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], ConditionGroup[iConditions]["args"]))
+        return Groups
+    # 返回在给定时点 idt 之前有财务报告的 ID
+    # 如果 idt 为 None, 将返回所有有财务报告的 ID
+    # 忽略 ifactor_name
+    def getID(self, ifactor_name=None, idt=None, args={}):
+        AnnDateField = self._DBTableName+"."+self._FactorInfo.loc[self._AnnDateField, "DBFieldName"]
+        SQLStr = "SELECT DISTINCT "+self._getIDField(args=args)+" AS ID "
+        SQLStr += self._genFromSQLStr()+" "
+        if idt is not None: SQLStr += "WHERE "+AnnDateField+"<='"+idt.strftime("%Y-%m-%d")+"' "
+        else: SQLStr += "WHERE "+AnnDateField+" IS NOT NULL "
+        if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
+        SQLStr += "AND "+self._DBTableName+"."+self._IDField+" IS NOT NULL "
+        SQLStr += self._genConditionSQLStr(args=args)+" "
+        SQLStr += "ORDER BY ID"
+        return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
+    # 返回在给定 ID iid 的有财务报告的公告时点
+    # 如果 iid 为 None, 将返回所有有财务报告的公告时点
+    # 忽略 ifactor_name
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
+        AnnDateField = self._DBTableName+"."+self._FactorInfo.loc[self._AnnDateField, "DBFieldName"]
+        SQLStr = "SELECT DISTINCT "+AnnDateField+" "
+        if iid is not None:
+            SQLStr += self._genFromSQLStr()+" "
+            SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+"='"+deSuffixID([iid])[0]+"' "
+            if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
+        else:
+            SQLStr += "FROM "+self._DBTableName+" "
+            SQLStr += "WHERE "+self._DBTableName+"."+self._IDField+" IS NOT NULL "
+        if start_dt is not None: SQLStr += "AND "+AnnDateField+">='"+start_dt.strftime("%Y-%m-%d")+"' "
+        if end_dt is not None: SQLStr += "AND "+AnnDateField+"<='"+end_dt.strftime("%Y-%m-%d")+"' "
+        SQLStr += self._genConditionSQLStr(args=args)+" "
+        SQLStr += "ORDER BY "+AnnDateField
+        return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        EndDate = dts[-1].date()
+        AnnDateField = self._DBTableName+"."+self._FactorInfo.loc[self._AnnDateField, "DBFieldName"]
+        ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
+        if self._AdjustTypeField is not None: AdjustTypeField = self._DBTableName+"."+self._FactorInfo.loc[self._AdjustTypeField, "DBFieldName"]
+        else: AdjustTypeField = "2"
+        # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
+        SQLStr = "SELECT "+self._getIDField(args=args)+" AS ID, "
+        SQLStr += AnnDateField+" AS AnnDate, "
+        SQLStr += ReportDateField+" AS ReportDate, "
+        SQLStr += "2-"+AdjustTypeField+" AS AdjustType, "
+        FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
+        SQLStr += FieldSQLStr+" "
+        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
+        if args.get("预筛选ID", self.PreFilterID):
+            SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
+        else:
+            SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
+        SQLStr += "AND "+AnnDateField+"<='"+EndDate.strftime("%Y-%m-%d")+"' "
+        SQLStr += "AND "+ReportDateField+" IS NOT NULL "
+        SQLStr += self._genConditionSQLStr(args=args)+" "
+        if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
+        SQLStr += "ORDER BY ID, "+AnnDateField+", "
+        SQLStr += ReportDateField + ", AdjustType ASC"
+        RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)
+        RawData.columns = ["ID", "AnnDate", "ReportDate", "AdjustType"]+factor_names
+        RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
+        return RawData
+    def _calcData(self, raw_data, periods, factor_name, ids, dts, calc_type, report_date, ignore_missing):
+        if ignore_missing: raw_data = raw_data[pd.notnull(raw_data[factor_name])]
+        # TargetReportDate: 每个 ID 每个公告日对应的最大报告期
+        TargetReportDate = raw_data.loc[:, ["ID", "AnnDate", "ReportDate"]]
+        if report_date=="年报": TargetReportDate.loc[raw_data["ReportPeriod"]!="12-31", "ReportDate"] = dt.datetime(1899,12,31)
+        elif report_date=="中报": TargetReportDate.loc[raw_data["ReportPeriod"]!="06-30", "ReportDate"] = dt.datetime(1899,12,31)
+        elif report_date=="一季报": TargetReportDate.loc[raw_data["ReportPeriod"]!="03-31", "ReportDate"] = dt.datetime(1899,12,31)
+        elif report_date=="三季报": TargetReportDate.loc[raw_data["ReportPeriod"]!="09-30", "ReportDate"] = dt.datetime(1899,12,31)
+        TargetReportDate = TargetReportDate.set_index(["ID"]).groupby(level=0).cummax().reset_index().groupby(by=["ID", "AnnDate"], as_index=False).max()
+        MaxReportDate = TargetReportDate["ReportDate"].copy()
+        Data = {}
+        for i, iPeriod in enumerate(periods):
+            # TargetReportDate: 每个 ID 每个公告日对应的目标报告期
+            if iPeriod>0: TargetReportDate["ReportDate"] = MaxReportDate.apply(RollBackNPeriod_New, args=(iPeriod,))
+            # iData: 每个 ID 每个公告日对应的目标报告期及其因子值
+            iData = TargetReportDate.merge(raw_data, how="left", on=["ID", "ReportDate"], suffixes=("", "_y"))
+            iData = iData[(iData["AnnDate"]>=iData["AnnDate_y"]) | pd.isnull(iData["AnnDate_y"])].sort_values(by=["ID", "AnnDate", "AnnDate_y", "AdjustType"])
+            if (i==0) and (calc_type!="最新"):
+                iData = iData.loc[:, ["ID", "AnnDate", "ReportPeriod", factor_name]].groupby(by=["ID", "AnnDate"], as_index=True).last()
+                ReportPeriod = iData.loc[:, "ReportPeriod"].where(pd.notnull(iData.loc[:, "ReportPeriod"]), "None").unstack().T
+                iData = iData.loc[:, factor_name].where(pd.notnull(iData.loc[:, factor_name]), np.inf).unstack().T
+                iIndex = iData.index.union(dts).sort_values()
+                Data[iPeriod] = iData.loc[iIndex].fillna(method="pad").loc[dts, ids]
+                ReportPeriod = ReportPeriod.loc[iIndex].fillna(method="pad").loc[dts, ids]
+                Data[iPeriod] = Data[iPeriod].where(Data[iPeriod]!=np.inf, np.nan)
+                ReportPeriod = ReportPeriod.where(ReportPeriod!="None", None)
+            else:
+                iData = iData.loc[:, ["ID", "AnnDate", factor_name]].groupby(by=["ID", "AnnDate"], as_index=True).last()
+                iData = iData.loc[:, factor_name].where(pd.notnull(iData.loc[:, factor_name]), np.inf).unstack().T
+                iIndex = iData.index.union(dts).sort_values()
+                Data[iPeriod] = iData.loc[iIndex].fillna(method="pad").loc[dts, ids]
+                Data[iPeriod] = Data[iPeriod].where(Data[iPeriod]!=np.inf, np.nan)
+            iData = None
+        if calc_type=="最新": return Data[periods[0]]
+        elif calc_type=="单季度":
+            Rslt = Data[periods[0]] - Data[periods[1]]
+            Mask = (ReportPeriod=="03-31")
+            Rslt[Mask] = Data[periods[0]][Mask]
+            Rslt[pd.isnull(ReportPeriod)] = None
+        elif calc_type=="TTM":
+            Rslt = Data[periods[0]].copy()
+            Mask = (ReportPeriod=="03-31")
+            Rslt[Mask] = (Data[periods[0]] + Data[periods[1]] - Data[periods[4]])[Mask]
+            Mask = (ReportPeriod=="06-30")
+            Rslt[Mask] = (Data[periods[0]] + Data[periods[2]] - Data[periods[4]])[Mask]
+            Mask = (ReportPeriod=="09-30")
+            Rslt[Mask] = (Data[periods[0]] + Data[periods[3]] - Data[periods[4]])[Mask]
+            Rslt[pd.isnull(ReportPeriod)] = None
+        return Rslt
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        CalcType, YearLookBack, PeriodLookBack, ReportDate, IgnoreMissing = args.get("计算方法", self.CalcType), args.get("回溯年数", self.YearLookBack), args.get("回溯期数", self.PeriodLookBack), args.get("报告期", self.ReportDate), args.get("忽略缺失", self.IgnoreMissing)
+        if CalcType=="最新": Periods = np.array([0], dtype=np.int)
+        elif CalcType=="单季度": Periods = np.array([0, 1], dtype=np.int)
+        elif CalcType=="TTM": Periods = np.array([0, 1, 2, 3, 4], dtype=np.int)
+        Periods += YearLookBack * 4 + PeriodLookBack
+        raw_data["ReportPeriod"] = raw_data["ReportDate"].astype(str).str.slice(start=5)
+        Data = {}
+        for iFactorName in factor_names:
+            Data[iFactorName] = self._calcData(raw_data.loc[:, ["ID", "AnnDate", "ReportDate", "AdjustType", "ReportPeriod", iFactorName]], Periods, iFactorName, ids, dts, CalcType, ReportDate, IgnoreMissing)
+        return pd.Panel(Data).loc[factor_names]
