@@ -25,27 +25,27 @@ def _identifyDataType(db_type, dtypes):
 class _WideTable(SQL_WideTable):
     """SQLDB 宽因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=self._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
 
 class _NarrowTable(SQL_NarrowTable):
     """SQLDB 窄因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=self._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
 
 class _FeatureTable(SQL_FeatureTable):
     """SQLDB 特征因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=self._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
 
 class _TimeSeriesTable(SQL_TimeSeriesTable):
     """SQLDB 时序因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=self._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
 
 class _MappingTable(SQL_MappingTable):
     """SQLDB 映射因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=self._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
 
 class SQLDB(QSSQLObject, WritableFactorDB):
     """SQLDB"""

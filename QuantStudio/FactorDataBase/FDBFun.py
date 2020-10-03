@@ -411,7 +411,7 @@ class SQL_WideTable(SQL_Table):
     IgnoreTime = Bool(True, label="忽略时间", arg_type="Bool", order=5)
     EndDateASC = Bool(False, label="截止日期递增", arg_type="Bool", order=6)
     OrderFields = List(arg_type="List", label="排序字段", order=7)# [("字段名", "ASC" 或者 "DESC")]
-    MultiMapping = Bool(True, label="多重映射", arg_type="Bool", order=8)
+    MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=8)
     Operator = Either(Function(None), None, arg_type="Function", label="算子", order=9)
     OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=10)
     def __init__(self, name, fdb, sys_args={}, table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
