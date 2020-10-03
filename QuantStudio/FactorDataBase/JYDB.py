@@ -2861,7 +2861,7 @@ class JYDB(QSSQLObject, FactorDB):
                 Args = self.FTArgs.copy()
                 Args.update(args)
                 return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=Args, logger=self._QS_Logger)")
-        Msg = ("因子库 ‘%s' 目前尚不支持因子表: '%s'" % (self.Name, table_name))
+        Msg = ("因子库 '%s' 目前尚不支持因子表: '%s'" % (self.Name, table_name))
         self._QS_Logger.error(Msg)
         raise __QS_Error__(Msg)
     # -----------------------------------------数据提取---------------------------------
