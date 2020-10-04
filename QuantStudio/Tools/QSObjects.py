@@ -472,6 +472,101 @@ class QSSQLite3Object(QSSQLObject):
             self._QS_Logger.info("'%s' 调用方法 truncateDBTable 清空数据库中的表 '%s'" % (self.Name, table_name))
         return 0
 
+class QSClickHouseObject(QSSQLObject):
+    """ClickHouseDB"""
+    DBType = Enum("ClickHouse", arg_type="SingleOption", label="数据库类型", order=0)
+    Connector = Enum("default", "clickhouse-driver", arg_type="SingleOption", label="连接器", order=7)
+    def _connect(self):
+        self._Connection = None
+        if (self.Connector=="clickhouse-driver") or (self.Connector=="default"):
+            try:
+                import clickhouse_driver
+                if self.DSN:
+                    self._Connection = clickhouse_driver.connect(dsn=self.DSN, password=self.Pwd)
+                else:
+                    self._Connection = clickhouse_driver.connect(user=self.User, password=self.Pwd, host=self.IPAddr, port=self.Port, database=self.DBName)
+            except Exception as e:
+                Msg = ("'%s' 尝试使用 clickhouse-driver 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, self.User, self.IPAddr, self.Port, self.DBName, str(e)))
+                self._QS_Logger.error(Msg)
+                if self.Connector!="default": raise e
+            else:
+                self._Connector = "clickhouse-driver"
+        self._PID = os.getpid()
+        return 0
+    def renameDBTable(self, old_table_name, new_table_name):
+        SQLStr = "RENAME TABLE "+self.TablePrefix+old_table_name+" TO "+self.TablePrefix+new_table_name
+        try:
+            self.execute(SQLStr)
+        except Exception as e:
+            Msg = ("'%s' 调用方法 renameDBTable 将表 '%s' 重命名为 '%s' 时错误: %s" % (self.Name, old_table_name, str(e)))
+            self._QS_Logger.error(Msg)
+            raise e
+        else:
+            self._QS_Logger.info("'%s' 调用方法 renameDBTable 将表 '%s' 重命名为 '%s'" % (self.Name, old_table_name, new_table_name))
+        return 0
+    def createDBTable(self, table_name, field_types, primary_keys=[], index_fields=[]):
+        SQLStr = "CREATE TABLE IF NOT EXISTS %s (" % (self.TablePrefix+table_name)
+        for iField in field_types: SQLStr += "`%s` %s, " % (iField, field_types[iField])
+        SQLStr += ")"
+        if primary_keys:
+            SQLStr += " PRIMARY KEY (`"+"`,`".join(primary_keys)+"`)"
+        SQLStr += " ENGINE=MergeTree()"
+        try:
+            self.execute(SQLStr)
+        except Exception as e:
+            Msg = ("'%s' 调用方法 createDBTable 在数据库中创建表 '%s' 时错误: %s" % (self.Name, table_name, str(e)))
+            self._QS_Logger.error(Msg)
+            raise e
+        else:
+            self._QS_Logger.info("'%s' 调用方法 createDBTable 在数据库中创建表 '%s'" % (self.Name, table_name))
+        return 0
+    def getDBTable(self):
+        try:
+            SQLStr = "SELECT name FROM system.tables WHERE database='"+self.DBName+"'"
+            AllTables = self.fetchall(SQLStr)
+        except Exception as e:
+            Msg = ("'%s' 调用方法 getDBTable 时错误: %s" % (self.Name, str(e)))
+            self._QS_Logger.error(Msg)
+            raise __QS_Error__(Msg)
+        else:
+            return [rslt[0] for rslt in AllTables]
+    def addField(self, table_name, field_types):
+        SQLStr = "ALTER TABLE %s " % (self.TablePrefix+table_name)
+        SQLStr += "ADD COLUMN %s %s"
+        try:
+            for iField in field_types:
+                self.execute(SQLStr % (iField, field_types[iField]))
+        except Exception as e:
+            Msg = ("'%s' 调用方法 addField 为表 '%s' 添加字段时错误: %s" % (self.Name, table_name, str(e)))
+            self._QS_Logger.error(Msg)
+            raise e
+        else:
+            self._QS_Logger.info("'%s' 调用方法 addField 为表 '%s' 添加字段 ’%s'" % (self.Name, table_name, str(list(field_types.keys()))))
+        return 0
+    def deleteField(self, table_name, field_names):
+        if not field_names: return 0
+        try:
+                SQLStr = "ALTER TABLE "+self.TablePrefix+table_name
+                for iField in field_names: SQLStr += " DROP COLUMN `"+iField+"`,"
+                self.execute(SQLStr[:-1])
+        except Exception as e:
+            Msg = ("'%s' 调用方法 deleteField 删除表 '%s' 中的字段 '%s' 时错误: %s" % (self.Name, table_name, str(field_names), str(e)))
+            self._QS_Logger.error(Msg)
+            raise e
+        else:
+            self._QS_Logger.info("'%s' 调用方法 deleteField 删除表 '%s' 中的字段 '%s'" % (self.Name, table_name, str(field_names)))
+        return 0
+    def truncateDBTable(self, table_name):
+        SQLStr = "DELETE FROM %s" % (self.TablePrefix+table_name)
+        try:
+            self.execute(SQLStr)
+        except Exception as e:
+            Msg = ("'%s' 调用方法 truncateDBTable 清空数据库中的表 '%s' 时错误: %s" % (self.Name, table_name, str(e)))
+            self._QS_Logger.error(Msg)
+            raise __QS_Error__(Msg)
+        else:
+            self._QS_Logger.info("'%s' 调用方法 truncateDBTable 清空数据库中的表 '%s'" % (self.Name, table_name))
+        return 0
 
 # put 函数会阻塞, 直至对象传输完毕
 class QSPipe(object):

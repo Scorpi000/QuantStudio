@@ -224,7 +224,7 @@ class SQL_Table(FactorTable):
         field_data_type = field_data_type.lower()
         if (field_data_type.find("num")!=-1) or (field_data_type.find("int")!=-1) or (field_data_type.find("decimal")!=-1) or (field_data_type.find("double")!=-1) or (field_data_type.find("float")!=-1) or (field_data_type.find("real")!=-1):
             return "double"
-        elif (field_data_type.find("char")!=-1) or (field_data_type.find("text")!=-1):
+        elif (field_data_type.find("char")!=-1) or (field_data_type.find("text")!=-1) or (field_data_type.find("str")!=-1):
             return "string"
         else:
             return "object"

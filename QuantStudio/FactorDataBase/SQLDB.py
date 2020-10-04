@@ -130,8 +130,8 @@ class SQLDB(QSSQLObject, WritableFactorDB):
     def createTable(self, table_name, field_types):
         FieldTypes = field_types.copy()
         if self.DBType=="MySQL":
-            FieldTypes[self.DTField] = field_types.pop(self.DTField, "DATETIME(6) NOT NULL")
-            FieldTypes[self.IDField] = field_types.pop(self.IDField, "VARCHAR(40) NOT NULL")
+            FieldTypes[self.DTField] = FieldTypes.pop(self.DTField, "DATETIME(6) NOT NULL")
+            FieldTypes[self.IDField] = FieldTypes.pop(self.IDField, "VARCHAR(40) NOT NULL")
         else:
             raise NotImplementedError("'%s' 调用方法 createTable 时错误: 尚不支持的数据库类型" % (self.Name, self.DBType))
         self.createDBTable(self.InnerPrefix+table_name, FieldTypes, primary_keys=[self.DTField, self.IDField], index_fields=[self.IDField])
@@ -187,17 +187,19 @@ class SQLDB(QSSQLObject, WritableFactorDB):
             raise __QS_Error__(Msg)
         if (ids is None) and (dts is None): return self.truncateDBTable(self.InnerPrefix+table_name)
         DBTableName = self.TablePrefix+self.InnerPrefix+table_name
+        IDField = DBTableName+"."+self.IDField
+        DTField = DBTableName+"."+self.DTField
         SQLStr = "DELETE FROM "+DBTableName+" "
         if dts is not None:
             DTs = [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts]
-            SQLStr += "WHERE "+genSQLInCondition(DBTableName+".datetime", DTs, is_str=True, max_num=1000)+" "
+            SQLStr += "WHERE "+genSQLInCondition(DTField, DTs, is_str=True, max_num=1000)+" "
         else:
-            SQLStr += "WHERE "+DBTableName+".datetime IS NOT NULL "
+            SQLStr += "WHERE "+DTField+" IS NOT NULL "
         if ids is not None:
-            SQLStr += "AND "+genSQLInCondition(DBTableName+".code", ids, is_str=True, max_num=1000)
+            SQLStr += "AND "+genSQLInCondition(IDField, ids, is_str=True, max_num=1000)
         if dt_ids is not None:
             dt_ids = ["('"+iDTIDs[0].strftime("%Y-%m-%d %H:%M:%S.%f")+"', '"+iDTIDs[1]+"')" for iDTIDs in dt_ids]
-            SQLStr += "AND "+genSQLInCondition("("+DBTableName+".datetime, "+DBTableName+".code)", dt_ids, is_str=False, max_num=1000)
+            SQLStr += "AND "+genSQLInCondition("("+DTField+", "+IDField+")", dt_ids, is_str=False, max_num=1000)
         try:
             self.execute(SQLStr)
         except Exception as e:
@@ -327,9 +329,11 @@ class SQLite3DB(QSSQLite3Object, SQLDB):
         return 0
     def createTable(self, table_name, field_types):
         FieldTypes = field_types.copy()
-        FieldTypes["datetime"] = field_types.pop("datetime", "text NOT NULL")
-        FieldTypes["code"] = field_types.pop("code", "text NOT NULL")
-        self.createDBTable(self.InnerPrefix+table_name, FieldTypes, primary_keys=["datetime", "code"], index_fields=["datetime", "code"])
-        self._TableFactorDict[table_name] = pd.Series({iFactorName: ("string" if field_types[iFactorName].find("char")!=-1 else "double") for iFactorName in field_types})
-        self._TableFieldDataType[table_name] = pd.Series(field_types)
+        FieldTypes[self.DTField] = FieldTypes.pop(self.DTField, "text NOT NULL")
+        FieldTypes[self.IDField] = FieldTypes.pop(self.IDField, "text NOT NULL")
+        self.createDBTable(self.InnerPrefix+table_name, FieldTypes, primary_keys=[self.DTField, self.IDField], index_fields=[self.IDField])
+        self._TableInfo = self._TableInfo.append(pd.Series([self.InnerPrefix+table_name, "WideTable"], index=["DBTableName", "TableClass"], name=table_name))
+        NewFactorInfo = pd.DataFrame(FieldTypes, index=["DataType"], columns=pd.Index(sorted(FieldTypes.keys()), name="DBFieldName")).T.reset_index()
+        NewFactorInfo["TableName"] = table_name
+        self._FactorInfo = self._FactorInfo.append(self._genFactorInfo(NewFactorInfo))
         return 0

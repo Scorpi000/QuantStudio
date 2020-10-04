@@ -220,7 +220,7 @@ class _WideTable(_TS_SQL_Table, SQL_WideTable):
         SQLStr = "SELECT DISTINCT "+DTField+" "
         if iid is not None:
             SQLStr += self._genFromSQLStr()+" "
-            SQLStr += self._genIDSQLStr([iid])+" "
+            SQLStr += self._genIDSQLStr([iid], init_keyword="WHERE", args=args)+" "
             SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
         else:
             raise __QS_Error__("TinysoftDB 的因子表方法 getDateTime 参数 iid 不能为 None")
@@ -234,21 +234,22 @@ class _WideTable(_TS_SQL_Table, SQL_WideTable):
         IDStr = "','".join(self.__QS_adjustID__(ids))
         EndDTField = self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
         AnnDTField = self._FactorInfo.loc[args.get("公告时点字段", self.PublDTField), "DBFieldName"]
-        SubSQLStr = "SELECT "+self._IDField+", "
+        IDField = self._FactorInfo.loc[args.get("ID字段", self.IDField), "DBFieldName"]
+        SubSQLStr = "SELECT "+IDField+", "
         SubSQLStr += "MAXOF("+EndDTField+") AS 'MaxEndDate' "
         SubSQLStr += self._genFromSQLStr()+" "
         SubSQLStr += "OF ARRAY('"+IDStr+"') "
         SubSQLStr += "WHERE ("+AnnDTField+"<"+end_date.strftime(self._DTFormat)+" "
         SubSQLStr += "AND "+EndDTField+"<"+end_date.strftime(self._DTFormat)+") "
         SubSQLStr += self._genConditionSQLStr(use_main_table=False, args=args)+" "
-        SubSQLStr += "GROUP BY "+self._IDField+" END"
+        SubSQLStr += "GROUP BY "+IDField+" END"
         SQLStr = "SELECT MAX([1]."+AnnDTField+", [2].['MaxEndDate']) AS 'QS_DT', "
-        SQLStr += "[1]."+self._IDField+" AS 'ID', "
+        SQLStr += "[1]."+IDField+" AS 'ID', "
         SQLStr += "[2].['MaxEndDate'] AS 'MaxEndDate', "
         for iField in factor_names: SQLStr += "[1]."+self._FactorInfo.loc[iField, "DBFieldName"]+", "
         SQLStr = SQLStr[:-2]+" "+self._genFromSQLStr()+" "
         SQLStr += "OF ARRAY('"+IDStr+"') "
-        SQLStr += "JOIN ("+SubSQLStr+") WITH ([1]."+self._IDField+", [1]."+EndDTField+" ON [2]."+self._IDField+", [2].['MaxEndDate']) "
+        SQLStr += "JOIN ("+SubSQLStr+") WITH ([1]."+IDField+", [1]."+EndDTField+" ON [2]."+IDField+", [2].['MaxEndDate']) "
         SQLStr += self._genConditionSQLStr(use_main_table=False, init_keyword="WHERE", args=args)+" END"
         return "RETURN exportjsonstring("+SQLStr+");"
     def _prepareRawData_WithPublDT(self, factor_names, ids, dts, args={}):
@@ -260,7 +261,8 @@ class _WideTable(_TS_SQL_Table, SQL_WideTable):
         if not np.isinf(LookBack): StartDate -= dt.timedelta(LookBack)
         EndDTField = self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
         AnnDTField = self._FactorInfo.loc[args.get("公告时点字段", self.PublDTField), "DBFieldName"]
-        SubSQLStr = "SELECT "+self._IDField+", "
+        IDField = self._FactorInfo.loc[args.get("ID字段", self.IDField), "DBFieldName"]
+        SubSQLStr = "SELECT "+IDField+", "
         SubSQLStr += "MAX("+AnnDTField+", "+EndDTField+") AS 'AnnDate', "
         SubSQLStr += "MAXOF("+EndDTField+") AS 'MaxEndDate' "
         SubSQLStr += self._genFromSQLStr()+" "
@@ -270,14 +272,14 @@ class _WideTable(_TS_SQL_Table, SQL_WideTable):
         SubSQLStr += "AND ("+AnnDTField+"<="+EndDate.strftime(self._DTFormat)+" "
         SubSQLStr += "AND "+EndDTField+"<="+EndDate.strftime(self._DTFormat)+") "
         SubSQLStr += self._genConditionSQLStr(use_main_table=False, args=args)+" "
-        SubSQLStr += "GROUP BY "+self._IDField+", "+ "MAX("+AnnDTField+", "+EndDTField+") END"
+        SubSQLStr += "GROUP BY "+IDField+", "+ "MAX("+AnnDTField+", "+EndDTField+") END"
         SQLStr = "SELECT [2].['AnnDate'] AS 'QS_DT', "
-        SQLStr += self._IDField+" AS 'ID', "
+        SQLStr += IDField+" AS 'ID', "
         SQLStr += "[2].['MaxEndDate'] AS 'MaxEndDate', "
         for iField in factor_names: SQLStr += "[1]."+self._FactorInfo.loc[iField, "DBFieldName"]+", "
         SQLStr = SQLStr[:-2]+" "+self._genFromSQLStr()+" "
         SQLStr += "OF ARRAY('"+IDStr+"') "
-        SQLStr += "JOIN ("+SubSQLStr+") WITH ([1]."+self._IDField+", [1]."+EndDTField+" ON [2]."+self._IDField+", [2].['MaxEndDate']) "
+        SQLStr += "JOIN ("+SubSQLStr+") WITH ([1]."+IDField+", [1]."+EndDTField+" ON [2]."+IDField+", [2].['MaxEndDate']) "
         SQLStr += self._genConditionSQLStr(use_main_table=False, init_keyword="WHERE", args=args)+" "
         SQLStr += "ORDER BY [1].['ID'], [1].['QS_DT'] END"
         RawData = json.loads(self._FactorDB.fetchall("RETURN exportjsonstring("+SQLStr+");").decode("gbk"))
@@ -301,19 +303,20 @@ class _WideTable(_TS_SQL_Table, SQL_WideTable):
     def _genNullIDSQLStr_IgnorePublDT(self, factor_names, ids, end_date, args={}):
         IDStr ="','".join(self.__QS_adjustID__(ids))
         DTField = self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
-        SubSQLStr = "SELECT "+self._IDField+", "
+        IDField = self._FactorInfo.loc[args.get("ID字段", self.IDField), "DBFieldName"]
+        SubSQLStr = "SELECT "+IDField+", "
         SubSQLStr += "MAXOF("+DTField+") AS 'MaxEndDate' "
         SubSQLStr += self._genFromSQLStr()+" "
         SubSQLStr += "OF ARRAY('"+IDStr+"') "
         SubSQLStr += "WHERE "+DTField+"<"+end_date.strftime(self._DTFormat)+" "
         SubSQLStr += self._genConditionSQLStr(use_main_table=False, args=args)+" "
-        SubSQLStr += "GROUP BY "+self._IDField+" END"
+        SubSQLStr += "GROUP BY "+IDField+" END"
         SQLStr = "SELECT [1]."+DTField+" AS 'QS_DT', "
-        SQLStr += "[1]."+self._IDField+" AS 'ID', "
+        SQLStr += "[1]."+IDField+" AS 'ID', "
         for iField in factor_names: SQLStr += "[1]."+self._FactorInfo.loc[iField, "DBFieldName"]+", "
         SQLStr = SQLStr[:-2]+" "+self._genFromSQLStr()+" "
         SQLStr += "OF ARRAY('"+IDStr+"') "
-        SQLStr += "JOIN ("+SubSQLStr+") WITH ([1]."+self._IDField+", [1]."+DTField+" ON [2]."+self._IDField+", [2].['MaxEndDate']) "
+        SQLStr += "JOIN ("+SubSQLStr+") WITH ([1]."+IDField+", [1]."+DTField+" ON [2]."+IDField+", [2].['MaxEndDate']) "
         SQLStr += self._genConditionSQLStr(use_main_table=False, init_keyword="WHERE", args=args)+" END"
         return "RETURN exportjsonstring("+SQLStr+");"
     def _prepareRawData_IgnorePublDT(self, factor_names, ids, dts, args={}):
@@ -323,9 +326,10 @@ class _WideTable(_TS_SQL_Table, SQL_WideTable):
         LookBack = args.get("回溯天数", self.LookBack)
         if not np.isinf(LookBack): StartDate -= dt.timedelta(LookBack)
         DTField = self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
+        IDField = self._FactorInfo.loc[args.get("ID字段", self.IDField), "DBFieldName"]
         # 形成SQL语句, 日期, ID, 因子数据
         SQLStr = "SELECT "+DTField+" AS 'QS_DT', "
-        SQLStr += self._IDField+" AS 'ID', "
+        SQLStr += IDField+" AS 'ID', "
         for iField in factor_names: SQLStr += self._FactorInfo.loc[iField, "DBFieldName"]+", "
         SQLStr = SQLStr[:-2]+" "+self._genFromSQLStr()+" "
         SQLStr += "OF ARRAY('"+"','".join(IDMapping.index)+"') "
@@ -353,8 +357,9 @@ class _FeatureTable(_TS_SQL_Table, SQL_FeatureTable):
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         if ids==[]: return pd.DataFrame(columns=["ID"]+factor_names)
         IDMapping = _adjustID(ids)
+        IDField = self._FactorInfo.loc[args.get("ID字段", self.IDField), "DBFieldName"]
         # 形成SQL语句, ID, 因子数据
-        SQLStr = "SELECT "+self._IDField+" AS 'ID', "
+        SQLStr = "SELECT "+IDField+" AS 'ID', "
         for iField in factor_names: SQLStr += self._FactorInfo.loc[iField, "DBFieldName"]+", "
         SQLStr = SQLStr[:-2]+" "+self._genFromSQLStr()+" "
         SQLStr += "OF ARRAY('"+"','".join(IDMapping.index)+"') "
@@ -383,10 +388,11 @@ class _MappingTable(_TS_SQL_Table, SQL_MappingTable):
         return getDateTimeSeries(start_dt=StartDT, end_dt=end_dt, timedelta=dt.timedelta(1))
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         IDMapping = _adjustID(ids)
+        IDField = self._FactorInfo.loc[args.get("ID字段", self.IDField), "DBFieldName"]
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         DTField = self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
         # 形成SQL语句, ID, 开始日期, 结束日期, 因子数据
-        SQLStr = "SELECT "+self._IDField+" AS 'ID', "
+        SQLStr = "SELECT "+IDField+" AS 'ID', "
         SQLStr += DTField+" AS 'QS_起始日', "
         SQLStr += self._EndDateField+" AS 'QS_结束日', "
         for iField in factor_names: SQLStr += self._FactorInfo.loc[iField, "DBFieldName"]+", "

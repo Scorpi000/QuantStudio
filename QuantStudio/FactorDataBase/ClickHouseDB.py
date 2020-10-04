@@ -12,7 +12,7 @@ from traits.api import Enum, Str, Range, Password, File, Float, Bool, ListStr, o
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
-from QuantStudio.Tools.QSObjects import QSSQLObject
+from QuantStudio.Tools.QSObjects import QSClickHouseObject
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.SQLDB import SQLDB, _adjustData
 
@@ -20,7 +20,35 @@ def _identifyDataType(db_type, dtypes):
     if np.dtype("O") in dtypes.values: return "String"
     else: return "double"
 
-class _WideTable(FactorTable):
+class _CH_SQL_Table(SQL_Table):
+    pass
+
+class _WideTable(SQL_WideTable):
+    """ClickHouseDB 宽因子表"""
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
+
+class _NarrowTable(SQL_NarrowTable):
+    """ClickHouseDB 窄因子表"""
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
+
+class _FeatureTable(SQL_FeatureTable):
+    """ClickHouseDB 特征因子表"""
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
+
+class _TimeSeriesTable(SQL_TimeSeriesTable):
+    """ClickHouseDB 时序因子表"""
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
+
+class _MappingTable(SQL_MappingTable):
+    """ClickHouseDB 映射因子表"""
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
+
+class _WideTable_Old(FactorTable):
     """SQLDB 宽因子表"""
     TableType = Enum("宽表", arg_type="SingleOption", label="因子表类型", order=0)
     LookBack = Float(0, arg_type="Integer", label="回溯天数", order=1)
@@ -184,190 +212,74 @@ class _WideTable(FactorTable):
             Data[iFactorName] = iRawData
         return _adjustData(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts)
 
-class ClickHouseDB(SQLDB):
+class ClickHouseDB(QSClickHouseObject, SQLDB):
     """ClickHouseDB"""
     DBType = Enum("ClickHouse", arg_type="SingleOption", label="数据库类型", order=0)
-    #DBName = Str("Scorpion", arg_type="String", label="数据库名", order=1)
-    #IPAddr = Str("127.0.0.1", arg_type="String", label="IP地址", order=2)
-    #Port = Range(low=0, high=65535, value=27017, arg_type="Integer", label="端口", order=3)
-    #User = Str("root", arg_type="String", label="用户名", order=4)
-    #Pwd = Password("", arg_type="String", label="密码", order=5)
-    #CharSet = Enum("utf8", "gbk", "gb2312", "gb18030", "cp936", "big5", arg_type="SingleOption", label="字符集", order=6)
     Connector = Enum("default", "clickhouse-driver", arg_type="SingleOption", label="连接器", order=7)
-    #IgnoreFields = ListStr(arg_type="List", label="忽略字段", order=8)
-    #InnerPrefix = Str("qs_", arg_type="String", label="内部前缀", order=9)
-    #CheckWriteData = Bool(False, arg_type="Bool", label="检查写入值", order=100)
-    #IgnoreFields = ListStr(arg_type="List", label="忽略字段", order=101)
-    #InnerPrefix = Str("qs_", arg_type="String", label="内部前缀", order=102)
+    CheckWriteData = Bool(False, arg_type="Bool", label="检查写入值", order=100)
+    IgnoreFields = ListStr(arg_type="List", label="忽略字段", order=101)
+    InnerPrefix = Str("qs_", arg_type="String", label="内部前缀", order=102)
+    FTArgs = Dict(label="因子表参数", arg_type="Dict", order=103)
+    DTField = Str("dt", arg_type="String", label="时点字段", order=104)
+    IDField = Str("code", arg_type="String", label="ID字段", order=105)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"ClickHouseDBConfig.json" if config_file is None else config_file), **kwargs)
-        self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
-        self._TableFieldDataType = {}# {表名: pd.Series(数据库数据类型, index=[因子名])}
         self.Name = "ClickHouseDB"
         return
-    def _connect(self):
-        self._Connection = None
-        if (self.Connector=="clickhouse-driver") or ((self.Connector=="default") and (self.DBType=="ClickHouse")):
-            try:
-                import clickhouse_driver
-                if self.DSN:
-                    self._Connection = clickhouse_driver.connect(dsn=self.DSN, password=self.Pwd)
-                else:
-                    self._Connection = clickhouse_driver.connect(user=self.User, password=self.Pwd, host=self.IPAddr, port=self.Port, database=self.DBName)
-            except Exception as e:
-                Msg = ("'%s' 尝试使用 clickhouse-driver 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, self.User, self.IPAddr, self.Port, self.DBName, str(e)))
-                self._QS_Logger.error(Msg)
-                if self.Connector!="default": raise e
-            else:
-                self._Connector = "clickhouse-driver"
-        self._PID = os.getpid()
-        return 0
+    def _genFactorInfo(self, factor_info):
+        factor_info["FieldName"] = factor_info["DBFieldName"]
+        factor_info["FieldType"] = "因子"
+        DTMask = factor_info["DataType"].str.contains("date")
+        factor_info["FieldType"][DTMask] = "Date"
+        StrMask = (factor_info["DataType"].str.contains("str") | factor_info["DataType"].str.contains("uuid") | factor_info["DataType"].str.contains("ip"))
+        factor_info["FieldType"][(factor_info["DBFieldName"].str.lower()==self.IDField) & StrMask] = "ID"
+        factor_info["Supplementary"] = None
+        factor_info["Supplementary"][DTMask & (factor_info["DBFieldName"].str.lower()==self.DTField)] = "Default"
+        factor_info["Description"] = ""
+        factor_info = factor_info.set_index(["TableName", "FieldName"])
+        return factor_info
     def connect(self):
-        super().connect()
+        QSClickHouseObject.connect(self)
         nPrefix = len(self.InnerPrefix)
-        SQLStr = ("SELECT table, name, type FROM system.columns WHERE database='%s' " % self.DBName)
-        SQLStr += ("AND table LIKE '%s%%' " % self.InnerPrefix)
-        SQLStr += "AND name NOT IN ('code', 'datetime'"
+        SQLStr = f"SELECT RIGHT(table, LENGTH(table)-{nPrefix}) AS TableName, table AS DBTableName, name AS DBFieldName, LOWER(type) AS DataType FROM system.columns WHERE database='{self.DBName}' "
+        SQLStr += f"AND table LIKE '{self.InnerPrefix}%%' "
         if len(self.IgnoreFields)>0:
-            SQLStr += ",'"+"','".join(self.IgnoreFields)+"') "
-        else:
-            SQLStr += ") "
-        SQLStr += "ORDER BY table, name"
-        Rslt = self.fetchall(SQLStr)
-        if not Rslt:
-            self._TableFieldDataType = {}
-            self._TableFactorDict = {}
-        else:
-            self._TableFieldDataType = pd.DataFrame(np.array(Rslt), columns=["表", "因子", "DataType"]).set_index(["表", "因子"])["DataType"]
-            self._TableFactorDict = self._TableFieldDataType.copy()
-            Mask = (self._TableFactorDict.str.contains("String") | self._TableFactorDict.str.contains("Date"))
-            self._TableFactorDict[Mask] = "string"
-            self._TableFactorDict[~Mask] = "double"
-            self._TableFactorDict = {iTable[nPrefix:]:self._TableFactorDict.loc[iTable] for iTable in self._TableFactorDict.index.levels[0]}
-            self._TableFieldDataType = {iTable[nPrefix:]:self._TableFieldDataType.loc[iTable] for iTable in self._TableFieldDataType.index.levels[0]}
+            SQLStr += "AND name NOT IN ('"+"','".join(self.IgnoreFields)+"') "
+        SQLStr += "ORDER BY TableName, DBFieldName"
+        self._FactorInfo = pd.read_sql_query(SQLStr, self._Connection, index_col=None)
+        self._TableInfo = self._FactorInfo.loc[:, ["TableName", "DBTableName"]].copy().groupby(by=["TableName"], as_index=True).last().sort_index()
+        self._TableInfo["TableClass"] = "WideTable"
+        self._FactorInfo.pop("DBTableName")
+        self._FactorInfo = self._genFactorInfo(self._FactorInfo)
         return 0
-    def renameDBTable(self, old_table_name, new_table_name):
-        SQLStr = "RENAME TABLE "+self.TablePrefix+old_table_name+" TO "+self.TablePrefix+new_table_name
-        try:
-            self.execute(SQLStr)
-        except Exception as e:
-            Msg = ("'%s' 调用方法 renameDBTable 将表 '%s' 重命名为 '%s' 时错误: %s" % (self.Name, old_table_name, str(e)))
-            self._QS_Logger.error(Msg)
-            raise e
-        else:
-            self._QS_Logger.info("'%s' 调用方法 renameDBTable 将表 '%s' 重命名为 '%s'" % (self.Name, old_table_name, new_table_name))
-        return 0
-    def getDBTable(self):
-        try:
-            SQLStr = "SELECT name FROM system.tables WHERE database='"+self.DBName+"'"
-            AllTables = self.fetchall(SQLStr)
-        except Exception as e:
-            Msg = ("'%s' 调用方法 getDBTable 时错误: %s" % (self.Name, str(e)))
+    def getTable(self, table_name, args={}):
+        if table_name not in self._TableInfo.index:
+            Msg = ("因子库 '%s' 调用方法 getTable 错误: 不存在因子表: '%s'!" % (self.Name, table_name))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
-        else:
-            return [rslt[0] for rslt in AllTables]
-    # 创建表, field_types: {字段名: 数据类型}
-    def createDBTable(self, table_name, field_types, primary_keys=[], index_fields=[]):
-        SQLStr = "CREATE TABLE IF NOT EXISTS %s (" % (self.TablePrefix+table_name)
-        for iField in field_types: SQLStr += "`%s` %s, " % (iField, field_types[iField])
-        SQLStr += ")"
-        if primary_keys:
-            SQLStr += " PRIMARY KEY (`"+"`,`".join(primary_keys)+"`)"
-        SQLStr += " ENGINE=MergeTree()"
-        try:
-            self.execute(SQLStr)
-        except Exception as e:
-            Msg = ("'%s' 调用方法 createDBTable 在数据库中创建表 '%s' 时错误: %s" % (self.Name, table_name, str(e)))
-            self._QS_Logger.error(Msg)
-            raise e
-        else:
-            self._QS_Logger.info("'%s' 调用方法 createDBTable 在数据库中创建表 '%s'" % (self.Name, table_name))
-        return 0
-    # 创建表, field_types: {字段名: 数据库数据类型}
+        Args = self.FTArgs.copy()
+        Args.update(args)
+        TableClass = Args.get("因子表类型", self._TableInfo.loc[table_name, "TableClass"])
+        return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=Args, logger=self._QS_Logger)")
     def createTable(self, table_name, field_types):
         FieldTypes = field_types.copy()
-        FieldTypes["dt"] = field_types.pop("dt", "DATETIME NOT NULL")
-        FieldTypes["code"] = field_types.pop("code", "String NOT NULL")
-        self.createDBTable(self.InnerPrefix+table_name, FieldTypes, primary_keys=["dt", "code"], index_fields=["dt", "code"])
-        self._TableFactorDict[table_name] = pd.Series({iFactorName: ("string" if field_types[iFactorName].find("String")!=-1 else "double") for iFactorName in field_types})
-        self._TableFieldDataType[table_name] = pd.Series(field_types)
+        FieldTypes[self.DTField] = FieldTypes.pop(self.DTField, "DATETIME NOT NULL")
+        FieldTypes[self.IDField] = FieldTypes.pop(self.IDField, "STRING NOT NULL")
+        self.createDBTable(self.InnerPrefix+table_name, FieldTypes, primary_keys=[self.DTField, self.IDField], index_fields=[self.IDField])
+        self._TableInfo = self._TableInfo.append(pd.Series([self.InnerPrefix+table_name, "WideTable"], index=["DBTableName", "TableClass"], name=table_name))
+        NewFactorInfo = pd.DataFrame(FieldTypes, index=["DataType"], columns=pd.Index(sorted(FieldTypes.keys()), name="DBFieldName")).T.reset_index()
+        NewFactorInfo["TableName"] = table_name
+        self._FactorInfo = self._FactorInfo.append(self._genFactorInfo(NewFactorInfo))
         return 0
-    # 增加字段, field_types: {字段名: 数据类型}
-    def addField(self, table_name, field_types):
-        SQLStr = "ALTER TABLE %s " % (self.TablePrefix+table_name)
-        SQLStr += "ADD COLUMN %s %s"
-        try:
-            for iField in field_types:
-                self.execute(SQLStr % (iField, field_types[iField]))
-        except Exception as e:
-            Msg = ("'%s' 调用方法 addField 为表 '%s' 添加字段时错误: %s" % (self.Name, table_name, str(e)))
-            self._QS_Logger.error(Msg)
-            raise e
-        else:
-            self._QS_Logger.info("'%s' 调用方法 addField 为表 '%s' 添加字段 ’%s'" % (self.Name, table_name, str(list(field_types.keys()))))
-        return 0
-    # 增加因子，field_types: {字段名: 数据库数据类型}
     def addFactor(self, table_name, field_types):
-        if table_name not in self._TableFactorDict: return self.createTable(table_name, field_types)
+        if table_name not in self._TableInfo.index: return self.createTable(table_name, field_types)
         self.addField(self.InnerPrefix+table_name, field_types)
-        NewDataType = pd.Series({iFactorName: ("string" if field_types[iFactorName].find("String")!=-1 else "double") for iFactorName in field_types})
-        self._TableFactorDict[table_name] = self._TableFactorDict[table_name].append(NewDataType)
-        self._TableFieldDataType[table_name] = self._TableFieldDataType[table_name].append(pd.Series(field_types))
+        NewFactorInfo = pd.DataFrame(field_types, index=["DataType"], columns=pd.Index(sorted(field_types.keys()), name="DBFieldName")).T.reset_index()
+        NewFactorInfo["TableName"] = table_name
+        self._FactorInfo = self._FactorInfo.append(self._genFactorInfo(NewFactorInfo)).sort_index()
         return 0
-    # ----------------------------因子操作---------------------------------
-    def renameFactor(self, table_name, old_factor_name, new_factor_name):
-        if old_factor_name not in self._TableFactorDict[table_name]:
-            Msg = ("因子库 '%s' 调用方法 renameFactor 错误: 因子表 '%s' 中不存在因子 '%s'!" % (self.Name, table_name, old_factor_name))
-            self._QS_Logger.error(Msg)
-            raise __QS_Error__(Msg)
-        if (new_factor_name!=old_factor_name) and (new_factor_name in self._TableFactorDict[table_name]):
-            Msg = ("因子库 '%s' 调用方法 renameFactor 错误: 新因子名 '%s' 已经存在于因子表 '%s' 中!" % (self.Name, new_factor_name, table_name))
-            self._QS_Logger.error(Msg)
-            raise __QS_Error__(Msg)
-        self.renameField(self.InnerPrefix+table_name, old_factor_name, new_factor_name)
-        self._TableFactorDict[table_name][new_factor_name] = self._TableFactorDict[table_name].pop(old_factor_name)
-        self._TableFieldDataType[table_name][new_factor_name] = self._TableFieldDataType[table_name].pop(old_factor_name)
-        return 0
-    def deleteField(self, table_name, field_names):
-        if not field_names: return 0
-        try:
-                SQLStr = "ALTER TABLE "+self.TablePrefix+table_name
-                for iField in field_names: SQLStr += " DROP COLUMN `"+iField+"`,"
-                self.execute(SQLStr[:-1])
-        except Exception as e:
-            Msg = ("'%s' 调用方法 deleteField 删除表 '%s' 中的字段 '%s' 时错误: %s" % (self.Name, table_name, str(field_names), str(e)))
-            self._QS_Logger.error(Msg)
-            raise e
-        else:
-            self._QS_Logger.info("'%s' 调用方法 deleteField 删除表 '%s' 中的字段 '%s'" % (self.Name, table_name, str(field_names)))
-        return 0
-    def deleteData(self, table_name, ids=None, dts=None, dt_ids=None):
-        if table_name not in self._TableFactorDict:
-            Msg = ("因子库 '%s' 调用方法 deleteData 错误: 不存在因子表 '%s'!" % (self.Name, table_name))
-            self._QS_Logger.error(Msg)
-            raise __QS_Error__(Msg)
-        if (ids is None) and (dts is None): return self.truncateDBTable(self.InnerPrefix+table_name)
-        DBTableName = self.TablePrefix+self.InnerPrefix+table_name
-        SQLStr = "DELETE FROM "+DBTableName
-        if dts is not None:
-            DTs = [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts]
-            SQLStr += "WHERE "+genSQLInCondition(DBTableName+".datetime", DTs, is_str=True, max_num=1000)+" "
-        else:
-            SQLStr += "WHERE "+DBTableName+".datetime IS NOT NULL "
-        if ids is not None:
-            SQLStr += "AND "+genSQLInCondition(DBTableName+".code", ids, is_str=True, max_num=1000)
-        if dt_ids is not None:
-            dt_ids = ["('"+iDTIDs[0].strftime("%Y-%m-%d %H:%M:%S.%f")+"', '"+iDTIDs[1]+"')" for iDTIDs in dt_ids]
-            SQLStr += "AND "+genSQLInCondition("("+DBTableName+".datetime, "+DBTableName+".code)", dt_ids, is_str=False, max_num=1000)
-        try:
-            self.execute(SQLStr)
-        except Exception as e:
-            Msg = ("'%s' 调用方法 deleteData 删除表 '%s' 中数据时错误: %s" % (self.Name, table_name, str(e)))
-            self._QS_Logger.error(Msg)
-            raise e
-        return 0
-    def _adjustWriteData(self, data):
+        # ----------------------------因子操作---------------------------------
+    def _adjustWriteData(self, data):# TODO
         NewData = []
         DataLen = data.applymap(lambda x: len(x) if isinstance(x, list) else 1)
         DataLenMax = DataLen.max(axis=1)
