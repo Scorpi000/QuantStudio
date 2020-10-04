@@ -232,6 +232,8 @@ class SQL_Table(FactorTable):
         return ids
     def __QS_restoreID__(self, ids):
         return ids
+    def __QS_toDate__(self, field):
+        return self._FactorDB._SQLFun.get("toDate", "%s") % field
     def _genIDSQLStr(self, ids, init_keyword="AND", args={}):
         IDField = args.get("ID字段", self.IDField)
         if IDField not in self._FactorInfo[self._FactorInfo["FieldType"]=="ID"].index:
@@ -501,7 +503,7 @@ class SQL_WideTable(SQL_Table):
             SubSQLStr += self._genIDSQLStr(ids, args=args)+" "
         SubSQLStr += "GROUP BY "+IDField
         if IgnoreTime:
-            SQLStr = "SELECT DATE(CASE WHEN "+AnnDTField+">=t.MaxEndDate THEN "+AnnDTField+" ELSE t.MaxEndDate END) AS DT, "
+            SQLStr = "SELECT "+self.__QS_toDate__("CASE WHEN "+AnnDTField+">=t.MaxEndDate THEN "+AnnDTField+" ELSE t.MaxEndDate END")+" AS DT, "
         else:
             SQLStr = "SELECT CASE WHEN "+AnnDTField+">=t.MaxEndDate THEN "+AnnDTField+" ELSE t.MaxEndDate END AS DT, "
         SQLStr += self._getIDField(args=args)+" AS ID, "
@@ -530,7 +532,7 @@ class SQL_WideTable(SQL_Table):
         IDField = self._DBTableName+"."+self._FactorInfo.loc[args.get("ID字段", self.IDField), "DBFieldName"]
         SubSQLStr = "SELECT "+IDField+" AS ID, "
         if IgnoreTime:
-            SubSQLStr += "DATE(CASE WHEN "+AnnDTField+">="+EndDTField+" THEN "+AnnDTField+" ELSE "+EndDTField+" END) AS AnnDate, "
+            SubSQLStr += self.__QS_toDate__("CASE WHEN "+AnnDTField+">="+EndDTField+" THEN "+AnnDTField+" ELSE "+EndDTField+" END")+" AS AnnDate, "
         else:
             SubSQLStr += "CASE WHEN "+AnnDTField+">="+EndDTField+" THEN "+AnnDTField+" ELSE "+EndDTField+" END AS AnnDate, "
         SubSQLStr += "MAX("+EndDTField+") AS MaxEndDate "
@@ -1108,7 +1110,7 @@ class SQL_TimeSeriesTable(SQL_Table):
         SubSQLStr += "AND "+EndDTField+"<"+end_date.strftime(DTFormat)+") "
         SubSQLStr += self._genConditionSQLStr(use_main_table=False, args=args)+" "
         if IgnoreTime:
-            SQLStr = "SELECT DATE(CASE WHEN "+AnnDTField+">=t.MaxEndDate THEN "+AnnDTField+" ELSE t.MaxEndDate END) AS DT, "
+            SQLStr = "SELECT "+self.__QS_toDate__("CASE WHEN "+AnnDTField+">=t.MaxEndDate THEN "+AnnDTField+" ELSE t.MaxEndDate END")+" AS DT, "
         else:
             SQLStr = "SELECT CASE WHEN "+AnnDTField+">=t.MaxEndDate THEN "+AnnDTField+" ELSE t.MaxEndDate END AS DT, "
         SQLStr += "t.MaxEndDate AS MaxEndDate, "
@@ -1130,7 +1132,7 @@ class SQL_TimeSeriesTable(SQL_Table):
         EndDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
         AnnDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("公告时点字段", self.PublDTField), "DBFieldName"]
         if IgnoreTime:
-            SubSQLStr = "SELECT DATE(CASE WHEN "+AnnDTField+">="+EndDTField+" THEN "+AnnDTField+" ELSE "+EndDTField+" END) AS AnnDate, "
+            SubSQLStr = "SELECT "+self.__QS_toDate__("CASE WHEN "+AnnDTField+">="+EndDTField+" THEN "+AnnDTField+" ELSE "+EndDTField+" END")+" AS AnnDate, "
         else:
             SubSQLStr = "SELECT CASE WHEN "+AnnDTField+">="+EndDTField+" THEN "+AnnDTField+" ELSE "+EndDTField+" END AS AnnDate, "
         SubSQLStr += "MAX("+EndDTField+") AS MaxEndDate "
@@ -1141,7 +1143,7 @@ class SQL_TimeSeriesTable(SQL_Table):
         SubSQLStr += "AND "+EndDTField+"<="+EndDate.strftime(DTFormat)+") "
         SubSQLStr += self._genConditionSQLStr(use_main_table=False, args=args)+" "
         if IgnoreTime:
-            SubSQLStr += "GROUP BY DATE(AnnDate)"
+            SubSQLStr += "GROUP BY "+self.__QS_toDate__("AnnDate")
         else:
             SubSQLStr += "GROUP BY AnnDate"
         SQLStr = "SELECT t.AnnDate AS DT, "

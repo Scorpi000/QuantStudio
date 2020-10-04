@@ -62,6 +62,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         self._TableInfo = pd.DataFrame()# DataFrame(index=[表名], columns=["DBTableName", "TableClass"])
         self._FactorInfo = pd.DataFrame()# DataFrame(index=[(表名,因子名)], columns=["DBFieldName", "DataType", "FieldType", "Supplementary", "Description"])
         self.Name = "SQLDB"
+        self._SQLFun = {}
         return
     @on_trait_change("DTField")
     def _on_DTField_changed(self, obj, name, old, new):
@@ -100,6 +101,15 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         self._TableInfo["TableClass"] = "WideTable"
         self._FactorInfo.pop("DBTableName")
         self._FactorInfo = self._genFactorInfo(self._FactorInfo)
+        # 设置 SQL 相关函数
+        if self.DBType=="MySQL":
+            self._SQLFun = {"toDate": "DATE(%s)"}
+        elif self.DBType=="Oracle":
+            self._SQLFun = {"toDate": "CAST(%s AS DATE)"}# TOTEST
+        elif self.DBType=="SQL Server":
+            self._SQLFun = {"toDate": "CAST(%s AS DATE)"}# TOTEST
+        else:
+            raise NotImplementedError("'%s' 调用方法 connect 时错误: 尚不支持的数据库类型" % (self.Name, self.DBType))
         return 0
     @property
     def TableNames(self):
@@ -235,16 +245,16 @@ class SQLDB(QSSQLObject, WritableFactorDB):
                 OldFactorNames = self._FactorInfo.loc[table_name].index.difference(data.items).tolist()
                 if OldFactorNames:
                     if self.CheckWriteData:
-                        OldData = self.getTable(table_name, args={"因子值类型": "list", "时间转字符串": True}).readData(factor_names=OldFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
+                        OldData = self.getTable(table_name, args={"多重映射": True}).readData(factor_names=OldFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
                     else:
-                        OldData = self.getTable(table_name, args={"时间转字符串": True}).readData(factor_names=OldFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
+                        OldData = self.getTable(table_name, args={"多重映射": False}).readData(factor_names=OldFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
                     for iFactorName in OldFactorNames: data[iFactorName] = OldData[iFactorName]
             else:
                 AllFactorNames = self._FactorInfo.loc[table_name].index.tolist()
                 if self.CheckWriteData:
-                    OldData = self.getTable(table_name, args={"因子值类型":"list", "时间转字符串":True}).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
+                    OldData = self.getTable(table_name, args={"多重映射": True}).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
                 else:
-                    OldData = self.getTable(table_name, args={"时间转字符串":True}).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
+                    OldData = self.getTable(table_name, args={"多重映射": False}).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
                 if if_exists=="append":
                     for iFactorName in AllFactorNames:
                         if iFactorName in data:
