@@ -182,7 +182,7 @@ class _FinancialIndicatorTable(_FinancialTable):
     """财务指标因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
-        if self._SecurityType not in ("A股", "公募基金"):
+        if self._TableInfo["SecurityType"] not in ("A股", "公募基金"):
             raise __QS_Error__("FinancialIndicatorTable 类型的因子表 '%s' 中的证券为不支持的证券类型!" % (name, ))
         return
     def getID(self, ifactor_name=None, idt=None, args={}):# TODO
@@ -197,7 +197,8 @@ class _FinancialIndicatorTable(_FinancialTable):
         else:
             raise __QS_Error__("FinancialIndicatorTable 类型的因子表 '%s' 中的证券为不支持的证券类型!" % (self.Name, ))
     def _prepareRawDataAStock(self, factor_names, ids, dts, args={}):
-        ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
+        ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
+        IDField = self._DBTableName+"."+self._FactorInfo.loc[args.get("ID字段", self.IDField), "DBFieldName"]
         # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
         SQLStr = "SELECT "+self._getIDField(args=args)+" AS ID, "
         SQLStr += "LC_BalanceSheetAll.InfoPublDate, "
@@ -206,17 +207,13 @@ class _FinancialIndicatorTable(_FinancialTable):
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
         SQLStr += "INNER JOIN LC_BalanceSheetAll "
-        SQLStr += "ON ("+self._DBTableName+"."+self._IDField+"=LC_BalanceSheetAll.CompanyCode "
+        SQLStr += "ON ("+IDField+"=LC_BalanceSheetAll.CompanyCode "
         SQLStr += "AND "+ReportDateField+"=LC_BalanceSheetAll.EndDate) "
         SQLStr += "WHERE LC_BalanceSheetAll.BulletinType = 20 "
         SQLStr += "AND LC_BalanceSheetAll.IfMerged = 1 "
         SQLStr += "AND LC_BalanceSheetAll.IfAdjusted = 2 "
-        SQLStr += self._genConditionSQLStr(args=args)+" "
-        if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
-        if args.get("预筛选ID", self.PreFilterID):
-            SQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
-        else:
-            SQLStr += "AND "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
+        SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
+        SQLStr += self._genIDSQLStr(ids, args=args)
         SQLStr += "ORDER BY ID, LC_BalanceSheetAll.InfoPublDate, "
         SQLStr += ReportDateField
         #RawData = self._FactorDB.fetchall(SQLStr)
@@ -228,7 +225,8 @@ class _FinancialIndicatorTable(_FinancialTable):
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
     def _prepareRawDataMF(self, factor_names, ids, dts, args={}):
-        ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
+        IDField = self._DBTableName+"."+self._FactorInfo.loc[args.get("ID字段", self.IDField), "DBFieldName"]
+        ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
         # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
         SQLStr = "SELECT "+self._getIDField(args=args)+" AS ID, "
         SQLStr += "MF_BalanceSheetNew.InfoPublDate, "
@@ -237,15 +235,11 @@ class _FinancialIndicatorTable(_FinancialTable):
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
         SQLStr += "INNER JOIN MF_BalanceSheetNew "
-        SQLStr += "ON ("+self._DBTableName+"."+self._IDField+"=MF_BalanceSheetNew.InnerCode "
+        SQLStr += "ON ("+IDField+"=MF_BalanceSheetNew.InnerCode "
         SQLStr += "AND "+ReportDateField+"=MF_BalanceSheetNew.EndDate) "
         SQLStr += "WHERE MF_BalanceSheetNew.Mark = 2 "
-        SQLStr += self._genConditionSQLStr(args=args)+" "
-        if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
-        if args.get("预筛选ID", self.PreFilterID):
-            SQLStr += "AND ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
-        else:
-            SQLStr += "AND "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
+        SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
+        SQLStr += self._genIDSQLStr(ids, args=args)
         SQLStr += "ORDER BY ID, MF_BalanceSheetNew.InfoPublDate, "
         SQLStr += ReportDateField
         RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)
