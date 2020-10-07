@@ -1565,7 +1565,7 @@ def RollBackNPeriod(report_date, n_period):
     TargetDay = (31 if (TargetMonth==12) or (TargetMonth==3) else 30)
     return dt.datetime(TargetYear, TargetMonth, TargetDay)
 
-# 基于 SQL 数据库表的财务因子表(TODO)
+# 基于 SQL 数据库表的财务因子表
 # 一个字段标识 ID, 一个字段标识报告期字段, 表示财报的报告期, 一个字段标识公告日期字段, 表示财报公布的日期, 其余字段为因子
 class SQL_FinancialTable(SQL_Table):
     """财务因子表"""
@@ -1575,8 +1575,7 @@ class SQL_FinancialTable(SQL_Table):
     PeriodLookBack = Int(0, label="回溯期数", arg_type="Integer", order=3)
     IgnoreMissing = Bool(True, label="忽略缺失", arg_type="Bool", order=4)
     IgnoreNonQuarter = Bool(False, label="忽略非季末报告", arg_type="Bool", order=5)
-    #AdjustType = Str("1,2", label="调整类型", arg_type="String", order=6)
-    AdjustTypeOrder = Enum("ASC", "DESC", label="调整类型排序方向", arg_type="String", order=7)
+    #AdjustType = Str("2,1", label="调整类型", arg_type="String", order=6)
     def __init__(self, name, fdb, sys_args={},  table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
         self._TempData = {}
@@ -1665,24 +1664,33 @@ class SQL_FinancialTable(SQL_Table):
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         EndDate = dts[-1].date()
-        AnnDateField = self._DBTableName+"."+self._FactorInfo.loc[self._AnnDateField, "DBFieldName"]
-        ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
-        if self._AdjustTypeField is not None: AdjustTypeField = self._DBTableName+"."+self._FactorInfo.loc[self._AdjustTypeField, "DBFieldName"]
-        else: AdjustTypeField = "2"
+        ReportDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
+        AnnDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("公告时点字段", self.PublDTField), "DBFieldName"]
+        AdjustTypes = args.get("调整类型", self.AdjustType)
+        if pd.notnull(AdjustTypes) and (AdjustTypes!=""):
+            AdjustTypes = AdjustTypes.split(",")
+        else:
+            AdjustTypes = []
         # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
         SQLStr = "SELECT "+self._getIDField(args=args)+" AS ID, "
-        SQLStr += AnnDateField+" AS AnnDate, "
-        SQLStr += ReportDateField+" AS ReportDate, "
-        SQLStr += AdjustTypeField+" AS AdjustType, "
+        SQLStr += AnnDTField+" AS AnnDate, "
+        SQLStr += ReportDTField+" AS ReportDate, "
+        if (len(AdjustTypes)>0) and (self._AdjustTypeField is not None):
+            SQLStr = "CASE "+self._DBTableName+"."+self._FactorInfo.loc[self._AdjustTypeField, "DBFieldName"]+" "
+            for i in range(len(AdjustTypes)):
+                SQLStr += "WHEN "+AdjustTypes[i].strip()+" THEN "+str(i)+" "
+            SQLStr += "ELSE 0 END AS AdjustType, "
+        else:
+            SQLStr += "0 AS AdjustType, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
-        SQLStr += "AND "+AnnDateField+"<="+EndDate.strftime(self._DTFormat)+" "
-        SQLStr += "AND "+ReportDateField+" IS NOT NULL "
+        SQLStr += "AND "+AnnDTField+"<="+EndDate.strftime(self._DTFormat)+" "
+        SQLStr += "AND "+ReportDTField+" IS NOT NULL "
         SQLStr += self._genIDSQLStr(ids, args=args)
         SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
-        SQLStr += "ORDER BY ID, "+AnnDateField+", "
-        SQLStr += ReportDateField + ", AdjustType "+args.get("调整类型排序方向", self.AdjustTypeOrder)
+        SQLStr += "ORDER BY ID, "+AnnDTField+", "
+        SQLStr += ReportDTField + ", AdjustType"
         RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)
         RawData.columns = ["ID", "AnnDate", "ReportDate", "AdjustType"]+factor_names
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
@@ -1698,13 +1706,12 @@ class SQL_FinancialTable(SQL_Table):
         TargetReportDate = TargetReportDate.set_index(["ID"]).groupby(level=0).cummax().reset_index().groupby(by=["ID", "AnnDate"], as_index=False).max()
         MaxReportDate = TargetReportDate["ReportDate"].copy()
         Data = {}
-        AdjustTypeAscending = (args.get("调整类型排序方向", self.AdjustTypeOrder)=="ASC")
         for i, iPeriod in enumerate(periods):
             # TargetReportDate: 每个 ID 每个公告日对应的目标报告期
             if iPeriod>0: TargetReportDate["ReportDate"] = MaxReportDate.apply(RollBackNPeriod_New, args=(iPeriod,))
             # iData: 每个 ID 每个公告日对应的目标报告期及其因子值
             iData = TargetReportDate.merge(raw_data, how="left", on=["ID", "ReportDate"], suffixes=("", "_y"))
-            iData = iData[(iData["AnnDate"]>=iData["AnnDate_y"]) | pd.isnull(iData["AnnDate_y"])].sort_values(by=["ID", "AnnDate", "AnnDate_y", "AdjustType"], ascending=[True, True, True, AdjustTypeAscending])
+            iData = iData[(iData["AnnDate"]>=iData["AnnDate_y"]) | pd.isnull(iData["AnnDate_y"])].sort_values(by=["ID", "AnnDate", "AnnDate_y", "AdjustType"])
             if (i==0) and (calc_type!="最新"):
                 iData = iData.loc[:, ["ID", "AnnDate", "ReportPeriod", factor_name]].groupby(by=["ID", "AnnDate"], as_index=True).last()
                 ReportPeriod = iData.loc[:, "ReportPeriod"].where(pd.notnull(iData.loc[:, "ReportPeriod"]), "None").unstack().T
