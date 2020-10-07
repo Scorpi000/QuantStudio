@@ -407,9 +407,9 @@ class SQL_Table(FactorTable):
         if factor_names is None:
             factor_names = self.FactorNames
         if key=="DataType":
-            if hasattr(self, "_DataType"): return self._DataType.loc[factor_names]
             return self._FactorInfo["DataType"].loc[factor_names].apply(self.__QS_identifyDataType__)
-        elif key=="Description": return self._FactorInfo["Description"].loc[factor_names]
+        elif key=="Description":
+            return self._FactorInfo["Description"].loc[factor_names]
         elif key is None:
             return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType", args=args),
                                  "Description":self.getFactorMetaData(factor_names, key="Description", args=args)})

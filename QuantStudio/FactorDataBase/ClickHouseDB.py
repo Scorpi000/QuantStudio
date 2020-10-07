@@ -1,13 +1,11 @@
 # coding=utf-8
 """基于 ClickHouse 数据库的因子库"""
-import re
 import os
 import datetime as dt
-from collections import OrderedDict
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, Str, Range, Password, File, Float, Bool, ListStr, Dict, on_trait_change, Either, Date
+from traits.api import Enum, Str, Bool, ListStr, Dict
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.QSObjects import QSClickHouseObject
@@ -15,15 +13,34 @@ from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.SQLDB import SQLDB
 from QuantStudio.FactorDataBase.FDBFun import SQL_Table, SQL_WideTable, SQL_FeatureTable, SQL_MappingTable, SQL_NarrowTable, SQL_TimeSeriesTable
 
-def _identifyDataType(db_type, dtypes):
-    if np.dtype("O") in dtypes.values: return "String"
-    else: return "Float64"
+def _identifyFieldType(factor_data, data_type=None):
+    if (data_type is None) or (data_type=="double"):
+        try:
+            factor_data = factor_data.astype(float)
+        except:
+            FieldType = "Nullable(String)"
+            factor_data = factor_data.where(pd.notnull(factor_data), None)
+        else:
+            FieldType = "Float64"
+    else:
+        FieldType = "Nullable(String)"
+    return (factor_data, FieldType)
 
 class _CH_SQL_Table(SQL_Table):
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
         self._DTFormat = "'%Y-%m-%d %H:%M:%S'"
         return
+    def __QS_identifyDataType__(self, field_data_type):
+        field_data_type = field_data_type.lower()
+        if (field_data_type.find("array")!=-1) or (field_data_type.find("tuple")!=-1):
+            return "object"
+        elif (field_data_type.find("num")!=-1) or (field_data_type.find("int")!=-1) or (field_data_type.find("decimal")!=-1) or (field_data_type.find("double")!=-1) or (field_data_type.find("float")!=-1) or (field_data_type.find("real")!=-1):
+            return "double"
+        elif (field_data_type.find("char")!=-1) or (field_data_type.find("text")!=-1) or (field_data_type.find("str")!=-1):
+            return "string"
+        else:
+            return "object"
 
 class _WideTable(_CH_SQL_Table, SQL_WideTable):
     """ClickHouseDB 宽因子表"""
@@ -62,9 +79,10 @@ class ClickHouseDB(QSClickHouseObject, SQLDB):
     def _genFactorInfo(self, factor_info):
         factor_info["FieldName"] = factor_info["DBFieldName"]
         factor_info["FieldType"] = "因子"
-        DTMask = factor_info["DataType"].str.contains("date")
+        DataTypeStr = factor_info["DataType"].str
+        DTMask = DataTypeStr.contains("date")
         factor_info["FieldType"][DTMask] = "Date"
-        StrMask = (factor_info["DataType"].str.contains("str") | factor_info["DataType"].str.contains("uuid") | factor_info["DataType"].str.contains("ip"))
+        StrMask = (DataTypeStr.contains("str") | DataTypeStr.contains("uuid") | DataTypeStr.contains("ip"))
         factor_info["FieldType"][(factor_info["DBFieldName"].str.lower()==self.IDField) & StrMask] = "ID"
         factor_info["Supplementary"] = None
         factor_info["Supplementary"][DTMask & (factor_info["DBFieldName"].str.lower()==self.DTField)] = "Default"
@@ -124,7 +142,7 @@ class ClickHouseDB(QSClickHouseObject, SQLDB):
             DTs = [iDT.strftime("%Y-%m-%d %H:%M:%S") for iDT in dts]
             SQLStr += "WHERE "+genSQLInCondition(self.DTField, DTs, is_str=True, max_num=1000)+" "
         else:
-            SQLStr += "WHERE "+elf.DTField+" IS NOT NULL "
+            SQLStr += "WHERE "+self.DTField+" IS NOT NULL "
         if ids is not None:
             SQLStr += "AND "+genSQLInCondition(self.IDField, ids, is_str=True, max_num=1000)
         if dt_ids is not None:
@@ -137,17 +155,47 @@ class ClickHouseDB(QSClickHouseObject, SQLDB):
             self._QS_Logger.error(Msg)
             raise e
         return 0
+    def _adjustWriteData(self, data, factor_info):
+        NewData = []
+        DataLen = data.applymap(lambda x: len(x) if isinstance(x, list) else 1)
+        DataLenMax = DataLen.max(axis=1)
+        DataLenMin = DataLen.min(axis=1)
+        if (DataLenMax!=DataLenMin).sum()>0:
+            self._QS_Logger.warning("'%s' 在写入因子 '%s' 时出现因子值长度不一致的情况, 将填充缺失!" % (self.Name, str(data.columns.tolist())))
+        for i in range(data.shape[0]):
+            iDataLen = DataLenMax.iloc[i]
+            if iDataLen>0:
+                iData = data.iloc[i].apply(lambda x: [None]*(iDataLen-len(x))+x if isinstance(x, list) else [x]*iDataLen).tolist()
+                NewData.extend(zip(*iData))
+        NewData = pd.DataFrame(NewData, dtype="O")
+        factor_info = factor_info.loc[data.columns[2:]]
+        DataTypeStr = factor_info["DataType"].str
+        NumMask = (DataTypeStr.contains("decimal") | DataTypeStr.contains("int") | DataTypeStr.contains("float") | DataTypeStr.contains("num"))
+        for i, iFactorName in enumerate(factor_info.index):
+            if NumMask.iloc[i]:
+                NewData.iloc[:, i+2] = NewData.iloc[:, i+2].astype(float)
+            else:
+                NewData.iloc[:, i+2] = NewData.iloc[:, i+2].astype("O").where(pd.notnull(NewData.iloc[:, i+2]), None)
+        return NewData.to_records(index=False).tolist()
+    def _adjustListData(self, data, factor_info):
+        factor_info = factor_info.loc[data.columns]
+        DataTypeStr = factor_info["DataType"].str
+        NumMask = (DataTypeStr.contains("array") | DataTypeStr.contains("tuple"))
+        for iFactorName in factor_info[NumMask].index:
+            data[iFactorName] = data[iFactorName].apply(lambda x: [] if pd.isnull(x) else x)
+        return data
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
+        FieldTypes = {}
+        for i, iFactorName in enumerate(data.items):
+            data[iFactorName], FieldTypes[iFactorName] = _identifyFieldType(data[iFactorName], data_type.get(iFactorName, None))
         if table_name not in self._TableInfo.index:
-            FieldTypes = {iFactorName:_identifyDataType(self.DBType, data.iloc[i].dtypes) for i, iFactorName in enumerate(data.items)}
             self.createTable(table_name, field_types=FieldTypes)
         else:
             NewFactorNames = data.items.difference(self._FactorInfo.loc[table_name].index).tolist()
             if NewFactorNames:
-                FieldTypes = {iFactorName:_identifyDataType(self.DBType, data.iloc[i].dtypes) for i, iFactorName in enumerate(NewFactorNames)}
-                self.addFactor(table_name, FieldTypes)
+                self.addFactor(table_name, {iFactorName: FieldTypes[iFactorName] for iFactorName in NewFactorNames})
             if if_exists=="update":
-                OldFactorNames = self._FactorInfo.loc[table_name].index.difference(data.items).tolist()
+                OldFactorNames = self._FactorInfo.loc[table_name].index.difference(data.items).difference({self.IDField, self.DTField}).tolist()
                 if OldFactorNames:
                     if self.CheckWriteData:
                         OldData = self.getTable(table_name, args={"多重映射": True}).readData(factor_names=OldFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
@@ -155,7 +203,7 @@ class ClickHouseDB(QSClickHouseObject, SQLDB):
                         OldData = self.getTable(table_name, args={"多重映射": False}).readData(factor_names=OldFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
                     for iFactorName in OldFactorNames: data[iFactorName] = OldData[iFactorName]
             else:
-                AllFactorNames = self._FactorInfo.loc[table_name].index.tolist()
+                AllFactorNames = self._FactorInfo.loc[table_name].index.difference({self.IDField, self.DTField}).tolist()
                 if self.CheckWriteData:
                     OldData = self.getTable(table_name, args={"多重映射": True}).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
                 else:
@@ -190,9 +238,9 @@ class ClickHouseDB(QSClickHouseObject, SQLDB):
         self.deleteData(table_name, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
         Cursor = self.cursor()
         if self.CheckWriteData:
-            NewData = self._adjustWriteData(NewData.reset_index())
+            NewData = self._adjustWriteData(NewData.reset_index(), self._FactorInfo.loc[table_name])
         else:
-            NewData = NewData.astype("O").where(pd.notnull(NewData), None).reset_index().values.tolist()
+            NewData = self._adjustListData(NewData, self._FactorInfo.loc[table_name]).reset_index().values.tolist()
         Cursor.executemany(SQLStr, NewData)
         self.Connection.commit()
         Cursor.close()

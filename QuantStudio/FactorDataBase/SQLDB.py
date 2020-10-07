@@ -242,7 +242,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
                 FieldTypes = {iFactorName:_identifyDataType(self.DBType, data.iloc[i].dtypes) for i, iFactorName in enumerate(NewFactorNames)}
                 self.addFactor(table_name, FieldTypes)
             if if_exists=="update":
-                OldFactorNames = self._FactorInfo.loc[table_name].index.difference(data.items).tolist()
+                OldFactorNames = self._FactorInfo.loc[table_name].index.difference(data.items).difference({self.IDField, self.DTField}).tolist()
                 if OldFactorNames:
                     if self.CheckWriteData:
                         OldData = self.getTable(table_name, args={"多重映射": True}).readData(factor_names=OldFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
@@ -250,7 +250,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
                         OldData = self.getTable(table_name, args={"多重映射": False}).readData(factor_names=OldFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
                     for iFactorName in OldFactorNames: data[iFactorName] = OldData[iFactorName]
             else:
-                AllFactorNames = self._FactorInfo.loc[table_name].index.tolist()
+                AllFactorNames = self._FactorInfo.loc[table_name].index.difference({self.IDField, self.DTField}).tolist()
                 if self.CheckWriteData:
                     OldData = self.getTable(table_name, args={"多重映射": True}).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
                 else:
