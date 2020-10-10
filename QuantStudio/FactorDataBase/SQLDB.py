@@ -219,7 +219,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         return 0
     def _adjustWriteData(self, data):
         NewData = []
-        DataLen = data.applymap(lambda x: len(x) if isinstance(x, list) else 1)
+        DataLen = data.applymap(lambda x: max(1, len(x)) if isinstance(x, list) else 1)
         DataLenMax = DataLen.max(axis=1)
         DataLenMin = DataLen.min(axis=1)
         if (DataLenMax!=DataLenMin).sum()>0:
