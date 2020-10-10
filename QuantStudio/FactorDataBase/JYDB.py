@@ -79,6 +79,8 @@ def _identifyDataType(field_data_type):
 
 
 class _JY_SQL_Table(SQL_Table):
+    def __QS_adjustID__(self, ids):
+        return [(".".join(iID.split(".")[:-1]) if iID.find(".")!=-1 else iID) for iID in ids]
     def _getSecuMainIDField(self):
         ExchangeInfo = self._FactorDB._ExchangeInfo
         IDField = "CASE SecuMarket "
@@ -143,37 +145,37 @@ class _JY_SQL_Table(SQL_Table):
 class _WideTable(_JY_SQL_Table, SQL_WideTable):
     """聚源宽因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=self._SecurityInfo, exchange_info=self._ExchangeInfo, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
 
 class _NarrowTable(_JY_SQL_Table, SQL_NarrowTable):
     """聚源窄因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=self._SecurityInfo, exchange_info=self._ExchangeInfo, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
 
 class _FeatureTable(_JY_SQL_Table, SQL_FeatureTable):
     """聚源特征因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=self._SecurityInfo, exchange_info=self._ExchangeInfo, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
 
 class _TimeSeriesTable(_JY_SQL_Table, SQL_TimeSeriesTable):
     """聚源时序因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=self._SecurityInfo, exchange_info=self._ExchangeInfo, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
 
 class _MappingTable(_JY_SQL_Table, SQL_MappingTable):
     """聚源映射因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=self._SecurityInfo, exchange_info=self._ExchangeInfo, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
 
 class _ConstituentTable(_JY_SQL_Table, SQL_ConstituentTable):
     """聚源成份因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=self._SecurityInfo, exchange_info=self._ExchangeInfo, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
 
 class _FinancialTable(_JY_SQL_Table, SQL_FinancialTable):
     """聚源财务因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=self._SecurityInfo, exchange_info=self._ExchangeInfo, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
 
 # 财务指标因子表, 表结构特征:
 # 报告期字段, 表示财报的报告期

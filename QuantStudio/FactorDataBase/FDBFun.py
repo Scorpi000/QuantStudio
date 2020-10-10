@@ -970,7 +970,9 @@ class SQL_FeatureTable(SQL_WideTable):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
         self._QS_IgnoredGroupArgs = ("遍历模式", "多重映射", "算子", "算子数据类型")
     def _getMaxDT(self, args={}):
-        DTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
+        DTField = args.get("时点字段", self.DTField)
+        if pd.isnull(DTField): return None
+        DTField = self._DBTableName+"."+self._FactorInfo.loc[DTField, "DBFieldName"]
         SQLStr = "SELECT MAX("+DTField+") "
         SQLStr += self._genFromSQLStr()+" "
         SQLStr += "WHERE "+DTField+" IS NOT NULL "
@@ -987,11 +989,30 @@ class SQL_FeatureTable(SQL_WideTable):
         return []
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         if ids==[]: return pd.DataFrame(columns=["ID"]+factor_names)
+        DTField = args.get("时点字段", self.DTField)
         TargetDT = args.get("目标时点", self.TargetDT)
-        if TargetDT is None: TargetDT = self._getMaxDT(args=args)
-        if TargetDT is None: return pd.DataFrame(columns=["ID"]+factor_names)
-        RawData = super().__QS_prepareRawData__(factor_names, ids, [TargetDT], args=args)
-        RawData["QS_TargetDT"] = TargetDT
+        if DTField is not None:
+            if TargetDT is None: TargetDT = self._getMaxDT(args=args)
+            if TargetDT is not None:
+                RawData = super().__QS_prepareRawData__(factor_names, ids, [TargetDT], args=args)
+                RawData["QS_TargetDT"] = TargetDT
+                return RawData
+            else:
+                return pd.DataFrame(columns=["ID"]+factor_names)
+        # 形成SQL语句, ID, 因子数据
+        SQLStr = "SELECT "+self._getIDField(args=args)+" AS ID, "
+        FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
+        SQLStr += FieldSQLStr+" "
+        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
+        SQLStr += self._genIDSQLStr(ids, init_keyword="WHERE", args=args)+" "
+        SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
+        SQLStr += "ORDER BY ID"
+        RawData = self._FactorDB.fetchall(SQLStr)
+        if not RawData: return pd.DataFrame(columns=["ID"]+factor_names)
+        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID"]+factor_names)
+        RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
+        RawData["QS_TargetDT"] = dt.datetime.combine(dt.date.today(), dt.time(0)) + dt.timedelta(1)
+        RawData["QS_DT"] = RawData["QS_TargetDT"]
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
