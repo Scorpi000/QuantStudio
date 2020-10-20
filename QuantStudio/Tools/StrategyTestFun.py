@@ -877,7 +877,7 @@ def summaryStrategy(wealth_seq, dts, dt_ruler=None, init_wealth=None, risk_free_
     SummaryData.extend((np.array(MaxDrawdownRate), np.array(MaxDrawdownStartDT), np.array(MaxDrawdownEndDT)))
     return pd.DataFrame(SummaryData, index=SummaryIndex)
 
-def _summarySingleTiming(start_idx, end_idx, ret, signal_type="L", n_per_year=240):
+def _summarySingleTiming(start_idx, end_idx, ret, position_level,n_per_year=240):
     Summary = {}
     ProfitMask = (ret>=0)
     Summary["择时次数"] = start_idx.shape[0]
@@ -887,31 +887,34 @@ def _summarySingleTiming(start_idx, end_idx, ret, signal_type="L", n_per_year=24
     Summary["累积收益率"] = np.nanprod(1 + ret) - 1
     Summary["持仓时长"] = np.sum(end_idx - start_idx)
     Summary["平均持仓时长"] = Summary["持仓时长"] / Summary["择时次数"]
+    Summary["平均仓位水平"] = np.sum((end_idx - start_idx) * position_level) / Summary["持仓时长"]
     Summary["年化收益率"] = (Summary["累积收益率"] + 1)**(n_per_year / Summary["持仓时长"]) - 1
-    Summary["单次平均收益率"] = Summary["累积收益率"] / Summary["择时次数"]
-    Summary["平均盈利率"] = np.sum(ret[ProfitMask]) / Summary["正确次数"]
-    Summary["平均亏损率"] = - np.sum(ret[~ProfitMask]) / Summary["错误次数"]
+    Summary["单次平均收益率"] = np.mean(ret)
+    Summary["平均盈利率"] = np.mean(ret[ProfitMask])
+    Summary["平均亏损率"] = - np.mean(ret[~ProfitMask])
     Summary["盈亏比"] = Summary["平均盈利率"] / Summary["平均亏损率"]
-    Summary["单次最大盈利率"]  = np.max(ret, initial=0)
-    Summary["单次最大亏损率"]  = - np.min(ret, initial=0)
+    Summary["单次最大盈利率"]  = np.max(np.r_[0, ret])
+    Summary["单次最大亏损率"]  = - np.min(np.r_[0, ret])
     ProfitIdx = np.diff(np.r_[0, ProfitMask.astype(float), 0])
-    Summary["最大连续盈利次数"] = np.max(np.where(ProfitIdx==-1)[0] - np.where(ProfitIdx==1)[0], initial=0)
+    Summary["最大连续盈利次数"] = np.max(np.r_[0, np.where(ProfitIdx==-1)[0] - np.where(ProfitIdx==1)[0]])
     LossIdx = np.diff(np.r_[0, (~ProfitMask).astype(float), 0])
-    Summary["最大连续亏损次数"] = np.max(np.where(LossIdx==-1)[0] - np.where(LossIdx==1)[0], initial=0)
+    Summary["最大连续亏损次数"] = np.max(np.r_[0, np.where(LossIdx==-1)[0] - np.where(LossIdx==1)[0]])
     return pd.Series(Summary)
     
 # 生成择时策略相关的统计指标
 # position: 每期的目标仓位水平, array((-inf, inf) 的仓位水平或者 nan 表示维持目前仓位, shape=(nDT, nID), dtype=float), nDT: 时点数, nID: ID 数
 # price: 价格序列, array(shape=(nDT, nID))
-def summaryTimingStrategy(position, price, n_per_year=240):
+def summaryTimingStrategy(position, price, ignore_position_level=True, n_per_year=240):
     nDT, nID = position.shape
-    Signal = np.r_[np.sign(position), np.zeros((1, nID))]
-    Signal[0, np.isnan(Signal[0])] = 0
-    Signal = pd.DataFrame(Signal).fillna(method="pad").values
+    position = np.r_[position, np.zeros((1, nID))]
+    position[0, np.isnan(position[0])] = 0
+    PositionNafilled = pd.DataFrame(position).fillna(method="pad").values
     price = np.r_[price, price[-1:]]
-    LongIdx = np.diff(np.r_[np.zeros((1, nID)), (Signal>0).astype(float)], axis=0)
-    ShortIdx = np.diff(np.r_[np.zeros((1, nID)), (Signal<0).astype(float)], axis=0)
-    LongSummary = pd.DataFrame(np.nan, index=["择时次数", "正确次数", "错误次数", "正确率", "累积收益率", "年化收益率", "单次平均收益率", "平均盈利率", "平均亏损率", "盈亏比", "单次最大盈利率", "单次最大亏损率", "最大连续盈利次数", "最大连续亏损次数", "持仓时长", "平均持仓时长"], columns=np.arange(nID))
+    LongIdx = np.diff(np.r_[np.zeros((1, nID)), (PositionNafilled>0).astype(float)], axis=0)
+    ShortIdx = np.diff(np.r_[np.zeros((1, nID)), (PositionNafilled<0).astype(float)], axis=0)
+    LongSummary = pd.DataFrame(np.nan, index=["择时次数", "正确次数", "错误次数", "正确率", "累积收益率", "年化收益率", "单次平均收益率", 
+                                              "平均盈利率", "平均亏损率", "盈亏比", "单次最大盈利率", "单次最大亏损率", "最大连续盈利次数", "最大连续亏损次数", 
+                                              "持仓时长", "平均持仓时长", "平均仓位水平"], columns=np.arange(nID))
     ShortSummary = LongSummary.copy()
     TotalSummary = LongSummary.copy()
     LongDetail, ShortDetail = {}, {}# {ID: DataFrame(columns=['起始时点', '结束时点', '收益率'])}
@@ -919,25 +922,36 @@ def summaryTimingStrategy(position, price, n_per_year=240):
         # Long Summary
         iStartIdx = np.where(LongIdx[:, i]==1)[0]
         iEndIdx = np.where(LongIdx[:, i]==-1)[0]
-        iReturn = price[iEndIdx, i] / price[iStartIdx, i] - 1
-        LongSummary.loc[:, i] = _summarySingleTiming(iStartIdx, iEndIdx, iReturn, signal_type="L", n_per_year=n_per_year)
-        LongDetail[i] = pd.DataFrame({"起始时点": iStartIdx, "结束时点": iEndIdx, "收益率": iReturn})
+        if ignore_position_level:
+            iReturn = price[iEndIdx, i] / price[iStartIdx, i] - 1
+            iAvgPositionLevel = np.array([np.mean(PositionNafilled[iStartIdx[j]:iEndIdx[j], i]) for j in range(iStartIdx.shape[0])])
+        else:
+            iReturn = np.full(shape=iStartIdx.shape, fill_value=np.nan, dtype=np.float)
+            iAvgPositionLevel = np.full(shape=iStartIdx.shape, fill_value=np.nan, dtype=np.float)
+            for j in range(iStartIdx.shape[0]):
+                ijPosition = position[iStartIdx[j]:iEndIdx[j], i]
+                ijIdx = np.where(~np.isnan(ijPosition))[0]
+                iReturn[j] = np.prod(ijPosition[ijIdx] * (price[iStartIdx[j]:iEndIdx[j]+1, i][np.r_[ijIdx[1:],-1]] / price[iStartIdx[j]:iEndIdx[j], i][ijIdx] - 1)+1) - 1
+                iAvgPositionLevel[j] = np.mean(PositionNafilled[iStartIdx[j]:iEndIdx[j], i])
+        LongSummary.loc[:, i] = _summarySingleTiming(iStartIdx, iEndIdx, iReturn, iAvgPositionLevel, n_per_year=n_per_year)
+        LongDetail[i] = pd.DataFrame({"起始时点": iStartIdx, "结束时点": iEndIdx, "收益率": iReturn, "平均仓位水平": iAvgPositionLevel})
         # Short Summary
         iStartIdx = np.where(ShortIdx[:, i]==1)[0]
         iEndIdx = np.where(ShortIdx[:, i]==-1)[0]
-        iReturn = - (price[iEndIdx, i] / price[iStartIdx, i] - 1)
-        ShortSummary.loc[:, i] = _summarySingleTiming(iStartIdx, iEndIdx, iReturn, signal_type="S", n_per_year=n_per_year)
-        ShortDetail[i] = pd.DataFrame({"起始时点": iStartIdx, "结束时点": iEndIdx, "收益率": iReturn})
+        if ignore_position_level:
+            iReturn = - (price[iEndIdx, i] / price[iStartIdx, i] - 1)
+            iAvgPositionLevel = np.array([np.mean(PositionNafilled[iStartIdx[j]:iEndIdx[j], i]) for j in range(iStartIdx.shape[0])])
+        else:
+            iReturn = np.full(shape=iStartIdx.shape, fill_value=np.nan, dtype=np.float)
+            iAvgPositionLevel = np.full(shape=iStartIdx.shape, fill_value=np.nan, dtype=np.float)
+            for j in range(iStartIdx.shape[0]):
+                ijPosition = np.abs(position[iStartIdx[j]:iEndIdx[j], i])
+                ijIdx = np.where(~np.isnan(ijPosition))[0]
+                iReturn[j] = np.prod(ijPosition[ijIdx] * (1 - price[iStartIdx[j]:iEndIdx[j]+1, i][np.r_[ijIdx[1:],-1]] / price[iStartIdx[j]:iEndIdx[j], i][ijIdx])+1) - 1
+                iAvgPositionLevel[j] = np.mean(-PositionNafilled[iStartIdx[j]:iEndIdx[j], i])
+        ShortSummary.loc[:, i] = _summarySingleTiming(iStartIdx, iEndIdx, iReturn, iAvgPositionLevel, n_per_year=n_per_year)
+        ShortDetail[i] = pd.DataFrame({"起始时点": iStartIdx, "结束时点": iEndIdx, "收益率": iReturn, "平均仓位水平": iAvgPositionLevel})
         # Total Summary
         iTotalDetail = LongDetail[i].append(ShortDetail[i], ignore_index=True).sort_values(["起始时点"])
-        TotalSummary.loc[:, i] = _summarySingleTiming(iTotalDetail["起始时点"].values, iTotalDetail["结束时点"].values, iTotalDetail["收益率"].values, signal_type="LS", n_per_year=n_per_year)
+        TotalSummary.loc[:, i] = _summarySingleTiming(iTotalDetail["起始时点"].values, iTotalDetail["结束时点"].values, iTotalDetail["收益率"].values, iTotalDetail["平均仓位水平"].values, n_per_year=n_per_year)
     return TotalSummary, LongSummary, ShortSummary, LongDetail, ShortDetail
-
-if __name__=="__main__":
-    np.random.seed(0)
-    p = np.random.rand(10, 1)
-    s = (p>0.7).astype(float)
-    s[p<0.3] = -1
-    NV, Position, Turnover = testTimingStrategy(s, p)
-    TotalSummary, LongSummary, ShortSummary, LongDetail, ShortDetail = summaryTimingStrategy(s, p, n_per_year=240)
-    print("===")
