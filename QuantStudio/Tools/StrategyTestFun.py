@@ -955,3 +955,22 @@ def summaryTimingStrategy(position, price, ignore_position_level=True, n_per_yea
         iTotalDetail = LongDetail[i].append(ShortDetail[i], ignore_index=True).sort_values(["起始时点"])
         TotalSummary.loc[:, i] = _summarySingleTiming(iTotalDetail["起始时点"].values, iTotalDetail["结束时点"].values, iTotalDetail["收益率"].values, iTotalDetail["平均仓位水平"].values, n_per_year=n_per_year)
     return TotalSummary, LongSummary, ShortSummary, LongDetail, ShortDetail
+
+# 给定每期定投金额的定投策略向量化回测, 数据类型 numpy
+# aip_amount: 每期的定投金额, array( >0 的定投金额或者 nan 表示无定投, shape=(nDT, nID), dtype=float), nDT: 时点数, nID: ID 数
+# price: 价格序列, array(shape=(nDT, nID))
+# 返回: (CumReturn, Amount, Capital, PositionNum, AvgUnitCost) : array(shape=(nDT, nID))
+# CumReturn: 累积收益率
+# Amount: 持仓金额
+# Capital: 累计投入
+# PositionNum: 持仓数量
+# AvgUnitCost: 平均单位成本
+def testAIPStrategy(aip_amount, price):
+    Mask = pd.isnull(aip_amount)
+    Capital = np.nancumsum(aip_amount, axis=0)
+    PositionNum = np.nancumsum(aip_amount / price, axis=0)
+    Amount = PositionNum * price
+    CumReturn = Amount / Capital - 1
+    CumReturn[Capital<=0] = 0
+    AvgUnitCost = Capital / PositionNum
+    return CumReturn, Amount, Capital, PositionNum, AvgUnitCost

@@ -55,6 +55,23 @@ def getDateStartEndIndex(dts, dates):
         else:
             Index[i, 1] = iIndex-1
     return Index
+# 获取某个时点序列的月度时点序列
+# postpone=True: 取每月大于等于 target_day 的第一个时点
+# postpone=False: 取每月小于等于 target_day 的最后一个时点
+def getMonthDateTime(dts, target_day=15, postpone=True):
+    TargetDTs = []
+    if postpone:
+        for iDT in sorted(dts):
+            if (iDT.day>=target_day) and ((not TargetDTs) or (iDT.year!=TargetDTs[-1].year) or (iDT.month!=TargetDTs[-1].month)):
+                TargetDTs.append(iDT)
+    else:
+        for iDT in sorted(dts):
+            if iDT.day<=target_day:
+                if (not TargetDTs) or (iDT.year!=TargetDTs[-1].year) or (iDT.month!=TargetDTs[-1].month):
+                    TargetDTs.append(iDT)
+                else:
+                    TargetDTs[-1] = iDT
+    return TargetDTs
 # 获取某个时点序列的每月第一个时点序列
 def getMonthFirstDateTime(dts):
     dts = sorted(dts)
@@ -83,6 +100,31 @@ def getMonthLastDateTime(dts):
             TargetDTs[-1] = iDT
         else:
             TargetDTs.append(iDT)
+    return TargetDTs
+# 获取某个时点序列的周度时点序列
+# postpone=True: 向前顺延, 取每周大于等于 target_weekday 的第一个时点
+# postpone=False: 向后顺延, 取每周小于等于 target_weekday 的最后一个时点
+# over_week=True: 表示允许跨周顺延
+def getWeekDateTime(dts, target_weekday=3, postpone=True, over_week=False):
+    target_weekday -= 1
+    if over_week:
+        dts = np.array(sorted(dts), dtype="O")
+        StartDT = dts[0]+dt.timedelta(target_weekday-dts[0].weekday) + 7*(target_weekday<dts[0])
+        NaturalDTs = getDateTimeSeries(StartDT, dts[-1], timedelta=7)
+        if postpone:
+            return sorted(set(dts[np.searchsorted(dts, NaturalDTs, side="left")]))
+    TargetDTs = []
+    if postpone:
+        for iDT in sorted(dts):
+            if (iDT.weekday()>=target_weekday) and ((not TargetDTs) or ((iDT.date()-TargetDTs[-1].date()).days != iDT.weekday()-TargetDTs[-1].weekday())):
+                TargetDTs.append(iDT)
+    else:
+        for iDT in sorted(dts):
+            if iDT.weekday()<=target_weekday:
+                if (not TargetDTs) or ((iDT.date()-TargetDTs[-1].date()).days != iDT.weekday()-TargetDTs[-1].weekday()):
+                    TargetDTs.append(iDT)
+                else:
+                    TargetDTs[-1] = iDT
     return TargetDTs
 # 获取某个时点序列的每周第一个时点序列
 def getWeekFirstDateTime(dts):

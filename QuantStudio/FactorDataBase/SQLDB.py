@@ -202,14 +202,14 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         SQLStr = "DELETE FROM "+DBTableName+" "
         if dts is not None:
             DTs = [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts]
-            SQLStr += "WHERE "+genSQLInCondition(DTField, DTs, is_str=True, max_num=1000)+" "
+            SQLStr += "WHERE ("+genSQLInCondition(DTField, DTs, is_str=True, max_num=1000)+") "
         else:
             SQLStr += "WHERE "+DTField+" IS NOT NULL "
         if ids is not None:
-            SQLStr += "AND "+genSQLInCondition(IDField, ids, is_str=True, max_num=1000)
+            SQLStr += "AND ("+genSQLInCondition(IDField, ids, is_str=True, max_num=1000)+") "
         if dt_ids is not None:
             dt_ids = ["('"+iDTIDs[0].strftime("%Y-%m-%d %H:%M:%S.%f")+"', '"+iDTIDs[1]+"')" for iDTIDs in dt_ids]
-            SQLStr += "AND "+genSQLInCondition("("+DTField+", "+IDField+")", dt_ids, is_str=False, max_num=1000)
+            SQLStr += "AND ("+genSQLInCondition("("+DTField+", "+IDField+")", dt_ids, is_str=False, max_num=1000)+")"
         try:
             self.execute(SQLStr)
         except Exception as e:
