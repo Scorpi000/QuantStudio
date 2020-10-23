@@ -192,9 +192,9 @@ class _FinancialIndicatorTable(_FinancialTable):
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):# TODO
         return []
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        if self._SecurityType=="A股":
+        if self._TableInfo["SecurityType"]=="A股":
             return self._prepareRawDataAStock(factor_names=factor_names, ids=ids, dts=dts, args=args)
-        elif self._SecurityType=="公募基金":
+        elif self._TableInfo["SecurityType"]=="公募基金":
             return self._prepareRawDataMF(factor_names=factor_names, ids=ids, dts=dts, args=args)
         else:
             raise __QS_Error__("FinancialIndicatorTable 类型的因子表 '%s' 中的证券为不支持的证券类型!" % (self.Name, ))
@@ -303,7 +303,7 @@ def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_d
             IDs = []
             for iPID in sorted(pid_ids): IDs.extend(pid_ids[iPID])
             RawData = _prepareReportANNRawData(ft.FactorDB, ids=IDs, pre_filter_id=pre_filter_id)
-            super(_DBTable, ft).__QS_saveRawData__(RawData, [], raw_data_dir, pid_ids, report_ann_file, pid_lock)
+            super(_JY_SQL_Table, ft).__QS_saveRawData__(RawData, [], raw_data_dir, pid_ids, report_ann_file, pid_lock)
         else:
             pid_lock[PID].release()
     raw_data = raw_data.set_index(['ID'])
@@ -325,7 +325,7 @@ class _AnalystConsensusTable(_JY_SQL_Table):
     Period = Enum(30,60,90,180, label="周期", arg_type="SingleOption", order=1)
     LookBack = Int(0, arg_type="Integer", label="回溯天数", order=2)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
         self._DateField = self._FactorInfo[self._FactorInfo["FieldType"]=="Date"].index[0]
         self._ReportDateField = self._FactorInfo[self._FactorInfo["FieldType"]=="ReportDate"].index[0]
         self._PeriodField = self._FactorInfo[self._FactorInfo["FieldType"]=="Period"].index[0]
@@ -494,7 +494,7 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
     Period = Int(180, arg_type="Integer", label="周期", order=5)
     DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=6)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
         self._DateField = self._FactorInfo[self._FactorInfo["FieldType"]=="Date"].index[0]
         self._ReportDateField = self._FactorInfo[self._FactorInfo["FieldType"]=="ReportDate"].index[0]
         self._TempData = {}
@@ -624,7 +624,7 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
     Period = Int(180, arg_type="Integer", label="周期", order=4)
     DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=5)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
         self._DateField = self._FactorInfo[self._FactorInfo["FieldType"]=="Date"].index[0]
         self._TempData = {}
         return

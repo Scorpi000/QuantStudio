@@ -7,7 +7,7 @@ import pandas as pd
 from traits.api import Str, Int, Bool, Float, Function, Either, List, Dict, Enum, Date, on_trait_change
 
 from QuantStudio import __QS_Error__
-from QuantStudio.Tools.DateTimeFun import getDateTimeSeries
+from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.FactorDataBase.FactorDB import FactorTable
@@ -1425,22 +1425,22 @@ class SQL_MappingTable(SQL_Table):
 # 一个字段标识 ID, 一个字段标识起始时点, 一个字段标识截止时点, 其余字段为因子
 class SQL_ConstituentTable(SQL_Table):
     """SQL 成份因子表"""
-    GroupField = Enum(None, arg_type="SingleOption", label="类别字段", order=0)
-    EndDTField = Enum(None, arg_type="SingleOption", label="截止时点字段", order=1)
-    CurSignField = Enum(None, arg_type="SingleOption", label="当前状态字段", order=2)
+    #GroupField = Enum(None, arg_type="SingleOption", label="类别字段", order=0)
+    #EndDTField = Enum(None, arg_type="SingleOption", label="截止时点字段", order=1)
+    #CurSignField = Enum(None, arg_type="SingleOption", label="当前状态字段", order=2)
     def __init__(self, name, fdb, sys_args={},  table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
         self._AllGroups = None
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
         # 解析类别字段
-        Fields = self._FactorInfo[pd.notnull(self._FactorInfo["FieldType"])].index.tolist()+[None]# 所有字段列表
+        Fields = self._FactorInfo[pd.notnull(self._FactorInfo["FieldType"])].index.tolist()# 所有字段列表
         self.add_trait("GroupField", Enum(*Fields, arg_type="SingleOption", label="类别字段", order=0))
         GroupField = self._FactorInfo["DBFieldName"][self._FactorInfo["FieldType"]=="Group"]
-        if GroupField.shape[0]==0: self.GroupField = None
+        if GroupField.shape[0]==0: self.GroupField = Fields[0]
         else: self.GroupField = GroupField.index[0]
         # 解析当前状态字段
-        self.add_trait("CurSignField", Enum(*Fields, arg_type="SingleOption", label="当前状态字段", order=2))
+        self.add_trait("CurSignField", Enum(*(Fields+[None]), arg_type="SingleOption", label="当前状态字段", order=2))
         CurSignField = self._FactorInfo["DBFieldName"][self._FactorInfo["FieldType"]=="CurSign"]
         if CurSignField.shape[0]==0: self.CurSignField = None
         else: self.CurSignField = CurSignField.index[0]
@@ -1531,13 +1531,11 @@ class SQL_ConstituentTable(SQL_Table):
         GroupField = self._DBTableName+"."+self._FactorInfo.loc[args.get("类别字段", self.GroupField), "DBFieldName"]
         InDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
         OutDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("截止时点字段", self.EndDTField), "DBFieldName"]
-        CurSignField = self._DBTableName+"."+self._FactorInfo.loc[args.get("当前状态字段", self.CurSignField), "DBFieldName"]
+        CurSignField = args.get("当前状态字段", self.CurSignField)
+        if CurSignField is not None: CurSignField = self._DBTableName+"."+self._FactorInfo.loc[CurSignField, "DBFieldName"]
         StartDate, EndDate = dts[0].date(), dts[-1].date()
-        Fields = [self._GroupField, self._InDateField, self._OutDateField]
-        if self._CurSignField: Fields.append(self._CurSignField)
-        FieldDict = self._FactorInfo["DBFieldName"].loc[Fields]
         # 指数中成份股 ID, 指数证券 ID, 纳入日期, 剔除日期, 最新标志
-        SQLStr = "SELECT CAST("+GroupField+" AS CHAR) AS Group, "# 指数证券 ID
+        SQLStr = "SELECT CAST("+GroupField+" AS CHAR) AS GroupID, "# 指数证券 ID
         SQLStr += self._getIDField(args=args)+" AS SecurityID, "# ID
         SQLStr += InDTField+" AS InDate, "# 纳入日期
         SQLStr += OutDTField+" AS OutDate, "# 剔除日期
@@ -1550,7 +1548,7 @@ class SQL_ConstituentTable(SQL_Table):
         SQLStr += "OR ("+OutDTField+" IS NULL)) "
         SQLStr += "AND "+InDTField+"<="+EndDate.strftime(self._DTFormat)+" "
         SQLStr += self._genConditionSQLStr(args=args)+" "
-        SQLStr += "ORDER BY Group, SecurityID, InDate"
+        SQLStr += "ORDER BY GroupID, SecurityID, InDate"
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: RawData = pd.DataFrame(columns=["Group", "SecurityID", "InDate", "OutDate", "CurSign"])
         else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["Group", "SecurityID", "InDate", "OutDate", "CurSign"])
@@ -1597,11 +1595,19 @@ class SQL_FinancialTable(SQL_Table):
     IgnoreMissing = Bool(True, label="忽略缺失", arg_type="Bool", order=4)
     IgnoreNonQuarter = Bool(False, label="忽略非季末报告", arg_type="Bool", order=5)
     #AdjustType = Str("2,1", label="调整类型", arg_type="String", order=6)
+    #PublDTField = Enum(None, label="公告时点字段", arg_type="SingleOption", order=7)
     def __init__(self, name, fdb, sys_args={},  table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
         self._TempData = {}
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
+        # 解析公告时点字段
+        Fields = self._FactorInfo[self._FactorInfo["FieldType"].str.lower().str.contains("date")].index.tolist()# 所有的时点字段列表
+        Fields += [None]
+        self.add_trait("PublDTField", Enum(*Fields, arg_type="SingleOption", label="公告时点字段", order=7))
+        PublDTField = self._FactorInfo["DBFieldName"][self._FactorInfo["FieldType"]=="AnnDate"]
+        if PublDTField.shape[0]==0: self.PublDTField = None
+        else: self.PublDTField = PublDTField.index[0]
         # 调整类型字段
         self._AdjustTypeField = self._FactorInfo[self._FactorInfo["FieldType"]=="AdjustType"].index
         if self._AdjustTypeField.shape[0]==0: self._AdjustTypeField = None
@@ -1616,14 +1622,14 @@ class SQL_FinancialTable(SQL_Table):
     def _genConditionSQLStr(self, use_main_table=True, init_keyword="AND", args={}):
         SQLStr = super()._genConditionSQLStr(use_main_table=use_main_table, init_keyword=init_keyword, args=args)
         if SQLStr: init_keyword = "AND"
-        ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
+        ReportDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
         if args.get("忽略非季末报告", self.IgnoreNonQuarter) or (not ((args.get("报告期", self.ReportDate)=="所有") and (args.get("计算方法", self.CalcType)=="最新") and (args.get("回溯年数", self.YearLookBack)==0) and (args.get("回溯期数", self.PeriodLookBack)==0))):
             if self._FactorDB.DBType=="SQL Server":
-                SQLStr += " "+init_keyword+" TO_CHAR("+ReportDateField+",'MMDD') IN ('0331','0630','0930','1231')"
+                SQLStr += " "+init_keyword+" TO_CHAR("+ReportDTField+",'MMDD') IN ('0331','0630','0930','1231')"
             elif self._FactorDB.DBType=="MySQL":
-                SQLStr += " "+init_keyword+" DATE_FORMAT("+ReportDateField+",'%m%d') IN ('0331','0630','0930','1231')"
+                SQLStr += " "+init_keyword+" DATE_FORMAT("+ReportDTField+",'%m%d') IN ('0331','0630','0930','1231')"
             elif self._FactorDB.DBType=="Oracle":
-                SQLStr += " "+init_keyword+" TO_CHAR("+ReportDateField+",'MMdd') IN ('0331','0630','0930','1231')"
+                SQLStr += " "+init_keyword+" TO_CHAR("+ReportDTField+",'MMdd') IN ('0331','0630','0930','1231')"
             else:
                 raise __QS_Error__("JYDB._FinancialTable._genConditionSQLStr 不支持的数据库类型: '%s'" % (self._FactorDB.DBType, ))
             init_keyword = "AND"
@@ -1697,7 +1703,7 @@ class SQL_FinancialTable(SQL_Table):
         SQLStr += AnnDTField+" AS AnnDate, "
         SQLStr += ReportDTField+" AS ReportDate, "
         if (len(AdjustTypes)>0) and (self._AdjustTypeField is not None):
-            SQLStr = "CASE "+self._DBTableName+"."+self._FactorInfo.loc[self._AdjustTypeField, "DBFieldName"]+" "
+            SQLStr += "CASE "+self._DBTableName+"."+self._FactorInfo.loc[self._AdjustTypeField, "DBFieldName"]+" "
             for i in range(len(AdjustTypes)):
                 SQLStr += "WHEN "+AdjustTypes[i].strip()+" THEN "+str(i)+" "
             SQLStr += "ELSE 0 END AS AdjustType, "
@@ -1729,7 +1735,7 @@ class SQL_FinancialTable(SQL_Table):
         Data = {}
         for i, iPeriod in enumerate(periods):
             # TargetReportDate: 每个 ID 每个公告日对应的目标报告期
-            if iPeriod>0: TargetReportDate["ReportDate"] = MaxReportDate.apply(RollBackNPeriod_New, args=(iPeriod,))
+            if iPeriod>0: TargetReportDate["ReportDate"] = MaxReportDate.apply(RollBackNPeriod, args=(iPeriod,))
             # iData: 每个 ID 每个公告日对应的目标报告期及其因子值
             iData = TargetReportDate.merge(raw_data, how="left", on=["ID", "ReportDate"], suffixes=("", "_y"))
             iData = iData[(iData["AnnDate"]>=iData["AnnDate_y"]) | pd.isnull(iData["AnnDate_y"])].sort_values(by=["ID", "AnnDate", "AnnDate_y", "AdjustType"])

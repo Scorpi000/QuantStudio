@@ -36,6 +36,7 @@ class QSSQLObject(__QS_Object__):
         self._Connector = None# 实际使用的数据库链接器
         self._AllTables = []# 数据库中的所有表名, 用于查询时解决大小写敏感问题
         self._PID = None# 保存数据库连接创建时的进程号
+        self._SQLFun = {}
         return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -51,7 +52,6 @@ class QSSQLObject(__QS_Object__):
             if os.getpid()!=self._PID: self._connect()# 如果进程号发生变化, 重连
         return self._Connection
     def _connect(self):
-        self._PlaceHolder = "%s"
         self._Connection = None
         if (self.Connector=="cx_Oracle") or ((self.Connector=="default") and (self.DBType=="Oracle")):
             try:
@@ -116,7 +116,6 @@ class QSSQLObject(__QS_Object__):
                     self._QS_Logger.error(Msg)
                     raise e
             self._Connector = "pyodbc"
-            self._PlaceHolder = "?"
         self._PID = os.getpid()
         return 0
     def connect(self):
@@ -125,6 +124,20 @@ class QSSQLObject(__QS_Object__):
             self._AllTables = []
         else:
             self._AllTables = self.getDBTable()
+        # 设置特异性参数
+        if self._Connector=="pyodbc":
+            self._PlaceHolder = "?"
+        else:
+            self._PlaceHolder = "%s"
+        # 设置 SQL 相关特异性函数
+        if self.DBType=="MySQL":
+            self._SQLFun = {"toDate": "DATE(%s)"}
+        elif self.DBType=="Oracle":
+            self._SQLFun = {"toDate": "CAST(%s AS DATE)"}# TOTEST
+        elif self.DBType=="SQL Server":
+            self._SQLFun = {"toDate": "CAST(%s AS DATE)"}# TOTEST
+        else:
+            raise NotImplementedError("'%s' 调用方法 connect 时错误: 尚不支持的数据库类型" % (self.Name, self.DBType))
         return 0
     def disconnect(self):
         if self._Connection is not None:
@@ -349,8 +362,11 @@ class QSSQLite3Object(QSSQLObject):
             raise e
         else:
             self._Connector = "sqlite3"
-        self._PlaceHolder = "?"
         self._PID = os.getpid()
+        return 0
+    def connect(self):
+        super().connect()
+        self._PlaceHolder = "?"
         return 0
     def getDBTable(self, table_format=None):
         try:
