@@ -524,9 +524,9 @@ class SQL_WideTable(SQL_Table):
         IgnoreTime = args.get("忽略时间", self.IgnoreTime)
         if IgnoreTime: DTFormat = self._DTFormat
         else: DTFormat = self._DTFormat_WithTime
-        StartDate, EndDate = dts[0].date(), dts[-1].date()
+        StartDT, EndDT = dts[0], dts[-1]
         LookBack = args.get("回溯天数", self.LookBack)
-        if not np.isinf(LookBack): StartDate -= dt.timedelta(LookBack)
+        if not np.isinf(LookBack): StartDT -= dt.timedelta(LookBack)
         EndDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
         AnnDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("公告时点字段", self.PublDTField), "DBFieldName"]
         IDField = self._DBTableName+"."+self._FactorInfo.loc[args.get("ID字段", self.IDField), "DBFieldName"]
@@ -537,10 +537,10 @@ class SQL_WideTable(SQL_Table):
             SubSQLStr += "CASE WHEN "+AnnDTField+">="+EndDTField+" THEN "+AnnDTField+" ELSE "+EndDTField+" END AS AnnDate, "
         SubSQLStr += "MAX("+EndDTField+") AS MaxEndDate "
         SubSQLStr += "FROM "+self._DBTableName+" "
-        SubSQLStr += "WHERE ("+AnnDTField+">="+StartDate.strftime(DTFormat)+" "
-        SubSQLStr += "OR "+EndDTField+">="+StartDate.strftime(DTFormat)+") "
-        SubSQLStr += "AND ("+AnnDTField+"<="+EndDate.strftime(DTFormat)+" "
-        SubSQLStr += "AND "+EndDTField+"<="+EndDate.strftime(DTFormat)+") "
+        SubSQLStr += "WHERE ("+AnnDTField+">="+StartDT.strftime(DTFormat)+" "
+        SubSQLStr += "OR "+EndDTField+">="+StartDT.strftime(DTFormat)+") "
+        SubSQLStr += "AND ("+AnnDTField+"<="+EndDT.strftime(DTFormat)+" "
+        SubSQLStr += "AND "+EndDTField+"<="+EndDT.strftime(DTFormat)+") "
         SubSQLStr += self._genConditionSQLStr(use_main_table=False, args=args)+" "
         if (self._MainTableName is None) or (self._MainTableName==self._DBTableName):
             SubSQLStr += self._genIDSQLStr(ids, args=args)+" "
@@ -566,9 +566,9 @@ class SQL_WideTable(SQL_Table):
             RawData["ID"] = self.__QS_restoreID__(RawData["ID"])
         if np.isinf(LookBack):
             if ids is None: ids = self.getID(args=args)
-            NullIDs = set(ids).difference(set(RawData[RawData["QS_DT"]==dt.datetime.combine(StartDate,dt.time(0))]["ID"]))
+            NullIDs = set(ids).difference(set(RawData[RawData["QS_DT"]==StartDT]["ID"]))
             if NullIDs:
-                NullRawData = self._FactorDB.fetchall(self._genNullIDSQLStr_WithPublDT(factor_names, list(NullIDs), StartDate, args=args))
+                NullRawData = self._FactorDB.fetchall(self._genNullIDSQLStr_WithPublDT(factor_names, list(NullIDs), StartDT, args=args))
                 if NullRawData:
                     NullRawData = pd.DataFrame(np.array(NullRawData, dtype="O"), columns=["QS_DT", "ID", "MaxEndDate"]+factor_names)
                     NullRawData["ID"] = self.__QS_restoreID__(NullRawData["ID"])
@@ -582,10 +582,12 @@ class SQL_WideTable(SQL_Table):
     def _genNullIDSQLStr_IgnorePublDT(self, factor_names, ids, end_date, args={}):
         IDField = self._getIDField(args=args)
         DTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
+        if args.get("忽略时间", self.IgnoreTime): DTFormat = self._DTFormat
+        else: DTFormat = self._DTFormat_WithTime
         SubSQLStr = "SELECT "+self._MainTableName+"."+self._MainTableID+", "
         SubSQLStr += "MAX("+DTField+") "
         SubSQLStr += self._genFromSQLStr()+" "
-        SubSQLStr += "WHERE "+DTField+"<"+end_date.strftime(self._DTFormat)+" "
+        SubSQLStr += "WHERE "+DTField+"<"+end_date.strftime(DTFormat)+" "
         SubSQLStr += self._genIDSQLStr(ids, args=args)+" "
         ConditionSQLStr = self._genConditionSQLStr(use_main_table=True, args=args)
         SubSQLStr += ConditionSQLStr+" "
@@ -605,19 +607,19 @@ class SQL_WideTable(SQL_Table):
         else: DTFormat = self._DTFormat_WithTime
         LookBack = args.get("回溯天数", self.LookBack)
         if dts is not None:
-            StartDate, EndDate = dts[0].date(), dts[-1].date()
-            if not np.isinf(LookBack): StartDate -= dt.timedelta(LookBack)
+            StartDT, EndDT = dts[0], dts[-1]
+            if not np.isinf(LookBack): StartDT -= dt.timedelta(LookBack)
         else:
-            StartDate = EndDate = None
+            StartDT = EndDT = None
         # 形成 SQL 语句, 时点, ID, 因子数据
         SQLStr = "SELECT "+DTField+", "
         SQLStr += self._getIDField(args=args)+" AS ID, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
-        if StartDate is not None:
-            SQLStr += "WHERE "+DTField+">="+StartDate.strftime(DTFormat)+" "
-            SQLStr += "AND "+DTField+"<="+EndDate.strftime(DTFormat)+" "
+        if StartDT is not None:
+            SQLStr += "WHERE "+DTField+">="+StartDT.strftime(DTFormat)+" "
+            SQLStr += "AND "+DTField+"<="+EndDT.strftime(DTFormat)+" "
         else:
             SQLStr += "WHERE "+DTField+" IS NOT NULL "
         SQLStr += self._genIDSQLStr(ids, args=args)+" "
@@ -628,11 +630,11 @@ class SQL_WideTable(SQL_Table):
         else:
             RawData = pd.DataFrame(np.array(RawData), columns=["QS_DT", "ID"]+factor_names)
             RawData["ID"] = self.__QS_restoreID__(RawData["ID"])
-        if (StartDate is not None) and np.isinf(LookBack):
+        if (StartDT is not None) and np.isinf(LookBack):
             if ids is None: ids = self.getID(args=args)
-            NullIDs = set(ids).difference(set(RawData[RawData["QS_DT"]==dt.datetime.combine(StartDate, dt.time(0))]["ID"]))
+            NullIDs = set(ids).difference(set(RawData[RawData["QS_DT"]==StartDT]["ID"]))
             if NullIDs:
-                NullRawData = self._FactorDB.fetchall(self._genNullIDSQLStr_IgnorePublDT(factor_names, list(NullIDs), StartDate, args=args))
+                NullRawData = self._FactorDB.fetchall(self._genNullIDSQLStr_IgnorePublDT(factor_names, list(NullIDs), StartDT, args=args))
                 if NullRawData:
                     NullRawData = pd.DataFrame(np.array(NullRawData, dtype="O"), columns=["QS_DT", "ID"]+factor_names)
                     NullRawData["ID"] = self.__QS_restoreID__(NullRawData["ID"])

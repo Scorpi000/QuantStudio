@@ -509,6 +509,16 @@ class QSClickHouseObject(QSSQLObject):
                 self._Connector = "clickhouse-driver"
         self._PID = os.getpid()
         return 0
+    def connect(self):
+        self._connect()
+        if not self.AdjustTableName:
+            self._AllTables = []
+        else:
+            self._AllTables = self.getDBTable()
+        # 设置特异性参数
+        # 设置 SQL 相关特异性函数
+        self._SQLFun = {"toDate": "DATE(%s)"}
+        return 0
     def renameDBTable(self, old_table_name, new_table_name):
         SQLStr = "RENAME TABLE "+self.TablePrefix+old_table_name+" TO "+self.TablePrefix+new_table_name
         try:

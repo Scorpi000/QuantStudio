@@ -102,7 +102,6 @@ class ClickHouseDB(QSClickHouseObject, SQLDB):
         self._TableInfo["TableClass"] = "WideTable"
         self._FactorInfo.pop("DBTableName")
         self._FactorInfo = self._genFactorInfo(self._FactorInfo)
-        self._SQLFun = {"toDate": "toDate(%s)"}
         return 0
     def getTable(self, table_name, args={}):
         if table_name not in self._TableInfo.index:
@@ -167,22 +166,28 @@ class ClickHouseDB(QSClickHouseObject, SQLDB):
             if iDataLen>0:
                 iData = data.iloc[i].apply(lambda x: [None]*(iDataLen-len(x))+x if isinstance(x, list) else [x]*iDataLen).tolist()
                 NewData.extend(zip(*iData))
-        NewData = pd.DataFrame(NewData, dtype="O")
+        NewData = pd.DataFrame(NewData, dtype="O", columns=data.columns)
         factor_info = factor_info.loc[data.columns[2:]]
         DataTypeStr = factor_info["DataType"].str
         NumMask = (DataTypeStr.contains("decimal") | DataTypeStr.contains("int") | DataTypeStr.contains("float") | DataTypeStr.contains("num"))
         for i, iFactorName in enumerate(factor_info.index):
             if NumMask.iloc[i]:
-                NewData.iloc[:, i+2] = NewData.iloc[:, i+2].astype(float)
+                NewData[iFactorName] = NewData[iFactorName].astype(float)
             else:
-                NewData.iloc[:, i+2] = NewData.iloc[:, i+2].astype("O").where(pd.notnull(NewData.iloc[:, i+2]), None)
+                NewData[iFactorName] = NewData.iloc[iFactorName].astype("O").where(pd.notnull(NewData[iFactorName]), None)
         return NewData.to_records(index=False).tolist()
     def _adjustListData(self, data, factor_info):
         factor_info = factor_info.loc[data.columns]
         DataTypeStr = factor_info["DataType"].str
-        NumMask = (DataTypeStr.contains("array") | DataTypeStr.contains("tuple"))
-        for iFactorName in factor_info[NumMask].index:
-            data[iFactorName] = data[iFactorName].apply(lambda x: [] if pd.isnull(x) else x)
+        ListMask = (DataTypeStr.contains("array") | DataTypeStr.contains("tuple"))
+        NumMask = (DataTypeStr.contains("decimal") | DataTypeStr.contains("int") | DataTypeStr.contains("float") | DataTypeStr.contains("num"))
+        for i, iFactorName in enumerate(factor_info.index):
+            if ListMask.iloc[i]:
+                data[iFactorName] = data[iFactorName].apply(lambda x: [] if pd.isnull(x) else x)
+            elif NumMask.iloc[i]:
+                data[iFactorName] = data[iFactorName].astype(float)
+            else:
+                data[iFactorName] = data[iFactorName].astype("O").where(pd.notnull(data[iFactorName]), None)
         return data
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
         FieldTypes = {}
