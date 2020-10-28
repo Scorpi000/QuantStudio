@@ -24,7 +24,7 @@ from traits.api import File, Enum, List
 
 from QuantStudio import __QS_MainPath__, __QS_Error__, __QS_Object__
 from QuantStudio.Tools.FileFun import writeDictSeries2CSV, exportOutput2CSV, readCSV2StdDF
-from QuantStudio.Tools.DataTypeFun import getNestedDictItems, getNestedDictValue, removeNestedDictItem
+from QuantStudio.Tools.DataTypeFun import getNestedDictItems, getNestedDictValue, removeNestedDictItem, swapaxesNestedDictDataFrame, setNestedDictValue
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName, joinList
 from QuantStudio.Tools import StrategyTestFun
 from QuantStudio.Tools.QtGUI.QtGUIFun import populateTableWithDataFrame, populateQTreeWidgetWithNestedDict
@@ -129,6 +129,8 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
         # 设置 MainResultTree 的弹出菜单
         self.MainResultTree.addAction(QtWidgets.QAction('重命名',self.MainResultTree, triggered=self.renameVar))
         self.MainResultTree.addAction(QtWidgets.QAction('删除变量',self.MainResultTree, triggered=self.deleteVar))
+        self.MainResultTree.addAction(QtWidgets.QAction('移动变量',self.MainResultTree, triggered=self.moveVar))
+        self.MainResultTree.addAction(QtWidgets.QAction('交换层级',self.MainResultTree, triggered=self.swapAxes))
         self.MainResultTree.addAction(QtWidgets.QAction('导出CSV',self.MainResultTree, triggered=self.toCSV))
         self.MainResultTree.addAction(QtWidgets.QAction('导出Excel',self.MainResultTree, triggered=self.toExcel))
         self.MainResultTree.addAction(QtWidgets.QAction('导入CSV',self.MainResultTree, triggered=self.fromCSV))
@@ -229,7 +231,7 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
         SelectedItem = SelectedItem[0]
         OldKey = SelectedItem.text(0)
         NewKey, isOk = QtWidgets.QInputDialog.getText(self, "重命名", "请输入新名字: ", text=OldKey)
-        if (not isOk) or (NewKey==OldKey): return 0
+        if (not isOk) or (NewKey==OldKey) or (NewKey==""): return 0
         KeyList = SelectedItem.data(0, QtCore.Qt.UserRole)
         Parent = getNestedDictValue(self.Output, KeyList[:-1])
         if NewKey in Parent: return QtWidgets.QMessageBox.critical(self, "错误", "有重名!")
@@ -252,6 +254,60 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
         for iItem in SelectedItems:
             iKeyList = iItem.data(0, QtCore.Qt.UserRole)
             removeNestedDictItem(self.Output, iKeyList)
+        self.populateMainResultTree()
+        return 0
+    def moveVar(self):# 移动变量
+        ParentKeyList, isOk = QtWidgets.QInputDialog.getText(self, "移动变量", "请输入位置(格式: /变量名/变量名): ", text="/")
+        if (not isOk) or (ParentKeyList==""): return 0
+        ParentKeyList = ParentKeyList.strip()
+        if ParentKeyList[0]=="/": ParentKeyList = ParentKeyList[1:]
+        ParentKeyList = ParentKeyList.split("/")
+        if ParentKeyList[-1]=="": ParentKeyList = ParentKeyList[:-1]
+        isOK = QtWidgets.QMessageBox.question(self, "移动变量", "是否删除原变量?", QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel, QtWidgets.QMessageBox.Cancel)
+        isOK = (isOK==QtWidgets.QMessageBox.Ok)
+        SelectedItems = self.MainResultTree.selectedItems()
+        for iItem in SelectedItems:
+            iKeyList = iItem.data(0, QtCore.Qt.UserRole)
+            iVal = getNestedDictValue(self.Output, iKeyList, pop=isOK)
+            if iVal is not None:
+                self.Output = setNestedDictValue(self.Output, ParentKeyList+[iKeyList[-1]], iVal)
+        self.populateMainResultTree()
+        return 0
+    def swapAxes(self):# 交换层级
+        SelectedItems = self.MainResultTree.selectedItems()
+        if not SelectedItems:
+            NestedDict = self.Output
+            OldNestedDict = {}
+        elif len(SelectedItems)==1:
+            iKeyList = SelectedItems[0].data(0, QtCore.Qt.UserRole)
+            NestedDict = getNestedDictValue(self.Output, iKeyList)
+            OldNestedDict = {}
+        else:
+            iParentKeyList = None
+            OldNestedDict = None
+            NestedDict = {}
+            for iItem in SelectedItems:
+                iKeyList = iItem.data(0, QtCore.Qt.UserRole)
+                if iParentKeyList is None:
+                    iParentKeyList = iKeyList[:-1]
+                    OldNestedDict = getNestedDictValue(self.Output, iParentKeyList)
+                elif iParentKeyList!=iKeyList[:-1]:
+                    return QtWidgets.QMessageBox.critical(self, "错误", "选择的变量不属于同一个父变量!")
+                NestedDict[iKeyList[-1]] = OldNestedDict.pop(iKeyList[-1])
+                iKeyList = iParentKeyList
+        Axes, isOk = QtWidgets.QInputDialog.getText(self, "交换层级", "交换层级(格式: 0,3): ", text="0,1")
+        if (not isOk) or (Axes==""): return 0
+        try:
+            Axis1, Axis2 = Axes.split(",")
+            Axis1, Axis2 = int(Axis1), int(Axis2)
+        except:
+            return QtWidgets.QMessageBox.critical(self, "错误", "交换层级的输入格式有误!")
+        try:
+            NestedDict = swapaxesNestedDictDataFrame(NestedDict, Axis1, Axis2)
+        except Exception as e:
+            return QtWidgets.QMessageBox.critical(self, "错误", str(e))
+        OldNestedDict.update(NestedDict)
+        self.Output = setNestedDictValue(self.Output, iKeyList, OldNestedDict)
         self.populateMainResultTree()
         return 0
     def toCSV(self):# 导出变量到CSV
@@ -1207,13 +1263,21 @@ if __name__=='__main__':
     # 测试代码
     from QuantStudio.Tools.DateTimeFun import getDateSeries
     
+    #Bar2 = pd.DataFrame(np.random.randn(3,2), index=["中文", "b2", "b3"], columns=["中文", "我是个例子"])
+    #Bar2.iloc[0,0] = np.nan
+    #Dates = getDateSeries(dt.date(2016,1,1), dt.date(2016,12,31))
+    #TestData = {"Bar1":{"a":{"a1":pd.DataFrame(np.random.rand(11,10),index=Dates[:11],columns=['a'+str(i) for i in range(10)]),
+                             #"a2":pd.DataFrame(np.random.rand(10,2))},
+                        #"b":pd.DataFrame(['a']*150,columns=['c'])},
+                #"Bar2": Bar2}
+    
     Bar2 = pd.DataFrame(np.random.randn(3,2), index=["中文", "b2", "b3"], columns=["中文", "我是个例子"])
     Bar2.iloc[0,0] = np.nan
-    Dates = getDateSeries(dt.date(2016,1,1), dt.date(2016,12,31))
-    TestData = {"Bar1":{"a":{"a1":pd.DataFrame(np.random.rand(11,10),index=Dates[:11],columns=['a'+str(i) for i in range(10)]),
-                             "a2":pd.DataFrame(np.random.rand(10,2))},
-                        "b":pd.DataFrame(['a']*150,columns=['c'])},
-                "Bar2": Bar2}
+    TestData = {"Bar1":{"a": {"a1": pd.DataFrame(np.random.rand(5,3)),
+                                              "a2": pd.DataFrame(np.random.rand(4,3))},
+                                      "b": pd.DataFrame(['a']*150,columns=['c'])},
+                         "Bar2": Bar2}
+    
     app = QtWidgets.QApplication(sys.argv)
     #TestWindow = PlotlyResultDlg(None, TestData)
     TestWindow = MatplotlibResultDlg(None, TestData)

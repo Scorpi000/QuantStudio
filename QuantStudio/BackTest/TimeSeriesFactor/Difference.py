@@ -15,7 +15,7 @@ from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.Tools.MathFun import CartesianProduct
 from QuantStudio.BackTest.BackTestModel import BaseModule
-from .Correlation import _calcReturn
+from QuantStudio.BackTest.TimeSeriesFactor.Correlation import _calcReturn
 
 class QuantileDifference(BaseModule):
     """分位数法"""
