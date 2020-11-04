@@ -16,7 +16,7 @@ from matplotlib.ticker import FuncFormatter
 from QuantStudio import __QS_Error__, __QS_Object__
 from QuantStudio.BackTest.BackTestModel import BaseModule
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
-from QuantStudio.Tools.StrategyTestFun import summaryStrategy, calcYieldSeq, calcLSYield
+from QuantStudio.Tools.StrategyTestFun import summaryStrategy, calcYieldSeq, calcLSYield, formatStrategySummary
 from QuantStudio.FactorDataBase.FactorDB import FactorTable
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 
@@ -375,20 +375,6 @@ class Strategy(BaseModule):
             StrategyOutput["统计数据"] = pd.merge(StrategyOutput["统计数据"], BenchmarkStatistics, left_index=True, right_index=True)
         Output["Strategy"] = StrategyOutput
         return Output
-    def _formatStatistics(self):
-        Stats = self._Output["Strategy"]["统计数据"]
-        FormattedStats = pd.DataFrame(index=Stats.index, columns=Stats.columns, dtype="O")
-        DateFormatFun = np.vectorize(lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else "NaT")
-        IntFormatFun = np.vectorize(lambda x: ("%d" % (x, )))
-        FloatFormatFun = np.vectorize(lambda x: ("%.2f" % (x, )))
-        PercentageFormatFun = np.vectorize(lambda x: ("%.2f%%" % (x*100, )))
-        FormattedStats.iloc[:2] = DateFormatFun(Stats.iloc[:2, :].values)
-        FormattedStats.iloc[2] = IntFormatFun(Stats.iloc[2, :].values)
-        FormattedStats.iloc[3:6] = PercentageFormatFun(Stats.iloc[3:6, :].values)
-        FormattedStats.iloc[6:8] = FloatFormatFun(Stats.iloc[6:8, :].values)
-        FormattedStats.iloc[8:10] = PercentageFormatFun(Stats.iloc[8:10, :].values)
-        FormattedStats.iloc[10:] = DateFormatFun(Stats.iloc[10:, :].values)
-        return FormattedStats
     def genMatplotlibFig(self, file_path=None):
         StrategyOutput = self._Output["Strategy"]
         hasCapitalInvest = ("考虑资金投入的表现" in StrategyOutput["统计数据"])
@@ -448,7 +434,7 @@ class Strategy(BaseModule):
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
-        HTML = self._formatStatistics().to_html()
+        HTML = formatStrategySummary(self._Output["Strategy"]["统计数据"]).to_html()
         Pos = HTML.find(">")
         HTML = HTML[:Pos]+' align="center"'+HTML[Pos:]
         Fig = self.genMatplotlibFig()

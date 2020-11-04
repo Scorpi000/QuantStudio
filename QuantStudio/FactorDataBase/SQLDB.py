@@ -210,8 +210,8 @@ class SQLDB(QSSQLObject, WritableFactorDB):
     def _adjustWriteData(self, data):
         NewData = []
         DataLen = data.applymap(lambda x: max(1, len(x)) if isinstance(x, list) else 1)
-        DataLenMax = DataLen.max(axis=1)
-        DataLenMin = DataLen.min(axis=1)
+        DataLenMax = DataLen.iloc[:, 2:].max(axis=1)
+        DataLenMin = DataLen.iloc[:, 2:].min(axis=1)
         if (DataLenMax!=DataLenMin).sum()>0:
             self._QS_Logger.warning("'%s' 在写入因子 '%s' 时出现因子值长度不一致的情况, 将填充缺失!" % (self.Name, str(data.columns.tolist())))
         for i in range(data.shape[0]):

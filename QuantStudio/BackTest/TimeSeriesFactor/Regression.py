@@ -28,15 +28,13 @@ class OLS(BaseModule):
     SummaryWindow = Float(np.inf, arg_type="Integer", label="统计窗口", order=6)
     MinSummaryWindow = Int(2, arg_type="Integer", label="最小统计窗口", order=7)
     Constant = Bool(True, arg_type="Bool", label="常数项", order=8)
-    def __init__(self, factor_table, price_table, name="时间序列OLS", sys_args={}, **kwargs):
+    def __init__(self, factor_table, name="时间序列OLS", sys_args={}, **kwargs):
         self._FactorTable = factor_table
-        self._PriceTable = price_table
         super().__init__(name=name, sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FactorTable.getFactorMetaData(key="DataType")))
         self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
         self.TestFactors.append(DefaultNumFactorList[0])
-        DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._PriceTable.getFactorMetaData(key="DataType")))
         self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1))
         self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
     def getViewItems(self, context_name=""):
@@ -47,15 +45,13 @@ class OLS(BaseModule):
         if self._isStarted: return ()
         super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._Output = {}
-        self._Output["证券ID"] = self._PriceTable.getID()
+        self._Output["证券ID"] = self._FactorTable.getID()
         nID = len(self._Output["证券ID"])
         self._Output["收益率"] = np.zeros(shape=(0, nID))
         self._Output["滚动统计量"] = {"R平方":np.zeros((0, nID)), "调整R平方":np.zeros((0, nID)), "t统计量":{}, "F统计量":np.zeros((0, nID))}
-        self._Output["因子ID"] = self._FactorTable.getID()
-        nFactorID = len(self._Output["因子ID"])
-        self._Output["因子值"] = np.zeros((0, nFactorID*len(self.TestFactors)))
+        self._Output["因子值"] = np.zeros((0, nID, len(self.TestFactors)))
         self._CurCalcInd = 0
-        return (self._FactorTable, self._PriceTable)
+        return (self._FactorTable, )
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
         self._iDT = idt
@@ -73,18 +69,18 @@ class OLS(BaseModule):
             PreDateTime = self._Model.DateTimeSeries[PreInd]
             LastDateTime = self._Model.DateTimeSeries[LastInd]
         if (PreInd<0) or (LastInd<0): return 0
-        Price = self._PriceTable.readData(dts=[LastDateTime, idt], ids=self._Output["证券ID"], factor_names=[self.PriceFactor]).iloc[0, :, :].values
+        nID, nFactor = len(self._Output["证券ID"]), len(self.TestFactors)
+        Price = self._FactorTable.readData(dts=[LastDateTime, idt], ids=self._Output["证券ID"], factor_names=[self.PriceFactor]).iloc[0, :, :].values
         self._Output["收益率"] = np.r_[self._Output["收益率"], _calcReturn(Price, return_type=self.ReturnType)]
-        FactorData = self._FactorTable.readData(dts=[PreDateTime], ids=self._Output["因子ID"], factor_names=list(self.TestFactors)).iloc[:, 0, :].values.flatten(order="F")
-        self._Output["因子值"] = np.r_[self._Output["因子值"], FactorData.reshape((1, FactorData.shape[0]))]
+        FactorData = self._FactorTable.readData(dts=[PreDateTime], ids=self._Output["证券ID"], factor_names=list(self.TestFactors)).iloc[:, 0, :].values
+        self._Output["因子值"] = np.r_[self._Output["因子值"], FactorData.reshape((1, nID, -1))]
         if self._Output["收益率"].shape[0]<self.MinSummaryWindow: return 0
         StartInd = int(max(0, self._Output["收益率"].shape[0] - self.SummaryWindow))
-        X = self._Output["因子值"][StartInd:]
-        if self.Constant: X = sm.add_constant(X, prepend=True)
-        nID = len(self._Output["证券ID"])
-        Statistics = {"R平方":np.full((1, nID), np.nan), "调整R平方":np.full((1, nID), np.nan), "t统计量":np.full((X.shape[1], nID), np.nan), "F统计量":np.full((1, nID), np.nan)}
+        Statistics = {"R平方":np.full((1, nID), np.nan), "调整R平方":np.full((1, nID), np.nan), "t统计量":np.full((nFactor+int(self.Constant), nID), np.nan), "F统计量":np.full((1, nID), np.nan)}
         for i, iID in enumerate(self._Output["证券ID"]):
             Y = self._Output["收益率"][StartInd:, i]
+            X = self._Output["因子值"][StartInd:, i]
+            if self.Constant: X = sm.add_constant(X, prepend=True)
             try:
                 Result = sm.OLS(Y, X, missing="drop").fit()
                 Statistics["R平方"][0, i] = Result.rsquared
@@ -101,18 +97,18 @@ class OLS(BaseModule):
     def __QS_end__(self):
         if not self._isStarted: return 0
         super().__QS_end__()
-        FactorIDs, PriceIDs = self._Output.pop("因子ID"), self._Output.pop("证券ID")
+        IDs = self._Output.pop("证券ID")
         DTs = sorted(self._Output["滚动统计量"]["t统计量"])
         self._Output["最后一期统计量"] = pd.DataFrame({"R平方": self._Output["滚动统计量"]["R平方"][-1], "调整R平方": self._Output["滚动统计量"]["调整R平方"][-1],
-                                                      "F统计量": self._Output["滚动统计量"]["F统计量"][-1]}, index=PriceIDs).loc[:, ["R平方", "调整R平方", "F统计量"]]
-        Index = pd.MultiIndex.from_product([self.TestFactors, FactorIDs], names=["因子", "因子ID"])
-        if self.Constant: Index = Index.insert(0, ("Constant", "Constant"))
-        self._Output["最后一期t统计量"] = pd.DataFrame(self._Output["滚动统计量"]["t统计量"][DTs[-1]], index=Index, columns=PriceIDs).reset_index()
-        self._Output["全样本统计量"], self._Output["全样本t统计量"] = pd.DataFrame(index=PriceIDs, columns=["R平方", "调整R平方", "F统计量"]), pd.DataFrame(index=Index, columns=PriceIDs)
-        X = self._Output["因子值"]
-        if self.Constant: X = sm.add_constant(X, prepend=True)
-        for i, iID in enumerate(PriceIDs):
+                                                      "F统计量": self._Output["滚动统计量"]["F统计量"][-1]}, index=IDs).loc[:, ["R平方", "调整R平方", "F统计量"]]
+        Index = pd.Index(self.TestFactors, name="因子")
+        if self.Constant: Index = Index.insert(0, "Constant")
+        self._Output["最后一期t统计量"] = pd.DataFrame(self._Output["滚动统计量"]["t统计量"][DTs[-1]], index=Index, columns=IDs)
+        self._Output["全样本统计量"], self._Output["全样本t统计量"] = pd.DataFrame(index=IDs, columns=["R平方", "调整R平方", "F统计量"]), pd.DataFrame(index=Index, columns=IDs)
+        for i, iID in enumerate(IDs):
             Y = self._Output["收益率"][:, i]
+            X = self._Output["因子值"][:, i]
+            if self.Constant: X = sm.add_constant(X, prepend=True)
             try:
                 Result = sm.OLS(Y, X, missing="drop").fit()
                 self._Output["全样本统计量"].iloc[i, 0] = Result.rsquared
@@ -121,11 +117,10 @@ class OLS(BaseModule):
                 self._Output["全样本t统计量"].iloc[:, i] = Result.tvalues
             except:
                 pass
-        self._Output["滚动统计量"]["R平方"] = pd.DataFrame(self._Output["滚动统计量"]["R平方"], index=DTs, columns=PriceIDs)
-        self._Output["滚动统计量"]["调整R平方"] = pd.DataFrame(self._Output["滚动统计量"]["调整R平方"], index=DTs, columns=PriceIDs)
-        self._Output["滚动统计量"]["F统计量"] = pd.DataFrame(self._Output["滚动统计量"]["F统计量"], index=DTs, columns=PriceIDs)
-        self._Output["滚动t统计量"] = pd.Panel(self._Output["滚动统计量"].pop("t统计量"), major_axis=Index, minor_axis=PriceIDs)
-        self._Output["滚动t统计量"] = self._Output["滚动t统计量"].swapaxes(0, 2).to_frame(filter_observations=False).reset_index()
-        self._Output["滚动t统计量"].columns = ["因子", "因子ID", "时点"]+PriceIDs
+        self._Output["滚动统计量"]["R平方"] = pd.DataFrame(self._Output["滚动统计量"]["R平方"], index=DTs, columns=IDs)
+        self._Output["滚动统计量"]["调整R平方"] = pd.DataFrame(self._Output["滚动统计量"]["调整R平方"], index=DTs, columns=IDs)
+        self._Output["滚动统计量"]["F统计量"] = pd.DataFrame(self._Output["滚动统计量"]["F统计量"], index=DTs, columns=IDs)
+        self._Output["滚动统计量"]["t统计量"] = pd.Panel(self._Output["滚动统计量"]["t统计量"], major_axis=Index, minor_axis=IDs)
+        self._Output["滚动统计量"]["t统计量"] = dict(self._Output["滚动统计量"]["t统计量"].swapaxes(0, 1))
         self._Output.pop("收益率"), self._Output.pop("因子值")
         return 0

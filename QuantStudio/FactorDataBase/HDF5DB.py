@@ -144,6 +144,7 @@ class _FactorTable(FactorTable):
 class HDF5DB(WritableFactorDB):
     """HDF5DB"""
     MainDir = Directory(label="主目录", arg_type="Directory", order=0)
+    LockDir = Directory(label="锁目录", arg_type="Directory", order=1)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._LockFile = None# 文件锁的目标文件
         self._DataLock = None# 访问该因子库资源的锁, 防止并发访问冲突
@@ -167,7 +168,13 @@ class HDF5DB(WritableFactorDB):
     def connect(self):
         if not os.path.isdir(self.MainDir):
             raise __QS_Error__("HDF5DB.connect: 不存在主目录 '%s'!" % self.MainDir)
-        self._LockFile = self.MainDir+os.sep+"LockFile"
+        if not self.LockDir:
+            self._LockDir = self.MainDir
+        elif not os.path.isdir(self.LockDir):
+            raise __QS_Error__("HDF5DB.connect: 不存在锁目录 '%s'!" % self.LockDir)
+        else:
+            self._LockDir = self.LockDir
+        self._LockFile = self._LockDir+os.sep+"LockFile"
         if not os.path.isfile(self._LockFile):
             open(self._LockFile, mode="a").close()
             os.chmod(self._LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
@@ -188,9 +195,11 @@ class HDF5DB(WritableFactorDB):
             Msg = ("因子库 '%s' 调用 _getLock 时错误, 不存在因子表: '%s'" % (self.Name, table_name))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
-        LockFile = TablePath + os.sep + "LockFile"
+        LockFile = self._LockDir + os.sep + table_name + os.sep + "LockFile"
         if not os.path.isfile(LockFile):
             with self._DataLock:
+                if not os.path.isdir(self._LockDir + os.sep + table_name):
+                    os.mkdir(self._LockDir + os.sep + table_name)
                 if not os.path.isfile(LockFile):
                     open(LockFile, mode="a").close()
                     os.chmod(LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)

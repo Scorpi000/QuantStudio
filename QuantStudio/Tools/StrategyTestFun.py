@@ -876,7 +876,24 @@ def summaryStrategy(wealth_seq, dts, dt_ruler=None, init_wealth=None, risk_free_
         MaxDrawdownEndDT.append((dts[iMaxDrawdownEndPos] if iMaxDrawdownEndPos is not None else None))
     SummaryData.extend((np.array(MaxDrawdownRate), np.array(MaxDrawdownStartDT), np.array(MaxDrawdownEndDT)))
     return pd.DataFrame(SummaryData, index=SummaryIndex)
+# 格式化策略相关的统计指标
+def formatStrategySummary(summray):
+    FormattedStats = pd.DataFrame(index=summray.index, columns=summray.columns, dtype="O")
+    DateFormatFun = np.vectorize(lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else "NaT")
+    IntFormatFun = np.vectorize(lambda x: ("%d" % (x, )))
+    FloatFormatFun = np.vectorize(lambda x: ("%.2f" % (x, )))
+    PercentageFormatFun = np.vectorize(lambda x: ("%.2f%%" % (x*100, )))
+    FormattedStats.iloc[:2] = DateFormatFun(summray.iloc[:2, :].values)
+    FormattedStats.iloc[2] = IntFormatFun(summray.iloc[2, :].values)
+    FormattedStats.iloc[3:6] = PercentageFormatFun(summray.iloc[3:6, :].values)
+    FormattedStats.iloc[6:8] = FloatFormatFun(summray.iloc[6:8, :].values)
+    FormattedStats.iloc[8:10] = PercentageFormatFun(summray.iloc[8:10, :].values)
+    FormattedStats.iloc[10:] = DateFormatFun(summray.iloc[10:, :].values)
+    return FormattedStats
 
+# 生成择时策略相关的统计指标
+# position: 每期的目标仓位水平, array((-inf, inf) 的仓位水平或者 nan 表示维持目前仓位, shape=(nDT, nID), dtype=float), nDT: 时点数, nID: ID 数
+# price: 价格序列, array(shape=(nDT, nID))
 def _summarySingleTiming(start_idx, end_idx, ret, position_level,n_per_year=240):
     Summary = {}
     ProfitMask = (ret>=0)
@@ -900,10 +917,6 @@ def _summarySingleTiming(start_idx, end_idx, ret, position_level,n_per_year=240)
     LossIdx = np.diff(np.r_[0, (~ProfitMask).astype(float), 0])
     Summary["最大连续亏损次数"] = np.max(np.r_[0, np.where(LossIdx==-1)[0] - np.where(LossIdx==1)[0]])
     return pd.Series(Summary)
-    
-# 生成择时策略相关的统计指标
-# position: 每期的目标仓位水平, array((-inf, inf) 的仓位水平或者 nan 表示维持目前仓位, shape=(nDT, nID), dtype=float), nDT: 时点数, nID: ID 数
-# price: 价格序列, array(shape=(nDT, nID))
 def summaryTimingStrategy(position, price, ignore_position_level=True, n_per_year=240):
     nDT, nID = position.shape
     position = np.r_[position, np.zeros((1, nID))]
@@ -955,6 +968,21 @@ def summaryTimingStrategy(position, price, ignore_position_level=True, n_per_yea
         iTotalDetail = LongDetail[i].append(ShortDetail[i], ignore_index=True).sort_values(["起始时点"])
         TotalSummary.loc[:, i] = _summarySingleTiming(iTotalDetail["起始时点"].values, iTotalDetail["结束时点"].values, iTotalDetail["收益率"].values, iTotalDetail["平均仓位水平"].values, n_per_year=n_per_year)
     return TotalSummary, LongSummary, ShortSummary, LongDetail, ShortDetail
+
+# 格式化择时策略相关的统计指标
+def formatTimingStrategySummary(summray):
+    FormattedStats = pd.DataFrame(index=summray.index, columns=summray.columns, dtype="O")
+    DateFormatFun = np.vectorize(lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else "NaT")
+    IntFormatFun = np.vectorize(lambda x: ("%d" % (x, )))
+    FloatFormatFun = np.vectorize(lambda x: ("%.2f" % (x, )))
+    PercentageFormatFun = np.vectorize(lambda x: ("%.2f%%" % (x*100, )))
+    FormattedStats.iloc[:3] = IntFormatFun(summray.iloc[:3, :].values)
+    FormattedStats.iloc[3:9] = PercentageFormatFun(summray.iloc[3:9, :].values)
+    FormattedStats.iloc[9] = FloatFormatFun(summray.iloc[9, :].values)
+    FormattedStats.iloc[10:12] = PercentageFormatFun(summray.iloc[10:12, :].values)
+    FormattedStats.iloc[12:15] = IntFormatFun(summray.iloc[12:15, :].values)
+    FormattedStats.iloc[15:17] = FloatFormatFun(summray.iloc[15:17, :].values)
+    return FormattedStats
 
 # 给定每期定投金额的定投策略向量化回测, 数据类型 numpy
 # aip_amount: 每期的定投金额, array( >0 的定投金额或者 nan 表示无定投, shape=(nDT, nID), dtype=float), nDT: 时点数, nID: ID 数

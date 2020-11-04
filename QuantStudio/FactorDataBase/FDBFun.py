@@ -142,7 +142,7 @@ def adjustDataDTID(data, look_back, factor_names, ids, dts, only_start_lookback=
 class SQL_Table(FactorTable):
     """SQL 因子表"""
     FilterCondition = Str("", arg_type="Dict", label="筛选条件", order=100)
-    #TableType = Enum(None, arg_type="SingleOption", label="因子表类型", order=200)# 不可变
+    TableType = Str(arg_type="SingleOption", label="因子表类型", order=200)# 不可变
     PreFilterID = Bool(True, arg_type="Bool", label="预筛选ID", order=201)
     #DTField = Enum(None, arg_type="SingleOption", label="时点字段", order=202)
     #IDField = Enum(None, arg_type="SingleOption", label="ID字段", order=203)
@@ -159,7 +159,7 @@ class SQL_Table(FactorTable):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         # 解析主表
         self._MainTableName = self._TableInfo.get("MainTableName", None)
-        if (self.IDField not in (self._FactorInfo[self._FactorInfo["FieldType"]=="ID"].index)) or pd.isnull(self._MainTableName):
+        if (self.IDField not in (self._FactorInfo[self._FactorInfo["FieldType"]=="ID"].index)) or pd.isnull(self._MainTableName) or (self._MainTableName==str(self._TableInfo.loc["DBTableName"])):
             self._IDFieldIsStr = ((self.__QS_identifyDataType__(self._FactorInfo["DataType"].loc[self.IDField])!="double") if self.IDField is not None else True)
             self._MainTableName = self._DBTableName
             self._MainTableID = self.IDField
@@ -175,7 +175,7 @@ class SQL_Table(FactorTable):
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
         # 设置因子表类型
-        self.add_trait("TableType", Enum(self._TableInfo["TableClass"], arg_type="SingleOption", label="因子表类型", order=200))
+        self.TableType = self._TableInfo["TableClass"]
         # 解析 ID 字段, 至多一个 ID 字段
         IDFields = self._FactorInfo[pd.notnull(self._FactorInfo["FieldType"])].index.tolist()+[None]# ID 字段
         self.add_trait("IDField", Enum(*IDFields, arg_type="SingleOption", label="ID字段", order=203))
