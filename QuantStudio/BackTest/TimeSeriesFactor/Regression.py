@@ -184,3 +184,93 @@ class OLS(BaseModule):
         self._Output["择时策略"]["纯多头策略统计数据"].columns = IDs
         self._Output.pop("因子值")
         return 0
+    def genMatplotlibFig(self, file_path=None):
+        iR2 = self._Output["滚动回归"]["R平方"]
+        iAdjR2 = self._Output["滚动回归"]["调整R平方"]
+        iForecastReturn = self._Output["滚动预测"]["预测收益率"]
+        iRealReturn = self._Output["滚动预测"]["实际收益率"]
+        iLSNV = self._Output["择时策略"]["多空净值"]
+        iLNV = self._Output["择时策略"]["纯多头策略净值"]
+        nID = iR2.shape[1]
+        xData1 = np.arange(0, iR2.shape[0])
+        xTicks1 = np.arange(0, iR2.shape[0], int(iR2.shape[0]/10))
+        xTickLabels1 = [iR2.index[i].strftime("%Y-%m-%d") for i in xTicks1]
+        xData2 = np.arange(0, iLSNV.shape[0])
+        xTicks2 = np.arange(0, iLSNV.shape[0], int(iLSNV.shape[0]/10))
+        xTickLabels2 = [iLSNV.index[i].strftime("%Y-%m-%d") for i in xTicks2]
+        Fig = Figure(figsize=(32, 8*nID))
+        for j, jID in enumerate(iTargetNV.columns):
+            iAxes = Fig.add_subplot(nID, 3, j*3+1)
+            iAxes.plot(xData1, iR2.iloc[:, j].values, label="R2", color="indianred", lw=2.5)
+            iAxes.plot(xData1, iAdjR2.iloc[:, j].values, label="调整R2", color="steelblue", lw=2.5)
+            iAxes.set_xticks(xTicks1)
+            iAxes.set_xticklabels(xTickLabels1)
+            iAxes.legend()
+            iAxes.set_title(str(jID)+" : 滚动回归 R2")
+            iAxes = Fig.add_subplot(nID, 3, j*3+2)
+            pd.DataFrame({"预测收益率": iForecastReturn.iloc[:, j].values, "实际收益率": iRealReturn.iloc[:, j].values}.columns=["预测收益率", "实际收益率"]).plot(kind="bar", ax=iAxes, title=str(jID)+" : 滚动预测")
+            iAxes = Fig.add_subplot(nID, 3, j*3+3)
+            iAxes.plot(xData2, iLSNV.iloc[:, j].values, label="多空净值", color="steelblue", lw=2.5)
+            iAxes.plot(xData2, iLNV.iloc[:, j].values, label="纯多头净值", color="indianred", lw=2.5)
+            iAxes.set_xticks(xTicks2)
+            iAxes.set_xticklabels(xTickLabels2)
+            iAxes.legend()
+            iAxes.set_title(str(jID)+" : 择时策略")
+        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
+        return Fig
+    def _repr_html_(self):
+        if len(self.ArgNames)>0:
+            HTML = "参数设置: "
+            HTML += '<ul align="left">'
+            for iArgName in self.ArgNames:
+                if iArgName!="计算时点":
+                    HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
+                elif self.Args[iArgName]:
+                    HTML += "<li>"+iArgName+": 自定义时点</li>"
+                else:
+                    HTML += "<li>"+iArgName+": 所有时点</li>"
+            HTML += "</ul>"
+        else:
+            HTML = ""
+        HTML += "全样本回归 - 回归系数 : "
+        iHTML = self._Output["全样本回归"]["回归系数"].to_html(formatters=[lambda x:'{0:.4f}'.format(x)]*self._Output["全样本回归"]["回归系数"].shape[1])
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        HTML += "全样本回归 - t 统计量 : "
+        iHTML = self._Output["全样本回归"]["t统计量"].to_html(formatters=[lambda x:'{0:.2f}'.format(x)]*self._Output["全样本回归"]["t统计量"].shape[1])
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        HTML += "滚动预测 - 统计数据: "
+        Formatters = [lambda x:'{0:.4f}'.format(x)]*4+[lambda x:'{0:d}'.format(int(x))]*4+[lambda x:'{0:.2f}%'.format(x*100)]*5
+        iHTML = self._Output["滚动预测"]["统计数据"].to_html(formatters=Formatters)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        HTML += "择时策略 - 统计数据 : "
+        iHTML += formatStrategySummary(self._Output["择时策略"]["统计数据"]).to_html()
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        HTML += "择时策略 - 纯多头统计数据 : "
+        iHTML += formatStrategySummary(self._Output["择时策略"]["纯多头策略统计数据"]).to_html()
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        HTML += "择时策略 - 多空统计 : "
+        iHTML += formatTimingStrategySummary(self._Output["择时策略"]["多空统计"]).to_html()
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        HTML += "择时策略 - 多头统计 : "
+        iHTML += formatTimingStrategySummary(self._Output["择时策略"]["多头统计"]).to_html()
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        HTML += "择时策略 - 空头统计 : "
+        iHTML += formatTimingStrategySummary(self._Output["择时策略"]["空头统计"]).to_html()
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        Fig = self.genMatplotlibFig()
+        # figure 保存为二进制文件
+        Buffer = BytesIO()
+        Fig.savefig(Buffer, bbox_inches='tight')
+        PlotData = Buffer.getvalue()
+        # 图像数据转化为 HTML 格式
+        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+        HTML += ('<img src="%s">' % ImgStr)
+        return HTML

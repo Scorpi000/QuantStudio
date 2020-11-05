@@ -16,7 +16,7 @@ from QuantStudio.Tools.StrategyTestFun import summaryStrategy, formatStrategySum
 from QuantStudio.BackTest.BackTestModel import BaseModule
 
 
-# 给定仓位水平的择时信号回测(TODO)
+# 给定仓位水平的择时信号回测
 # 测试因子: 每期的目标仓位水平, (-inf, inf) 的仓位水平或者 nan 表示维持目前仓位
 class PositionSignal(BaseModule):
     """仓位信号回测"""

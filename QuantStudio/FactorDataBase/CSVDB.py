@@ -1,5 +1,5 @@
 # coding=utf-8
-"""基于 csv 文件的因子库"""
+"""基于 csv 文件的因子库(TODO)"""
 import os
 import stat
 import shutil
@@ -10,7 +10,7 @@ import datetime as dt
 import numpy as np
 import pandas as pd
 import fasteners
-from traits.api import Directory
+from traits.api import Directory, Str
 
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
@@ -27,16 +27,10 @@ def _identifyDataType(factor_data, data_type=None):
             data_type = "double"
     return (factor_data, data_type)
 
-def _adjustData(data, data_type, order="C"):
-    if data_type=="string": return data.where(pd.notnull(data), None).values
-    elif data_type=="double": return data.astype("float").values
-    elif data_type=="object":
-        if order=="C":
-            return np.ascontiguousarray(data.applymap(lambda x: np.frombuffer(pickle.dumps(x), dtype=np.uint8)).values)
-        elif order=="F":
-            return np.asfortranarray(data.applymap(lambda x: np.frombuffer(pickle.dumps(x), dtype=np.uint8)).values)
-        else:
-            raise __QS_Error__("不支持的参数 order 值: %s" % order)
+def _adjustData(data, data_type):
+    if data_type=="string": return data.where(pd.notnull(data), None)
+    elif data_type=="double": return data.astype("float")
+    elif data_type=="object": return data.applymap(lambda x: pickle.dumps(x))
     else: raise __QS_Error__("不支持的数据类型: %s" % data_type)
 
 class _FactorTable(FactorTable):
@@ -82,51 +76,20 @@ class _FactorTable(FactorTable):
         FilePath = self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix
         if not os.path.isfile(FilePath): raise __QS_Error__("因子库 '%s' 的因子表 '%s' 中不存在因子 '%s'!" % (self._FactorDB.Name, self.Name, ifactor_name))
         with self._FactorDB._getLock(self._Name):
-            with h5py.File(FilePath, mode="r") as DataFile:
-                DataType = DataFile.attrs["DataType"]
-                DateTimes = DataFile["DateTime"][...]
-                IDs = DataFile["ID"][...]
-                if dts is None:
-                    if ids is None:
-                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).sort_index(axis=1)
-                    elif set(ids).isdisjoint(IDs):
-                        Rslt = pd.DataFrame(index=DateTimes, columns=ids)
-                    else:
-                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).loc[:, ids]
-                    Rslt.index = [dt.datetime.fromtimestamp(itms) for itms in Rslt.index]
-                elif (ids is not None) and set(ids).isdisjoint(IDs):
-                    Rslt = pd.DataFrame(index=dts, columns=ids)
-                else:
-                    if dts and isinstance(dts[0], pd.Timestamp) and (pd.__version__>="0.20.0"): dts = [idt.to_pydatetime().timestamp() for idt in dts]
-                    else: dts = [idt.timestamp() for idt in dts]
-                    DateTimes = pd.Series(np.arange(0, DateTimes.shape[0]), index=DateTimes, dtype=np.int)
-                    DateTimes = DateTimes[DateTimes.index.intersection(dts)]
-                    nDT = DateTimes.shape[0]
-                    if nDT==0:
-                        if ids is None: Rslt = pd.DataFrame(index=dts, columns=IDs).sort_index(axis=1)
-                        else: Rslt = pd.DataFrame(index=dts, columns=ids)
-                    elif nDT<1000:
-                        DateTimes = DateTimes.sort_values()
-                        Mask = DateTimes.tolist()
-                        DateTimes = DateTimes.index.values
-                        if ids is None:
-                            Rslt = pd.DataFrame(DataFile["Data"][Mask, :], index=DateTimes, columns=IDs).loc[dts].sort_index(axis=1)
-                        else:
-                            IDRuler = pd.Series(np.arange(0,IDs.shape[0]), index=IDs)
-                            IDRuler = IDRuler.loc[ids]
-                            StartInd, EndInd = int(IDRuler.min()), int(IDRuler.max())
-                            Rslt = pd.DataFrame(DataFile["Data"][Mask, StartInd:EndInd+1], index=DateTimes, columns=IDs[StartInd:EndInd+1]).loc[dts, ids]
-                    else:
-                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DataFile["DateTime"][...], columns=IDs).loc[dts]
-                        if ids is not None: Rslt = Rslt.loc[:, ids]
-                        else: Rslt.sort_index(axis=1, inplace=True)
-                    Rslt.index = [dt.datetime.fromtimestamp(itms) for itms in Rslt.index]
-        if DataType=="string":
-            Rslt = Rslt.where(pd.notnull(Rslt), None)
-            Rslt = Rslt.where(Rslt!="", None)
+            Data = pd.read_csv(FilePath, sep=",", header=0, index_col=0)
+            with open(FilePath, mode="r") as File:
+                DataType = File.readline().strip().split(",")[0]
+        if ids is not None:
+            Data = Data.loc[ids]
+        if dts is not None:
+            Data = Data.loc[dts]
+        if DataType=="double":
+            Data = Data.astype(float)
         elif DataType=="object":
-            Rslt = Rslt.applymap(lambda x: pickle.loads(bytes(x)) if isinstance(x, np.ndarray) and (x.shape[0]>0) else None)
-        return Rslt.sort_index(axis=0)
+            Data = Data.applymap(lambda x: pickle.loads(eval(x)))
+        elif DataType=="string":
+            Data = Data.where(pd.notnull(Data), None)
+        return Data.sort_index(axis=0).sort_index(axis=1)
 
 # 基于 CSV 文件的因子数据库
 # 每一张表是一个文件夹, 每个因子是一个 CSV 文件
@@ -135,6 +98,7 @@ class _FactorTable(FactorTable):
 class CSVDB(WritableFactorDB):
     """CSVDB"""
     MainDir = Directory(label="主目录", arg_type="Directory", order=0)
+    Encoding = Str("utf-8", label="字符编码", arg_type="String", order=1)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._LockFile = None# 文件锁的目标文件
         self._DataLock = None# 访问该因子库资源的锁, 防止并发访问冲突
@@ -244,8 +208,36 @@ class CSVDB(WritableFactorDB):
         return 0
     def setFactorMetaData(self, table_name, ifactor_name, key=None, value=None, meta_data=None):
         raise NotImplementedError
+    def _writeData(self, data, table_name, file_path, data_type):
+        data, data_type = _identifyDataType(data, data_type)
+        data = _adjustData(data, data_type)
+        data.to_csv(file_path, sep=",", na_rep="", mode="w", header=True, index=True, encoding=self.Encoding, date_format=None)
+        return 0
     def writeFactorData(self, factor_data, table_name, ifactor_name, if_exists="update", data_type=None):
-        raise NotImplementedError
+        TablePath = self.MainDir+os.sep+table_name
+        FilePath = TablePath+os.sep+ifactor_name+"."+self._Suffix
+        if not os.path.isdir(TablePath):
+            with self._DataLock:
+                if not os.path.isdir(TablePath): os.mkdir(TablePath)
+        with self._getLock(table_name=table_name) as DataLock:
+            if not os.path.isfile(file_path):
+                return self._writeData(factor_data, table_name, FilePath, data_type)
+        Data = self.getTable(table_name).readFactorData(ifactor_name=ifactor_name, ids=None, dts=None)
+        AllDTs = Data.index.union(factor_data.index)
+        AllIDs = Data.columns.union(factor_data.columns)
+        Data = Data.loc[AllDTs, AllIDs]
+        if if_exists=="update":
+            Data.loc[factor_data.index, factor_data.columns] = factor_data
+        elif if_exists=="append":
+            Data = Data.where(pd.notnull(Data), factor_data.loc[AllDTs, AllIDs])
+        elif if_exists=="update_notnull":
+            Data = factor_data.loc[AllDTs, AllIDs].where(pd.notnull(factor_data.loc[AllDTs, AllIDs]), Data)
+        else:
+            Msg = ("因子库 '%s' 调用方法 writeData 错误: 不支持的写入方式 '%s'!" % (self.Name, str(if_exists)))
+            self._QS_Logger.error(Msg)
+            raise __QS_Error__(Msg)
+        with self._getLock(table_name=table_name) as DataLock:
+                return self._writeData(Data, table_name, FilePath, data_type)
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
         for i, iFactor in enumerate(data.items):
             self.writeFactorData(data.iloc[i], table_name, iFactor, if_exists=if_exists, data_type=data_type.get(iFactor, None))

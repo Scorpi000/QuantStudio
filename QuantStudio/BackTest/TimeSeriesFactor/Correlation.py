@@ -22,6 +22,12 @@ def _calcReturn(price, return_type="简单收益率"):
     elif return_type=="价格变化量": return np.diff(price, axis=0)
     else: return np.diff(price, axis=0) / np.abs(price[:-1])
 
+def _formatSummary(summary):
+    FormattedStats = pd.DataFrame(index=summray.index, columns=summray.columns, dtype="O")
+    PercentageFormatFun = np.vectorize(lambda x: ("%.2f%%" % (x*100, )))
+    FormattedStats.iloc[:, :] = DateFormatFun(summray.values)
+    return FormattedStats
+
 class TimeSeriesCorrelation(BaseModule):
     """时间序列相关性"""
     TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
@@ -87,8 +93,56 @@ class TimeSeriesCorrelation(BaseModule):
         if not self._isStarted: return 0
         super().__QS_end__()
         IDs = self._Output.pop("证券ID")
-        LastDT = max(self._Output["滚动相关性"][self.TestFactors[0]])
+        self._Output["统计数据"] = {}
         for iFactorName in self.TestFactors:
             self._Output["滚动相关性"][iFactorName] = pd.DataFrame(self._Output["滚动相关性"][iFactorName], index=IDs).T.sort_index(axis=0)
+            self._Output["统计数据"][iFactorName] = pd.DataFrame({"平均值": self._Output["滚动相关性"][iFactorName].mean(), "中位数": self._Output["滚动相关性"][iFactorName].median(), 
+                                                                                                           "最小值": self._Output["滚动相关性"][iFactorName].min(), "最大值": self._Output["滚动相关性"][iFactorName].max()})
         self._Output.pop("收益率"), self._Output.pop("因子值")
         return 0
+    def genMatplotlibFig(self, file_path=None, target_factor=None):
+        if target_factor is None: target_factor = self.TestFactors[0]
+        iData = self._Output["滚动相关性"][target_factor]
+        nID = iData.shape[1]
+        xData = np.arange(0, iData.shape[0])
+        xTicks = np.arange(0, iData.shape[0], int(iData.shape[0]/10))
+        xTickLabels = [iData.index[i].strftime("%Y-%m-%d") for i in xTicks]
+        nRow, nCol = nID//3+(nID%3!=0), min(3, nID)
+        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
+        for j, jID in enumerate(iData.columns):
+            iAxes = Fig.add_subplot(nRow, nCol, j+1)
+            iAxes.bar(xData, iData.values[:, j], color="steelblue")
+            iAxes.set_xticks(xTicks)
+            iAxes.set_xticklabels(xTickLabels)
+            iAxes.set_title(target_factor+" - "+str(jID)+" : 滚动相关性")
+        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
+        return Fig
+    def _repr_html_(self):
+        if len(self.ArgNames)>0:
+            HTML = "参数设置: "
+            HTML += '<ul align="left">'
+            for iArgName in self.ArgNames:
+                if iArgName!="计算时点":
+                    HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
+                elif self.Args[iArgName]:
+                    HTML += "<li>"+iArgName+": 自定义时点</li>"
+                else:
+                    HTML += "<li>"+iArgName+": 所有时点</li>"
+            HTML += "</ul>"
+        else:
+            HTML = ""
+        for iFactor in self.TestFactors:
+            iOutput = self._Output["统计数据"][iFactor]
+            iHTML = iFactor+" - 统计数据 : "
+            iHTML += _formatSummary(iOutput).to_html()
+            Pos = iHTML.find(">")
+            HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+            Fig = self.genMatplotlibFig(target_factor=iFactor)
+            # figure 保存为二进制文件
+            Buffer = BytesIO()
+            Fig.savefig(Buffer)
+            PlotData = Buffer.getvalue()
+            # 图像数据转化为 HTML 格式
+            ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+            HTML += ('<img src="%s">' % ImgStr)
+        return HTML
