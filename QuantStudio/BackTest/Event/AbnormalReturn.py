@@ -319,16 +319,17 @@ class MM(CMRM):
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
+        EventRecord = self._Output["事件记录"]
         super().__QS_end__()
-        Mask = (self._Output["事件记录"][:, 2]<=self.EventPostWindow)
+        Mask = (EventRecord[:, 2]<=self.EventPostWindow)
+        Index = pd.MultiIndex.from_arrays(EventRecord[:,:2].T, names=["ID", "时点"])
         if np.sum(Mask)>0:
-            RowPos, ColPos = np.arange(self._Output["异常收益率"].shape[0])[Mask].tolist(), (self._Output["事件记录"][Mask, 2]+self.EventPreWindow).astype(np.int)
+            RowPos, ColPos = np.arange(self._Output["异常收益率"].shape[0])[Mask].tolist(), (EventRecord[Mask, 2]+self.EventPreWindow).astype(np.int)
             for i in range(RowPos.shape[0]):
                 X = self._Output["市场超额收益率"][RowPos[i], :]
                 iMask = pd.notnull(X)
                 X = sm.add_constant(X[iMask], prepend=True)
                 self._Output["异常协方差"][RowPos[i], iMask, iMask] = (np.eye(X.shape[0])+np.dot(np.dot(X, np.linalg.inv(np.dot(X.T, X))), X.T)) * self._Output["Var"][RowPos[i]]
-        Index = pd.MultiIndex.from_arrays(self._Output["事件记录"][:,:2].T, names=["ID", "时点"])
         self._Output["回归估计量"] = pd.DataFrame(self._Output.pop("Alpha"), index=Index, columns=["Apha"])
         self._Output["回归估计量"]["Beta"] = self._Output.pop("Beta")
         self._Output["回归估计量"]["Sigma2"] = self._Output.pop("Var")
