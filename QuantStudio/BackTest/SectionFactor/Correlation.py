@@ -15,6 +15,7 @@ import matplotlib
 
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList
+from QuantStudio.Tools.MatplotlibFun import plotHeatMap
 from QuantStudio.RiskDataBase.RiskDB import RiskTable
 from QuantStudio.BackTest.BackTestModel import BaseModule
 from QuantStudio.RiskModel.RiskModelFun import dropRiskMatrixNA
@@ -148,16 +149,6 @@ class SectionCorrelation(BaseModule):
         self._Output.pop("时点")
         if (self.RiskTable is not None) and self._CorrMatrixNeeded: self.RiskTable.end()
         return 0
-    def _plotHeatMap(self, axes, df, title):
-        axes.pcolor(df.values, cmap=matplotlib.cm.Reds)
-        axes.set_xticks(np.arange(df.shape[0])+0.5, minor=False)
-        axes.set_yticks(np.arange(df.shape[1])+0.5, minor=False)
-        axes.invert_yaxis()
-        axes.xaxis.tick_top()
-        axes.set_xticklabels(df.index.tolist(), minor=False)
-        axes.set_yticklabels(df.columns.tolist(), minor=False)
-        axes.set_title(title)
-        return axes
     def genMatplotlibFig(self, file_path=None):
         nMethod = len(self.CorrMethod)
         nRow, nCol = nMethod//3+(nMethod%3!=0), min(3, nMethod)
@@ -165,7 +156,8 @@ class SectionCorrelation(BaseModule):
         for i, iMethod in enumerate(self.CorrMethod):
             iAvgName = iMethod+"均值"
             iAxes = Fig.add_subplot(nRow, nCol, i+1)
-            self._plotHeatMap(iAxes, self._Output[iAvgName], iAvgName)
+            iAxes = plotHeatMap(self._Output[iAvgName], iAxes)
+            iAxes.set_title(iAvgName)
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):

@@ -8,6 +8,7 @@ import pandas as pd
 from traits.api import ListStr, Enum, List, Int, Float
 from traitsui.api import SetEditor, Item
 from matplotlib.ticker import FuncFormatter
+from matplotlib.figure import Figure
 
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
@@ -23,9 +24,9 @@ def _calcReturn(price, return_type="简单收益率"):
     else: return np.diff(price, axis=0) / np.abs(price[:-1])
 
 def _formatSummary(summary):
-    FormattedStats = pd.DataFrame(index=summray.index, columns=summray.columns, dtype="O")
+    FormattedStats = pd.DataFrame(index=summary.index, columns=summary.columns, dtype="O")
     PercentageFormatFun = np.vectorize(lambda x: ("%.2f%%" % (x*100, )))
-    FormattedStats.iloc[:, :] = DateFormatFun(summray.values)
+    FormattedStats.iloc[:, :] = PercentageFormatFun(summary.values)
     return FormattedStats
 
 class TimeSeriesCorrelation(BaseModule):

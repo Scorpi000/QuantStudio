@@ -1,8 +1,20 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import pandas as pd
+import matplotlib
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
+
+# 绘制热图
+def plotHeatMap(df, ax):
+    ax.pcolor(df.values, cmap=matplotlib.cm.Reds)
+    ax.set_xticks(np.arange(df.shape[0])+0.5, minor=False)
+    ax.set_yticks(np.arange(df.shape[1])+0.5, minor=False)
+    ax.invert_yaxis()
+    ax.xaxis.tick_top()
+    ax.set_xticklabels(df.index.astype(str).tolist(), minor=False)
+    ax.set_yticklabels(df.columns.astype(str).tolist(), minor=False)
+    return ax
 
 # 绘制 K 线图
 # quotes: array(shape=(N, 4)), 列分别为开盘价, 最高价, 最低价, 收盘价

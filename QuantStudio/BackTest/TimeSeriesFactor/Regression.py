@@ -9,6 +9,7 @@ from traits.api import ListStr, Enum, List, Int, Bool, Float
 from traitsui.api import SetEditor, Item
 import statsmodels.api as sm
 from matplotlib.ticker import FuncFormatter
+from matplotlib.figure import Figure
 
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
@@ -169,7 +170,7 @@ class OLS(BaseModule):
         StartIdx = self._Model.DateTimeSeries.index(self._Output["滚动预测"]["预测收益率"].index[0])
         DTs = self._Model.DateTimeSeries[StartIdx:]
         Signal = np.sign(self._Output["滚动预测"]["预测收益率"]).loc[DTs].values
-        Price = self._Output.pop("证券价格")[StartIdx:]
+        Price = pd.DataFrame(self._Output.pop("证券价格")).fillna(method="ffill").fillna(method="bfill").values[StartIdx:]
         nYear = (DTs[-1] - DTs[0]).days / 365
         NV, _, _ = testTimingStrategy(Signal, Price)
         self._Output["择时策略"] = {"多空净值": pd.DataFrame(NV, index=DTs, columns=IDs)}
@@ -182,9 +183,11 @@ class OLS(BaseModule):
         self._Output["择时策略"]["纯多头策略净值"] = pd.DataFrame(NV, index=DTs, columns=IDs)
         self._Output["择时策略"]["纯多头策略统计数据"] = summaryStrategy(NV, DTs, risk_free_rate=0.0)
         self._Output["择时策略"]["纯多头策略统计数据"].columns = IDs
+        self._Output["择时策略"]["标的净值"] = pd.DataFrame(Price / Price[0], index=DTs, columns=IDs)
         self._Output.pop("因子值")
         return 0
     def genMatplotlibFig(self, file_path=None):
+        iTargetNV = self._Output["择时策略"]["标的净值"]
         iR2 = self._Output["滚动回归"]["R平方"]
         iAdjR2 = self._Output["滚动回归"]["调整R平方"]
         iForecastReturn = self._Output["滚动预测"]["预测收益率"]
@@ -208,10 +211,16 @@ class OLS(BaseModule):
             iAxes.legend()
             iAxes.set_title(str(jID)+" : 滚动回归 R2")
             iAxes = Fig.add_subplot(nID, 3, j*3+2)
-            pd.DataFrame({"预测收益率": iForecastReturn.iloc[:, j].values, "实际收益率": iRealReturn.iloc[:, j].values}.columns=["预测收益率", "实际收益率"]).plot(kind="bar", ax=iAxes, title=str(jID)+" : 滚动预测")
+            iAxes.bar(xData1-0.3, iRealReturn.iloc[:, j].values, 0.3, color="indianred", label="实际收益率")
+            iAxes.bar(xData1, iForecastReturn.iloc[:, j].values, 0.3, color="steelblue", label="预测收益率")
+            iAxes.set_xticks(xTicks1)
+            iAxes.set_xticklabels(xTickLabels1)
+            iAxes.legend()
+            iAxes.set_title(str(jID)+" : 滚动预测")
             iAxes = Fig.add_subplot(nID, 3, j*3+3)
             iAxes.plot(xData2, iLSNV.iloc[:, j].values, label="多空净值", color="steelblue", lw=2.5)
             iAxes.plot(xData2, iLNV.iloc[:, j].values, label="纯多头净值", color="indianred", lw=2.5)
+            iAxes.plot(xData2, iTargetNV.iloc[:, j].values, label="标的净值", color="forestgreen", lw=2.5)
             iAxes.set_xticks(xTicks2)
             iAxes.set_xticklabels(xTickLabels2)
             iAxes.legend()
@@ -246,23 +255,23 @@ class OLS(BaseModule):
         Pos = iHTML.find(">")
         HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         HTML += "择时策略 - 统计数据 : "
-        iHTML += formatStrategySummary(self._Output["择时策略"]["统计数据"]).to_html()
+        iHTML = formatStrategySummary(self._Output["择时策略"]["统计数据"]).to_html()
         Pos = iHTML.find(">")
         HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         HTML += "择时策略 - 纯多头统计数据 : "
-        iHTML += formatStrategySummary(self._Output["择时策略"]["纯多头策略统计数据"]).to_html()
+        iHTML = formatStrategySummary(self._Output["择时策略"]["纯多头策略统计数据"]).to_html()
         Pos = iHTML.find(">")
         HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         HTML += "择时策略 - 多空统计 : "
-        iHTML += formatTimingStrategySummary(self._Output["择时策略"]["多空统计"]).to_html()
+        iHTML = formatTimingStrategySummary(self._Output["择时策略"]["多空统计"]).to_html()
         Pos = iHTML.find(">")
         HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         HTML += "择时策略 - 多头统计 : "
-        iHTML += formatTimingStrategySummary(self._Output["择时策略"]["多头统计"]).to_html()
+        iHTML = formatTimingStrategySummary(self._Output["择时策略"]["多头统计"]).to_html()
         Pos = iHTML.find(">")
         HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         HTML += "择时策略 - 空头统计 : "
-        iHTML += formatTimingStrategySummary(self._Output["择时策略"]["空头统计"]).to_html()
+        iHTML = formatTimingStrategySummary(self._Output["择时策略"]["空头统计"]).to_html()
         Pos = iHTML.find(">")
         HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         Fig = self.genMatplotlibFig()
