@@ -159,15 +159,18 @@ class SQL_Table(FactorTable):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         # 解析主表
         self._MainTableName = self._TableInfo.get("MainTableName", None)
-        if (self.IDField not in (self._FactorInfo[self._FactorInfo["FieldType"]=="ID"].index)) or pd.isnull(self._MainTableName) or (self._MainTableName==str(self._TableInfo.loc["DBTableName"])):
+        if (self.IDField not in (self._FactorInfo[self._FactorInfo["FieldType"]=="ID"].index)) or pd.isnull(self._MainTableName):
             self._IDFieldIsStr = ((self.__QS_identifyDataType__(self._FactorInfo["DataType"].loc[self.IDField])!="double") if self.IDField is not None else True)
             self._MainTableName = self._DBTableName
             self._MainTableID = self.IDField
             self._MainTableCondition = None
         else:
-            self._IDFieldIsStr = True
             self._MainTableName = self._TablePrefix + self._MainTableName
             self._MainTableID = self._TableInfo.loc["MainTableID"]
+            if self._MainTableName==self._DBTableName:
+                self._IDFieldIsStr = ((self.__QS_identifyDataType__(self._FactorInfo["DataType"].loc[self.IDField])!="double") if self.IDField is not None else True)
+            else:
+                self._IDFieldIsStr = True
             self._JoinCondition = self._TableInfo.loc["JoinCondition"].format(DBTable=self._DBTableName, MainTable=self._MainTableName)
             self._MainTableCondition = self._TableInfo.loc["MainTableCondition"]
             if pd.notnull(self._MainTableCondition):
@@ -698,7 +701,7 @@ class SQL_WideTable(SQL_Table):
             return self._calcListData(raw_data, factor_names, ids, dts, args=args)
         else:
             if not raw_data.index.is_unique:
-                raise __QS_Error__("%s 的表 %s 无法保证唯一性, 可以尝试将 '多重映射' 参数取值调整为 True" % (self._FactorDB.Name, self.Name))
+                raise __QS_Error__("%s 的表 %s 无法保证唯一性, 重复的索引为 : %s, 可以尝试将 '多重映射' 参数取值调整为 True" % (self._FactorDB.Name, self.Name, str(raw_data.index[raw_data.index.duplicated()].tolist())))
         DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
         if args.get("只回溯时点", self.OnlyLookBackDT):
             RowIdxMask = pd.Series(False, index=raw_data.index).unstack(fill_value=True).astype(bool)
