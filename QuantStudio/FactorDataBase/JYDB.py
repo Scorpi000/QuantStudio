@@ -941,6 +941,23 @@ class JYDB(QSSQLObject, FactorDB):
         Rslt = np.array(self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y-%m-%d"))))
         if Rslt.shape[0]>0: return Rslt[:, 0].tolist()
         else: return []
+    # 获取行业 ID
+    def getIndustryID(self, standard="中信行业分类", level=1, date=None, is_current=True, **kwargs):
+        SQLStr = ("SELECT DM FROM {Prefix}CT_SystemConst WHERE LB=1081 AND MS='%s'" % (standard, ))
+        Standard = self.fetchall(SQLStr.format(Prefix=self.TablePrefix))
+        if len(Standard)!=1:
+            SQLStr = "SELECT DISTINCT MS FROM {Prefix}CT_SystemConst WHERE LB=1081"
+            AllStandards = self.fetchall(SQLStr.format(Prefix=self.TablePrefix))
+            raise __QS_Error__("无法识别的行业分类标准 : %s, 支持的行业分类标准有 : %s" % (standard, ", ".join(iStandard[0] for iStandard in AllStandards)))
+        if date is None: date = dt.date.today()
+        SQLStr = "SELECT IndustryNum FROM {Prefix}CT_IndustryType WHERE Standard="+str(Standard[0][0])+" "
+        if pd.notnull(level):
+            SQLStr += "AND Classification="+str(int(level))+" "
+        SQLStr += "AND ((EffectiveDate<='{Date}') OR (EffectiveDate IS NULL)) "
+        if is_current:
+            SQLStr += "AND ((CancelDate>'{Date}') OR (CancelDate IS NULL)) "
+        SQLStr += "ORDER BY IndustryNum"
+        return [str(iRslt[0]) for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y-%m-%d")))]
     # 获取宏观指标名称对应的指标 ID, TODO
     def getMacroIndicatorID(self, indicators, table_name=None):
         pass

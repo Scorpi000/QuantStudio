@@ -84,7 +84,7 @@ class OLS(BaseModule):
             self._Output["证券价格"][self._Model.DateTimeIndex] = Price[-1]
         self._Output["实际收益率"] = np.r_[self._Output["实际收益率"], _calcReturn(Price, return_type=self.ReturnType)]
         FactorData = self._FactorTable.readData(dts=[PreDateTime, LagDateTime], ids=self._Output["证券ID"], factor_names=list(self.TestFactors)).values
-        self._Output["因子值"] = np.r_[self._Output["因子值"], FactorData[:, 0, :].reshape((1, nID, -1))]
+        self._Output["因子值"] = np.r_[self._Output["因子值"], FactorData[:, 0, :].T.reshape((1, nID, -1))]
         if self._Output["实际收益率"].shape[0]<self.MinSummaryWindow: return 0
         StartInd = int(max(0, self._Output["实际收益率"].shape[0] - self.SummaryWindow))
         Statistics = {"R平方":np.full((1, nID), np.nan), "调整R平方":np.full((1, nID), np.nan), "t统计量":np.full((nFactor+int(self.Constant), nID), np.nan), "F统计量":np.full((1, nID), np.nan)}

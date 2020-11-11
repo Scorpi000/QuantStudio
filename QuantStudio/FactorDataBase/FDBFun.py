@@ -485,7 +485,7 @@ class SQL_WideTable(SQL_Table):
         if start_dt is not None: SQLStr += "AND "+DTField+">="+start_dt.strftime(self._DTFormat)+" "
         if end_dt is not None: SQLStr += "AND "+DTField+"<="+end_dt.strftime(self._DTFormat)+" "
         if iid is not None: iid = [iid]
-        SQLStr += self._genIDSQLStr([iid], args=args)+" "
+        SQLStr += self._genIDSQLStr(iid, args=args)+" "
         SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
         SQLStr += "ORDER BY "+DTField
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
