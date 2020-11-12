@@ -880,6 +880,11 @@ class PlotlyResultDlg(QtWidgets.QDialog, Ui_ResultDlg):
             self.CurDF = self.CurDF.T
             return self.populateMainResultTable()
         return 0
+    def closeEvent(self, event):
+        self.Output = None
+        self.CurDF = None
+        return super().closeEvent(event)
+
 # 基于 matplotlib 绘图的 ResultDlg
 class _MplCanvas(FigureCanvas):
     def __init__(self, parent=None, fig=None, width=5, height=4, dpi=150):
