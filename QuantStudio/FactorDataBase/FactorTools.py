@@ -164,7 +164,7 @@ def replace(f, value_map, data_type="double",**kwargs):
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors, {"算子":_replace, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "数据类型":data_type}, **kwargs)
 def _clip(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
-    return np.clip(Data[0].atype(float),Data[1],Data[2])
+    return np.clip(Data[0].astype(float),Data[1],Data[2])
 def clip(f,a_min,a_max,**kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f,a_min,a_max)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_clip,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)

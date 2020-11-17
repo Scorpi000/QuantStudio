@@ -9,6 +9,7 @@ import pandas as pd
 from traits.api import Enum, List, Int, Str, Float, Dict, ListStr, on_trait_change
 from matplotlib.ticker import FuncFormatter
 from matplotlib.figure import Figure
+from scipy import stats
 
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
@@ -180,8 +181,8 @@ class QuantileTiming(BaseModule):
     #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=2)
     CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=3)
     SummaryWindow = Float(np.inf, arg_type="Integer", label="统计窗口", order=4)
-    MinSummaryWindow = Int(2, arg_type="Integer", label="最小统计窗口", order=5)
-    GroupNum = Int(3, arg_type="Integer", label="分组数", order=7)
+    MinSummaryWindow = Int(3, arg_type="Integer", label="最小统计窗口", order=5)
+    GroupNum = Int(3, arg_type="Integer", label="分组数", order=6)
     def __init__(self, factor_table, name="分位数择时", sys_args={}, **kwargs):
         self._FactorTable = factor_table
         super().__init__(name=name, sys_args=sys_args, **kwargs)
@@ -268,6 +269,7 @@ class QuantileTiming(BaseModule):
                 else:
                     self._Output["策略信号"][iFactor][jID] = pd.DataFrame(columns=Groups)
                 ijSignalReturn = pd.DataFrame(SignalReturn[:, j, i, :], index=DTs, columns=Groups).loc[self._Output["策略信号"][iFactor][jID].index]
+                ijSignalReturn["L-S"] = ijSignalReturn.iloc[:, 0].fillna(0) - ijSignalReturn.iloc[:, -1].fillna(0)
                 if ijSignalReturn.shape[0]==0:
                     self._Output["策略收益率"][iFactor][jID] = ijSignalReturn
                     self._Output["策略净值"][iFactor][jID] = ijSignalReturn
@@ -279,6 +281,11 @@ class QuantileTiming(BaseModule):
                     ijStat = summaryStrategy(ijNV.values, ijNV.index.tolist(), risk_free_rate=0.0)
                     ijStat.columns = ijNV.columns
                     self._Output["统计数据"][iFactor][jID] = ijStat.T
+                    # t 检验
+                    tStats, pVal = stats.ttest_1samp(ijSignalReturn.values, 0, axis=0, nan_policy="omit")
+                    tStats[-1], pVal[-1] = stats.ttest_ind(ijSignalReturn.iloc[:, 0].values, ijSignalReturn.iloc[:, -2], equal_var=True, nan_policy="omit")
+                    self._Output["统计数据"][iFactor][jID]["t统计量"] = tStats
+                    self._Output["统计数据"][iFactor][jID]["p值"] = pVal
         self._Output.pop("最新信号")
         self._Output.pop("因子符号")
         self._Output.pop("标的ID")
@@ -291,7 +298,7 @@ class QuantileTiming(BaseModule):
         Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         for j, jID in enumerate(sorted(iOutput.keys())):
             iAxes = Fig.add_subplot(nRow, nCol, j+1)
-            iOutput[jID].plot(ax=iAxes, lw=2.5, title=target_factor+" - "+str(jID)+" : 分位数择时净值")
+            iOutput[jID].iloc[:, :-1].plot(ax=iAxes, lw=2.5, title=target_factor+" - "+str(jID)+" : 分位数择时净值")
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
@@ -308,11 +315,14 @@ class QuantileTiming(BaseModule):
             HTML += "</ul>"
         else:
             HTML = ""
+        FloatFormatFun = np.vectorize(lambda x: ("%.4f" % (x, )))
         for iFactor in self.TestFactors:
             iOutput = self._Output["统计数据"][iFactor]
             for jID in sorted(iOutput.keys()):
                 iHTML = iFactor+" - "+str(jID)+" : "
-                iHTML += formatStrategySummary(iOutput[jID].T).T.to_html()
+                iFormat = formatStrategySummary(iOutput[jID].T)
+                iFormat.iloc[12:] = FloatFormatFun(iOutput[jID].T.iloc[12:, :].values)
+                iHTML += iFormat.T.to_html()
                 Pos = iHTML.find(">")
                 HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
             Fig = self.genMatplotlibFig(target_factor=iFactor)

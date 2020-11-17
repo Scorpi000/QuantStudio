@@ -888,7 +888,7 @@ def formatStrategySummary(summray):
     FormattedStats.iloc[3:6] = PercentageFormatFun(summray.iloc[3:6, :].values)
     FormattedStats.iloc[6:8] = FloatFormatFun(summray.iloc[6:8, :].values)
     FormattedStats.iloc[8:10] = PercentageFormatFun(summray.iloc[8:10, :].values)
-    FormattedStats.iloc[10:] = DateFormatFun(summray.iloc[10:, :].values)
+    FormattedStats.iloc[10:12] = DateFormatFun(summray.iloc[10:12, :].values)
     return FormattedStats
 
 # 生成择时策略相关的统计指标

@@ -703,6 +703,7 @@ class SQL_WideTable(SQL_Table):
             if not raw_data.index.is_unique:
                 raise __QS_Error__("%s 的表 %s 无法保证唯一性, 重复的索引为 : %s, 可以尝试将 '多重映射' 参数取值调整为 True" % (self._FactorDB.Name, self.Name, str(raw_data.index[raw_data.index.duplicated()].tolist())))
         DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
+        DataType = DataType[~DataType.index.duplicated()]
         if args.get("只回溯时点", self.OnlyLookBackDT):
             RowIdxMask = pd.Series(False, index=raw_data.index).unstack(fill_value=True).astype(bool)
             RawIDs = RowIdxMask.columns
@@ -953,6 +954,7 @@ class SQL_NarrowTable(SQL_Table):
                 raise __QS_Error__("%s 的表 %s 无法保证唯一性, 可以尝试将 '多重映射' 参数取值整为 True" % (self._FactorDB.Name, self.Name))
         raw_data = raw_data.unstack()
         DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
+        DataType = DataType[~DataType.index.duplicated()]
         Data = {}
         for iFactorName in factor_names:
             if iFactorName in raw_data:

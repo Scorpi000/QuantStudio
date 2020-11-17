@@ -80,7 +80,7 @@ class QuantileDifference(BaseModule):
             itStat, ipValue = np.full(shape=(self.GroupNum, self.GroupNum), fill_value=np.nan), np.full(shape=(self.GroupNum, self.GroupNum), fill_value=np.nan)
             for j in range(self.GroupNum):
                 for k in range(j+1, self.GroupNum):
-                    jkResult = stats.ttest_ind(Return[Mask[j][:, i], i], Return[Mask[k][:, i], i], equal_var=False, nan_policy="omit")
+                    jkResult = stats.ttest_ind(Return[Mask[j][:, i], i], Return[Mask[k][:, i], i], equal_var=True, nan_policy="omit")
                     itStat[j, k], ipValue[j, k] = jkResult.statistic, jkResult.pvalue
                     itStat[k, j], ipValue[k, j] = -itStat[j, k], ipValue[j, k]
             self._Output["滚动t统计量"][iID][idt], self._Output["滚动p值"][iID][idt] = itStat, ipValue
@@ -98,7 +98,7 @@ class QuantileDifference(BaseModule):
             itStat, ipValue = np.full(shape=(self.GroupNum, self.GroupNum), fill_value=np.nan), np.full(shape=(self.GroupNum, self.GroupNum), fill_value=np.nan)
             for j in range(self.GroupNum):
                 for k in range(j+1, self.GroupNum):
-                    jkResult = stats.ttest_ind(Return[Mask[j][:, i], i], Return[Mask[k][:, i], i], equal_var=False, nan_policy="omit")
+                    jkResult = stats.ttest_ind(Return[Mask[j][:, i], i], Return[Mask[k][:, i], i], equal_var=True, nan_policy="omit")
                     itStat[j, k], ipValue[j, k] = jkResult.statistic, jkResult.pvalue
                     itStat[k, j], ipValue[k, j] = -itStat[j, k], ipValue[j, k]
             self._Output["全样本t统计量"][iID], self._Output["全样本p值"][iID] = itStat, ipValue

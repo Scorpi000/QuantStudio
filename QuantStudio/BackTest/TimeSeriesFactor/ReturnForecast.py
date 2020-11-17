@@ -5,7 +5,7 @@ from io import BytesIO
 
 import numpy as np
 import pandas as pd
-from traits.api import ListStr, Enum, List, Int, Bool, Float
+from traits.api import ListStr, Enum, List, Int, Bool, Float, Dict
 from traitsui.api import SetEditor, Item
 import statsmodels.api as sm
 from matplotlib.ticker import FuncFormatter
@@ -17,9 +17,8 @@ from QuantStudio.Tools.StrategyTestFun import testTimingStrategy, summaryStrateg
 from QuantStudio.BackTest.BackTestModel import BaseModule
 from QuantStudio.BackTest.TimeSeriesFactor.Correlation import _calcReturn
 
-
-class OLS(BaseModule):
-    """时间序列 OLS"""
+class ReturnForecast(BaseModule):
+    """收益率预测"""
     TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
     #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
     ReturnType = Enum("简单收益率", "对数收益率", "价格变化量", arg_type="SingleOption", label="收益率类型", order=2)
@@ -28,8 +27,10 @@ class OLS(BaseModule):
     CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=5)
     SummaryWindow = Float(np.inf, arg_type="Integer", label="统计窗口", order=6)
     MinSummaryWindow = Int(2, arg_type="Integer", label="最小统计窗口", order=7)
-    Constant = Bool(True, arg_type="Bool", label="常数项", order=8)
-    def __init__(self, factor_table, name="时间序列OLS", sys_args={}, **kwargs):
+    ModelArgs = Dict(value={}, arg_type="Dict", label="模型参数", order=8)
+    HTMLPrintStatistics = List([], arg_type="List", label="打印统计量", order=9)
+    HTMLPlotStatistics = List([], arg_type="List", label="绘图统计量", order=10)
+    def __init__(self, factor_table, name="收益率预测", sys_args={}, **kwargs):
         self._FactorTable = factor_table
         super().__init__(name=name, sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
@@ -42,26 +43,39 @@ class OLS(BaseModule):
         Items, Context = super().getViewItems(context_name=context_name)
         Items[0].editor = SetEditor(values=self.trait("TestFactors").option_range)
         return (Items, Context)
+    # 用户实现的模型算子
+    # 输入参数 : 
+    # idt : 运行时点, datetime
+    # iid : 标的 ID, str
+    # sample_factor_data : 用于训练模型的因子样本数据, DataFrame(index=[时点], columns=[因子])
+    # sample_return : 用于训练模型的对应的收益率样本数据, Series(index=[时点])
+    # new_factor_data : 用于产生预测值的最新因子数据, Series(index=[因子])
+    # args : 模型参数 : dict
+    # 返回值 : 
+    # ForecastReturn : 模型产生的预测收益率, float
+    # ModelStatistics : 模型统计量, Series(index=[统计量]) 或者 None
+    # FactorStatistics : 因子统计量, DataFrame(index=[因子], columns=[统计量]) 或者 None
+    def ModelOperator(self, idt, iid, sample_factor_data, sample_return, new_factor_data):
+        return np.nan, pd.Series(), pd.DataFrame()
     def __QS_start__(self, mdl, dts, **kwargs):
         if self._isStarted: return ()
         super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._Output = {}
         self._Output["证券ID"] = self._FactorTable.getID()
-        nID, nFactor = len(self._Output["证券ID"]), len(self.TestFactors)
-        self._Output["证券价格"] = np.full((len(dts), nID), np.nan)
-        self._Output["因子值"] = np.zeros((0, nID, nFactor))
-        self._Output["实际收益率"] = np.zeros(shape=(0, nID))
-        self._Output["预测收益率"] = np.zeros(shape=(0, nID))
-        self._Output["滚动回归"] = {"回归系数": {}, "R平方":np.zeros((0, nID)), "调整R平方":np.zeros((0, nID)), "t统计量":{}, "F统计量":np.zeros((0, nID))}
+        self._Output["证券价格"] = pd.DataFrame(columns=self._Output["证券ID"])
+        self._Output["实际收益率"] = pd.DataFrame(columns=self._Output["证券ID"])
+        self._Output["预测收益率"] = pd.DataFrame(columns=self._Output["证券ID"])
+        self._Output["因子值"] = {iID: pd.DataFrame(columns=self.TestFactors) for iID in self._Output["证券ID"]}
+        self._Output["模型统计量"] = {}
+        self._Output["因子统计量"] = {}
         self._CurCalcInd = 0
         return (self._FactorTable, )
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
         self._iDT = idt
+        self._Output["证券价格"].loc[idt] = self._FactorTable.readData(dts=[idt], ids=self._Output["证券ID"], factor_names=[self.PriceFactor]).iloc[0, 0, :].values
         if self.CalcDTs:
-            if idt not in self.CalcDTs[self._CurCalcInd:]:
-                self._Output["证券价格"][self._Model.DateTimeIndex] = self._FactorTable.readData(dts=[idt], ids=self._Output["证券ID"], factor_names=[self.PriceFactor]).iloc[0, 0, :].values
-                return 0
+            if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
             self._CurCalcInd = self.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
             PreInd = self._CurCalcInd - self.ForecastPeriod - self.Lag
             LastInd = self._CurCalcInd - self.ForecastPeriod
@@ -75,83 +89,58 @@ class OLS(BaseModule):
             PreDateTime = self._Model.DateTimeSeries[PreInd]
             LastDateTime = self._Model.DateTimeSeries[LastInd]
             LagDateTime = self._Model.DateTimeSeries[self._CurCalcInd - self.Lag]
-        if (PreInd<0) or (LastInd<0):
-            self._Output["证券价格"][self._Model.DateTimeIndex] = self._FactorTable.readData(dts=[idt], ids=self._Output["证券ID"], factor_names=[self.PriceFactor]).iloc[0, 0, :].values
+        if (PreInd<0) or (LastInd<0): return 0
+        nID, nFactor = len(self._Output["证券ID"]), len(self.TestFactors)
+        Price = self._Output["证券价格"].loc[[LastDateTime, idt]]
+        self._Output["实际收益率"].loc[idt] = _calcReturn(Price, return_type=self.ReturnType).iloc[-1].values
+        FactorData = self._FactorTable.readData(dts=[PreDateTime, LagDateTime], ids=self._Output["证券ID"], factor_names=list(self.TestFactors))
+        if self._Output["实际收益率"].shape[0]<self.MinSummaryWindow:
+            for i, iID in enumerate(self._Output["证券ID"]): self._Output["因子值"][iID].loc[PreDateTime] = FactorData.iloc[:, 0, i].values
             return 0
-        else:
-            nID, nFactor = len(self._Output["证券ID"]), len(self.TestFactors)
-            Price = self._FactorTable.readData(dts=[LastDateTime, idt], ids=self._Output["证券ID"], factor_names=[self.PriceFactor]).iloc[0, :, :].values
-            self._Output["证券价格"][self._Model.DateTimeIndex] = Price[-1]
-        self._Output["实际收益率"] = np.r_[self._Output["实际收益率"], _calcReturn(Price, return_type=self.ReturnType)]
-        FactorData = self._FactorTable.readData(dts=[PreDateTime, LagDateTime], ids=self._Output["证券ID"], factor_names=list(self.TestFactors)).values
-        self._Output["因子值"] = np.r_[self._Output["因子值"], FactorData[:, 0, :].T.reshape((1, nID, -1))]
-        if self._Output["实际收益率"].shape[0]<self.MinSummaryWindow: return 0
         StartInd = int(max(0, self._Output["实际收益率"].shape[0] - self.SummaryWindow))
-        Statistics = {"R平方":np.full((1, nID), np.nan), "调整R平方":np.full((1, nID), np.nan), "t统计量":np.full((nFactor+int(self.Constant), nID), np.nan), "F统计量":np.full((1, nID), np.nan)}
-        ForecastReturn = np.full((1, nID), np.nan)
-        Params = np.full((nFactor+int(self.Constant), nID), np.nan)
+        ForecastReturn = np.full((nID,), np.nan)
         for i, iID in enumerate(self._Output["证券ID"]):
-            Y = self._Output["实际收益率"][StartInd:, i]
-            X = self._Output["因子值"][StartInd:, i]
-            if self.Constant: X = sm.add_constant(X, prepend=True)
-            try:
-                Result = sm.OLS(Y, X, missing="drop").fit()
-            except Exception as e:
-                self._QS_Logger.warning("%s : '%s' 在 %s 时的回归失败 : %s" % (self.Name, iID, idt.strftime("%Y-%m-%d"), str(e)))
-            else:
-                Params[:, i] = Result.params
-                ForecastReturn[0, i] = Result.params[0] + np.nansum(Result.params[1:] * FactorData[:, 1, i])
-                Statistics["R平方"][0, i] = Result.rsquared
-                Statistics["调整R平方"][0, i] = Result.rsquared_adj
-                Statistics["F统计量"][0, i] = Result.fvalue
-                Statistics["t统计量"][:, i] = Result.tvalues
-        self._Output["预测收益率"] = np.r_[self._Output["预测收益率"], ForecastReturn]
-        self._Output["滚动回归"]["回归系数"][idt] = Params
-        self._Output["滚动回归"]["R平方"] = np.r_[self._Output["滚动回归"]["R平方"], Statistics["R平方"]]
-        self._Output["滚动回归"]["调整R平方"] = np.r_[self._Output["滚动回归"]["调整R平方"], Statistics["调整R平方"]]
-        self._Output["滚动回归"]["F统计量"] = np.r_[self._Output["滚动回归"]["F统计量"], Statistics["F统计量"]]
-        self._Output["滚动回归"]["t统计量"][idt] = Statistics["t统计量"]
+            self._Output["因子值"][iID].loc[PreDateTime] = FactorData.iloc[:, 0, i].values
+            Y = self._Output["实际收益率"].iloc[StartInd:, i]
+            X = self._Output["因子值"][iID].iloc[StartInd:]
+            NewX = FactorData.iloc[:, 1, i]
+            ForecastReturn[i], iModelStatistics, iFactorStatistics = self.ModelOperator(idt, iID, X, Y, NewX)
+            if (iModelStatistics is not None) and (iModelStatistics.shape[0]>0):
+                self._Output["模型统计量"].setdefault(iID, pd.DataFrame(columns=iModelStatistics.index)).loc[idt] = iModelStatistics
+            if iFactorStatistics is not None:
+                for jKey in iFactorStatistics:
+                    self._Output["因子统计量"].setdefault(iID, {}).setdefault(jKey, pd.DataFrame(columns=self.TestFactors)).loc[idt] = iFactorStatistics[jKey]
+        self._Output["预测收益率"].loc[idt] = ForecastReturn
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
         super().__QS_end__()
         IDs = self._Output.pop("证券ID")
-        DTs = sorted(self._Output["滚动回归"]["t统计量"])
-        Index = pd.Index(self.TestFactors, name="因子")
-        if self.Constant: Index = Index.insert(0, "Constant")
-        #self._Output["最后一期统计量"] = pd.DataFrame({"R平方": self._Output["滚动回归"]["R平方"][-1], "调整R平方": self._Output["滚动回归"]["调整R平方"][-1],
-                                                      #"F统计量": self._Output["滚动回归"]["F统计量"][-1]}, index=IDs).loc[:, ["R平方", "调整R平方", "F统计量"]]
-        #self._Output["最后一期t统计量"] = pd.DataFrame(self._Output["滚动回归"]["t统计量"][DTs[-1]], index=Index, columns=IDs)
-        # 全样本回归
-        self._Output["全样本回归"] = {"统计量": pd.DataFrame(index=IDs, columns=["R平方", "调整R平方", "F统计量"]), 
-                                                          "t统计量": pd.DataFrame(index=IDs, columns=Index), 
-                                                          "回归系数": pd.DataFrame(index=IDs, columns=Index)} 
+        #LagDateTime = self._Model.DateTimeSeries[self._CurCalcInd - self.Lag]
+        #FactorData = self._FactorTable.readData(dts=[LagDateTime], ids=self._Output["证券ID"], factor_names=list(self.TestFactors)).iloc[:, 0]
+        # 全样本训练
+        self._Output["全样本模型统计量"] = pd.DataFrame(columns=IDs)
+        self._Output["全样本因子统计量"] = {}
         for i, iID in enumerate(IDs):
-            Y = self._Output["实际收益率"][:, i]
-            X = self._Output["因子值"][:, i]
-            if self.Constant: X = sm.add_constant(X, prepend=True)
-            try:
-                Result = sm.OLS(Y, X, missing="drop").fit()
-            except Exception as e:
-                self._QS_Logger.warning("%s : '%s' 全样本回归失败 : %s" % (self.Name, iID, str(e)))
-            else:
-                self._Output["全样本回归"]["回归系数"].iloc[i] = Result.params
-                self._Output["全样本回归"]["统计量"].iloc[i, 0] = Result.rsquared
-                self._Output["全样本回归"]["统计量"].iloc[i, 1] = Result.rsquared_adj
-                self._Output["全样本回归"]["统计量"].iloc[i, 2] = Result.fvalue
-                self._Output["全样本回归"]["t统计量"].iloc[i] = Result.tvalues
-        # 滚动回归
-        self._Output["滚动回归"]["R平方"] = pd.DataFrame(self._Output["滚动回归"]["R平方"], index=DTs, columns=IDs)
-        self._Output["滚动回归"]["调整R平方"] = pd.DataFrame(self._Output["滚动回归"]["调整R平方"], index=DTs, columns=IDs)
-        self._Output["滚动回归"]["F统计量"] = pd.DataFrame(self._Output["滚动回归"]["F统计量"], index=DTs, columns=IDs)
-        self._Output["滚动回归"]["t统计量"] = pd.Panel(self._Output["滚动回归"]["t统计量"], major_axis=Index, minor_axis=IDs)
-        self._Output["滚动回归"]["t统计量"] = dict(self._Output["滚动回归"]["t统计量"].swapaxes(0, 1))
-        self._Output["滚动回归"]["回归系数"] = pd.Panel(self._Output["滚动回归"]["回归系数"], major_axis=Index, minor_axis=IDs)
-        self._Output["滚动回归"]["回归系数"] = dict(self._Output["滚动回归"]["回归系数"].swapaxes(0, 1))
+            Y = self._Output["实际收益率"].iloc[:, i]
+            X = self._Output["因子值"][iID]
+            #NewX = FactorData.loc[iID]
+            NewX = self._Output["因子值"][iID].iloc[-1]
+            _, iModelStatistics, iFactorStatistics = self.ModelOperator(self._Model.DateTimeSeries[-1], iID, X, Y, NewX)
+            if (iModelStatistics is not None) and (iModelStatistics.shape[0]>0):
+                self._Output["全样本模型统计量"][iID] = iModelStatistics
+            if (iFactorStatistics is not None) and (iFactorStatistics.shape[1]>0):
+                self._Output["全样本因子统计量"][iID] = iFactorStatistics
+        if self._Output["全样本模型统计量"].shape[0]>0:
+            self._Output["全样本模型统计量"] = self._Output["全样本模型统计量"].T
+        else:
+            self._Output.pop("全样本模型统计量")
+        self._Output["全样本因子统计量"] = dict(pd.Panel(self._Output["全样本因子统计量"]).swapaxes(0, 2).loc[:, :, IDs])
         # 滚动预测
+        DTs = self._Output["预测收益率"].index
         self._Output["滚动预测"] = {}
-        self._Output["滚动预测"]["预测收益率"] = pd.DataFrame(self._Output.pop("预测收益率"), index=DTs, columns=IDs)
-        self._Output["滚动预测"]["实际收益率"] = pd.DataFrame(np.r_[self._Output.pop("实际收益率")[-len(DTs)+1:], np.full((1, len(IDs)), np.nan)], index=DTs, columns=IDs)
+        self._Output["滚动预测"]["预测收益率"] = self._Output.pop("预测收益率")
+        self._Output["滚动预测"]["实际收益率"] = pd.DataFrame(np.r_[self._Output.pop("实际收益率").iloc[-len(DTs)+1:].values, np.full((1, len(IDs)), np.nan)], index=DTs, columns=IDs)
         self._Output["滚动预测"]["绝对误差"] = (self._Output["滚动预测"]["预测收益率"] - self._Output["滚动预测"]["实际收益率"]).abs()
         self._Output["滚动预测"]["统计数据"] = pd.DataFrame({"均方误差": ((self._Output["滚动预测"]["预测收益率"] - self._Output["滚动预测"]["实际收益率"])**2).mean(), 
                                                                           "平均绝对误差": self._Output["滚动预测"]["绝对误差"].mean(), 
@@ -185,39 +174,40 @@ class OLS(BaseModule):
         self._Output["择时策略"]["纯多头策略统计数据"].columns = IDs
         self._Output["择时策略"]["标的净值"] = pd.DataFrame(Price / Price[0], index=DTs, columns=IDs)
         self._Output.pop("因子值")
+        if not self._Output["模型统计量"]:
+            self._Output.pop("模型统计量")
+        else:
+            self._Output["模型统计量"] = dict(pd.Panel(self._Output["模型统计量"]).swapaxes(0, 2).loc[:, :, IDs])
+        if not self._Output["因子统计量"]: self._Output.pop("因子统计量")
         return 0
     def genMatplotlibFig(self, file_path=None):
         iTargetNV = self._Output["择时策略"]["标的净值"]
-        iR2 = self._Output["滚动回归"]["R平方"]
-        iAdjR2 = self._Output["滚动回归"]["调整R平方"]
+        if len(self.HTMLPlotStatistics)>0:
+            iStatistics = self._Output.get("模型统计量", None)
+        else:
+            iStatistics = None
         iForecastReturn = self._Output["滚动预测"]["预测收益率"]
         iRealReturn = self._Output["滚动预测"]["实际收益率"]
         iLSNV = self._Output["择时策略"]["多空净值"]
         iLNV = self._Output["择时策略"]["纯多头策略净值"]
-        nID = iR2.shape[1]
-        xData1 = np.arange(0, iR2.shape[0])
-        xTicks1 = np.arange(0, iR2.shape[0], int(iR2.shape[0]/10))
-        xTickLabels1 = [iR2.index[i].strftime("%Y-%m-%d") for i in xTicks1]
+        nID = iForecastReturn.shape[1]
+        xData1 = np.arange(0, iForecastReturn.shape[0])
+        xTicks1 = np.arange(0, iForecastReturn.shape[0], int(iForecastReturn.shape[0]/10))
+        xTickLabels1 = [iForecastReturn.index[i].strftime("%Y-%m-%d") for i in xTicks1]
         xData2 = np.arange(0, iLSNV.shape[0])
         xTicks2 = np.arange(0, iLSNV.shape[0], int(iLSNV.shape[0]/10))
         xTickLabels2 = [iLSNV.index[i].strftime("%Y-%m-%d") for i in xTicks2]
-        Fig = Figure(figsize=(32, 8*nID))
+        nCol = 2 + int(iStatistics is not None)
+        Fig = Figure(figsize=(8+8*nCol, 8*nID))
         for j, jID in enumerate(iTargetNV.columns):
-            iAxes = Fig.add_subplot(nID, 3, j*3+1)
-            iAxes.plot(xData1, iR2.iloc[:, j].values, label="R2", color="indianred", lw=2.5)
-            iAxes.plot(xData1, iAdjR2.iloc[:, j].values, label="调整R2", color="steelblue", lw=2.5)
-            iAxes.set_xticks(xTicks1)
-            iAxes.set_xticklabels(xTickLabels1)
-            iAxes.legend()
-            iAxes.set_title(str(jID)+" : 滚动回归 R2")
-            iAxes = Fig.add_subplot(nID, 3, j*3+2)
+            iAxes = Fig.add_subplot(nID, nCol, j*nCol+1)
             iAxes.bar(xData1-0.3, iRealReturn.iloc[:, j].values, 0.3, color="indianred", label="实际收益率")
             iAxes.bar(xData1, iForecastReturn.iloc[:, j].values, 0.3, color="steelblue", label="预测收益率")
             iAxes.set_xticks(xTicks1)
             iAxes.set_xticklabels(xTickLabels1)
             iAxes.legend()
             iAxes.set_title(str(jID)+" : 滚动预测")
-            iAxes = Fig.add_subplot(nID, 3, j*3+3)
+            iAxes = Fig.add_subplot(nID, nCol, j*nCol+2)
             iAxes.plot(xData2, iLSNV.iloc[:, j].values, label="多空净值", color="steelblue", lw=2.5)
             iAxes.plot(xData2, iLNV.iloc[:, j].values, label="纯多头净值", color="indianred", lw=2.5)
             iAxes.plot(xData2, iTargetNV.iloc[:, j].values, label="标的净值", color="forestgreen", lw=2.5)
@@ -225,6 +215,17 @@ class OLS(BaseModule):
             iAxes.set_xticklabels(xTickLabels2)
             iAxes.legend()
             iAxes.set_title(str(jID)+" : 择时策略")
+            if iStatistics is not None:
+                iAxes = Fig.add_subplot(nID, nCol, j*nCol+3)
+                for iKey in self.HTMLPlotStatistics:
+                    if iKey in iStatistics:
+                        iAxes.plot(xData1, iStatistics[iKey].iloc[:, j].values, label=iKey, lw=2.5)
+                    else:
+                        self._QS_Logger.warning("未生成模型统计量 : %s" % iKey)
+                iAxes.set_xticks(xTicks1)
+                iAxes.set_xticklabels(xTickLabels1)
+                iAxes.legend()
+                iAxes.set_title(str(jID)+" : 模型统计量")
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
@@ -241,12 +242,22 @@ class OLS(BaseModule):
             HTML += "</ul>"
         else:
             HTML = ""
-        HTML += "全样本回归 - 回归系数 : "
-        iHTML = self._Output["全样本回归"]["回归系数"].to_html(formatters=[lambda x:'{0:.4f}'.format(x)]*self._Output["全样本回归"]["回归系数"].shape[1])
-        Pos = iHTML.find(">")
-        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-        HTML += "全样本回归 - t 统计量 : "
-        iHTML = self._Output["全样本回归"]["t统计量"].to_html(formatters=[lambda x:'{0:.2f}'.format(x)]*self._Output["全样本回归"]["t统计量"].shape[1])
+        if "全样本模型统计量" in self._Output:
+            HTML += "全样本模型统计量 : "
+            iHTML = self._Output["全样本模型统计量"].to_html(formatters=[lambda x:'{0:.4f}'.format(x)]*self._Output["全样本模型统计量"].shape[1])
+            Pos = iHTML.find(">")
+            HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        for iKey in self.HTMLPrintStatistics:
+            if iKey in self._Output["全样本因子统计量"]:
+                HTML += f"全样本因子统计量 - {iKey} : "
+                iHTML = self._Output["全样本因子统计量"][iKey].to_html(formatters=[lambda x:'{0:.4f}'.format(x)]*self._Output["全样本因子统计量"][iKey].shape[1])
+                Pos = iHTML.find(">")
+                HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+            else:
+                self._QS_Logger.warning("未生成全样本因子统计量 : %s" % iKey)
+        HTML += "滚动预测 - 统计数据: "
+        Formatters = [lambda x:'{0:.4f}'.format(x)]*4+[lambda x:'{0:d}'.format(int(x))]*4+[lambda x:'{0:.2f}%'.format(x*100)]*5
+        iHTML = self._Output["滚动预测"]["统计数据"].to_html(formatters=Formatters)
         Pos = iHTML.find(">")
         HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         HTML += "滚动预测 - 统计数据: "
@@ -283,3 +294,41 @@ class OLS(BaseModule):
         ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
         HTML += ('<img src="%s">' % ImgStr)
         return HTML
+
+class OLS(ReturnForecast):
+    """时间序列 OLS"""
+    def __init__(self, factor_table, name="时间序列OLS", sys_args={}, **kwargs):
+        return super().__init__(factor_table=factor_table, name=name, sys_args=sys_args, **kwargs)
+    def __QS_initArgs__(self):
+        super().__QS_initArgs__()
+        self.ModelArgs = {"常数项": True}
+        self.HTMLPrintStatistics = ["回归系数", "t统计量"]
+        self.HTMLPlotStatistics = ["R平方", "调整R平方"]
+    def ModelOperator(self, idt, iid, sample_factor_data, sample_return, new_factor_data):
+        ForecastReturn = np.nan
+        FactorStatistics = pd.DataFrame(index=sample_factor_data.columns, columns=["回归系数", "t统计量"])
+        Y= sample_return.values
+        hasConstant = self.ModelArgs.get("常数项", True)
+        if hasConstant:
+            X = sm.add_constant(sample_factor_data.values, prepend=True)
+            NewX = np.r_[1, new_factor_data.values]
+            ModelStatistics = pd.Series(np.nan, index=["R平方", "调整R平方", "F统计量", "常数项", "常数项t统计量"])
+        else:
+            X = sample_factor_data.values
+            NewX = new_factor_data.values
+            ModelStatistics = pd.Series(np.nan, index=["R平方", "调整R平方", "F统计量"])
+        try:
+            Result = sm.OLS(Y, X, missing="drop").fit()
+        except Exception as e:
+            self._QS_Logger.warning("%s : '%s' 在 %s 时的回归失败 : %s" % (self.Name, iid, idt.strftime("%Y-%m-%d"), str(e)))
+        else:
+            ForecastReturn = np.nansum(Result.params * NewX)
+            FactorStatistics["回归系数"] = Result.params[int(hasConstant):]
+            FactorStatistics["t统计量"] = Result.tvalues[int(hasConstant):]
+            ModelStatistics["R平方"] = Result.rsquared
+            ModelStatistics["调整R平方"] = Result.rsquared_adj
+            ModelStatistics["F统计量"] = Result.fvalue
+            if hasConstant:
+                ModelStatistics["常数项"] = Result.params[0]
+                ModelStatistics["常数项t统计量"] = Result.tvalues[0]
+        return ForecastReturn, ModelStatistics, FactorStatistics
