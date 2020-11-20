@@ -6,14 +6,14 @@ from io import BytesIO
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, List, Int, Str, Float, Dict, ListStr, on_trait_change
+from traits.api import Enum, List, Int, Str, Float, Dict, ListStr, on_trait_change, ListInt
 from matplotlib.ticker import FuncFormatter
 from matplotlib.figure import Figure
 from scipy import stats
 
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
-from QuantStudio.Tools.StrategyTestFun import summaryStrategy, formatStrategySummary, summaryTimingStrategy, formatTimingStrategySummary
+from QuantStudio.Tools.StrategyTestFun import testTimingStrategy, summaryStrategy, formatStrategySummary, summaryTimingStrategy, formatTimingStrategySummary
 from QuantStudio.BackTest.BackTestModel import BaseModule
 
 
@@ -180,9 +180,11 @@ class QuantileTiming(BaseModule):
     FactorOrder = Dict(key_trait=Str(), value_trait=Enum("降序", "升序"), arg_type="ArgDict", label="排序方向", order=1)
     #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=2)
     CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=3)
-    SummaryWindow = Float(np.inf, arg_type="Integer", label="统计窗口", order=4)
-    MinSummaryWindow = Int(3, arg_type="Integer", label="最小统计窗口", order=5)
-    GroupNum = Int(3, arg_type="Integer", label="分组数", order=6)
+    SampleDTs = List(dt.datetime, arg_type="DateList", label="样本时点", order=4)
+    SummaryWindow = Float(np.inf, arg_type="Integer", label="统计窗口", order=5)
+    MinSummaryWindow = Int(3, arg_type="Integer", label="最小统计窗口", order=6)
+    GroupNum = Int(3, arg_type="Integer", label="分组数", order=7)
+    LSClearGroups = ListInt(arg_type="Integer", label="多空平仓组", order=8)
     def __init__(self, factor_table, name="分位数择时", sys_args={}, **kwargs):
         self._FactorTable = factor_table
         super().__init__(name=name, sys_args=sys_args, **kwargs)
@@ -231,7 +233,12 @@ class QuantileTiming(BaseModule):
         else:
             self._CurCalcInd = self._Model.DateTimeIndex
         if DTIdx+1<self.MinSummaryWindow: return 0
-        FactorData = self._Output["因子值"][int(max(0, DTIdx + 1 - self.SummaryWindow)):DTIdx+1] * self._Output["因子符号"]
+        StartIdx = int(max(0, DTIdx + 1 - self.SummaryWindow))
+        FactorData = self._Output["因子值"][StartIdx:DTIdx+1] * self._Output["因子符号"]
+        if self.SampleDTs:
+            DTSeries = pd.Series(np.arange(0, DTIdx+1-StartIdx), index=self._Model.DateTimeSeries[StartIdx:DTIdx+1])
+            FactorData = FactorData[sorted(DTSeries.loc[DTSeries.index.intersection(self.SampleDTs)])]
+        if FactorData.shape[0]<self.GroupNum: return 0
         Quantiles = np.nanpercentile(FactorData, np.arange(1, self.GroupNum+1) / self.GroupNum * 100, axis=0)
         Signal = np.sum(Quantiles<FactorData[-1, :], axis=0).astype(float)
         Signal[pd.isnull(FactorData[-1, :])] = np.nan
@@ -269,7 +276,15 @@ class QuantileTiming(BaseModule):
                 else:
                     self._Output["策略信号"][iFactor][jID] = pd.DataFrame(columns=Groups)
                 ijSignalReturn = pd.DataFrame(SignalReturn[:, j, i, :], index=DTs, columns=Groups).loc[self._Output["策略信号"][iFactor][jID].index]
-                ijSignalReturn["L-S"] = ijSignalReturn.iloc[:, 0].fillna(0) - ijSignalReturn.iloc[:, -1].fillna(0)
+                # 计算多空组合收益率
+                #ijSignalReturn["L-S"] = ijSignalReturn.iloc[:, 0].fillna(0) - ijSignalReturn.iloc[:, -1].fillna(0)
+                ijLSSignal = ijSignal.iloc[:, 0].where(pd.notnull(ijSignal.iloc[:, 0]), -ijSignal.iloc[:, -1])
+                for k in self.LSClearGroups:
+                    ijLSSignal = (ijSignal.iloc[:, k] * 0).where(pd.notnull(ijSignal.iloc[:, k]), ijLSSignal)
+                ijLSNV, _, _ = testTimingStrategy(ijSignal.loc[ijDTs[0]:].values.reshape((-1, 1)), self._Output["标的净值"].loc[ijDTs[0]:].iloc[:, j].values.reshape((-1, 1)))
+                ijLSReturn = ijLSNV[:, 0] / np.r_[ijLSNV[:1, 0], ijLSNV[:-1, 0]] - 1
+                ijLSReturn[np.isinf(ijLSReturn)] = 0
+                ijSignalReturn["L-S"] = ijLSReturn
                 if ijSignalReturn.shape[0]==0:
                     self._Output["策略收益率"][iFactor][jID] = ijSignalReturn
                     self._Output["策略净值"][iFactor][jID] = ijSignalReturn
@@ -306,7 +321,7 @@ class QuantileTiming(BaseModule):
             HTML = "参数设置: "
             HTML += '<ul align="left">'
             for iArgName in self.ArgNames:
-                if iArgName!="计算时点":
+                if iArgName not in ("计算时点", "样本时点"):
                     HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
                 elif self.Args[iArgName]:
                     HTML += "<li>"+iArgName+": 自定义时点</li>"

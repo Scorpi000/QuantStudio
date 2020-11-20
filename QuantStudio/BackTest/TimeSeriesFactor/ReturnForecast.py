@@ -25,11 +25,12 @@ class ReturnForecast(BaseModule):
     ForecastPeriod = Int(1, arg_type="Integer", label="预测期数", order=3)
     Lag = Int(0, arg_type="Integer", label="滞后期数", order=4)
     CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=5)
-    SummaryWindow = Float(np.inf, arg_type="Integer", label="统计窗口", order=6)
-    MinSummaryWindow = Int(2, arg_type="Integer", label="最小统计窗口", order=7)
-    ModelArgs = Dict(value={}, arg_type="Dict", label="模型参数", order=8)
-    HTMLPrintStatistics = List([], arg_type="List", label="打印统计量", order=9)
-    HTMLPlotStatistics = List([], arg_type="List", label="绘图统计量", order=10)
+    SampleDTs = List(dt.datetime, arg_type="DateList", label="样本时点", order=6)
+    SummaryWindow = Float(np.inf, arg_type="Integer", label="统计窗口", order=7)
+    MinSummaryWindow = Int(2, arg_type="Integer", label="最小统计窗口", order=8)
+    ModelArgs = Dict(value={}, arg_type="Dict", label="模型参数", order=9)
+    HTMLPrintStatistics = List([], arg_type="List", label="打印统计量", order=10)
+    HTMLPlotStatistics = List([], arg_type="List", label="绘图统计量", order=11)
     def __init__(self, factor_table, name="收益率预测", sys_args={}, **kwargs):
         self._FactorTable = factor_table
         super().__init__(name=name, sys_args=sys_args, **kwargs)
@@ -63,47 +64,56 @@ class ReturnForecast(BaseModule):
         self._Output = {}
         self._Output["证券ID"] = self._FactorTable.getID()
         self._Output["证券价格"] = pd.DataFrame(columns=self._Output["证券ID"])
-        self._Output["实际收益率"] = pd.DataFrame(columns=self._Output["证券ID"])
+        self._Output["样本收益率"] = pd.DataFrame(columns=self._Output["证券ID"])
         self._Output["预测收益率"] = pd.DataFrame(columns=self._Output["证券ID"])
         self._Output["因子值"] = {iID: pd.DataFrame(columns=self.TestFactors) for iID in self._Output["证券ID"]}
         self._Output["模型统计量"] = {}
         self._Output["因子统计量"] = {}
         self._CurCalcInd = 0
+        self._CurSampleInd = 0
         return (self._FactorTable, )
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
         self._iDT = idt
         self._Output["证券价格"].loc[idt] = self._FactorTable.readData(dts=[idt], ids=self._Output["证券ID"], factor_names=[self.PriceFactor]).iloc[0, 0, :].values
+        isSampleDT = True
+        if self.SampleDTs:
+            if idt not in self.SampleDTs[self._CurSampleInd:]:
+                isSampleDT = False
+            else:
+                self._CurSampleInd = self.SampleDTs[self._CurSampleInd:].index(idt) + self._CurSampleInd
+                if self._CurSampleInd - self.ForecastPeriod - self.Lag>=0:
+                    FactorDT = self.SampleDTs[self._CurSampleInd - self.ForecastPeriod - self.Lag]
+                    RtnStartDT = self.SampleDTs[self._CurSampleInd - self.ForecastPeriod]
+                    NewFactorDT = self.SampleDTs[self._CurSampleInd - self.Lag]
+                else:
+                    isSampleDT = False
+        else:
+            self._CurSampleInd = self._Model.DateTimeIndex
+            if self._CurSampleInd - self.ForecastPeriod - self.Lag<0:
+                isSampleDT = False
+            else:            
+                FactorDT = self._Model.DateTimeSeries[self._CurSampleInd - self.ForecastPeriod - self.Lag]
+                RtnStartDT = self._Model.DateTimeSeries[self._CurSampleInd - self.ForecastPeriod]
+                NewFactorDT = self._Model.DateTimeSeries[self._CurSampleInd - self.Lag]
+        if isSampleDT:
+            Price = self._Output["证券价格"].loc[[RtnStartDT, idt]]
+            self._Output["样本收益率"].loc[idt] = _calcReturn(Price, return_type=self.ReturnType).iloc[-1].values
+            FactorData = self._FactorTable.readData(dts=[FactorDT], ids=self._Output["证券ID"], factor_names=list(self.TestFactors)).iloc[:, 0]
+            for i, iID in enumerate(self._Output["证券ID"]): self._Output["因子值"][iID].loc[FactorDT] = FactorData.iloc[i].values
         if self.CalcDTs:
             if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
             self._CurCalcInd = self.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
-            PreInd = self._CurCalcInd - self.ForecastPeriod - self.Lag
-            LastInd = self._CurCalcInd - self.ForecastPeriod
-            PreDateTime = self.CalcDTs[PreInd]
-            LastDateTime = self.CalcDTs[LastInd]
-            LagDateTime = self.CalcDTs[self._CurCalcInd - self.Lag]
         else:
             self._CurCalcInd = self._Model.DateTimeIndex
-            PreInd = self._CurCalcInd - self.ForecastPeriod - self.Lag
-            LastInd = self._CurCalcInd - self.ForecastPeriod
-            PreDateTime = self._Model.DateTimeSeries[PreInd]
-            LastDateTime = self._Model.DateTimeSeries[LastInd]
-            LagDateTime = self._Model.DateTimeSeries[self._CurCalcInd - self.Lag]
-        if (PreInd<0) or (LastInd<0): return 0
-        nID, nFactor = len(self._Output["证券ID"]), len(self.TestFactors)
-        Price = self._Output["证券价格"].loc[[LastDateTime, idt]]
-        self._Output["实际收益率"].loc[idt] = _calcReturn(Price, return_type=self.ReturnType).iloc[-1].values
-        FactorData = self._FactorTable.readData(dts=[PreDateTime, LagDateTime], ids=self._Output["证券ID"], factor_names=list(self.TestFactors))
-        if self._Output["实际收益率"].shape[0]<self.MinSummaryWindow:
-            for i, iID in enumerate(self._Output["证券ID"]): self._Output["因子值"][iID].loc[PreDateTime] = FactorData.iloc[:, 0, i].values
-            return 0
-        StartInd = int(max(0, self._Output["实际收益率"].shape[0] - self.SummaryWindow))
-        ForecastReturn = np.full((nID,), np.nan)
+        if self._Output["样本收益率"].shape[0]<max(1, self.MinSummaryWindow): return 0
+        FactorData = self._FactorTable.readData(dts=[NewFactorDT], ids=self._Output["证券ID"], factor_names=list(self.TestFactors)).iloc[:, 0]
+        StartInd = int(max(0, self._Output["样本收益率"].shape[0] - self.SummaryWindow))
+        ForecastReturn = np.full((len(self._Output["证券ID"]),), np.nan)
         for i, iID in enumerate(self._Output["证券ID"]):
-            self._Output["因子值"][iID].loc[PreDateTime] = FactorData.iloc[:, 0, i].values
-            Y = self._Output["实际收益率"].iloc[StartInd:, i]
+            Y = self._Output["样本收益率"].iloc[StartInd:, i]
             X = self._Output["因子值"][iID].iloc[StartInd:]
-            NewX = FactorData.iloc[:, 1, i]
+            NewX = FactorData.iloc[i]
             ForecastReturn[i], iModelStatistics, iFactorStatistics = self.ModelOperator(idt, iID, X, Y, NewX)
             if (iModelStatistics is not None) and (iModelStatistics.shape[0]>0):
                 self._Output["模型统计量"].setdefault(iID, pd.DataFrame(columns=iModelStatistics.index)).loc[idt] = iModelStatistics
@@ -116,15 +126,17 @@ class ReturnForecast(BaseModule):
         if not self._isStarted: return 0
         super().__QS_end__()
         IDs = self._Output.pop("证券ID")
-        #LagDateTime = self._Model.DateTimeSeries[self._CurCalcInd - self.Lag]
-        #FactorData = self._FactorTable.readData(dts=[LagDateTime], ids=self._Output["证券ID"], factor_names=list(self.TestFactors)).iloc[:, 0]
+        Price = self._Output.pop("证券价格")
+        if self._Output["样本收益率"].shape[0]==0:
+            self._Output.pop("模型统计量")
+            self._Output.pop("因子统计量")
+            return 0
         # 全样本训练
         self._Output["全样本模型统计量"] = pd.DataFrame(columns=IDs)
         self._Output["全样本因子统计量"] = {}
         for i, iID in enumerate(IDs):
-            Y = self._Output["实际收益率"].iloc[:, i]
+            Y = self._Output["样本收益率"].iloc[:, i]
             X = self._Output["因子值"][iID]
-            #NewX = FactorData.loc[iID]
             NewX = self._Output["因子值"][iID].iloc[-1]
             _, iModelStatistics, iFactorStatistics = self.ModelOperator(self._Model.DateTimeSeries[-1], iID, X, Y, NewX)
             if (iModelStatistics is not None) and (iModelStatistics.shape[0]>0):
@@ -135,12 +147,18 @@ class ReturnForecast(BaseModule):
             self._Output["全样本模型统计量"] = self._Output["全样本模型统计量"].T
         else:
             self._Output.pop("全样本模型统计量")
-        self._Output["全样本因子统计量"] = dict(pd.Panel(self._Output["全样本因子统计量"]).swapaxes(0, 2).loc[:, :, IDs])
+        if self._Output["全样本因子统计量"]:
+            self._Output["全样本因子统计量"] = dict(pd.Panel(self._Output["全样本因子统计量"]).swapaxes(0, 2).loc[:, :, IDs])
+        else:
+            self._Output.pop("全样本因子统计量")
         # 滚动预测
-        DTs = self._Output["预测收益率"].index
         self._Output["滚动预测"] = {}
-        self._Output["滚动预测"]["预测收益率"] = self._Output.pop("预测收益率")
-        self._Output["滚动预测"]["实际收益率"] = pd.DataFrame(np.r_[self._Output.pop("实际收益率").iloc[-len(DTs)+1:].values, np.full((1, len(IDs)), np.nan)], index=DTs, columns=IDs)
+        self._Output["滚动预测"]["预测收益率"] = self._Output.pop("预测收益率").astype(np.float)
+        if self.CalcDTs:
+            self._Output["滚动预测"]["实际收益率"] = pd.DataFrame(_calcReturn(Price.loc[self.CalcDTs].values, return_type=self.ReturnType), index=self.CalcDTs[1:], columns=IDs)
+        else:
+            self._Output["滚动预测"]["实际收益率"] = pd.DataFrame(_calcReturn(Price.loc[self._Model.DateTimeSeries].values, return_type=self.ReturnType), index=self._Model.DateTimeSeries[1:], columns=IDs)
+        self._Output["滚动预测"]["实际收益率"] = self._Output["滚动预测"]["实际收益率"].shift(-1).loc[self._Output["滚动预测"]["预测收益率"].index]
         self._Output["滚动预测"]["绝对误差"] = (self._Output["滚动预测"]["预测收益率"] - self._Output["滚动预测"]["实际收益率"]).abs()
         self._Output["滚动预测"]["统计数据"] = pd.DataFrame({"均方误差": ((self._Output["滚动预测"]["预测收益率"] - self._Output["滚动预测"]["实际收益率"])**2).mean(), 
                                                                           "平均绝对误差": self._Output["滚动预测"]["绝对误差"].mean(), 
@@ -159,7 +177,7 @@ class ReturnForecast(BaseModule):
         StartIdx = self._Model.DateTimeSeries.index(self._Output["滚动预测"]["预测收益率"].index[0])
         DTs = self._Model.DateTimeSeries[StartIdx:]
         Signal = np.sign(self._Output["滚动预测"]["预测收益率"]).loc[DTs].values
-        Price = pd.DataFrame(self._Output.pop("证券价格")).fillna(method="ffill").fillna(method="bfill").values[StartIdx:]
+        Price = Price.fillna(method="ffill").fillna(method="bfill").values[StartIdx:]
         nYear = (DTs[-1] - DTs[0]).days / 365
         NV, _, _ = testTimingStrategy(Signal, Price)
         self._Output["择时策略"] = {"多空净值": pd.DataFrame(NV, index=DTs, columns=IDs)}
@@ -248,7 +266,7 @@ class ReturnForecast(BaseModule):
             Pos = iHTML.find(">")
             HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         for iKey in self.HTMLPrintStatistics:
-            if iKey in self._Output["全样本因子统计量"]:
+            if ("全样本因子统计量" in self._Output) and (iKey in self._Output["全样本因子统计量"]):
                 HTML += f"全样本因子统计量 - {iKey} : "
                 iHTML = self._Output["全样本因子统计量"][iKey].to_html(formatters=[lambda x:'{0:.4f}'.format(x)]*self._Output["全样本因子统计量"][iKey].shape[1])
                 Pos = iHTML.find(">")
