@@ -6,7 +6,7 @@ from io import BytesIO
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, List, Int, Str, Float, Dict, ListStr, on_trait_change, ListInt
+from traits.api import Enum, List, Int, Str, Float, Dict, ListStr, on_trait_change, ListInt, Bool
 from matplotlib.ticker import FuncFormatter
 from matplotlib.figure import Figure
 from scipy import stats
@@ -19,11 +19,11 @@ from QuantStudio.BackTest.BackTestModel import BaseModule
 
 # 给定仓位水平的择时信号回测
 # 测试因子: 每期的目标仓位水平, (-inf, inf) 的仓位水平或者 nan 表示维持目前仓位
-class PositionSignal(BaseModule):
-    """仓位信号回测"""
+class TargetPositionSignal(BaseModule):
+    """目标仓位信号回测"""
     TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
     #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
-    def __init__(self, factor_table, name="仓位信号回测", sys_args={}, **kwargs):
+    def __init__(self, factor_table, name="目标仓位信号回测", sys_args={}, **kwargs):
         self._FactorTable = factor_table
         super().__init__(name=name, sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
@@ -173,6 +173,176 @@ class PositionSignal(BaseModule):
             ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
             HTML += ('<img src="%s">' % ImgStr)
         return HTML
+
+# 给定买卖金额的交易信号回测
+# 测试因子: 每期的买卖金额, (-inf, inf) 的买卖金额, 0 表示清仓或者 nan 表示无交易
+class TradeSignal(BaseModule):
+    """交易信号回测"""
+    TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
+    #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
+    CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=2)
+    def __init__(self, factor_table, name="交易信号回测", sys_args={}, **kwargs):
+        self._FactorTable = factor_table
+        super().__init__(name=name, sys_args=sys_args, **kwargs)
+    def __QS_initArgs__(self):
+        DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FactorTable.getFactorMetaData(key="DataType")))
+        self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1))
+        self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ["价","Price","price"])
+    def __QS_start__(self, mdl, dts, **kwargs):
+        if self._isStarted: return ()
+        super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
+        self._Output = {}
+        IDs = self._FactorTable.getID()
+        nDT, nID, nFactor = len(dts), len(IDs), len(self.TestFactors)
+        self._Output["标的ID"] = IDs
+        self._Output["标的价格"] = np.zeros(shape=(nDT, nID))
+        self._Output["交易信号"] = np.full(shape=(nDT, nID, nFactor), fill_value=np.nan)
+        self._Output["现金流"] = np.zeros(shape=(nDT, nID, nFactor))
+        self._Output["现金余额"] = np.zeros(shape=(nDT, nID, nFactor))
+        self._Output["标的数量"] = np.zeros(shape=(nDT, nID, nFactor))
+        self._Output["标的金额"] = np.zeros(shape=(nDT, nID, nFactor))
+        self._Output["账户余额"] = np.zeros(shape=(nDT, nID, nFactor))
+        self._Output["收益率"] = np.zeros(shape=(nDT, nID, nFactor))
+        self._CurCalcInd = 0
+        return (self._FactorTable, )
+    def __QS_move__(self, idt, **kwargs):
+        if self._iDT==idt: return 0
+        self._iDT = idt
+        DTIdx = self._Model.DateTimeIndex
+        Price = self._FactorTable.readData(factor_names=[self.PriceFactor], ids=self._Output["标的ID"], dts=[self._Model.DateTimeSeries[DTIdx]]).iloc[0, 0, :].values
+        self._Output["标的价格"][DTIdx] = Price
+        # 交易前账户结算
+        if DTIdx>0:
+            self._Output["现金余额"][DTIdx] = self._Output["现金余额"][DTIdx-1]
+            self._Output["标的数量"][DTIdx] = self._Output["标的数量"][DTIdx-1]
+            UnderlyingAmt = (self._Output["标的数量"][DTIdx].T * Price).T
+            Mask = pd.isnull(UnderlyingAmt)
+            UnderlyingAmt[Mask] = self._Output["标的金额"][DTIdx-1][Mask]
+            self._Output["标的金额"][DTIdx] = UnderlyingAmt
+            self._Output["账户余额"][DTIdx] = UnderlyingAmt + self._Output["现金余额"][DTIdx]
+            self._Output["收益率"] = (self._Output["账户余额"][DTIdx] -self._Output["账户余额"][DTIdx-1]) / np.abs(self._Output["账户余额"][DTIdx-1])
+        if self.CalcDTs:
+            if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
+            self._CurCalcInd = self.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
+        else:
+            self._CurCalcInd = self._Model.DateTimeIndex
+        # 交易
+        TradeAmt = self._FactorTable.readData(factor_names=list(self.TestFactors), ids=self._Output["标的ID"], dts=[self._Model.DateTimeSeries[DTIdx]]).iloc[:, 0, :].values
+        self._Output["交易信号"][DTIdx] = TradeAmt
+        UnderlyingNum = self._Output["标的数量"][DTIdx]
+        UnderlyingAmt = self._Output["标的金额"][DTIdx]
+        Cash = self._Output["现金余额"][DTIdx]
+        # 清仓
+        ClearMask = (np.sign(TradeAmt) != np.sign(UnderlyingNum))
+        CashFlow = np.zeros(UnderlyingAmt.shape)
+        CashFlow[ClearMask] = - (UnderlyingAmt[ClearMask] + Cash[ClearMask])
+        Cash[ClearMask] = 0
+        UnderlyingNum[ClearMask] = 0
+        UnderlyingAmt[ClearMask] = 0
+        # 开仓
+        self._Output["现金流"][DTIdx] = CashFlow + np.abs(TradeAmt)
+        self._Output["账户余额"][DTIdx] = Cash + UnderlyingAmt + np.abs(TradeAmt)
+        self._Output["标的金额"][DTIdx] = UnderlyingAmt + TradeAmt
+        self._Output["标的数量"][DTIdx] = UnderlyingNum + (TradeAmt.T / Price).T
+        self._Output["现金余额"][DTIdx] = self._Output["账户余额"][DTIdx] - self._Output["标的金额"][DTIdx]
+        self._Output["收益率"] = (self._Output["账户余额"][DTIdx] - self._Output["现金流"][DTIdx] -self._Output["账户余额"][DTIdx-1]) / np.abs(self._Output["账户余额"][DTIdx-1])
+        return 0
+    def __QS_end__(self):
+        if not self._isStarted: return 0
+        super().__QS_end__()
+        DTs, IDs = self._Model.DateTimeSeries, self._Output.pop("标的ID")
+        nDT, nID = len(DTs), len(IDs)
+        nYear = (DTs[-1] - DTs[0]).days / 365
+        self._Output["标的净值"] = pd.DataFrame(self._Output.pop("标的价格"), index=DTs, columns=IDs)
+        self._Output["标的净值"] = self._Output["标的净值"].fillna(method="ffill")
+        self._Output["标的净值"] = self._Output["标的净值"] / self._Output["标的净值"].fillna(method="bfill").iloc[0]
+        self._Output["时间序列"] = {}
+        self._Output["统计数据"] = {}
+        for i, iFactorName in enumerate(self.TestFactors):
+            self._Output["时间序列"].setdefault("交易信号", {})[iFactorName] = pd.DataFrame(self._Output["交易信号"][:, :, i], index=DTs, columns=IDs)
+            iCashFlow = sself._Output["现金流"][:, :, i]
+            self._Output["时间序列"].setdefault("现金流", {})[iFactorName] = pd.DataFrame(iCashFlow, index=DTs, columns=IDs)
+            self._Output["时间序列"].setdefault("现金余额", {})[iFactorName] = pd.DataFrame(self._Output["现金余额"][:, :, i], index=DTs, columns=IDs)
+            self._Output["时间序列"].setdefault("标的数量", {})[iFactorName] = pd.DataFrame(self._Output["标的数量"][:, :, i], index=DTs, columns=IDs)
+            self._Output["时间序列"].setdefault("标的金额", {})[iFactorName] = pd.DataFrame(self._Output["标的金额"][:, :, i], index=DTs, columns=IDs)
+            self._Output["时间序列"].setdefault("账户余额", {})[iFactorName] = pd.DataFrame(self._Output["账户余额"][:, :, i], index=DTs, columns=IDs)
+            iReturn = self._Output["收益率"][:, :, i]
+            self._Output["时间序列"].setdefault("收益率", {})[iFactorName] = pd.DataFrame(iReturn, index=DTs, columns=IDs)
+            self._Output["时间序列"].setdefault("净值", {})[iFactorName] = (self._Output["时间序列"]["收益率"][iFactorName] + 1).cumprod()
+            iStrategyStats = summaryStrategy(self._Output["时间序列"]["净值"][iFactorName].values, DTs)
+            iStrategyStats.columns = IDs
+            self._Output["统计数据"][iFactorName] = iStrategyStats
+        self._Output.pop("标的ID")
+        return 0
+    def genMatplotlibFig(self, file_path=None, target_factor=None):
+        if target_factor is None: target_factor = self.TestFactors[0]
+        iNV = self._Output["时间序列"]["总计"][target_factor]
+        iPos = self._Output["时间序列"]["仓位"][target_factor]
+        iTargetNV = self._Output["标的净值"]
+        nID = iTargetNV.shape[1]
+        xData = np.arange(0, iNV.shape[0])
+        xTicks = np.arange(0, iNV.shape[0], int(iNV.shape[0]/10))
+        xTickLabels = [iNV.index[i].strftime("%Y-%m-%d") for i in xTicks]
+        nRow, nCol = nID//3+(nID%3!=0), min(3, nID)
+        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
+        for j, jID in enumerate(iTargetNV.columns):
+            iAxes = Fig.add_subplot(nRow, nCol, j+1)
+            ijPos = iPos[jID].copy()
+            ijPos[~(ijPos>=0)] = 0
+            iAxes.bar(xData, ijPos.values, label="多头仓位", color="indianred", alpha=0.5)
+            ijPos = iPos[jID].copy()
+            ijPos[~(ijPos<0)] = 0
+            iAxes.bar(xData, ijPos.values, label="空头仓位", color="forestgreen", alpha=0.5)
+            iRAxes = iAxes.twinx()
+            iRAxes.plot(xData, iTargetNV[jID].values, label=str(jID), color="steelblue", lw=2.5)
+            iRAxes.plot(xData, iNV[jID].values, label="策略净值", color="k", lw=2.5)
+            iRAxes.legend()
+            iAxes.set_xticks(xTicks)
+            iAxes.set_xticklabels(xTickLabels)
+            iAxes.legend()
+            iAxes.set_title(target_factor+" - "+str(jID)+" : 仓位信号策略净值")
+        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
+        return Fig
+    def _repr_html_(self):
+        if len(self.ArgNames)>0:
+            HTML = "参数设置: "
+            HTML += '<ul align="left">'
+            for iArgName in self.ArgNames:
+                HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
+            HTML += "</ul>"
+        else:
+            HTML = ""
+        for iFactor in self.TestFactors:
+            iOutput = self._Output["统计数据"][iFactor]
+            iHTML = iFactor+" - 统计数据 : "
+            iHTML += formatStrategySummary(iOutput).to_html()
+            Pos = iHTML.find(">")
+            HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+            iOutput = self._Output["择时统计"]["多空统计"][iFactor]
+            iHTML = iFactor+" - 多空统计 : "
+            iHTML += formatTimingStrategySummary(iOutput).to_html()
+            Pos = iHTML.find(">")
+            HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+            iOutput = self._Output["择时统计"]["多头统计"][iFactor]
+            iHTML = iFactor+" - 多头统计 : "
+            iHTML += formatTimingStrategySummary(iOutput).to_html()
+            Pos = iHTML.find(">")
+            HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+            iOutput = self._Output["择时统计"]["空头统计"][iFactor]
+            iHTML = iFactor+" - 空头统计 : "
+            iHTML += formatTimingStrategySummary(iOutput).to_html()
+            Pos = iHTML.find(">")
+            HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+            Fig = self.genMatplotlibFig(target_factor=iFactor)
+            # figure 保存为二进制文件
+            Buffer = BytesIO()
+            Fig.savefig(Buffer)
+            PlotData = Buffer.getvalue()
+            # 图像数据转化为 HTML 格式
+            ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+            HTML += ('<img src="%s">' % ImgStr)
+        return HTML
+
 
 class QuantileTiming(BaseModule):
     """分位数择时"""
