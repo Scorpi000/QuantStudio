@@ -211,6 +211,8 @@ class TradeSignal(BaseModule):
         DTIdx = self._Model.DateTimeIndex
         Price = self._FactorTable.readData(factor_names=[self.PriceFactor], ids=self._Output["标的ID"], dts=[self._Model.DateTimeSeries[DTIdx]]).iloc[0, 0, :].values
         self._Output["标的价格"][DTIdx] = Price
+        if idt==dt.datetime(2015, 6, 18):
+            print(idt)
         # 交易前账户结算
         if DTIdx>0:
             self._Output["现金余额"][DTIdx] = self._Output["现金余额"][DTIdx-1]
@@ -220,7 +222,8 @@ class TradeSignal(BaseModule):
             UnderlyingAmt[Mask] = self._Output["标的金额"][DTIdx-1][Mask]
             self._Output["标的金额"][DTIdx] = UnderlyingAmt
             self._Output["账户余额"][DTIdx] = UnderlyingAmt + self._Output["现金余额"][DTIdx]
-            self._Output["收益率"] = (self._Output["账户余额"][DTIdx] -self._Output["账户余额"][DTIdx-1]) / np.abs(self._Output["账户余额"][DTIdx-1])
+            self._Output["收益率"][DTIdx] = (self._Output["账户余额"][DTIdx] - self._Output["账户余额"][DTIdx-1]) / np.abs(self._Output["账户余额"][DTIdx-1])
+            self._Output["收益率"][DTIdx][self._Output["账户余额"][DTIdx-1]==0] = 0
         if self.CalcDTs:
             if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
             self._CurCalcInd = self.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
@@ -229,23 +232,26 @@ class TradeSignal(BaseModule):
         # 交易
         TradeAmt = self._FactorTable.readData(factor_names=list(self.TestFactors), ids=self._Output["标的ID"], dts=[self._Model.DateTimeSeries[DTIdx]]).iloc[:, 0, :].values
         self._Output["交易信号"][DTIdx] = TradeAmt
-        UnderlyingNum = self._Output["标的数量"][DTIdx]
-        UnderlyingAmt = self._Output["标的金额"][DTIdx]
-        Cash = self._Output["现金余额"][DTIdx]
+        UnderlyingNum = self._Output["标的数量"][DTIdx].copy()
+        UnderlyingAmt = self._Output["标的金额"][DTIdx].copy()
+        Cash = self._Output["现金余额"][DTIdx].copy()
         # 清仓
-        ClearMask = (np.sign(TradeAmt) != np.sign(UnderlyingNum))
+        ClearMask = (pd.notnull(TradeAmt) & (np.sign(TradeAmt) != np.sign(UnderlyingNum)))
         CashFlow = np.zeros(UnderlyingAmt.shape)
         CashFlow[ClearMask] = - (UnderlyingAmt[ClearMask] + Cash[ClearMask])
         Cash[ClearMask] = 0
         UnderlyingNum[ClearMask] = 0
         UnderlyingAmt[ClearMask] = 0
         # 开仓
+        TradeNum = (TradeAmt.T / Price).T
+        Mask = pd.isnull(TradeNum)
+        TradeAmt[Mask] = 0
+        TradeNum[Mask] = 0
         self._Output["现金流"][DTIdx] = CashFlow + np.abs(TradeAmt)
-        self._Output["账户余额"][DTIdx] = Cash + UnderlyingAmt + np.abs(TradeAmt)
         self._Output["标的金额"][DTIdx] = UnderlyingAmt + TradeAmt
-        self._Output["标的数量"][DTIdx] = UnderlyingNum + (TradeAmt.T / Price).T
-        self._Output["现金余额"][DTIdx] = self._Output["账户余额"][DTIdx] - self._Output["标的金额"][DTIdx]
-        self._Output["收益率"] = (self._Output["账户余额"][DTIdx] - self._Output["现金流"][DTIdx] -self._Output["账户余额"][DTIdx-1]) / np.abs(self._Output["账户余额"][DTIdx-1])
+        self._Output["标的数量"][DTIdx] = UnderlyingNum + TradeNum
+        self._Output["现金余额"][DTIdx] = Cash - 2 * np.clip(TradeAmt, -np.inf, 0)
+        self._Output["账户余额"][DTIdx] = self._Output["现金余额"][DTIdx] + self._Output["标的金额"][DTIdx]
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
@@ -260,7 +266,7 @@ class TradeSignal(BaseModule):
         self._Output["统计数据"] = {}
         for i, iFactorName in enumerate(self.TestFactors):
             self._Output["时间序列"].setdefault("交易信号", {})[iFactorName] = pd.DataFrame(self._Output["交易信号"][:, :, i], index=DTs, columns=IDs)
-            iCashFlow = sself._Output["现金流"][:, :, i]
+            iCashFlow = self._Output["现金流"][:, :, i]
             self._Output["时间序列"].setdefault("现金流", {})[iFactorName] = pd.DataFrame(iCashFlow, index=DTs, columns=IDs)
             self._Output["时间序列"].setdefault("现金余额", {})[iFactorName] = pd.DataFrame(self._Output["现金余额"][:, :, i], index=DTs, columns=IDs)
             self._Output["时间序列"].setdefault("标的数量", {})[iFactorName] = pd.DataFrame(self._Output["标的数量"][:, :, i], index=DTs, columns=IDs)
@@ -272,7 +278,13 @@ class TradeSignal(BaseModule):
             iStrategyStats = summaryStrategy(self._Output["时间序列"]["净值"][iFactorName].values, DTs)
             iStrategyStats.columns = IDs
             self._Output["统计数据"][iFactorName] = iStrategyStats
-        self._Output.pop("标的ID")
+        self._Output.pop("交易信号")
+        self._Output.pop("现金流")
+        self._Output.pop("现金余额")
+        self._Output.pop("标的数量")
+        self._Output.pop("标的金额")
+        self._Output.pop("账户余额")
+        self._Output.pop("收益率")
         return 0
     def genMatplotlibFig(self, file_path=None, target_factor=None):
         if target_factor is None: target_factor = self.TestFactors[0]
