@@ -56,21 +56,23 @@ class SQLDB(QSSQLObject, WritableFactorDB):
     DTField = Str("datetime", arg_type="String", label="时点字段", order=104)
     IDField = Str("code", arg_type="String", label="ID字段", order=105)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
-        super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"SQLDBConfig.json" if config_file is None else config_file), **kwargs)
         #self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
         #self._TableFieldDataType = {}# {表名: pd.Series(数据库数据类型, index=[因子名])}
         self._TableInfo = pd.DataFrame()# DataFrame(index=[表名], columns=["DBTableName", "TableClass"])
         self._FactorInfo = pd.DataFrame()# DataFrame(index=[(表名,因子名)], columns=["DBFieldName", "DataType", "FieldType", "Supplementary", "Description"])
+        super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"SQLDBConfig.json" if config_file is None else config_file), **kwargs)
         self.Name = "SQLDB"
         return
     @on_trait_change("DTField")
     def _on_DTField_changed(self, obj, name, old, new):
-        self._FactorInfo["Supplementary"][(self._FactorInfo["FieldType"]=="Date") & (self._FactorInfo["Supplementary"]=="Default")] = None
-        self._FactorInfo["Supplementary"][(self._FactorInfo["FieldType"]=="Date") & (self._FactorInfo["DBFieldName"]==new)] = "Default"
+        if self._FactorInfo.shape[0]>0:
+            self._FactorInfo["Supplementary"][(self._FactorInfo["FieldType"]=="Date") & (self._FactorInfo["Supplementary"]=="Default")] = None
+            self._FactorInfo["Supplementary"][(self._FactorInfo["FieldType"]=="Date") & (self._FactorInfo["DBFieldName"]==new)] = "Default"
     @on_trait_change("IDField")
     def _on_IDField_changed(self, obj, name, old, new):
-        self._FactorInfo["FieldType"][self._FactorInfo["FieldType"]=="ID"] = None
-        self._FactorInfo["FieldType"][self._FactorInfo["FieldType"]==new] = "ID"
+        if self._FactorInfo.shape[0]>0:
+            self._FactorInfo["FieldType"][self._FactorInfo["FieldType"]=="ID"] = None
+            self._FactorInfo["FieldType"][self._FactorInfo["FieldType"]==new] = "ID"
     # factor_info: DataFrame(columns=["TableName", "DBFieldName", "DataType"])
     def _genFactorInfo(self, factor_info):
         factor_info["FieldName"] = factor_info["DBFieldName"]

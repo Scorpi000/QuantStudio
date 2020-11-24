@@ -752,11 +752,13 @@ class SQL_NarrowTable(SQL_Table):
     """SQL 窄因子表"""
     LookBack = Float(0, arg_type="Integer", label="回溯天数", order=0)
     OnlyStartLookBack = Bool(False, label="只起始日回溯", arg_type="Bool", order=1)
-    #FactorNameField = Enum(None, arg_type="SingleOption", label="因子名字段", order=2)
-    #FactorValueField = Enum(None, arg_type="SingleOption", label="因子值字段", order=3)
-    MultiMapping = Bool(True, label="多重映射", arg_type="Bool", order=4)
-    Operator = Either(Function(None), None, arg_type="Function", label="算子", order=5)
-    OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=6)
+    OnlyLookBackNontarget = Bool(False, label="只回溯非目标日", arg_type="Bool", order=2)
+    OnlyLookBackDT = Bool(False, label="只回溯时点", arg_type="Bool", order=3)
+    #FactorNameField = Enum(None, arg_type="SingleOption", label="因子名字段", order=4)
+    #FactorValueField = Enum(None, arg_type="SingleOption", label="因子值字段", order=5)
+    MultiMapping = Bool(True, label="多重映射", arg_type="Bool", order=6)
+    Operator = Either(Function(None), None, arg_type="Function", label="算子", order=7)
+    OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=8)
     def __init__(self, name, fdb, sys_args={}, table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
         self._FactorNames = None# 所有的因子名列表或者对照字典
@@ -764,12 +766,14 @@ class SQL_NarrowTable(SQL_Table):
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
         FactorFields = self._FactorInfo[self._FactorInfo["FieldType"]=="Factor"]
-        self.add_trait("FactorNameField", Enum(*FactorFields.index.tolist(), arg_type="SingleOption", label="因子名字段", order=2))
+        if FactorFields.shape[0]==0: FactorFields = self._FactorInfo
+        self.add_trait("FactorNameField", Enum(*FactorFields.index.tolist(), arg_type="SingleOption", label="因子名字段", order=4))
         DefaultField = FactorFields[FactorFields["Supplementary"]=="Default"].index
         if DefaultField.shape[0]==0: self.FactorField = FactorFields.index[0]
         else: self.FactorField = DefaultField[0]
         ValueFields = self._FactorInfo[self._FactorInfo["FieldType"]=="Value"]
-        self.add_trait("FactorValueField", Enum(*ValueFields.index.tolist(), arg_type="SingleOption", label="因子值字段", order=3))
+        if ValueFields.shape[0]==0: ValueFields = self._FactorInfo
+        self.add_trait("FactorValueField", Enum(*ValueFields.index.tolist(), arg_type="SingleOption", label="因子值字段", order=5))
         DefaultField = ValueFields[ValueFields["Supplementary"]=="Default"].index
         if DefaultField.shape[0]==0: self.FactorValueField = ValueFields.index[0]
         else: self.FactorValueField = DefaultField[0]
@@ -938,8 +942,11 @@ class SQL_NarrowTable(SQL_Table):
             if iFactorName in raw_data:
                 Data[iFactorName] = raw_data.loc[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
         if not Data: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-        Data = pd.Panel(Data).loc[factor_names]
-        return adjustDataDTID(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts, args.get("只起始日回溯", self.OnlyStartLookBack), logger=self._QS_Logger)
+        Data = pd.Panel(Data).loc[factor_names].swapaxes(1, 2)
+        return adjustDataDTID(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts, 
+                              args.get("只起始日回溯", self.OnlyStartLookBack), 
+                              args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
+                              args.get("只回溯时点", self.OnlyLookBackDT), logger=self._QS_Logger)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         if ids is None: ids = sorted(raw_data["ID"].unique())
@@ -963,8 +970,10 @@ class SQL_NarrowTable(SQL_Table):
                 Data[iFactorName] = iRawData
         if not Data: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         Data = pd.Panel(Data).loc[factor_names]
-        LookBack = args.get("回溯天数", self.LookBack)
-        return adjustDataDTID(Data, LookBack, factor_names, ids, dts, args.get("只起始日回溯", self.OnlyStartLookBack), logger=self._QS_Logger)
+        return adjustDataDTID(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts, 
+                              args.get("只起始日回溯", self.OnlyStartLookBack), 
+                              args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
+                              args.get("只回溯时点", self.OnlyLookBackDT), logger=self._QS_Logger)
 
 
 # 基于 SQL 数据库表的特征因子表

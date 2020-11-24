@@ -13,7 +13,7 @@ from scipy import stats
 
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
-from QuantStudio.Tools.StrategyTestFun import testTimingStrategy, summaryStrategy, formatStrategySummary, summaryTimingStrategy, formatTimingStrategySummary
+from QuantStudio.Tools.StrategyTestFun import testTimingStrategy, summaryStrategy, formatStrategySummary, summaryTimingStrategy, formatTimingStrategySummary, summaryTrade
 from QuantStudio.BackTest.BackTestModel import BaseModule
 
 
@@ -181,6 +181,7 @@ class TradeSignal(BaseModule):
     TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
     #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
     CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=2)
+    EndClear = Bool(True, arg_type="Bool", label="结束清仓", order=3)
     def __init__(self, factor_table, name="交易信号回测", sys_args={}, **kwargs):
         self._FactorTable = factor_table
         super().__init__(name=name, sys_args=sys_args, **kwargs)
@@ -203,21 +204,24 @@ class TradeSignal(BaseModule):
         self._Output["标的金额"] = np.zeros(shape=(nDT, nID, nFactor))
         self._Output["账户余额"] = np.zeros(shape=(nDT, nID, nFactor))
         self._Output["收益率"] = np.zeros(shape=(nDT, nID, nFactor))
+        self._Output["交易记录"] = {iFactorName: pd.DataFrame(columns=["ID", "开仓时点", "开仓价格", "交易数量", "平仓时点", "平仓价格", "盈亏金额", "收益率"]) for iFactorName in self.TestFactors}
         self._CurCalcInd = 0
         return (self._FactorTable, )
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
         self._iDT = idt
         DTIdx = self._Model.DateTimeIndex
-        Price = self._FactorTable.readData(factor_names=[self.PriceFactor], ids=self._Output["标的ID"], dts=[self._Model.DateTimeSeries[DTIdx]]).iloc[0, 0, :].values
-        self._Output["标的价格"][DTIdx] = Price
-        if idt==dt.datetime(2015, 6, 18):
-            print(idt)
+        Price = self._FactorTable.readData(factor_names=[self.PriceFactor], ids=self._Output["标的ID"], dts=[self._Model.DateTimeSeries[DTIdx]]).iloc[0, 0, :]
+        if DTIdx>0:
+            Mask = pd.isnull(Price).values
+            Price[Mask] = self._Output["标的价格"][DTIdx-1][Mask]
+        self._Output["标的价格"][DTIdx] = Price.values
+        PriceVal = np.repeat(np.reshape(Price.values, (-1, 1)), len(self.TestFactors), axis=1)
         # 交易前账户结算
         if DTIdx>0:
             self._Output["现金余额"][DTIdx] = self._Output["现金余额"][DTIdx-1]
             self._Output["标的数量"][DTIdx] = self._Output["标的数量"][DTIdx-1]
-            UnderlyingAmt = (self._Output["标的数量"][DTIdx].T * Price).T
+            UnderlyingAmt = self._Output["标的数量"][DTIdx] * PriceVal
             Mask = pd.isnull(UnderlyingAmt)
             UnderlyingAmt[Mask] = self._Output["标的金额"][DTIdx-1][Mask]
             self._Output["标的金额"][DTIdx] = UnderlyingAmt
@@ -236,14 +240,22 @@ class TradeSignal(BaseModule):
         UnderlyingAmt = self._Output["标的金额"][DTIdx].copy()
         Cash = self._Output["现金余额"][DTIdx].copy()
         # 清仓
+        IDs = np.array(self._Output["标的ID"])
         ClearMask = (pd.notnull(TradeAmt) & (np.sign(TradeAmt) != np.sign(UnderlyingNum)))
         CashFlow = np.zeros(UnderlyingAmt.shape)
         CashFlow[ClearMask] = - (UnderlyingAmt[ClearMask] + Cash[ClearMask])
         Cash[ClearMask] = 0
         UnderlyingNum[ClearMask] = 0
         UnderlyingAmt[ClearMask] = 0
+        for i, iFactorName in enumerate(self.TestFactors):
+            if np.any(ClearMask[:, i]):
+                iClearMask = (pd.isnull(self._Output["交易记录"][iFactorName]["平仓时点"]) & (self._Output["交易记录"][iFactorName]["ID"].isin(IDs[ClearMask[:, i]])))
+                self._Output["交易记录"][iFactorName].loc[iClearMask, "平仓时点"] = idt
+                self._Output["交易记录"][iFactorName].loc[iClearMask, "平仓价格"] = Price.loc[self._Output["交易记录"][iFactorName].loc[iClearMask, "ID"]].values
+                self._Output["交易记录"][iFactorName].loc[iClearMask, "盈亏金额"] = (self._Output["交易记录"][iFactorName].loc[iClearMask, "平仓价格"] - self._Output["交易记录"][iFactorName].loc[iClearMask, "开仓价格"]) * self._Output["交易记录"][iFactorName].loc[iClearMask, "交易数量"]
+                self._Output["交易记录"][iFactorName].loc[iClearMask, "收益率"] = self._Output["交易记录"][iFactorName].loc[iClearMask, "盈亏金额"] / (self._Output["交易记录"][iFactorName].loc[iClearMask, "开仓价格"] * self._Output["交易记录"][iFactorName].loc[iClearMask, "交易数量"]).abs()
         # 开仓
-        TradeNum = (TradeAmt.T / Price).T
+        TradeNum = TradeAmt / PriceVal
         Mask = pd.isnull(TradeNum)
         TradeAmt[Mask] = 0
         TradeNum[Mask] = 0
@@ -252,6 +264,11 @@ class TradeSignal(BaseModule):
         self._Output["标的数量"][DTIdx] = UnderlyingNum + TradeNum
         self._Output["现金余额"][DTIdx] = Cash - 2 * np.clip(TradeAmt, -np.inf, 0)
         self._Output["账户余额"][DTIdx] = self._Output["现金余额"][DTIdx] + self._Output["标的金额"][DTIdx]
+        Mask = (TradeNum!=0)
+        for i, iFactorName in enumerate(self.TestFactors):
+            if np.any(Mask[:, i]):
+                iTradeRecord = pd.DataFrame({"ID": IDs[Mask[:, i]], "开仓时点": idt, "开仓价格": PriceVal[Mask[:, i], i], "交易数量": TradeNum[Mask[:, i], i]})
+                self._Output["交易记录"][iFactorName] = self._Output["交易记录"][iFactorName].append(iTradeRecord, ignore_index=True)
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
@@ -259,11 +276,13 @@ class TradeSignal(BaseModule):
         DTs, IDs = self._Model.DateTimeSeries, self._Output.pop("标的ID")
         nDT, nID = len(DTs), len(IDs)
         nYear = (DTs[-1] - DTs[0]).days / 365
-        self._Output["标的净值"] = pd.DataFrame(self._Output.pop("标的价格"), index=DTs, columns=IDs)
-        self._Output["标的净值"] = self._Output["标的净值"].fillna(method="ffill")
-        self._Output["标的净值"] = self._Output["标的净值"] / self._Output["标的净值"].fillna(method="bfill").iloc[0]
+        Price = self._FactorTable.readData(factor_names=[self.PriceFactor], ids=IDs, dts=[self._Model.DateTimeSeries[-1]]).iloc[0, 0, :]
         self._Output["时间序列"] = {}
+        self._Output["时间序列"]["标的净值"] = pd.DataFrame(self._Output.pop("标的价格"), index=DTs, columns=IDs)
+        self._Output["时间序列"]["标的净值"] = self._Output["时间序列"]["标的净值"].fillna(method="ffill")
+        self._Output["时间序列"]["标的净值"] = self._Output["时间序列"]["标的净值"] / self._Output["时间序列"]["标的净值"].fillna(method="bfill").iloc[0]
         self._Output["统计数据"] = {}
+        self._Output["交易统计"] = {}
         for i, iFactorName in enumerate(self.TestFactors):
             self._Output["时间序列"].setdefault("交易信号", {})[iFactorName] = pd.DataFrame(self._Output["交易信号"][:, :, i], index=DTs, columns=IDs)
             iCashFlow = self._Output["现金流"][:, :, i]
@@ -278,6 +297,16 @@ class TradeSignal(BaseModule):
             iStrategyStats = summaryStrategy(self._Output["时间序列"]["净值"][iFactorName].values, DTs)
             iStrategyStats.columns = IDs
             self._Output["统计数据"][iFactorName] = iStrategyStats
+            iTradeRecord = self._Output["交易记录"][iFactorName].loc[:, ["ID", "开仓时点", "开仓价格", "交易数量", "平仓时点", "平仓价格", "盈亏金额", "收益率"]]
+            if self.EndClear:# 清仓
+                iClearMask = pd.isnull(iTradeRecord["平仓时点"])
+                iTradeRecord.loc[iClearMask, "平仓时点"] = self._Model.DateTimeSeries[-1]
+                iTradeRecord.loc[iClearMask, "平仓价格"] = Price.loc[iTradeRecord.loc[iClearMask, "ID"]].values
+                iTradeRecord.loc[iClearMask, "盈亏金额"] = (iTradeRecord.loc[iClearMask, "平仓价格"] - iTradeRecord.loc[iClearMask, "开仓价格"]) * iTradeRecord.loc[iClearMask, "交易数量"]
+                iTradeRecord.loc[iClearMask, "收益率"] = iTradeRecord.loc[iClearMask, "盈亏金额"] / (iTradeRecord.loc[iClearMask, "开仓价格"] * iTradeRecord.loc[iClearMask, "交易数量"]).abs()
+                iTradeRecord = iTradeRecord[iTradeRecord["平仓时点"]!=iTradeRecord["开仓时点"]]
+            self._Output["交易记录"][iFactorName] = iTradeRecord
+            self._Output["交易统计"][iFactorName] = summaryTrade(iTradeRecord[pd.notnull(iTradeRecord["平仓时点"])])
         self._Output.pop("交易信号")
         self._Output.pop("现金流")
         self._Output.pop("现金余额")
