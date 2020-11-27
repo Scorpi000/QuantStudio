@@ -13,7 +13,8 @@ from scipy import stats
 
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
-from QuantStudio.Tools.StrategyTestFun import testTimingStrategy, summaryStrategy, formatStrategySummary, summaryTimingStrategy, formatTimingStrategySummary, summaryTrade
+from QuantStudio.Tools.StrategyTestFun import testTimingStrategy, summaryStrategy, formatStrategySummary, summaryTimingStrategy, formatTimingStrategySummary, summaryTrade, formatTradeSummary
+from QuantStudio.Tools import CashFlowCalculator
 from QuantStudio.BackTest.BackTestModel import BaseModule
 
 
@@ -306,7 +307,10 @@ class TradeSignal(BaseModule):
                 iTradeRecord.loc[iClearMask, "收益率"] = iTradeRecord.loc[iClearMask, "盈亏金额"] / (iTradeRecord.loc[iClearMask, "开仓价格"] * iTradeRecord.loc[iClearMask, "交易数量"]).abs()
                 iTradeRecord = iTradeRecord[iTradeRecord["平仓时点"]!=iTradeRecord["开仓时点"]]
             self._Output["交易记录"][iFactorName] = iTradeRecord
-            self._Output["交易统计"][iFactorName] = summaryTrade(iTradeRecord[pd.notnull(iTradeRecord["平仓时点"])])
+            iTradeStats = summaryTrade(iTradeRecord[pd.notnull(iTradeRecord["平仓时点"])])
+            iIRR = (1 + CashFlowCalculator.rate(-iCashFlow, pv=0, fv=self._Output["时间序列"]["账户余额"][iFactorName].iloc[-1].values)) ** (nDT / nYear) - 1
+            iTradeStats.loc["年化IRR"] = np.r_[(1 + CashFlowCalculator.rate(-np.sum(iCashFlow, axis=1), pv=0, fv=np.sum(self._Output["时间序列"]["账户余额"][iFactorName].iloc[-1].values))) ** (nDT / nYear) - 1, iIRR]
+            self._Output["交易统计"][iFactorName] = iTradeStats
         self._Output.pop("交易信号")
         self._Output.pop("现金流")
         self._Output.pop("现金余额")
@@ -317,9 +321,8 @@ class TradeSignal(BaseModule):
         return 0
     def genMatplotlibFig(self, file_path=None, target_factor=None):
         if target_factor is None: target_factor = self.TestFactors[0]
-        iNV = self._Output["时间序列"]["总计"][target_factor]
-        iPos = self._Output["时间序列"]["仓位"][target_factor]
-        iTargetNV = self._Output["标的净值"]
+        iNV = self._Output["时间序列"]["净值"][target_factor]
+        iTargetNV = self._Output["时间序列"]["标的净值"]
         nID = iTargetNV.shape[1]
         xData = np.arange(0, iNV.shape[0])
         xTicks = np.arange(0, iNV.shape[0], int(iNV.shape[0]/10))
@@ -328,20 +331,13 @@ class TradeSignal(BaseModule):
         Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         for j, jID in enumerate(iTargetNV.columns):
             iAxes = Fig.add_subplot(nRow, nCol, j+1)
-            ijPos = iPos[jID].copy()
-            ijPos[~(ijPos>=0)] = 0
-            iAxes.bar(xData, ijPos.values, label="多头仓位", color="indianred", alpha=0.5)
-            ijPos = iPos[jID].copy()
-            ijPos[~(ijPos<0)] = 0
-            iAxes.bar(xData, ijPos.values, label="空头仓位", color="forestgreen", alpha=0.5)
-            iRAxes = iAxes.twinx()
-            iRAxes.plot(xData, iTargetNV[jID].values, label=str(jID), color="steelblue", lw=2.5)
-            iRAxes.plot(xData, iNV[jID].values, label="策略净值", color="k", lw=2.5)
-            iRAxes.legend()
+            iAxes.plot(xData, iTargetNV[jID].values, label=str(jID), color="steelblue", lw=2.5)
+            iAxes.plot(xData, iNV[jID].values, label="策略净值", color="indianred", lw=2.5)
+            iAxes.legend()
             iAxes.set_xticks(xTicks)
             iAxes.set_xticklabels(xTickLabels)
             iAxes.legend()
-            iAxes.set_title(target_factor+" - "+str(jID)+" : 仓位信号策略净值")
+            iAxes.set_title(target_factor+" - "+str(jID)+" : 交易策略净值")
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
@@ -349,29 +345,27 @@ class TradeSignal(BaseModule):
             HTML = "参数设置: "
             HTML += '<ul align="left">'
             for iArgName in self.ArgNames:
-                HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
+                if iArgName not in ("计算时点",):
+                    HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
+                elif self.Args[iArgName]:
+                    HTML += "<li>"+iArgName+": 自定义时点</li>"
+                else:
+                    HTML += "<li>"+iArgName+": 所有时点</li>"
             HTML += "</ul>"
         else:
             HTML = ""
+        PercentageFormatFun = np.vectorize(lambda x: ("%.2f%%" % (x*100, )))
         for iFactor in self.TestFactors:
+            iOutput = self._Output["交易统计"][iFactor]
+            iHTML = iFactor+" - 交易统计 : "
+            iFormat = formatTradeSummary(iOutput)
+            iFormat.iloc[13:] = PercentageFormatFun(iOutput.iloc[13:, :].values)
+            iHTML += iFormat.to_html()
+            Pos = iHTML.find(">")
+            HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
             iOutput = self._Output["统计数据"][iFactor]
-            iHTML = iFactor+" - 统计数据 : "
+            iHTML = iFactor+" - 净值统计 : "
             iHTML += formatStrategySummary(iOutput).to_html()
-            Pos = iHTML.find(">")
-            HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-            iOutput = self._Output["择时统计"]["多空统计"][iFactor]
-            iHTML = iFactor+" - 多空统计 : "
-            iHTML += formatTimingStrategySummary(iOutput).to_html()
-            Pos = iHTML.find(">")
-            HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-            iOutput = self._Output["择时统计"]["多头统计"][iFactor]
-            iHTML = iFactor+" - 多头统计 : "
-            iHTML += formatTimingStrategySummary(iOutput).to_html()
-            Pos = iHTML.find(">")
-            HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-            iOutput = self._Output["择时统计"]["空头统计"][iFactor]
-            iHTML = iFactor+" - 空头统计 : "
-            iHTML += formatTimingStrategySummary(iOutput).to_html()
             Pos = iHTML.find(">")
             HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
             Fig = self.genMatplotlibFig(target_factor=iFactor)
@@ -492,10 +486,13 @@ class QuantileTiming(BaseModule):
                 ijLSSignal = ijSignal.iloc[:, 0].where(pd.notnull(ijSignal.iloc[:, 0]), -ijSignal.iloc[:, -1])
                 for k in self.LSClearGroups:
                     ijLSSignal = (ijSignal.iloc[:, k] * 0).where(pd.notnull(ijSignal.iloc[:, k]), ijLSSignal)
-                ijLSNV, _, _ = testTimingStrategy(ijSignal.loc[ijDTs[0]:].values.reshape((-1, 1)), self._Output["标的净值"].loc[ijDTs[0]:].iloc[:, j].values.reshape((-1, 1)))
-                ijLSReturn = ijLSNV[:, 0] / np.r_[ijLSNV[:1, 0], ijLSNV[:-1, 0]] - 1
-                ijLSReturn[np.isinf(ijLSReturn)] = 0
-                ijSignalReturn["L-S"] = ijLSReturn
+                if ijDTs.shape[0]>0:
+                    ijLSNV, _, _ = testTimingStrategy(ijSignal.loc[ijDTs[0]:].values.reshape((-1, 1)), self._Output["标的净值"].loc[ijDTs[0]:].iloc[:, j].values.reshape((-1, 1)))
+                    ijLSReturn = ijLSNV[:, 0] / np.r_[ijLSNV[:1, 0], ijLSNV[:-1, 0]] - 1
+                    ijLSReturn[np.isinf(ijLSReturn)] = 0
+                    ijSignalReturn["L-S"] = ijLSReturn
+                else:
+                    ijSignalReturn["L-S"] = 0
                 if ijSignalReturn.shape[0]==0:
                     self._Output["策略收益率"][iFactor][jID] = ijSignalReturn
                     self._Output["策略净值"][iFactor][jID] = ijSignalReturn

@@ -900,22 +900,34 @@ def summaryTrade(trade_record, only_total=False):
     Summary["交易次数"] = trade_record.shape[0]
     Summary["盈利次数"] = ProfitMask.sum()
     Summary["亏损次数"] = Summary["交易次数"] - Summary["盈利次数"]
-    Summary["胜率"] = Summary["盈利次数"] / Summary["交易次数"]
     Summary["总盈亏"] = trade_record["盈亏金额"].sum()
     Summary["平均收益率"] = trade_record["收益率"].mean()
+    Summary["年化收益率"] = trade_record["收益率"].sum() / HoldingDays * 365
     Summary["平均盈利率"] = trade_record["收益率"][ProfitMask].mean()
     Summary["平均亏损率"] = - trade_record["收益率"][~ProfitMask].mean()
-    Summary["盈亏比"] = Summary["平均盈利率"] / Summary["平均亏损率"]
     Summary["单次最大盈利率"]  = max(0, trade_record["收益率"].max())
     Summary["单次最大亏损率"]  = - min(0, trade_record["收益率"].min())
+    Summary["胜率"] = Summary["盈利次数"] / Summary["交易次数"]
+    Summary["盈亏比"] = Summary["平均盈利率"] / Summary["平均亏损率"]
     Summary["平均持仓天数"] = HoldingDays / Summary["交易次数"]
-    Summary["年化收益率"] = (trade_record["收益率"] / HoldingDays).mean() * 365
     if only_total: return pd.Series(Summary)
     Summary = pd.DataFrame(pd.Series(Summary), columns=["总计"])
     IDs = sorted(trade_record["ID"].unique())
     for iID in IDs:
         Summary[iID] = summaryTrade(trade_record[trade_record["ID"]==iID], only_total=True)
     return Summary
+# 格式化交易相关的统计指标
+def formatTradeSummary(summray):
+    FormattedStats = pd.DataFrame(index=summray.index, columns=summray.columns, dtype="O")
+    DateFormatFun = np.vectorize(lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else "NaT")
+    IntFormatFun = np.vectorize(lambda x: ("%d" % (x, )))
+    FloatFormatFun = np.vectorize(lambda x: ("%.2f" % (x, )))
+    PercentageFormatFun = np.vectorize(lambda x: ("%.2f%%" % (x*100, )))
+    FormattedStats.iloc[:3] = IntFormatFun(summray.iloc[:3, :].values)
+    FormattedStats.iloc[3:4] = FloatFormatFun(summray.iloc[3:4, :].values)
+    FormattedStats.iloc[4:11] = PercentageFormatFun(summray.iloc[4:11, :].values)
+    FormattedStats.iloc[11:13] = FloatFormatFun(summray.iloc[11:13, :].values)
+    return FormattedStats
 def summarySingleTiming(start_idx, end_idx, ret, position_level, n_per_year=240):
     Summary = {}
     ProfitMask = (ret>=0)
