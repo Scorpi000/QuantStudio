@@ -251,7 +251,7 @@ class ReturnForecast(BaseModule):
             HTML = "参数设置: "
             HTML += '<ul align="left">'
             for iArgName in self.ArgNames:
-                if iArgName!="计算时点":
+                if iArgName not in ("样本时点", "计算时点"):
                     HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
                 elif self.Args[iArgName]:
                     HTML += "<li>"+iArgName+": 自定义时点</li>"

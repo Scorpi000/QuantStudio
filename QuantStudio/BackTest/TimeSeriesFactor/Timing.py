@@ -9,6 +9,7 @@ import pandas as pd
 from traits.api import Enum, List, Int, Str, Float, Dict, ListStr, on_trait_change, ListInt, Bool
 from matplotlib.ticker import FuncFormatter
 from matplotlib.figure import Figure
+from matplotlib import cm
 from scipy import stats
 
 from QuantStudio import __QS_Error__
@@ -183,6 +184,7 @@ class TradeSignal(BaseModule):
     #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
     CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=2)
     EndClear = Bool(True, arg_type="Bool", label="结束清仓", order=3)
+    CalcIRR = Bool(False, arg_type="Bool", label="计算IRR", order=4)
     def __init__(self, factor_table, name="交易信号回测", sys_args={}, **kwargs):
         self._FactorTable = factor_table
         super().__init__(name=name, sys_args=sys_args, **kwargs)
@@ -283,7 +285,7 @@ class TradeSignal(BaseModule):
         self._Output["时间序列"]["标的净值"] = self._Output["时间序列"]["标的净值"].fillna(method="ffill")
         self._Output["时间序列"]["标的净值"] = self._Output["时间序列"]["标的净值"] / self._Output["时间序列"]["标的净值"].fillna(method="bfill").iloc[0]
         self._Output["统计数据"] = {}
-        self._Output["交易统计"] = {}
+        self._Output["交易统计"] = {"所有交易": {}, "多头交易": {}, "空头交易": {}}
         for i, iFactorName in enumerate(self.TestFactors):
             self._Output["时间序列"].setdefault("交易信号", {})[iFactorName] = pd.DataFrame(self._Output["交易信号"][:, :, i], index=DTs, columns=IDs)
             iCashFlow = self._Output["现金流"][:, :, i]
@@ -308,9 +310,12 @@ class TradeSignal(BaseModule):
                 iTradeRecord = iTradeRecord[iTradeRecord["平仓时点"]!=iTradeRecord["开仓时点"]]
             self._Output["交易记录"][iFactorName] = iTradeRecord
             iTradeStats = summaryTrade(iTradeRecord[pd.notnull(iTradeRecord["平仓时点"])])
-            iIRR = (1 + CashFlowCalculator.rate(-iCashFlow, pv=0, fv=self._Output["时间序列"]["账户余额"][iFactorName].iloc[-1].values)) ** (nDT / nYear) - 1
-            iTradeStats.loc["年化IRR"] = np.r_[(1 + CashFlowCalculator.rate(-np.sum(iCashFlow, axis=1), pv=0, fv=np.sum(self._Output["时间序列"]["账户余额"][iFactorName].iloc[-1].values))) ** (nDT / nYear) - 1, iIRR]
-            self._Output["交易统计"][iFactorName] = iTradeStats
+            if self.CalcIRR:
+                iIRR = (1 + CashFlowCalculator.rate(-iCashFlow, pv=0, fv=self._Output["时间序列"]["账户余额"][iFactorName].iloc[-1].values)) ** (nDT / nYear) - 1
+                iTradeStats.loc["年化IRR"] = np.r_[(1 + CashFlowCalculator.rate(-np.sum(iCashFlow, axis=1), pv=0, fv=np.sum(self._Output["时间序列"]["账户余额"][iFactorName].iloc[-1].values))) ** (nDT / nYear) - 1, iIRR]
+            self._Output["交易统计"]["所有交易"][iFactorName] = iTradeStats
+            self._Output["交易统计"]["多头交易"][iFactorName] = summaryTrade(iTradeRecord[pd.notnull(iTradeRecord["平仓时点"]) & (iTradeRecord["交易数量"]>0)])
+            self._Output["交易统计"]["空头交易"][iFactorName] = summaryTrade(iTradeRecord[pd.notnull(iTradeRecord["平仓时点"]) & (iTradeRecord["交易数量"]<0)])
         self._Output.pop("交易信号")
         self._Output.pop("现金流")
         self._Output.pop("现金余额")
@@ -321,23 +326,34 @@ class TradeSignal(BaseModule):
         return 0
     def genMatplotlibFig(self, file_path=None, target_factor=None):
         if target_factor is None: target_factor = self.TestFactors[0]
-        iNV = self._Output["时间序列"]["净值"][target_factor]
+        iSignal = self._Output["时间序列"]["交易信号"][target_factor]
         iTargetNV = self._Output["时间序列"]["标的净值"]
         nID = iTargetNV.shape[1]
-        xData = np.arange(0, iNV.shape[0])
-        xTicks = np.arange(0, iNV.shape[0], int(iNV.shape[0]/10))
-        xTickLabels = [iNV.index[i].strftime("%Y-%m-%d") for i in xTicks]
+        xData = np.arange(0, iTargetNV.shape[0])
+        xTicks = np.arange(0, iTargetNV.shape[0], int(iTargetNV.shape[0]/10))
+        xTickLabels = [iTargetNV.index[i].strftime("%Y-%m-%d") for i in xTicks]
         nRow, nCol = nID//3+(nID%3!=0), min(3, nID)
         Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         for j, jID in enumerate(iTargetNV.columns):
+            ijTargetNV = iTargetNV[jID].values
+            ijSignal = iSignal[jID].values
             iAxes = Fig.add_subplot(nRow, nCol, j+1)
-            iAxes.plot(xData, iTargetNV[jID].values, label=str(jID), color="steelblue", lw=2.5)
-            iAxes.plot(xData, iNV[jID].values, label="策略净值", color="indianred", lw=2.5)
+            h = iAxes.plot(xData, ijTargetNV, label=str(jID), color="steelblue", lw=1.5)
+            h[0].set_zorder(0)
+            ijMask = (ijSignal>0)
+            if np.any(ijMask):
+                iAxes.scatter(xData[ijMask], ijTargetNV[ijMask], 20, marker="^", c=ijSignal[ijMask] / np.nanmax(ijSignal[ijMask]), cmap=cm.get_cmap("Reds_r"))
+            ijMask = (ijSignal<0)
+            if np.any(ijMask):
+                iAxes.scatter(xData[ijMask], ijTargetNV[ijMask], 20, marker="v", c=ijSignal[ijMask] / np.nanmin(ijSignal[ijMask]), cmap=cm.get_cmap("Greens_r"))
+            ijMask = (ijSignal==0)
+            if np.any(ijMask):
+                iAxes.scatter(xData[ijMask], ijTargetNV[ijMask], 20, marker="o", color="y")
             iAxes.legend()
             iAxes.set_xticks(xTicks)
             iAxes.set_xticklabels(xTickLabels)
             iAxes.legend()
-            iAxes.set_title(target_factor+" - "+str(jID)+" : 交易策略净值")
+            iAxes.set_title(target_factor+" - "+str(jID)+" : 交易信号")
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
@@ -356,18 +372,20 @@ class TradeSignal(BaseModule):
             HTML = ""
         PercentageFormatFun = np.vectorize(lambda x: ("%.2f%%" % (x*100, )))
         for iFactor in self.TestFactors:
-            iOutput = self._Output["交易统计"][iFactor]
-            iHTML = iFactor+" - 交易统计 : "
-            iFormat = formatTradeSummary(iOutput)
-            iFormat.iloc[13:] = PercentageFormatFun(iOutput.iloc[13:, :].values)
-            iHTML += iFormat.to_html()
-            Pos = iHTML.find(">")
-            HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-            iOutput = self._Output["统计数据"][iFactor]
-            iHTML = iFactor+" - 净值统计 : "
-            iHTML += formatStrategySummary(iOutput).to_html()
-            Pos = iHTML.find(">")
-            HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+            for jKey in ["所有交易", "多头交易", "空头交易"]:
+                iOutput = self._Output["交易统计"][jKey][iFactor]
+                iHTML = iFactor+f" - {jKey} : "
+                iFormat = formatTradeSummary(iOutput)
+                if iOutput.shape[0]>=14:
+                    iFormat.iloc[13:] = PercentageFormatFun(iOutput.iloc[13:, :].values)
+                iHTML += iFormat.to_html()
+                Pos = iHTML.find(">")
+                HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+            #iOutput = self._Output["统计数据"][iFactor]
+            #iHTML = iFactor+" - 净值统计 : "
+            #iHTML += formatStrategySummary(iOutput).to_html()
+            #Pos = iHTML.find(">")
+            #HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
             Fig = self.genMatplotlibFig(target_factor=iFactor)
             # figure 保存为二进制文件
             Buffer = BytesIO()

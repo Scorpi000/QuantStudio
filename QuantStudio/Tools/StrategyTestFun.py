@@ -4,6 +4,7 @@ import os
 import sys
 import shutil
 import datetime as dt
+from collections import OrderedDict
 import time
 
 import numpy as np
@@ -894,8 +895,11 @@ def formatStrategySummary(summray):
 # 生成交易相关的统计指标
 # trade_record : DataFrame(columns=["ID", "开仓时点", "开仓价格", "交易数量", "平仓时点", "平仓价格", "盈亏金额", "收益率"])
 def summaryTrade(trade_record, only_total=False):
-    Summary = {}
-    HoldingDays = (trade_record["平仓时点"].astype(np.datetime64) - trade_record["开仓时点"].astype(np.datetime64)).apply(lambda x: x.days).sum()
+    Summary = OrderedDict()
+    if trade_record.shape[0]==0:
+        HoldingDays = np.nan
+    else:
+        HoldingDays = (trade_record["平仓时点"].astype(np.datetime64) - trade_record["开仓时点"].astype(np.datetime64)).apply(lambda x: x.days).sum()
     ProfitMask = (trade_record["盈亏金额"]>=0)
     Summary["交易次数"] = trade_record.shape[0]
     Summary["盈利次数"] = ProfitMask.sum()
@@ -907,9 +911,9 @@ def summaryTrade(trade_record, only_total=False):
     Summary["平均亏损率"] = - trade_record["收益率"][~ProfitMask].mean()
     Summary["单次最大盈利率"]  = max(0, trade_record["收益率"].max())
     Summary["单次最大亏损率"]  = - min(0, trade_record["收益率"].min())
-    Summary["胜率"] = Summary["盈利次数"] / Summary["交易次数"]
-    Summary["盈亏比"] = Summary["平均盈利率"] / Summary["平均亏损率"]
-    Summary["平均持仓天数"] = HoldingDays / Summary["交易次数"]
+    Summary["胜率"] = Summary["盈利次数"] / (Summary["交易次数"] if Summary["交易次数"]!=0 else np.nan)
+    Summary["盈亏比"] = Summary["平均盈利率"] / (Summary["平均亏损率"] if Summary["平均亏损率"]!=0 else np.nan)
+    Summary["平均持仓天数"] = HoldingDays / (Summary["交易次数"] if Summary["交易次数"]!=0 else np.nan)
     if only_total: return pd.Series(Summary)
     Summary = pd.DataFrame(pd.Series(Summary), columns=["总计"])
     IDs = sorted(trade_record["ID"].unique())
@@ -929,7 +933,7 @@ def formatTradeSummary(summray):
     FormattedStats.iloc[11:13] = FloatFormatFun(summray.iloc[11:13, :].values)
     return FormattedStats
 def summarySingleTiming(start_idx, end_idx, ret, position_level, n_per_year=240):
-    Summary = {}
+    Summary = OrderedDict()
     ProfitMask = (ret>=0)
     Summary["择时次数"] = start_idx.shape[0]
     Summary["正确次数"] = np.sum(ProfitMask)
