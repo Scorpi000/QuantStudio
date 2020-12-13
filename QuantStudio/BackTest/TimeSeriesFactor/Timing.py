@@ -11,7 +11,7 @@ from matplotlib.ticker import FuncFormatter
 from matplotlib.figure import Figure
 from matplotlib import cm
 from scipy import stats
-
+  
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.Tools.StrategyTestFun import testTimingStrategy, summaryStrategy, formatStrategySummary, summaryTimingStrategy, formatTimingStrategySummary, summaryTrade, formatTradeSummary
@@ -92,7 +92,8 @@ class TargetPositionSignal(BaseModule):
         Amt, self._Output["时间序列"]["标的"] = self._Output.pop("标的"), {}
         Cash, self._Output["时间序列"]["现金"] = self._Output.pop("现金"), {}
         Turnover, self._Output["时间序列"]["换手率"] = self._Output.pop("换手率"), {}
-        self._Output["统计数据"] = {}
+        self._Output["统计数据"] = {"标的": summaryStrategy(self._Output["标的净值"].values, self._Output["标的净值"].index.tolist(), risk_free_rate=0.0)}
+        self._Output["统计数据"]["标的"].columns = self._Output["标的净值"].columns
         self._Output["择时统计"] = {"多空统计": {}, "多头统计": {}, "空头统计": {}}
         for i, iFactor in enumerate(self.TestFactors):
             self._Output["时间序列"]["目标仓位"][iFactor] = pd.DataFrame(TargetPosition[:, :, i], index=DTs, columns=self._Output["标的ID"])
@@ -146,26 +147,36 @@ class TargetPositionSignal(BaseModule):
         else:
             HTML = ""
         for iFactor in self.TestFactors:
-            iOutput = self._Output["统计数据"][iFactor]
             iHTML = iFactor+" - 统计数据 : "
-            iHTML += formatStrategySummary(iOutput).to_html()
+            iOutput = formatStrategySummary(self._Output["统计数据"][iFactor]).reset_index()
+            iOutput.columns = ["Statistics"]+iOutput.columns.tolist()[1:]
+            iHTML += iOutput.to_html(index=False, notebook=True)
             Pos = iHTML.find(">")
-            HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-            iOutput = self._Output["择时统计"]["多空统计"][iFactor]
+            HTML += ('<div style="float:left;width:49%%;overflow:scroll">%s</div>' % (iHTML[:Pos]+' align="center"'+iHTML[Pos:],))
+            iHTML = "标的 - 统计数据 : "
+            iOutput = formatStrategySummary(self._Output["统计数据"]["标的"]).reset_index()
+            iOutput.columns = ["Statistics"]+iOutput.columns.tolist()[1:]
+            iHTML += iOutput.to_html(index=False, notebook=True)
+            Pos = iHTML.find(">")
+            HTML += ('<div style="float:left;width:49%%;overflow:scroll">%s</div>' % (iHTML[:Pos]+' align="center"'+iHTML[Pos:],))
             iHTML = iFactor+" - 多空统计 : "
-            iHTML += formatTimingStrategySummary(iOutput).to_html()
+            iOutput = formatTimingStrategySummary(self._Output["择时统计"]["多空统计"][iFactor]).reset_index()
+            iOutput.columns = ["Statistics"]+iOutput.columns.tolist()[1:]
+            iHTML += iOutput.to_html(index=False, notebook=True)
             Pos = iHTML.find(">")
-            HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-            iOutput = self._Output["择时统计"]["多头统计"][iFactor]
+            HTML += ('<div style="float:left;width:33%%;overflow:scroll">%s</div>' % (iHTML[:Pos]+' align="center"'+iHTML[Pos:],))
             iHTML = iFactor+" - 多头统计 : "
-            iHTML += formatTimingStrategySummary(iOutput).to_html()
+            iOutput = formatTimingStrategySummary(self._Output["择时统计"]["多头统计"][iFactor]).reset_index()
+            iOutput.columns = ["Statistics"]+iOutput.columns.tolist()[1:]
+            iHTML += iOutput.to_html(index=False, notebook=True)
             Pos = iHTML.find(">")
-            HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-            iOutput = self._Output["择时统计"]["空头统计"][iFactor]
+            HTML += ('<div style="float:left;width:33%%;overflow:scroll">%s</div>' % (iHTML[:Pos]+' align="center"'+iHTML[Pos:],))
             iHTML = iFactor+" - 空头统计 : "
-            iHTML += formatTimingStrategySummary(iOutput).to_html()
+            iOutput = formatTimingStrategySummary(self._Output["择时统计"]["空头统计"][iFactor]).reset_index()
+            iOutput.columns = ["Statistics"]+iOutput.columns.tolist()[1:]
+            iHTML += iOutput.to_html(index=False, notebook=True)
             Pos = iHTML.find(">")
-            HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+            HTML += ('<div style="float:left;width:33%%;overflow:scroll">%s</div>' % (iHTML[:Pos]+' align="center"'+iHTML[Pos:],))
             Fig = self.genMatplotlibFig(target_factor=iFactor)
             # figure 保存为二进制文件
             Buffer = BytesIO()
@@ -373,14 +384,16 @@ class TradeSignal(BaseModule):
         PercentageFormatFun = np.vectorize(lambda x: ("%.2f%%" % (x*100, )))
         for iFactor in self.TestFactors:
             for jKey in ["所有交易", "多头交易", "空头交易"]:
-                iOutput = self._Output["交易统计"][jKey][iFactor]
                 iHTML = iFactor+f" - {jKey} : "
+                iOutput = self._Output["交易统计"][jKey][iFactor]
                 iFormat = formatTradeSummary(iOutput)
                 if iOutput.shape[0]>=14:
                     iFormat.iloc[13:] = PercentageFormatFun(iOutput.iloc[13:, :].values)
-                iHTML += iFormat.to_html()
+                iFormat = iFormat.reset_index()
+                iFormat.columns = ["Statistics"]+iFormat.columns.tolist()[1:]
+                iHTML += iFormat.to_html(index=False, notebook=True)
                 Pos = iHTML.find(">")
-                HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+                HTML += ('<div style="float:left;width:33%%;overflow:scroll">%s</div>' % (iHTML[:Pos]+' align="center"'+iHTML[Pos:],))
             #iOutput = self._Output["统计数据"][iFactor]
             #iHTML = iFactor+" - 净值统计 : "
             #iHTML += formatStrategySummary(iOutput).to_html()
