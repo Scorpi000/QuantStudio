@@ -712,7 +712,7 @@ def _lag(f,idt,iid,x,args):
     Data = pd.DataFrame(x[0], index=idt)
     TargetData = Data.loc[TargetDTs].values
     TargetData[args["OperatorArg"]['lag_period']:] = TargetData[:-args["OperatorArg"]['lag_period']]
-    if f.FactorDataType!="double":
+    if f.DataType!="double":
         Data = pd.DataFrame(np.empty(Data.shape,dtype="O"),index=Data.index,columns=iid)
     else:
         Data = pd.DataFrame(index=Data.index,columns=iid,dtype="float")

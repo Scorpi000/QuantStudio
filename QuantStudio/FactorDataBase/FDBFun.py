@@ -978,6 +978,7 @@ class SQL_NarrowTable(SQL_Table):
 
 # 基于 SQL 数据库表的特征因子表
 # 一个字段标识 ID, 其余字段为因子
+# 如果时点字段为 None, 则忽略目标时点参数; 否则如果目标时点为 None, 则默认以时点字段的最大值作为目标时点
 class SQL_FeatureTable(SQL_WideTable):
     """SQL 特征因子表"""
     LookBack = Float(np.inf, arg_type="Integer", label="回溯天数", order=0)
@@ -986,8 +987,6 @@ class SQL_FeatureTable(SQL_WideTable):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
         self._QS_IgnoredGroupArgs = ("遍历模式", "多重映射", "算子", "算子数据类型")
     def _getMaxDT(self, args={}):
-        DTField = args.get("时点字段", self.DTField)
-        if pd.isnull(DTField): return None
         DTField = self._DBTableName+"."+self._FactorInfo.loc[DTField, "DBFieldName"]
         SQLStr = "SELECT MAX("+DTField+") "
         SQLStr += self._genFromSQLStr()+" "
@@ -997,6 +996,15 @@ class SQL_FeatureTable(SQL_WideTable):
         if not MaxDT: return None
         return MaxDT[0][0]
     def getID(self, ifactor_name=None, idt=None, args={}):
+        DTField = args.get("时点字段", self.DTField)
+        if pd.isnull(DTField):
+            IDField = self._DBTableName+"."+self._FactorInfo.loc[args.get("ID字段", self.IDField), "DBFieldName"]
+            SQLStr = "SELECT DISTINCT "+self._getIDField(args=args)+" AS ID "
+            SQLStr += self._genFromSQLStr()+" "
+            SQLStr += "WHERE "+IDField+" IS NOT NULL "
+            SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
+            SQLStr += "ORDER BY ID"
+            return self.__QS_restoreID__([iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)])
         TargetDT = args.get("目标时点", self.TargetDT)
         if TargetDT is None: TargetDT = self._getMaxDT(args=args)
         if TargetDT is None: return []
