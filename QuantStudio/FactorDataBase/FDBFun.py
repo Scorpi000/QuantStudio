@@ -987,7 +987,7 @@ class SQL_FeatureTable(SQL_WideTable):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
         self._QS_IgnoredGroupArgs = ("遍历模式", "多重映射", "算子", "算子数据类型")
     def _getMaxDT(self, args={}):
-        DTField = self._DBTableName+"."+self._FactorInfo.loc[DTField, "DBFieldName"]
+        DTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
         SQLStr = "SELECT MAX("+DTField+") "
         SQLStr += self._genFromSQLStr()+" "
         SQLStr += "WHERE "+DTField+" IS NOT NULL "
@@ -1252,32 +1252,41 @@ class SQL_TimeSeriesTable(SQL_Table):
 
 
 # 基于 SQL 数据库表的映射因子表
-# 一个字段标识 ID, 一个字段标识起始时点, 一个字段标识截止时点, 其余字段为因子
+# 一个字段标识 ID, 一个字段标识起始时点, 来自参数时点字段, 一个字段标识截止时点, 其余字段为因子
 class SQL_MappingTable(SQL_Table):
     """SQL 映射因子表"""
     OnlyStartFilled = Bool(False, label="只填起始日", arg_type="Bool", order=0)
     MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=1)
+    #EndDTField = Enum(None, arg_type="SingleOption", label="结束时点字段", order=2)
+    EndDTIncluded = Bool(True, label="包含结束时点", arg_type="Bool", order=3)
     def __init__(self, name, fdb, sys_args={}, table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
         self._QS_IgnoredGroupArgs = ("遍历模式", "只填起始日", "多重映射")
-        #self._StartDateField = self._FactorInfo["DBFieldName"][self._FactorInfo["FieldType"]=="Date"].iloc[0]
-        self._EndDateField = self._FactorInfo["DBFieldName"][self._FactorInfo["FieldType"]=="EndDate"].iloc[0]
-        self._EndDateIncluded = self._FactorInfo[self._FactorInfo["FieldType"]=="EndDate"]["Supplementary"].iloc[0]
-        self._EndDateIncluded = (pd.isnull(self._EndDateIncluded) or (self._EndDateIncluded=="包含"))
+    def __QS_initArgs__(self):
+        super().__QS_initArgs__()
+        # 解析结束时点字段
+        Fields = self._FactorInfo[self._FactorInfo["FieldType"].str.lower().str.contains("date")].index.tolist()# 所有的时点字段列表
+        self.add_trait("EndDTField", Enum(*Fields, arg_type="SingleOption", label="结束时点字段", order=2))
+        EndDTField = self._FactorInfo["DBFieldName"][self._FactorInfo["FieldType"]=="EndDate"]
+        if EndDTField.shape[0]==0: self.EndDTField = Fields[0]
+        else: self.EndDTField = EndDTField.index[0]
+        EndDTIncluded = self._FactorInfo.loc[self.EndDTField, "Supplementary"]
+        self.EndDTIncluded = (pd.isnull(EndDTIncluded) or (EndDTIncluded=="包含"))
     # 返回给定时点 idt 有数据的所有 ID
     # 如果 idt 为 None, 将返回所有有记录的 ID
     # 忽略 ifactor_name
     def getID(self, ifactor_name=None, idt=None, args={}):
         DTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
+        EndDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("结束时点字段", self.EndDTField), "DBFieldName"]
         IDField = self._DBTableName+"."+self._FactorInfo.loc[args.get("ID字段", self.IDField), "DBFieldName"]
         SQLStr = "SELECT DISTINCT "+self._getIDField(args=args)+" AS ID "
         SQLStr += self._genFromSQLStr()+" "
         if idt is not None:
             SQLStr += "WHERE "+DTField+"<="+idt.strftime(self._DTFormat)+" "
-            if self._EndDateIncluded:
-                SQLStr += "AND "+self._DBTableName+"."+self._EndDateField+">="+idt.strftime(self._DTFormat)+" "
+            if args.get("包含结束时点", self.EndDTIncluded):
+                SQLStr += "AND "+EndDTField+">="+idt.strftime(self._DTFormat)+" "
             else:
-                SQLStr += "AND "+self._DBTableName+"."+self._EndDateField+">"+idt.strftime(self._DTFormat)+" "
+                SQLStr += "AND "+EndDTField+">"+idt.strftime(self._DTFormat)+" "
         else: SQLStr += "WHERE "+DTField+" IS NOT NULL "
         SQLStr += "AND "+IDField+" IS NOT NULL "
         SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
@@ -1314,18 +1323,19 @@ class SQL_MappingTable(SQL_Table):
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         DTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
+        EndDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("结束时点字段", self.EndDTField), "DBFieldName"]
         # 形成SQL语句, ID, 开始日期, 结束日期, 因子数据
         SQLStr = "SELECT "+self._getIDField(args=args)+" AS ID, "
         SQLStr += DTField+", "
-        SQLStr += self._DBTableName+"."+self._EndDateField+", "
+        SQLStr += EndDTField+", "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
         SQLStr += self._genIDSQLStr(ids, init_keyword="WHERE", args=args)+" "
         SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
-        SQLStr += "AND (("+self._DBTableName+"."+self._EndDateField+">="+StartDate.strftime(self._DTFormat)+") "
-        SQLStr += "OR ("+self._DBTableName+"."+self._EndDateField+" IS NULL) "
-        SQLStr += "OR ("+self._DBTableName+"."+self._EndDateField+"<"+DTField+")) "
+        SQLStr += "AND (("+EndDTField+">="+StartDate.strftime(self._DTFormat)+") "
+        SQLStr += "OR ("+EndDTField+" IS NULL) "
+        SQLStr += "OR ("+EndDTField+"<"+DTField+")) "
         SQLStr += "AND "+DTField+"<="+EndDate.strftime(self._DTFormat)+" "
         SQLStr += "ORDER BY ID, "+DTField
         RawData = self._FactorDB.fetchall(SQLStr)
@@ -1338,7 +1348,7 @@ class SQL_MappingTable(SQL_Table):
         raw_data.set_index(["ID"], inplace=True)
         raw_data["QS_结束日"] = raw_data["QS_结束日"].where(pd.notnull(raw_data["QS_结束日"]), dts[-1]+dt.timedelta(1))
         if args.get("只填起始日", self.OnlyStartFilled):
-            if self._EndDateIncluded:
+            if args.get("包含结束时点", self.EndDTIncluded):
                 raw_data["QS_结束日"] = (raw_data["QS_结束日"] + dt.timedelta(1)).astype("O")
             raw_data["QS_起始日"] = raw_data["QS_起始日"].where(raw_data["QS_起始日"]>=dts[0], dts[0])
             for iID in raw_data.index.unique():
@@ -1373,7 +1383,7 @@ class SQL_MappingTable(SQL_Table):
                 Data[iID] = iData
             return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
         else:
-            DeltaDT = dt.timedelta(int(not self._EndDateIncluded))
+            DeltaDT = dt.timedelta(int(not args.get("包含结束时点", self.EndDTIncluded)))
             for iID in raw_data.index.unique():
                 iRawData = raw_data.loc[[iID]].set_index(["QS_起始日", "QS_结束日"])
                 iData = pd.DataFrame([([],)*nFactor]*nDT, index=dts, columns=factor_names, dtype="O")
@@ -1400,7 +1410,7 @@ class SQL_MappingTable(SQL_Table):
         Data, nFactor = {}, len(factor_names)
         raw_data["QS_结束日"] = raw_data["QS_结束日"].where(pd.notnull(raw_data["QS_结束日"]), dts[-1]+dt.timedelta(1))
         if args.get("只填起始日", self.OnlyStartFilled):
-            if self._EndDateIncluded:
+            if args.get("包含结束时点", self.EndDTIncluded):
                 raw_data["QS_结束日"] = (raw_data["QS_结束日"] + dt.timedelta(1)).astype("O")
             raw_data["QS_起始日"] = raw_data["QS_起始日"].where(raw_data["QS_起始日"]>=dts[0], dts[0])
             for iID in raw_data.index.unique():
@@ -1430,7 +1440,7 @@ class SQL_MappingTable(SQL_Table):
                 Data[iID] = iData
             return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
         else:
-            DeltaDT = dt.timedelta(int(not self._EndDateIncluded))
+            DeltaDT = dt.timedelta(int(not args.get("包含结束时点", self.EndDTIncluded)))
             for iID in raw_data.index.unique():
                 iRawData = raw_data.loc[[iID]]
                 iData = pd.DataFrame(index=dts, columns=factor_names)
