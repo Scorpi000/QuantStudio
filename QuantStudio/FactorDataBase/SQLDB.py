@@ -55,6 +55,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
     FTArgs = Dict(label="因子表参数", arg_type="Dict", order=103)
     DTField = Str("datetime", arg_type="String", label="时点字段", order=104)
     IDField = Str("code", arg_type="String", label="ID字段", order=105)
+    CheckNullable = Bool(False, arg_type="Bool", label="检查缺失容许", order=106)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         #self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
         #self._TableFieldDataType = {}# {表名: pd.Series(数据库数据类型, index=[因子名])}
@@ -73,7 +74,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         if self._FactorInfo.shape[0]>0:
             self._FactorInfo["FieldType"][self._FactorInfo["FieldType"]=="ID"] = None
             self._FactorInfo["FieldType"][self._FactorInfo["FieldType"]==new] = "ID"
-    # factor_info: DataFrame(columns=["TableName", "DBFieldName", "DataType"])
+    # factor_info: DataFrame(columns=["TableName", "DBFieldName", "DataType", "Nullable"])
     def _genFactorInfo(self, factor_info):
         factor_info["FieldName"] = factor_info["DBFieldName"]
         factor_info["FieldType"] = "因子"
@@ -90,7 +91,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         super().connect()
         nPrefix = len(self.InnerPrefix)
         if self.DBType=="MySQL":
-            SQLStr = f"SELECT RIGHT(TABLE_NAME, LENGTH(TABLE_NAME)-{nPrefix}) AS TableName, TABLE_NAME AS DBTableName, COLUMN_NAME AS DBFieldName, LOWER(DATA_TYPE) AS DataType FROM information_schema.COLUMNS WHERE table_schema='{self.DBName}' "
+            SQLStr = f"SELECT RIGHT(TABLE_NAME, LENGTH(TABLE_NAME)-{nPrefix}) AS TableName, TABLE_NAME AS DBTableName, COLUMN_NAME AS DBFieldName, LOWER(DATA_TYPE) AS DataType, IS_NULLABLE AS Nullable FROM information_schema.COLUMNS WHERE table_schema='{self.DBName}' "
             SQLStr += f"AND TABLE_NAME LIKE '{self.InnerPrefix}%%' "
             if len(self.IgnoreFields)>0:
                 SQLStr += "AND COLUMN_NAME NOT IN ('"+"','".join(self.IgnoreFields)+"') "
@@ -209,7 +210,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
             self._QS_Logger.error(Msg)
             raise e
         return 0
-    def _adjustWriteData(self, data):
+    def _adjustWriteData(self, data, table_name):
         NewData = []
         DataLen = data.applymap(lambda x: max(1, len(x)) if isinstance(x, list) else 1)
         DataLenMax = DataLen.iloc[:, 2:].max(axis=1)
@@ -221,8 +222,19 @@ class SQLDB(QSSQLObject, WritableFactorDB):
             if iDataLen>0:
                 iData = data.iloc[i].apply(lambda x: [None]*(iDataLen-len(x))+x if isinstance(x, list) else [x]*iDataLen).tolist()
                 NewData.extend(zip(*iData))
-        NewData = pd.DataFrame(NewData, dtype="O")
+        NewData = pd.DataFrame(NewData, columns=data.columns, dtype="O")
+        if self.CheckNullable:
+            NewData = self._dropWriteDataNa(NewData, table_name)
         return NewData.where(pd.notnull(NewData), None).to_records(index=False).tolist()
+    def _dropWriteDataNa(self, data, table_name):
+        DropNaFields = self._FactorInfo["Nullable"].loc[table_name].loc[data.columns]
+        DropNaFields = DropNaFields[DropNaFields=="NO"].index.tolist()
+        if DropNaFields:
+            OldRowNum = data.shape[0]
+            data = data.dropna(subset=DropNaFields)
+            if data.shape[0]<OldRowNum:
+                self._QS_Logger.warning("因子库 %s 中的因子表 %s 中的字段 %s 不允许 NULL, 但写入数据中出现 NULL, 删除相应行后执行写入!" % (self.Name, table_name, str(DropNaFields)))
+        return data
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
         if table_name not in self._TableInfo.index:
             FieldTypes = {iFactorName:_identifyDataType(self.DBType, data.iloc[i].dtypes) for i, iFactorName in enumerate(data.items)}
@@ -280,11 +292,13 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         SQLStr = SQLStr[:-2]+")"
         Cursor = self.cursor()
         if self.CheckWriteData:
-            NewData = self._adjustWriteData(NewData.reset_index())
+            NewData = self._adjustWriteData(NewData.reset_index(), table_name)
             self.deleteData(table_name, ids=data.minor_axis.tolist(), dts=DTs.tolist())
             Cursor.executemany(SQLStr, NewData)
         else:
             NewData = NewData.astype("O").where(pd.notnull(NewData), None)
+            if self.CheckNullable:
+                NewData = self._dropWriteDataNa(NewData, table_name)
             Cursor.executemany(SQLStr, NewData.reset_index().values.tolist())
         self.Connection.commit()
         Cursor.close()
@@ -307,6 +321,7 @@ class SQLite3DB(QSSQLite3Object, SQLDB):
         factor_info["Supplementary"] = None
         factor_info["Supplementary"][DTMask & (factor_info["DBFieldName"].str.lower()=="datetime")] = "Default"
         factor_info["Description"] = ""
+        factor_info["Nullable"] = "YES"
         factor_info = factor_info.set_index(["TableName", "FieldName"])
         return factor_info
     def connect(self):
