@@ -780,6 +780,18 @@ class JYDB(QSSQLObject, FactorDB):
             SQLStr += "AND {Prefix}SecuMain.InnerCode NOT IN ("+SubSQLStr+") "
         SQLStr += "ORDER BY {Prefix}SecuMain.SecuCode"
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y-%m-%d")))]
+    # 获取指定日 date 的全体港股 ID
+    # date: 指定日, datetime.date
+    # is_current: False 表示上市日在指定日之前的港股, True 表示上市日在指定日之前且尚未退市的港股
+    def _getAllHKStock(self, date, is_current=True):
+        SQLStr = "SELECT CONCAT({Prefix}HK_SecuMain.SecuCode, '.HK') "
+        SQLStr += "FROM {Prefix}HK_SecuMain "
+        SQLStr += "WHERE {Prefix}HK_SecuMain.SecuCategory IN (3,51,53,55,78) AND {Prefix}HK_SecuMain.SecuMarket=72 "
+        SQLStr += "AND {Prefix}HK_SecuMain.ListedDate <= '{Date}' "
+        if is_current:
+            SQLStr += "AND (({Prefix}HK_SecuMain.DelistingDate IS NULL) OR ({Prefix}HK_SecuMain.DelistingDate> '{Date}')) "
+        SQLStr += "ORDER BY {Prefix}HK_SecuMain.SecuCode"
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y-%m-%d")))]
     # 获取指定日 date 指数 index_id 的成份股 ID
     # index_id: 指数 ID, 默认值 "全体A股"
     # date: 指定日, 默认值 None 表示今天
@@ -787,6 +799,7 @@ class JYDB(QSSQLObject, FactorDB):
     def getStockID(self, index_id="全体A股", date=None, is_current=True, **kwargs):
         if date is None: date = dt.date.today()
         if index_id=="全体A股": return self._getAllAStock(date=date, is_current=is_current)
+        if index_id=="全体港股": return self._getAllHKStock(date=date, is_current=is_current)
         for iTableName in self._TableInfo[(self._TableInfo["TableClass"]=="ConstituentTable") & (self._TableInfo["SecurityType"]=="A股")].index:
             IDs = self.getTable(iTableName).getID(ifactor_name=index_id, idt=date, is_current=is_current)
             if IDs: return IDs
