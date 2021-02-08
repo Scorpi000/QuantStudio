@@ -6,7 +6,7 @@ from io import BytesIO
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-from traits.api import ListStr, Enum, List, Int, Str, Instance, Dict, Bool, Tuple
+from traits.api import ListStr, Enum, List, Int, Str, Instance, Dict, Bool, Tuple, on_trait_change
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 import matplotlib.dates as mdate
@@ -305,12 +305,13 @@ class QuantilePortfolio(BaseModule):
 class FilterPortfolio(QuantilePortfolio):
     """条件筛选组合"""
     PortfolioFilters = ListStr(arg_type="MultiOption", label="组合条件", order=0)
-    #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
-    #ClassFactor = Enum("无", arg_type="SingleOption", label="类别因子", order=2)
-    #WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=3)
-    CalcDTs = List(dt.datetime, arg_type="DateList", label="调仓时点", order=4)
-    MarketIDFilter = Str(arg_type="IDFilter", label="市场组合", order=5)
-    IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=6)
+    GroupNum = Int(0, arg_type="Integer", label="分组数", order=2)
+    #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=3)
+    #ClassFactor = Enum("无", arg_type="SingleOption", label="类别因子", order=4)
+    #WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=5)
+    CalcDTs = List(dt.datetime, arg_type="DateList", label="调仓时点", order=6)
+    MarketIDFilter = Str(arg_type="IDFilter", label="市场组合", order=7)
+    IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
     def __init__(self, factor_table, name="条件筛选组合", sys_args={}, **kwargs):
         return super().__init__(factor_table=factor_table, name=name, sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
@@ -319,21 +320,16 @@ class FilterPortfolio(QuantilePortfolio):
         self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
         self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=2))
         self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=3))
-    def __QS_start__(self, mdl, dts, **kwargs):
-        if self._isStarted: return ()
-        BaseModule.__QS_start__(self, mdl=mdl, dts=dts, **kwargs)
-        #super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
-        GroupNum = len(self.PortfolioFilters)
-        self._Output = {"净值":[[1] for i in range(GroupNum)]}
-        self._Output["投资组合"] = [[] for i in range(GroupNum)]
-        self._Output["换手率"] = [[] for i in range(GroupNum)]
-        self._Output["市场净值"] = [1]
-        self._Output["调仓日"] = []
-        self._Output["QP_P_CurPos"] = [pd.Series() for i in range(GroupNum)]
-        self._Output["QP_P_MarketPos"] = pd.Series()
-        self._Output["GroupNum"] = GroupNum
-        self._CurCalcInd = 0
-        return (self._FactorTable, )
+        self.remove_trait("FactorOrder")
+        self.remove_trait("Perturbation")
+        self.GroupNum = len(self.PortfolioFilters)
+    @on_trait_change("PortfolioFilters[]")
+    def _on_PortfolioFilters_changed(self, obj, name, old, new):
+        self.GroupNum = len(self.PortfolioFilters)
+    @on_trait_change("GroupNum")
+    def _on_GroupNum_changed(self, obj, name, old, new):
+        if self.GroupNum != len(self.PortfolioFilters):
+            raise __QS_Error__("分组数必须等于给定的组合条件数")
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
         self._iDT = idt
