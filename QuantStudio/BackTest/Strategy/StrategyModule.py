@@ -8,7 +8,7 @@ import datetime as dt
 
 import numpy as np
 import pandas as pd
-from traits.api import ListStr, Enum, List, Int, Float, Str, Instance, Dict, on_trait_change
+from traits.api import ListStr, Enum, List, Int, Float, Str, ListInt, Instance, Dict, on_trait_change
 from traitsui.api import Item, Group, View
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
@@ -357,7 +357,7 @@ class Strategy(BaseModule):
             if not self.Benchmark.RebalanceDTs: RebalanceIndex = None
             else:
                 RebalanceIndex = pd.Series(np.arange(BenchmarkOutput["基准收益率"].shape[0]), index=BenchmarkOutput["基准收益率"].index, dtype=int)
-                RebalanceIndex = RebalanceIndex.loc[RebalanceIndex.index.intersection(self.Benchmark.RebalanceDTs)].values.tolist()
+                RebalanceIndex = sorted(RebalanceIndex.loc[RebalanceIndex.index.intersection(self.Benchmark.RebalanceDTs)].values)
             BenchmarkOutput["相对收益率"] = calcLSYield(long_yield=LYield, short_yield=BenchmarkOutput["基准收益率"].values, rebalance_index=RebalanceIndex)
             BenchmarkOutput["相对累计收益率"] = BenchmarkOutput["相对收益率"].cumsum()
             BenchmarkOutput["相对净值"] = (1 + BenchmarkOutput["相对收益率"]).cumprod()
@@ -451,6 +451,8 @@ class Strategy(BaseModule):
 class MultiStrategy(BaseModule):
     """多策略对比"""
     StrategyModules = List(Strategy, arg_type="List", label="对比策略", order=0)
+    BenchmarkStrategies = ListInt(arg_type="List", label="基准策略", order=1)
+    RebalanceDTs = List(dt.datetime, arg_type="DateTimeList", label="再平衡时点", order=2)
     def __init__(self, name="多策略对比", sys_args={}, **kwargs):
         return super().__init__(name=name, sys_args=sys_args, **kwargs)
     def __QS_start__(self, mdl, dts, **kwargs):
@@ -536,7 +538,31 @@ class MultiStrategy(BaseModule):
         else:
             self._Output["统计数据"]["相对表现"] = pd.DataFrame(self._Output["统计数据"]["相对表现"]).loc[:, StrategyNames]
             self._Output["统计数据"]["基准表现"] = pd.DataFrame(self._Output["统计数据"]["基准表现"]).loc[:, StrategyNames]
+        if len(self.BenchmarkStrategies)>0:
+            self._Output["相对表现"] = self._genRelativeOutput(self._Output)
         return 0
+    def _genRelativeOutput(self, output):
+        RelativeOutput = {"日期序列": {"收益率": {}, "累计收益率": {}, "净值": {}}, "统计数据": {}}
+        Return = output["日期序列"]["收益率"]
+        if not self.RebalanceDTs: RebalanceIndex = None
+        else:
+            RebalanceIndex = pd.Series(np.arange(Return.shape[0]), index=Return.index, dtype=int)
+            RebalanceIndex = sorted(RebalanceIndex.loc[RebalanceIndex.index.intersection(self.RebalanceDTs)].values)
+        for jStrategyIdx in self.BenchmarkStrategies:
+            jBenchmarkName = str(jStrategyIdx)+"-"+self.StrategyModules[jStrategyIdx].Name
+            jStrategyNames = []
+            RelativeOutput["日期序列"]["收益率"][jBenchmarkName] = {}
+            for i, iModule in enumerate(self.StrategyModules):
+                if i==jStrategyIdx: continue
+                iName = str(i)+"-"+iModule.Name
+                jStrategyNames.append(iName)
+                RelativeOutput["日期序列"]["收益率"][jBenchmarkName][iName] = calcLSYield(long_yield=Return[iName].values, short_yield=Return[jBenchmarkName].values, rebalance_index=RebalanceIndex)
+            RelativeOutput["日期序列"]["收益率"][jBenchmarkName] = pd.DataFrame(RelativeOutput["日期序列"]["收益率"][jBenchmarkName], index=Return.index).loc[:, jStrategyNames]
+            RelativeOutput["日期序列"]["累计收益率"][jBenchmarkName] = RelativeOutput["日期序列"]["收益率"][jBenchmarkName].cumsum()
+            RelativeOutput["日期序列"]["净值"][jBenchmarkName] = (1 + RelativeOutput["日期序列"]["收益率"][jBenchmarkName]).cumprod()
+            RelativeOutput["统计数据"][jBenchmarkName] = summaryStrategy(RelativeOutput["日期序列"]["净值"][jBenchmarkName].values, list(RelativeOutput["日期序列"]["净值"][jBenchmarkName].index), init_wealth=[1]*RelativeOutput["日期序列"]["净值"][jBenchmarkName].shape[1], risk_free_rate=0)
+            RelativeOutput["统计数据"][jBenchmarkName].columns = RelativeOutput["日期序列"]["净值"][jBenchmarkName].columns
+        return RelativeOutput
     def _formatStatistics(self, stats):
         FormattedStats = pd.DataFrame(index=stats.index, columns=stats.columns, dtype="O")
         DateFormatFun = np.vectorize(lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else "NaT")
@@ -555,6 +581,9 @@ class MultiStrategy(BaseModule):
         hasCapitalInvest = ("考虑资金投入的表现" in StrategyOutput["统计数据"])
         hasBenchmark = ("相对表现" in StrategyOutput["统计数据"])
         nRow, nCol = 1, 2+hasCapitalInvest+hasBenchmark
+        nBenchmarkStrategy = len(self.BenchmarkStrategies)
+        if nBenchmarkStrategy>0:
+            nRow, nCol = 1+nBenchmarkStrategy//3+(nBenchmarkStrategy%3!=0), 3
         Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         xData = np.arange(0, StrategyOutput["日期序列"]["账户价值"].shape[0])
         xTicks = np.arange(0, StrategyOutput["日期序列"]["账户价值"].shape[0], int(StrategyOutput["日期序列"]["账户价值"].shape[0]/10))
@@ -594,6 +623,15 @@ class MultiStrategy(BaseModule):
             iAxes.set_xticklabels(xTickLabels)
             iAxes.legend(loc="upper left")
             iAxes.set_title("相对表现")
+        if nBenchmarkStrategy>0:
+            for j, jStrategyIdx in enumerate(self.BenchmarkStrategies):
+                jBenchmarkName = str(jStrategyIdx)+"-"+self.StrategyModules[jStrategyIdx].Name
+                iAxes = Fig.add_subplot(nRow, nCol, 4+j)
+                jNV = StrategyOutput["相对表现"]["日期序列"]["净值"][jBenchmarkName]
+                for i in range(jNV.shape[1]):
+                    iAxes.plot(jNV.index, jNV.iloc[:, i].values, label=str(jNV.columns[i]), lw=2.5)
+                iAxes.legend(loc="best")
+                iAxes.set_title("相对 %s 表现" % jBenchmarkName)
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
@@ -603,6 +641,12 @@ class MultiStrategy(BaseModule):
                 iHTML = self._formatStatistics(self._Output["统计数据"][iKey]).to_html()
                 iPos = iHTML.find(">")
                 HTML += iKey+": "+iHTML[:iPos]+' align="center"'+iHTML[iPos:]
+        if len(self.BenchmarkStrategies)>0:
+            for j, jStrategyIdx in enumerate(self.BenchmarkStrategies):
+                jBenchmarkName = str(jStrategyIdx)+"-"+self.StrategyModules[jStrategyIdx].Name
+                iHTML = self._formatStatistics(self._Output["相对表现"]["统计数据"][jBenchmarkName]).to_html()
+                iPos = iHTML.find(">")
+                HTML += ("相对 %s 表现" % jBenchmarkName)+": "+iHTML[:iPos]+' align="center"'+iHTML[iPos:]
         Fig = self.genMatplotlibFig()
         # figure 保存为二进制文件
         Buffer = BytesIO()
