@@ -116,11 +116,16 @@ def applymap(f, func=id, data_type="double", **kwargs):
 def _map_value(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)[0]
     Mapping = pd.Series(args["OperatorArg"]["mapping"])
-    return Mapping.loc[Data.flatten(order="C")].values.reshape(Data.shape)
+    TargetShape = Data.shape
+    Data = Data.flatten(order="C")
+    Rslt = np.full(shape=Data.shape, fill_value=None, dtype=Mapping.dtype)
+    Mask = pd.notnull(Data)
+    Rslt[Mask] = Mapping.loc[Data[Mask]].values
+    return Rslt.reshape(TargetShape)
 def map_value(f, mapping, data_type="double", **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"mapping":mapping}
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_map_value,"参数":Args,"运算时点":"多时点","运算ID":"多ID","数据类型":data_type}, **kwargs)
+    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_map_value,"参数":Args,"运算时点":"多时点","运算ID":"多ID", "数据类型":data_type}, **kwargs)
 def _fetch(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)[0]
     if isinstance(args["OperatorArg"]["pos"], str):
@@ -476,10 +481,16 @@ def rolling_change_rate(f, window, **kwargs):
     return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_change_rate,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _rolling_rank(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
-    return Data.rolling(**args["OperatorArg"]).apply(lambda s: np.sort(s).searchsorted(s[-1])).values[args["OperatorArg"]["window"]-1:]
-def rolling_rank(f, window, min_periods=1, win_type=None, **kwargs):
+    if args["OperatorArg"]["ascending"]:
+        Rslt = Data.rolling(**args["OperatorArg"]["RollingArg"]).apply(lambda s: np.sort(s).searchsorted(s[-1]), raw=True).values[args["OperatorArg"]["RollingArg"]["window"]-1:].astype(float)
+    else:
+        Rslt = Data.rolling(**args["OperatorArg"]["RollingArg"]).apply(lambda s: np.sort(-s).searchsorted(-s[-1]), raw=True).values[args["OperatorArg"]["RollingArg"]["window"]-1:].astype(float)
+    Rslt[pd.isnull(Data[args["OperatorArg"]["RollingArg"]["window"]-1:]).values] = np.nan
+    return Rslt
+def rolling_rank(f, window, min_periods=1, win_type=None, ascending=True, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
-    Args["OperatorArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
+    Args["OperatorArg"] = {"ascending": ascending}
+    Args["OperatorArg"]["RollingArg"] = {"window":window,"min_periods":min_periods,"win_type":win_type}
     return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_rolling_rank,"参数":Args,"回溯期数":[window-1]*len(Descriptors),"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _expanding_mean(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
@@ -707,7 +718,7 @@ def _lag(f,idt,iid,x,args):
     Data = pd.DataFrame(x[0], index=idt)
     TargetData = Data.loc[TargetDTs].values
     TargetData[args["OperatorArg"]['lag_period']:] = TargetData[:-args["OperatorArg"]['lag_period']]
-    if f.FactorDataType!="double":
+    if f.DataType!="double":
         Data = pd.DataFrame(np.empty(Data.shape,dtype="O"),index=Data.index,columns=iid)
     else:
         Data = pd.DataFrame(index=Data.index,columns=iid,dtype="float")

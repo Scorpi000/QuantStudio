@@ -79,7 +79,7 @@ class PreviewDlg(QDialog, Ui_PreviewDlg):
         return 0
     @pyqtSlot()
     def on_IDButton_clicked(self):
-        Dlg = IDSetupDlg(self, ids=self.AllIDs, ft=self.Factor.FactorTable)
+        Dlg = IDSetupDlg(self, ids=self.AllIDs.index.tolist(), ft=self.Factor.FactorTable)
         Dlg.exec_()
         if Dlg.isChanged:
             self.IDs = sorted(self.AllIDs.index.intersection(Dlg.IDs))

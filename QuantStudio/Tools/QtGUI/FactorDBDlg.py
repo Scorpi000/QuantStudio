@@ -4,10 +4,11 @@ import os
 import numpy as np
 import pandas as pd
 from PyQt5.QtCore import pyqtSlot, QModelIndex
-from PyQt5.QtWidgets import QDialog, QTreeWidgetItem, QMessageBox, QInputDialog, QFileDialog
+from PyQt5.QtWidgets import QDialog, QTreeWidgetItem, QMessageBox, QInputDialog, QFileDialog, QApplication
 from QuantStudio.Tools.QtGUI.Ui_FactorDBDlg import Ui_FactorDBDlg
 
 from QuantStudio.Tools.QtGUI.PreviewFactorDlg import PreviewDlg
+from QuantStudio.Tools.QtGUI.ResultDlg import MatplotlibResultDlg
 from QuantStudio.Tools.FileFun import loadCSVFactorData
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB
@@ -121,6 +122,21 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
         Factor = self.FactorDB.getTable(SelectedItem.parent().text(0)).getFactor(SelectedItem.text(0))
         Dlg = PreviewDlg(factor=Factor, parent=self)
         Dlg.exec_()
+        return 0
+    @pyqtSlot()
+    def on_ScrutinizeButton_clicked(self):
+        TableFactor = self.genTableFactor()
+        Data = {}
+        for iTable, iFactorNames in TableFactor.items():
+            iFT = self.FactorDB.getTable(iTable)
+            iDTs = iFT.getDateTime()
+            iIDs = iFT.getID()
+            if iFactorNames is None:
+                iFactorNames = iFT.FactorNames
+            Data[iTable] = dict(iFT.readData(factor_names=iFactorNames, ids=iIDs, dts=iDTs))
+        Dlg = MatplotlibResultDlg(parent=self, output=Data)
+        self.ResultDlg = Dlg
+        Dlg.show()
         return 0
     def renameTable(self, selected_item):
         OldTableName = selected_item.text(0)
@@ -255,7 +271,6 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
 if __name__=='__main__':
     # 测试代码
     import sys
-    from PyQt5.QtWidgets import QApplication
     import QuantStudio.api as QS
     HDB = QS.FactorDB.HDF5DB()
     HDB.connect()

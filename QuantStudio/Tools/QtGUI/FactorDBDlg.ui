@@ -17,7 +17,7 @@
    <bool>true</bool>
   </property>
   <layout class="QGridLayout" name="gridLayout">
-   <item row="0" column="0" rowspan="6">
+   <item row="0" column="0" rowspan="7">
     <widget class="QTreeWidget" name="FactorDBTree">
      <property name="contextMenuPolicy">
       <enum>Qt::ActionsContextMenu</enum>
@@ -59,6 +59,13 @@
     </widget>
    </item>
    <item row="3" column="1">
+    <widget class="QPushButton" name="ScrutinizeButton">
+     <property name="text">
+      <string>详查</string>
+     </property>
+    </widget>
+   </item>
+   <item row="4" column="1">
     <widget class="QGroupBox" name="AdjustGroupBox">
      <property name="title">
       <string>修改调整</string>
@@ -88,7 +95,7 @@
      </layout>
     </widget>
    </item>
-   <item row="4" column="1">
+   <item row="5" column="1">
     <widget class="QGroupBox" name="groupBox_2">
      <property name="title">
       <string>导入导出</string>
@@ -111,7 +118,7 @@
      </layout>
     </widget>
    </item>
-   <item row="5" column="1">
+   <item row="6" column="1">
     <spacer name="verticalSpacer">
      <property name="orientation">
       <enum>Qt::Vertical</enum>

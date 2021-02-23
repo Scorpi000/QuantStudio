@@ -187,9 +187,9 @@ class TimeOperation(DerivativeFactor):
                 MaxLen = max(MaxLen, self.iLookBack+1)
             MaxLookBack = max(MaxLookBack, self.iLookBack)
             descriptor_data.insert(0, StdData)
-        StartInd = dt_ruler.index(dts[0])
-        if StartInd>=MaxLookBack: DTRuler = dt_ruler[StartInd-MaxLookBack:]
-        else: DTRuler = [None]*(MaxLookBack-StartInd) + dt_ruler
+        StartInd, EndInd = dt_ruler.index(dts[0]), dt_ruler.index(dts[-1])
+        if StartInd>=MaxLookBack: DTRuler = dt_ruler[StartInd-MaxLookBack:EndInd+1]
+        else: DTRuler = [None]*(MaxLookBack-StartInd) + dt_ruler[:EndInd+1]
         if (self.DTMode=='单时点') and (self.IDMode=='单ID'):
             for i, iDT in enumerate(dts):
                 iDTs = DTRuler[max(0, MaxLookBack+i+1-MaxLen):i+1+MaxLookBack]
@@ -447,9 +447,9 @@ class PanelOperation(DerivativeFactor):
                 MaxLen = max(MaxLen, self.iLookBack+1)
             descriptor_data.insert(0, StdData)
             MaxLookBack = max(MaxLookBack, self.iLookBack)
-        StartInd = dt_ruler.index(dts[0])
-        if StartInd>=MaxLookBack: DTRuler = dt_ruler[StartInd-MaxLookBack:]
-        else: DTRuler = [None]*(MaxLookBack-StartInd) + dt_ruler
+        StartInd, EndInd = dt_ruler.index(dts[0]), dt_ruler.index(dts[-1])
+        if StartInd>=MaxLookBack: DTRuler = dt_ruler[StartInd-MaxLookBack:EndInd+1]
+        else: DTRuler = [None]*(MaxLookBack-StartInd) + dt_ruler[:EndInd+1]
         if self.OutputMode=='全截面':
             if self.DTMode=='单时点':
                 for i, iDT in enumerate(dts):

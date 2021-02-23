@@ -4,6 +4,7 @@ import os
 import sys
 import shutil
 import datetime as dt
+from collections import OrderedDict
 import time
 
 import numpy as np
@@ -416,57 +417,6 @@ def calcBurkeRatio(wealth_seq, periods, risk_free_rate=0.0, expected_return=None
     if AverageDrawdownSquared==0:
         return np.sign(Denominator)*np.inf
     return Denominator / AverageDrawdownSquared**0.5
-# 以更高的频率扩充净值序列
-def _densifyWealthSeq(wealth_seq, dts, dt_ruler=None):
-    if dt_ruler is None: return (wealth_seq, dts)
-    try:
-        dt_ruler = dt_ruler[dt_ruler.index(dts[0]):dt_ruler.index(dts[-1])+1]
-    except:
-        return (wealth_seq, dts)
-    nDT = len(dt_ruler)
-    if nDT<=len(dts): return (wealth_seq, dts)
-    DenseWealthSeq = np.zeros((nDT, ) + wealth_seq.shape[1:])
-    DenseWealthSeq[0] = wealth_seq[0]
-    for i, iDT in enumerate(dts[1:]):
-        iStartInd = dt_ruler.index(dts[i])
-        iInd = dt_ruler.index(iDT)
-        iAvgYield = np.array([(wealth_seq[i+1] / wealth_seq[i])**(1 / (iInd-iStartInd)) - 1])
-        iWealthSeq = np.cumprod(np.repeat(iAvgYield, iInd-iStartInd, axis=0)+1, axis=0) * wealth_seq[i]
-        DenseWealthSeq[iStartInd+1:iInd+1] = iWealthSeq
-    return (DenseWealthSeq, dt_ruler)
-# 生成策略的统计指标
-def summaryStrategy(wealth_seq, dts, dt_ruler=None, init_wealth=None, risk_free_rate=0.0):
-    nCol = (wealth_seq.shape[1] if wealth_seq.ndim>1 else 1)
-    if nCol==1: wealth_seq = wealth_seq.reshape((wealth_seq.shape[0], 1))
-    wealth_seq, dts = _densifyWealthSeq(wealth_seq, dts, dt_ruler)
-    YieldSeq = calcYieldSeq(wealth_seq, init_wealth)
-    if init_wealth is None: init_wealth = wealth_seq[0]
-    StartDT, EndDT = dts[0], dts[-1]
-    SummaryIndex = ['起始时点', '结束时点']
-    SummaryData = [np.array([StartDT]*nCol), np.array([EndDT]*nCol)]
-    SummaryIndex.append('时点数')
-    SummaryData.append(np.zeros(nCol) + len(dts))
-    SummaryIndex.append('总收益率')
-    SummaryData.append(wealth_seq[-1] / init_wealth - 1)
-    SummaryIndex.append('年化收益率')
-    SummaryData.append(calcAnnualYield(wealth_seq, start_dt=StartDT, end_dt=EndDT))
-    SummaryIndex.append('年化波动率')
-    SummaryData.append(calcAnnualVolatility(wealth_seq, start_dt=StartDT, end_dt=EndDT))
-    SummaryIndex.append('Sharpe比率')
-    SummaryData.append((SummaryData[4] - risk_free_rate) / SummaryData[5])
-    SummaryIndex.append('收益风险比')
-    SummaryData.append(SummaryData[4] / SummaryData[5])
-    SummaryIndex.append('胜率')
-    SummaryData.append(np.sum(YieldSeq>=0, axis=0) / np.sum(pd.notnull(YieldSeq), axis=0))
-    SummaryIndex.extend(("最大回撤率", "最大回撤开始时点", "最大回撤结束时点"))
-    MaxDrawdownRate, MaxDrawdownStartDT, MaxDrawdownEndDT = [], [], []
-    for i in range(nCol):
-        iMaxDrawdownRate, iMaxDrawdownStartPos, iMaxDrawdownEndPos = calcMaxDrawdownRate(wealth_seq=wealth_seq[:, i])
-        MaxDrawdownRate.append(np.abs(iMaxDrawdownRate))
-        MaxDrawdownStartDT.append((dts[iMaxDrawdownStartPos] if iMaxDrawdownStartPos is not None else None))
-        MaxDrawdownEndDT.append((dts[iMaxDrawdownEndPos] if iMaxDrawdownEndPos is not None else None))
-    SummaryData.extend((np.array(MaxDrawdownRate), np.array(MaxDrawdownStartDT), np.array(MaxDrawdownEndDT)))
-    return pd.DataFrame(SummaryData, index=SummaryIndex)
 # 计算每年的收益率, wealth_seq: 净值序列, dts: 时间序列, dt_ruler: 时间标尺
 def calcReturnPerYear(wealth_seq, dts, dt_ruler=None):
     DenseWealthSeq, dts = _densifyWealthSeq(wealth_seq, dts, dt_ruler)
@@ -811,7 +761,7 @@ def testNumStrategy(num_units, price, fee=0.0, long_margin=1.0, short_margin=1.0
     return (Return, PNL, Margin, Amount)
 
 # 给定投资组合(持仓金额比例)的策略向量化回测(自融资策略), 数据类型 numpy
-# portfolio: 每期的投资组合, array(shape=(nDT, nID)), nDT: 时点数, nID: ID 数
+# portfolio: 每期的目标投资组合, array(shape=(nDT, nID)), nDT: 时点数, nID: ID 数
 # price: 价格序列, array(shape=(nDT, nID))
 # fee: 手续费率, scalar, array(shape=(nID,)), array(shape=(nDT, nID))
 # long_margin: 多头保证金率, scalar, array(shape=(nID,)), array(shape=(nDT, nID))
@@ -832,8 +782,9 @@ def testPortfolioStrategy(portfolio, price, fee=0.0, long_margin=1.0, short_marg
     Turnover = np.abs(np.diff(portfolio, axis=0))
     Return -=  np.nansum(Turnover * fee, axis=1)
     return (Return, np.nansum(Turnover, axis=1))
+
 # 给定投资组合(持仓金额比例)的策略向量化回测(自融资策略), 数据类型 pandas
-# portfolio: 每期的投资组合, DataFrame(index=DTs, columns=IDs), DTs: 时间序列, IDs: 证券代码
+# portfolio: 每期的目标投资组合, DataFrame(index=DTs, columns=IDs), DTs: 时间序列, IDs: 证券代码
 # price: 价格序列, DataFrame(index=DTs, columns=IDs), DTs: 时间序列, IDs: 证券代码
 # 说明: price 的 DTs 和 portfolio 的 DTs 可能不一致，price 的 IDs 包含 portfolio 的 IDs
 # 返回: Series(index=DTs), DTs 和 price 的 DTs 保持一致
@@ -850,3 +801,245 @@ def testPortfolioStrategy_pd(portfolio, price):
     NV = (portfolio.loc[AllDTs].fillna(method="ffill") * (AllPrice / CostPrice - 1)).sum(axis=1) + 1
     NV = NV * RebalanceNV.loc[AllDTs].fillna(method="ffill")
     return NV.loc[price.index]
+
+# 给定仓位水平的择时策略向量化回测, 数据类型 numpy
+# position: 每期的目标仓位水平, array((-inf, inf) 的仓位水平或者 nan 表示维持目前仓位, shape=(nDT, nID), dtype=float), nDT: 时点数, nID: ID 数
+# price: 价格序列, array(shape=(nDT, nID))
+# 返回: (NV, Position, Turnover) NV: array(shape=(nDT, nID))
+def testTimingStrategy(position, price):
+    nDT, nID = price.shape
+    position[0, np.isnan(position[0])] = 0
+    TotalAmount = np.ones(shape=price.shape)
+    CashAmount = np.ones(shape=price.shape)
+    Amount = np.zeros(shape=price.shape)
+    Amount[0] = position[0] * TotalAmount[0]
+    CashAmount[0] = TotalAmount[0] - Amount[0]
+    for i in range(1, nDT):
+        iAmount = Amount[i-1] * price[i] / price[i-1]
+        TotalAmount[i] = iAmount + CashAmount[i-1]
+        iPosition = position[i]
+        iPosition[TotalAmount[i]<=0] = 0
+        iMask = (~np.isnan(iPosition))
+        iAmount[iMask] = (iPosition * TotalAmount[i])[iMask]
+        CashAmount[i] = TotalAmount[i] - iAmount
+        Amount[i] = iAmount
+    return TotalAmount, (TotalAmount - CashAmount) / np.abs(TotalAmount), np.r_[np.zeros((1, nID)), np.abs(np.diff(CashAmount, axis=0))] / np.abs(TotalAmount)
+
+# 以更高的频率扩充净值序列
+def _densifyWealthSeq(wealth_seq, dts, dt_ruler=None):
+    if dt_ruler is None: return (wealth_seq, dts)
+    try:
+        dt_ruler = dt_ruler[dt_ruler.index(dts[0]):dt_ruler.index(dts[-1])+1]
+    except:
+        return (wealth_seq, dts)
+    nDT = len(dt_ruler)
+    if nDT<=len(dts): return (wealth_seq, dts)
+    DenseWealthSeq = np.zeros((nDT, ) + wealth_seq.shape[1:])
+    DenseWealthSeq[0] = wealth_seq[0]
+    for i, iDT in enumerate(dts[1:]):
+        iStartInd = dt_ruler.index(dts[i])
+        iInd = dt_ruler.index(iDT)
+        iAvgYield = np.array([(wealth_seq[i+1] / wealth_seq[i])**(1 / (iInd-iStartInd)) - 1])
+        iWealthSeq = np.cumprod(np.repeat(iAvgYield, iInd-iStartInd, axis=0)+1, axis=0) * wealth_seq[i]
+        DenseWealthSeq[iStartInd+1:iInd+1] = iWealthSeq
+    return (DenseWealthSeq, dt_ruler)
+
+# 生成策略的统计指标
+def summaryStrategy(wealth_seq, dts, dt_ruler=None, init_wealth=None, risk_free_rate=0.0):
+    nCol = (wealth_seq.shape[1] if wealth_seq.ndim>1 else 1)
+    if nCol==1: wealth_seq = wealth_seq.reshape((wealth_seq.shape[0], 1))
+    wealth_seq, dts = _densifyWealthSeq(wealth_seq, dts, dt_ruler)
+    YieldSeq = calcYieldSeq(wealth_seq, init_wealth)
+    if init_wealth is None: init_wealth = wealth_seq[0]
+    StartDT, EndDT = dts[0], dts[-1]
+    SummaryIndex = ['起始时点', '结束时点']
+    SummaryData = [np.array([StartDT]*nCol), np.array([EndDT]*nCol)]
+    SummaryIndex.append('时点数')
+    SummaryData.append(np.zeros(nCol) + len(dts))
+    SummaryIndex.append('总收益率')
+    SummaryData.append(wealth_seq[-1] / init_wealth - 1)
+    SummaryIndex.append('年化收益率')
+    SummaryData.append(calcAnnualYield(wealth_seq, start_dt=StartDT, end_dt=EndDT))
+    SummaryIndex.append('年化波动率')
+    SummaryData.append(calcAnnualVolatility(wealth_seq, start_dt=StartDT, end_dt=EndDT))
+    SummaryIndex.append('Sharpe比率')
+    SummaryData.append((SummaryData[4] - risk_free_rate) / SummaryData[5])
+    SummaryIndex.append('收益风险比')
+    SummaryData.append(SummaryData[4] / SummaryData[5])
+    SummaryIndex.append('胜率')
+    SummaryData.append(np.sum(YieldSeq>=0, axis=0) / np.sum(pd.notnull(YieldSeq), axis=0))
+    SummaryIndex.extend(("最大回撤率", "最大回撤开始时点", "最大回撤结束时点"))
+    MaxDrawdownRate, MaxDrawdownStartDT, MaxDrawdownEndDT = [], [], []
+    for i in range(nCol):
+        iMaxDrawdownRate, iMaxDrawdownStartPos, iMaxDrawdownEndPos = calcMaxDrawdownRate(wealth_seq=wealth_seq[:, i])
+        MaxDrawdownRate.append(np.abs(iMaxDrawdownRate))
+        MaxDrawdownStartDT.append((dts[iMaxDrawdownStartPos] if iMaxDrawdownStartPos is not None else None))
+        MaxDrawdownEndDT.append((dts[iMaxDrawdownEndPos] if iMaxDrawdownEndPos is not None else None))
+    SummaryData.extend((np.array(MaxDrawdownRate), np.array(MaxDrawdownStartDT), np.array(MaxDrawdownEndDT)))
+    return pd.DataFrame(SummaryData, index=SummaryIndex)
+# 格式化策略相关的统计指标
+def formatStrategySummary(summray):
+    FormattedStats = pd.DataFrame(index=summray.index, columns=summray.columns, dtype="O")
+    DateFormatFun = np.vectorize(lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else "NaT")
+    IntFormatFun = np.vectorize(lambda x: ("%d" % (x, )))
+    FloatFormatFun = np.vectorize(lambda x: ("%.2f" % (x, )))
+    PercentageFormatFun = np.vectorize(lambda x: ("%.2f%%" % (x*100, )))
+    FormattedStats.iloc[:2] = DateFormatFun(summray.iloc[:2, :].values)
+    FormattedStats.iloc[2] = IntFormatFun(summray.iloc[2, :].values)
+    FormattedStats.iloc[3:6] = PercentageFormatFun(summray.iloc[3:6, :].values)
+    FormattedStats.iloc[6:8] = FloatFormatFun(summray.iloc[6:8, :].values)
+    FormattedStats.iloc[8:10] = PercentageFormatFun(summray.iloc[8:10, :].values)
+    FormattedStats.iloc[10:12] = DateFormatFun(summray.iloc[10:12, :].values)
+    return FormattedStats
+
+# 生成交易相关的统计指标
+# trade_record : DataFrame(columns=["ID", "开仓时点", "开仓价格", "交易数量", "平仓时点", "平仓价格", "盈亏金额", "收益率"])
+def summaryTrade(trade_record, only_total=False):
+    Summary = OrderedDict()
+    if trade_record.shape[0]==0:
+        HoldingDays = np.nan
+    else:
+        HoldingDays = (trade_record["平仓时点"].astype(np.datetime64) - trade_record["开仓时点"].astype(np.datetime64)).apply(lambda x: x.days).sum()
+    ProfitMask = (trade_record["盈亏金额"]>=0)
+    Summary["交易次数"] = trade_record.shape[0]
+    Summary["盈利次数"] = ProfitMask.sum()
+    Summary["亏损次数"] = Summary["交易次数"] - Summary["盈利次数"]
+    Summary["总盈亏"] = trade_record["盈亏金额"].sum()
+    Summary["平均收益率"] = trade_record["收益率"].mean()
+    Summary["年化收益率"] = trade_record["收益率"].sum() / HoldingDays * 365
+    Summary["平均盈利率"] = trade_record["收益率"][ProfitMask].mean()
+    Summary["平均亏损率"] = - trade_record["收益率"][~ProfitMask].mean()
+    Summary["单次最大盈利率"]  = max(0, trade_record["收益率"].max())
+    Summary["单次最大亏损率"]  = - min(0, trade_record["收益率"].min())
+    Summary["胜率"] = Summary["盈利次数"] / (Summary["交易次数"] if Summary["交易次数"]!=0 else np.nan)
+    Summary["盈亏比"] = Summary["平均盈利率"] / (Summary["平均亏损率"] if Summary["平均亏损率"]!=0 else np.nan)
+    Summary["平均持仓天数"] = HoldingDays / (Summary["交易次数"] if Summary["交易次数"]!=0 else np.nan)
+    if only_total: return pd.Series(Summary)
+    Summary = pd.DataFrame(pd.Series(Summary), columns=["总计"])
+    IDs = sorted(trade_record["ID"].unique())
+    for iID in IDs:
+        Summary[iID] = summaryTrade(trade_record[trade_record["ID"]==iID], only_total=True)
+    return Summary
+# 格式化交易相关的统计指标
+def formatTradeSummary(summray):
+    FormattedStats = pd.DataFrame(index=summray.index, columns=summray.columns, dtype="O")
+    DateFormatFun = np.vectorize(lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else "NaT")
+    IntFormatFun = np.vectorize(lambda x: ("%d" % (x, )))
+    FloatFormatFun = np.vectorize(lambda x: ("%.2f" % (x, )))
+    PercentageFormatFun = np.vectorize(lambda x: ("%.2f%%" % (x*100, )))
+    FormattedStats.iloc[:3] = IntFormatFun(summray.iloc[:3, :].values)
+    FormattedStats.iloc[3:4] = FloatFormatFun(summray.iloc[3:4, :].values)
+    FormattedStats.iloc[4:11] = PercentageFormatFun(summray.iloc[4:11, :].values)
+    FormattedStats.iloc[11:13] = FloatFormatFun(summray.iloc[11:13, :].values)
+    return FormattedStats
+def summarySingleTiming(start_idx, end_idx, ret, position_level, n_per_year=240):
+    Summary = OrderedDict()
+    ProfitMask = (ret>=0)
+    Summary["择时次数"] = start_idx.shape[0]
+    Summary["正确次数"] = np.sum(ProfitMask)
+    Summary["错误次数"] = Summary["择时次数"] - Summary["正确次数"]
+    Summary["正确率"] = Summary["正确次数"] / Summary["择时次数"]
+    Summary["累积收益率"] = np.nanprod(1 + ret) - 1
+    Summary["持仓时长"] = np.sum(end_idx - start_idx)
+    Summary["平均持仓时长"] = Summary["持仓时长"] / Summary["择时次数"]
+    Summary["平均仓位水平"] = np.sum((end_idx - start_idx) * position_level) / Summary["持仓时长"]
+    Summary["年化收益率"] = (Summary["累积收益率"] + 1)**(n_per_year / Summary["持仓时长"]) - 1
+    Summary["单次平均收益率"] = np.mean(ret)
+    Summary["平均盈利率"] = np.mean(ret[ProfitMask])
+    Summary["平均亏损率"] = - np.mean(ret[~ProfitMask])
+    Summary["盈亏比"] = Summary["平均盈利率"] / Summary["平均亏损率"]
+    Summary["单次最大盈利率"]  = np.max(np.r_[0, ret])
+    Summary["单次最大亏损率"]  = - np.min(np.r_[0, ret])
+    ProfitIdx = np.diff(np.r_[0, ProfitMask.astype(float), 0])
+    Summary["最大连续盈利次数"] = np.max(np.r_[0, np.where(ProfitIdx==-1)[0] - np.where(ProfitIdx==1)[0]])
+    LossIdx = np.diff(np.r_[0, (~ProfitMask).astype(float), 0])
+    Summary["最大连续亏损次数"] = np.max(np.r_[0, np.where(LossIdx==-1)[0] - np.where(LossIdx==1)[0]])
+    return pd.Series(Summary)
+# 生成择时策略相关的统计指标
+# position: 每期的目标仓位水平, array((-inf, inf) 的仓位水平或者 nan 表示维持目前仓位, shape=(nDT, nID), dtype=float), nDT: 时点数, nID: ID 数
+# price: 价格序列, array(shape=(nDT, nID))
+def summaryTimingStrategy(position, price, ignore_position_level=True, n_per_year=240):
+    nDT, nID = position.shape
+    position = np.r_[position, np.zeros((1, nID))]
+    position[0, np.isnan(position[0])] = 0
+    PositionNafilled = pd.DataFrame(position).fillna(method="pad").values
+    price = np.r_[price, price[-1:]]
+    LongIdx = np.diff(np.r_[np.zeros((1, nID)), (PositionNafilled>0).astype(float)], axis=0)
+    ShortIdx = np.diff(np.r_[np.zeros((1, nID)), (PositionNafilled<0).astype(float)], axis=0)
+    LongSummary = pd.DataFrame(np.nan, index=["择时次数", "正确次数", "错误次数", "正确率", "累积收益率", "年化收益率", "单次平均收益率", 
+                                              "平均盈利率", "平均亏损率", "盈亏比", "单次最大盈利率", "单次最大亏损率", "最大连续盈利次数", "最大连续亏损次数", 
+                                              "持仓时长", "平均持仓时长", "平均仓位水平"], columns=np.arange(nID))
+    ShortSummary = LongSummary.copy()
+    TotalSummary = LongSummary.copy()
+    LongDetail, ShortDetail = {}, {}# {ID: DataFrame(columns=['起始时点', '结束时点', '收益率'])}
+    for i in range(nID):
+        # Long Summary
+        iStartIdx = np.where(LongIdx[:, i]==1)[0]
+        iEndIdx = np.where(LongIdx[:, i]==-1)[0]
+        if ignore_position_level:
+            iReturn = price[iEndIdx, i] / price[iStartIdx, i] - 1
+            iAvgPositionLevel = np.array([np.mean(PositionNafilled[iStartIdx[j]:iEndIdx[j], i]) for j in range(iStartIdx.shape[0])])
+        else:
+            iReturn = np.full(shape=iStartIdx.shape, fill_value=np.nan, dtype=np.float)
+            iAvgPositionLevel = np.full(shape=iStartIdx.shape, fill_value=np.nan, dtype=np.float)
+            for j in range(iStartIdx.shape[0]):
+                ijPosition = position[iStartIdx[j]:iEndIdx[j], i]
+                ijIdx = np.where(~np.isnan(ijPosition))[0]
+                iReturn[j] = np.prod(ijPosition[ijIdx] * (price[iStartIdx[j]:iEndIdx[j]+1, i][np.r_[ijIdx[1:],-1]] / price[iStartIdx[j]:iEndIdx[j], i][ijIdx] - 1)+1) - 1
+                iAvgPositionLevel[j] = np.mean(PositionNafilled[iStartIdx[j]:iEndIdx[j], i])
+        LongSummary.loc[:, i] = summarySingleTiming(iStartIdx, iEndIdx, iReturn, iAvgPositionLevel, n_per_year=n_per_year)
+        LongDetail[i] = pd.DataFrame({"起始时点": iStartIdx, "结束时点": iEndIdx, "收益率": iReturn, "平均仓位水平": iAvgPositionLevel})
+        # Short Summary
+        iStartIdx = np.where(ShortIdx[:, i]==1)[0]
+        iEndIdx = np.where(ShortIdx[:, i]==-1)[0]
+        if ignore_position_level:
+            iReturn = - (price[iEndIdx, i] / price[iStartIdx, i] - 1)
+            iAvgPositionLevel = np.array([np.mean(PositionNafilled[iStartIdx[j]:iEndIdx[j], i]) for j in range(iStartIdx.shape[0])])
+        else:
+            iReturn = np.full(shape=iStartIdx.shape, fill_value=np.nan, dtype=np.float)
+            iAvgPositionLevel = np.full(shape=iStartIdx.shape, fill_value=np.nan, dtype=np.float)
+            for j in range(iStartIdx.shape[0]):
+                ijPosition = np.abs(position[iStartIdx[j]:iEndIdx[j], i])
+                ijIdx = np.where(~np.isnan(ijPosition))[0]
+                iReturn[j] = np.prod(ijPosition[ijIdx] * (1 - price[iStartIdx[j]:iEndIdx[j]+1, i][np.r_[ijIdx[1:],-1]] / price[iStartIdx[j]:iEndIdx[j], i][ijIdx])+1) - 1
+                iAvgPositionLevel[j] = np.mean(-PositionNafilled[iStartIdx[j]:iEndIdx[j], i])
+        ShortSummary.loc[:, i] = summarySingleTiming(iStartIdx, iEndIdx, iReturn, iAvgPositionLevel, n_per_year=n_per_year)
+        ShortDetail[i] = pd.DataFrame({"起始时点": iStartIdx, "结束时点": iEndIdx, "收益率": iReturn, "平均仓位水平": iAvgPositionLevel})
+        # Total Summary
+        iTotalDetail = LongDetail[i].append(ShortDetail[i], ignore_index=True).sort_values(["起始时点"])
+        TotalSummary.loc[:, i] = summarySingleTiming(iTotalDetail["起始时点"].values, iTotalDetail["结束时点"].values, iTotalDetail["收益率"].values, iTotalDetail["平均仓位水平"].values, n_per_year=n_per_year)
+    return TotalSummary, LongSummary, ShortSummary, LongDetail, ShortDetail
+
+# 格式化择时策略相关的统计指标
+def formatTimingStrategySummary(summray):
+    FormattedStats = pd.DataFrame(index=summray.index, columns=summray.columns, dtype="O")
+    DateFormatFun = np.vectorize(lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else "NaT")
+    IntFormatFun = np.vectorize(lambda x: ("%d" % (x, )))
+    FloatFormatFun = np.vectorize(lambda x: ("%.2f" % (x, )))
+    PercentageFormatFun = np.vectorize(lambda x: ("%.2f%%" % (x*100, )))
+    FormattedStats.iloc[:3] = IntFormatFun(summray.iloc[:3, :].values)
+    FormattedStats.iloc[3:9] = PercentageFormatFun(summray.iloc[3:9, :].values)
+    FormattedStats.iloc[9] = FloatFormatFun(summray.iloc[9, :].values)
+    FormattedStats.iloc[10:12] = PercentageFormatFun(summray.iloc[10:12, :].values)
+    FormattedStats.iloc[12:15] = IntFormatFun(summray.iloc[12:15, :].values)
+    FormattedStats.iloc[15:17] = FloatFormatFun(summray.iloc[15:17, :].values)
+    return FormattedStats
+
+# 给定每期定投金额的定投策略向量化回测, 数据类型 numpy
+# aip_amount: 每期的定投金额, array( >0 的定投金额或者 nan 表示无定投, shape=(nDT, nID), dtype=float), nDT: 时点数, nID: ID 数
+# price: 价格序列, array(shape=(nDT, nID))
+# 返回: (CumReturn, Amount, Capital, PositionNum, AvgUnitCost) : array(shape=(nDT, nID))
+# CumReturn: 累积收益率
+# Amount: 持仓金额
+# Capital: 累计投入
+# PositionNum: 持仓数量
+# AvgUnitCost: 平均单位成本
+def testAIPStrategy(aip_amount, price):
+    Mask = pd.isnull(aip_amount)
+    Capital = np.nancumsum(aip_amount, axis=0)
+    PositionNum = np.nancumsum(aip_amount / price, axis=0)
+    Amount = PositionNum * price
+    CumReturn = Amount / Capital - 1
+    CumReturn[Capital<=0] = 0
+    AvgUnitCost = Capital / PositionNum
+    return CumReturn, Amount, Capital, PositionNum, AvgUnitCost

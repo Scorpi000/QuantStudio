@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from .Difference import QuantileDifference
 from .Correlation import TimeSeriesCorrelation
-from .Regression import OLS
+from .ReturnForecast import ReturnForecast, OLS
 from .Spread import Cointegration
-from .Timing import QuantileTiming
+from .Timing import QuantileTiming, TargetPositionSignal, TradeSignal
