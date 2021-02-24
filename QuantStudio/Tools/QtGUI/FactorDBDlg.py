@@ -207,7 +207,7 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
         for iTable, iFactorNames in TableFactor.items():
             iFT = self.FactorDB.getTable(iTable)
             if iFactorNames is None: iFactorNames = iFT.FactorNames
-            iIDs, iDTs = iFT.getID(), iFT.getDataTime()
+            iIDs, iDTs = iFT.getID(), iFT.getDateTime()
             iData = iFT.readData(factor_names=iFactorNames, ids=iIDs, dts=iDTs)
             self.FactorDB.writeData(iData, TargetTableName, if_exists="update")
         self.populateFactorDBTree()
