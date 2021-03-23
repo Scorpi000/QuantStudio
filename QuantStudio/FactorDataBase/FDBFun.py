@@ -188,7 +188,7 @@ class SQL_Table(FactorTable):
         # 解析时点字段
         Mask = self._FactorInfo["FieldType"].str.lower().str.contains("date")
         Fields = self._FactorInfo[Mask].index.tolist()# 所有的时点字段列表
-        if not Fields: Fields = [None]
+        Fields.append(None)
         self.add_trait("DTField", Enum(*Fields, arg_type="SingleOption", label="时点字段", order=202))
         iFactorInfo = self._FactorInfo[Mask & (self._FactorInfo["Supplementary"]=="Default")]
         if iFactorInfo.shape[0]>0: self.DTField = iFactorInfo.index[0]
@@ -986,6 +986,9 @@ class SQL_FeatureTable(SQL_WideTable):
     def __init__(self, name, fdb, sys_args={}, table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
         self._QS_IgnoredGroupArgs = ("遍历模式", "多重映射", "算子", "算子数据类型")
+    def __QS_initArgs__(self):
+        super().__QS_initArgs__()
+        self.DTField = None
     def _getMaxDT(self, args={}):
         DTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
         SQLStr = "SELECT MAX("+DTField+") "
