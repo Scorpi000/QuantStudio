@@ -73,7 +73,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
     def _on_IDField_changed(self, obj, name, old, new):
         if self._FactorInfo.shape[0]>0:
             self._FactorInfo["FieldType"][self._FactorInfo["FieldType"]=="ID"] = None
-            self._FactorInfo["FieldType"][self._FactorInfo["FieldType"]==new] = "ID"
+            self._FactorInfo["FieldType"][self._FactorInfo["DBFieldName"]==new] = "ID"
     # factor_info: DataFrame(columns=["TableName", "DBFieldName", "DataType", "Nullable"])
     def _genFactorInfo(self, factor_info):
         factor_info["FieldName"] = factor_info["DBFieldName"]
