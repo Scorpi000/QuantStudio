@@ -422,6 +422,7 @@ class SQL_Table(FactorTable):
 
 # 基于 SQL 数据库表的宽因子表
 # 一个字段标识 ID, 一个字段标识时点, 其余字段为因子
+# 回溯期数为 None 的算法的前提是一个截止时点不能对应多个公告时点，不满足则将回溯期数设为 0
 class SQL_WideTable(SQL_Table):
     """SQL 宽因子表"""
     LookBack = Float(0, arg_type="Integer", label="回溯天数", order=0)
@@ -435,6 +436,7 @@ class SQL_WideTable(SQL_Table):
     MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=8)
     Operator = Either(Function(None), None, arg_type="Function", label="算子", order=9)
     OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=10)
+    PeriodLookBack = Either(None, Int(0), label="回溯期数", arg_type="Integer", order=11)
     def __init__(self, name, fdb, sys_args={}, table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
         self._QS_IgnoredGroupArgs = ("遍历模式", "回溯天数", "只起始日回溯", "只回溯非目标日", "只回溯时点", "算子", "算子数据类型", "多重映射")
@@ -645,6 +647,59 @@ class SQL_WideTable(SQL_Table):
                     RawData.sort_values(by=["ID", "QS_DT"])
         if RawData.shape[0]==0: return RawData
         return self._adjustRawDataByRelatedField(RawData, factor_names)
+    def _prepareRawData_PeriodLookBack(self, factor_names, ids, dts, args={}):
+        if (dts==[]) or (ids==[]): return pd.DataFrame(columns=["QS_DT", "ID"]+factor_names)
+        IgnoreTime = args.get("忽略时间", self.IgnoreTime)
+        if IgnoreTime: DTFormat = self._DTFormat
+        else: DTFormat = self._DTFormat_WithTime
+        StartDT, EndDT = dts[0], dts[-1]
+        LookBack = args.get("回溯天数", self.LookBack)
+        if not np.isinf(LookBack): StartDT -= dt.timedelta(LookBack)
+        IDField = self._DBTableName+"."+self._FactorInfo.loc[args.get("ID字段", self.IDField), "DBFieldName"]
+        SQLStr = "SELECT "+self._getIDField(args=args)+" AS ID, "
+        EndDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
+        SQLStr += EndDTField+" AS QS_EndDT, "
+        AnnDTField = args.get("公告时点字段", self.PublDTField)
+        if AnnDTField is not None:
+            AnnDTField = self._DBTableName+"."+self._FactorInfo.loc[AnnDTField, "DBFieldName"]
+            if IgnoreTime:
+                SQLStr += self.__QS_toDate__("CASE WHEN "+AnnDTField+">="+EndDTField+" THEN "+AnnDTField+" ELSE "+EndDTField+" END")+" AS QS_DT, "
+            else:
+                SQLStr += "CASE WHEN "+AnnDTField+">="+EndDTField+" THEN "+AnnDTField+" ELSE "+EndDTField+" END AS QS_DT, "
+        else:
+            AnnDTField = EndDTField
+            SQLStr += AnnDTField+" AS QS_DT, "
+        FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
+        SQLStr += FieldSQLStr+" "
+        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
+        SQLStr += "WHERE "+EndDTField+"<="+EndDT.strftime(DTFormat)+" "
+        if AnnDTField!=EndDTField:
+            SQLStr += "AND "+AnnDTField+"<="+EndDT.strftime(DTFormat)+" "
+            if not np.isinf(LookBack):
+                SQLStr += "AND ("+AnnDTField+">="+StartDT.strftime(DTFormat)+" "
+                SQLStr += "OR "+EndDTField+">="+StartDT.strftime(DTFormat)+") "
+        elif not np.isinf(LookBack):
+            SQLStr += "AND "+EndDTField+">="+StartDT.strftime(DTFormat)+" "
+        SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
+        SQLStr += "ORDER BY ID, QS_DT, QS_EndDT"
+        RawData = self._FactorDB.fetchall(SQLStr)
+        if not RawData: return pd.DataFrame(columns=["QS_DT", "ID"]+factor_names)
+        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "QS_EndDT", "QS_DT"]+factor_names)
+        if args.get("截止日期递增", self.EndDateASC):# 删除截止日期非递增的记录
+            DTRank = RawData.loc[:, ["ID", "QS_DT", "QS_EndDT"]].set_index(["ID"]).astype(np.datetime64).groupby(axis=0, level=0).rank(method="min")
+            RawData = RawData[(DTRank["QS_DT"]<=DTRank["QS_EndDT"]).values]
+        # 回溯期数
+        RawData["QS_EndDTPeriod"] = RawData.loc[:, ["ID", "QS_EndDT"]].set_index(["ID"]).astype(np.datetime64).groupby(axis=0, level=0).rank(method="dense").values
+        RawData["QS_TargetPeriod"] = RawData["QS_EndDTPeriod"] - args.get("回溯期数", self.PeriodLookBack)
+        TargetPeriod = RawData.loc[:, ["ID","QS_DT","QS_TargetPeriod"]].groupby(by=["ID", "QS_DT"]).max().reset_index()
+        RawData = pd.merge(TargetPeriod, RawData.loc[:, ["ID","QS_DT","QS_EndDTPeriod"]+factor_names],
+                           left_on=["ID", "QS_TargetPeriod"], right_on=["ID", "QS_EndDTPeriod"], how="inner", suffixes=("", "_y"))
+        RawData = RawData[RawData["QS_DT"]>=RawData["QS_DT_y"]]
+        MaxAnnDT = RawData.loc[:, ["ID","QS_DT","QS_TargetPeriod", "QS_DT_y"]].groupby(by=["ID", "QS_DT", "QS_TargetPeriod"]).max().reset_index()
+        RawData = pd.merge(MaxAnnDT, RawData.loc[:, ["ID","QS_DT","QS_TargetPeriod","QS_DT_y"]+factor_names],
+                           left_on=["ID","QS_DT","QS_TargetPeriod","QS_DT_y"], right_on=["ID","QS_DT","QS_TargetPeriod","QS_DT_y"], how="inner", suffixes=("", "_y"))
+        RawData["ID"] = self.__QS_restoreID__(RawData["ID"])
+        return self._adjustRawDataByRelatedField(RawData.loc[:, ["QS_DT", "ID"]+factor_names], factor_names)
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         OrderFields = args.get("排序字段", self.OrderFields)
         if OrderFields:
@@ -652,7 +707,9 @@ class SQL_WideTable(SQL_Table):
         else:
             OrderFields, Orders = [], []
         FactorNames = list(set(factor_names).union(OrderFields))
-        if args.get("公告时点字段", self.PublDTField) is None:
+        if args.get("回溯期数", self.PeriodLookBack) is not None:
+            RawData = self._prepareRawData_PeriodLookBack(factor_names=FactorNames, ids=ids, dts=dts, args=args)
+        elif args.get("公告时点字段", self.PublDTField) is None:
             RawData = self._prepareRawData_IgnorePublDT(factor_names=FactorNames, ids=ids, dts=dts, args=args)
         else:
             RawData = self._prepareRawData_WithPublDT(factor_names=FactorNames, ids=ids, dts=dts, args=args)

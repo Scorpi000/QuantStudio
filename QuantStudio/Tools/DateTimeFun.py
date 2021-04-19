@@ -257,7 +257,7 @@ def getTimeSeries(start_time, end_time, timedelta):
     TimeSeries = getDateTimeSeries(dt.datetime.combine(dt.date.today(), start_time), dt.datetime.combine(dt.date.today(), end_time), timedelta)
     return list(map(lambda x: x.time(), TimeSeries))
 # 获取连续的时间点序列
-def getDateTimeSeries(start_dt, end_dt, timedelta):
+def getDateTimeSeries(start_dt, end_dt, timedelta=dt.timedelta(1)):
     nDelta = int((end_dt-start_dt)/timedelta)+1
     return ((start_dt-timedelta)+np.array([timedelta]*nDelta).cumsum()).tolist()
 # 时间序列按照年度分组
