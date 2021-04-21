@@ -311,15 +311,21 @@ def _to_json(f, idt, iid, x, args):
 def to_json(f, **kwargs):
     Descriptors, Args = _genMultivariateOperatorInfo(f)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors, {"算子":_to_json, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "数据类型":"string"}, **kwargs)
+def _report_period_delta(last, prev):
+    if pd.isnull(last) or pd.isnull(prev): return np.nan
+    last, prev = pd.to_datetime(last), pd.to_datetime(prev)
+    return ((last.year - prev.year) * 12 + last.month - prev.month) / 3.0
 def _single_quarter(f,idt,iid,x,args):
-    ReportPeriod, Last, Prev = _genOperatorData(f,idt,iid,x,args)
-    f = np.vectorize(lambda x: x[-4:]=="0331")
+    Last, LastPeriod, Prev, PrevPeriod = _genOperatorData(f,idt,iid,x,args)
+    f = np.vectorize(lambda x: (pd.to_datetime(x).strftime("%m%d")=="0331") if pd.notnull(x) else False)
     Rslt = Last - Prev
-    Mask = f(ReportPeriod)
+    Mask = f(LastPeriod)
     Rslt[Mask] = Last[Mask]
+    f = np.vectorize(_report_period_delta)
+    Rslt[(f(LastPeriod, PrevPeriod)!=1) & (~Mask)] = np.nan
     return Rslt
-def single_quarter(report_period, last, prev, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(report_period, last, prev)
+def single_quarter(last, last_period, prev, pre_period, **kwargs):
+    Descriptors, Args = _genMultivariateOperatorInfo(last, last_period, prev, pre_period)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_single_quarter,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _strftime(f, idt, iid, x, args):
     Data = _genOperatorData(f, idt, iid, x, args)[0]
