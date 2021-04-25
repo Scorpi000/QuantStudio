@@ -1408,7 +1408,7 @@ class SQL_MappingTable(SQL_Table):
         SQLStr = "SELECT MIN("+DTField+") "# 起始日期
         if iid is not None:
             SQLStr += self._genFromSQLStr()+" "
-            SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+"='"+self.__QS_adjustID__([iid])[0]+"' "
+            SQLStr += self._genIDSQLStr([iid], init_keyword="WHERE", args=args)+" "
             SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
         else:
             IDField = self._DBTableName+"."+self._FactorInfo.loc[args.get("ID字段", self.IDField), "DBFieldName"]
