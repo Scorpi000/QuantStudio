@@ -430,7 +430,7 @@ class SQL_WideTable(SQL_Table):
     OnlyLookBackNontarget = Bool(False, label="只回溯非目标日", arg_type="Bool", order=2)
     OnlyLookBackDT = Bool(False, label="只回溯时点", arg_type="Bool", order=3)
     #PublDTField = Enum(None, label="公告时点字段", arg_type="SingleOption", order=4)
-    IgnoreTime = Bool(True, label="忽略时间", arg_type="Bool", order=5)
+    IgnoreTime = Bool(False, label="忽略时间", arg_type="Bool", order=5)
     EndDateASC = Bool(False, label="截止日期递增", arg_type="Bool", order=6)
     OrderFields = List(arg_type="List", label="排序字段", order=7)# [("字段名", "ASC" 或者 "DESC")]
     MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=8)
@@ -519,16 +519,20 @@ class SQL_WideTable(SQL_Table):
         SQLStr += "ORDER BY "+DTField
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     def _genNullIDSQLStr_WithPublDT(self, factor_names, ids, end_date, args={}):
-        IgnoreTime = args.get("忽略时间", self.IgnoreTime)
-        if IgnoreTime: DTFormat = self._DTFormat
-        else: DTFormat = self._DTFormat_WithTime
         EndDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
         AnnDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("公告时点字段", self.PublDTField), "DBFieldName"]
         IDField = self._DBTableName+"."+self._FactorInfo.loc[args.get("ID字段", self.IDField), "DBFieldName"]
+        IgnoreTime = args.get("忽略时间", self.IgnoreTime)
+        if IgnoreTime:
+            DTFormat = self._DTFormat
+            AdjAnnDTField = self.__QS_toDate__(AnnDTField)
+        else:
+            DTFormat = self._DTFormat_WithTime
+            AdjAnnDTField = AnnDTField
         SubSQLStr = "SELECT "+IDField+" AS ID, "
         SubSQLStr += "MAX("+EndDTField+") AS MaxEndDate "
         SubSQLStr += "FROM "+self._DBTableName+" "
-        SubSQLStr += "WHERE ("+AnnDTField+"<"+end_date.strftime(DTFormat)+" "
+        SubSQLStr += "WHERE ("+AdjAnnDTField+"<"+end_date.strftime(DTFormat)+" "
         SubSQLStr += "AND "+EndDTField+"<"+end_date.strftime(DTFormat)+") "
         SubSQLStr += self._genConditionSQLStr(use_main_table=False, args=args)+" "
         if (self._MainTableName is None) or (self._MainTableName==self._DBTableName):
@@ -546,22 +550,26 @@ class SQL_WideTable(SQL_Table):
         SQLStr += "INNER JOIN ("+SubSQLStr+") t "
         SQLStr += "ON (t.ID="+IDField+" "
         SQLStr += "AND "+EndDTField+"=t.MaxEndDate) "
-        SQLStr += "WHERE "+AnnDTField+"<"+end_date.strftime(DTFormat)+" "
+        SQLStr += "WHERE "+AdjAnnDTField+"<"+end_date.strftime(DTFormat)+" "
         if not ((self._MainTableName is None) or (self._MainTableName==self._DBTableName)):
             SQLStr += self._genIDSQLStr(ids, args=args)+" "
         SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)
         return SQLStr
     def _prepareRawData_WithPublDT(self, factor_names, ids, dts, args={}):
         if (dts==[]) or (ids==[]): return pd.DataFrame(columns=["QS_DT", "ID"]+factor_names)
-        IgnoreTime = args.get("忽略时间", self.IgnoreTime)
-        if IgnoreTime: DTFormat = self._DTFormat
-        else: DTFormat = self._DTFormat_WithTime
-        StartDT, EndDT = dts[0], dts[-1]
-        LookBack = args.get("回溯天数", self.LookBack)
-        if not np.isinf(LookBack): StartDT -= dt.timedelta(LookBack)
         EndDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
         AnnDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("公告时点字段", self.PublDTField), "DBFieldName"]
         IDField = self._DBTableName+"."+self._FactorInfo.loc[args.get("ID字段", self.IDField), "DBFieldName"]
+        IgnoreTime = args.get("忽略时间", self.IgnoreTime)
+        if IgnoreTime:
+            DTFormat = self._DTFormat
+            AdjAnnDTField = self.__QS_toDate__(AnnDTField)
+        else:
+            DTFormat = self._DTFormat_WithTime
+            AdjAnnDTField = AnnDTField
+        StartDT, EndDT = dts[0], dts[-1]
+        LookBack = args.get("回溯天数", self.LookBack)
+        if not np.isinf(LookBack): StartDT -= dt.timedelta(LookBack)
         SubSQLStr = "SELECT "+IDField+" AS ID, "
         if IgnoreTime:
             SubSQLStr += self.__QS_toDate__("CASE WHEN "+AnnDTField+">="+EndDTField+" THEN "+AnnDTField+" ELSE "+EndDTField+" END")+" AS AnnDate, "
@@ -569,9 +577,9 @@ class SQL_WideTable(SQL_Table):
             SubSQLStr += "CASE WHEN "+AnnDTField+">="+EndDTField+" THEN "+AnnDTField+" ELSE "+EndDTField+" END AS AnnDate, "
         SubSQLStr += "MAX("+EndDTField+") AS MaxEndDate "
         SubSQLStr += "FROM "+self._DBTableName+" "
-        SubSQLStr += "WHERE ("+AnnDTField+">="+StartDT.strftime(DTFormat)+" "
+        SubSQLStr += "WHERE ("+AdjAnnDTField+">="+StartDT.strftime(DTFormat)+" "
         SubSQLStr += "OR "+EndDTField+">="+StartDT.strftime(DTFormat)+") "
-        SubSQLStr += "AND ("+AnnDTField+"<="+EndDT.strftime(DTFormat)+" "
+        SubSQLStr += "AND ("+AdjAnnDTField+"<="+EndDT.strftime(DTFormat)+" "
         SubSQLStr += "AND "+EndDTField+"<="+EndDT.strftime(DTFormat)+") "
         SubSQLStr += self._genConditionSQLStr(use_main_table=False, args=args)+" "
         if (self._MainTableName is None) or (self._MainTableName==self._DBTableName):
@@ -586,7 +594,7 @@ class SQL_WideTable(SQL_Table):
         SQLStr += "INNER JOIN ("+SubSQLStr+") t "
         SQLStr += "ON (t.ID="+IDField+" "
         SQLStr += "AND t.MaxEndDate="+EndDTField+") "
-        SQLStr += "WHERE t.AnnDate>="+AnnDTField+" "
+        SQLStr += "WHERE t.AnnDate>="+AdjAnnDTField+" "
         if not ((self._MainTableName is None) or (self._MainTableName==self._DBTableName)):
             SQLStr += self._genIDSQLStr(ids, args=args)+" "
         SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
@@ -616,29 +624,37 @@ class SQL_WideTable(SQL_Table):
     def _genNullIDSQLStr_IgnorePublDT(self, factor_names, ids, end_date, args={}):
         IDField = self._getIDField(args=args)
         DTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
-        if args.get("忽略时间", self.IgnoreTime): DTFormat = self._DTFormat
-        else: DTFormat = self._DTFormat_WithTime
+        if args.get("忽略时间", self.IgnoreTime):
+            DTFormat = self._DTFormat
+            AdjDTField = self.__QS_toDate__(DTField)
+        else:
+            DTFormat = self._DTFormat_WithTime
+            AdjDTField = DTField
         SubSQLStr = "SELECT "+self._MainTableName+"."+self._MainTableID+", "
-        SubSQLStr += "MAX("+DTField+") "
+        SubSQLStr += "MAX("+AdjDTField+") "
         SubSQLStr += self._genFromSQLStr()+" "
-        SubSQLStr += "WHERE "+DTField+"<"+end_date.strftime(DTFormat)+" "
+        SubSQLStr += "WHERE "+AdjDTField+"<"+end_date.strftime(DTFormat)+" "
         SubSQLStr += self._genIDSQLStr(ids, args=args)+" "
         ConditionSQLStr = self._genConditionSQLStr(use_main_table=True, args=args)
         SubSQLStr += ConditionSQLStr+" "
         SubSQLStr += "GROUP BY "+self._MainTableName+"."+self._MainTableID
-        SQLStr = "SELECT "+DTField+", "
+        SQLStr = "SELECT "+AdjDTField+", "
         SQLStr += IDField+" AS ID, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
-        SQLStr += "WHERE ("+self._MainTableName+"."+self._MainTableID+", "+DTField+") IN ("+SubSQLStr+") "
+        SQLStr += "WHERE ("+self._MainTableName+"."+self._MainTableID+", "+AdjDTField+") IN ("+SubSQLStr+") "
         SQLStr += ConditionSQLStr
         return SQLStr
     def _prepareRawData_IgnorePublDT(self, factor_names, ids, dts, args={}):
         if (dts==[]) or (ids==[]): return pd.DataFrame(columns=["QS_DT", "ID"]+factor_names)
         DTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
-        if args.get("忽略时间", self.IgnoreTime): DTFormat = self._DTFormat
-        else: DTFormat = self._DTFormat_WithTime
+        if args.get("忽略时间", self.IgnoreTime):
+            DTFormat = self._DTFormat
+            AdjAnnDTField = self.__QS_toDate__(DTField)
+        else:
+            DTFormat = self._DTFormat_WithTime
+            AdjAnnDTField = DTField
         LookBack = args.get("回溯天数", self.LookBack)
         if dts is not None:
             StartDT, EndDT = dts[0], dts[-1]
@@ -646,14 +662,14 @@ class SQL_WideTable(SQL_Table):
         else:
             StartDT = EndDT = None
         # 形成 SQL 语句, 时点, ID, 因子数据
-        SQLStr = "SELECT "+DTField+", "
+        SQLStr = "SELECT "+AdjAnnDTField+", "
         SQLStr += self._getIDField(args=args)+" AS ID, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
         if StartDT is not None:
-            SQLStr += "WHERE "+DTField+">="+StartDT.strftime(DTFormat)+" "
-            SQLStr += "AND "+DTField+"<="+EndDT.strftime(DTFormat)+" "
+            SQLStr += "WHERE "+AdjAnnDTField+">="+StartDT.strftime(DTFormat)+" "
+            SQLStr += "AND "+AdjAnnDTField+"<="+EndDT.strftime(DTFormat)+" "
         else:
             SQLStr += "WHERE "+DTField+" IS NOT NULL "
         SQLStr += self._genIDSQLStr(ids, args=args)+" "
@@ -693,19 +709,25 @@ class SQL_WideTable(SQL_Table):
             AnnDTField = self._DBTableName+"."+self._FactorInfo.loc[AnnDTField, "DBFieldName"]
             if IgnoreTime:
                 SQLStr += self.__QS_toDate__("CASE WHEN "+AnnDTField+">="+EndDTField+" THEN "+AnnDTField+" ELSE "+EndDTField+" END")+" AS QS_DT, "
+                AdjAnnDTField = self.__QS_toDate__(AnnDTField)
             else:
                 SQLStr += "CASE WHEN "+AnnDTField+">="+EndDTField+" THEN "+AnnDTField+" ELSE "+EndDTField+" END AS QS_DT, "
+                AdjAnnDTField = AnnDTField
         else:
             AnnDTField = EndDTField
+            if IgnoreTime:
+                AdjAnnDTField = self.__QS_toDate__(AnnDTField)
+            else:
+                AdjAnnDTField = AnnDTField
             SQLStr += AnnDTField+" AS QS_DT, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
         SQLStr += "WHERE "+EndDTField+"<="+EndDT.strftime(DTFormat)+" "
         if AnnDTField!=EndDTField:
-            SQLStr += "AND "+AnnDTField+"<="+EndDT.strftime(DTFormat)+" "
+            SQLStr += "AND "+AdjAnnDTField+"<="+EndDT.strftime(DTFormat)+" "
             if not np.isinf(RawLookBack):
-                SQLStr += "AND ("+AnnDTField+">="+StartDT.strftime(DTFormat)+" "
+                SQLStr += "AND ("+AdjAnnDTField+">="+StartDT.strftime(DTFormat)+" "
                 SQLStr += "OR "+EndDTField+">="+StartDT.strftime(DTFormat)+") "
         elif not np.isinf(RawLookBack):
             SQLStr += "AND "+EndDTField+">="+StartDT.strftime(DTFormat)+" "
@@ -1154,7 +1176,7 @@ class SQL_TimeSeriesTable(SQL_Table):
     OnlyLookBackNontarget = Bool(False, label="只回溯非目标日", arg_type="Bool", order=2)
     OnlyLookBackDT = Bool(False, label="只回溯时点", arg_type="Bool", order=3)
     #PublDTField = Enum(None, label="公告时点字段", arg_type="SingleOption", order=4)
-    IgnoreTime = Bool(True, label="忽略时间", arg_type="Bool", order=5)
+    IgnoreTime = Bool(False, label="忽略时间", arg_type="Bool", order=5)
     EndDateASC = Bool(False, label="截止日期递增", arg_type="Bool", order=6)
     OrderFields = List(arg_type="List", label="排序字段", order=7)# [("字段名", "ASC" 或者 "DESC")]
     MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=8)
@@ -1200,23 +1222,33 @@ class SQL_TimeSeriesTable(SQL_Table):
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
     def _genNullIDSQLStr_IgnorePublDT(self, factor_names, ids, end_date, args={}):
         DTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
-        SubSQLStr = "SELECT MAX("+DTField+") "
+        if args.get("忽略时间", self.IgnoreTime):
+            DTFormat = self._DTFormat
+            AdjDTField = self.__QS_toDate__(DTField)
+        else:
+            DTFormat = self._DTFormat_WithTime
+            AdjDTField = DTField
+        SubSQLStr = "SELECT MAX("+AdjDTField+") "
         SubSQLStr += self._genFromSQLStr()+" "
-        SubSQLStr += "WHERE "+DTField+"<"+end_date.strftime(self._DTFormat)+" "
+        SubSQLStr += "WHERE "+AdjDTField+"<"+end_date.strftime(DTFormat)+" "
         ConditionSQLStr = self._genConditionSQLStr(use_main_table=True, args=args)
         SubSQLStr += ConditionSQLStr+" "
-        SQLStr = "SELECT "+DTField+", "
+        SQLStr = "SELECT "+AdjDTField+", "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
-        SQLStr += "WHERE "+DTField+" = ("+SubSQLStr+") "
+        SQLStr += "WHERE "+AdjDTField+" = ("+SubSQLStr+") "
         SQLStr += ConditionSQLStr
         return SQLStr
     def _prepareRawData_IgnorePublDT(self, factor_names, ids, dts, args={}):
         if dts==[]: return pd.DataFrame(columns=["QS_DT"]+factor_names)
         DTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
-        if args.get("忽略时间", self.IgnoreTime): DTFormat = self._DTFormat
-        else: DTFormat = self._DTFormat_WithTime
+        if args.get("忽略时间", self.IgnoreTime):
+            DTFormat = self._DTFormat
+            AdjDTField = self.__QS_toDate__(DTField)
+        else:
+            DTFormat = self._DTFormat_WithTime
+            AdjDTField = DTField
         LookBack = args.get("回溯天数", self.LookBack)
         if dts is not None:
             StartDate, EndDate = dts[0].date(), dts[-1].date()
@@ -1224,13 +1256,13 @@ class SQL_TimeSeriesTable(SQL_Table):
         else:
             StartDate = EndDate = None        
         # 形成SQL语句, 日期, ID, 因子数据
-        SQLStr = "SELECT "+DTField+", "
+        SQLStr = "SELECT "+AdjDTField+", "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
         if StartDate is not None:
-            SQLStr += "WHERE "+DTField+">="+StartDate.strftime(DTFormat)+" "
-            SQLStr += "AND "+DTField+"<="+EndDate.strftime(DTFormat)+" "
+            SQLStr += "WHERE "+AdjDTField+">="+StartDate.strftime(DTFormat)+" "
+            SQLStr += "AND "+AdjDTField+"<="+EndDate.strftime(DTFormat)+" "
         else:
             SQLStr += "WHERE "+DTField+" IS NOT NULL "
         SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
@@ -1250,11 +1282,15 @@ class SQL_TimeSeriesTable(SQL_Table):
         EndDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
         AnnDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("公告时点字段", self.PublDTField), "DBFieldName"]
         IgnoreTime = args.get("忽略时间", self.IgnoreTime)
-        if IgnoreTime: DTFormat = self._DTFormat
-        else: DTFormat = self._DTFormat_WithTime
+        if IgnoreTime:
+            DTFormat = self._DTFormat
+            AdjAnnDTField = self.__QS_toDate__(AnnDTField)
+        else:
+            DTFormat = self._DTFormat_WithTime
+            AdjAnnDTField = AnnDTField
         SubSQLStr = "SELECT MAX("+EndDTField+") AS MaxEndDate "
         SubSQLStr += "FROM "+self._DBTableName+" "
-        SubSQLStr += "WHERE ("+AnnDTField+"<"+end_date.strftime(DTFormat)+" "
+        SubSQLStr += "WHERE ("+AdjAnnDTField+"<"+end_date.strftime(DTFormat)+" "
         SubSQLStr += "AND "+EndDTField+"<"+end_date.strftime(DTFormat)+") "
         SubSQLStr += self._genConditionSQLStr(use_main_table=False, args=args)+" "
         if IgnoreTime:
@@ -1271,29 +1307,30 @@ class SQL_TimeSeriesTable(SQL_Table):
         return SQLStr
     def _prepareRawData_WithPublDT(self, factor_names, ids, dts, args={}):
         if dts==[]: return pd.DataFrame(columns=["QS_DT"]+factor_names)
+        EndDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
+        AnnDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("公告时点字段", self.PublDTField), "DBFieldName"]
         IgnoreTime = args.get("忽略时间", self.IgnoreTime)
-        if IgnoreTime: DTFormat = self._DTFormat
-        else: DTFormat = self._DTFormat_WithTime
+        if IgnoreTime:
+            DTFormat = self._DTFormat
+            AdjAnnDTField = self.__QS_toDate__(AnnDTField)
+        else:
+            DTFormat = self._DTFormat_WithTime
+            AdjAnnDTField = AnnDTField
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         LookBack = args.get("回溯天数", self.LookBack)
         if not np.isinf(LookBack): StartDate -= dt.timedelta(LookBack)
-        EndDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
-        AnnDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("公告时点字段", self.PublDTField), "DBFieldName"]
         if IgnoreTime:
             SubSQLStr = "SELECT "+self.__QS_toDate__("CASE WHEN "+AnnDTField+">="+EndDTField+" THEN "+AnnDTField+" ELSE "+EndDTField+" END")+" AS AnnDate, "
         else:
             SubSQLStr = "SELECT CASE WHEN "+AnnDTField+">="+EndDTField+" THEN "+AnnDTField+" ELSE "+EndDTField+" END AS AnnDate, "
         SubSQLStr += "MAX("+EndDTField+") AS MaxEndDate "
         SubSQLStr += "FROM "+self._DBTableName+" "
-        SubSQLStr += "WHERE ("+AnnDTField+">="+StartDate.strftime(DTFormat)+" "
+        SubSQLStr += "WHERE ("+AdjAnnDTField+">="+StartDate.strftime(DTFormat)+" "
         SubSQLStr += "OR "+EndDTField+">="+StartDate.strftime(DTFormat)+") "
-        SubSQLStr += "AND ("+AnnDTField+"<="+EndDate.strftime(DTFormat)+" "
+        SubSQLStr += "AND ("+AdjAnnDTField+"<="+EndDate.strftime(DTFormat)+" "
         SubSQLStr += "AND "+EndDTField+"<="+EndDate.strftime(DTFormat)+") "
         SubSQLStr += self._genConditionSQLStr(use_main_table=False, args=args)+" "
-        if IgnoreTime:
-            SubSQLStr += "GROUP BY "+self.__QS_toDate__("AnnDate")
-        else:
-            SubSQLStr += "GROUP BY AnnDate"
+        SubSQLStr += "GROUP BY AnnDate"
         SQLStr = "SELECT t.AnnDate AS DT, "
         SQLStr += "t.MaxEndDate AS MaxEndDate, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)

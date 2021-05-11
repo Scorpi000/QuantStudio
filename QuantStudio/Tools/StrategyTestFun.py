@@ -65,7 +65,8 @@ def calcYieldSeq(wealth_seq, init_wealth=None):
     return YieldSeq
 # 计算净值序列, yield_seq: 收益率序列, array
 def calcWealthSeq(yield_seq, init_wealth=None):
-    WealthSeq = np.cumprod(1+yield_seq,axis=0)
+    WealthSeq = np.nancumprod(1+yield_seq, axis=0)
+    WealthSeq[pd.isnull(yield_seq)] = np.nan
     if init_wealth is not None:
         WealthSeq = np.append(1,WealthSeq)*init_wealth
     return WealthSeq
