@@ -180,7 +180,11 @@ class BackTestModel(__QS_Object__):
                 ProgBar.update(CalcStage)
             elif iStage==2:# 结果生成阶段
                 EndStage += 1
-                self._Output.update(Args["OutputPipe"].get())
+                iOutput = Args["OutputPipe"].get()
+                self._Output.update(iOutput)
+                for ijKey, ijOutput in iOutput.items():
+                    ijModuleIdx = int(ijKey.split("-")[0])
+                    self.Modules[ijModuleIdx]._Output = ijOutput
         for iPID, iPrcs in Procs.items(): iPrcs.join()
         return 0
     # 计算并输出测试的结果集

@@ -9,6 +9,7 @@ from traits.api import ListStr, Enum, List, ListInt, Int, Str, Dict, Float
 from traitsui.api import SetEditor, Item
 from scipy.stats import norm
 import statsmodels.api as sm
+from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 
 from QuantStudio import __QS_Error__
@@ -154,6 +155,42 @@ class CMRM(BaseModule):
         self._Output["异常收益率"] = pd.DataFrame(self._Output["异常收益率"], columns=np.arange(-self.EventPreWindow, 1+self.EventPostWindow), index=Index).reset_index()
         self._Output.pop("异常协方差")
         return 0
+    def genMatplotlibFig(self, file_path=None):
+        iPlotData = self._Output["J1统计量"]["异常收益率"]
+        Fig = Figure(figsize=(16, 8))
+        iAxes = Fig.add_subplot(1, 1, 1)
+        iAxes.bar(iPlotData.index.values, iPlotData["单时点"], label="异常收益率", color="indianred")
+        iAxes.legend(loc="upper left")
+        iRAxes = iAxes.twinx()
+        iRAxes.plot(iPlotData.index.values, iPlotData["向前累积"], label="向前累积异常收益率", color="steelblue", lw=2.5)
+        iRAxes.plot(iPlotData.index.values, iPlotData["向前向后累积"], label="向前向后累积异常收益率", color="forestgreen", lw=2.5)
+        iRAxes.legend(loc="upper right")
+        if self.EventPreWindow>0:
+            iAxes.plot([0, 0], iAxes.get_ylim(), color="k", lw=2.5, linestyle="dashed")
+        iAxes.set_title("异常收益率")
+        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
+        return Fig
+    def _repr_html_(self):
+        if len(self.ArgNames)>0:
+            HTML = "参数设置: "
+            HTML += '<ul align="left">'
+            for iArgName in self.ArgNames:
+                HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
+            HTML += "</ul>"
+        else:
+            HTML = ""
+        for iKey in ["J1统计量", "J1统计量", "J1统计量", "J1统计量"]:
+            iHTML = self._Output[iKey]["p值"].style.background_gradient(cmap="Reds_r").set_precision(4).render()
+            HTML += '<div align="left" style="font-size:1em"><strong>'+iKey+' : p 值</strong></div>'+iHTML
+        Fig = self.genMatplotlibFig()
+        # figure 保存为二进制文件
+        Buffer = BytesIO()
+        Fig.savefig(Buffer)
+        PlotData = Buffer.getvalue()
+        # 图像数据转化为 HTML 格式
+        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+        HTML += ('<img src="%s">' % ImgStr)
+        return HTML
 
 class MAM(CMRM):
     """市场调整模型"""
@@ -319,16 +356,17 @@ class MM(CMRM):
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0
+        EventRecord = self._Output["事件记录"]
         super().__QS_end__()
-        Mask = (self._Output["事件记录"][:, 2]<=self.EventPostWindow)
+        Mask = (EventRecord[:, 2]<=self.EventPostWindow)
+        Index = pd.MultiIndex.from_arrays(EventRecord[:,:2].T, names=["ID", "时点"])
         if np.sum(Mask)>0:
-            RowPos, ColPos = np.arange(self._Output["异常收益率"].shape[0])[Mask].tolist(), (self._Output["事件记录"][Mask, 2]+self.EventPreWindow).astype(np.int)
+            RowPos, ColPos = np.arange(self._Output["异常收益率"].shape[0])[Mask].tolist(), (EventRecord[Mask, 2]+self.EventPreWindow).astype(np.int)
             for i in range(RowPos.shape[0]):
                 X = self._Output["市场超额收益率"][RowPos[i], :]
                 iMask = pd.notnull(X)
                 X = sm.add_constant(X[iMask], prepend=True)
                 self._Output["异常协方差"][RowPos[i], iMask, iMask] = (np.eye(X.shape[0])+np.dot(np.dot(X, np.linalg.inv(np.dot(X.T, X))), X.T)) * self._Output["Var"][RowPos[i]]
-        Index = pd.MultiIndex.from_arrays(self._Output["事件记录"][:,:2].T, names=["ID", "时点"])
         self._Output["回归估计量"] = pd.DataFrame(self._Output.pop("Alpha"), index=Index, columns=["Apha"])
         self._Output["回归估计量"]["Beta"] = self._Output.pop("Beta")
         self._Output["回归估计量"]["Sigma2"] = self._Output.pop("Var")

@@ -1,14 +1,26 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import pandas as pd
+import matplotlib
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
 
+# 绘制热图
+def plotHeatMap(df, ax):
+    ax.pcolor(df.values, cmap=matplotlib.cm.Reds)
+    ax.set_xticks(np.arange(df.shape[0])+0.5, minor=False)
+    ax.set_yticks(np.arange(df.shape[1])+0.5, minor=False)
+    ax.invert_yaxis()
+    ax.xaxis.tick_top()
+    ax.set_xticklabels(df.index.astype(str).tolist(), minor=False)
+    ax.set_yticklabels(df.columns.astype(str).tolist(), minor=False)
+    return ax
+
 # 绘制 K 线图
 # quotes: array(shape=(N, 4)), 列分别为开盘价, 最高价, 最低价, 收盘价
-def plotCandleStick(ax, quotes, xdata=None, width=0.2, colorup='#B70203', colordown='#3ACCCC', alpha=1.0):
+def plotCandleStick(ax, quotes, xdata=None, colorup='#B70203', colordown='#3ACCCC', rect_width=0.5, line_args={"linewidth": 1, "antialiased": True}, rect_args={}):
     if xdata is None: xdata = np.arange(quotes.shape[0])
-    OFFSET = width / 2.0
+    OFFSET = rect_width / 2.0
     Lines, Patches = [], []
     for i in range(quotes.shape[0]):
         if pd.isnull(quotes[i]).sum()>0: continue
@@ -21,9 +33,9 @@ def plotCandleStick(ax, quotes, xdata=None, width=0.2, colorup='#B70203', colord
             iColor = colordown
             iLower = iClose
             iHeight = iOpen - iClose
-        iVLine = Line2D(xdata=(xdata[i], xdata[i]), ydata=(iLow, iHigh), color=iColor, linewidth=0.5, antialiased=True)
-        iRect = Rectangle(xy=(i-OFFSET, iLower), width=width, height=iHeight, facecolor=iColor, edgecolor=iColor)
-        iRect.set_alpha(alpha)
+        iVLine = Line2D(xdata=(xdata[i], xdata[i]), ydata=(iLow, iHigh), color=iColor, **line_args)
+        iRect = Rectangle(xy=(i-OFFSET, iLower), height=iHeight, width=rect_width, facecolor=iColor, edgecolor=iColor, **rect_args)
+#         iRect.set_alpha(alpha)
         Lines.append(iVLine)
         Patches.append(iRect)
         ax.add_line(iVLine)

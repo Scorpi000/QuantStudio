@@ -55,6 +55,44 @@ def getDateStartEndIndex(dts, dates):
         else:
             Index[i, 1] = iIndex-1
     return Index
+# 获取某个时点序列的月度时点序列
+# postpone=True: 取每月大于等于 target_day 的第一个时点
+# postpone=False: 取每月小于等于 target_day 的最后一个时点
+# over_month=True: 表示允许跨月顺延
+def getMonthDateTime(dts, target_day=15, postpone=True, over_month=False):
+    if over_month:
+        dts = np.array(sorted(dts), dtype="O")
+        DTStrs = [iDT.strftime("%Y%m%d") for iDT in dts]
+        StartOffset = (1 if (not postpone) and (dts[0].day>target_day) else 0)
+        EndOffset = (1 if postpone and (dts[-1].day<target_day) else 0)
+        StartYear, StartMonth = dts[0].year, dts[0].month
+        EndYear, EndMonth = dts[-1].year, dts[-1].month
+        nMonth = (EndYear - StartYear) * 12 + EndMonth - StartMonth + 1
+        NaturalDTStrs = []
+        for i in range(StartOffset, nMonth-EndOffset):
+            iYearNum, iMonthNum = i//12, i%12
+            iTargetYear = StartYear + iYearNum
+            iTargetMonth = StartMonth + iMonthNum
+            iTargetYear += (iTargetMonth>12)
+            iTargetMonth -= (iTargetMonth>12)*12
+            NaturalDTStrs.append(str(iTargetYear)+str(iTargetMonth).zfill(2)+str(target_day).zfill(2))
+        if postpone:
+            return sorted(set(dts[np.searchsorted(DTStrs, NaturalDTStrs, side="left")]))
+        else:
+            return sorted(set(dts[np.searchsorted(DTStrs, NaturalDTStrs, side="right")-1]))
+    TargetDTs = []
+    if postpone:
+        for iDT in sorted(dts):
+            if (iDT.day>=target_day) and ((not TargetDTs) or (iDT.year!=TargetDTs[-1].year) or (iDT.month!=TargetDTs[-1].month)):
+                TargetDTs.append(iDT)
+    else:
+        for iDT in sorted(dts):
+            if iDT.day<=target_day:
+                if (not TargetDTs) or (iDT.year!=TargetDTs[-1].year) or (iDT.month!=TargetDTs[-1].month):
+                    TargetDTs.append(iDT)
+                else:
+                    TargetDTs[-1] = iDT
+    return TargetDTs
 # 获取某个时点序列的每月第一个时点序列
 def getMonthFirstDateTime(dts):
     dts = sorted(dts)
@@ -83,6 +121,36 @@ def getMonthLastDateTime(dts):
             TargetDTs[-1] = iDT
         else:
             TargetDTs.append(iDT)
+    return TargetDTs
+# 获取某个时点序列的周度时点序列
+# postpone=True: 向前顺延, 取每周大于等于 target_weekday 的第一个时点
+# postpone=False: 向后顺延, 取每周小于等于 target_weekday 的最后一个时点
+# over_week=True: 表示允许跨周顺延
+def getWeekDateTime(dts, target_weekday=3, postpone=True, over_week=False):
+    target_weekday -= 1
+    if over_week:
+        dts = np.array(sorted(dts), dtype="O")
+        if not postpone:
+            StartDT = dts[0] + dt.timedelta(target_weekday - dts[0].weekday()+7 * (dts[0].weekday()>target_weekday))
+        else:
+            StartDT = dts[0] + dt.timedelta(target_weekday-dts[0].weekday())
+        NaturalDTs = getDateTimeSeries(StartDT, dts[-1], timedelta=dt.timedelta(7))
+        if postpone:
+            return sorted(set(dts[np.searchsorted(dts, NaturalDTs, side="left")]))
+        else:
+            return sorted(set(dts[np.searchsorted(dts, NaturalDTs, side="right")-1]))
+    TargetDTs = []
+    if postpone:
+        for iDT in sorted(dts):
+            if (iDT.weekday()>=target_weekday) and ((not TargetDTs) or ((iDT.date()-TargetDTs[-1].date()).days != iDT.weekday()-TargetDTs[-1].weekday())):
+                TargetDTs.append(iDT)
+    else:
+        for iDT in sorted(dts):
+            if iDT.weekday()<=target_weekday:
+                if (not TargetDTs) or ((iDT.date()-TargetDTs[-1].date()).days != iDT.weekday()-TargetDTs[-1].weekday()):
+                    TargetDTs.append(iDT)
+                else:
+                    TargetDTs[-1] = iDT
     return TargetDTs
 # 获取某个时点序列的每周第一个时点序列
 def getWeekFirstDateTime(dts):
@@ -189,7 +257,7 @@ def getTimeSeries(start_time, end_time, timedelta):
     TimeSeries = getDateTimeSeries(dt.datetime.combine(dt.date.today(), start_time), dt.datetime.combine(dt.date.today(), end_time), timedelta)
     return list(map(lambda x: x.time(), TimeSeries))
 # 获取连续的时间点序列
-def getDateTimeSeries(start_dt, end_dt, timedelta):
+def getDateTimeSeries(start_dt, end_dt, timedelta=dt.timedelta(1)):
     nDelta = int((end_dt-start_dt)/timedelta)+1
     return ((start_dt-timedelta)+np.array([timedelta]*nDelta).cumsum()).tolist()
 # 时间序列按照年度分组

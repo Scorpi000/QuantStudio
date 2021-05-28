@@ -6,7 +6,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from QuantStudio.FactorDataBase.SQLDB import SQLDB
+from QuantStudio.FactorDataBase.SQLDB import SQLDB, SQLite3DB
 
 class TestSQLDB(unittest.TestCase):
     @classmethod
@@ -17,6 +17,7 @@ class TestSQLDB(unittest.TestCase):
         TestSQLDB.DTs = [dt.datetime(2018,1,1)+dt.timedelta(i) for i in range(4)]
         TestSQLDB.Data = pd.Panel(np.zeros((len(TestSQLDB.FactorNames), len(TestSQLDB.DTs), len(TestSQLDB.IDs))), items=TestSQLDB.FactorNames, major_axis=TestSQLDB.DTs, minor_axis=TestSQLDB.IDs)
         TestSQLDB.FDB = SQLDB(sys_args={"数据库类型": "sqlite3", "连接器":"sqlite3", "sqlite3文件": ":memory:"})
+        SQLDB.connect()
     # 测试连接功能
     def test_1_connect(self):
         self.FDB.connect()
@@ -63,6 +64,22 @@ class TestSQLDB(unittest.TestCase):
         # 删除表
         self.FDB.deleteTable(table_name=self.TargetTable)
         self.assertListEqual(self.FDB.TableNames, [])
+    # 测试宽表(TODO)
+    def test_wide_table(self):
+        FDB = SQLite3DB(sys_args={"数据库类型": "sqlite3", "连接器": "sqlite3", "sqlite3文件": ":memory:", "表名前缀": "", "内部前缀": ""})
+        FDB.connect()
+        TargetTable = "qs_test_wide_table"
+        Data = pd.read_excel("."+os.sep+"SQLDBTestData.xlsx", TargetTable)
+        
+        FDB.createTable(TargetTable, {"datetime": "text", "code": "text", "ann_dt": "text", "Factor0": "real", "Factor1": "text"})
+        
+        SQLStr = f"REPLACE INTO {TargetTable} (`"+"`, `".join(Data.columns)+"`) VALUES (%s" + ", %s" * (Data.shape[1]-1) + ")"
+        Cursor = SQLDB.cursor()
+        Cursor.executemany(SQLStr, Data.astype("O").where(pd.notnull(Data), None).values.tolist())
+        SQLDB.Connection.commit()
+        Cursor.close()
+        
+        
 
 if __name__=="__main__":
     unittest.main()

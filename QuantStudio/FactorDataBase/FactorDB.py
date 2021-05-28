@@ -512,7 +512,12 @@ class FactorTable(__QS_Object__):
             self.ErgodicMode._CacheData.update(iData)
         self.ErgodicMode._Queue2SubProcess.put((None, (CacheFactorNames, PopFactorNames)))
         Data = pd.Panel(Data)
-        if Data.shape[0]>0: Data = Data.loc[:, dts, ids]
+        if Data.shape[0]>0:
+            try:
+                Data = Data.loc[:, dts, ids]
+            except KeyError as e:
+                self._QS_Logger.warning("%s 提取的时点或 ID 不在因子表范围内: %s" % (self._Name, str(e)))
+                Data = pd.Panel(items=Data.items, major_axis=dts, minor_axis=ids)
         if not DataFactorNames: return Data.loc[factor_names]
         #print("超出缓存区因子个数读取: "+str(DataFactorNames))# debug
         return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=DataFactorNames, ids=ids, dts=dts, args=args), factor_names=DataFactorNames, ids=ids, dts=dts, args=args).join(Data).loc[factor_names]
