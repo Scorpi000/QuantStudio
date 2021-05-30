@@ -1,20 +1,15 @@
 # coding=utf-8
-import os
 import time
-import shutil
-import datetime as dt
 import webbrowser
 
 import numpy as np
 import pandas as pd
 from progressbar import ProgressBar
-from traits.api import List, Instance, Str
-from traitsui.api import View, Item, Group
-from traitsui.menu import OKButton, CancelButton
+from traits.api import List, Str
+from traitsui.api import Group
 from lxml import etree
 
-from QuantStudio import __QS_Error__, __QS_Object__, __QS_MainPath__
-from QuantStudio.FactorDataBase.FactorDB import FactorDB
+from QuantStudio import __QS_Error__, __QS_Object__
 from QuantStudio.Tools.AuxiliaryFun import startMultiProcess
 from QuantStudio.Tools.QSObjects import QSPipe
 

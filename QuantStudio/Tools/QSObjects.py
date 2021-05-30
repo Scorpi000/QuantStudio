@@ -660,3 +660,35 @@ class QSPipe(object):
         return pickle.loads(DataByte)
     def empty(self):
         return self._PutQueue.empty()
+
+# 消息转发器
+class QSMsgRouter(object):
+    def __init__(self):
+        self._QueueFromSender = Queue()
+        self._Sender2Listener = {None: set()}# {消息发送者: {消息接收者}}, None 表示所有消息发送者
+        self._Listeners = {}# {消息接收者: Queue}
+    # 注册消息发送者
+    def registerMsgSender(self, name):
+        self._Sender2Listener[name] = set()
+        return 0
+    # 注册消息接受者，sender_name 为 None 表示接受所有消息
+    def registerMsgListener(self, name, sender_name=None):
+        if sender_name not in self._Sender2Listener:
+            print(f"警告: {sender_name} 尚未注册为消息发送者!")
+        if name not in self._Listeners:
+            self._Listeners[name] = Queue()
+        self._Sender2Listener.setdefault(sender_name, set()).add(name)
+        return 0
+    # 发送消息
+    def sendMsg(self, msg, name, block=True, timeout=None):
+        if name not in self._Sender2Listener:
+            raise __QS_Error__(f"{name} 尚未注册为消息发送者!")
+        for iListener in self._Sender2Listener[name].union(self._Sender2Listener[None]):
+            self._Listeners[iListener].put((name, msg), block=block, timeout=timeout)
+        return 0
+    # 接收消息
+    def recvMsg(self, name, block=True, timeout=None):
+        if name not in self._Listeners:
+            raise __QS_Error__(f"{name} 尚未注册为消息接收者!")
+        return self._Listeners[name].get(block=block, timeout=timeout)
+    
