@@ -408,32 +408,20 @@ class FilterPortfolio(QuantilePortfolio):
 
 class MultiPortfolio(BaseModule):
     """多组合对比"""
-    PortfolioModules = List(QuantilePortfolio, arg_type="List", label="对比模块", order=0)
+    Modules = List(QuantilePortfolio, arg_type="List", label="对比模块", order=0)
     def __init__(self, name="多组合对比", sys_args={}, **kwargs):
-        return super().__init__(name=name, sys_args=sys_args, **kwargs)
-    def __QS_start__(self, mdl, dts, **kwargs):
-        if self._isStarted: return ()
-        super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
-        FactorTables = ()
-        for iModule in self.PortfolioModules:
-            FactorTables += iModule.__QS_start__(mdl=mdl, dts=dts, **kwargs)
-        return FactorTables
-    def __QS_move__(self, idt, **kwargs):
-        for iModule in self.PortfolioModules:
-            iModule.__QS_move__(idt, **kwargs)
-        return 0
-    def __QS_end__(self):
-        if not self._isStarted: return 0
-        super().__QS_end__()
+        super().__init__(name=name, sys_args=sys_args, **kwargs)
+        self._QS_isMulti = True
+    def output(self, recalculate=False):
+        if (not recalculate)  and self._Output: return self._Output
         self._Output = {"净值": {"L-S": pd.DataFrame(), "Top": pd.DataFrame(), "Bottom": pd.DataFrame(), "市场": pd.DataFrame()}, 
-                        "收益率": {"L-S": pd.DataFrame(), "Top": pd.DataFrame(), "Bottom": pd.DataFrame(), "市场": pd.DataFrame()}, 
-                        "超额净值": {"Top": pd.DataFrame(), "Bottom": pd.DataFrame()},
-                        "超额收益率": {"Top": pd.DataFrame(), "Bottom": pd.DataFrame()},
-                        "换手率": {"Top": pd.DataFrame(), "Bottom": pd.DataFrame()},
-                        "统计数据": {"Top": None, "Bottom": None, "L-S": None, "市场": None}}
-        for i, iModule in enumerate(self.PortfolioModules):
-            iModule.__QS_end__()
-            iOutput = iModule.output()
+                         "收益率": {"L-S": pd.DataFrame(), "Top": pd.DataFrame(), "Bottom": pd.DataFrame(), "市场": pd.DataFrame()}, 
+                         "超额净值": {"Top": pd.DataFrame(), "Bottom": pd.DataFrame()},
+                         "超额收益率": {"Top": pd.DataFrame(), "Bottom": pd.DataFrame()},
+                         "换手率": {"Top": pd.DataFrame(), "Bottom": pd.DataFrame()},
+                         "统计数据": {"Top": None, "Bottom": None, "L-S": None, "市场": None}}
+        for i, iModule in enumerate(self.Modules):
+            iOutput = iModule.output(recalculate=recalculate)
             iName = str(i)+"-"+iModule.Name
             self._Output[iName] = iOutput
             self._Output["净值"]["Top"][iName] = iOutput["净值"].iloc[:, 0]
@@ -459,7 +447,7 @@ class MultiPortfolio(BaseModule):
             self._Output["统计数据"]["Bottom"].loc[iName] = iOutput["统计数据"].iloc[-3, :]
             self._Output["统计数据"]["L-S"].loc[iName] = iOutput["统计数据"].loc["L-S", :]
             self._Output["统计数据"]["市场"].loc[iName] = iOutput["统计数据"].loc["市场", :]
-        return 0
+        return self._Output
     def genMatplotlibFig(self, file_path=None):
         nRow, nCol = 8, 3
         Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
@@ -535,16 +523,17 @@ class MultiPortfolio(BaseModule):
             HTML += '<ul align="left">'
             for iArgName in self.ArgNames:
                 if iArgName=="对比模块":
-                    HTML += "<li>"+iArgName+": "+",".join([iModule.Name for iModule in self.PortfolioModules])+"</li>"
+                    HTML += "<li>"+iArgName+": "+",".join([iModule.Name for iModule in self.Modules])+"</li>"
             HTML += "</ul>"
         else:
             HTML = ""
         Formatters = [_QS_formatPandasPercentage]*3+[lambda x:'{0:.2f}'.format(x)]*2+[_QS_formatPandasPercentage]*2+[lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else "NaT"]*2
         Formatters += [_QS_formatPandasPercentage]*3+[lambda x:'{0:.2f}'.format(x)]*2+[_QS_formatPandasPercentage]*2+[lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else "NaT"]*2
         Formatters += [lambda x:'{0:.2f}'.format(x)]*2
-        for iKey in self._Output["统计数据"]:
+        Output = self.output()
+        for iKey in Output["统计数据"]:
             HTML += iKey+" 组合: "
-            iHTML = self._Output["统计数据"][iKey].to_html(formatters=Formatters)
+            iHTML = Output["统计数据"][iKey].to_html(formatters=Formatters)
             Pos = iHTML.find(">")
             HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         Fig = self.genMatplotlibFig()

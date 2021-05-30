@@ -10,7 +10,7 @@ from traits.api import List, Str
 from traitsui.api import Group
 from lxml import etree
 
-from QuantStudio import __QS_Error__, __QS_Object__
+from QuantStudio import __QS_Object__
 from QuantStudio.Tools.AuxiliaryFun import startMultiProcess
 from QuantStudio.Tools.QSObjects import QSPipe
 
@@ -23,6 +23,7 @@ class BaseModule(__QS_Object__):
         self._Output = {}
         self._isStarted = False# 模块是否已经启动
         self._iDT = None# 当前的时点
+        self._QS_isMulti = False# 是否为多重模块
         return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     @property
     def Model(self):
@@ -56,32 +57,9 @@ class BaseModule(__QS_Object__):
 
 
 
-def _runModel(args):
-    Sub2MainQueue, OutputPipe = args.pop("Sub2MainQueue"), args.pop("OutputPipe")
-    FTs = set()
-    for j in args["module_inds"]:
-        jFTs = args["mdl"].Modules[j].__QS_start__(mdl=args["mdl"], dts=args["mdl"]._QS_TestDateTimes)
-        if jFTs is not None: FTs.update(set(jFTs))
-    for jFT in FTs: jFT.start(dts=args["mdl"]._QS_TestDateTimes)
-    Sub2MainQueue.put(0)
-    for i, iDT in enumerate(args["mdl"]._QS_TestDateTimes):
-        args["mdl"]._TestDateTimeIndex = i
-        args["mdl"]._TestDateIndex.loc[iDT.date()] = i
-        for jFT in FTs: jFT.move(iDT)
-        for j in args["module_inds"]: args["mdl"].Modules[j].__QS_move__(iDT)
-        Sub2MainQueue.put(1)
-    for j in args["module_inds"]: args["mdl"].Modules[j].__QS_end__()
-    for jFT in FTs: jFT.end()
-    Output = {}
-    for j in args["module_inds"]:
-        iOutput = args["mdl"].Modules[j].output()
-        if iOutput: Output[str(j)+"-"+args["mdl"].Modules[j].Name] = iOutput
-    Sub2MainQueue.put(2)
-    OutputPipe.put(Output)
-    return 0
 
-def _runModelThread(idx, mdl, end_barrier, start_barrier, ft_lock):
-    jModule = mdl.Modules[idx]
+def _runModel_SingleThread(idx, mdl, end_barrier, start_barrier, ft_lock):
+    jModule = mdl._TestModules[idx]
     jFTs = jModule.__QS_start__(mdl=mdl, dts=mdl._QS_TestDateTimes)
     if jFTs is not None:
         jFTs = set(jFTs)
@@ -111,6 +89,65 @@ def _runModelThread(idx, mdl, end_barrier, start_barrier, ft_lock):
     end_barrier.wait()
     return 0
 
+def _runModelProcessThread(args):
+    Mdl, Sub2MainQueue, OutputPipe = args.pop("mdl"), args.pop("Sub2MainQueue"), args.pop("OutputPipe")
+    nThread = len(args["module_inds"])
+    Threads = []
+    EndBarrier = threading.Barrier(nThread+1)
+    StartBarrier = threading.Barrier(nThread+1)
+    FTLock = threading.Lock()
+    for jIdx in args["module_inds"]:
+        Threads.append(threading.Thread(target=_runModel_SingleThread, args=(jIdx, Mdl, EndBarrier, StartBarrier, FTLock)))
+        Threads[-1].start()
+    EndBarrier.wait()
+    Sub2MainQueue.put(0)
+    for i, iDT in enumerate(Mdl._QS_TestDateTimes):
+        Mdl._TestDateTimeIndex = i
+        Mdl._TestDateIndex.loc[iDT.date()] = i
+        EndBarrier.reset()
+        StartBarrier.wait()
+        StartBarrier.reset()
+        EndBarrier.wait()
+        Sub2MainQueue.put(1)
+    EndBarrier.reset()
+    StartBarrier.wait()
+    StartBarrier.reset()
+    EndBarrier.wait()
+    for i in range(nThread):
+        Threads[i].join()
+    Output = {}
+    for j in args["module_inds"]:
+        iOutput = Mdl._TestModules[j].output()
+        if iOutput: Output[str(j)+"-"+Mdl._TestModules[j].Name] = iOutput
+    Sub2MainQueue.put(2)
+    OutputPipe.put(Output)
+    return 0
+
+def _runModelProcess(args):
+    if args["multi_thread"]: return _runModelProcessThread(args)
+    Mdl, Sub2MainQueue, OutputPipe = args.pop("mdl"), args.pop("Sub2MainQueue"), args.pop("OutputPipe")
+    FTs = set()
+    for j in args["module_inds"]:
+        jFTs = Mdl._TestModules[j].__QS_start__(mdl=Mdl, dts=Mdl._QS_TestDateTimes)
+        if jFTs is not None: FTs.update(set(jFTs))
+    for jFT in FTs: jFT.start(dts=Mdl._QS_TestDateTimes)
+    Sub2MainQueue.put(0)
+    for i, iDT in enumerate(Mdl._QS_TestDateTimes):
+        Mdl._TestDateTimeIndex = i
+        Mdl._TestDateIndex.loc[iDT.date()] = i
+        for jFT in FTs: jFT.move(iDT)
+        for j in args["module_inds"]: Mdl._TestModules[j].__QS_move__(iDT)
+        Sub2MainQueue.put(1)
+    for j in args["module_inds"]: Mdl._TestModules[j].__QS_end__()
+    for jFT in FTs: jFT.end()
+    Output = {}
+    for j in args["module_inds"]:
+        iOutput = Mdl._TestModules[j].output()
+        if iOutput: Output[str(j)+"-"+Mdl._TestModules[j].Name] = iOutput
+    Sub2MainQueue.put(2)
+    OutputPipe.put(Output)
+    return 0
+
 class BackTestModel(__QS_Object__):
     """回测模型"""
     Modules = List(BaseModule)# 已经添加的测试模块, [测试模块对象]
@@ -118,8 +155,8 @@ class BackTestModel(__QS_Object__):
         self._QS_TestDateTimes = []# 测试时间点序列, [datetime.datetime]
         self._TestDateTimeIndex = -1# 测试时间点索引
         self._TestDateIndex = pd.Series([], dtype=np.int64)# 测试日期最后一个时间点位于 _QS_TestDateTimes 中的索引
+        self._TestModules = []# 穿透多重模块后得到的所有基本模块列表
         self._Output = {}# 生成的结果集
-        self.UserData = {}# 用户数据存放
         return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     # 当前时点, datetime.datetime
     @property
@@ -147,15 +184,23 @@ class BackTestModel(__QS_Object__):
             Context[Prefix+"Module"+str(j)] = jModule
         return (Groups, Context)
     # 运行模型
-    def run(self, dts, subprocess_num=0, multi_thread=True):
+    def _penetrateModule(self, modules):
+        AllModules = set()
+        for iModule in modules:
+            if iModule._QS_isMulti:
+                AllModules = AllModules.union(self._penetrateModule(iModule.Modules))
+            else:
+                AllModules.add(iModule)
+        return AllModules
+    def run(self, dts, subprocess_num=0, multi_thread=False):
         self._QS_TestDateTimes = sorted(dts)
-        if subprocess_num>0: return self._runMultiProcs(subprocess_num)
+        self._TestModules = list(self._penetrateModule(self.Modules))
+        if subprocess_num>0: return self._runMultiProcs(subprocess_num, multi_thread)
         elif multi_thread: return self._runMultiThread()
         TotalStartT = time.perf_counter()
         print("==========历史回测==========", "1. 初始化", sep="\n", end="\n")
-        self.UserData = {}# 清空上次运行生成的用户数据
         FTs = set()
-        for jModule in self.Modules:
+        for jModule in self._TestModules:
             jFTs = jModule.__QS_start__(mdl=self, dts=self._QS_TestDateTimes)
             if jFTs is not None: FTs.update(set(jFTs))
         for jFT in FTs: jFT.start(dts=self._QS_TestDateTimes)
@@ -166,26 +211,25 @@ class BackTestModel(__QS_Object__):
                 self._TestDateTimeIndex = i
                 self._TestDateIndex.loc[iDT.date()] = i
                 for jFT in FTs: jFT.move(iDT)
-                for jModule in self.Modules: jModule.__QS_move__(iDT)
+                for jModule in self._TestModules: jModule.__QS_move__(iDT)
                 ProgBar.update(i+1)
         print(("耗时 : %.2f" % (time.perf_counter()-StartT, )), "3. 结果生成", sep="\n", end="\n")
         StartT = time.perf_counter()
-        for jModule in self.Modules: jModule.__QS_end__()
+        for jModule in self._TestModules: jModule.__QS_end__()
         for jFT in FTs: jFT.end()
         print(("耗时 : %.2f" % (time.perf_counter()-StartT, )), ("总耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "="*28, sep="\n", end="\n")
         self._Output = self.output()
         return 0
     def _runMultiThread(self):
-        nThread = len(self.Modules)
+        nThread = len(self._TestModules)
         Threads = []
         EndBarrier = threading.Barrier(nThread+1)
         StartBarrier = threading.Barrier(nThread+1)
         FTLock = threading.Lock()
-        self.UserData = {}# 清空上次运行生成的用户数据
         TotalStartT = time.perf_counter()
         print("==========历史回测==========", "1. 初始化", sep="\n", end="\n")
         for j in range(nThread):
-            Threads.append(threading.Thread(target=_runModelThread, args=(j, self, EndBarrier, StartBarrier, FTLock)))
+            Threads.append(threading.Thread(target=_runModel_SingleThread, args=(j, self, EndBarrier, StartBarrier, FTLock)))
             Threads[-1].start()
         #FTs = set()
         #for jModule in self.Modules:
@@ -217,12 +261,12 @@ class BackTestModel(__QS_Object__):
         print(("耗时 : %.2f" % (time.perf_counter()-StartT, )), ("总耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "="*28, sep="\n", end="\n")
         self._Output = self.output()
         return 0
-    def _runMultiProcs(self, subprocess_num):
-        nPrcs = min(subprocess_num, len(self.Modules))
-        Args = {"mdl":self, "module_inds":np.arange(len(self.Modules)).tolist(), "OutputPipe":QSPipe()}
+    def _runMultiProcs(self, subprocess_num, multi_thread):
+        nPrcs = min(subprocess_num, len(self._TestModules))
+        Args = {"mdl":self, "module_inds":np.arange(len(self._TestModules)).tolist(), "multi_thread": multi_thread, "OutputPipe":QSPipe()}
         TotalStartT = time.perf_counter()
         print("==========历史回测==========", "1. 初始化", sep="\n", end="\n")
-        Procs, Main2SubQueue, Sub2MainQueue = startMultiProcess(pid="0", n_prc=nPrcs, target_fun=_runModel,
+        Procs, Main2SubQueue, Sub2MainQueue = startMultiProcess(pid="0", n_prc=nPrcs, target_fun=_runModelProcess,
                                                                 arg=Args, partition_arg=["module_inds"],
                                                                 main2sub_queue=None, sub2main_queue="Single")
         nTask = nPrcs * len(self._QS_TestDateTimes)
@@ -254,7 +298,7 @@ class BackTestModel(__QS_Object__):
                 self._Output.update(iOutput)
                 for ijKey, ijOutput in iOutput.items():
                     ijModuleIdx = int(ijKey.split("-")[0])
-                    self.Modules[ijModuleIdx]._Output = ijOutput
+                    self._TestModules[ijModuleIdx]._Output = ijOutput
         for iPID, iPrcs in Procs.items(): iPrcs.join()
         return 0
     # 计算并输出测试的结果集

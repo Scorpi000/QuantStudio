@@ -450,29 +450,17 @@ class Strategy(BaseModule):
 # 多策略对比
 class MultiStrategy(BaseModule):
     """多策略对比"""
-    StrategyModules = List(Strategy, arg_type="List", label="对比策略", order=0)
+    Modules = List(Strategy, arg_type="List", label="对比策略", order=0)
     BenchmarkStrategies = ListInt(arg_type="List", label="基准策略", order=1)
     RebalanceDTs = List(dt.datetime, arg_type="DateTimeList", label="再平衡时点", order=2)
     def __init__(self, name="多策略对比", sys_args={}, **kwargs):
-        return super().__init__(name=name, sys_args=sys_args, **kwargs)
-    def __QS_start__(self, mdl, dts, **kwargs):
-        if self._isStarted: return ()
-        FactorTables = super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
-        for iModule in self.StrategyModules:
-            FactorTables += iModule.__QS_start__(mdl=mdl, dts=dts, **kwargs)
-        return FactorTables
-    def __QS_move__(self, idt, **kwargs):
-        for iModule in self.StrategyModules:
-            iModule.__QS_move__(idt, **kwargs)
-        return 0
-    def __QS_end__(self):
-        if not self._isStarted: return 0
-        super().__QS_end__()
-        for i, iModule in enumerate(self.StrategyModules):
-            iModule.__QS_end__()
-        if len(self.StrategyModules)==0:
+        super().__init__(name=name, sys_args=sys_args, **kwargs)
+        self._QS_isMulti = True
+    def output(self, recalculate=False):
+        if (not recalculate)  and self._Output: return self._Output
+        if len(self.Modules)==0:
             self._Output = {}
-            return 0
+            return self._Output
         self._Output = {"日期序列": {"现金": {}, "负债": {}, "证券": {}, "账户价值":{}, "累计资金投入": {},
                                                        "收益率": {}, "无杠杆收益率":{}, "相对收益率": {},
                                                        "累计收益率": {}, "考虑资金投入的累计收益率": {}, "无杠杆累计收益率": {}, "相对累计收益率": {},
@@ -483,8 +471,8 @@ class MultiStrategy(BaseModule):
         NonLeverageAnyExist = False
         CapitalInvestAnyExist = False
         StrategyNames = []
-        for i, iModule in enumerate(self.StrategyModules):
-            iOutput = iModule.output()
+        for i, iModule in enumerate(self.Modules):
+            iOutput = iModule.output(recalculate=recalculate)
             iName = str(i)+"-"+iModule.Name
             StrategyNames.append(iName)
             self._Output[iName] = iOutput
@@ -540,7 +528,7 @@ class MultiStrategy(BaseModule):
             self._Output["统计数据"]["基准表现"] = pd.DataFrame(self._Output["统计数据"]["基准表现"]).loc[:, StrategyNames]
         if len(self.BenchmarkStrategies)>0:
             self._Output["相对表现"] = self._genRelativeOutput(self._Output)
-        return 0
+        return self._Output
     def _genRelativeOutput(self, output):
         RelativeOutput = {"日期序列": {"收益率": {}, "累计收益率": {}, "净值": {}}, "统计数据": {}}
         Return = output["日期序列"]["收益率"]
@@ -549,10 +537,10 @@ class MultiStrategy(BaseModule):
             RebalanceIndex = pd.Series(np.arange(Return.shape[0]), index=Return.index, dtype=int)
             RebalanceIndex = sorted(RebalanceIndex.loc[RebalanceIndex.index.intersection(self.RebalanceDTs)].values)
         for jStrategyIdx in self.BenchmarkStrategies:
-            jBenchmarkName = str(jStrategyIdx)+"-"+self.StrategyModules[jStrategyIdx].Name
+            jBenchmarkName = str(jStrategyIdx)+"-"+self.Modules[jStrategyIdx].Name
             jStrategyNames = []
             RelativeOutput["日期序列"]["收益率"][jBenchmarkName] = {}
-            for i, iModule in enumerate(self.StrategyModules):
+            for i, iModule in enumerate(self.Modules):
                 if i==jStrategyIdx: continue
                 iName = str(i)+"-"+iModule.Name
                 jStrategyNames.append(iName)
@@ -625,7 +613,7 @@ class MultiStrategy(BaseModule):
             iAxes.set_title("相对表现")
         if nBenchmarkStrategy>0:
             for j, jStrategyIdx in enumerate(self.BenchmarkStrategies):
-                jBenchmarkName = str(jStrategyIdx)+"-"+self.StrategyModules[jStrategyIdx].Name
+                jBenchmarkName = str(jStrategyIdx)+"-"+self.Modules[jStrategyIdx].Name
                 iAxes = Fig.add_subplot(nRow, nCol, 4+j)
                 jNV = StrategyOutput["相对表现"]["日期序列"]["净值"][jBenchmarkName]
                 for i in range(jNV.shape[1]):
@@ -636,15 +624,16 @@ class MultiStrategy(BaseModule):
         return Fig
     def _repr_html_(self):
         HTML = ""
+        Output = self.output()
         for iKey in ["绝对表现", "考虑资金投入的表现", "无杠杆表现", "基准表现", "相对表现"]:
-            if iKey in self._Output["统计数据"]:
-                iHTML = self._formatStatistics(self._Output["统计数据"][iKey]).to_html()
+            if iKey in Output["统计数据"]:
+                iHTML = self._formatStatistics(Output["统计数据"][iKey]).to_html()
                 iPos = iHTML.find(">")
                 HTML += iKey+": "+iHTML[:iPos]+' align="center"'+iHTML[iPos:]
         if len(self.BenchmarkStrategies)>0:
             for j, jStrategyIdx in enumerate(self.BenchmarkStrategies):
-                jBenchmarkName = str(jStrategyIdx)+"-"+self.StrategyModules[jStrategyIdx].Name
-                iHTML = self._formatStatistics(self._Output["相对表现"]["统计数据"][jBenchmarkName]).to_html()
+                jBenchmarkName = str(jStrategyIdx)+"-"+self.Modules[jStrategyIdx].Name
+                iHTML = self._formatStatistics(Output["相对表现"]["统计数据"][jBenchmarkName]).to_html()
                 iPos = iHTML.find(">")
                 HTML += ("相对 %s 表现" % jBenchmarkName)+": "+iHTML[:iPos]+' align="center"'+iHTML[iPos:]
         Fig = self.genMatplotlibFig()
