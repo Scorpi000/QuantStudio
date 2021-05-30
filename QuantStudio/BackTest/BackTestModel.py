@@ -1,5 +1,6 @@
 # coding=utf-8
 import time
+import threading
 import webbrowser
 
 import numpy as np
@@ -79,6 +80,37 @@ def _runModel(args):
     OutputPipe.put(Output)
     return 0
 
+def _runModelThread(idx, mdl, end_barrier, start_barrier, ft_lock):
+    jModule = mdl.Modules[idx]
+    jFTs = jModule.__QS_start__(mdl=mdl, dts=mdl._QS_TestDateTimes)
+    if jFTs is not None:
+        jFTs = set(jFTs)
+        for jFT in jFTs:
+            with ft_lock:
+                jFT.start(dts=mdl._QS_TestDateTimes)
+    else:
+        jFTs = set()
+    #print(f"{jModule.Name}: start over!")
+    end_barrier.wait()
+    for i, iDT in enumerate(mdl._QS_TestDateTimes):
+        #print(f"{jModule.Name}: loop {i} begin!")
+        start_barrier.wait()
+        for jFT in jFTs:
+            with ft_lock:
+                jFT.move(iDT)
+        jModule.__QS_move__(iDT)
+        #print(f"{jModule.Name}: loop {i} over!")
+        end_barrier.wait()
+    #print(f"{jModule.Name}: end begin!")
+    start_barrier.wait()
+    jModule.__QS_end__()
+    for jFT in jFTs:
+        with ft_lock:
+            jFT.end()
+    #print(f"{jModule.Name}: end over!")
+    end_barrier.wait()
+    return 0
+
 class BackTestModel(__QS_Object__):
     """回测模型"""
     Modules = List(BaseModule)# 已经添加的测试模块, [测试模块对象]
@@ -115,9 +147,10 @@ class BackTestModel(__QS_Object__):
             Context[Prefix+"Module"+str(j)] = jModule
         return (Groups, Context)
     # 运行模型
-    def run(self, dts, subprocess_num=0):
+    def run(self, dts, subprocess_num=0, multi_thread=True):
         self._QS_TestDateTimes = sorted(dts)
         if subprocess_num>0: return self._runMultiProcs(subprocess_num)
+        elif multi_thread: return self._runMultiThread()
         TotalStartT = time.perf_counter()
         print("==========历史回测==========", "1. 初始化", sep="\n", end="\n")
         self.UserData = {}# 清空上次运行生成的用户数据
@@ -139,6 +172,48 @@ class BackTestModel(__QS_Object__):
         StartT = time.perf_counter()
         for jModule in self.Modules: jModule.__QS_end__()
         for jFT in FTs: jFT.end()
+        print(("耗时 : %.2f" % (time.perf_counter()-StartT, )), ("总耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "="*28, sep="\n", end="\n")
+        self._Output = self.output()
+        return 0
+    def _runMultiThread(self):
+        nThread = len(self.Modules)
+        Threads = []
+        EndBarrier = threading.Barrier(nThread+1)
+        StartBarrier = threading.Barrier(nThread+1)
+        FTLock = threading.Lock()
+        self.UserData = {}# 清空上次运行生成的用户数据
+        TotalStartT = time.perf_counter()
+        print("==========历史回测==========", "1. 初始化", sep="\n", end="\n")
+        for j in range(nThread):
+            Threads.append(threading.Thread(target=_runModelThread, args=(j, self, EndBarrier, StartBarrier, FTLock)))
+            Threads[-1].start()
+        #FTs = set()
+        #for jModule in self.Modules:
+            #jFTs = jModule.__QS_start__(mdl=self, dts=self._QS_TestDateTimes)
+            #if jFTs is not None: FTs.update(set(jFTs))
+        #for jFT in FTs: jFT.start(dts=self._QS_TestDateTimes)
+        EndBarrier.wait()
+        print(("耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "2. 循环计算", sep="\n", end="\n")
+        StartT = time.perf_counter()
+        with ProgressBar(max_value=len(self._QS_TestDateTimes)) as ProgBar:
+            for i, iDT in enumerate(self._QS_TestDateTimes):
+                self._TestDateTimeIndex = i
+                self._TestDateIndex.loc[iDT.date()] = i
+                #for jFT in FTs: jFT.move(iDT)
+                EndBarrier.reset()
+                StartBarrier.wait()
+                StartBarrier.reset()
+                EndBarrier.wait()
+                ProgBar.update(i+1)
+        print(("耗时 : %.2f" % (time.perf_counter()-StartT, )), "3. 结果生成", sep="\n", end="\n")
+        StartT = time.perf_counter()
+        EndBarrier.reset()
+        StartBarrier.wait()
+        #for jFT in FTs: jFT.end()
+        StartBarrier.reset()
+        EndBarrier.wait()
+        for i in range(nThread):
+            Threads[i].join()
         print(("耗时 : %.2f" % (time.perf_counter()-StartT, )), ("总耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "="*28, sep="\n", end="\n")
         self._Output = self.output()
         return 0
