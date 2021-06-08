@@ -92,6 +92,8 @@ class PointOperation(DerivativeFactor):
             StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor._QS_getData(DTs, pids=[PID]).values for iDescriptor in self._Descriptors])
             StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
         else:
+            for iDescriptor in self._Descriptors:
+                iDescriptor._QS_getData(DTs, pids=[PID])
             StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self.DataType=="double" else "O"))
         with self._OperationMode._PID_Lock[PID]:
             with shelve.open(self._OperationMode._CacheDataDir+os.sep+PID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
@@ -234,6 +236,10 @@ class TimeOperation(DerivativeFactor):
             StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData, dt_ruler=self._OperationMode.DTRuler)
             StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
         else:
+            for i, iDescriptor in enumerate(self._Descriptors):
+                iStartInd = StartInd - self.LookBack[i]
+                iDTs = list(self._OperationMode.DTRuler[max(0, iStartInd):StartInd]) + DTs
+                iDescriptor._QS_getData(iDTs, pids=[PID])
             StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self.DataType=="double" else "O"))
         with self._OperationMode._PID_Lock[PID]:
             with shelve.open(self._OperationMode._CacheDataDir+os.sep+PID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
@@ -313,9 +319,11 @@ class SectionOperation(DerivativeFactor):
                 iDescriptor._QS_getData(iDTs, pids=None)
             StdData = pd.DataFrame(columns=IDs, dtype=("float" if self.DataType=="double" else "O"))
         elif IDs:
-            StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor._QS_getData(DTs, pids=None).values for i, iDescriptor in enumerate(self._Descriptors)])
+            StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor._QS_getData(DTs, pids=None).values for iDescriptor in self._Descriptors])
             StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
         else:
+            for iDescriptor in self._Descriptors:
+                iDescriptor._QS_getData(DTs, pids=None)
             StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self.DataType=="double" else "O"))
         if self._OperationMode._FactorPrepareIDs[self.Name] is None:
             PID_IDs = self._OperationMode._PID_IDs
@@ -495,6 +503,10 @@ class PanelOperation(DerivativeFactor):
             StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData, dt_ruler=self._OperationMode.DTRuler)
             DescriptorData, iDescriptorData, StdData = None, None, pd.DataFrame(StdData, index=DTs, columns=IDs)
         else:
+            for i, iDescriptor in enumerate(self._Descriptors):
+                iStartInd = StartInd - self.LookBack[i]
+                iDTs = list(self._OperationMode.DTRuler[max(0, iStartInd):StartInd]) + DTs
+                iDescriptor._QS_getData(iDTs, pids=None)
             StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self.DataType=="double" else "O"))
         if self._OperationMode._FactorPrepareIDs[self.Name] is None:
             PID_IDs = self._OperationMode._PID_IDs

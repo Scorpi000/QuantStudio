@@ -1642,7 +1642,7 @@ def _merge(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
     Rslt = np.concatenate(Data, axis=1)
     IDs = []
-    [IDs.extend(iIDs) for iIDs in f.DescriptorSection]
+    [(IDs.extend(iIDs) if iIDs is not None else IDs.extend(iid)) for iIDs in f.DescriptorSection]
     return pd.DataFrame(Rslt, columns=IDs).loc[:, iid].values
 def merge(factors, descriptor_ids, data_type="object", **kwargs):
     if len(factors)!=len(descriptor_ids): raise __QS_Error__("描述子个数与描述子截面个数不一致!")
