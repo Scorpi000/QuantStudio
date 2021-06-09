@@ -91,8 +91,10 @@ def _section_group(f, idt, iid, x, args):
     for i in range(FactorData.shape[0]):
         iRank = DataPreprocessingFun.standardizeRank(FactorData[i], mask=(Mask[i] if Mask is not None else None), cat_data=(CatData[i].T if CatData is not None else None), **OperatorArg)
         iTotalNum = np.sum(pd.notnull(iRank))
-        iGroupNums = np.cumsum(np.array(distributeEqual(iTotalNum, GroupNum, remainder_pos=RemainderPos)))
-        Rslt[i] = np.searchsorted(iGroupNums, iRank, side="right")
+        iGroupNums = np.cumsum(np.array(distributeEqual(iTotalNum, GroupNum, remainder_pos=RemainderPos))) / iTotalNum
+        iGroup = np.searchsorted(iGroupNums, iRank, side="right").astype(np.float)
+        iGroup[pd.isnull(iRank)] = np.nan
+        Rslt[i] = iGroup
     return Rslt
 
 def section_group(f, group_num=10, mask=None, cat_data=None, ascending=True, perturbation=False, other_handle='填充None', remainder_pos="middle", **kwargs):
@@ -112,7 +114,7 @@ def section_group(f, group_num=10, mask=None, cat_data=None, ascending=True, per
     else:
         OperatorArg["cat_data"] = None
     Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
-    Args["OperatorArg"] = {"group_num": group_num, "ascending":ascending,"uniformization": False,"perturbation":perturbation,"offset": 0,"other_handle":other_handle, "remainder_pos": remainder_pos}
+    Args["OperatorArg"] = {"group_num": group_num, "ascending":ascending,"uniformization": True,"perturbation":perturbation,"offset": 0,"other_handle":other_handle, "remainder_pos": remainder_pos}
     Args["OperatorArg"].update(OperatorArg)
     return SectionOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_section_group,"参数":Args,"运算时点":"多时点","输出形式":"全截面"}, **kwargs)
 
