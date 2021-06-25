@@ -116,7 +116,8 @@ def addProxySample(ret, factor_data, industry_data, weight, market_ret):
     ProxyWeight = []
     ProxyRet = []
     ProxyIndustry = []
-    AllIndustries = np.unique(industry_data)
+    #AllIndustries = np.unique(industry_data)
+    AllIndustries = pd.unique(industry_data)
     for i,iIndustry in enumerate(AllIndustries):
         iMask = (industry_data==iIndustry)
         iWeight = weight[iMask]

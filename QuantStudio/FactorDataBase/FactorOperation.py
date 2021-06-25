@@ -503,6 +503,7 @@ class PanelOperation(DerivativeFactor):
             StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData, dt_ruler=self._OperationMode.DTRuler)
             DescriptorData, iDescriptorData, StdData = None, None, pd.DataFrame(StdData, index=DTs, columns=IDs)
         else:
+            DescriptorData, StartInd = [], self._OperationMode.DTRuler.index(DTs[0])
             for i, iDescriptor in enumerate(self._Descriptors):
                 iStartInd = StartInd - self.LookBack[i]
                 iDTs = list(self._OperationMode.DTRuler[max(0, iStartInd):StartInd]) + DTs
