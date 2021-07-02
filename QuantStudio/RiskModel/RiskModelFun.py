@@ -35,13 +35,11 @@ def estimateSampleCovMatrix_EWMA(ret, forcast_num=1, half_life=np.inf):
     return (CovMatrix.T+CovMatrix)/2*forcast_num
 # 将协方差阵分解为: 波动率*相关系数矩阵*波动率, cov_matrix: 协方差矩阵, array
 def decomposeCov2Corr(cov_matrix):
-    Vol = 1/np.diag(cov_matrix)**0.5
-    Corr = (1/Vol)*(cov_matrix/Vol).T
-    Corr = (Corr+Corr.T)/2
-    Corr[Corr>1.0] = 1.0
-    Corr[Corr<-1.0] = -1.0
+    Vol = np.diag(cov_matrix)**0.5
+    Corr = (1/Vol) * (cov_matrix / Vol).T
+    Corr = np.clip((Corr + Corr.T) / 2, -1.0, 1.0)
     Corr = Corr - np.diag(np.diag(Corr)) + np.eye(Corr.shape[0])
-    return (Corr,Vol)
+    return (Corr, Vol)
 # 给定协方差阵, 计算平均相关系数, cov_matrix: 协方差矩阵, array
 def calcAvgCorr(cov_matrix):
     CorrMatrix,_ = decomposeCov2Corr(cov_matrix)
