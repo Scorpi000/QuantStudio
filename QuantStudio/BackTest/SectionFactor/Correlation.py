@@ -35,10 +35,12 @@ class SectionCorrelation(BaseModule):
     def __QS_initArgs__(self):
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FactorTable.getFactorMetaData(key="DataType")))
         self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
-        self.TestFactors.append(DefaultNumFactorList[0])
+        self.TestFactors = [DefaultNumFactorList[0], DefaultNumFactorList[-1]]
     @on_trait_change("TestFactors[]")
     def _on_TestFactors_changed(self, obj, name, old, new):
         self.FactorOrder = {iFactorName:self.FactorOrder.get(iFactorName, "降序") for iFactorName in self.TestFactors}
+        if len(self.TestFactors)<=1:
+            raise __QS_Error__(f"{self.Name} 模块参数 '测试因子' 的取值长度必须大于等于 2!")
     @on_trait_change("RiskTable")
     def _on_RiskDS_changed(self, obj, name, old, new):
         if new is None:
@@ -74,7 +76,7 @@ class SectionCorrelation(BaseModule):
         else:
             self._CurCalcInd = self._Model.DateTimeIndex
         IDs = self._FactorTable.getFilteredID(idt=idt, id_filter_str=self.IDFilter)
-        FactorExpose = self._FactorTable.readData(dts=[idt], ids=IDs, factor_names=list(self.TestFactors)).iloc[:, 0, :].astype("float")
+        FactorExpose = self._FactorTable.readData(dts=[idt], ids=IDs, factor_names=list(set(self.TestFactors))).iloc[:, 0, :].astype("float")
         if self._CorrMatrixNeeded and (self.RiskTable is not None):
             self.RiskTable.move(idt)
             CovMatrix = dropRiskMatrixNA(self.RiskTable.readCov(dts=[idt], ids=IDs).iloc[0])
