@@ -15,6 +15,7 @@ def calcBrinsonSinglePeriod(data):
     CatWeight = data.loc[:, ["portfolio", "benchmark", "category"]].groupby(["category"]).sum()
     CatReturn = (data.loc[:, ["portfolio", "benchmark"]].T * data["return"]).T.groupby(by=data["category"]).sum()
     CatReturn = CatReturn / CatWeight
+    CatReturn[CatWeight<=0] = 0.0
     Rslt = pd.DataFrame({"portfolio": CatWeight["portfolio"] * CatReturn["portfolio"], 
                          "benchmark": CatWeight["benchmark"] * CatReturn["benchmark"], 
                          "allocation": (CatWeight["portfolio"] - CatWeight["benchmark"]) * CatReturn["benchmark"], 

@@ -1227,6 +1227,37 @@ def disaggregate(f, aggr_ids, cat_data=None, disaggr_ids=None, **kwargs):# 将�
     Args["OperatorArg"] = {"aggr_ids":aggr_ids, "CatData":(cat_data is not None)}
     FactorName = kwargs.pop("factor_name", str(uuid.uuid1()))
     return SectionOperation(FactorName, Descriptors, {"算子":_disaggregate, "参数":Args, "运算时点":"多时点", "描述子截面":DescriptorIDs}, **kwargs)
+def _disaggregate_list(f,idt,iid,x,args):
+    Data = _genOperatorData(f,idt,iid,x,args)
+    Rslt = pd.DataFrame(Data[0], columns=["ID"], index=idt)
+    HasValue = (len(Data)>1)
+    if HasValue:
+        Rslt["Value"] = Data[1]
+    Rslt = Rslt.reset_index()
+    Rslt.columns = ["DT", "ID"] + ["Value"] * HasValue
+    Rslt = Rslt[pd.notnull(Rslt["ID"])]
+    if Rslt.shape[0]==0: return np.full(shape=(len(idt), len(iid)), fill_value=None)
+    Rslt["Len"] = Rslt["ID"].apply(len)
+    Rslt["DT"] = Rslt.pop("DT").apply(lambda x: [x]) * Rslt["Len"]
+    if HasValue:
+        Rslt["Value"] = Rslt.loc[:, ["Value", "Len"]].apply(lambda s: (s.iloc[0] + [None]*(s.iloc[1]-len(s.iloc[0])))[:s.iloc[1]] if isinstance(s.iloc[0], list) else [s.iloc[0]] * s.iloc[1], axis=1)
+    Rslt.pop("Len")
+    Rslt = pd.DataFrame(Rslt.sum(axis=0).tolist(), index=Rslt.columns).T
+    if not HasValue:
+        Rslt["Value"] = 1
+    Rslt = Rslt.set_index(["DT", "ID"])["Value"].unstack()
+    if Rslt.columns.intersection(iid).shape[0]==0: return np.full(shape=(len(idt), len(iid)), fill_value=None)
+    return Rslt.loc[idt, iid].values
+def disaggregate_list(f, f_id, f_value=None, f_value_id=None, disaggr_ids=None, **kwargs):# 将值为 list 的聚合因子分解成为普通因子
+    Factors = [f]
+    if f_value is not None:
+        Factors.append(f_value)
+    Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
+    if f_value_id is None: f_value_id = f_id
+    DescriptorIDs = [[f_id]] * Args.get("SepInd1", 0) + [[f_value_id]] * (len(Descriptors) - Args.get("SepInd1", 0))
+    Args["OperatorArg"] = {"f_id":f_id, "f_value_id": f_value_id}
+    FactorName = kwargs.pop("factor_name", str(uuid.uuid1()))
+    return SectionOperation(FactorName, Descriptors, {"算子":_disaggregate_list, "参数":Args, "运算时点":"多时点", "描述子截面":DescriptorIDs}, **kwargs)
 def _aggr_sum(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
     nDT, nID = len(idt), len(iid)
