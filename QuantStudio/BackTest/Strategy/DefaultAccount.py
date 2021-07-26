@@ -17,6 +17,7 @@ class _TradeLimit(__QS_Object__):
     TradeFee = Float(0.003, arg_type="Double", label="交易费率", order=2)
     #Amt = Enum(None, arg_type="SingleOption", label="成交额", order=3)
     AmtLimitRatio = Float(0.1, arg_type="Double", label="成交额限比", order=4)
+    PriceFillna = Enum(False, True, arg_type="SingleOption", label="价格缺失填充", order=5)
     def __init__(self, account, direction, sys_args={}, config_file=None, **kwargs):
         self._Account = account
         self._Direction = direction
@@ -37,6 +38,7 @@ class DefaultAccount(Account):
     BuyLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="买入限制", order=4)
     SellLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="卖出限制", order=5)
     #Last = Enum(None, arg_type="SingleOption", label="最新价", order=6)
+    PriceFillna = Enum(False, True, arg_type="SingleOption", label="价格缺失填充", order=7)
     def __init__(self, market_ft, name="默认证券账户", sys_args={}, config_file=None, **kwargs):
         # 继承自 Account 的属性
         #self._Cash = None# 剩余现金, >=0,  array(shape=(nDT+1,))
@@ -91,7 +93,12 @@ class DefaultAccount(Account):
         super().__QS_move__(idt, **kwargs)
         # 更新当前的账户信息
         iIndex = self._Model.DateTimeIndex
-        self._LastPrice = self._MarketFT.readData(factor_names=[self.Last], ids=self._IDs, dts=[idt]).iloc[0, 0]
+        if self.PriceFillna and (self._LastPrice is not None):
+            OldPrice = self._LastPrice
+            self._LastPrice = self._MarketFT.readData(factor_names=[self.Last], ids=self._IDs, dts=[idt]).iloc[0, 0]
+            self._LastPrice = self._LastPrice.where(pd.notnull(self._LastPrice), OldPrice)
+        else:
+            self._LastPrice = self._MarketFT.readData(factor_names=[self.Last], ids=self._IDs, dts=[idt]).iloc[0, 0]
         self._PositionNum.iloc[iIndex+1] = self._PositionNum.iloc[iIndex]# 初始化持仓
         if self.Delay:# 撮合成交
             self._iTradingRecord = self._matchOrder(idt)
@@ -182,6 +189,10 @@ class DefaultAccount(Account):
         self._SellVolLimit[:] = self._BuyVolLimit[:] = np.inf
         TradePrice = self._MarketFT.readData(factor_names=[self.BuyLimit.TradePrice, self.SellLimit.TradePrice], ids=self._IDs, dts=[idt]).iloc[:,0,:]
         self._BuyPrice, self._SellPrice = TradePrice.iloc[:, 0], TradePrice.iloc[:, 1]
+        if self.BuyLimit.PriceFillna:
+            self._BuyPrice = self._BuyPrice.where(pd.notnull(self._BuyPrice), self._LastPrice)
+        if self.SellLimit.PriceFillna:
+            self._SellPrice = self._SellPrice.where(pd.notnull(self._SellPrice), self._LastPrice)
         self._BuyVolLimit[pd.isnull(self._BuyPrice) | (self._BuyPrice<=0)] = 0.0# 买入成交价缺失的不能买入
         self._SellVolLimit[pd.isnull(self._SellPrice) | (self._SellPrice<=0)] = 0.0# 卖出成交价缺失的不能卖出
         if self.SellLimit.LimitIDFilter:# 满足卖出禁止条件的不能卖出

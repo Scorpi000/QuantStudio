@@ -264,8 +264,8 @@ class HDF5DB(WritableFactorDB):
         OldPath = self.MainDir+os.sep+table_name+os.sep+old_factor_name+"."+self._Suffix
         NewPath = self.MainDir+os.sep+table_name+os.sep+new_factor_name+"."+self._Suffix
         with self._DataLock:
-            if not os.path.isfile(OldPath): raise __QS_Error__("HDF5DB.renameFactor: 表 ’%s' 中不存在因子 '%s'!" % (table_name, old_factor_name))
-            if os.path.isfile(NewPath): raise __QS_Error__("HDF5DB.renameFactor: 表 ’%s' 中的因子 '%s' 已存在!" % (table_name, new_factor_name))
+            if not os.path.isfile(OldPath): raise __QS_Error__("HDF5DB.renameFactor: 表 '%s' 中不存在因子 '%s'!" % (table_name, old_factor_name))
+            if os.path.isfile(NewPath): raise __QS_Error__("HDF5DB.renameFactor: 表 '%s' 中的因子 '%s' 已存在!" % (table_name, new_factor_name))
             os.rename(OldPath, NewPath)
         return 0
     def deleteFactor(self, table_name, factor_names):
@@ -301,7 +301,7 @@ class HDF5DB(WritableFactorDB):
                 OldDataType = DataFile.attrs["DataType"]
                 if data_type is None: data_type = OldDataType
                 factor_data, data_type = _identifyDataType(factor_data, data_type)
-                if OldDataType!=data_type: raise __QS_Error__("HDF5DB.writeFactorData: 新数据无法转换成已有数据的数据类型 '%s'!" % OldDataType)
+                if OldDataType!=data_type: raise __QS_Error__("HDF5DB.writeFactorData: 表 '%s' 中因子 '%s' 的新数据无法转换成已有数据的数据类型 '%s'!" % (table_name, ifactor_name, OldDataType))
                 nOldDT, OldDateTimes = DataFile["DateTime"].shape[0], DataFile["DateTime"][...].tolist()
                 NewDateTimes = factor_data.index.difference(OldDateTimes).values
                 OldIDs = DataFile["ID"][...]
