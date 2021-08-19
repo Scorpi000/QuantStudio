@@ -6,6 +6,20 @@ import pandas as pd
 import statsmodels.api as sm
 import cvxpy as cvx
 
+# Hermite 插值
+def interpolateHermite(x, y, target):
+    d = np.r_[(y[1] - y[0]) / (x[1] - x[0]), (y[2:] - y[:-2]) / (x[2:] - x[:-2]), (y[-1] - y[-2]) / (x[-1] - x[-2])]
+    Idx = np.searchsorted(x, target, side="right") - 1
+    Idx[Idx>=x.shape[0]-1] = x.shape[0] - 2
+    x_left, y_left, d_left = x[Idx], y[Idx], d[Idx]
+    x_right, y_right, d_right = x[Idx + 1], y[Idx + 1], d[Idx + 1]
+    dx = x_right - x_left
+    H1 = 3 * ((x_right - target) / dx) ** 2 - 2 * ((x_right - target) / dx) ** 3
+    H2 = 3 * ((target - x_left) / dx) ** 2 - 2 * ((target - x_left) / dx) ** 3
+    H3 = (x_right - target) ** 2 / dx - (x_right - target) ** 3 / dx ** 2
+    H4 = (target - x_left) ** 3 / dx ** 2 - (target - x_left) ** 2 / dx
+    return y_left * H1 + y_right * H2 + d_left * H3 + d_right * H4
+
 # 计算 Hurst 指数
 def genHurstExp(S, q=2, maxT=19):
     ###########################################################################
