@@ -4,10 +4,9 @@ import os
 
 import numpy as np
 import pandas as pd
-from traits.api import on_trait_change, Str, Float, Bool, ListStr, Dict, List
+from traits.api import on_trait_change, Str, Bool, ListStr, Dict
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
-from QuantStudio.Tools.AuxiliaryFun import genAvailableName
 from QuantStudio.Tools.QSObjects import QSSQLObject, QSSQLite3Object
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB
@@ -74,7 +73,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         if self._FactorInfo.shape[0]>0:
             self._FactorInfo["FieldType"][self._FactorInfo["FieldType"]=="ID"] = None
             self._FactorInfo["FieldType"][self._FactorInfo["DBFieldName"]==new] = "ID"
-    # factor_info: DataFrame(columns=["TableName", "DBFieldName", "DataType", "Nullable"])
+    # factor_info: DataFrame(columns=["TableName", "DBFieldName", "FieldType", "Supplementary", "DataType", "Nullable", "FieldKey", "Description"])
     def _genFactorInfo(self, factor_info):
         factor_info["FieldName"] = factor_info["DBFieldName"]
         factor_info["FieldType"] = "因子"
@@ -91,15 +90,18 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         super().connect()
         nPrefix = len(self.InnerPrefix)
         if self.DBType=="MySQL":
-            SQLStr = f"SELECT RIGHT(TABLE_NAME, LENGTH(TABLE_NAME)-{nPrefix}) AS TableName, TABLE_NAME AS DBTableName, COLUMN_NAME AS DBFieldName, LOWER(DATA_TYPE) AS DataType, IS_NULLABLE AS Nullable FROM information_schema.COLUMNS WHERE table_schema='{self.DBName}' "
-            SQLStr += f"AND TABLE_NAME LIKE '{self.InnerPrefix}%%' "
+            SQLStr = f"SELECT RIGHT(t.TABLE_NAME, LENGTH(t.TABLE_NAME)-{nPrefix}) AS TableName, t.TABLE_NAME AS DBTableName, t.COLUMN_NAME AS DBFieldName, LOWER(t.DATA_TYPE) AS DataType, t.IS_NULLABLE AS Nullable, t.COLUMN_KEY AS FieldKey, t.COLUMN_COMMENT AS Description, t1.TABLE_COMMENT AS TableDescription "
+            SQLStr += f"FROM information_schema.COLUMNS t LEFT JOIN information_schema.TABLES t1 ON (t.TABLE_SCHEMA = t1.TABLE_SCHEMA AND t.TABLE_NAME = t1.TABLE_NAME) "
+            SQLStr += f"WHERE t.TABLE_SCHEMA='{self.DBName}' "
+            SQLStr += f"AND t.TABLE_NAME LIKE '{self.InnerPrefix}%%' "
             if len(self.IgnoreFields)>0:
-                SQLStr += "AND COLUMN_NAME NOT IN ('"+"','".join(self.IgnoreFields)+"') "
+                SQLStr += "AND t.COLUMN_NAME NOT IN ('"+"','".join(self.IgnoreFields)+"') "
             SQLStr += "ORDER BY TableName, DBFieldName"
         else:
             raise NotImplementedError("'%s' 调用方法 connect 时错误: 尚不支持的数据库类型" % (self.Name, self.DBType))
         self._FactorInfo = pd.read_sql_query(SQLStr, self._Connection, index_col=None)
-        self._TableInfo = self._FactorInfo.loc[:, ["TableName", "DBTableName"]].copy().groupby(by=["TableName"], as_index=True).last().sort_index()
+        self._TableInfo = self._FactorInfo.loc[:, ["TableName", "DBTableName", "TableDescription"]].copy().groupby(by=["TableName"], as_index=True).last().sort_index()
+        self._TableInfo = self._TableInfo.rename(columns={"TableDescription": "Description"})
         self._TableInfo["TableClass"] = "WideTable"
         self._FactorInfo.pop("DBTableName")
         self._FactorInfo = self._genFactorInfo(self._FactorInfo)
@@ -114,7 +116,32 @@ class SQLDB(QSSQLObject, WritableFactorDB):
             raise __QS_Error__(Msg)
         Args = self.FTArgs.copy()
         Args.update(args)
-        TableClass = Args.get("因子表类型", self._TableInfo.loc[table_name, "TableClass"])
+        # 确定时点字段和 ID 字段
+        iFactorInfo = self._FactorInfo.loc[table_name]
+        if "时点字段" in Args:
+            DTField = Args["时点字段"]
+        else:
+            Mask = (iFactorInfo["FieldType"] == "Date")
+            DTField = iFactorInfo.index[Mask & (iFactorInfo["Supplementary"]=="Default")]
+            DTField = (DTField[0] if DTField.shape[0]>0 else (iFactorInfo.index[Mask][0] if Mask.any() else None))
+        if "ID字段" in Args:
+            IDField = Args["ID字段"]
+        else:
+            Mask = (iFactorInfo["FieldType"] == "ID")
+            IDField = (iFactorInfo.index[Mask][0] if Mask.any() else None)
+        # 确定因子表类型
+        if "因子表类型" in Args:
+            TableClass = Args["因子表类型"]
+        elif ((DTField is not None) and (IDField is not None)) or ((DTField is None) and (IDField is None)):
+            TableClass = self._TableInfo.loc[table_name, "TableClass"]
+        elif DTField is None:
+            TableClass = "FeatureTable"
+        elif IDField is None:
+            TableClass = "TimeSeriesTable"
+        Args["因子表类型"] = TableClass
+        # 确定多重映射参数
+        PrimaryKeys = iFactorInfo[iFactorInfo["FieldKey"]=="PRI"].index
+        Args.setdefault("多重映射", (PrimaryKeys.difference({DTField, IDField}).shape[0]>0))
         return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=Args, logger=self._QS_Logger)")
     def renameTable(self, old_table_name, new_table_name):
         if old_table_name not in self._TableInfo.index:
