@@ -31,7 +31,7 @@ from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 # 没有相关数据时, 方法返回 None
 class FactorDB(__QS_Object__):
     """因子库"""
-    Name = Str("因子库")
+    Name = Str("因子库", arg_type="String", label="名称", order=-100)
     # ------------------------------数据源操作---------------------------------
     # 链接到数据库
     def connect(self):

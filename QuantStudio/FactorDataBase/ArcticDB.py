@@ -63,6 +63,7 @@ class _FactorTable(FactorTable):
 # 因子表的描述信息存储在 Symbol: _FactorInfo 的 metadata 中
 class ArcticDB(WritableFactorDB):
     """ArcticDB"""
+    Name = Str("ArcticDB", arg_type="String", label="名称", order=-100)
     DBName = Str("arctic", arg_type="String", label="数据库名", order=0)
     IPAddr = Str("127.0.0.1", arg_type="String", label="IP地址", order=1)
     Port = Range(low=0, high=65535, value=27017, arg_type="Integer", label="端口", order=2)
@@ -71,7 +72,6 @@ class ArcticDB(WritableFactorDB):
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._Arctic = None# Arctic 对象
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"ArcticDBConfig.json" if config_file is None else config_file), **kwargs)
-        self.Name = "ArcticDB"
         return
     def __getstate__(self):
         state = self.__dict__.copy()

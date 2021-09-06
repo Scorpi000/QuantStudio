@@ -713,6 +713,7 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
 
 class JYDB(QSSQLObject, FactorDB):
     """聚源数据库"""
+    Name = Str("JYDB", arg_type="String", label="名称", order=-100)
     DBInfoFile = File(label="库信息文件", arg_type="File", order=100)
     FTArgs = Dict(label="因子表参数", arg_type="Dict", order=101)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
@@ -725,7 +726,6 @@ class JYDB(QSSQLObject, FactorDB):
         else:
             self._InfoResourcePath = self.DBInfoFile
             self._TableInfo, self._FactorInfo, self._ExchangeInfo, self._SecurityInfo = _updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger, out_info=True)# 数据库表信息, 数据库字段信息
-        self.Name = "JYDB"
         return
     @property
     def TableNames(self):

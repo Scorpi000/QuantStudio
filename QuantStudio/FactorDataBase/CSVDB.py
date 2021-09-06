@@ -97,6 +97,7 @@ class _FactorTable(FactorTable):
 # 表的元数据存储在表文件夹下特殊文件: _TableInfo 中
 class CSVDB(WritableFactorDB):
     """CSVDB"""
+    Name = Str("CSVDB", arg_type="String", label="名称", order=-100)
     MainDir = Directory(label="主目录", arg_type="Directory", order=0)
     Encoding = Str("utf-8", label="字符编码", arg_type="String", order=1)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
@@ -105,8 +106,6 @@ class CSVDB(WritableFactorDB):
         self._isAvailable = False
         self._Suffix = "csv"# 文件的后缀名
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"CSVDBConfig.json" if config_file is None else config_file), **kwargs)
-        # 继承来的属性
-        self.Name = "CSVDB"
         return
     def __getstate__(self):
         state = self.__dict__.copy()

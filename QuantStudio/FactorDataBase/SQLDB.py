@@ -48,6 +48,7 @@ class _MappingTable(SQL_MappingTable):
 
 class SQLDB(QSSQLObject, WritableFactorDB):
     """SQLDB"""
+    Name = Str("SQLDB", arg_type="String", label="名称", order=-100)
     CheckWriteData = Bool(False, arg_type="Bool", label="检查写入值", order=100)
     IgnoreFields = ListStr(arg_type="List", label="忽略字段", order=101)
     InnerPrefix = Str("qs_", arg_type="String", label="内部前缀", order=102)
@@ -61,7 +62,6 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         self._TableInfo = pd.DataFrame()# DataFrame(index=[表名], columns=["DBTableName", "TableClass"])
         self._FactorInfo = pd.DataFrame()# DataFrame(index=[(表名,因子名)], columns=["DBFieldName", "DataType", "FieldType", "Supplementary", "Description"])
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"SQLDBConfig.json" if config_file is None else config_file), **kwargs)
-        self.Name = "SQLDB"
         return
     @on_trait_change("DTField")
     def _on_DTField_changed(self, obj, name, old, new):
@@ -333,9 +333,9 @@ class SQLDB(QSSQLObject, WritableFactorDB):
 
 class SQLite3DB(QSSQLite3Object, SQLDB):
     """SQLite3DB"""
+    Name = Str("SQLite3DB", arg_type="String", label="名称", order=-100)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"SQLite3DBConfig.json" if config_file is None else config_file), **kwargs)
-        self.Name = "SQLite3DB"
         return
     def _genFactorInfo(self, factor_info):
         factor_info["FieldName"] = factor_info["DBFieldName"]

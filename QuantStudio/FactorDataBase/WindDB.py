@@ -244,6 +244,7 @@ class _ConstituentTable(_DBTable):
 
 class WindDB(FactorDB):
     """Wind 金融工程数据库"""
+    Name = Str("WindDB", arg_type="String", label="名称", order=-100)
     DBType = Enum("SQL Server", "Oracle", "MySQL", arg_type="SingleOption", label="数据库类型", order=0)
     DBName = Str("wind", arg_type="String", label="数据库名", order=1)
     IPAddr = Str("127.0.0.1", arg_type="String", label="IP地址", order=2)
@@ -261,7 +262,6 @@ class WindDB(FactorDB):
         self._InfoFilePath = __QS_LibPath__+os.sep+"WindDBInfo.hdf5"# 数据库信息文件路径
         self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"WindDBInfo.xlsx"# 数据库信息源文件路径
         self._TableInfo, self._FactorInfo = updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger)# 数据库中的表信息, 数据库中的字段信息
-        self.Name = "WindDB"
         return
     def __getstate__(self):
         state = self.__dict__.copy()

@@ -186,7 +186,7 @@ class _WideTable(FactorTable):
 
 class MongoDB(WritableFactorDB):
     """MongoDB"""
-    Name = Str("MongoDB")
+    Name = Str("MongoDB", arg_type="String", label="名称", order=-100)
     DBType = Enum("Mongo", arg_type="SingleOption", label="数据库类型", order=0)
     DBName = Str("Scorpion", arg_type="String", label="数据库名", order=1)
     IPAddr = Str("127.0.0.1", arg_type="String", label="IP地址", order=2)
@@ -201,7 +201,6 @@ class MongoDB(WritableFactorDB):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"MongoDBConfig.json" if config_file is None else config_file), **kwargs)
         self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
         self._TableFieldDataType = {}# {表名: pd.Series(数据库数据类型, index=[因子名])}
-        self.Name = "MongoDB"
         return
     def __getstate__(self):
         state = self.__dict__.copy()

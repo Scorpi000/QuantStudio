@@ -64,6 +64,7 @@ class _MappingTable(SQL_MappingTable):
 
 class ClickHouseDB(QSClickHouseObject, SQLDB):
     """ClickHouseDB"""
+    Name = Str("ClickHouseDB", arg_type="String", label="名称", order=-100)
     DBType = Enum("ClickHouse", arg_type="SingleOption", label="数据库类型", order=0)
     Connector = Enum("default", "clickhouse-driver", arg_type="SingleOption", label="连接器", order=7)
     CheckWriteData = Bool(False, arg_type="Bool", label="检查写入值", order=100)
@@ -74,7 +75,6 @@ class ClickHouseDB(QSClickHouseObject, SQLDB):
     IDField = Str("qs_code", arg_type="String", label="ID字段", order=105)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"ClickHouseDBConfig.json" if config_file is None else config_file), **kwargs)
-        self.Name = "ClickHouseDB"
         return
     def _genFactorInfo(self, factor_info):
         factor_info["FieldName"] = factor_info["DBFieldName"]

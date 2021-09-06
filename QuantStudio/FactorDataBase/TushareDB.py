@@ -380,10 +380,10 @@ class _AnnTable(_TSTable):
 
 class TushareDB(FactorDB):
     """tushare"""
+    Name = Str("TushareDB", arg_type="String", label="名称", order=-100)
     Token = Str("", label="Token", arg_type="String", order=0)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"TushareDBConfig.json" if config_file is None else config_file), **kwargs)
-        self.Name = "TushareDB"
         self._ts = None
         self._InfoFilePath = __QS_LibPath__+os.sep+"TushareDBInfo.hdf5"# 数据库信息文件路径
         self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"TushareDBInfo.xlsx"# 数据库信息源文件路径

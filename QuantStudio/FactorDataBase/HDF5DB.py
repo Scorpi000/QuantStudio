@@ -11,11 +11,11 @@ import numpy as np
 import pandas as pd
 import fasteners
 import h5py
-from traits.api import Directory, Float
+from traits.api import Directory, Float, Str
 
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
-from QuantStudio.Tools.FileFun import listDirDir, listDirFile, readJSONFile
+from QuantStudio.Tools.FileFun import listDirDir, listDirFile
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
 
 def _identifyDataType(factor_data, data_type=None):
@@ -144,6 +144,7 @@ class _FactorTable(FactorTable):
 # 因子的元数据存储在 HDF5 文件的 attrs 中
 class HDF5DB(WritableFactorDB):
     """HDF5DB"""
+    Name = Str("HDF5DB", arg_type="String", label="名称", order=-100)
     MainDir = Directory(label="主目录", arg_type="Directory", order=0)
     LockDir = Directory(label="锁目录", arg_type="Directory", order=1)
     FileOpenRetryNum = Float(np.inf, label="文件打开重试次数", arg_type="Float", order=2)
@@ -153,8 +154,6 @@ class HDF5DB(WritableFactorDB):
         self._isAvailable = False
         self._Suffix = "hdf5"# 文件的后缀名
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"HDF5DBConfig.json" if config_file is None else config_file), **kwargs)
-        # 继承来的属性
-        self.Name = "HDF5DB"
         return
     def __getstate__(self):
         state = self.__dict__.copy()

@@ -8,6 +8,7 @@ import pandas as pd
 from traits.api import Str, Dict, Password, Range, Enum
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
+from QuantStudio.Tools.Neo4jFun import writeArgs
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
 
@@ -126,14 +127,13 @@ class _FactorTable(FactorTable):
 
 class Neo4jDB(WritableFactorDB):
     """Neo4jDB"""
-    Name = Str("Neo4jDB")
+    Name = Str("Neo4jDB", arg_type="String", label="名称", order=-100)
     DBName = Str("neo4j", arg_type="String", label="数据库名", order=0)
     IPAddr = Str("127.0.0.1", arg_type="String", label="IP地址", order=1)
     Port = Range(low=0, high=65535, value=7687, arg_type="Integer", label="端口", order=2)
     User = Str("neo4j", arg_type="String", label="用户名", order=3)
     Pwd = Password("", arg_type="String", label="密码", order=4)
     Connector = Enum("default", "neo4j", arg_type="SingleOption", label="连接器", order=5)
-    InnerID = Str("Test", arg_type="String", label="内部ID", order=6)
     FTArgs = Dict(label="因子表参数", arg_type="Dict", order=101)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._Connection = None# 连接对象
@@ -173,12 +173,13 @@ class Neo4jDB(WritableFactorDB):
         return 0
     def connect(self):
         self._connect()
-        self._Node = f"(fdb:`因子库`:`Neo4jDB` {{内部ID: '{self.InnerID}'}})"
+        self._Node = f"(fdb:`因子库`:`{self.__class__.__name__}` {{`Name`: '{self.Name}'}})"
         with self._Connection.session(database=self.DBName) as Session:
             with Session.begin_transaction() as tx:
-                CypherStr = f"MERGE {self._Node} ON CREATE SET fdb.Name='{self.Name}', fdb.`数据库名` = '{self.DBName}', fdb.`IP地址` = '{self.IPAddr}', fdb.`端口` = {self.Port}"
-                CypherStr += f" ON MATCH SET fdb.Name='{self.Name}', fdb.`数据库名` = '{self.DBName}', fdb.`IP地址` = '{self.IPAddr}', fdb.`端口` = {self.Port}"
-                tx.run(CypherStr)
+                Args = self.Args
+                Args.pop("用户名")
+                Args.pop("密码")
+                writeArgs(Args, tx=tx, node=self._Node, var="fdb")
                 CypherStr = f"MATCH (ft:`因子表`) - [:`属于`] -> {self._Node} RETURN DISTINCT ft.Name AS TableName, ft.description AS Description"
                 self._TableInfo = tx.run(CypherStr).values()
                 CypherStr = f"MATCH (f:`因子`) - [:`属于`] -> (ft:`因子表`) - [:`属于`] -> {self._Node} RETURN DISTINCT f.Name AS FactorName, ft.Name AS TableName, f.DataType AS DataType, f.description AS Description"
@@ -349,14 +350,6 @@ class Neo4jDB(WritableFactorDB):
         return 0
 
 if __name__=="__main__":
-    iDB = Neo4jDB(sys_args={
-        "数据库名": "neo4j",
-        "IP地址": "127.0.0.1",
-        "端口": 11003,
-        "用户名": "neo4j",
-        "密码": "shuntai11",
-        "连接器": "default",
-        "内部ID": "Test"
-    })
+    iDB = Neo4jDB()
     iDB.connect()
     print(iDB)

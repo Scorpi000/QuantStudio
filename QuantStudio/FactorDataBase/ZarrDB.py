@@ -9,7 +9,7 @@ import pandas as pd
 import fasteners
 import numcodecs
 import zarr
-from traits.api import Directory
+from traits.api import Directory, Str
 
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
@@ -134,14 +134,13 @@ class _FactorTable(FactorTable):
 # 因子的元数据存储在因子 group 的 attrs 中
 class ZarrDB(WritableFactorDB):
     """ZarrDB"""
+    Name = Str("ZarrDB", arg_type="String", label="名称", order=-100)
     MainDir = Directory(label="主目录", arg_type="Directory", order=0)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._LockFile = None# 文件锁的目标文件
         self._DataLock = None# 访问该因子库资源的锁, 防止并发访问冲突
         self._isAvailable = False
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"ZarrDBConfig.json" if config_file is None else config_file), **kwargs)
-        # 继承来的属性
-        self.Name = "ZarrDB"
         return
     def connect(self):
         if not os.path.isdir(self.MainDir): raise __QS_Error__("ZarrDB.connect: 不存在主目录 '%s'!" % self.MainDir)

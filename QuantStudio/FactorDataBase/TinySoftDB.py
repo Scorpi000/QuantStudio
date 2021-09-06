@@ -7,7 +7,7 @@ import datetime as dt
 
 import numpy as np
 import pandas as pd
-from traits.api import Str, Range, Directory, File, Password, Either, Int, Enum, Dict, Float, Function, Bool, List
+from traits.api import Str, Range, Directory, File, Password, Either, Int, Enum, Dict
 
 from QuantStudio import __QS_Error__, __QS_LibPath__, __QS_MainPath__, __QS_ConfigPath__
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries
@@ -415,6 +415,7 @@ class _MappingTable(_TS_SQL_Table, SQL_MappingTable):
 
 class TinySoftDB(FactorDB):
     """TinySoft"""
+    Name = Str("TinySoftDB", arg_type="String", label="名称", order=-100)
     InstallDir = Directory(label="安装目录", arg_type="Directory", order=0)
     IPAddr = Str("tsl.tinysoft.com.cn", arg_type="String", label="IP地址", order=1)
     Port = Range(low=0, high=65535, value=443, arg_type="Integer", label="端口", order=2)
@@ -424,7 +425,6 @@ class TinySoftDB(FactorDB):
     FTArgs = Dict(label="因子表参数", arg_type="Dict", order=101)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"TinySoftDBConfig.json" if config_file is None else config_file), **kwargs)
-        self.Name = "TinySoftDB"
         self._TSLPy = None
         self._TableInfo = None# 数据库中的表信息
         self._FactorInfo = None# 数据库中的表字段信息
