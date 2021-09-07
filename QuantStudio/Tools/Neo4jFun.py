@@ -91,7 +91,7 @@ def writeFactorTable(ft, tx=None, var="ft", id_var={}):
             id_var[FDBID] = FDBVar
         # 写入因子表
         if FTID not in id_var:
-            CypherStr += f" MERGE {FTNode} - [:`属于`] -> ({FDBVar})"
+            CypherStr += f" MERGE {FTNode} - [:`属于因子库`] -> ({FDBVar})"
             FTArgs = ft.Args
             FTArgs.pop("遍历模式", None)
             ArgStr, FTParameters  = writeArgs(FTArgs, arg_name=None, tx=None, node=FTNode, node_var=var)
@@ -100,7 +100,7 @@ def writeFactorTable(ft, tx=None, var="ft", id_var={}):
             id_var[FTID] = var
             # 写入因子
             for iFactorName in ft.FactorNames:
-                CypherStr += f" MERGE (:`因子` {{Name: '{iFactorName}'}}) - [:`属于`] -> ({var})"
+                CypherStr += f" MERGE (:`因子` {{Name: '{iFactorName}'}}) - [:`属于因子表`] -> ({var})"
     else:# 无上层因子库, 自定义因子表
         if FTID not in id_var:
             FStr, FParameters = writeFactor([ft.getFactor(iFactorName) for iFactorName in ft.FactorNames], tx=None, id_var=id_var)

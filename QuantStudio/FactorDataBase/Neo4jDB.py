@@ -5,7 +5,7 @@ import datetime as dt
 
 import numpy as np
 import pandas as pd
-from traits.api import Str, Dict, Password, Range, Enum
+from traits.api import Str, Dict, Password, Range, Enum, ListStr, Bool
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.Neo4jFun import writeArgs
@@ -22,7 +22,7 @@ def _identifyDataType(factor_data, data_type=None):
             data_type = "double"
     return (factor_data, data_type)
 
-class _FactorTable(FactorTable):
+class _NarrowTable(FactorTable):
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         self._TableInfo = fdb._TableInfo.loc[name]
         self._FactorInfo = fdb._FactorInfo.loc[name]
@@ -72,7 +72,7 @@ class _FactorTable(FactorTable):
     def FactorNames(self):
         return self._FactorInfo[pd.notnull(self._FactorInfo["DataType"])].index.tolist()
     def getID(self, ifactor_name=None, idt=None, args={}):
-        CypherStr = f"MATCH (f:`因子`) - [:`属于`] -> (ft:`因子表` {{Name: '{self.Name}'}}) - [:`属于`] -> {self._FactorDB._Node} "
+        CypherStr = f"MATCH (f:`因子`) - [:`属于因子表`] -> (ft:`因子表` {{Name: '{self.Name}'}}) - [:`属于因子库`] -> {self._FactorDB._Node} "
         if ifactor_name is not None:
             CypherStr += f"WHERE f.Name = '{ifactor_name}' "
         CypherStr += "MATCH (s) - [r:`暴露`] -> (f) "
@@ -80,19 +80,21 @@ class _FactorTable(FactorTable):
             CypherStr += f"WHERE r.`{idt.strftime(self._DTFormat)}` IS NOT NULL "
         CypherStr += "RETURN s.ID"
         return [iRslt[0] for iRslt in self._FactorDB.fetchall(CypherStr)]
-    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):# TODO
-        CypherStr = f"MATCH (f:`因子`) - [:`属于`] -> (ft:`因子表` {{Name: '{self.Name}'}}) - [:`属于`] -> {self._FactorDB._Node} "
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
+        CypherStr = f"MATCH (f:`因子`) - [:`属于因子表`] -> (ft:`因子表` {{Name: '{self.Name}'}}) - [:`属于因子库`] -> {self._FactorDB._Node} "
         if ifactor_name is not None:
             CypherStr += f"WHERE f.Name = '{ifactor_name}' "
         CypherStr += "MATCH (s) - [r:`暴露`] -> (f) "
         if iid is not None:
             CypherStr += f"WHERE s.ID = '{iid}' "
-        CypherStr += "RETURN DISTINCT keys(r)"
-        Rslt = sorted(set(sum(self._FactorDB.fetchall(CypherStr)[0], [])))
-        return [dt.datetime.strptime(iDT, self._DTFormat) for iDT in Rslt if pd.notnull(iDT)]
+        CypherStr += "WITH keys(r) AS kk UNWIND kk AS ik RETURN collect(DISTINCT ik)"
+        Rslt = sorted(self._FactorDB.fetchall(CypherStr)[0])
+        if start_dt is not None: start_dt = start_dt.strftime(self._DTFormat)
+        if end_dt is not None: end_dt = end_dt.strftime(self._DTFormat)
+        return [dt.datetime.strptime(iDT, self._DTFormat) for iDT in Rslt if pd.notnull(iDT) and ((start_dt is None) or (iDT>=start_dt)) and ((end_dt is None) or (iDT<=end_dt))]
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         CypherStr = f"""
-            MATCH (f:`因子`) - [:`属于`] -> (ft:`因子表` {{Name: '{self.Name}'}}) - [:`属于`] -> {self._FactorDB._Node}
+            MATCH (f:`因子`) - [:`属于因子表`] -> (ft:`因子表` {{Name: '{self.Name}'}}) - [:`属于因子库`] -> {self._FactorDB._Node}
             WHERE f.Name IN $factors
             MATCH (s) - [r:`暴露`] -> (f)
             WHERE s.ID IN $ids
@@ -102,9 +104,7 @@ class _FactorTable(FactorTable):
             ORDER BY ID, QS_DT, FactorName
         """
         DTs = [iDT.strftime(self._DTFormat) for iDT in dts]
-        with self._FactorDB.session() as Session:
-            with Session.begin_transaction() as tx:
-                RawData = tx.run(CypherStr, parameters={"factors": factor_names, "ids": ids, "dts": DTs}).values()
+        RawData = self._FactorDB.fetchall(CypherStr, parameters={"factors": factor_names, "ids": ids, "dts": DTs})
         RawData = pd.DataFrame(RawData, columns=["ID", "QS_DT", "FactorName", "Value"])
         #RawData["QS_DT"] = RawData["QS_DT"].apply(lambda x: dt.datetime.strptime(x, self._DTFormat) if pd.notnull(x) else pd.NaT)
         RawData["QS_DT"] = pd.to_datetime(RawData["QS_DT"])
@@ -124,7 +124,47 @@ class _FactorTable(FactorTable):
                 Data[iFactorName] = iRawData
         if not Data: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         return pd.Panel(Data).loc[factor_names]
-
+    
+class _FeatureTable(FactorTable):
+    EntityLabels = ListStr(["因子库"], arg_type="List", label="实体标签", order=0)
+    IDField = Str("Name", arg_type="String", label="ID字段", order=1)
+    MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=2)
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        self._QS_IgnoredGroupArgs = ("遍历模式", )
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+    @property
+    def FactorNames(self):
+        LabelStr = "`:`".join(self.EntityLabels)
+        CypherStr = f"""
+            MATCH (n:`{LabelStr}`)
+            WITH keys(n) AS kk
+            UNWIND kk AS ik
+            RETURN collect(DISTINCT ik)
+        """
+        return sorted(self._FactorDB.fetchall(CypherStr)[0])
+    def getID(self, ifactor_name=None, idt=None, args={}):
+        LabelStr = "`:`".join(args.get("实体标签", self.EntityLabels))
+        IDField = args.get("ID字段", self.IDField)
+        CypherStr = f"MATCH (n:`{LabelStr}`) "
+        if ifactor_name is not None:
+            CypherStr += f"WHERE exists(n.{ifactor_name}) "
+        CypherStr += f"RETURN collect(DISTINCT n.`{IDField}`)"
+        return sorted(self._FactorDB.fetchall(CypherStr)[0])
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        LabelStr = "`:`".join(args.get("实体标签", self.EntityLabels))
+        IDField = args.get("ID字段", self.IDField)
+        CypherStr = f"MATCH (n:`{LabelStr}`) "
+        CypherStr += f"WHERE n.`{IDField}` IN $ids "
+        CypherStr += f"RETURN n.`{IDField}`, n.`{'`, n.`'.join(factor_names)}`"
+        RawData = self._FactorDB.fetchall(CypherStr, parameters={"ids": ids})
+        if not RawData: return pd.DataFrame(columns=["ID"]+factor_names)
+        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID"]+factor_names)
+        RawData["QS_TargetDT"] = dt.datetime.combine(dt.date.today(), dt.time(0)) + dt.timedelta(1)
+        RawData["QS_DT"] = RawData["QS_TargetDT"]
+        return RawData
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        pass
+        
 class Neo4jDB(WritableFactorDB):
     """Neo4jDB"""
     Name = Str("Neo4jDB", arg_type="String", label="名称", order=-100)
@@ -180,9 +220,9 @@ class Neo4jDB(WritableFactorDB):
                 Args.pop("用户名")
                 Args.pop("密码")
                 writeArgs(Args, tx=tx, node=self._Node, var="fdb")
-                CypherStr = f"MATCH (ft:`因子表`) - [:`属于`] -> {self._Node} RETURN DISTINCT ft.Name AS TableName, ft.description AS Description"
+                CypherStr = f"MATCH (ft:`因子表`) - [:`属于因子库`] -> {self._Node} RETURN DISTINCT ft.Name AS TableName, ft.description AS Description"
                 self._TableInfo = tx.run(CypherStr).values()
-                CypherStr = f"MATCH (f:`因子`) - [:`属于`] -> (ft:`因子表`) - [:`属于`] -> {self._Node} RETURN DISTINCT f.Name AS FactorName, ft.Name AS TableName, f.DataType AS DataType, f.description AS Description"
+                CypherStr = f"MATCH (f:`因子`) - [:`属于因子表`] -> (ft:`因子表`) - [:`属于因子库`] -> {self._Node} RETURN DISTINCT f.Name AS FactorName, ft.Name AS TableName, f.DataType AS DataType, f.description AS Description"
                 self._FactorInfo = tx.run(CypherStr).values()
         self._TableInfo = pd.DataFrame(self._TableInfo, columns=["TableName", "Description"]).set_index(["TableName"])
         self._FactorInfo = pd.DataFrame(self._FactorInfo, columns=["FactorName", "TableName", "DataType", "Description"]).set_index(["TableName", "FactorName"])
@@ -210,11 +250,11 @@ class Neo4jDB(WritableFactorDB):
             self._connect()
             Session = self._Connection.session(database=self.DBName)
         return Session
-    def fetchall(self, cypher_str):
+    def fetchall(self, cypher_str, parameters=None):
         with self.session() as Session:
             with Session.begin_transaction() as tx:
-                return tx.run(cypher_str).values()
-    def execute(self, cypher_str):
+                return tx.run(cypher_str, parameters=parameters).values()
+    def execute(self, cypher_str, parameters=None):
         if self._Connection is None:
             Msg = ("'%s' 执行 SQL 命令失败: 数据库尚未连接!" % (self.Name,))
             self._QS_Logger.error(Msg)
@@ -227,20 +267,23 @@ class Neo4jDB(WritableFactorDB):
             Session = self._Connection.session(database=self.DBName)
         with Session:
             with Session.begin_transaction() as tx:
-                tx.run(cypher_str)
+                tx.run(cypher_str, parameters=parameters)
         return 0
     # ----------------------------因子表操作-----------------------------
     @property
     def TableNames(self):
-        return sorted(self._TableInfo.index)
+        return sorted(self._TableInfo.index)+["实体属性"]
     def getTable(self, table_name, args={}):
-        if table_name not in self._TableInfo.index:
+        if (table_name not in self._TableInfo.index) and (table_name not in ("实体属性",)):
             Msg = ("因子库 '%s' 调用方法 getTable 错误: 不存在因子表: '%s'!" % (self.Name, table_name))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
         Args = self.FTArgs.copy()
         Args.update(args)
-        return _FactorTable(name=table_name, fdb=self, sys_args=Args, logger=self._QS_Logger)
+        if table_name=="实体属性":
+            return _FeatureTable(name=table_name, fdb=self, sys_args=Args, logger=self._QS_Logger)
+        else:
+            return _NarrowTable(name=table_name, fdb=self, sys_args=Args, logger=self._QS_Logger)
     def renameTable(self, old_table_name, new_table_name):
         if old_table_name not in self._TableInfo.index:
             Msg = ("因子库 '%s' 调用方法 renameTable 错误: 不存在因子表 '%s'!" % (self.Name, old_table_name))
@@ -250,14 +293,14 @@ class Neo4jDB(WritableFactorDB):
             Msg = ("因子库 '%s' 调用方法 renameTable 错误: 新因子表名 '%s' 已经存在于库中!" % (self.Name, new_table_name))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
-        CypherStr = f"MATCH (ft:`因子表` {{`Name`: '{old_table_name}'}}) - [:`属于`] -> {self._Node} SET ft.`Name` ='{new_table_name}'"
+        CypherStr = f"MATCH (ft:`因子表` {{`Name`: '{old_table_name}'}}) - [:`属于因子库`] -> {self._Node} SET ft.`Name` ='{new_table_name}'"
         self.execute(CypherStr)
         self._TableInfo = self._TableInfo.rename(index={old_table_name: new_table_name})
         self._FactorInfo = self._FactorInfo.rename(index={old_table_name: new_table_name}, level=0)
         return 0
     def deleteTable(self, table_name):
         if table_name not in self._TableInfo.index: return 0
-        CypherStr = f"MATCH (f:`因子`) - [:`属于`] -> (ft:`因子表` {{`Name`: '{table_name}'}}) - [:属于] -> {self._Node} DETACH DELETE f, ft"
+        CypherStr = f"MATCH (f:`因子`) - [:`属于因子表`] -> (ft:`因子表` {{`Name`: '{table_name}'}}) - [:`属于因子库`] -> {self._Node} DETACH DELETE f, ft"
         self.execute(CypherStr)
         TableNames = self._TableInfo.index.tolist()
         TableNames.remove(table_name)
@@ -274,7 +317,7 @@ class Neo4jDB(WritableFactorDB):
             Msg = ("因子库 '%s' 调用方法 renameFactor 错误: 新因子名 '%s' 已经存在于因子表 '%s' 中!" % (self.Name, new_factor_name, table_name))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
-        CypherStr = f"MATCH (:`因子` {{`Name`: '{old_factor_name}'}}) - [:`属于`] -> (ft:`因子表` {{`Name`: '{table_name}'}}) - [:`属于`] -> {self._Node} SET f.`Name` = '{new_factor_name}'"
+        CypherStr = f"MATCH (:`因子` {{`Name`: '{old_factor_name}'}}) - [:`属于因子表`] -> (ft:`因子表` {{`Name`: '{table_name}'}}) - [:`属于因子库`] -> {self._Node} SET f.`Name` = '{new_factor_name}'"
         self.execute(CypherStr)
         TableNames = self._TableInfo.index.tolist()
         TableNames.remove(table_name)
@@ -284,7 +327,7 @@ class Neo4jDB(WritableFactorDB):
         if (not factor_names) or (table_name not in self._TableInfo.index): return 0
         FactorIndex = self._FactorInfo.loc[table_name].index.difference(factor_names).tolist()
         if not FactorIndex: return self.deleteTable(table_name)
-        CypherStr = f"MATCH (f:`因子`) - [:`属于`] -> (:`因子表` {{`Name`: '{table_name}'}}) - [:属于] -> {self._Node} "
+        CypherStr = f"MATCH (f:`因子`) - [:`属于因子表`] -> (:`因子表` {{`Name`: '{table_name}'}}) - [:`属于因子库`] -> {self._Node} "
         CypherStr += "WHERE "+genSQLInCondition("f.Name", factor_names, is_str=True)+" "
         CypherStr += "DETACH DELETE f"
         self.execute(CypherStr)
@@ -302,16 +345,16 @@ class Neo4jDB(WritableFactorDB):
         InitCypherStr = f"""
             MATCH {self._Node}
             MERGE (ft:`因子表` {{Name: '{table_name}'}})
-            MERGE (ft) - [:`属于`] -> (fdb)
+            MERGE (ft) - [:`属于因子库`] -> (fdb)
             WITH ft
             UNWIND $factors AS iFactor
             MERGE (f:`因子` {{Name: iFactor, DataType: $data_type[iFactor]}})
-            MERGE (f) - [:`属于`] -> (ft)
+            MERGE (f) - [:`属于因子表`] -> (ft)
         """
         IDType = kwargs.get("id_type", "")
         if IDType: IDType = f":`{IDType}`"
         WriteCypherStr = f"""
-            MATCH (f:`因子` {{Name: $ifactor}}) - [:`属于`] -> (ft:`因子表` {{Name: '{table_name}'}}) - [:`属于`] -> {self._Node}
+            MATCH (f:`因子` {{Name: $ifactor}}) - [:`属于因子表`] -> (ft:`因子表` {{Name: '{table_name}'}}) - [:`属于因子库`] -> {self._Node}
             UNWIND range(0, size($ids)-1) AS i
             MERGE (s{IDType} {{ID: $ids[i]}})
             MERGE (s) - [r:`暴露`] -> (f)
@@ -348,8 +391,3 @@ class Neo4jDB(WritableFactorDB):
         self._FactorInfo = self._FactorInfo.append(NewFactorInfo.set_index(["TableName", "FactorName"])).sort_index()
         data.major_axis = DTs
         return 0
-
-if __name__=="__main__":
-    iDB = Neo4jDB()
-    iDB.connect()
-    print(iDB)
