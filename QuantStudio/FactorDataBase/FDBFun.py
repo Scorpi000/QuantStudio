@@ -12,6 +12,11 @@ from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.FactorDataBase.FactorDB import FactorTable
 
+# Quant Studio 系统错误: 重复索引
+class __QS_Error_DuplicatedIndex__(__QS_Error__):
+    """Quant Studio 重复索引错误"""
+    pass
+
 # 将信息源文件中的表和字段信息导入信息文件
 def importInfo(info_file, info_resource):
     TableInfo = pd.read_excel(info_resource, "TableInfo").set_index(["TableName"])
@@ -130,7 +135,127 @@ def adjustDataDTID(data, look_back, factor_names, ids, dts, only_start_lookback=
         return AdjData.loc[:, dts]
 
 
-# 基于 SQL 数据库表的因子表
+# ===================== 因子数据计算 =====================
+# raw_data: DataFrame(columns=["QS_DT", "ID"]+factor_names)
+def _QS_calcListData_WideTable(raw_data, factor_names, ids, dts, args={}, **kwargs):
+    Operator = args.get("算子", lambda x: x.tolist())
+    OperatorDataType = args.get("算子数据类型", "object")
+    if args.get("只回溯时点", False):
+        DeduplicatedIndex = raw_data.index(~raw_data.index.duplicated())
+        RowIdxMask = pd.Series(False, index=DeduplicatedIndex).unstack(fill_value=True).astype(bool)
+        RawIDs = RowIdxMask.columns
+        if RawIDs.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        RowIdx = pd.DataFrame(np.arange(RowIdxMask.shape[0]).reshape((RowIdxMask.shape[0], 1)).repeat(RowIdxMask.shape[1], axis=1), index=RowIdxMask.index, columns=RawIDs)
+        RowIdx[RowIdxMask] = np.nan
+        RowIdx = adjustDataDTID(pd.Panel({"RowIdx": RowIdx}), args.get("回溯天数", 0), ["RowIdx"], RowIdx.columns.tolist(), dts, args.get("只起始日回溯", False), args.get("只回溯非目标日", False), logger=kwargs.get("logger", None)).iloc[0].values
+        RowIdx[pd.isnull(RowIdx)] = -1
+        RowIdx = RowIdx.astype(int)
+        ColIdx = np.arange(RowIdx.shape[1]).reshape((1, RowIdx.shape[1])).repeat(RowIdx.shape[0], axis=0)
+        RowIdxMask = (RowIdx==-1)
+        Data = {}
+        for iFactorName in factor_names:
+            iRawData = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
+            iRawData = iRawData.values[RowIdx, ColIdx]
+            iRawData[RowIdxMask] = None
+            Data[iFactorName] = pd.DataFrame(iRawData, index=dts, columns=RawIDs)
+            if OperatorDataType=="double":
+                Data[iFactorName] = Data[iFactorName].astype(np.float)
+        return pd.Panel(Data).loc[factor_names, :, ids]
+    else:
+        Data = {}
+        for iFactorName in factor_names:
+            Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
+            if OperatorDataType=="double":
+                Data[iFactorName] = Data[iFactorName].astype(np.float)
+        Data = pd.Panel(Data).loc[factor_names]
+        return adjustDataDTID(Data, args.get("回溯天数", 0), factor_names, ids, dts, args.get("只起始日回溯", False), args.get("只回溯非目标日", False), logger=kwargs.get("logger", None))
+
+def _QS_calcData_WideTable(raw_data, factor_names, ids, dts, data_type, args={}, **kwargs):
+    if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+    if ids is None: ids = sorted(raw_data["ID"].unique())
+    raw_data = raw_data.set_index(["QS_DT", "ID"])
+    MultiMapping = args.get("多重映射", False)
+    if MultiMapping:
+        return _QS_calcListData_WideTable(raw_data, factor_names, ids, dts, args=args, **kwargs)
+    else:
+        if not raw_data.index.is_unique:
+            Msg = kwargs.get("error_fmt", {}).get("DuplicatedIndex", "{Error}")
+            raise __QS_Error_DuplicatedIndex__(Msg.format(Error = ("重复的索引为 : %s" % (str(raw_data.index[raw_data.index.duplicated()].tolist()), ))))
+    DataType = data_type[~data_type.index.duplicated()]
+    if args.get("只回溯时点", False):
+        RowIdxMask = pd.Series(False, index=raw_data.index).unstack(fill_value=True).astype(bool)
+        RawIDs = RowIdxMask.columns
+        if RawIDs.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        RowIdx = pd.DataFrame(np.arange(RowIdxMask.shape[0]).reshape((RowIdxMask.shape[0], 1)).repeat(RowIdxMask.shape[1], axis=1), index=RowIdxMask.index, columns=RawIDs)
+        RowIdx[RowIdxMask] = np.nan
+        RowIdx = adjustDataDTID(pd.Panel({"RowIdx": RowIdx}), args.get("回溯天数", 0), ["RowIdx"], RowIdx.columns.tolist(), dts, args.get("只起始日回溯", False), args.get("只回溯非目标日", False), logger=kwargs.get("logger", None)).iloc[0].values
+        RowIdx[pd.isnull(RowIdx)] = -1
+        RowIdx = RowIdx.astype(int)
+        ColIdx = np.arange(RowIdx.shape[1]).reshape((1, RowIdx.shape[1])).repeat(RowIdx.shape[0], axis=0)
+        RowIdxMask = (RowIdx==-1)
+        Data = {}
+        for iFactorName in raw_data.columns.intersection(factor_names):
+            iRawData = raw_data[iFactorName].unstack()
+            if DataType[iFactorName]=="double":
+                try:
+                    iRawData = iRawData.astype("float")
+                except:
+                    pass
+            iRawData = iRawData.values[RowIdx, ColIdx]
+            iRawData[RowIdxMask] = None
+            Data[iFactorName] = pd.DataFrame(iRawData, index=dts, columns=RawIDs)
+        return pd.Panel(Data).loc[factor_names, :, ids]
+    else:
+        Data = {}
+        for iFactorName in raw_data.columns.intersection(factor_names):
+            iRawData = raw_data[iFactorName].unstack()
+            if DataType[iFactorName]=="double":
+                try:
+                    iRawData = iRawData.astype("float")
+                except:
+                    pass
+            Data[iFactorName] = iRawData
+        Data = pd.Panel(Data).loc[factor_names]
+        return adjustDataDTID(Data, args.get("回溯天数", 0), factor_names, ids, dts, args.get("只起始日回溯", False), args.get("只回溯非目标日", False), logger=kwargs.get("logger", None))
+
+# raw_data: DataFrame(columns=["QS_DT", "ID", 因子名字段, 因子值字段])
+def _QS_calcListData_NarrowTable(raw_data, factor_names, ids, dts, args={}, **kwargs):
+    raw_data.index = raw_data.index.swaplevel(i=0, j=-1)
+    Operator = args.get("算子", lambda x: x.tolist())
+    Data = {}
+    for iFactorName in factor_names:
+        if iFactorName in raw_data:
+            Data[iFactorName] = raw_data.loc[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
+    if not Data: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+    Data = pd.Panel(Data).loc[factor_names].swapaxes(1, 2)
+    return adjustDataDTID(Data, args.get("回溯天数", 0), factor_names, ids, dts, args.get("只起始日回溯", False), args.get("只回溯非目标日", False), args.get("只回溯时点", False), logger=kwargs.get("logger", None))
+
+def _QS_calcData_NarrowTable(raw_data, factor_names, ids, dts, data_type, args={}, **kwargs):
+    if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+    if ids is None: ids = sorted(raw_data["ID"].unique())
+    FactorNameField = args.get("因子名字段", "FactorName")
+    raw_data = raw_data.set_index(["QS_DT", "ID", FactorNameField]).iloc[:, 0]
+    MultiMapping = args.get("多重映射", False)
+    if MultiMapping:
+        return _QS_calcListData_NarrowTable(raw_data, factor_names, ids, dts, args=args, **kwargs)
+    else:
+        if not raw_data.index.is_unique:
+            Msg = kwargs.get("error_fmt", {}).get("DuplicatedIndex", "{Error}")
+            raise __QS_Error_DuplicatedIndex__(Msg.format(Error = ("重复的索引为 : %s" % (str(raw_data.index[raw_data.index.duplicated()].tolist()), ))))
+    raw_data = raw_data.unstack()
+    DataType = data_type[~data_type.index.duplicated()]
+    Data = {}
+    for iFactorName in factor_names:
+        if iFactorName in raw_data:
+            iRawData = raw_data[iFactorName].unstack()
+            if DataType[iFactorName]=="double": iRawData = iRawData.astype("float")
+            Data[iFactorName] = iRawData
+    if not Data: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+    Data = pd.Panel(Data).loc[factor_names]
+    return adjustDataDTID(Data, args.get("回溯天数", 0), factor_names, ids, dts, args.get("只起始日回溯", False), args.get("只回溯非目标日", False), args.get("只回溯时点", False), logger=kwargs.get("logger", None))
+
+
+# ===================== 基于 SQL 数据库表的因子表 =====================
 # table_info: Series(index=["DBTableName", "TableClass"]), 可选的 index=["MainTableName", "MainTableID", "JoinCondition", "MainTableCondition", "DefaultSuffix", "Exchange", "SecurityCategory"]
 # factor_info: DataFrame(index=[], columns=["DBFieldName", "DataType", "FieldType", "Supplementary", "Description"]), 可选的 columns=["RelatedSQL"]
 # security_info: DataFrame(index=[], columns=["Suffix"])
@@ -772,98 +897,12 @@ class SQL_WideTable(SQL_Table):
             RawData = self._prepareRawData_WithPublDT(factor_names=FactorNames, ids=ids, dts=dts, args=args)
         RawData = RawData.sort_values(by=["ID", "QS_DT"]+OrderFields, ascending=[True, True]+[(iOrder.lower()=="asc") for iOrder in Orders])
         return RawData.loc[:, ["QS_DT", "ID"]+factor_names]
-    def _calcListData(self, raw_data, factor_names, ids, dts, args={}):
-        Operator = args.get("算子", self.Operator)
-        OperatorDataType = args.get("算子数据类型", self.OperatorDataType)
-        if Operator is None: Operator = (lambda x: x.tolist())
-        if args.get("只回溯时点", self.OnlyLookBackDT):
-            DeduplicatedIndex = raw_data.index(~raw_data.index.duplicated())
-            RowIdxMask = pd.Series(False, index=DeduplicatedIndex).unstack(fill_value=True).astype(bool)
-            RawIDs = RowIdxMask.columns
-            if RawIDs.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-            RowIdx = pd.DataFrame(np.arange(RowIdxMask.shape[0]).reshape((RowIdxMask.shape[0], 1)).repeat(RowIdxMask.shape[1], axis=1), index=RowIdxMask.index, columns=RawIDs)
-            RowIdx[RowIdxMask] = np.nan
-            RowIdx = adjustDataDTID(pd.Panel({"RowIdx": RowIdx}), args.get("回溯天数", self.LookBack), ["RowIdx"], RowIdx.columns.tolist(), dts, 
-                                              args.get("只起始日回溯", self.OnlyStartLookBack), 
-                                              args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
-                                              logger=self._QS_Logger).iloc[0].values
-            RowIdx[pd.isnull(RowIdx)] = -1
-            RowIdx = RowIdx.astype(int)
-            ColIdx = np.arange(RowIdx.shape[1]).reshape((1, RowIdx.shape[1])).repeat(RowIdx.shape[0], axis=0)
-            RowIdxMask = (RowIdx==-1)
-            Data = {}
-            for iFactorName in factor_names:
-                iRawData = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
-                iRawData = iRawData.values[RowIdx, ColIdx]
-                iRawData[RowIdxMask] = None
-                Data[iFactorName] = pd.DataFrame(iRawData, index=dts, columns=RawIDs)
-                if OperatorDataType=="double":
-                    Data[iFactorName] = Data[iFactorName].astype(np.float)
-            return pd.Panel(Data).loc[factor_names, :, ids]
-        else:
-            Data = {}
-            for iFactorName in factor_names:
-                Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
-                if OperatorDataType=="double":
-                    Data[iFactorName] = Data[iFactorName].astype(np.float)
-            Data = pd.Panel(Data).loc[factor_names]
-            return adjustDataDTID(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts, 
-                                  args.get("只起始日回溯", self.OnlyStartLookBack), 
-                                  args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
-                                  logger=self._QS_Logger)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-        if ids is None: ids = sorted(raw_data["ID"].unique())
-        raw_data = raw_data.set_index(["QS_DT", "ID"])
-        MultiMapping = args.get("多重映射", self.MultiMapping)
-        if MultiMapping:
-            return self._calcListData(raw_data, factor_names, ids, dts, args=args)
-        else:
-            if not raw_data.index.is_unique:
-                raise __QS_Error__("%s 的表 %s 无法保证唯一性, 重复的索引为 : %s, 可以尝试将 '多重映射' 参数取值调整为 True" % (self._FactorDB.Name, self.Name, str(raw_data.index[raw_data.index.duplicated()].tolist())))
         DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
-        DataType = DataType[~DataType.index.duplicated()]
-        if args.get("只回溯时点", self.OnlyLookBackDT):
-            RowIdxMask = pd.Series(False, index=raw_data.index).unstack(fill_value=True).astype(bool)
-            RawIDs = RowIdxMask.columns
-            if RawIDs.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-            RowIdx = pd.DataFrame(np.arange(RowIdxMask.shape[0]).reshape((RowIdxMask.shape[0], 1)).repeat(RowIdxMask.shape[1], axis=1), index=RowIdxMask.index, columns=RawIDs)
-            RowIdx[RowIdxMask] = np.nan
-            RowIdx = adjustDataDTID(pd.Panel({"RowIdx": RowIdx}), args.get("回溯天数", self.LookBack), ["RowIdx"], RowIdx.columns.tolist(), dts, 
-                                              args.get("只起始日回溯", self.OnlyStartLookBack), 
-                                              args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
-                                              logger=self._QS_Logger).iloc[0].values
-            RowIdx[pd.isnull(RowIdx)] = -1
-            RowIdx = RowIdx.astype(int)
-            ColIdx = np.arange(RowIdx.shape[1]).reshape((1, RowIdx.shape[1])).repeat(RowIdx.shape[0], axis=0)
-            RowIdxMask = (RowIdx==-1)
-            Data = {}
-            for iFactorName in raw_data.columns:
-                iRawData = raw_data[iFactorName].unstack()
-                if DataType[iFactorName]=="double":
-                    try:
-                        iRawData = iRawData.astype("float")
-                    except:
-                        pass
-                iRawData = iRawData.values[RowIdx, ColIdx]
-                iRawData[RowIdxMask] = None
-                Data[iFactorName] = pd.DataFrame(iRawData, index=dts, columns=RawIDs)
-            return pd.Panel(Data).loc[factor_names, :, ids]
-        else:
-            Data = {}
-            for iFactorName in raw_data.columns:
-                iRawData = raw_data[iFactorName].unstack()
-                if DataType[iFactorName]=="double":
-                    try:
-                        iRawData = iRawData.astype("float")
-                    except:
-                        pass
-                Data[iFactorName] = iRawData
-            Data = pd.Panel(Data).loc[factor_names]
-            return adjustDataDTID(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts, 
-                                  args.get("只起始日回溯", self.OnlyStartLookBack), 
-                                  args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
-                                  logger=self._QS_Logger)
+        Args = self.Args
+        Args.update(args)
+        ErrorFmt = {"DuplicatedIndex":  "%s 的表 %s 无法保证唯一性 : {Error}, 可以尝试将 '多重映射' 参数取值调整为 True" % (self._FactorDB.Name, self.Name)}
+        return _QS_calcData_WideTable(raw_data, factor_names, ids, dts, DataType, args=Args, logger=self._QS_Logger, error_fmt=ErrorFmt)
 
 # 基于 SQL 数据库表的窄因子表
 # 一个字段标识 ID, 一个字段标识时点, 一个字段标识因子名(不存在则固定取标识因子值字段的名称作为因子名), 一个字段标识为因子值
@@ -1052,48 +1091,12 @@ class SQL_NarrowTable(SQL_Table):
                     RawData.sort_values(by=["ID", "QS_DT", FactorNameField])
         if RawData.shape[0]==0: return RawData
         return self._adjustRawDataByRelatedField(RawData, [FactorNameField, FactorValueField])
-    def _calcListData(self, raw_data, factor_names, ids, dts, args={}):
-        raw_data.index = raw_data.index.swaplevel(i=0, j=-1)
-        Operator = args.get("算子", self.Operator)
-        if Operator is None: Operator = (lambda x: x.tolist())
-        Data = {}
-        for iFactorName in factor_names:
-            if iFactorName in raw_data:
-                Data[iFactorName] = raw_data.loc[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
-        if not Data: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-        Data = pd.Panel(Data).loc[factor_names].swapaxes(1, 2)
-        return adjustDataDTID(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts, 
-                              args.get("只起始日回溯", self.OnlyStartLookBack), 
-                              args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
-                              args.get("只回溯时点", self.OnlyLookBackDT), logger=self._QS_Logger)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-        if ids is None: ids = sorted(raw_data["ID"].unique())
-        FactorValueField = args.get("因子值字段", self.FactorValueField)
-        FactorNameField = args.get("因子名字段", self.FactorNameField)
-        raw_data = raw_data.set_index(["QS_DT", "ID", FactorNameField]).iloc[:, 0]
-        MultiMapping = args.get("多重映射", self.MultiMapping)
-        if MultiMapping:
-            return self._calcListData(raw_data, factor_names, ids, dts, args=args)
-        else:
-            if not raw_data.index.is_unique:
-                raise __QS_Error__("%s 的表 %s 无法保证唯一性, 可以尝试将 '多重映射' 参数取值整为 True" % (self._FactorDB.Name, self.Name))
-        raw_data = raw_data.unstack()
         DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
-        DataType = DataType[~DataType.index.duplicated()]
-        Data = {}
-        for iFactorName in factor_names:
-            if iFactorName in raw_data:
-                iRawData = raw_data[iFactorName].unstack()
-                if DataType[iFactorName]=="double": iRawData = iRawData.astype("float")
-                Data[iFactorName] = iRawData
-        if not Data: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-        Data = pd.Panel(Data).loc[factor_names]
-        return adjustDataDTID(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts, 
-                              args.get("只起始日回溯", self.OnlyStartLookBack), 
-                              args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
-                              args.get("只回溯时点", self.OnlyLookBackDT), logger=self._QS_Logger)
-
+        Args = self.Args
+        Args.update(args)
+        ErrorFmt = {"DuplicatedIndex":  "%s 的表 %s 无法保证唯一性 : {Error}, 可以尝试将 '多重映射' 参数取值调整为 True" % (self._FactorDB.Name, self.Name)}
+        return _QS_calcData_NarrowTable(raw_data, factor_names, ids, dts, DataType, args=Args, logger=self._QS_Logger, error_fmt=ErrorFmt)
 
 # 基于 SQL 数据库表的特征因子表
 # 一个字段标识 ID, 其余字段为因子
