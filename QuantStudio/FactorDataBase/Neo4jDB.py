@@ -89,7 +89,9 @@ class _NarrowTable(FactorTable):
         if iid is not None:
             CypherStr += f"WHERE s.ID = '{iid}' "
         CypherStr += "WITH keys(r) AS kk UNWIND kk AS ik RETURN collect(DISTINCT ik)"
-        Rslt = sorted(self._FactorDB.fetchall(CypherStr)[0])
+        Rslt = self._FactorDB.fetchall(CypherStr)
+        if not Rslt: return []
+        Rslt = Rslt[0][0]
         if start_dt is not None: start_dt = start_dt.strftime(self._DTFormat)
         if end_dt is not None: end_dt = end_dt.strftime(self._DTFormat)
         return [dt.datetime.strptime(iDT, self._DTFormat) for iDT in Rslt if pd.notnull(iDT) and ((start_dt is None) or (iDT>=start_dt)) and ((end_dt is None) or (iDT<=end_dt))]
@@ -295,7 +297,8 @@ class _RelationFeatureTable(FactorTable):
             CypherStr = f"MATCH {IDNode} <- [r:`{args.get('关系标签', self.RelationLabel)}`] - {OppNode} "
         CypherStr += f"WHERE n1.`{IDField}` IN $ids "
         if OppField and ("关联实体" in factor_names):
-            factor_names.remove("关联实体")
+            iIdx = factor_names.index("关联实体")
+            factor_names = factor_names[:iIdx]+factor_names[iIdx+1:]
             CypherStr += f"RETURN n1.`{IDField}`, n2.{OppField}, r.`{'`, r.`'.join(factor_names)}`"
             factor_names = ["关联实体"] + factor_names
         else:
@@ -366,7 +369,7 @@ class _RelationFeatureOppFactorTable(FactorTable):
                 raise __QS_Error__(Msg)
             CypherStr = f"MATCH {Relation} "
             CypherStr += f"WHERE n1.`{IDField}` IS NOT NULL AND r.`{RelationField}` IS NOT NULL "
-            CypherStr += f"RETURN collection(DISTINCT apoc.meta.type(r.`{RelationField}`))"
+            CypherStr += f"RETURN collect(DISTINCT apoc.meta.type(r.`{RelationField}`))"
             DataType = self._FactorDB.fetchall(CypherStr)
             if not DataType:
                 DataType = pd.Series(index=factor_names, dtype="O")
@@ -411,7 +414,7 @@ class _RelationFeatureOppFactorTable(FactorTable):
             CypherStr = f"MATCH {IDNode} <- [r:`{args.get('关系标签', self.RelationLabel)}`] - {OppNode} "
         CypherStr += f"WHERE n1.`{IDField}` IN $ids AND n2.`{OppField}` IN $factor_names "
         if RelationField:
-            CypherStr += f"RETURN n1.`{IDField}`, `n2.{OppField}`, r.`{RelationField}`"
+            CypherStr += f"RETURN n1.`{IDField}`, n2.`{OppField}`, r.`{RelationField}`"
         else:
             CypherStr += f"RETURN n1.`{IDField}`, `n2.{OppField}`, 1"
         RawData = self._FactorDB.fetchall(CypherStr, parameters={"ids": ids, "factor_names": factor_names})
@@ -543,9 +546,9 @@ class Neo4jDB(WritableFactorDB):
     # ----------------------------因子表操作-----------------------------
     @property
     def TableNames(self):
-        return sorted(self._TableInfo.index)+["实体属性", "关系属性", "关系属性(关联实体因子名)"]
+        return sorted(self._TableInfo.index)+["实体属性", "关系属性(关系字段做因子)", "关系属性(关联实体字段做因子)"]
     def getTable(self, table_name, args={}):
-        if (table_name not in self._TableInfo.index) and (table_name not in ("实体属性", "关系属性")):
+        if (table_name not in self._TableInfo.index) and (table_name not in ("实体属性", "关系属性(关系字段做因子)", "关系属性(关联实体字段做因子)")):
             Msg = ("因子库 '%s' 调用方法 getTable 错误: 不存在因子表: '%s'!" % (self.Name, table_name))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
@@ -553,9 +556,9 @@ class Neo4jDB(WritableFactorDB):
         Args.update(args)
         if table_name=="实体属性":
             return _EntityFeatureTable(name=table_name, fdb=self, sys_args=Args, logger=self._QS_Logger)
-        elif table_name=="关系属性":
+        elif table_name=="关系属性(关系字段做因子)":
             return _RelationFeatureTable(name=table_name, fdb=self, sys_args=Args, logger=self._QS_Logger)
-        elif table_name=="关系属性(关联实体因子)":
+        elif table_name=="关系属性(关联实体字段做因子)":
             return _RelationFeatureOppFactorTable(name=table_name, fdb=self, sys_args=Args, logger=self._QS_Logger)
         else:
             return _NarrowTable(name=table_name, fdb=self, sys_args=Args, logger=self._QS_Logger)

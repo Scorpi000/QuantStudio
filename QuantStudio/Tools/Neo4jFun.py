@@ -129,38 +129,3 @@ def writeFactorDB(fdb, tx=None, var="fdb"):
     if ArgStr: CypherStr += " " + ArgStr
     if tx is not None: tx.run(CypherStr, parameters=Parameters)
     return CypherStr, Parameters
-
-if __name__=="__main__":
-    import QuantStudio.api as QS
-    from QuantStudio.FactorDataBase.Neo4jDB import Neo4jDB
-    iDB = Neo4jDB()
-    iDB.connect()
-    
-    #iFT = iDB.getTable("BenchmarkIndexFactor")
-    #print(iFT.Args)
-    #iFactor = iFT.getFactor("收盘价")
-    #print(iFactor.Args)
-    #TestArgs = {
-        #"a": 1, 
-        #"b": {
-            #"b_a": "3", 
-            #"b_b": [1,2,3], 
-            #"b_c": {}
-        #}
-    #}
-    #with iDB.session() as Session:
-        #with Session.begin_transaction() as tx:
-            #CypherStr, Parameters = writeArgs(TestArgs, arg_name=None, tx=tx, node=None, var="test", parent_var=None)
-    #print(CypherStr)
-    
-    HDB = QS.FactorDB.HDF5DB()
-    HDB.connect()
-    TableName = "BenchmarkIndexFactor"
-    FT = HDB.getTable(TableName)
-    CFT = QS.FactorDB.CustomFT(name="aha_ft")
-    High, Low = FT.getFactor("最高价", new_name="high"), FT.getFactor("最低价", new_name="low")
-    CFT.addFactors(factor_list=[High, QS.FactorDB.Factorize((High+Low)/2, factor_name="mid")])
-    with iDB.session() as Session:
-        with Session.begin_transaction() as tx:
-            CypherStr, Parameters = writeFactorTable(CFT, tx=tx, var=f"ft{id(CFT)}")
-    iDB.disconnect()
