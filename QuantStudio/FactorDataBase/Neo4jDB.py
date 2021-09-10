@@ -487,13 +487,19 @@ class Neo4jDB(WritableFactorDB):
         return 0
     def connect(self):
         self._connect()
-        self._Node = f"(fdb:`因子库`:`{self.__class__.__name__}` {{`Name`: '{self.Name}'}})"
+        Class = str(self.__class__)
+        Class = Class[Class.index("'")+1:]
+        Class = Class[:Class.index("'")]
+        self._Node = f"(fdb:`因子库`:`{self.__class__.__name__}` {{`Name`: '{self.Name}', `_Class`: '{Class}'}})"
+        Args = self.Args
+        Args.pop("用户名")
+        Args.pop("密码")
         with self._Connection.session(database=self.DBName) as Session:
             with Session.begin_transaction() as tx:
-                Args = self.Args
-                Args.pop("用户名")
-                Args.pop("密码")
-                writeArgs(Args, tx=tx, node=self._Node, var="fdb")
+                CypherStr = f"MERGE {self._Node}"
+                iCypherStr, Parameters = writeArgs(Args, arg_name=None, tx=None, parent_var="fdb")
+                CypherStr += " "+iCypherStr
+                tx.run(CypherStr, parameters=Parameters)
                 CypherStr = f"MATCH (ft:`因子表`) - [:`属于因子库`] -> {self._Node} RETURN DISTINCT ft.Name AS TableName, ft.description AS Description"
                 self._TableInfo = tx.run(CypherStr).values()
                 CypherStr = f"MATCH (f:`因子`) - [:`属于因子表`] -> (ft:`因子表`) - [:`属于因子库`] -> {self._Node} RETURN DISTINCT f.Name AS FactorName, ft.Name AS TableName, f.DataType AS DataType, f.description AS Description"
