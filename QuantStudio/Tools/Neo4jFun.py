@@ -4,6 +4,7 @@ import importlib
 
 from QuantStudio import __QS_Object__, __QS_Error__
 from QuantStudio.FactorDataBase.FactorOperation import DerivativeFactor
+from QuantStudio.FactorDataBase.FactorDB import CustomFT
 
 # 写入参数集
 def writeArgs(args, arg_name=None, parent_var=None, var=None, tx=None):
@@ -49,10 +50,13 @@ def writeFactor(factors, tx=None, id_var={}):
     for iFactor in factors:
         iFID = id(iFactor)
         iVar = f"f{iFID}"
-        iNode = f"({iVar}:`因子` {{Name: '{iFactor.Name}'}})"
+        iClass = str(iFactor.__class__)
+        iClass = iClass[iClass.index("'")+1:]
+        iClass = iClass[:iClass.index("'")]
         if not isinstance(iFactor, DerivativeFactor):# 基础因子
             iFT = iFactor.FactorTable
             if iFID not in id_var:
+                iNode = f"({iVar}:`因子`:`基础因子` {{Name: '{iFactor.Name}', `_Class`: '{iClass}'}})"
                 if iFT is not None:# 有上层因子表
                     iFTVar = f"ft{id(iFT)}"
                     iFTStr, iFTParameters = writeFactorTable(iFT, tx=None, var=iFTVar, id_var=id_var)
@@ -70,12 +74,13 @@ def writeFactor(factors, tx=None, id_var={}):
             if iSubStr: CypherStr += " "+iSubStr
             Parameters.update(iSubParameters)
             if iFID not in id_var:
+                iNode = f"({iVar}:`因子`:`衍生因子` {{Name: '{iFactor.Name}', `_Class`: '{iClass}'}})"
                 CypherStr += f" CREATE {iNode}"
                 iArgStr, iParameters = writeArgs(iFactor.Args, arg_name=None, parent_var=iVar, tx=None)
                 if iArgStr: CypherStr += " "+iArgStr
                 Parameters.update(iParameters)
-                for jDescriptor in iFactor.Descriptors:
-                    CypherStr += f" MERGE ({iVar}) - [:`依赖`] -> ({id_var[id(jDescriptor)]})"
+                for j, jDescriptor in enumerate(iFactor.Descriptors):
+                    CypherStr += f" MERGE ({iVar}) - [:`依赖` {{Order: {j}}}] -> ({id_var[id(jDescriptor)]})"
                 id_var[iFID] = iVar
     if tx is not None: tx.run(CypherStr, parameters=Parameters)
     return CypherStr, Parameters
@@ -83,7 +88,9 @@ def writeFactor(factors, tx=None, id_var={}):
 # 写入因子表
 def writeFactorTable(ft, tx=None, var="ft", id_var={}):
     CypherStr, Parameters = "", {}
-    FTNode = f"({var}:`因子表` {{Name: '{ft.Name}'}})"
+    Class = str(ft.__class__)
+    Class = Class[Class.index("'")+1:]
+    Class = Class[:Class.index("'")]
     # 写入因子库
     FDB = ft.FactorDB
     FTID, FDBID = id(ft), id(FDB)
@@ -96,6 +103,7 @@ def writeFactorTable(ft, tx=None, var="ft", id_var={}):
             id_var[FDBID] = FDBVar
         # 写入因子表
         if FTID not in id_var:
+            FTNode = f"({var}:`因子表`:`库因子表` {{Name: '{ft.Name}', `_Class`: '{Class}'}})"
             CypherStr += f" MERGE {FTNode} - [:`属于因子库`] -> ({FDBVar})"
             FTArgs = ft.Args
             FTArgs.pop("遍历模式", None)
@@ -105,12 +113,13 @@ def writeFactorTable(ft, tx=None, var="ft", id_var={}):
             id_var[FTID] = var
             # 写入因子
             for iFactorName in ft.FactorNames:
-                CypherStr += f" MERGE (:`因子` {{Name: '{iFactorName}'}}) - [:`属于因子表`] -> ({var})"
+                CypherStr += f" MERGE (:`因子`:`基础因子` {{Name: '{iFactorName}'}}) - [:`属于因子表`] -> ({var})"
     else:# 无上层因子库, 自定义因子表
         if FTID not in id_var:
             FStr, FParameters = writeFactor([ft.getFactor(iFactorName) for iFactorName in ft.FactorNames], tx=None, id_var=id_var)
             if FStr: CypherStr += " "+FStr
             Parameters.update(FParameters)
+            FTNode = f"({var}:`因子表`:`自定义因子表` {{Name: '{ft.Name}', `_Class`: '{Class}'}})"
             CypherStr += f" CREATE {FTNode} "
             FTArgs = ft.Args
             FTArgs.pop("遍历模式", None)
@@ -159,7 +168,7 @@ def readArgs(node, node_id=None, tx=None):
                 for iArgName, iVal in enumerate(iArgs.items()):
                     iObj[iArgName] = iVal
                 iArgs = iObj
-        for iArgName, iVal in enumerate(iArgs.items()):
+        for iArgName, iVal in iArgs.items():
             if isinstance(iVal, bytes):
                 try:
                     iArgs[iArgName] = pickle.loads(iVal)
@@ -178,10 +187,8 @@ def readArgs(node, node_id=None, tx=None):
     return Args
 
 # 读取因子库
-def readFactorDB(name, labels=["因子库"], properties={}, node_id=None, tx=None):
+def readFactorDB(labels=["因子库"], properties={}, node_id=None, tx=None, **kwargs):
     if node_id is None:
-        if name is not None:
-            properties["Name"] = name
         Constraint = ','.join(((f"`{iKey}` : '{iVal}'" if isinstance(iVal, str) else f"`{iKey}` : {iVal}") for iKey, iVal in properties.items()))
         CypherStr = f"MATCH (fdb:`{'`:`'.join(labels)}` {{{Constraint}}}) RETURN fdb"
     else:
@@ -206,16 +213,114 @@ def readFactorDB(name, labels=["因子库"], properties={}, node_id=None, tx=Non
                 continue
         try:
             Class = iProperties["_Class"].split(".")
-            #exec(f"from {'.'.join(Class[:-1])} import {Class[-1]} as FDBClass")
             iModule = importlib.import_module('.'.join(Class[:-1]))
             FDBClass = getattr(iModule, Class[-1])
         except Exception as e:
             raise __QS_Error__(f"无法还原因子库({iProperties})对象: {e}")
         else:
             iArgs = readArgs(None, node_id=iRslt[0].id, tx=tx)
-            iFDB = FDBClass(sys_args=iArgs)
+            iFDB = FDBClass(sys_args=iArgs, **kwargs)
         FDBs.append(iFDB)
     if len(FDBs)>1:
         return FDBs
     else:
         return FDBs[0]
+
+# 读取因子表
+def readFactorTable(labels=["因子表"], properties={}, node_id=None, tx=None, **kwargs):
+    if node_id is None:
+        Constraint = ','.join(((f"`{iKey}` : '{iVal}'" if isinstance(iVal, str) else f"`{iKey}` : {iVal}") for iKey, iVal in properties.items()))
+        CypherStr = f"MATCH (ft:`{'`:`'.join(labels)}` {{{Constraint}}}) RETURN ft" 
+    else:
+        CypherStr = f"MATCH (ft) WHERE id(ft) = {node_id} RETURN ft"
+    if tx is None: return CypherStr
+    Rslt = tx.run(CypherStr).values()
+    if not Rslt: return None
+    FTs = []
+    for iRslt in Rslt:
+        iProperties = dict(iRslt[0])
+        iFTID, iTableName = iRslt[0].id, iProperties["Name"]
+        if "_PickledObject" in iProperties:
+            iFT = iProperties.pop("_PickledObject")
+            try:
+                iFT = pickle.loads(iFT)
+            except Exception as e:
+                print(e)
+            else:
+                iArgs = readArgs(None, node_id=iFTID, tx=tx)
+                for iArgName, iVal in enumerate(iArgs.items()):
+                    iFT[iArgName] = iVal
+                FTs.append(iFT)
+                continue
+        iArgs = readArgs(None, iFTID, tx=tx)
+        if "库因子表" in iRslt[0].labels:# 库因子表, 构造库
+            CypherStr = f"MATCH (ft:`因子表`) - [:`属于因子库`] -> (fdb:`因子库`) WHERE id(ft)={iFTID} RETURN id(fdb)"
+            iFDBID = tx.run(CypherStr).values()[0][0]
+            iFDB = readFactorDB(node_id=iFDBID, tx=tx, **kwargs)
+            iFT = iFDB.getTable(iTableName, args=iArgs)
+        else:# 自定义因子表
+            CypherStr = f"MATCH (ft:`因子表`) - [:`包含因子`] -> (f:`因子`) WHERE id(ft)={iFTID} RETURN collect(DISTINCT id(f))"
+            iFactorIDs = tx.run(CypherStr).values()[0][0]
+            iFactors = readFactor(node_ids=iFactorIDs, tx=tx, **kwargs)
+            iFT = CustomFT(iTableName, sys_args=iArgs, **kwargs)
+            iFT.addFactors(factor_list=iFactors)
+        FTs.append(iFT)
+    if len(FTs)>1:
+        return FTs
+    else:
+        return FTs[0]
+
+# 读取因子
+def readFactor(labels=["因子"], properties={}, node_ids=None, tx=None, id_fdb={}, id_ft={}, id_factor={}, **kwargs):
+    if node_ids is None:
+        Constraint = ','.join(((f"`{iKey}` : '{iVal}'" if isinstance(iVal, str) else f"`{iKey}` : {iVal}") for iKey, iVal in properties.items()))
+        CypherStr = f"MATCH (f:`{'`:`'.join(labels)}` {{{Constraint}}}) RETURN f" 
+    else:
+        CypherStr = f"MATCH (f) WHERE id(f) IN {str(node_ids)} RETURN f"
+    if tx is None: return CypherStr
+    Rslt = tx.run(CypherStr).values()
+    if not Rslt: return None
+    Factors = []
+    for iRslt in Rslt:
+        iProperties = dict(iRslt[0])
+        iFactorID, iFactorName = iRslt[0].id, iProperties["Name"]
+        if iFactorID in id_factor:
+            Factors.append(id_factor[iFactorID])
+            continue
+        if "_PickledObject" in iProperties:
+            iFactor = iProperties.pop("_PickledObject")
+            try:
+                iFactor = pickle.loads(iFactor)
+            except Exception as e:
+                print(e)
+            else:
+                iArgs = readArgs(None, node_id=iFactorID, tx=tx)
+                for iArgName, iVal in enumerate(iArgs.items()):
+                    iFactor[iArgName] = iVal
+                id_factor[iFactorID] = iFactor
+                Factors.append(iFactor)
+                continue
+        if "基础因子" in iRslt[0].labels:# 基础因子, 构造表和库
+            CypherStr = f"MATCH (f:`因子`) - [r:`产生于`|`属于因子表`] -> (ft:`因子表`) - [:`属于因子库`] -> (fdb:`因子库`) WHERE id(f)={iFactorID} RETURN r.`原始因子`, id(ft), ft.Name, id(fdb)"
+            iRawName, iFTID, iFTName, iFDBID = tx.run(CypherStr).values()[0]
+            if iFDBID in id_fdb:
+                iFDB = id_fdb[iFDBID]
+            else:
+                id_fdb[iFDBID] = iFDB = readFactorDB(node_id=iFDBID, tx=tx, **kwargs)
+            if iFTID in id_ft:
+                iFT = id_ft[iFTID]
+            else:
+                id_ft[iFTID] = iFT = iFDB.getTable(iFTName)
+            iArgs = readArgs(None, iFactorID, tx=tx)
+            id_factor[iFactorID] = iFactor = iFT.getFactor(iRawName, args=iArgs, new_name=iFactorName)
+        else:# 衍生因子
+            CypherStr = f"MATCH (f:`因子`) - [r:`依赖`] -> (d:`因子`) WHERE id(f)={iFactorID} RETURN id(d) ORDER BY r.`Order`"
+            iDescriptorIDs = [iRslt[0] for iRslt in tx.run(CypherStr).values()]
+            iDescriptors = readFactor(node_ids=iDescriptorIDs, tx=tx, id_fdb=id_fdb, id_ft=id_ft, id_factor=id_factor, **kwargs)
+            iArgs = readArgs(None, iFactorID, tx=tx)
+            iClass = iProperties["_Class"].split(".")
+            iModule = importlib.import_module('.'.join(iClass[:-1]))
+            iFactorClass = getattr(iModule, iClass[-1])            
+            id_factor[iFactorID] = iFactor = iFactorClass(iFactorName, iDescriptors, sys_args=iArgs, **kwargs)
+        Factors.append(iFactor)
+    return Factors

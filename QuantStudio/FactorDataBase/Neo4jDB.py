@@ -620,7 +620,7 @@ class Neo4jDB(WritableFactorDB):
         self._FactorInfo = self._FactorInfo.loc[TableNames].append(self._FactorInfo.loc[[table_name]].loc[FactorIndex])
         return 0
     # ----------------------------数据操作---------------------------------
-    # 附加参数: id_type: str, 比如: A股, 指数, 公募基金
+    # 附加参数: id_type: [str], 比如: A股, 指数, 公募基金
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
         FactorNames, DTs, IDs = data.items.tolist(), data.major_axis.tolist(), data.minor_axis.tolist()
         DataType = data_type.copy()
@@ -628,17 +628,16 @@ class Neo4jDB(WritableFactorDB):
             data[iFactorName], DataType[iFactorName] = _identifyDataType(data.iloc[i], data_type.get(iFactorName, None))
         InitCypherStr = f"""
             MATCH {self._Node}
-            MERGE (ft:`因子表` {{Name: '{table_name}'}})
-            MERGE (ft) - [:`属于因子库`] -> (fdb)
+            MERGE (ft:`因子表`:`库因子表` {{Name: '{table_name}'}}) - [:`属于因子库`] -> (fdb)
             WITH ft
             UNWIND $factors AS iFactor
-            MERGE (f:`因子` {{Name: iFactor, DataType: $data_type[iFactor]}})
+            MERGE (f:`因子`:`基础因子` {{Name: iFactor, DataType: $data_type[iFactor]}})
             MERGE (f) - [:`属于因子表`] -> (ft)
         """
-        IDType = kwargs.get("id_type", "")
-        if IDType: IDType = f":`{IDType}`"
+        IDType = kwargs.get("id_type", [])
+        if IDType: IDType = f":`{'`:`'.join(IDType)}`"
         WriteCypherStr = f"""
-            MATCH (f:`因子` {{Name: $ifactor}}) - [:`属于因子表`] -> (ft:`因子表` {{Name: '{table_name}'}}) - [:`属于因子库`] -> {self._Node}
+            MATCH (f:`因子`:`基础因子` {{Name: $ifactor}}) - [:`属于因子表`] -> (ft:`因子表` {{Name: '{table_name}'}}) - [:`属于因子库`] -> {self._Node}
             UNWIND range(0, size($ids)-1) AS i
             MERGE (s{IDType} {{ID: $ids[i]}})
             MERGE (s) - [r:`暴露`] -> (f)
