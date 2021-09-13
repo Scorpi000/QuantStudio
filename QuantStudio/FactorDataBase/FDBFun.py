@@ -365,8 +365,8 @@ class SQL_Table(FactorTable):
     def _genIDSQLStr(self, ids, init_keyword="AND", args={}):
         IDField = args.get("ID字段", self.IDField)
         if IDField not in self._FactorInfo[self._FactorInfo["FieldType"]=="ID"].index:
-            IDField = self._DBTableName+"."+self._FactorInfo.loc[IDField, "DBFieldName"]
             IDFieldIsStr = (self.__QS_identifyDataType__(self._FactorInfo["DataType"].loc[IDField])!="double")
+            IDField = self._DBTableName+"."+self._FactorInfo.loc[IDField, "DBFieldName"]
         else:
             if (self._MainTableName is None) or (self._MainTableName==self._DBTableName):
                 IDField = self._DBTableName+"."+self._FactorInfo.loc[IDField, "DBFieldName"]
