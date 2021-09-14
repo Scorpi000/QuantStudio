@@ -697,7 +697,7 @@ class QSNeo4jObject(__QS_Object__):
         return 0
     # 写入实体属性数据
     # data: DataFrame(index=[ID], columns=[属性])
-    def writeEntityFeatureData(self, data, entity_labels, id_field="Name", if_exists="update", **kwargs):
+    def writeEntityFeatureData(self, data, entity_labels, id_field, if_exists="update", **kwargs):
         IDs, FactorNames = data.index.tolist(), data.columns.tolist()
         if if_exists!="update":
             LabelStr = "`:`".join(entity_labels)

@@ -25,12 +25,15 @@ def _identifyDataType(factor_data, data_type=None):
     return (factor_data, data_type)
 
 class _NarrowTable(FactorTable):
+    IDField = Str("ID", arg_type="String", label="ID字段", order=0)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         self._TableInfo = fdb._TableInfo.loc[name]
         self._FactorInfo = fdb._FactorInfo.loc[name]
         self._QS_IgnoredGroupArgs = ("遍历模式", )
-        self._DTFormat = "%Y-%m-%d"
-        self._DTFormat_WithTime = "%Y-%m-%d %H:%M:%S"
+        self._DTFormat = fdb._DTFormat
+        self._DTFormat_WithTime = fdb._DTFormat_WithTime
+        if "ID字段" not in sys_args:
+            sys_args["ID字段"] = fdb.IDField
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
     def __QS_genGroupInfo__(self, factors, operation_mode):
         ConditionGroup = {}
@@ -109,7 +112,7 @@ class _NarrowTable(FactorTable):
         """
         DTs = [iDT.strftime(self._DTFormat) for iDT in dts]
         RawData = self._FactorDB.fetchall(CypherStr, parameters={"factors": factor_names, "ids": ids, "dts": DTs})
-        RawData = pd.DataFrame(RawData, columns=["ID", "QS_DT", "FactorName", "Value"])
+        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "QS_DT", "FactorName", "Value"])
         #RawData["QS_DT"] = RawData["QS_DT"].apply(lambda x: dt.datetime.strptime(x, self._DTFormat) if pd.notnull(x) else pd.NaT)
         RawData["QS_DT"] = pd.to_datetime(RawData["QS_DT"])
         return RawData
@@ -140,6 +143,8 @@ class _EntityFeatureTable(FactorTable):
     IDField = Str("Name", arg_type="String", label="ID字段", order=1)
     MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=2)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
+        if "ID字段" not in sys_args:
+            sys_args["ID字段"] = fdb.IDField
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
     @property
     def FactorNames(self):
@@ -215,6 +220,8 @@ class _RelationFeatureTable(FactorTable):
     Direction = Enum("->", "<-", arg_type="String", label="关系方向", order=6)
     MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=7)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
+        if "ID字段" not in sys_args:
+            sys_args["ID字段"] = fdb.IDField
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
     @property
     def FactorNames(self):
@@ -333,6 +340,8 @@ class _RelationFeatureOppFactorTable(FactorTable):
     RelationField = Str(arg_type="String", label="因子值字段", order=7)
     MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=8)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
+        if "ID字段" not in sys_args:
+            sys_args["ID字段"] = fdb.IDField
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
     @property
     def FactorNames(self):
@@ -443,8 +452,11 @@ class _RelationFeatureOppFactorTable(FactorTable):
 class Neo4jDB(QSNeo4jObject, WritableFactorDB):
     """Neo4jDB"""
     Name = Str("Neo4jDB", arg_type="String", label="名称", order=-100)
+    IDField = Str("ID", arg_type="String", label="ID字段", order=100)
     FTArgs = Dict(label="因子表参数", arg_type="Dict", order=101)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
+        self._DTFormat = "%Y-%m-%d"
+        self._DTFormat_WithTime = "%Y-%m-%d %H:%M:%S"
         self._TableInfo = pd.DataFrame()# DataFrame(index=[表名], columns=[Description"])
         self._FactorInfo = pd.DataFrame()# DataFrame(index=[(表名,因子名)], columns=["DataType", "Description"])
         return super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"Neo4jDBConfig.json" if config_file is None else config_file), **kwargs)
@@ -541,7 +553,9 @@ class Neo4jDB(QSNeo4jObject, WritableFactorDB):
         self._FactorInfo = self._FactorInfo.loc[TableNames].append(self._FactorInfo.loc[[table_name]].loc[FactorIndex])
         return 0
     # ----------------------------数据操作---------------------------------
-    # 附加参数: id_type: [str], 比如: A股, 指数, 公募基金
+    # kwargs: 可选参数
+    #     id_type: [str], 比如: ['证券', 'A股']
+    #     id_field: str, ID 字段
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
         FactorNames, DTs, IDs = data.items.tolist(), data.major_axis.tolist(), data.minor_axis.tolist()
         DataType = data_type.copy()
@@ -556,11 +570,12 @@ class Neo4jDB(QSNeo4jObject, WritableFactorDB):
             MERGE (f) - [:`属于因子表`] -> (ft)
         """
         IDType = kwargs.get("id_type", [])
+        IDField = kwargs.get("id_field", self.IDField)
         if IDType: IDType = f":`{'`:`'.join(IDType)}`"
         WriteCypherStr = f"""
             MATCH (f:`因子`:`基础因子` {{Name: $ifactor}}) - [:`属于因子表`] -> (ft:`因子表` {{Name: '{table_name}'}}) - [:`属于因子库`] -> {self._Node}
             UNWIND range(0, size($ids)-1) AS i
-            MERGE (s{IDType} {{ID: $ids[i]}})
+            MERGE (s{IDType} {{{IDField}: $ids[i]}})
             MERGE (s) - [r:`暴露`] -> (f)
             ON CREATE SET r = $data[i]
             ON MATCH SET r += $data[i]
@@ -578,7 +593,7 @@ class Neo4jDB(QSNeo4jObject, WritableFactorDB):
                 Msg = ("因子库 '%s' 调用方法 writeData 错误: 不支持的写入方式 '%s'!" % (self.Name, str(if_exists)))
                 self._QS_Logger.error(Msg)
                 raise __QS_Error__(Msg)
-        data.major_axis = data.major_axis.strftime("%Y-%m-%d")
+        data.major_axis = data.major_axis.strftime(self._DTFormat)
         with self.session() as Session:
             with Session.begin_transaction() as tx:
                 tx.run(InitCypherStr, parameters={"factors": FactorNames, "data_type": DataType})

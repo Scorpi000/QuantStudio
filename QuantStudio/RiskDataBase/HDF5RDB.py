@@ -112,7 +112,7 @@ class HDF5RDB(RiskDB):
         self._TableDT[table_name] = sorted(set(self._TableDT[table_name]).difference(dts))
         if not self._TableDT[table_name]: self.deleteTable(table_name)
         return 0
-    def writeData(self, table_name, idt, icov):
+    def writeData(self, table_name, idt, icov, **kwargs):
         FilePath = self.MainDir+os.sep+table_name+"."+self._Suffix
         with self._DataLock:
             if not os.path.isfile(FilePath): open(FilePath, mode="a").close()# h5py 直接创建文件名包含中文的文件会报错.

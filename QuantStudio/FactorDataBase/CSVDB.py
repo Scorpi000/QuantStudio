@@ -212,7 +212,7 @@ class CSVDB(WritableFactorDB):
         data = _adjustData(data, data_type)
         data.to_csv(file_path, sep=",", na_rep="", mode="w", header=True, index=True, encoding=self.Encoding, date_format=None)
         return 0
-    def writeFactorData(self, factor_data, table_name, ifactor_name, if_exists="update", data_type=None):
+    def writeFactorData(self, factor_data, table_name, ifactor_name, if_exists="update", data_type=None, **kwargs):
         TablePath = self.MainDir+os.sep+table_name
         FilePath = TablePath+os.sep+ifactor_name+"."+self._Suffix
         if not os.path.isdir(TablePath):
@@ -239,5 +239,5 @@ class CSVDB(WritableFactorDB):
                 return self._writeData(Data, table_name, FilePath, data_type)
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
         for i, iFactor in enumerate(data.items):
-            self.writeFactorData(data.iloc[i], table_name, iFactor, if_exists=if_exists, data_type=data_type.get(iFactor, None))
+            self.writeFactorData(data.iloc[i], table_name, iFactor, if_exists=if_exists, data_type=data_type.get(iFactor, None), **kwargs)
         return 0

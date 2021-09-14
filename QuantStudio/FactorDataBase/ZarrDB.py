@@ -257,7 +257,7 @@ class ZarrDB(WritableFactorDB):
             else: factor_data = factor_data.astype("float")
             ZFactor["Data"].set_orthogonal_selection((DTIndices, IDIndices), factor_data.values)
         return 0
-    def writeFactorData(self, factor_data, table_name, ifactor_name, if_exists="update", data_type=None):
+    def writeFactorData(self, factor_data, table_name, ifactor_name, if_exists="update", data_type=None, **kwargs):
         TablePath = self.MainDir+os.sep+table_name
         with self._DataLock:
             ZTable = zarr.open(TablePath, mode="a")
@@ -293,5 +293,5 @@ class ZarrDB(WritableFactorDB):
         return 0
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
         for i, iFactor in enumerate(data.items):
-            self.writeFactorData(data.iloc[i], table_name, iFactor, if_exists=if_exists, data_type=data_type.get(iFactor, None))
+            self.writeFactorData(data.iloc[i], table_name, iFactor, if_exists=if_exists, data_type=data_type.get(iFactor, None), **kwargs)
         return 0

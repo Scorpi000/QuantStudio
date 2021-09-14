@@ -338,7 +338,7 @@ def _calculate(args):
                         jData = jFactor._QS_getData(dts=FT.OperationMode.DateTimes, pids=[args["PID"]])
                         if FT.OperationMode._FactorPrepareIDs[jFactor.Name] is not None:
                             jData = jData.loc[:, FT.OperationMode.IDs]
-                        iDB.writeFactorData(jData, iTableName, iTargetFactorNames[j], if_exists=args["if_exists"], data_type=jFactor.getMetaData(key="DataType"))
+                        iDB.writeFactorData(jData, iTableName, iTargetFactorNames[j], if_exists=args["if_exists"], data_type=jFactor.getMetaData(key="DataType"), **args["kwargs"])
                         jData = None
                         TaskCount += 1
                         ProgBar.update(TaskCount)
@@ -359,7 +359,7 @@ def _calculate(args):
                                     TaskCount += 0.5
                                     ProgBar.update(TaskCount)
                             jData = pd.Panel(jData).loc[iTargetFactorNames]
-                            iDB.writeData(jData, iTableName, if_exists=args["if_exists"], data_type=iDataTypes)
+                            iDB.writeData(jData, iTableName, if_exists=args["if_exists"], data_type=iDataTypes, **args["kwargs"])
                             jData = None
                         TaskCount += 0.5
                         ProgBar.update(TaskCount)
@@ -374,7 +374,7 @@ def _calculate(args):
                         jData = jData.loc[:, FT.OperationMode._PID_IDs[args["PID"]]]
                     else:
                         jData = jFactor._QS_getData(dts=FT.OperationMode.DateTimes, pids=[args["PID"]])
-                    iDB.writeFactorData(jData, iTableName, iTargetFactorNames[j], if_exists=args["if_exists"], data_type=jFactor.getMetaData(key="DataType"))
+                    iDB.writeFactorData(jData, iTableName, iTargetFactorNames[j], if_exists=args["if_exists"], data_type=jFactor.getMetaData(key="DataType"), **args["kwargs"])
                     jData = None
                     args["Sub2MainQueue"].put((args["PID"], 1, None))
             else:
@@ -392,7 +392,7 @@ def _calculate(args):
                             jData[iTargetFactorNames[k]] = ijkData
                             if j==0: args["Sub2MainQueue"].put((args["PID"], 0.5, None))
                         jData = pd.Panel(jData).loc[iTargetFactorNames]
-                        iDB.writeData(jData, iTableName, if_exists=args["if_exists"], data_type=iDataTypes)
+                        iDB.writeData(jData, iTableName, if_exists=args["if_exists"], data_type=iDataTypes, **args["kwargs"])
                         jData = None
                     args["Sub2MainQueue"].put((args["PID"], 0.5, None))
     return 0
@@ -790,6 +790,9 @@ class FactorTable(__QS_Object__):
             iFactor._exit()
         return 0
     # 计算因子数据并写入因子库
+    # specific_target: {因子名: (目标因子库对象, 目标因子表名, 目标因子名)}
+    # kwargs: 可选参数, 该参数同时传给因子库的 writeData 方法
+    #     cache_dir: 计算过程中缓存文件存放的目录
     def write2FDB(self, factor_names, ids, dts, factor_db, table_name, if_exists="update", subprocess_num=cpu_count()-1, dt_ruler=None, section_ids=None, specific_target={}, **kwargs):
         if not isinstance(factor_db, WritableFactorDB): raise __QS_Error__("因子数据库: %s 不可写入!" % factor_db.Name)
         print("==========因子运算==========", "1. 原始数据准备", sep="\n", end="\n")
@@ -800,7 +803,7 @@ class FactorTable(__QS_Object__):
         self._prepare(factor_names, ids, dts, **kwargs)
         print(("耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "2. 因子数据计算", end="\n", sep="\n")
         StartT = time.perf_counter()
-        Args = {"FT":self, "PID":"0", "FactorDB":factor_db, "TableName":table_name, "if_exists":if_exists, "specific_target": specific_target}
+        Args = {"FT":self, "PID":"0", "FactorDB":factor_db, "TableName":table_name, "if_exists":if_exists, "specific_target": specific_target, "kwargs": kwargs}
         if self.OperationMode.SubProcessNum==0:
             _calculate(Args)
         else:

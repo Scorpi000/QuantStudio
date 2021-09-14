@@ -382,7 +382,7 @@ class HDF5DB(WritableFactorDB):
                             DataFile["Data"][CrossedDateTimePos, iPos] = NewData[:, i]
                 DataFile.flush()
         return 0
-    def writeFactorData(self, factor_data, table_name, ifactor_name, if_exists="update", data_type=None):
+    def writeFactorData(self, factor_data, table_name, ifactor_name, if_exists="update", data_type=None, **kwargs):
         DTs = factor_data.index
         if pd.__version__>="0.20.0": factor_data.index = [idt.to_pydatetime().timestamp() for idt in factor_data.index]
         else: factor_data.index = [idt.timestamp() for idt in factor_data.index]
@@ -429,7 +429,7 @@ class HDF5DB(WritableFactorDB):
         return 0
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
         for i, iFactor in enumerate(data.items):
-            self.writeFactorData(data.iloc[i], table_name, iFactor, if_exists=if_exists, data_type=data_type.get(iFactor, None))
+            self.writeFactorData(data.iloc[i], table_name, iFactor, if_exists=if_exists, data_type=data_type.get(iFactor, None), **kwargs)
         return 0
     def optimizeData(self, table_name, factor_names):
         for iFactorName in factor_names:

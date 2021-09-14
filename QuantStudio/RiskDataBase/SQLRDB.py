@@ -110,7 +110,7 @@ class SQLRDB(QSSQLObject, RiskDB):
     def addIndex(self, index_name, table_name, fields, index_type="BTREE"):
         SQLStr = "CREATE INDEX "+index_name+" USING "+index_type+" ON "+self.TablePrefix+table_name+"("+", ".join(fields)+")"
         return self.execute(SQLStr)
-    def writeData(self, table_name, idt, icov):
+    def writeData(self, table_name, idt, icov, **kwargs):
         DBTableName = self.TablePrefix+self._Prefix+table_name
         SQLStr = "INSERT INTO "+DBTableName+" (`DateTime`, `Cov`) VALUES ("+", ".join([("?" if self.Connector=="pyodbc" else "%s")]*2)+")"
         if table_name not in self._TableAdditionalCols: self.createTable(table_name)

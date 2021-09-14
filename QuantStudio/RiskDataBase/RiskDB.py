@@ -51,7 +51,7 @@ class RiskDB(__QS_Object__):
         return 0
     # ------------------------数据存储--------------------------------------
     # 存储数据
-    def writeData(self, table_name, idt, icov):
+    def writeData(self, table_name, idt, icov, **kwargs):
         return 0
 
 # 风险表的遍历模式参数对象
@@ -152,7 +152,7 @@ class RiskTable(__QS_Object__):
         if not Cov: Cov = pd.Panel(items=dts, major_axis=ids, minor_axis=ids)
         else:
             Cov = pd.Panel(Cov).loc[dts]
-            if ids is not None: Cov = Cov.loc[ids, ids]
+            if ids is not None: Cov = Cov.loc[:, ids, ids]
         return Cov
     # 读取相关系数矩阵, Panel(items=[时点], major_axis=[ID], minor_axis=[ID])
     def readCorr(self, dts, ids=None):
