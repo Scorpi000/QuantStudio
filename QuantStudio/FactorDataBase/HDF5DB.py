@@ -11,12 +11,13 @@ import numpy as np
 import pandas as pd
 import fasteners
 import h5py
-from traits.api import Directory, Float, Str
+from traits.api import Directory, Float, Str, Bool
 
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
+from QuantStudio.FactorDataBase.FDBFun import adjustDataDTID
 from QuantStudio.Tools.FileFun import listDirDir, listDirFile
-from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
+from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5
 
 def _identifyDataType(factor_data, data_type=None):
     if (data_type is None) or (data_type=="double"):
@@ -42,6 +43,10 @@ def _adjustData(data, data_type, order="C"):
 
 class _FactorTable(FactorTable):
     """HDF5DB 因子表"""
+    LookBack = Float(0, arg_type="Integer", label="回溯天数", order=0)
+    OnlyStartLookBack = Bool(False, label="只起始日回溯", arg_type="Bool", order=1)
+    OnlyLookBackNontarget = Bool(False, label="只回溯非目标日", arg_type="Bool", order=2)
+    OnlyLookBackDT = Bool(False, label="只回溯时点", arg_type="Bool", order=3)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         self._Suffix = fdb._Suffix# 文件后缀名
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
@@ -85,9 +90,13 @@ class _FactorTable(FactorTable):
             Timestamps = Timestamps[Timestamps<=end_dt]
         return sorted(dt.datetime.fromtimestamp(iTimestamp) for iTimestamp in Timestamps)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        Data = {iFactor: self.readFactorData(ifactor_name=iFactor, ids=ids, dts=dts, args=args) for iFactor in factor_names}
+        LookBack = args.get("回溯天数", self.LookBack)
+        if LookBack==0:
+            Data = {iFactor: self._readFactorData(ifactor_name=iFactor, ids=ids, dts=dts, args=args) for iFactor in factor_names}
+        else:
+            Data = {iFactor: self.readFactorData(ifactor_name=iFactor, ids=ids, dts=dts, args=args) for iFactor in factor_names}
         return pd.Panel(Data).loc[factor_names]
-    def readFactorData(self, ifactor_name, ids, dts, args={}):
+    def _readFactorData(self, ifactor_name, ids, dts, args={}):
         FilePath = self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix
         if not os.path.isfile(FilePath): raise __QS_Error__("因子库 '%s' 的因子表 '%s' 中不存在因子 '%s'!" % (self._FactorDB.Name, self.Name, ifactor_name))
         with self._FactorDB._getLock(self._Name) as DataLock:
@@ -136,6 +145,32 @@ class _FactorTable(FactorTable):
         elif DataType=="object":
             Rslt = Rslt.applymap(lambda x: pickle.loads(bytes(x)) if isinstance(x, np.ndarray) and (x.shape[0]>0) else None)
         return Rslt.sort_index(axis=0)
+    def readFactorData(self, ifactor_name, ids, dts, args={}):
+        LookBack = args.get("回溯天数", self.LookBack)
+        if LookBack==0: return self._readFactorData(ifactor_name, ids, dts, args=args)
+        if np.isinf(LookBack):
+            RawData = self._readFactorData(ifactor_name, ids, None, args=args)
+        else:
+            StartDT = dts[0] - dt.timedelta(LookBack)
+            iDTs = self.getDateTime(ifactor_name=ifactor_name, start_dt=StartDT, end_dt=dts[-1], args=args)
+            RawData = self._readFactorData(ifactor_name, ids, iDTs, args=args)
+        if not args.get("只回溯时点", self.OnlyLookBackDT):
+            RawData = pd.Panel({ifactor_name: RawData})
+            return adjustDataDTID(RawData, LookBack, [ifactor_name], ids, dts, args.get("只起始日回溯", self.OnlyStartLookBack), args.get("只回溯非目标日", self.OnlyLookBackNontarget), logger=self._QS_Logger).iloc[0]
+        RawData = RawData.dropna(axis=0, how="all").dropna(axis=1, how="all")
+        RowIdxMask = pd.isnull(RawData)
+        if RowIdxMask.shape[1]==0: return pd.DataFrame(index=dts, columns=ids)
+        RawIDs = RowIdxMask.columns
+        RowIdx = pd.DataFrame(np.arange(RowIdxMask.shape[0]).reshape((RowIdxMask.shape[0], 1)).repeat(RowIdxMask.shape[1], axis=1), index=RowIdxMask.index, columns=RawIDs)
+        RowIdx[RowIdxMask] = np.nan
+        RowIdx = adjustDataDTID(pd.Panel({"RowIdx": RowIdx}), LookBack, ["RowIdx"], RawIDs.tolist(), dts, args.get("只起始日回溯", self.OnlyStartLookBack), args.get("只回溯非目标日", self.OnlyLookBackNontarget), logger=self._QS_Logger).iloc[0].values
+        RowIdx[pd.isnull(RowIdx)] = -1
+        RowIdx = RowIdx.astype(int)
+        ColIdx = np.arange(RowIdx.shape[1]).reshape((1, RowIdx.shape[1])).repeat(RowIdx.shape[0], axis=0)
+        RowIdxMask = (RowIdx==-1)
+        RawData = RawData.values[RowIdx, ColIdx]
+        RawData[RowIdxMask] = None
+        return pd.DataFrame(RawData, index=dts, columns=RawIDs).loc[:, ids]
 
 # 基于 HDF5 文件的因子数据库
 # 每一张表是一个文件夹, 每个因子是一个 HDF5 文件

@@ -825,7 +825,6 @@ class SQL_WideTable(SQL_Table):
         StartDT, EndDT = dts[0], dts[-1]
         RawLookBack = args.get("原始值回溯天数", self.RawLookBack)
         if not np.isinf(RawLookBack): StartDT -= dt.timedelta(RawLookBack)
-        IDField = self._DBTableName+"."+self._FactorInfo.loc[args.get("ID字段", self.IDField), "DBFieldName"]
         SQLStr = "SELECT "+self._getIDField(args=args)+" AS ID, "
         EndDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
         SQLStr += EndDTField+" AS QS_EndDT, "

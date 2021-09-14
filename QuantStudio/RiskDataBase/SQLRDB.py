@@ -2,10 +2,10 @@
 """基于关系数据库的风险数据库"""
 import os
 import json
-import datetime as dt
 
 import numpy as np
 import pandas as pd
+from traits.api import Str
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.QSObjects import QSSQLObject
@@ -51,11 +51,11 @@ class _RiskTable(RiskTable):
 
 class SQLRDB(QSSQLObject, RiskDB):
     """基于关系数据库的风险数据库"""
+    Name = Str("SQLRDB", arg_type="String", label="名称", order=-100)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._TableAdditionalCols = {}# {表名:[额外的字段名]}
         self._Prefix = "QSR_"
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"SQLRDBConfig.json" if config_file is None else config_file), **kwargs)
-        self.Name = "SQLRDB"
     def connect(self):
         super().connect()
         if self.DBType=="MySQL":
@@ -272,11 +272,11 @@ class _FactorRiskTable(FactorRT):
 
 class SQLFRDB(QSSQLObject, FactorRDB):
     """基于关系型数据库的多因子风险数据库"""
+    Name = Str("SQLFRDB", arg_type="String", label="名称", order=-100)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._TableAdditionalCols = {}# {表名:[额外的字段名]}
         self._Prefix = "QSFR_"
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"SQLFRDBConfig.json" if config_file is None else config_file), **kwargs)
-        self.Name = "SQLFRDB"
     def connect(self):
         super().connect()
         nPrefix = len(self._Prefix)

@@ -6,7 +6,6 @@ import uuid
 from multiprocessing import Queue, Lock
 from collections import OrderedDict
 import pickle
-import datetime as dt
 
 import numpy as np
 import pandas as pd
@@ -19,7 +18,7 @@ os.environ["NLS_LANG"] = "SIMPLIFIED CHINESE_CHINA.UTF8"
 
 class QSSQLObject(__QS_Object__):
     """基于关系数据库的对象"""
-    Name = Str("关系数据库")
+    Name = Str("QSSQLObject")
     DBType = Enum("MySQL", "SQL Server", "Oracle", arg_type="SingleOption", label="数据库类型", order=0)
     DBName = Str("Scorpion", arg_type="String", label="数据库名", order=1)
     IPAddr = Str("127.0.0.1", arg_type="String", label="IP地址", order=2)
@@ -608,6 +607,180 @@ class QSClickHouseObject(QSSQLObject):
             raise e
         else:
             self._QS_Logger.info("'%s' 调用方法 deleteField 删除表 '%s' 中的字段 '%s'" % (self.Name, table_name, str(field_names)))
+        return 0
+
+
+class QSNeo4jObject(__QS_Object__):
+    """基于 Neo4j 的对象"""
+    Name = Str("QSNeo4jObject")
+    DBName = Str("neo4j", arg_type="String", label="数据库名", order=0)
+    IPAddr = Str("127.0.0.1", arg_type="String", label="IP地址", order=1)
+    Port = Range(low=0, high=65535, value=7687, arg_type="Integer", label="端口", order=2)
+    User = Str("neo4j", arg_type="String", label="用户名", order=3)
+    Pwd = Password("", arg_type="String", label="密码", order=4)
+    Connector = Enum("default", "neo4j", arg_type="SingleOption", label="连接器", order=5)
+    def __init__(self, sys_args={}, config_file=None, **kwargs):
+        self._Connection = None# 连接对象
+        self._Connector = None# 实际使用的数据库链接器
+        self._PID = None# 保存数据库连接创建时的进程号
+        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state["_Connection"] = (True if self.isAvailable() else False)
+        return state
+    def __setstate__(self, state):
+        super().__setstate__(state)
+        if self._Connection: self._connect()
+        else: self._Connection = None
+    @property
+    def Connection(self):
+        if self._Connection is not None:
+            if os.getpid()!=self._PID: self._connect()# 如果进程号发生变化, 重连
+        return self._Connection
+    def _connect(self):
+        self._Connection = None
+        if (self.Connector=="neo4j") or (self.Connector=="default"):
+            try:
+                import neo4j
+                self._Connection = neo4j.GraphDatabase.driver(f"neo4j://{self.IPAddr}:{self.Port}", auth=(self.User, self.Pwd))
+            except Exception as e:
+                Msg = ("'%s' 尝试使用 neo4j 连接(%s@%s:%d)数据库失败: %s" % (self.Name, self.User, self.IPAddr, self.Port, str(e)))
+                self._QS_Logger.error(Msg)
+                if self.Connector!="default": raise e
+            else:
+                self._Connector = "neo4j"
+        self._PID = os.getpid()
+        return 0
+    def connect(self):
+        return self._connect()
+    def disconnect(self):
+        if self._Connection is not None:
+            try:
+                self._Connection.close()
+            except Exception as e:
+                self._QS_Logger.warning("'%s' 断开数据库错误: %s" % (self.Name, str(e)))
+            finally:
+                self._Connection = None
+        return 0
+    def isAvailable(self):
+        return (self._Connection is not None)
+    def session(self):
+        if self._Connection is None:
+            Msg = ("'%s' 获取 session 失败: 数据库尚未连接!" % (self.Name,))
+            self._QS_Logger.error(Msg)
+            raise __QS_Error__(Msg)
+        if os.getpid()!=self._PID: self._connect()# 如果进程号发生变化, 重连
+        try:# 连接断开后重连
+            Session = self._Connection.session(database=self.DBName)
+        except:
+            self._connect()
+            Session = self._Connection.session(database=self.DBName)
+        return Session
+    def fetchall(self, cypher_str, parameters=None):
+        with self.session() as Session:
+            with Session.begin_transaction() as tx:
+                return tx.run(cypher_str, parameters=parameters).values()
+    def execute(self, cypher_str, parameters=None):
+        if self._Connection is None:
+            Msg = ("'%s' 执行 Cypher 命令失败: 数据库尚未连接!" % (self.Name,))
+            self._QS_Logger.error(Msg)
+            raise __QS_Error__(Msg)
+        if os.getpid()!=self._PID: self._connect()# 如果进程号发生变化, 重连
+        try:
+            Session = self._Connection.session(database=self.DBName)
+        except:
+            self._connect()
+            Session = self._Connection.session(database=self.DBName)
+        with Session:
+            with Session.begin_transaction() as tx:
+                tx.run(cypher_str, parameters=parameters)
+        return 0
+    # 写入实体属性数据
+    # data: DataFrame(index=[ID], columns=[属性])
+    def writeEntityFeatureData(self, data, entity_labels, id_field="Name", if_exists="update", **kwargs):
+        IDs, FactorNames = data.index.tolist(), data.columns.tolist()
+        if if_exists!="update":
+            LabelStr = "`:`".join(entity_labels)
+            CypherStr = f"""
+                MATCH (n:`{LabelStr}`)
+                WHERE n.`{id_field}` IN $ids
+                RETURN n.`{id_field}`, n.`{'`, n.`'.join(FactorNames)}`
+            """
+            OldData = self.fetchall(CypherStr, parameters={"ids": IDs})
+            if not OldData: OldData = pd.DataFrame(index=IDs, columns=FactorNames)
+            else: OldData = pd.DataFrame(np.array(OldData, dtype="O"), columns=["ID"]+FactorNames).set_index(["ID"]).loc[IDs]
+            if if_exists=="append":
+                data = OldData.where(pd.notnull(OldData), data)
+            elif if_exists=="update_notnull":
+                data = data.where(pd.notnull(data), OldData)
+            else:
+                Msg = ("因子库 '%s' 调用方法 writeFeatureData 错误: 不支持的写入方式 '%s'!" % (self.Name, str(if_exists)))
+                self._QS_Logger.error(Msg)
+                raise __QS_Error__(Msg)
+        LabelStr = "`:`".join(entity_labels)
+        data[id_field] = data.index
+        CypherStr = f"""
+            UNWIND $ids AS iID
+            MERGE (n:`{LabelStr}` {{`{id_field}`: iID}})
+            ON CREATE SET n = $data[iID]
+            ON MATCH SET n += $data[iID]
+        """
+        data = data.astype("O").where(pd.notnull(data), None)
+        with self.session() as Session:
+            with Session.begin_transaction() as tx:
+                tx.run(CypherStr, parameters={"ids": IDs, "data": data.T.to_dict(orient="dict")})
+        return 0
+    # 写入关系属性数据
+    # data: DataFrame(index=[ID], columns=[关联实体字段])
+    # retain_relation: False 表示 relation_field 为 NULL 的关系将被删除, True 表示不删除
+    def writeRelationFeatureData(self, data, relation_label, relation_field, direction, id_labels, id_field, opp_labels, opp_field, retain_relation=True, if_exists="update", **kwargs):
+        OppFields = data.columns.tolist()
+        IDNode = f"(n1:`{'`:`'.join(id_labels)}` {{`{id_field}`: p[0]}})"
+        OppNode = f"(n2:`{'`:`'.join(opp_labels)}` {{`{opp_field}`: $opp_entity[i]}})"
+        if direction=="->":
+            Relation = f"(n1) - [r:`{relation_label}`] -> (n2)"
+        elif direction=="<-":
+            Relation = f"(n1) <- [r:`{relation_label}`] - (n2)"
+        else:
+            Msg = ("因子库 '%s' 调用方法 writeRelationFeatureData 错误: 不支持的参数值 %s : %s " % (self.Name, "direction", str(direction)))
+            self._QS_Logger.error(Msg)
+            raise __QS_Error__(Msg)
+        CypherStr = f"""
+            UNWIND range(0, size($opp_entity)-1) AS i
+            MERGE {OppNode}
+            WITH n2, i
+            UNWIND $data[i] AS p
+            MERGE {IDNode}
+            MERGE {Relation}
+        """
+        if if_exists=="update_notnull":
+            data = data.apply(lambda s: s.dropna().reset_index().values.tolist(), axis=0, raw=False).tolist()
+            CypherStr += f" SET r.`{relation_field}` = p[1]"
+        elif if_exists=="append":
+            data = data.apply(lambda s: s.dropna().reset_index().values.tolist(), axis=0, raw=False).tolist()
+            CypherStr += f" WHERE r.`{relation_field}` IS NULL SET r.`{relation_field}` = p[1]"
+        else:
+            OldIDStr = f"""
+                MATCH (n1:`{'`:`'.join(id_labels)}`) - [r:`{relation_label}`] -> (n2:`{'`:`'.join(opp_labels)}`)
+                WHERE n1.`{id_field}` IS NOT NULL AND r.`{relation_field}` IS NOT NULL AND n2.`{opp_field}` IN $opp_entity
+                RETURN collect(DISTINCT n1.`{id_field}`)
+            """
+            OldIDs = self.fetchall(OldIDStr, parameters={"opp_entity": OppFields})
+            if OldIDs: OldIDs = OldIDs[0][0]
+            def _chg2None(s):
+                s = s.loc[s.dropna().index.union(OldIDs)].astype("O")
+                return s.where(pd.notnull(s), None).reset_index().values.tolist()
+            data = data.apply(_chg2None, axis=0, raw=False).tolist()
+            CypherStr += f" SET r.`{relation_field}` = p[1]"
+        self.execute(CypherStr, parameters={"opp_entity": OppFields, "data": data})
+        # 删除属性为 NULL 的关系
+        if not retain_relation:
+            DelStr = f"""
+                MATCH (n1:`{'`:`'.join(id_labels)}`) - [r:`{relation_label}`] -> (n2:`{'`:`'.join(opp_labels)}`)
+                WHERE n1.`{id_field}` IS NOT NULL AND r.`{relation_field}` IS NULL AND n2.`{opp_field}` IN $opp_entity
+                DELETE r
+            """
+            self.execute(DelStr, parameters={"opp_entity": OppFields})
         return 0
 
 # put 函数会阻塞, 直至对象传输完毕

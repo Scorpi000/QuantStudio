@@ -7,7 +7,7 @@ from multiprocessing import Lock
 import numpy as np
 import pandas as pd
 import h5py
-from traits.api import Directory
+from traits.api import Directory, Str
 
 from QuantStudio.Tools.FileFun import listDirFile
 from QuantStudio.Tools.DateTimeFun import cutDateTime
@@ -43,6 +43,7 @@ class _RiskTable(RiskTable):
 
 class HDF5RDB(RiskDB):
     """基于 HDF5 文件的风险数据库"""
+    Name = Str("HDF5RDB", arg_type="String", label="名称", order=-100)
     MainDir = Directory(label="主目录", arg_type="Directory", order=0)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._TableDT = {}#{表名：[时点]}
@@ -50,7 +51,6 @@ class HDF5RDB(RiskDB):
         self._Suffix = "hdf5"
         self._isAvailable = False
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"HDF5RDBConfig.json" if config_file is None else config_file), **kwargs)
-        self.Name = "HDF5RDB"
     def connect(self):
         if not os.path.isdir(self.MainDir): raise __QS_Error__("不存在 HDF5RDB 的主目录: %s!" % self.MainDir)
         AllTables = listDirFile(self.MainDir, suffix=self._Suffix)
@@ -272,6 +272,7 @@ class _FactorRiskTable(FactorRT):
 
 class HDF5FRDB(FactorRDB):
     """基于 HDF5 文件的多因子风险数据库"""
+    Name = Str("HDF5FRDB", arg_type="String", label="名称", order=-100)
     MainDir = Directory(label="主目录", arg_type="Directory", order=0)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._TableDT = {}#{表名：[时点]}
@@ -279,7 +280,6 @@ class HDF5FRDB(FactorRDB):
         self._Suffix = "h5"
         self._isAvailable = False
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"HDF5FRDBConfig.json" if config_file is None else config_file), **kwargs)
-        self.Name = "HDF5FRDB"
     def connect(self):
         if not os.path.isdir(self.MainDir): raise __QS_Error__("不存在 HDF5FRDB 的主目录: %s!" % self.MainDir)
         AllTables = listDirFile(self.MainDir, suffix=self._Suffix)

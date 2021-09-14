@@ -19,7 +19,7 @@ from QuantStudio import __QS_Object__, __QS_Error__
 # 风险矩阵: Cov, Panel(items=[时点], major_axis=[ID], minor_axis=[ID])
 class RiskDB(__QS_Object__):
     """风险数据库"""
-    Name = Str("风险数据库")
+    Name = Str("风险数据库", arg_type="String", label="名称", order=-100)
     # 链接数据库
     def connect(self):
         return 0
