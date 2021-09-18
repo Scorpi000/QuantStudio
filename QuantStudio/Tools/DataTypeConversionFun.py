@@ -18,7 +18,7 @@ def DictKeyValueTurn_List(old_dict):
         else:
             NewDict[old_dict[key]] = [key]
     return NewDict
-# 将Dummy变量转化成0-1变量, dummy_var:Series(类别数据), 返回DataFrame(index=dummy_var.index,columns=所有类别)
+# 将Dummy变量转化成0-1变量, dummy_var:Series(类别数据), 返回DataFrame(index=dummy_var.index,columns=所有类别), deprecated, 使用 pandas.get_dummies
 def DummyVarTo01Var(dummy_var,ignore_na=False,ignores=[],ignore_nonstring=False):
     if dummy_var.shape[0]==0:
         return pd.DataFrame()
@@ -37,23 +37,22 @@ def DummyVarTo01Var(dummy_var,ignore_na=False,ignores=[],ignore_nonstring=False)
             iMask = NAMask
         OZVar[iClass][iMask] = 1.0
     return OZVar
-# 将DataFrame转化成二重索引的Series，DataFrame的index和columns二重索引。
-def DataFrame2Series(df):
-    NewData = pd.DataFrame(columns=['index','column','data'])
-    nIndex,nColumn = df.shape
-    Columns = list(df.columns)
-    for iIndex in df.index:
-        iData = df.loc[iIndex]
-        NewData = NewData.append(pd.DataFrame({'index':[iIndex]*nColumn,"column":Columns,"data":list(iData.values)}))
-    return NewData.set_index(['index','column'])['data']
-# 将二重索引的Series转化成DataFrame, 第一个索引作为index, 第二个索引作为columns
-def Series2DataFrame(s,default_na=None):
-    s_df = s.reset_index()
-    Index = s_df.iloc[:,0].unique()
-    Columns = s_df.iloc[:,1].unique()
-    NewData = pd.DataFrame(index=Index,columns=Columns)
-    NewData = NewData.where(pd.notnull(NewData),default_na)
-    for iIndex in Index:
-        iS = s.loc[iIndex]
-        NewData.loc[iIndex,iS.index] = iS
-    return NewData
+
+# 将元素为 list 的 DataFrame 扩展成元素为标量的 DataFrame, index 将被 reset
+def expandListElementDataFrame(df, expand_index=True):
+    ElementLen = df.iloc[:, 0].apply(lambda x: len(x) if isinstance(x, list) else 0)
+    Mask = (ElementLen>0)
+    data = df[Mask]
+    if data.shape[0]==0: return (df.reset_index() if expand_index else df)
+    if expand_index:
+        nCol = data.shape[1]
+        data = data.reset_index()
+        Cols = data.columns.tolist()
+        for i in range(data.shape[1] - nCol):
+            data[Cols[i]] = data.pop(Cols[i]).apply(lambda x: [x]) * ElementLen[Mask].values
+        data = data.loc[:, Cols]
+    data = pd.DataFrame(data.sum(axis=0).tolist(), index=data.columns).T
+    if expand_index:
+        return data.append(df[~Mask].reset_index(), ignore_index=True)
+    else:
+        return data.append(df[~Mask], ignore_index=True)

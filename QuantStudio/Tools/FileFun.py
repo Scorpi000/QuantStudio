@@ -13,8 +13,6 @@ import numpy as np
 import pandas as pd
 
 from QuantStudio import __QS_Error__
-from QuantStudio.Tools.AuxiliaryFun import genAvailableName
-from QuantStudio.Tools.DataTypeConversionFun import Series2DataFrame
 
 # 复制文件夹到指定位置，如果该文件夹已经存在，则根据if_exist参数进行操作,replace表示覆盖原文件，skip表示保留原文件
 def copyDir(source_dir,target_pos,if_exist='replace'):
@@ -232,7 +230,7 @@ def loadCSVFactorData(csv_path):
             CSVFactor = readCSV2Pandas(csv_path, detect_file_encoding=True, header=0, index_col=[0,1], parse_dates=True, infer_datetime_format=True)
         #Columns = list(CSVFactor.columns)
         #CSVFactor = CSVFactor.set_index(Columns[:2])[Columns[2]]
-        CSVFactor = Series2DataFrame(CSVFactor.iloc[:, 0])
+        CSVFactor = CSVFactor.iloc[:, 0].unstack()
     try:
         if CSVFactor.index.dtype==np.dtype("O"):
             CSVDT = [dt.datetime.strptime(iDT, "%Y-%m-%D") for iDT in CSVFactor.index]

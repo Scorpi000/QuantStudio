@@ -30,7 +30,7 @@ def writeArgs(args, arg_name=None, parent_var=None, var=None, tx=None):
         for iArg in sorted(args.keys()):
             if isinstance(args[iArg], (dict, __QS_Object__)):
                 SubArgs[iArg] = args.pop(iArg)
-            elif callable(args[iArg]):
+            elif callable(args[iArg]) or (isinstance(args[iArg], (list, tuple)) and (None in args[iArg])):
                 args[iArg] = pickle.dumps(args[iArg])
         if args:
             CypherStr += f" SET {var} += ${var}"
@@ -45,7 +45,7 @@ def writeArgs(args, arg_name=None, parent_var=None, var=None, tx=None):
     return CypherStr, Parameters
 
 # 写入因子, id_var: {id(对象): 变量名}
-def writeFactor(factors, tx=None, id_var={}):
+def writeFactor(factors, tx=None, id_var={}, write_other_fundamental_factor=True):
     CypherStr, Parameters = "", {}
     for iFactor in factors:
         iFID = id(iFactor)
@@ -59,7 +59,7 @@ def writeFactor(factors, tx=None, id_var={}):
                 iNode = f"({iVar}:`因子`:`基础因子` {{Name: '{iFactor.Name}', `_Class`: '{iClass}'}})"
                 if iFT is not None:# 有上层因子表
                     iFTVar = f"ft{id(iFT)}"
-                    iFTStr, iFTParameters = writeFactorTable(iFT, tx=None, var=iFTVar, id_var=id_var)
+                    iFTStr, iFTParameters = writeFactorTable(iFT, tx=None, var=iFTVar, id_var=id_var, write_other_fundamental_factor=write_other_fundamental_factor)
                     if iFTStr: CypherStr += " "+iFTStr
                     Parameters.update(iFTParameters)
                     CypherStr += f" CREATE {iNode} - [:`产生于` {{`原始因子`: '{iFactor._NameInFT}'}}] -> ({iFTVar})"
@@ -70,7 +70,7 @@ def writeFactor(factors, tx=None, id_var={}):
                 Parameters.update(iParameters)
                 id_var[iFID] = iVar
         else:# 衍生因子
-            iSubStr, iSubParameters = writeFactor(iFactor.Descriptors, tx=None, id_var=id_var)
+            iSubStr, iSubParameters = writeFactor(iFactor.Descriptors, tx=None, id_var=id_var, write_other_fundamental_factor=write_other_fundamental_factor)
             if iSubStr: CypherStr += " "+iSubStr
             Parameters.update(iSubParameters)
             if iFID not in id_var:
@@ -86,7 +86,7 @@ def writeFactor(factors, tx=None, id_var={}):
     return CypherStr, Parameters
 
 # 写入因子表
-def writeFactorTable(ft, tx=None, var="ft", id_var={}):
+def writeFactorTable(ft, tx=None, var="ft", id_var={}, write_other_fundamental_factor=True):
     CypherStr, Parameters = "", {}
     Class = str(ft.__class__)
     Class = Class[Class.index("'")+1:]
@@ -112,11 +112,12 @@ def writeFactorTable(ft, tx=None, var="ft", id_var={}):
             Parameters.update(FTParameters)
             id_var[FTID] = var
             # 写入因子
-            for iFactorName in ft.FactorNames:
-                CypherStr += f" MERGE (:`因子`:`基础因子` {{Name: '{iFactorName}'}}) - [:`属于因子表`] -> ({var})"
+            if write_other_fundamental_factor:
+                for iFactorName in ft.FactorNames:
+                    CypherStr += f" MERGE (:`因子`:`基础因子` {{Name: '{iFactorName}'}}) - [:`属于因子表`] -> ({var})"
     else:# 无上层因子库, 自定义因子表
         if FTID not in id_var:
-            FStr, FParameters = writeFactor([ft.getFactor(iFactorName) for iFactorName in ft.FactorNames], tx=None, id_var=id_var)
+            FStr, FParameters = writeFactor([ft.getFactor(iFactorName) for iFactorName in ft.FactorNames], tx=None, id_var=id_var, write_other_fundamental_factor=write_other_fundamental_factor)
             if FStr: CypherStr += " "+FStr
             Parameters.update(FParameters)
             FTNode = f"({var}:`因子表`:`自定义因子表` {{Name: '{ft.Name}', `_Class`: '{Class}'}})"

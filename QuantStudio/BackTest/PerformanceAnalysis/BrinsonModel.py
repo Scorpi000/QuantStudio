@@ -13,7 +13,6 @@ from matplotlib.ticker import FuncFormatter
 from QuantStudio import __QS_Error__
 from QuantStudio.BackTest.BackTestModel import BaseModule
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
-from QuantStudio.Tools.DataTypeConversionFun import DummyVarTo01Var
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 from QuantStudio.BackTest.SectionFactor.Portfolio import _QS_plotStatistics
 
