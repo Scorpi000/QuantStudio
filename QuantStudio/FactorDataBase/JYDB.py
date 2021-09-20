@@ -8,15 +8,14 @@ import datetime as dt
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, Int, Str, Bool, List, ListStr, Dict, Function, Either, Float, File, on_trait_change
+from traits.api import Enum, Int, Str, List, ListStr, Dict, Function, File
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
-from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
 from QuantStudio.Tools.FileFun import getShelveFileSuffix
 from QuantStudio.Tools.QSObjects import QSSQLObject
 from QuantStudio import __QS_Error__, __QS_LibPath__, __QS_MainPath__, __QS_ConfigPath__
-from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
-from QuantStudio.FactorDataBase.FDBFun import adjustDateTime, adjustDataDTID, SQL_Table, SQL_FeatureTable, SQL_WideTable, SQL_MappingTable, SQL_NarrowTable, SQL_TimeSeriesTable, SQL_ConstituentTable, SQL_FinancialTable
+from QuantStudio.FactorDataBase.FactorDB import FactorDB
+from QuantStudio.FactorDataBase.FDBFun import adjustDataDTID, SQL_Table, SQL_FeatureTable, SQL_WideTable, SQL_MappingTable, SQL_NarrowTable, SQL_TimeSeriesTable, SQL_ConstituentTable, SQL_FinancialTable
 
 # 将信息源文件中的表和字段信息导入信息文件
 def _importInfo(info_file, info_resource, logger, out_info=False):
