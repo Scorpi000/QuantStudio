@@ -773,7 +773,7 @@ class JYDB(QSSQLObject, FactorDB):
         SQLStr += "ELSE {Prefix}SecuMain.SecuCode END FROM {Prefix}SecuMain "
         SQLStr += "WHERE {Prefix}SecuMain.SecuCategory = 1 "
         SecuMarket = ", ".join(str(self._ExchangeInfo[self._ExchangeInfo["Exchange"]==iExchange].index[0]) for iExchange in exchange)
-        SQLStr += f"AND {Prefix}SecuMain.SecuMarket IN ({SecuMarket}) "
+        SQLStr += "AND {Prefix}SecuMain.SecuMarket IN " + f"({SecuMarket}) "
         SQLStr += "AND {Prefix}SecuMain.ListedDate <= '{Date}' "
         if is_current or (start_date is not None):
             SubSQLStr = "SELECT DISTINCT {Prefix}LC_ListStatus.InnerCode FROM {Prefix}LC_ListStatus "
@@ -828,8 +828,8 @@ class JYDB(QSSQLObject, FactorDB):
         if not exchange.isdisjoint(iExchange):
             IDs += self._getAllAStock(exchange=exchange.intersection(iExchange), date=date, is_current=is_current, start_date=start_date)
             exchange = exchange.difference(iExchange)
-        if not exchange:
-            Msg = f"外部因子库 '{self.Name}' 调用 getStockID 时错误: 尚不支持交易所 {str(iExchange)}"
+        if exchange:
+            Msg = f"外部因子库 '{self.Name}' 调用 getStockID 时错误: 尚不支持交易所 {str(exchange)}"
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
         return IDs
@@ -1050,3 +1050,7 @@ class JYDB(QSSQLObject, FactorDB):
     # 获取宏观指标名称对应的指标 ID, TODO
     def getMacroIndicatorID(self, indicators, table_name=None):
         pass
+
+if __name__=="__main__":
+    iDB = JYDB()
+    iDB.getStockID()
