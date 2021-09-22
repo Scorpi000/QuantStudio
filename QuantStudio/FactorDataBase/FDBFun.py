@@ -139,6 +139,7 @@ def adjustDataDTID(data, look_back, factor_names, ids, dts, only_start_lookback=
 # raw_data: DataFrame(columns=["QS_DT", "ID"]+factor_names)
 def _QS_calcListData_WideTable(raw_data, factor_names, ids, dts, args={}, **kwargs):
     Operator = args.get("算子", lambda x: x.tolist())
+    if Operator is None: Operator = lambda x: x.tolist()
     OperatorDataType = args.get("算子数据类型", "object")
     if args.get("只回溯时点", False):
         DeduplicatedIndex = raw_data.index(~raw_data.index.duplicated())
@@ -222,6 +223,7 @@ def _QS_calcData_WideTable(raw_data, factor_names, ids, dts, data_type, args={},
 def _QS_calcListData_NarrowTable(raw_data, factor_names, ids, dts, args={}, **kwargs):
     raw_data.index = raw_data.index.swaplevel(i=0, j=-1)
     Operator = args.get("算子", lambda x: x.tolist())
+    if Operator is None: Operator = lambda x: x.tolist()
     Data = {}
     for iFactorName in factor_names:
         if iFactorName in raw_data:
