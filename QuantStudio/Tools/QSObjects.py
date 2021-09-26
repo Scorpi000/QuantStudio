@@ -4,6 +4,7 @@ import re
 import mmap
 import uuid
 from multiprocessing import Queue, Lock
+import concurrent.futures
 from collections import OrderedDict
 import pickle
 
@@ -12,7 +13,7 @@ import pandas as pd
 from traits.api import Enum, Str, Range, Password, File, Bool
 
 from QuantStudio import __QS_Object__, __QS_Error__
-from QuantStudio.Tools.AuxiliaryFun import genAvailableName
+from QuantStudio.Tools.AuxiliaryFun import genAvailableName, distributeEqual
 
 os.environ["NLS_LANG"] = "SIMPLIFIED CHINESE_CHINA.UTF8"
 
@@ -609,7 +610,6 @@ class QSClickHouseObject(QSSQLObject):
             self._QS_Logger.info("'%s' 调用方法 deleteField 删除表 '%s' 中的字段 '%s'" % (self.Name, table_name, str(field_names)))
         return 0
 
-
 class QSNeo4jObject(__QS_Object__):
     """基于 Neo4j 的对象"""
     Name = Str("QSNeo4jObject")
@@ -678,8 +678,7 @@ class QSNeo4jObject(__QS_Object__):
         return Session
     def fetchall(self, cypher_str, parameters=None):
         with self.session() as Session:
-            with Session.begin_transaction() as tx:
-                return tx.run(cypher_str, parameters=parameters).values()
+            return Session.run(cypher_str, parameters=parameters).values()
     def execute(self, cypher_str, parameters=None):
         if self._Connection is None:
             Msg = ("'%s' 执行 Cypher 命令失败: 数据库尚未连接!" % (self.Name,))
@@ -692,12 +691,13 @@ class QSNeo4jObject(__QS_Object__):
             self._connect()
             Session = self._Connection.session(database=self.DBName)
         with Session:
-            with Session.begin_transaction() as tx:
-                tx.run(cypher_str, parameters=parameters)
+            Session.run(cypher_str, parameters=parameters)
         return 0
-    # 写入实体属性数据
+    # 写入实体数据
     # data: DataFrame(index=[ID], columns=[属性])
-    def writeEntityFeatureData(self, data, entity_labels, id_field, if_exists="update", **kwargs):
+    # kwargs: 可选参数
+    #     thread_num: 写入线程数量
+    def _writeEntityData(self, data, entity_labels, id_field, if_exists="update", **kwargs):
         IDs, FactorNames = data.index.tolist(), data.columns.tolist()
         if if_exists!="update":
             LabelStr = "`:`".join(entity_labels)
@@ -706,7 +706,7 @@ class QSNeo4jObject(__QS_Object__):
                 WHERE n.`{id_field}` IN $ids
                 RETURN n.`{id_field}`, n.`{'`, n.`'.join(FactorNames)}`
             """
-            OldData = self.fetchall(CypherStr, parameters={"ids": IDs})
+            self.fetchall(CypherStr, parameters={"ids": IDs})
             if not OldData: OldData = pd.DataFrame(index=IDs, columns=FactorNames)
             else: OldData = pd.DataFrame(np.array(OldData, dtype="O"), columns=["ID"]+FactorNames).set_index(["ID"]).loc[IDs]
             if if_exists=="append":
@@ -714,9 +714,7 @@ class QSNeo4jObject(__QS_Object__):
             elif if_exists=="update_notnull":
                 data = data.where(pd.notnull(data), OldData)
             else:
-                Msg = ("因子库 '%s' 调用方法 writeFeatureData 错误: 不支持的写入方式 '%s'!" % (self.Name, str(if_exists)))
-                self._QS_Logger.error(Msg)
-                raise __QS_Error__(Msg)
+                raise __QS_Error__(f"因子库 '{self.Name}' 调用方法 writeFeatureData 错误: 不支持的写入方式 {if_exists}'!")
         LabelStr = "`:`".join(entity_labels)
         data[id_field] = data.index
         CypherStr = f"""
@@ -726,14 +724,26 @@ class QSNeo4jObject(__QS_Object__):
             ON MATCH SET n += $data[iID]
         """
         data = data.astype("O").where(pd.notnull(data), None)
-        with self.session() as Session:
-            with Session.begin_transaction() as tx:
-                tx.run(CypherStr, parameters={"ids": IDs, "data": data.T.to_dict(orient="dict")})
+        return self.execute(CypherStr, parameters={"ids": IDs, "data": data.T.to_dict(orient="dict")})
+    def writeEntityData(self, data, entity_labels, id_field, if_exists="update", **kwargs):
+        ThreadNum = kwargs.get("thread_num", 0)
+        if ThreadNum==0:
+            return self._writeEntityData(data, entity_labels, id_field, if_exists, **kwargs)
+        Tasks, NumAlloc = [], distributeEqual(data.shape[0], min(ThreadNum, data.shape[0]))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(NumAlloc)) as Executor:
+            for i, iNum in enumerate(NumAlloc):
+                iStartIdx = sum(NumAlloc[:i])
+                iData = data.iloc[iStartIdx:iStartIdx+iNum]
+                Tasks.append(Executor.submit(self._writeEntityData, iData, entity_labels, id_field, if_exists, **kwargs))
+            for iTask in concurrent.futures.as_completed(Tasks): iTask.result()
         return 0
-    # 写入关系属性数据
+    
+    # 写入关系数据
     # data: DataFrame(index=[ID], columns=[关联实体字段])
     # retain_relation: False 表示 relation_field 为 NULL 的关系将被删除, True 表示不删除
-    def writeRelationFeatureData(self, data, relation_label, relation_field, direction, id_labels, id_field, opp_labels, opp_field, retain_relation=True, if_exists="update", **kwargs):
+    # kwargs: 可选参数
+    #     thread_num: 写入线程数量
+    def _writeRelationData(self, data, relation_label, relation_field, direction, id_labels, id_field, opp_labels, opp_field, retain_relation=True, if_exists="update", **kwargs):
         OppFields = data.columns.tolist()
         IDNode = f"(n1:`{'`:`'.join(id_labels)}` {{`{id_field}`: p[0]}})"
         OppNode = f"(n2:`{'`:`'.join(opp_labels)}` {{`{opp_field}`: $opp_entity[i]}})"
@@ -781,6 +791,18 @@ class QSNeo4jObject(__QS_Object__):
                 DELETE r
             """
             self.execute(DelStr, parameters={"opp_entity": OppFields})
+        return 0
+    def writeRelationData(self, data, relation_label, relation_field, direction, id_labels, id_field, opp_labels, opp_field, retain_relation=True, if_exists="update", **kwargs):
+        ThreadNum = kwargs.get("thread_num", 0)
+        if ThreadNum==0:
+            return self._writeRelationData(data, relation_label, relation_field, direction, id_labels, id_field, opp_labels, opp_field, retain_relation, if_exists, **kwargs)
+        Tasks, NumAlloc = [], distributeEqual(data.shape[0], min(ThreadNum, data.shape[0]))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(NumAlloc)) as Executor:
+            for i, iNum in enumerate(NumAlloc):
+                iStartIdx = sum(NumAlloc[:i])
+                iData = data.iloc[iStartIdx:iStartIdx+iNum]
+                Tasks.append(Executor.submit(self._writeRelationData, iData, relation_label, relation_field, direction, id_labels, id_field, opp_labels, opp_field, retain_relation, if_exists, **kwargs))
+            for iTask in concurrent.futures.as_completed(Tasks): iTask.result()
         return 0
 
 # put 函数会阻塞, 直至对象传输完毕

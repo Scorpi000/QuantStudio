@@ -265,13 +265,23 @@ class SQLDB(QSSQLObject, WritableFactorDB):
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
         if table_name not in self._TableInfo.index:
             FieldTypes = {iFactorName:_identifyDataType(self.DBType, data.iloc[i].dtypes) for i, iFactorName in enumerate(data.items)}
-            self.createTable(table_name, field_types=FieldTypes)
+            try:
+                self.createTable(table_name, field_types=FieldTypes)
+            except Exception as e:
+                self.connect()
+                if table_name not in self._TableInfo.index:
+                    raise e
             SQLStr = f"INSERT INTO {self.TablePrefix+self.InnerPrefix+table_name} (`{self.DTField}`, `{self.IDField}`, "
         else:
             NewFactorNames = data.items.difference(self._FactorInfo.loc[table_name].index).tolist()
             if NewFactorNames:
                 FieldTypes = {iFactorName:_identifyDataType(self.DBType, data.iloc[i].dtypes) for i, iFactorName in enumerate(NewFactorNames)}
-                self.addFactor(table_name, FieldTypes)
+                try:
+                    self.addFactor(table_name, FieldTypes)
+                except Exception as e:
+                    self.connect()
+                    if data.items.difference(self._FactorInfo.loc[table_name].index).shape[0]>0:
+                        raise e
             if if_exists=="update":
                 OldFactorNames = self._FactorInfo.loc[table_name].index.difference(data.items).difference({self.IDField, self.DTField}).tolist()
                 if OldFactorNames:

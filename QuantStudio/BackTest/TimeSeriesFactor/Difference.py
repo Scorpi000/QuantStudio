@@ -1,19 +1,13 @@
 # coding=utf-8
 import datetime as dt
 from copy import deepcopy
-import base64
-from io import BytesIO
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, List, Int, Str, Float, ListStr, Dict
-from traitsui.api import SetEditor, Item
+from traits.api import Enum, List, Int, Float
 from scipy import stats
-from matplotlib.ticker import FuncFormatter
 
-from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
-from QuantStudio.Tools.MathFun import CartesianProduct
 from QuantStudio.BackTest.BackTestModel import BaseModule
 from QuantStudio.BackTest.TimeSeriesFactor.Correlation import _calcReturn
 

@@ -2,11 +2,13 @@
 """基于 Neo4j 数据库的因子库"""
 import os
 import datetime as dt
+import concurrent.futures
 
 import numpy as np
 import pandas as pd
 from traits.api import Str, Dict, Enum, ListStr, Bool
 
+from QuantStudio.Tools.AuxiliaryFun import distributeEqual
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.QSObjects import QSNeo4jObject
 from QuantStudio.Tools.Neo4jFun import writeArgs
@@ -556,19 +558,9 @@ class Neo4jDB(QSNeo4jObject, WritableFactorDB):
     # kwargs: 可选参数
     #     id_type: [str], 比如: ['证券', 'A股']
     #     id_field: str, ID 字段
-    def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
-        FactorNames, DTs, IDs = data.items.tolist(), data.major_axis.tolist(), data.minor_axis.tolist()
-        DataType = data_type.copy()
-        for i, iFactorName in enumerate(FactorNames):
-            data[iFactorName], DataType[iFactorName] = _identifyDataType(data.iloc[i], data_type.get(iFactorName, None))
-        InitCypherStr = f"""
-            MATCH {self._Node}
-            MERGE (ft:`因子表`:`库因子表` {{Name: '{table_name}'}}) - [:`属于因子库`] -> (fdb)
-            WITH ft
-            UNWIND $factors AS iFactor
-            MERGE (f:`因子`:`基础因子` {{Name: iFactor, DataType: $data_type[iFactor]}})
-            MERGE (f) - [:`属于因子表`] -> (ft)
-        """
+    #     thread_num: 写入线程数量
+    def _writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
+        DTs, IDs = data.major_axis.tolist(), data.minor_axis.tolist()
         IDType = kwargs.get("id_type", [])
         IDField = kwargs.get("id_field", self.IDField)
         if IDType: IDType = f":`{'`:`'.join(IDType)}`"
@@ -581,7 +573,7 @@ class Neo4jDB(QSNeo4jObject, WritableFactorDB):
             ON MATCH SET r += $data[i]
         """
         if (if_exists!="update") and (table_name in self._TableInfo.index):
-            OldFactorNames = sorted(self._FactorInfo.loc[table_name].index.intersection(FactorNames))
+            OldFactorNames = sorted(self._FactorInfo.loc[table_name].index.intersection(data.items))
             OldData = self.getTable(table_name).readData(factor_names=OldFactorNames, ids=IDs, dts=DTs)
             if if_exists=="append":
                 for iFactorName in OldFactorNames:
@@ -596,7 +588,6 @@ class Neo4jDB(QSNeo4jObject, WritableFactorDB):
         data.major_axis = data.major_axis.strftime(self._DTFormat)
         with self.session() as Session:
             with Session.begin_transaction() as tx:
-                tx.run(InitCypherStr, parameters={"factors": FactorNames, "data_type": DataType})
                 for i, iFactor in enumerate(data.items):
                     iData = data.iloc[i]
                     iData = iData.astype("O").where(pd.notnull(iData), None)
@@ -605,8 +596,33 @@ class Neo4jDB(QSNeo4jObject, WritableFactorDB):
                     tx.run(WriteCypherStr, parameters={"data": iData, "ids": IDs, "ifactor": iFactor})
         if table_name not in self._TableInfo.index:
             self._TableInfo.loc[table_name] = None
-        NewFactorInfo = pd.DataFrame(DataType, index=["DataType"], columns=pd.Index(sorted(DataType.keys()), name="FactorName")).T.reset_index()
+        NewFactorInfo = pd.DataFrame(data_type, index=["DataType"], columns=pd.Index(sorted(data_type.keys()), name="FactorName")).T.reset_index()
         NewFactorInfo["TableName"] = table_name
         self._FactorInfo = self._FactorInfo.append(NewFactorInfo.set_index(["TableName", "FactorName"])).sort_index()
         data.major_axis = DTs
+        return 0
+    def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
+        FactorNames = data.items.tolist()
+        DataType = data_type.copy()
+        for i, iFactorName in enumerate(FactorNames):
+            data[iFactorName], DataType[iFactorName] = _identifyDataType(data.iloc[i], data_type.get(iFactorName, None))
+        InitCypherStr = f"""
+            MATCH {self._Node}
+            MERGE (ft:`因子表`:`库因子表` {{Name: '{table_name}'}}) - [:`属于因子库`] -> (fdb)
+            WITH ft
+            UNWIND $factors AS iFactor
+            MERGE (f:`因子`:`基础因子` {{Name: iFactor, DataType: $data_type[iFactor]}})
+            MERGE (f) - [:`属于因子表`] -> (ft)
+        """
+        self.execute(InitCypherStr, parameters={"factors": FactorNames, "data_type": DataType})
+        ThreadNum = kwargs.get("thread_num", 0)
+        if ThreadNum==0:
+            return self._writeData(data, table_name, if_exists, DataType, **kwargs)
+        Tasks, NumAlloc = [], distributeEqual(data.shape[2], min(ThreadNum, data.shape[2]))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(NumAlloc)) as Executor:
+            for i, iNum in enumerate(NumAlloc):
+                iStartIdx = sum(NumAlloc[:i])
+                iData = data.iloc[:, :, iStartIdx:iStartIdx+iNum]
+                Tasks.append(Executor.submit(self._writeData, iData, table_name, if_exists, DataType, **kwargs))
+            for iTask in concurrent.futures.as_completed(Tasks): iTask.result()
         return 0

@@ -1,12 +1,12 @@
 # coding=utf-8
 """常用的辅助函数"""
-from multiprocessing import Lock, Process, cpu_count, Queue
+import itertools
+from multiprocessing import Process, cpu_count, Queue
 
 import numpy as np
 import pandas as pd
 
 from QuantStudio.Tools.DataTypeConversionFun import DictKeyValueTurn_List
-from QuantStudio.Tools.MathFun import CartesianProduct
 
 # 产生一个有效的名字
 def genAvailableName(header,all_names,name_num=1,check_header=True,ignore_case=False):
@@ -38,21 +38,17 @@ def getExpWeight(window_len,half_life,is_unitized=True):
     else:
         return list(ExpWeight)
 # 将整数n近似平均的分成m份
-def distributeEqual(n,m,remainder_pos='left'):
-    Quotient = int(n/m)
-    Remainder = n%m
-    Rslt = [Quotient]*m
+def distributeEqual(n,m,remainder_pos="left"):
+    Quotient, Remainder = int(n/m), n%m
+    Rslt = np.full(shape=(m,), fill_value=Quotient, dtype=np.int64)
     if remainder_pos=='left':
-        for i in range(Remainder):
-            Rslt[i] += 1
+        Rslt[:Remainder] += 1
     elif remainder_pos=='right':
-        for i in range(Remainder):
-            Rslt[-i-1] += 1
+        Rslt[-Remainder:] += 1
     else:
         StartPos = int((m-Remainder)/2)
-        for i in range(Remainder):
-            Rslt[i+StartPos] += 1
-    return Rslt
+        Rslt[StartPos:StartPos+Remainder] += 1
+    return Rslt.tolist()
 # 将一个list或者tuple平均分成m段
 def partitionList(data,m,n_head=0,n_tail=0):
     n = len(data)
@@ -108,10 +104,9 @@ def changeMultiClass2SingleClass(multi_class, sep=None):
     MultiClass = []
     for i in range(multi_class.shape[1]):
         MultiClass.append(pd.unique(multi_class[:,i]).tolist())
-    MultiClass = CartesianProduct(MultiClass)
     SingleClassData = np.empty(shape=(multi_class.shape[0],),dtype="O")
     ClassDict = {}
-    for i,iMultiClass in enumerate(MultiClass):
+    for i,iMultiClass in enumerate(itertools.product(*MultiClass)):
         iMask = np.array([True]*multi_class.shape[0])
         if sep is not None:
             iSingleClass = sep.join(map(str,iMultiClass))
@@ -210,3 +205,4 @@ def startMultiProcess(pid="0", n_prc=cpu_count(), target_fun=None, arg={},
 
 if __name__=="__main__":
     print(allocateDim(13))
+    
