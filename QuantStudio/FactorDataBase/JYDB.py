@@ -274,7 +274,7 @@ def genANN_ReportSQLStr(db_type, table_prefix, ids, report_period="1231", pre_fi
     SQLStr += "FROM "+DBTableName+" "
     SQLStr += "INNER JOIN "+table_prefix+"SecuMain "
     SQLStr += "ON "+table_prefix+"SecuMain.CompanyCode="+DBTableName+".CompanyCode "
-    SQLStr += "WHERE "+table_prefix+"SecuMain.SecuCategory=1 AND "+table_prefix+"SecuMain.SecuMarket IN (83,90) "
+    SQLStr += "WHERE "+table_prefix+"SecuMain.SecuCategory IN (1,41) AND "+table_prefix+"SecuMain.SecuMarket IN (83,90) "
     if pre_filter_id:
         SQLStr += "AND ("+genSQLInCondition(table_prefix+"SecuMain.SecuCode", deSuffixID(ids), is_str=True, max_num=1000)+") "
     else:
@@ -771,7 +771,7 @@ class JYDB(QSSQLObject, FactorDB):
         SQLStr = "SELECT CASE WHEN {Prefix}SecuMain.SecuMarket=83 THEN CONCAT({Prefix}SecuMain.SecuCode, '.SH') "
         SQLStr += "WHEN {Prefix}SecuMain.SecuMarket=90 THEN CONCAT({Prefix}SecuMain.SecuCode, '.SZ') "
         SQLStr += "ELSE {Prefix}SecuMain.SecuCode END FROM {Prefix}SecuMain "
-        SQLStr += "WHERE {Prefix}SecuMain.SecuCategory = 1 "
+        SQLStr += "WHERE {Prefix}SecuMain.SecuCategory IN (1,41) "
         SecuMarket = ", ".join(str(self._ExchangeInfo[self._ExchangeInfo["Exchange"]==iExchange].index[0]) for iExchange in exchange)
         SQLStr += "AND {Prefix}SecuMain.SecuMarket IN " + f"({SecuMarket}) "
         SQLStr += "AND {Prefix}SecuMain.ListedDate <= '{Date}' "
