@@ -783,6 +783,19 @@ class QSNeo4jObject(__QS_Object__):
             data = data.apply(_chg2None, axis=0, raw=False).tolist()
             CypherStr += f" SET r.`{relation_field}` = p[1]"
         self.execute(CypherStr, parameters={"opp_entity": OppFields, "data": data})
+        return 0
+    def writeRelationData(self, data, relation_label, relation_field, direction, id_labels, id_field, opp_labels, opp_field, retain_relation=True, if_exists="update", **kwargs):
+        ThreadNum = kwargs.get("thread_num", 0)
+        if ThreadNum==0:
+            self._writeRelationData(data, relation_label, relation_field, direction, id_labels, id_field, opp_labels, opp_field, if_exists, **kwargs)
+        else:
+            Tasks, NumAlloc = [], distributeEqual(data.shape[0], min(ThreadNum, data.shape[0]))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(NumAlloc)) as Executor:
+                for i, iNum in enumerate(NumAlloc):
+                    iStartIdx = sum(NumAlloc[:i])
+                    iData = data.iloc[iStartIdx:iStartIdx+iNum]
+                    Tasks.append(Executor.submit(self._writeRelationData, iData, relation_label, relation_field, direction, id_labels, id_field, opp_labels, opp_field, if_exists, **kwargs))
+                for iTask in concurrent.futures.as_completed(Tasks): iTask.result()
         # 删除属性为 NULL 的关系
         if not retain_relation:
             DelStr = f"""
@@ -790,19 +803,7 @@ class QSNeo4jObject(__QS_Object__):
                 WHERE n1.`{id_field}` IS NOT NULL AND r.`{relation_field}` IS NULL AND n2.`{opp_field}` IN $opp_entity
                 DELETE r
             """
-            self.execute(DelStr, parameters={"opp_entity": OppFields})
-        return 0
-    def writeRelationData(self, data, relation_label, relation_field, direction, id_labels, id_field, opp_labels, opp_field, retain_relation=True, if_exists="update", **kwargs):
-        ThreadNum = kwargs.get("thread_num", 0)
-        if ThreadNum==0:
-            return self._writeRelationData(data, relation_label, relation_field, direction, id_labels, id_field, opp_labels, opp_field, retain_relation, if_exists, **kwargs)
-        Tasks, NumAlloc = [], distributeEqual(data.shape[0], min(ThreadNum, data.shape[0]))
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(NumAlloc)) as Executor:
-            for i, iNum in enumerate(NumAlloc):
-                iStartIdx = sum(NumAlloc[:i])
-                iData = data.iloc[iStartIdx:iStartIdx+iNum]
-                Tasks.append(Executor.submit(self._writeRelationData, iData, relation_label, relation_field, direction, id_labels, id_field, opp_labels, opp_field, retain_relation, if_exists, **kwargs))
-            for iTask in concurrent.futures.as_completed(Tasks): iTask.result()
+            self.execute(DelStr, parameters={"opp_entity": data.columns.tolist()})
         return 0
 
 # put 函数会阻塞, 直至对象传输完毕
