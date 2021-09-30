@@ -887,4 +887,150 @@ class QSMsgRouter(object):
         if name not in self._Listeners:
             raise __QS_Error__(f"{name} 尚未注册为消息接收者!")
         return self._Listeners[name].get(block=block, timeout=timeout)
-    
+
+# pandas Panel 的 QS 实现 TODO
+class _LocIndexer(object):
+    def __init__(self, p):
+        self._p = p
+    def __getitem__(self, key):
+        Items = pd.Series(self._p._Items, index=self._p._Items)
+        if not isinstance(key, tuple): key = (key, slice(None), slice(None))
+        else: key += (slice(None),) * (3 - len(key))
+        if len(key)>3: raise IndexError("QuantStudio.Tools.QSObjects.Panel.loc: Too many indexers")
+        Items = Items[key[0]]
+        if not isinstance(Items, pd.Series):
+            return self._p._Data[Items].loc[key[1], key[2]]
+        Data = {iItem: self._p._Data[iItem].loc[key[1], key[2]] for iItem in Items}
+        if isinstance(Data[Items.iloc[0]], pd.DataFrame):
+            return Panel(Data, items=Items.index, major_axis=self._p._MajorAxis[key[1]], minor_axis=self._p._MinorAxis[key[2]])
+        elif isinstance(Data[Items.iloc[0]], pd.Series):
+            return pd.DataFrame(Data, columns=Items.index)
+        else:
+            return pd.Series(Data, index=Items.index)
+
+class _iLocIndexer(object):
+    def __init__(self, p):
+        self._p = p
+    def __getitem__(self, key):
+        Items = pd.Series(self._p._Items, index=pd.RangeIndex(self._p._Items.shape[0]))
+        if not isinstance(key, tuple): key = (key, slice(None), slice(None))
+        else: key += (slice(None),) * (3 - len(key))
+        if len(key)>3: raise IndexError("QuantStudio.Tools.QSObjects.Panel.iloc: Too many indexers")
+        Items = Items.iloc[key[0]]
+        if not isinstance(Items, pd.Series):
+            return self._p._Data[Items].iloc[key[1], key[2]]
+        Data = {iItem: self._p._Data[iItem].iloc[key[1], key[2]] for iItem in Items}
+        if isinstance(Data[Items.iloc[0]], pd.DataFrame):
+            return Panel(Data, items=Items.values, major_axis=self._p._MajorAxis[key[1]], minor_axis=self._p._MinorAxis[key[2]])
+        elif isinstance(Data[Items.iloc[0]], pd.Series):
+            return pd.DataFrame(Data, columns=Items.values)
+        else:
+            return pd.Series(Data, index=Items.values)    
+        
+class Panel(object):
+    """Panel"""
+    def __init__(self, data=None, items=None, major_axis=None, minor_axis=None):
+        # _Data, _Items, _MajorAxis, _MinorAxis, _DTypes, _Loc, _iLoc
+        if items is None:
+            if isinstance(data, dict):
+                self._Items = pd.Index(data.keys())
+            elif data is None:
+                self._Items = pd.Index([])
+            else:
+                self._Items = pd.Index(range(len(data)))
+        elif not hasattr(data, "__iter__"):
+            data = {iItem: data for iItem in items}
+            self._Items = pd.Index(items)
+        elif len(items)!=len(data):
+            raise __QS_Error__("Panel.__init__: items 的长度与 data 不符!")
+        else:
+            self._Items = pd.Index(items)
+        if isinstance(data, np.ndarray) and (np.ndim(data)==3):
+            self._Data = {iItem: pd.DataFrame(data[i], index=major_axis, columns=minor_axis) for i, iItem in enumerate(self._Items)}
+            self._MajorAxis = pd.RangeIndex(data.shape[1]) if major_axis is None else pd.Index(major_axis)
+            self._MinorAxis = pd.RangeIndex(data.shape[2]) if minor_axis is None else pd.Index(minor_axis)
+            self._DTypes = pd.Series(self._Data[self._Items[0]].dtypes.iloc[0], index=self._Items)
+        else:
+            self._Data, self._DTypes = {}, {}
+            self._MajorAxis = pd.Index([] if major_axis is None else major_axis)
+            self._MinorAxis = pd.Index([] if minor_axis is None else minor_axis)
+            for i, iItem in enumerate(self._Items):
+                if isinstance(data, dict):
+                    self._Data[iItem] = pd.DataFrame(data[iItem], index=major_axis, columns=minor_axis)
+                else:
+                    self._Data[iItem] = pd.DataFrame(data[i], index=major_axis, columns=minor_axis)
+                self._DTypes[iItem] = self._Data[iItem].dtypes.unique()
+                if self._DTypes[iItem].shape[0]==0: self._DTypes[iItem] = self._DTypes[iItem][0]
+                else: self._DTypes[iItem] = np.dtype("O")
+                if major_axis is None:
+                    self._MajorAxis = self._MajorAxis.union(self._Data[iItem].index)
+                if minor_axis is None:
+                    self._MinorAxis = self._MinorAxis.union(self._Data[iItem].columns)
+            if (major_axis is None) and (minor_axis is None):
+                self._Data = {self._Data[iItem].loc[self._MajorAxis, self._MinorAxis] for iItem in self._Data}
+            elif major_axis is None:
+                self._Data = {self._Data[iItem].loc[self._MajorAxis] for iItem in self._Data}
+            elif minor_axis is None:
+                self._Data = {self._Data[iItem].loc[:, self._MinorAxis] for iItem in self._Data}
+            self._DTypes = pd.Series(self._DTypes, index=self._Items)
+        self._Loc = _LocIndexer(self)
+        self._iLoc = _iLocIndexer(self)
+    def __repr__(self):
+        return f"""<class 'QuantStudio.Tools.QSObjects.Panel'>\nDimensions: {self._Items.shape[0]} (items) x {self._MajorAxis.shape[0]} (major_axis) x {self._MinorAxis.shape[0]} (minor_axis)\nItems axis: {None if self._Items.shape[0]==0 else f"{self._Items[0]} to {self._Items[-1]}"}\nMajor_axis axis: {None if self._MajorAxis.shape[0]==0 else f"{self._MajorAxis[0]} to {self._MajorAxis[-1]}"}\nMinor_axis axis: {None if self._MinorAxis.shape[0]==0 else f"{self._MinorAxis[0]} to {self._MinorAxis[-1]}"}"""
+    def __getitem__(self, key):
+        return self._Loc[key]
+    @property
+    def shape(self):
+        return (self._Items.shape[0], self._MajorAxis.shape[0], self._MinorAxis.shape[0])
+    @property
+    def values(self):
+        iDType = self._DTypes.unique()
+        if iDType.shape[0]>1:
+            Values = np.full(shape=self.shape, fill_value=None, dtype="O")
+        else:
+            Values = np.full(shape=self.shape, fill_value=None, dtype=iDType[0])
+        for i, iItem in enumerate(self._Items):
+            Values[i] = self._Data[iItem].values
+        return Values
+    @property
+    def dtypes(self):
+        return self._DTypes.copy()
+    @property
+    def items(self):
+        return self._Items.copy()
+    @items.setter
+    def items(self, items):
+        if len(items)!=self._Items.shape[0]:
+            raise __QS_Error__("Panel.items.setter: 设置的 items 长度不等于数据长度")
+        items = pd.Index(items)
+        for i, iItem in enumerate(items):
+            self._Data[iItem] = self._Data.pop(self._Items[i])
+        self._Items = items
+    @property
+    def major_axis(self):
+        return self._MajorAxis.copy()
+    @major_axis.setter
+    def major_axis(self, major_axis):
+        if len(major_axis)!=self._MajorAxis.shape[0]:
+            raise __QS_Error__("Panel.major_axis.setter: 设置的 major_axis 长度不等于数据长度")
+        major_axis = pd.Index(major_axis)
+        for iItem in self._Items:
+            self._Data[iItem] = self._Data[iItem].loc[major_axis]
+        self._MajorAxis = major_axis
+    @property
+    def minor_axis(self):
+        return self._MinorAxis.copy()
+    @minor_axis.setter
+    def minor_axis(self, minor_axis):
+        if len(minor_axis)!=self._MinorAxis.shape[0]:
+            raise __QS_Error__("Panel.minor_axis.setter: 设置的 minor_axis 长度不等于数据长度")
+        minor_axis = pd.Index(minor_axis)
+        for iItem in self._Items:
+            self._Data[iItem] = self._Data[iItem].loc[:, minor_axis]
+        self._MinorAxis = minor_axis
+    @property
+    def loc(self):
+        return self._Loc
+    @property
+    def iloc(self):
+        return self._iLoc
