@@ -13,6 +13,7 @@ from QuantStudio.Tools.DateTimeFun import getDateSeries, getDateTimeSeries
 from QuantStudio import __QS_Error__, __QS_MainPath__, __QS_LibPath__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
 from QuantStudio.FactorDataBase.FDBFun import updateInfo, adjustDateTime
+from QuantStudio.Tools.api import Panel
 
 class _DBTable(FactorTable):
     def getMetaData(self, key=None, args={}):
@@ -116,7 +117,7 @@ class _MarketTable(_DBTable):
             if DataType[iFactorName]=="double":
                 iRawData = iRawData.astype("float")
             Data[iFactorName] = iRawData
-        Data = pd.Panel(Data).loc[factor_names]
+        Data = Panel(Data, items=factor_names)
         Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Data.major_axis]
         Data = adjustDateTime(Data, dts, fillna=FillNa, method="pad")
         if ids is not None: Data = Data.loc[:, :, ids]
@@ -204,7 +205,7 @@ class _ConstituentTable(_DBTable):
                     kEndDate = (dt.datetime.strptime(jIDRawData["剔除日期"].iloc[k], "%Y%m%d").date()-dt.timedelta(1) if jIDRawData["剔除日期"].iloc[k] is not None else dt.date.today())
                     iData[jID].loc[kStartDate:kEndDate] = 1
             Data[iIndexID] = iData
-        Data = pd.Panel(Data).loc[factor_names]
+        Data = Panel(Data, items=factor_names, major_axis=DateSeries)
         Data.major_axis = [dt.datetime.combine(iDate, dt.time(0)) for iDate in Data.major_axis]
         Data.fillna(value=0, inplace=True)
         return adjustDateTime(Data, dts, fillna=True, method="bfill")

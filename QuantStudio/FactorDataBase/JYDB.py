@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from traits.api import Enum, Int, Str, List, ListStr, Dict, Function, File
 
+from QuantStudio.Tools.api import Panel
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.FileFun import getShelveFileSuffix
 from QuantStudio.Tools.QSObjects import QSSQLObject
@@ -393,7 +394,7 @@ class _AnalystConsensusTable(_JY_SQL_Table):
             Groups.append((self, PeriodGroup[iConditions]["FactorNames"], list(PeriodGroup[iConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], PeriodGroup[iConditions]["args"]))
         return Groups
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return pd.Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
+        if raw_data.shape[0]==0: return Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
         Dates = sorted({iDT.strftime("%Y%m%d") for iDT in dts})
         CalcType, LookBack = args.get("计算方法", self.CalcType), args.get("回溯天数", self.LookBack)
         if CalcType=="Fwd12M":
@@ -418,7 +419,7 @@ class _AnalystConsensusTable(_JY_SQL_Table):
             else:
                 iANNReportData = None
             Data[iID] = CalcFun(Dates, raw_data.loc[[iID]], iANNReportData, factor_names, LookBack, FYNum)
-        Data = pd.Panel(Data, minor_axis=factor_names)
+        Data = Panel(Data, major_axis=Dates, minor_axis=factor_names)
         Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Dates]
         Data = Data.swapaxes(0, 2)
         return adjustDataDTID(Data, LookBack, factor_names, ids, dts, logger=self._QS_Logger)
@@ -612,7 +613,7 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
                             x.append(iijRawData)
                     kData[i, j] = Operator(self, iDate, jID, x, ModelArgs)
             Data[kFactorName] = kData
-        return pd.Panel(Data, major_axis=Dates, minor_axis=ids).loc[factor_names, dts]
+        return Panel(Data, items=factor_names, major_axis=Dates, minor_axis=ids).loc[:, dts]
 
 class _AnalystRatingDetailTable(_JY_SQL_Table):
     """分析师投资评级明细表"""
@@ -675,7 +676,7 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
         RawData = self._adjustRawDataByRelatedField(RawData, AllFields)
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        #if raw_data.shape[0]==0: return pd.Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
+        #if raw_data.shape[0]==0: return Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
         Dates = sorted({dt.datetime.combine(iDT.date(), dt.time(0)) for iDT in dts})
         DeduplicationFields = args.get("去重字段", self.Deduplication)
         AdditionalFields = list(set(args.get("附加字段", self.AdditionalFields)+DeduplicationFields))
@@ -708,7 +709,7 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
                         ijRawData = pd.merge(ijTemp, ijRawData, how='left', left_on=DeduplicationFields+["日期"], right_on=DeduplicationFields+["日期"])
                     kData[i, j] = Operator(self, iDate, jID, ijRawData, ModelArgs)
             Data[kFactorName] = kData
-        return pd.Panel(Data, major_axis=Dates, minor_axis=ids).loc[factor_names, dts]
+        return Panel(Data, items=factor_names, major_axis=Dates, minor_axis=ids).loc[:, dts]
 
 class JYDB(QSSQLObject, FactorDB):
     """聚源数据库"""

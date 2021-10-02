@@ -14,6 +14,7 @@ import h5py
 from traits.api import Directory, Float, Str, Bool
 
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
+from QuantStudio.Tools.api import Panel
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
 from QuantStudio.FactorDataBase.FDBFun import adjustDataDTID
 from QuantStudio.Tools.FileFun import listDirDir, listDirFile
@@ -95,7 +96,7 @@ class _FactorTable(FactorTable):
             Data = {iFactor: self._readFactorData(ifactor_name=iFactor, ids=ids, dts=dts, args=args) for iFactor in factor_names}
         else:
             Data = {iFactor: self.readFactorData(ifactor_name=iFactor, ids=ids, dts=dts, args=args) for iFactor in factor_names}
-        return pd.Panel(Data).loc[factor_names]
+        return Panel(Data, items=factor_names, major_axis=dts, minor_axis=ids)
     def _readFactorData(self, ifactor_name, ids, dts, args={}):
         FilePath = self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix
         if not os.path.isfile(FilePath): raise __QS_Error__("因子库 '%s' 的因子表 '%s' 中不存在因子 '%s'!" % (self._FactorDB.Name, self.Name, ifactor_name))
@@ -155,7 +156,7 @@ class _FactorTable(FactorTable):
             iDTs = self.getDateTime(ifactor_name=ifactor_name, start_dt=StartDT, end_dt=dts[-1], args=args)
             RawData = self._readFactorData(ifactor_name, ids, iDTs, args=args)
         if not args.get("只回溯时点", self.OnlyLookBackDT):
-            RawData = pd.Panel({ifactor_name: RawData})
+            RawData = Panel({ifactor_name: RawData})
             return adjustDataDTID(RawData, LookBack, [ifactor_name], ids, dts, args.get("只起始日回溯", self.OnlyStartLookBack), args.get("只回溯非目标日", self.OnlyLookBackNontarget), logger=self._QS_Logger).iloc[0]
         RawData = RawData.dropna(axis=0, how="all").dropna(axis=1, how="all")
         RowIdxMask = pd.isnull(RawData)
@@ -163,7 +164,7 @@ class _FactorTable(FactorTable):
         RawIDs = RowIdxMask.columns
         RowIdx = pd.DataFrame(np.arange(RowIdxMask.shape[0]).reshape((RowIdxMask.shape[0], 1)).repeat(RowIdxMask.shape[1], axis=1), index=RowIdxMask.index, columns=RawIDs)
         RowIdx[RowIdxMask] = np.nan
-        RowIdx = adjustDataDTID(pd.Panel({"RowIdx": RowIdx}), LookBack, ["RowIdx"], RawIDs.tolist(), dts, args.get("只起始日回溯", self.OnlyStartLookBack), args.get("只回溯非目标日", self.OnlyLookBackNontarget), logger=self._QS_Logger).iloc[0].values
+        RowIdx = adjustDataDTID(Panel({"RowIdx": RowIdx}), LookBack, ["RowIdx"], RawIDs.tolist(), dts, args.get("只起始日回溯", self.OnlyStartLookBack), args.get("只回溯非目标日", self.OnlyLookBackNontarget), logger=self._QS_Logger).iloc[0].values
         RowIdx[pd.isnull(RowIdx)] = -1
         RowIdx = RowIdx.astype(int)
         ColIdx = np.arange(RowIdx.shape[1]).reshape((1, RowIdx.shape[1])).repeat(RowIdx.shape[0], axis=0)

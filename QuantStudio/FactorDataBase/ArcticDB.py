@@ -10,6 +10,7 @@ from traits.api import Password, Str, Range
 
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
+from QuantStudio.Tools.api import Panel
 
 class _FactorTable(FactorTable):
     """ArcticDB 因子表"""
@@ -51,8 +52,8 @@ class _FactorTable(FactorTable):
                 if iCols.shape[0]>0:
                     Data[iID] = self._Lib.read(symbol=iID, columns=iCols.values.tolist(), chunk_range=pd.DatetimeIndex(dts), filter_data=True)
                     Data[iID].columns = iCols.index
-        if Data: return pd.Panel(Data).swapaxes(0, 2).loc[factor_names, :, ids]
-        else: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        if Data: return Panel(Data, items=ids, major_axis=dts, minor_axis=factor_names).swapaxes(0, 2)
+        else: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
             
 
 # 基于 Arctic 数据库的因子数据库

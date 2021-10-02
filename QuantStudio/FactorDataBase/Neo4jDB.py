@@ -15,6 +15,7 @@ from QuantStudio.Tools.Neo4jFun import writeArgs
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
 from QuantStudio.FactorDataBase.FDBFun import _QS_calcData_WideTable, _QS_calcData_NarrowTable
+from QuantStudio.Tools.api import Panel
 
 def _identifyDataType(factor_data, data_type=None):
     if (data_type is None) or (data_type=="double"):
@@ -119,20 +120,6 @@ class _NarrowTable(FactorTable):
         RawData["QS_DT"] = pd.to_datetime(RawData["QS_DT"])
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        #if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-        #if ids is None: ids = sorted(raw_data["ID"].unique())
-        #raw_data = raw_data.set_index(["QS_DT", "ID", "FactorName"]).iloc[:, 0]
-        #raw_data = raw_data.unstack()
-        #DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
-        #DataType = DataType[~DataType.index.duplicated()]
-        #Data = {}
-        #for iFactorName in factor_names:
-            #if iFactorName in raw_data:
-                #iRawData = raw_data[iFactorName].unstack()
-                #if DataType[iFactorName]=="double": iRawData = iRawData.astype("float")
-                #Data[iFactorName] = iRawData
-        #if not Data: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-        #return pd.Panel(Data).loc[factor_names]
         Args = self.Args
         Args.update(args)
         Args["因子名字段"] = "FactorName"
@@ -202,7 +189,7 @@ class _EntityFeatureTable(FactorTable):
         RawData["QS_DT"] = RawData["QS_TargetDT"]
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         TargetDT = raw_data.pop("QS_TargetDT").iloc[0].to_pydatetime()
         DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
         Args = self.Args
@@ -210,7 +197,7 @@ class _EntityFeatureTable(FactorTable):
         ErrorFmt = {"DuplicatedIndex":  "%s 的表 %s 无法保证唯一性 : {Error}, 可以尝试将 '多重映射' 参数取值调整为 True" % (self._FactorDB.Name, self.Name)}
         Data = _QS_calcData_WideTable(raw_data, factor_names, ids, [TargetDT], DataType, args=Args, logger=self._QS_Logger, error_fmt=ErrorFmt)
         Data = Data.iloc[:, 0, :]
-        return pd.Panel(Data.values.T.reshape((Data.shape[1], Data.shape[0], 1)).repeat(len(dts), axis=2), items=factor_names, major_axis=Data.index, minor_axis=dts).swapaxes(1, 2)
+        return Panel(Data.values.T.reshape((Data.shape[1], Data.shape[0], 1)).repeat(len(dts), axis=2), items=factor_names, major_axis=Data.index, minor_axis=dts).swapaxes(1, 2)
 
 class _RelationFeatureTable(FactorTable):
     IDEntity = ListStr(["因子表"], arg_type="List", label="ID实体", order=0)
@@ -321,7 +308,7 @@ class _RelationFeatureTable(FactorTable):
         if "是否存在" in factor_names: RawData["是否存在"] = 1
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         TargetDT = raw_data.pop("QS_TargetDT").iloc[0].to_pydatetime()
         DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
         Args = self.Args
@@ -329,7 +316,7 @@ class _RelationFeatureTable(FactorTable):
         ErrorFmt = {"DuplicatedIndex":  "%s 的表 %s 无法保证唯一性 : {Error}, 可以尝试将 '多重映射' 参数取值调整为 True" % (self._FactorDB.Name, self.Name)}
         Data = _QS_calcData_WideTable(raw_data, factor_names, ids, [TargetDT], DataType, args=Args, logger=self._QS_Logger, error_fmt=ErrorFmt)
         Data = Data.iloc[:, 0, :]
-        return pd.Panel(Data.values.T.reshape((Data.shape[1], Data.shape[0], 1)).repeat(len(dts), axis=2), items=factor_names, major_axis=Data.index, minor_axis=dts).swapaxes(1, 2)
+        return Panel(Data.values.T.reshape((Data.shape[1], Data.shape[0], 1)).repeat(len(dts), axis=2), items=factor_names, major_axis=Data.index, minor_axis=dts).swapaxes(1, 2)
 
 class _RelationFeatureOppFactorTable(FactorTable):
     IDEntity = ListStr(["因子表"], arg_type="List", label="ID实体", order=0)
@@ -435,7 +422,7 @@ class _RelationFeatureOppFactorTable(FactorTable):
         RawData["QS_DT"] = dts[-1]
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         if ids is None: ids = sorted(raw_data["ID"].unique())
         raw_data = raw_data.set_index(["QS_DT", "ID", "FactorName"]).iloc[:, 0]
         raw_data = raw_data.unstack()
@@ -447,8 +434,8 @@ class _RelationFeatureOppFactorTable(FactorTable):
                 iRawData = raw_data[iFactorName].unstack()
                 if DataType[iFactorName]=="double": iRawData = iRawData.astype("float")
                 Data[iFactorName] = iRawData.fillna(method="pad")
-        if not Data: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-        return pd.Panel(Data).loc[factor_names]
+        if not Data: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        return Panel(Data, items=factor_names)
     
 
 class Neo4jDB(QSNeo4jObject, WritableFactorDB):

@@ -17,6 +17,7 @@ from QuantStudio.Tools.QSObjects import QSSQLObject
 from QuantStudio import __QS_Object__, __QS_Error__, __QS_LibPath__, __QS_MainPath__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
 from QuantStudio.FactorDataBase.FDBFun import updateInfo, adjustDateTime, adjustDataDTID
+from QuantStudio.Tools.api import Panel
 
 def RollBackNPeriod(report_date, n_period):
     Date = report_date
@@ -184,7 +185,7 @@ class _CalendarTable(_DBTable):
         return pd.DataFrame(np.array(RawData), columns=["日期", "ID"])
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         raw_data["交易日"] = 1
-        Data = pd.Panel({"交易日":raw_data.set_index(["日期", "ID"])["交易日"].unstack()}).loc[factor_names]
+        Data = Panel({"交易日":raw_data.set_index(["日期", "ID"])["交易日"].unstack()}, items=factor_names)
         Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Data.major_axis]
         return adjustDateTime(Data, dts, fillna=True, value=0)
 # 行情因子表, 表结构特征:
@@ -330,7 +331,7 @@ class _MarketTable(_DBTable):
         if not RawData: return pd.DataFrame(columns=["日期", "ID"]+factor_names)
         return pd.DataFrame(np.array(RawData), columns=["日期", "ID"]+factor_names)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data = raw_data.set_index(["日期", "ID"])
         DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
         Data = {}
@@ -338,7 +339,7 @@ class _MarketTable(_DBTable):
             iRawData = raw_data[iFactorName].unstack()
             if DataType[iFactorName]=="double": iRawData = iRawData.astype("float")
             Data[iFactorName] = iRawData
-        Data = pd.Panel(Data).loc[factor_names]
+        Data = Panel(Data, items=factor_names)
         Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Data.major_axis]
         LookBack = args.get("回溯天数", self.LookBack)
         return adjustDataDTID(Data, LookBack, factor_names, ids, dts, 
@@ -467,14 +468,14 @@ class _DividendTable(_DBTable):
         if not RawData: return pd.DataFrame(columns=["日期", "ID"]+factor_names)
         return pd.DataFrame(np.array(RawData), columns=["日期", "ID"]+factor_names)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data = raw_data.set_index(["日期", "ID"])
         Operator = args.get("算子", self.Operator)
         if Operator is None: Operator = (lambda x: x.tolist())
         Data = {}
         for iFactorName in raw_data.columns:
             Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
-        Data = pd.Panel(Data).loc[factor_names, :, ids]
+        Data = Panel(Data, items=factor_names, minor_axis=ids)
         Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Data.major_axis]
         LookBack = args.get("回溯天数", self.LookBack)
         if LookBack==0: return Data.loc[:, dts, :]
@@ -621,8 +622,8 @@ class _ConstituentTable(_DBTable):
                     kEndDate = (dt.datetime.strptime(jIDRawData[self._OutDateField].iloc[k], "%Y%m%d").date()-dt.timedelta(1) if jIDRawData[self._OutDateField].iloc[k] is not None else dt.date.today())
                     iData[jID].loc[kStartDate:kEndDate] = 1
             Data[iIndexID] = iData
-        Data = pd.Panel(Data)
-        if Data.minor_axis.intersection(ids).shape[0]==0: return pd.Panel(0.0, items=factor_names, major_axis=dts, minor_axis=ids)
+        Data = Panel(Data, items=factor_names, major_axis=DateSeries)
+        if Data.minor_axis.intersection(ids).shape[0]==0: return Panel(0.0, items=factor_names, major_axis=dts, minor_axis=ids)
         Data = Data.loc[factor_names, :, ids]
         Data.major_axis = [dt.datetime.combine(iDate, dt.time(0)) for iDate in Data.major_axis]
         Data.fillna(value=0, inplace=True)
@@ -683,7 +684,7 @@ class _MappingTable(_DBTable):
         if not RawData: return pd.DataFrame(columns=["ID", self._StartDateField, self._EndDateField]+factor_names)
         else: return pd.DataFrame(np.array(RawData), columns=["ID", self._StartDateField, self._EndDateField]+factor_names)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data[self._EndDateField] = raw_data[self._EndDateField].where(pd.notnull(raw_data[self._EndDateField]), dt.date.today().strftime("%Y%m%d"))
         raw_data.set_index(["ID"], inplace=True)
         DeltaDT = dt.timedelta(int(not self._EndDateIncluded))
@@ -696,7 +697,7 @@ class _MappingTable(_DBTable):
                 jStartDate, jEndDate = dt.datetime.strptime(ijRawData[self._StartDateField], "%Y%m%d"), dt.datetime.strptime(ijRawData[self._EndDateField], "%Y%m%d")-DeltaDT
                 iData.loc[jStartDate:jEndDate] = np.repeat(ijRawData[factor_names].values.reshape((1, nFactor)), iData.loc[jStartDate:jEndDate].shape[0], axis=0)
             Data[iID] = iData
-        return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
+        return Panel(Data, items=ids, major_axis=dts, minor_axis=factor_names).swapaxes(0, 2)
 
 class _IndustryTable(_DBTable):
     """行业因子表"""
@@ -836,7 +837,7 @@ class _IndustryTable(_DBTable):
         for iCode, iName in IndustryCodeName.items(): RawData["行业名称"][RawData["行业代码"]==iCode] = iName
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return pd.Panel(np.full(shape=(len(factor_names), len(dts), len(ids)), fill_value=None, dtype="O"), items=factor_names, major_axis=dts, minor_axis=ids)
+        if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data[self._OutDateField] = raw_data[self._OutDateField].where(pd.notnull(raw_data[self._OutDateField]), dt.date.today().strftime("%Y%m%d"))
         raw_data.set_index(["ID"], inplace=True)
         DeltaDT = dt.timedelta(int(not self._OutDateIncluded))
@@ -849,7 +850,7 @@ class _IndustryTable(_DBTable):
                 jStartDate, jEndDate = dt.datetime.strptime(ijRawData[self._InDateField], "%Y%m%d"), dt.datetime.strptime(ijRawData[self._OutDateField], "%Y%m%d")-DeltaDT
                 iData.loc[jStartDate:jEndDate] = np.repeat(ijRawData[factor_names].values.reshape((1, nFactor)), iData.loc[jStartDate:jEndDate].shape[0], axis=0)
             Data[iID] = iData
-        return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
+        return Panel(Data, items=ids, major_axis=dts, minor_axis=factor_names).swapaxes(0, 2)
 
 class _FeatureTable(_DBTable):
     """特征因子表"""
@@ -882,8 +883,8 @@ class _FeatureTable(_DBTable):
         return pd.DataFrame(np.array(RawData), columns=["ID"]+factor_names)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         raw_data = raw_data.set_index(["ID"])
-        if raw_data.index.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-        Data = pd.Panel(raw_data.values.T.reshape((raw_data.shape[1], raw_data.shape[0], 1)).repeat(len(dts), axis=2), items=factor_names, major_axis=raw_data.index, minor_axis=dts).swapaxes(1, 2)
+        if raw_data.index.intersection(ids).shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        Data = Panel(raw_data.values.T.reshape((raw_data.shape[1], raw_data.shape[0], 1)).repeat(len(dts), axis=2), items=factor_names, major_axis=raw_data.index, minor_axis=dts).swapaxes(1, 2)
         return Data.loc[:, :, ids]
 # 财务因子表, 表结构特征:
 # 报告期字段, 表示财报的报告期
@@ -1065,7 +1066,7 @@ class _FinancialTable(_DBTable):
         Data = {}
         for iID in raw_data.index.unique():
             Data[iID] = CalcFun(Dates, raw_data.loc[[iID]], factor_names, ReportDate, YearLookBack, PeriodLookBack, IgnoreMissing)
-        Data = pd.Panel(Data)
+        Data = Panel(Data, major_axis=Dates, minor_axis=factor_names)
         Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Dates]
         Data.minor_axis = factor_names
         Data = Data.swapaxes(0, 2)
@@ -1076,7 +1077,7 @@ class _FinancialTable(_DBTable):
                 NewData[iFactorName] = Data.iloc[i].astype("float")
             else:
                 NewData[iFactorName] = Data.iloc[i]
-        Data = adjustDateTime(pd.Panel(NewData).loc[factor_names], dts, fillna=False)
+        Data = adjustDateTime(Panel(NewData, items=factor_names, major_axis=Data.major_axis, minor_axis=Data.minor_axis), dts, fillna=False)
         Data = Data.loc[:, :, ids]
         return Data
     # 检索最大报告期的位置
@@ -1457,7 +1458,7 @@ class _AnalystConsensusTable(_DBTable):
             Groups.append((self, PeriodGroup[iPeriod]["FactorNames"], list(PeriodGroup[iPeriod]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], PeriodGroup[iPeriod]["args"]))
         return Groups
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return pd.Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
+        if raw_data.shape[0]==0: return Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
         Dates = sorted({iDT.strftime("%Y%m%d") for iDT in dts})
         CalcType, LookBack = args.get("计算方法", self.CalcType), args.get("回溯天数", self.LookBack)
         if CalcType=="Fwd12M":
@@ -1482,7 +1483,7 @@ class _AnalystConsensusTable(_DBTable):
             else:
                 iANNReportData = None
             Data[iID] = CalcFun(Dates, raw_data.loc[[iID]], iANNReportData, factor_names, LookBack, FYNum)
-        Data = pd.Panel(Data, minor_axis=factor_names)
+        Data = Panel(Data, major_axis=Dates, minor_axis=factor_names)
         Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Dates]
         Data = Data.swapaxes(0, 2)
         if LookBack==0: return Data.loc[:, dts, ids]
@@ -1600,7 +1601,7 @@ class _AnalystRatingDetailTable(_DBTable):
         else: RawData = pd.DataFrame(np.array(RawData), columns=["日期", "ID"]+AllFields)
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return pd.Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
+        if raw_data.shape[0]==0: return Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
         Dates = sorted({dt.datetime.combine(iDT.date(), dt.time(0)) for iDT in dts})
         DeduplicationFields = args.get("去重字段", self.Deduplication)
         AdditionalFields = list(set(args.get("附加字段", self.AdditionalFields)+DeduplicationFields))
@@ -1628,7 +1629,7 @@ class _AnalystRatingDetailTable(_DBTable):
                         ijRawData = pd.merge(ijTemp, ijRawData, how='left', left_on=DeduplicationFields+["日期"], right_on=DeduplicationFields+["日期"])
                     kData[i, j] = Operator(self, iDate, jID, ijRawData, ModelArgs)
             Data[kFactorName] = kData
-        return pd.Panel(Data, major_axis=Dates, minor_axis=ids).loc[factor_names, dts]
+        return Panel(Data, items=factor_names, major_axis=dts, minor_axis=ids)
 
 class _AnalystEstDetailTable(_DBTable):
     """分析师盈利预测明细表"""
@@ -1753,7 +1754,7 @@ class _AnalystEstDetailTable(_DBTable):
                             x.append(iijRawData)
                     kData[i, j] = Operator(self, iDate, jID, x, ModelArgs)
             Data[kFactorName] = kData
-        return pd.Panel(Data, major_axis=Dates, minor_axis=ids).loc[factor_names, dts]
+        return Panel(Data, items=factor_names, major_axis=dts, minor_axis=ids)
 # 公告信息表, 表结构特征:
 # 公告日期, 表示获得信息的时点;
 # 截止日期, 表示信息有效的时点, 该字段可能没有;
@@ -1937,14 +1938,14 @@ class _AnnTable(_DBTable):
         if not RawData: return pd.DataFrame(columns=["ID", "日期"]+factor_names)
         return pd.DataFrame(np.array(RawData), columns=["ID", "日期"]+factor_names)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data = raw_data.set_index(["日期", "ID"])
         Operator = args.get("算子", self.Operator)
         if Operator is None: Operator = (lambda x: x.tolist())
         Data = {}
         for iFactorName in factor_names:
             Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
-        Data = pd.Panel(Data).loc[factor_names, :, ids]
+        Data = Panel(Data, items=factor_names, minor_axis=ids)
         Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Data.major_axis]
         LookBack = args.get("回溯天数", self.LookBack)
         if LookBack==0: return Data.loc[:, dts, ids]

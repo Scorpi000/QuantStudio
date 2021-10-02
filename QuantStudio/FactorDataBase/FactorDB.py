@@ -19,6 +19,7 @@ from progressbar import ProgressBar
 from traits.api import Instance, Str, File, List, Int, Bool, Directory, Enum, ListStr
 
 from QuantStudio import __QS_Object__, __QS_Error__
+from QuantStudio.Tools.api import Panel
 from QuantStudio.Tools.IDFun import testIDFilterStr
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName, startMultiProcess, partitionListMovingSampling
 from QuantStudio.Tools.FileFun import listDirDir, getShelveFileSuffix
@@ -183,7 +184,7 @@ def _prepareMMAPFactorCacheData(ft, mmap_cache):
                     if NewCacheDTs:
                         NewCacheData = ft.__QS_calcData__(raw_data=ft.__QS_prepareRawData__(factor_names=CacheFactorNames, ids=ft.ErgodicMode._IDs, dts=NewCacheDTs), factor_names=CacheFactorNames, ids=ft.ErgodicMode._IDs, dts=NewCacheDTs)
                     else:
-                        NewCacheData = pd.Panel(items=CacheFactorNames, major_axis=NewCacheDTs, minor_axis=ft.ErgodicMode._IDs)
+                        NewCacheData = Panel(items=CacheFactorNames, major_axis=NewCacheDTs, minor_axis=ft.ErgodicMode._IDs)
                     for iFactorName in CacheData:
                         if isDisjoint:
                             CacheData[iFactorName] = NewCacheData[iFactorName]
@@ -234,7 +235,7 @@ def _prepareMMAPIDCacheData(ft, mmap_cache):
                     if NewCacheDTs:
                         NewCacheData = ft.__QS_calcData__(raw_data=ft.__QS_prepareRawData__(factor_names=ft.FactorNames, ids=CacheIDs, dts=NewCacheDTs), factor_names=ft.FactorNames, ids=CacheIDs, dts=NewCacheDTs)
                     else:
-                        NewCacheData = pd.Panel(items=ft.FactorNames, major_axis=NewCacheDTs, minor_axis=CacheIDs)
+                        NewCacheData = Panel(items=ft.FactorNames, major_axis=NewCacheDTs, minor_axis=CacheIDs)
                     for iID in CacheData:
                         if isDisjoint:
                             CacheData[iID] = NewCacheData.loc[:, :, iID]
@@ -358,7 +359,7 @@ def _calculate(args):
                                 if j==0:
                                     TaskCount += 0.5
                                     ProgBar.update(TaskCount)
-                            jData = pd.Panel(jData).loc[iTargetFactorNames]
+                            jData = Panel(jData, items=iTargetFactorNames, major_axis=jDTs)
                             iDB.writeData(jData, iTableName, if_exists=args["if_exists"], data_type=iDataTypes, **args["kwargs"])
                             jData = None
                         TaskCount += 0.5
@@ -391,7 +392,7 @@ def _calculate(args):
                                 ijkData = ijkData.loc[:, FT.OperationMode.IDs]
                             jData[iTargetFactorNames[k]] = ijkData
                             if j==0: args["Sub2MainQueue"].put((args["PID"], 0.5, None))
-                        jData = pd.Panel(jData).loc[iTargetFactorNames]
+                        jData = Panel(jData, items=iTargetFactorNames, major_axis=jDTs)
                         iDB.writeData(jData, iTableName, if_exists=args["if_exists"], data_type=iDataTypes, **args["kwargs"])
                         jData = None
                     args["Sub2MainQueue"].put((args["PID"], 0.5, None))
@@ -511,13 +512,13 @@ class FactorTable(__QS_Object__):
             Data.update(iData)
             self.ErgodicMode._CacheData.update(iData)
         self.ErgodicMode._Queue2SubProcess.put((None, (CacheFactorNames, PopFactorNames)))
-        Data = pd.Panel(Data)
+        Data = Panel(Data)
         if Data.shape[0]>0:
             try:
                 Data = Data.loc[:, dts, ids]
             except KeyError as e:
                 self._QS_Logger.warning("%s 提取的时点或 ID 不在因子表范围内: %s" % (self._Name, str(e)))
-                Data = pd.Panel(items=Data.items, major_axis=dts, minor_axis=ids)
+                Data = Panel(items=Data.items, major_axis=dts, minor_axis=ids)
         if not DataFactorNames: return Data.loc[factor_names]
         #print("超出缓存区因子个数读取: "+str(DataFactorNames))# debug
         return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=DataFactorNames, ids=ids, dts=dts, args=args), factor_names=DataFactorNames, ids=ids, dts=dts, args=args).join(Data).loc[factor_names]
@@ -546,7 +547,7 @@ class FactorTable(__QS_Object__):
         return IDData.loc[dts, factor_names]
     def _readData_ErgodicMode(self, factor_names, ids, dts, args={}):
         if self.ErgodicMode.CacheMode=="因子": return self._readData_FactorCacheMode(factor_names=factor_names, ids=ids, dts=dts, args=args)
-        return pd.Panel({iID: self._readIDData(iID, factor_names=factor_names, dts=dts, args=args) for iID in ids}).swapaxes(0, 2)
+        return Panel({iID: self._readIDData(iID, factor_names=factor_names, dts=dts, args=args) for iID in ids}, items=ids, major_axis=dts, minor_axis=factor_names).swapaxes(0, 2)
     # 启动遍历模式, dts: 遍历的时间点序列或者迭代器
     def start(self, dts, **kwargs):
         if self.ErgodicMode._isStarted: return 0
@@ -897,7 +898,7 @@ class CustomFT(FactorTable):
         self._IDFilterStr = OldIDFilterStr
         return eval("temp["+CompiledFilterStr+"].index.tolist()")
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        return pd.Panel({iFactorName:self._Factors[iFactorName].readData(ids=ids, dts=dts, dt_ruler=self._DateTimes, section_ids=self._IDs) for iFactorName in factor_names}).loc[factor_names]
+        return Panel({iFactorName:self._Factors[iFactorName].readData(ids=ids, dts=dts, dt_ruler=self._DateTimes, section_ids=self._IDs) for iFactorName in factor_names}, items=factor_names, major_axis=dts, minor_axis=ids)
     def write2FDB(self, factor_names, ids, dts, factor_db, table_name, if_exists="update", subprocess_num=cpu_count()-1, dt_ruler=None, section_ids=None, specific_target={}, **kwargs):
         if dt_ruler is None: dt_ruler = self._DateTimes
         if not dt_ruler: dt_ruler = None

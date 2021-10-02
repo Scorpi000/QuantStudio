@@ -9,6 +9,7 @@ import pandas as pd
 import statsmodels.api as sm
 
 from QuantStudio import __QS_Error__
+from QuantStudio.Tools.api import Panel
 from QuantStudio.FactorDataBase.FactorDB import Factor
 from QuantStudio.FactorDataBase.FactorOperation import PointOperation, TimeOperation, SectionOperation
 from QuantStudio.Tools import DataPreprocessingFun
@@ -300,8 +301,8 @@ def regress_change_rate(*factors, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(*factors)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_regress_change_rate,"参数":Args,"运算时点":"多时点","运算ID":"多ID"}, **kwargs)
 def _tolist(f,idt,iid,x,args):
-    Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for iData in _genOperatorData(f,idt,iid,x,args)]
-    return pd.Panel({i: iData for i, iData in enumerate(Data)}).sort_index(axis=0).to_frame(filter_observations=False).apply(lambda s: s.tolist(), axis=1).unstack().values
+    Data = {i: (iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for i, iData in enumerate(_genOperatorData(f,idt,iid,x,args))}
+    return Panel(Data).sort_index(axis=0).to_frame(filter_observations=False).apply(lambda s: s.tolist(), axis=1).unstack().values
 def tolist(*factors,**kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(*factors)
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_tolist,"参数":Args,"运算时点":"多时点","运算ID":"多ID","数据类型":"object"}, **kwargs)

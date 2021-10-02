@@ -13,6 +13,7 @@ import fasteners
 from traits.api import Directory, Str
 
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
+from QuantStudio.Tools.api import Panel
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
 from QuantStudio.Tools.FileFun import listDirDir, listDirFile, readJSONFile
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
@@ -71,7 +72,7 @@ class _FactorTable(FactorTable):
         return sorted(dt.datetime.fromtimestamp(iTimestamp) for iTimestamp in Timestamps)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         Data = {iFactor: self.readFactorData(ifactor_name=iFactor, ids=ids, dts=dts, args=args) for iFactor in factor_names}
-        return pd.Panel(Data).loc[factor_names]
+        return Panel(Data, items=factor_names, major_axis=dts, minor_axis=ids)
     def readFactorData(self, ifactor_name, ids, dts, args={}):
         FilePath = self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix
         if not os.path.isfile(FilePath): raise __QS_Error__("因子库 '%s' 的因子表 '%s' 中不存在因子 '%s'!" % (self._FactorDB.Name, self.Name, ifactor_name))

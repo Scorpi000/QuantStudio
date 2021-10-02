@@ -11,6 +11,7 @@ from QuantStudio.Tools.QSObjects import QSNeo4jObject
 from QuantStudio.Tools.Neo4jFun import writeArgs
 from QuantStudio.RiskDataBase.RiskDB import RiskDB, RiskTable, FactorRDB, FactorRT
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
+from QuantStudio.Tools.api import Panel
 
 class _RiskTable(RiskTable):
     IDField = Str("ID", arg_type="String", label="ID字段", order=0)
@@ -49,7 +50,7 @@ class _RiskTable(RiskTable):
         CypherStr += "UNWIND $dts AS iDT "
         CypherStr += f"RETURN iDT, s1.`{IDField}`, s2.`{IDField}`, r[iDT]"
         Data = self._RiskDB.fetchall(CypherStr, parameters={"ids": ids, "dts": [iDT.strftime(DTFormat) for iDT in dts]})
-        if not Data: return pd.Panel(items=dts, major_axis=ids, minor_axis=ids)
+        if not Data: return Panel(items=dts, major_axis=ids, minor_axis=ids)
         Data = pd.DataFrame(np.array(Data, dtype="O"), columns=["QS_DT", "ID1", "ID2", "Value"])
         Data = Data.set_index(["ID1", "ID2", "QS_DT"]).iloc[:, 0].unstack().to_panel()
         Data.items = [dt.datetime.strptime(iDT, DTFormat) for iDT in Data.items]
@@ -203,7 +204,7 @@ class _FactorRiskTable(FactorRT):
             RETURN iDT, f1.`Name`, f2.`Name`, r[iDT]
         """
         Data = self._RiskDB.fetchall(CypherStr, parameters={"dts": [iDT.strftime(DTFormat) for iDT in dts]})
-        if not Data: return pd.Panel(items=dts, major_axis=FactorNames, minor_axis=FactorNames)
+        if not Data: return Panel(items=dts, major_axis=FactorNames, minor_axis=FactorNames)
         Data = pd.DataFrame(np.array(Data, dtype="O"), columns=["QS_DT", "Factor1", "Factor2", "Value"])
         Data = Data.set_index(["Factor1", "Factor2", "QS_DT"]).iloc[:, 0].unstack().to_panel()
         Data.items = [dt.datetime.strptime(iDT, DTFormat) for iDT in Data.items]
@@ -243,7 +244,7 @@ class _FactorRiskTable(FactorRT):
             CypherStr += f"WHERE s.`{self.IDField}` IN $ids "
         CypherStr += f"UNWIND $dts AS iDT RETURN iDT, f.`Name`, s.`{self.IDField}`, r[iDT]"
         Data = self._RiskDB.fetchall(CypherStr, parameters={"dts": [iDT.strftime(DTFormat) for iDT in dts], "ids": ids})
-        if not Data: return pd.Panel(items=FactorNames, major_axis=dts, minor_axis=ids)
+        if not Data: return Panel(items=FactorNames, major_axis=dts, minor_axis=ids)
         Data = pd.DataFrame(np.array(Data, dtype="O"), columns=["QS_DT", "Factor", "ID", "Value"])
         Data = Data.set_index(["QS_DT", "ID", "Factor"]).iloc[:, 0].unstack().to_panel()
         Data.major_axis = [dt.datetime.strptime(iDT, DTFormat) for iDT in Data.major_axis]
@@ -307,7 +308,7 @@ class _FactorRiskTable(FactorRT):
                 iSpecificRisk = iSpecificRisk.loc[iIDs].values
             iCov = np.dot(np.dot(iFactorData, iFactorCov.values), iFactorData.T) + np.diag(iSpecificRisk**2)
             Data[iDT] = pd.DataFrame(iCov, index=iIDs, columns=iIDs)
-        return pd.Panel(Data).loc[dts]
+        return Panel(Data, items=dts)
 
 class Neo4jFRDB(QSNeo4jObject, FactorRDB):
     """基于 Neo4j 的多因子风险数据库"""

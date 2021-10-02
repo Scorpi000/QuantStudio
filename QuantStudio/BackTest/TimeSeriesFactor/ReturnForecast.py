@@ -14,6 +14,7 @@ from matplotlib.figure import Figure
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.Tools.StrategyTestFun import testTimingStrategy, summaryStrategy, formatStrategySummary, summaryTimingStrategy, formatTimingStrategySummary
+from QuantStudio.Tools.api import Panel
 from QuantStudio.BackTest.BackTestModel import BaseModule
 from QuantStudio.BackTest.TimeSeriesFactor.Correlation import _calcReturn
 
@@ -148,7 +149,7 @@ class ReturnForecast(BaseModule):
         else:
             self._Output.pop("全样本模型统计量")
         if self._Output["全样本因子统计量"]:
-            self._Output["全样本因子统计量"] = dict(pd.Panel(self._Output["全样本因子统计量"]).swapaxes(0, 2).loc[:, :, IDs])
+            self._Output["全样本因子统计量"] = dict(Panel(self._Output["全样本因子统计量"]).swapaxes(0, 2).loc[:, :, IDs])
         else:
             self._Output.pop("全样本因子统计量")
         # 滚动预测
@@ -195,7 +196,7 @@ class ReturnForecast(BaseModule):
         if not self._Output["模型统计量"]:
             self._Output.pop("模型统计量")
         else:
-            self._Output["模型统计量"] = dict(pd.Panel(self._Output["模型统计量"]).swapaxes(0, 2).loc[:, :, IDs])
+            self._Output["模型统计量"] = dict(Panel(self._Output["模型统计量"]).swapaxes(0, 2).loc[:, :, IDs])
         if not self._Output["因子统计量"]: self._Output.pop("因子统计量")
         return 0
     def genMatplotlibFig(self, file_path=None):

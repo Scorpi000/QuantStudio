@@ -11,6 +11,7 @@ from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.FactorDataBase.FactorDB import FactorTable
+from QuantStudio.Tools.api import Panel
 
 # Quant Studio 系统错误: 重复索引
 class __QS_Error_DuplicatedIndex__(__QS_Error__):
@@ -58,14 +59,14 @@ def adjustDateTime(data, dts, fillna=False, **kwargs):
             data = data.loc[dts]
     else:
         if data.shape[1]==0:
-            data = pd.Panel(items=data.items, major_axis=dts, minor_axis=data.minor_axis)
+            data = Panel(items=data.items, major_axis=dts, minor_axis=data.minor_axis)
         else:
             FactorNames = data.items
             if fillna:
                 AllDTs = data.major_axis.union(dts)
                 AllDTs = AllDTs.sort_values()
                 data = data.loc[:, AllDTs, :]
-                data = pd.Panel({data.items[i]:data.iloc[i].fillna(axis=0, **kwargs) for i in range(data.shape[0])})
+                data = Panel({data.items[i]:data.iloc[i].fillna(axis=0, **kwargs) for i in range(data.shape[0])}, items=data.items, major_axis=AllDTs, minor_axis=data.minor_axis)
             data = data.loc[FactorNames, dts, :]
     return data
 
@@ -76,7 +77,7 @@ def adjustDataDTID(data, look_back, factor_names, ids, dts, only_start_lookback=
         except KeyError as e:
             if logger is not None:
                 logger.warning("待提取的因子 %s 数据超出了原始数据的时点或 ID 范围, 将填充缺失值!" % (str(list(data.items)), ))
-            return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+            return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
     AllDTs = data.major_axis.union(dts).sort_values()
     AdjData = data.loc[:, AllDTs, ids]
     if only_start_lookback:# 只在起始时点回溯填充缺失
@@ -122,12 +123,13 @@ def adjustDataDTID(data, look_back, factor_names, ids, dts, only_start_lookback=
                 NewLimits = np.minimum(NewLimits.values*24.0*3600, Limits).reshape((NewLimits.shape[0], 1)).repeat(AdjData.shape[2], axis=1)
                 Limits = pd.DataFrame(0, index=AdjData.major_axis, columns=AdjData.minor_axis)
                 Limits.loc[TargetDTs, :] = NewLimits
+        MajorAxis, MinorAxis = AdjData.major_axis, AdjData.minor_axis
+        AdjData = dict(AdjData)
         if np.isinf(look_back) and (not only_lookback_nontarget) and (not only_lookback_dt):
-            for i, iFactorName in enumerate(AdjData.items): AdjData.iloc[i].fillna(method="pad", inplace=True)
+            for iFactorName in AdjData: AdjData[iFactorName] = AdjData[iFactorName].fillna(method="pad")
         else:
-            AdjData = dict(AdjData)
             for iFactorName in AdjData: AdjData[iFactorName] = fillNaByLookback(AdjData[iFactorName], lookback=Limits)
-            AdjData = pd.Panel(AdjData).loc[factor_names]
+        AdjData = Panel(AdjData, items=factor_names, major_axis=MajorAxis, minor_axis=MinorAxis)
     if only_start_lookback:
         AllAdjData.loc[:, dts[0], :] = AdjData.loc[:, dts[0], :]
         return AllAdjData.loc[:, dts]
@@ -145,10 +147,10 @@ def _QS_calcListData_WideTable(raw_data, factor_names, ids, dts, args={}, **kwar
         DeduplicatedIndex = raw_data.index(~raw_data.index.duplicated())
         RowIdxMask = pd.Series(False, index=DeduplicatedIndex).unstack(fill_value=True).astype(bool)
         RawIDs = RowIdxMask.columns
-        if RawIDs.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        if RawIDs.intersection(ids).shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         RowIdx = pd.DataFrame(np.arange(RowIdxMask.shape[0]).reshape((RowIdxMask.shape[0], 1)).repeat(RowIdxMask.shape[1], axis=1), index=RowIdxMask.index, columns=RawIDs)
         RowIdx[RowIdxMask] = np.nan
-        RowIdx = adjustDataDTID(pd.Panel({"RowIdx": RowIdx}), args.get("回溯天数", 0), ["RowIdx"], RowIdx.columns.tolist(), dts, args.get("只起始日回溯", False), args.get("只回溯非目标日", False), logger=kwargs.get("logger", None)).iloc[0].values
+        RowIdx = adjustDataDTID(Panel({"RowIdx": RowIdx}), args.get("回溯天数", 0), ["RowIdx"], RowIdx.columns.tolist(), dts, args.get("只起始日回溯", False), args.get("只回溯非目标日", False), logger=kwargs.get("logger", None)).iloc[0].values
         RowIdx[pd.isnull(RowIdx)] = -1
         RowIdx = RowIdx.astype(int)
         ColIdx = np.arange(RowIdx.shape[1]).reshape((1, RowIdx.shape[1])).repeat(RowIdx.shape[0], axis=0)
@@ -161,18 +163,18 @@ def _QS_calcListData_WideTable(raw_data, factor_names, ids, dts, args={}, **kwar
             Data[iFactorName] = pd.DataFrame(iRawData, index=dts, columns=RawIDs)
             if OperatorDataType=="double":
                 Data[iFactorName] = Data[iFactorName].astype(np.float)
-        return pd.Panel(Data).loc[factor_names, :, ids]
+        return Panel(Data, items=factor_names, major_axis=dts, minor_axis=RawIDs).loc[:, :, ids]
     else:
         Data = {}
         for iFactorName in factor_names:
             Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
             if OperatorDataType=="double":
                 Data[iFactorName] = Data[iFactorName].astype(np.float)
-        Data = pd.Panel(Data).loc[factor_names]
+        Data = Panel(Data, items=factor_names)
         return adjustDataDTID(Data, args.get("回溯天数", 0), factor_names, ids, dts, args.get("只起始日回溯", False), args.get("只回溯非目标日", False), logger=kwargs.get("logger", None))
 
 def _QS_calcData_WideTable(raw_data, factor_names, ids, dts, data_type, args={}, **kwargs):
-    if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+    if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
     if ids is None: ids = sorted(raw_data["ID"].unique())
     raw_data = raw_data.set_index(["QS_DT", "ID"])
     MultiMapping = args.get("多重映射", False)
@@ -186,10 +188,10 @@ def _QS_calcData_WideTable(raw_data, factor_names, ids, dts, data_type, args={},
     if args.get("只回溯时点", False):
         RowIdxMask = pd.Series(False, index=raw_data.index).unstack(fill_value=True).astype(bool)
         RawIDs = RowIdxMask.columns
-        if RawIDs.intersection(ids).shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        if RawIDs.intersection(ids).shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         RowIdx = pd.DataFrame(np.arange(RowIdxMask.shape[0]).reshape((RowIdxMask.shape[0], 1)).repeat(RowIdxMask.shape[1], axis=1), index=RowIdxMask.index, columns=RawIDs)
         RowIdx[RowIdxMask] = np.nan
-        RowIdx = adjustDataDTID(pd.Panel({"RowIdx": RowIdx}), args.get("回溯天数", 0), ["RowIdx"], RowIdx.columns.tolist(), dts, args.get("只起始日回溯", False), args.get("只回溯非目标日", False), logger=kwargs.get("logger", None)).iloc[0].values
+        RowIdx = adjustDataDTID(Panel({"RowIdx": RowIdx}), args.get("回溯天数", 0), ["RowIdx"], RowIdx.columns.tolist(), dts, args.get("只起始日回溯", False), args.get("只回溯非目标日", False), logger=kwargs.get("logger", None)).iloc[0].values
         RowIdx[pd.isnull(RowIdx)] = -1
         RowIdx = RowIdx.astype(int)
         ColIdx = np.arange(RowIdx.shape[1]).reshape((1, RowIdx.shape[1])).repeat(RowIdx.shape[0], axis=0)
@@ -205,7 +207,7 @@ def _QS_calcData_WideTable(raw_data, factor_names, ids, dts, data_type, args={},
             iRawData = iRawData.values[RowIdx, ColIdx]
             iRawData[RowIdxMask] = None
             Data[iFactorName] = pd.DataFrame(iRawData, index=dts, columns=RawIDs)
-        return pd.Panel(Data).loc[factor_names, :, ids]
+        return Panel(Data, major_axis=dts, minor_axis=RawIDs).loc[factor_names, :, ids]
     else:
         Data = {}
         for iFactorName in raw_data.columns.intersection(factor_names):
@@ -216,7 +218,7 @@ def _QS_calcData_WideTable(raw_data, factor_names, ids, dts, data_type, args={},
                 except:
                     pass
             Data[iFactorName] = iRawData
-        Data = pd.Panel(Data).loc[factor_names]
+        Data = Panel(Data).loc[factor_names]
         return adjustDataDTID(Data, args.get("回溯天数", 0), factor_names, ids, dts, args.get("只起始日回溯", False), args.get("只回溯非目标日", False), logger=kwargs.get("logger", None))
 
 # raw_data: DataFrame(columns=["QS_DT", "ID", 因子名字段, 因子值字段])
@@ -228,12 +230,12 @@ def _QS_calcListData_NarrowTable(raw_data, factor_names, ids, dts, args={}, **kw
     for iFactorName in factor_names:
         if iFactorName in raw_data:
             Data[iFactorName] = raw_data.loc[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
-    if not Data: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-    Data = pd.Panel(Data).loc[factor_names].swapaxes(1, 2)
+    if not Data: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+    Data = Panel(Data, items=factor_names).swapaxes(1, 2)
     return adjustDataDTID(Data, args.get("回溯天数", 0), factor_names, ids, dts, args.get("只起始日回溯", False), args.get("只回溯非目标日", False), args.get("只回溯时点", False), logger=kwargs.get("logger", None))
 
 def _QS_calcData_NarrowTable(raw_data, factor_names, ids, dts, data_type, args={}, **kwargs):
-    if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+    if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
     if ids is None: ids = sorted(raw_data["ID"].unique())
     FactorNameField = args.get("因子名字段", "FactorName")
     raw_data = raw_data.set_index(["QS_DT", "ID", FactorNameField]).iloc[:, 0]
@@ -252,8 +254,8 @@ def _QS_calcData_NarrowTable(raw_data, factor_names, ids, dts, data_type, args={
             iRawData = raw_data[iFactorName].unstack()
             if DataType[iFactorName]=="double": iRawData = iRawData.astype("float")
             Data[iFactorName] = iRawData
-    if not Data: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-    Data = pd.Panel(Data).loc[factor_names]
+    if not Data: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+    Data = Panel(Data, items=factor_names)
     return adjustDataDTID(Data, args.get("回溯天数", 0), factor_names, ids, dts, args.get("只起始日回溯", False), args.get("只回溯非目标日", False), args.get("只回溯时点", False), logger=kwargs.get("logger", None))
 
 
@@ -1175,11 +1177,11 @@ class SQL_FeatureTable(SQL_WideTable):
         RawData["QS_DT"] = RawData["QS_TargetDT"]
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         TargetDT = raw_data.pop("QS_TargetDT").iloc[0].to_pydatetime()
         Data = super().__QS_calcData__(raw_data, factor_names, ids, [TargetDT], args=args)
         Data = Data.iloc[:, 0, :]
-        return pd.Panel(Data.values.T.reshape((Data.shape[1], Data.shape[0], 1)).repeat(len(dts), axis=2), items=factor_names, major_axis=Data.index, minor_axis=dts).swapaxes(1, 2)
+        return Panel(Data.values.T.reshape((Data.shape[1], Data.shape[0], 1)).repeat(len(dts), axis=2), items=factor_names, major_axis=Data.index, minor_axis=dts).swapaxes(1, 2)
 
 # 基于 SQL 数据库表的时序因子表
 # 无 ID 字段, 一个字段标识时点, 其余字段为因子
@@ -1387,7 +1389,7 @@ class SQL_TimeSeriesTable(SQL_Table):
         RawData = RawData.sort_values(by=["QS_DT"]+OrderFields, ascending=[True]+[(iOrder.lower()=="asc") for iOrder in Orders])
         return RawData.loc[:, ["QS_DT"]+factor_names]
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data = raw_data.set_index(["QS_DT"])
         if args.get("多重映射", self.MultiMapping):
             Operator = args.get("算子", self.Operator)
@@ -1402,7 +1404,7 @@ class SQL_TimeSeriesTable(SQL_Table):
             if np.any(DupMask):
                 self._QS_Logger.warning("%s 的表 %s 提取的数据中包含重复时点: %s" % (self._FactorDB.Name, self.Name, str(Data.index[DupMask])))
                 Data = Data[~DupMask]
-        Data = pd.Panel(Data.values.T.reshape((Data.shape[1], Data.shape[0], 1)).repeat(len(ids), axis=2), items=Data.columns, major_axis=Data.index, minor_axis=ids)
+        Data = Panel(Data.values.T.reshape((Data.shape[1], Data.shape[0], 1)).repeat(len(ids), axis=2), items=Data.columns, major_axis=Data.index, minor_axis=ids)
         return adjustDataDTID(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts, 
                               args.get("只起始日回溯", self.OnlyStartLookBack), 
                               args.get("只回溯非目标日", self.OnlyLookBackNontarget), 
@@ -1540,7 +1542,7 @@ class SQL_MappingTable(SQL_Table):
                     if jIdx<iData.shape[0]:
                         iData.iloc[jIdx] = iTempData.iloc[j]
                 Data[iID] = iData
-            return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
+            return Panel(Data, major_axis=dts, minor_axis=factor_names).swapaxes(0, 2).loc[:, :, ids]
         else:
             DeltaDT = dt.timedelta(int(not args.get("包含结束时点", self.EndDTIncluded)))
             for iID in raw_data.index.unique():
@@ -1561,9 +1563,9 @@ class SQL_MappingTable(SQL_Table):
                         ijOldData = iData.loc[jStartDate:jEndDate]
                         iData.loc[jStartDate:jEndDate] += pd.DataFrame([ijRawData] * ijOldData.shape[0], index=ijOldData.index, columns=ijOldData.columns, dtype="O")
                 Data[iID] = iData
-            return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
+            return Panel(Data, major_axis=dts, minor_axis=factor_names).swapaxes(0, 2).loc[:, :, ids]
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         if args.get("多重映射", self.MultiMapping): return self._calcMultiMappingData(raw_data, factor_names, ids, dts, args=args)
         raw_data.set_index(["ID"], inplace=True)
         Data, nFactor = {}, len(factor_names)
@@ -1597,7 +1599,7 @@ class SQL_MappingTable(SQL_Table):
                     if jIdx<iData.shape[0]:
                         iData.iloc[jIdx] = iTempData.iloc[j]
                 Data[iID] = iData
-            return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
+            return Panel(Data, major_axis=dts, minor_axis=factor_names).swapaxes(0, 2).loc[:, :, ids]
         else:
             DeltaDT = dt.timedelta(int(not args.get("包含结束时点", self.EndDTIncluded)))
             for iID in raw_data.index.unique():
@@ -1612,7 +1614,7 @@ class SQL_MappingTable(SQL_Table):
                         jEndDate -= DeltaDT
                         iData.loc[jStartDate:jEndDate] = np.repeat(ijRawData[factor_names].values.reshape((1, nFactor)), iData.loc[jStartDate:jEndDate].shape[0], axis=0)
                 Data[iID] = iData
-            return pd.Panel(Data).swapaxes(0, 2).loc[:, :, ids]
+            return Panel(Data, major_axis=dts, minor_axis=factor_names).swapaxes(0, 2).loc[:, :, ids]
 
 # 基于 SQL 数据库表的成份因子表
 # 一个字段标识 ID, 一个字段标识起始时点, 一个字段标识截止时点, 其余字段为因子
@@ -1760,8 +1762,8 @@ class SQL_ConstituentTable(SQL_Table):
                     kEndDate = (jIDRawData["OutDate"].iloc[k].date()-dt.timedelta(1) if jIDRawData["OutDate"].iloc[k] is not None else dt.date.today())
                     iData[jID].loc[kStartDate:kEndDate] = 1
             Data[iGroup] = iData
-        Data = pd.Panel(Data)
-        if Data.minor_axis.intersection(ids).shape[0]==0: return pd.Panel(0.0, items=factor_names, major_axis=dts, minor_axis=ids)
+        Data = Panel(Data, major_axis=DateSeries)
+        if Data.minor_axis.intersection(ids).shape[0]==0: return Panel(0.0, items=factor_names, major_axis=dts, minor_axis=ids)
         Data = Data.loc[factor_names, :, ids]
         Data.major_axis = [dt.datetime.combine(iDate, dt.time(0)) for iDate in Data.major_axis]
         Data.fillna(value=0, inplace=True)
@@ -1968,7 +1970,7 @@ class SQL_FinancialTable(SQL_Table):
             Rslt[pd.isnull(ReportPeriod)] = None
         return Rslt
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         CalcType, YearLookBack, PeriodLookBack, ReportDate, IgnoreMissing = args.get("计算方法", self.CalcType), args.get("回溯年数", self.YearLookBack), args.get("回溯期数", self.PeriodLookBack), args.get("报告期", self.ReportDate), args.get("忽略缺失", self.IgnoreMissing)
         if CalcType=="最新": Periods = np.array([0], dtype=np.int)
         elif CalcType=="单季度": Periods = np.array([0, 1], dtype=np.int)
@@ -1978,4 +1980,4 @@ class SQL_FinancialTable(SQL_Table):
         Data = {}
         for iFactorName in factor_names:
             Data[iFactorName] = self._calcData(raw_data.loc[:, ["ID", "AnnDate", "ReportDate", "AdjustType", "ReportPeriod", iFactorName]], Periods, iFactorName, ids, dts, CalcType, ReportDate, IgnoreMissing, args=args)
-        return pd.Panel(Data).loc[factor_names]
+        return Panel(Data, items=factor_names, major_axis=dts, minor_axis=ids)

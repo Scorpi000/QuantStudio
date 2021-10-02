@@ -7,6 +7,7 @@ from PyQt5.QtCore import pyqtSlot, QModelIndex
 from PyQt5.QtWidgets import QDialog, QTreeWidgetItem, QMessageBox, QInputDialog, QFileDialog, QApplication
 from QuantStudio.Tools.QtGUI.Ui_FactorDBDlg import Ui_FactorDBDlg
 
+from QuantStudio.Tools.api import Panel
 from QuantStudio.Tools.QtGUI.PreviewFactorDlg import PreviewDlg
 from QuantStudio.Tools.QtGUI.ResultDlg import MatplotlibResultDlg
 from QuantStudio.Tools.FileFun import loadCSVFactorData
@@ -260,7 +261,7 @@ class FactorDBDlg(QDialog, Ui_FactorDBDlg):
         self.setEnabled(False)
         FactorData = loadCSVFactorData(FilePath)
         try:
-            self.FactorDB.writeData(pd.Panel({NewFactorName:FactorData}), TableName, if_exists=if_exists)
+            self.FactorDB.writeData(Panel({NewFactorName:FactorData}), TableName, if_exists=if_exists)
             self.populateFactorDBTree()
             QMessageBox.information(self, '完成', '导入数据完成!')
         except Exception as e:

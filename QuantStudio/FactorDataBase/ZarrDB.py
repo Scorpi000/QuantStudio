@@ -14,6 +14,7 @@ from traits.api import Directory, Str
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
 from QuantStudio.Tools.FileFun import listDirDir
+from QuantStudio.Tools.api import Panel
 
 def _identifyDataType(factor_data, data_type=None):
     if (data_type is None) or (data_type=="double"):
@@ -92,7 +93,7 @@ class _FactorTable(FactorTable):
         return sorted(dt.datetime.fromtimestamp(iTimestamp) for iTimestamp in Timestamps)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         Data = {iFactor: self.readFactorData(ifactor_name=iFactor, ids=ids, dts=dts, args=args) for iFactor in factor_names}
-        return pd.Panel(Data).loc[factor_names]
+        return Panel(Data, items=factor_names, major_axis=dts, minor_axis=ids)
     def readFactorData(self, ifactor_name, ids, dts, args={}):
         with self._FactorDB._DataLock:
             ZTable = zarr.open(self._FactorDB.MainDir+os.sep+self.Name, mode="r")

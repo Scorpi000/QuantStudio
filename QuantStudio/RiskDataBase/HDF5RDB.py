@@ -13,6 +13,7 @@ from QuantStudio.Tools.FileFun import listDirFile
 from QuantStudio.Tools.DateTimeFun import cutDateTime
 from QuantStudio.RiskDataBase.RiskDB import RiskDB, RiskTable, FactorRDB, FactorRT
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
+from QuantStudio.Tools.api import Panel
 
 class _RiskTable(RiskTable):
     def getMetaData(self, key=None, args={}):
@@ -38,8 +39,8 @@ class _RiskTable(RiskTable):
                         if iCov.index.intersection(ids).shape[0]>0: iCov = iCov.loc[ids, ids]
                         else: iCov = pd.DataFrame(index=ids, columns=ids)
                     Data[iDT] = iCov
-        if Data: return pd.Panel(Data).loc[dts]
-        return pd.Panel(items=dts, major_axis=ids, minor_axis=ids)
+        if Data: return Panel(Data, items=dts, major_axis=ids, minor_axis=ids)
+        return Panel(items=dts, major_axis=ids, minor_axis=ids)
 
 class HDF5RDB(RiskDB):
     """基于 HDF5 文件的风险数据库"""
@@ -188,8 +189,8 @@ class _FactorRiskTable(FactorRT):
                     iGroup = Group[iDTStr]
                     iFactors = iGroup["Factor"][...]
                     Data[iDT] = pd.DataFrame(iGroup["Data"][...], index=iFactors, columns=iFactors)
-        if Data: return pd.Panel(Data).loc[dts]
-        return pd.Panel(items=dts)
+        if Data: return Panel(Data, items=dts)
+        return Panel(items=dts)
     def __QS_readSpecificRisk__(self, dts, ids=None):
         Data = {}
         with self._RiskDB._DataLock:
@@ -216,11 +217,11 @@ class _FactorRiskTable(FactorRT):
                     if iDTStr not in Group: continue
                     iGroup = Group[iDTStr]
                     Data[iDT] = pd.DataFrame(iGroup["Data"][...], index=iGroup["ID"][...], columns=iGroup["Factor"][...]).T
-        if not Data: return pd.Panel(items=[], major_axis=dts, minor_axis=([] if ids is None else ids))
-        Data = pd.Panel(Data).swapaxes(0, 1).loc[:, dts, :]
+        if not Data: return Panel(major_axis=dts, minor_axis=ids)
+        Data = Panel(Data).swapaxes(0, 1).loc[:, dts, :]
         if ids is not None:
             if Data.minor_axis.intersection(ids).shape[0]>0: Data = Data.loc[:, :, ids]
-            else: Data = pd.Panel(items=Data.items, major_axis=dts, minor_axis=ids)
+            else: Data = Panel(items=Data.items, major_axis=dts, minor_axis=ids)
         return Data
     def readFactorReturn(self, dts):
         Data = {}
@@ -268,7 +269,7 @@ class _FactorRiskTable(FactorRT):
                         Data[iDT] = pd.Series(iGroup["Data"][...], index=iGroup["index"][...])
         if not Data: return None
         if Type=="Series": return pd.DataFrame(Data).T.loc[dts]
-        else: return pd.Panel(Data).loc[dts]
+        else: return Panel(Data, items=dts)
 
 class HDF5FRDB(FactorRDB):
     """基于 HDF5 文件的多因子风险数据库"""

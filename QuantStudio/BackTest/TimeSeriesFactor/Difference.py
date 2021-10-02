@@ -10,6 +10,7 @@ from scipy import stats
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.BackTest.BackTestModel import BaseModule
 from QuantStudio.BackTest.TimeSeriesFactor.Correlation import _calcReturn
+from QuantStudio.Tools.api import Panel
 
 class QuantileDifference(BaseModule):
     """分位数法"""
@@ -98,15 +99,15 @@ class QuantileDifference(BaseModule):
             self._Output["全样本t统计量"][iID], self._Output["全样本p值"][iID] = itStat, ipValue
         DTs = sorted(self._Output["滚动t统计量"][IDs[0]])
         for iID in IDs:
-            self._Output["滚动t统计量"][iID] = pd.Panel(self._Output["滚动t统计量"][iID]).to_frame(filter_observations=False)
-            self._Output["滚动p值"][iID] = pd.Panel(self._Output["滚动p值"][iID]).to_frame(filter_observations=False)
+            self._Output["滚动t统计量"][iID] = Panel(self._Output["滚动t统计量"][iID]).to_frame(filter_observations=False)
+            self._Output["滚动p值"][iID] = Panel(self._Output["滚动p值"][iID]).to_frame(filter_observations=False)
             self._Output["全样本t统计量"][iID] = pd.DataFrame(self._Output["全样本t统计量"][iID]).stack(dropna=False)
             self._Output["全样本p值"][iID] = pd.DataFrame(self._Output["全样本p值"][iID]).stack(dropna=False)
-        self._Output["滚动t统计量"] = pd.Panel(self._Output["滚动t统计量"]).to_frame(filter_observations=False)
+        self._Output["滚动t统计量"] = Panel(self._Output["滚动t统计量"]).to_frame(filter_observations=False)
         self._Output["滚动t统计量"].index.names = ["分位数组1", "分位数组2", "时点"]
         self._Output["滚动t统计量"] = self._Output["滚动t统计量"].reset_index()
         self._Output["滚动t统计量"] = self._Output["滚动t统计量"][self._Output["滚动t统计量"]["分位数组1"]!=self._Output["滚动t统计量"]["分位数组2"]]
-        self._Output["滚动p值"] = pd.Panel(self._Output["滚动p值"]).to_frame(filter_observations=False)
+        self._Output["滚动p值"] = Panel(self._Output["滚动p值"]).to_frame(filter_observations=False)
         self._Output["滚动p值"].index.names = ["分位数组1", "分位数组2", "时点"]
         self._Output["滚动p值"] = self._Output["滚动p值"].reset_index()
         self._Output["滚动p值"] = self._Output["滚动p值"][self._Output["滚动p值"]["分位数组1"]!=self._Output["滚动p值"]["分位数组2"]]

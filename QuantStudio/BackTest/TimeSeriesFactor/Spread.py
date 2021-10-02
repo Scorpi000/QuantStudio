@@ -15,6 +15,7 @@ from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.Tools.DataPreprocessingFun import prepareRegressData
 from QuantStudio.BackTest.BackTestModel import BaseModule
+from QuantStudio.Tools.api import Panel
 
 class Cointegration(BaseModule):
     """协整检验"""
@@ -95,8 +96,8 @@ class Cointegration(BaseModule):
                     except:
                         pass
             self._Output["全样本检验"] = {"统计量": pd.DataFrame(Statistics, index=self._IDs, columns=self._IDs), "p值": pd.DataFrame(pValue, index=self._IDs, columns=self._IDs)}
-        self._Output["滚动检验"] = {"统计量": pd.Panel(self._Output.pop("统计量")).loc[DTs].swapaxes(0, 1).to_frame(filter_observations=False).reset_index(),
-                                    "p值": pd.Panel(self._Output.pop("p值")).loc[DTs].swapaxes(0, 1).to_frame(filter_observations=False).reset_index()}
+        self._Output["滚动检验"] = {"统计量": Panel(self._Output.pop("统计量"), items=DTs, major_axis=self._IDs, minor_axis=self._IDs).swapaxes(0, 1).to_frame(filter_observations=False).reset_index(),
+                                    "p值": Panel(self._Output.pop("p值"), items=DTs, major_axis=self._IDs, minor_axis=self._IDs).swapaxes(0, 1).to_frame(filter_observations=False).reset_index()}
         Cols = self._Output["滚动检验"]["统计量"].columns.tolist()
         Cols[0], Cols[1] = "时点", "ID"
         self._Output["滚动检验"]["统计量"].columns = self._Output["滚动检验"]["p值"].columns = Cols

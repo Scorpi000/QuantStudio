@@ -9,3 +9,10 @@ try:
 except:
     print("Qt GUI 工具导入失败!")
 from .AuxiliaryFun import genAvailableName
+
+if pd.__version__<'0.25.0':
+    #import pandas as pd
+    #Panel = pd.Panel
+    from QuantStudio.Tools.QSObjects import Panel
+else:
+    from QuantStudio.Tools.QSObjects import Panel

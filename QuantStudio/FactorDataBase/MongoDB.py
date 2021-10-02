@@ -10,6 +10,7 @@ from traits.api import Enum, Str, Range, Password, Float, ListStr, List
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
+from QuantStudio.Tools.api import Panel
 
 def _identifyDataType(dtypes):
     if np.dtype('O') in dtypes.values: return 'string'
@@ -17,9 +18,9 @@ def _identifyDataType(dtypes):
 
 def _adjustData(data, look_back, factor_names, ids, dts):
     if ids is not None:
-        data = pd.Panel(data).loc[factor_names, :, ids]
+        data = Panel(data).loc[factor_names, :, ids]
     else:
-        data = pd.Panel(data).loc[factor_names, :, :]
+        data = Panel(data).loc[factor_names, :, :]
     if look_back==0:
         if dts is not None:
             return data.loc[:, dts]
@@ -34,7 +35,7 @@ def _adjustData(data, look_back, factor_names, ids, dts):
         data = dict(data)
         Limits = look_back*24.0*3600
         for iFactorName in data: data[iFactorName] = fillNaByLookback(data[iFactorName], lookback=Limits)
-        data = pd.Panel(data).loc[factor_names]
+        data = Panel(data).loc[factor_names]
     if dts is not None:
         return data.loc[:, dts]
     else:
@@ -174,7 +175,7 @@ class _WideTable(FactorTable):
         RawData = RawData.sort_values(by=[DTField, IDField]).rename(columns={DTField: "QS_DT", IDField: "ID"})
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data = raw_data.set_index(["QS_DT", "ID"])
         DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
         Data = {}

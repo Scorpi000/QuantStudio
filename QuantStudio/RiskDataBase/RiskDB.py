@@ -14,6 +14,7 @@ from multiprocessing import Process, Queue
 from QuantStudio.Tools.DateTimeFun import cutDateTime
 from QuantStudio.RiskModel.RiskModelFun import decomposeCov2Corr
 from QuantStudio import __QS_Object__, __QS_Error__
+from QuantStudio.Tools.api import Panel
 
 # 风险数据库基类, 必须存储的数据有:
 # 风险矩阵: Cov, Panel(items=[时点], major_axis=[ID], minor_axis=[ID])
@@ -137,7 +138,7 @@ class RiskTable(__QS_Object__):
         return Cov.index.tolist()
     # ------------------------数据读取--------------------------------------
     def __QS_readCov__(self, dts, ids=None):
-        return pd.Panel(items=dts, major_axis=ids, minor_axis=ids)
+        return Panel(items=dts, major_axis=ids, minor_axis=ids)
     # 读取协方差矩阵, Panel(items=[时点], major_axis=[ID], minor_axis=[ID])
     def readCov(self, dts, ids=None):
         NonCachedDTs, Cov = [], {}
@@ -149,9 +150,9 @@ class RiskTable(__QS_Object__):
             if ids is not None: Cov[iDT] = iCacheData["Cov"].loc[ids, ids]
             else: Cov[iDT] = iCacheData["Cov"]
         if NonCachedDTs: Cov.update(dict(self.__QS_readCov__(dts=NonCachedDTs, ids=ids)))
-        if not Cov: Cov = pd.Panel(items=dts, major_axis=ids, minor_axis=ids)
+        if not Cov: Cov = Panel(items=dts, major_axis=ids, minor_axis=ids)
         else:
-            Cov = pd.Panel(Cov).loc[dts]
+            Cov = Panel(Cov).loc[dts]
             if ids is not None: Cov = Cov.loc[:, ids, ids]
         return Cov
     # 读取相关系数矩阵, Panel(items=[时点], major_axis=[ID], minor_axis=[ID])
@@ -162,7 +163,7 @@ class RiskTable(__QS_Object__):
             iCov = Cov.loc[iDT]
             iCorr, _ = decomposeCov2Corr(iCov.values)
             Corr[iDT] = pd.DataFrame(iCorr, index=iCov.index, columns=iCov.columns)
-        return pd.Panel(Corr).loc[Cov.items]
+        return Panel(Corr, items=Cov.items, major_axis=Cov.major_axis, minor_axis=Cov.minor_axis)
     # -----------------------遍历模式---------------------------------------
     def start(self, dts, **kwargs):
         if self.ErgodicMode._isStarted: return 0
@@ -313,7 +314,7 @@ class FactorRT(RiskTable):
                 iFactorData = FactorData.loc[:, iDT]
             iCov = np.dot(np.dot(iFactorData.values, FactorCov[iDT].values), iFactorData.values.T) + np.diag(SpecificRisk.loc[iDT].values**2)
             Data[iDT] = pd.DataFrame(iCov, index=iIDs, columns=iIDs)
-        return pd.Panel(Data).loc[dts]
+        return Panel(Data, items=dts)
     def readCov(self, dts, ids=None):
         Data = {}
         CachedDTs = sorted(set(dts).intersection(self.ErgodicMode._CacheData))
@@ -332,10 +333,10 @@ class FactorRT(RiskTable):
                 Data[iDT] = pd.DataFrame(iCov, index=iIDs, columns=iIDs)
         NewDTs = sorted(set(dts).difference(self.ErgodicMode._CacheData))
         if NewDTs: Data.update(dict(self.__QS_readCov__(dts=NewDTs, ids=ids)))
-        return pd.Panel(Data).loc[dts]
+        return Panel(Data, items=dts)
     # 读取因子风险矩阵
     def __QS_readFactorCov__(self, dts):
-        return pd.Panel(items=dts)
+        return Panel(items=dts)
     def readFactorCov(self, dts):
         NonCachedDTs, Cov = [], {}
         for iDT in dts:
@@ -345,8 +346,8 @@ class FactorRT(RiskTable):
                 continue
             Cov[iDT] = iCacheData["FactorCov"]
         if NonCachedDTs: Cov.update(dict(self.__QS_readFactorCov__(dts=NonCachedDTs)))
-        if not Cov: return pd.Panel(items=dts)
-        else: return pd.Panel(Cov).loc[dts]
+        if not Cov: return Panel(items=dts)
+        else: return Panel(Cov, items=dts)
     # 读取特异性风险
     def __QS_readSpecificRisk__(self, dts, ids=None):
         return pd.DataFrame(index=dts, columns=ids)
@@ -367,7 +368,7 @@ class FactorRT(RiskTable):
             return Data
     # 读取截面数据
     def __QS_readFactorData__(self, dts, ids=None):
-        return pd.Panel(major_axis=dts, minor_axis=ids)
+        return Panel(major_axis=dts, minor_axis=ids)
     def readFactorData(self, dts, ids=None):
         NonCachedDTs, Data = [], {}
         for iDT in dts:
@@ -378,9 +379,9 @@ class FactorRT(RiskTable):
             if ids is not None: Data[iDT] = iCacheData["FactorData"].loc[ids].T
             else: Data[iDT] = iCacheData["FactorData"].T
         if NonCachedDTs: Data.update(dict(self.__QS_readFactorData__(dts=NonCachedDTs, ids=ids).swapaxes(0, 1)))
-        if not Data: return pd.Panel(major_axis=dts, minor_axis=ids)
+        if not Data: return Panel(major_axis=dts, minor_axis=ids)
         else:
-            Data = pd.Panel(Data).loc[dts].swapaxes(0, 1)
+            Data = Panel(Data, items=dts).swapaxes(0, 1)
             if ids is not None: Data = Data.loc[:, :, ids]
             return Data
     # 读取因子收益率

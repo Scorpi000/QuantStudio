@@ -11,6 +11,7 @@ from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.QSObjects import QSSQLObject
 from QuantStudio.RiskDataBase.RiskDB import RiskDB, RiskTable, FactorRDB, FactorRT
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
+from QuantStudio.Tools.api import Panel
 
 class _RiskTable(RiskTable):
     def __init__(self, name, rdb, sys_args={}, config_file=None, **kwargs):
@@ -46,8 +47,8 @@ class _RiskTable(RiskTable):
                 if iCov.index.intersection(ids).shape[0]>0: iCov = iCov.loc[ids, ids]
                 else: iCov = pd.DataFrame(index=ids, columns=ids)
             Data[iDT] = iCov
-        if Data: return pd.Panel(Data).loc[dts]
-        return pd.Panel(items=dts, major_axis=ids, minor_axis=ids)
+        if Data: return Panel(Data, items=dts)
+        return Panel(items=dts, major_axis=ids, minor_axis=ids)
 
 class SQLRDB(QSSQLObject, RiskDB):
     """基于关系数据库的风险数据库"""
@@ -173,8 +174,8 @@ class _FactorRiskTable(FactorRT):
             iCov = pd.read_json(iCov, orient="split")
             iCov.index = iCov.columns
             Data[iDT] = iCov
-        if Data: return pd.Panel(Data).loc[dts]
-        return pd.Panel(items=dts)
+        if Data: return Panel(Data, items=dts)
+        return Panel(items=dts)
     def __QS_readSpecificRisk__(self, dts, ids=None):
         SQLStr = "SELECT DateTime, SpecificRisk "
         SQLStr += "FROM "+self._DBTableName+" "
@@ -197,11 +198,11 @@ class _FactorRiskTable(FactorRT):
         Data = {}
         for iDT, iData in self._RiskDB.fetchall(SQLStr):
             Data[iDT] = pd.read_json(iData, orient="split").T
-        if not Data: return pd.Panel(items=[], major_axis=dts, minor_axis=ids)
-        Data = pd.Panel(Data).swapaxes(0, 1).loc[:, dts, :]
+        if not Data: return Panel(items=None, major_axis=dts, minor_axis=ids)
+        Data = Panel(Data, items=dts).swapaxes(0, 1)
         if ids is not None:
             if Data.minor_axis.intersection(ids).shape[0]>0: Data = Data.loc[:, :, ids]
-            else: Data = pd.Panel(items=Data.items, major_axis=dts, minor_axis=ids)
+            else: Data = Panel(items=Data.items, major_axis=dts, minor_axis=ids)
         return Data
     def readFactorReturn(self, dts):
         SQLStr = "SELECT DateTime, FactorReturn "
@@ -246,7 +247,7 @@ class _FactorRiskTable(FactorRT):
                 Data[iDT] = pd.read_json(iData, orient="split", typ=Type)
         if not Data: return None
         if Type=="series": return pd.DataFrame(Data).T.loc[dts]
-        else: return pd.Panel(Data).loc[dts]
+        else: return Panel(Data, items=dts)
     def __QS_readCov__(self, dts, ids=None):
         Data = {}
         SQLStr = "SELECT DateTime, FactorCov, FactorData, SpecificRisk "
@@ -267,8 +268,8 @@ class _FactorRiskTable(FactorRT):
                 iSpecificRisk = iSpecificRisk.loc[iIDs].values
             iCov = np.dot(np.dot(iFactorData, iFactorCov.values), iFactorData.T) + np.diag(iSpecificRisk**2)
             Data[iDT] = pd.DataFrame(iCov, index=iIDs, columns=iIDs)
-        if Data: return pd.Panel(Data).loc[dts]
-        return pd.Panel(items=dts)
+        if Data: return Panel(Data, items=dts)
+        return Panel(items=dts)
 
 class SQLFRDB(QSSQLObject, FactorRDB):
     """基于关系型数据库的多因子风险数据库"""

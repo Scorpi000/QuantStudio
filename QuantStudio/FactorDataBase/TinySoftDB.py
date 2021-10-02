@@ -13,6 +13,7 @@ from QuantStudio import __QS_Error__, __QS_LibPath__, __QS_MainPath__, __QS_Conf
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
 from QuantStudio.FactorDataBase.FDBFun import updateInfo, SQL_Table, SQL_WideTable, SQL_FeatureTable, SQL_MappingTable
+from QuantStudio.Tools.api import Panel
 
 def _adjustID(ids):
     return pd.Series(ids, index=["".join(reversed(iID.split("."))) for iID in ids])
@@ -78,9 +79,9 @@ class _CalendarTable(FactorTable):
         return list(map(lambda x: dt.datetime(*self._TSLPy.DecodeDate(x)), Data))
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         Data = pd.DataFrame(1, index=self.getDateTime(start_dt=dts[0], end_dt=dts[-1]), columns=["SSE", "SZSE"])
-        if Data.index.intersection(dts).shape[0]==0: return pd.Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
+        if Data.index.intersection(dts).shape[0]==0: return Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
         Data = Data.loc[dts, ids]
-        return pd.Panel({"交易日": Data})
+        return Panel({"交易日": Data})
 class _TradeTable(_TSTable):
     """tradetable"""
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
@@ -105,19 +106,19 @@ class _TradeTable(_TSTable):
             ErrorCode, iData, Msg = self._FactorDB._TSLPy.RemoteExecute(iCodeStr, {})
             if ErrorCode!=0: raise __QS_Error__("TinySoft 执行错误: "+Msg.decode("gbk"))
             if iData: Data[iID] = pd.DataFrame(iData).set_index([b"date"])
-        if not Data: return pd.Panel(Data)
-        Data = pd.Panel(Data).swapaxes(0, 2)
+        if not Data: return Panel(Data)
+        Data = Panel(Data).swapaxes(0, 2)
         Data.major_axis = [dt.datetime(*self._FactorDB._TSLPy.DecodeDateTime(iDT)) for iDT in Data.major_axis]
         Data.items = [(iCol.decode("gbk") if isinstance(iCol, bytes) else iCol) for i, iCol in enumerate(Data.items)]
         Data = Data.loc[Fields]
         Data.items = factor_names
         return Data
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[2]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        if raw_data.shape[2]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         return raw_data.loc[:, dts, ids]
     def readDayData(self, factor_names, ids, start_date, end_date, args={}):
         RawData = self.__QS_prepareRawData__(factor_names, ids, dts=[start_date, end_date], args=args)
-        if RawData.shape[2]==0: return pd.Panel(items=factor_names, major_axis=[], minor_axis=ids)
+        if RawData.shape[2]==0: return Panel(items=factor_names, major_axis=[], minor_axis=ids)
         return RawData.loc[:, :, ids]
 
 class _QuoteTable(_TSTable):
@@ -177,19 +178,19 @@ class _QuoteTable(_TSTable):
             ErrorCode, iData, Msg = self._FactorDB._TSLPy.RemoteExecute(iCodeStr, {})
             if ErrorCode!=0: raise __QS_Error__("TinySoft 执行错误: "+Msg.decode("gbk"))
             if iData: Data[iID] = pd.DataFrame(iData).set_index([b"date"])
-        if not Data: return pd.Panel(Data)
-        Data = pd.Panel(Data).swapaxes(0, 2)
+        if not Data: return Panel(Data)
+        Data = Panel(Data).swapaxes(0, 2)
         Data.major_axis = [dt.datetime(*self._FactorDB._TSLPy.DecodeDateTime(iDT)) for iDT in Data.major_axis]
         Data.items = [(iCol.decode("gbk") if isinstance(iCol, bytes) else iCol) for i, iCol in enumerate(Data.items)]
         Data = Data.loc[Fields]
         Data.items = factor_names
         return Data
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[2]==0: return pd.Panel(items=factor_names, major_axis=dts, minor_axis=ids)
+        if raw_data.shape[2]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         return raw_data.loc[:, dts, ids]
     def readDayData(self, factor_names, ids, start_date, end_date, args={}):
         RawData = self.__QS_prepareRawData__(factor_names, ids, dts=[start_date, end_date], args=args)
-        if RawData.shape[2]==0: return pd.Panel(items=factor_names, major_axis=[], minor_axis=ids)
+        if RawData.shape[2]==0: return Panel(items=factor_names, major_axis=[], minor_axis=ids)
         return RawData.loc[:, :, ids]
 
 class _TS_SQL_Table(SQL_Table):
