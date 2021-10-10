@@ -917,10 +917,10 @@ class _LocIndexer(object):
                 Data = pd.DataFrame(self._p._Data[Items].astype(self._p._DTypes[key[0]]), index=self._p._MajorAxis.index, columns=self._p._MinorAxis.index)
                 return Data.loc[key[1], key[2]]
             elif not KeepDim[1]:
-                Data = pd.DataFrame(self._p._Data[:, MajorAxis], index=self._p._MinorAxis.index, columns=self._p._Items.index)
+                Data = pd.DataFrame(self._p._Data[:, MajorAxis].T, index=self._p._MinorAxis.index, columns=self._p._Items.index)
                 return Data.loc[key[2], key[0]]
             else:
-                Data = pd.DataFrame(self._p._Data[:, :, MinorAxis], index=self._p._MajorAxis.index, columns=self._p._Items.index)
+                Data = pd.DataFrame(self._p._Data[:, :, MinorAxis].T, index=self._p._MajorAxis.index, columns=self._p._Items.index)
                 return Data.loc[key[1], key[0]]
         elif sum(KeepDim)==1:# Series
             if KeepDim[0]:
@@ -934,6 +934,71 @@ class _LocIndexer(object):
                 return Data.loc[key[2]]
         else:# Scalar
             return self._p._Data[Items, MajorAxis, MinorAxis]
+    def __setitem__(self, key, value):
+        Items, MajorAxis, MinorAxis = self._p._Items.copy(), self._p._MajorAxis.copy(), self._p._MinorAxis.copy()
+        DTypes = self._p._DTypes.copy()
+        Data = self._p._Data
+        if not isinstance(key, tuple):
+            try:
+                Items.loc[key] = -1
+            except:
+                self._p.iloc[key] = value
+                return
+            else:
+                key = (key, slice(None), slice(None))
+        else:
+            key += (slice(None),) * (3 - len(key))
+        if len(key)>3: raise IndexError("QuantStudio.Tools.QSObjects.Panel.loc: Too many indexers")
+        # items
+        Items.loc[key[0]] = -1
+        Items.loc[:] = np.arange(Items.shape[0])
+        Key0 = Items.loc[key[0]]
+        if isinstance(key[0], slice):
+            Key0 = slice(Key0.iloc[0], Key0.iloc[-1]+1, key[0].step)
+        elif isinstance(Key0, pd.Series):
+            Key0 = Key0.tolist()
+        if Items.shape[0]>Data.shape[0]:
+            DTypes = DTypes.loc[Items.index]
+            if isinstance(value, pd.DataFrame):
+                value = value.loc[self._p._MajorAxis.index, self._p._MinorAxis.index]
+                ValueDType = value.dtypes.unique()
+                DTypes = DTypes.fillna(ValueDType[0] if ValueDType.shape[0]==1 else np.dtype("O"))
+            elif hasattr(value, "dtypes"):
+                DTypes.loc[value.dtypes.index] = value.dtypes
+            else:
+                DTypes = DTypes.fillna(getattr(value, "dtype", np.dtype("O")))
+            Data = np.concatenate((Data, np.full(shape=(Items.shape[0] - Data.shape[0], Data.shape[1], Data.shape[2]), fill_value=None, dtype=Data.dtype)), axis=0)
+        # major_axis
+        MajorAxis.loc[key[1]] = -1
+        MajorAxis.loc[:] = np.arange(MajorAxis.shape[0])
+        Key1 = MajorAxis.loc[key[1]]
+        if isinstance(key[1], slice):
+            Key1 = slice(Key1.iloc[0], Key1.iloc[-1]+1, key[1].step)
+        elif isinstance(Key1, pd.Series):
+            Key1 = Key1.tolist()
+        if MajorAxis.shape[0]>Data.shape[1]:
+            Data = np.concatenate((Data, np.full(shape=(Data.shape[0], MajorAxis.shape[0] - Data.shape[1], Data.shape[2]), fill_value=None, dtype=Data.dtype)), axis=1)
+        # minor_axis
+        MinorAxis.loc[key[2]] = -1
+        MinorAxis.loc[:] = np.arange(MinorAxis.shape[0])
+        Key2 = MinorAxis.loc[key[2]]
+        if isinstance(key[2], slice):
+            Key2 = slice(Key2.iloc[0], Key2.iloc[-1]+1, key[2].step)
+        elif isinstance(Key2, pd.Series):
+            Key2 = Key2.tolist()
+        if MinorAxis.shape[0]>Data.shape[2]:
+            Data = np.concatenate((Data, np.full(shape=(Data.shape[0], Data.shape[1], MinorAxis.shape[0] - Data.shape[2]), fill_value=None, dtype=Data.dtype)), axis=2)
+        # 赋值
+        try:
+            Data[(Key0, Key1, Key2)] = value
+        except ValueError:
+            Data = Data.astype(np.dtype("O"))
+            Data[(Key0, Key1, Key2)] = value
+        self._p._Data = Data
+        self._p._Items = Items
+        self._p._MajorAxis = MajorAxis
+        self._p._MinorAxis = MinorAxis
+        self._p._DTypes = DTypes
 
 class _iLocIndexer(object):
     def __init__(self, p):
@@ -957,9 +1022,9 @@ class _iLocIndexer(object):
             if not KeepDim[0]:
                 return pd.DataFrame(self._p._Data[key[0]][key[1]][:, key[2]].astype(self._p._DTypes[Items]), index=MajorAxis, columns=MinorAxis)
             elif not KeepDim[1]:
-                return pd.DataFrame(self._p._Data[:, key[1]][key[0]][:, key[2]], index=MinorAxis, columns=Items)
+                return pd.DataFrame(self._p._Data[:, key[1]][key[0]][:, key[2]].T, index=MinorAxis, columns=Items)
             else:
-                return pd.DataFrame(self._p._Data[:, :, key[2]][key[0]][:, key[1]], index=MajorAxis, columns=Items)
+                return pd.DataFrame(self._p._Data[:, :, key[2]][key[0]][:, key[1]].T, index=MajorAxis, columns=Items)
         elif sum(KeepDim)==1:# Series
             if KeepDim[0]:
                 return pd.Series(self._p._Data[:, key[1], key[2]][key[0]], index=Items)
@@ -969,6 +1034,8 @@ class _iLocIndexer(object):
                 return pd.Series(self._p._Data[key[0], key[1]][key[2]].astype(self._p._DTypes[Items]), index=MinorAxis)
         else:
             return self._p._Data[key]
+    def __setitem__(self, key, value):
+        self._p._Data[key] = value
         
 class Panel(object):
     """Panel"""
@@ -1029,7 +1096,7 @@ class Panel(object):
                 MajorAxis = MajorAxis.union(Data[iItem].index)
             if minor_axis is None:
                 MinorAxis = MinorAxis.union(Data[iItem].columns)
-        self._DTypes = pd.Series(self._DTypes, index=self._Items)
+        self._DTypes = pd.Series(self._DTypes, index=self._Items.index)
         self._UniDType = self._DTypes.unique()
         if self._UniDType.shape[0]==1:
             self._UniDType = self._UniDType[0]
@@ -1066,6 +1133,8 @@ class Panel(object):
         return key in self._Items.index
     def __getitem__(self, key):
         return self._Loc[key]
+    def __setitem__(self, key, value):
+        self.loc[key] = value
     def get(self, key, default=None):
         try:
             return self[key]
@@ -1123,14 +1192,57 @@ class Panel(object):
         Dims[axis1], Dims[axis2] = Dims[axis2], Dims[axis1]
         return Panel(data=Data, items=Dims[0], major_axis=Dims[1], minor_axis=Dims[2])
     def to_frame(self, filter_observations=True):
-        pass# TODO
-    def sort_index(axis=0, level=None, ascending=True, inplace=False, kind='quicksort', na_position='last', sort_remaining=True):
-        pass# TODO
+        Index = pd.MultiIndex.from_product([self._MajorAxis, self._MinorAxis], names=(self._MajorAxis.name, self._MinorAxis.name))
+        df = pd.DataFrame(self._Data.swapaxes(1, 2).swapaxes(0, 2).reshape((self._MajorAxis.shape[0]*self._MinorAxis.shape[0], self._Items.shape[0])), index=Index, columns=self._Items.index)
+        if filter_observations:
+            return df.dropna(axis=0, how="all")
+        else:
+            return df        
+    def sort_index(self, axis=0, level=None, ascending=True, inplace=False, kind='quicksort', na_position='last', sort_remaining=True):
+        if axis==0: Index = self._Items.sort_index(axis=0, level=level, ascending=ascending, inplace=False, kind=kind, na_position=na_position, sort_remaining=sort_remaining)
+        elif axis==1: Index = self._MajorAxis.sort_index(axis=0, level=level, ascending=ascending, inplace=False, kind=kind, na_position=na_position, sort_remaining=sort_remaining)
+        elif axis==2: Index = self._MinorAxis.sort_index(axis=0, level=level, ascending=ascending, inplace=False, kind=kind, na_position=na_position, sort_remaining=sort_remaining)
+        else: raise ValueError(f"No axis named {axis} for object type {type(self)}")
+        if inplace:
+            if axis==0:
+                self._Data = self._Data[Index.values]
+                self._DTypes = self._DTypes.loc[Index.index]
+                self._Items = pd.Series(np.arange(Index.shape[0]), index=Index.index)
+            elif axis==1:
+                self._Data = self._Data[:, Index.values]
+                self._MajorAxis = pd.Series(np.arange(Index.shape[0]), index=Index.index)
+            else:
+                self._Data = self._Data[:, :, Index.values]
+                self._MinorAxis = pd.Series(np.arange(Index.shape[0]), index=Index.index)
+        else:
+            if axis==0:
+                p = Panel(data=self._Data[Index.values], items=Index.index, major_axis=self._MajorAxis.index, minor_axis=self._MinorAxis.index)
+                p._DTypes = self._DTypes.loc[Index.index]
+            elif axis==1:
+                p = Panel(data=self._Data[:, Index.values], items=self._Items.index, major_axis=Index.index, minor_axis=self._MinorAxis.index)
+                p._DTypes = self._DTypes
+            else:
+                p = Panel(data=self._Data[:, :, Index.values], items=self._Items.index, major_axis=self._MajorAxis.index, minor_axis=Index.index)
+                p._DTypes = self._DTypes
+            return p
     def fillna(self, value=0, inplace=True):
-        pass# TODO
+        if inplace:
+            self._Data[pd.isnull(self._Data)] = value
+            return
+        Data = self._Data.copy()
+        Data[pd.isnull(Data)] = value
+        p = Panel(data=Data, items=self._Items.index, major_axis=self._MajorAxis.index, minor_axis=self._MinorAxis.index)
+        p._DTypes = self._DTypes
+        p._UniDType = self._UniDType
+        return p
 
 if __name__=="__main__":
-    p = Panel(np.random.randn(2, 3, 4), items=["a", "b"])
+    np.random.seed(0)
+    p = Panel({
+        "a1": pd.DataFrame(np.random.randn(3,4), index=["b"+str(i) for i in range(1,4)], columns=["c"+str(i) for i in range(1,5)]),
+        "a2": pd.DataFrame(np.random.randn(3,4), index=["b"+str(i) for i in range(1,4)], columns=["c"+str(i) for i in range(1,5)])
+    })
+    #p = Panel(np.random.randn(2, 3, 4), items=["b", "a"])
     #print(p)
     #print(p.loc["a", :])
     #print(p.loc[:, [0,1], 1:2])
@@ -1139,9 +1251,33 @@ if __name__=="__main__":
     #print(p.iloc[:, [0,1], 1:2])
     #print(p.iloc[1, :, 2])
     #print(p.swapaxes(0, 2))
-    d = p.loc[["b", "c"], :, [3, 4]]
-    print(p.loc[["b", "c"], :, [3, 4]])
+    #d = p.loc[["b", "c"], :, [3, 4]]
+    #print(p.loc[["b", "c"], :, [3, 4]])
+    #print(p.to_frame())
+    #print(p.sort_index(axis=0))
+    
+    #p.iloc[0] = np.ones((3,4))
+    #p.iloc[[0,1]] = np.random.randn(2,3,4)
+    #p.iloc[0:, [1,2]] = np.random.randn(2,2,4)
+    #p.iloc[0:, [1,2], 3] = np.random.randn(2,2)
+    #p.iloc[:] = np.random.randn(2,3,4)
+    #p.iloc[p.values>0] = np.nan
+    
+    #p.loc["a"] = np.ones((3,4))
+    #p.loc[["a", "b"]] = np.random.randn(2,3,4)
+    ##p.loc["a":, [1,2]] = np.random.randn(2,2,4)
+    #p.loc["a":, [1,2], 3] = np.random.randn(1,2)
+    #p.loc[:] = np.random.randn(2,3,4)
+    #p.loc[p.values>0] = np.nan
+    
+    #p["a"] = np.ones((3,4))
+    #p[["a", "b"]] = np.random.randn(2,3,4)
+    ##p["a":, [1,2]] = np.random.randn(2,2,4)
+    #p["a":, [1,2], 3] = np.random.randn(1,2)
+    #p[:] = np.random.randn(2,3,4)
+    #p[p.values>0] = np.nan
     
     #p = Panel({}, items=["b","a"])
     #p = Panel(items=["a", "b"], major_axis=[1,2,3], minor_axis=[4,5,6])
     #print(p)
+    print("===")
