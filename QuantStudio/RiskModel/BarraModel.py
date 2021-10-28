@@ -2,14 +2,13 @@
 import os
 import imp
 import time
-import logging
 
 import pandas as pd
 import numpy as np
 from progressbar import ProgressBar
 
 from . import RiskModelFun
-from QuantStudio import __QS_LibPath__, __QS_Error__
+from QuantStudio import __QS_LibPath__, __QS_Error__, __QS_Logger__
 from QuantStudio.Tools.AuxiliaryFun import startMultiProcess
 
 # 截面回归生成因子收益率和特异性收益率
@@ -148,7 +147,7 @@ class BarraModel(object):
     """Barra 风险模型"""
     def __init__(self, name, factor_table, risk_db, table_name, config_file=None, **kwargs):
         if "logger" in kwargs: self._QS_Logger = kwargs.pop("logger")
-        else: self._QS_Logger = logging.getLogger(__name__)
+        else: self._QS_Logger = __QS_Logger__
         self.ModelType = "多因子风险模型"
         self.Name = name
         if config_file is None: config_file = __QS_LibPath__+os.sep+"BarraModelConfig.py"

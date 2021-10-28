@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
 import os
-import sys
 import platform
 import logging
 import json
-import operator
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -17,6 +15,7 @@ from traitsui.menu import OKButton, CancelButton
 __QS_MainPath__ = os.path.split(os.path.realpath(__file__))[0]
 __QS_LibPath__ = __QS_MainPath__+os.sep+"Lib"
 __QS_ConfigPath__ = os.path.expanduser("~")+os.sep+"QuantStudioConfig"
+__QS_Logger__ = logging.getLogger()
 
 from matplotlib.pylab import mpl
 if platform.system()=="Windows":
@@ -39,7 +38,7 @@ class __QS_Object__(HasTraits):
     """Quant Studio 系统对象"""
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._QS_Logger = kwargs.pop("logger", None)
-        if self._QS_Logger is None: self._QS_Logger = logging.getLogger()
+        if self._QS_Logger is None: self._QS_Logger = __QS_Logger__
         super().__init__(**kwargs)
         self._LabelTrait = {}
         self._ArgOrder = pd.Series()

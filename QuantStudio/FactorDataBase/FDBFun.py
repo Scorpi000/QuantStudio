@@ -1444,10 +1444,11 @@ class SQL_MappingTable(SQL_Table):
         SQLStr += self._genFromSQLStr(args=args)+" "
         if idt is not None:
             SQLStr += "WHERE "+DTField+"<="+idt.strftime(self._DTFormat)+" "
+            SQLStr += " AND (("+EndDTField+" IS NULL) "
             if args.get("包含结束时点", self.EndDTIncluded):
-                SQLStr += "AND "+EndDTField+">="+idt.strftime(self._DTFormat)+" "
+                SQLStr += "OR ("+EndDTField+">="+idt.strftime(self._DTFormat)+")) "
             else:
-                SQLStr += "AND "+EndDTField+">"+idt.strftime(self._DTFormat)+" "
+                SQLStr += "OR ("+EndDTField+">"+idt.strftime(self._DTFormat)+")) "
         else: SQLStr += "WHERE "+DTField+" IS NOT NULL "
         SQLStr += "AND "+IDField+" IS NOT NULL "
         SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "

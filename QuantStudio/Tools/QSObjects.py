@@ -637,18 +637,20 @@ class QSNeo4jObject(__QS_Object__):
         if self._Connection is not None:
             if os.getpid()!=self._PID: self._connect()# 如果进程号发生变化, 重连
         return self._Connection
-    def _connect(self):
-        self._Connection = None
+    def _getConnection(self):
         if (self.Connector=="neo4j") or (self.Connector=="default"):
             try:
                 import neo4j
-                self._Connection = neo4j.GraphDatabase.driver(f"neo4j://{self.IPAddr}:{self.Port}", auth=(self.User, self.Pwd))
+                Conn = neo4j.GraphDatabase.driver(f"neo4j://{self.IPAddr}:{self.Port}", auth=(self.User, self.Pwd))
             except Exception as e:
                 Msg = ("'%s' 尝试使用 neo4j 连接(%s@%s:%d)数据库失败: %s" % (self.Name, self.User, self.IPAddr, self.Port, str(e)))
                 self._QS_Logger.error(Msg)
                 if self.Connector!="default": raise e
             else:
-                self._Connector = "neo4j"
+                Connector = "neo4j"
+        return Conn, Connector
+    def _connect(self):
+        self._Connection, self._Connector = self._getConnection()
         self._PID = os.getpid()
         return 0
     def connect(self):
@@ -694,21 +696,23 @@ class QSNeo4jObject(__QS_Object__):
             Session.run(cypher_str, parameters=parameters)
         return 0
     # 写入实体数据
-    # data: DataFrame(index=[ID], columns=[属性])
+    # data: DataFrame(index=[实体ID], columns=[实体属性])
+    # entity_labels: 实体标签
+    # entity_id: 实体 ID 字段
     # kwargs: 可选参数
     #     thread_num: 写入线程数量
-    def _writeEntityData(self, data, entity_labels, id_field, if_exists="update", **kwargs):
-        IDs, FactorNames = data.index.tolist(), data.columns.tolist()
+    def _writeEntityData(self, data, entity_labels, entity_id, if_exists="update", **kwargs):
+        IDs, Fields = data.index.tolist(), data.columns.tolist()
         if if_exists!="update":
             LabelStr = "`:`".join(entity_labels)
             CypherStr = f"""
                 MATCH (n:`{LabelStr}`)
-                WHERE n.`{id_field}` IN $ids
-                RETURN n.`{id_field}`, n.`{'`, n.`'.join(FactorNames)}`
+                WHERE n.`{entity_id}` IN $ids
+                RETURN n.`{entity_id}`, n.`{'`, n.`'.join(Fields)}`
             """
-            self.fetchall(CypherStr, parameters={"ids": IDs})
-            if not OldData: OldData = pd.DataFrame(index=IDs, columns=FactorNames)
-            else: OldData = pd.DataFrame(np.array(OldData, dtype="O"), columns=["ID"]+FactorNames).set_index(["ID"]).loc[IDs]
+            OldData = self.fetchall(CypherStr, parameters={"ids": IDs})
+            if not OldData: OldData = pd.DataFrame(index=IDs, columns=Fields)
+            else: OldData = pd.DataFrame(np.array(OldData, dtype="O"), columns=["ID"]+Fields).set_index(["ID"]).loc[IDs]
             if if_exists=="append":
                 data = OldData.where(pd.notnull(OldData), data)
             elif if_exists=="update_notnull":
@@ -716,95 +720,132 @@ class QSNeo4jObject(__QS_Object__):
             else:
                 raise __QS_Error__(f"因子库 '{self.Name}' 调用方法 writeFeatureData 错误: 不支持的写入方式 {if_exists}'!")
         LabelStr = "`:`".join(entity_labels)
-        data[id_field] = data.index
+        data[entity_id] = data.index
         CypherStr = f"""
             UNWIND $ids AS iID
-            MERGE (n:`{LabelStr}` {{`{id_field}`: iID}})
+            MERGE (n:`{LabelStr}` {{`{entity_id}`: iID}})
             ON CREATE SET n = $data[iID]
             ON MATCH SET n += $data[iID]
         """
         data = data.astype("O").where(pd.notnull(data), None)
         return self.execute(CypherStr, parameters={"ids": IDs, "data": data.T.to_dict(orient="dict")})
-    def writeEntityData(self, data, entity_labels, id_field, if_exists="update", **kwargs):
+    def writeEntityData(self, data, entity_labels, entity_id, if_exists="update", **kwargs):
         ThreadNum = kwargs.get("thread_num", 0)
         if ThreadNum==0:
-            return self._writeEntityData(data, entity_labels, id_field, if_exists, **kwargs)
-        Tasks, NumAlloc = [], distributeEqual(data.shape[0], min(ThreadNum, data.shape[0]))
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(NumAlloc)) as Executor:
-            for i, iNum in enumerate(NumAlloc):
-                iStartIdx = sum(NumAlloc[:i])
-                iData = data.iloc[iStartIdx:iStartIdx+iNum]
-                Tasks.append(Executor.submit(self._writeEntityData, iData, entity_labels, id_field, if_exists, **kwargs))
-            for iTask in concurrent.futures.as_completed(Tasks): iTask.result()
-        return 0
-    
-    # 写入关系数据
-    # data: DataFrame(index=[ID], columns=[关联实体字段])
-    # retain_relation: False 表示 relation_field 为 NULL 的关系将被删除, True 表示不删除
-    # kwargs: 可选参数
-    #     thread_num: 写入线程数量
-    def _writeRelationData(self, data, relation_label, relation_field, direction, id_labels, id_field, opp_labels, opp_field, retain_relation=True, if_exists="update", **kwargs):
-        OppFields = data.columns.tolist()
-        IDNode = f"(n1:`{'`:`'.join(id_labels)}` {{`{id_field}`: p[0]}})"
-        OppNode = f"(n2:`{'`:`'.join(opp_labels)}` {{`{opp_field}`: $opp_entity[i]}})"
-        if direction=="->":
-            Relation = f"(n1) - [r:`{relation_label}`] -> (n2)"
-        elif direction=="<-":
-            Relation = f"(n1) <- [r:`{relation_label}`] - (n2)"
-        else:
-            Msg = ("因子库 '%s' 调用方法 writeRelationFeatureData 错误: 不支持的参数值 %s : %s " % (self.Name, "direction", str(direction)))
-            self._QS_Logger.error(Msg)
-            raise __QS_Error__(Msg)
-        CypherStr = f"""
-            UNWIND range(0, size($opp_entity)-1) AS i
-            MERGE {OppNode}
-            WITH n2, i
-            UNWIND $data[i] AS p
-            MERGE {IDNode}
-            MERGE {Relation}
-        """
-        if if_exists=="update_notnull":
-            data = data.apply(lambda s: s.dropna().reset_index().values.tolist(), axis=0, raw=False).tolist()
-            CypherStr += f" SET r.`{relation_field}` = p[1]"
-        elif if_exists=="append":
-            data = data.apply(lambda s: s.dropna().reset_index().values.tolist(), axis=0, raw=False).tolist()
-            CypherStr += f" WHERE r.`{relation_field}` IS NULL SET r.`{relation_field}` = p[1]"
-        else:
-            OldIDStr = f"""
-                MATCH (n1:`{'`:`'.join(id_labels)}`) - [r:`{relation_label}`] -> (n2:`{'`:`'.join(opp_labels)}`)
-                WHERE n1.`{id_field}` IS NOT NULL AND r.`{relation_field}` IS NOT NULL AND n2.`{opp_field}` IN $opp_entity
-                RETURN collect(DISTINCT n1.`{id_field}`)
-            """
-            OldIDs = self.fetchall(OldIDStr, parameters={"opp_entity": OppFields})
-            if OldIDs: OldIDs = OldIDs[0][0]
-            def _chg2None(s):
-                s = s.loc[s.dropna().index.union(OldIDs)].astype("O")
-                return s.where(pd.notnull(s), None).reset_index().values.tolist()
-            data = data.apply(_chg2None, axis=0, raw=False).tolist()
-            CypherStr += f" SET r.`{relation_field}` = p[1]"
-        self.execute(CypherStr, parameters={"opp_entity": OppFields, "data": data})
-        return 0
-    def writeRelationData(self, data, relation_label, relation_field, direction, id_labels, id_field, opp_labels, opp_field, retain_relation=True, if_exists="update", **kwargs):
-        ThreadNum = kwargs.get("thread_num", 0)
-        if ThreadNum==0:
-            self._writeRelationData(data, relation_label, relation_field, direction, id_labels, id_field, opp_labels, opp_field, if_exists, **kwargs)
+            self._writeEntityData(data, entity_labels, entity_id, if_exists, **kwargs)
         else:
             Tasks, NumAlloc = [], distributeEqual(data.shape[0], min(ThreadNum, data.shape[0]))
             with concurrent.futures.ThreadPoolExecutor(max_workers=len(NumAlloc)) as Executor:
                 for i, iNum in enumerate(NumAlloc):
                     iStartIdx = sum(NumAlloc[:i])
                     iData = data.iloc[iStartIdx:iStartIdx+iNum]
-                    Tasks.append(Executor.submit(self._writeRelationData, iData, relation_label, relation_field, direction, id_labels, id_field, opp_labels, opp_field, if_exists, **kwargs))
+                    Tasks.append(Executor.submit(self._writeEntityData, iData, entity_labels, entity_id, if_exists, **kwargs))
                 for iTask in concurrent.futures.as_completed(Tasks): iTask.result()
-        # 删除属性为 NULL 的关系
-        if not retain_relation:
-            DelStr = f"""
-                MATCH (n1:`{'`:`'.join(id_labels)}`) - [r:`{relation_label}`] -> (n2:`{'`:`'.join(opp_labels)}`)
-                WHERE n1.`{id_field}` IS NOT NULL AND r.`{relation_field}` IS NULL AND n2.`{opp_field}` IN $opp_entity
-                DELETE r
-            """
-            self.execute(DelStr, parameters={"opp_entity": data.columns.tolist()})
         return 0
+    # 删除实体
+    # entity_labels: 实体标签
+    # entity_ids: {实体 ID 字段: [实体 ID]}
+    def deleteEntity(self, entity_labels, entity_ids, **kwargs):
+        EntityNode = (f"(n:`{'`:`'.join(entity_labels)}`)" if entity_labels else "(n)")
+        CypherStr = f"MATCH {EntityNode} "
+        if entity_ids:
+            CypherStr += "WHERE "+" AND ".join(f"n.`{iField}` IN $entity_ids['{iField}']" for iField in entity_ids)+" "
+        CypherStr += "DETACH DELETE n"
+        return self.execute(CypherStr, parameters={"entity_ids": entity_ids})
+    # 写入关系数据
+    # data: DataFrame(index=[源ID, 目标ID], columns=[关系属性]), 如果为 data.shape[1]==0 表示只创建关系
+    # relation_label: 关系标签
+    # source_labels: 源标签
+    # target_labels: 目标标签
+    # kwargs: 可选参数
+    #     source_id: 源 ID 字段, 默认取 data.index.names[0]
+    #     target_id: 目标 ID 字段, 默认取 data.index.names[1]
+    #     thread_num: 写入线程数量
+    def _writeRelationData(self, data, relation_label, source_labels, target_labels, if_exists="update", conn=None, **kwargs):
+        SourceID = kwargs.get("source_id", data.index.names[0])
+        if pd.isnull(SourceID):
+            raise __QS_Error__("QSNeo4jObject._writeRelationData: 源 ID 字段不能缺失, 请指定参数 source_id")
+        else:
+            SourceID = str(SourceID)
+        TargetID = kwargs.get("target_id", data.index.names[1])
+        if pd.isnull(TargetID):
+            raise __QS_Error__("QSNeo4jObject._writeRelationData: 目标 ID 字段不能缺失, 请指定参数 target_id")
+        else:
+            TargetID = str(TargetID)
+        SourceNode = (f"(n1:`{'`:`'.join(source_labels)}` {{`{SourceID}`: d[0]}})" if source_labels else f"(n1 {{`{SourceID}`: d[0]}})")
+        TargetNode = (f"(n2:`{'`:`'.join(target_labels)}` {{`{TargetID}`: d[1]}})" if target_labels else f"(n2 {{`{TargetID}`: d[1]}})")
+        Relation = (f"(n1) - [r:`{relation_label}`] -> (n2)" if relation_label is not None else "(n1) - [r] -> (n2)")
+        CypherStr = f"""
+            UNWIND $data AS d
+            MERGE {SourceNode}
+            MERGE {TargetNode}
+            MERGE {Relation}
+        """
+        data = data.loc[data.index.dropna(how="any")]
+        if data.shape[0]==0: return 0
+        if data.shape[1]>0:
+            CypherStr += f" SET "
+            for i, iField in enumerate(data.columns): CypherStr += f" r.`{iField}` = d[{2+i}], "
+            CypherStr = CypherStr[:-2]
+            if if_exists!="update":
+                SourceIDs = data.index.get_level_values(0).tolist()
+                TargetIDs = data.index.get_level_values(1).tolist()
+                OldDataStr = (f"MATCH (n1:`{'`:`'.join(source_labels)}`) - [r:`{relation_label}`] -> (n2:`{'`:`'.join(target_labels)}`)" if relation_label is not None else f"MATCH (n1:`{'`:`'.join(source_labels)}`) - [r] -> (n2:`{'`:`'.join(target_labels)}`)")
+                OldDataStr += f" WHERE n1.`{SourceID}` IN $source_ids AND n2.`{TargetID}` IN $target_ids "
+                OldDataStr += f" RETURN n1.`{SourceID}`, n2.`{TargetID}`, r.`{'`, r.`'.join(data.columns)}`"
+                OldData = self.fetchall(OldDataStr, parameters={"source_ids": SourceIDs, "target_ids": TargetIDs})
+                if OldData:
+                    OldData = pd.DataFrame(OldData, columns=[SourceID, TargetID]+data.columns.tolist()).set_index([SourceID, TargetID]).loc[data.index]
+                    if if_exists=="append":
+                        data = OldData.where(pd.notnull(OldData), data)
+                    elif if_exists=="update_notnull":
+                        data = data.where(pd.notnull(data), OldData)
+                    else:
+                        raise __QS_Error__(f"QSNeo4jObject._writeRelationData: 不支持的写入方式 '{if_exists}'")
+        data = data.astype("O").where(pd.notnull(data), None).reset_index().values.tolist()
+        if conn is None:
+            self.execute(CypherStr, parameters={"data": data})
+        else:
+            with conn.session(database=self.DBName) as Session:
+                Session.run(CypherStr, parameters={"data": data})
+        return 0
+    def writeRelationData(self, data, relation_label, source_labels, target_labels, if_exists="update", **kwargs):
+        ThreadNum = kwargs.get("thread_num", 0)
+        if ThreadNum==0:
+            self._writeRelationData(data, relation_label, source_labels, target_labels, if_exists, conn=None, **kwargs)
+        else:
+            Tasks, NumAlloc = [], distributeEqual(data.shape[0], min(ThreadNum, data.shape[0]))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(NumAlloc)) as Executor:
+                for i, iNum in enumerate(NumAlloc):
+                    iStartIdx = sum(NumAlloc[:i])
+                    iData = data.iloc[iStartIdx:iStartIdx+iNum]
+                    iConn, _ = self._getConnection()
+                    Tasks.append(Executor.submit(self._writeRelationData, iData, relation_label, source_labels, target_labels, if_exists, conn=iConn, **kwargs))
+                for iTask in concurrent.futures.as_completed(Tasks): iTask.result()
+        return 0
+    # 删除关系
+    # relation_label: 关系标签
+    # relation_ids: {关系 ID 字段: [关系 ID]}
+    # source_labels: 源标签
+    # source_ids: {源 ID 字段: [源 ID]}
+    # target_labels: 目标标签
+    # target_ids: {目标 ID 字段: [目标 ID]}
+    def deleteRelation(self, relation_label, relation_ids, source_labels, source_ids, target_labels, target_ids, **kwargs):
+        SourceNode = (f"(n1:`{'`:`'.join(source_labels)}`)" if source_labels else "(n1)")
+        TargetNode = (f"(n2:`{'`:`'.join(target_labels)}`)" if target_labels else "(n2)")
+        Relation = (f"[r:`{relation_label}`]" if relation_label else "[r]")
+        CypherStr = f"MATCH {SourceNode} - {Relation} -> {TargetNode} "
+        Conditions = []
+        if relation_ids:
+            for iField in relation_ids: Conditions.append(f"r.`{iField}` IN $relation_ids['{iField}']")
+        if source_ids:
+            for iField in source_ids: Conditions.append(f"n1.`{iField}` IN $source_ids['{iField}']")
+        if target_ids:
+            for iField in target_ids: Conditions.append(f"n2.`{iField}` IN $target_ids['{iField}']")
+        if Conditions:
+            CypherStr += "WHERE "+" AND ".join(Conditions)+" "
+        CypherStr += "DELETE r"
+        return self.execute(CypherStr, parameters={"relation_ids": relation_ids, "source_ids": source_ids, "target_ids": target_ids})
 
 # put 函数会阻塞, 直至对象传输完毕
 class QSPipe(object):
