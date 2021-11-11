@@ -40,7 +40,7 @@ def DummyVarTo01Var(dummy_var,ignore_na=False,ignores=[],ignore_nonstring=False)
 
 # 将元素为 list 的 DataFrame 扩展成元素为标量的 DataFrame, index 将被 reset
 def expandListElementDataFrame(df, expand_index=True):
-    ElementLen = df.iloc[:, 0].apply(lambda x: len(x) if isinstance(x, list) else 0)
+    ElementLen = df.iloc[:, 0].apply(lambda x: len(x)+1 if isinstance(x, list) else 0)
     Mask = (ElementLen>0)
     data = df[Mask]
     if data.shape[0]==0: return (df.reset_index() if expand_index else df)
@@ -49,10 +49,34 @@ def expandListElementDataFrame(df, expand_index=True):
         data = data.reset_index()
         Cols = data.columns.tolist()
         for i in range(data.shape[1] - nCol):
-            data[Cols[i]] = data.pop(Cols[i]).apply(lambda x: [x]) * ElementLen[Mask].values
+            data[Cols[i]] = data.pop(Cols[i]).apply(lambda x: [x]) * (ElementLen[Mask].values - 1)
         data = data.loc[:, Cols]
     data = pd.DataFrame(data.sum(axis=0).tolist(), index=data.columns).T
     if expand_index:
         return data.append(df[~Mask].reset_index(), ignore_index=True)
     else:
         return data.append(df[~Mask], ignore_index=True)
+
+# 全角转半角
+def strQ2B(ustring):
+    rstring = ""
+    for uchar in ustring:
+        inside_code=ord(uchar)
+        if inside_code==12288:# 全角空格直接转换            
+            inside_code = 32
+        elif (inside_code >= 65281 and inside_code <= 65374):#全角字符（除空格）根据关系转化
+            inside_code -= 65248
+        rstring += chr(inside_code)
+    return rstring
+
+# 半角转全角
+def strB2Q(ustring):
+    rstring = ""
+    for uchar in ustring:
+        inside_code = ord(uchar)
+        if inside_code==32:#半角空格直接转化                  
+            inside_code = 12288
+        elif inside_code>=32 and inside_code<=126:#半角字符（除空格）根据关系转化
+            inside_code += 65248
+        rstring += chr(inside_code)
+    return rstring

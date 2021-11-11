@@ -11,6 +11,7 @@ from functools import lru_cache
 
 import numpy as np
 import pandas as pd
+import openpyxl
 
 from QuantStudio import __QS_Error__
 
@@ -300,3 +301,28 @@ def getShelveFileSuffix():
         #fcntl.flock(file.fileno(), flags)
     #def unlockFile(file):
         #fcntl.flock(file.fileno(), fcntl.LOCK_UN)
+
+# 将 DataFrame 写入 Excel 文件
+def writeDataFrame2Excel(df, file_path, sheet_name, startrow=0, startcol=0, header=True, index=True):
+    if not os.path.isfile(file_path):
+        return df.to_excel(file_path, sheet_name=sheet_name, header=header, index=index, startrow=startrow, startcol=startcol)
+    WB = openpyxl.load_workbook(filename=file_path, read_only=False)
+    if sheet_name in WB.sheetnames:
+        Sheet = WB[sheet_name]
+    else:
+        Sheet = WB.create_sheet(sheet_name)
+    if startrow is None:
+        startrow = (Sheet.max_row if Sheet.max_row>1 else int(Sheet.cell(1, 1).value is not None))
+    if startcol is None:
+        startcol = (Sheet.max_column if Sheet.max_column>1 else int(Sheet.cell(1, 1).value is not None))
+    if header:
+        for i, iCol in enumerate(df.columns):
+            Sheet.cell(startrow+1, startcol+1+int(index)+i, value=iCol)
+        startrow += 1
+    if index:
+        df = df.reset_index()
+    for i in range(df.shape[0]):
+        for j in range(df.shape[1]):
+            Sheet.cell(startrow+1+i, startcol+1+j, value=df.iloc[i, j])
+    WB.save(file_path)
+    return WB.close()

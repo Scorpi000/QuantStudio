@@ -649,7 +649,7 @@ class FactorTable(__QS_Object__):
                     iFile["RawData"] = raw_data
                     iFile["_QS_IDs"] = iIDs
         return 0
-    def _genFactorDict(self, factors, factor_dict={}):
+    def _genFactorDict(self, factors, factor_dict):
         for iFactor in factors:
             iFactor._OperationMode = self.OperationMode
             if (not isinstance(iFactor.Name, str)) or (iFactor.Name=="") or (iFactor is not factor_dict.get(iFactor.Name, iFactor)):# 该因子命名错误或者未命名, 或者有因子重名

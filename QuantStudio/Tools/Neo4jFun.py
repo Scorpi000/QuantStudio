@@ -2,11 +2,16 @@
 import pickle
 import importlib
 
+import numpy as np
+import pandas as pd
+
 from QuantStudio import __QS_Object__, __QS_Error__
 from QuantStudio.FactorDataBase.FactorOperation import DerivativeFactor
 from QuantStudio.FactorDataBase.FactorDB import CustomFT
 
 # 写入参数集
+# tx: None 返回 Cypher 语句和参数
+# tx: 非 None 返回写入的参数集节点 id
 def writeArgs(args, arg_name=None, parent_var=None, var=None, tx=None):
     Parameters = {}
     if parent_var is not None:
@@ -30,7 +35,7 @@ def writeArgs(args, arg_name=None, parent_var=None, var=None, tx=None):
         for iArg in sorted(args.keys()):
             if isinstance(args[iArg], (dict, __QS_Object__)):
                 SubArgs[iArg] = args.pop(iArg)
-            elif callable(args[iArg]) or (isinstance(args[iArg], (list, tuple)) and (None in args[iArg])):
+            elif callable(args[iArg]) or isinstance(args[iArg], (list, tuple, pd.Series, pd.DataFrame, np.ndarray)):
                 args[iArg] = pickle.dumps(args[iArg])
         if args:
             CypherStr += f" SET {var} += ${var}"
@@ -41,12 +46,18 @@ def writeArgs(args, arg_name=None, parent_var=None, var=None, tx=None):
             Parameters.update(iParameters)
     else:
         raise __QS_Error__(f"不支持的因子集类型 : {type(args)}")
-    if tx is not None: tx.run(CypherStr, parameters=Parameters)
-    return CypherStr, Parameters
+    if tx is None:
+        return CypherStr, Parameters
+    else:
+        CypherStr += f" RETURN id({var})"
+        return tx.run(CypherStr, parameters=Parameters).values()[0][0]    
 
 # 写入因子, id_var: {id(对象): 变量名}
-def writeFactor(factors, tx=None, id_var={}, write_other_fundamental_factor=True):
-    CypherStr, Parameters = "", {}
+# tx: None 返回 Cypher 语句和参数
+# tx: 非 None 返回写入的 [因子节点 id]
+def writeFactor(factors, tx=None, id_var=None, write_other_fundamental_factor=True):
+    if id_var is None: id_var = {}
+    CypherStr, Parameters, NodeVars = "", {}, []
     for iFactor in factors:
         iFID = id(iFactor)
         iVar = f"f{iFID}"
@@ -82,11 +93,22 @@ def writeFactor(factors, tx=None, id_var={}, write_other_fundamental_factor=True
                 for j, jDescriptor in enumerate(iFactor.Descriptors):
                     CypherStr += f" MERGE ({iVar}) - [:`依赖` {{Order: {j}}}] -> ({id_var[id(jDescriptor)]})"
                 id_var[iFID] = iVar
-    if tx is not None: tx.run(CypherStr, parameters=Parameters)
-    return CypherStr, Parameters
+        NodeVars.append(iVar)
+    if tx is None:
+        return CypherStr, Parameters
+    else:
+        CypherStr += f" RETURN id({'), id('.join(NodeVars)})"
+        return tx.run(CypherStr, parameters=Parameters).values()[0]
+
+# 删除因子
+def deleteFactor(factor_name, labels=["因子"], ft=None, fdb=None, del_descriptors=True, tx=None):
+    raise NotImplemented
 
 # 写入因子表
-def writeFactorTable(ft, tx=None, var="ft", id_var={}, write_other_fundamental_factor=True):
+# tx: None 返回 Cypher 语句和参数
+# tx: 非 None 返回写入的因子表节点 id
+def writeFactorTable(ft, tx=None, var="ft", id_var=None, write_other_fundamental_factor=True):
+    if id_var is None: id_var = {}
     CypherStr, Parameters = "", {}
     Class = str(ft.__class__)
     Class = Class[Class.index("'")+1:]
@@ -130,10 +152,19 @@ def writeFactorTable(ft, tx=None, var="ft", id_var={}, write_other_fundamental_f
             for iFactorName in ft.FactorNames:
                 CypherStr += f" MERGE ({var}) - [:`包含因子`] -> ({id_var[id(ft.getFactor(iFactorName))]})"
             id_var[FTID] = var
-    if tx is not None: tx.run(CypherStr, parameters=Parameters)
-    return CypherStr, Parameters
+    if tx is None:
+        return CypherStr, Parameters
+    else:
+        CypherStr += f" RETURN id({var})"
+        return tx.run(CypherStr, parameters=Parameters).values()[0][0]
+
+# 删除因子表
+def deleteFactorTable(table_name, labels=["因子表"], fdb=None, del_factors=True, del_descriptors=True, tx=None):
+    raise NotImplementedError
 
 # 写入因子库
+# tx: None 返回 Cypher 语句和参数
+# tx: 非 None 返回写入的因子库节点 id
 def writeFactorDB(fdb, tx=None, var="fdb"):
     Class = str(fdb.__class__)
     Class = Class[Class.index("'")+1:]
@@ -145,8 +176,15 @@ def writeFactorDB(fdb, tx=None, var="fdb"):
     Args.pop("密码", None)
     ArgStr, Parameters = writeArgs(Args, arg_name=None, parent_var=var, tx=None)
     if ArgStr: CypherStr += " " + ArgStr
-    if tx is not None: tx.run(CypherStr, parameters=Parameters)
-    return CypherStr, Parameters
+    if tx is None:
+        return CypherStr, Parameters
+    else:
+        CypherStr += f" RETURN id({var})"
+        return tx.run(CypherStr, parameters=Parameters).values()[0][0]
+
+# 删除因子库
+def deleteFactorDB(fdb_name, tx=None):
+    raise NotImplementedError
 
 # 读取参数集
 def readArgs(node, node_id=None, tx=None):
