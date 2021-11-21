@@ -695,9 +695,37 @@ class QSNeo4jObject(__QS_Object__):
         with Session:
             Session.run(cypher_str, parameters=parameters)
         return 0
+    # 写入实体标签
+    # new_labels: [新的实体标签]
+    # ids: [实体 ID]
+    # entity_labels: [实体标签]
+    # entity_id: 实体 ID 字段
+    # excluded_labels: [(需要排除的标签,)]
+    # kwargs: 可选参数
+    #     auto_exclude: 自动排除标签, 默认值 False
+    def writeEntityLabel(self, new_labels, ids, entity_labels, entity_id, excluded_labels=(), **kwargs):
+        LabelStr = "`:`".join(entity_labels)
+        if kwargs.get("auto_exclude", False):
+            CypherStr = f"""
+                MATCH (n:`{LabelStr}`)
+                WHERE n.`{entity_id}` IN $ids
+                WITH DISTINCT labels(n) AS Labels
+                UNWIND Labels AS iLabel
+                RETURN DISTINCT iLabel
+            """
+            excluded_labels = set(tuple(iLabels) for iLabels in excluded_labels).union(tuple(iLabels) for iLabels in self.fetchall(CypherStr, parameters={"ids": ids}) if (iLabels[0] not in entity_labels) and (iLabels[0] not in new_labels))
+        NewLabelStr = "`:`".join(new_labels)
+        CypherStr = f"""
+            MATCH (n:`{LabelStr}`)
+            WHERE n.`{entity_id}` IN $ids
+        """
+        if excluded_labels:
+            CypherStr += f"AND (NOT n:`{'`) AND (NOT n:`'.join(':'.join(iLabels) for iLabels in excluded_labels)}`) "
+        CypherStr += f"SET n:`{NewLabelStr}`"
+        return self.execute(CypherStr, parameters={"ids": ids})
     # 写入实体数据
     # data: DataFrame(index=[实体ID], columns=[实体属性])
-    # entity_labels: 实体标签
+    # entity_labels: [实体标签]
     # entity_id: 实体 ID 字段
     # kwargs: 可选参数
     #     thread_num: 写入线程数量
@@ -743,7 +771,7 @@ class QSNeo4jObject(__QS_Object__):
                 for iTask in concurrent.futures.as_completed(Tasks): iTask.result()
         return 0
     # 删除实体
-    # entity_labels: 实体标签
+    # entity_labels: [实体标签]
     # entity_ids: {实体 ID 字段: [实体 ID]}
     def deleteEntity(self, entity_labels, entity_ids, **kwargs):
         EntityNode = (f"(n:`{'`:`'.join(entity_labels)}`)" if entity_labels else "(n)")

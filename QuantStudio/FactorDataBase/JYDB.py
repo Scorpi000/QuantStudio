@@ -79,6 +79,29 @@ def _identifyDataType(field_data_type):
 
 
 class _JY_SQL_Table(SQL_Table):
+    def _genFieldSQLStr(self, factor_names):
+        SQLStr = ""
+        JoinStr = []
+        SETables = set()
+        for iField in factor_names:
+            iInfo = self._FactorInfo.loc[iField, "Supplementary"]
+            if isinstance(iInfo, str) and (iInfo.find("从表")!=-1):
+                iInfo = iInfo.split(":")[1:]
+                if len(iInfo)==2:
+                    iSETable, iJoinField = iInfo
+                    iTypeCode = None
+                else:
+                    iSETable, iJoinField, iTypeCode = iInfo
+                SQLStr += iSETable+".Code, "
+                if iSETable not in SETables:
+                    if iTypeCode is None:
+                        JoinStr.append("LEFT JOIN "+iSETable+" ON ("+self._DBTableName+".ID="+iSETable+"."+iJoinField+")")
+                    else:
+                        JoinStr.append("LEFT JOIN "+iSETable+" ON ("+self._DBTableName+".ID="+iSETable+"."+iJoinField+" AND "+iSETable+".TypeCode="+iTypeCode+")")
+                    SETables.add(iSETable)
+            else:
+                SQLStr += self._DBTableName+"."+self._FactorInfo.loc[iField, "DBFieldName"]+", "
+        return (SQLStr[:-2], JoinStr)
     def __QS_adjustID__(self, ids):
         return [(".".join(iID.split(".")[:-1]) if iID.find(".")!=-1 else iID) for iID in ids]
     def _getSecuMainIDField(self):
@@ -94,12 +117,8 @@ class _JY_SQL_Table(SQL_Table):
         if RelatedFields.shape[0]==0: return raw_data
         for iField in RelatedFields.index:
             iOldData = raw_data.pop(iField)
+            iDataMask = pd.notnull(iOldData)
             iOldDataType = _identifyDataType(self._FactorInfo.loc[iField[:-2], "DataType"])
-            iDataType = _identifyDataType(self._FactorInfo.loc[iField, "DataType"])
-            if iDataType=="double":
-                iNewData = pd.Series(np.nan, index=raw_data.index, dtype="float")
-            else:
-                iNewData = pd.Series(np.full(shape=(raw_data.shape[0], ), fill_value=None, dtype="O"), index=raw_data.index, dtype="O")
             iSQLStr = self._FactorInfo.loc[iField, "RelatedSQL"]
             if iSQLStr[0]=="{":
                 iMapInfo = eval(iSQLStr).items()
@@ -111,7 +130,7 @@ class _JY_SQL_Table(SQL_Table):
                     else: iEndIdx += iStartIdx
                     iStartIdx += 14
                     KeyField = iSQLStr[iStartIdx:iEndIdx]
-                    iKeys = iOldData[pd.notnull(iOldData)].unique().tolist()
+                    iKeys = iOldData[iDataMask].unique().tolist()
                     if iKeys:
                         KeyCondition = genSQLInCondition(KeyField, iKeys, is_str=(iOldDataType!="double"))
                     else:
@@ -120,7 +139,7 @@ class _JY_SQL_Table(SQL_Table):
                 else:
                     KeyCondition = ""
                 if iSQLStr.find("{Keys}")!=-1:
-                    Keys = ", ".join([str(iKey) for iKey in iOldData[pd.notnull(iOldData)].unique()])
+                    Keys = ", ".join([str(iKey) for iKey in iOldData[iDataMask].unique()])
                     if not Keys: Keys = "NULL"
                 else:
                     Keys = ""
@@ -129,16 +148,34 @@ class _JY_SQL_Table(SQL_Table):
                 else:
                     SecuCode = ""
                 iMapInfo = self._FactorDB.fetchall(iSQLStr.format(TablePrefix=self._FactorDB.TablePrefix, Keys=Keys, KeyCondition=KeyCondition, SecuCode=SecuCode))
-            for jVal, jRelatedVal in iMapInfo:
-                if pd.notnull(jVal):
-                    if iOldDataType!="double":
-                        iNewData[iOldData==str(jVal)] = jRelatedVal
-                    elif isinstance(jVal, str):
-                        iNewData[iOldData==float(jVal)] = jRelatedVal
-                    else:
-                        iNewData[iOldData==jVal] = jRelatedVal
-                else:
-                    iNewData[pd.isnull(iOldData)] = jRelatedVal
+            iDataType = _identifyDataType(self._FactorInfo.loc[iField, "DataType"])
+            if iDataType=="double":
+                iNewData = pd.Series(np.nan, index=raw_data.index, dtype="float")
+            else:
+                iNewData = pd.Series(np.full(shape=(raw_data.shape[0], ), fill_value=None, dtype="O"), index=raw_data.index, dtype="O")
+            #for jVal, jRelatedVal in iMapInfo:
+                #if pd.notnull(jVal):
+                    #if iOldDataType!="double":
+                        #iNewData[iOldData==str(jVal)] = jRelatedVal
+                    #elif isinstance(jVal, str):
+                        #iNewData[iOldData==float(jVal)] = jRelatedVal
+                    #else:
+                        #iNewData[iOldData==jVal] = jRelatedVal
+                #else:
+                    #iNewData[pd.isnull(iOldData)] = jRelatedVal
+            iMapInfo = pd.DataFrame(iMapInfo, columns=["Old", "New"])
+            iMapMask = pd.isnull(iMapInfo.iloc[:, 0])
+            if iMapMask.sum()>1:
+                raise __QS_Error__("数据映射错误 : 缺失数据对应多个值!")
+            elif iMapMask.sum()==1:
+                iNewData[~iDataMask] = iMapInfo.iloc[:, 1][iMapMask].iloc[0]
+            iMapInfo = iMapInfo[~iMapMask]
+            if iOldDataType!="double":
+                iMapInfo["Old"] = iMapInfo["Old"].astype(np.str)
+            else:
+                iMapInfo["Old"] = iMapInfo["Old"].astype(np.float)
+            iMapInfo = iMapInfo.set_index(["Old"]).iloc[:, 0]
+            iNewData[iDataMask] = iOldData.map(iMapInfo)[iDataMask]
             raw_data[iField] = iNewData
         return raw_data
 
@@ -259,8 +296,9 @@ def findNoteDate(report_date, report_note_dates):
 def genANN_ReportSQLStr(db_type, table_prefix, ids, report_period="1231", pre_filter_id=True):
     DBTableName = table_prefix+"LC_BalanceSheetAll"
     # 提取财报的公告期数据, ID, 公告日期, 报告期
-    SQLStr = "SELECT CASE WHEN "+table_prefix+"SecuMain.SecuMarket=83 THEN CONCAT("+table_prefix+"SecuMain.SecuCode, '.SH') "
-    SQLStr += "WHEN "+table_prefix+"SecuMain.SecuMarket=90 THEN CONCAT("+table_prefix+"SecuMain.SecuCode, '.SZ') "
+    SQLStr = "SELECT CASE "+table_prefix+"SecuMain.SecuMarket WHEN 83 THEN CONCAT("+table_prefix+"SecuMain.SecuCode, '.SH') "
+    SQLStr += "WHEN 90 THEN CONCAT("+table_prefix+"SecuMain.SecuCode, '.SZ') "
+    SQLStr += "WHEN 18 THEN CONCAT("+table_prefix+"SecuMain.SecuCode, '.BJ') "
     SQLStr += "ELSE "+table_prefix+"SecuMain.SecuCode END AS ID, "
     if db_type=="SQL Server":
         SQLStr += "TO_CHAR("+DBTableName+".InfoPublDate,'YYYYMMDD'), "
@@ -275,7 +313,7 @@ def genANN_ReportSQLStr(db_type, table_prefix, ids, report_period="1231", pre_fi
     SQLStr += "FROM "+DBTableName+" "
     SQLStr += "INNER JOIN "+table_prefix+"SecuMain "
     SQLStr += "ON "+table_prefix+"SecuMain.CompanyCode="+DBTableName+".CompanyCode "
-    SQLStr += "WHERE "+table_prefix+"SecuMain.SecuCategory IN (1,41) AND "+table_prefix+"SecuMain.SecuMarket IN (83,90) "
+    SQLStr += "WHERE "+table_prefix+"SecuMain.SecuCategory IN (1,41) AND "+table_prefix+"SecuMain.SecuMarket IN (18,83,90) "
     if pre_filter_id:
         SQLStr += "AND ("+genSQLInCondition(table_prefix+"SecuMain.SecuCode", deSuffixID(ids), is_str=True, max_num=1000)+") "
     else:
@@ -767,10 +805,11 @@ class JYDB(QSSQLObject, FactorDB):
     # date: 指定日, datetime.date
     # is_current: False 表示上市日在指定日之前的股票, True 表示上市日在指定日之前且尚未退市的股票
     # start_date: 起始日, 如果非 None, is_current=False 表示提取在 start_date 至 date 之间上市过的股票 ID, is_current=True 表示提取在 start_date 至 date 之间均保持上市的股票
-    def _getAllAStock(self, date, is_current=True, start_date=None, exchange=["SSE", "SZSE"]):
+    def _getAllAStock(self, date, is_current=True, start_date=None, exchange=("SSE", "SZSE", "BSE")):
         if start_date is not None: start_date = start_date.strftime("%Y-%m-%d")
-        SQLStr = "SELECT CASE WHEN {Prefix}SecuMain.SecuMarket=83 THEN CONCAT({Prefix}SecuMain.SecuCode, '.SH') "
-        SQLStr += "WHEN {Prefix}SecuMain.SecuMarket=90 THEN CONCAT({Prefix}SecuMain.SecuCode, '.SZ') "
+        SQLStr = "SELECT CASE {Prefix}SecuMain.SecuMarket WHEN 83 THEN CONCAT({Prefix}SecuMain.SecuCode, '.SH') "
+        SQLStr += "WHEN 90 THEN CONCAT({Prefix}SecuMain.SecuCode, '.SZ') "
+        SQLStr += "WHEN 18 THEN CONCAT({Prefix}SecuMain.SecuCode, '.BJ') "
         SQLStr += "ELSE {Prefix}SecuMain.SecuCode END FROM {Prefix}SecuMain "
         SQLStr += "WHERE {Prefix}SecuMain.SecuCategory IN (1,41) "
         SecuMarket = ", ".join(str(self._ExchangeInfo[self._ExchangeInfo["Exchange"]==iExchange].index[0]) for iExchange in exchange)
@@ -813,7 +852,7 @@ class JYDB(QSSQLObject, FactorDB):
     # date: 指定日, 默认值 None 表示今天
     # is_current: False 表示上市日期在指定日之前的股票, True 表示上市日期在指定日之前且尚未退市的股票
     # start_date: 起始日, 如果非 None, is_current=False 表示提取在 start_date 至 date 之间上市过的股票 ID, is_current=True 表示提取在 start_date 至 date 之间均保持上市的股票
-    def getStockID(self, exchange=["SSE", "SZSE"], date=None, is_current=True, start_date=None, **kwargs):
+    def getStockID(self, exchange=("SSE", "SZSE", "BSE"), date=None, is_current=True, start_date=None, **kwargs):
         if date is None: date = dt.date.today()
         if isinstance(exchange, str):
             exchange = {exchange}
@@ -825,7 +864,7 @@ class JYDB(QSSQLObject, FactorDB):
             IDs += self._getAllHKStock(date=date, is_current=is_current, start_date=start_date)
             exchange.remove("HKEX")
         # A 股
-        iExchange = {"SSE", "SZSE"}
+        iExchange = {"SSE", "SZSE", "BSE"}
         if not exchange.isdisjoint(iExchange):
             IDs += self._getAllAStock(exchange=exchange.intersection(iExchange), date=date, is_current=is_current, start_date=start_date)
             exchange = exchange.difference(iExchange)
@@ -957,7 +996,7 @@ class JYDB(QSSQLObject, FactorDB):
     # date: 指定日, 默认值 None 表示今天
     # is_current: True 表示只返回当前上市的期货代码
     # kwargs:
-    def getFutureCode(self, exchange=["SHFE", "INE", "DCE", "CZCE", "CFFEX"], date=None, is_current=True, **kwargs):
+    def getFutureCode(self, exchange=("SHFE", "INE", "DCE", "CZCE", "CFFEX"), date=None, is_current=True, **kwargs):
         if date is not None:
             raise __QS_Error__("尚不支持获取指定日期上市的期货品种!")
         SQLStr = "SELECT DISTINCT TradingCode FROM {Prefix}Fut_FuturesContract "

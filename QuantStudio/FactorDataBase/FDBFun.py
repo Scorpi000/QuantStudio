@@ -495,7 +495,7 @@ class SQL_Table(FactorTable):
                     iNewData[pd.isnull(iOldData)] = jRelatedVal
             raw_data[iField] = iNewData
         return raw_data
-    def _genFieldSQLStr(self, factor_names):
+    def _genFieldSQLStr(self, factor_names):# TODO
         SQLStr = ""
         JoinStr = []
         SETables = set()
@@ -557,7 +557,9 @@ class SQL_Table(FactorTable):
                                  "Description":self.getFactorMetaData(factor_names, key="Description", args=args)})
         else:
             return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
-
+    # 新方法: 读取 SQL 数据, 返回二维 DataFrame, TODO
+    def readSQLData(self, factor_names, ids, dts, args={}):
+        return self.__QS_prepareRawData__(factor_names, ids, dts, args=args)
 
 # 基于 SQL 数据库表的宽因子表
 # 一个字段标识 ID, 一个字段标识时点, 其余字段为因子
