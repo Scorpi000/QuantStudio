@@ -372,8 +372,11 @@ class _AnalystConsensusTable(_JY_SQL_Table):
         self._ANN_ReportFileSuffix = getShelveFileSuffix()
         return
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        StartDate, EndDate = dts[0].date(), dts[-1].date()
-        StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
+        if dts is not None:
+            StartDT, EndDT = dts[0], dts[-1]
+        else:
+            StartDT = EndDT = None
+        if StartDT is not None: StartDT -= dt.timedelta(args.get("回溯天数", self.LookBack))
         DateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
         ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._ReportDateField, "DBFieldName"]
         PeriodField = self._DBTableName+"."+self._FactorInfo.loc[self._PeriodField, "DBFieldName"]
@@ -395,8 +398,10 @@ class _AnalystConsensusTable(_JY_SQL_Table):
             SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += "AND "+PeriodField+"="+str(args.get("周期", self.Period))+" "
-        SQLStr += "AND "+DateField+">='"+StartDate.strftime("%Y-%m-%d")+"' "
-        SQLStr += "AND "+DateField+"<='"+EndDate.strftime("%Y-%m-%d")+"' "
+        if StartDT is not None:
+            SQLStr += "AND "+DateField+">='"+StartDT.strftime("%Y-%m-%d")+"' "
+        if EndDT is not None:
+            SQLStr += "AND "+DateField+"<='"+EndDT.strftime("%Y-%m-%d")+"' "
         SQLStr += "ORDER BY ID, "+DateField+", "+ReportDateField
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: RawData = pd.DataFrame(columns=['日期','ID','报告期']+factor_names)
@@ -410,8 +415,6 @@ class _AnalystConsensusTable(_JY_SQL_Table):
         return _saveRawDataWithReportANN(self, self._ANN_ReportFileName, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock, pre_filter_id=raw_data._QS_PreFilterID)
     def __QS_genGroupInfo__(self, factors, operation_mode):
         PeriodGroup = {}
-        StartDT = dt.datetime.now()
-        FactorNames, RawFactorNames = [], set()
         for iFactor in factors:
             iConditions = (iFactor.Period, iFactor.PreFilterID)
             if iConditions not in PeriodGroup:
@@ -560,8 +563,11 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
     def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock, **kwargs):
         return _saveRawDataWithReportANN(self, self._ANN_ReportFileName, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock, pre_filter_id=raw_data._QS_PreFilterID)
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        StartDate, EndDate = dts[0].date(), dts[-1].date()
-        StartDate -= dt.timedelta(args.get("周期", self.Period))
+        if dts is not None:
+            StartDT, EndDT = dts[0], dts[-1]
+        else:
+            StartDT = EndDT = None
+        if StartDT is not None: StartDT -= dt.timedelta(args.get("周期", self.Period))
         AllFields = list(set(factor_names+args.get("附加字段", self.AdditionalFields)+args.get("去重字段", self.Deduplication)))
         DateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
         ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._ReportDateField, "DBFieldName"]
@@ -582,8 +588,10 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
         else:
             SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
-        SQLStr += "AND "+DateField+">='"+StartDate.strftime("%Y-%m-%d")+"' "
-        SQLStr += "AND "+DateField+"<='"+EndDate.strftime("%Y-%m-%d")+"' "
+        if StartDT is not None:
+            SQLStr += "AND "+DateField+">='"+StartDT.strftime("%Y-%m-%d")+"' "
+        if EndDT is not None:
+            SQLStr += "AND "+DateField+"<='"+EndDT.strftime("%Y-%m-%d")+"' "
         SQLStr += "ORDER BY ID, "+DateField+", "+ReportDateField
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: RawData = pd.DataFrame(columns=["日期", "ID", self._ReportDateField]+AllFields)
@@ -685,8 +693,11 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
         Args["附加字段"], Args["去重字段"] = list(Args["附加字段"]), list(Args["去重字段"])
         return [(self, FactorNames, list(RawFactorNames), operation_mode.DTRuler[StartInd:EndInd+1], Args)]
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        StartDate, EndDate = dts[0].date(), dts[-1].date()
-        StartDate -= dt.timedelta(args.get("周期", self.Period))
+        if dts is not None:
+            StartDT, EndDT = dts[0], dts[-1]
+        else:
+            StartDT = EndDT = None
+        if StartDT is not None: StartDT -= dt.timedelta(args.get("周期", self.Period))
         AllFields = list(set(factor_names+args.get("附加字段", self.AdditionalFields)+args.get("去重字段", self.Deduplication)))
         DateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
         # 形成SQL语句, 日期, ID, 其他字段
@@ -705,8 +716,10 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
         else:
             SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
-        SQLStr += "AND "+DateField+">='"+StartDate.strftime("%Y-%m-%d")+"' "
-        SQLStr += "AND "+DateField+"<='"+EndDate.strftime("%Y-%m-%d")+"' "
+        if StartDT is not None:
+            SQLStr += "AND "+DateField+">='"+StartDT.strftime("%Y-%m-%d")+"' "
+        if EndDT is not None:
+            SQLStr += "AND "+DateField+"<='"+EndDT.strftime("%Y-%m-%d")+"' "
         SQLStr += "ORDER BY ID, "+DateField
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["日期", "ID"]+AllFields)
