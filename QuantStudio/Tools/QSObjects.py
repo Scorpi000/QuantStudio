@@ -731,8 +731,13 @@ class QSNeo4jObject(__QS_Object__):
     #     thread_num: 写入线程数量
     def _writeEntityData(self, data, entity_labels, entity_id, if_exists="update", **kwargs):
         IDs, Fields = data.index.tolist(), data.columns.tolist()
+        LabelStr = "`:`".join(entity_labels)
+        if if_exists=="replace":
+            CypherStr = f"UNWIND $ids AS iID CREATE (n:`{LabelStr}`) SET n = $data[iID]"
+            data[entity_id] = data.index
+            data = data.astype("O").where(pd.notnull(data), None)
+            return self.execute(CypherStr, parameters={"ids": IDs, "data": data.T.to_dict(orient="dict")})
         if if_exists!="update":
-            LabelStr = "`:`".join(entity_labels)
             CypherStr = f"""
                 MATCH (n:`{LabelStr}`)
                 WHERE n.`{entity_id}` IN $ids
@@ -747,17 +752,18 @@ class QSNeo4jObject(__QS_Object__):
                 data = data.where(pd.notnull(data), OldData)
             else:
                 raise __QS_Error__(f"因子库 '{self.Name}' 调用方法 writeFeatureData 错误: 不支持的写入方式 {if_exists}'!")
-        LabelStr = "`:`".join(entity_labels)
-        data[entity_id] = data.index
         CypherStr = f"""
             UNWIND $ids AS iID
             MERGE (n:`{LabelStr}` {{`{entity_id}`: iID}})
             ON CREATE SET n = $data[iID]
             ON MATCH SET n += $data[iID]
         """
+        data[entity_id] = data.index
         data = data.astype("O").where(pd.notnull(data), None)
         return self.execute(CypherStr, parameters={"ids": IDs, "data": data.T.to_dict(orient="dict")})
     def writeEntityData(self, data, entity_labels, entity_id, if_exists="update", **kwargs):
+        if if_exists=="replace":
+            self.deleteEntity(entity_labels, {entity_id: data.index.tolist()})
         ThreadNum = kwargs.get("thread_num", 0)
         if ThreadNum==0:
             self._writeEntityData(data, entity_labels, entity_id, if_exists, **kwargs)
@@ -780,6 +786,13 @@ class QSNeo4jObject(__QS_Object__):
             CypherStr += "WHERE "+" AND ".join(f"n.`{iField}` IN $entity_ids['{iField}']" for iField in entity_ids)+" "
         CypherStr += "DETACH DELETE n"
         return self.execute(CypherStr, parameters={"entity_ids": entity_ids})
+    # 创建实体索引
+    # entity_label: 实体标签
+    # entity_keys: [实体字段]
+    # index_name: 索引名称
+    def createEntityIndex(self, entity_label, entity_keys, index_name=None, **kwargs):
+        CypherStr = f"CREATE INDEX {'' if index_name is None else index_name} IF NOT EXISTS FOR (n:`{entity_label}`) ON (n.`{'`, `'.join(entity_keys)}`)"
+        return self.execute(CypherStr)
     # 写入关系数据
     # data: DataFrame(index=[源ID, 目标ID], columns=[关系属性]), 如果为 data.shape[1]==0 表示只创建关系
     # relation_label: 关系标签
