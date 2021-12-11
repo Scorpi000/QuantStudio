@@ -982,7 +982,7 @@ class SQL_NarrowTable(SQL_Table):
             FactorNames = [str(iName) for iName, in self._FactorDB.fetchall(SQLStr)]
         else:
             SubSQLStr = "SELECT DISTINCT "+FactorField+" "+self._genFromSQLStr(use_main_table=False)+" WHERE "+FactorField+" IS NOT NULL"
-            SQLStr = SQLStr.format(Keys=SubSQLStr)
+            SQLStr = SQLStr.format(TablePrefix=self._TablePrefix, Keys=SubSQLStr)
             FactorNames = {iName:iCode for iCode, iName in self._FactorDB.fetchall(SQLStr)}
         if factor_field==self.FactorNameField: self._FactorNames = FactorNames
         return FactorNames

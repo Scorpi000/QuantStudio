@@ -7,10 +7,9 @@ import numpy as np
 import pandas as pd
 from traits.api import Str
 
-from QuantStudio.Tools.QSObjects import QSNeo4jObject
-from QuantStudio.Tools.Neo4jFun import writeArgs
 from QuantStudio.RiskDataBase.RiskDB import RiskDB, RiskTable, FactorRDB, FactorRT
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
+from QuantStudio.Tools.Neo4jFun import QSNeo4jObject, writeArgs
 from QuantStudio.Tools.api import Panel
 
 class _RiskTable(RiskTable):

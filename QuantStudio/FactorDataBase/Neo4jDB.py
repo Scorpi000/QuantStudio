@@ -8,13 +8,12 @@ import numpy as np
 import pandas as pd
 from traits.api import Str, Dict, Enum, ListStr, Bool
 
-from QuantStudio.Tools.AuxiliaryFun import distributeEqual
-from QuantStudio.Tools.SQLDBFun import genSQLInCondition
-from QuantStudio.Tools.QSObjects import QSNeo4jObject
-from QuantStudio.Tools.Neo4jFun import writeArgs
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
 from QuantStudio.FactorDataBase.FDBFun import _QS_calcData_WideTable, _QS_calcData_NarrowTable
+from QuantStudio.Tools.AuxiliaryFun import distributeEqual
+from QuantStudio.Tools.SQLDBFun import genSQLInCondition
+from QuantStudio.Tools.Neo4jFun import QSNeo4jObject, writeArgs
 from QuantStudio.Tools.api import Panel
 
 def _identifyDataType(factor_data, data_type=None):
