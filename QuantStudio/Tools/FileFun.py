@@ -11,9 +11,40 @@ from functools import lru_cache
 
 import numpy as np
 import pandas as pd
+import fasteners
 import openpyxl
 
 from QuantStudio import __QS_Error__
+
+# 产生一个有效的文件
+def genAvailableFile(header, target_dir, suffix="csv", name_num=1, check_header=True, ignore_case=True, lock_file=".LockFile"):
+    CompleteSuffix = ("."+suffix if suffix else "")
+    with fasteners.InterProcessLock(target_dir+os.sep+lock_file) as Lock:
+        all_names = listDirFile(target_dir, suffix=suffix)
+        if ignore_case:
+            all_names = [iName.lower() for iName in all_names]
+            LowerHeader = header.lower()
+        else: LowerHeader = header
+        if check_header and (LowerHeader not in all_names):
+            iFile = target_dir+os.sep+header+CompleteSuffix
+            open(iFile, mode="a").close()
+            AvailableFiles = [iFile]
+            CurNum = 1
+        else:
+            AvailableFiles = []
+            CurNum = 0
+        i = 1
+        CurName = LowerHeader+str(i)
+        while (CurNum<name_num):
+            if CurName not in all_names:
+                iFile = target_dir+os.sep+header+str(i)+CompleteSuffix
+                open(iFile, mode="a").close()
+                AvailableFiles.append(iFile)
+                CurNum += 1
+            i += 1
+            CurName = LowerHeader+str(i)
+        if name_num==1: return AvailableFiles[0]
+        else: return AvailableFiles
 
 # 复制文件夹到指定位置，如果该文件夹已经存在，则根据if_exist参数进行操作,replace表示覆盖原文件，skip表示保留原文件
 def copyDir(source_dir,target_pos,if_exist='replace'):

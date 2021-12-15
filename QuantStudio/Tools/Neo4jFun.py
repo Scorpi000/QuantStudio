@@ -6,13 +6,13 @@ import concurrent.futures
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, Str, Range, Password, Either
+from traits.api import Enum, Str, Range, Password, Either, Int, Bool
 
 from QuantStudio import __QS_Object__, __QS_Error__
 from QuantStudio.FactorDataBase.FactorOperation import DerivativeFactor
 from QuantStudio.FactorDataBase.FactorDB import CustomFT
-from QuantStudio.Tools.AuxiliaryFun import distributeEqual, genAvailableName
-from QuantStudio.Tools.FileFun import listDirFile
+from QuantStudio.Tools.AuxiliaryFun import distributeEqual
+from QuantStudio.Tools.FileFun import genAvailableFile
 
 class QSNeo4jObject(__QS_Object__):
     """基于 Neo4j 的对象"""
@@ -23,8 +23,10 @@ class QSNeo4jObject(__QS_Object__):
     User = Str("neo4j", arg_type="String", label="用户名", order=3)
     Pwd = Password("", arg_type="String", label="密码", order=4)
     Connector = Enum("default", "neo4j", arg_type="SingleOption", label="连接器", order=5)
-    CSVExportDir = Either(None, Str(), arg_type="String", label="CSV导出地址", order=6)
-    CSVImportDir = Either(None, Str("file:///"), arg_type="String", label="CSV导入地址", order=7)
+    CSVImportPath = Either(None, Str("file:///"), arg_type="String", label="CSV导入地址", order=6)
+    CSVExportPath = Either(None, Str(), arg_type="String", label="CSV导出地址", order=7)
+    ClearCSV = Bool(False, arg_type="Bool", label="清除CSV", order=8)
+    PeriodicSize = Int(-1, arg_type="Integer", label="定期数量", order=9)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._Connection = None# 连接对象
         self._Connector = None# 实际使用的数据库链接器
@@ -109,7 +111,7 @@ class QSNeo4jObject(__QS_Object__):
     # excluded_labels: [(需要排除的标签,)]
     # kwargs: 可选参数
     #     auto_exclude: 自动排除标签, 默认值 False
-    def writeEntityLabel(self, new_labels, ids, entity_labels, entity_id, excluded_labels=(), **kwargs):
+    def writeEntityLabel(self, new_labels, ids, entity_labels, entity_id, excluded_labels=(), args={}, **kwargs):
         LabelStr = "`:`".join(entity_labels)
         if kwargs.get("auto_exclude", False):
             CypherStr = f"""
@@ -127,7 +129,11 @@ class QSNeo4jObject(__QS_Object__):
         """
         if excluded_labels:
             CypherStr += f"AND (NOT n:`{'`) AND (NOT n:`'.join(':'.join(iLabels) for iLabels in excluded_labels)}`) "
-        CypherStr += f"SET n:`{NewLabelStr}`"
+        PeriodicSize = args.get("定期数量", self.PeriodicSize)
+        if PeriodicSize>0:
+            CypherStr = f"""CALL apoc.periodic.iterate("{CypherStr}RETURN n", "SET n:`{NewLabelStr}`", {{batchSize: {PeriodicSize}, parallel: true, params: {{`ids`: $ids}}}})"""
+        else:
+            CypherStr += f"SET n:`{NewLabelStr}`"
         return self.execute(CypherStr, parameters={"ids": ids})
     # 写入实体数据
     # data: DataFrame(index=[实体ID], columns=[实体属性])
@@ -135,7 +141,7 @@ class QSNeo4jObject(__QS_Object__):
     # entity_id: 实体 ID 字段
     # kwargs: 可选参数
     #     thread_num: 写入线程数量
-    def _writeEntityData(self, data, entity_labels, entity_id, if_exists="update", **kwargs):
+    def _writeEntityData(self, data, entity_labels, entity_id, if_exists="update", args={}, **kwargs):
         LabelStr = "`:`".join(entity_labels)
         if if_exists in ("append", "update_notnull"):
             IDs, Fields = data.index.tolist(), data.columns.tolist()
@@ -153,80 +159,108 @@ class QSNeo4jObject(__QS_Object__):
                 data = data.where(pd.notnull(data), OldData)
         data[entity_id] = data.index
         data = data.astype("O").where(pd.notnull(data), None)
+        CypherStr1 = "UNWIND $data AS iData"
         if if_exists in ("replace", "replace_all", "create"):
-            CypherStr = f"UNWIND $data AS iData CREATE (n:`{LabelStr}`) SET n = iData"
+            CypherStr2 = f"CREATE (n:`{LabelStr}`) SET n = iData"
         else:
-            CypherStr = f"""
-                UNWIND $data AS iData
+            CypherStr2 = f"""
                 MERGE (n:`{LabelStr}` {{`{entity_id}`: iData['{entity_id}']}})
                 ON CREATE SET n = iData
                 ON MATCH SET n += iData
             """
-        return self.execute(CypherStr, parameters={"data": data.to_dict(orient="records")})
-    def _writeEntityData_LoadCSV(self, data, entity_labels, entity_id, if_exists="update", **kwargs):
-        LabelStr = "`:`".join(entity_labels)
-        if if_exists in ("append", "update_notnull"):
-            IDs, Fields = data.index.tolist(), data.columns.tolist()
-            CypherStr = f"""
-                MATCH (n:`{LabelStr}`)
-                WHERE n.`{entity_id}` IN $ids
-                RETURN n.`{entity_id}`, n.`{'`, n.`'.join(Fields)}`
-            """
-            OldData = self.fetchall(CypherStr, parameters={"ids": IDs})
-            if not OldData: OldData = pd.DataFrame(index=IDs, columns=Fields)
-            else: OldData = pd.DataFrame(np.array(OldData, dtype="O"), columns=["ID"]+Fields).set_index(["ID"]).loc[IDs]
-            if if_exists=="append":
-                data = OldData.where(pd.notnull(OldData), data)
-            else:
-                data = data.where(pd.notnull(data), OldData)
-        data[entity_id] = data.index
-        data = data.astype("O").where(pd.notnull(data), None)
-        CSVFile = genAvailableName("QSNeo4jEntityData", listDirFile(self.CSVExportDir, suffix="csv"))+".csv"
-        if if_exists in ("replace", "replace_all", "create"):
-            data.to_csv(self.CSVExportDir+os.sep+CSVFile, index=False, header=False)
-            CypherStr = f"""LOAD CSV FROM "{self.CSVImportDir}{CSVFile}" AS line
-            CREATE (n:`{LabelStr}` {{{", ".join([f"`{iField}`: line[{i}]" for i, iField in enumerate(data.columns)])}}})"""
+        PeriodicSize = args.get("定期数量", self.PeriodicSize)
+        if PeriodicSize>0:
+            CypherStr = f"""CALL apoc.periodic.iterate("{CypherStr1}", "{CypherStr2}", {{`batchSize`: {PeriodicSize}, `parallel`: true, params: {{`data`: $data}}}})"""
         else:
-            data.to_csv(self.CSVExportDir+os.sep+CSVFile, index=False, header=True)
-            CypherStr = f"""LOAD CSV WITH HEADERS FROM "{self.CSVImportDir}{CSVFile}" AS line
-            MERGE (n:`{LabelStr}` {{`{entity_id}`: line.`{entity_id}`}})
+            CypherStr = f"""{CypherStr1} {CypherStr2}"""
+        return self.execute(CypherStr, parameters={"data": data.to_dict(orient="records")})
+    def _writeEntityData_LoadCSV(self, data, entity_labels, entity_id, if_exists="update", args={}, **kwargs):
+        LabelStr = "`:`".join(entity_labels)
+        CSVExportPath = args.get("CSV导出地址", self.CSVExportPath)
+        if data.shape[0]>0:
+            if if_exists in ("append", "update_notnull"):
+                IDs, Fields = data.index.tolist(), data.columns.tolist()
+                CypherStr = f"""
+                    MATCH (n:`{LabelStr}`)
+                    WHERE n.`{entity_id}` IN $ids
+                    RETURN n.`{entity_id}`, n.`{'`, n.`'.join(Fields)}`
+                """
+                OldData = self.fetchall(CypherStr, parameters={"ids": IDs})
+                if not OldData: OldData = pd.DataFrame(index=IDs, columns=Fields)
+                else: OldData = pd.DataFrame(np.array(OldData, dtype="O"), columns=["ID"]+Fields).set_index(["ID"]).loc[IDs]
+                if if_exists=="append":
+                    data = OldData.where(pd.notnull(OldData), data)
+                else:
+                    data = data.where(pd.notnull(data), OldData)
+            data[entity_id] = data.index
+            data = data.astype("O").where(pd.notnull(data), None)
+        if CSVExportPath is not None:
+            if os.path.isdir(CSVExportPath):
+                ExportPath = genAvailableFile("QSNeo4jEntityData", target_dir=CSVExportPath, suffix="csv")
+            else:
+                ExportPath = CSVExportPath
+            data.to_csv(ExportPath, index=False, header=True)
+            _, CSVFile = os.path.split(ExportPath)
+            ImportPath = f"{args.get('CSV导入地址', self.CSVImportPath)}{CSVFile}"
+        else:
+            ImportPath = args.get("CSV导入地址", self.CSVImportPath)
+        PeriodicSize = args.get("定期数量", self.PeriodicSize)
+        if PeriodicSize>0:
+            CypherStr = f"""USING PERIODIC COMMIT {PeriodicSize} LOAD CSV WITH HEADERS FROM "{ImportPath}" AS line """
+        else:
+            CypherStr = f"""LOAD CSV WITH HEADERS FROM "{ImportPath}" AS line """
+        if if_exists in ("replace", "replace_all", "create"):
+            CypherStr += f"""CREATE (n:`{LabelStr}` {{{", ".join([f"`{iField}`: line.`{iField}`" for iField in data.columns])}}})"""
+        else:
+            CypherStr += f"""MERGE (n:`{LabelStr}` {{`{entity_id}`: line.`{entity_id}`}})
             ON CREATE SET n = line
             ON MATCH SET n += line"""
-        return self.execute(CypherStr, parameters=None)
-    def writeEntityData(self, data, entity_labels, entity_id, if_exists="update", **kwargs):
+        self.execute(CypherStr, parameters=None)
+        if (CSVExportPath is not None) and args.get("清除CSV", self.ClearCSV):
+            try:
+                os.remove(ExportPath)
+            except Exception as e:
+                self._QS_Logger.warning(f" CSV 文件({ExportPath})清除失败, 请手动删除: {str(e)}")
+        return 0
+    def writeEntityData(self, data, entity_labels, entity_id, if_exists="update", args={}, **kwargs):
         if if_exists=="replace":
             self.deleteEntity(entity_labels, {entity_id: data.index.tolist()})
         elif if_exists=="replace_all":
             self.deleteEntity(entity_labels, None)
-        if (self.CSVExportDir is not None) and (self.CSVImportDir is not None):
-            return self._writeEntityData_LoadCSV(data, entity_labels, entity_id, if_exists, **kwargs)
+        if args.get("CSV导入地址", self.CSVImportPath) is not None:
+            return self._writeEntityData_LoadCSV(data, entity_labels, entity_id, if_exists, args=args, **kwargs)
         ThreadNum = kwargs.get("thread_num", 0)
         if ThreadNum==0:
-            self._writeEntityData(data, entity_labels, entity_id, if_exists, **kwargs)
+            self._writeEntityData(data, entity_labels, entity_id, if_exists, args=args, **kwargs)
         else:
             Tasks, NumAlloc = [], distributeEqual(data.shape[0], min(ThreadNum, data.shape[0]))
             with concurrent.futures.ThreadPoolExecutor(max_workers=len(NumAlloc)) as Executor:
                 for i, iNum in enumerate(NumAlloc):
                     iStartIdx = sum(NumAlloc[:i])
                     iData = data.iloc[iStartIdx:iStartIdx+iNum]
-                    Tasks.append(Executor.submit(self._writeEntityData, iData, entity_labels, entity_id, if_exists, **kwargs))
+                    Tasks.append(Executor.submit(self._writeEntityData, iData, entity_labels, entity_id, if_exists, args, **kwargs))
                 for iTask in concurrent.futures.as_completed(Tasks): iTask.result()
         return 0
     # 删除实体
     # entity_labels: [实体标签]
     # entity_ids: {实体 ID 字段: [实体 ID]}
-    def deleteEntity(self, entity_labels, entity_ids, **kwargs):
+    def deleteEntity(self, entity_labels, entity_ids, args={}, **kwargs):
         EntityNode = (f"(n:`{'`:`'.join(entity_labels)}`)" if entity_labels else "(n)")
         CypherStr = f"MATCH {EntityNode} "
         if entity_ids:
             CypherStr += "WHERE "+" AND ".join(f"n.`{iField}` IN $entity_ids['{iField}']" for iField in entity_ids)+" "
-        CypherStr += "DETACH DELETE n"
+        PeriodicSize = args.get("定期数量", self.PeriodicSize)
+        if PeriodicSize>0:
+            CypherStr += f"WITH n LIMIT {args.get('定期数量', )} DETACH DELETE n RETURN COUNT(*)"
+            CypherStr = f"""CALL  apoc.periodic.commit("{CypherStr}", {{`entity_ids`: $entity_ids}}) YIELD updates, executions, runtime, batches"""
+        else:
+            CypherStr += "DETACH DELETE n"
         return self.execute(CypherStr, parameters={"entity_ids": entity_ids})
     # 创建实体索引
     # entity_label: 实体标签
     # entity_keys: [实体字段]
     # index_name: 索引名称
-    def createEntityIndex(self, entity_label, entity_keys, index_name=None, **kwargs):
+    def createEntityIndex(self, entity_label, entity_keys, index_name=None, args={}, **kwargs):
         CypherStr = f"CREATE INDEX {'' if index_name is None else index_name} IF NOT EXISTS FOR (n:`{entity_label}`) ON (n.`{'`, `'.join(entity_keys)}`)"
         return self.execute(CypherStr)
     # 写入关系数据
@@ -238,7 +272,7 @@ class QSNeo4jObject(__QS_Object__):
     #     source_id: 源 ID 字段, 默认取 data.index.names[0]
     #     target_id: 目标 ID 字段, 默认取 data.index.names[1]
     #     thread_num: 写入线程数量
-    def _writeRelationData(self, data, relation_label, source_labels, target_labels, source_id, target_id, if_exists="update", conn=None):
+    def _writeRelationData(self, data, relation_label, source_labels, target_labels, source_id, target_id, if_exists="update", conn=None, args={}, **kwargs):
         if (data.shape[1]>0) and (if_exists in ("append", "update_notnull")):
             SourceIDs = data.index.get_level_values(0).unique().tolist()
             TargetIDs = data.index.get_level_values(1).unique().tolist()
@@ -255,16 +289,20 @@ class QSNeo4jObject(__QS_Object__):
         SourceNode = (f"(n1:`{'`:`'.join(source_labels)}` {{`{source_id}`: d[0]}})" if source_labels else f"(n1 {{`{source_id}`: d[0]}})")
         TargetNode = (f"(n2:`{'`:`'.join(target_labels)}` {{`{target_id}`: d[1]}})" if target_labels else f"(n2 {{`{target_id}`: d[1]}})")
         Relation = (f"(n1) - [r:`{relation_label}`] -> (n2)" if relation_label is not None else "(n1) - [r] -> (n2)")
-        CypherStr = f"""
-            UNWIND $data AS d
-            MERGE {SourceNode}
-            MERGE {TargetNode}
-            MERGE {Relation}
-        """
+        CypherStr1 = "UNWIND $data AS d"
+        if if_exists in ("replace", "replace_all", "create"):
+            CypherStr2 = f"""MERGE {SourceNode} MERGE {TargetNode} CREATE {Relation}"""
+        else:
+            CypherStr2 = f"""MERGE {SourceNode} MERGE {TargetNode} MERGE {Relation}"""
         if data.shape[1]>0:
-            CypherStr += f" SET "
-            for i, iField in enumerate(data.columns): CypherStr += f" r.`{iField}` = d[{2+i}], "
-            CypherStr = CypherStr[:-2]
+            CypherStr2 += f" SET "
+            for i, iField in enumerate(data.columns): CypherStr2 += f" r.`{iField}` = d[{2+i}], "
+            CypherStr2 = CypherStr2[:-2]
+        PeriodicSize = args.get("定期数量", self.PeriodicSize)
+        if PeriodicSize>0:
+            CypherStr = f"""CALL apoc.periodic.iterate("{CypherStr1}", "{CypherStr2}", {{`batchSize`: {PeriodicSize}, `parallel`: false, params: {{`data`: $data}}}})"""
+        else:
+            CypherStr = f"""{CypherStr1} {CypherStr2}"""
         data = data.astype("O").where(pd.notnull(data), None).reset_index().values.tolist()
         if conn is None:
             self.execute(CypherStr, parameters={"data": data})
@@ -272,45 +310,67 @@ class QSNeo4jObject(__QS_Object__):
             with conn.session(database=self.DBName) as Session:
                 Session.run(CypherStr, parameters={"data": data})
         return 0
-    def _writeRelationData_LoadCSV(self, data, relation_label, source_labels, target_labels, source_id, target_id, if_exists="update"):
-        if (data.shape[1]>0) and (if_exists in ("append", "update_notnull")):
-            SourceIDs = data.index.get_level_values(0).unique().tolist()
-            TargetIDs = data.index.get_level_values(1).unique().tolist()
-            OldDataStr = (f"MATCH (n1:`{'`:`'.join(source_labels)}`) - [r:`{relation_label}`] -> (n2:`{'`:`'.join(target_labels)}`)" if relation_label is not None else f"MATCH (n1:`{'`:`'.join(source_labels)}`) - [r] -> (n2:`{'`:`'.join(target_labels)}`)")
-            OldDataStr += f" WHERE n1.`{source_id}` IN $source_ids AND n2.`{target_id}` IN $target_ids "
-            OldDataStr += f" RETURN n1.`{source_id}`, n2.`{target_id}`, r.`{'`, r.`'.join(data.columns)}`"
-            OldData = self.fetchall(OldDataStr, parameters={"source_ids": SourceIDs, "target_ids": TargetIDs})
-            if OldData:
-                OldData = pd.DataFrame(OldData, columns=[source_id, target_id]+data.columns.tolist()).set_index([source_id, target_id]).loc[data.index]
-                if if_exists=="append":
-                    data = OldData.where(pd.notnull(OldData), data)
-                else:
-                    data = data.where(pd.notnull(data), OldData)
-        CSVFile = genAvailableName("QSNeo4jRelationData", listDirFile(self.CSVExportDir, suffix="csv"))+".csv"
-        data = data.astype("O").where(pd.notnull(data), None).reset_index()
-        data.to_csv(self.CSVExportDir+os.sep+CSVFile, index=False, header=False)
-        SourceNode = (f"(n1:`{'`:`'.join(source_labels)}` {{`{source_id}`: d[0]}})" if source_labels else f"(n1 {{`{source_id}`: d[0]}})")
-        TargetNode = (f"(n2:`{'`:`'.join(target_labels)}` {{`{target_id}`: d[1]}})" if target_labels else f"(n2 {{`{target_id}`: d[1]}})")
+    def _writeRelationData_LoadCSV(self, data, relation_label, source_labels, target_labels, source_id, target_id, if_exists="update", args={}, **kwargs):
+        if data.shape[0]>0:
+            if (data.shape[1]>0) and (if_exists in ("append", "update_notnull")):
+                SourceIDs = data.index.get_level_values(0).unique().tolist()
+                TargetIDs = data.index.get_level_values(1).unique().tolist()
+                OldDataStr = (f"MATCH (n1:`{'`:`'.join(source_labels)}`) - [r:`{relation_label}`] -> (n2:`{'`:`'.join(target_labels)}`)" if relation_label is not None else f"MATCH (n1:`{'`:`'.join(source_labels)}`) - [r] -> (n2:`{'`:`'.join(target_labels)}`)")
+                OldDataStr += f" WHERE n1.`{source_id}` IN $source_ids AND n2.`{target_id}` IN $target_ids "
+                OldDataStr += f" RETURN n1.`{source_id}`, n2.`{target_id}`, r.`{'`, r.`'.join(data.columns)}`"
+                OldData = self.fetchall(OldDataStr, parameters={"source_ids": SourceIDs, "target_ids": TargetIDs})
+                if OldData:
+                    OldData = pd.DataFrame(OldData, columns=[source_id, target_id]+data.columns.tolist()).set_index([source_id, target_id]).loc[data.index]
+                    if if_exists=="append":
+                        data = OldData.where(pd.notnull(OldData), data)
+                    else:
+                        data = data.where(pd.notnull(data), OldData)
+            Fields = data.columns.tolist()
+            data = data.astype("O").where(pd.notnull(data), None).reset_index()
+            data.columns = ["源ID", "目标ID"] + Fields
+        CSVExportPath = args.get("CSV导出地址", self.CSVExportPath)
+        if CSVExportPath is not None:
+            if os.path.isdir(CSVExportPath):
+                ExportPath = genAvailableFile("QSNeo4jRelationData", target_dir=CSVExportPath, suffix="csv")
+            else:
+                ExportPath = CSVExportPath
+            data.to_csv(ExportPath, index=False, header=True)
+            _, CSVFile = os.path.split(ExportPath)        
+            ImportPath = f"""{args.get("CSV导入地址", self.CSVImportPath)}{CSVFile}"""
+        else:
+            ImportPath = args.get("CSV导入地址", self.CSVImportPath)
+        SourceNode = (f"(n1:`{'`:`'.join(source_labels)}` {{`{source_id}`: d.`源ID`}})" if source_labels else f"(n1 {{`{source_id}`: d.`源ID`}})")
+        TargetNode = (f"(n2:`{'`:`'.join(target_labels)}` {{`{target_id}`: d.`目标ID`}})" if target_labels else f"(n2 {{`{target_id}`: d.`目标ID`}})")
         Relation = (f"(n1) - [r:`{relation_label}`] -> (n2)" if relation_label is not None else "(n1) - [r] -> (n2)")
+        PeriodicSize = args.get("定期数量", self.PeriodicSize)
+        if PeriodicSize>0:
+            CypherStr = f"USING PERIODIC COMMIT {PeriodicSize} "
+        else:
+            CypherStr = ""
         if if_exists in ("replace", "replace_all", "create"):
-            CypherStr = f"""LOAD CSV FROM "{self.CSVImportDir}{CSVFile}" AS d
+            CypherStr += f"""LOAD CSV WITH HEADERS FROM "{ImportPath}" AS d
                 MERGE {SourceNode}
                 MERGE {TargetNode}
                 CREATE {Relation}
             """
         else:
-            CypherStr = f"""LOAD CSV FROM "{self.CSVImportDir}{CSVFile}" AS d
+            CypherStr += f"""LOAD CSV WITH HEADERS FROM "{ImportPath}" AS d
                 MERGE {SourceNode}
                 MERGE {TargetNode}
                 MERGE {Relation}
             """
         if data.shape[1]>2:
             CypherStr += f" SET "
-            for i, iField in enumerate(data.columns[2:]): CypherStr += f" r.`{iField}` = d[{2+i}], "
+            for iField in data.columns[2:]: CypherStr += f" r.`{iField}` = d.`{iField}`, "
             CypherStr = CypherStr[:-2]
         self.execute(CypherStr, parameters=None)
+        if (CSVExportPath is not None) and args.get("清除CSV", self.ClearCSV):
+            try:
+                os.remove(ExportPath)
+            except Exception as e:
+                self._QS_Logger.warning(f" CSV 文件({ExportPath})清除失败, 请手动删除: {str(e)}")
         return 0
-    def writeRelationData(self, data, relation_label, source_labels, target_labels, if_exists="update", **kwargs):
+    def writeRelationData(self, data, relation_label, source_labels, target_labels, if_exists="update", args={}, **kwargs):
         SourceID = kwargs.get("source_id", data.index.names[0])
         if pd.isnull(SourceID):
             raise __QS_Error__("QSNeo4jObject.writeRelationData: 源 ID 字段不能缺失, 请指定参数 source_id")
@@ -327,11 +387,11 @@ class QSNeo4jObject(__QS_Object__):
             self.deleteRelation(relation_label, {}, source_labels, {SourceID: data.index.get_level_values(0).unique().tolist()}, target_labels, {TargetID: data.index.get_level_values(1).unique().tolist()})
         elif if_exists=="replace_all":
             self.deleteRelation(relation_label, {}, source_labels, {}, target_labels, {})
-        if (self.CSVExportDir is not None) and (self.CSVImportDir is not None):
-            return self._writeRelationData_LoadCSV(data, relation_label, source_labels, target_labels, SourceID, TargetID, if_exists)
+        if args.get("CSV导入地址", self.CSVImportPath) is not None:
+            return self._writeRelationData_LoadCSV(data, relation_label, source_labels, target_labels, SourceID, TargetID, if_exists, args=args, **kwargs)
         ThreadNum = kwargs.get("thread_num", 0)
         if ThreadNum==0:
-            self._writeRelationData(data, relation_label, source_labels, target_labels, SourceID, TargetID, if_exists, conn=None)
+            self._writeRelationData(data, relation_label, source_labels, target_labels, SourceID, TargetID, if_exists, conn=None, args=args, **kwargs)
         else:
             Tasks, NumAlloc = [], distributeEqual(data.shape[0], min(ThreadNum, data.shape[0]))
             with concurrent.futures.ThreadPoolExecutor(max_workers=len(NumAlloc)) as Executor:
@@ -339,7 +399,7 @@ class QSNeo4jObject(__QS_Object__):
                     iStartIdx = sum(NumAlloc[:i])
                     iData = data.iloc[iStartIdx:iStartIdx+iNum]
                     iConn, _ = self._getConnection()
-                    Tasks.append(Executor.submit(self._writeRelationData, iData, relation_label, source_labels, target_labels, SourceID, TargetID, if_exists, conn=iConn))
+                    Tasks.append(Executor.submit(self._writeRelationData, iData, relation_label, source_labels, target_labels, SourceID, TargetID, if_exists, conn=iConn, args=args, **kwargs))
                 for iTask in concurrent.futures.as_completed(Tasks): iTask.result()
         return 0
     # 删除关系
@@ -349,7 +409,7 @@ class QSNeo4jObject(__QS_Object__):
     # source_ids: {源 ID 字段: [源 ID]}
     # target_labels: 目标标签
     # target_ids: {目标 ID 字段: [目标 ID]}
-    def deleteRelation(self, relation_label, relation_ids, source_labels, source_ids, target_labels, target_ids, **kwargs):
+    def deleteRelation(self, relation_label, relation_ids, source_labels, source_ids, target_labels, target_ids, args={}, **kwargs):
         SourceNode = (f"(n1:`{'`:`'.join(source_labels)}`)" if source_labels else "(n1)")
         TargetNode = (f"(n2:`{'`:`'.join(target_labels)}`)" if target_labels else "(n2)")
         Relation = (f"[r:`{relation_label}`]" if relation_label else "[r]")
@@ -363,7 +423,12 @@ class QSNeo4jObject(__QS_Object__):
             for iField in target_ids: Conditions.append(f"n2.`{iField}` IN $target_ids['{iField}']")
         if Conditions:
             CypherStr += "WHERE "+" AND ".join(Conditions)+" "
-        CypherStr += "DELETE r"
+        PeriodicSize = args.get("定期数量", self.PeriodicSize)
+        if PeriodicSize>0:
+            CypherStr += f"WITH r LIMIT {args.get('定期数量', )} DELETE r RETURN COUNT(*)"
+            CypherStr = f"""CALL  apoc.periodic.commit("{CypherStr}", {{`relation_ids`: $relation_ids, `source_ids`: $source_ids, `target_ids`: $target_ids}}) YIELD updates, executions, runtime, batches"""
+        else:
+            CypherStr += "DELETE r"
         return self.execute(CypherStr, parameters={"relation_ids": relation_ids, "source_ids": source_ids, "target_ids": target_ids})
 
 
