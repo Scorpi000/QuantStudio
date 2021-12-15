@@ -170,7 +170,7 @@ class QSNeo4jObject(__QS_Object__):
             """
         PeriodicSize = args.get("定期数量", self.PeriodicSize)
         if PeriodicSize>0:
-            CypherStr = f"""CALL apoc.periodic.iterate("{CypherStr1}", "{CypherStr2}", {{`batchSize`: {PeriodicSize}, `parallel`: true, params: {{`data`: $data}}}})"""
+            CypherStr = f"""CALL apoc.periodic.iterate("{CypherStr1} RETURN iData", "{CypherStr2}", {{`batchSize`: {PeriodicSize}, `parallel`: true, `params`: {{`data`: $data}}}})"""
         else:
             CypherStr = f"""{CypherStr1} {CypherStr2}"""
         return self.execute(CypherStr, parameters={"data": data.to_dict(orient="records")})
@@ -251,7 +251,7 @@ class QSNeo4jObject(__QS_Object__):
             CypherStr += "WHERE "+" AND ".join(f"n.`{iField}` IN $entity_ids['{iField}']" for iField in entity_ids)+" "
         PeriodicSize = args.get("定期数量", self.PeriodicSize)
         if PeriodicSize>0:
-            CypherStr += f"WITH n LIMIT {args.get('定期数量', )} DETACH DELETE n RETURN COUNT(*)"
+            CypherStr += f"WITH n LIMIT {args.get('定期数量', PeriodicSize)} DETACH DELETE n RETURN COUNT(*)"
             CypherStr = f"""CALL  apoc.periodic.commit("{CypherStr}", {{`entity_ids`: $entity_ids}}) YIELD updates, executions, runtime, batches"""
         else:
             CypherStr += "DETACH DELETE n"
@@ -300,7 +300,7 @@ class QSNeo4jObject(__QS_Object__):
             CypherStr2 = CypherStr2[:-2]
         PeriodicSize = args.get("定期数量", self.PeriodicSize)
         if PeriodicSize>0:
-            CypherStr = f"""CALL apoc.periodic.iterate("{CypherStr1}", "{CypherStr2}", {{`batchSize`: {PeriodicSize}, `parallel`: false, params: {{`data`: $data}}}})"""
+            CypherStr = f"""CALL apoc.periodic.iterate("{CypherStr1} RETURN d", "{CypherStr2}", {{`batchSize`: {PeriodicSize}, `parallel`: false, `params`: {{`data`: $data}}}})"""
         else:
             CypherStr = f"""{CypherStr1} {CypherStr2}"""
         data = data.astype("O").where(pd.notnull(data), None).reset_index().values.tolist()
@@ -371,12 +371,12 @@ class QSNeo4jObject(__QS_Object__):
                 self._QS_Logger.warning(f" CSV 文件({ExportPath})清除失败, 请手动删除: {str(e)}")
         return 0
     def writeRelationData(self, data, relation_label, source_labels, target_labels, if_exists="update", args={}, **kwargs):
-        SourceID = kwargs.get("source_id", data.index.names[0])
+        SourceID = kwargs.pop("source_id", data.index.names[0])
         if pd.isnull(SourceID):
             raise __QS_Error__("QSNeo4jObject.writeRelationData: 源 ID 字段不能缺失, 请指定参数 source_id")
         else:
             SourceID = str(SourceID)
-        TargetID = kwargs.get("target_id", data.index.names[1])
+        TargetID = kwargs.pop("target_id", data.index.names[1])
         if pd.isnull(TargetID):
             raise __QS_Error__("QSNeo4jObject.writeRelationData: 目标 ID 字段不能缺失, 请指定参数 target_id")
         else:
@@ -425,7 +425,7 @@ class QSNeo4jObject(__QS_Object__):
             CypherStr += "WHERE "+" AND ".join(Conditions)+" "
         PeriodicSize = args.get("定期数量", self.PeriodicSize)
         if PeriodicSize>0:
-            CypherStr += f"WITH r LIMIT {args.get('定期数量', )} DELETE r RETURN COUNT(*)"
+            CypherStr += f"WITH r LIMIT {args.get('定期数量', PeriodicSize)} DELETE r RETURN COUNT(*)"
             CypherStr = f"""CALL  apoc.periodic.commit("{CypherStr}", {{`relation_ids`: $relation_ids, `source_ids`: $source_ids, `target_ids`: $target_ids}}) YIELD updates, executions, runtime, batches"""
         else:
             CypherStr += "DELETE r"
