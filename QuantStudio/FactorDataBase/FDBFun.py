@@ -395,7 +395,7 @@ class SQL_Table(FactorTable):
         IgnoreIndex = args.get("忽略索引", self.IgnoreIndex)
         if IgnoreIndex: SQLStr += f"IGNORE INDEX ({', '.join(IgnoreIndex)}) "
         for iJoinStr in setable_join_str: SQLStr += iJoinStr+" "
-        if use_main_table and (self._DBTableName!=self._MainTableName):
+        if use_main_table and (self._DBTableName!=self._MainTableName) and (args.get("ID字段", self.IDField) is None):
             SQLStr += "INNER JOIN "+self._MainTableName+" "
             SQLStr += "ON "+self._JoinCondition+" "
         return SQLStr[:-1]
@@ -525,7 +525,7 @@ class SQL_Table(FactorTable):
                 else:
                     SQLStr += init_keyword+" "+self._DBTableName+"."+self._FactorInfo.loc[iConditionField, "DBFieldName"]+" IN ("+iConditionVal+") "
                 init_keyword = "AND"
-        if use_main_table and pd.notnull(self._MainTableCondition): SQLStr += init_keyword+" "+self._MainTableCondition+" "
+        if use_main_table and pd.notnull(self._MainTableCondition) and (args.get("ID字段", self.IDField) is None): SQLStr += init_keyword+" "+self._MainTableCondition+" "
         return SQLStr[:-1]
     def getCondition(self, icondition, ids=None, dts=None, args={}):
         SQLStr = "SELECT DISTINCT "+self._DBTableName+"."+self._FactorInfo.loc[icondition, "DBFieldName"]+" "

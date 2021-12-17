@@ -1,5 +1,6 @@
 # coding=utf-8
 import os
+import urllib
 import pickle
 import importlib
 import concurrent.futures
@@ -25,8 +26,9 @@ class QSNeo4jObject(__QS_Object__):
     Connector = Enum("default", "neo4j", arg_type="SingleOption", label="连接器", order=5)
     CSVImportPath = Either(None, Str("file:///"), arg_type="String", label="CSV导入地址", order=6)
     CSVExportPath = Either(None, Str(), arg_type="String", label="CSV导出地址", order=7)
-    ClearCSV = Bool(False, arg_type="Bool", label="清除CSV", order=8)
-    PeriodicSize = Int(-1, arg_type="Integer", label="定期数量", order=9)
+    CSVSep = Str(",", arg_type="String", label="CSV分隔符", order=8)
+    ClearCSV = Bool(False, arg_type="Bool", label="清除CSV", order=9)
+    PeriodicSize = Int(-1, arg_type="Integer", label="定期数量", order=10)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._Connection = None# 连接对象
         self._Connector = None# 实际使用的数据库链接器
@@ -157,7 +159,8 @@ class QSNeo4jObject(__QS_Object__):
                 data = OldData.where(pd.notnull(OldData), data)
             else:
                 data = data.where(pd.notnull(data), OldData)
-        data[entity_id] = data.index
+        #data[entity_id] = data.index
+        data.insert(0, entity_id, data.index)
         data = data.astype("O").where(pd.notnull(data), None)
         CypherStr1 = "UNWIND $data AS iData"
         if if_exists in ("replace", "replace_all", "create"):
@@ -192,23 +195,24 @@ class QSNeo4jObject(__QS_Object__):
                     data = OldData.where(pd.notnull(OldData), data)
                 else:
                     data = data.where(pd.notnull(data), OldData)
-            data[entity_id] = data.index
+            #data[entity_id] = data.index
+            data.insert(0, entity_id, data.index)
             data = data.astype("O").where(pd.notnull(data), None)
         if CSVExportPath is not None:
             if os.path.isdir(CSVExportPath):
                 ExportPath = genAvailableFile("QSNeo4jEntityData", target_dir=CSVExportPath, suffix="csv")
             else:
                 ExportPath = CSVExportPath
-            data.to_csv(ExportPath, index=False, header=True)
+            data.to_csv(ExportPath, index=False, header=True, sep=args.get("CSV分隔符", self.CSVSep))
             _, CSVFile = os.path.split(ExportPath)
-            ImportPath = f"{args.get('CSV导入地址', self.CSVImportPath)}{CSVFile}"
+            ImportPath = urllib.parse.urljoin(args.get("CSV导入地址", self.CSVImportPath), CSVFile)
         else:
             ImportPath = args.get("CSV导入地址", self.CSVImportPath)
         PeriodicSize = args.get("定期数量", self.PeriodicSize)
         if PeriodicSize>0:
-            CypherStr = f"""USING PERIODIC COMMIT {PeriodicSize} LOAD CSV WITH HEADERS FROM "{ImportPath}" AS line """
+            CypherStr = f"""USING PERIODIC COMMIT {PeriodicSize} LOAD CSV WITH HEADERS FROM "{ImportPath}" AS line FIELDTERMINATOR '{args.get("CSV分隔符", self.CSVSep)}'"""
         else:
-            CypherStr = f"""LOAD CSV WITH HEADERS FROM "{ImportPath}" AS line """
+            CypherStr = f"""LOAD CSV WITH HEADERS FROM "{ImportPath}" AS line FIELDTERMINATOR '{args.get("CSV分隔符", self.CSVSep)}'"""
         if if_exists in ("replace", "replace_all", "create"):
             CypherStr += f"""CREATE (n:`{LabelStr}` {{{", ".join([f"`{iField}`: line.`{iField}`" for iField in data.columns])}}})"""
         else:
@@ -271,7 +275,7 @@ class QSNeo4jObject(__QS_Object__):
     # kwargs: 可选参数
     #     source_id: 源 ID 字段, 默认取 data.index.names[0]
     #     target_id: 目标 ID 字段, 默认取 data.index.names[1]
-    #     thread_num: 写入线程数量
+    #     create_entity: 是否创建缺失的实体, 默认取 False
     def _writeRelationData(self, data, relation_label, source_labels, target_labels, source_id, target_id, if_exists="update", conn=None, args={}, **kwargs):
         if (data.shape[1]>0) and (if_exists in ("append", "update_notnull")):
             SourceIDs = data.index.get_level_values(0).unique().tolist()
@@ -290,10 +294,11 @@ class QSNeo4jObject(__QS_Object__):
         TargetNode = (f"(n2:`{'`:`'.join(target_labels)}` {{`{target_id}`: d[1]}})" if target_labels else f"(n2 {{`{target_id}`: d[1]}})")
         Relation = (f"(n1) - [r:`{relation_label}`] -> (n2)" if relation_label is not None else "(n1) - [r] -> (n2)")
         CypherStr1 = "UNWIND $data AS d"
+        Keyword = ("MERGE" if kwargs.get("create_entity", False) else "MATCH")
         if if_exists in ("replace", "replace_all", "create"):
-            CypherStr2 = f"""MERGE {SourceNode} MERGE {TargetNode} CREATE {Relation}"""
+            CypherStr2 = f"""{Keyword} {SourceNode} {Keyword} {TargetNode} CREATE {Relation}"""
         else:
-            CypherStr2 = f"""MERGE {SourceNode} MERGE {TargetNode} MERGE {Relation}"""
+            CypherStr2 = f"""{Keyword} {SourceNode} {Keyword} {TargetNode} MERGE {Relation}"""
         if data.shape[1]>0:
             CypherStr2 += f" SET "
             for i, iField in enumerate(data.columns): CypherStr2 += f" r.`{iField}` = d[{2+i}], "
@@ -335,8 +340,8 @@ class QSNeo4jObject(__QS_Object__):
             else:
                 ExportPath = CSVExportPath
             data.to_csv(ExportPath, index=False, header=True)
-            _, CSVFile = os.path.split(ExportPath)        
-            ImportPath = f"""{args.get("CSV导入地址", self.CSVImportPath)}{CSVFile}"""
+            _, CSVFile = os.path.split(ExportPath)
+            ImportPath = urllib.parse.urljoin(args.get("CSV导入地址", self.CSVImportPath), CSVFile)
         else:
             ImportPath = args.get("CSV导入地址", self.CSVImportPath)
         SourceNode = (f"(n1:`{'`:`'.join(source_labels)}` {{`{source_id}`: d.`源ID`}})" if source_labels else f"(n1 {{`{source_id}`: d.`源ID`}})")
@@ -347,16 +352,17 @@ class QSNeo4jObject(__QS_Object__):
             CypherStr = f"USING PERIODIC COMMIT {PeriodicSize} "
         else:
             CypherStr = ""
+        Keyword = ("MERGE" if kwargs.get("create_entity", False) else "MATCH")
         if if_exists in ("replace", "replace_all", "create"):
-            CypherStr += f"""LOAD CSV WITH HEADERS FROM "{ImportPath}" AS d
-                MERGE {SourceNode}
-                MERGE {TargetNode}
+            CypherStr += f"""LOAD CSV WITH HEADERS FROM "{ImportPath}" AS d FIELDTERMINATOR '{args.get("CSV分隔符", self.CSVSep)}'
+                {Keyword} {SourceNode}
+                {Keyword} {TargetNode}
                 CREATE {Relation}
             """
         else:
-            CypherStr += f"""LOAD CSV WITH HEADERS FROM "{ImportPath}" AS d
-                MERGE {SourceNode}
-                MERGE {TargetNode}
+            CypherStr += f"""LOAD CSV WITH HEADERS FROM "{ImportPath}" AS d FIELDTERMINATOR '{args.get("CSV分隔符", self.CSVSep)}'
+                {Keyword} {SourceNode}
+                {Keyword} {TargetNode}
                 MERGE {Relation}
             """
         if data.shape[1]>2:
