@@ -530,7 +530,7 @@ class SQL_Table(FactorTable):
     def getCondition(self, icondition, ids=None, dts=None, args={}):
         SQLStr = "SELECT DISTINCT "+self._DBTableName+"."+self._FactorInfo.loc[icondition, "DBFieldName"]+" "
         SQLStr += self._genFromSQLStr(args=args)+" "
-        SQLStr += self._genIDSQLStr(ids, init_keyword="WHERE", args=args)
+        SQLStr += self._genIDSQLStr(ids, init_keyword="WHERE", args=args)+" "
         if (dts is not None) and hasattr(self, "DTField"):
             DTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
             SQLStr += "AND ("+genSQLInCondition(DTField, [iDT.strftime(self._DTFormat) for iDT in dts], is_str=False, max_num=1000)+") "
@@ -1797,7 +1797,7 @@ class SQL_ConstituentTable(SQL_Table):
         else: SQLStr += "NULL AS CurSign "# 最新标志
         SQLStr += self._genFromSQLStr(args=args)+" "
         SQLStr += "WHERE ("+genSQLInCondition(GroupField, factor_names, is_str=False, max_num=1000)+") "
-        SQLStr += self._genIDSQLStr(ids, args=args)
+        SQLStr += self._genIDSQLStr(ids, args=args)+" "
         if StartDT is not None:
             SQLStr += "AND (("+OutDTField+">"+StartDT.strftime(self._DTFormat)+") "
             SQLStr += "OR ("+OutDTField+" IS NULL)) "
@@ -1978,7 +1978,7 @@ class SQL_FinancialTable(SQL_Table):
         if EndDT is not None:
             SQLStr += "AND "+AnnDTField+"<="+EndDT.strftime(self._DTFormat)+" "
         SQLStr += "AND "+ReportDTField+" IS NOT NULL "
-        SQLStr += self._genIDSQLStr(ids, args=args)
+        SQLStr += self._genIDSQLStr(ids, args=args)+" "
         SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
         SQLStr += "ORDER BY ID, "+AnnDTField+", "
         SQLStr += ReportDTField + ", AdjustType"

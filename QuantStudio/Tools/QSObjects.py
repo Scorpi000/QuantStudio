@@ -387,7 +387,6 @@ class QSSQLite3Object(QSSQLObject):
             SQLStr += "PRIMARY KEY (`"+"`,`".join(primary_keys)+"`))"
         else:
             SQLStr += ")"
-        IndexType = None
         try:
             self.execute(SQLStr)
         except Exception as e:
