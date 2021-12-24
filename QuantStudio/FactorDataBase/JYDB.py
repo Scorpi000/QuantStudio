@@ -252,7 +252,7 @@ class _FinancialIndicatorTable(_FinancialTable):
         SQLStr += "AND LC_BalanceSheetAll.IfMerged = 1 "
         SQLStr += "AND LC_BalanceSheetAll.IfAdjusted = 2 "
         SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
-        SQLStr += self._genIDSQLStr(ids, args=args)
+        SQLStr += self._genIDSQLStr(ids, args=args)+" "
         SQLStr += "ORDER BY ID, LC_BalanceSheetAll.InfoPublDate, "
         SQLStr += ReportDateField
         #RawData = self._FactorDB.fetchall(SQLStr)
@@ -278,7 +278,7 @@ class _FinancialIndicatorTable(_FinancialTable):
         SQLStr += "AND "+ReportDateField+"=MF_BalanceSheetNew.EndDate) "
         SQLStr += "WHERE MF_BalanceSheetNew.Mark = 2 "
         SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
-        SQLStr += self._genIDSQLStr(ids, args=args)
+        SQLStr += self._genIDSQLStr(ids, args=args)+" "
         SQLStr += "ORDER BY ID, MF_BalanceSheetNew.InfoPublDate, "
         SQLStr += ReportDateField
         RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)
