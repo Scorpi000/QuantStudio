@@ -690,6 +690,13 @@ class QSMsgRouter(object):
             raise __QS_Error__(f"{name} 尚未注册为消息接收者!")
         return self._Listeners[name].get(block=block, timeout=timeout)
 
+def _initArray(shape, dtype):
+    try:
+        return np.full(shape=shape, fill_value=None, dtype=dtype), dtype
+    except TypeError:
+        #return np.empty(shape=shape, dtype=dtype)
+        return np.full(shape=shape, fill_value=None, dtype=np.dtype("O")), np.dtype("O")
+
 # pandas Panel 的 QS 实现 TODO
 class _LocIndexer(object):
     def __init__(self, p):
@@ -709,14 +716,18 @@ class _LocIndexer(object):
             DTypes = DTypes.fillna(value=UniDType)
             Items, MajorAxis, MinorAxis = (Items + 1).fillna(value=0).astype(np.int), (MajorAxis + 1).fillna(value=0).astype(np.int), (MinorAxis + 1).fillna(value=0).astype(np.int)
             TmpShape = (Items.max()+1, MajorAxis.max()+1, MinorAxis.max()+1)
-            TmpData = np.full(shape=TmpShape, fill_value=None, dtype=UniDType)
+            #TmpData = np.full(shape=TmpShape, fill_value=None, dtype=UniDType)
+            TmpData, UniDType = _initArray(shape=TmpShape, dtype=UniDType)
             TmpData[1:, 1:, 1:] = self._p._Data[:TmpShape[0]-1, :TmpShape[1]-1, :TmpShape[2]-1]
             p = Panel(data=TmpData[Items.values][:, MajorAxis.values][:, :, MinorAxis.values].astype(UniDType), items=Items.index, major_axis=MajorAxis.index, minor_axis=MinorAxis.index)
             p._DTypes = DTypes
             return p
         elif sum(KeepDim)==2:# DataFrame
             if not KeepDim[0]:
-                Data = pd.DataFrame(self._p._Data[Items].astype(self._p._DTypes[key[0]]), index=self._p._MajorAxis.index, columns=self._p._MinorAxis.index)
+                try:
+                    Data = pd.DataFrame(self._p._Data[Items].astype(self._p._DTypes[key[0]]), index=self._p._MajorAxis.index, columns=self._p._MinorAxis.index)
+                except TypeError:
+                    Data = pd.DataFrame(self._p._Data[Items], index=self._p._MajorAxis.index, columns=self._p._MinorAxis.index)
                 return Data.loc[key[1], key[2]]
             elif not KeepDim[1]:
                 Data = pd.DataFrame(self._p._Data[:, MajorAxis].T, index=self._p._MinorAxis.index, columns=self._p._Items.index)
@@ -729,10 +740,16 @@ class _LocIndexer(object):
                 Data = pd.Series(self._p._Data[:, MajorAxis, MinorAxis], index=self._p._Items.index)
                 return Data.loc[key[0]]
             elif KeepDim[1]:
-                Data = pd.Series(self._p._Data[Items, :, MinorAxis].astype(self._p._DTypes[key[0]]), index=self._p._MajorAxis.index)
+                try:
+                    Data = pd.Series(self._p._Data[Items, :, MinorAxis].astype(self._p._DTypes[key[0]]), index=self._p._MajorAxis.index)
+                except TypeError:
+                    Data = pd.Series(self._p._Data[Items, :, MinorAxis], index=self._p._MajorAxis.index)
                 return Data.loc[key[1]]
             else:
-                Data = pd.Series(self._p._Data[Items, MajorAxis].astype(self._p._DTypes[key[0]]), index=self._p._MinorAxis.index)
+                try:
+                    Data = pd.Series(self._p._Data[Items, MajorAxis].astype(self._p._DTypes[key[0]]), index=self._p._MinorAxis.index)
+                except TypeError:
+                    Data = pd.Series(self._p._Data[Items, MajorAxis], index=self._p._MinorAxis.index)
                 return Data.loc[key[2]]
         else:# Scalar
             return self._p._Data[Items, MajorAxis, MinorAxis]
@@ -769,7 +786,8 @@ class _LocIndexer(object):
                 DTypes.loc[value.dtypes.index] = value.dtypes
             else:
                 DTypes = DTypes.fillna(getattr(value, "dtype", np.dtype("O")))
-            Data = np.concatenate((Data, np.full(shape=(Items.shape[0] - Data.shape[0], Data.shape[1], Data.shape[2]), fill_value=None, dtype=Data.dtype)), axis=0)
+            #Data = np.concatenate((Data, np.full(shape=(Items.shape[0] - Data.shape[0], Data.shape[1], Data.shape[2]), fill_value=None, dtype=Data.dtype)), axis=0)
+            Data = np.concatenate((Data, _initArray(shape=(Items.shape[0] - Data.shape[0], Data.shape[1], Data.shape[2]), dtype=Data.dtype)[0]), axis=0)
         # major_axis
         MajorAxis.loc[key[1]] = -1
         MajorAxis.loc[:] = np.arange(MajorAxis.shape[0])
@@ -779,7 +797,8 @@ class _LocIndexer(object):
         elif isinstance(Key1, pd.Series):
             Key1 = Key1.tolist()
         if MajorAxis.shape[0]>Data.shape[1]:
-            Data = np.concatenate((Data, np.full(shape=(Data.shape[0], MajorAxis.shape[0] - Data.shape[1], Data.shape[2]), fill_value=None, dtype=Data.dtype)), axis=1)
+            #Data = np.concatenate((Data, np.full(shape=(Data.shape[0], MajorAxis.shape[0] - Data.shape[1], Data.shape[2]), fill_value=None, dtype=Data.dtype)), axis=1)
+            Data = np.concatenate((Data, _initArray(shape=(Data.shape[0], MajorAxis.shape[0] - Data.shape[1], Data.shape[2]), dtype=Data.dtype)[0]), axis=1)
         # minor_axis
         MinorAxis.loc[key[2]] = -1
         MinorAxis.loc[:] = np.arange(MinorAxis.shape[0])
@@ -789,7 +808,8 @@ class _LocIndexer(object):
         elif isinstance(Key2, pd.Series):
             Key2 = Key2.tolist()
         if MinorAxis.shape[0]>Data.shape[2]:
-            Data = np.concatenate((Data, np.full(shape=(Data.shape[0], Data.shape[1], MinorAxis.shape[0] - Data.shape[2]), fill_value=None, dtype=Data.dtype)), axis=2)
+            #Data = np.concatenate((Data, np.full(shape=(Data.shape[0], Data.shape[1], MinorAxis.shape[0] - Data.shape[2]), fill_value=None, dtype=Data.dtype)), axis=2)
+            Data = np.concatenate((Data, _initArray(shape=(Data.shape[0], Data.shape[1], MinorAxis.shape[0] - Data.shape[2]), dtype=Data.dtype)[0]), axis=2)
         # 赋值
         try:
             Data[(Key0, Key1, Key2)] = value
@@ -817,12 +837,18 @@ class _iLocIndexer(object):
             DTypes = self._p._DTypes.loc[Items]
             UniDType = DTypes.unique()
             UniDType = (UniDType[0] if UniDType.shape[0]==1 else np.dtype("O"))
-            p = Panel(data=self._p._Data[key[0]][:, key[1]][:, :, key[2]].astype(UniDType), items=Items, major_axis=MajorAxis, minor_axis=MinorAxis)
+            try:
+                p = Panel(data=self._p._Data[key[0]][:, key[1]][:, :, key[2]].astype(UniDType), items=Items, major_axis=MajorAxis, minor_axis=MinorAxis)
+            except TypeError:
+                p = Panel(data=self._p._Data[key[0]][:, key[1]][:, :, key[2]], items=Items, major_axis=MajorAxis, minor_axis=MinorAxis)
             p._DTypes = DTypes
             return p
         elif sum(KeepDim)==2:# DataFrame
             if not KeepDim[0]:
-                return pd.DataFrame(self._p._Data[key[0]][key[1]][:, key[2]].astype(self._p._DTypes[Items]), index=MajorAxis, columns=MinorAxis)
+                try:
+                    return pd.DataFrame(self._p._Data[key[0]][key[1]][:, key[2]].astype(self._p._DTypes[Items]), index=MajorAxis, columns=MinorAxis)
+                except TypeError:
+                    return pd.DataFrame(self._p._Data[key[0]][key[1]][:, key[2]], index=MajorAxis, columns=MinorAxis)
             elif not KeepDim[1]:
                 return pd.DataFrame(self._p._Data[:, key[1]][key[0]][:, key[2]].T, index=MinorAxis, columns=Items)
             else:
@@ -831,9 +857,15 @@ class _iLocIndexer(object):
             if KeepDim[0]:
                 return pd.Series(self._p._Data[:, key[1], key[2]][key[0]], index=Items)
             elif KeepDim[1]:
-                return pd.Series(self._p._Data[key[0], :, key[2]][key[1]].astype(self._p._DTypes[Items]), index=MajorAxis)
+                try:
+                    return pd.Series(self._p._Data[key[0], :, key[2]][key[1]].astype(self._p._DTypes[Items]), index=MajorAxis)
+                except TypeError:
+                    return pd.Series(self._p._Data[key[0], :, key[2]][key[1]], index=MajorAxis)
             else:
-                return pd.Series(self._p._Data[key[0], key[1]][key[2]].astype(self._p._DTypes[Items]), index=MinorAxis)
+                try:
+                    return pd.Series(self._p._Data[key[0], key[1]][key[2]].astype(self._p._DTypes[Items]), index=MinorAxis)
+                except TypeError:
+                    return pd.Series(self._p._Data[key[0], key[1]][key[2]], index=MinorAxis)
         else:
             return self._p._Data[key]
     def __setitem__(self, key, value):
@@ -850,8 +882,10 @@ class Panel(object):
         # _UniDType: dtype
         # _Loc: _LocIndexer
         #_iLoc: -iLocIndexer
+        DataShape = ((0 if items is None else len(items)), (0 if major_axis is None else len(major_axis)), (0 if minor_axis is None else len(minor_axis)))
+        if data is None:
+            data = np.full(shape=DataShape, fill_value=np.nan, dtype=np.float64)
         if isinstance(data, str) or (not hasattr(data, "__iter__")):
-            DataShape = ((0 if items is None else len(items)), (0 if major_axis is None else len(major_axis)), (0 if minor_axis is None else len(minor_axis)))
             self._Items = pd.Series(np.arange(DataShape[0]), index=items)
             self._MajorAxis = pd.Series(np.arange(DataShape[1]), index=major_axis)
             self._MinorAxis = pd.Series(np.arange(DataShape[2]), index=minor_axis)
@@ -963,7 +997,7 @@ class Panel(object):
     def items(self, items):
         if len(items)!=self._Items.shape[0]:
             raise __QS_Error__("Panel.items.setter: 设置的 items 长度不等于数据长度")
-        self._Items = pd.Index(np.arange(len(items)), index=items)
+        self._Items = pd.Series(np.arange(len(items)), index=items)
     @property
     def major_axis(self):
         return self._MajorAxis.index
@@ -971,7 +1005,7 @@ class Panel(object):
     def major_axis(self, major_axis):
         if len(major_axis)!=self._MajorAxis.shape[0]:
             raise __QS_Error__("Panel.major_axis.setter: 设置的 major_axis 长度不等于数据长度")
-        self._MajorAxis = pd.Index(np.arange(len(major_axis)), index=major_axis)
+        self._MajorAxis = pd.Series(np.arange(len(major_axis)), index=major_axis)
     @property
     def minor_axis(self):
         return self._MinorAxis.index
@@ -979,7 +1013,7 @@ class Panel(object):
     def minor_axis(self, minor_axis):
         if len(minor_axis)!=self._MinorAxis.shape[0]:
             raise __QS_Error__("Panel.minor_axis.setter: 设置的 minor_axis 长度不等于数据长度")
-        self._MinorAxis = pd.Index(np.arange(len(minor_axis)), index=minor_axis)
+        self._MinorAxis = pd.Series(np.arange(len(minor_axis)), index=minor_axis)
     @property
     def loc(self):
         return self._Loc
