@@ -691,11 +691,16 @@ class QSMsgRouter(object):
         return self._Listeners[name].get(block=block, timeout=timeout)
 
 def _initArray(shape, dtype):
+    if dtype in (np.dtype("datetime64[ns]"), np.dtype("datetime64"), np.dtype("timedelta64[ns]"), np.dtype("timedelta64")):
+        return np.full(shape=shape, fill_value=np.nan, dtype=dtype), dtype
+    else:
+        a = np.full(shape=shape, fill_value=np.nan, dtype=np.dtype("O"))
     try:
-        return np.full(shape=shape, fill_value=None, dtype=dtype), dtype
-    except TypeError:
-        #return np.empty(shape=shape, dtype=dtype)
-        return np.full(shape=shape, fill_value=None, dtype=np.dtype("O")), np.dtype("O")
+        a = a.astype(dtype)
+    except (ValueError, TypeError):
+        return a, np.dtype("O")
+    else:
+        return a, dtype
 
 # pandas Panel 的 QS 实现 TODO
 class _LocIndexer(object):
@@ -726,7 +731,7 @@ class _LocIndexer(object):
             if not KeepDim[0]:
                 try:
                     Data = pd.DataFrame(self._p._Data[Items].astype(self._p._DTypes[key[0]]), index=self._p._MajorAxis.index, columns=self._p._MinorAxis.index)
-                except TypeError:
+                except (ValueError, TypeError):
                     Data = pd.DataFrame(self._p._Data[Items], index=self._p._MajorAxis.index, columns=self._p._MinorAxis.index)
                 return Data.loc[key[1], key[2]]
             elif not KeepDim[1]:
@@ -742,13 +747,13 @@ class _LocIndexer(object):
             elif KeepDim[1]:
                 try:
                     Data = pd.Series(self._p._Data[Items, :, MinorAxis].astype(self._p._DTypes[key[0]]), index=self._p._MajorAxis.index)
-                except TypeError:
+                except (ValueError, TypeError):
                     Data = pd.Series(self._p._Data[Items, :, MinorAxis], index=self._p._MajorAxis.index)
                 return Data.loc[key[1]]
             else:
                 try:
                     Data = pd.Series(self._p._Data[Items, MajorAxis].astype(self._p._DTypes[key[0]]), index=self._p._MinorAxis.index)
-                except TypeError:
+                except (ValueError, TypeError):
                     Data = pd.Series(self._p._Data[Items, MajorAxis], index=self._p._MinorAxis.index)
                 return Data.loc[key[2]]
         else:# Scalar
@@ -839,7 +844,7 @@ class _iLocIndexer(object):
             UniDType = (UniDType[0] if UniDType.shape[0]==1 else np.dtype("O"))
             try:
                 p = Panel(data=self._p._Data[key[0]][:, key[1]][:, :, key[2]].astype(UniDType), items=Items, major_axis=MajorAxis, minor_axis=MinorAxis)
-            except TypeError:
+            except (ValueError, TypeError):
                 p = Panel(data=self._p._Data[key[0]][:, key[1]][:, :, key[2]], items=Items, major_axis=MajorAxis, minor_axis=MinorAxis)
             p._DTypes = DTypes
             return p
@@ -847,7 +852,7 @@ class _iLocIndexer(object):
             if not KeepDim[0]:
                 try:
                     return pd.DataFrame(self._p._Data[key[0]][key[1]][:, key[2]].astype(self._p._DTypes[Items]), index=MajorAxis, columns=MinorAxis)
-                except TypeError:
+                except (ValueError, TypeError):
                     return pd.DataFrame(self._p._Data[key[0]][key[1]][:, key[2]], index=MajorAxis, columns=MinorAxis)
             elif not KeepDim[1]:
                 return pd.DataFrame(self._p._Data[:, key[1]][key[0]][:, key[2]].T, index=MinorAxis, columns=Items)
@@ -859,12 +864,12 @@ class _iLocIndexer(object):
             elif KeepDim[1]:
                 try:
                     return pd.Series(self._p._Data[key[0], :, key[2]][key[1]].astype(self._p._DTypes[Items]), index=MajorAxis)
-                except TypeError:
+                except (ValueError, TypeError):
                     return pd.Series(self._p._Data[key[0], :, key[2]][key[1]], index=MajorAxis)
             else:
                 try:
                     return pd.Series(self._p._Data[key[0], key[1]][key[2]].astype(self._p._DTypes[Items]), index=MinorAxis)
-                except TypeError:
+                except (ValueError, TypeError):
                     return pd.Series(self._p._Data[key[0], key[1]][key[2]], index=MinorAxis)
         else:
             return self._p._Data[key]
@@ -1074,10 +1079,17 @@ class Panel(object):
 
 if __name__=="__main__":
     np.random.seed(0)
-    p = Panel({
-        "a1": pd.DataFrame(np.random.randn(3,4), index=["b"+str(i) for i in range(1,4)], columns=["c"+str(i) for i in range(1,5)]),
-        "a2": pd.DataFrame(np.random.randn(3,4), index=["b"+str(i) for i in range(1,4)], columns=["c"+str(i) for i in range(1,5)])
-    })
+    #p = Panel({
+        #"a1": pd.DataFrame(np.random.randn(3,4), index=["b"+str(i) for i in range(1,4)], columns=["c"+str(i) for i in range(1,5)]),
+        #"a2": pd.DataFrame(np.random.randn(3,4), index=["b"+str(i) for i in range(1,4)], columns=["c"+str(i) for i in range(1,5)])
+    #})
+    import datetime as dt
+    p = Panel({"a": np.array([[dt.datetime(2021,10,22), dt.datetime(2021, 10, 23)], [None, dt.datetime(2021, 11, 23)]])})
+    df = p.loc[:, [0,1,2]].iloc[0]
+    print(df)
+    p1 = pd.Panel({"a": np.array([[dt.datetime(2021,10,22), dt.datetime(2021, 10, 23)], [None, dt.datetime(2021, 11, 23)]])})
+    df1 = p1.loc[:, [0,1,2]].iloc[0]
+    print(df1)
     #p = Panel(np.random.randn(2, 3, 4), items=["b", "a"])
     #print(p)
     #print(p.loc["a", :])

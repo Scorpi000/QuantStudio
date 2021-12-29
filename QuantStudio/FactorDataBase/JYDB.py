@@ -237,7 +237,8 @@ class _FinancialIndicatorTable(_FinancialTable):
             raise __QS_Error__("FinancialIndicatorTable 类型的因子表 '%s' 中的证券为不支持的证券类型!" % (self.Name, ))
     def _prepareRawDataAStock(self, factor_names, ids, dts, args={}):
         ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
-        IDField = self._DBTableName+"."+self._FactorInfo.loc[args.get("ID字段", self.IDField), "DBFieldName"]
+        IDField = args.get("ID字段", self.IDField)
+        IDField = self._DBTableName+"."+self._FactorInfo.loc[(IDField if IDField is not None else self._IDField), "DBFieldName"]
         # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
         SQLStr = "SELECT "+self._getIDField(args=args)+" AS ID, "
         SQLStr += "LC_BalanceSheetAll.InfoPublDate, "
@@ -264,7 +265,8 @@ class _FinancialIndicatorTable(_FinancialTable):
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
     def _prepareRawDataMF(self, factor_names, ids, dts, args={}):
-        IDField = self._DBTableName+"."+self._FactorInfo.loc[args.get("ID字段", self.IDField), "DBFieldName"]
+        IDField = args.get("ID字段", self.IDField)
+        IDField = self._DBTableName+"."+self._FactorInfo.loc[(IDField if IDField is not None else self._IDField), "DBFieldName"]
         ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
         # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
         SQLStr = "SELECT "+self._getIDField(args=args)+" AS ID, "
