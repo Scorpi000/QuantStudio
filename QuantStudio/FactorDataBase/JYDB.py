@@ -468,56 +468,60 @@ class _AnalystConsensusTable(_JY_SQL_Table):
         return adjustDataDTID(Data, LookBack, factor_names, ids, dts, logger=self._QS_Logger)
     def _calcIDData_FY(self, date_seq, raw_data, report_ann_data, factor_names, lookback, fy_num):
         StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan)
-        tempInd = -1
-        tempLen = raw_data.shape[0]
-        NoteDate = None
-        for i, iDate in enumerate(date_seq):
-            while (tempInd<tempLen-1) and (iDate>=raw_data['日期'].iloc[tempInd+1]): tempInd = tempInd+1
-            if tempInd<0: continue
-            LastYear = str(int(iDate[0:4])-1)
-            NoteDate = findNoteDate(LastYear+'1231', report_ann_data)
-            if (NoteDate is None) or (NoteDate>iDate):
-                ObjectDate = str(int(LastYear)+fy_num)+'1231'
-            else:
-                ObjectDate = str(int(iDate[0:4])+fy_num)+'1231'
-            iDate = dt.date(int(iDate[0:4]), int(iDate[4:6]), int(iDate[6:])) 
-            for j in range(0, tempInd+1):
-                if raw_data['报告期'].iloc[tempInd-j]==ObjectDate:
-                    FYNoteDate = raw_data['日期'].iloc[tempInd-j]
-                    if (iDate - dt.date(int(FYNoteDate[0:4]), int(FYNoteDate[4:6]), int(FYNoteDate[6:]))).days<=lookback:
-                        StdData[i] = raw_data[factor_names].iloc[tempInd-j].values
-                        break
+        for k, kFactorName in enumerate(factor_names):
+            kRawData = raw_data[pd.notnull(raw_data[kFactorName])]
+            tempInd = -1
+            tempLen = kRawData.shape[0]
+            NoteDate = None
+            for i, iDate in enumerate(date_seq):
+                while (tempInd<tempLen-1) and (iDate>=kRawData['日期'].iloc[tempInd+1]): tempInd = tempInd+1
+                if tempInd<0: continue
+                LastYear = str(int(iDate[0:4])-1)
+                NoteDate = findNoteDate(LastYear+'1231', report_ann_data)
+                if (NoteDate is None) or (NoteDate>iDate):
+                    ObjectDate = str(int(LastYear)+fy_num)+'1231'
+                else:
+                    ObjectDate = str(int(iDate[0:4])+fy_num)+'1231'
+                iDate = dt.date(int(iDate[0:4]), int(iDate[4:6]), int(iDate[6:])) 
+                for j in range(0, tempInd+1):
+                    if kRawData['报告期'].iloc[tempInd-j]==ObjectDate:
+                        FYNoteDate = kRawData['日期'].iloc[tempInd-j]
+                        if (iDate - dt.date(int(FYNoteDate[0:4]), int(FYNoteDate[4:6]), int(FYNoteDate[6:]))).days<=lookback:
+                            StdData[i, k] = kRawData[kFactorName].iloc[tempInd-j]
+                            break
         return StdData
     def _calcIDData_Fwd12M(self, date_seq, raw_data, report_ann_data, factor_names, lookback, fy_num):
         StdData = np.full(shape=(len(date_seq), len(factor_names)), fill_value=np.nan)
-        tempInd = -1
-        tempLen = raw_data.shape[0]
-        NoteDate = None
-        for i, iDate in enumerate(date_seq):
-            while (tempInd<tempLen-1) and (iDate>=raw_data['日期'].iloc[tempInd+1]): tempInd = tempInd+1
-            if tempInd<0: continue
-            ObjectDate1 = iDate[0:4]+'1231'
-            ObjectDate2 = str(int(iDate[0:4])+1)+'1231'
-            ObjectData1 = None
-            ObjectData2 = None
-            iDate = dt.date(int(iDate[0:4]), int(iDate[4:6]), int(iDate[6:]))
-            for j in range(0, tempInd+1):
-                if (ObjectData1 is None) and (raw_data['报告期'].iloc[tempInd-j]==ObjectDate1):
-                    NoteDate = raw_data['日期'].iloc[tempInd-j]
-                    if (iDate-dt.date(int(NoteDate[0:4]), int(NoteDate[4:6]), int(NoteDate[6:]))).days<=lookback:
-                        ObjectData1 = raw_data[factor_names].iloc[tempInd-j].values
-                if (ObjectData2 is None) and (raw_data['报告期'].iloc[tempInd-j]==ObjectDate2):
-                    NoteDate = raw_data['日期'].iloc[tempInd-j]
-                    if (iDate-dt.date(int(NoteDate[0:4]), int(NoteDate[4:6]), int(NoteDate[6:]))).days<=lookback:
-                        ObjectData2 = raw_data[factor_names].iloc[tempInd-j].values
+        for k, kFactorName in enumerate(factor_names):
+            kRawData = raw_data[pd.notnull(raw_data[kFactorName])]
+            tempInd = -1
+            tempLen = kRawData.shape[0]
+            NoteDate = None
+            for i, iDate in enumerate(date_seq):
+                while (tempInd<tempLen-1) and (iDate>=kRawData['日期'].iloc[tempInd+1]): tempInd = tempInd+1
+                if tempInd<0: continue
+                ObjectDate1 = iDate[0:4]+'1231'
+                ObjectDate2 = str(int(iDate[0:4])+1)+'1231'
+                ObjectData1 = None
+                ObjectData2 = None
+                iDate = dt.date(int(iDate[0:4]), int(iDate[4:6]), int(iDate[6:]))
+                for j in range(0, tempInd+1):
+                    if (ObjectData1 is None) and (kRawData['报告期'].iloc[tempInd-j]==ObjectDate1):
+                        NoteDate = kRawData['日期'].iloc[tempInd-j]
+                        if (iDate-dt.date(int(NoteDate[0:4]), int(NoteDate[4:6]), int(NoteDate[6:]))).days<=lookback:
+                            ObjectData1 = kRawData[kFactorName].iloc[tempInd-j]
+                    if (ObjectData2 is None) and (kRawData['报告期'].iloc[tempInd-j]==ObjectDate2):
+                        NoteDate = kRawData['日期'].iloc[tempInd-j]
+                        if (iDate-dt.date(int(NoteDate[0:4]), int(NoteDate[4:6]), int(NoteDate[6:]))).days<=lookback:
+                            ObjectData2 = kRawData[kFactorName].iloc[tempInd-j]
+                    if (ObjectData1 is not None) and (ObjectData2 is not None):
+                        break
                 if (ObjectData1 is not None) and (ObjectData2 is not None):
-                    break
-            if (ObjectData1 is not None) and (ObjectData2 is not None):
-                Weight1 = (dt.date(int(ObjectDate1[0:4]), 12, 31) - iDate).days
-                if (iDate.month==2) and (iDate.day==29): Weight1 = Weight1/366
-                else:
-                    Weight1 = Weight1/(dt.date(iDate.year+1, iDate.month, iDate.day)-iDate).days
-                StdData[i] = Weight1*ObjectData1.astype("float") + (1-Weight1)*ObjectData2.astype("float")
+                    Weight1 = (dt.date(int(ObjectDate1[0:4]), 12, 31) - iDate).days
+                    if (iDate.month==2) and (iDate.day==29): Weight1 = Weight1/366
+                    else:
+                        Weight1 = Weight1/(dt.date(iDate.year+1, iDate.month, iDate.day)-iDate).days
+                    StdData[i, k] = Weight1*np.float(ObjectData1) + (1-Weight1)*np.float(ObjectData2)
         return StdData
 
 # f: 该算子所属的因子对象或因子表对象
