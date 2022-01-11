@@ -2045,7 +2045,7 @@ class SQL_FinancialTable(SQL_Table):
         elif CalcType=="单季度": Periods = np.array([0, 1], dtype=np.int)
         elif CalcType=="TTM": Periods = np.array([0, 1, 2, 3, 4], dtype=np.int)
         Periods += YearLookBack * 4 + PeriodLookBack
-        raw_data["ReportPeriod"] = raw_data["ReportDate"].astype(str).str.slice(start=5)
+        raw_data["ReportPeriod"] = raw_data["ReportDate"].astype(str).str.slice(start=5, stop=10)
         Data = {}
         for iFactorName in factor_names:
             Data[iFactorName] = self._calcData(raw_data.loc[:, ["ID", "AnnDate", "ReportDate", "AdjustType", "ReportPeriod", iFactorName]], Periods, iFactorName, ids, dts, CalcType, ReportDate, IgnoreMissing, args=args)
