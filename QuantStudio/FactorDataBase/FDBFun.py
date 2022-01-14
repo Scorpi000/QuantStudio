@@ -143,6 +143,7 @@ def _QS_calcListData_WideTable(raw_data, factor_names, ids, dts, args={}, **kwar
     Operator = args.get("算子", lambda x: x.tolist())
     if Operator is None: Operator = lambda x: x.tolist()
     OperatorDataType = args.get("算子数据类型", "object")
+    AdditionalFields = args.get("附加字段", [])
     if args.get("只回溯时点", False):
         DeduplicatedIndex = raw_data.index(~raw_data.index.duplicated())
         RowIdxMask = pd.Series(False, index=DeduplicatedIndex).unstack(fill_value=True).astype(bool)
@@ -157,7 +158,10 @@ def _QS_calcListData_WideTable(raw_data, factor_names, ids, dts, args={}, **kwar
         RowIdxMask = (RowIdx==-1)
         Data = {}
         for iFactorName in factor_names:
-            iRawData = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
+            if AdditionalFields:
+                iRawData = raw_data.loc[:, [iFactorName]+AdditionalFields].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
+            else:
+                iRawData = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
             iRawData = iRawData.values[RowIdx, ColIdx]
             iRawData[RowIdxMask] = None
             Data[iFactorName] = pd.DataFrame(iRawData, index=dts, columns=RawIDs)
@@ -167,7 +171,10 @@ def _QS_calcListData_WideTable(raw_data, factor_names, ids, dts, args={}, **kwar
     else:
         Data = {}
         for iFactorName in factor_names:
-            Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
+            if AdditionalFields:
+                Data[iFactorName] = raw_data.loc[:, [iFactorName]+AdditionalFields].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
+            else:
+                Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
             if OperatorDataType=="double":
                 Data[iFactorName] = Data[iFactorName].astype(np.float)
         Data = Panel(Data, items=factor_names)
@@ -579,8 +586,9 @@ class SQL_WideTable(SQL_Table):
     MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=8)
     Operator = Either(Function(None), None, arg_type="Function", label="算子", order=9)
     OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=10)
-    PeriodLookBack = Either(None, Int(0), label="回溯期数", arg_type="Integer", order=11)
-    RawLookBack = Float(0, arg_type="Integer", label="原始值回溯天数", order=12)
+    AdditionalFields = ListStr(arg_type="MultiOption", label="附加字段", order=11, option_range=())
+    PeriodLookBack = Either(None, Int(0), label="回溯期数", arg_type="Integer", order=12)
+    RawLookBack = Float(0, arg_type="Integer", label="原始值回溯天数", order=13)
     def __init__(self, name, fdb, sys_args={}, table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
         self._QS_IgnoredGroupArgs = ("遍历模式", "回溯天数", "只起始日回溯", "只回溯非目标日", "只回溯时点", "算子", "算子数据类型", "多重映射","原始值回溯天数")
@@ -907,6 +915,7 @@ class SQL_WideTable(SQL_Table):
         RawData = pd.merge(TargetPeriod, RawData.loc[:, ["ID","QS_DT","QS_EndDTPeriod"]+factor_names],
                            left_on=["ID", "QS_TargetPeriod"], right_on=["ID", "QS_EndDTPeriod"], how="inner", suffixes=("", "_y"))
         RawData = RawData[RawData["QS_DT"]>=RawData["QS_DT_y"]]
+        if RawData.shape[0]==0: return pd.DataFrame(columns=["QS_DT", "ID"]+factor_names)
         MaxAnnDT = RawData.loc[:, ["ID","QS_DT","QS_TargetPeriod", "QS_DT_y"]].groupby(by=["ID", "QS_DT", "QS_TargetPeriod"]).max().reset_index()
         RawData = pd.merge(MaxAnnDT, RawData.loc[:, ["ID","QS_DT","QS_TargetPeriod","QS_DT_y"]+factor_names],
                            left_on=["ID","QS_DT","QS_TargetPeriod","QS_DT_y"], right_on=["ID","QS_DT","QS_TargetPeriod","QS_DT_y"], how="inner", suffixes=("", "_y"))
@@ -921,7 +930,7 @@ class SQL_WideTable(SQL_Table):
                 OrderFields, Orders = [], []
         else:
             OrderFields, Orders = [], []
-        FactorNames = list(set(factor_names).union(OrderFields))
+        FactorNames = list(set(factor_names).union(OrderFields).union(args.get("附加字段", [])))
         if args.get("回溯期数", self.PeriodLookBack) is not None:
             RawData = self._prepareRawData_PeriodLookBack(factor_names=FactorNames, ids=ids, dts=dts, args=args)
         elif args.get("公告时点字段", self.PublDTField) is None:

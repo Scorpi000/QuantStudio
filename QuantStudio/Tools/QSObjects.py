@@ -1033,12 +1033,12 @@ class Panel(object):
         Dims[axis1], Dims[axis2] = Dims[axis2], Dims[axis1]
         return Panel(data=Data, items=Dims[0], major_axis=Dims[1], minor_axis=Dims[2])
     def to_frame(self, filter_observations=True):
-        Index = pd.MultiIndex.from_product([self._MajorAxis, self._MinorAxis], names=(self._MajorAxis.name, self._MinorAxis.name))
+        Index = pd.MultiIndex.from_product([self._MajorAxis.index, self._MinorAxis.index], names=(self._MajorAxis.name, self._MinorAxis.name))
         df = pd.DataFrame(self._Data.swapaxes(1, 2).swapaxes(0, 2).reshape((self._MajorAxis.shape[0]*self._MinorAxis.shape[0], self._Items.shape[0])), index=Index, columns=self._Items.index)
         if filter_observations:
             return df.dropna(axis=0, how="all")
         else:
-            return df        
+            return df
     def sort_index(self, axis=0, level=None, ascending=True, inplace=False, kind='quicksort', na_position='last', sort_remaining=True):
         if axis==0: Index = self._Items.sort_index(axis=0, level=level, ascending=ascending, inplace=False, kind=kind, na_position=na_position, sort_remaining=sort_remaining)
         elif axis==1: Index = self._MajorAxis.sort_index(axis=0, level=level, ascending=ascending, inplace=False, kind=kind, na_position=na_position, sort_remaining=sort_remaining)
