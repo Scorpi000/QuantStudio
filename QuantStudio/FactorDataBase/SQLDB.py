@@ -7,7 +7,7 @@ import pandas as pd
 from traits.api import on_trait_change, Str, Bool, ListStr, Dict
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
-from QuantStudio.Tools.QSObjects import QSSQLObject, QSSQLite3Object
+from QuantStudio.Tools.QSObjects import QSSQLObject
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB
 from QuantStudio.FactorDataBase.FDBFun import SQL_WideTable, SQL_FeatureTable, SQL_MappingTable, SQL_NarrowTable, SQL_TimeSeriesTable
@@ -339,55 +339,4 @@ class SQLDB(QSSQLObject, WritableFactorDB):
             Cursor.executemany(SQLStr, NewData.reset_index().values.tolist())
         self.Connection.commit()
         Cursor.close()
-        return 0
-
-class SQLite3DB(QSSQLite3Object, SQLDB):
-    """SQLite3DB"""
-    Name = Str("SQLite3DB", arg_type="String", label="名称", order=-100)
-    def __init__(self, sys_args={}, config_file=None, **kwargs):
-        super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"SQLite3DBConfig.json" if config_file is None else config_file), **kwargs)
-        return
-    def _genFactorInfo(self, factor_info):
-        factor_info["FieldName"] = factor_info["DBFieldName"]
-        factor_info["FieldType"] = "因子"
-        factor_info["DataType"] = factor_info["DataType"].str.lower()
-        DTMask = factor_info["DataType"].str.contains("text")
-        factor_info["FieldType"][DTMask] = "Date"
-        StrMask = (factor_info["DataType"].str.contains("char") | factor_info["DataType"].str.contains("text"))
-        factor_info["FieldType"][(factor_info["DBFieldName"].str.lower()=="code") & StrMask] = "ID"
-        factor_info["Supplementary"] = None
-        factor_info["Supplementary"][DTMask & (factor_info["DBFieldName"].str.lower()=="datetime")] = "Default"
-        factor_info["Description"] = ""
-        factor_info["Nullable"] = "YES"
-        factor_info = factor_info.set_index(["TableName", "FieldName"])
-        return factor_info
-    def connect(self):
-        QSSQLite3Object.connect(self)
-        nPrefix = len(self.InnerPrefix)
-        SQLStr = f"SELECT name AS DBTableName FROM sqlite_master WHERE type='table' AND name LIKE '{self.InnerPrefix}%%' ORDER BY name"
-        self._TableInfo = pd.read_sql_query(SQLStr, self._Connection)
-        self._TableInfo["TableName"] = self._TableInfo["DBTableName"].apply(lambda x: x[nPrefix:])
-        self._TableInfo["TableClass"] = "WideTable"
-        self._TableInfo = self._TableInfo.set_index(["TableName"])
-        self._FactorInfo = pd.DataFrame()
-        Cursor = self.cursor()
-        for iTableName in self._TableInfo.index:
-            Cursor.execute("PRAGMA table_info([%s])" % self.InnerPrefix+iTableName)
-            iDataType = np.array(Cursor.fetchall())
-            iDataType = pd.DataFrame(iDataType[:, 1:3], columns=["DBFieldName", "DataType"])
-            iDataType = iDataType[~iDataType["DBFieldName"].isin(self.IgnoreFields)]
-            if iDataType.shape[0]>0:
-                iDataType["TableName"] = iTableName
-                self._FactorInfo = self._FactorInfo.append(iDataType)
-        self._FactorInfo = self._genFactorInfo(self._FactorInfo)
-        return 0
-    def createTable(self, table_name, field_types):
-        FieldTypes = field_types.copy()
-        FieldTypes[self.DTField] = FieldTypes.pop(self.DTField, "text NOT NULL")
-        FieldTypes[self.IDField] = FieldTypes.pop(self.IDField, "text NOT NULL")
-        self.createDBTable(self.InnerPrefix+table_name, FieldTypes, primary_keys=[self.DTField, self.IDField], index_fields=[self.IDField])
-        self._TableInfo = self._TableInfo.append(pd.Series([self.InnerPrefix+table_name, "WideTable"], index=["DBTableName", "TableClass"], name=table_name))
-        NewFactorInfo = pd.DataFrame(FieldTypes, index=["DataType"], columns=pd.Index(sorted(FieldTypes.keys()), name="DBFieldName")).T.reset_index()
-        NewFactorInfo["TableName"] = table_name
-        self._FactorInfo = self._FactorInfo.append(self._genFactorInfo(NewFactorInfo))
         return 0

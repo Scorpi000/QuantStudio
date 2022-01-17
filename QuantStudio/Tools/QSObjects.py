@@ -9,7 +9,7 @@ import pickle
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, Str, Range, Password, File, Bool
+from traits.api import Enum, Str, Range, Password, File, Bool, Either, Constant
 
 from QuantStudio import __QS_Object__, __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName
@@ -350,7 +350,7 @@ class QSSQLite3Object(QSSQLObject):
     """基于 sqlite3 模块的对象"""
     DBType = Enum("sqlite3", arg_type="SingleOption", label="数据库类型", order=0)
     Connector = Enum("sqlite3", arg_type="SingleOption", label="连接器", order=8)
-    SQLite3File = File(label="sqlite3文件", arg_type="File", order=11)
+    SQLite3File = Either(Enum(":memory:"), File(), label="sqlite3文件", arg_type="File", order=11)
     def _connect(self):
         try:
             import sqlite3
@@ -364,7 +364,7 @@ class QSSQLite3Object(QSSQLObject):
         self._PID = os.getpid()
         return 0
     def connect(self):
-        super().connect()
+        self._connect()
         self._PlaceHolder = "?"
         return 0
     def getDBTable(self, table_format=None):
