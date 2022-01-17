@@ -43,6 +43,15 @@ def plotCandleStick(ax, quotes, xdata=None, colorup='#B70203', colordown='#3ACCC
     ax.autoscale_view()
     return Lines, Patches
 
+# 生成时点坐标轴
+def setDateTimeAxis(ax, dts, max_display=10, fmt="%Y-%m-%d"):
+    nDT = len(dts)
+    xTicks = np.arange(0, nDT, max(1, int(nDT/max_display)))
+    xTickLabels = [dts[i].strftime(fmt) for i in xTicks]
+    ax.set_xticks(xTicks)
+    ax.set_xticklabels(xTickLabels)
+    return ax
+
 if __name__=="__main__":
     import datetime as dt
     import matplotlib.pyplot as plt
