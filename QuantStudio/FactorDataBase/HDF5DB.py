@@ -18,7 +18,7 @@ from QuantStudio.Tools.api import Panel
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
 from QuantStudio.FactorDataBase.FDBFun import adjustDataDTID
 from QuantStudio.Tools.FileFun import listDirDir, listDirFile
-from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5
+from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
 
 def _identifyDataType(factor_data, data_type=None):
     if (data_type is None) or (data_type=="double"):
@@ -56,7 +56,8 @@ class _FactorTable(FactorTable):
         return sorted(listDirFile(self._FactorDB.MainDir+os.sep+self.Name, suffix=self._Suffix))
     def getMetaData(self, key=None, args={}):
         with self._FactorDB._getLock(self._Name) as DataLock:
-            return readNestedDictFromHDF5(self._FactorDB.MainDir+os.sep+self.Name+os.sep+"_TableInfo.h5", "/"+("" if key is None else key))
+            if not os.path.isfile(self._FactorDB.MainDir+os.sep+self.Name+os.sep+"_TableInfo.h5"): return (pd.Series() if key is None else None)
+            return pd.Series(readNestedDictFromHDF5(self._FactorDB.MainDir+os.sep+self.Name+os.sep+"_TableInfo.h5", "/"+("" if key is None else key)))
     def getFactorMetaData(self, factor_names=None, key=None, args={}):
         AllFactorNames = self.FactorNames
         if factor_names is None: factor_names = AllFactorNames
@@ -66,10 +67,10 @@ class _FactorTable(FactorTable):
             for iFactorName in factor_names:
                 if iFactorName in AllFactorNames:
                     with self._FactorDB._openHDF5File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+iFactorName+"."+self._Suffix, mode="r") as File:
-                        if key is None: MetaData[iFactorName] = pd.Series(File.attrs)
+                        if key is None: MetaData[iFactorName] = pd.Series(dict(File.attrs))
                         elif key in File.attrs: MetaData[iFactorName] = File.attrs[key]
         if not MetaData: return super().getFactorMetaData(factor_names=factor_names, key=key, args=args)
-        if key is None: return pd.DataFrame(MetaData).loc[:, factor_names]
+        if key is None: return pd.DataFrame(MetaData).T.loc[factor_names]
         else: return pd.Series(MetaData).loc[factor_names]
     def getID(self, ifactor_name=None, idt=None, args={}):
         if ifactor_name is None: ifactor_name = self.FactorNames[0]
@@ -280,18 +281,14 @@ class HDF5DB(WritableFactorDB):
                 shutil.rmtree(TablePath, ignore_errors=True)
         return 0
     def setTableMetaData(self, table_name, key=None, value=None, meta_data=None):
-        with self._DataLock:
-            with self._openHDF5File(self.MainDir+os.sep+table_name+os.sep+"_TableInfo.h5", mode="a") as File:
-                if key is not None:
-                    if key in File:
-                        del File[key]
-                    if (isinstance(value, np.ndarray)) and (value.dtype==np.dtype("O")):
-                        File.create_dataset(key, data=value, dtype=h5py.special_dtype(vlen=str))
-                    elif value is not None:
-                        File.create_dataset(key, data=value)
         if meta_data is not None:
-            for iKey in meta_data:
-                self.setTableMetaData(table_name, key=iKey, value=meta_data[iKey], meta_data=None)
+            meta_data = dict(meta_data)
+        else:
+            meta_data = {}
+        if key is not None:
+            meta_data[key] = value
+        with self._DataLock:
+            writeNestedDict2HDF5(meta_data, self.MainDir+os.sep+table_name+os.sep+"_TableInfo.h5", "/")
         return 0
     # ----------------------------因子操作---------------------------------
     def renameFactor(self, table_name, old_factor_name, new_factor_name):

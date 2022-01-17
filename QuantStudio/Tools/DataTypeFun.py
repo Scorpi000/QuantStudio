@@ -78,7 +78,9 @@ def writeNestedDict2HDF5(nested_dict_or_value, file_path, ref):
             Group = (File.create_group(ref) if ref!="/" else File["/"])
             for iKeyTuple, iValue in getNestedDictItems(nested_dict_or_value):
                 iBytes = pickle.dumps(iValue)
-                Group.create_dataset("/".join(iKeyTuple), dtype=np.uint8, data=np.fromiter(iBytes, dtype=np.uint8))
+                iDataSet = "/".join(iKeyTuple)
+                if iDataSet in Group: del Group[iDataSet]
+                Group.create_dataset(iDataSet, dtype=np.uint8, data=np.fromiter(iBytes, dtype=np.uint8))
         else:
             iBytes = pickle.dumps(nested_dict_or_value)
             File.create_dataset(ref, dtype=np.uint8, data=np.fromiter(iBytes, dtype=np.uint8))
