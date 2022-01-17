@@ -109,7 +109,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
     @property
     def TableNames(self):
         return sorted(self._TableInfo.index)
-    def getTable(self, table_name, args={}):
+    def __QS_initFTArgs__(self, table_name, args):
         if table_name not in self._TableInfo.index:
             Msg = ("因子库 '%s' 调用方法 getTable 错误: 不存在因子表: '%s'!" % (self.Name, table_name))
             self._QS_Logger.error(Msg)
@@ -142,7 +142,10 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         # 确定多重映射参数
         PrimaryKeys = iFactorInfo[iFactorInfo["FieldKey"]=="PRI"].index
         Args.setdefault("多重映射", (PrimaryKeys.difference({DTField, IDField}).shape[0]>0))
-        return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=Args, logger=self._QS_Logger)")
+        return Args
+    def getTable(self, table_name, args={}):
+        Args = self.__QS_initFTArgs__(table_name=table_name, args=args)
+        return eval("_"+Args["因子表类型"]+"(name='"+table_name+"', fdb=self, sys_args=Args, logger=self._QS_Logger)")
     def renameTable(self, old_table_name, new_table_name):
         if old_table_name not in self._TableInfo.index:
             Msg = ("因子库 '%s' 调用方法 renameTable 错误: 不存在因子表 '%s'!" % (self.Name, old_table_name))

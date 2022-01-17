@@ -104,14 +104,8 @@ class ClickHouseDB(QSClickHouseObject, SQLDB):
         self._FactorInfo = self._genFactorInfo(self._FactorInfo)
         return 0
     def getTable(self, table_name, args={}):
-        if table_name not in self._TableInfo.index:
-            Msg = ("因子库 '%s' 调用方法 getTable 错误: 不存在因子表: '%s'!" % (self.Name, table_name))
-            self._QS_Logger.error(Msg)
-            raise __QS_Error__(Msg)
-        Args = self.FTArgs.copy()
-        Args.update(args)
-        TableClass = Args.get("因子表类型", self._TableInfo.loc[table_name, "TableClass"])
-        return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=Args, logger=self._QS_Logger)")
+        Args = self.__QS_initFTArgs__(table_name=table_name, args=args)
+        return eval("_"+Args["因子表类型"]+"(name='"+table_name+"', fdb=self, sys_args=Args, logger=self._QS_Logger)")
     def createTable(self, table_name, field_types):
         FieldTypes = field_types.copy()
         FieldTypes[self.DTField] = FieldTypes.pop(self.DTField, "DateTime")

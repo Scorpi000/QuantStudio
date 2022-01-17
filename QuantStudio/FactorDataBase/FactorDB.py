@@ -140,6 +140,11 @@ class _ErgodicMode(__QS_Object__):
         state = self.__dict__.copy()
         if "_CacheDataProcess" in state: state["_CacheDataProcess"] = None
         return state
+    def __str__(self):
+        return str(self.Args)
+    def __repr__(self):
+        return str(self.Args)
+
 # 基于 mmap 的缓冲数据, 如果开启遍历模式, 那么限制缓冲的因子个数, ID 个数, 时间点长度, 缓冲区里是因子的部分数据
 def _prepareMMAPFactorCacheData(ft, mmap_cache):
     CacheData, CacheDTs, MMAPCacheData, DTNum = {}, [], mmap_cache, len(ft.ErgodicMode._DateTimes)

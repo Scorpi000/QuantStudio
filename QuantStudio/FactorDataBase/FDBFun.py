@@ -1991,7 +1991,7 @@ class SQL_FinancialTable(SQL_Table):
         SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
         SQLStr += "ORDER BY ID, "+AnnDTField+", "
         SQLStr += ReportDTField + ", AdjustType"
-        RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)
+        RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)# TODO, 换成 fetchall
         RawData.columns = ["ID", "AnnDate", "ReportDate", "AdjustType"]+factor_names
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData

@@ -816,6 +816,8 @@ class _LocIndexer(object):
             #Data = np.concatenate((Data, np.full(shape=(Data.shape[0], Data.shape[1], MinorAxis.shape[0] - Data.shape[2]), fill_value=None, dtype=Data.dtype)), axis=2)
             Data = np.concatenate((Data, _initArray(shape=(Data.shape[0], Data.shape[1], MinorAxis.shape[0] - Data.shape[2]), dtype=Data.dtype)[0]), axis=2)
         # 赋值
+        if isinstance(Key0, (slice, list)) and (not (isinstance(Key1, (slice, list)) and isinstance(Key2, (slice, list)))):
+            value = np.array(value).T
         try:
             Data[(Key0, Key1, Key2)] = value
         except ValueError:
