@@ -423,7 +423,7 @@ class FactorTable(__QS_Object__):
     # -------------------------------表的信息---------------------------------
     # 获取表的元数据
     def getMetaData(self, key=None, args={}):
-        if key is None: return {}
+        if key is None: return pd.Series()
         return None
     # -------------------------------维度信息-----------------------------------
     # 返回所有因子名
