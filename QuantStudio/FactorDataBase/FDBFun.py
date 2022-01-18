@@ -930,7 +930,7 @@ class SQL_WideTable(SQL_Table):
                 OrderFields, Orders = [], []
         else:
             OrderFields, Orders = [], []
-        FactorNames = list(set(factor_names).union(OrderFields).union(args.get("附加字段", [])))
+        FactorNames = list(set(factor_names).union(OrderFields).union(args.get("附加字段", self.AdditionalFields)))
         if args.get("回溯期数", self.PeriodLookBack) is not None:
             RawData = self._prepareRawData_PeriodLookBack(factor_names=FactorNames, ids=ids, dts=dts, args=args)
         elif args.get("公告时点字段", self.PublDTField) is None:
@@ -938,7 +938,7 @@ class SQL_WideTable(SQL_Table):
         else:
             RawData = self._prepareRawData_WithPublDT(factor_names=FactorNames, ids=ids, dts=dts, args=args)
         RawData = RawData.sort_values(by=["ID", "QS_DT"]+OrderFields, ascending=[True, True]+[(iOrder.lower()=="asc") for iOrder in Orders])
-        return RawData.loc[:, ["QS_DT", "ID"]+factor_names]
+        return RawData.loc[:, ["QS_DT", "ID"]+list(set(factor_names).union(args.get("附加字段", self.AdditionalFields)))]
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
         Args = self.Args
@@ -969,8 +969,8 @@ class SQL_NarrowTable(SQL_Table):
         if FactorFields.shape[0]==0: FactorFields = self._FactorInfo
         self.add_trait("FactorNameField", Enum(*FactorFields.index.tolist(), arg_type="SingleOption", label="因子名字段", order=4))
         DefaultField = FactorFields[FactorFields["Supplementary"]=="Default"].index
-        if DefaultField.shape[0]==0: self.FactorField = FactorFields.index[0]
-        else: self.FactorField = DefaultField[0]
+        if DefaultField.shape[0]==0: self.FactorNameField = FactorFields.index[0]
+        else: self.FactorNameField = DefaultField[0]
         ValueFields = self._FactorInfo[self._FactorInfo["FieldType"]=="Value"]
         if ValueFields.shape[0]==0: ValueFields = self._FactorInfo
         self.add_trait("FactorValueField", Enum(*ValueFields.index.tolist(), arg_type="SingleOption", label="因子值字段", order=5))
@@ -998,7 +998,7 @@ class SQL_NarrowTable(SQL_Table):
     @property
     def FactorNames(self):
         if self._FactorNames is None:
-            self._FactorNames = self._getFactorNames(self.FactorField)
+            self._FactorNames = self._getFactorNames(self.FactorNameField)
         if isinstance(self._FactorNames, dict):
             return sorted(self._FactorNames.keys())
         else:
@@ -1567,11 +1567,11 @@ class SQL_MappingTable(SQL_Table):
     def _calcMultiMappingData(self, raw_data, factor_names, ids, dts, args={}):
         Data, nDT, nFactor = {}, len(dts), len(factor_names)
         raw_data.set_index(["ID"], inplace=True)
-        raw_data["QS_结束日"] = raw_data["QS_结束日"].where(pd.notnull(raw_data["QS_结束日"]), dts[-1]+dt.timedelta(1))
+        raw_data["QS_结束日"] = raw_data["QS_结束日"].astype("O").where(pd.notnull(raw_data["QS_结束日"]), dts[-1]+dt.timedelta(1))
         if args.get("只填起始日", self.OnlyStartFilled):
             if args.get("包含结束时点", self.EndDTIncluded):
                 raw_data["QS_结束日"] = (raw_data["QS_结束日"] + dt.timedelta(1)).astype("O")
-            raw_data["QS_起始日"] = raw_data["QS_起始日"].where(raw_data["QS_起始日"]>=dts[0], dts[0])
+            raw_data["QS_起始日"] = raw_data["QS_起始日"].astype("O").where(raw_data["QS_起始日"]>=dts[0], dts[0])
             for iID in raw_data.index.unique():
                 #iRawData = raw_data.loc[[iID]].set_index(["QS_起始日"])
                 #iData = pd.DataFrame([([],)*nFactor]*nDT, index=dts, columns=factor_names, dtype="O")
@@ -1629,11 +1629,11 @@ class SQL_MappingTable(SQL_Table):
         if args.get("多重映射", self.MultiMapping): return self._calcMultiMappingData(raw_data, factor_names, ids, dts, args=args)
         raw_data.set_index(["ID"], inplace=True)
         Data, nFactor = {}, len(factor_names)
-        raw_data["QS_结束日"] = raw_data["QS_结束日"].where(pd.notnull(raw_data["QS_结束日"]), dts[-1]+dt.timedelta(1))
+        raw_data["QS_结束日"] = raw_data["QS_结束日"].astype("O").where(pd.notnull(raw_data["QS_结束日"]), dts[-1]+dt.timedelta(1))
         if args.get("只填起始日", self.OnlyStartFilled):
             if args.get("包含结束时点", self.EndDTIncluded):
                 raw_data["QS_结束日"] = (raw_data["QS_结束日"] + dt.timedelta(1)).astype("O")
-            raw_data["QS_起始日"] = raw_data["QS_起始日"].where(raw_data["QS_起始日"]>=dts[0], dts[0])
+            raw_data["QS_起始日"] = raw_data["QS_起始日"].astype("O").where(raw_data["QS_起始日"]>=dts[0], dts[0])
             for iID in raw_data.index.unique():
                 #iRawData = raw_data.loc[[iID]].set_index(["QS_起始日"])
                 #iData = pd.DataFrame(index=dts, columns=factor_names)

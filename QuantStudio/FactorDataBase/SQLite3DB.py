@@ -25,8 +25,9 @@ class _WideTable(_SQLite3_SQL_Table, SQL_WideTable):
     """SQLite3 宽因子表"""
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         RawData = super().__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args)
-        DTFmt = args.get("时点格式", self.DTFmt)
-        RawData["QS_DT"] = RawData["QS_DT"].apply(lambda x: dt.datetime.strptime(x, DTFmt))
+        if args.get("回溯期数", self.PeriodLookBack) is None:
+            DTFmt = args.get("时点格式", self.DTFmt)
+            RawData["QS_DT"] = RawData["QS_DT"].apply(lambda x: dt.datetime.strptime(x, DTFmt))
         return RawData
 
 class _NarrowTable(_SQLite3_SQL_Table, SQL_NarrowTable):
@@ -39,7 +40,19 @@ class _NarrowTable(_SQLite3_SQL_Table, SQL_NarrowTable):
 
 class _FeatureTable(_SQLite3_SQL_Table, SQL_FeatureTable):
     """SQLite3 特征因子表"""
-    pass
+    def _getMaxDT(self, args={}):
+        MaxDT = super()._getMaxDT(args=args)
+        if MaxDT is not None:
+            DTFmt = args.get("时点格式", self.DTFmt)
+            return dt.datetime.strptime(MaxDT, DTFmt)
+        else:
+            return None
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        RawData = super().__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args)
+        if args.get("时点字段", self.DTField) is not None:
+            DTFmt = args.get("时点格式", self.DTFmt)
+            RawData["QS_DT"] = RawData["QS_DT"].apply(lambda x: dt.datetime.strptime(x, DTFmt))
+        return RawData
 
 class _TimeSeriesTable(_SQLite3_SQL_Table, SQL_TimeSeriesTable):
     """SQLite3 时序因子表"""
