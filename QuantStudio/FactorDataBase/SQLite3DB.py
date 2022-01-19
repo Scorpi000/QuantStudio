@@ -27,7 +27,7 @@ class _WideTable(_SQLite3_SQL_Table, SQL_WideTable):
         RawData = super().__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args)
         if args.get("回溯期数", self.PeriodLookBack) is None:
             DTFmt = args.get("时点格式", self.DTFmt)
-            RawData["QS_DT"] = RawData["QS_DT"].apply(lambda x: dt.datetime.strptime(x, DTFmt))
+            RawData["QS_DT"] = RawData["QS_DT"].apply(lambda x: dt.datetime.strptime(x, DTFmt) if pd.notnull(x) else pd.NaT)
         return RawData
 
 class _NarrowTable(_SQLite3_SQL_Table, SQL_NarrowTable):
@@ -35,7 +35,7 @@ class _NarrowTable(_SQLite3_SQL_Table, SQL_NarrowTable):
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         RawData = super().__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args)
         DTFmt = args.get("时点格式", self.DTFmt)
-        RawData["QS_DT"] = RawData["QS_DT"].apply(lambda x: dt.datetime.strptime(x, DTFmt))
+        RawData["QS_DT"] = RawData["QS_DT"].apply(lambda x: dt.datetime.strptime(x, DTFmt) if pd.notnull(x) else pd.NaT)
         return RawData
 
 class _FeatureTable(_SQLite3_SQL_Table, SQL_FeatureTable):
@@ -51,7 +51,7 @@ class _FeatureTable(_SQLite3_SQL_Table, SQL_FeatureTable):
         RawData = super().__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args)
         if args.get("时点字段", self.DTField) is not None:
             DTFmt = args.get("时点格式", self.DTFmt)
-            RawData["QS_DT"] = RawData["QS_DT"].apply(lambda x: dt.datetime.strptime(x, DTFmt))
+            RawData["QS_DT"] = RawData["QS_DT"].apply(lambda x: dt.datetime.strptime(x, DTFmt) if pd.notnull(x) else pd.NaT)
         return RawData
 
 class _TimeSeriesTable(_SQLite3_SQL_Table, SQL_TimeSeriesTable):
@@ -59,7 +59,7 @@ class _TimeSeriesTable(_SQLite3_SQL_Table, SQL_TimeSeriesTable):
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         RawData = super().__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args)
         DTFmt = args.get("时点格式", self.DTFmt)
-        RawData["QS_DT"] = RawData["QS_DT"].apply(lambda x: dt.datetime.strptime(x, DTFmt))
+        RawData["QS_DT"] = RawData["QS_DT"].apply(lambda x: dt.datetime.strptime(x, DTFmt) if pd.notnull(x) else pd.NaT)
         return RawData
 
 class _MappingTable(_SQLite3_SQL_Table, SQL_MappingTable):
@@ -67,8 +67,8 @@ class _MappingTable(_SQLite3_SQL_Table, SQL_MappingTable):
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         RawData = super().__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args)
         DTFmt = args.get("时点格式", self.DTFmt)
-        RawData["QS_起始日"] = RawData["QS_起始日"].apply(lambda x: dt.datetime.strptime(x, DTFmt))
-        RawData["QS_结束日"] = RawData["QS_结束日"].apply(lambda x: dt.datetime.strptime(x, DTFmt))
+        RawData["QS_起始日"] = RawData["QS_起始日"].apply(lambda x: dt.datetime.strptime(x, DTFmt) if pd.notnull(x) else pd.NaT)
+        RawData["QS_结束日"] = RawData["QS_结束日"].apply(lambda x: dt.datetime.strptime(x, DTFmt) if pd.notnull(x) else pd.NaT)
         return RawData
 
 class _ConstituentTable(_SQLite3_SQL_Table, SQL_ConstituentTable):
@@ -76,17 +76,37 @@ class _ConstituentTable(_SQLite3_SQL_Table, SQL_ConstituentTable):
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         RawData = super().__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args)
         DTFmt = args.get("时点格式", self.DTFmt)
-        RawData["InDate"] = RawData["InDate"].apply(lambda x: dt.datetime.strptime(x, DTFmt))
-        RawData["OutDate"] = RawData["OutDate"].apply(lambda x: dt.datetime.strptime(x, DTFmt))
+        RawData["InDate"] = RawData["InDate"].apply(lambda x: dt.datetime.strptime(x, DTFmt) if pd.notnull(x) else pd.NaT)
+        RawData["OutDate"] = RawData["OutDate"].apply(lambda x: dt.datetime.strptime(x, DTFmt) if pd.notnull(x) else pd.NaT)
         return RawData
 
 class _FinancialTable(_SQLite3_SQL_Table, SQL_FinancialTable):
     """SQLite3 财务因子表"""
+    def _genConditionSQLStr(self, use_main_table=True, init_keyword="AND", args={}):
+        SQLStr = _SQLite3_SQL_Table._genConditionSQLStr(self, use_main_table=use_main_table, init_keyword=init_keyword, args=args)
+        if SQLStr: init_keyword = "AND"
+        ReportDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
+        if args.get("忽略非季末报告", self.IgnoreNonQuarter) or (not ((args.get("报告期", self.ReportDate)=="所有") and (args.get("计算方法", self.CalcType)=="最新") and (args.get("回溯年数", self.YearLookBack)==0) and (args.get("回溯期数", self.PeriodLookBack)==0))):
+            DTFmt = args.get("时点格式", self.DTFmt).replace("%Y", "")
+            SQLStr + " "+init_keyword+" ("+ReportDTField+f" LIKE '{DTFmt.replace('%m', '03').replace('%d','31')}' "
+            SQLStr + "OR "+ReportDTField+f" LIKE '{DTFmt.replace('%m', '06').replace('%d','30')}' "
+            SQLStr + "OR "+ReportDTField+f" LIKE '{DTFmt.replace('%m', '09').replace('%d','30')}' "
+            SQLStr + "OR "+ReportDTField+f" LIKE '{DTFmt.replace('%m', '12').replace('%d','31')}') "
+            init_keyword = "AND"
+        AdjustTypeField = args.get("调整类型字段", self.AdjustTypeField)
+        if AdjustTypeField is not None:
+            iConditionVal = args.get("调整类型", self.AdjustType)
+            if iConditionVal:
+                if self.__QS_identifyDataType__(self._FactorInfo.loc[AdjustTypeField, "DataType"])!="double":
+                    SQLStr += " "+init_keyword+" "+self._DBTableName+"."+self._FactorInfo.loc[AdjustTypeField, "DBFieldName"]+" IN ('"+"','".join(iConditionVal.split(","))+"') "
+                else:
+                    SQLStr += " "+init_keyword+" "+self._DBTableName+"."+self._FactorInfo.loc[AdjustTypeField, "DBFieldName"]+" IN ("+iConditionVal+") "
+        return SQLStr
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         RawData = super().__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args)
         DTFmt = args.get("时点格式", self.DTFmt)
-        RawData["AnnDate"] = RawData["AnnDate"].apply(lambda x: dt.datetime.strptime(x, DTFmt))
-        RawData["ReportDate"] = RawData["ReportDate"].apply(lambda x: dt.datetime.strptime(x, DTFmt))
+        RawData["AnnDate"] = RawData["AnnDate"].apply(lambda x: dt.datetime.strptime(x, DTFmt) if pd.notnull(x) else pd.NaT)
+        RawData["ReportDate"] = RawData["ReportDate"].apply(lambda x: dt.datetime.strptime(x, DTFmt) if pd.notnull(x) else pd.NaT)
         return RawData
 
 class SQLite3DB(QSSQLite3Object, SQLDB):
