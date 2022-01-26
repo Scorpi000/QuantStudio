@@ -12,7 +12,7 @@ from traits.api import Str, Range, Directory, File, Password, Either, Int, Enum,
 from QuantStudio import __QS_Error__, __QS_LibPath__, __QS_MainPath__, __QS_ConfigPath__
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries
 from QuantStudio.FactorDataBase.FactorDB import FactorDB, FactorTable
-from QuantStudio.FactorDataBase.FDBFun import updateInfo, SQL_Table, SQL_WideTable, SQL_FeatureTable, SQL_MappingTable
+from QuantStudio.FactorDataBase.FDBFun import updateInfo, importInfo, SQL_Table, SQL_WideTable, SQL_FeatureTable, SQL_MappingTable
 from QuantStudio.Tools.api import Panel
 
 def _adjustID(ids):
@@ -430,8 +430,13 @@ class TinySoftDB(FactorDB):
         self._TableInfo = None# 数据库中的表信息
         self._FactorInfo = None# 数据库中的表字段信息
         self._InfoFilePath = __QS_LibPath__+os.sep+"TinySoftDBInfo.hdf5"# 数据库信息文件路径
-        self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"TinySoftDBInfo.xlsx"# 数据库信息源文件路径
-        self._TableInfo, self._FactorInfo = updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger)
+        if not os.path.isfile(self.DBInfoFile):
+            if self.DBInfoFile: self._QS_Logger.warning("找不到指定的库信息文件 : '%s'" % self.DBInfoFile)
+            self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"TinySoftDBInfo.xlsx"# 默认数据库信息源文件路径
+            self._TableInfo, self._FactorInfo = updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger)
+        else:
+            self._InfoResourcePath = self.DBInfoFile
+            self._TableInfo, self._FactorInfo = importInfo(self._InfoFilePath, self._InfoResourcePath)# 数据库表信息, 数据库字段信息
         return
     def __getstate__(self):
         state = self.__dict__.copy()
