@@ -1005,6 +1005,7 @@ class Panel(object):
         if len(items)!=self._Items.shape[0]:
             raise __QS_Error__("Panel.items.setter: 设置的 items 长度不等于数据长度")
         self._Items = pd.Series(np.arange(len(items)), index=items)
+        self._DTypes.index = items
     @property
     def major_axis(self):
         return self._MajorAxis.index

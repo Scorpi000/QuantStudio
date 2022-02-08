@@ -503,7 +503,10 @@ class TinySoftDB(FactorDB):
         CodeStr = CodeStr.format(StartDate=start_date.strftime("%Y%m%d"), EndDate=end_date.strftime("%Y%m%d"))
         ErrorCode, Data, Msg = self._TSLPy.RemoteExecute(CodeStr,{})
         if ErrorCode!=0: raise __QS_Error__("TinySoft 执行错误: "+Msg.decode("gbk"))
-        return list(map(lambda x: dt.date(*self._TSLPy.DecodeDate(x)), Data))
+        if kwargs.get("output_type", "date")=="date":
+            return list(map(lambda x: dt.date(*self._TSLPy.DecodeDate(x)), Data))
+        else:
+            return list(map(lambda x: dt.datetime(*self._TSLPy.DecodeDate(x)), Data))
     # 获取指定日当前或历史上的全体 A 股 ID，返回在市场上出现过的所有A股, 目前仅支持提取当前的所有 A 股
     def _getAllAStock(self, date=None, is_current=True):# TODO
         if date is None: date = dt.date.today()

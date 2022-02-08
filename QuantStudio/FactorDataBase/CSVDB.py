@@ -77,11 +77,11 @@ class _FactorTable(FactorTable):
         FilePath = self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix
         if not os.path.isfile(FilePath): raise __QS_Error__("因子库 '%s' 的因子表 '%s' 中不存在因子 '%s'!" % (self._FactorDB.Name, self.Name, ifactor_name))
         with self._FactorDB._getLock(self._Name):
-            Data = pd.read_csv(FilePath, sep=",", header=0, index_col=0)
+            Data = pd.read_csv(FilePath, sep=",", header=0, index_col=0, parse_dates=True, infer_datetime_format=True)
             with open(FilePath, mode="r") as File:
                 DataType = File.readline().strip().split(",")[0]
         if ids is not None:
-            Data = Data.loc[ids]
+            Data = Data.loc[:, ids]
         if dts is not None:
             Data = Data.loc[dts]
         if DataType=="double":
@@ -220,7 +220,7 @@ class CSVDB(WritableFactorDB):
             with self._DataLock:
                 if not os.path.isdir(TablePath): os.mkdir(TablePath)
         with self._getLock(table_name=table_name) as DataLock:
-            if not os.path.isfile(file_path):
+            if not os.path.isfile(FilePath):
                 return self._writeData(factor_data, table_name, FilePath, data_type)
         Data = self.getTable(table_name).readFactorData(ifactor_name=ifactor_name, ids=None, dts=None)
         AllDTs = Data.index.union(factor_data.index)
