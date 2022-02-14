@@ -1,11 +1,12 @@
 # coding=utf-8
-"""基于 Mongo 数据库的因子库"""
+"""基于 Elasticsearch 的因子库"""
 import os
 import datetime as dt
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, Str, Range, Password, Float, ListStr, List
+from elasticsearch import Elasticsearch, helpers
+from traits.api import Enum, Str, Float, ListStr, List, Dict
 
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
@@ -13,7 +14,7 @@ from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.api import Panel
 
 def _identifyDataType(dtypes):
-    if np.dtype('O') in dtypes.values: return 'string'
+    if np.dtype('O') in dtypes.values: return 'keyword'
     else: return 'double'
 
 def _adjustData(data, look_back, factor_names, ids, dts):
@@ -44,14 +45,13 @@ def _adjustData(data, look_back, factor_names, ids, dts):
 
 class _WideTable(FactorTable):
     """SQLDB 宽因子表"""
-    TableType = Enum("宽表", arg_type="SingleOption", label="因子表类型", order=0)
+    TableType = Enum("WideTable", arg_type="SingleOption", label="因子表类型", order=0)
     LookBack = Float(0, arg_type="Integer", label="回溯天数", order=1)
     FilterCondition = List([], arg_type="List", label="筛选条件", order=2)
     #DTField = Enum("datetime", arg_type="SingleOption", label="时点字段", order=3)
     #IDField = Enum("code", arg_type="SingleOption", label="ID字段", order=4)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         self._DataType = fdb._TableFactorDict[name]
-        self._Collection = fdb._DB[fdb.InnerPrefix+name]
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
@@ -185,28 +185,24 @@ class _WideTable(FactorTable):
             Data[iFactorName] = iRawData
         return _adjustData(Data, args.get("回溯天数", self.LookBack), factor_names, ids, dts)
 
-class MongoDB(WritableFactorDB):
-    """MongoDB"""
-    Name = Str("MongoDB", arg_type="String", label="名称", order=-100)
-    DBType = Enum("Mongo", arg_type="SingleOption", label="数据库类型", order=0)
-    DBName = Str("Scorpion", arg_type="String", label="数据库名", order=1)
-    IPAddr = Str("127.0.0.1", arg_type="String", label="IP地址", order=2)
-    Port = Range(low=0, high=65535, value=27017, arg_type="Integer", label="端口", order=3)
-    User = Str("root", arg_type="String", label="用户名", order=4)
-    Pwd = Password("", arg_type="String", label="密码", order=5)
-    CharSet = Enum("utf8", "gbk", "gb2312", "gb18030", "cp936", "big5", arg_type="SingleOption", label="字符集", order=6)
-    Connector = Enum("default", "pymongo", arg_type="SingleOption", label="连接器", order=7)
-    IgnoreFields = ListStr(arg_type="List", label="忽略字段", order=8)
-    InnerPrefix = Str("qs_", arg_type="String", label="内部前缀", order=9)
+class ElasticSearchDB(WritableFactorDB):
+    """ElasticSearchDB"""
+    Name = Str("ElasticSearchDB", arg_type="String", label="名称", order=-100)
+    ConnectArgs = Dict(arg_type="Dict", label="连接参数", order=0)
+    Connector = Enum("default", "elasticsearch", arg_type="SingleOption", label="连接器", order=1)
+    IgnoreFields = ListStr(["id"], arg_type="List", label="忽略字段", order=2)
+    InnerPrefix = Str("qs_", arg_type="String", label="内部前缀", order=3)
+    FTArgs = Dict(label="因子表参数", arg_type="Dict", order=4)
+    DTField = Str("datetime", arg_type="String", label="时点字段", order=5)
+    IDField = Str("code", arg_type="String", label="ID字段", order=6)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
-        super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"MongoDBConfig.json" if config_file is None else config_file), **kwargs)
+        super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"ElasticSearchDBConfig.json" if config_file is None else config_file), **kwargs)
         self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
         self._TableFieldDataType = {}# {表名: pd.Series(数据库数据类型, index=[因子名])}
         return
     def __getstate__(self):
         state = self.__dict__.copy()
         state["_Connection"] = (True if self.isAvailable() else False)
-        state["_DB"] = None
         return state
     def __setstate__(self, state):
         super().__setstate__(state)
@@ -219,29 +215,26 @@ class MongoDB(WritableFactorDB):
         return self._Connection
     def _connect(self):
         self._Connection = None
-        if (self.Connector=="pymongo") or ((self.Connector=="default") and (self.DBType=="Mongo")):
+        if self.Connector in ("default", "elasticsearch"):
             try:
-                import pymongo
-                self._Connection = pymongo.MongoClient(host=self.IPAddr, port=self.Port)
+                self._Connection = Elasticsearch(**self.ConnectArgs)
             except Exception as e:
-                Msg = ("'%s' 尝试使用 pymongo 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, self.User, self.IPAddr, self.Port, self.DBName, str(e)))
+                Msg = ("'%s' 尝试使用 elasticsearch 连接(%s)elasticsearch 失败: %s" % (self.Name, str(self.ConnectArgs), str(e)))
                 self._QS_Logger.error(Msg)
-                if self.Connector!="default": raise e
+                raise e
             else:
-                self._Connector = "pymongo"
+                self._Connector = "elasticsearch"
         self._PID = os.getpid()
-        self._DB = self._Connection[self.DBName]
         return 0
     def connect(self):
         self._connect()
         nPrefix = len(self.InnerPrefix)
-        if self.DBType=="Mongo":
-            self._TableFactorDict = {}
-            for iTableName in self._DB.collection_names():
-                if iTableName[:nPrefix]==self.InnerPrefix:
-                    iTableInfo = self._DB[iTableName].find_one({"code": "_TableInfo"}, {"datetime": 0, "code": 0, "_id": 0})
-                    if iTableInfo:
-                        self._TableFactorDict[iTableName[nPrefix:]] = pd.Series({iFactorName: iInfo["DataType"] for iFactorName, iInfo in iTableInfo.items() if iFactorName not in self.IgnoreFields})
+        self._TableFactorDict = {}
+        TableInfo = self._Connection.indices.get_mapping(index=f"{self.InnerPrefix}*")
+        for iTableName in TableInfo:
+            iTableInfo = TableInfo[iTableName]["mappings"]
+            if iTableInfo:
+                self._TableFactorDict[iTableName[nPrefix:]] = pd.Series({iFactorName: iInfo["DataType"] for iFactorName, iInfo in iTableInfo.items() if iFactorName not in self.IgnoreFields})
         return 0
     @property
     def TableNames(self):
@@ -251,7 +244,7 @@ class MongoDB(WritableFactorDB):
             Msg = ("因子库 '%s' 调用方法 getTable 错误: 不存在因子表: '%s'!" % (self.Name, table_name))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
-        TableType = args.get("因子表类型", "宽表")
+        TableType = args.get("因子表类型", "WideTable")
         if TableType=="宽表":
             return _WideTable(name=table_name, fdb=self, sys_args=args, logger=self._QS_Logger)
         else:
@@ -267,34 +260,24 @@ class MongoDB(WritableFactorDB):
             Msg = ("因子库 '%s' 调用方法 renameTable 错误: 新因子表名 '%s' 已经存在于库中!" % (self.Name, new_table_name))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
-        self._DB[self.InnerPrefix+old_table_name].rename(self.InnerPrefix+new_table_name)
+        self._Connection.reindex(source=self.InnerPrefix+old_table_name, dest=self.InnerPrefix+new_table_name)
         self._TableFactorDict[new_table_name] = self._TableFactorDict.pop(old_table_name)
         return 0
     def deleteTable(self, table_name):
         if table_name not in self._TableFactorDict: return 0
-        self._DB.drop_collection(self.InnerPrefix+table_name)
+        self._Connection.indices.delete(index=self.InnerPrefix+table_name)
         self._TableFactorDict.pop(table_name, None)
         return 0
     # 创建表, field_types: {字段名: 数据类型}
     def createTable(self, table_name, field_types):
-        if self.InnerPrefix+table_name not in self._DB.collection_names():
-            Doc = {iField: {"DataType": iDataType} for iField, iDataType in field_types.items()}
-            Doc.update({"datetime": None, "code": "_TableInfo"})
-            Collection = self._DB[self.InnerPrefix+table_name]
-            Collection.insert(Doc)
-            # 添加索引
-            if self._Connector=="pymongo":
-                import pymongo
-                Index1 = pymongo.IndexModel([("datetime", pymongo.ASCENDING), ("code", pymongo.ASCENDING)], name=self.InnerPrefix+"datetime_code")
-                Index2 = pymongo.IndexModel([("code", pymongo.HASHED)], name=self.InnerPrefix+"code")
-                try:
-                    Collection.create_indexes([Index1, Index2])
-                except Exception as e:
-                    self._QS_Logger.warning("'%s' 调用方法 createTable 在数据库中创建表 '%s' 的索引时错误: %s" % (self.Name, table_name, str(e)))
+        if self._Connection.indices.exists(index=self.InnerPrefix+table_name):
+            Mappings = {"properties": {self.DTField: {"type": "date"}, self.IDField: {"type": "keyword"}}}
+            Mappings["properties"].update(field_types)
+            self._Connection.indices.create(index=self.InnerPrefix+table_name, mappings=Mappings)
         self._TableFactorDict[table_name] = pd.Series(field_types)
         return 0
     # ----------------------------因子操作---------------------------------
-    def renameFactor(self, table_name, old_factor_name, new_factor_name):
+    def renameFactor(self, table_name, old_factor_name, new_factor_name):# TODO
         if old_factor_name not in self._TableFactorDict[table_name]:
             Msg = ("因子库 '%s' 调用方法 renameFactor 错误: 因子表 '%s' 中不存在因子 '%s'!" % (self.Name, table_name, old_factor_name))
             self._QS_Logger.error(Msg)
@@ -306,7 +289,7 @@ class MongoDB(WritableFactorDB):
         self._DB[self.InnerPrefix+table_name].update_many({}, {"$rename": {old_factor_name: new_factor_name}})
         self._TableFactorDict[table_name][new_factor_name] = self._TableFactorDict[table_name].pop(old_factor_name)
         return 0
-    def deleteFactor(self, table_name, factor_names):
+    def deleteFactor(self, table_name, factor_names):# TODO
         if not factor_names: return 0
         FactorIndex = self._TableFactorDict.get(table_name, pd.Series()).index.difference(factor_names).tolist()
         if not FactorIndex: return self.deleteTable(table_name)
@@ -316,13 +299,13 @@ class MongoDB(WritableFactorDB):
         self._TableFactorDict[table_name] = self._TableFactorDict[table_name][FactorIndex]
         return 0
     # 增加因子，field_types: {字段名: 数据类型}
-    def addFactor(self, table_name, field_types):
+    def addFactor(self, table_name, field_types):# TODO
         if table_name not in self._TableFactorDict: return self.createTable(table_name, field_types)
         Doc = {iField: {"DataType": iDataType} for iField, iDataType in field_types.items()}
         self._DB[self.InnerPrefix+table_name].update({"code": "_TableInfo"}, {"$set": Doc})
         self._TableFactorDict[table_name] = self._TableFactorDict[table_name].append(field_types)
         return 0
-    def deleteData(self, table_name, ids=None, dts=None):
+    def deleteData(self, table_name, ids=None, dts=None):# TODO
         Doc = {}
         if dts is not None:
             Doc["datetime"] = {"$in": dts}
@@ -334,7 +317,7 @@ class MongoDB(WritableFactorDB):
             self._DB.drop_collection(self.InnerPrefix+table_name)
             self._TableFactorDict.pop(table_name)
         return 0
-    def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
+    def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):# TODO
         if table_name not in self._TableFactorDict:
             FieldTypes = {iFactorName:_identifyDataType(data.iloc[i].dtypes) for i, iFactorName in enumerate(data.items)}
             self.createTable(table_name, field_types=FieldTypes)
@@ -375,8 +358,8 @@ class MongoDB(WritableFactorDB):
         Mask = pd.notnull(NewData).any(axis=1)
         NewData = NewData[Mask]
         if NewData.shape[0]==0: return 0
-        self.deleteData(table_name, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
+        #self.deleteData(table_name, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
         NewData = NewData.reset_index()
-        NewData.columns = ["datetime", "code"] + NewData.columns[2:].tolist()
-        self._DB[self.InnerPrefix+table_name].insert_many(NewData.to_dict(orient="records"))
+        NewData.columns = [self.DTField, self.IDField] + NewData.columns[2:].tolist()
+        helpers.bulk(client=self._Connection, actions=({"_index": self.InnerPrefix+table_name, "_type": "doc", "_source": NewData.iloc[i].to_dict()} for i in range(NewData.shape[0])))
         return 0
