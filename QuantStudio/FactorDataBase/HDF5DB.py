@@ -76,7 +76,12 @@ class _FactorTable(FactorTable):
         if ifactor_name is None: ifactor_name = self.FactorNames[0]
         with self._FactorDB._getLock(self._Name) as DataLock:
             with self._FactorDB._openHDF5File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix, mode="r") as ijFile:
-                return sorted(ijFile["ID"][...])
+                IDs = sorted(ijFile["ID"][...])
+        if idt is not None:
+            Data = self.readFactorData(ifactor_name, ids=IDs, dts=[idt]).iloc[0]
+            return Data[pd.notnull(Data)].index.tolist()
+        else:
+            return IDs
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         if ifactor_name is None: ifactor_name = self.FactorNames[0]
         with self._FactorDB._getLock(self._Name) as DataLock:
@@ -90,7 +95,12 @@ class _FactorTable(FactorTable):
             if isinstance(end_dt, pd.Timestamp) and (pd.__version__>="0.20.0"): end_dt = end_dt.to_pydatetime().timestamp()
             else: end_dt = end_dt.timestamp()
             Timestamps = Timestamps[Timestamps<=end_dt]
-        return sorted(dt.datetime.fromtimestamp(iTimestamp) for iTimestamp in Timestamps)
+        DTs = sorted(dt.datetime.fromtimestamp(iTimestamp) for iTimestamp in Timestamps)
+        if iid is not None:
+            Data = self.readFactorData(ifactor_name, ids=[iid], dts=DTs).iloc[:, 0]
+            return Data[pd.notnull(Data)].index.tolist()
+        else:
+            return DTs            
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         LookBack = args.get("回溯天数", self.LookBack)
         if LookBack==0:
