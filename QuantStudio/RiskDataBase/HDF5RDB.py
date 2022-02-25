@@ -19,7 +19,7 @@ class _RiskTable(RiskTable):
     def getMetaData(self, key=None, args={}):
         with self._RiskDB._DataLock:
             with h5py.File(self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
-                if key is None: return pd.Series(File.attrs)
+                if key is None: return pd.Series(dict(File.attrs))
                 elif key in File.attrs: return File.attrs[key]
                 else: return None
     def getDateTime(self, start_dt=None, end_dt=None):
