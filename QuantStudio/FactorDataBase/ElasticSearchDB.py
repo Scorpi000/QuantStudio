@@ -13,6 +13,19 @@ from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.api import Panel
 
+_TypeMapping = {
+    "keyword": "string",
+    "text": "string",
+    "float": "double",
+    "double": "double",
+    "integer": "double",
+    "long": "double",
+    "short": "double",
+    "byte": "double",
+    "half_float": "double",
+    "date": "object",
+}
+
 def _identifyDataType(dtypes):
     if np.dtype('O') in dtypes.values: return 'keyword'
     else: return 'double'
@@ -44,7 +57,7 @@ def _adjustData(data, look_back, factor_names, ids, dts):
 
 
 class _WideTable(FactorTable):
-    """SQLDB 宽因子表"""
+    """ElasticSearchDB 宽因子表"""
     TableType = Enum("WideTable", arg_type="SingleOption", label="因子表类型", order=0)
     LookBack = Float(0, arg_type="Integer", label="回溯天数", order=1)
     FilterCondition = List([], arg_type="List", label="筛选条件", order=2)
@@ -52,6 +65,7 @@ class _WideTable(FactorTable):
     #IDField = Enum("code", arg_type="SingleOption", label="ID字段", order=4)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         self._DataType = fdb._TableFactorDict[name]
+        self._Connection = fdb._Connection
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
@@ -79,6 +93,11 @@ class _WideTable(FactorTable):
     def getID(self, ifactor_name=None, idt=None, args={}):
         IDField = args.get("ID字段", self.IDField)
         DTField = args.get("时点字段", self.DTField)
+        
+        
+        
+        
+        
         Doc = []
         if idt is not None: Doc.append({DTField: idt})
         if ifactor_name is not None: Doc.append({ifactor_name: {"$ne": None}})
@@ -234,7 +253,7 @@ class ElasticSearchDB(WritableFactorDB):
         for iTableName in TableInfo:
             iTableInfo = TableInfo[iTableName]["mappings"]
             if iTableInfo:
-                self._TableFactorDict[iTableName[nPrefix:]] = pd.Series({iFactorName: iInfo["DataType"] for iFactorName, iInfo in iTableInfo.items() if iFactorName not in self.IgnoreFields})
+                self._TableFactorDict[iTableName[nPrefix:]] = pd.Series({iFactorName: _TypeMapping.get(iInfo["type"], "object") for iFactorName, iInfo in iTableInfo["properties"].items() if iFactorName not in self.IgnoreFields})
         return 0
     @property
     def TableNames(self):

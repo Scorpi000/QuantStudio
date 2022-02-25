@@ -43,7 +43,7 @@ def _adjustData(data, look_back, factor_names, ids, dts):
 
 
 class _WideTable(FactorTable):
-    """SQLDB 宽因子表"""
+    """MongoDB 宽因子表"""
     TableType = Enum("宽表", arg_type="SingleOption", label="因子表类型", order=0)
     LookBack = Float(0, arg_type="Integer", label="回溯天数", order=1)
     FilterCondition = List([], arg_type="List", label="筛选条件", order=2)
