@@ -1,12 +1,12 @@
 # coding=utf-8
-"""基于 Elasticsearch 的因子库"""
+"""基于 Elasticsearch 的因子库(TODO)"""
 import os
 import datetime as dt
 
 import numpy as np
 import pandas as pd
 from elasticsearch import Elasticsearch, helpers
-from traits.api import Enum, Str, Float, ListStr, List, Dict
+from traits.api import Enum, Str, Float, ListStr, List, Dict, Bool
 
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
@@ -59,13 +59,15 @@ def _adjustData(data, look_back, factor_names, ids, dts):
 class _WideTable(FactorTable):
     """ElasticSearchDB 宽因子表"""
     TableType = Enum("WideTable", arg_type="SingleOption", label="因子表类型", order=0)
-    LookBack = Float(0, arg_type="Integer", label="回溯天数", order=1)
-    FilterCondition = List([], arg_type="List", label="筛选条件", order=2)
-    #DTField = Enum("datetime", arg_type="SingleOption", label="时点字段", order=3)
-    #IDField = Enum("code", arg_type="SingleOption", label="ID字段", order=4)
+    PreFilterID = Bool(True, arg_type="Bool", label="预筛选ID", order=1)
+    LookBack = Float(0, arg_type="Integer", label="回溯天数", order=2)
+    FilterCondition = List([], arg_type="List", label="筛选条件", order=3)
+    #DTField = Enum("datetime", arg_type="SingleOption", label="时点字段", order=4)
+    #IDField = Enum("code", arg_type="SingleOption", label="ID字段", order=5)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         self._DataType = fdb._TableFactorDict[name]
         self._Connection = fdb._Connection
+        self._IndexName = fdb.InnerPrefix+name
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
@@ -92,37 +94,33 @@ class _WideTable(FactorTable):
         else: return pd.Series(MetaData).loc[factor_names]
     def getID(self, ifactor_name=None, idt=None, args={}):
         IDField = args.get("ID字段", self.IDField)
-        DTField = args.get("时点字段", self.DTField)
-        
-        
-        
-        
-        
-        Doc = []
-        if idt is not None: Doc.append({DTField: idt})
-        if ifactor_name is not None: Doc.append({ifactor_name: {"$ne": None}})
-        FilterConds = args.get("筛选条件", self.FilterCondition)
-        if FilterConds: Doc += FilterConds
-        if Doc: Doc = {"$and": Doc}
-        else: Doc = {}
-        IDs = self._Collection.distinct(IDField, Doc)
-        IDs = pd.Series(IDs)
-        return sorted(IDs[pd.notnull(IDs) & (IDs!="_TableInfo")])
+        Query = {"bool": {"filter": [{"exists": {"field": IDField}}]}}
+        if ifactor_name is not None:
+            Query["bool"]["filter"].append({"exists": {"field": ifactor_name}})
+        if idt is not None:
+            DTField = args.get("时点字段", self.DTField)
+            Query["bool"]["must"] = [{"match": {DTField: idt}}]
+        Rslt = self._Connection.search(index=self._IndexName, query=Query, _source=[IDField], collapse={"field": f"{IDField}.keyword"}, sort=[{f"{IDField}.keyword": {"order": "asc"}}])
+        return [r["_source"][IDField] for r in Rslt["hits"]["hits"]]
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
-        IDField = args.get("ID字段", self.IDField)
         DTField = args.get("时点字段", self.DTField)
-        Doc = []
-        if iid is not None: Doc.append({IDField: iid})
-        if start_dt is not None: Doc.append({DTField: {"$gte": start_dt}})
-        if end_dt is not None: Doc.append({DTField: {"$lte": end_dt}})
-        if ifactor_name is not None: Doc.append({ifactor_name: {"$ne": None}})
-        FilterConds = args.get("筛选条件", self.FilterCondition)
-        if FilterConds: Doc += FilterConds
-        if Doc: Doc = {"$and": Doc}
-        else: Doc = {}
-        DTs = self._Collection.distinct(DTField, Doc)
-        DTs = pd.Series(DTs)
-        return sorted(DTs[pd.notnull(DTs)])
+        Query = {"bool": {"filter": [{"exists": {"field": DTField}}]}}
+        if ifactor_name is not None:
+            Query["bool"]["filter"].append({"exists": {"field": ifactor_name}})
+        Must = [] 
+        if iid is not None:
+            IDField = args.get("ID字段", self.IDField)
+            Must.append({"match": {f"{IDField}.keyword": iid}})
+        if start_dt is not None or end_dt is not None:
+            Range = {"range": {DTField: {}}}
+            if start_dt is not None:
+                Range["range"][DTField]["gte"] = start_dt
+            if end_dt is not None:
+                Range["range"][DTField]["lte"] = end_dt
+            Must.append(Range)
+        Query["bool"]["must"] = Must
+        Rslt = self._Connection.search(index=self._IndexName, query=Query, _source=[DTField], collapse={"field": DTField}, sort=[{DTField: {"order": "asc"}}])
+        return [r["_source"][DTField] for r in Rslt["hits"]["hits"]]
     def __QS_genGroupInfo__(self, factors, operation_mode):
         ArgConditionGroup = {}
         ArgNames = self.ArgNames
@@ -264,7 +262,7 @@ class ElasticSearchDB(WritableFactorDB):
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
         TableType = args.get("因子表类型", "WideTable")
-        if TableType=="宽表":
+        if TableType=="WideTable":
             return _WideTable(name=table_name, fdb=self, sys_args=args, logger=self._QS_Logger)
         else:
             Msg = ("因子库 '%s' 调用方法 getTable 错误: 不支持的因子表类型: '%s'" % (self.Name, TableType))
