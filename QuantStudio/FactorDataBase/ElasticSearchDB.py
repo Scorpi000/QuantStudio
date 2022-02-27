@@ -273,7 +273,7 @@ class ElasticSearchDB(WritableFactorDB):
         Args = self._initFTArgs(table_name=table_name, args=args)
         TableClass = Args.get("因子表类型", "WideTable")
         if TableClass=="WideTable":
-            return _WideTable(name=table_name, fdb=self, sys_args=args, logger=self._QS_Logger)
+            return _WideTable(name=table_name, fdb=self, sys_args=Args, logger=self._QS_Logger)
         else:
             Msg = ("因子库 '%s' 调用方法 getTable 错误: 不支持的因子表类型: '%s'" % (self.Name, TableClass))
             self._QS_Logger.error(Msg)
@@ -298,7 +298,7 @@ class ElasticSearchDB(WritableFactorDB):
         return 0
     # 创建表, field_types: {字段名: 数据类型}
     def createTable(self, table_name, field_types):
-        if self._Connection.indices.exists(index=self.InnerPrefix+table_name):
+        if not self._Connection.indices.exists(index=self.InnerPrefix+table_name):
             Mappings = {"properties": {self.DTField: {"type": "date"}, self.IDField: {"type": "keyword"}}}
             Mappings["properties"].update({iFactor: {"type": iDataType} for iFactor, iDataType in field_types.items()})
             self._Connection.indices.create(index=self.InnerPrefix+table_name, mappings=Mappings)
@@ -342,17 +342,16 @@ class ElasticSearchDB(WritableFactorDB):
         self._Connection.indices.put_mapping(body={"properties": {iFactor: {"type": iDataType} for iFactor, iDataType in field_types.items()}}, index=self.InnerPrefix+table_name)
         self._TableFactorDict[table_name] = self._TableFactorDict[table_name].append(field_types)
         return 0
-    def deleteData(self, table_name, ids=None, dts=None):# TODO
-        Doc = {}
-        if dts is not None:
-            Doc["datetime"] = {"$in": dts}
-        if ids is not None:
-            Doc["code"] = {"$in": ids}
-        if Doc:
-            self._DB[self.InnerPrefix+table_name].delete_many(Doc)
+    def deleteData(self, table_name, ids=None, dts=None):
+        if (ids is None) and (dts is None):
+            Body = {"query": {"match_all": {}}}
         else:
-            self._DB.drop_collection(self.InnerPrefix+table_name)
-            self._TableFactorDict.pop(table_name)
+            Body = {"query": {"bool": {"filter": []}}}
+            if ids is not None:
+                Body["query"]["bool"]["filter"].append({"terms": {f"{self.IDField}.keyword": ids}})
+            if dts is not None:
+                Body["query"]["bool"]["filter"].append({"terms": {self.DTField: dts}})
+        self._Connection.delete_by_query(index=self.InnerPrefix+table_name, body=Body)
         return 0
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):# TODO
         if table_name not in self._TableFactorDict:
@@ -398,5 +397,5 @@ class ElasticSearchDB(WritableFactorDB):
         #self.deleteData(table_name, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
         NewData = NewData.reset_index()
         NewData.columns = [self.DTField, self.IDField] + NewData.columns[2:].tolist()
-        helpers.bulk(client=self._Connection, actions=({"_index": self.InnerPrefix+table_name, "_type": "doc", "_source": NewData.iloc[i].to_dict()} for i in range(NewData.shape[0])))
+        helpers.bulk(client=self._Connection, actions=({"_index": self.InnerPrefix+table_name, "_source": NewData.iloc[i].to_dict()} for i in range(NewData.shape[0])))
         return 0
