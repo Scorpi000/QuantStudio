@@ -65,36 +65,38 @@ class _WideTable(FactorTable):
     #DTField = Enum("datetime", arg_type="SingleOption", label="时点字段", order=4)
     #IDField = Enum("code", arg_type="SingleOption", label="ID字段", order=5)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        self._DataType = fdb._TableFactorDict[name]
+        self._TableInfo = fdb._TableInfo.loc[name]
+        self._FactorInfo = fdb._FactorInfo.loc[name]
         self._Connection = fdb._Connection
         self._IndexName = fdb.InnerPrefix+name
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
-        Fields = self._DataType.index.tolist()
+        Fields = self._FactorInfo.index.tolist()
         self.add_trait("DTField", Enum(*Fields, arg_type="SingleOption", label="时点字段", order=4))
         self.add_trait("IDField", Enum(*Fields, arg_type="SingleOption", label="ID字段", order=5))
     @property
     def FactorNames(self):
-        return sorted(self._DataType.index.difference({self.DTField, self.IDField}))
+        return sorted(self._FactorInfo.index.difference({self.DTField, self.IDField}))
     def getFactorMetaData(self, factor_names=None, key=None, args={}):
         if factor_names is None:
             factor_names = self.FactorNames
         if key=="DataType":
-            return self._DataType.loc[factor_names]
+            return self._FactorInfo["DataType"].loc[factor_names]
         elif key is None:
             return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType", args=args)})
         else:
             return pd.Series([None]*len(factor_names), index=factor_names, dtype=np.dtype("O"))
     def getID(self, ifactor_name=None, idt=None, args={}):
         IDField = args.get("ID字段", self.IDField)
+        IDKeyword = (f"{IDField}.keyword" if self._FactorInfo.loc[IDField, "Keyword"] else IDField)
         Query = {"bool": {"filter": [{"exists": {"field": IDField}}]}}
         if ifactor_name is not None:
             Query["bool"]["filter"].append({"exists": {"field": ifactor_name}})
         if idt is not None:
             DTField = args.get("时点字段", self.DTField)
             Query["bool"]["must"] = [{"match": {DTField: idt}}]
-        Rslt = self._Connection.search(index=self._IndexName, query=Query, _source=[IDField], collapse={"field": f"{IDField}.keyword"}, sort=[{f"{IDField}.keyword": {"order": "asc"}}])
+        Rslt = self._Connection.search(index=self._IndexName, query=Query, _source=[IDField], collapse={"field": IDKeyword}, sort=[{IDKeyword: {"order": "asc"}}])
         return [r["_source"][IDField] for r in Rslt["hits"]["hits"]]
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         DTField = args.get("时点字段", self.DTField)
@@ -104,7 +106,8 @@ class _WideTable(FactorTable):
         Must = []
         if iid is not None:
             IDField = args.get("ID字段", self.IDField)
-            Must.append({"match": {f"{IDField}.keyword": iid}})
+            IDKeyword = (f"{IDField}.keyword" if self._FactorInfo.loc[IDField, "Keyword"] else IDField)
+            Must.append({"match": {IDKeyword: iid}})
         if (start_dt is not None) or (end_dt is not None):
             Range = {"range": {DTField: {}}}
             if start_dt is not None:
@@ -140,20 +143,28 @@ class _WideTable(FactorTable):
             Groups.append((self, ArgConditionGroup[iArgConditions]["FactorNames"], list(ArgConditionGroup[iArgConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], ArgConditionGroup[iArgConditions]["args"]))
         return Groups
     def _genNullIDRawData(self, factor_names, ids, end_date, args={}):# TODO
-        IDField = args.get("ID字段", self.IDField)
         DTField = args.get("时点字段", self.DTField)
-        Doc = [{IDField: {"$in": ids}}, {DTField: {"$lt": end_date}}]
+        IDField = args.get("ID字段", self.IDField)
+        IDKeyword = (f"{IDField}.keyword" if self._FactorInfo.loc[IDField, "Keyword"] else IDField)
+        Query = {"bool": {"filter": [{"exists": {"field": DTField}}]}}
+        Query["bool"]["filter"].append({"terms": {IDKeyword: ids}})
+        Must = [{"range": {DTField: {"lt": end_date}}}]
         FilterConds = args.get("筛选条件", self.FilterCondition)
-        if FilterConds: Doc += FilterConds
-        RawData = self._Collection.aggregate([{"$match": {"$and": Doc}}, {"$group": {"_id": "$code", DTField: {"$max": "$"+DTField}}}])
-        RawData = pd.DataFrame(RawData).rename(columns={"_id": IDField})
-        FieldDoc = {DTField: 1, IDField: 1, "_id": 0}
-        FieldDoc.update({iField: 1 for iField in factor_names})
-        RawData = self._Collection.find({"$or": RawData.to_dict(orient="records")}, FieldDoc)
-        return pd.DataFrame(RawData)
+        if FilterConds: Must += FilterConds
+        if Must: Query["bool"]["must"] = Must
+        Aggs = {"qs_code_max": {"terms": {"field": IDKeyword}}}
+        Rslt = self._Connection.search(index=self._IndexName, query=Query, size=0, aggs=Aggs)
+        Query = {"bool": {"should": []}}
+        for iRslt in Rslt["aggregations"]["qs_code_max"]["buckets"]:
+            Query["bool"]["should"].append({"must": [{"term": iRslt["key_as_string"]}, {"term": iRslt["max"]}]})
+        RawData = self._Connection.search(index=self._IndexName, query=Query, _source=[IDField, DTField]+factor_names)
+        RawData = pd.DataFrame(data=(iData["_source"] for iData in RawData["hits"]["hits"]))
+        if RawData.shape[1]==0: return pd.DataFrame(columns=[DTField, IDField]+factor_names)
+        else: return RawData
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         if (dts==[]) or (ids==[]): return pd.DataFrame(columns=["QS_DT", "ID"]+factor_names)
         IDField = args.get("ID字段", self.IDField)
+        IDKeyword = (f"{IDField}.keyword" if self._FactorInfo.loc[IDField, "Keyword"] else IDField)
         DTField = args.get("时点字段", self.DTField)
         LookBack = args.get("回溯天数", self.LookBack)
         if dts is not None:
@@ -164,7 +175,7 @@ class _WideTable(FactorTable):
             StartDT = EndDT = None
         Query = {"bool": {"filter": [{"exists": {"field": DTField}}]}}
         if args.get("预筛选ID", self.PreFilterID):
-            Query["bool"]["filter"].append({"terms": {f"{IDField}.keyword": ids}})
+            Query["bool"]["filter"].append({"terms": {IDKeyword: ids}})
         else:
             Query["bool"]["filter"].append({"exists": {"field": IDField}})
         Must = []
@@ -178,7 +189,7 @@ class _WideTable(FactorTable):
         FilterConds = args.get("筛选条件", self.FilterCondition)
         if FilterConds: Must += FilterConds
         if Must: Query["bool"]["must"] = Must
-        RawData = self._Connection.search(index=self._IndexName, query=Query, _source=[DTField, IDField]+factor_names, sort=[{f"{IDField}.keyword": {"order": "asc"}, DTField: {"order": "asc"}}])
+        RawData = self._Connection.search(index=self._IndexName, query=Query, _source=[DTField, IDField]+factor_names, sort=[{IDKeyword: {"order": "asc"}, DTField: {"order": "asc"}}])
         RawData = pd.DataFrame(data=(iData["_source"] for iData in RawData["hits"]["hits"]))
         if RawData.shape[1]==0: RawData = pd.DataFrame(columns=[DTField, IDField]+factor_names)
         if (StartDT is not None) and np.isinf(LookBack):
@@ -213,8 +224,8 @@ class ElasticSearchDB(WritableFactorDB):
     IDField = Str("code", arg_type="String", label="ID字段", order=6)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"ElasticSearchDBConfig.json" if config_file is None else config_file), **kwargs)
-        self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
-        #self._TableFieldDataType = {}# {表名: pd.Series(数据库数据类型, index=[因子名])}
+        self._TableInfo = pd.DataFrame()# DataFrame(index=[表名], columns=["DBTableName", "TableClass"])
+        self._FactorInfo = pd.DataFrame()# DataFrame(index=[(表名,因子名)], columns=["DataType", "FieldType", "Keyword"])
         return
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -245,12 +256,18 @@ class ElasticSearchDB(WritableFactorDB):
     def connect(self):
         self._connect()
         nPrefix = len(self.InnerPrefix)
-        self._TableFactorDict = {}
-        TableInfo = self._Connection.indices.get_mapping(index=f"{self.InnerPrefix}*")
+        self._TableInfo = []
+        TableInfo = self._Connection.indices.get_settings(index=f"{self.InnerPrefix}*")
         for iTableName in TableInfo:
-            iTableInfo = TableInfo[iTableName]["mappings"]
-            if iTableInfo:
-                self._TableFactorDict[iTableName[nPrefix:]] = pd.Series({iFactorName: _TypeMapping.get(iInfo["type"], "object") for iFactorName, iInfo in iTableInfo["properties"].items() if iFactorName not in self.IgnoreFields})
+            self._TableInfo.append((iTableName[nPrefix:], iTableName, "WideTable"))
+        self._TableInfo = pd.DataFrame(self._TableInfo, columns=["TableName", "DBTableName", "TableClass"]).set_index(["TableName"])
+        self._FactorInfo = []
+        FactorInfo = self._Connection.indices.get_mapping(index=f"{self.InnerPrefix}*")
+        for iTableName in FactorInfo:
+            iFactorInfo = FactorInfo[iTableName]["mappings"]["properties"]
+            if iFactorInfo:
+                self._FactorInfo.extend(((iTableName[nPrefix:], iFactorName, _TypeMapping.get(iInfo["type"], "object"), iInfo["type"], "keyword" in iInfo.get("fields", {})) for iFactorName, iInfo in iFactorInfo.items() if iFactorName not in self.IgnoreFields))
+        self._FactorInfo = pd.DataFrame(self._FactorInfo, columns=["TableName", "FactorName", "DataType", "FieldType", "Keyword"]).set_index(["TableName", "FactorName"])
         return 0
     def disconnect(self):
         self._Connection.close()
@@ -258,9 +275,9 @@ class ElasticSearchDB(WritableFactorDB):
         return 0
     @property
     def TableNames(self):
-        return sorted(self._TableFactorDict)
+        return sorted(self._TableInfo.index)
     def _initFTArgs(self, table_name, args):
-        if table_name not in self._TableFactorDict:
+        if table_name not in self._TableInfo.index:
             Msg = ("因子库 '%s' 调用方法 getTable 错误: 不存在因子表: '%s'!" % (self.Name, table_name))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
@@ -271,7 +288,7 @@ class ElasticSearchDB(WritableFactorDB):
         return Args
     def getTable(self, table_name, args={}):
         Args = self._initFTArgs(table_name=table_name, args=args)
-        TableClass = Args.get("因子表类型", "WideTable")
+        TableClass = Args.get("因子表类型", self._TableInfo.loc[table_name, "TableClass"])
         if TableClass=="WideTable":
             return _WideTable(name=table_name, fdb=self, sys_args=Args, logger=self._QS_Logger)
         else:
@@ -279,68 +296,99 @@ class ElasticSearchDB(WritableFactorDB):
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
     def renameTable(self, old_table_name, new_table_name):
-        if old_table_name not in self._TableFactorDict:
+        if old_table_name not in self._TableInfo.index:
             Msg = ("因子库 '%s' 调用方法 renameTable 错误: 不存在因子表 '%s'!" % (self.Name, old_table_name))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
-        if (new_table_name!=old_table_name) and (new_table_name in self._TableFactorDict):
+        if (new_table_name!=old_table_name) and (new_table_name in self._TableInfo.index):
             Msg = ("因子库 '%s' 调用方法 renameTable 错误: 新因子表名 '%s' 已经存在于库中!" % (self.Name, new_table_name))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
+        Mappings = self._Connection.indices.get_mapping(index=self.InnerPrefix+old_table_name)[self.InnerPrefix+old_table_name]["mappings"]
+        self._Connection.indices.create(index=self.InnerPrefix+new_table_name, mappings=Mappings)
         self._Connection.reindex(body={"source": {"index": self.InnerPrefix+old_table_name}, "dest": {"index": self.InnerPrefix+new_table_name}})
         self._Connection.indices.delete(index=self.InnerPrefix+old_table_name)
-        self._TableFactorDict[new_table_name] = self._TableFactorDict.pop(old_table_name)
+        self._TableInfo = self._TableInfo.rename(index={old_table_name: new_table_name})
+        self._FactorInfo = self._FactorInfo.rename(index={old_table_name: new_table_name}, level=0)
         return 0
     def deleteTable(self, table_name):
-        if table_name not in self._TableFactorDict: return 0
+        if table_name not in self._TableInfo.index: return 0
         self._Connection.indices.delete(index=self.InnerPrefix+table_name)
-        self._TableFactorDict.pop(table_name, None)
+        TableNames = self._TableInfo.index.tolist()
+        TableNames.remove(table_name)
+        self._TableInfo = self._TableInfo.loc[TableNames]
+        self._FactorInfo = self._FactorInfo.loc[TableNames]
         return 0
-    # 创建表, field_types: {字段名: 数据类型}
+    # 创建表, field_types: {字段名: 数据类型(数据库内)}
     def createTable(self, table_name, field_types):
         if not self._Connection.indices.exists(index=self.InnerPrefix+table_name):
             Mappings = {"properties": {self.DTField: {"type": "date"}, self.IDField: {"type": "keyword"}}}
-            Mappings["properties"].update({iFactor: {"type": iDataType} for iFactor, iDataType in field_types.items()})
+            Mappings["properties"].update({iFactor: {"type": iFieldType} for iFactor, iFieldType in field_types.items()})
             self._Connection.indices.create(index=self.InnerPrefix+table_name, mappings=Mappings)
-        self._TableFactorDict[table_name] = pd.Series(field_types)
+        self._TableInfo = self._TableInfo.append(pd.Series([self.InnerPrefix+table_name, "WideTable"], index=["DBTableName", "TableClass"], name=table_name))
+        NewFactorInfo = pd.DataFrame(((table_name, iFactor, _TypeMapping[iFieldType], iFieldType, False) for iFactor, iFieldType in field_types.items()), columns=["TableName", "FactorName", "DataType", "FieldType", "Keyword"]).set_index(["TableName", "FactorName"])
+        self._FactorInfo = self._FactorInfo.append(NewFactorInfo).sort_index()
         return 0
     # ----------------------------因子操作---------------------------------
     def renameFactor(self, table_name, old_factor_name, new_factor_name):
-        if old_factor_name not in self._TableFactorDict[table_name]:
+        if old_factor_name not in self._FactorInfo.loc[table_name].index:
             Msg = ("因子库 '%s' 调用方法 renameFactor 错误: 因子表 '%s' 中不存在因子 '%s'!" % (self.Name, table_name, old_factor_name))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
-        if (new_factor_name!=old_factor_name) and (new_factor_name in self._TableFactorDict[table_name]):
+        if (new_factor_name!=old_factor_name) and (new_factor_name in self._FactorInfo.loc[table_name].index):
             Msg = ("因子库 '%s' 调用方法 renameFactor 错误: 新因子名 '%s' 已经存在于因子表 '%s' 中!" % (self.Name, new_factor_name, table_name))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
-        self._Connection.update_by_query(index=self.InnerPrefix+table_name, 
-            body={"script": f'ctx._source.{new_factor_name} = ctx._source.remove("{old_factor_name}")', "query": {"bool": {"must": [{"exists": {"field": old_factor_name}}]}}})
-        ## 备份原索引
-        #BakTableName = genAvailableName(table_name, self._TableFactorDict)
-        #self._Connection.reindex(body={"source": {"index": self.InnerPrefix+table_name}, "dest": {"index": self.InnerPrefix+BakTableName}})
-        ## 删除原索引
-        #self._Connection.indices.delete(index=self.InnerPrefix+table_name)
-        ## 修改名称并恢复索引
-        #self._Connection.reindex(body={"source": {"index": self.InnerPrefix+BakTableName}, "dest": {"index": self.InnerPrefix+table_name}, "script": {"inline": f'ctx._source.{new_factor_name} = ctx._source.remove("{old_factor_name}")'}})
-        ## 删除临时索引
-        #self._Connection.indices.delete(index=self.InnerPrefix+BakTableName)
-        self._TableFactorDict[table_name][new_factor_name] = self._TableFactorDict[table_name].pop(old_factor_name)
+        #self._Connection.update_by_query(index=self.InnerPrefix+table_name, 
+            #body={"script": f'ctx._source.{new_factor_name} = ctx._source.remove("{old_factor_name}")', "query": {"bool": {"must": [{"exists": {"field": old_factor_name}}]}}})
+        # 备份原索引
+        Mappings = self._Connection.indices.get_mapping(index=self.InnerPrefix+table_name)[self.InnerPrefix+table_name]["mappings"]
+        BakTableName = genAvailableName(table_name, self._TableInfo.index)
+        self._Connection.indices.create(index=self.InnerPrefix+BakTableName, mappings=Mappings)
+        self._Connection.reindex(body={"source": {"index": self.InnerPrefix+table_name}, "dest": {"index": self.InnerPrefix+BakTableName}})
+        # 删除原索引
+        self._Connection.indices.delete(index=self.InnerPrefix+table_name)
+        # 修改名称并恢复索引
+        Mappings["properties"][new_factor_name] = Mappings["properties"].pop(old_factor_name)
+        self._Connection.indices.create(index=self.InnerPrefix+table_name, mappings=Mappings)
+        self._Connection.reindex(body={"source": {"index": self.InnerPrefix+BakTableName}, "dest": {"index": self.InnerPrefix+table_name}, "script": {"inline": f'ctx._source.{new_factor_name} = ctx._source.remove("{old_factor_name}")'}})
+        # 删除临时索引
+        self._Connection.indices.delete(index=self.InnerPrefix+BakTableName)
+        TableNames = self._TableInfo.index.tolist()
+        TableNames.remove(table_name)
+        self._FactorInfo = self._FactorInfo.loc[TableNames].append(self._FactorInfo.loc[[table_name]].rename(index={old_factor_name: new_factor_name}, level=1))
         return 0
     def deleteFactor(self, table_name, factor_names):
-        if not factor_names: return 0
-        FactorIndex = self._TableFactorDict.get(table_name, pd.Series()).index.difference(factor_names).tolist()
+        if (not factor_names) or (table_name not in self._TableInfo.index): return 0
+        FactorIndex = self._FactorInfo.loc[table_name].index.difference(factor_names).tolist()
         if not FactorIndex: return self.deleteTable(table_name)
-        for iFactorName in factor_names:
-            self._Connection.update_by_query(index=self.InnerPrefix+table_name, 
-                body={"script": f'ctx._source.remove("{iFactorName}")', "query": {"bool": {"must": [{"exists": {"field": iFactorName}}]}}})
-        self._TableFactorDict[table_name] = self._TableFactorDict[table_name][FactorIndex]
+        #for iFactorName in factor_names:
+            #self._Connection.update_by_query(index=self.InnerPrefix+table_name, 
+                #body={"script": f'ctx._source.remove("{iFactorName}")', "query": {"bool": {"must": [{"exists": {"field": iFactorName}}]}}})
+        # 备份原索引
+        Mappings = self._Connection.indices.get_mapping(index=self.InnerPrefix+table_name)[self.InnerPrefix+table_name]["mappings"]
+        BakTableName = genAvailableName(table_name, self._TableInfo.index)
+        self._Connection.indices.create(index=self.InnerPrefix+BakTableName, mappings=Mappings)
+        self._Connection.reindex(body={"source": {"index": self.InnerPrefix+table_name}, "dest": {"index": self.InnerPrefix+BakTableName}})        
+        # 删除原索引
+        self._Connection.indices.delete(index=self.InnerPrefix+table_name)
+        # 修改名称并恢复索引
+        for iFactorName in factor_names: Mappings["properties"].pop(iFactorName)
+        self._Connection.indices.create(index=self.InnerPrefix+table_name, mappings=Mappings)
+        Script = "\n".join(f'ctx._source.remove("{iFactorName}");' for iFactorName in factor_names)
+        self._Connection.reindex(body={"source": {"index": self.InnerPrefix+BakTableName}, "dest": {"index": self.InnerPrefix+table_name}, "script": {"inline": Script}})
+        # 删除临时索引
+        self._Connection.indices.delete(index=self.InnerPrefix+BakTableName)
+        TableNames = self._TableInfo.index.tolist()
+        TableNames.remove(table_name)
+        self._FactorInfo = self._FactorInfo.loc[TableNames].append(self._FactorInfo.loc[[table_name]].loc[FactorIndex])
         return 0
-    # 增加因子，field_types: {字段名: 数据类型}
+    # 增加因子，field_types: {字段名: 数据类型(数据库内)}
     def addFactor(self, table_name, field_types):
-        if table_name not in self._TableFactorDict: return self.createTable(table_name, field_types)
-        self._Connection.indices.put_mapping(body={"properties": {iFactor: {"type": iDataType} for iFactor, iDataType in field_types.items()}}, index=self.InnerPrefix+table_name)
-        self._TableFactorDict[table_name] = self._TableFactorDict[table_name].append(field_types)
+        if table_name not in self._TableInfo.index: return self.createTable(table_name, field_types)
+        self._Connection.indices.put_mapping(body={"properties": {iFactor: {"type": iFieldType} for iFactor, iFieldType in field_types.items()}}, index=self.InnerPrefix+table_name)
+        NewFactorInfo = pd.DataFrame(((table_name, iFactor, _TypeMapping[iFieldType], iFieldType, False) for iFactor, iFieldType in field_types.items()), columns=["TableName", "FactorName", "DataType", "FieldType", "Keyword"]).set_index(["TableName", "FactorName"])
+        self._FactorInfo = self._FactorInfo.append(NewFactorInfo).sort_index()
         return 0
     def deleteData(self, table_name, ids=None, dts=None):
         if (ids is None) and (dts is None):
@@ -354,21 +402,21 @@ class ElasticSearchDB(WritableFactorDB):
         self._Connection.delete_by_query(index=self.InnerPrefix+table_name, body=Body)
         return 0
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):# TODO
-        if table_name not in self._TableFactorDict:
+        if table_name not in self._TableInfo.index:
             FieldTypes = {iFactorName:_identifyDataType(data.iloc[i].dtypes) for i, iFactorName in enumerate(data.items)}
             self.createTable(table_name, field_types=FieldTypes)
         else:
-            NewFactorNames = data.items.difference(self._TableFactorDict[table_name].index).tolist()
+            NewFactorNames = data.items.difference(self._FactorInfo.loc[table_name].index).tolist()
             if NewFactorNames:
                 FieldTypes = {iFactorName:_identifyDataType(data.iloc[i].dtypes) for i, iFactorName in enumerate(NewFactorNames)}
                 self.addFactor(table_name, FieldTypes)
             if if_exists=="update":
-                OldFactorNames = self._TableFactorDict[table_name].index.difference(data.items).tolist()
+                OldFactorNames = self._FactorInfo.loc[table_name].index.difference(data.items).tolist()
                 if OldFactorNames:
                     OldData = self.getTable(table_name).readData(factor_names=OldFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
                     for iFactorName in OldFactorNames: data[iFactorName] = OldData[iFactorName]
             else:
-                AllFactorNames = self._TableFactorDict[table_name].index.tolist()
+                AllFactorNames = self._FactorInfo.loc[table_name].index.tolist()
                 OldData = self.getTable(table_name).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
                 if if_exists=="append":
                     for iFactorName in AllFactorNames:
@@ -394,7 +442,7 @@ class ElasticSearchDB(WritableFactorDB):
         Mask = pd.notnull(NewData).any(axis=1)
         NewData = NewData[Mask]
         if NewData.shape[0]==0: return 0
-        #self.deleteData(table_name, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
+        self.deleteData(table_name, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
         NewData = NewData.reset_index()
         NewData.columns = [self.DTField, self.IDField] + NewData.columns[2:].tolist()
         helpers.bulk(client=self._Connection, actions=({"_index": self.InnerPrefix+table_name, "_source": NewData.iloc[i].to_dict()} for i in range(NewData.shape[0])))
