@@ -465,5 +465,5 @@ class ElasticSearchDB(WritableFactorDB):
         self.deleteData(table_name, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
         NewData = NewData.reset_index()
         NewData.columns = [self.DTField, self.IDField] + NewData.columns[2:].tolist()
-        helpers.bulk(client=self._Connection, actions=({"_index": self.InnerPrefix+table_name, "_source": NewData.iloc[i].to_dict()} for i in range(NewData.shape[0])))
+        helpers.bulk(client=self._Connection, actions=({"_op_type": "index", "_index": self.InnerPrefix+table_name, "_source": NewData.iloc[i].to_dict()} for i in range(NewData.shape[0])))
         return 0
