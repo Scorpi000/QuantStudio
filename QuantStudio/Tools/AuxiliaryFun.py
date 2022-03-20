@@ -5,6 +5,7 @@ from multiprocessing import Process, cpu_count, Queue
 
 import numpy as np
 import pandas as pd
+from progressbar import ProgressBar
 
 from QuantStudio.Tools.DataTypeConversionFun import DictKeyValueTurn_List
 
@@ -177,7 +178,7 @@ def allocateDim(n, n_dim=2):
         i = i+1
     return DimAllocation
 
-# 以多进程的方式运行程序, target_fun:目标函数, 参数为(arg); main2sub_queue(sub2main_queue)可取值: None, Single, Multiple
+# 以多进程的方式启动程序, target_fun:目标函数, 参数为(arg); main2sub_queue(sub2main_queue)可取值: None, Single, Multiple
 def startMultiProcess(pid="0", n_prc=cpu_count(), target_fun=None, arg={}, 
                       partition_arg=[], n_partition_head=0, n_partition_tail=0, 
                       main2sub_queue="None", sub2main_queue="None", daemon=None):
@@ -203,6 +204,25 @@ def startMultiProcess(pid="0", n_prc=cpu_count(), target_fun=None, arg={},
         Procs[iPID].start()
     return (Procs, Main2SubQueue, Sub2MainQueue)
 
+# 以多进程的方式启动程序, target_fun:目标函数, 参数为(arg); main2sub_queue(sub2main_queue)可取值: None, Single, Multiple
+def runMultiProcess(pid="0", n_prc=cpu_count(), target_fun=None, arg={}, partition_arg=[], n_partition_head=0, n_partition_tail=0, print_progress=True, daemon=None):
+    Procs, Main2SubQueue, Sub2MainQueue = startMultiProcess(pid=pid, n_prc=n_prc, target_fun=target_fun, arg=arg, partition_arg=partition_arg, 
+                                                            n_partition_head=n_partition_head, n_partition_tail=n_partition_tail, sub2main_queue=("Single" if print_progress else "None"), daemon=daemon)
+    if partition_arg!=[]:
+        nTask = sum(map(len, partitionList(arg[partition_arg[0]], n_prc, n_partition_head, n_partition_tail)))
+    else:
+        nTask = n_prc
+    if print_progress:
+        iProg = 0
+        with ProgressBar(max_value=nTask) as ProgBar:
+            while iProg<nTask:
+                iPID, iSubProg, iMsg = Sub2MainQueue.get()
+                if iMsg: print(iMsg)
+                iProg += iSubProg
+                ProgBar.update(iProg)
+                if iProg>=nTask: break
+    for iPID, iPrcs in Procs.items(): iPrcs.join()
+    return 0
+
 if __name__=="__main__":
     print(allocateDim(13))
-    

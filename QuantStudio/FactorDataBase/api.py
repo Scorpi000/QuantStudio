@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from .FactorDB import CustomFT, Factorize, DataFactor
 from .HDF5DB import HDF5DB
-from .ArcticDB import ArcticDB
+#from .ArcticDB import ArcticDB
 from .SQLDB import SQLDB
 from .WindDB import WindDB
 from .WindDB2 import WindDB2
