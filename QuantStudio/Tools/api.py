@@ -12,7 +12,7 @@ from .AuxiliaryFun import genAvailableName
 
 import pandas as pd
 if pd.__version__<'0.25.0':
-    #Panel = pd.Panel
-    from QuantStudio.Tools.QSObjects import Panel
+    Panel = pd.Panel
+    #from QuantStudio.Tools.QSObjects import Panel
 else:
     from QuantStudio.Tools.QSObjects import Panel

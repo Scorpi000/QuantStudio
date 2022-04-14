@@ -960,6 +960,7 @@ class JYDB(QSSQLObject, FactorDB):
     # is_current: False 表示上市日在指定日之前的期货, True 表示上市日在指定日之前且尚未退市的期货
     # kwargs:
     # contract_type: 合约类型, 可选 "月合约", "连续合约", "所有", 默认值 "月合约"
+    # continue_contract_type: 连续合约类型, list(str), 可选 "主力合约", "期货指数", "次主力合约", "连续合约", "连一合约", "连二合约", "连三合约", "连四合约", "当月连续合约", "次月连续合约", "当季连续合约", "下季连续合约", "隔季连续合约"
     def getFutureID(self, exchange="CFFEX", future_code="IF", date=None, is_current=True, start_date=None, **kwargs):
         if date is None: date = dt.date.today()
         if start_date is not None: start_date = start_date.strftime("%Y-%m-%d")
@@ -991,6 +992,7 @@ class JYDB(QSSQLObject, FactorDB):
             else:
                 SQLStr += "AND (LEFT(ContractCode, 1) IN ('"+"','".join(future_code)+"') OR LEFT(ContractCode, 2) IN ('"+"','".join(future_code)+"')) "
         ContractType = kwargs.get("contract_type", "月合约")
+        ContinueContractType = kwargs.get("continue_contract_type", None)
         if ContractType!="所有": SQLStr += "AND IfReal="+("2" if ContractType=="连续合约" else "1")+" "
         if ContractType!="连续合约":
             SQLStr += "AND ((EffectiveDate IS NULL) OR (EffectiveDate <= '{Date}')) "
@@ -1002,6 +1004,12 @@ class JYDB(QSSQLObject, FactorDB):
                 else:
                     SQLStr += "AND ((EffectiveDate IS NULL) OR (EffectiveDate <= '{StartDate}')) "
                     SQLStr += "AND ((LastTradingDate IS NULL) OR (LastTradingDate >= '{Date}')) "
+        elif ContinueContractType is not None:
+            if isinstance(ContinueContractType, str):
+                SubSQLStr = f"SELECT DM FROM {{Prefix}}CT_SystemConst WHERE LB = 2352 AD MS ='{ContinueContractType}'"
+            else:
+                SubSQLStr = "SELECT DM FROM {Prefix}CT_SystemConst WHERE LB = 2352 AD MS IN ("+"', '".join(ContinueContractType)+"')"
+            SQLStr += f"AND ContinueContType IN ({SubSQLStr}) "
         SQLStr += "ORDER BY ID"
         if future_code:
             if isinstance(future_code, str):

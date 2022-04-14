@@ -185,8 +185,9 @@ class _WideTable(FactorTable):
             Query["bool"]["filter"].append(Range)
         FilterConds = args.get("筛选条件", self.FilterCondition)
         if FilterConds: Query["bool"]["filter"] += FilterConds
-        RawData = self._Connection.search(index=self._IndexName, query=Query, _source=[DTField, IDField]+factor_names, sort=[{IDKeyword: {"order": "asc"}, DTField: {"order": "asc"}}])
-        RawData = pd.DataFrame(data=(iData["_source"] for iData in RawData["hits"]["hits"]))
+        RawData = pd.DataFrame(self._FactorDB.search(index=self._IndexName, query=Query, sort=[{IDKeyword: {"order": "asc"}}, {DTField: {"order": "asc"}}], only_source=True, _source=[DTField, IDField]+factor_names))
+        #RawData = self._Connection.search(index=self._IndexName, query=Query, _source=[DTField, IDField]+factor_names, sort=[{IDKeyword: {"order": "asc"}, DTField: {"order": "asc"}}])
+        #RawData = pd.DataFrame(data=(iData["_source"] for iData in RawData["hits"]["hits"]))
         if RawData.shape[1]==0: RawData = pd.DataFrame(columns=[DTField, IDField]+factor_names)
         if (StartDT is not None) and np.isinf(LookBack):
             NullIDs = set(ids).difference(set(RawData[RawData[DTField]==StartDT][IDField]))
@@ -261,7 +262,7 @@ class ElasticSearchDB(WritableFactorDB):
         self._FactorInfo = []
         FactorInfo = self._Connection.indices.get_mapping(index=f"{self.InnerPrefix}*")
         for iTableName in FactorInfo:
-            iFactorInfo = FactorInfo[iTableName]["mappings"]["properties"]
+            iFactorInfo = FactorInfo[iTableName]["mappings"].get("properties", {})
             if iFactorInfo:
                 self._FactorInfo.extend(((iTableName[nPrefix:], iFactorName, _TypeMapping.get(iInfo["type"], "object"), iInfo["type"], "keyword" in iInfo.get("fields", {})) for iFactorName, iInfo in iFactorInfo.items() if iFactorName not in self.IgnoreFields))
         self._FactorInfo = pd.DataFrame(self._FactorInfo, columns=["TableName", "FactorName", "DataType", "FieldType", "Keyword"])
@@ -273,9 +274,30 @@ class ElasticSearchDB(WritableFactorDB):
         self._Connection.close()
         self._Connection = None
         return 0
+    def search(self, index, query, sort, only_source=True, size=3000, keep_alive="10m", **kwargs):
+        if self._Connection is None:
+            Msg = ("'%s' 调用 search 失败: 数据库尚未连接!" % (self.Name,))
+            self._QS_Logger.error(Msg)
+            raise __QS_Error__(Msg)
+        if os.getpid()!=self._PID: self._connect()# 如果进程号发生变化, 重连
+        SortFields = [tuple(iSort.keys())[0].split(".")[0] for iSort in sort]
+        PIT = self._Connection.open_point_in_time(index=index, keep_alive=keep_alive)
+        iRslt = self._Connection.search(query=query, size=size, sort=sort, 
+                         pit={"keep_alive": keep_alive, "id": PIT["id"]}, **kwargs)
+        while iRslt and iRslt["hits"]["hits"]:
+            iLastRslt = iRslt["hits"]["hits"][-1]
+            iSorts = [iLastRslt[iField] if iField in iLastRslt else iLastRslt["_source"][iField]  for iField in SortFields]
+            if only_source:
+                for ijRslt in iRslt["hits"]["hits"]: yield ijRslt["_source"]
+            else:
+                for ijRslt in iRslt["hits"]["hits"]: yield ijRslt
+            iRslt = self._Connection.search(query=query, size=size, sort=sort, 
+                         pit={"keep_alive": keep_alive, "id": PIT["id"]},
+                         search_after=iSorts, **kwargs)
+        self._Connection.close_point_in_time(body=PIT)
     def fetchall(self, sql_str):# SQL 相关, SQL 不支持 DISTINCT
         if self._Connection is None:
-            Msg = ("'%s' 获取 cursor 失败: 数据库尚未连接!" % (self.Name,))
+            Msg = ("'%s' 调用 fetchall 失败: 数据库尚未连接!" % (self.Name,))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
         if os.getpid()!=self._PID: self._connect()# 如果进程号发生变化, 重连

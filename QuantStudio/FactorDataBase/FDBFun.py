@@ -567,7 +567,7 @@ class SQL_Table(FactorTable):
     # 新方法: 读取 SQL 数据, 返回 DataFrame
     def readSQLData(self, factor_names, ids=None, start_dt=None, end_dt=None, args={}):
         args = args.copy()
-        if ids is None: args["预筛选ID"] = True
+        if ids is None: args["预筛选ID"] = False
         return self.__QS_prepareRawData__(factor_names, ids, [start_dt, end_dt], args=args)
 
 # 基于 SQL 数据库表的宽因子表
