@@ -1079,6 +1079,12 @@ class Panel(object):
         p._DTypes = self._DTypes
         p._UniDType = self._UniDType
         return p
+    # self 和 other 的 major_axis 与 minor_axis 必须一致
+    def join(self, other):
+        Data = np.r_[self._Data, other._Data]
+        p = Panel(data=Data, items=self._Items.index.tolist()+other._Items.index.tolist(), major_axis=self._MajorAxis.index, minor_axis=self._MinorAxis.index)
+        p._DTypes = self._DTypes.append(other._DTypes)
+        return p
 
 if __name__=="__main__":
     np.random.seed(0)

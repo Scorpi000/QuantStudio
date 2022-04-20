@@ -16,8 +16,8 @@ pymongo>=3.4.0
 chardet>=3.0.4
 progressbar2>=3.10.1
 fasteners>=0.14.0
-pyface<7.0.0
 traits<5.2.0
+pyface<7.0.0
 traitsui<7.0.0
 bs4>=0.0.1
 tushare>=1.2.12

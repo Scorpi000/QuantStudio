@@ -274,7 +274,33 @@ class ElasticSearchDB(WritableFactorDB):
         self._Connection.close()
         self._Connection = None
         return 0
-    def search(self, index, query, sort, only_source=True, size=3000, keep_alive="10m", **kwargs):
+    def search_scroll(self, index, query, sort, only_source=True, flattened=True, size=3000, scroll="10m", **kwargs):
+        if self._Connection is None:
+            Msg = ("'%s' 调用 search_scroll 失败: 数据库尚未连接!" % (self.Name,))
+            self._QS_Logger.error(Msg)
+            raise __QS_Error__(Msg)
+        if os.getpid()!=self._PID: self._connect()# 如果进程号发生变化, 重连
+        Body = {"query": query, "size": size, "sort": sort}
+        Body.update(kwargs)
+        if "params" in Body:
+            kwargs = {"params": Body.pop("params")}
+            if ("filter_path" in kwargs["params"]) and ("_scroll_id" not in kwargs["params"]["filter_path"]):
+                kwargs["params"]["filter_path"] += ",_scroll_id"
+        iRslt = self._Connection.search(body=Body, scroll=scroll, **kwargs)
+        ScrollID = iRslt.pop("_scroll_id")
+        while iRslt and iRslt["hits"]["hits"]:
+            if only_source:
+                for ijRslt in iRslt["hits"]["hits"]: yield ijRslt.get("_source", {})
+            elif flattened:
+                for ijRslt in iRslt["hits"]["hits"]:
+                    ijRslt.update(ijRslt.pop("_source", {}))
+                    yield ijRslt
+            else:
+                for ijRslt in iRslt["hits"]["hits"]: yield ijRslt
+            iRslt = self._Connection.scroll(scroll_id=ScrollID, scroll=scroll, **kwargs)
+            ScrollID = iRslt.pop("_scroll_id")
+        self.Connection.clear_scroll(scroll_id=ScrollID)
+    def search(self, index, query, sort, only_source=True, flattened=True, size=3000, keep_alive="10m", **kwargs):
         if self._Connection is None:
             Msg = ("'%s' 调用 search 失败: 数据库尚未连接!" % (self.Name,))
             self._QS_Logger.error(Msg)
@@ -288,7 +314,11 @@ class ElasticSearchDB(WritableFactorDB):
             iLastRslt = iRslt["hits"]["hits"][-1]
             iSorts = [iLastRslt[iField] if iField in iLastRslt else iLastRslt["_source"][iField]  for iField in SortFields]
             if only_source:
-                for ijRslt in iRslt["hits"]["hits"]: yield ijRslt["_source"]
+                for ijRslt in iRslt["hits"]["hits"]: yield ijRslt.get("_source", {})
+            elif flattened:
+                for ijRslt in iRslt["hits"]["hits"]:
+                    ijRslt.update(ijRslt.pop("_source", {}))
+                    yield ijRslt
             else:
                 for ijRslt in iRslt["hits"]["hits"]: yield ijRslt
             iRslt = self._Connection.search(query=query, size=size, sort=sort, 

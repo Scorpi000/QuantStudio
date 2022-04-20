@@ -3,3 +3,6 @@ Neo4j£º
 
 SPARQL:
 1. sparqlwrapper
+
+Elasticsearch
+1. elasticsearch<8.0.0

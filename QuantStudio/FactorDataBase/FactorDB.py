@@ -522,7 +522,7 @@ class FactorTable(__QS_Object__):
             try:
                 Data = Data.loc[:, dts, ids]
             except KeyError as e:
-                self._QS_Logger.warning("%s 提取的时点或 ID 不在因子表范围内: %s" % (self._Name, str(e)))
+                self._QS_Logger.warning("FactorTable._readData_FactorCacheMode : %s 提取的时点或 ID 不在因子表范围内: %s" % (self._Name, str(e)))
                 Data = Panel(items=Data.items, major_axis=dts, minor_axis=ids)
         if not DataFactorNames: return Data.loc[factor_names]
         #print("超出缓存区因子个数读取: "+str(DataFactorNames))# debug

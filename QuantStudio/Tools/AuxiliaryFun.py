@@ -179,9 +179,8 @@ def allocateDim(n, n_dim=2):
     return DimAllocation
 
 # 以多进程的方式启动程序, target_fun:目标函数, 参数为(arg); main2sub_queue(sub2main_queue)可取值: None, Single, Multiple
-def startMultiProcess(pid="0", n_prc=cpu_count(), target_fun=None, arg={}, 
-                      partition_arg=[], n_partition_head=0, n_partition_tail=0, 
-                      main2sub_queue="None", sub2main_queue="None", daemon=None):
+def startMultiProcess(pid="0", n_prc=cpu_count(), target_fun=None, arg={}, partition_arg=[], n_partition_head=0, n_partition_tail=0, main2sub_queue="None", sub2main_queue="None", daemon=None):
+    arg = arg.copy()
     PIDs = [pid+"-"+str(i) for i in range(n_prc)]
     if main2sub_queue=='Single': Main2SubQueue = Queue()
     elif main2sub_queue=='Multiple': Main2SubQueue = {iPID:Queue() for iPID in PIDs}
@@ -208,18 +207,22 @@ def startMultiProcess(pid="0", n_prc=cpu_count(), target_fun=None, arg={},
 def runMultiProcess(pid="0", n_prc=cpu_count(), target_fun=None, arg={}, partition_arg=[], n_partition_head=0, n_partition_tail=0, print_progress=True, daemon=None):
     Procs, Main2SubQueue, Sub2MainQueue = startMultiProcess(pid=pid, n_prc=n_prc, target_fun=target_fun, arg=arg, partition_arg=partition_arg, 
                                                             n_partition_head=n_partition_head, n_partition_tail=n_partition_tail, sub2main_queue=("Single" if print_progress else "None"), daemon=daemon)
-    if partition_arg!=[]:
-        nTask = sum(map(len, partitionList(arg[partition_arg[0]], n_prc, n_partition_head, n_partition_tail)))
-    else:
-        nTask = n_prc
     if print_progress:
+        if partition_arg!=[]:
+            TaskNums = np.fromiter(map(len, partitionList(arg[partition_arg[0]], n_prc, n_partition_head, n_partition_tail)), dtype=float)
+        else:
+            TaskNums = np.ones((n_prc,))
+        nTask = np.sum(TaskNums)
+        TaskProgs = np.zeros(TaskNums.shape)
         iProg = 0
         with ProgressBar(max_value=nTask) as ProgBar:
             while iProg<nTask:
                 iPID, iSubProg, iMsg = Sub2MainQueue.get()
                 if iMsg: print(iMsg)
-                iProg += iSubProg
-                ProgBar.update(iProg)
+                iIdx = int(iPID.split("-")[-1])
+                TaskProgs[iIdx] = iSubProg
+                iProg = np.sum(TaskProgs * TaskNums)
+                ProgBar.update(min(nTask, iProg))
                 if iProg>=nTask: break
     for iPID, iPrcs in Procs.items(): iPrcs.join()
     return 0
