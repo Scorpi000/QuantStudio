@@ -1,16 +1,17 @@
 # coding=utf-8
 """基于 Elasticsearch 的因子库"""
 import os
+import time
 import datetime as dt
 
 import numpy as np
 import pandas as pd
 from elasticsearch import Elasticsearch, helpers, client
+from elasticsearch.exceptions import ConnectionTimeout
 from traits.api import Enum, Str, Float, ListStr, List, Dict, Bool
 
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
-#from QuantStudio.FactorDataBase.FDBFun import SQL_WideTable, SQL_FeatureTable, SQL_MappingTable, SQL_NarrowTable, SQL_TimeSeriesTable
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.api import Panel, genAvailableName
 
@@ -220,6 +221,7 @@ class ElasticSearchDB(WritableFactorDB):
     DTField = Str("datetime", arg_type="String", label="时点字段", order=5)
     IDField = Str("code", arg_type="String", label="ID字段", order=6)
     #SQLClient = Bool(False, arg_type="Bool", label="SQL接口", order=7)
+    SearchRetryNum = Float(10, label="查询重试次数", arg_type="Float", order=8)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"ElasticSearchDBConfig.json" if config_file is None else config_file), **kwargs)
         self._TableInfo = pd.DataFrame()# DataFrame(index=[表名], columns=["DBTableName", "TableClass"])
@@ -274,12 +276,13 @@ class ElasticSearchDB(WritableFactorDB):
         self._Connection.close()
         self._Connection = None
         return 0
-    def search_scroll(self, index, query, sort, only_source=True, flattened=True, size=3000, scroll="10m", **kwargs):
+    def search_scroll(self, index, query, sort, only_source=True, flattened=True, return_size=None, size=3000, scroll="10m", **kwargs):
         if self._Connection is None:
             Msg = ("'%s' 调用 search_scroll 失败: 数据库尚未连接!" % (self.Name,))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
         if os.getpid()!=self._PID: self._connect()# 如果进程号发生变化, 重连
+        if return_size is not None: size = min(size, return_size)
         Body = {"query": query, "size": size, "sort": sort}
         Body.update(kwargs)
         if "params" in Body:
@@ -287,43 +290,74 @@ class ElasticSearchDB(WritableFactorDB):
             if ("filter_path" in kwargs["params"]) and ("_scroll_id" not in kwargs["params"]["filter_path"]):
                 kwargs["params"]["filter_path"] += ",_scroll_id"
         iRslt = self._Connection.search(body=Body, scroll=scroll, **kwargs)
+        #iRslt = self._try_search(self.SearchRetryNum, body=Body, scroll=scroll, **kwargs)
         ScrollID = iRslt.pop("_scroll_id")
+        iReturnedNum = 0
         while iRslt and iRslt["hits"]["hits"]:
+            iRslt = iRslt["hits"]["hits"]
+            if return_size is not None:
+                iRslt = iRslt[:return_size-iReturnedNum]
             if only_source:
-                for ijRslt in iRslt["hits"]["hits"]: yield ijRslt.get("_source", {})
+                for ijRslt in iRslt: yield ijRslt.get("_source", {})
             elif flattened:
-                for ijRslt in iRslt["hits"]["hits"]:
+                for ijRslt in iRslt:
                     ijRslt.update(ijRslt.pop("_source", {}))
                     yield ijRslt
             else:
-                for ijRslt in iRslt["hits"]["hits"]: yield ijRslt
+                for ijRslt in iRslt: yield ijRslt
+            if len(iRslt)<size: break
+            if return_size is not None:
+                iReturnedNum += len(iRslt)
+                if iReturnedNum>=return_size: break
             iRslt = self._Connection.scroll(scroll_id=ScrollID, scroll=scroll, **kwargs)
             ScrollID = iRslt.pop("_scroll_id")
         self.Connection.clear_scroll(scroll_id=ScrollID)
-    def search(self, index, query, sort, only_source=True, flattened=True, size=3000, keep_alive="10m", **kwargs):
+    def _try_search(self, try_num, **kwargs):
+        iRetryNum = 0
+        while iRetryNum<try_num:
+            try:
+                return self._Connection.search(**kwargs)
+            except ConnectionTimeout as e:
+                SleepTime = 0.05 + (iRetryNum % 10) / 10.0
+                if iRetryNum % 10==0:
+                    self._QS_Logger.warning("ElasticSearchDB search failed: %s, try again %s seconds later!" % (str(e), SleepTime))
+                iRetryNum += 1
+                time.sleep(SleepTime)
+        Msg = "ElasticSearchDB search failed after trying %d times" % (iRetryNum)
+        self._QS_Logger.error(Msg)
+        raise __QS_Error__(Msg)
+    def search(self, index, query, sort, only_source=True, flattened=True, return_size=None, size=3000, keep_alive="10m", **kwargs):
         if self._Connection is None:
             Msg = ("'%s' 调用 search 失败: 数据库尚未连接!" % (self.Name,))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
         if os.getpid()!=self._PID: self._connect()# 如果进程号发生变化, 重连
+        if return_size is not None: size = min(size, return_size)
         SortFields = [tuple(iSort.keys())[0].split(".")[0] for iSort in sort]
         PIT = self._Connection.open_point_in_time(index=index, keep_alive=keep_alive)
-        iRslt = self._Connection.search(query=query, size=size, sort=sort, 
-                         pit={"keep_alive": keep_alive, "id": PIT["id"]}, **kwargs)
+        #iRslt = self._try_search(self.SearchRetryNum, query=query, size=size, sort=sort, pit={"keep_alive": keep_alive, "id": PIT["id"]}, **kwargs)
+        iRslt = self._Connection.search(query=query, size=size, sort=sort, pit={"keep_alive": keep_alive, "id": PIT["id"]}, **kwargs)
+        iReturnedNum = 0
         while iRslt and iRslt["hits"]["hits"]:
-            iLastRslt = iRslt["hits"]["hits"][-1]
+            iRslt = iRslt["hits"]["hits"]
+            if return_size is not None:
+                iRslt = iRslt[:return_size-iReturnedNum]
+            iLastRslt = iRslt[-1]
             iSorts = [iLastRslt[iField] if iField in iLastRslt else iLastRslt["_source"][iField]  for iField in SortFields]
             if only_source:
-                for ijRslt in iRslt["hits"]["hits"]: yield ijRslt.get("_source", {})
+                for ijRslt in iRslt: yield ijRslt.get("_source", {})
             elif flattened:
-                for ijRslt in iRslt["hits"]["hits"]:
+                for ijRslt in iRslt:
                     ijRslt.update(ijRslt.pop("_source", {}))
                     yield ijRslt
             else:
-                for ijRslt in iRslt["hits"]["hits"]: yield ijRslt
-            iRslt = self._Connection.search(query=query, size=size, sort=sort, 
-                         pit={"keep_alive": keep_alive, "id": PIT["id"]},
-                         search_after=iSorts, **kwargs)
+                for ijRslt in iRslt: yield ijRslt
+            if len(iRslt)<size: break
+            if return_size is not None:
+                iReturnedNum += len(iRslt)
+                if iReturnedNum>=return_size: break
+            iRslt = self._Connection.search(query=query, size=size, sort=sort, pit={"keep_alive": keep_alive, "id": PIT["id"]}, search_after=iSorts, **kwargs)
+            #iRslt = self._try_search(self.SearchRetryNum, query=query, size=size, sort=sort, pit={"keep_alive": keep_alive, "id": PIT["id"]}, search_after=iSorts, **kwargs)
         self._Connection.close_point_in_time(body=PIT)
     def fetchall(self, sql_str):# SQL 相关, SQL 不支持 DISTINCT
         if self._Connection is None:
