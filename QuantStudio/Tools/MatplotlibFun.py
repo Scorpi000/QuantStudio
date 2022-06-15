@@ -18,10 +18,12 @@ def plotHeatMap(df, ax):
 
 # 绘制 K 线图
 # quotes: array(shape=(N, 4)), 列分别为开盘价, 最高价, 最低价, 收盘价
-def plotCandleStick(ax, quotes, xdata=None, colorup='#B70203', colordown='#3ACCCC', rect_width=0.5, line_args={"linewidth": 1, "antialiased": True}, rect_args={}):
+# volume: None 或者 array(shape=(N, )), 成交量
+def plotCandleStick(ax, quotes, xdata=None, ax_vol=None, volume=None, colorup='#B70203', colordown='#3ACCCC', rect_width=0.5, line_args={"linewidth": 1, "antialiased": True}, rect_args={}):
     if xdata is None: xdata = np.arange(quotes.shape[0])
     OFFSET = rect_width / 2.0
-    Lines, Patches = [], []
+    PlotVol = ((ax_vol is not None) and (volume is not None))
+    Lines, Patches, VolPatches = [], [], []
     for i in range(quotes.shape[0]):
         if pd.isnull(quotes[i]).sum()>0: continue
         iOpen, iHigh, iLow, iClose = quotes[i]
@@ -34,14 +36,23 @@ def plotCandleStick(ax, quotes, xdata=None, colorup='#B70203', colordown='#3ACCC
             iLower = iClose
             iHeight = iOpen - iClose
         iVLine = Line2D(xdata=(xdata[i], xdata[i]), ydata=(iLow, iHigh), color=iColor, **line_args)
-        iRect = Rectangle(xy=(i-OFFSET, iLower), height=iHeight, width=rect_width, facecolor=iColor, edgecolor=iColor, **rect_args)
+        iRect = Rectangle(xy=(xdata[i]-OFFSET, iLower), height=iHeight, width=rect_width, facecolor=iColor, edgecolor=iColor, **rect_args)
 #         iRect.set_alpha(alpha)
         Lines.append(iVLine)
         Patches.append(iRect)
         ax.add_line(iVLine)
         ax.add_patch(iRect)
+        if PlotVol:
+            iRect = Rectangle(xy=(xdata[i]-OFFSET, 0), height=volume[i], width=rect_width, facecolor=iColor, edgecolor=iColor, **rect_args)
+            VolPatches.append(iRect)
+            ax_vol.add_patch(iRect)
     ax.autoscale_view()
-    return Lines, Patches
+    ax_vol.set_ylim((np.nanmin(volume), np.nanmax(volume)))
+    ax_vol.autoscale_view()
+    if PlotVol:
+        return Lines, Patches, VolPatches
+    else:
+        return Lines, Patches
 
 # 生成时点坐标轴
 def setDateTimeAxis(ax, dts, max_display=10, fmt="%Y-%m-%d"):
