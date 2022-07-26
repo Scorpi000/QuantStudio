@@ -139,7 +139,10 @@ class _JY_SQL_Table(SQL_Table):
                 else:
                     KeyCondition = ""
                 if iSQLStr.find("{Keys}")!=-1:
-                    Keys = ", ".join([str(iKey) for iKey in iOldData[iDataMask].unique()])
+                    if iOldDataType!="double":
+                        Keys = "'"+"', '".join([str(iKey) for iKey in iOldData[pd.notnull(iOldData)].unique()])+"'"
+                    else:
+                        Keys = ", ".join([str(iKey) for iKey in iOldData[pd.notnull(iOldData)].unique()])
                     if not Keys: Keys = "NULL"
                 else:
                     Keys = ""

@@ -6,6 +6,7 @@ QuantStudio/Backup/
 QuantStudio/Tools/QtGUI/.eric6project/
 __*/
 _eric*/
+backup/
 TestCoverage.bat
 *.coverage
 *.e4p

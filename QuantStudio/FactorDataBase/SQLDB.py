@@ -90,7 +90,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         super().connect()
         nPrefix = len(self.InnerPrefix)
         if self.DBType=="MySQL":
-            SQLStr = f"SELECT RIGHT(t.TABLE_NAME, LENGTH(t.TABLE_NAME)-{nPrefix}) AS TableName, t.TABLE_NAME AS DBTableName, t.COLUMN_NAME AS DBFieldName, LOWER(t.DATA_TYPE) AS DataType, t.IS_NULLABLE AS Nullable, t.COLUMN_KEY AS FieldKey, t.COLUMN_COMMENT AS Description, t1.TABLE_COMMENT AS TableDescription "
+            SQLStr = f"SELECT RIGHT(t.TABLE_NAME, CHAR_LENGTH(t.TABLE_NAME)-{nPrefix}) AS TableName, t.TABLE_NAME AS DBTableName, t.COLUMN_NAME AS DBFieldName, LOWER(t.DATA_TYPE) AS DataType, t.IS_NULLABLE AS Nullable, t.COLUMN_KEY AS FieldKey, t.COLUMN_COMMENT AS Description, t1.TABLE_COMMENT AS TableDescription "
             SQLStr += f"FROM information_schema.COLUMNS t LEFT JOIN information_schema.TABLES t1 ON (t.TABLE_SCHEMA = t1.TABLE_SCHEMA AND t.TABLE_NAME = t1.TABLE_NAME) "
             SQLStr += f"WHERE t.TABLE_SCHEMA='{self.DBName}' "
             SQLStr += f"AND t.TABLE_NAME LIKE '{self.InnerPrefix}%%' "

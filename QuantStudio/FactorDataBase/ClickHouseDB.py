@@ -92,7 +92,7 @@ class ClickHouseDB(QSClickHouseObject, SQLDB):
     def connect(self):
         QSClickHouseObject.connect(self)
         nPrefix = len(self.InnerPrefix)
-        SQLStr = f"SELECT RIGHT(table, LENGTH(table)-{nPrefix}) AS TableName, table AS DBTableName, name AS DBFieldName, LOWER(type) AS DataType FROM system.columns WHERE database='{self.DBName}' "
+        SQLStr = f"SELECT RIGHT(table, CHAR_LENGTH(table)-{nPrefix}) AS TableName, table AS DBTableName, name AS DBFieldName, LOWER(type) AS DataType FROM system.columns WHERE database='{self.DBName}' "
         SQLStr += f"AND table LIKE '{self.InnerPrefix}%%' "
         if len(self.IgnoreFields)>0:
             SQLStr += "AND name NOT IN ('"+"','".join(self.IgnoreFields)+"') "

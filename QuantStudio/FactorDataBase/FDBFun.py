@@ -19,19 +19,21 @@ class __QS_Error_DuplicatedIndex__(__QS_Error__):
     pass
 
 # 将信息源文件中的表和字段信息导入信息文件
-def importInfo(info_file, info_resource):
+def importInfo(info_file, info_resource, out_info=False):
     TableInfo = pd.read_excel(info_resource, "TableInfo").set_index(["TableName"])
     FactorInfo = pd.read_excel(info_resource, 'FactorInfo').set_index(['TableName', 'FieldName'])
-    try:
-        from QuantStudio.Tools.DataTypeFun import writeNestedDict2HDF5
-        writeNestedDict2HDF5(TableInfo, info_file, "/TableInfo")
-        writeNestedDict2HDF5(FactorInfo, info_file, "/FactorInfo")
-    except:
-        pass
+    if not out_info:
+        try:
+            from QuantStudio.Tools.DataTypeFun import writeNestedDict2HDF5
+            writeNestedDict2HDF5(TableInfo, info_file, "/TableInfo")
+            writeNestedDict2HDF5(FactorInfo, info_file, "/FactorInfo")
+        except:
+            pass
     return (TableInfo, FactorInfo)
 
 # 更新信息文件
-def updateInfo(info_file, info_resource, logger):
+def updateInfo(info_file, info_resource, logger, out_info=False):
+    if out_info: return importInfo(info_file, info_resource, logger, out_info=out_info)
     if not os.path.isfile(info_file):
         logger.warning("数据库信息文件: '%s' 缺失, 尝试从 '%s' 中导入信息." % (info_file, info_resource))
     elif (os.path.getmtime(info_resource)>os.path.getmtime(info_file)):
@@ -282,9 +284,10 @@ class SQL_Table(FactorTable):
     PreFilterID = Bool(True, arg_type="Bool", label="预筛选ID", order=201)
     #DTField = Enum(None, arg_type="SingleOption", label="时点字段", order=202)
     #IDField = Enum(None, arg_type="SingleOption", label="ID字段", order=203)
-    UseIndex = ListStr(arg_type="MultiOption", label="使用索引", order=204)
-    ForceIndex = ListStr(arg_type="MultiOption", label="强制索引", order=205)
-    IgnoreIndex = ListStr(arg_type="MultiOption", label="忽略索引", order=206)
+    DTFieldFmt = Str("", arg_type="Dict", label="筛选条件", order=204)
+    UseIndex = ListStr(arg_type="MultiOption", label="使用索引", order=205)
+    ForceIndex = ListStr(arg_type="MultiOption", label="强制索引", order=206)
+    IgnoreIndex = ListStr(arg_type="MultiOption", label="忽略索引", order=207)
     def __init__(self, name, fdb, sys_args={}, table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         self._TablePrefix = table_prefix
         self._TableInfo = table_info
@@ -485,7 +488,10 @@ class SQL_Table(FactorTable):
                 else:
                     KeyCondition = ""
                 if iSQLStr.find("{Keys}")!=-1:
-                    Keys = ", ".join([str(iKey) for iKey in iOldData[pd.notnull(iOldData)].unique()])
+                    if iOldDataType!="double":
+                        Keys = "'"+"', '".join([str(iKey) for iKey in iOldData[pd.notnull(iOldData)].unique()])+"'"
+                    else:
+                        Keys = ", ".join([str(iKey) for iKey in iOldData[pd.notnull(iOldData)].unique()])
                     if not Keys: Keys = "NULL"
                 else:
                     Keys = ""
