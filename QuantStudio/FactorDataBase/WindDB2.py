@@ -6,16 +6,15 @@ import datetime as dt
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, Int, Str, Bool, List, ListStr, Dict, Function, Either, File
+from traits.api import Enum, Int, Str, Bool, List, ListStr, Dict, Function, File
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
-from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.FileFun import getShelveFileSuffix
 from QuantStudio.Tools.QSObjects import QSSQLObject
 from QuantStudio import __QS_Error__, __QS_LibPath__, __QS_MainPath__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB
-from QuantStudio.FactorDataBase.FDBFun import updateInfo, adjustDateTime, adjustDataDTID, SQL_Table, SQL_WideTable, SQL_FeatureTable, SQL_MappingTable, SQL_NarrowTable, SQL_TimeSeriesTable, SQL_ConstituentTable
+from QuantStudio.FactorDataBase.FDBFun import updateInfo, adjustDateTime, SQL_Table, SQL_WideTable, SQL_FeatureTable, SQL_MappingTable, SQL_NarrowTable, SQL_TimeSeriesTable, SQL_ConstituentTable
 from QuantStudio.Tools.api import Panel
 
 def RollBackNPeriod(report_date, n_period):
@@ -996,7 +995,7 @@ class WindDB2(QSSQLObject, FactorDB):
     """Wind 量化研究数据库"""
     Name = Str("WindDB2", arg_type="String", label="名称", order=-100)
     DBInfoFile = File(label="库信息文件", arg_type="File", order=100)
-    FTArgs = Dict(label="因子表参数", arg_type="Dict", order=101)    
+    FTArgs = Dict({"时点格式": "%Y%m%d", "日期格式": "%Y%m%d"}, label="因子表参数", arg_type="Dict", order=101)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"WindDB2Config.json" if config_file is None else config_file), **kwargs)
         self._InfoFilePath = __QS_LibPath__+os.sep+"WindDB2Info.hdf5"# 数据库信息文件路径
