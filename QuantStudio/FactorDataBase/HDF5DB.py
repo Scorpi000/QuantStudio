@@ -257,11 +257,11 @@ class HDF5DB(WritableFactorDB):
         while i<self.FileOpenRetryNum:
             try:
                 f = h5py.File(filename, *args, **kwargs)
-            except OSError:
+            except OSError as e:
                 i += 1
                 SleepTime = 0.05 + (i % 100) / 100.0
                 if i % 100 == 0:
-                    self._QS_Logger.warning("Can't open hdf5 file: '%s' try again %s seconds later!" % (filename, SleepTime))
+                    self._QS_Logger.warning("Can't open hdf5 file: '%s'\n %s \n try again %s seconds later!" % (filename, str(e), SleepTime))
                 time.sleep(SleepTime)
             else:
                 return f
