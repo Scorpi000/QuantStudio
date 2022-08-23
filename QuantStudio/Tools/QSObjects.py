@@ -223,11 +223,11 @@ class QSSQLObject(__QS_Object__):
     def createDBTable(self, table_name, field_types, primary_keys=[], index_fields=[]):
         if self.DBType=="MySQL":
             SQLStr = "CREATE TABLE IF NOT EXISTS %s (" % (self.TablePrefix+table_name)
-            for iField, iDataType in field_types.items():SQLStr += "`%s` %s, " % (iField, iDataType)
+            for iField, iDataType in field_types.items(): SQLStr += "`%s` %s, " % (iField, iDataType)
             if primary_keys:
                 SQLStr += "PRIMARY KEY (`"+"`,`".join(primary_keys)+"`))"
             else:
-                SQLStr += ")"
+                SQLStr = SQLStr[:-2] + ")"
             SQLStr += " ENGINE=InnoDB DEFAULT CHARSET="+self.CharSet
             IndexType = "BTREE"
         else:

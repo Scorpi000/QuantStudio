@@ -995,7 +995,7 @@ class WindDB2(QSSQLObject, FactorDB):
     """Wind 量化研究数据库"""
     Name = Str("WindDB2", arg_type="String", label="名称", order=-100)
     DBInfoFile = File(label="库信息文件", arg_type="File", order=100)
-    FTArgs = Dict({"时点格式": "%Y%m%d", "日期格式": "%Y%m%d"}, label="因子表参数", arg_type="Dict", order=101)
+    FTArgs = Dict({"时点格式": "'%Y%m%d'", "日期格式": "'%Y%m%d'"}, label="因子表参数", arg_type="Dict", order=101)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"WindDB2Config.json" if config_file is None else config_file), **kwargs)
         self._InfoFilePath = __QS_LibPath__+os.sep+"WindDB2Info.hdf5"# 数据库信息文件路径
@@ -1030,7 +1030,7 @@ class WindDB2(QSSQLObject, FactorDB):
     def getTradeDay(self, start_date=None, end_date=None, exchange="SSE", **kwargs):
         if start_date is None: start_date = dt.datetime(1900, 1, 1)
         if end_date is None: end_date = dt.datetime.today()
-        ExchangeInfo = self._TableInfo[self._TableInfo["TableClass"]=="CalendarTable"]
+        ExchangeInfo = self._TableInfo.loc[["香港交易所交易日历", "中国A股交易日历", "中国期货交易日历", "中国债券市场交易日", "中国期权交易日历"]]
         ExchangeInfo = ExchangeInfo[ExchangeInfo["Description"].str.contains(exchange)]
         if ExchangeInfo.shape[0]==0: raise __QS_Error__("不支持交易所: '%s' 的交易日序列!" % exchange)
         else: Dates = self.getTable(ExchangeInfo.index[0]).getDateTime(iid=exchange, start_dt=start_date, end_dt=end_date)
