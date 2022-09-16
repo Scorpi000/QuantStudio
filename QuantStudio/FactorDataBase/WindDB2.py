@@ -1056,6 +1056,33 @@ class WindDB2(QSSQLObject, FactorDB):
             IDs = self.getTable(iTableName).getID(ifactor_name=index_id, idt=date, is_current=is_current)
             if IDs: return IDs
         else: return []
+    
+    # 获取指定日 date 基金 ID
+    # date: 指定日, 默认值 None 表示今天
+    # is_current: False 表示成立日在指定日之前的基金, True 表示成立日在指定日之前且尚未清盘的基金
+    def getMutualFundID(self, exchange=None, date=None, is_current=True, start_date=None, **kwargs):
+        if date is None: date = dt.date.today()
+        if start_date is not None: start_date = start_date.strftime("%Y%m%d")
+        SQLStr = "SELECT f_info_windcode AS ID FROM {Prefix}ChinaMutualFundDescription "
+        SQLStr += "WHERE {Prefix}ChinaMutualFundDescription.f_info_setupdate <= '{Date}' "
+        if start_date is not None:
+            SQLStr += "AND (({Prefix}ChinaMutualFundDescription.f_info_maturitydate IS NULL) OR ({Prefix}ChinaMutualFundDescription.f_info_maturitydate >= '{StartDate}')) "
+        if is_current:
+            if start_date is None:
+                SQLStr += "AND (({Prefix}ChinaMutualFundDescription.f_info_maturitydate IS NULL) OR ({Prefix}ChinaMutualFundDescription.f_info_maturitydate >= '{Date}')) "
+            else:
+                SQLStr += "AND {Prefix}ChinaMutualFundDescription.f_info_setupdate <= '{StartDate}' "
+                SQLStr += "AND (({Prefix}ChinaMutualFundDescription.f_info_maturitydate IS NULL) OR ({Prefix}ChinaMutualFundDescription.f_info_maturitydate >= '{Date}')) "
+        if exchange:
+            if isinstance(exchange, str):
+                SQLStr += f"AND {self.TablePrefix}ChinaMutualFundDescription.f_info_exchmarket = '{exchange}' "
+            else:
+                SQLStr += "AND {Prefix}ChinaMutualFundDescription.f_info_exchmarket IN ('"+"', '".join(exchange)+"') "
+        SQLStr += "ORDER BY ID"
+        Rslt = np.array(self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d"), StartDate=start_date)))
+        if Rslt.shape[0]>0: return Rslt[:, 0].tolist()
+        else: return []
+    
     # 给定期货代码 future_code, 获取指定日 date 的期货 ID
     # future_code: 期货代码(str)或者期货代码列表(list(str)), None 表示所有期货代码
     # date: 指定日, 默认值 None 表示今天
