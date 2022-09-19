@@ -995,7 +995,7 @@ class WindDB2(QSSQLObject, FactorDB):
     """Wind 量化研究数据库"""
     Name = Str("WindDB2", arg_type="String", label="名称", order=-100)
     DBInfoFile = File(label="库信息文件", arg_type="File", order=100)
-    FTArgs = Dict({"时点格式": "%Y%m%d", "日期格式": "%Y%m%d"}, label="因子表参数", arg_type="Dict", order=101)
+    FTArgs = Dict({"时点格式": "'%Y%m%d'", "日期格式": "'%Y%m%d'"}, label="因子表参数", arg_type="Dict", order=101)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"WindDB2Config.json" if config_file is None else config_file), **kwargs)
         self._InfoFilePath = __QS_LibPath__+os.sep+"WindDB2Info.hdf5"# 数据库信息文件路径
@@ -1030,7 +1030,7 @@ class WindDB2(QSSQLObject, FactorDB):
     def getTradeDay(self, start_date=None, end_date=None, exchange="SSE", **kwargs):
         if start_date is None: start_date = dt.datetime(1900, 1, 1)
         if end_date is None: end_date = dt.datetime.today()
-        ExchangeInfo = self._TableInfo[self._TableInfo["TableClass"]=="CalendarTable"]
+        ExchangeInfo = self._TableInfo.loc[["香港交易所交易日历", "中国A股交易日历", "中国期货交易日历", "中国债券市场交易日", "中国期权交易日历"]]
         ExchangeInfo = ExchangeInfo[ExchangeInfo["Description"].str.contains(exchange)]
         if ExchangeInfo.shape[0]==0: raise __QS_Error__("不支持交易所: '%s' 的交易日序列!" % exchange)
         else: Dates = self.getTable(ExchangeInfo.index[0]).getDateTime(iid=exchange, start_dt=start_date, end_dt=end_date)
@@ -1056,6 +1056,33 @@ class WindDB2(QSSQLObject, FactorDB):
             IDs = self.getTable(iTableName).getID(ifactor_name=index_id, idt=date, is_current=is_current)
             if IDs: return IDs
         else: return []
+    
+    # 获取指定日 date 基金 ID
+    # date: 指定日, 默认值 None 表示今天
+    # is_current: False 表示成立日在指定日之前的基金, True 表示成立日在指定日之前且尚未清盘的基金
+    def getMutualFundID(self, exchange=None, date=None, is_current=True, start_date=None, **kwargs):
+        if date is None: date = dt.date.today()
+        if start_date is not None: start_date = start_date.strftime("%Y%m%d")
+        SQLStr = "SELECT f_info_windcode AS ID FROM {Prefix}ChinaMutualFundDescription "
+        SQLStr += "WHERE {Prefix}ChinaMutualFundDescription.f_info_setupdate <= '{Date}' "
+        if start_date is not None:
+            SQLStr += "AND (({Prefix}ChinaMutualFundDescription.f_info_maturitydate IS NULL) OR ({Prefix}ChinaMutualFundDescription.f_info_maturitydate >= '{StartDate}')) "
+        if is_current:
+            if start_date is None:
+                SQLStr += "AND (({Prefix}ChinaMutualFundDescription.f_info_maturitydate IS NULL) OR ({Prefix}ChinaMutualFundDescription.f_info_maturitydate >= '{Date}')) "
+            else:
+                SQLStr += "AND {Prefix}ChinaMutualFundDescription.f_info_setupdate <= '{StartDate}' "
+                SQLStr += "AND (({Prefix}ChinaMutualFundDescription.f_info_maturitydate IS NULL) OR ({Prefix}ChinaMutualFundDescription.f_info_maturitydate >= '{Date}')) "
+        if exchange:
+            if isinstance(exchange, str):
+                SQLStr += f"AND {self.TablePrefix}ChinaMutualFundDescription.f_info_exchmarket = '{exchange}' "
+            else:
+                SQLStr += "AND {Prefix}ChinaMutualFundDescription.f_info_exchmarket IN ('"+"', '".join(exchange)+"') "
+        SQLStr += "ORDER BY ID"
+        Rslt = np.array(self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d"), StartDate=start_date)))
+        if Rslt.shape[0]>0: return Rslt[:, 0].tolist()
+        else: return []
+    
     # 给定期货代码 future_code, 获取指定日 date 的期货 ID
     # future_code: 期货代码(str)或者期货代码列表(list(str)), None 表示所有期货代码
     # date: 指定日, 默认值 None 表示今天

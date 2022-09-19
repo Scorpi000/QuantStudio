@@ -310,16 +310,21 @@ class SQL_Table(FactorTable):
         self._MainTableName = self._TableInfo.get("MainTableName", None)
         self._IDField = self._FactorInfo[self._FactorInfo["FieldType"]=="ID"].index
         self._IDField = (self._IDField[0] if self._IDField.shape[0]>0 else None)
-        if (self._IDField is None) or pd.isnull(self._MainTableName):
-            self._IDFieldIsStr = ((self.__QS_identifyDataType__(self._FactorInfo["DataType"].loc[self._IDField])!="double") if self._IDField is not None else True)
+        if self._IDField is None:# 该表无 ID 字段, 比如 SQL_TimeSeriesTable
+            self._IDFieldIsStr = True
             self._MainTableName = self._DBTableName
-            self._MainTableID = self._IDField
+            self._MainTableID = None
+            self._MainTableCondition = None
+        elif pd.isnull(self._MainTableName):
+            self._IDFieldIsStr = (self.__QS_identifyDataType__(self._FactorInfo["DataType"].loc[self._IDField])!="double")
+            self._MainTableName = self._DBTableName
+            self._MainTableID = self._FactorInfo["DBFieldName"].loc[self._IDField]
             self._MainTableCondition = None
         else:
             self._MainTableName = self._TablePrefix + self._MainTableName
             self._MainTableID = self._TableInfo.loc["MainTableID"]
             if self._MainTableName==self._DBTableName:
-                self._IDFieldIsStr = ((self.__QS_identifyDataType__(self._FactorInfo["DataType"].loc[self._IDField])!="double") if self._IDField is not None else True)
+                self._IDFieldIsStr = (self.__QS_identifyDataType__(self._FactorInfo["DataType"].loc[self._IDField])!="double")
             else:
                 self._IDFieldIsStr = True
             self._JoinCondition = self._TableInfo.loc["JoinCondition"].format(DBTable=self._DBTableName, MainTable=self._MainTableName)
