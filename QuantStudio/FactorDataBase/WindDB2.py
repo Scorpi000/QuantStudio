@@ -995,7 +995,7 @@ class WindDB2(QSSQLObject, FactorDB):
     """Wind 量化研究数据库"""
     Name = Str("WindDB2", arg_type="String", label="名称", order=-100)
     DBInfoFile = File(label="库信息文件", arg_type="File", order=100)
-    FTArgs = Dict({"时点格式": "'%Y%m%d'", "日期格式": "'%Y%m%d'"}, label="因子表参数", arg_type="Dict", order=101)
+    FTArgs = Dict({"时点格式": "%Y%m%d", "日期格式": "%Y%m%d"}, label="因子表参数", arg_type="Dict", order=101)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"WindDB2Config.json" if config_file is None else config_file), **kwargs)
         self._InfoFilePath = __QS_LibPath__+os.sep+"WindDB2Info.hdf5"# 数据库信息文件路径

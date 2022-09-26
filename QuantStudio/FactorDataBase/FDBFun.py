@@ -300,11 +300,11 @@ class SQL_Table(FactorTable):
         if not self.DateFmt:
             self._DTFormat = "'%Y-%m-%d'"
         else:
-            self._DTFormat = self.DateFmt
+            self._DTFormat = f"'{self.DateFmt}'"
         if not self.DTFmt:
             self._DTFormat_WithTime = "'%Y-%m-%d %H:%M:%S'"
         else:
-            self._DTFormat_WithTime = self.DTFmt
+            self._DTFormat_WithTime = f"'{self.DTFmt}'"
         # 解析主表
         self._DBTableName = self._TablePrefix + str(self._TableInfo.loc["DBTableName"])
         self._MainTableName = self._TableInfo.get("MainTableName", None)
