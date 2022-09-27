@@ -56,9 +56,9 @@ def adjustDateTime(data, dts, fillna=False, **kwargs):
             if fillna:
                 AllDTs = data.index.union(dts)
                 AllDTs = AllDTs.sort_values()
-                data = data.loc[AllDTs]
+                data = data.reindex(index=AllDTs)
                 data = data.fillna(**kwargs)
-            data = data.loc[dts]
+            data = data.reindex(index=dts)
     else:
         if data.shape[1]==0:
             data = Panel(items=data.items, major_axis=dts, minor_axis=data.minor_axis)
@@ -99,7 +99,7 @@ def adjustDataDTID(data, look_back, factor_names, ids, dts, only_start_lookback=
             FillMask[Mask.astype("int").diff()!=1] = False
             TimeDelta = pd.Series(np.r_[0, np.diff(Mask.index.values) / np.timedelta64(1, "D")], index=Mask.index)
             TimeDelta[(Mask & (~FillMask)) | (Mask.astype("int").diff()==-1)] = 0
-            TimeDelta = TimeDelta.cumsum().loc[TargetDTs]
+            TimeDelta = TimeDelta.cumsum().reindex(index=TargetDTs)
             FirstDelta = TimeDelta.iloc[0]
             TimeDelta = TimeDelta.diff().fillna(value=0)
             TimeDelta.iloc[0] = FirstDelta
@@ -112,8 +112,8 @@ def adjustDataDTID(data, look_back, factor_names, ids, dts, only_start_lookback=
             FillMask = Mask.copy()
             FillMask[Mask.astype("int").diff()!=1] = False
             FillMask = FillMask.loc[TargetDTs]
-            TimeDelta = pd.Series(np.r_[0, np.diff(Mask.index.values) / np.timedelta64(1, "D")], index=Mask.index).loc[TargetDTs]
-            NewLimits = TimeDelta.cumsum().loc[TargetDTs]
+            TimeDelta = pd.Series(np.r_[0, np.diff(Mask.index.values) / np.timedelta64(1, "D")], index=Mask.index).reindex(index=TargetDTs)
+            NewLimits = TimeDelta.cumsum()
             Temp = NewLimits.copy()
             Temp[~FillMask] = np.nan
             Temp = Temp.fillna(method="pad")
@@ -161,7 +161,7 @@ def _QS_calcListData_WideTable(raw_data, factor_names, ids, dts, args={}, **kwar
         Data = {}
         for iFactorName in factor_names:
             if AdditionalFields:
-                iRawData = raw_data.loc[:, [iFactorName]+AdditionalFields].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
+                iRawData = raw_data.reindex(columns=[iFactorName]+AdditionalFields).groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
             else:
                 iRawData = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
             iRawData = iRawData.values[RowIdx, ColIdx]
@@ -174,7 +174,7 @@ def _QS_calcListData_WideTable(raw_data, factor_names, ids, dts, args={}, **kwar
         Data = {}
         for iFactorName in factor_names:
             if AdditionalFields:
-                Data[iFactorName] = raw_data.loc[:, [iFactorName]+AdditionalFields].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
+                Data[iFactorName] = raw_data.reindex(columns=[iFactorName]+AdditionalFields).groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
             else:
                 Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
             if OperatorDataType=="double":
@@ -469,7 +469,7 @@ class SQL_Table(FactorTable):
         else: return "CONCAT("+RawIDField+", "+Suffix+")"
     def _adjustRawDataByRelatedField(self, raw_data, fields):
         if "RelatedSQL" not in self._FactorInfo: return raw_data
-        RelatedFields = self._FactorInfo["RelatedSQL"].loc[fields]
+        RelatedFields = self._FactorInfo["RelatedSQL"].reindex(index=fields)
         RelatedFields = RelatedFields[pd.notnull(RelatedFields)]
         if RelatedFields.shape[0]==0: return raw_data
         for iField in RelatedFields.index:
@@ -2107,15 +2107,15 @@ class SQL_FinancialTable(SQL_Table):
                 ReportPeriod = iData.loc[:, "ReportPeriod"].where(pd.notnull(iData.loc[:, "ReportPeriod"]), "None").unstack().T
                 iData = iData.loc[:, factor_name].where(pd.notnull(iData.loc[:, factor_name]), np.inf).unstack().T
                 iIndex = iData.index.union(dts).sort_values()
-                Data[iPeriod] = iData.loc[iIndex].fillna(method="pad").loc[dts, ids]
-                ReportPeriod = ReportPeriod.loc[iIndex].fillna(method="pad").loc[dts, ids]
+                Data[iPeriod] = iData.reindex(index=iIndex).fillna(method="pad").reindex(index=dts, columns=ids)
+                ReportPeriod = ReportPeriod.reindex(index=iIndex).fillna(method="pad").reindex(index=dts, columns=ids)
                 Data[iPeriod] = Data[iPeriod].where(Data[iPeriod]!=np.inf, np.nan)
                 ReportPeriod = ReportPeriod.where(ReportPeriod!="None", None)
             else:
                 iData = iData.loc[:, ["ID", "AnnDate", factor_name]].groupby(by=["ID", "AnnDate"], as_index=True).last()
                 iData = iData.loc[:, factor_name].where(pd.notnull(iData.loc[:, factor_name]), np.inf).unstack().T
                 iIndex = iData.index.union(dts).sort_values()
-                Data[iPeriod] = iData.loc[iIndex].fillna(method="pad").loc[dts, ids]
+                Data[iPeriod] = iData.reindex(index=iIndex).fillna(method="pad").reindex(index=dts, columns=ids)
                 Data[iPeriod] = Data[iPeriod].where(Data[iPeriod]!=np.inf, np.nan)
             iData = None
         if calc_type=="最新": return Data[periods[0]]

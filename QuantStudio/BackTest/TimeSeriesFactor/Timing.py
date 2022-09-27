@@ -265,7 +265,7 @@ class TradeSignal(BaseModule):
             if np.any(ClearMask[:, i]):
                 iClearMask = (pd.isnull(self._Output["交易记录"][iFactorName]["平仓时点"]) & (self._Output["交易记录"][iFactorName]["ID"].isin(IDs[ClearMask[:, i]])))
                 self._Output["交易记录"][iFactorName].loc[iClearMask, "平仓时点"] = idt
-                self._Output["交易记录"][iFactorName].loc[iClearMask, "平仓价格"] = Price.loc[self._Output["交易记录"][iFactorName].loc[iClearMask, "ID"]].values
+                self._Output["交易记录"][iFactorName].loc[iClearMask, "平仓价格"] = Price.reindex(index=self._Output["交易记录"][iFactorName].loc[iClearMask, "ID"]).values
                 self._Output["交易记录"][iFactorName].loc[iClearMask, "盈亏金额"] = (self._Output["交易记录"][iFactorName].loc[iClearMask, "平仓价格"] - self._Output["交易记录"][iFactorName].loc[iClearMask, "开仓价格"]) * self._Output["交易记录"][iFactorName].loc[iClearMask, "交易数量"]
                 self._Output["交易记录"][iFactorName].loc[iClearMask, "收益率"] = self._Output["交易记录"][iFactorName].loc[iClearMask, "盈亏金额"] / (self._Output["交易记录"][iFactorName].loc[iClearMask, "开仓价格"] * self._Output["交易记录"][iFactorName].loc[iClearMask, "交易数量"]).abs()
         # 开仓
@@ -315,7 +315,7 @@ class TradeSignal(BaseModule):
             if self.EndClear:# 清仓
                 iClearMask = pd.isnull(iTradeRecord["平仓时点"])
                 iTradeRecord.loc[iClearMask, "平仓时点"] = self._Model.DateTimeSeries[-1]
-                iTradeRecord.loc[iClearMask, "平仓价格"] = Price.loc[iTradeRecord.loc[iClearMask, "ID"]].values
+                iTradeRecord.loc[iClearMask, "平仓价格"] = Price.reindex(index=iTradeRecord.loc[iClearMask, "ID"]).values
                 iTradeRecord.loc[iClearMask, "盈亏金额"] = (iTradeRecord.loc[iClearMask, "平仓价格"] - iTradeRecord.loc[iClearMask, "开仓价格"]) * iTradeRecord.loc[iClearMask, "交易数量"]
                 iTradeRecord.loc[iClearMask, "收益率"] = iTradeRecord.loc[iClearMask, "盈亏金额"] / (iTradeRecord.loc[iClearMask, "开仓价格"] * iTradeRecord.loc[iClearMask, "交易数量"]).abs()
                 iTradeRecord = iTradeRecord[iTradeRecord["平仓时点"]!=iTradeRecord["开仓时点"]]
@@ -511,7 +511,7 @@ class QuantileTiming(BaseModule):
                     self._Output["策略信号"][iFactor][jID] = ijSignal.loc[ijDTs[0]:]
                 else:
                     self._Output["策略信号"][iFactor][jID] = pd.DataFrame(columns=Groups)
-                ijSignalReturn = pd.DataFrame(SignalReturn[:, j, i, :], index=DTs, columns=Groups).loc[self._Output["策略信号"][iFactor][jID].index]
+                ijSignalReturn = pd.DataFrame(SignalReturn[:, j, i, :], index=DTs, columns=Groups).reindex(index=self._Output["策略信号"][iFactor][jID].index)
                 # 计算多空组合收益率
                 #ijSignalReturn["L-S"] = ijSignalReturn.iloc[:, 0].fillna(0) - ijSignalReturn.iloc[:, -1].fillna(0)
                 ijLSSignal = ijSignal.iloc[:, 0].where(pd.notnull(ijSignal.iloc[:, 0]), -ijSignal.iloc[:, -1])

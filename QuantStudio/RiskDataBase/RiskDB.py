@@ -1,4 +1,5 @@
 # coding=utf-8
+from operator import index
 import os
 import uuid
 import mmap
@@ -147,7 +148,7 @@ class RiskTable(__QS_Object__):
             if iCacheData is None:
                 NonCachedDTs.append(iDT)
                 continue
-            if ids is not None: Cov[iDT] = iCacheData["Cov"].loc[ids, ids]
+            if ids is not None: Cov[iDT] = iCacheData["Cov"].reindex(index=ids, columns=ids)
             else: Cov[iDT] = iCacheData["Cov"]
         if NonCachedDTs: Cov.update(dict(self.__QS_readCov__(dts=NonCachedDTs, ids=ids)))
         if not Cov: Cov = Panel(items=dts, major_axis=ids, minor_axis=ids)
@@ -308,7 +309,7 @@ class FactorRT(RiskTable):
         for iDT in FactorCov:
             if ids is None:
                 iIDs = SpecificRisk.loc[iDT].index
-                iFactorData = FactorData.loc[:, iDT].loc[iIDs]
+                iFactorData = FactorData.loc[:, iDT].reindex(index=iIDs)
             else:
                 iIDs = ids
                 iFactorData = FactorData.loc[:, iDT]
@@ -325,7 +326,7 @@ class FactorRT(RiskTable):
             for iDT in FactorCov:
                 if ids is None:
                     iIDs = SpecificRisk.loc[iDT].index
-                    iFactorData = FactorData.loc[:, iDT].loc[iIDs]
+                    iFactorData = FactorData.loc[:, iDT].reindex(index=iIDs)
                 else:
                     iIDs = ids
                     iFactorData = FactorData.loc[:, iDT]
@@ -358,13 +359,13 @@ class FactorRT(RiskTable):
             if iCacheData is None:
                 NonCachedDTs.append(iDT)
                 continue
-            if ids is not None: Data[iDT] = iCacheData["SpecificRisk"].loc[ids]
+            if ids is not None: Data[iDT] = iCacheData["SpecificRisk"].reindex(index=ids)
             else: Data[iDT] = iCacheData["SpecificRisk"]
         if NonCachedDTs: Data.update(dict(self.__QS_readSpecificRisk__(dts=NonCachedDTs, ids=ids).T))
         if not Data: return pd.DataFrame(index=dts, columns=ids)
         else:
-            Data = pd.DataFrame(Data).T.loc[dts]
-            if ids is not None: Data = Data.loc[:, ids]
+            Data = pd.DataFrame(Data).T.reindex(index=dts)
+            if ids is not None: Data = Data.reindex(columns=ids)
             return Data
     # 读取截面数据
     def __QS_readFactorData__(self, dts, ids=None):
@@ -376,7 +377,7 @@ class FactorRT(RiskTable):
             if iCacheData is None:
                 NonCachedDTs.append(iDT)
                 continue
-            if ids is not None: Data[iDT] = iCacheData["FactorData"].loc[ids].T
+            if ids is not None: Data[iDT] = iCacheData["FactorData"].reindex(index=ids).T
             else: Data[iDT] = iCacheData["FactorData"].T
         if NonCachedDTs: Data.update(dict(self.__QS_readFactorData__(dts=NonCachedDTs, ids=ids).swapaxes(0, 1)))
         if not Data: return Panel(major_axis=dts, minor_axis=ids)

@@ -44,7 +44,7 @@ class _RiskTable(RiskTable):
             iCov = pd.read_json(iCov, orient="split")
             iCov.index = iCov.columns
             if ids is not None:
-                if iCov.index.intersection(ids).shape[0]>0: iCov = iCov.loc[ids, ids]
+                if iCov.index.intersection(ids).shape[0]>0: iCov = iCov.reindex(index=ids, columns=ids)
                 else: iCov = pd.DataFrame(index=ids, columns=ids)
             Data[iDT] = iCov
         if Data: return Panel(Data, items=dts)
@@ -185,10 +185,8 @@ class _FactorRiskTable(FactorRT):
         for iDT, iSepecificRisk in self._RiskDB.fetchall(SQLStr):
             Data[iDT] = pd.read_json(iSepecificRisk, orient="split", typ="series")
         if not Data: return pd.DataFrame(index=dts, columns=ids)
-        Data = pd.DataFrame(Data).T.loc[dts]
-        if ids is not None:
-            if Data.columns.intersection(ids).shape[0]>0: Data = Data.loc[:, ids]
-            else: Data = pd.DataFrame(index=dts, columns=ids)
+        Data = pd.DataFrame(Data).T.reindex(index=dts)
+        if ids is not None: Data = Data.reindex(columns=ids)
         return Data
     def __QS_readFactorData__(self, dts, ids=None):
         SQLStr = "SELECT DateTime, FactorData "
@@ -213,7 +211,7 @@ class _FactorRiskTable(FactorRT):
         for iDT, iFactorReturn in self._RiskDB.fetchall(SQLStr):
             Data[iDT] = pd.read_json(iFactorReturn, orient="split", typ="series")
         if not Data: return pd.DataFrame(index=dts)
-        return pd.DataFrame(Data).T.loc[dts]
+        return pd.DataFrame(Data).T.reindex(index=dts)
     def readSpecificReturn(self, dts, ids=None):
         SQLStr = "SELECT DateTime, SpecificReturn "
         SQLStr += "FROM "+self._DBTableName+" "
@@ -223,10 +221,8 @@ class _FactorRiskTable(FactorRT):
         for iDT, iSpecificReturn in self._RiskDB.fetchall(SQLStr):
             Data[iDT] = pd.read_json(iSpecificReturn, orient="split", typ="series")
         if not Data: return pd.DataFrame(index=dts, columns=([] if ids is None else ids))
-        Data = pd.DataFrame(Data).T.loc[dts]
-        if ids is not None:
-            if Data.columns.intersection(ids).shape[0]>0: Data = Data.loc[:, ids]
-            else: Data = pd.DataFrame(index=dts, columns=ids)
+        Data = pd.DataFrame(Data).T.reindex(index=dts)
+        if ids is not None: Data = Data.reindex(columns=ids)
         return Data
     def readData(self, data_item, dts):
         SQLStr = "SELECT DateTime, "+data_item+" "
@@ -246,7 +242,7 @@ class _FactorRiskTable(FactorRT):
             else:
                 Data[iDT] = pd.read_json(iData, orient="split", typ=Type)
         if not Data: return None
-        if Type=="series": return pd.DataFrame(Data).T.loc[dts]
+        if Type=="series": return pd.DataFrame(Data).T.reindex(index=dts)
         else: return Panel(Data, items=dts)
     def __QS_readCov__(self, dts, ids=None):
         Data = {}
@@ -260,12 +256,12 @@ class _FactorRiskTable(FactorRT):
             iFactorData = pd.read_json(iFactorData, orient="split")
             if ids is None:
                 iIDs = iSpecificRisk.index
-                iFactorData = iFactorData.loc[iIDs].values
+                iFactorData = iFactorData.reindex(index=iIDs).values
                 iSpecificRisk = iSpecificRisk.values
             else:
                 iIDs = ids
-                iFactorData = iFactorData.loc[iIDs].values
-                iSpecificRisk = iSpecificRisk.loc[iIDs].values
+                iFactorData = iFactorData.reindex(index=iIDs).values
+                iSpecificRisk = iSpecificRisk.reindex(index=iIDs).values
             iCov = np.dot(np.dot(iFactorData, iFactorCov.values), iFactorData.T) + np.diag(iSpecificRisk**2)
             Data[iDT] = pd.DataFrame(iCov, index=iIDs, columns=iIDs)
         if Data: return Panel(Data, items=dts)

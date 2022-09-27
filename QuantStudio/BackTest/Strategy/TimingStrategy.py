@@ -63,7 +63,7 @@ class TimingStrategy(Strategy):
         elif new_allocation.index.intersection(IDs).shape[0]==0:
             return pd.Series(0.0, index=IDs)
         else:
-            return new_allocation.loc[IDs].fillna(0.0)
+            return new_allocation.reindex(index=IDs).fillna(0.0)
     def __QS_start__(self, mdl, dts, **kwargs):
         if self._isStarted: return ()
         Rslt = super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
@@ -104,7 +104,7 @@ class TimingStrategy(Strategy):
             iTradingRecord = TradingRecord[self.TargetAccount.Name]
             if iTradingRecord.shape[0]>0:
                 CashChanged = pd.Series((iTradingRecord["买卖数量"] * iTradingRecord["价格"] + iTradingRecord["交易费"]).values, index=iTradingRecord["ID"].values)
-                CashChanged = CashChanged.groupby(axis=0, level=0).sum().loc[self._CashAllocated.index]
+                CashChanged = CashChanged.groupby(axis=0, level=0).sum().reindex(index=self._CashAllocated.index)
                 self._CashAllocated -= CashChanged.fillna(0.0)
         self.trade(idt, TradingRecord, Signal)
         for iAccount in self.Accounts: iAccount.__QS_after_move__(idt, **kwargs)
@@ -121,7 +121,7 @@ class TimingStrategy(Strategy):
         PositionValue = PositionAmount + self._CashAllocated
         if signal is not None:# 有新的信号, 形成新的交易目标
             if signal.shape[0]>0:
-                signal = signal.loc[PositionValue.index]
+                signal = signal.reindex(index=PositionValue.index)
             else:
                 signal = pd.Series(np.nan, index=PositionValue.index)
             signal[self._ValueAllocated==0] = 0.0
@@ -142,7 +142,7 @@ class TimingStrategy(Strategy):
                 if iTradingRecord.shape[0]>0:
                     if self.TradeTarget=="锁定买卖金额":
                         TargetChanged = pd.Series((iTradingRecord["买卖数量"] * iTradingRecord["价格"]).values, index=iTradingRecord["ID"].values)
-                        TargetChanged = TargetChanged.groupby(axis=0, level=0).sum().loc[self._TradeTarget.index]
+                        TargetChanged = TargetChanged.groupby(axis=0, level=0).sum().reindex(index=self._TradeTarget.index)
                         TargetChanged.fillna(0.0, inplace=True)
                         TradeTarget = self._TradeTarget - TargetChanged
                         TradeTarget[np.sign(self._TradeTarget)*np.sign(TradeTarget)<0] = 0.0

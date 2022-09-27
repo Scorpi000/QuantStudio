@@ -194,7 +194,7 @@ def _prepareMMAPFactorCacheData(ft, mmap_cache):
                         if isDisjoint:
                             CacheData[iFactorName] = NewCacheData[iFactorName]
                         else:
-                            CacheData[iFactorName] = CacheData[iFactorName].loc[CacheDTs, :]
+                            CacheData[iFactorName] = CacheData[iFactorName].reindex(index=CacheDTs)
                             CacheData[iFactorName].loc[NewCacheDTs, :] = NewCacheData[iFactorName]
                     NewCacheData = None
     return 0
@@ -245,7 +245,7 @@ def _prepareMMAPIDCacheData(ft, mmap_cache):
                         if isDisjoint:
                             CacheData[iID] = NewCacheData.loc[:, :, iID]
                         else:
-                            CacheData[iID] = CacheData[iID].loc[CacheDTs, :]
+                            CacheData[iID] = CacheData[iID].reindex(index=CacheDTs)
                             CacheData[iID].loc[NewCacheDTs, :] = NewCacheData.loc[:, :, iID]
                     NewCacheData = None
     return 0
@@ -343,7 +343,7 @@ def _calculate(args):
                     for j, jFactor in enumerate(iFactors):
                         jData = jFactor._QS_getData(dts=FT.OperationMode.DateTimes, pids=[args["PID"]])
                         if FT.OperationMode._FactorPrepareIDs[jFactor.Name] is not None:
-                            jData = jData.loc[:, FT.OperationMode.IDs]
+                            jData = jData.reindex(columns=FT.OperationMode.IDs)
                         iDB.writeFactorData(jData, iTableName, iTargetFactorNames[j], if_exists=args["if_exists"], data_type=jFactor.getMetaData(key="DataType"), **args["kwargs"])
                         jData = None
                         TaskCount += 1
@@ -359,7 +359,7 @@ def _calculate(args):
                             for k, kFactor in enumerate(iFactors):
                                 ijkData = kFactor._QS_getData(dts=jDTs, pids=[args["PID"]])
                                 if FT.OperationMode._FactorPrepareIDs[kFactor.Name] is not None:
-                                    ijkData = ijkData.loc[:, FT.OperationMode.IDs]
+                                    ijkData = ijkData.reindex(columns=FT.OperationMode.IDs)
                                 jData[iTargetFactorNames[k]] = ijkData
                                 if j==0:
                                     TaskCount += 0.5
@@ -377,7 +377,7 @@ def _calculate(args):
                 for j, jFactor in enumerate(iFactors):
                     if FT.OperationMode._FactorPrepareIDs[jFactor.Name] is not None:
                         jData = jFactor._QS_getData(dts=FT.OperationMode.DateTimes, pids=None)
-                        jData = jData.loc[:, FT.OperationMode._PID_IDs[args["PID"]]]
+                        jData = jData.reindex(columns=FT.OperationMode._PID_IDs[args["PID"]])
                     else:
                         jData = jFactor._QS_getData(dts=FT.OperationMode.DateTimes, pids=[args["PID"]])
                     iDB.writeFactorData(jData, iTableName, iTargetFactorNames[j], if_exists=args["if_exists"], data_type=jFactor.getMetaData(key="DataType"), **args["kwargs"])
@@ -394,7 +394,7 @@ def _calculate(args):
                         for k, kFactor in enumerate(iFactors):
                             ijkData = kFactor._QS_getData(dts=jDTs, pids=[args["PID"]])
                             if FT.OperationMode._FactorPrepareIDs[kFactor.Name] is not None:
-                                ijkData = ijkData.loc[:, FT.OperationMode.IDs]
+                                ijkData = ijkData.reindex(columns=FT.OperationMode.IDs)
                             jData[iTargetFactorNames[k]] = ijkData
                             if j==0: args["Sub2MainQueue"].put((args["PID"], 0.5, None))
                         jData = Panel(jData, items=iTargetFactorNames, major_axis=jDTs)
@@ -549,7 +549,7 @@ class FactorTable(__QS_Object__):
                     self.ErgodicMode._Queue2SubProcess.put((None, (iid, PopID)))
                 else:# 当前读取的 ID 的读取次数没有超过缓存 ID 读取次数的最小值, 放弃缓存该 ID 数据
                     return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=factor_names, ids=[iid], dts=dts, args=args), factor_names=factor_names, ids=[iid], dts=dts, args=args).iloc[:, :, 0]
-        return IDData.loc[dts, factor_names]
+        return IDData.reindex(index=dts, columns=factor_names)
     def _readData_ErgodicMode(self, factor_names, ids, dts, args={}):
         if self.ErgodicMode.CacheMode=="因子": return self._readData_FactorCacheMode(factor_names=factor_names, ids=ids, dts=dts, args=args)
         return Panel({iID: self._readIDData(iID, factor_names=factor_names, dts=dts, args=args) for iID in ids}, items=ids, major_axis=dts, minor_axis=factor_names).swapaxes(0, 2)
@@ -668,12 +668,9 @@ class FactorTable(__QS_Object__):
         if not self.OperationMode.DateTimes: raise __QS_Error__("运算时点序列不能为空!")
         if not self.OperationMode.IDs: raise __QS_Error__("运算 ID 序列不能为空!")
         # 检查时点标尺是否合适
-        try:
-            DTs = pd.Series(np.arange(0, len(self.OperationMode.DTRuler)), index=list(self.OperationMode.DTRuler)).loc[list(self.OperationMode.DateTimes)]
-        except:
-            raise __QS_Error__("运算时点序列超出了时点标尺!")
-        if pd.isnull(DTs).sum()>0: raise __QS_Error__("运算时点序列超出了时点标尺!")
-        elif (DTs.diff().iloc[1:]!=1).sum()>0: raise __QS_Error__("运算时点序列的频率与时点标尺不一致!")
+        DTs = pd.Series(np.arange(0, len(self.OperationMode.DTRuler)), index=list(self.OperationMode.DTRuler)).reindex(index=list(self.OperationMode.DateTimes))
+        if pd.isnull(DTs).any(): raise __QS_Error__("运算时点序列超出了时点标尺!")
+        elif (DTs.diff().iloc[1:]!=1).any(): raise __QS_Error__("运算时点序列的频率与时点标尺不一致!")
         # 检查因子的合法性, 解析出所有的因子(衍生因子所依赖的描述子也在内)
         if not self.OperationMode.FactorNames: self.OperationMode.FactorNames = self.FactorNames
         self.OperationMode._Factors = []# 因子列表, 只包括需要输出数据的因子对象
@@ -1082,12 +1079,12 @@ class Factor(__QS_Object__):
         NewDTs = sorted(set(dts).difference(self._CacheData.index))
         if NewDTs:
             NewCacheData = self._FactorTable.readData(factor_names=[self._NameInFT], ids=self._CacheData.columns.tolist(), dts=NewDTs, args=self.Args).loc[self._NameInFT]
-            self._CacheData = self._CacheData.append(NewCacheData).loc[dts]
+            self._CacheData = self._CacheData.append(NewCacheData).reindex(index=dts)
         NewIDs = sorted(set(ids).difference(self._CacheData.columns))
         if NewIDs:
             NewCacheData = self._FactorTable.readData(factor_names=[self._NameInFT], ids=NewIDs, dts=self._CacheData.index.tolist(), args=self.Args).loc[self._NameInFT]
             self._CacheData = pd.merge(self._CacheData, NewCacheData, left_index=True, right_index=True)
-        return self._CacheData.loc[dts, ids]
+        return self._CacheData.reindex(index=dts, columns=ids)
     # ------------------------------------运算模式------------------------------------
     # 获取数据的开始时点, start_dt:新起始时点, dt_dict: 当前所有因子的时点信息: {因子名 : 开始时点}, id_dict: 当前所有因子的准备原始数据的截面 ID 信息: {因子名 : ID 序列}
     def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
@@ -1159,11 +1156,11 @@ class Factor(__QS_Object__):
             else:
                 StdData = pd.merge(StdData, iStdData, how='inner', left_index=True, right_index=True)
         if not AllPID:
-            StdData = StdData.loc[list(dts), :]
+            StdData = StdData.reindex(index=list(dts))
         elif self._OperationMode._FactorPrepareIDs[self.Name] is None:
-            StdData = StdData.loc[list(dts), self._OperationMode.IDs]
+            StdData = StdData.reindex(index=list(dts), columns=self._OperationMode.IDs)
         else:
-            StdData = StdData.loc[list(dts), self._OperationMode._FactorPrepareIDs[self.Name]]
+            StdData = StdData.reindex(index=list(dts), columns=self._OperationMode._FactorPrepareIDs[self.Name])
         gc.collect()
         return StdData
     def _exit(self):
@@ -1431,8 +1428,8 @@ class DataFactor(Factor):
             Data = self._Data
         if (Data.columns.intersection(ids).shape[0]==0) or (Data.index.intersection(dts).shape[0]==0):
             return pd.DataFrame(index=dts, columns=ids, dtype=("O" if self.DataType!="double" else np.float))
-        if self.LookBack==0: return Data.loc[dts, ids]
-        else: return fillNaByLookback(Data.loc[sorted(Data.index.union(dts)), ids], lookback=self.LookBack*24.0*3600).loc[dts, :]
+        if self.LookBack==0: return Data.reindex(index=dts, columns=ids)
+        else: return fillNaByLookback(Data.reindex(index=sorted(Data.index.union(dts)), columns=ids), lookback=self.LookBack*24.0*3600).loc[dts, :]
     def __QS_prepareCacheData__(self, ids=None):
         return self._Data
     def _QS_getData(self, dts, pids=None, **kwargs):

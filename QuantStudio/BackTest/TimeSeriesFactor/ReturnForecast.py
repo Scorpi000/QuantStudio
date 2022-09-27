@@ -156,10 +156,10 @@ class ReturnForecast(BaseModule):
         self._Output["滚动预测"] = {}
         self._Output["滚动预测"]["预测收益率"] = self._Output.pop("预测收益率").astype(np.float)
         if self.CalcDTs:
-            self._Output["滚动预测"]["实际收益率"] = pd.DataFrame(_calcReturn(Price.loc[self.CalcDTs].values, return_type=self.ReturnType), index=self.CalcDTs[1:], columns=IDs)
+            self._Output["滚动预测"]["实际收益率"] = pd.DataFrame(_calcReturn(Price.reindex(index=self.CalcDTs).values, return_type=self.ReturnType), index=self.CalcDTs[1:], columns=IDs)
         else:
-            self._Output["滚动预测"]["实际收益率"] = pd.DataFrame(_calcReturn(Price.loc[self._Model.DateTimeSeries].values, return_type=self.ReturnType), index=self._Model.DateTimeSeries[1:], columns=IDs)
-        self._Output["滚动预测"]["实际收益率"] = self._Output["滚动预测"]["实际收益率"].shift(-1).loc[self._Output["滚动预测"]["预测收益率"].index]
+            self._Output["滚动预测"]["实际收益率"] = pd.DataFrame(_calcReturn(Price.reindex(index=self._Model.DateTimeSeries).values, return_type=self.ReturnType), index=self._Model.DateTimeSeries[1:], columns=IDs)
+        self._Output["滚动预测"]["实际收益率"] = self._Output["滚动预测"]["实际收益率"].shift(-1).reindex(index=self._Output["滚动预测"]["预测收益率"].index)
         self._Output["滚动预测"]["绝对误差"] = (self._Output["滚动预测"]["预测收益率"] - self._Output["滚动预测"]["实际收益率"]).abs()
         self._Output["滚动预测"]["统计数据"] = pd.DataFrame({"均方误差": ((self._Output["滚动预测"]["预测收益率"] - self._Output["滚动预测"]["实际收益率"])**2).mean(), 
                                                                           "平均绝对误差": self._Output["滚动预测"]["绝对误差"].mean(), 
@@ -177,7 +177,7 @@ class ReturnForecast(BaseModule):
         # 择时策略
         StartIdx = self._Model.DateTimeSeries.index(self._Output["滚动预测"]["预测收益率"].index[0])
         DTs = self._Model.DateTimeSeries[StartIdx:]
-        Signal = np.sign(self._Output["滚动预测"]["预测收益率"]).loc[DTs].values
+        Signal = np.sign(self._Output["滚动预测"]["预测收益率"]).reindex(index=DTs).values
         Price = Price.fillna(method="ffill").fillna(method="bfill").values[StartIdx:]
         nYear = (DTs[-1] - DTs[0]).days / 365
         NV, _, _ = testTimingStrategy(Signal, Price)

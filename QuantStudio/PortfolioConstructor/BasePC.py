@@ -185,13 +185,6 @@ class RiskBudgetObjective(OptimizationObjective):
         return Objective
 
 
-
-
-
-
-
-
-
 # 最大分散化优化目标
 # 数学形式: {'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Delta':array(n,1),type':'Max_Diversification'}
 class MaxDiversificationObjective(OptimizationObjective):
@@ -211,7 +204,6 @@ class MaxDiversificationObjective(OptimizationObjective):
             Objective = {"type":"Max_Diversification", "X":self._PC.RiskFactorData.values, "F":self._PC.FactorCov.values,
                          "Delta":self._PC.SpecificRisk.values.reshape((self._PC._nID, 1))**2}
         return Objective
-
 
 
 # 约束条件基类
@@ -330,18 +322,18 @@ class FactorExposeConstraint(Constraint):
             iFactorData = DummyVarTo01Var(iFactorData, ignore_na=True, ignore_nonstring=True)
             nFactor = iFactorData.shape[1]
             if self.Benchmark:
-                aAdj = (np.dot(self._PC.BenchmarkHolding.values, iFactorData.loc[self._PC._TargetIDs].values) + np.dot(self._PC._BenchmarkExtra.values, iFactorData.loc[self._PC._BenchmarkExtraIDs].values)).reshape((nFactor, 1))
+                aAdj = (np.dot(self._PC.BenchmarkHolding.values, iFactorData.reindex(index=self._PC._TargetIDs).values) + np.dot(self._PC._BenchmarkExtra.values, iFactorData.reindex(index=self._PC._BenchmarkExtraIDs).values)).reshape((nFactor, 1))
             else:
                 aAdj = np.zeros((nFactor, 1))
             if self.UpLimit==self.DownLimit:
-                Aeq = iFactorData.loc[self._PC._TargetIDs].values.T
+                Aeq = iFactorData.reindex(index=self._PC._TargetIDs).values.T
                 AeqSum = np.abs(Aeq).sum(axis=1)
                 Mask = (AeqSum!=0.0)
                 Constraints.append({"type":"LinearEq",
                                     "Aeq":Aeq[Mask,:],
                                     "beq":(self.UpLimit+aAdj)[Mask, :]})
             else:
-                A = iFactorData.loc[self._PC._TargetIDs].values.T
+                A = iFactorData.reindex(index=self._PC._TargetIDs).values.T
                 ASum = np.abs(A).sum(axis=1)
                 Mask = (ASum!=0.0)
                 if self.DownLimit>-np.inf:
@@ -683,7 +675,7 @@ class PortfolioConstructor(__QS_Object__):
         if self._Dependency.get("基准投资组合", False):
             self._BenchmarkExtraIDs = sorted(self.BenchmarkHolding[self.BenchmarkHolding>0].index.difference(self._TargetIDs))
             self._BenchmarkExtra = self.BenchmarkHolding[self._BenchmarkExtraIDs]
-            self.BenchmarkHolding = self.BenchmarkHolding.loc[self._TargetIDs]
+            self.BenchmarkHolding = self.BenchmarkHolding.reindex(index=self._TargetIDs)
             self.BenchmarkHolding[pd.isnull(self.BenchmarkHolding)] = 0.0
         else:
             self._BenchmarkExtraIDs = []
@@ -694,36 +686,36 @@ class PortfolioConstructor(__QS_Object__):
             if self.FactorCov is not None:
                 RiskFactorDataNAFillVal = self.RiskFactorData.mean()
                 SpecialRiskNAFillVal = self.SpecificRisk.mean()
-                self.RiskFactorData = self.RiskFactorData.loc[TargetBenchmarkExtraIDs]
-                self.SpecificRisk = self.SpecificRisk.loc[TargetBenchmarkExtraIDs]
+                self.RiskFactorData = self.RiskFactorData.reindex(index=TargetBenchmarkExtraIDs)
+                self.SpecificRisk = self.SpecificRisk.reindex(index=TargetBenchmarkExtraIDs)
                 self.RiskFactorData = self.RiskFactorData.fillna(RiskFactorDataNAFillVal)
                 self.SpecificRisk = self.SpecificRisk.fillna(SpecialRiskNAFillVal)
                 CovMatrix = np.dot(np.dot(self.RiskFactorData.values,self.FactorCov.values), self.RiskFactorData.values.T) + np.diag(self.SpecificRisk.values**2)
                 self.CovMatrix = pd.DataFrame(CovMatrix, index=TargetBenchmarkExtraIDs, columns=TargetBenchmarkExtraIDs)
-                self.RiskFactorData = self.RiskFactorData.loc[self._TargetIDs]
-                self.SpecificRisk = self.SpecificRisk.loc[self._TargetIDs]
-            self._BenchmarkExtraCov = self.CovMatrix.loc[self._BenchmarkExtraIDs, self._BenchmarkExtraIDs]
-            self._BenchmarkExtraCov1 = self.CovMatrix.loc[self._BenchmarkExtraIDs, self._TargetIDs]
-            self.CovMatrix = self.CovMatrix.loc[self._TargetIDs, self._TargetIDs]
+                self.RiskFactorData = self.RiskFactorData.reindex(index=self._TargetIDs)
+                self.SpecificRisk = self.SpecificRisk.reindex(index=self._TargetIDs)
+            self._BenchmarkExtraCov = self.CovMatrix.reindex(index=self._BenchmarkExtraIDs, columns=self._BenchmarkExtraIDs)
+            self._BenchmarkExtraCov1 = self.CovMatrix.reindex(index=self._BenchmarkExtraIDs, columns=self._TargetIDs)
+            self.CovMatrix = self.CovMatrix.reindex(index=self._TargetIDs, columns=self._TargetIDs)
         if self._Dependency.get("预期收益", False):
             if self.ExpectedReturn is None: raise __QS_Error__("模型需要预期收益, 但尚未赋值!")
-            ExpectedReturn = self.ExpectedReturn.loc[TargetBenchmarkExtraIDs]
-            self._BenchmarkExtraExpectedReturn = ExpectedReturn.loc[self._BenchmarkExtraIDs]
+            ExpectedReturn = self.ExpectedReturn.reindex(index=TargetBenchmarkExtraIDs)
+            self._BenchmarkExtraExpectedReturn = ExpectedReturn.reindex(index=self._BenchmarkExtraIDs)
             self._BenchmarkExtraExpectedReturn = self._BenchmarkExtraExpectedReturn.fillna(0.0)
-            self.ExpectedReturn = ExpectedReturn.loc[self._TargetIDs]
+            self.ExpectedReturn = ExpectedReturn.reindex(index=self._TargetIDs)
             self.ExpectedReturn = self.ExpectedReturn.fillna(0.0)
         if self._Dependency.get("因子", []):
-            FactorData = FactorData.loc[TargetBenchmarkExtraIDs, :]
-            self._BenchmarkExtraFactorData = FactorData.loc[self._BenchmarkExtraIDs]
+            FactorData = FactorData.reindex(index=TargetBenchmarkExtraIDs)
+            self._BenchmarkExtraFactorData = FactorData.reindex(index=self._BenchmarkExtraIDs)
             self._BenchmarkExtraFactorData = self._BenchmarkExtraFactorData.fillna(0.0)
-            self.FactorData = FactorData.loc[self._TargetIDs]
+            self.FactorData = FactorData.reindex(index=self._TargetIDs)
             self.FactorData = self.FactorData.fillna(0.0)
         if self._Dependency.get("初始投资组合", False):
             if self.Holding is None: raise __QS_Error__("模型需要初始投资组合, 但尚未赋值!")
             self._HoldingExtraIDs = sorted(self.Holding[self.Holding>0].index.difference(self._TargetIDs))
             self._HoldingExtra = self.Holding[self._HoldingExtraIDs]
-            Holding = self.Holding.loc[self._TargetIDs+self._HoldingExtraIDs]
-            self.Holding = Holding.loc[self._TargetIDs]
+            Holding = self.Holding.reindex(index=self._TargetIDs+self._HoldingExtraIDs)
+            self.Holding = Holding.reindex(index=self._TargetIDs)
             self.Holding[pd.isnull(self.Holding)] = 0.0
         else:
             self._HoldingExtraIDs = []
@@ -731,10 +723,10 @@ class PortfolioConstructor(__QS_Object__):
             self._HoldingExtra = pd.Series()
         if self._Dependency.get("成交金额", False):
             TargetHoldingExtraIDs = self._TargetIDs + self._HoldingExtraIDs
-            Amount = self.AmountFactor.loc[TargetHoldingExtraIDs]
-            self._HoldingExtraAmount = Amount.loc[self._HoldingExtraIDs]
+            Amount = self.AmountFactor.reindex(index=TargetHoldingExtraIDs)
+            self._HoldingExtraAmount = Amount.reindex(index=self._HoldingExtraIDs)
             self._HoldingExtraAmount = self._HoldingExtraAmount.fillna(0.0)
-            self.AmountFactor = Amount.loc[self._TargetIDs]
+            self.AmountFactor = Amount.reindex(index=self._TargetIDs)
             self.AmountFactor = self.AmountFactor.fillna(0.0)
         self._DataChanged = False
         return 0
@@ -776,12 +768,12 @@ class PortfolioConstructor(__QS_Object__):
     # 计算波动率约束优化后的实现值
     def _calRealizedVolatilityConstraint(self, optimal_w, constraint):
         if not constraint.Benchmark:
-            return np.dot(optimal_w.values, np.dot(optimal_w.values, self.CovMatrix.loc[self._TargetIDs, self._TargetIDs].values))**0.5
+            return np.dot(optimal_w.values, np.dot(optimal_w.values, self.CovMatrix.reindex(index=self._TargetIDs, columns=self._TargetIDs).values))**0.5
         else:
             IDs = list(set(self.BenchmarkHolding.index).intersection(set(self.CovMatrix.index)))
-            Mu = -2*((self.BenchmarkHolding.loc[IDs]*self.CovMatrix.loc[IDs,IDs]).T.sum())
+            Mu = -2*((self.BenchmarkHolding.reindex(index=IDs)*self.CovMatrix.reindex(index=IDs, columns=IDs)).T.sum())
             temp = (-Mu/2*self.BenchmarkHolding).sum()
             if pd.isnull(temp): temp = 0.0
-            Mu = Mu.loc[self._TargetIDs]
+            Mu = Mu.reindex(index=self._TargetIDs)
             Mu[pd.isnull(Mu)] = 0.0
-            return (np.dot(optimal_w.values, np.dot(optimal_w.values, self.CovMatrix.loc[self._TargetIDs, self._TargetIDs].values)) + np.dot(Mu.values, optimal_w.values) + temp)**0.5
+            return (np.dot(optimal_w.values, np.dot(optimal_w.values, self.CovMatrix.reindex(index=self._TargetIDs, columns=self._TargetIDs).values)) + np.dot(Mu.values, optimal_w.values) + temp)**0.5

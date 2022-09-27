@@ -35,9 +35,7 @@ class _RiskTable(RiskTable):
                     iGroup = CovGroup[iDTStr]
                     iIDs = iGroup["ID"][...]
                     iCov = pd.DataFrame(iGroup["Data"][...], index=iIDs, columns=iIDs)
-                    if ids is not None:
-                        if iCov.index.intersection(ids).shape[0]>0: iCov = iCov.loc[ids, ids]
-                        else: iCov = pd.DataFrame(index=ids, columns=ids)
+                    if ids is not None: iCov = iCov.reindex(index=ids, columns=ids)
                     Data[iDT] = iCov
         if Data: return Panel(Data, items=dts, major_axis=ids, minor_axis=ids)
         return Panel(items=dts, major_axis=ids, minor_axis=ids)
@@ -202,10 +200,8 @@ class _FactorRiskTable(FactorRT):
                     iGroup = Group[iDTStr]
                     Data[iDT] = pd.Series(iGroup["Data"][...], index=iGroup["ID"][...])
         if not Data: return pd.DataFrame(index=dts, columns=([] if ids is None else ids))
-        Data = pd.DataFrame(Data).T.loc[dts]
-        if ids is not None:
-            if Data.columns.intersection(ids).shape[0]>0: Data = Data.loc[:, ids]
-            else: Data = pd.DataFrame(index=dts, columns=ids)
+        Data = pd.DataFrame(Data).T.reindex(index=dts)
+        if ids is not None: Data = Data.reindex(columns=ids)
         return Data
     def __QS_readFactorData__(self, dts, ids=None):
         Data = {}
@@ -234,7 +230,7 @@ class _FactorRiskTable(FactorRT):
                     iGroup = Group[iDTStr]
                     Data[iDT] = pd.Series(iGroup["Data"][...], index=iGroup["Factor"][...])
         if not Data: return pd.DataFrame(index=dts, columns=[])
-        return pd.DataFrame(Data).T.loc[dts]
+        return pd.DataFrame(Data).T.reindex(index=dts)
     def readSpecificReturn(self, dts, ids=None):
         Data = {}
         with self._RiskDB._DataLock:
@@ -246,10 +242,8 @@ class _FactorRiskTable(FactorRT):
                     iGroup = Group[iDTStr]
                     Data[iDT] = pd.Series(iGroup["Data"][...], index=iGroup["ID"][...])
         if not Data: return pd.DataFrame(index=dts, columns=([] if ids is None else ids))
-        Data = pd.DataFrame(Data).T.loc[dts]
-        if ids is not None:
-            if Data.columns.intersection(ids).shape[0]>0: Data = Data.loc[:, ids]
-            else: Data = pd.DataFrame(index=dts, columns=ids)
+        Data = pd.DataFrame(Data).T.reindex(index=dts)
+        if ids is not None: Data = Data.reindex(columns=ids)
         return Data
     def readData(self, data_item, dts):
         Data = {}
@@ -268,7 +262,7 @@ class _FactorRiskTable(FactorRT):
                         Type = "Series"
                         Data[iDT] = pd.Series(iGroup["Data"][...], index=iGroup["index"][...])
         if not Data: return None
-        if Type=="Series": return pd.DataFrame(Data).T.loc[dts]
+        if Type=="Series": return pd.DataFrame(Data).T.reindex(index=dts)
         else: return Panel(Data, items=dts)
 
 class HDF5FRDB(FactorRDB):

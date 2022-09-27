@@ -121,7 +121,7 @@ def _map_value(f,idt,iid,x,args):
     Data = Data.flatten(order="C")
     Rslt = np.full(shape=Data.shape, fill_value=None, dtype=Mapping.dtype)
     Mask = pd.notnull(Data)
-    Rslt[Mask] = Mapping.loc[Data[Mask]].values
+    Rslt[Mask] = Mapping.reindex(index=Data[Mask]).values
     return Rslt.reshape(TargetShape)
 def map_value(f, mapping, data_type="double", **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
@@ -723,7 +723,7 @@ def _lag(f,idt,iid,x,args):
     if args["OperatorArg"]['dt_change_fun'] is None: return x[0][args["OperatorArg"]['window']-args["OperatorArg"]['lag_period']:x[0].shape[0]-args["OperatorArg"]['lag_period']]
     TargetDTs = args["OperatorArg"]['dt_change_fun'](idt)
     Data = pd.DataFrame(x[0], index=idt)
-    TargetData = Data.loc[TargetDTs].values
+    TargetData = Data.reindex(index=TargetDTs).values
     TargetData[args["OperatorArg"]['lag_period']:] = TargetData[:-args["OperatorArg"]['lag_period']]
     if f.DataType!="double":
         Data = pd.DataFrame(np.empty(Data.shape,dtype="O"),index=Data.index,columns=iid)
@@ -1247,7 +1247,7 @@ def _disaggregate_list(f,idt,iid,x,args):
         Rslt["Value"] = 1
     Rslt = Rslt.set_index(["DT", "ID"])["Value"].unstack()
     if Rslt.columns.intersection(iid).shape[0]==0: return np.full(shape=(len(idt), len(iid)), fill_value=None)
-    return Rslt.loc[idt, iid].values
+    return Rslt.reindex(index=idt, columns=iid).values
 def disaggregate_list(f, f_id, f_value=None, f_value_id=None, disaggr_ids=None, **kwargs):# 将值为 list 的聚合因子分解成为普通因子
     Factors = [f]
     if f_value is not None:
@@ -1674,7 +1674,7 @@ def _merge(f,idt,iid,x,args):
     Rslt = np.concatenate(Data, axis=1)
     IDs = []
     [(IDs.extend(iIDs) if iIDs is not None else IDs.extend(iid)) for iIDs in f.DescriptorSection]
-    return pd.DataFrame(Rslt, columns=IDs).loc[:, iid].values
+    return pd.DataFrame(Rslt, columns=IDs).reindex(columns=iid).values
 def merge(factors, descriptor_ids, data_type="object", **kwargs):
     if len(factors)!=len(descriptor_ids): raise __QS_Error__("描述子个数与描述子截面个数不一致!")
     Descriptors, Args = _genMultivariateOperatorInfo(*factors)

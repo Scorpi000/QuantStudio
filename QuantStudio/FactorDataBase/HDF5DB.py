@@ -70,8 +70,8 @@ class _FactorTable(FactorTable):
                         if key is None: MetaData[iFactorName] = pd.Series(dict(File.attrs))
                         elif key in File.attrs: MetaData[iFactorName] = File.attrs[key]
         if not MetaData: return super().getFactorMetaData(factor_names=factor_names, key=key, args=args)
-        if key is None: return pd.DataFrame(MetaData).T.loc[factor_names]
-        else: return pd.Series(MetaData).loc[factor_names]
+        if key is None: return pd.DataFrame(MetaData).T.reindex(index=factor_names)
+        else: return pd.Series(MetaData).reindex(index=factor_names)
     def getID(self, ifactor_name=None, idt=None, args={}):
         if ifactor_name is None: ifactor_name = self.FactorNames[0]
         with self._FactorDB._getLock(self._Name) as DataLock:
@@ -122,7 +122,7 @@ class _FactorTable(FactorTable):
                     elif set(ids).isdisjoint(IDs):
                         Rslt = pd.DataFrame(index=DateTimes, columns=ids)
                     else:
-                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).loc[:, ids]
+                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).reindex(columns=ids)
                     Rslt.index = [dt.datetime.fromtimestamp(itms) for itms in Rslt.index]
                 elif (ids is not None) and set(ids).isdisjoint(IDs):
                     Rslt = pd.DataFrame(index=dts, columns=ids)
@@ -140,15 +140,15 @@ class _FactorTable(FactorTable):
                         Mask = DateTimes.tolist()
                         DateTimes = DateTimes.index.values
                         if ids is None:
-                            Rslt = pd.DataFrame(DataFile["Data"][Mask, :], index=DateTimes, columns=IDs).loc[dts].sort_index(axis=1)
+                            Rslt = pd.DataFrame(DataFile["Data"][Mask, :], index=DateTimes, columns=IDs).reindex(index=dts).sort_index(axis=1)
                         else:
                             IDRuler = pd.Series(np.arange(0,IDs.shape[0]), index=IDs)
-                            IDRuler = IDRuler.loc[ids]
+                            IDRuler = IDRuler.reindex(index=ids)
                             StartInd, EndInd = int(IDRuler.min()), int(IDRuler.max())
-                            Rslt = pd.DataFrame(DataFile["Data"][Mask, StartInd:EndInd+1], index=DateTimes, columns=IDs[StartInd:EndInd+1]).loc[dts, ids]
+                            Rslt = pd.DataFrame(DataFile["Data"][Mask, StartInd:EndInd+1], index=DateTimes, columns=IDs[StartInd:EndInd+1]).reindex(index=dts, columns=ids)
                     else:
-                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DataFile["DateTime"][...], columns=IDs).loc[dts]
-                        if ids is not None: Rslt = Rslt.loc[:, ids]
+                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DataFile["DateTime"][...], columns=IDs).reindex(index=dts)
+                        if ids is not None: Rslt = Rslt.reindex(columns=ids)
                         else: Rslt.sort_index(axis=1, inplace=True)
                     Rslt.index = [dt.datetime.fromtimestamp(itms) for itms in Rslt.index]
         if DataType=="string":
@@ -182,7 +182,7 @@ class _FactorTable(FactorTable):
         RowIdxMask = (RowIdx==-1)
         RawData = RawData.values[RowIdx, ColIdx]
         RawData[RowIdxMask] = None
-        return pd.DataFrame(RawData, index=dts, columns=RawIDs).loc[:, ids]
+        return pd.DataFrame(RawData, index=dts, columns=RawIDs).reindex(columns=ids)
 
 # 基于 HDF5 文件的因子数据库
 # 每一张表是一个文件夹, 每个因子是一个 HDF5 文件
@@ -354,31 +354,31 @@ class HDF5DB(WritableFactorDB):
                 DataFile["ID"][OldIDs.shape[0]:] = NewIDs
                 DataFile["Data"].resize((DataFile["DateTime"].shape[0], DataFile["ID"].shape[0]))
                 if NewDateTimes.shape[0]>0:
-                    DataFile["Data"][nOldDT:, :] = _adjustData(factor_data.loc[NewDateTimes, np.r_[OldIDs, NewIDs]], data_type)
+                    DataFile["Data"][nOldDT:, :] = _adjustData(factor_data.reindex(index=NewDateTimes, columns=np.r_[OldIDs, NewIDs]), data_type)
                 CrossedDateTimes = factor_data.index.intersection(OldDateTimes)
                 if CrossedDateTimes.shape[0]==0:
                     DataFile.flush()
                     return 0
                 if len(CrossedDateTimes)==len(OldDateTimes):
                     if NewIDs.shape[0]>0:
-                        DataFile["Data"][:nOldDT, OldIDs.shape[0]:] = _adjustData(factor_data.loc[OldDateTimes, NewIDs], data_type)
+                        DataFile["Data"][:nOldDT, OldIDs.shape[0]:] = _adjustData(factor_data.reindex(index=OldDateTimes, columns=NewIDs), data_type)
                     CrossedIDs = factor_data.columns.intersection(OldIDs)
                     if CrossedIDs.shape[0]>0:
                         OldIDs = OldIDs.tolist()
                         CrossedIDPos = [OldIDs.index(iID) for iID in CrossedIDs]
                         CrossedIDs = CrossedIDs[np.argsort(CrossedIDPos)]
                         CrossedIDPos.sort()
-                        DataFile["Data"][:nOldDT, CrossedIDPos] = _adjustData(factor_data.loc[OldDateTimes, CrossedIDs], data_type)
+                        DataFile["Data"][:nOldDT, CrossedIDPos] = _adjustData(factor_data.reindex(index=OldDateTimes, columns=CrossedIDs), data_type)
                     DataFile.flush()
                     return 0
                 CrossedDateTimePos = [OldDateTimes.index(iDT) for iDT in CrossedDateTimes]
                 CrossedDateTimes = CrossedDateTimes[np.argsort(CrossedDateTimePos)]
                 CrossedDateTimePos.sort()
                 if NewIDs.shape[0]>0:
-                    DataFile["Data"][CrossedDateTimePos, OldIDs.shape[0]:] = _adjustData(factor_data.loc[CrossedDateTimes, NewIDs], data_type)
+                    DataFile["Data"][CrossedDateTimePos, OldIDs.shape[0]:] = _adjustData(factor_data.reindex(index=CrossedDateTimes, columns=NewIDs), data_type)
                 CrossedIDs = factor_data.columns.intersection(OldIDs)
                 if CrossedIDs.shape[0]>0:
-                    NewData = _adjustData(factor_data.loc[CrossedDateTimes, CrossedIDs], data_type, order="F")
+                    NewData = _adjustData(factor_data.reindex(index=CrossedDateTimes, columns=CrossedIDs), data_type, order="F")
                     OldIDs = OldIDs.tolist()
                     if data_type=="object":
                         for i, iID in enumerate(CrossedIDs):

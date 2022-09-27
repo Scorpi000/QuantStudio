@@ -112,7 +112,7 @@ class _JY_SQL_Table(SQL_Table):
         IDField += "ELSE SecuCode END"
         return IDField
     def _adjustRawDataByRelatedField(self, raw_data, fields):
-        RelatedFields = self._FactorInfo["RelatedSQL"].loc[fields]
+        RelatedFields = self._FactorInfo["RelatedSQL"].reindex(index=fields)
         RelatedFields = RelatedFields[pd.notnull(RelatedFields)]
         if RelatedFields.shape[0]==0: return raw_data
         for iField in RelatedFields.index:

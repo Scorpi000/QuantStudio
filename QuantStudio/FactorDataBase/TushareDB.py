@@ -32,14 +32,14 @@ class _TSTable(FactorTable):
             factor_names = self.FactorNames
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         if key=="DataType":
-            if hasattr(self, "_DataType"): return self._DataType.loc[factor_names]
-            MetaData = FactorInfo["DataType"].loc[factor_names]
+            if hasattr(self, "_DataType"): return self._DataType.reindex(index=factor_names)
+            MetaData = FactorInfo["DataType"].reindex(index=factor_names)
             for i in range(MetaData.shape[0]):
                 iDataType = MetaData.iloc[i].lower()
                 if iDataType.find("str")!=-1: MetaData.iloc[i] = "string"
                 else: MetaData.iloc[i] = "double"
             return MetaData
-        elif key=="Description": return FactorInfo["Description"].loc[factor_names]
+        elif key=="Description": return FactorInfo["Description"].reindex(index=factor_names)
         elif key is None:
             return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType", args=args),
                                  "Description":self.getFactorMetaData(factor_names, key="Description", args=args)})
@@ -147,7 +147,7 @@ class _FeatureTable(_TSTable):
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         raw_data = raw_data.set_index(["ID"])
         if raw_data.index.intersection(ids).shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-        raw_data = raw_data.loc[ids]
+        raw_data = raw_data.reindex(index=ids)
         return Panel(raw_data.values.T.reshape((raw_data.shape[1], raw_data.shape[0], 1)).repeat(len(dts), axis=2), items=factor_names, major_axis=ids, minor_axis=dts).swapaxes(1, 2)
 
 class _MarketTable(_TSTable):

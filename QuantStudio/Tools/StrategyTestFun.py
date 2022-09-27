@@ -792,15 +792,15 @@ def testPortfolioStrategy(portfolio, price, fee=0.0, long_margin=1.0, short_marg
 def testPortfolioStrategy_pd(portfolio, price):
     portfolio = portfolio.fillna(0.0)
     AllDTs = sorted(price.index.union(portfolio.index))
-    AllPrice = price.loc[AllDTs, portfolio.columns].fillna(method="ffill").fillna(method="bfill")
+    AllPrice = price.reindex(index=AllDTs, columns=portfolio.columns).fillna(method="ffill").fillna(method="bfill")
     RebalancePrice = AllPrice.loc[portfolio.index]
     # 计算再平衡时点的净值
     RebalanceReturn = RebalancePrice / RebalancePrice.shift(1).fillna(method="bfill") - 1
     RebalanceNV = ((portfolio.shift(1) * RebalanceReturn).sum(axis=1) + 1).cumprod()
     # 计算所有时点的净值
-    CostPrice = RebalancePrice.loc[AllDTs].fillna(method="ffill").fillna(method="bfill")
-    NV = (portfolio.loc[AllDTs].fillna(method="ffill") * (AllPrice / CostPrice - 1)).sum(axis=1) + 1
-    NV = NV * RebalanceNV.loc[AllDTs].fillna(method="ffill")
+    CostPrice = RebalancePrice.reindex(index=AllDTs).fillna(method="ffill").fillna(method="bfill")
+    NV = (portfolio.reindex(index=AllDTs).fillna(method="ffill") * (AllPrice / CostPrice - 1)).sum(axis=1) + 1
+    NV = NV * RebalanceNV.reindex(index=AllDTs).fillna(method="ffill")
     return NV.loc[price.index]
 
 # 给定仓位水平的择时策略向量化回测, 数据类型 numpy

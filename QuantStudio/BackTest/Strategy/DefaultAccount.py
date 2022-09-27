@@ -223,7 +223,7 @@ class DefaultAccount(Account):
     # 未成交的市价单自动撤销
     def _matchMarketOrder(self, idt, orders):
         IDs = orders.index.tolist()
-        orders = orders.clip(upper=self._BuyVolLimit.loc[IDs], lower=-self._SellVolLimit.loc[IDs])# 过滤限制条件
+        orders = orders.clip(upper=self._BuyVolLimit.reindex(index=IDs), lower=-self._SellVolLimit.reindex(index=IDs))# 过滤限制条件
         orders = orders[orders!=0]
         if orders.shape[0]==0: return []
         # 先执行卖出交易

@@ -31,9 +31,9 @@ def _portfolio_return(f, idt, iid, x, args):
     else:
         RebalanceDTs = args["OperatorArg"]["rebalance_dt_fun"](idt)
     DescriptorIDs = (iid if f.DescriptorSection[0] is None else f.DescriptorSection[0])
-    Mask = pd.DataFrame(Mask, index=idt, columns=DescriptorIDs).loc[RebalanceDTs]
+    Mask = pd.DataFrame(Mask, index=idt, columns=DescriptorIDs).reindex(index=RebalanceDTs)
     Price = pd.DataFrame(Price, index=idt, columns=DescriptorIDs)
-    Portfolio = pd.DataFrame(Portfolio, index=idt, columns=DescriptorIDs).loc[RebalanceDTs]
+    Portfolio = pd.DataFrame(Portfolio, index=idt, columns=DescriptorIDs).reindex(index=RebalanceDTs)
     Portfolio = (Portfolio[Mask].T / Portfolio[Mask].sum(axis=1)).T
     NV = testPortfolioStrategy_pd(Portfolio, Price)
     return np.repeat(np.reshape(NV.pct_change().values[f.LookBack[0]:], (-1, 1)), len(iid), axis=1)
@@ -60,7 +60,7 @@ def _long_short_return(f, idt, iid, x, args):
         RebalanceIdx = None
     else:
         RebalanceDTs = args["OperatorArg"]["rebalance_dt_fun"](idt)
-        RebalanceIdx = pd.Series(np.arange(len(idt)), index=idt).loc[RebalanceDTs].tolist()
+        RebalanceIdx = pd.Series(np.arange(len(idt)), index=idt).reindex(index=RebalanceDTs).tolist()
     LSReturn = calcLSYield(LReturn, SReturn, rebalance_index=RebalanceIdx)
     return LSReturn[f.LookBack[0]:]
 

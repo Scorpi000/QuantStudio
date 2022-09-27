@@ -83,11 +83,11 @@ class FMPModel(BaseModule):
             BenchmarkPortfolio = self._normalizePortfolio(BenchmarkPortfolio[pd.notnull(BenchmarkPortfolio) & (BenchmarkPortfolio!=0)])
             IDs = Portfolio.index.union(BenchmarkPortfolio.index)
             if Portfolio.shape[0]>0:
-                Portfolio = Portfolio.loc[IDs]
+                Portfolio = Portfolio.reindex(index=IDs)
                 Portfolio.fillna(0.0, inplace=True)
             else: Portfolio = pd.Series(0.0, index=IDs)
             if BenchmarkPortfolio.shape[0]>0:
-                BenchmarkPortfolio = BenchmarkPortfolio.loc[IDs]
+                BenchmarkPortfolio = BenchmarkPortfolio.reindex(index=IDs)
                 BenchmarkPortfolio.fillna(0.0, inplace=True)
             else:
                 BenchmarkPortfolio = pd.Series(0.0, index=IDs)
@@ -106,18 +106,18 @@ class FMPModel(BaseModule):
         CovMatrixInv = np.linalg.inv(CovMatrix.values)
         FMPHolding = np.dot(np.dot(np.linalg.inv(np.dot(np.dot(FactorExpose.values.T, CovMatrixInv), FactorExpose.values)), FactorExpose.values.T), CovMatrixInv)
         # 计算持仓对因子模拟组合的投资组合
-        Portfolio = self._normalizePortfolio(Portfolio.loc[IDs])
+        Portfolio = self._normalizePortfolio(Portfolio.reindex(index=IDs))
         Beta = np.dot(np.dot(np.dot(np.linalg.inv(np.dot(np.dot(FMPHolding, CovMatrix.values), FMPHolding.T)), FMPHolding), CovMatrix.values), Portfolio.values)
         Price = self._FactorTable.readData(factor_names=[self.PriceFactor], dts=[PreDT, idt], ids=IDs).iloc[0]
         Return = Price.iloc[1] / Price.iloc[0] - 1
         # 计算各统计指标
         if FactorExpose.shape[1]>self._Output["因子暴露"].shape[1]:
             FactorNames = FactorExpose.columns.tolist()
-            self._Output["因子暴露"] = self._Output["因子暴露"].loc[:, FactorNames]
-            self._Output["风险调整的因子暴露"] = self._Output["风险调整的因子暴露"].loc[:, FactorNames]
-            self._Output["风险贡献"] = self._Output["风险贡献"].loc[:, FactorNames+["Alpha"]]
-            self._Output["收益贡献"] = self._Output["收益贡献"].loc[:, FactorNames+["Alpha"]]
-            self._Output["因子收益"] = self._Output["因子收益"].loc[:, FactorNames]
+            self._Output["因子暴露"] = self._Output["因子暴露"].reindex(columns=FactorNames)
+            self._Output["风险调整的因子暴露"] = self._Output["风险调整的因子暴露"].lreindex(columns=FactorNames)
+            self._Output["风险贡献"] = self._Output["风险贡献"].reindex(columns=FactorNames+["Alpha"])
+            self._Output["收益贡献"] = self._Output["收益贡献"].reindex(columns=FactorNames+["Alpha"])
+            self._Output["因子收益"] = self._Output["因子收益"].reindex(columns=FactorNames)
         self._Output["因子暴露"].loc[PreDT, FactorExpose.columns] = Beta
         self._Output["风险调整的因子暴露"].loc[PreDT, FactorExpose.columns] = np.sqrt(np.diag(np.dot(np.dot(FMPHolding, CovMatrix.values), FMPHolding.T))) * Beta
         RiskContribution = np.dot(np.dot(FMPHolding, CovMatrix.values), Portfolio.values) / np.sqrt(np.dot(np.dot(Portfolio.values, CovMatrix.values), Portfolio.values)) * Beta

@@ -238,8 +238,8 @@ def estimateFactorAndSpecificReturn_EUE3(ret, factor_data, industry_data, weight
     FactorReturn[pd.isnull(FactorReturn)] = ESTUMarketRet
     # 生成特异性收益率
     ESTUIndustryDummy = DummyVarTo01Var(industry_data,ignore_na=True)
-    ESTUIndustryDummy = ESTUIndustryDummy.loc[:,all_industries]
-    ESTUIndustryDummy = ESTUIndustryDummy.where(pd.notnull(ESTUIndustryDummy),0.0)
+    ESTUIndustryDummy = ESTUIndustryDummy.reindex(columns=all_industries)
+    ESTUIndustryDummy = ESTUIndustryDummy.where(pd.notnull(ESTUIndustryDummy), 0.0)
     X = np.hstack((np.ones((ret.shape[0],1)),factor_data.values,ESTUIndustryDummy.values))
     SpecificReturn = pd.Series(ret.values-np.dot(X,FactorReturn.values),index=ret.index)
     return (FactorReturn,SpecificReturn,pd.DataFrame(X,index=factor_data.index,columns=["Market"]+list(factor_data.columns)+all_industries),Statistics)
@@ -280,11 +280,11 @@ def calcBlendingCoefficient(specific_ret):
 def calcSTRSpecificRisk(gamma, std_ts, factor_data, cap):
     # 准备回归数据
     IDs = gamma[gamma==1].index.tolist()# 选择gamma值为1的ID
-    Y = std_ts.loc[IDs]
+    Y = std_ts.reindex(index=IDs)
     Y[Y==0] = np.nan
-    FactorData = factor_data.loc[IDs, :]
+    FactorData = factor_data.reindex(index=IDs)
     FactorData = FactorData.loc[:, FactorData.abs().sum()!=0]
-    RegWeight = calcRegressWeight(cap).loc[IDs]
+    RegWeight = calcRegressWeight(cap).reindex(index=IDs)
     # 回归
     Coef = regressWithOneLinearEqConstraint(np.log(Y.values), FactorData.values, RegWeight.values)
     # 估计Scale Multiplier

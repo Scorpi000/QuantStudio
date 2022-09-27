@@ -1,4 +1,5 @@
 # coding=utf-8
+from copy import copy
 import datetime as dt
 import base64
 from io import BytesIO
@@ -309,7 +310,7 @@ class ICDecay(BaseModule):
                 continue
             iPreDT = self.CalcDTs[iPreInd]
             iPreIDs = self._FactorTable.getFilteredID(idt=iPreDT, id_filter_str=self.IDFilter)
-            iRet = Ret.loc[iPreIDs].copy()
+            iRet = Ret.reindex(index=iPreIDs, copy=True)
             if self.ClassFactor!="无":
                 IndustryData = self._FactorTable.readData(dts=[iPreDT], ids=iPreIDs, factor_names=[self.ClassFactor]).iloc[0,0,:]
                 AllIndustry = IndustryData.unique()

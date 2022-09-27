@@ -156,7 +156,7 @@ class TimeOperation(DerivativeFactor):
                 iDescriptorData = np.r_[iLookBackData, iDescriptorData]
             DescriptorData.append(iDescriptorData)
         StdData = self._calcData(ids=ids, dts=DTRuler[StartInd:EndInd+1], descriptor_data=DescriptorData, dt_ruler=DTRuler)
-        return pd.DataFrame(StdData, index=DTRuler[StartInd:EndInd+1], columns=ids).loc[dts, :]
+        return pd.DataFrame(StdData, index=DTRuler[StartInd:EndInd+1], columns=ids).reindex(index=dts)
     def _calcData(self, ids, dts, descriptor_data, dt_ruler):
         if self.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
         else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')
@@ -175,10 +175,7 @@ class TimeOperation(DerivativeFactor):
             if self.iInitData is not None:
                 iInitData = self.iInitData.loc[self.iInitData.index<dts[0], :]
                 if iInitData.shape[0]>0:
-                    if iInitData.columns.intersection(ids).shape[0]>0:
-                        iInitData = iInitData.loc[:, ids].values.astype(StdData.dtype)
-                    else:
-                        iInitData = np.full(shape=(iInitData.shape[0], len(ids)), dtype=StdData.dtype)
+                    iInitData = iInitData.reindex(columns=ids).values.astype(StdData.dtype)
                     iStartInd = min(self.iLookBack, iInitData.shape[0])
                     StdData = np.r_[iInitData[-iStartInd:], StdData]
             if self.iLookBackMode=="扩张窗口":
@@ -272,7 +269,7 @@ class SectionOperation(DerivativeFactor):
             if iSectionIDs is None: iSectionIDs = SectionIDs
             DescriptorData.append(iDescriptor.readData(ids=iSectionIDs, dts=dts, **kwargs).values)
         StdData = self._calcData(ids=SectionIDs, dts=dts, descriptor_data=DescriptorData)
-        return pd.DataFrame(StdData, index=dts, columns=SectionIDs).loc[:, ids]
+        return pd.DataFrame(StdData, index=dts, columns=SectionIDs).reindex(columns=ids)
     def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
         OldStartDT = dt_dict.get(self.Name, None)
         if (OldStartDT is None) or (start_dt<OldStartDT):
@@ -333,9 +330,9 @@ class SectionOperation(DerivativeFactor):
             with self._OperationMode._PID_Lock[iPID]:
                 with shelve.open(self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
                     if "StdData" in CacheFile:
-                        CacheFile["StdData"] = pd.concat([CacheFile["StdData"], StdData.loc[:,iIDs]]).sort_index()
+                        CacheFile["StdData"] = pd.concat([CacheFile["StdData"], StdData.reindex(columns=iIDs)]).sort_index()
                     else:
-                        CacheFile["StdData"] = StdData.loc[:, iIDs]
+                        CacheFile["StdData"] = StdData.reindex(columns=iIDs)
                     CacheFile["_QS_IDs"] = iIDs
         StdData = None# 释放数据
         if self._OperationMode.SubProcessNum>0:
@@ -422,7 +419,7 @@ class PanelOperation(DerivativeFactor):
                 iDescriptorData = np.r_[iLookBackData, iDescriptorData]
             DescriptorData.append(iDescriptorData)
         StdData = self._calcData(ids=SectionIDs, dts=DTRuler[StartInd:EndInd+1], descriptor_data=DescriptorData, dt_ruler=DTRuler)
-        return pd.DataFrame(StdData, index=DTRuler[StartInd:EndInd+1], columns=SectionIDs).loc[dts, ids]
+        return pd.DataFrame(StdData, index=DTRuler[StartInd:EndInd+1], columns=SectionIDs).reindex(index=dts, columns=ids)
     def _calcData(self, ids, dts, descriptor_data, dt_ruler):
         if self.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
         else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')
@@ -441,10 +438,7 @@ class PanelOperation(DerivativeFactor):
             if self.iInitData is not None:
                 iInitData = self.iInitData.loc[self.iInitData.index<dts[0], :]
                 if iInitData.shape[0]>0:
-                    if iInitData.columns.intersection(ids).shape[0]>0:
-                        iInitData = iInitData.loc[:, ids].values.astype(StdData.dtype)
-                    else:
-                        iInitData = np.full(shape=(iInitData.shape[0], len(ids)), dtype=StdData.dtype)
+                    iInitData = iInitData.reindex(columns=ids).values.astype(StdData.dtype)
                     iStartInd = min(self.iLookBack, iInitData.shape[0])
                     StdData = np.r_[iInitData[-iStartInd:], StdData]
             if self.iLookBackMode=="扩张窗口":# 自身为扩张窗口模式
@@ -517,9 +511,9 @@ class PanelOperation(DerivativeFactor):
             with self._OperationMode._PID_Lock[iPID]:
                 with shelve.open(self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
                     if "StdData" in CacheFile:
-                        CacheFile["StdData"] = pd.concat([CacheFile["StdData"], StdData.loc[:,iIDs]]).sort_index()
+                        CacheFile["StdData"] = pd.concat([CacheFile["StdData"], StdData.reindex(columns=iIDs)]).sort_index()
                     else:
-                        CacheFile["StdData"] = StdData.loc[:, iIDs]
+                        CacheFile["StdData"] = StdData.reindex(columns=iIDs)
                     CacheFile["_QS_IDs"] = iIDs
         StdData = None# 释放数据
         if self._OperationMode.SubProcessNum>0:

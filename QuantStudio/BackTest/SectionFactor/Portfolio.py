@@ -381,7 +381,7 @@ class FilterPortfolio(QuantilePortfolio):
                 iIDs = IndustryData[iMask].index.tolist()
                 for j in range(GroupNum):
                     ijSubIDs = self._FactorTable.getFilteredID(idt, ids=iIDs, id_filter_str=self.PortfolioFilters[j], args={})
-                    Portfolio[j].update(WeightData.loc[ijSubIDs].to_dict())
+                    Portfolio[j].update(WeightData.reindex(index=ijSubIDs).to_dict())
             for i in range(GroupNum):
                 iWealth = self._Output["净值"][i][-1]
                 iPortfolio = pd.Series(Portfolio[i])

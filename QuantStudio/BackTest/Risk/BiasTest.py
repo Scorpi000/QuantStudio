@@ -87,10 +87,10 @@ class BiasTest(BaseModule):
                         PortfolioDict[kBottomPortfolio] = PortfolioDict.get(kBottomPortfolio, []) + ijkIndNeutralData[ijkIndNeutralData<=ijkThreshold].index.tolist()
                 for kFactor in self.IndustryNeutralFactors:
                     kTopPortfolio = ("%sTop%s加权组合" % (kFactor, iWeightFactor))
-                    kPortfolio = iWeightData.loc[PortfolioDict.pop(kTopPortfolio)]
+                    kPortfolio = iWeightData.reindex(index=PortfolioDict.pop(kTopPortfolio))
                     PortfolioDict[kTopPortfolio] = kPortfolio / kPortfolio.abs().sum()
                     kBottomPortfolio = ("%sBottom%s加权组合" % (kFactor, iWeightFactor))
-                    kPortfolio = iWeightData.loc[PortfolioDict.pop(kBottomPortfolio)]
+                    kPortfolio = iWeightData.reindex(index=PortfolioDict.pop(kBottomPortfolio))
                     PortfolioDict[kBottomPortfolio] = kPortfolio / kPortfolio.abs().sum()
             # 风格因子组合
             for jFactor in self.StyleFactors:
@@ -143,8 +143,8 @@ class BiasTest(BaseModule):
         AllPortfolioNames = list(LastPortfolios)
         self._Output["Z-Score"] = self._Output["Z-Score"].loc[:, AllPortfolioNames]
         self._Output["Robust Z-Score"] = self._Output["Robust Z-Score"].loc[:, AllPortfolioNames]
-        self._Output["Bias 统计量"] = self._Output["Bias 统计量"].loc[:, AllPortfolioNames]
-        self._Output["Robust Bias 统计量"] = self._Output["Robust Bias 统计量"].loc[:, AllPortfolioNames]
+        self._Output["Bias 统计量"] = self._Output["Bias 统计量"].reindex(columns=AllPortfolioNames)
+        self._Output["Robust Bias 统计量"] = self._Output["Robust Bias 统计量"].reindex(columns=AllPortfolioNames)
         return 0
     def __QS_end__(self):
         if not self._isStarted: return 0

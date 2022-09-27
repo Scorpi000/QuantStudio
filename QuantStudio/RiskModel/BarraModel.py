@@ -81,9 +81,9 @@ def _FactorCovarianceGeneration(args):
         iFactorReturnDTs = list(FactorReturnDTs.iloc[iInd-args["FactorCovESTArgs"]["样本长度"]+1:iInd+1])
         iNewDTs = sorted(set(iFactorReturnDTs).difference(set(iLastDTs)))
         if iFactorReturn is not None:
-            iFactorReturn = pd.concat([iFactorReturn, RT.readFactorReturn(dts=iNewDTs)]).loc[iFactorReturnDTs, :]
+            iFactorReturn = pd.concat([iFactorReturn, RT.readFactorReturn(dts=iNewDTs)]).reindex(index=iFactorReturnDTs)
         else:
-            iFactorReturn = RT.readFactorReturn(dts=iNewDTs).loc[iFactorReturnDTs, :]
+            iFactorReturn = RT.readFactorReturn(dts=iNewDTs).reindex(index=iFactorReturnDTs)
         iFactorCov = RiskModelFun.estimateFactorCov_CHE2(iFactorReturn, forcast_num=args["FactorCovESTArgs"]["预测期数"],
                                                          auto_corr_num=args["FactorCovESTArgs"]["自相关滞后期"],
                                                          half_life_corr=args["FactorCovESTArgs"]["相关系数半衰期"],
@@ -125,13 +125,13 @@ def _SpecificRiskGeneration(args):
         iSpecificReturnDTs = list(SpecificReturnDTs.iloc[iInd-args["SpecificRiskESTArgs"]["样本长度"]+1:iInd+1])
         iNewDTs = sorted(set(iSpecificReturnDTs).difference(iLastDTs))
         if iSpecificReturn is None:
-            iSpecificReturn = RT.readSpecificReturn(dts=iNewDTs).loc[iSpecificReturnDTs, :]
+            iSpecificReturn = RT.readSpecificReturn(dts=iNewDTs).reindex(index=iSpecificReturnDTs)
         else:
-            iSpecificReturn = pd.concat([iSpecificReturn, RT.readSpecificReturn(dts=iNewDTs)]).loc[iSpecificReturnDTs, :]
+            iSpecificReturn = pd.concat([iSpecificReturn, RT.readSpecificReturn(dts=iNewDTs)]).reindex(index=iSpecificReturnDTs)
         iFactorData = RT.readFactorData(dts=[iDT]).iloc[:, 0, :]
         iCap = RT.readData("Cap", dts=[iDT]).iloc[0]
-        iFactorData = iFactorData.loc[iSpecificReturn.columns, args["SpecificRiskESTArgs"]["结构化模型回归风格因子"]+args["ModelArgs"]["所有行业"]]
-        iCap = iCap.loc[iSpecificReturn.columns]
+        iFactorData = iFactorData.reindex(index=iSpecificReturn.columns, columns=args["SpecificRiskESTArgs"]["结构化模型回归风格因子"]+args["ModelArgs"]["所有行业"])
+        iCap = iCap.reindex(index=iSpecificReturn.columns)
         iSpecificRisk = RiskModelFun.estimateSpecificRisk_EUE3(specific_ret=iSpecificReturn, factor_data=iFactorData, cap=iCap,
                                                                forcast_num=args["SpecificRiskESTArgs"]["预测期数"],
                                                                auto_corr_num=args["SpecificRiskESTArgs"]["自相关滞后期"],

@@ -100,7 +100,7 @@ class PortfolioStrategy(Strategy):
         PositionAmount = self.TargetAccount.PositionAmount
         if signal is not None:# 有新的信号, 形成新的交易目标
             if signal.shape[0]>0:
-                signal = signal.loc[PositionAmount.index]
+                signal = signal.reindex(index=PositionAmount.index)
                 signal.fillna(0.0, inplace=True)
             else:
                 signal = pd.Series(0.0, index=PositionAmount.index)
@@ -121,7 +121,7 @@ class PortfolioStrategy(Strategy):
                 if iTradingRecord.shape[0]>0:
                     if self.TradeTarget=="锁定买卖金额":
                         TargetChanged = pd.Series((iTradingRecord["买卖数量"] * iTradingRecord["价格"]).values, index=iTradingRecord["ID"].values)
-                        TargetChanged = TargetChanged.groupby(axis=0, level=0).sum().loc[self._TradeTarget.index]
+                        TargetChanged = TargetChanged.groupby(axis=0, level=0).sum().reindex(index=self._TradeTarget.index)
                         TargetChanged.fillna(0.0, inplace=True)
                         TradeTarget = self._TradeTarget - TargetChanged
                         TradeTarget[np.sign(self._TradeTarget)*np.sign(TradeTarget)<0] = 0.0
@@ -174,7 +174,7 @@ class PortfolioStrategy(Strategy):
                 if GroupTotalWeight!=0: GroupWeight = GroupWeight/GroupTotalWeight
             if args.WeightFactor=='等权': WeightData = pd.Series(1.0, index=original_ids)
             else: WeightData = self._FT.readData(factor_names=[args.WeightFactor], dts=[idt], ids=original_ids).iloc[0,0,:]
-            SelectedGroupData = GroupData.loc[ids]
+            SelectedGroupData = GroupData.reindex(index=ids)
             NewSignal = pd.Series()
             for i, iGroup in enumerate(AllGroups):
                 if pd.notnull(iGroup[0]): iMask = (SelectedGroupData[args.GroupFactors[0]]==iGroup[0])
@@ -191,7 +191,7 @@ class PortfolioStrategy(Strategy):
                         else: iMask = (iMask & pd.isnull(GroupData[args.GroupFactors[k+1]]))
                     iIDs = GroupData[iMask].index.tolist()
                 elif (iIDs==[]) and (args.GroupMiss=='忽略'): continue
-                iSignal = WeightData.loc[iIDs]
+                iSignal = WeightData.reindex(index=iIDs)
                 iSignalWeight = iSignal.sum()
                 if iSignalWeight!=0: iSignal = iSignal / iSignalWeight * GroupWeight.iloc[i]
                 else: iSignal = iSignal*0.0

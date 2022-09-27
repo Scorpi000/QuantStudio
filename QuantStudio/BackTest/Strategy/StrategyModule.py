@@ -24,7 +24,7 @@ _QS_MinPositionNum = 1e-8# 会被忽略掉的最小持仓数量
 _QS_MinCash = 1e-8# 会被忽略掉的最小现金量
 
 def cutDateTime(df, dts=None, start_dt=None, end_dt=None):
-    if dts is not None: df = df.loc[dts]
+    if dts is not None: df = df.reindex(index=dts)
     if start_dt is not None: df = df[df.index>=start_dt]
     if end_dt is not None: df = df[df.index<=end_dt]
     return df
@@ -41,7 +41,7 @@ def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, 
     CashDelta = cash_record.loc[:, ["时间点", "现金流"]].groupby(by=["时间点"]).sum()["现金流"]
     CashDelta = CashDelta[CashDelta!=0]
     if CashDelta.shape[0]>0:
-        Output["时间序列"]["累计资金投入"] = init_cash + CashDelta.loc[Output["时间序列"].index].fillna(0).cumsum()
+        Output["时间序列"]["累计资金投入"] = init_cash + CashDelta.reindex(index=Output["时间序列"].index).fillna(0).cumsum()
     else:
         Output["时间序列"]["累计资金投入"] = init_cash
     AccountEarnings[CashDelta.index] -= CashDelta
@@ -85,7 +85,7 @@ def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, 
         CashDelta = cash_record.loc[:, ["时间点", "现金流"]].groupby(by=["时间点"]).sum()["现金流"]
         CashDelta = CashDelta[CashDelta!=0]
         if CashDelta.shape[0]>0:
-            Output["日期序列"]["累计资金投入"] = init_cash + CashDelta.loc[Output["日期序列"].index].fillna(0).cumsum()
+            Output["日期序列"]["累计资金投入"] = init_cash + CashDelta.reindex(index=Output["日期序列"].index).fillna(0).cumsum()
         else:
             Output["日期序列"]["累计资金投入"] = init_cash
         AccountEarnings[CashDelta.index] -= CashDelta

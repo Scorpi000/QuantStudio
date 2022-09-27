@@ -588,12 +588,21 @@ class _LocIndexer(object):
         if not isinstance(key, tuple): key = (key, slice(None), slice(None))
         else: key += (slice(None),) * (3 - len(key))
         if len(key)>3: raise IndexError("QuantStudio.Tools.QSObjects.Panel.loc: Too many indexers")
-        Items = self._p._Items[key[0]]
-        MajorAxis = self._p._MajorAxis[key[1]]
-        MinorAxis = self._p._MinorAxis[key[2]]
+        try:
+            Items = self._p._Items.loc[key[0]]
+        except KeyError:
+            Items = self._p._Items.reindex(key[0])
+        try:
+            MajorAxis = self._p._MajorAxis.loc[key[1]]
+        except KeyError:
+            MajorAxis = self._p._MajorAxis.reindex(key[1])
+        try:
+            MinorAxis = self._p._MinorAxis.loc[key[2]]
+        except KeyError:
+            MinorAxis = self._p._MinorAxis.reindex(key[2])
         KeepDim = (isinstance(Items, pd.Series), isinstance(MajorAxis, pd.Series), isinstance(MinorAxis, pd.Series))
         if np.all(KeepDim):# Panel
-            DTypes = self._p._DTypes.loc[Items.index]
+            DTypes = self._p._DTypes.reindex(index=Items.index)
             UniDType = DTypes.dropna().unique()
             UniDType = (UniDType[0] if UniDType.shape[0]==1 else np.dtype("O"))
             DTypes = DTypes.fillna(value=UniDType)
@@ -611,29 +620,29 @@ class _LocIndexer(object):
                     Data = pd.DataFrame(self._p._Data[Items].astype(self._p._DTypes[key[0]]), index=self._p._MajorAxis.index, columns=self._p._MinorAxis.index)
                 except (ValueError, TypeError):
                     Data = pd.DataFrame(self._p._Data[Items], index=self._p._MajorAxis.index, columns=self._p._MinorAxis.index)
-                return Data.loc[key[1], key[2]]
+                return Data.reindex(index=MajorAxis.index, columns=MinorAxis.index)
             elif not KeepDim[1]:
                 Data = pd.DataFrame(self._p._Data[:, MajorAxis].T, index=self._p._MinorAxis.index, columns=self._p._Items.index)
-                return Data.loc[key[2], key[0]]
+                return Data.reindex(index=MinorAxis.index, columns=Items.index)
             else:
                 Data = pd.DataFrame(self._p._Data[:, :, MinorAxis].T, index=self._p._MajorAxis.index, columns=self._p._Items.index)
-                return Data.loc[key[1], key[0]]
+                return Data.reindex(index=MajorAxis.index, columns=Items.index)
         elif sum(KeepDim)==1:# Series
             if KeepDim[0]:
                 Data = pd.Series(self._p._Data[:, MajorAxis, MinorAxis], index=self._p._Items.index)
-                return Data.loc[key[0]]
+                return Data.reindex(index=Items.index)
             elif KeepDim[1]:
                 try:
                     Data = pd.Series(self._p._Data[Items, :, MinorAxis].astype(self._p._DTypes[key[0]]), index=self._p._MajorAxis.index)
                 except (ValueError, TypeError):
                     Data = pd.Series(self._p._Data[Items, :, MinorAxis], index=self._p._MajorAxis.index)
-                return Data.loc[key[1]]
+                return Data.reindex(index=MajorAxis.index)
             else:
                 try:
                     Data = pd.Series(self._p._Data[Items, MajorAxis].astype(self._p._DTypes[key[0]]), index=self._p._MinorAxis.index)
                 except (ValueError, TypeError):
                     Data = pd.Series(self._p._Data[Items, MajorAxis], index=self._p._MinorAxis.index)
-                return Data.loc[key[2]]
+                return Data.reindex(index=MinorAxis.index)
         else:# Scalar
             return self._p._Data[Items, MajorAxis, MinorAxis]
     def __setitem__(self, key, value):
@@ -660,9 +669,9 @@ class _LocIndexer(object):
         elif isinstance(Key0, pd.Series):
             Key0 = Key0.tolist()
         if Items.shape[0]>Data.shape[0]:
-            DTypes = DTypes.loc[Items.index]
+            DTypes = DTypes.reindex(index=Items.index)
             if isinstance(value, pd.DataFrame):
-                value = value.loc[self._p._MajorAxis.index, self._p._MinorAxis.index]
+                value = value.reindex(index=self._p._MajorAxis.index, columns=self._p._MinorAxis.index)
                 ValueDType = value.dtypes.unique()
                 DTypes = DTypes.fillna(ValueDType[0] if ValueDType.shape[0]==1 else np.dtype("O"))
             elif hasattr(value, "dtypes"):
@@ -822,21 +831,21 @@ class Panel(object):
         if self._UniDType.shape[0]==1:
             self._UniDType = self._UniDType[0]
             if (major_axis is None) and (minor_axis is None):
-                self._Data = np.r_[[Data[iItem].loc[MajorAxis, MinorAxis].values for iItem in Data]]
+                self._Data = np.r_[[Data[iItem].reindex(index=MajorAxis, columns=MinorAxis).values for iItem in Data]]
             elif major_axis is None:
-                self._Data = np.r_[[Data[iItem].loc[MajorAxis].values for iItem in Data]]
+                self._Data = np.r_[[Data[iItem].reindex(index=MajorAxis).values for iItem in Data]]
             elif minor_axis is None:
-                self._Data = np.r_[[Data[iItem].loc[:, MinorAxis].values for iItem in Data]]
+                self._Data = np.r_[[Data[iItem].reindex(columns=MinorAxis).values for iItem in Data]]
             else:
                 self._Data = np.r_[[Data[iItem].values for iItem in Data]]
         else:
             self._UniDType = np.dtype("O")
             if (major_axis is None) and (minor_axis is None):
-                self._Data = np.r_[[Data[iItem].loc[MajorAxis, MinorAxis].values.astype("O") for iItem in Data]]
+                self._Data = np.r_[[Data[iItem].reindex(index=MajorAxis, columns=MinorAxis).values.astype("O") for iItem in Data]]
             elif major_axis is None:
-                self._Data = np.r_[[Data[iItem].loc[MajorAxis].values.astype("O") for iItem in Data]]
+                self._Data = np.r_[[Data[iItem].reindex(index=MajorAxis).values.astype("O") for iItem in Data]]
             elif minor_axis is None:
-                self._Data = np.r_[[Data[iItem].loc[:, MinorAxis].values.astype("O") for iItem in Data]]
+                self._Data = np.r_[[Data[iItem].reindex(columns=MinorAxis).values.astype("O") for iItem in Data]]
             else:
                 self._Data = np.r_[[Data[iItem].values.astype("O") for iItem in Data]]
         self._MajorAxis = pd.Series(np.arange(len(MajorAxis)), index=MajorAxis)
