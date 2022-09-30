@@ -1672,12 +1672,11 @@ def aggr_count(f, mask=None, cat_data=None, descriptor_ids=None, **kwargs):
 def _merge(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
     Rslt = np.concatenate(Data, axis=1)
-    IDs = []
-    [(IDs.extend(iIDs) if iIDs is not None else IDs.extend(iid)) for iIDs in f.DescriptorSection]
-    return pd.DataFrame(Rslt, columns=IDs).reindex(columns=iid).values
+    return pd.DataFrame(Rslt, columns=args["OperatorArg"]["descriptor_ids"]).reindex(columns=iid).values
 def merge(factors, descriptor_ids, data_type="object", **kwargs):
     if len(factors)!=len(descriptor_ids): raise __QS_Error__("描述子个数与描述子截面个数不一致!")
     Descriptors, Args = _genMultivariateOperatorInfo(*factors)
+    Args["OperatorArg"] = {"descriptor_ids": sum(descriptor_ids, [])}
     DescriptorIDs = []
     for i in range(len(factors)):
         StartInd, EndInd = Args.get("SepInd"+str(i), 0), Args.get("SepInd"+str(i+1), 0)
@@ -1701,3 +1700,20 @@ def chg_ids(f, old_ids, id_map={}, **kwargs):# id_map: {新ID:旧ID}
     DataType = f.getMetaData(key="DataType")
     if DataType is None: DataType = "object"
     return SectionOperation(FactorName, Descriptors, {"算子":_chg_ids, "参数":Args, "运算时点":"多时点", "描述子截面":[old_ids]*len(Descriptors), "数据类型":DataType}, **kwargs)
+def _map_section(f,idt,iid,x,args):
+    Data, Mapping = _genOperatorData(f,idt,iid,x,args)
+    MappingIDs = (iid if not args["OperatorArg"]["mapping_ids"] else args["OperatorArg"]["mapping_ids"])
+    Mapping = pd.Series(Mapping, index=MappingIDs)
+    return Mapping.reindex(index=Data).values
+def map_section(f, mapping, mapping_ids, **kwargs):
+    Descriptors, Args = _genMultivariateOperatorInfo(f, mapping)
+    FactorName = kwargs.pop("factor_name", str(uuid.uuid1()))
+    DataType = mapping.getMetaData(key="DataType")
+    if DataType is None: DataType = "object"
+    DescriptorIDs = []
+    StartInd, EndInd = Args.get("SepInd0", 0), Args.get("SepInd1", 0)
+    DescriptorIDs += [None] * (EndInd - StartInd)
+    StartInd, EndInd = Args.get("SepInd1", 0), Args.get("SepInd2", 0)
+    DescriptorIDs += [mapping_ids] * (EndInd - StartInd)
+    Args["OperatorArg"] = {"mapping_ids": mapping_ids}
+    return SectionOperation(FactorName, Descriptors, {"算子":_map_section, "参数":Args, "运算时点":"单时点", "描述子截面":DescriptorIDs, "数据类型":DataType}, **kwargs)
