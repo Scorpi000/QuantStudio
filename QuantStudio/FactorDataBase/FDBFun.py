@@ -749,12 +749,11 @@ class SQL_WideTable(SQL_Table):
         LookBack = args.get("回溯天数", self.LookBack)
         if (StartDT is not None) and (not np.isinf(LookBack)): StartDT -= dt.timedelta(LookBack)
         SubSQLStr = "SELECT "+IDField+" AS ID, "
-        if IgnoreTime:
-            SubSQLStr += self.__QS_toDate__("CASE WHEN "+AnnDTField+">="+EndDTField+" THEN "+AnnDTField+" ELSE "+EndDTField+" END")+" AS AnnDate, "
-        else:
-            SubSQLStr += "CASE WHEN "+AnnDTField+">="+EndDTField+" THEN "+AnnDTField+" ELSE "+EndDTField+" END AS AnnDate, "
+        GroupAnnDTField = "CASE WHEN "+AnnDTField+">="+EndDTField+" THEN "+AnnDTField+" ELSE "+EndDTField+" END"
+        if IgnoreTime: GroupAnnDTField = self.__QS_toDate__(GroupAnnDTField)
+        SubSQLStr += GroupAnnDTField+" AS AnnDate, "
         SubSQLStr += "MAX("+EndDTField+") AS MaxEndDate "
-        SubSQLStr += self._genFromSQLStr(use_main_table=False, args=args)+" WHERE TRUE "
+        SubSQLStr += self._genFromSQLStr(use_main_table=False, args=args)+f" WHERE {'TRUE' if self.FactorDB.DBType!='Oracle' else '(1=1)'} "
         if StartDT is not None:
             SubSQLStr += "AND ("+AdjAnnDTField+">="+StartDT.strftime(DTFormat)+" "
             SubSQLStr += "OR "+EndDTField+">="+StartDT.strftime(DTFormat)+") "
@@ -764,7 +763,7 @@ class SQL_WideTable(SQL_Table):
         SubSQLStr += self._genConditionSQLStr(use_main_table=False, args=args)+" "
         if (self._MainTableName is None) or (self._MainTableName==self._DBTableName):
             SubSQLStr += self._genIDSQLStr(ids, args=args)+" "
-        SubSQLStr += "GROUP BY "+IDField+", AnnDate"
+        SubSQLStr += "GROUP BY "+IDField+f", {GroupAnnDTField if self.FactorDB.DBType=='Oracle' else 'AnnDate'}"
         SQLStr = "SELECT t.AnnDate AS DT, "
         SQLStr += self._getIDField(args=args)+" AS ID, "
         SQLStr += "t.MaxEndDate AS MaxEndDate, "
@@ -1367,7 +1366,7 @@ class SQL_TimeSeriesTable(SQL_Table):
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr, args=args)+" "
-        SQLStr += "WHERE TRUE "
+        SQLStr += f"WHERE {'TRUE' if self.FactorDB.DBType!='Oracle' else '(1=1)'} "
         if StartDT is not None:
             SQLStr += "AND "+AdjDTField+">="+StartDT.strftime(DTFormat)+" "
         if EndDT is not None:
@@ -1431,13 +1430,13 @@ class SQL_TimeSeriesTable(SQL_Table):
             StartDT = EndDT = None
         LookBack = args.get("回溯天数", self.LookBack)
         if (StartDT is not None) and (not np.isinf(LookBack)): StartDT -= dt.timedelta(LookBack)
-        if IgnoreTime:
-            SubSQLStr = "SELECT "+self.__QS_toDate__("CASE WHEN "+AnnDTField+">="+EndDTField+" THEN "+AnnDTField+" ELSE "+EndDTField+" END")+" AS AnnDate, "
-        else:
-            SubSQLStr = "SELECT CASE WHEN "+AnnDTField+">="+EndDTField+" THEN "+AnnDTField+" ELSE "+EndDTField+" END AS AnnDate, "
+        SubSQLStr = "SELECT "
+        GroupAnnDTField = "CASE WHEN "+AnnDTField+">="+EndDTField+" THEN "+AnnDTField+" ELSE "+EndDTField+" END"
+        if IgnoreTime: GroupAnnDTField = self.__QS_toDate__(GroupAnnDTField)
+        SubSQLStr += GroupAnnDTField+" AS AnnDate, "
         SubSQLStr += "MAX("+EndDTField+") AS MaxEndDate "
         SubSQLStr += self._genFromSQLStr(use_main_table=False, args=args)+" "
-        SubSQLStr += "WHERE TRUE "
+        SubSQLStr += f"WHERE {'TRUE' if self.FactorDB.DBType!='Oracle' else '(1=1)'} "
         if StartDT is not None:
             SubSQLStr += "AND ("+AdjAnnDTField+">="+StartDT.strftime(DTFormat)+" "
             SubSQLStr += "OR "+EndDTField+">="+StartDT.strftime(DTFormat)+") "
@@ -1445,7 +1444,7 @@ class SQL_TimeSeriesTable(SQL_Table):
             SubSQLStr += "AND ("+AdjAnnDTField+"<="+EndDT.strftime(DTFormat)+" "
             SubSQLStr += "AND "+EndDTField+"<="+EndDT.strftime(DTFormat)+") "
         SubSQLStr += self._genConditionSQLStr(use_main_table=False, args=args)+" "
-        SubSQLStr += "GROUP BY AnnDate"
+        SubSQLStr += f"GROUP BY {GroupAnnDTField if self.FactorDB.DBType=='Oracle' else 'AnnDate'}"
         SQLStr = "SELECT t.AnnDate AS DT, "
         SQLStr += "t.MaxEndDate AS MaxEndDate, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
