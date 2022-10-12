@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """基于 CVXPY 的投资组合构造器"""
 import os
+from xmlrpc.client import boolean
 
 import numpy as np
 import pandas as pd
@@ -41,7 +42,11 @@ class CVXPC(PortfolioConstructor):
             elif iType=="Neg":
                 for jSubConstraint in iConstraint:
                     CVXConstraints.append(cvx.sum(cvx.neg(x - jSubConstraint["c_neg"].flatten())) <= jSubConstraint["l_neg"])
-            elif iType=="NonZeroNum": raise __QS_Error__("不支持的约束条件: '非零数目约束'!")
+            elif iType=="NonZeroNum":
+                for jSubConstraint in iConstraint:
+                    jz = cvx.Variable(x.shape[0], boolean=True)
+                    CVXConstraints.append(cvx.abs((x - jSubConstraint["b"].flatten())) <= jz)
+                    CVXConstraints.append(cvx.sum(jz) <= jSubConstraint["N"])
         return CVXConstraints
     # 均值方差模型
     def _solveMeanVarianceModel(self, nvar, prepared_objective, prepared_constraints, prepared_option):
