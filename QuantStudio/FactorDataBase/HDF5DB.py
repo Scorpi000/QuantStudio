@@ -31,7 +31,11 @@ def _identifyDataType(factor_data, data_type=None):
     return (factor_data, data_type)
 
 def _adjustData(data, data_type, order="C"):
-    if data_type=="string": return data.where(pd.notnull(data), None).values
+    if data_type=="string":
+        if h5py.version.version<"3.0.0":
+            return data.where(pd.notnull(data), None).values
+        else:
+            return data.where(pd.notnull(data), "__QS_None_Str__").values
     elif data_type=="double": return data.astype("float").values
     elif data_type=="object":
         if order=="C":
@@ -76,7 +80,11 @@ class _FactorTable(FactorTable):
         if ifactor_name is None: ifactor_name = self.FactorNames[0]
         with self._FactorDB._getLock(self._Name) as DataLock:
             with self._FactorDB._openHDF5File(self._FactorDB.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix, mode="r") as ijFile:
-                IDs = sorted(ijFile["ID"][...])
+                if h5py.version.version>="3.0.0": 
+                    IDs = ijFile["ID"].asstr(encoding="utf-8")[...]
+                else:
+                    IDs = ijFile["ID"][...]
+        IDs = sorted(IDs)
         if idt is not None:
             Data = self.readFactorData(ifactor_name, ids=IDs, dts=[idt]).iloc[0]
             return Data[pd.notnull(Data)].index.tolist()
@@ -115,14 +123,23 @@ class _FactorTable(FactorTable):
             with self._FactorDB._openHDF5File(FilePath, mode="r") as DataFile:
                 DataType = DataFile.attrs["DataType"]
                 DateTimes = DataFile["DateTime"][...]
-                IDs = DataFile["ID"][...]
+                if h5py.version.version>="3.0.0":
+                    IDs = DataFile["ID"].asstr(encoding="utf-8")[...]
+                else:
+                    IDs = DataFile["ID"][...]
                 if dts is None:
                     if ids is None:
-                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).sort_index(axis=1)
+                        if (h5py.version.version>="3.0.0") and (DataType=="string"):
+                            Rslt = pd.DataFrame(DataFile["Data"].asstr(encoding="utf-8")[...], index=DateTimes, columns=IDs).sort_index(axis=1)
+                        else:
+                            Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).sort_index(axis=1)
                     elif set(ids).isdisjoint(IDs):
                         Rslt = pd.DataFrame(index=DateTimes, columns=ids)
                     else:
-                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).reindex(columns=ids)
+                        if (h5py.version.version>="3.0.0") and (DataType=="string"):
+                            Rslt = pd.DataFrame(DataFile["Data"].asstr(encoding="utf-8")[...], index=DateTimes, columns=IDs).reindex(columns=ids)
+                        else:
+                            Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).reindex(columns=ids)
                     Rslt.index = [dt.datetime.fromtimestamp(itms) for itms in Rslt.index]
                 elif (ids is not None) and set(ids).isdisjoint(IDs):
                     Rslt = pd.DataFrame(index=dts, columns=ids)
@@ -140,20 +157,30 @@ class _FactorTable(FactorTable):
                         Mask = DateTimes.tolist()
                         DateTimes = DateTimes.index.values
                         if ids is None:
-                            Rslt = pd.DataFrame(DataFile["Data"][Mask, :], index=DateTimes, columns=IDs).reindex(index=dts).sort_index(axis=1)
+                            if (h5py.version.version>="3.0.0") and (DataType=="string"):
+                                Rslt = pd.DataFrame(DataFile["Data"].asstr(encoding="utf-8")[Mask, :], index=DateTimes, columns=IDs).reindex(index=dts).sort_index(axis=1)
+                            else:
+                                Rslt = pd.DataFrame(DataFile["Data"][Mask, :], index=DateTimes, columns=IDs).reindex(index=dts).sort_index(axis=1)
                         else:
                             IDRuler = pd.Series(np.arange(0,IDs.shape[0]), index=IDs)
                             IDRuler = IDRuler.reindex(index=ids)
                             StartInd, EndInd = int(IDRuler.min()), int(IDRuler.max())
-                            Rslt = pd.DataFrame(DataFile["Data"][Mask, StartInd:EndInd+1], index=DateTimes, columns=IDs[StartInd:EndInd+1]).reindex(index=dts, columns=ids)
+                            if (h5py.version.version>="3.0.0") and (DataType=="string"):
+                                Rslt = pd.DataFrame(DataFile["Data"].asstr(encoding="utf-8")[Mask, StartInd:EndInd+1], index=DateTimes, columns=IDs[StartInd:EndInd+1]).reindex(index=dts, columns=ids)
+                            else:
+                                Rslt = pd.DataFrame(DataFile["Data"][Mask, StartInd:EndInd+1], index=DateTimes, columns=IDs[StartInd:EndInd+1]).reindex(index=dts, columns=ids)
                     else:
-                        Rslt = pd.DataFrame(DataFile["Data"][...], index=DataFile["DateTime"][...], columns=IDs).reindex(index=dts)
+                        if (h5py.version.version>="3.0.0") and (DataType=="string"):
+                            Rslt = pd.DataFrame(DataFile["Data"].asstr(encoding="utf-8")[...], index=DataFile["DateTime"][...], columns=IDs).reindex(index=dts)
+                        else:
+                            Rslt = pd.DataFrame(DataFile["Data"][...], index=DataFile["DateTime"][...], columns=IDs).reindex(index=dts)
                         if ids is not None: Rslt = Rslt.reindex(columns=ids)
                         else: Rslt.sort_index(axis=1, inplace=True)
                     Rslt.index = [dt.datetime.fromtimestamp(itms) for itms in Rslt.index]
         if DataType=="string":
             Rslt = Rslt.where(pd.notnull(Rslt), None)
-            Rslt = Rslt.where(Rslt!="", None)
+            if h5py.version.version>="3.0.0":
+                Rslt = Rslt.where(Rslt!="__QS_None_Str__", None)
         elif DataType=="object":
             Rslt = Rslt.applymap(lambda x: pickle.loads(bytes(x)) if isinstance(x, np.ndarray) and (x.shape[0]>0) else None)
         return Rslt.sort_index(axis=0)
@@ -346,7 +373,10 @@ class HDF5DB(WritableFactorDB):
                 if OldDataType!=data_type: raise __QS_Error__("HDF5DB.writeFactorData: 表 '%s' 中因子 '%s' 的新数据无法转换成已有数据的数据类型 '%s'!" % (table_name, ifactor_name, OldDataType))
                 nOldDT, OldDateTimes = DataFile["DateTime"].shape[0], DataFile["DateTime"][...].tolist()
                 NewDateTimes = factor_data.index.difference(OldDateTimes).values
-                OldIDs = DataFile["ID"][...]
+                if h5py.version.version<"3.0.0":
+                    OldIDs = DataFile["ID"][...]
+                else:
+                    OldIDs = DataFile["ID"].asstr(encoding="utf-8")[...]
                 NewIDs = factor_data.columns.difference(OldIDs).values
                 DataFile["DateTime"].resize((nOldDT+NewDateTimes.shape[0], ))
                 DataFile["DateTime"][nOldDT:] = NewDateTimes
@@ -474,13 +504,16 @@ class HDF5DB(WritableFactorDB):
                     else:
                         FixMask[1] = False
                     # 修复 ID 重复值
-                    IDs = pd.Series(np.arange(DataFile["ID"].shape[0]), index=DataFile["ID"][...])
+                    if h5py.version.version<"3.0.0":
+                        IDs = pd.Series(np.arange(DataFile["ID"].shape[0]), index=DataFile["ID"][...])
+                    else:
+                        IDs = pd.Series(np.arange(DataFile["ID"].shape[0]), index=DataFile["ID"].asstr(encoding="utf-8")[...])
                     DuplicatedMask = IDs.index.duplicated()
                     if np.any(DuplicatedMask):
                         iData = DataFile["Data"][...]
                         for jID in set(IDs.index[DuplicatedMask]):
                             jIdx = IDs[jID].tolist()
-                            iData[:, jIdx[0]] = pd.DataFrame(iData[:, jIdx].T).fillna(method="bfill").values[0, :]
+                            iData[:, jIdx[0]] = pd.DataFrame(iData[:, jIdx].T).fillna(method="bfill").values[0, :]# TODO: h5py.version.version>=3.0.0 and data_type=string
                         nID = DuplicatedMask.shape[0] - np.sum(DuplicatedMask)
                         DataFile["ID"].resize((nID, ))
                         DataFile["ID"][:] = IDs.index.values[~DuplicatedMask]
@@ -495,7 +528,7 @@ class HDF5DB(WritableFactorDB):
                         iData = DataFile["Data"][...]
                         for jDT in set(DTs.index[DuplicatedMask]):
                             jIdx = DTs[jDT].tolist()
-                            iData[jIdx[0], :] = pd.DataFrame(iData[jIdx, :]).fillna(method="bfill").values[0, :]
+                            iData[jIdx[0], :] = pd.DataFrame(iData[jIdx, :]).fillna(method="bfill").values[0, :]# TODO: h5py.version.version>=3.0.0 and data_type=string
                         nDT = DuplicatedMask.shape[0] - np.sum(DuplicatedMask)
                         DataFile["DateTime"].resize((nDT, ))
                         DataFile["DateTime"][:] = DTs.index.values[~DuplicatedMask]
@@ -506,3 +539,41 @@ class HDF5DB(WritableFactorDB):
                     if np.any(FixMask):
                         self._QS_Logger.info("因子 '%s' : ’%s' 数据修复完成!" % (table_name, iFactorName))
         return 0
+
+
+if __name__=="__main__":
+    HDB = HDF5DB(sys_args={"主目录": r"D:\Data\HDF5Data"})
+    HDB.connect()
+    #print(HDB.Args)
+    #print(HDB.TableNames)
+    
+    #FT = HDB.getTable("stock_cn_quote_adj_no_nafilled")
+    #print(FT.FactorNames)
+    
+    #IDs = FT.getID()
+    #DTs = FT.getDateTime()
+    
+    #Data = FT.readData(factor_names=FT.FactorNames, ids=IDs[:5], dts=DTs[-7:])
+    #print(Data)
+    
+    #print(Data.iloc[0])
+    #print(Data.loc[:, :, IDs[0]])
+    
+    df = pd.DataFrame([(None, "aha"), ("中文", "aaa")], index=[dt.datetime(2022, 1, 1), dt.datetime(2022, 1, 2)], columns=["000001.SZ", "000002.SZ"], dtype="O")
+    HDB.writeFactorData(df, "test_table", "factor1", data_type="string")
+    
+    FT = HDB.getTable("test_table")
+    Data = FT.readData(FT.FactorNames, ids=None, dts=None)
+    
+    ## 数据转移
+    #SDB = HDF5DB(sys_args={"主目录": r"D:\Data\HDF5Data_Old"})
+    #SDB.connect()
+    #Tables = ["stock_cn_quote_adj_no_nafilled"]
+    #for iTable in Tables:
+        #iFT = SDB.getTable(iTable)
+        #for jFactor in iFT.FactorNames:
+            #ijData = iFT.readFactorData(jFactor, None, None)
+            ##ijData.columns = [iID.decode("utf-8") for iID in ijData.columns]
+            #HDB.writeFactorData(ijData, iTable, jFactor)
+    
+    print("===")
