@@ -35,7 +35,7 @@ def _adjustData(data, data_type, order="C"):
         if h5py.version.version<"3.0.0":
             return data.where(pd.notnull(data), None).values
         else:
-            return data.where(pd.notnull(data), "__QS_None_Str__").values
+            return data.where(pd.notnull(data), "").values
     elif data_type=="double": return data.astype("float").values
     elif data_type=="object":
         if order=="C":
@@ -179,8 +179,7 @@ class _FactorTable(FactorTable):
                     Rslt.index = [dt.datetime.fromtimestamp(itms) for itms in Rslt.index]
         if DataType=="string":
             Rslt = Rslt.where(pd.notnull(Rslt), None)
-            if h5py.version.version>="3.0.0":
-                Rslt = Rslt.where(Rslt!="__QS_None_Str__", None)
+            Rslt = Rslt.where(Rslt!="", None)
         elif DataType=="object":
             Rslt = Rslt.applymap(lambda x: pickle.loads(bytes(x)) if isinstance(x, np.ndarray) and (x.shape[0]>0) else None)
         return Rslt.sort_index(axis=0)
@@ -542,7 +541,7 @@ class HDF5DB(WritableFactorDB):
 
 
 if __name__=="__main__":
-    HDB = HDF5DB(sys_args={"主目录": r"D:\Data\HDF5Data"})
+    HDB = HDF5DB(sys_args={"主目录": r"D:\Project\Research\QSDemo\Data\HDF5"})
     HDB.connect()
     #print(HDB.Args)
     #print(HDB.TableNames)

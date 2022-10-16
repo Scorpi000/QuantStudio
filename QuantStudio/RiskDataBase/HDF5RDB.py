@@ -33,7 +33,10 @@ class _RiskTable(RiskTable):
                     iDTStr = iDT.strftime("%Y-%m-%d %H:%M:%S.%f")
                     if iDTStr not in CovGroup: continue
                     iGroup = CovGroup[iDTStr]
-                    iIDs = iGroup["ID"][...]
+                    if h5py.version.version<"3.0.0":
+                        iIDs = iGroup["ID"][...]
+                    else:
+                        iIDs = iGroup["ID"].asstr(encoding="utf-8")[...]
                     iCov = pd.DataFrame(iGroup["Data"][...], index=iIDs, columns=iIDs)
                     if ids is not None: iCov = iCov.reindex(index=ids, columns=ids)
                     Data[iDT] = iCov
@@ -121,7 +124,8 @@ class HDF5RDB(RiskDB):
                 else: CovGroup = File["Cov"]
                 if iDTStr in CovGroup: del CovGroup[iDTStr]
                 iGroup = CovGroup.create_group(iDTStr)
-                iGroup.create_dataset("ID", shape=(icov.shape[0], ), dtype=h5py.special_dtype(vlen=str), data=icov.index.values)
+                StrDataType = h5py.string_dtype(encoding="utf-8")
+                iGroup.create_dataset("ID", shape=(icov.shape[0], ), dtype=StrDataType, data=icov.index.values)
                 iGroup.create_dataset("Data", shape=icov.shape, dtype=np.float, data=icov.values)
         if table_name not in self._TableDT: self._TableDT[table_name] = []
         if idt not in self._TableDT[table_name]:
@@ -140,7 +144,11 @@ class _FactorRiskTable(FactorRT):
                 with h5py.File(self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
                     if "FactorCov" in File:
                         Group = File["FactorCov"]
-                        if DTStr in Group: self._FactorNames = sorted(Group[DTStr]["Factor"][...])
+                        if DTStr in Group:
+                            if h5py.version.version<"3.0.0":
+                                self._FactorNames = sorted(Group[DTStr]["Factor"][...])
+                            else:
+                                self._FactorNames = sorted(Group[DTStr]["Factor"].asstr(encoding="utf-8")[...])
                         else: self._FactorNames = []
                     else: self._FactorNames = []
     def getMetaData(self, key=None, args={}):
@@ -156,7 +164,11 @@ class _FactorRiskTable(FactorRT):
         with self._RiskDB._DataLock:
             with h5py.File(self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
                 Group = File["SpecificRisk"]
-                if DTStr in Group: return sorted(Group[DTStr]["ID"][...])
+                if DTStr in Group:
+                    if h5py.version.version>="3.0.0":
+                        return sorted(Group[DTStr]["ID"].asstr(encoding="utf-8")[...])
+                    else:
+                        return sorted(Group[DTStr]["ID"][...])
                 else: return []
     def getFactorReturnDateTime(self, start_dt=None, end_dt=None):
         FilePath = self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix
@@ -185,7 +197,7 @@ class _FactorRiskTable(FactorRT):
                     iDTStr = iDT.strftime("%Y-%m-%d %H:%M:%S.%f")
                     if iDTStr not in Group: continue
                     iGroup = Group[iDTStr]
-                    iFactors = iGroup["Factor"][...]
+                    iFactors = (iGroup["Factor"][...] if h5py.version.version<"3.0.0" else iGroup["Factor"].asstr(encoding="utf-8")[...])
                     Data[iDT] = pd.DataFrame(iGroup["Data"][...], index=iFactors, columns=iFactors)
         if Data: return Panel(Data, items=dts)
         return Panel(items=dts)
@@ -198,7 +210,8 @@ class _FactorRiskTable(FactorRT):
                     iDTStr = iDT.strftime("%Y-%m-%d %H:%M:%S.%f")
                     if iDTStr not in Group: continue
                     iGroup = Group[iDTStr]
-                    Data[iDT] = pd.Series(iGroup["Data"][...], index=iGroup["ID"][...])
+                    iIDs = (iGroup["ID"][...] if h5py.version.version<"3.0.0" else iGroup["ID"].asstr(encoding="utf-8")[...])
+                    Data[iDT] = pd.Series(iGroup["Data"][...], index=iIDs)
         if not Data: return pd.DataFrame(index=dts, columns=([] if ids is None else ids))
         Data = pd.DataFrame(Data).T.reindex(index=dts)
         if ids is not None: Data = Data.reindex(columns=ids)
@@ -212,7 +225,9 @@ class _FactorRiskTable(FactorRT):
                     iDTStr = iDT.strftime("%Y-%m-%d %H:%M:%S.%f")
                     if iDTStr not in Group: continue
                     iGroup = Group[iDTStr]
-                    Data[iDT] = pd.DataFrame(iGroup["Data"][...], index=iGroup["ID"][...], columns=iGroup["Factor"][...]).T
+                    iIDs = (iGroup["ID"][...] if h5py.version.version<"3.0.0" else iGroup["ID"].asstr(encoding="utf-8")[...])
+                    iFactors = (iGroup["Factor"][...] if h5py.version.version<"3.0.0" else iGroup["Factor"].asstr(encoding="utf-8")[...])
+                    Data[iDT] = pd.DataFrame(iGroup["Data"][...], index=iIDs, columns=iFactors).T
         if not Data: return Panel(major_axis=dts, minor_axis=ids)
         Data = Panel(Data).swapaxes(0, 1).loc[:, dts, :]
         if ids is not None:
@@ -228,7 +243,8 @@ class _FactorRiskTable(FactorRT):
                     iDTStr = iDT.strftime("%Y-%m-%d %H:%M:%S.%f")
                     if iDTStr not in Group: continue
                     iGroup = Group[iDTStr]
-                    Data[iDT] = pd.Series(iGroup["Data"][...], index=iGroup["Factor"][...])
+                    iFactors = (iGroup["Factor"][...] if h5py.version.version<"3.0.0" else iGroup["Factor"].asstr(encoding="utf-8")[...])
+                    Data[iDT] = pd.Series(iGroup["Data"][...], index=iFactors)
         if not Data: return pd.DataFrame(index=dts, columns=[])
         return pd.DataFrame(Data).T.reindex(index=dts)
     def readSpecificReturn(self, dts, ids=None):
@@ -240,7 +256,8 @@ class _FactorRiskTable(FactorRT):
                     iDTStr = iDT.strftime("%Y-%m-%d %H:%M:%S.%f")
                     if iDTStr not in Group: continue
                     iGroup = Group[iDTStr]
-                    Data[iDT] = pd.Series(iGroup["Data"][...], index=iGroup["ID"][...])
+                    iIDs = (iGroup["ID"][...] if h5py.version.version<"3.0.0" else iGroup["ID"].asstr(encoding="utf-8")[...])
+                    Data[iDT] = pd.Series(iGroup["Data"][...], index=iIDs)
         if not Data: return pd.DataFrame(index=dts, columns=([] if ids is None else ids))
         Data = pd.DataFrame(Data).T.reindex(index=dts)
         if ids is not None: Data = Data.reindex(columns=ids)
@@ -307,7 +324,8 @@ class HDF5FRDB(FactorRDB):
         return HDF5RDB.deleteTable(self, table_name)
     def writeData(self, table_name, idt, factor_data=None, factor_cov=None, specific_risk=None, factor_ret=None, specific_ret=None, **kwargs):
         iDTStr = idt.strftime("%Y-%m-%d %H:%M:%S.%f")
-        StrType = h5py.special_dtype(vlen=str)
+        #StrType = h5py.special_dtype(vlen=str)
+        StrType = h5py.string_dtype(encoding="utf-8")
         FilePath = self.MainDir+os.sep+table_name+"."+self._Suffix
         with self._DataLock:
             if not os.path.isfile(FilePath): open(FilePath, mode="a").close()# h5py 直接创建文件名包含中文的文件会报错.

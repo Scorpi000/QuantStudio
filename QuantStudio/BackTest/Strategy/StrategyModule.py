@@ -38,7 +38,7 @@ def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, 
     AccountEarnings = account_value_series.diff()
     AccountEarnings.iloc[0] = account_value_series.iloc[0] - init_cash
     # 现金流调整
-    CashDelta = cash_record.loc[:, ["时间点", "现金流"]].groupby(by=["时间点"]).sum()["现金流"]
+    CashDelta = cash_record.loc[:, ["时间点", "现金流"]].groupby(by=["时间点"]).sum().get("现金流", pd.Series(dtype=float))
     CashDelta = CashDelta[CashDelta!=0]
     if CashDelta.shape[0]>0:
         Output["时间序列"]["累计资金投入"] = init_cash + CashDelta.reindex(index=Output["时间序列"].index).fillna(0).cumsum()

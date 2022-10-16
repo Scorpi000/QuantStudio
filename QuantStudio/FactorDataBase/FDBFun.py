@@ -1975,8 +1975,14 @@ class SQL_FinancialTable(SQL_Table):
                 SQLStr += " "+init_keyword+" DATE_FORMAT("+ReportDTField+",'%m%d') IN ('0331','0630','0930','1231')"
             elif self._FactorDB.DBType=="Oracle":
                 SQLStr += " "+init_keyword+" TO_CHAR("+ReportDTField+",'MMdd') IN ('0331','0630','0930','1231')"
+            elif self._FactorDB.DBType=="sqlite3":
+                YearStartIdx = self.DTFmt.find("%Y") + 1
+                YearEndIdx = YearStartIdx + 4
+                DTFmt = self.DTFmt.replace("%Y", "")
+                ReportDays = "','".join((dt.datetime(2000, 3, 31).strftime(DTFmt), dt.datetime(2000, 6, 30).strftime(DTFmt), dt.datetime(2000, 9, 30).strftime(DTFmt), dt.datetime(2000, 12, 31).strftime(DTFmt)))
+                SQLStr += " "+init_keyword+f" (SUBSTR({ReportDTField}, {YearStartIdx}, {YearStartIdx-1}) ||  SUBSTR({ReportDTField}, {YearEndIdx})) IN ('{ReportDays}')"
             else:
-                raise __QS_Error__("JYDB._FinancialTable._genConditionSQLStr 不支持的数据库类型: '%s'" % (self._FactorDB.DBType, ))
+                raise __QS_Error__("SQL_FinancialTable._genConditionSQLStr 不支持的数据库类型: '%s'" % (self._FactorDB.DBType, ))
             init_keyword = "AND"
         AdjustTypeField = args.get("调整类型字段", self.AdjustTypeField)
         if AdjustTypeField is not None:

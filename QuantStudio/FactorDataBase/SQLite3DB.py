@@ -12,78 +12,43 @@ from QuantStudio import __QS_ConfigPath__
 from QuantStudio.FactorDataBase.SQLDB import SQLDB
 from QuantStudio.FactorDataBase.FDBFun import SQL_Table, SQL_WideTable, SQL_FeatureTable, SQL_MappingTable, SQL_NarrowTable, SQL_TimeSeriesTable, SQL_ConstituentTable, SQL_FinancialTable
 
-class _SQLite3_SQL_Table(SQL_Table):
-    DTFmt = Str("%Y-%m-%d", arg_type="String", label="时点格式", order=300)
-    def __init__(self, name, fdb, sys_args={}, **kwargs):
-        super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
-        return
-    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
-        DTs = super().getDateTime(ifactor_name=ifactor_name, iid=iid, start_dt=start_dt, end_dt=end_dt, args=args)
-        return [dt.datetime.strptime(iDT, args.get("时点格式", self.DTFmt)) for iDT in DTs]
-
-class _WideTable(_SQLite3_SQL_Table, SQL_WideTable):
+class _WideTable(SQL_WideTable):
     """SQLite3 宽因子表"""
-    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        RawData = super().__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args)
-        if args.get("回溯期数", self.PeriodLookBack) is None:
-            DTFmt = args.get("时点格式", self.DTFmt)
-            RawData["QS_DT"] = RawData["QS_DT"].apply(lambda x: dt.datetime.strptime(x, DTFmt) if pd.notnull(x) else pd.NaT)
-        return RawData
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
 
-class _NarrowTable(_SQLite3_SQL_Table, SQL_NarrowTable):
+class _NarrowTable(SQL_NarrowTable):
     """SQLite3 窄因子表"""
-    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        RawData = super().__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args)
-        DTFmt = args.get("时点格式", self.DTFmt)
-        RawData["QS_DT"] = RawData["QS_DT"].apply(lambda x: dt.datetime.strptime(x, DTFmt) if pd.notnull(x) else pd.NaT)
-        return RawData
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
 
-class _FeatureTable(_SQLite3_SQL_Table, SQL_FeatureTable):
+class _FeatureTable(SQL_FeatureTable):
     """SQLite3 特征因子表"""
-    def _getMaxDT(self, args={}):
-        MaxDT = super()._getMaxDT(args=args)
-        if MaxDT is not None:
-            DTFmt = args.get("时点格式", self.DTFmt)
-            return dt.datetime.strptime(MaxDT, DTFmt)
-        else:
-            return None
-    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        RawData = super().__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args)
-        if args.get("时点字段", self.DTField) is not None:
-            DTFmt = args.get("时点格式", self.DTFmt)
-            RawData["QS_DT"] = RawData["QS_DT"].apply(lambda x: dt.datetime.strptime(x, DTFmt) if pd.notnull(x) else pd.NaT)
-        return RawData
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
 
-class _TimeSeriesTable(_SQLite3_SQL_Table, SQL_TimeSeriesTable):
+class _TimeSeriesTable(SQL_TimeSeriesTable):
     """SQLite3 时序因子表"""
-    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        RawData = super().__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args)
-        DTFmt = args.get("时点格式", self.DTFmt)
-        RawData["QS_DT"] = RawData["QS_DT"].apply(lambda x: dt.datetime.strptime(x, DTFmt) if pd.notnull(x) else pd.NaT)
-        return RawData
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
 
-class _MappingTable(_SQLite3_SQL_Table, SQL_MappingTable):
+class _MappingTable(SQL_MappingTable):
     """SQLite3 映射因子表"""
-    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        RawData = super().__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args)
-        DTFmt = args.get("时点格式", self.DTFmt)
-        RawData["QS_起始日"] = RawData["QS_起始日"].apply(lambda x: dt.datetime.strptime(x, DTFmt) if pd.notnull(x) else pd.NaT)
-        RawData["QS_结束日"] = RawData["QS_结束日"].apply(lambda x: dt.datetime.strptime(x, DTFmt) if pd.notnull(x) else pd.NaT)
-        return RawData
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
 
-class _ConstituentTable(_SQLite3_SQL_Table, SQL_ConstituentTable):
+class _ConstituentTable(SQL_ConstituentTable):
     """SQLite3 成份因子表"""
-    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        RawData = super().__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args)
-        DTFmt = args.get("时点格式", self.DTFmt)
-        RawData["InDate"] = RawData["InDate"].apply(lambda x: dt.datetime.strptime(x, DTFmt) if pd.notnull(x) else pd.NaT)
-        RawData["OutDate"] = RawData["OutDate"].apply(lambda x: dt.datetime.strptime(x, DTFmt) if pd.notnull(x) else pd.NaT)
-        return RawData
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
 
-class _FinancialTable(_SQLite3_SQL_Table, SQL_FinancialTable):
+class _FinancialTable(SQL_FinancialTable):
     """SQLite3 财务因子表"""
+    def __init__(self, name, fdb, sys_args={}, **kwargs):
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
+    
     def _genConditionSQLStr(self, use_main_table=True, init_keyword="AND", args={}):
-        SQLStr = _SQLite3_SQL_Table._genConditionSQLStr(self, use_main_table=use_main_table, init_keyword=init_keyword, args=args)
+        SQLStr = super()._genConditionSQLStr(use_main_table=use_main_table, init_keyword=init_keyword, args=args)
         if SQLStr: init_keyword = "AND"
         ReportDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
         if args.get("忽略非季末报告", self.IgnoreNonQuarter) or (not ((args.get("报告期", self.ReportDate)=="所有") and (args.get("计算方法", self.CalcType)=="最新") and (args.get("回溯年数", self.YearLookBack)==0) and (args.get("回溯期数", self.PeriodLookBack)==0))):
@@ -102,12 +67,6 @@ class _FinancialTable(_SQLite3_SQL_Table, SQL_FinancialTable):
                 else:
                     SQLStr += " "+init_keyword+" "+self._DBTableName+"."+self._FactorInfo.loc[AdjustTypeField, "DBFieldName"]+" IN ("+iConditionVal+") "
         return SQLStr
-    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        RawData = super().__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args)
-        DTFmt = args.get("时点格式", self.DTFmt)
-        RawData["AnnDate"] = RawData["AnnDate"].apply(lambda x: dt.datetime.strptime(x, DTFmt) if pd.notnull(x) else pd.NaT)
-        RawData["ReportDate"] = RawData["ReportDate"].apply(lambda x: dt.datetime.strptime(x, DTFmt) if pd.notnull(x) else pd.NaT)
-        return RawData
 
 class SQLite3DB(QSSQLite3Object, SQLDB):
     """SQLite3DB"""
@@ -167,3 +126,36 @@ class SQLite3DB(QSSQLite3Object, SQLDB):
         NewFactorInfo["TableName"] = table_name
         self._FactorInfo = self._FactorInfo.append(self._genFactorInfo(NewFactorInfo))
         return 0
+
+if __name__=="__main__":
+    SDB = SQLite3DB(sys_args={"sqlite3文件": "D:/Project/Research/QSDemo/Data/SQLite3/TestData.sqlite3", 
+                                                                         "内部前缀": "", 
+                                                                         "时点字段": "datetime",
+                                                                         "ID字段": "code",
+                                                                         "时点格式": "%Y-%m-%d",
+                                                                         "因子表参数": {"忽略时间": True}})
+    SDB.connect()
+    
+    TargetTable = "test_FinancialTable1"
+    SQLStr = f"SELECT * FROM {TargetTable}"
+    print("库原始数据 : ")
+    print(pd.read_sql_query(SQLStr, SDB.Connection))
+    
+    DTs = [dt.datetime(2022,1,17), dt.datetime(2022,1,18)]
+    IDs = ["000001.SZ"]
+    
+    Args = {
+        "因子表类型": "FinancialTable",
+        "时点字段": "report_date",
+        "公告时点字段": "ann_dt",
+        "报告期": "年报",
+        "计算方法": "最新",
+        "回溯年数": 1,
+        "回溯期数": 0,
+    }
+    FT = SDB.getTable(TargetTable, args=Args)
+    print("参数 : ")
+    print(Args)
+    print("数据 : ")
+    print(FT.readData(factor_names=["factor1", "factor2"], ids=IDs, dts=DTs).iloc[:, :, 0])
+    

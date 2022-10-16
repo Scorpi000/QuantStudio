@@ -19,5 +19,4 @@ tushare
 xlrd
 xlwt
 openpyxl
- 
-
+Jinja2

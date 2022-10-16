@@ -203,13 +203,13 @@ class DefaultAccount(Account):
             self._BuyVolLimit[Mask] = 0.0
         if self.BuyLimit.Amt is not None:# 指定了买入成交额, 成交额满足限制要求
             Amount = self._MarketFT.readData(factor_names=[self.BuyLimit.Amt], ids=self._IDs, dts=[idt]).iloc[0,0,:]
-            self._BuyVolLimit = self._BuyVolLimit.clip_upper(Amount * self.BuyLimit.AmtLimitRatio / self._BuyPrice)
+            self._BuyVolLimit = self._BuyVolLimit.clip(upper=Amount * self.BuyLimit.AmtLimitRatio / self._BuyPrice)
         if self.SellLimit.Amt is not None:# 指定了卖出成交额, 成交额满足限制要求
             Amount = self._MarketFT.readData(factor_names=[self.SellLimit.Amt], ids=self._IDs, dts=[idt]).iloc[0,0,:]
-            self._SellVolLimit = self._SellVolLimit.clip_upper(Amount * self.SellLimit.AmtLimitRatio / self._SellPrice)
+            self._SellVolLimit = self._SellVolLimit.clip(upper=Amount * self.SellLimit.AmtLimitRatio / self._SellPrice)
         if not self.SellLimit.ShortAllowed:
             PositionNum = self._PositionNum.iloc[self._Model.DateTimeIndex+1]
-            self._SellVolLimit = self._SellVolLimit.clip_upper(PositionNum.clip_lower(0.0))
+            self._SellVolLimit = self._SellVolLimit.clip(upper=PositionNum.clip(lower=0.0))
         return 0
     # 撮合成交订单
     def _matchOrder(self, idt):
@@ -228,15 +228,15 @@ class DefaultAccount(Account):
         if orders.shape[0]==0: return []
         # 先执行卖出交易
         SellPrice = self._SellPrice[orders.index]
-        SellAmounts = (SellPrice * orders).clip_upper(0).abs()
+        SellAmounts = (SellPrice * orders).clip(upper=0).abs()
         Fees = SellAmounts * self.SellLimit.TradeFee# 卖出交易费
         CashChanged = SellAmounts - Fees
         Mask = (SellAmounts>0)
-        SellNums = orders.clip_upper(0)
+        SellNums = orders.clip(upper=0)
         TradingRecord = list(zip([idt]*Mask.sum(), orders.index[Mask], SellNums[Mask], SellPrice[Mask], Fees[Mask], CashChanged[Mask], ["sell"]*Mask.sum()))
         # 再执行买入交易
         BuyPrice = self._BuyPrice[orders.index]
-        BuyAmounts = (BuyPrice * orders).clip_lower(0)
+        BuyAmounts = (BuyPrice * orders).clip(lower=0)
         CashAcquired = BuyAmounts * (1 + self.BuyLimit.TradeFee)
         TotalCashAcquired = CashAcquired.sum()
         if TotalCashAcquired>0:
@@ -252,7 +252,7 @@ class DefaultAccount(Account):
         # 更新持仓数量和现金
         iIndex = self._Model.DateTimeIndex
         iPosition = self._PositionNum.iloc[iIndex+1].copy()
-        TotalAmount = (self._BuyPrice * iPosition.clip_upper(0) + self._SellPrice * iPosition.clip_lower(0)).sum()
+        TotalAmount = (self._BuyPrice * iPosition.clip(upper=0) + self._SellPrice * iPosition.clip(lower=0)).sum()
         self._Turnover.iloc[iIndex] = (SellAmounts.sum() + BuyAmounts.sum()) / (TotalAmount + super().AccountValue)
         iPosition[orders.index] += BuyNums + SellNums
         self._PositionNum.iloc[iIndex+1] = iPosition
