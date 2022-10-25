@@ -179,7 +179,7 @@ class CMRM(BaseModule):
             HTML += "</ul>"
         else:
             HTML = ""
-        for iKey in ["J1统计量", "J1统计量", "J1统计量", "J1统计量"]:
+        for iKey in ["J1统计量", "J2统计量", "J3统计量", "J4统计量"]:
             iHTML = self._Output[iKey]["p值"].style.background_gradient(cmap="Reds_r").set_precision(4).render()
             HTML += '<div align="left" style="font-size:1em"><strong>'+iKey+' : p 值</strong></div>'+iHTML
         Fig = self.genMatplotlibFig()

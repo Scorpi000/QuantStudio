@@ -114,7 +114,7 @@ class FMPModel(BaseModule):
         if FactorExpose.shape[1]>self._Output["因子暴露"].shape[1]:
             FactorNames = FactorExpose.columns.tolist()
             self._Output["因子暴露"] = self._Output["因子暴露"].reindex(columns=FactorNames)
-            self._Output["风险调整的因子暴露"] = self._Output["风险调整的因子暴露"].lreindex(columns=FactorNames)
+            self._Output["风险调整的因子暴露"] = self._Output["风险调整的因子暴露"].reindex(columns=FactorNames)
             self._Output["风险贡献"] = self._Output["风险贡献"].reindex(columns=FactorNames+["Alpha"])
             self._Output["收益贡献"] = self._Output["收益贡献"].reindex(columns=FactorNames+["Alpha"])
             self._Output["因子收益"] = self._Output["因子收益"].reindex(columns=FactorNames)
@@ -143,16 +143,15 @@ class FMPModel(BaseModule):
     def genMatplotlibFig(self, file_path=None):
         nRow, nCol = 2, 3
         Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
-        xData = np.arange(1, self._Output["历史均值"].shape[0])
+        xData = np.arange(1, self._Output["历史均值"].shape[0]+1)
         xTickLabels = [str(iInd) for iInd in self._Output["历史均值"].index]
         PercentageFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
         FloatFormatter = FuncFormatter(lambda x, pos: '%.2f' % (x, ))
         _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 1), xData[:-1], xTickLabels[:-1], self._Output["历史均值"]["因子暴露"].iloc[:-1], FloatFormatter)
         _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 2), xData[:-1], xTickLabels[:-1], self._Output["历史均值"]["风险调整的因子暴露"].iloc[:-1], FloatFormatter)
-        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 3), xData[:-1], xTickLabels[:-1], self._Output["历史均值"]["因子收益"].iloc[:-1], PercentageFormatter)
-        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 4), xData, xTickLabels, self._Output["历史均值"]["收益贡献"], PercentageFormatter)
-        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 5), xData, xTickLabels, self._Output["历史均值"]["风险贡献"], FloatFormatter)
-        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 6), xData, xTickLabels, self._Output["历史均值"]["风险贡献占比"], PercentageFormatter)
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 3), xData, xTickLabels, self._Output["历史均值"]["收益贡献"], PercentageFormatter)
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 4), xData, xTickLabels, self._Output["历史均值"]["风险贡献"], FloatFormatter)
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 5), xData, xTickLabels, self._Output["历史均值"]["风险贡献占比"], PercentageFormatter)
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
@@ -171,7 +170,7 @@ class FMPModel(BaseModule):
             HTML += "</ul>"
         else:
             HTML = ""
-        Formatters = [lambda x:'{0:.4f}'.format(x)]*2+[_QS_formatPandasPercentage]*2+[lambda x:'{0:.4f}'.format(x), _QS_formatPandasPercentage]
+        Formatters = [lambda x:'{0:.4f}'.format(x)]*2+[_QS_formatPandasPercentage, lambda x:'{0:.4f}'.format(x), _QS_formatPandasPercentage]
         iHTML = self._Output["历史均值"].to_html(formatters=Formatters)
         Pos = iHTML.find(">")
         HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
