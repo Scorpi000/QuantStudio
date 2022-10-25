@@ -65,7 +65,7 @@ def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_d
             IDs = []
             for iPID in sorted(pid_ids): IDs.extend(pid_ids[iPID])
             RawData = _prepareReportANNRawData(ft.FactorDB, ids=IDs)
-            super(_DBTable, ft).__QS_saveRawData__(RawData, [], raw_data_dir, pid_ids, report_ann_file, pid_lock)
+            super(type(ft), ft).__QS_saveRawData__(RawData, [], raw_data_dir, pid_ids, report_ann_file, pid_lock)
         else:
             pid_lock[PID].release()
     raw_data = raw_data.set_index(['ID'])
