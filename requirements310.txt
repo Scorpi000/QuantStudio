@@ -12,9 +12,9 @@ pyodbc
 chardet
 progressbar2
 fasteners
-traits<5.2.0
-pyface<7.0.0
-traitsui<7.0.0
+traits
+pyface
+traitsui
 tushare
 xlrd
 xlwt
