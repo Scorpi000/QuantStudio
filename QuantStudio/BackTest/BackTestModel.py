@@ -198,13 +198,13 @@ class BackTestModel(__QS_Object__):
         if subprocess_num>0: return self._runMultiProcs(subprocess_num, multi_thread)
         elif multi_thread: return self._runMultiThread()
         TotalStartT = time.perf_counter()
-        print("==========历史回测==========", "1. 初始化", sep="\n", end="\n")
+        print("==========历史回测==========\n1. 初始化")
         FTs = set()
         for jModule in self._TestModules:
             jFTs = jModule.__QS_start__(mdl=self, dts=self._QS_TestDateTimes)
             if jFTs is not None: FTs.update(set(jFTs))
         for jFT in FTs: jFT.start(dts=self._QS_TestDateTimes)
-        print(("耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "2. 循环计算", sep="\n", end="\n")
+        print(("耗时 : %.2f" % (time.perf_counter()-TotalStartT, ))+"\n2. 循环计算")
         StartT = time.perf_counter()
         with ProgressBar(max_value=len(self._QS_TestDateTimes)) as ProgBar:
             for i, iDT in enumerate(self._QS_TestDateTimes):
@@ -213,11 +213,11 @@ class BackTestModel(__QS_Object__):
                 for jFT in FTs: jFT.move(iDT)
                 for jModule in self._TestModules: jModule.__QS_move__(iDT)
                 ProgBar.update(i+1)
-        print(("耗时 : %.2f" % (time.perf_counter()-StartT, )), "3. 结果生成", sep="\n", end="\n")
+        print(("耗时 : %.2f" % (time.perf_counter()-StartT, ))+"\n3. 结果生成")
         StartT = time.perf_counter()
         for jModule in self._TestModules: jModule.__QS_end__()
         for jFT in FTs: jFT.end()
-        print(("耗时 : %.2f" % (time.perf_counter()-StartT, )), ("总耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "="*28, sep="\n", end="\n")
+        print(("耗时 : %.2f" % (time.perf_counter()-StartT, ))+("\n总耗时 : %.2f" % (time.perf_counter()-TotalStartT, ))+"\n"+"="*28)
         self._Output = self.output()
         return 0
     def _runMultiThread(self):
@@ -227,7 +227,7 @@ class BackTestModel(__QS_Object__):
         StartBarrier = threading.Barrier(nThread+1)
         FTLock = threading.Lock()
         TotalStartT = time.perf_counter()
-        print("==========历史回测==========", "1. 初始化", sep="\n", end="\n")
+        print("==========历史回测==========\n1. 初始化")
         for j in range(nThread):
             Threads.append(threading.Thread(target=_runModel_SingleThread, args=(j, self, EndBarrier, StartBarrier, FTLock)))
             Threads[-1].start()
@@ -237,7 +237,7 @@ class BackTestModel(__QS_Object__):
             #if jFTs is not None: FTs.update(set(jFTs))
         #for jFT in FTs: jFT.start(dts=self._QS_TestDateTimes)
         EndBarrier.wait()
-        print(("耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "2. 循环计算", sep="\n", end="\n")
+        print(("耗时 : %.2f" % (time.perf_counter()-TotalStartT, ))+"\n2. 循环计算")
         StartT = time.perf_counter()
         with ProgressBar(max_value=len(self._QS_TestDateTimes)) as ProgBar:
             for i, iDT in enumerate(self._QS_TestDateTimes):
@@ -249,7 +249,7 @@ class BackTestModel(__QS_Object__):
                 StartBarrier.reset()
                 EndBarrier.wait()
                 ProgBar.update(i+1)
-        print(("耗时 : %.2f" % (time.perf_counter()-StartT, )), "3. 结果生成", sep="\n", end="\n")
+        print(("耗时 : %.2f" % (time.perf_counter()-StartT, ))+"\n3. 结果生成")
         StartT = time.perf_counter()
         EndBarrier.reset()
         StartBarrier.wait()
@@ -258,14 +258,14 @@ class BackTestModel(__QS_Object__):
         EndBarrier.wait()
         for i in range(nThread):
             Threads[i].join()
-        print(("耗时 : %.2f" % (time.perf_counter()-StartT, )), ("总耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "="*28, sep="\n", end="\n")
+        print(("耗时 : %.2f" % (time.perf_counter()-StartT, ))+("\n总耗时 : %.2f" % (time.perf_counter()-TotalStartT, ))+"\n"+"="*28)
         self._Output = self.output()
         return 0
     def _runMultiProcs(self, subprocess_num, multi_thread):
         nPrcs = min(subprocess_num, len(self._TestModules))
         Args = {"mdl":self, "module_inds":np.arange(len(self._TestModules)).tolist(), "multi_thread": multi_thread, "OutputPipe":QSPipe()}
         TotalStartT = time.perf_counter()
-        print("==========历史回测==========", "1. 初始化", sep="\n", end="\n")
+        print("==========历史回测==========\n1. 初始化")
         Procs, Main2SubQueue, Sub2MainQueue = startMultiProcess(pid="0", n_prc=nPrcs, target_fun=_runModelProcess,
                                                                 arg=Args, partition_arg=["module_inds"],
                                                                 main2sub_queue=None, sub2main_queue="Single")
@@ -275,16 +275,16 @@ class BackTestModel(__QS_Object__):
         while True:
             if CalcStage>=nTask:
                 ProgBar.finish()
-                print(("耗时 : %.2f" % (time.perf_counter()-CalcStageStartT, )), "3. 结果生成", sep="\n", end="\n")
+                print(("耗时 : %.2f" % (time.perf_counter()-CalcStageStartT, ))+"\n3. 结果生成")
                 CalcStage = -1
                 EndStageStartT = time.perf_counter()
             if EndStage>=nPrcs:
-                print(("耗时 : %.2f" % (time.perf_counter()-EndStageStartT, )), ("总耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "="*28, sep="\n", end="\n")
+                print(("耗时 : %.2f" % (time.perf_counter()-EndStageStartT, ))+("\n总耗时 : %.2f" % (time.perf_counter()-TotalStartT, ))+"\n"+"="*28)
                 break
             iStage = Sub2MainQueue.get()
             if iStage==0:# 初始化阶段
                 if InitStage==0:
-                    print(("耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "2. 循环计算", sep="\n", end="\n")
+                    print(("耗时 : %.2f" % (time.perf_counter()-TotalStartT, ))+"\n2. 循环计算")
                     CalcStageStartT = time.perf_counter()
                     ProgBar = ProgressBar(max_value=nTask)
                     ProgBar.start()

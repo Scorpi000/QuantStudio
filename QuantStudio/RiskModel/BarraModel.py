@@ -320,16 +320,16 @@ class BarraModel(object):
     # 生成数据
     def run(self):
         TotalStartT = time.perf_counter()
-        print("==========Barra 风险模型==========", "1. 初始化", sep="\n")
+        print("==========Barra 风险模型==========\n1. 初始化")
         self._initInfo()
-        print(('耗时 : %.2f' % (time.perf_counter()-TotalStartT, )), "2. 截面回归", sep="\n")
+        print(('耗时 : %.2f' % (time.perf_counter()-TotalStartT, ))+"\n2. 截面回归")
         StartT = time.perf_counter()
         self._genFactorAndSpecificReturn()
-        print("耗时 : %.2f" % (time.perf_counter()-StartT, ), "3. 估计因子协方差矩阵", sep="\n")
+        print("耗时 : %.2f" % (time.perf_counter()-StartT, )+"\n3. 估计因子协方差矩阵")
         StartT = time.perf_counter()
         self._genFactorCovariance()
-        print("耗时 : %.2f" % (time.perf_counter()-StartT, ), "4. 估计特异性风险", sep="\n")
+        print("耗时 : %.2f" % (time.perf_counter()-StartT, )+"\n4. 估计特异性风险")
         StartT = time.perf_counter()
         self._genSpecificRisk()
-        print("耗时 : %.2f" % (time.perf_counter()-StartT, ), ("总耗时 : %.2f" % (time.perf_counter()-TotalStartT, )), "="*28, sep="\n")
+        print("耗时 : %.2f" % (time.perf_counter()-StartT, )+("\n总耗时 : %.2f" % (time.perf_counter()-TotalStartT, ))+"\n"+"="*28)
         return 0
