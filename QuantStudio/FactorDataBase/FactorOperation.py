@@ -16,9 +16,12 @@ def _DefaultOperator(f, idt, iid, x, args):
     return np.nan
 
 class DerivativeFactor(Factor):
-    Operator = Function(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
-    ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
-    DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=2)
+    """衍生因子"""
+    class __QS_ArgClass__(Factor.__QS_ArgClass__):
+        Operator = Function(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
+        ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
+        DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=2)
+    
     def __init__(self, name="", descriptors=[], sys_args={}, **kwargs):
         self._Descriptors = descriptors
         self.UserData = {}
@@ -52,8 +55,9 @@ class DerivativeFactor(Factor):
 # 如果运算时点参数为多时点, 运算ID参数为多ID, 那么 x 元素为 array(shape=(nDT, nID)), 注意并发时 ID 并不是全截面, 返回 array(shape=(nDT, nID))
 class PointOperation(DerivativeFactor):
     """单点运算"""
-    DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
-    IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=4)
+    class __QS_ArgClass__(DerivativeFactor.__QS_ArgClass__):
+        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
+        IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=4)
     def readData(self, ids, dts, **kwargs):
         StdData = self._calcData(ids=ids, dts=dts, descriptor_data=[iDescriptor.readData(ids=ids, dts=dts, **kwargs).values for iDescriptor in self._Descriptors])
         return pd.DataFrame(StdData, index=dts, columns=ids)
@@ -62,21 +66,22 @@ class PointOperation(DerivativeFactor):
         for i, iDescriptor in enumerate(self._Descriptors):
             iDescriptor._QS_initOperation(dt_dict[self.Name], dt_dict, prepare_ids, id_dict)
     def _calcData(self, ids, dts, descriptor_data):
-        if (self.DTMode=='多时点') and (self.IDMode=='多ID'):
-            StdData = self.Operator(self, dts, ids, descriptor_data, self.ModelArgs)
+        Operator, ModelArgs = self._QSArgs.Operator, self._QSArgs.ModelArgs
+        if (self._QSArgs.DTMode=='多时点') and (self._QSArgs.IDMode=='多ID'):
+            StdData = Operator(self, dts, ids, descriptor_data, ModelArgs)
         else:
-            if self.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
+            if self._QSArgs.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
             else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')
-            if (self.DTMode=='单时点') and (self.IDMode=='单ID'):
+            if (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='单ID'):
                 for i, iDT in enumerate(dts):
                     for j, jID in enumerate(ids):
-                        StdData[i, j] = self.Operator(self, iDT, jID, [iData[i, j] for iData in descriptor_data], self.ModelArgs)
-            elif (self.DTMode=='多时点') and (self.IDMode=='单ID'):
+                        StdData[i, j] = Operator(self, iDT, jID, [iData[i, j] for iData in descriptor_data], ModelArgs)
+            elif (self._QSArgs.DTMode=='多时点') and (self._QSArgs.IDMode=='单ID'):
                 for j, jID in enumerate(ids):
-                    StdData[:, j] = self.Operator(self, dts, jID, [iData[:, j] for iData in descriptor_data], self.ModelArgs)
-            elif (self.DTMode=='单时点') and (self.IDMode=='多ID'):
+                    StdData[:, j] = Operator(self, dts, jID, [iData[:, j] for iData in descriptor_data], ModelArgs)
+            elif (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='多ID'):
                 for i, iDT in enumerate(dts):
-                    StdData[i, :] = self.Operator(self, iDT, ids, [iData[i, :] for iData in descriptor_data], self.ModelArgs)
+                    StdData[i, :] = Operator(self, iDT, ids, [iData[i, :] for iData in descriptor_data], ModelArgs)
         return StdData
     def __QS_prepareCacheData__(self, ids=None):
         PID = self._OperationMode._iPID
@@ -94,7 +99,7 @@ class PointOperation(DerivativeFactor):
         else:
             for iDescriptor in self._Descriptors:
                 iDescriptor._QS_getData(DTs, pids=[PID])
-            StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self.DataType=="double" else "O"))
+            StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self._QSArgs.DataType=="double" else "O"))
         with self._OperationMode._PID_Lock[PID]:
             with shelve.open(self._OperationMode._CacheDataDir+os.sep+PID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
                 CacheFile["StdData"] = StdData
@@ -114,16 +119,18 @@ class PointOperation(DerivativeFactor):
 # 如果运算时点参数为多时点, 运算ID参数为多ID, 那么x元素为array(shape=(回溯期数+nDT, nID)), 注意并发时 ID 并不是全截面, 返回 array(shape=(nDT, nID))
 class TimeOperation(DerivativeFactor):
     """时间序列运算"""
-    DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
-    IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=4)
-    LookBack = List(arg_type="ArgList", label="回溯期数", order=5)# 描述子向前回溯的时点数(不包括当前时点)
-    LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=6)# 描述子的回溯模式
-    iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=7)
-    iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=8)
-    iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=9)
-    def __QS_initArgs__(self):
-        self.LookBack = [0]*len(self._Descriptors)
-        self.LookBackMode = ["滚动窗口"]*len(self._Descriptors)
+    class __QS_ArgClass__(DerivativeFactor.__QS_ArgClass__):
+        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
+        IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=4)
+        LookBack = List(arg_type="ArgList", label="回溯期数", order=5)# 描述子向前回溯的时点数(不包括当前时点)
+        LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=6)# 描述子的回溯模式
+        iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=7)
+        iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=8)
+        iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=9)
+        def __QS_initArgs__(self):
+            self.LookBack = [0]*len(self._Owner._Descriptors)
+            self.LookBackMode = ["滚动窗口"]*len(self._Owner._Descriptors)
+    
     def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
         super()._QS_initOperation(start_dt, dt_dict, prepare_ids, id_dict)
         if len(self._Descriptors)>len(self.LookBack): raise  __QS_Error__("时间序列运算因子 : '%s' 的参数'回溯期数'序列长度小于描述子个数!" % self.Name)
@@ -255,12 +262,13 @@ class TimeOperation(DerivativeFactor):
 # 如果运算时点参数为多时点, 那么 x 元素为 array(shape=(nDT, nID)), 如果输出形式为全截面返回 array(shape=(nDT, nID)), 否则返回 array(shape=(nDT, ))
 class SectionOperation(DerivativeFactor):
     """截面运算"""
-    DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
-    OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=4)
-    DescriptorSection = List(arg_type="List", label="描述子截面", order=5)
-    def __QS_initArgs__(self):
-        super().__QS_initArgs__()
-        self.DescriptorSection = [None]*len(self._Descriptors)
+    class __QS_ArgClass__(DerivativeFactor.__QS_ArgClass__):
+        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
+        OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=4)
+        DescriptorSection = List(arg_type="List", label="描述子截面", order=5)
+        def __QS_initArgs__(self):
+            super().__QS_initArgs__()
+            self.DescriptorSection = [None]*len(self._Owner._Descriptors)
     def readData(self, ids, dts, **kwargs):
         SectionIDs = kwargs.pop("section_ids", ids)
         DescriptorData = []
@@ -352,19 +360,21 @@ class SectionOperation(DerivativeFactor):
 # 如果运算时点参数为多时点, 那么 x 元素为 array(shape=(回溯期数+nDT, nID)), 如果输出形式为全截面返回 array(shape=(nDT, nID)), 否则返回 array(shape=(nDT, ))
 class PanelOperation(DerivativeFactor):
     """面板运算"""
-    DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
-    OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=4)
-    LookBack = List(arg_type="ArgList", label="回溯期数", order=5)# 描述子向前回溯的时点数(不包括当前时点)
-    LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=6)
-    iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=7)
-    iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=8)
-    iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=9)
-    DescriptorSection = List(arg_type="List", label="描述子截面", order=10)
-    def __QS_initArgs__(self):
-        super().__QS_initArgs__()
-        self.LookBack = [0]*len(self._Descriptors)
-        self.LookBackMode = ["滚动窗口"]*len(self._Descriptors)
-        self.DescriptorSection = [None]*len(self._Descriptors)
+    class __QS_ArgClass__(DerivativeFactor.__QS_ArgClass__):
+        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
+        OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=4)
+        LookBack = List(arg_type="ArgList", label="回溯期数", order=5)# 描述子向前回溯的时点数(不包括当前时点)
+        LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=6)
+        iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=7)
+        iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=8)
+        iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=9)
+        DescriptorSection = List(arg_type="List", label="描述子截面", order=10)
+        def __QS_initArgs__(self):
+            super().__QS_initArgs__()
+            nDescriptor = len(self._Owner._Descriptors)
+            self.LookBack = [0]*nDescriptor
+            self.LookBackMode = ["滚动窗口"]*nDescriptor
+            self.DescriptorSection = [None]*nDescriptor
     def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
         if len(self._Descriptors)>len(self.LookBack): raise  __QS_Error__("面板运算因子 : '%s' 的参数'回溯期数'序列长度小于描述子个数!" % self.Name)
         OldStartDT = dt_dict.get(self.Name, None)
