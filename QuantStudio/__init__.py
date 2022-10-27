@@ -28,18 +28,14 @@ elif platform.system()=="Darwin":
         mpl.rcParams["font.sans-serif"] = Font.get_name()
 mpl.rcParams['axes.unicode_minus'] = False
 
-# Quant Studio 系统错误
-class __QS_Error__(Exception):
-    """Quant Studio 错误"""
-    pass
-
-# Quant Studio 系统对象
-class __QS_Object__(HasTraits):
-    """Quant Studio 系统对象"""
-    def __init__(self, sys_args={}, config_file=None, **kwargs):
+# 参数对象
+class QSArgs(HasTraits):
+    """参数对象"""
+    def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
         self._QS_Logger = kwargs.pop("logger", None)
         if self._QS_Logger is None: self._QS_Logger = __QS_Logger__
         super().__init__(**kwargs)
+        self._Owner = owner
         self._LabelTrait = {}
         self._ArgOrder = pd.Series()
         for iTraitName in self.visible_traits():
@@ -62,28 +58,34 @@ class __QS_Object__(HasTraits):
         Config.update(sys_args)
         for iArgName, iArgVal in Config.items():
             if iArgName in self._ArgOrder.index: self[iArgName] = iArgVal
-        self.trait_view(name="QSView", view_element=View(*self.getViewItems()[0], buttons=[OKButton, CancelButton], resizable=True, title=getattr(self, "Name", "设置参数")))
+        
     def __setstate__(self, state, trait_change_notify=False):
         return super().__setstate__(state, trait_change_notify=trait_change_notify)
+    
+    def __str__(self):
+        return str(self.to_dict())
+    
+    def __repr__(self):
+        return repr(self.to_dict())
+    
     @property
     def ArgNames(self):
         return self._ArgOrder.index.tolist()
+    
     @property
-    def Args(self):
-        return {iArgName:self[iArgName] for iArgName in self.ArgNames}
+    def Owner(self):
+        return self._Owner
+    
     @property
     def Logger(self):
         return self._QS_Logger
-    def getViewItems(self, context_name=""):
-        Prefix = (context_name+"." if context_name else "")
-        Context = ({} if not Prefix else {context_name:self})
-        return ([Item(Prefix+self._LabelTrait[iLabel]) for iLabel in self._ArgOrder.index], Context)
-    def setArgs(self):
-        Items, Context = self.getViewItems()
-        if Context: return self.configure_traits(view=View(*Items, buttons=[OKButton, CancelButton], resizable=True, title=getattr(self, "Name", "设置参数"), kind="livemodal"), context=Context)
-        return self.configure_traits(view=View(*Items, buttons=[OKButton, CancelButton], resizable=True, title=getattr(self, "Name", "设置参数"), kind="livemodal"))
+    
+    def to_dict(self):
+        return {iArgName:self[iArgName] for iArgName in self.ArgNames}
+        
     def getTrait(self, arg_name):
         return (self._LabelTrait[arg_name], self.trait(self._LabelTrait[arg_name]))
+    
     def add_trait(self, name, *trait):
         Rslt = super().add_trait(name, *trait)
         iTrait = self.trait(name)
@@ -94,6 +96,7 @@ class __QS_Object__(HasTraits):
         self._ArgOrder[iLabel] = iOrder
         self._ArgOrder.sort_values(inplace=True)
         return Rslt
+    
     def remove_trait(self, name):
         if (name not in self.visible_traits()) or (self.trait(name).arg_type is None): return super().remove_trait(name)
         iLabel = self.trait(name).label
@@ -101,13 +104,42 @@ class __QS_Object__(HasTraits):
         self._LabelTrait.pop(iLabel)
         self._ArgOrder.pop(iLabel)
         return Rslt
+    
     def __iter__(self):
         return iter(self._LabelTrait)
+    
     def __getitem__(self, key):
         return getattr(self, self._LabelTrait[key])
+    
     def __setitem__(self, key, value):
         setattr(self, self._LabelTrait[key], value)
+    
     def __delitem__(self, key):
         self.remove_trait(self._LabelTrait[key])
+    
     def __QS_initArgs__(self):
         return None
+
+
+# Quant Studio 系统错误
+class __QS_Error__(Exception):
+    """Quant Studio 错误"""
+    pass
+
+# Quant Studio 系统对象
+class __QS_Object__:
+    """Quant Studio 系统对象"""
+    __QS_ArgClass__ = QSArgs
+    
+    def __init__(self, sys_args={}, config_file=None, **kwargs):
+        self._QS_Logger = kwargs.pop("logger", None)
+        if self._QS_Logger is None: self._QS_Logger = __QS_Logger__
+        self._QSArgs = self.__QS_ArgClass__(owner=self, sys_args=sys_args, config_file=config_file, logger=self._QS_Logger)
+    
+    @property
+    def Logger(self):
+        return self._QS_Logger
+    
+    @property
+    def Args(self):
+        return self._QSArgs

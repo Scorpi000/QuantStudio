@@ -11,18 +11,18 @@ import shelve
 import datetime as dt
 import tempfile
 from collections import OrderedDict
-from multiprocessing import Process, Queue, Lock, Event, cpu_count
+from multiprocessing import Process, Queue, Lock, cpu_count
 
 import numpy as np
 import pandas as pd
 from progressbar import ProgressBar
-from traits.api import Instance, Str, File, List, Int, Bool, Directory, Enum, ListStr
+from traits.api import Instance, Str, List, Int, Enum, ListStr
 
-from QuantStudio import __QS_Object__, __QS_Error__
+from QuantStudio import __QS_Object__, __QS_Error__, QSArgs
 from QuantStudio.Tools.api import Panel
 from QuantStudio.Tools.IDFun import testIDFilterStr
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName, startMultiProcess, partitionListMovingSampling
-from QuantStudio.Tools.FileFun import listDirDir, getShelveFileSuffix
+from QuantStudio.Tools.FileFun import getShelveFileSuffix
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 
 
@@ -32,7 +32,11 @@ from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 # 没有相关数据时, 方法返回 None
 class FactorDB(__QS_Object__):
     """因子库"""
-    Name = Str("因子库", arg_type="String", label="名称", order=-100)
+    class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
+        Name = Str("因子库", arg_type="String", label="名称", order=-100)
+    @property
+    def Name(self):
+        return self.Args.Name
     # ------------------------------数据源操作---------------------------------
     # 链接到数据库
     def connect(self):
@@ -122,7 +126,7 @@ class WritableFactorDB(FactorDB):
         return 0
 
 # 因子表的遍历模式参数对象
-class _ErgodicMode(__QS_Object__):
+class _ErgodicMode(QSArgs):
     """遍历模式"""
     ForwardPeriod = Int(600, arg_type="Integer", label="向前缓冲时点数", order=0)
     BackwardPeriod = Int(1, arg_type="Integer", label="向后缓冲时点数", order=1)
@@ -132,26 +136,165 @@ class _ErgodicMode(__QS_Object__):
     CacheSize = Int(300, arg_type="Integer", label="缓冲区大小", order=5)# 以 MB 为单位
     ErgodicDTs = List(arg_type="DateTimeList", label="遍历时点", order=6)
     ErgodicIDs = List(arg_type="IDList", label="遍历ID", order=7)
-    def __init__(self, sys_args={}, **kwargs):
-        super().__init__(sys_args=sys_args, **kwargs)
+    def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
+        super().__init__(owner=owner, sys_args=sys_args, config_file=config_file, **kwargs)
         self._isStarted = False
         self._CurDT = None
     def __getstate__(self):
         state = self.__dict__.copy()
         if "_CacheDataProcess" in state: state["_CacheDataProcess"] = None
         return state
-    def __str__(self):
-        return str(self.Args)
-    def __repr__(self):
-        return str(self.Args)
+    
+    # 启动遍历模式, dts: 遍历的时间点序列或者迭代器
+    def start(self, dts, **kwargs):
+        if self._isStarted: return 0
+        self._DateTimes = np.array((self._Owner.getDateTime() if not self.ErgodicDTs else self.ErgodicDTs), dtype="O")
+        if self._DateTimes.shape[0]==0: raise __QS_Error__("因子表: '%s' 的默认时间序列为空, 请设置参数 '遍历模式-遍历时点' !" % self.Name)
+        self._IDs = (self._Owner.getID() if not self.ErgodicIDs else list(self.ErgodicIDs))
+        if not self._IDs: raise __QS_Error__("因子表: '%s' 的默认 ID 序列为空, 请设置参数 '遍历模式-遍历ID' !" % self.Name)
+        self._CurInd = -1# 当前时点在 dts 中的位置, 以此作为缓冲数据的依据
+        self._DTNum = self._DateTimes.shape[0]# 时点数
+        self._CacheDTs = []# 缓冲的时点序列
+        self._CacheData = {}# 当前缓冲区
+        self._CacheFactorNum = 0# 当前缓存因子个数, 小于等于 self.MaxFactorCacheNum
+        self._CacheIDNum = 0# 当前缓存ID个数, 小于等于 self.MaxIDCacheNum
+        self._FactorReadNum = pd.Series(0, index=self.FactorNames)# 因子读取次数, pd.Series(读取次数, index=self.FactorNames)
+        self._IDReadNum = pd.Series()# ID读取次数, pd.Series(读取次数, index=self.FactorNames)
+        self._Queue2SubProcess = Queue()# 主进程向数据准备子进程发送消息的管道
+        self._Queue2MainProcess = Queue()# 数据准备子进程向主进程发送消息的管道
+        if self.CacheSize>0:
+            if os.name=="nt":
+                self._TagName = str(uuid.uuid1())# 共享内存的 tag
+                self._MMAPCacheData = None
+            else:
+                self._TagName = None# 共享内存的 tag
+                self._MMAPCacheData = mmap.mmap(-1, int(self.CacheSize*2**20))# 当前共享内存缓冲区
+            if self.CacheMode=="因子": self._CacheDataProcess = Process(target=_prepareMMAPFactorCacheData, args=(self, self._MMAPCacheData), daemon=True)
+            else: self._CacheDataProcess = Process(target=_prepareMMAPIDCacheData, args=(self, self._MMAPCacheData), daemon=True)
+            self._CacheDataProcess.start()
+            if os.name=="nt": self._MMAPCacheData = mmap.mmap(-1, int(self.CacheSize*2**20), tagname=self._TagName)# 当前共享内存缓冲区
+        self._isStarted = True
+        return 0
+    
+    # 时间点向前移动, idt: 时间点, datetime.dateime
+    def move(self, idt, **kwargs):
+        if idt==self._CurDT: return 0
+        self._CurDT = idt
+        PreInd = self._CurInd
+        self._CurInd = PreInd + np.sum(self._DateTimes[PreInd+1:]<=idt)
+        if (self.CacheSize>0) and (self._CurInd>-1) and ((not self._CacheDTs) or (self._DateTimes[self._CurInd]>self._CacheDTs[-1])):# 需要读入缓冲区的数据
+            self._Queue2SubProcess.put((None, None))
+            DataLen = self._Queue2MainProcess.get()
+            CacheData = b""
+            while DataLen>0:
+                self._MMAPCacheData.seek(0)
+                CacheData += self._MMAPCacheData.read(DataLen)
+                self._Queue2SubProcess.put(DataLen)
+                DataLen = self._Queue2MainProcess.get()
+            self._CacheData = pickle.loads(CacheData)
+            if self._CurInd==PreInd+1:# 没有跳跃, 连续型遍历
+                self._Queue2SubProcess.put((self._CurInd, None))
+                self._CacheDTs = self._DateTimes[max((0, self._CurInd-self.BackwardPeriod)):min((self._DTNum, self._CurInd+self.ForwardPeriod+1))].tolist()
+            else:# 出现了跳跃
+                LastCacheInd = (self._DateTimes.searchsorted(self._CacheDTs[-1]) if self._CacheDTs else self._CurInd-1)
+                self._Queue2SubProcess.put((LastCacheInd+1, None))
+                self._CacheDTs = self._DateTimes[max((0, LastCacheInd+1-self.BackwardPeriod)):min((self._DTNum, LastCacheInd+1+self.ForwardPeriod+1))].tolist()
+        return 0
+    
+    # 结束遍历模式
+    def end(self):
+        if not self._isStarted: return 0
+        self._CacheData, self._FactorReadNum, self._IDReadNum = None, None, None
+        if self.CacheSize>0: self._Queue2SubProcess.put(None)
+        self._Queue2SubProcess = self._Queue2MainProcess = self._CacheDataProcess = None
+        self._isStarted = False
+        self._CurDT = None
+        self._MMAPCacheData = None
+        return 0
+
+    def _readData_FactorCacheMode(self, factor_names, ids, dts, args={}):
+        FT = self._Owner
+        self._FactorReadNum[factor_names] += 1
+        if (self.MaxFactorCacheNum<=0) or (not self._CacheDTs) or (dts[0]<self._CacheDTs[0]) or (dts[-1]>self._CacheDTs[-1]):
+            #print("超出缓存区读取: "+str(factor_names))# debug
+            return FT.__QS_calcData__(raw_data=FT.__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args), factor_names=factor_names, ids=ids, dts=dts, args=args)
+        Data = {}
+        DataFactorNames = []
+        CacheFactorNames = set()
+        PopFactorNames = []
+        for iFactorName in factor_names:
+            iFactorData = self._CacheData.get(iFactorName)
+            if iFactorData is None:# 尚未进入缓存
+                if self._CacheFactorNum<self.MaxFactorCacheNum:# 当前缓存因子数小于最大缓存因子数，那么将该因子数据读入缓存
+                    self._CacheFactorNum += 1
+                    CacheFactorNames.add(iFactorName)
+                else:# 当前缓存因子数等于最大缓存因子数，那么将检查最小读取次数的因子
+                    CacheFactorReadNum = self._FactorReadNum[self._CacheData.keys()]
+                    MinReadNumInd = CacheFactorReadNum.argmin()
+                    if CacheFactorReadNum.loc[MinReadNumInd]<self._FactorReadNum[iFactorName]:# 当前读取的因子的读取次数超过了缓存因子读取次数的最小值，缓存该因子数据
+                        CacheFactorNames.add(iFactorName)
+                        PopFactor = MinReadNumInd
+                        self._CacheData.pop(PopFactor)
+                        PopFactorNames.append(PopFactor)
+                    else:
+                        DataFactorNames.append(iFactorName)
+            else:
+                Data[iFactorName] = iFactorData
+        CacheFactorNames = list(CacheFactorNames)
+        if CacheFactorNames:
+            #print("尚未进入缓存区读取: "+str(CacheFactorNames))# debug
+            iData = dict(FT.__QS_calcData__(raw_data=FT.__QS_prepareRawData__(factor_names=CacheFactorNames, ids=self._IDs, dts=self._CacheDTs, args=args), factor_names=CacheFactorNames, ids=self._IDs, dts=self._CacheDTs, args=args))
+            Data.update(iData)
+            self._CacheData.update(iData)
+        self._Queue2SubProcess.put((None, (CacheFactorNames, PopFactorNames)))
+        Data = Panel(Data)
+        if Data.shape[0]>0:
+            try:
+                Data = Data.loc[:, dts, ids]
+            except KeyError as e:
+                self._QS_Logger.warning("FactorTable._readData_FactorCacheMode : %s 提取的时点或 ID 不在因子表范围内: %s" % (FT.Name, str(e)))
+                Data = Panel(items=Data.items, major_axis=dts, minor_axis=ids)
+        if not DataFactorNames: return Data.loc[factor_names]
+        #print("超出缓存区因子个数读取: "+str(DataFactorNames))# debug
+        return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=DataFactorNames, ids=ids, dts=dts, args=args), factor_names=DataFactorNames, ids=ids, dts=dts, args=args).join(Data).loc[factor_names]
+    
+    def _readIDData(self, iid, factor_names, dts, args={}):
+        FT = self._Owner
+        self._IDReadNum[iid] = self._IDReadNum.get(iid, 0) + 1
+        if (self.MaxIDCacheNum<=0) or (not self._CacheDTs) or (dts[0] < self._CacheDTs[0]) or (dts[-1] >self._CacheDTs[-1]):
+            return FT.__QS_calcData__(raw_data=FT.__QS_prepareRawData__(factor_names=factor_names, ids=[iid], dts=dts, args=args), factor_names=factor_names, ids=[iid], dts=dts, args=args).iloc[:, :, 0]
+        IDData = self._CacheData.get(iid)
+        if IDData is None:# 尚未进入缓存
+            if self._CacheIDNum<self.MaxIDCacheNum:# 当前缓存 ID 数小于最大缓存 ID 数，那么将该 ID 数据读入缓存
+                self._CacheIDNum += 1
+                IDData = FT.__QS_calcData__(raw_data=FT.__QS_prepareRawData__(factor_names=self.FactorNames, ids=[iid], dts=self._CacheDTs, args=args), factor_names=self.FactorNames, ids=[iid], dts=self._CacheDTs, args=args).iloc[:, :, 0]
+                self._CacheData[iid] = IDData
+                self._Queue2SubProcess.put((None, (iid, None)))
+            else:# 当前缓存 ID 数等于最大缓存 ID 数，那么将检查最小读取次数的 ID
+                CacheIDReadNum = self._IDReadNum[self._CacheData.keys()]
+                MinReadNumInd = CacheIDReadNum.argmin()
+                if CacheIDReadNum.loc[MinReadNumInd]<self._IDReadNum[iid]:# 当前读取的 ID 的读取次数超过了缓存 ID 读取次数的最小值，缓存该 ID 数据
+                    IDData = FT.__QS_calcData__(raw_data=FT.__QS_prepareRawData__(factor_names=self.FactorNames, ids=[iid], dts=self._CacheDTs, args=args), factor_names=self.FactorNames, ids=[iid], dts=self._CacheDTs, args=args).iloc[:, :, 0]
+                    PopID = MinReadNumInd
+                    self._CacheData.pop(PopID)
+                    self._CacheData[iid] = IDData
+                    self._Queue2SubProcess.put((None, (iid, PopID)))
+                else:# 当前读取的 ID 的读取次数没有超过缓存 ID 读取次数的最小值, 放弃缓存该 ID 数据
+                    return FT.__QS_calcData__(raw_data=FT.__QS_prepareRawData__(factor_names=factor_names, ids=[iid], dts=dts, args=args), factor_names=factor_names, ids=[iid], dts=dts, args=args).iloc[:, :, 0]
+        return IDData.reindex(index=dts, columns=factor_names)
+    
+    def _readData_ErgodicMode(self, factor_names, ids, dts, args={}):
+        if self.CacheMode=="因子": return self._readData_FactorCacheMode(factor_names=factor_names, ids=ids, dts=dts, args=args)
+        return Panel({iID: self._readIDData(iID, factor_names=factor_names, dts=dts, args=args) for iID in ids}, items=ids, major_axis=dts, minor_axis=factor_names).swapaxes(0, 2)
 
 # 基于 mmap 的缓冲数据, 如果开启遍历模式, 那么限制缓冲的因子个数, ID 个数, 时间点长度, 缓冲区里是因子的部分数据
 def _prepareMMAPFactorCacheData(ft, mmap_cache):
-    CacheData, CacheDTs, MMAPCacheData, DTNum = {}, [], mmap_cache, len(ft.ErgodicMode._DateTimes)
-    CacheSize = int(ft.ErgodicMode.CacheSize*2**20)
-    if os.name=='nt': MMAPCacheData = mmap.mmap(-1, CacheSize, tagname=ft.ErgodicMode._TagName)
+    ErgodicMode = ft._QSArgs.ErgodicMode
+    CacheData, CacheDTs, MMAPCacheData, DTNum = {}, [], mmap_cache, len(ErgodicMode._DateTimes)
+    CacheSize = int(ErgodicMode.CacheSize*2**20)
+    if os.name=='nt': MMAPCacheData = mmap.mmap(-1, CacheSize, tagname=ErgodicMode._TagName)
     while True:
-        Task = ft.ErgodicMode._Queue2SubProcess.get()# 获取任务
+        Task = ErgodicMode._Queue2SubProcess.get()# 获取任务
         if Task is None: break# 结束进程
         if (Task[0] is None) and (Task[1] is None):# 把数据装入缓存区
             CacheDataByte = pickle.dumps(CacheData)
@@ -162,9 +305,9 @@ def _prepareMMAPFactorCacheData(ft, mmap_cache):
                 if iEndInd>iStartInd:
                     MMAPCacheData.seek(0)
                     MMAPCacheData.write(CacheDataByte[iStartInd:iEndInd])
-                    ft.ErgodicMode._Queue2MainProcess.put(iEndInd-iStartInd)
-                    ft.ErgodicMode._Queue2SubProcess.get()
-            ft.ErgodicMode._Queue2MainProcess.put(0)
+                    ErgodicMode._Queue2MainProcess.put(iEndInd-iStartInd)
+                    ErgodicMode._Queue2SubProcess.get()
+            ErgodicMode._Queue2MainProcess.put(0)
             del CacheDataByte
             gc.collect()
         elif Task[0] is None:# 调整缓存区
@@ -173,23 +316,23 @@ def _prepareMMAPFactorCacheData(ft, mmap_cache):
             if NewFactors:
                 #print("调整缓存区: "+str(NewFactors))# debug
                 if CacheDTs:
-                    CacheData.update(dict(ft.__QS_calcData__(raw_data=ft.__QS_prepareRawData__(factor_names=NewFactors, ids=ft.ErgodicMode._IDs, dts=CacheDTs), factor_names=NewFactors, ids=ft.ErgodicMode._IDs, dts=CacheDTs)))
+                    CacheData.update(dict(ft.__QS_calcData__(raw_data=ft.__QS_prepareRawData__(factor_names=NewFactors, ids=ErgodicMode._IDs, dts=CacheDTs), factor_names=NewFactors, ids=ErgodicMode._IDs, dts=CacheDTs)))
                 else:
-                    CacheData.update({iFactorName: pd.DataFrame(index=CacheDTs, columns=ft.ErgodicMode._IDs) for iFactorName in NewFactors})
+                    CacheData.update({iFactorName: pd.DataFrame(index=CacheDTs, columns=ErgodicMode._IDs) for iFactorName in NewFactors})
         else:# 准备缓存区
-            CurInd = Task[0] + ft.ErgodicMode.ForwardPeriod + 1
+            CurInd = Task[0] + ErgodicMode.ForwardPeriod + 1
             if CurInd < DTNum:# 未到结尾处, 需要再准备缓存数据
                 OldCacheDTs = set(CacheDTs)
-                CacheDTs = ft.ErgodicMode._DateTimes[max((0, CurInd-ft.ErgodicMode.BackwardPeriod)):min((DTNum, CurInd+ft.ErgodicMode.ForwardPeriod+1))].tolist()
+                CacheDTs = ErgodicMode._DateTimes[max((0, CurInd-ErgodicMode.BackwardPeriod)):min((DTNum, CurInd+ErgodicMode.ForwardPeriod+1))].tolist()
                 NewCacheDTs = sorted(set(CacheDTs).difference(OldCacheDTs))
                 if CacheData:
                     isDisjoint = OldCacheDTs.isdisjoint(CacheDTs)
                     CacheFactorNames = list(CacheData.keys())
                     #print("准备缓存区: "+str(CacheFactorNames))# debug
                     if NewCacheDTs:
-                        NewCacheData = ft.__QS_calcData__(raw_data=ft.__QS_prepareRawData__(factor_names=CacheFactorNames, ids=ft.ErgodicMode._IDs, dts=NewCacheDTs), factor_names=CacheFactorNames, ids=ft.ErgodicMode._IDs, dts=NewCacheDTs)
+                        NewCacheData = ft.__QS_calcData__(raw_data=ft.__QS_prepareRawData__(factor_names=CacheFactorNames, ids=ErgodicMode._IDs, dts=NewCacheDTs), factor_names=CacheFactorNames, ids=ErgodicMode._IDs, dts=NewCacheDTs)
                     else:
-                        NewCacheData = Panel(items=CacheFactorNames, major_axis=NewCacheDTs, minor_axis=ft.ErgodicMode._IDs)
+                        NewCacheData = Panel(items=CacheFactorNames, major_axis=NewCacheDTs, minor_axis=ErgodicMode._IDs)
                     for iFactorName in CacheData:
                         if isDisjoint:
                             CacheData[iFactorName] = NewCacheData[iFactorName]
@@ -200,11 +343,12 @@ def _prepareMMAPFactorCacheData(ft, mmap_cache):
     return 0
 # 基于 mmap 的 ID 缓冲的因子表, 如果开启遍历模式, 那么限制缓冲的 ID 个数和时间点长度, 缓冲区里是 ID 的部分数据
 def _prepareMMAPIDCacheData(ft, mmap_cache):
-    CacheData, CacheDTs, MMAPCacheData, DTNum = {}, [], mmap_cache, len(ft.ErgodicMode._DateTimes)
-    CacheSize = int(ft.ErgodicMode.CacheSize*2**20)
-    if os.name=='nt': MMAPCacheData = mmap.mmap(-1, CacheSize, tagname=ft.ErgodicMode._TagName)
+    ErgodicMode = ft._QSArgs.ErgodicMode
+    CacheData, CacheDTs, MMAPCacheData, DTNum = {}, [], mmap_cache, len(ErgodicMode._DateTimes)
+    CacheSize = int(ErgodicMode.CacheSize*2**20)
+    if os.name=='nt': MMAPCacheData = mmap.mmap(-1, CacheSize, tagname=ErgodicMode._TagName)
     while True:
-        Task = ft.ErgodicMode._Queue2SubProcess.get()# 获取任务
+        Task = ErgodicMode._Queue2SubProcess.get()# 获取任务
         if Task is None: break# 结束进程
         if (Task[0] is None) and (Task[1] is None):# 把数据装入缓冲区
             CacheDataByte = pickle.dumps(CacheData)
@@ -215,9 +359,9 @@ def _prepareMMAPIDCacheData(ft, mmap_cache):
                 if iEndInd>iStartInd:
                     MMAPCacheData.seek(0)
                     MMAPCacheData.write(CacheDataByte[iStartInd:iEndInd])
-                    ft.ErgodicMode._Queue2MainProcess.put(iEndInd-iStartInd)
-                    ft.ErgodicMode._Queue2SubProcess.get()
-            ft.ErgodicMode._Queue2MainProcess.put(0)
+                    ErgodicMode._Queue2MainProcess.put(iEndInd-iStartInd)
+                    ErgodicMode._Queue2SubProcess.get()
+            ErgodicMode._Queue2MainProcess.put(0)
             del CacheDataByte
             gc.collect()
         elif Task[0] is None:# 调整缓存区数据
@@ -229,10 +373,10 @@ def _prepareMMAPIDCacheData(ft, mmap_cache):
                 else:
                     CacheData[NewID] = pd.DataFrame(index=CacheDTs, columns=ft.FactorNames)
         else:# 准备缓冲区
-            CurInd = Task[0] + ft.ErgodicMode.ForwardPeriod + 1
+            CurInd = Task[0] + ErgodicMode.ForwardPeriod + 1
             if CurInd<DTNum:# 未到结尾处, 需要再准备缓存数据
                 OldCacheDTs = set(CacheDTs)
-                CacheDTs = ft.ErgodicMode._DateTimes[max((0, CurInd-ft.ErgodicMode.BackwardPeriod)):min((DTNum, CurInd+ft.ErgodicMode.ForwardPeriod+1))].tolist()
+                CacheDTs = ErgodicMode._DateTimes[max((0, CurInd-ErgodicMode.BackwardPeriod)):min((DTNum, CurInd+ErgodicMode.ForwardPeriod+1))].tolist()
                 NewCacheDTs = sorted(set(CacheDTs).difference(OldCacheDTs))
                 if CacheData:
                     isDisjoint = OldCacheDTs.isdisjoint(CacheDTs)
@@ -249,16 +393,17 @@ def _prepareMMAPIDCacheData(ft, mmap_cache):
                             CacheData[iID].loc[NewCacheDTs, :] = NewCacheData.loc[:, :, iID]
                     NewCacheData = None
     return 0
+
 # 因子表的运算模式参数对象
-class _OperationMode(__QS_Object__):
+class _OperationMode(QSArgs):
     """运算模式"""
     DateTimes = List(dt.datetime)
     IDs = ListStr()
     FactorNames = ListStr()
     SubProcessNum = Int(0)
     DTRuler = List(dt.datetime)
-    def __init__(self, ft, sys_args={}, config_file=None, **kwargs):
-        self._FT = ft
+    def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
+        self._FT = owner
         self._isStarted = False
         self._Factors = []# 因子列表, 只包含当前生成数据的因子
         self._FactorDict = {}# 因子字典, {因子名:因子}, 包括所有的因子, 即衍生因子所依赖的描述子也在内
@@ -275,7 +420,7 @@ class _OperationMode(__QS_Object__):
         self._Event = {}# {因子名: (Sub2MainQueue, Event)}
         self._FileSuffix = getShelveFileSuffix()
         if self._FileSuffix: self._FileSuffix = "." + self._FileSuffix
-        super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
+        super().__init__(owner=owner, sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         self.add_trait("FactorNames", ListStr(arg_type="MultiOption", label="运算因子", order=2))
     def __getstate__(self):
@@ -410,15 +555,19 @@ def _calculate(args):
 # 不支持某个操作时, 方法产生错误
 # 没有相关数据时, 方法返回 None
 class FactorTable(__QS_Object__):
-    ErgodicMode = Instance(_ErgodicMode, arg_type="ArgObject", label="遍历模式", order=-3)
-    OperationMode = Instance(_OperationMode)
+    """因子表"""
+    class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
+        ErgodicMode = Instance(_ErgodicMode, arg_type="ArgObject", label="遍历模式", order=-3)
+        OperationMode = Instance(_OperationMode, arg_type="ArgObject", label="批量模式", order=-4)
+        def __QS_initArgs__(self):
+            self.ErgodicMode = _ErgodicMode(owner=self._Owner)
+            self.OperationMode = _OperationMode(owner=self._Owner)
+    
     def __init__(self, name, fdb=None, sys_args={}, config_file=None, **kwargs):
         self._Name = name
         self._FactorDB = fdb# 因子表所属的因子库, None 表示自定义的因子表
         return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
-    def __QS_initArgs__(self):
-        self.ErgodicMode = _ErgodicMode()
-        self.OperationMode = _OperationMode(ft=self)
+    
     @property
     def Name(self):
         return self._Name
@@ -480,145 +629,19 @@ class FactorTable(__QS_Object__):
         return None
     # 读取数据, 返回: Panel(item=[因子], major_axis=[时间点], minor_axis=[ID])
     def readData(self, factor_names, ids, dts, args={}):
-        if self.ErgodicMode._isStarted: return self._readData_ErgodicMode(factor_names=factor_names, ids=ids, dts=dts, args=args)
+        if self._QSArgs.ErgodicMode._isStarted: return self._QSArgs.ErgodicMode._readData_ErgodicMode(factor_names=factor_names, ids=ids, dts=dts, args=args)
         return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args), factor_names=factor_names, ids=ids, dts=dts, args=args)
-    # ------------------------------------遍历模式------------------------------------
-    def _readData_FactorCacheMode(self, factor_names, ids, dts, args={}):
-        self.ErgodicMode._FactorReadNum[factor_names] += 1
-        if (self.ErgodicMode.MaxFactorCacheNum<=0) or (not self.ErgodicMode._CacheDTs) or (dts[0]<self.ErgodicMode._CacheDTs[0]) or (dts[-1]>self.ErgodicMode._CacheDTs[-1]):
-            #print("超出缓存区读取: "+str(factor_names))# debug
-            return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args), factor_names=factor_names, ids=ids, dts=dts, args=args)
-        Data = {}
-        DataFactorNames = []
-        CacheFactorNames = set()
-        PopFactorNames = []
-        for iFactorName in factor_names:
-            iFactorData = self.ErgodicMode._CacheData.get(iFactorName)
-            if iFactorData is None:# 尚未进入缓存
-                if self.ErgodicMode._CacheFactorNum<self.ErgodicMode.MaxFactorCacheNum:# 当前缓存因子数小于最大缓存因子数，那么将该因子数据读入缓存
-                    self.ErgodicMode._CacheFactorNum += 1
-                    CacheFactorNames.add(iFactorName)
-                else:# 当前缓存因子数等于最大缓存因子数，那么将检查最小读取次数的因子
-                    CacheFactorReadNum = self.ErgodicMode._FactorReadNum[self.ErgodicMode._CacheData.keys()]
-                    MinReadNumInd = CacheFactorReadNum.argmin()
-                    if CacheFactorReadNum.loc[MinReadNumInd]<self.ErgodicMode._FactorReadNum[iFactorName]:# 当前读取的因子的读取次数超过了缓存因子读取次数的最小值，缓存该因子数据
-                        CacheFactorNames.add(iFactorName)
-                        PopFactor = MinReadNumInd
-                        self.ErgodicMode._CacheData.pop(PopFactor)
-                        PopFactorNames.append(PopFactor)
-                    else:
-                        DataFactorNames.append(iFactorName)
-            else:
-                Data[iFactorName] = iFactorData
-        CacheFactorNames = list(CacheFactorNames)
-        if CacheFactorNames:
-            #print("尚未进入缓存区读取: "+str(CacheFactorNames))# debug
-            iData = dict(self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=CacheFactorNames, ids=self.ErgodicMode._IDs, dts=self.ErgodicMode._CacheDTs, args=args), factor_names=CacheFactorNames, ids=self.ErgodicMode._IDs, dts=self.ErgodicMode._CacheDTs, args=args))
-            Data.update(iData)
-            self.ErgodicMode._CacheData.update(iData)
-        self.ErgodicMode._Queue2SubProcess.put((None, (CacheFactorNames, PopFactorNames)))
-        Data = Panel(Data)
-        if Data.shape[0]>0:
-            try:
-                Data = Data.loc[:, dts, ids]
-            except KeyError as e:
-                self._QS_Logger.warning("FactorTable._readData_FactorCacheMode : %s 提取的时点或 ID 不在因子表范围内: %s" % (self._Name, str(e)))
-                Data = Panel(items=Data.items, major_axis=dts, minor_axis=ids)
-        if not DataFactorNames: return Data.loc[factor_names]
-        #print("超出缓存区因子个数读取: "+str(DataFactorNames))# debug
-        return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=DataFactorNames, ids=ids, dts=dts, args=args), factor_names=DataFactorNames, ids=ids, dts=dts, args=args).join(Data).loc[factor_names]
-    def _readIDData(self, iid, factor_names, dts, args={}):
-        self.ErgodicMode._IDReadNum[iid] = self.ErgodicMode._IDReadNum.get(iid, 0) + 1
-        if (self.ErgodicMode.MaxIDCacheNum<=0) or (not self.ErgodicMode._CacheDTs) or (dts[0] < self.ErgodicMode._CacheDTs[0]) or (dts[-1] >self.ErgodicMode._CacheDTs[-1]):
-            return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=factor_names, ids=[iid], dts=dts, args=args), factor_names=factor_names, ids=[iid], dts=dts, args=args).iloc[:, :, 0]
-        IDData = self.ErgodicMode._CacheData.get(iid)
-        if IDData is None:# 尚未进入缓存
-            if self.ErgodicMode._CacheIDNum<self.ErgodicMode.MaxIDCacheNum:# 当前缓存 ID 数小于最大缓存 ID 数，那么将该 ID 数据读入缓存
-                self.ErgodicMode._CacheIDNum += 1
-                IDData = self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=self.FactorNames, ids=[iid], dts=self.ErgodicMode._CacheDTs, args=args), factor_names=self.FactorNames, ids=[iid], dts=self.ErgodicMode._CacheDTs, args=args).iloc[:, :, 0]
-                self.ErgodicMode._CacheData[iid] = IDData
-                self.ErgodicMode._Queue2SubProcess.put((None, (iid, None)))
-            else:# 当前缓存 ID 数等于最大缓存 ID 数，那么将检查最小读取次数的 ID
-                CacheIDReadNum = self.ErgodicMode._IDReadNum[self.ErgodicMode._CacheData.keys()]
-                MinReadNumInd = CacheIDReadNum.argmin()
-                if CacheIDReadNum.loc[MinReadNumInd]<self.ErgodicMode._IDReadNum[iid]:# 当前读取的 ID 的读取次数超过了缓存 ID 读取次数的最小值，缓存该 ID 数据
-                    IDData = self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=self.FactorNames, ids=[iid], dts=self.ErgodicMode._CacheDTs, args=args), factor_names=self.FactorNames, ids=[iid], dts=self.ErgodicMode._CacheDTs, args=args).iloc[:, :, 0]
-                    PopID = MinReadNumInd
-                    self.ErgodicMode._CacheData.pop(PopID)
-                    self.ErgodicMode._CacheData[iid] = IDData
-                    self.ErgodicMode._Queue2SubProcess.put((None, (iid, PopID)))
-                else:# 当前读取的 ID 的读取次数没有超过缓存 ID 读取次数的最小值, 放弃缓存该 ID 数据
-                    return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=factor_names, ids=[iid], dts=dts, args=args), factor_names=factor_names, ids=[iid], dts=dts, args=args).iloc[:, :, 0]
-        return IDData.reindex(index=dts, columns=factor_names)
-    def _readData_ErgodicMode(self, factor_names, ids, dts, args={}):
-        if self.ErgodicMode.CacheMode=="因子": return self._readData_FactorCacheMode(factor_names=factor_names, ids=ids, dts=dts, args=args)
-        return Panel({iID: self._readIDData(iID, factor_names=factor_names, dts=dts, args=args) for iID in ids}, items=ids, major_axis=dts, minor_axis=factor_names).swapaxes(0, 2)
     # 启动遍历模式, dts: 遍历的时间点序列或者迭代器
     def start(self, dts, **kwargs):
-        if self.ErgodicMode._isStarted: return 0
-        self.ErgodicMode._DateTimes = np.array((self.getDateTime() if not self.ErgodicMode.ErgodicDTs else self.ErgodicMode.ErgodicDTs), dtype="O")
-        if self.ErgodicMode._DateTimes.shape[0]==0: raise __QS_Error__("因子表: '%s' 的默认时间序列为空, 请设置参数 '遍历模式-遍历时点' !" % self.Name)
-        self.ErgodicMode._IDs = (self.getID() if not self.ErgodicMode.ErgodicIDs else list(self.ErgodicMode.ErgodicIDs))
-        if not self.ErgodicMode._IDs: raise __QS_Error__("因子表: '%s' 的默认 ID 序列为空, 请设置参数 '遍历模式-遍历ID' !" % self.Name)
-        self.ErgodicMode._CurInd = -1# 当前时点在 dts 中的位置, 以此作为缓冲数据的依据
-        self.ErgodicMode._DTNum = self.ErgodicMode._DateTimes.shape[0]# 时点数
-        self.ErgodicMode._CacheDTs = []# 缓冲的时点序列
-        self.ErgodicMode._CacheData = {}# 当前缓冲区
-        self.ErgodicMode._CacheFactorNum = 0# 当前缓存因子个数, 小于等于 self.MaxFactorCacheNum
-        self.ErgodicMode._CacheIDNum = 0# 当前缓存ID个数, 小于等于 self.MaxIDCacheNum
-        self.ErgodicMode._FactorReadNum = pd.Series(0, index=self.FactorNames)# 因子读取次数, pd.Series(读取次数, index=self.FactorNames)
-        self.ErgodicMode._IDReadNum = pd.Series()# ID读取次数, pd.Series(读取次数, index=self.FactorNames)
-        self.ErgodicMode._Queue2SubProcess = Queue()# 主进程向数据准备子进程发送消息的管道
-        self.ErgodicMode._Queue2MainProcess = Queue()# 数据准备子进程向主进程发送消息的管道
-        if self.ErgodicMode.CacheSize>0:
-            if os.name=="nt":
-                self.ErgodicMode._TagName = str(uuid.uuid1())# 共享内存的 tag
-                self._MMAPCacheData = None
-            else:
-                self.ErgodicMode._TagName = None# 共享内存的 tag
-                self._MMAPCacheData = mmap.mmap(-1, int(self.ErgodicMode.CacheSize*2**20))# 当前共享内存缓冲区
-            if self.ErgodicMode.CacheMode=="因子": self.ErgodicMode._CacheDataProcess = Process(target=_prepareMMAPFactorCacheData, args=(self, self._MMAPCacheData), daemon=True)
-            else: self.ErgodicMode._CacheDataProcess = Process(target=_prepareMMAPIDCacheData, args=(self, self._MMAPCacheData), daemon=True)
-            self.ErgodicMode._CacheDataProcess.start()
-            if os.name=="nt": self._MMAPCacheData = mmap.mmap(-1, int(self.ErgodicMode.CacheSize*2**20), tagname=self.ErgodicMode._TagName)# 当前共享内存缓冲区
-        self.ErgodicMode._isStarted = True
-        return 0
+        return self._QSArgs.ErgodicMode.start(dts=dts, **kwargs)
     # 时间点向前移动, idt: 时间点, datetime.dateime
     def move(self, idt, **kwargs):
-        if idt==self.ErgodicMode._CurDT: return 0
-        self.ErgodicMode._CurDT = idt
-        PreInd = self.ErgodicMode._CurInd
-        self.ErgodicMode._CurInd = PreInd + np.sum(self.ErgodicMode._DateTimes[PreInd+1:]<=idt)
-        if (self.ErgodicMode.CacheSize>0) and (self.ErgodicMode._CurInd>-1) and ((not self.ErgodicMode._CacheDTs) or (self.ErgodicMode._DateTimes[self.ErgodicMode._CurInd]>self.ErgodicMode._CacheDTs[-1])):# 需要读入缓冲区的数据
-            self.ErgodicMode._Queue2SubProcess.put((None, None))
-            DataLen = self.ErgodicMode._Queue2MainProcess.get()
-            CacheData = b""
-            while DataLen>0:
-                self._MMAPCacheData.seek(0)
-                CacheData += self._MMAPCacheData.read(DataLen)
-                self.ErgodicMode._Queue2SubProcess.put(DataLen)
-                DataLen = self.ErgodicMode._Queue2MainProcess.get()
-            self.ErgodicMode._CacheData = pickle.loads(CacheData)
-            if self.ErgodicMode._CurInd==PreInd+1:# 没有跳跃, 连续型遍历
-                self.ErgodicMode._Queue2SubProcess.put((self.ErgodicMode._CurInd, None))
-                self.ErgodicMode._CacheDTs = self.ErgodicMode._DateTimes[max((0, self.ErgodicMode._CurInd-self.ErgodicMode.BackwardPeriod)):min((self.ErgodicMode._DTNum, self.ErgodicMode._CurInd+self.ErgodicMode.ForwardPeriod+1))].tolist()
-            else:# 出现了跳跃
-                LastCacheInd = (self.ErgodicMode._DateTimes.searchsorted(self.ErgodicMode._CacheDTs[-1]) if self.ErgodicMode._CacheDTs else self.ErgodicMode._CurInd-1)
-                self.ErgodicMode._Queue2SubProcess.put((LastCacheInd+1, None))
-                self.ErgodicMode._CacheDTs = self.ErgodicMode._DateTimes[max((0, LastCacheInd+1-self.ErgodicMode.BackwardPeriod)):min((self.ErgodicMode._DTNum, LastCacheInd+1+self.ErgodicMode.ForwardPeriod+1))].tolist()
-        return 0
+        return self._QSArgs.ErgodicMode.move(idt=idt, **kwargs)
     def __QS_onBackTestMoveEvent__(self, event):
         return self.move(**event.Data)
     # 结束遍历模式
     def end(self):
-        if not self.ErgodicMode._isStarted: return 0
-        self.ErgodicMode._CacheData, self.ErgodicMode._FactorReadNum, self.ErgodicMode._IDReadNum = None, None, None
-        if self.ErgodicMode.CacheSize>0: self.ErgodicMode._Queue2SubProcess.put(None)
-        self.ErgodicMode._Queue2SubProcess = self.ErgodicMode._Queue2MainProcess = self.ErgodicMode._CacheDataProcess = None
-        self.ErgodicMode._isStarted = False
-        self.ErgodicMode._CurDT = None
-        self._MMAPCacheData = None
-        return 0
+        return self._QSArgs.ErgodicMode.end()
     def __QS_onBackTestEndEvent__(self, event):
         return self.end()
     # ------------------------------------运算模式------------------------------------
@@ -1038,7 +1061,7 @@ def _BinaryOperator(f, idt, iid, x, args):
 # 不支持某个操作时, 方法产生错误
 # 没有相关数据时, 方法返回 None
 class Factor(__QS_Object__):
-    Name = Str("因子")
+    """因子"""
     def __init__(self, name, ft, sys_args={}, config_file=None, **kwargs):
         self._FactorTable = ft# 因子所属的因子表, None 表示衍生因子
         self._NameInFT = name# 因子在所属的因子表中的名字
@@ -1365,8 +1388,10 @@ class Factor(__QS_Object__):
 # 直接赋予数据产生的因子
 # data: DataFrame(index=[时点], columns=[ID])
 class DataFactor(Factor):
-    DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=0)
-    LookBack = Int(0, arg_type="Integer", label="回溯天数", order=1)
+    class __QS_ArgClass__(Factor.__QS_ArgClass__):
+        DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=0)
+        LookBack = Int(0, arg_type="Integer", label="回溯天数", order=1)
+    
     def __init__(self, name, data, sys_args={}, config_file=None, **kwargs):
         if  isinstance(data, pd.Series):
             if data.index.is_all_dates:

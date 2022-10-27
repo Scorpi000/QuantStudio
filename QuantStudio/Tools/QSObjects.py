@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 import os
 import re
-import mmap
 import uuid
+import pickle
+import mmap
+import logging
 from multiprocessing import Queue, Lock
 from collections import OrderedDict
-import pickle
 
 import numpy as np
 import pandas as pd
@@ -972,6 +973,7 @@ class Panel(object):
         p = Panel(data=Data, items=self._Items.index.tolist()+other._Items.index.tolist(), major_axis=self._MajorAxis.index, minor_axis=self._MinorAxis.index)
         p._DTypes = self._DTypes.append(other._DTypes)
         return p
+
 
 if __name__=="__main__":
     np.random.seed(0)
