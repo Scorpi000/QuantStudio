@@ -437,7 +437,7 @@ class _OperationMode(QSArgs):
                 iFactor.Name = genAvailableName("TempFactor", factor_dict)
             factor_dict[iFactor.Name] = iFactor
             self._FactorID[iFactor.Name] = len(factor_dict)
-            factor_dict.update(self._genFactorDict(iFactor.Descriptors, fa    ctor_dict))
+            factor_dict.update(self._genFactorDict(iFactor.Descriptors, factor_dict))
         return factor_dict
     def _initOperation(self, **kwargs):
         # 检查时点, ID 序列的合法性
