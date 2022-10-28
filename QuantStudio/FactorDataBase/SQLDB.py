@@ -48,14 +48,26 @@ class _MappingTable(SQL_MappingTable):
 
 class SQLDB(QSSQLObject, WritableFactorDB):
     """SQLDB"""
-    Name = Str("SQLDB", arg_type="String", label="名称", order=-100)
-    CheckWriteData = Bool(False, arg_type="Bool", label="检查写入值", order=100)
-    IgnoreFields = ListStr(arg_type="List", label="忽略字段", order=101)
-    InnerPrefix = Str("qs_", arg_type="String", label="内部前缀", order=102)
-    FTArgs = Dict(label="因子表参数", arg_type="Dict", order=103)
-    DTField = Str("datetime", arg_type="String", label="时点字段", order=104)
-    IDField = Str("code", arg_type="String", label="ID字段", order=105)
-    CheckNullable = Bool(False, arg_type="Bool", label="检查缺失容许", order=106)
+    class __QS_ArgClass__(QSSQLObject.__QS_ArgClass__, WritableFactorDB.__QS_ArgClass__):
+        Name = Str("SQLDB", arg_type="String", label="名称", order=-100)
+        CheckWriteData = Bool(False, arg_type="Bool", label="检查写入值", order=100)
+        IgnoreFields = ListStr(arg_type="List", label="忽略字段", order=101)
+        InnerPrefix = Str("qs_", arg_type="String", label="内部前缀", order=102)
+        FTArgs = Dict(label="因子表参数", arg_type="Dict", order=103)
+        DTField = Str("datetime", arg_type="String", label="时点字段", order=104)
+        IDField = Str("code", arg_type="String", label="ID字段", order=105)
+        CheckNullable = Bool(False, arg_type="Bool", label="检查缺失容许", order=106)
+        @on_trait_change("DTField")
+        def _on_DTField_changed(self, obj, name, old, new):
+            if self._Owner._FactorInfo.shape[0]>0:
+                self._Owner._FactorInfo["Supplementary"][(self._Owner._FactorInfo["FieldType"]=="Date") & (self._Owner._FactorInfo["Supplementary"]=="Default")] = None
+                self._Owner._FactorInfo["Supplementary"][(self._Owner._FactorInfo["FieldType"]=="Date") & (self._Owner._FactorInfo["DBFieldName"]==new)] = "Default"
+        @on_trait_change("IDField")
+        def _on_IDField_changed(self, obj, name, old, new):
+            if self._Owner._FactorInfo.shape[0]>0:
+                self._Owner._FactorInfo["FieldType"][self._Owner._FactorInfo["FieldType"]=="ID"] = None
+                self._Owner._FactorInfo["FieldType"][self._Owner._FactorInfo["DBFieldName"]==new] = "ID"
+    
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         #self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
         #self._TableFieldDataType = {}# {表名: pd.Series(数据库数据类型, index=[因子名])}
@@ -63,16 +75,6 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         self._FactorInfo = pd.DataFrame()# DataFrame(index=[(表名,因子名)], columns=["DBFieldName", "DataType", "FieldType", "Supplementary", "Description"])
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"SQLDBConfig.json" if config_file is None else config_file), **kwargs)
         return
-    @on_trait_change("DTField")
-    def _on_DTField_changed(self, obj, name, old, new):
-        if self._FactorInfo.shape[0]>0:
-            self._FactorInfo["Supplementary"][(self._FactorInfo["FieldType"]=="Date") & (self._FactorInfo["Supplementary"]=="Default")] = None
-            self._FactorInfo["Supplementary"][(self._FactorInfo["FieldType"]=="Date") & (self._FactorInfo["DBFieldName"]==new)] = "Default"
-    @on_trait_change("IDField")
-    def _on_IDField_changed(self, obj, name, old, new):
-        if self._FactorInfo.shape[0]>0:
-            self._FactorInfo["FieldType"][self._FactorInfo["FieldType"]=="ID"] = None
-            self._FactorInfo["FieldType"][self._FactorInfo["DBFieldName"]==new] = "ID"
     # factor_info: DataFrame(columns=["TableName", "DBFieldName", "FieldType", "Supplementary", "DataType", "Nullable", "FieldKey", "Description"])
     def _genFactorInfo(self, factor_info):
         factor_info["FieldName"] = factor_info["DBFieldName"]
@@ -80,25 +82,25 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         DTMask = factor_info["DataType"].str.contains("date")
         factor_info["FieldType"][DTMask] = "Date"
         StrMask = (factor_info["DataType"].str.contains("char") | factor_info["DataType"].str.contains("text"))
-        factor_info["FieldType"][(factor_info["DBFieldName"].str.lower()==self.IDField) & StrMask] = "ID"
+        factor_info["FieldType"][(factor_info["DBFieldName"].str.lower()==self._QSArgs.IDField) & StrMask] = "ID"
         factor_info["Supplementary"] = None
-        factor_info["Supplementary"][DTMask & (factor_info["DBFieldName"].str.lower()==self.DTField)] = "Default"
+        factor_info["Supplementary"][DTMask & (factor_info["DBFieldName"].str.lower()==self._QSArgs.DTField)] = "Default"
         factor_info["Description"] = ""
         factor_info = factor_info.set_index(["TableName", "FieldName"])
         return factor_info
     def connect(self):
         super().connect()
-        nPrefix = len(self.InnerPrefix)
-        if self.DBType=="MySQL":
+        nPrefix = len(self._QSArgs.InnerPrefix)
+        if self._QSArgs.DBType=="MySQL":
             SQLStr = f"SELECT RIGHT(t.TABLE_NAME, CHAR_LENGTH(t.TABLE_NAME)-{nPrefix}) AS TableName, t.TABLE_NAME AS DBTableName, t.COLUMN_NAME AS DBFieldName, LOWER(t.DATA_TYPE) AS DataType, t.IS_NULLABLE AS Nullable, t.COLUMN_KEY AS FieldKey, t.COLUMN_COMMENT AS Description, t1.TABLE_COMMENT AS TableDescription "
             SQLStr += f"FROM information_schema.COLUMNS t LEFT JOIN information_schema.TABLES t1 ON (t.TABLE_SCHEMA = t1.TABLE_SCHEMA AND t.TABLE_NAME = t1.TABLE_NAME) "
-            SQLStr += f"WHERE t.TABLE_SCHEMA='{self.DBName}' "
-            SQLStr += f"AND t.TABLE_NAME LIKE '{self.InnerPrefix}%%' "
-            if len(self.IgnoreFields)>0:
-                SQLStr += "AND t.COLUMN_NAME NOT IN ('"+"','".join(self.IgnoreFields)+"') "
+            SQLStr += f"WHERE t.TABLE_SCHEMA='{self._QSArgs.DBName}' "
+            SQLStr += f"AND t.TABLE_NAME LIKE '{self._QSArgs.InnerPrefix}%%' "
+            if len(self._QSArgs.IgnoreFields)>0:
+                SQLStr += "AND t.COLUMN_NAME NOT IN ('"+"','".join(self._QSArgs.IgnoreFields)+"') "
             SQLStr += "ORDER BY TableName, DBFieldName"
         else:
-            raise NotImplementedError("'%s' 调用方法 connect 时错误: 尚不支持的数据库类型" % (self.Name, self.DBType))
+            raise NotImplementedError("'%s' 调用方法 connect 时错误: 尚不支持的数据库类型" % (self.Name, self._QSArgs.DBType))
         self._FactorInfo = pd.read_sql_query(SQLStr, self._Connection, index_col=None)
         self._TableInfo = self._FactorInfo.loc[:, ["TableName", "DBTableName", "TableDescription"]].copy().groupby(by=["TableName"], as_index=True).last().sort_index()
         self._TableInfo = self._TableInfo.rename(columns={"TableDescription": "Description"})
@@ -114,7 +116,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
             Msg = ("因子库 '%s' 调用方法 getTable 错误: 不存在因子表: '%s'!" % (self.Name, table_name))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
-        Args = self.FTArgs.copy()
+        Args = self._QSArgs.FTArgs.copy()
         Args.update(args)
         # 确定时点字段和 ID 字段
         iFactorInfo = self._FactorInfo.loc[table_name]
@@ -155,20 +157,20 @@ class SQLDB(QSSQLObject, WritableFactorDB):
             Msg = ("因子库 '%s' 调用方法 renameTable 错误: 新因子表名 '%s' 已经存在于库中!" % (self.Name, new_table_name))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
-        self.renameDBTable(self.InnerPrefix+old_table_name, self.InnerPrefix+new_table_name)
+        self.renameDBTable(self._QSArgs.InnerPrefix+old_table_name, self._QSArgs.InnerPrefix+new_table_name)
         self._TableInfo = self._TableInfo.rename(index={old_table_name: new_table_name})
         self._FactorInfo = self._FactorInfo.rename(index={old_table_name: new_table_name}, level=0)
         return 0
     # 创建表, field_types: {字段名: 数据库数据类型}
     def createTable(self, table_name, field_types):
         FieldTypes = field_types.copy()
-        if self.DBType=="MySQL":
-            FieldTypes[self.DTField] = FieldTypes.pop(self.DTField, "DATETIME(6) NOT NULL")
-            FieldTypes[self.IDField] = FieldTypes.pop(self.IDField, "VARCHAR(40) NOT NULL")
+        if self._QSArgs.DBType=="MySQL":
+            FieldTypes[self._QSArgs.DTField] = FieldTypes.pop(self._QSArgs.DTField, "DATETIME(6) NOT NULL")
+            FieldTypes[self._QSArgs.IDField] = FieldTypes.pop(self._QSArgs.IDField, "VARCHAR(40) NOT NULL")
         else:
-            raise NotImplementedError("'%s' 调用方法 createTable 时错误: 尚不支持的数据库类型" % (self.Name, self.DBType))
-        self.createDBTable(self.InnerPrefix+table_name, FieldTypes, primary_keys=[self.DTField, self.IDField], index_fields=[self.IDField])
-        self._TableInfo = self._TableInfo.append(pd.Series([self.InnerPrefix+table_name, "WideTable"], index=["DBTableName", "TableClass"], name=table_name))
+            raise NotImplementedError("'%s' 调用方法 createTable 时错误: 尚不支持的数据库类型" % (self.Name, self._QSArgs.DBType))
+        self.createDBTable(self._QSArgs.InnerPrefix+table_name, FieldTypes, primary_keys=[self._QSArgs.DTField, self._QSArgs.IDField], index_fields=[self._QSArgs.IDField])
+        self._TableInfo = self._TableInfo.append(pd.Series([self._QSArgs.InnerPrefix+table_name, "WideTable"], index=["DBTableName", "TableClass"], name=table_name))
         NewFactorInfo = pd.DataFrame(FieldTypes, index=["DataType"], columns=pd.Index(sorted(FieldTypes.keys()), name="DBFieldName")).T.reset_index()
         NewFactorInfo["TableName"] = table_name
         self._FactorInfo = self._FactorInfo.append(self._genFactorInfo(NewFactorInfo))
@@ -176,14 +178,14 @@ class SQLDB(QSSQLObject, WritableFactorDB):
     # 增加因子，field_types: {字段名: 数据库数据类型}
     def addFactor(self, table_name, field_types):
         if table_name not in self._TableInfo.index: return self.createTable(table_name, field_types)
-        self.addField(self.InnerPrefix+table_name, field_types)
+        self.addField(self._QSArgs.InnerPrefix+table_name, field_types)
         NewFactorInfo = pd.DataFrame(field_types, index=["DataType"], columns=pd.Index(sorted(field_types.keys()), name="DBFieldName")).T.reset_index()
         NewFactorInfo["TableName"] = table_name
         self._FactorInfo = self._FactorInfo.append(self._genFactorInfo(NewFactorInfo)).sort_index()
         return 0
     def deleteTable(self, table_name):
         if table_name not in self._TableInfo.index: return 0
-        self.deleteDBTable(self.InnerPrefix+table_name)
+        self.deleteDBTable(self._QSArgs.InnerPrefix+table_name)
         TableNames = self._TableInfo.index.tolist()
         TableNames.remove(table_name)
         self._TableInfo = self._TableInfo.loc[TableNames]
@@ -199,7 +201,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
             Msg = ("因子库 '%s' 调用方法 renameFactor 错误: 新因子名 '%s' 已经存在于因子表 '%s' 中!" % (self.Name, new_factor_name, table_name))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
-        self.renameField(self.InnerPrefix+table_name, old_factor_name, new_factor_name)
+        self.renameField(self._QSArgs.InnerPrefix+table_name, old_factor_name, new_factor_name)
         TableNames = self._TableInfo.index.tolist()
         TableNames.remove(table_name)
         self._FactorInfo = self._FactorInfo.loc[TableNames].append(self._FactorInfo.loc[[table_name]].rename(index={old_factor_name: new_factor_name}, level=1))
@@ -208,7 +210,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         if (not factor_names) or (table_name not in self._TableInfo.index): return 0
         FactorIndex = self._FactorInfo.loc[table_name].index.difference(factor_names).tolist()
         if not FactorIndex: return self.deleteTable(table_name)
-        self.deleteField(self.InnerPrefix+table_name, factor_names)
+        self.deleteField(self._QSArgs.InnerPrefix+table_name, factor_names)
         TableNames = self._TableInfo.index.tolist()
         TableNames.remove(table_name)
         self._FactorInfo = self._FactorInfo.loc[TableNames].append(self._FactorInfo.loc[[table_name]].loc[FactorIndex])
@@ -218,10 +220,10 @@ class SQLDB(QSSQLObject, WritableFactorDB):
             Msg = ("因子库 '%s' 调用方法 deleteData 错误: 不存在因子表 '%s'!" % (self.Name, table_name))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
-        if (ids is None) and (dts is None): return self.truncateDBTable(self.InnerPrefix+table_name)
-        DBTableName = self.TablePrefix+self.InnerPrefix+table_name
-        IDField = DBTableName+"."+self.IDField
-        DTField = DBTableName+"."+self.DTField
+        if (ids is None) and (dts is None): return self.truncateDBTable(self._QSArgs.InnerPrefix+table_name)
+        DBTableName = self._QSArgs.TablePrefix+self._QSArgs.InnerPrefix+table_name
+        IDField = DBTableName+"."+self._QSArgs.IDField
+        DTField = DBTableName+"."+self._QSArgs.DTField
         SQLStr = "DELETE FROM "+DBTableName+" "
         if dts is not None:
             DTs = [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in dts]
@@ -253,7 +255,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
                 iData = data.iloc[i].apply(lambda x: [None]*(iDataLen-len(x))+x if isinstance(x, list) else [x]*iDataLen).tolist()
                 NewData.extend(zip(*iData))
         NewData = pd.DataFrame(NewData, columns=data.columns, dtype="O")
-        if self.CheckNullable:
+        if self._QSArgs.CheckNullable:
             NewData = self._dropWriteDataNa(NewData, table_name)
         return NewData.where(pd.notnull(NewData), None).to_records(index=False).tolist()
     def _dropWriteDataNa(self, data, table_name):
@@ -267,18 +269,18 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         return data
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
         if table_name not in self._TableInfo.index:
-            FieldTypes = {iFactorName:_identifyDataType(self.DBType, data.iloc[i].dtypes) for i, iFactorName in enumerate(data.items)}
+            FieldTypes = {iFactorName:_identifyDataType(self._QSArgs.DBType, data.iloc[i].dtypes) for i, iFactorName in enumerate(data.items)}
             try:
                 self.createTable(table_name, field_types=FieldTypes)
             except Exception as e:
                 self.connect()
                 if table_name not in self._TableInfo.index:
                     raise e
-            SQLStr = f"INSERT INTO {self.TablePrefix+self.InnerPrefix+table_name} (`{self.DTField}`, `{self.IDField}`, "
+            SQLStr = f"INSERT INTO {self._QSArgs.TablePrefix+self._QSArgs.InnerPrefix+table_name} (`{self._QSArgs.DTField}`, `{self._QSArgs.IDField}`, "
         else:
             NewFactorNames = data.items.difference(self._FactorInfo.loc[table_name].index).tolist()
             if NewFactorNames:
-                FieldTypes = {iFactorName:_identifyDataType(self.DBType, data.iloc[i].dtypes) for i, iFactorName in enumerate(NewFactorNames)}
+                FieldTypes = {iFactorName:_identifyDataType(self._QSArgs.DBType, data.iloc[i].dtypes) for i, iFactorName in enumerate(NewFactorNames)}
                 try:
                     self.addFactor(table_name, FieldTypes)
                 except Exception as e:
@@ -286,16 +288,16 @@ class SQLDB(QSSQLObject, WritableFactorDB):
                     if data.items.difference(self._FactorInfo.loc[table_name].index).shape[0]>0:
                         raise e
             if if_exists=="update":
-                OldFactorNames = self._FactorInfo.loc[table_name].index.difference(data.items).difference({self.IDField, self.DTField}).tolist()
+                OldFactorNames = self._FactorInfo.loc[table_name].index.difference(data.items).difference({self._QSArgs.IDField, self._QSArgs.DTField}).tolist()
                 if OldFactorNames:
-                    if self.CheckWriteData:
+                    if self._QSArgs.CheckWriteData:
                         OldData = self.getTable(table_name, args={"多重映射": True}).readData(factor_names=OldFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
                     else:
                         OldData = self.getTable(table_name, args={"多重映射": False}).readData(factor_names=OldFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
                     for iFactorName in OldFactorNames: data[iFactorName] = OldData[iFactorName]
             else:
-                AllFactorNames = self._FactorInfo.loc[table_name].index.difference({self.IDField, self.DTField}).tolist()
-                if self.CheckWriteData:
+                AllFactorNames = self._FactorInfo.loc[table_name].index.difference({self._QSArgs.IDField, self._QSArgs.DTField}).tolist()
+                if self._QSArgs.CheckWriteData:
                     OldData = self.getTable(table_name, args={"多重映射": True}).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
                 else:
                     OldData = self.getTable(table_name, args={"多重映射": False}).readData(factor_names=AllFactorNames, ids=data.minor_axis.tolist(), dts=data.major_axis.tolist())
@@ -315,7 +317,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
                     Msg = ("因子库 '%s' 调用方法 writeData 错误: 不支持的写入方式 '%s'!" % (self.Name, str(if_exists)))
                     self._QS_Logger.error(Msg)
                     raise __QS_Error__(Msg)
-            SQLStr = f"REPLACE INTO {self.TablePrefix+self.InnerPrefix+table_name} (`{self.DTField}`, `{self.IDField}`, "
+            SQLStr = f"REPLACE INTO {self._QSArgs.TablePrefix+self._QSArgs.InnerPrefix+table_name} (`{self._QSArgs.DTField}`, `{self._QSArgs.IDField}`, "
         DTs = data.major_axis
         # data.major_axis = [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in DTs]
         data.major_axis = DTs.astype(str)
@@ -331,13 +333,13 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         SQLStr = SQLStr[:-2] + ") VALUES (" + (self._PlaceHolder+", ") * (NewData.shape[1]+2)
         SQLStr = SQLStr[:-2]+")"
         Cursor = self.cursor()
-        if self.CheckWriteData:
+        if self._QSArgs.CheckWriteData:
             NewData = self._adjustWriteData(NewData.reset_index(), table_name)
             self.deleteData(table_name, ids=data.minor_axis.tolist(), dts=DTs.tolist())
             Cursor.executemany(SQLStr, NewData)
         else:
             NewData = NewData.astype("O").where(pd.notnull(NewData), None)
-            if self.CheckNullable:
+            if self._QSArgs.CheckNullable:
                 NewData = self._dropWriteDataNa(NewData, table_name)
             Cursor.executemany(SQLStr, NewData.reset_index().values.tolist())
         self.Connection.commit()

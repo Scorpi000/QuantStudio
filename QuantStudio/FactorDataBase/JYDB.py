@@ -364,9 +364,10 @@ def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_d
     return 0
 class _AnalystConsensusTable(_JY_SQL_Table):
     """分析师汇总表"""
-    CalcType = Enum("FY0", "FY1", "FY2", "Fwd12M", label="计算方法", arg_type="SingleOption", order=0)
-    Period = Enum(30,60,90,180, label="周期", arg_type="SingleOption", order=1)
-    LookBack = Int(0, arg_type="Integer", label="回溯天数", order=2)
+    class __QS_ArgClass__(_JY_SQL_Table.__QS_ArgClass__):
+        CalcType = Enum("FY0", "FY1", "FY2", "Fwd12M", label="计算方法", arg_type="SingleOption", order=0)
+        Period = Enum(30,60,90,180, label="周期", arg_type="SingleOption", order=1)
+        LookBack = Int(0, arg_type="Integer", label="回溯天数", order=2)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
         self._DateField = self._FactorInfo[self._FactorInfo["FieldType"]=="Date"].index[0]
@@ -381,7 +382,7 @@ class _AnalystConsensusTable(_JY_SQL_Table):
             StartDT, EndDT = dts[0], dts[-1]
         else:
             StartDT = EndDT = None
-        if StartDT is not None: StartDT -= dt.timedelta(args.get("回溯天数", self.LookBack))
+        if StartDT is not None: StartDT -= dt.timedelta(args.get("回溯天数", self._QSArgs.LookBack))
         DateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
         ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._ReportDateField, "DBFieldName"]
         PeriodField = self._DBTableName+"."+self._FactorInfo.loc[self._PeriodField, "DBFieldName"]
@@ -402,7 +403,7 @@ class _AnalystConsensusTable(_JY_SQL_Table):
         else:
             SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
-        SQLStr += "AND "+PeriodField+"="+str(args.get("周期", self.Period))+" "
+        SQLStr += "AND "+PeriodField+"="+str(args.get("周期", self._QSArgs.Period))+" "
         if StartDT is not None:
             SQLStr += "AND "+DateField+">='"+StartDT.strftime("%Y-%m-%d")+"' "
         if EndDT is not None:
@@ -411,8 +412,8 @@ class _AnalystConsensusTable(_JY_SQL_Table):
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: RawData = pd.DataFrame(columns=['日期','ID','报告期']+factor_names)
         else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=['日期','ID','报告期']+factor_names)
-        RawData._QS_ANNReport = (args.get("计算方法", self.CalcType)!="Fwd12M")
-        RawData._QS_PreFilterID = args.get("预筛选ID", self.PreFilterID)
+        RawData._QS_ANNReport = (args.get("计算方法", self._QSArgs.CalcType)!="Fwd12M")
+        RawData._QS_PreFilterID = args.get("预筛选ID", self._QSArgs.PreFilterID)
         if RawData.shape[0]==0: return RawData
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
@@ -442,7 +443,7 @@ class _AnalystConsensusTable(_JY_SQL_Table):
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
         Dates = sorted({iDT.strftime("%Y%m%d") for iDT in dts})
-        CalcType, LookBack = args.get("计算方法", self.CalcType), args.get("回溯天数", self.LookBack)
+        CalcType, LookBack = args.get("计算方法", self._QSArgs.CalcType), args.get("回溯天数", self._QSArgs.LookBack)
         if CalcType=="Fwd12M":
             CalcFun, FYNum, ANNReportData = self._calcIDData_Fwd12M, None, None
         else:
@@ -536,13 +537,19 @@ def _DefaultOperator(f, idt, iid, x, args):
     return np.nan
 class _AnalystEstDetailTable(_JY_SQL_Table):
     """分析师盈利预测明细表"""
-    Operator = Function(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
-    ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
-    ForwardYears = List(default=[0], label="向前年数", arg_type="ArgList", order=2)
-    AdditionalFields = ListStr(arg_type="MultiOption", label="附加字段", order=3, option_range=())
-    Deduplication = ListStr(arg_type="MultiOption", label="去重字段", order=4, option_range=())
-    Period = Int(180, arg_type="Integer", label="周期", order=5)
-    DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=6)
+    class __QS_ArgClass__(_JY_SQL_Table.__QS_ArgClass__):
+        Operator = Function(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
+        ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
+        ForwardYears = List(default=[0], label="向前年数", arg_type="ArgList", order=2)
+        AdditionalFields = ListStr(arg_type="MultiOption", label="附加字段", order=3, option_range=())
+        Deduplication = ListStr(arg_type="MultiOption", label="去重字段", order=4, option_range=())
+        Period = Int(180, arg_type="Integer", label="周期", order=5)
+        DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=6)
+        def __QS_initArgs__(self):
+            super().__QS_initArgs__()
+            self._Owner._InstituteField = self._Owner._FactorInfo[self._Owner._FactorInfo["FieldType"]=="Institute"].index[0]
+            self.Deduplication = [self._Owner._InstituteField]
+    
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
         self._DateField = self._FactorInfo[self._FactorInfo["FieldType"]=="Date"].index[0]
@@ -551,10 +558,6 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
         self._ANN_ReportFileName = "JY财务年报-公告日期"
         self._ANN_ReportFileSuffix = getShelveFileSuffix()
         return
-    def __QS_initArgs__(self):
-        super().__QS_initArgs__()
-        self._InstituteField = self._FactorInfo[self._FactorInfo["FieldType"]=="Institute"].index[0]
-        self.Deduplication = [self._InstituteField]
     def __QS_genGroupInfo__(self, factors, operation_mode):
         FactorNames, RawFactorNames, StartDT = [], set(), dt.datetime.now()
         Args = {"附加字段": set(), "去重字段": set(), "周期":0}
@@ -576,8 +579,8 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
             StartDT, EndDT = dts[0], dts[-1]
         else:
             StartDT = EndDT = None
-        if StartDT is not None: StartDT -= dt.timedelta(args.get("周期", self.Period))
-        AllFields = list(set(factor_names+args.get("附加字段", self.AdditionalFields)+args.get("去重字段", self.Deduplication)))
+        if StartDT is not None: StartDT -= dt.timedelta(args.get("周期", self._QSArgs.Period))
+        AllFields = list(set(factor_names+args.get("附加字段", self._QSArgs.AdditionalFields)+args.get("去重字段", self._QSArgs.Deduplication)))
         DateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
         ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._ReportDateField, "DBFieldName"]
         # 形成SQL语句, 日期, ID, 报告期, 研究机构, 因子数据
@@ -612,16 +615,16 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         Dates = sorted({dt.datetime.combine(iDT.date(), dt.time(0)) for iDT in dts})
-        DeduplicationFields = args.get("去重字段", self.Deduplication)
-        AdditionalFields = list(set(args.get("附加字段", self.AdditionalFields)+DeduplicationFields))
+        DeduplicationFields = args.get("去重字段", self._QSArgs.Deduplication)
+        AdditionalFields = list(set(args.get("附加字段", self._QSArgs.AdditionalFields)+DeduplicationFields))
         AllFields = list(set(factor_names+AdditionalFields))
         ANNReportPath = raw_data.columns.name
         raw_data = raw_data.loc[:, ["日期", "ID", self._ReportDateField]+AllFields].set_index(["ID"])
-        Period = args.get("周期", self.Period)
-        ForwardYears = args.get("向前年数", self.ForwardYears)
-        ModelArgs = args.get("参数", self.ModelArgs)
-        Operator = args.get("算子", self.Operator)
-        DataType = args.get("数据类型", self.DataType)
+        Period = args.get("周期", self._QSArgs.Period)
+        ForwardYears = args.get("向前年数", self._QSArgs.ForwardYears)
+        ModelArgs = args.get("参数", self._QSArgs.ModelArgs)
+        Operator = args.get("算子", self._QSArgs.Operator)
+        DataType = args.get("数据类型", self._QSArgs.DataType)
         if (ANNReportPath is not None) and os.path.isfile(ANNReportPath+("."+self._ANN_ReportFileSuffix if self._ANN_ReportFileSuffix else "")):
             with shelve.open(ANNReportPath) as ANN_ReportFile:
                 ANNReportData = ANN_ReportFile["RawData"]
@@ -672,21 +675,22 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
 
 class _AnalystRatingDetailTable(_JY_SQL_Table):
     """分析师投资评级明细表"""
-    Operator = Function(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
-    ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
-    AdditionalFields = ListStr(arg_type="MultiOption", label="附加字段", order=2, option_range=())
-    Deduplication = ListStr(arg_type="MultiOption", label="去重字段", order=3, option_range=())
-    Period = Int(180, arg_type="Integer", label="周期", order=4)
-    DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=5)
+    class __QS_ArgClass__(_JY_SQL_Table.__QS_ArgClass__):
+        Operator = Function(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
+        ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
+        AdditionalFields = ListStr(arg_type="MultiOption", label="附加字段", order=2, option_range=())
+        Deduplication = ListStr(arg_type="MultiOption", label="去重字段", order=3, option_range=())
+        Period = Int(180, arg_type="Integer", label="周期", order=4)
+        DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=5)
+        def __QS_initArgs__(self):
+            super().__QS_initArgs__()
+            self._Owner._InstituteField = self._Owner._FactorInfo[self._Owner._FactorInfo["FieldType"]=="Institute"].index[0]
+            self.Deduplication = [self._Owner._InstituteField]
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
         self._DateField = self._FactorInfo[self._FactorInfo["FieldType"]=="Date"].index[0]
         self._TempData = {}
         return
-    def __QS_initArgs__(self):
-        super().__QS_initArgs__()
-        self._InstituteField = self._FactorInfo[self._FactorInfo["FieldType"]=="Institute"].index[0]
-        self.Deduplication = [self._InstituteField]
     def __QS_genGroupInfo__(self, factors, operation_mode):
         FactorNames, RawFactorNames, StartDT = [], set(), dt.datetime.now()
         Args = {"附加字段": set(), "去重字段": set(), "周期":0}
@@ -706,8 +710,8 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
             StartDT, EndDT = dts[0], dts[-1]
         else:
             StartDT = EndDT = None
-        if StartDT is not None: StartDT -= dt.timedelta(args.get("周期", self.Period))
-        AllFields = list(set(factor_names+args.get("附加字段", self.AdditionalFields)+args.get("去重字段", self.Deduplication)))
+        if StartDT is not None: StartDT -= dt.timedelta(args.get("周期", self._QSArgs.Period))
+        AllFields = list(set(factor_names+args.get("附加字段", self._QSArgs.AdditionalFields)+args.get("去重字段", self._QSArgs.Deduplication)))
         DateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
         # 形成SQL语句, 日期, ID, 其他字段
         if self._FactorDB.DBType=="SQL Server":
@@ -738,14 +742,14 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         #if raw_data.shape[0]==0: return Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
         Dates = sorted({dt.datetime.combine(iDT.date(), dt.time(0)) for iDT in dts})
-        DeduplicationFields = args.get("去重字段", self.Deduplication)
-        AdditionalFields = list(set(args.get("附加字段", self.AdditionalFields)+DeduplicationFields))
+        DeduplicationFields = args.get("去重字段", self._QSArgs.Deduplication)
+        AdditionalFields = list(set(args.get("附加字段", self._QSArgs.AdditionalFields)+DeduplicationFields))
         AllFields = list(set(factor_names+AdditionalFields))
         raw_data = raw_data.loc[:, ["日期", "ID"]+AllFields].set_index(["ID"])
-        Period = args.get("周期", self.Period)
-        ModelArgs = args.get("参数", self.ModelArgs)
-        Operator = args.get("算子", self.Operator)
-        DataType = args.get("数据类型", self.DataType)
+        Period = args.get("周期", self._QSArgs.Period)
+        ModelArgs = args.get("参数", self._QSArgs.ModelArgs)
+        Operator = args.get("算子", self._QSArgs.Operator)
+        DataType = args.get("数据类型", self._QSArgs.DataType)
         AllIDs = set(raw_data.index)
         Data = {}
         for kFactorName in factor_names:
@@ -773,18 +777,19 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
 
 class JYDB(QSSQLObject, FactorDB):
     """聚源数据库"""
-    Name = Str("JYDB", arg_type="String", label="名称", order=-100)
-    DBInfoFile = File(label="库信息文件", arg_type="File", order=100)
-    FTArgs = Dict(label="因子表参数", arg_type="Dict", order=101)
+    class __QS_ArgClass__(QSSQLObject.__QS_ArgClass__, FactorDB.__QS_ArgClass__):
+        Name = Str("JYDB", arg_type="String", label="名称", order=-100)
+        DBInfoFile = File(label="库信息文件", arg_type="File", order=100)
+        FTArgs = Dict(label="因子表参数", arg_type="Dict", order=101)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"JYDBConfig.json" if config_file is None else config_file), **kwargs)
         self._InfoFilePath = __QS_LibPath__+os.sep+"JYDBInfo.hdf5"# 数据库信息文件路径
-        if not os.path.isfile(self.DBInfoFile):
-            if self.DBInfoFile: self._QS_Logger.warning("找不到指定的库信息文件 : '%s'" % self.DBInfoFile)
+        if not os.path.isfile(self._QSArgs.DBInfoFile):
+            if self._QSArgs.DBInfoFile: self._QS_Logger.warning("找不到指定的库信息文件 : '%s'" % self._QSArgs.DBInfoFile)
             self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"JYDBInfo.xlsx"# 默认数据库信息源文件路径
             self._TableInfo, self._FactorInfo, self._ExchangeInfo, self._SecurityInfo = _updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger)# 数据库表信息, 数据库字段信息
         else:
-            self._InfoResourcePath = self.DBInfoFile
+            self._InfoResourcePath = self._QSArgs.DBInfoFile
             self._TableInfo, self._FactorInfo, self._ExchangeInfo, self._SecurityInfo = _updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger, out_info=True)# 数据库表信息, 数据库字段信息
         return
     @property
@@ -798,7 +803,7 @@ class JYDB(QSSQLObject, FactorDB):
                 DefaultArgs = self._TableInfo.loc[table_name, "DefaultArgs"]
                 if pd.isnull(DefaultArgs): DefaultArgs = {}
                 else: DefaultArgs = eval(DefaultArgs)
-                Args = self.FTArgs.copy()
+                Args = self._QSArgs.FTArgs.copy()
                 Args.update(DefaultArgs)
                 Args.update(args)
                 return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=Args, logger=self._QS_Logger)")
@@ -818,7 +823,7 @@ class JYDB(QSSQLObject, FactorDB):
         SQLStr += "AND {Prefix}QT_TradingDayNew.IfTradingDay=1 "
         SQLStr += "AND {Prefix}QT_TradingDayNew.SecuMarket={ExchangeCode} "
         SQLStr += "ORDER BY {Prefix}QT_TradingDayNew.TradingDate"
-        SQLStr = SQLStr.format(Prefix=self.TablePrefix, ExchangeCode=ExchangeCode,
+        SQLStr = SQLStr.format(Prefix=self._QSArgs.TablePrefix, ExchangeCode=ExchangeCode,
                                StartDate=start_date.strftime("%Y-%m-%d"), EndDate=end_date.strftime("%Y-%m-%d"))
         Rslt = self.fetchall(SQLStr)
         if kwargs.get("output_type", "date")=="date": return [iRslt[0].date() for iRslt in Rslt]
@@ -848,7 +853,7 @@ class JYDB(QSSQLObject, FactorDB):
                     SQLStr += "AND {Prefix}SecuMain.ListedDate <= '{StartDate}' "
             SQLStr += "AND {Prefix}SecuMain.InnerCode NOT IN ("+SubSQLStr+") "
         SQLStr += "ORDER BY {Prefix}SecuMain.SecuCode"
-        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y-%m-%d"), StartDate=start_date))]
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d"), StartDate=start_date))]
     # 获取指定日 date 的全体港股 ID
     # date: 指定日, datetime.date
     # is_current: False 表示上市日在指定日之前的港股, True 表示上市日在指定日之前且尚未退市的港股
@@ -868,7 +873,7 @@ class JYDB(QSSQLObject, FactorDB):
                 SQLStr += "AND {Prefix}HK_SecuMain.ListedDate <= '{StartDate}' "
                 SQLStr += "AND (({Prefix}HK_SecuMain.DelistingDate IS NULL) OR ({Prefix}HK_SecuMain.DelistingDate > '{Date}')) "
         SQLStr += "ORDER BY {Prefix}HK_SecuMain.SecuCode"
-        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y-%m-%d"), StartDate=start_date))]
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d"), StartDate=start_date))]
     # 获取指定日 date 的股票 ID
     # exchange: 交易所(str)或者交易所列表(list(str))
     # date: 指定日, 默认值 None 表示今天
@@ -945,7 +950,7 @@ class JYDB(QSSQLObject, FactorDB):
                 SQLStr += "AND ((tt.EndDate IS NULL) OR (tt.EndDate >= '{Date}')) "
         SQLStr += "ORDER BY ID"
         try:
-            return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y-%m-%d"), StartDate=start_date))]
+            return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d"), StartDate=start_date))]
         except Exception as e:
             self._QS_Logger.warning("使用债券代码对照表(Bond_Code)提取债券 ID 失败: %s, 将使用证券主表(SecuMain)提取债券 ID, 将忽略参数 date, is_current, start_date!" % (str(e), ))
         SQLStr = "SELECT "+IDField+" AS ID FROM {Prefix}SecuMain tt "
@@ -955,7 +960,7 @@ class JYDB(QSSQLObject, FactorDB):
         else:
             SQLStr += "AND tt.SecuMarket IN ("+", ".join(ExchgCodes)+") "
         SQLStr += "ORDER BY ID"
-        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix))]
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix))]
     # 给定期货代码 future_code, 获取指定日 date 的期货 ID
     # exchange: 交易所(str)或者交易所列表(list(str))
     # future_code: 期货代码(str)或者期货代码列表(list(str)), None 表示所有期货代码
@@ -1016,11 +1021,11 @@ class JYDB(QSSQLObject, FactorDB):
         SQLStr += "ORDER BY ID"
         if future_code:
             if isinstance(future_code, str):
-                return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d"), StartDate=start_date)) if re.findall("\D+", iRslt[0][:2])[0] == future_code]
+                return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y%m%d"), StartDate=start_date)) if re.findall("\D+", iRslt[0][:2])[0] == future_code]
             else:
-                return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d"), StartDate=start_date)) if re.findall("\D+", iRslt[0][:2])[0] in future_code]
+                return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y%m%d"), StartDate=start_date)) if re.findall("\D+", iRslt[0][:2])[0] in future_code]
         else:
-            return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y%m%d"), StartDate=start_date))]
+            return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y%m%d"), StartDate=start_date))]
     # 获取指定交易所 exchange 的期货代码
     # exchange: 交易所(str)或者交易所列表(list(str))
     # date: 指定日, 默认值 None 表示今天
@@ -1042,7 +1047,7 @@ class JYDB(QSSQLObject, FactorDB):
             SQLStr += "WHERE Exchange IS NOT NULL "
         if is_current: SQLStr += "AND ContractState<>5 "
         SQLStr += "ORDER BY TradingCode"
-        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix))]
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix))]
     # 给定期权代码 option_code, 获取指定日 date 的期权代码
     # option_code: 期权代码(str)
     # date: 指定日, 默认值 None 表示今天
@@ -1063,7 +1068,7 @@ class JYDB(QSSQLObject, FactorDB):
                 SQLStr += "AND ListingDate <= '{StartDate}' "
                 SQLStr += "AND ((LastTradingDate IS NULL) OR (LastTradingDate >= '{Date}')) "        
         SQLStr += "ORDER BY TradingCode"
-        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y-%m-%d"), StartDate=start_date, OptionCode=option_code))]
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d"), StartDate=start_date, OptionCode=option_code))]
     # 获取指定日 date 基金 ID
     # date: 指定日, 默认值 None 表示今天
     # is_current: False 表示成立日在指定日之前的基金, True 表示成立日在指定日之前且尚未清盘的基金
@@ -1090,16 +1095,16 @@ class JYDB(QSSQLObject, FactorDB):
                 ExchgCodes.add(str(iExchgCode[0]))
             SQLStr += "AND {Prefix}SecuMain.SecuMarket IN ("+", ".join(ExchgCodes)+") "
         SQLStr += "ORDER BY ID"
-        Rslt = np.array(self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y-%m-%d"), StartDate=start_date)))
+        Rslt = np.array(self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d"), StartDate=start_date)))
         if Rslt.shape[0]>0: return Rslt[:, 0].tolist()
         else: return []
     # 获取行业 ID
     def getIndustryID(self, standard="中信行业分类", level=1, date=None, is_current=True, start_date=None, **kwargs):
         SQLStr = ("SELECT DM FROM {Prefix}CT_SystemConst WHERE LB=1081 AND MS='%s'" % (standard, ))
-        Standard = self.fetchall(SQLStr.format(Prefix=self.TablePrefix))
+        Standard = self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix))
         if len(Standard)!=1:
             SQLStr = "SELECT DISTINCT MS FROM {Prefix}CT_SystemConst WHERE LB=1081"
-            AllStandards = self.fetchall(SQLStr.format(Prefix=self.TablePrefix))
+            AllStandards = self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix))
             raise __QS_Error__("无法识别的行业分类标准 : %s, 支持的行业分类标准有 : %s" % (standard, ", ".join(iStandard[0] for iStandard in AllStandards)))
         if date is None: date = dt.date.today()
         if start_date is not None: start_date = start_date.strftime("%Y-%m-%d")
@@ -1116,7 +1121,7 @@ class JYDB(QSSQLObject, FactorDB):
                 SQLStr += "AND ((EffectiveDate IS NULL) OR (EffectiveDate <= '{StartDate}')) "
                 SQLStr += "AND ((CancelDate IS NULL) OR (CancelDate > '{Date}')) "
         SQLStr += "ORDER BY IndustryNum"
-        return [str(iRslt[0]) for iRslt in self.fetchall(SQLStr.format(Prefix=self.TablePrefix, Date=date.strftime("%Y-%m-%d"), StartDate=start_date))]
+        return [str(iRslt[0]) for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d"), StartDate=start_date))]
     # 获取宏观指标名称对应的指标 ID, TODO
     def getMacroIndicatorID(self, indicators, table_name=None):
         pass

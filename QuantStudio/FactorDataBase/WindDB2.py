@@ -93,9 +93,10 @@ def _DefaultOperator(f, idt, iid, x, args):
 
 class _AnalystConsensusTable(SQL_Table):
     """分析师汇总表"""
-    CalcType = Enum("FY0", "FY1", "FY2", "Fwd12M", label="计算方法", arg_type="SingleOption", order=0)
-    Period = Enum("263001000", "263002000", "263003000", "263004000", label="周期", arg_type="SingleOption", order=1)
-    LookBack = Int(180, arg_type="Integer", label="回溯天数", order=2)
+    class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
+        CalcType = Enum("FY0", "FY1", "FY2", "Fwd12M", label="计算方法", arg_type="SingleOption", order=0)
+        Period = Enum("263001000", "263002000", "263003000", "263004000", label="周期", arg_type="SingleOption", order=1)
+        LookBack = Int(180, arg_type="Integer", label="回溯天数", order=2)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
@@ -108,9 +109,9 @@ class _AnalystConsensusTable(SQL_Table):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         return
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        CalcType = args.get("计算方法", self.CalcType)
+        CalcType = args.get("计算方法", self._QSArgs.CalcType)
         StartDate, EndDate = dts[0].date(), dts[-1].date()
-        StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
+        StartDate -= dt.timedelta(args.get("回溯天数", self._QSArgs.LookBack))
         FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._IDField, self._DateField, self._ReportDateField, self._PeriodField]+factor_names]
         DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         # 形成SQL语句, 日期, ID, 报告期, 数据
@@ -120,7 +121,7 @@ class _AnalystConsensusTable(SQL_Table):
         for iField in factor_names: SQLStr += DBTableName+"."+FieldDict[iField]+", "
         SQLStr = SQLStr[:-2]+" FROM "+DBTableName+" "
         SQLStr += "WHERE ("+genSQLInCondition(DBTableName+"."+FieldDict[self._IDField], ids, is_str=True, max_num=1000)+") "
-        SQLStr += "AND "+DBTableName+"."+FieldDict[self._PeriodField]+"='"+args.get("周期", self.Period)+"' "
+        SQLStr += "AND "+DBTableName+"."+FieldDict[self._PeriodField]+"='"+args.get("周期", self._QSArgs.Period)+"' "
         SQLStr += "AND "+DBTableName+"."+FieldDict[self._DateField]+">='"+StartDate.strftime("%Y%m%d")+"' "
         SQLStr += "AND "+DBTableName+"."+FieldDict[self._DateField]+"<='"+EndDate.strftime("%Y%m%d")+"' "
         SQLStr += 'ORDER BY '+DBTableName+"."+FieldDict[self._IDField]+", "+DBTableName+"."+FieldDict[self._DateField]+", "+DBTableName+"."+FieldDict[self._ReportDateField]
@@ -157,7 +158,7 @@ class _AnalystConsensusTable(SQL_Table):
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
         Dates = sorted({iDT.strftime("%Y%m%d") for iDT in dts})
-        CalcType, LookBack = args.get("计算方法", self.CalcType), args.get("回溯天数", self.LookBack)
+        CalcType, LookBack = args.get("计算方法", self._QSArgs.CalcType), args.get("回溯天数", self._QSArgs.LookBack)
         if CalcType=="Fwd12M":
             CalcFun, FYNum, ANNReportData = self._calcIDData_Fwd12M, None, None
         else:
@@ -245,12 +246,16 @@ class _AnalystConsensusTable(SQL_Table):
         return StdData
 class _AnalystRatingDetailTable(SQL_Table):
     """分析师投资评级明细表"""
-    Operator = Function(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
-    ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
-    AdditionalFields = ListStr(arg_type="MultiOption", label="附加字段", order=2, option_range=())
-    Deduplication = ListStr(arg_type="MultiOption", label="去重字段", order=3, option_range=())
-    Period = Int(180, arg_type="Integer", label="周期", order=4)
-    DataType = Enum("double", "string", arg_type="SingleOption", label="数据类型", order=5)
+    class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
+        Operator = Function(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
+        ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
+        AdditionalFields = ListStr(arg_type="MultiOption", label="附加字段", order=2, option_range=())
+        Deduplication = ListStr(arg_type="MultiOption", label="去重字段", order=3, option_range=())
+        Period = Int(180, arg_type="Integer", label="周期", order=4)
+        DataType = Enum("double", "string", arg_type="SingleOption", label="数据类型", order=5)
+        def __QS_initArgs__(self):
+            super().__QS_initArgs__()
+            self.Deduplication = [self._Owner._InstituteField]
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
@@ -260,9 +265,6 @@ class _AnalystRatingDetailTable(SQL_Table):
         self._TempData = {}
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         return
-    def __QS_initArgs__(self):
-        super().__QS_initArgs__()
-        self.Deduplication = [self._InstituteField]
     def __QS_genGroupInfo__(self, factors, operation_mode):
         FactorNames, RawFactorNames, StartDT = [], set(), dt.datetime.now()
         Args = {"附加字段": set(), "去重字段": set(), "周期":0}
@@ -278,9 +280,9 @@ class _AnalystRatingDetailTable(SQL_Table):
         return [(self, FactorNames, list(RawFactorNames), operation_mode.DTRuler[StartInd:EndInd+1], Args)]
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
-        StartDate -= dt.timedelta(args.get("周期", self.Period))
-        AdditiveFields = args.get("附加字段", self.AdditionalFields)
-        DeduplicationFields = args.get("去重字段", self.Deduplication)
+        StartDate -= dt.timedelta(args.get("周期", self._QSArgs.Period))
+        AdditiveFields = args.get("附加字段", self._QSArgs.AdditionalFields)
+        DeduplicationFields = args.get("去重字段", self._QSArgs.Deduplication)
         AllFields = list(set(factor_names+AdditiveFields+DeduplicationFields))
         FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._IDField, self._DateField]+AllFields]
         DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
@@ -300,14 +302,14 @@ class _AnalystRatingDetailTable(SQL_Table):
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
         Dates = sorted({dt.datetime.combine(iDT.date(), dt.time(0)) for iDT in dts})
-        DeduplicationFields = args.get("去重字段", self.Deduplication)
-        AdditionalFields = list(set(args.get("附加字段", self.AdditionalFields)+DeduplicationFields))
+        DeduplicationFields = args.get("去重字段", self._QSArgs.Deduplication)
+        AdditionalFields = list(set(args.get("附加字段", self._QSArgs.AdditionalFields)+DeduplicationFields))
         AllFields = list(set(factor_names+AdditionalFields))
         raw_data = raw_data.loc[:, ["日期", "ID"]+AllFields].set_index(["ID"])
-        Period = args.get("周期", self.Period)
-        ModelArgs = args.get("参数", self.ModelArgs)
-        Operator = args.get("算子", self.Operator)
-        DataType = args.get("数据类型", self.DataType)
+        Period = args.get("周期", self._QSArgs.Period)
+        ModelArgs = args.get("参数", self._QSArgs.ModelArgs)
+        Operator = args.get("算子", self._QSArgs.Operator)
+        DataType = args.get("数据类型", self._QSArgs.DataType)
         AllIDs = set(raw_data.index)
         Data = {}
         for kFactorName in factor_names:
@@ -330,13 +332,17 @@ class _AnalystRatingDetailTable(SQL_Table):
 
 class _AnalystEstDetailTable(SQL_Table):
     """分析师盈利预测明细表"""
-    Operator = Function(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
-    ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
-    ForwardYears = List(default=[0], label="向前年数", arg_type="ArgList", order=2)
-    AdditionalFields = ListStr(arg_type="MultiOption", label="附加字段", order=3, option_range=())
-    Deduplication = ListStr(arg_type="MultiOption", label="去重字段", order=4, option_range=())
-    Period = Int(180, arg_type="Integer", label="周期", order=5)
-    DataType = Enum("double", "string", arg_type="SingleOption", label="数据类型", order=6)
+    class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
+        Operator = Function(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
+        ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
+        ForwardYears = List(default=[0], label="向前年数", arg_type="ArgList", order=2)
+        AdditionalFields = ListStr(arg_type="MultiOption", label="附加字段", order=3, option_range=())
+        Deduplication = ListStr(arg_type="MultiOption", label="去重字段", order=4, option_range=())
+        Period = Int(180, arg_type="Integer", label="周期", order=5)
+        DataType = Enum("double", "string", arg_type="SingleOption", label="数据类型", order=6)
+        def __QS_initArgs__(self):
+            super().__QS_initArgs__()
+            self.Deduplication = [self._Owner._InstituteField]
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
@@ -350,9 +356,6 @@ class _AnalystEstDetailTable(SQL_Table):
         self._ANN_ReportFileSuffix = getShelveFileSuffix()
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         return
-    def __QS_initArgs__(self):
-        super().__QS_initArgs__()
-        self.Deduplication = [self._InstituteField]
     def __QS_genGroupInfo__(self, factors, operation_mode):
         FactorNames, RawFactorNames, StartDT = [], set(), dt.datetime.now()
         Args = {"附加字段": set(), "去重字段": set(), "周期":0}
@@ -371,9 +374,9 @@ class _AnalystEstDetailTable(SQL_Table):
         return _saveRawDataWithReportANN(self, self._ANN_ReportFileName, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock)
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
-        StartDate -= dt.timedelta(args.get("周期", self.Period))
-        AdditiveFields = args.get("附加字段", self.AdditionalFields)
-        DeduplicationFields = args.get("去重字段", self.Deduplication)
+        StartDate -= dt.timedelta(args.get("周期", self._QSArgs.Period))
+        AdditiveFields = args.get("附加字段", self._QSArgs.AdditionalFields)
+        DeduplicationFields = args.get("去重字段", self._QSArgs.Deduplication)
         AllFields = list(set(factor_names+AdditiveFields+DeduplicationFields))
         FieldDict = self._FactorDB._FactorInfo["DBFieldName"].loc[self.Name].loc[[self._IDField, self._DateField, self._ReportDateField, self._CapitalField]+AllFields]
         DBTableName = self._FactorDB.TablePrefix + self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
@@ -395,16 +398,16 @@ class _AnalystEstDetailTable(SQL_Table):
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         Dates = sorted({dt.datetime.combine(iDT.date(), dt.time(0)) for iDT in dts})
-        DeduplicationFields = args.get("去重字段", self.Deduplication)
-        AdditionalFields = list(set(args.get("附加字段", self.AdditionalFields)+DeduplicationFields))
+        DeduplicationFields = args.get("去重字段", self._QSArgs.Deduplication)
+        AdditionalFields = list(set(args.get("附加字段", self._QSArgs.AdditionalFields)+DeduplicationFields))
         AllFields = list(set(factor_names+AdditionalFields))
         ANNReportPath = raw_data.columns.name
         raw_data = raw_data.loc[:, ["日期", "ID", self._ReportDateField, self._CapitalField]+AllFields].set_index(["ID"])
-        Period = args.get("周期", self.Period)
-        ForwardYears = args.get("向前年数", self.ForwardYears)
-        ModelArgs = args.get("参数", self.ModelArgs)
-        Operator = args.get("算子", self.Operator)
-        DataType = args.get("数据类型", self.DataType)
+        Period = args.get("周期", self._QSArgs.Period)
+        ForwardYears = args.get("向前年数", self._QSArgs.ForwardYears)
+        ModelArgs = args.get("参数", self._QSArgs.ModelArgs)
+        Operator = args.get("算子", self._QSArgs.Operator)
+        DataType = args.get("数据类型", self._QSArgs.DataType)
         if (ANNReportPath is not None) and os.path.isfile(ANNReportPath+("."+self._ANN_ReportFileSuffix if self._ANN_ReportFileSuffix else "")):
             with shelve.open(ANNReportPath) as ANN_ReportFile:
                 ANNReportData = ANN_ReportFile["RawData"]
@@ -488,14 +491,15 @@ class _ConstituentTable(SQL_ConstituentTable):
 # 公告日期字段, 表示财报公布的日期
 class _FinancialTable(SQL_Table):
     """财务因子表"""
-    ReportDate = Enum("所有", "年报", "中报", "一季报", "三季报", Dict(), Function(), label="报告期", arg_type="SingleOption", order=0)
-    ReportType = List(["408001000", "408004000", "408005000"], label="报表类型", arg_type="MultiOption", order=1, option_range=("408001000", "408004000", "408005000"))
-    CalcType = Enum("最新", "单季度", "TTM", label="计算方法", arg_type="SingleOption", order=2)
-    YearLookBack = Int(0, label="回溯年数", arg_type="Integer", order=3)
-    PeriodLookBack = Int(0, label="回溯期数", arg_type="Integer", order=4)
-    ExprFactor = Str("", label="业绩快报因子", arg_type="String", order=5)
-    NoticeFactor = Str("", label="业绩预告因子", arg_type="String", order=6)
-    IgnoreMissing = Bool(True, label="忽略缺失", arg_type="Bool", order=7)
+    class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
+        ReportDate = Enum("所有", "年报", "中报", "一季报", "三季报", Dict(), Function(), label="报告期", arg_type="SingleOption", order=0)
+        ReportType = List(["408001000", "408004000", "408005000"], label="报表类型", arg_type="MultiOption", order=1, option_range=("408001000", "408004000", "408005000"))
+        CalcType = Enum("最新", "单季度", "TTM", label="计算方法", arg_type="SingleOption", order=2)
+        YearLookBack = Int(0, label="回溯年数", arg_type="Integer", order=3)
+        PeriodLookBack = Int(0, label="回溯期数", arg_type="Integer", order=4)
+        ExprFactor = Str("", label="业绩快报因子", arg_type="String", order=5)
+        NoticeFactor = Str("", label="业绩预告因子", arg_type="String", order=6)
+        IgnoreMissing = Bool(True, label="忽略缺失", arg_type="Bool", order=7)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
@@ -614,7 +618,7 @@ class _FinancialTable(SQL_Table):
         if self._ReportTypeField is not None:
             SQLStr += "LEFT JOIN "+self._FactorDB.TablePrefix+"AShareIssuingDatePredict ON ("+DBTableName+"."+FieldDict[self._IDField]+"="+self._FactorDB.TablePrefix+"AShareIssuingDatePredict.s_info_windcode AND "+self._FactorDB.TablePrefix+"AShareIssuingDatePredict.report_period="+DBTableName+"."+FieldDict[self._ReportDateField]+") "
         SQLStr += "WHERE ("+genSQLInCondition(DBTableName+"."+FieldDict[self._IDField], ids, is_str=True, max_num=1000)+") "
-        if self._ReportTypeField is not None: SQLStr += "AND "+DBTableName+"."+FieldDict[self._ReportTypeField]+" IN ('"+"','".join(args.get("报表类型", self.ReportType))+"')"
+        if self._ReportTypeField is not None: SQLStr += "AND "+DBTableName+"."+FieldDict[self._ReportTypeField]+" IN ('"+"','".join(args.get("报表类型", self._QSArgs.ReportType))+"')"
         SQLStr = "SELECT t.* FROM ("+SQLStr+") t WHERE t.ANNDate IS NOT NULL "
         SQLStr += "ORDER BY t."+FieldDict[self._IDField]+", t.ANNDate, t."+FieldDict[self._ReportDateField]
         if self._ReportTypeField is not None: SQLStr += ", t."+FieldDict[self._ReportTypeField]
@@ -622,7 +626,7 @@ class _FinancialTable(SQL_Table):
         if not RawData: RawData = pd.DataFrame(columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
         else: RawData = pd.DataFrame(np.array(RawData), columns=["ID", "AnnDate", "ReportDate", "ReportType"]+factor_names)
         # 拼接业绩快报数据
-        ExprFactor = args.get("业绩快报因子", self.ExprFactor)
+        ExprFactor = args.get("业绩快报因子", self._QSArgs.ExprFactor)
         if ExprFactor:
             SQLStr = self._genExpressSQLStr(ExprFactor, ids)
             ExpressRawData = self._FactorDB.fetchall(SQLStr)
@@ -632,7 +636,7 @@ class _FinancialTable(SQL_Table):
             for iField in factor_names: ExpressRawData[iField] = ExpressRawData[ExprFactor]
             ExpressRawData.pop(ExprFactor)
             RawData = pd.concat([RawData, ExpressRawData])
-        NoticeFactor = args.get("业绩预告因子", self.NoticeFactor)
+        NoticeFactor = args.get("业绩预告因子", self._QSArgs.NoticeFactor)
         if NoticeFactor:
             SQLStr = self._genNoticeSQLStr(NoticeFactor, ids)
             NoticeRawData = self._FactorDB.fetchall(SQLStr)
@@ -646,7 +650,7 @@ class _FinancialTable(SQL_Table):
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         Dates = sorted({iDT.strftime("%Y%m%d") for iDT in dts})
-        CalcType, YearLookBack, PeriodLookBack, ReportDate, IgnoreMissing = args.get("计算方法", self.CalcType), args.get("回溯年数", self.YearLookBack), args.get("回溯期数", self.PeriodLookBack), args.get("报告期", self.ReportDate), args.get("忽略缺失", self.IgnoreMissing)
+        CalcType, YearLookBack, PeriodLookBack, ReportDate, IgnoreMissing = args.get("计算方法", self._QSArgs.CalcType), args.get("回溯年数", self._QSArgs.YearLookBack), args.get("回溯期数", self._QSArgs.PeriodLookBack), args.get("报告期", self._QSArgs.ReportDate), args.get("忽略缺失", self._QSArgs.IgnoreMissing)
         if (YearLookBack==0) and (PeriodLookBack==0):
             if CalcType=="最新": CalcFun = self._calcIDData_LR
             elif CalcType=="单季度": CalcFun = self._calcIDData_SQ
@@ -993,18 +997,19 @@ class _FinancialTable(SQL_Table):
 
 class WindDB2(QSSQLObject, FactorDB):
     """Wind 量化研究数据库"""
-    Name = Str("WindDB2", arg_type="String", label="名称", order=-100)
-    DBInfoFile = File(label="库信息文件", arg_type="File", order=100)
-    FTArgs = Dict({"时点格式": "%Y%m%d", "日期格式": "%Y%m%d"}, label="因子表参数", arg_type="Dict", order=101)
+    class __QS_ArgClass__(QSSQLObject.__QS_ArgClass__, FactorDB.__QS_ArgClass__):
+        Name = Str("WindDB2", arg_type="String", label="名称", order=-100)
+        DBInfoFile = File(label="库信息文件", arg_type="File", order=100)
+        FTArgs = Dict({"时点格式": "%Y%m%d", "日期格式": "%Y%m%d"}, label="因子表参数", arg_type="Dict", order=101)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"WindDB2Config.json" if config_file is None else config_file), **kwargs)
         self._InfoFilePath = __QS_LibPath__+os.sep+"WindDB2Info.hdf5"# 数据库信息文件路径
-        if not os.path.isfile(self.DBInfoFile):
-            if self.DBInfoFile: self._QS_Logger.warning("找不到指定的库信息文件 : '%s'" % self.DBInfoFile)
+        if not os.path.isfile(self._QSArgs.DBInfoFile):
+            if self._QSArgs.DBInfoFile: self._QS_Logger.warning("找不到指定的库信息文件 : '%s'" % self._QSArgs.DBInfoFile)
             self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"WindDB2Info.xlsx"# 默认数据库信息源文件路径
             self._TableInfo, self._FactorInfo = updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger, out_info=False)# 数据库表信息, 数据库字段信息
         else:
-            self._InfoResourcePath = self.DBInfoFile
+            self._InfoResourcePath = self._QSArgs.DBInfoFile
             self._TableInfo, self._FactorInfo = updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger, out_info=True)# 数据库表信息, 数据库字段信息
         return
     @property
@@ -1018,7 +1023,7 @@ class WindDB2(QSSQLObject, FactorDB):
                 DefaultArgs = self._TableInfo.loc[table_name, "DefaultArgs"]
                 if pd.isnull(DefaultArgs): DefaultArgs = {}
                 else: DefaultArgs = eval(DefaultArgs)
-                Args = self.FTArgs.copy()
+                Args = self._QSArgs.FTArgs.copy()
                 Args.update(DefaultArgs)
                 Args.update(args)
                 return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=Args, logger=self._QS_Logger)")

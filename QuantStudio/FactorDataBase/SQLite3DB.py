@@ -10,7 +10,7 @@ from traits.api import Str
 from QuantStudio.Tools.QSObjects import QSSQLite3Object
 from QuantStudio import __QS_ConfigPath__
 from QuantStudio.FactorDataBase.SQLDB import SQLDB
-from QuantStudio.FactorDataBase.FDBFun import SQL_Table, SQL_WideTable, SQL_FeatureTable, SQL_MappingTable, SQL_NarrowTable, SQL_TimeSeriesTable, SQL_ConstituentTable, SQL_FinancialTable
+from QuantStudio.FactorDataBase.FDBFun import SQL_WideTable, SQL_FeatureTable, SQL_MappingTable, SQL_NarrowTable, SQL_TimeSeriesTable, SQL_ConstituentTable, SQL_FinancialTable
 
 class _WideTable(SQL_WideTable):
     """SQLite3 宽因子表"""
@@ -50,17 +50,17 @@ class _FinancialTable(SQL_FinancialTable):
     def _genConditionSQLStr(self, use_main_table=True, init_keyword="AND", args={}):
         SQLStr = super()._genConditionSQLStr(use_main_table=use_main_table, init_keyword=init_keyword, args=args)
         if SQLStr: init_keyword = "AND"
-        ReportDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
-        if args.get("忽略非季末报告", self.IgnoreNonQuarter) or (not ((args.get("报告期", self.ReportDate)=="所有") and (args.get("计算方法", self.CalcType)=="最新") and (args.get("回溯年数", self.YearLookBack)==0) and (args.get("回溯期数", self.PeriodLookBack)==0))):
-            DTFmt = args.get("时点格式", self.DTFmt).replace("%Y", "")
+        ReportDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self._QSArgs.DTField), "DBFieldName"]
+        if args.get("忽略非季末报告", self._QSArgs.IgnoreNonQuarter) or (not ((args.get("报告期", self._QSArgs.ReportDate)=="所有") and (args.get("计算方法", self._QSArgs.CalcType)=="最新") and (args.get("回溯年数", self._QSArgs.YearLookBack)==0) and (args.get("回溯期数", self._QSArgs.PeriodLookBack)==0))):
+            DTFmt = args.get("时点格式", self._QSArgs.DTFmt).replace("%Y", "")
             SQLStr + " "+init_keyword+" ("+ReportDTField+f" LIKE '{DTFmt.replace('%m', '03').replace('%d','31')}' "
             SQLStr + "OR "+ReportDTField+f" LIKE '{DTFmt.replace('%m', '06').replace('%d','30')}' "
             SQLStr + "OR "+ReportDTField+f" LIKE '{DTFmt.replace('%m', '09').replace('%d','30')}' "
             SQLStr + "OR "+ReportDTField+f" LIKE '{DTFmt.replace('%m', '12').replace('%d','31')}') "
             init_keyword = "AND"
-        AdjustTypeField = args.get("调整类型字段", self.AdjustTypeField)
+        AdjustTypeField = args.get("调整类型字段", self._QSArgs.AdjustTypeField)
         if AdjustTypeField is not None:
-            iConditionVal = args.get("调整类型", self.AdjustType)
+            iConditionVal = args.get("调整类型", self._QSArgs.AdjustType)
             if iConditionVal:
                 if self.__QS_identifyDataType__(self._FactorInfo.loc[AdjustTypeField, "DataType"])!="double":
                     SQLStr += " "+init_keyword+" "+self._DBTableName+"."+self._FactorInfo.loc[AdjustTypeField, "DBFieldName"]+" IN ('"+"','".join(iConditionVal.split(","))+"') "
@@ -70,8 +70,9 @@ class _FinancialTable(SQL_FinancialTable):
 
 class SQLite3DB(QSSQLite3Object, SQLDB):
     """SQLite3DB"""
-    Name = Str("SQLite3DB", arg_type="String", label="名称", order=-100)
-    DTFmt = Str("%Y-%m-%d", label="时点格式", arg_type="String", order=12)
+    class __QS_ArgClass__(QSSQLite3Object.__QS_ArgClass__, SQLDB.__QS_ArgClass__):
+        Name = Str("SQLite3DB", arg_type="String", label="名称", order=-100)
+        DTFmt = Str("%Y-%m-%d", label="时点格式", arg_type="String", order=12)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"SQLite3DBConfig.json" if config_file is None else config_file), **kwargs)
         return
@@ -111,7 +112,7 @@ class SQLite3DB(QSSQLite3Object, SQLDB):
         return 0
     def __QS_initFTArgs__(self, table_name, args):
         Args = super().__QS_initFTArgs__(table_name=table_name, args=args)
-        Args["时点格式"] = Args.get("时点格式", self.DTFmt)
+        Args["时点格式"] = Args.get("时点格式", self._QSArgs.DTFmt)
         return Args
     def getTable(self, table_name, args={}):
         Args = self.__QS_initFTArgs__(table_name=table_name, args=args)

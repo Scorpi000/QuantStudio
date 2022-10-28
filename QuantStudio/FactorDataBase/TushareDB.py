@@ -152,7 +152,19 @@ class _FeatureTable(_TSTable):
 
 class _MarketTable(_TSTable):
     """行情因子表"""
-    LookBack = Int(0, arg_type="Integer", label="回溯天数", order=0)
+    class __QS_ArgClass__(_TSTable.__QS_ArgClass__):
+        LookBack = Int(0, arg_type="Integer", label="回溯天数", order=0)
+        def __QS_initArgs__(self):
+            super().__QS_initArgs__()
+            FactorInfo = self._Owner._FactorDB._FactorInfo.loc[self._Owner.Name]
+            self.add_trait("DateField", Enum(*self._Owner._DateFields, arg_type="SingleOption", label="日期字段", order=1))
+            DefaultDateField = FactorInfo[(FactorInfo["Supplementary"]=="DefaultDate") & (FactorInfo["FieldType"]=="Date")]
+            if DefaultDateField.shape[0]>0: self.DateField = DefaultDateField.index[0]
+            else: self.DateField = self._Owner._DateFields[0]
+            for i, iCondition in enumerate(self._Owner._ConditionFields):
+                self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+2))
+                self[iCondition] = str(FactorInfo.loc[iCondition, "Supplementary"])
+    
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         FactorInfo = fdb._FactorInfo.loc[name]
         IDInfo = FactorInfo[FactorInfo["FieldType"]=="ID"]
@@ -162,16 +174,6 @@ class _MarketTable(_TSTable):
         self._ConditionFields = FactorInfo[FactorInfo["FieldType"]=="Condition"].index.tolist()# 所有的条件字段列表
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         return
-    def __QS_initArgs__(self):
-        super().__QS_initArgs__()
-        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
-        self.add_trait("DateField", Enum(*self._DateFields, arg_type="SingleOption", label="日期字段", order=1))
-        DefaultDateField = FactorInfo[(FactorInfo["Supplementary"]=="DefaultDate") & (FactorInfo["FieldType"]=="Date")]
-        if DefaultDateField.shape[0]>0: self.DateField = DefaultDateField.index[0]
-        else: self.DateField = self._DateFields[0]
-        for i, iCondition in enumerate(self._ConditionFields):
-            self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+2))
-            self[iCondition] = str(FactorInfo.loc[iCondition, "Supplementary"])
     @property
     def FactorNames(self):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
@@ -207,8 +209,8 @@ class _MarketTable(_TSTable):
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         StartDate, EndDate = dts[0].date(), dts[-1].date()
-        StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
-        Fields = [self.DateField]+factor_names
+        StartDate -= dt.timedelta(args.get("回溯天数", self._QSArgs.LookBack))
+        Fields = [self._QSArgs.DateField]+factor_names
         if self._IDField is not None: Fields.insert(0, self._IDField)
         DBFields = FactorInfo["DBFieldName"].loc[Fields].tolist()
         DBTableName = self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
@@ -250,7 +252,7 @@ class _MarketTable(_TSTable):
         Data = Panel(Data, items=factor_names)
         Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Data.major_axis]
         if Data.minor_axis.intersection(ids).shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-        LookBack = args.get("回溯天数", self.LookBack)
+        LookBack = args.get("回溯天数", self._QSArgs.LookBack)
         if LookBack==0: return Data.loc[:, dts, ids]
         AllDTs = Data.major_axis.union(dts).sort_values()
         Data = Data.loc[:, AllDTs, ids]
@@ -267,9 +269,17 @@ class _MarketTable(_TSTable):
 # 先填充表中已有的数据, 然后根据回溯天数参数填充缺失的时点
 class _AnnTable(_TSTable):
     """公告信息表"""
-    #ANNDate = Enum(None, arg_type="SingleOption", label="公告日期", order=0)
-    Operator = Function(None, arg_type="Function", label="算子", order=1)
-    LookBack = Int(0, arg_type="Integer", label="回溯天数", order=2)
+    class __QS_ArgClass__(_TSTable.__QS_ArgClass__):
+        #ANNDate = Enum(None, arg_type="SingleOption", label="公告日期", order=0)
+        Operator = Function(None, arg_type="Function", label="算子", order=1)
+        LookBack = Int(0, arg_type="Integer", label="回溯天数", order=2)
+        def __QS_initArgs__(self):
+            super().__QS_initArgs__()
+            FactorInfo = self._Owner._FactorDB._FactorInfo.loc[self.Name]
+            for i, iCondition in enumerate(self._Owner._ConditionFields):
+                self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+2))
+                self[iCondition] = str(FactorInfo.loc[iCondition, "Supplementary"])
+    
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         FactorInfo = fdb._FactorInfo.loc[name]
         IDInfo = FactorInfo[FactorInfo["FieldType"]=="ID"]
@@ -278,12 +288,6 @@ class _AnnTable(_TSTable):
         self._AnnDateField = FactorInfo[FactorInfo["FieldType"]=="ANNDate"].index[0]# 公告日期
         self._ConditionFields = FactorInfo[FactorInfo["FieldType"]=="Condition"].index.tolist()# 所有的条件字段列表
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
-    def __QS_initArgs__(self):
-        super().__QS_initArgs__()
-        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
-        for i, iCondition in enumerate(self._ConditionFields):
-            self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+2))
-            self[iCondition] = str(FactorInfo.loc[iCondition, "Supplementary"])
     @property
     def FactorNames(self):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
@@ -319,7 +323,7 @@ class _AnnTable(_TSTable):
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         StartDate, EndDate = dts[0].date(), dts[-1].date()
-        StartDate -= dt.timedelta(args.get("回溯天数", self.LookBack))
+        StartDate -= dt.timedelta(args.get("回溯天数", self._QSArgs.LookBack))
         Fields = [self._AnnDateField]+factor_names
         if self._IDField is not None: Fields.insert(0, self._IDField)
         DBFields = FactorInfo["DBFieldName"].loc[Fields].tolist()
@@ -363,14 +367,14 @@ class _AnnTable(_TSTable):
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data = raw_data.set_index(["日期", "ID"])
-        Operator = args.get("算子", self.Operator)
+        Operator = args.get("算子", self._QSArgs.Operator)
         if Operator is None: Operator = (lambda x: x.tolist())
         Data = {}
         for iFactorName in factor_names:
             Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
         Data = Panel(Data, items=factor_names, minor_axis=ids)
         Data.major_axis = [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Data.major_axis]
-        LookBack = args.get("回溯天数", self.LookBack)
+        LookBack = args.get("回溯天数", self._QSArgs.LookBack)
         if LookBack==0: return Data.loc[:, dts, ids]
         AllDTs = Data.major_axis.union(dts).sort_values()
         Data = Data.loc[:, AllDTs, ids]
@@ -381,8 +385,9 @@ class _AnnTable(_TSTable):
 
 class TushareDB(FactorDB):
     """tushare"""
-    Name = Str("TushareDB", arg_type="String", label="名称", order=-100)
-    Token = Str("", label="Token", arg_type="String", order=0)
+    class __QS_ArgClass__(FactorDB.__QS_ArgClass__):
+        Name = Str("TushareDB", arg_type="String", label="名称", order=-100)
+        Token = Str("", label="Token", arg_type="String", order=0)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"TushareDBConfig.json" if config_file is None else config_file), **kwargs)
         self._ts = None
@@ -390,7 +395,7 @@ class TushareDB(FactorDB):
         self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"TushareDBInfo.xlsx"# 数据库信息源文件路径
         self._TableInfo, self._FactorInfo = updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger)
     def connect(self):
-        ts.set_token(self.Token)
+        ts.set_token(self._QSArgs.Token)
         self._ts = ts.pro_api()
         return 0
     def disconnect(self):

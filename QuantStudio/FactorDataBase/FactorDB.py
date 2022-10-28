@@ -36,7 +36,7 @@ class FactorDB(__QS_Object__):
         Name = Str("因子库", arg_type="String", label="名称", order=-100)
     @property
     def Name(self):
-        return self.Args.Name
+        return self._QSArgs.Name
     # ------------------------------数据源操作---------------------------------
     # 链接到数据库
     def connect(self):

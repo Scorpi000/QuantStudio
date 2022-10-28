@@ -19,18 +19,18 @@ os.environ["NLS_LANG"] = "SIMPLIFIED CHINESE_CHINA.UTF8"
 
 class QSSQLObject(__QS_Object__):
     """基于关系数据库的对象"""
-    Name = Str("QSSQLObject")
-    DBType = Enum("MySQL", "SQL Server", "Oracle", arg_type="SingleOption", label="数据库类型", order=0)
-    DBName = Str("Scorpion", arg_type="String", label="数据库名", order=1)
-    IPAddr = Str("127.0.0.1", arg_type="String", label="IP地址", order=2)
-    Port = Range(low=0, high=65535, value=3306, arg_type="Integer", label="端口", order=3)
-    User = Str("root", arg_type="String", label="用户名", order=4)
-    Pwd = Password("", arg_type="String", label="密码", order=5)
-    TablePrefix = Str("", arg_type="String", label="表名前缀", order=6)
-    CharSet = Enum("utf8", "gbk", "gb2312", "gb18030", "cp936", "big5", arg_type="SingleOption", label="字符集", order=7)
-    Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pymysql", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
-    DSN = Str("", arg_type="String", label="数据源", order=9)
-    AdjustTableName = Bool(False, arg_type="Bool", label="调整表名", order=10)
+    class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
+        DBType = Enum("MySQL", "SQL Server", "Oracle", arg_type="SingleOption", label="数据库类型", order=0)
+        DBName = Str("Scorpion", arg_type="String", label="数据库名", order=1)
+        IPAddr = Str("127.0.0.1", arg_type="String", label="IP地址", order=2)
+        Port = Range(low=0, high=65535, value=3306, arg_type="Integer", label="端口", order=3)
+        User = Str("root", arg_type="String", label="用户名", order=4)
+        Pwd = Password("", arg_type="String", label="密码", order=5)
+        TablePrefix = Str("", arg_type="String", label="表名前缀", order=6)
+        CharSet = Enum("utf8", "gbk", "gb2312", "gb18030", "cp936", "big5", arg_type="SingleOption", label="字符集", order=7)
+        Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pymysql", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
+        DSN = Str("", arg_type="String", label="数据源", order=9)
+        AdjustTableName = Bool(False, arg_type="Bool", label="调整表名", order=10)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._Connection = None# 连接对象
         self._Connector = None# 实际使用的数据库链接器
@@ -47,72 +47,76 @@ class QSSQLObject(__QS_Object__):
         if self._Connection: self._connect()
         else: self._Connection = None
     @property
+    def Name(self):
+        return "QSSQLObject"
+    @property
     def Connection(self):
         if self._Connection is not None:
             if os.getpid()!=self._PID: self._connect()# 如果进程号发生变化, 重连
         return self._Connection
     def _connect(self):
+        Connector, IPAddr, Port, User, Pwd, DBName, DBType, CharSet = self._QSArgs.Connector, self._QSArgs.IPAddr, self._QSArgs.Port, self._QSArgs.User, self._QSArgs.Pwd, self._QSArgs.DBName, self._QSArgs.DBType, self._QSArgs.CharSet
         self._Connection = None
-        if (self.Connector=="cx_Oracle") or ((self.Connector=="default") and (self.DBType=="Oracle")):
+        if (Connector=="cx_Oracle") or ((Connector=="default") and (DBType=="Oracle")):
             try:
                 import cx_Oracle
-                self._Connection = cx_Oracle.connect(self.User, self.Pwd, cx_Oracle.makedsn(self.IPAddr, str(self.Port), self.DBName))
+                self._Connection = cx_Oracle.connect(User, Pwd, cx_Oracle.makedsn(IPAddr, str(Port), DBName))
             except Exception as e:
-                Msg = ("'%s' 尝试使用 cx_Oracle 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, self.User, self.IPAddr, self.Port, self.DBName, str(e)))
+                Msg = ("'%s' 尝试使用 cx_Oracle 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, User, IPAddr, Port, DBName, str(e)))
                 self._QS_Logger.error(Msg)
-                if self.Connector!="default": raise e
+                if Connector!="default": raise e
             else:
                 self._Connector = "cx_Oracle"
-        elif (self.Connector=="pymssql") or ((self.Connector=="default") and (self.DBType=="SQL Server")):
+        elif (Connector=="pymssql") or ((Connector=="default") and (DBType=="SQL Server")):
             try:
                 import pymssql
-                self._Connection = pymssql.connect(server=self.IPAddr, port=str(self.Port), user=self.User, password=self.Pwd, database=self.DBName, charset=self.CharSet)
+                self._Connection = pymssql.connect(server=IPAddr, port=str(Port), user=User, password=Pwd, database=DBName, charset=CharSet)
             except Exception as e:
-                Msg = ("'%s' 尝试使用 pymssql 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, self.User, self.IPAddr, self.Port, self.DBName, str(e)))
+                Msg = ("'%s' 尝试使用 pymssql 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, User, IPAddr, Port, DBName, str(e)))
                 self._QS_Logger.error(Msg)
-                if self.Connector!="default": raise e
+                if Connector!="default": raise e
             else:
                 self._Connector = "pymssql"
-        elif (self.Connector=="mysql.connector") or ((self.Connector=="default") and (self.DBType=="MySQL")):
+        elif (Connector=="mysql.connector") or ((Connector=="default") and (DBType=="MySQL")):
             try:
                 import mysql.connector
-                self._Connection = mysql.connector.connect(host=self.IPAddr, port=str(self.Port), user=self.User, password=self.Pwd, database=self.DBName, charset=self.CharSet, autocommit=True)
+                self._Connection = mysql.connector.connect(host=IPAddr, port=str(Port), user=User, password=Pwd, database=DBName, charset=CharSet, autocommit=True)
             except Exception as e:
-                Msg = ("'%s' 尝试使用 mysql.connector 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, self.User, self.IPAddr, self.Port, self.DBName, str(e)))
+                Msg = ("'%s' 尝试使用 mysql.connector 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, User, IPAddr, Port, DBName, str(e)))
                 self._QS_Logger.error(Msg)
-                if self.Connector!="default": raise e
+                if Connector!="default": raise e
             else:
                 self._Connector = "mysql.connector"
-        elif self.Connector=="pymysql":
+        elif Connector=="pymysql":
             try:
                 import pymysql
-                self._Connection = pymysql.connect(host=self.IPAddr, port=self.Port, user=self.User, password=self.Pwd, db=self.DBName, charset=self.CharSet)
+                self._Connection = pymysql.connect(host=IPAddr, port=Port, user=User, password=Pwd, db=DBName, charset=CharSet)
             except Exception as e:
-                Msg = ("'%s' 尝试使用 pymysql 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, self.User, self.IPAddr, self.Port, self.DBName, str(e)))
+                Msg = ("'%s' 尝试使用 pymysql 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, User, IPAddr, Port, DBName, str(e)))
                 self._QS_Logger.error(Msg)
                 raise e
             else:
                 self._Connector = "pymysql"
         if self._Connection is None:
-            if self.Connector not in ("default", "pyodbc"):
+            if Connector not in ("default", "pyodbc"):
                 self._Connection = None
-                Msg = ("'%s' 连接数据库时错误: 不支持该连接器(connector) '%s'" % (self.Name, self.Connector))
+                Msg = ("'%s' 连接数据库时错误: 不支持该连接器(connector) '%s'" % (self.Name, Connector))
                 self._QS_Logger.error(Msg)
                 raise __QS_Error__(Msg)
-            elif self.DSN:
+            elif self._QSArgs.DSN:
                 try:
                     import pyodbc
-                    self._Connection = pyodbc.connect("DSN=%s;PWD=%s" % (self.DSN, self.Pwd))
+                    self._Connection = pyodbc.connect("DSN=%s;PWD=%s" % (self._QSArgs.DSN, Pwd))
                 except Exception as e:
-                    Msg = ("'%s' 尝试使用 pyodbc 连接数据库 'DSN: %s' 失败: %s" % (self.Name, self.DSN, str(e)))
+                    Msg = ("'%s' 尝试使用 pyodbc 连接数据库 'DSN: %s' 失败: %s" % (self.Name, self._QSArgs.DSN, str(e)))
                     self._QS_Logger.error(Msg)
                     raise e
             else:
                 try:
                     import pyodbc
-                    self._Connection = pyodbc.connect("DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s" % (self.DBType, self.DBName, self.IPAddr+","+str(self.Port), self.User, self.Pwd))
+                    self._Connection = pyodbc.connect("DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s" % (DBType, DBName, IPAddr+","+str(Port), User, Pwd))
                 except Exception as e:
-                    Msg = ("'%s' 尝试使用 pyodbc 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, self.User, self.IPAddr, self.Port, self.DBName, str(e)))
+                    Msg = ("'%s' 尝试使用 pyodbc 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, User, IPAddr, Port, DBName, str(e)))
                     self._QS_Logger.error(Msg)
                     raise e
             self._Connector = "pyodbc"
@@ -120,7 +124,7 @@ class QSSQLObject(__QS_Object__):
         return 0
     def connect(self):
         self._connect()
-        if not self.AdjustTableName:
+        if not self._QSArgs.AdjustTableName:
             self._AllTables = []
         else:
             self._AllTables = self.getDBTable()
@@ -130,14 +134,14 @@ class QSSQLObject(__QS_Object__):
         else:
             self._PlaceHolder = "%s"
         # 设置 SQL 相关特异性函数
-        if self.DBType=="MySQL":
+        if self._QSArgs.DBType=="MySQL":
             self._SQLFun = {"toDate": "DATE(%s)"}
-        elif self.DBType=="Oracle":
+        elif self._QSArgs.DBType=="Oracle":
             self._SQLFun = {"toDate": "CAST(%s AS DATE)"}# TOTEST
-        elif self.DBType=="SQL Server":
+        elif self._QSArgs.DBType=="SQL Server":
             self._SQLFun = {"toDate": "CAST(%s AS DATE)"}# TOTEST
         else:
-            raise NotImplementedError("'%s' 调用方法 connect 时错误: 尚不支持的数据库类型" % (self.Name, self.DBType))
+            raise NotImplementedError("'%s' 调用方法 connect 时错误: 尚不支持的数据库类型" % (self.Name, self._QSArgs.DBType))
         return 0
     def disconnect(self):
         if self._Connection is not None:
@@ -162,7 +166,7 @@ class QSSQLObject(__QS_Object__):
             self._connect()
             Cursor = self._Connection.cursor()
         if sql_str is None: return Cursor
-        if self.AdjustTableName:
+        if self._QSArgs.AdjustTableName:
             for iTable in self._AllTables:
                 sql_str = re.sub(iTable, iTable, sql_str, flags=re.IGNORECASE)
         Cursor.execute(sql_str)
@@ -189,17 +193,17 @@ class QSSQLObject(__QS_Object__):
         return 0
     def getDBTable(self, table_format=None):
         try:
-            if self.DBType=="SQL Server":
+            if self._QSArgs.DBType=="SQL Server":
                 SQLStr = "SELECT Name FROM SysObjects Where XType='U'"
                 TableField = "Name"
-            elif self.DBType=="MySQL":
-                SQLStr = "SELECT table_name FROM information_schema.tables WHERE table_schema='"+self.DBName+"' AND table_type='base table'"
+            elif self._QSArgs.DBType=="MySQL":
+                SQLStr = "SELECT table_name FROM information_schema.tables WHERE table_schema='"+self._QSArgs.DBName+"' AND table_type='base table'"
                 TableField = "table_name"
-            elif self.DBType=="Oracle":
-                SQLStr = "SELECT table_name FROM user_tables WHERE TABLESPACE_NAME IS NOT NULL AND user='"+self.User+"'"
+            elif self._QSArgs.DBType=="Oracle":
+                SQLStr = "SELECT table_name FROM user_tables WHERE TABLESPACE_NAME IS NOT NULL AND user='"+self._QSArgs.User+"'"
                 TableField = "table_name"
             else:
-                raise __QS_Error__("不支持的数据库类型 '%s'" % self.DBType)
+                raise __QS_Error__("不支持的数据库类型 '%s'" % self._QSArgs.DBType)
             if isinstance(table_format, str) and table_format:
                 SQLStr += (" WHERE %s LIKE '%s' " % (TableField, table_format))
             AllTables = self.fetchall(SQLStr)
@@ -210,7 +214,7 @@ class QSSQLObject(__QS_Object__):
         else:
             return [rslt[0] for rslt in AllTables]
     def renameDBTable(self, old_table_name, new_table_name):
-        SQLStr = "ALTER TABLE "+self.TablePrefix+old_table_name+" RENAME TO "+self.TablePrefix+new_table_name
+        SQLStr = "ALTER TABLE "+self._QSArgs.TablePrefix+old_table_name+" RENAME TO "+self._QSArgs.TablePrefix+new_table_name
         try:
             self.execute(SQLStr)
         except Exception as e:
@@ -222,17 +226,17 @@ class QSSQLObject(__QS_Object__):
         return 0
     # 创建表, field_types: {字段名: 数据类型}
     def createDBTable(self, table_name, field_types, primary_keys=[], index_fields=[]):
-        if self.DBType=="MySQL":
-            SQLStr = "CREATE TABLE IF NOT EXISTS %s (" % (self.TablePrefix+table_name)
+        if self._QSArgs.DBType=="MySQL":
+            SQLStr = "CREATE TABLE IF NOT EXISTS %s (" % (self._QSArgs.TablePrefix+table_name)
             for iField, iDataType in field_types.items(): SQLStr += "`%s` %s, " % (iField, iDataType)
             if primary_keys:
                 SQLStr += "PRIMARY KEY (`"+"`,`".join(primary_keys)+"`))"
             else:
                 SQLStr = SQLStr[:-2] + ")"
-            SQLStr += " ENGINE=InnoDB DEFAULT CHARSET="+self.CharSet
+            SQLStr += " ENGINE=InnoDB DEFAULT CHARSET="+self._QSArgs.CharSet
             IndexType = "BTREE"
         else:
-            raise NotImplementedError("'%s' 调用方法 createDBTable 在数据库中创建表 '%s' 时错误: 尚不支持的数据库类型" % (self.Name, table_name, self.DBType))
+            raise NotImplementedError("'%s' 调用方法 createDBTable 在数据库中创建表 '%s' 时错误: 尚不支持的数据库类型" % (self.Name, table_name, self._QSArgs.DBType))
         try:
             self.execute(SQLStr)
         except Exception as e:
@@ -247,7 +251,7 @@ class QSSQLObject(__QS_Object__):
             self._QS_Logger.warning("'%s' 调用方法 createDBTable 在数据库中创建表 '%s' 时错误: %s" % (self.Name, table_name, str(e)))
         return 0
     def deleteDBTable(self, table_name):
-        SQLStr = "DROP TABLE %s" % (self.TablePrefix+table_name)
+        SQLStr = "DROP TABLE %s" % (self._QSArgs.TablePrefix+table_name)
         try:
             self.execute(SQLStr)
         except Exception as e:
@@ -259,9 +263,9 @@ class QSSQLObject(__QS_Object__):
         return 0
     def addIndex(self, index_name, table_name, fields, index_type="BTREE"):
         if index_type is not None:
-            SQLStr = "CREATE INDEX "+index_name+" USING "+index_type+" ON "+self.TablePrefix+table_name+"("+", ".join(fields)+")"
+            SQLStr = "CREATE INDEX "+index_name+" USING "+index_type+" ON "+self._QSArgs.TablePrefix+table_name+"("+", ".join(fields)+")"
         else:
-            SQLStr = "CREATE INDEX "+index_name+" ON "+self.TablePrefix+table_name+"("+", ".join(fields)+")"
+            SQLStr = "CREATE INDEX "+index_name+" ON "+self._QSArgs.TablePrefix+table_name+"("+", ".join(fields)+")"
         try:
             self.execute(SQLStr)
         except Exception as e:
@@ -273,17 +277,17 @@ class QSSQLObject(__QS_Object__):
         return 0
     def getFieldDataType(self, table_format=None, ignore_fields=[]):
         try:
-            if self.DBType=="MySQL":
-                SQLStr = ("SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM information_schema.columns WHERE table_schema='%s' " % self.DBName)
+            if self._QSArgs.DBType=="MySQL":
+                SQLStr = ("SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM information_schema.columns WHERE table_schema='%s' " % self._QSArgs.DBName)
                 TableField, ColField = "TABLE_NAME", "COLUMN_NAME"
-            elif self.DBType=="SQL Server":
-                SQLStr = ("SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM information_schema.columns WHERE table_schema='%s' " % self.DBName)
+            elif self._QSArgs.DBType=="SQL Server":
+                SQLStr = ("SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM information_schema.columns WHERE table_schema='%s' " % self._QSArgs.DBName)
                 TableField, ColField = "TABLE_NAME", "COLUMN_NAME"
-            elif self.DBType=="Oracle":
+            elif self._QSArgs.DBType=="Oracle":
                 SQLStr = ("SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM user_tab_columns")
                 TableField, ColField = "TABLE_NAME", "COLUMN_NAME"
             else:
-                raise __QS_Error__("不支持的数据库类型 '%s'" % self.DBType)
+                raise __QS_Error__("不支持的数据库类型 '%s'" % self._QSArgs.DBType)
             if isinstance(table_format, str) and table_format:
                 SQLStr += ("AND %s LIKE '%s' " % (TableField, table_format))
             if ignore_fields:
@@ -297,7 +301,7 @@ class QSSQLObject(__QS_Object__):
         return pd.DataFrame(Rslt, columns=["Table", "Field", "DataType"])
     # 增加字段, field_types: {字段名: 数据类型}
     def addField(self, table_name, field_types):
-        SQLStr = "ALTER TABLE %s " % (self.TablePrefix+table_name)
+        SQLStr = "ALTER TABLE %s " % (self._QSArgs.TablePrefix+table_name)
         SQLStr += "ADD COLUMN ("
         for iField in field_types: SQLStr += "%s %s," % (iField, field_types[iField])
         SQLStr = SQLStr[:-1]+")"
@@ -312,7 +316,7 @@ class QSSQLObject(__QS_Object__):
         return 0
     def renameField(self, table_name, old_field_name, new_field_name):
         try:
-            SQLStr = "ALTER TABLE "+self.TablePrefix+table_name
+            SQLStr = "ALTER TABLE "+self._QSArgs.TablePrefix+table_name
             SQLStr += " CHANGE COLUMN `"+old_field_name+"` `"+new_field_name+"`"
             self.execute(SQLStr)
         except Exception as e:
@@ -325,7 +329,7 @@ class QSSQLObject(__QS_Object__):
     def deleteField(self, table_name, field_names):
         if not field_names: return 0
         try:
-            SQLStr = "ALTER TABLE "+self.TablePrefix+table_name
+            SQLStr = "ALTER TABLE "+self._QSArgs.TablePrefix+table_name
             for iField in field_names: SQLStr += " DROP COLUMN `"+iField+"`,"
             self.execute(SQLStr[:-1])
         except Exception as e:
@@ -336,7 +340,7 @@ class QSSQLObject(__QS_Object__):
             self._QS_Logger.info("'%s' 调用方法 deleteField 删除表 '%s' 中的字段 '%s'" % (self.Name, table_name, str(field_names)))
         return 0
     def truncateDBTable(self, table_name):
-        SQLStr = "TRUNCATE TABLE %s" % (self.TablePrefix+table_name)
+        SQLStr = "TRUNCATE TABLE %s" % (self._QSArgs.TablePrefix+table_name)
         try:
             self.execute(SQLStr)
         except Exception as e:
@@ -349,15 +353,16 @@ class QSSQLObject(__QS_Object__):
 
 class QSSQLite3Object(QSSQLObject):
     """基于 sqlite3 模块的对象"""
-    DBType = Enum("sqlite3", arg_type="SingleOption", label="数据库类型", order=0)
-    Connector = Enum("sqlite3", arg_type="SingleOption", label="连接器", order=8)
-    SQLite3File = Either(Enum(":memory:"), File(), label="sqlite3文件", arg_type="File", order=11)
+    class __QS_ArgClass__(QSSQLObject.__QS_ArgClass__):
+        DBType = Enum("sqlite3", arg_type="SingleOption", label="数据库类型", order=0)
+        Connector = Enum("sqlite3", arg_type="SingleOption", label="连接器", order=8)
+        SQLite3File = Either(Enum(":memory:"), File(), label="sqlite3文件", arg_type="File", order=11)
     def _connect(self):
         try:
             import sqlite3
-            self._Connection = sqlite3.connect(self.SQLite3File)
+            self._Connection = sqlite3.connect(self._QSArgs.SQLite3File)
         except Exception as e:
-            Msg = ("'%s' 尝试使用 sqlite3 连接数据库 '%s' 失败: %s" % (self.Name, self.SQLite3File, str(e)))
+            Msg = ("'%s' 尝试使用 sqlite3 连接数据库 '%s' 失败: %s" % (self.Name, self._QSArgs.SQLite3File, str(e)))
             self._QS_Logger.error(Msg)
             raise e
         else:
@@ -382,7 +387,7 @@ class QSSQLite3Object(QSSQLObject):
         else:
             return [rslt[0] for rslt in AllTables]
     def createDBTable(self, table_name, field_types, primary_keys=[], index_fields=[]):
-        SQLStr = "CREATE TABLE IF NOT EXISTS %s (" % (self.TablePrefix+table_name)
+        SQLStr = "CREATE TABLE IF NOT EXISTS %s (" % (self._QSArgs.TablePrefix+table_name)
         for iField, iDataType in field_types.items(): SQLStr += "`%s` %s, " % (iField, iDataType)
         if primary_keys:
             SQLStr += "PRIMARY KEY (`"+"`,`".join(primary_keys)+"`))"
@@ -417,7 +422,7 @@ class QSSQLite3Object(QSSQLObject):
             # 将表名改为临时表
             SQLStr = "ALTER TABLE %s RENAME TO %s"
             TempTableName = genAvailableName("TempTable", self.getDBTable())
-            self.execute(SQLStr % (self.TablePrefix+table_name, self.TablePrefix+TempTableName))
+            self.execute(SQLStr % (self._QSArgs.TablePrefix+table_name, self._QSArgs.TablePrefix+TempTableName))
             # 创建新表
             FieldTypes = OrderedDict()
             FieldDataType = self.getFieldDataType(table_format=table_name).loc[:, ["Field", "DataType"]].set_index(["Field"]).iloc[:,0].to_dict()
@@ -430,11 +435,11 @@ class QSSQLite3Object(QSSQLObject):
             OldFieldNames = ", ".join(FieldDataType.keys())
             NewFieldNames = ", ".join(FieldTypes)
             SQLStr = "INSERT INTO %s (datetime, code, %s) SELECT datetime, code, %s FROM %s"
-            Cursor = self.cursor(SQLStr % (self.TablePrefix+table_name, NewFieldNames, OldFieldNames, self.TablePrefix+TempTableName))
+            Cursor = self.cursor(SQLStr % (self._QSArgs.TablePrefix+table_name, NewFieldNames, OldFieldNames, self._QSArgs.TablePrefix+TempTableName))
             Conn = self.Connection
             Conn.commit()
             # 删除临时表
-            Cursor.execute("DROP TABLE %s" % (self.TablePrefix+TempTableName, ))
+            Cursor.execute("DROP TABLE %s" % (self._QSArgs.TablePrefix+TempTableName, ))
             Conn.commit()
             Cursor.close()
         except Exception as e:
@@ -450,7 +455,7 @@ class QSSQLite3Object(QSSQLObject):
             # 将表名改为临时表
             SQLStr = "ALTER TABLE %s RENAME TO %s"
             TempTableName = genAvailableName("TempTable", self.getDBTable())
-            self.execute(SQLStr % (self.TablePrefix+table_name, self.TablePrefix+TempTableName))
+            self.execute(SQLStr % (self._QSArgs.TablePrefix+table_name, self._QSArgs.TablePrefix+TempTableName))
             # 创建新表
             FieldTypes = OrderedDict()
             FieldDataType = self.getFieldDataType(table_format=table_name).loc[:, ["Field", "DataType"]].set_index(["Field"]).iloc[:,0].to_dict()
@@ -461,11 +466,11 @@ class QSSQLite3Object(QSSQLObject):
             # 导入数据
             FactorNameStr = ", ".join(FactorIndex)
             SQLStr = "INSERT INTO %s (datetime, code, %s) SELECT datetime, code, %s FROM %s"
-            Cursor = self.cursor(SQLStr % (self.TablePrefix+table_name, FactorNameStr, FactorNameStr, self.TablePrefix+TempTableName))
+            Cursor = self.cursor(SQLStr % (self._QSArgs.TablePrefix+table_name, FactorNameStr, FactorNameStr, self._QSArgs.TablePrefix+TempTableName))
             Conn = self.Connection
             Conn.commit()
             # 删除临时表
-            Cursor.execute("DROP TABLE %s" % (self.TablePrefix+TempTableName, ))
+            Cursor.execute("DROP TABLE %s" % (self._QSArgs.TablePrefix+TempTableName, ))
             Conn.commit()
             Cursor.close()
         except Exception as e:
@@ -476,7 +481,7 @@ class QSSQLite3Object(QSSQLObject):
             self._QS_Logger.info("'%s' 调用方法 deleteField 删除表 '%s' 中的字段 '%s'" % (self.Name, table_name, str(field_names)))
         return 0
     def truncateDBTable(self, table_name):
-        SQLStr = "DELETE FROM %s" % (self.TablePrefix+table_name)
+        SQLStr = "DELETE FROM %s" % (self._QSArgs.TablePrefix+table_name)
         try:
             self.execute(SQLStr)
         except Exception as e:
