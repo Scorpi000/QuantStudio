@@ -7,7 +7,7 @@ import datetime as dt
 import numpy as np
 import pandas as pd
 import tushare as ts
-from traits.api import Enum, Int, Str, Function
+from traits.api import Enum, Int, Str, Callable
 
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.MathFun import CartesianProduct
@@ -101,16 +101,18 @@ class _CalendarTable(_TSTable):
 
 class _FeatureTable(_TSTable):
     """特征因子表"""
+    class __QS_ArgClass__(_TSTable.__QS_ArgClass__):
+        def __QS_initArgs__(self):
+            super().__QS_initArgs__()
+            FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
+            ConditionField = FactorInfo[pd.notnull(FactorInfo["Supplementary"])]
+            for i, iCondition in enumerate(ConditionField.index):
+                self.add_trait("Condition"+str(i), Enum(*ConditionField["Supplementary"].iloc[i].split(","), arg_type="String", label=iCondition, order=i))
+    
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
-    def __QS_initArgs__(self):
-        super().__QS_initArgs__()
-        FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
-        ConditionField = FactorInfo[pd.notnull(FactorInfo["Supplementary"])]
-        for i, iCondition in enumerate(ConditionField.index):
-            self.add_trait("Condition"+str(i), Enum(*ConditionField["Supplementary"].iloc[i].split(","), arg_type="String", label=iCondition, order=i))
     def getID(self, ifactor_name=None, idt=None, args={}):
         RawData = self.__QS_prepareRawData__(factor_names=[], ids=[], dts=[], args=args)
         return sorted(RawData["ID"])
@@ -271,7 +273,7 @@ class _AnnTable(_TSTable):
     """公告信息表"""
     class __QS_ArgClass__(_TSTable.__QS_ArgClass__):
         #ANNDate = Enum(None, arg_type="SingleOption", label="公告日期", order=0)
-        Operator = Function(None, arg_type="Function", label="算子", order=1)
+        Operator = Callable(arg_type="Function", label="算子", order=1)
         LookBack = Int(0, arg_type="Integer", label="回溯天数", order=2)
         def __QS_initArgs__(self):
             super().__QS_initArgs__()

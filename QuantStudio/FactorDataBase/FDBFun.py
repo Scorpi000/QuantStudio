@@ -4,7 +4,7 @@ import datetime as dt
 
 import numpy as np
 import pandas as pd
-from traits.api import Str, Int, Bool, Float, Function, Either, List, ListStr, Dict, Enum, Date, on_trait_change
+from traits.api import Str, Int, Bool, Float, Callable, Either, List, ListStr, Dict, Enum, Date, on_trait_change
 
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
@@ -76,7 +76,7 @@ def adjustDataDTID(data, look_back, factor_names, ids, dts, only_start_lookback=
     if look_back==0:
         try:
             return data.loc[:, dts, ids]
-        except KeyError as e:
+        except KeyError:
             if logger is not None:
                 logger.warning("待提取的因子 %s 数据超出了原始数据的时点或 ID 范围, 将填充缺失值!" % (str(list(data.items)), ))
             return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
@@ -604,7 +604,7 @@ class SQL_WideTable(SQL_Table):
         EndDateASC = Bool(False, label="截止日期递增", arg_type="Bool", order=6)
         OrderFields = List(arg_type="List", label="排序字段", order=7)# [("字段名", "ASC" 或者 "DESC")]
         MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=8)
-        Operator = Either(Function(None), None, arg_type="Function", label="算子", order=9)
+        Operator = Either(Callable(), None, arg_type="Function", label="算子", order=9)
         OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=10)
         AdditionalFields = ListStr(arg_type="MultiOption", label="附加字段", order=11, option_range=())
         PeriodLookBack = Either(None, Int(0), label="回溯期数", arg_type="Integer", order=12)
@@ -995,7 +995,7 @@ class SQL_NarrowTable(SQL_Table):
         #FactorNameField = Enum(None, arg_type="SingleOption", label="因子名字段", order=4)
         #FactorValueField = Enum(None, arg_type="SingleOption", label="因子值字段", order=5)
         MultiMapping = Bool(True, label="多重映射", arg_type="Bool", order=6)
-        Operator = Either(Function(None), None, arg_type="Function", label="算子", order=7)
+        Operator = Either(Callable(), None, arg_type="Function", label="算子", order=7)
         OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=8)
         def __QS_initArgs__(self):
             super().__QS_initArgs__()
@@ -1294,7 +1294,7 @@ class SQL_TimeSeriesTable(SQL_Table):
         EndDateASC = Bool(False, label="截止日期递增", arg_type="Bool", order=6)
         OrderFields = List(arg_type="List", label="排序字段", order=7)# [("字段名", "ASC" 或者 "DESC")]
         MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=8)
-        Operator = Either(Function(None), None, arg_type="Function", label="算子", order=9)
+        Operator = Either(Callable(), None, arg_type="Function", label="算子", order=9)
         OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=10)
         def __QS_initArgs__(self):
             super().__QS_initArgs__()
@@ -1951,7 +1951,7 @@ def RollBackNPeriod(report_date, n_period):
 class SQL_FinancialTable(SQL_Table):
     """财务因子表"""
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
-        ReportDate = Enum("所有", "定期报告", "年报", "中报", "一季报", "三季报", Dict(), Function(), label="报告期", arg_type="SingleOption", order=0)
+        ReportDate = Enum("所有", "定期报告", "年报", "中报", "一季报", "三季报", Dict(), Callable(), label="报告期", arg_type="SingleOption", order=0)
         CalcType = Enum("最新", "单季度", "TTM", label="计算方法", arg_type="SingleOption", order=1)
         YearLookBack = Int(0, label="回溯年数", arg_type="Integer", order=2)
         PeriodLookBack = Int(0, label="回溯期数", arg_type="Integer", order=3)

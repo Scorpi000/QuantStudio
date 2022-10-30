@@ -6,12 +6,10 @@ from io import BytesIO
 
 import pandas as pd
 import numpy as np
-import statsmodels.api as sm
-from traits.api import ListStr, Enum, List, ListInt, Int, Str, Dict, Instance
+from traits.api import ListStr, Enum, List, Instance
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 
-from QuantStudio import __QS_Error__
 from QuantStudio.BackTest.BackTestModel import BaseModule
 from QuantStudio.RiskDataBase.RiskDB import RiskTable
 from QuantStudio.RiskModel.RiskModelFun import dropRiskMatrixNA
@@ -22,25 +20,27 @@ from QuantStudio.BackTest.SectionFactor.Portfolio import _QS_plotStatistics
 
 class FMPModel(BaseModule):
     """基于特征因子模拟组合的绩效分析模型"""
-    #Portfolio = Enum(None, arg_type="SingleOption", label="策略组合", order=0)
-    #BenchmarkPortfolio = Enum("无", arg_type="SingleOption", label="基准组合", order=1)
-    AttributeFactors = ListStr(arg_type="MultiOption", label="特征因子", order=2, option_range=())
-    #IndustryFactor = Enum("无", arg_type="SingleOption", label="行业因子", order=3)
-    #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=4)
-    RiskTable = Instance(RiskTable, arg_type="RiskTable", label="风险表", order=5)
-    CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=6)
+    class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
+        #Portfolio = Enum(None, arg_type="SingleOption", label="策略组合", order=0)
+        #BenchmarkPortfolio = Enum("无", arg_type="SingleOption", label="基准组合", order=1)
+        AttributeFactors = ListStr(arg_type="MultiOption", label="特征因子", order=2, option_range=())
+        #IndustryFactor = Enum("无", arg_type="SingleOption", label="行业因子", order=3)
+        #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=4)
+        RiskTable = Instance(RiskTable, arg_type="RiskTable", label="风险表", order=5)
+        CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=6)
+        def __QS_initArgs__(self):
+            DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
+            self.add_trait("Portfolio", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="策略组合", order=0))
+            self.add_trait("BenchmarkPortfolio", Enum(*(["无"]+DefaultNumFactorList), arg_type="SingleOption", label="基准组合", order=1))
+            self.add_trait("AttributeFactors", ListStr(arg_type="MultiOption", label="特征因子", order=2, option_range=tuple(DefaultNumFactorList)))
+            self.AttributeFactors.append(DefaultNumFactorList[-1])
+            self.add_trait("IndustryFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="行业因子", order=3))
+            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=4))
+            self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
+            
     def __init__(self, factor_table, name="因子模拟组合绩效分析模型", sys_args={}, **kwargs):
         self._FactorTable = factor_table
         return super().__init__(name=name, sys_args=sys_args, config_file=None, **kwargs)
-    def __QS_initArgs__(self):
-        DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FactorTable.getFactorMetaData(key="DataType")))
-        self.add_trait("Portfolio", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="策略组合", order=0))
-        self.add_trait("BenchmarkPortfolio", Enum(*(["无"]+DefaultNumFactorList), arg_type="SingleOption", label="基准组合", order=1))
-        self.add_trait("AttributeFactors", ListStr(arg_type="MultiOption", label="特征因子", order=2, option_range=tuple(DefaultNumFactorList)))
-        self.AttributeFactors.append(DefaultNumFactorList[-1])
-        self.add_trait("IndustryFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="行业因子", order=3))
-        self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=4))
-        self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
     def _normalizePortfolio(self, portfolio):
         NegMask = (portfolio<0)
         TotalNegWeight = portfolio[NegMask].sum()
@@ -54,13 +54,13 @@ class FMPModel(BaseModule):
     def __QS_start__(self, mdl, dts, **kwargs):
         if self._isStarted: return ()
         super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
-        self.RiskTable.start(dts=dts)
+        self._QSArgs.RiskTable.start(dts=dts)
         self._Output = {}
-        self._Output["因子暴露"] = pd.DataFrame(columns=self.AttributeFactors)
-        self._Output["风险调整的因子暴露"] = pd.DataFrame(columns=self.AttributeFactors)
-        self._Output["风险贡献"] = pd.DataFrame(columns=self.AttributeFactors+["Alpha"])
-        self._Output["收益贡献"] = pd.DataFrame(columns=self.AttributeFactors+["Alpha"])
-        self._Output["因子收益"] = pd.DataFrame(columns=self.AttributeFactors)
+        self._Output["因子暴露"] = pd.DataFrame(columns=self._QSArgs.AttributeFactors)
+        self._Output["风险调整的因子暴露"] = pd.DataFrame(columns=self._QSArgs.AttributeFactors)
+        self._Output["风险贡献"] = pd.DataFrame(columns=self._QSArgs.AttributeFactors+["Alpha"])
+        self._Output["收益贡献"] = pd.DataFrame(columns=self._QSArgs.AttributeFactors+["Alpha"])
+        self._Output["因子收益"] = pd.DataFrame(columns=self._QSArgs.AttributeFactors)
         self._CurCalcInd = 0
         self._IDs = self._FactorTable.getID()
         return (self._FactorTable, )
@@ -68,18 +68,18 @@ class FMPModel(BaseModule):
         if self._iDT==idt: return 0
         self._iDT = idt
         PreDT = None
-        if self.CalcDTs:
-            if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
-            self._CurCalcInd = self.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
-            if self._CurCalcInd>0: PreDT = self.CalcDTs[self._CurCalcInd - 1]
+        if self._QSArgs.CalcDTs:
+            if idt not in self._QSArgs.CalcDTs[self._CurCalcInd:]: return 0
+            self._CurCalcInd = self._QSArgs.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
+            if self._CurCalcInd>0: PreDT = self._QSArgs.CalcDTs[self._CurCalcInd - 1]
         else:
             self._CurCalcInd = self._Model.DateTimeIndex
             if self._CurCalcInd>0: PreDT = self._Model.DateTimeSeries[self._CurCalcInd - 1]
         if PreDT is None: return 0
-        Portfolio = self._FactorTable.readData(factor_names=[self.Portfolio], dts=[PreDT], ids=self._IDs).iloc[0, 0]
+        Portfolio = self._FactorTable.readData(factor_names=[self._QSArgs.Portfolio], dts=[PreDT], ids=self._IDs).iloc[0, 0]
         Portfolio = self._normalizePortfolio(Portfolio[pd.notnull(Portfolio) & (Portfolio!=0)])
-        if self.BenchmarkPortfolio!="无":
-            BenchmarkPortfolio = self._FactorTable.readData(factor_names=[self.BenchmarkPortfolio], dts=[PreDT], ids=self._IDs).iloc[0, 0]
+        if self._QSArgs.BenchmarkPortfolio!="无":
+            BenchmarkPortfolio = self._FactorTable.readData(factor_names=[self._QSArgs.BenchmarkPortfolio], dts=[PreDT], ids=self._IDs).iloc[0, 0]
             BenchmarkPortfolio = self._normalizePortfolio(BenchmarkPortfolio[pd.notnull(BenchmarkPortfolio) & (BenchmarkPortfolio!=0)])
             IDs = Portfolio.index.union(BenchmarkPortfolio.index)
             if Portfolio.shape[0]>0:
@@ -93,13 +93,13 @@ class FMPModel(BaseModule):
                 BenchmarkPortfolio = pd.Series(0.0, index=IDs)
             Portfolio = Portfolio - BenchmarkPortfolio
         # 计算因子模拟组合
-        self.RiskTable.move(PreDT, **kwargs)
-        CovMatrix = dropRiskMatrixNA(self.RiskTable.readCov(dts=[PreDT], ids=Portfolio.index.tolist()).iloc[0])
-        FactorExpose = self._FactorTable.readData(factor_names=list(self.AttributeFactors), ids=IDs, dts=[PreDT]).iloc[:,0].dropna(axis=0)
+        self._QSArgs.RiskTable.move(PreDT, **kwargs)
+        CovMatrix = dropRiskMatrixNA(self._QSArgs.RiskTable.readCov(dts=[PreDT], ids=Portfolio.index.tolist()).iloc[0])
+        FactorExpose = self._FactorTable.readData(factor_names=list(self._QSArgs.AttributeFactors), ids=IDs, dts=[PreDT]).iloc[:,0].dropna(axis=0)
         IDs = FactorExpose.index.intersection(CovMatrix.index).tolist()
         CovMatrix, FactorExpose = CovMatrix.loc[IDs, IDs], FactorExpose.loc[IDs, :]
-        if self.IndustryFactor!="无":
-            IndustryData = self._FactorTable.readData(factor_names=[self.IndustryFactor], ids=IDs, dts=[PreDT]).iloc[0, 0, :]
+        if self._QSArgs.IndustryFactor!="无":
+            IndustryData = self._FactorTable.readData(factor_names=[self._QSArgs.IndustryFactor], ids=IDs, dts=[PreDT]).iloc[0, 0, :]
             DummyData = DummyVarTo01Var(IndustryData, ignore_nonstring=True)
             DummyData.columns.values[pd.isnull(DummyData.columns)] = "None"
             FactorExpose = pd.merge(FactorExpose, DummyData, left_index=True, right_index=True)
@@ -108,7 +108,7 @@ class FMPModel(BaseModule):
         # 计算持仓对因子模拟组合的投资组合
         Portfolio = self._normalizePortfolio(Portfolio.reindex(index=IDs))
         Beta = np.dot(np.dot(np.dot(np.linalg.inv(np.dot(np.dot(FMPHolding, CovMatrix.values), FMPHolding.T)), FMPHolding), CovMatrix.values), Portfolio.values)
-        Price = self._FactorTable.readData(factor_names=[self.PriceFactor], dts=[PreDT, idt], ids=IDs).iloc[0]
+        Price = self._FactorTable.readData(factor_names=[self._QSArgs.PriceFactor], dts=[PreDT, idt], ids=IDs).iloc[0]
         Return = Price.iloc[1] / Price.iloc[0] - 1
         # 计算各统计指标
         if FactorExpose.shape[1]>self._Output["因子暴露"].shape[1]:
@@ -130,7 +130,7 @@ class FMPModel(BaseModule):
     def __QS_end__(self):
         if not self._isStarted: return 0
         super().__QS_end__()
-        self.RiskTable.end()
+        self._QSArgs.RiskTable.end()
         self._Output["风险贡献占比"] = self._Output["风险贡献"].divide(self._Output["风险贡献"].sum(axis=1), axis=0)
         self._Output["历史均值"] = pd.DataFrame(columns=["因子暴露", "风险调整的因子暴露", "风险贡献", "风险贡献占比", "收益贡献"], index=self._Output["收益贡献"].columns)
         self._Output["历史均值"]["因子暴露"] = self._Output["因子暴露"].mean(axis=0)
@@ -155,12 +155,12 @@ class FMPModel(BaseModule):
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
-        if len(self.ArgNames)>0:
+        if len(self._QSArgs.ArgNames)>0:
             HTML = "参数设置: "
             HTML += '<ul align="left">'
-            for iArgName in self.ArgNames:
+            for iArgName in self._QSArgs.ArgNames:
                 if iArgName=="风险表":
-                    HTML += "<li>"+iArgName+": "+self.RiskTable.Name+"</li>"
+                    HTML += "<li>"+iArgName+": "+self._QSArgs.RiskTable.Name+"</li>"
                 elif iArgName!="计算时点":
                     HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
                 elif self.Args[iArgName]:

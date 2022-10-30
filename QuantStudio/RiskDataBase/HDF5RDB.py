@@ -45,8 +45,9 @@ class _RiskTable(RiskTable):
 
 class HDF5RDB(RiskDB):
     """基于 HDF5 文件的风险数据库"""
-    Name = Str("HDF5RDB", arg_type="String", label="名称", order=-100)
-    MainDir = Directory(label="主目录", arg_type="Directory", order=0)
+    class __QS_ArgClass__(RiskDB.__QS_ArgClass__):
+        Name = Str("HDF5RDB", arg_type="String", label="名称", order=-100)
+        MainDir = Directory(label="主目录", arg_type="Directory", order=0)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._TableDT = {}#{表名：[时点]}
         self._DataLock = Lock()
@@ -54,12 +55,12 @@ class HDF5RDB(RiskDB):
         self._isAvailable = False
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"HDF5RDBConfig.json" if config_file is None else config_file), **kwargs)
     def connect(self):
-        if not os.path.isdir(self.MainDir): raise __QS_Error__("不存在 HDF5RDB 的主目录: %s!" % self.MainDir)
-        AllTables = listDirFile(self.MainDir, suffix=self._Suffix)
+        if not os.path.isdir(self._QSArgs.MainDir): raise __QS_Error__("不存在 HDF5RDB 的主目录: %s!" % self._QSArgs.MainDir)
+        AllTables = listDirFile(self._QSArgs.MainDir, suffix=self._Suffix)
         TableDT = {}#{表名：[时点]}
         with self._DataLock:
             for iTable in AllTables:
-                with h5py.File(self.MainDir+os.sep+iTable+"."+self._Suffix, mode="r") as iFile:
+                with h5py.File(self._QSArgs.MainDir+os.sep+iTable+"."+self._Suffix, mode="r") as iFile:
                     if "Cov" in iFile:
                         iDTs = sorted(iFile["Cov"])
                         TableDT[iTable] = [dt.datetime.strptime(ijDT, "%Y-%m-%d %H:%M:%S.%f") for ijDT in iDTs]
@@ -79,7 +80,7 @@ class HDF5RDB(RiskDB):
         return _RiskTable(table_name, self)
     def setTableMetaData(self, table_name, key=None, value=None, meta_data=None):
         with self._DataLock:
-            with h5py.File(self.MainDir+os.sep+table_name+"."+self._Suffix, mode="a") as File:
+            with h5py.File(self._QSArgs.MainDir+os.sep+table_name+"."+self._Suffix, mode="a") as File:
                 if meta_data is None: meta_data = {}
                 if key is not None: meta_data[key] = value
                 for iKey, iValue in meta_data.items():
@@ -94,18 +95,18 @@ class HDF5RDB(RiskDB):
         if old_table_name not in self._TableDT: raise __QS_Error__("表: '%s' 不存在!" % old_table_name)
         if (new_table_name!=old_table_name) and (new_table_name in self._TableDT): raise __QS_Error__("表: '%s' 已存在!" % new_table_name)
         with self._DataLock:
-            os.rename(self.MainDir+os.sep+old_table_name+"."+self._Suffix, self.MainDir+os.sep+new_table_name+"."+self._Suffix)
+            os.rename(self._QSArgs.MainDir+os.sep+old_table_name+"."+self._Suffix, self._QSArgs.MainDir+os.sep+new_table_name+"."+self._Suffix)
         self._TableDT[new_table_name] = self._TableDT.pop(old_table_name)
         return 0
     def deleteTable(self, table_name):
         with self._DataLock:
-            iFilePath = self.MainDir+os.sep+table_name+"."+self._Suffix
+            iFilePath = self._QSArgs.MainDir+os.sep+table_name+"."+self._Suffix
             if os.path.isfile(iFilePath): os.remove(iFilePath)
         self._TableDT.pop(table_name, None)
         return 0
     def deleteDateTime(self, table_name, dts):
         with self._DataLock:
-            with h5py.File(self.MainDir+os.sep+table_name+"."+self._Suffix, mode="a") as File:
+            with h5py.File(self._QSArgs.MainDir+os.sep+table_name+"."+self._Suffix, mode="a") as File:
                 CovGroup = File["Cov"]
                 for iDT in dts:
                     if iDT not in self._TableDT[table_name]: continue
@@ -115,7 +116,7 @@ class HDF5RDB(RiskDB):
         if not self._TableDT[table_name]: self.deleteTable(table_name)
         return 0
     def writeData(self, table_name, idt, icov, **kwargs):
-        FilePath = self.MainDir+os.sep+table_name+"."+self._Suffix
+        FilePath = self._QSArgs.MainDir+os.sep+table_name+"."+self._Suffix
         with self._DataLock:
             if not os.path.isfile(FilePath): open(FilePath, mode="a").close()# h5py 直接创建文件名包含中文的文件会报错.
             with h5py.File(FilePath, mode="a") as File:
@@ -284,8 +285,9 @@ class _FactorRiskTable(FactorRT):
 
 class HDF5FRDB(FactorRDB):
     """基于 HDF5 文件的多因子风险数据库"""
-    Name = Str("HDF5FRDB", arg_type="String", label="名称", order=-100)
-    MainDir = Directory(label="主目录", arg_type="Directory", order=0)
+    class __QS_ArgClass__(FactorRDB.__QS_ArgClass__):
+        Name = Str("HDF5FRDB", arg_type="String", label="名称", order=-100)
+        MainDir = Directory(label="主目录", arg_type="Directory", order=0)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._TableDT = {}#{表名：[时点]}
         self._DataLock = Lock()
@@ -293,12 +295,12 @@ class HDF5FRDB(FactorRDB):
         self._isAvailable = False
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"HDF5FRDBConfig.json" if config_file is None else config_file), **kwargs)
     def connect(self):
-        if not os.path.isdir(self.MainDir): raise __QS_Error__("不存在 HDF5FRDB 的主目录: %s!" % self.MainDir)
-        AllTables = listDirFile(self.MainDir, suffix=self._Suffix)
+        if not os.path.isdir(self._QSArgs.MainDir): raise __QS_Error__("不存在 HDF5FRDB 的主目录: %s!" % self._QSArgs.MainDir)
+        AllTables = listDirFile(self._QSArgs.MainDir, suffix=self._Suffix)
         TableDT = {}#{表名：[时点]}
         with self._DataLock:
             for iTable in AllTables:
-                with h5py.File(self.MainDir+os.sep+iTable+"."+self._Suffix, mode="r") as iFile:
+                with h5py.File(self._QSArgs.MainDir+os.sep+iTable+"."+self._Suffix, mode="r") as iFile:
                     if "SpecificRisk" in iFile:
                         iDTs = sorted(iFile["SpecificRisk"])
                         TableDT[iTable] = [dt.datetime.strptime(ijDT, "%Y-%m-%d %H:%M:%S.%f") for ijDT in iDTs]
@@ -326,7 +328,7 @@ class HDF5FRDB(FactorRDB):
         iDTStr = idt.strftime("%Y-%m-%d %H:%M:%S.%f")
         #StrType = h5py.special_dtype(vlen=str)
         StrType = h5py.string_dtype(encoding="utf-8")
-        FilePath = self.MainDir+os.sep+table_name+"."+self._Suffix
+        FilePath = self._QSArgs.MainDir+os.sep+table_name+"."+self._Suffix
         with self._DataLock:
             if not os.path.isfile(FilePath): open(FilePath, mode="a").close()# h5py 直接创建文件名包含中文的文件会报错.
             with h5py.File(FilePath, mode="a") as File:

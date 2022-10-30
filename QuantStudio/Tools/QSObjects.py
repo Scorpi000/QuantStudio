@@ -4,7 +4,6 @@ import re
 import uuid
 import pickle
 import mmap
-import logging
 from multiprocessing import Queue, Lock
 from collections import OrderedDict
 
@@ -462,7 +461,7 @@ class QSSQLite3Object(QSSQLObject):
             FactorIndex = list(set(FieldDataType).difference(field_names))
             for iField in FactorIndex:
                 FieldTypes[iField] = ("text" if FieldDataType[iField]=="string" else "real")
-            self.createTable(table_name, field_types=FieldTypes)
+            self.createDBTable(table_name, field_types=FieldTypes)
             # 导入数据
             FactorNameStr = ", ".join(FactorIndex)
             SQLStr = "INSERT INTO %s (datetime, code, %s) SELECT datetime, code, %s FROM %s"

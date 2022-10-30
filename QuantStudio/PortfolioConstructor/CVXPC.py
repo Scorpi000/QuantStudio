@@ -1,14 +1,10 @@
 # -*- coding: utf-8 -*-
 """基于 CVXPY 的投资组合构造器"""
-import os
-from xmlrpc.client import boolean
-
 import numpy as np
-import pandas as pd
 import cvxpy as cvx
 
 from .BasePC import PortfolioConstructor
-from QuantStudio import __QS_MainPath__, __QS_Error__
+from QuantStudio import __QS_Error__
 
 class CVXPC(PortfolioConstructor):
     """基于 CVXPY 模块的投资组合构造器"""
@@ -115,11 +111,11 @@ class CVXPC(PortfolioConstructor):
                                 "num_iters":self._Model.solver_stats.num_iters})
     def _genOption(self):
         Options = {"verbose":False}
-        Options.update(self.OptimOption)
+        Options.update(self._QSArgs.OptimOption)
         return Options
     def _solve(self, nvar, prepared_objective, prepared_constraints, prepared_option):
-        if self.OptimObjective.Type=="均值方差目标": return self._solveMeanVarianceModel(nvar, prepared_objective, prepared_constraints, prepared_option)
-        elif self.OptimObjective.Type=="风险预算目标": return self._solveRiskBudgetModel(nvar, prepared_objective, prepared_constraints, prepared_option)
-        elif self.OptimObjective.Type=="最大分散化目标": return self._solveMaxDiversificationModel(nvar, prepared_objective, prepared_constraints, prepared_option)
-        else: raise __QS_Error__("不支持的优化目标: '%s'" % self.OptimObjective.Type)
+        if self._QSArgs.OptimObjective.Type=="均值方差目标": return self._solveMeanVarianceModel(nvar, prepared_objective, prepared_constraints, prepared_option)
+        elif self._QSArgs.OptimObjective.Type=="风险预算目标": return self._solveRiskBudgetModel(nvar, prepared_objective, prepared_constraints, prepared_option)
+        elif self._QSArgs.OptimObjective.Type=="最大分散化目标": return self._solveMaxDiversificationModel(nvar, prepared_objective, prepared_constraints, prepared_option)
+        else: raise __QS_Error__("不支持的优化目标: '%s'" % self._QSArgs.OptimObjective.Type)
         

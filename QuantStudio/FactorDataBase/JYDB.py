@@ -8,7 +8,7 @@ import datetime as dt
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, Int, Str, List, ListStr, Dict, Function, File
+from traits.api import Enum, Int, Str, List, ListStr, Dict, Callable, File
 
 from QuantStudio.Tools.api import Panel
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
@@ -239,8 +239,8 @@ class _FinancialIndicatorTable(_FinancialTable):
         else:
             raise __QS_Error__("FinancialIndicatorTable 类型的因子表 '%s' 中的证券为不支持的证券类型!" % (self.Name, ))
     def _prepareRawDataAStock(self, factor_names, ids, dts, args={}):
-        ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
-        IDField = args.get("ID字段", self.IDField)
+        ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self._QSArgs.DTField), "DBFieldName"]
+        IDField = args.get("ID字段", self._QSArgs.IDField)
         IDField = self._DBTableName+"."+self._FactorInfo.loc[(IDField if IDField is not None else self._IDField), "DBFieldName"]
         # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
         SQLStr = "SELECT "+self._getIDField(args=args)+" AS ID, "
@@ -268,9 +268,9 @@ class _FinancialIndicatorTable(_FinancialTable):
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
     def _prepareRawDataMF(self, factor_names, ids, dts, args={}):
-        IDField = args.get("ID字段", self.IDField)
+        IDField = args.get("ID字段", self._QSArgs.IDField)
         IDField = self._DBTableName+"."+self._FactorInfo.loc[(IDField if IDField is not None else self._IDField), "DBFieldName"]
-        ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self.DTField), "DBFieldName"]
+        ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self._QSArgs.DTField), "DBFieldName"]
         # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
         SQLStr = "SELECT "+self._getIDField(args=args)+" AS ID, "
         SQLStr += "MF_BalanceSheetNew.InfoPublDate, "
@@ -398,7 +398,7 @@ class _AnalystConsensusTable(_JY_SQL_Table):
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
-        if args.get("预筛选ID", self.PreFilterID):
+        if args.get("预筛选ID", self._QSArgs.PreFilterID):
             SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
         else:
             SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
@@ -453,7 +453,7 @@ class _AnalystConsensusTable(_JY_SQL_Table):
                 with shelve.open(ANNReportPath) as ANN_ReportFile:
                     ANNReportData = ANN_ReportFile["RawData"]
             else:
-                ANNReportData = _prepareReportANNRawData(self._FactorDB, ids, pre_filter_id=args.get("预筛选ID", self.PreFilterID))
+                ANNReportData = _prepareReportANNRawData(self._FactorDB, ids, pre_filter_id=args.get("预筛选ID", self._QSArgs.PreFilterID))
             ANNReportData = ANNReportData.set_index(["ID"])
         raw_data = raw_data.set_index(["ID"])
         Data = {}
@@ -538,7 +538,7 @@ def _DefaultOperator(f, idt, iid, x, args):
 class _AnalystEstDetailTable(_JY_SQL_Table):
     """分析师盈利预测明细表"""
     class __QS_ArgClass__(_JY_SQL_Table.__QS_ArgClass__):
-        Operator = Function(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
+        Operator = Callable(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
         ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
         ForwardYears = List(default=[0], label="向前年数", arg_type="ArgList", order=2)
         AdditionalFields = ListStr(arg_type="MultiOption", label="附加字段", order=3, option_range=())
@@ -595,7 +595,7 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(AllFields)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
-        if args.get("预筛选ID", self.PreFilterID):
+        if args.get("预筛选ID", self._QSArgs.PreFilterID):
             SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
         else:
             SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
@@ -609,7 +609,7 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
         if not RawData: RawData = pd.DataFrame(columns=["日期", "ID", self._ReportDateField]+AllFields)
         else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["日期", "ID", self._ReportDateField]+AllFields)
         RawData._QS_ANNReport = True
-        RawData._QS_PreFilterID = args.get("预筛选ID", self.PreFilterID)
+        RawData._QS_PreFilterID = args.get("预筛选ID", self._QSArgs.PreFilterID)
         if RawData.shape[0]==0: return RawData
         RawData = self._adjustRawDataByRelatedField(RawData, AllFields)
         return RawData
@@ -629,7 +629,7 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
             with shelve.open(ANNReportPath) as ANN_ReportFile:
                 ANNReportData = ANN_ReportFile["RawData"]
         else:
-            ANNReportData = _prepareReportANNRawData(self._FactorDB, ids, pre_filter_id=args.get("预筛选ID", self.PreFilterID))
+            ANNReportData = _prepareReportANNRawData(self._FactorDB, ids, pre_filter_id=args.get("预筛选ID", self._QSArgs.PreFilterID))
         ANNReportData = ANNReportData.set_index(["ID"])
         AllIDs = set(raw_data.index)
         Data = {}
@@ -676,7 +676,7 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
 class _AnalystRatingDetailTable(_JY_SQL_Table):
     """分析师投资评级明细表"""
     class __QS_ArgClass__(_JY_SQL_Table.__QS_ArgClass__):
-        Operator = Function(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
+        Operator = Callable(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
         ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
         AdditionalFields = ListStr(arg_type="MultiOption", label="附加字段", order=2, option_range=())
         Deduplication = ListStr(arg_type="MultiOption", label="去重字段", order=3, option_range=())
@@ -724,7 +724,7 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(AllFields)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
-        if args.get("预筛选ID", self.PreFilterID):
+        if args.get("预筛选ID", self._QSArgs.PreFilterID):
             SQLStr += "WHERE ("+genSQLInCondition(self._MainTableName+"."+self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000)+") "
         else:
             SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "

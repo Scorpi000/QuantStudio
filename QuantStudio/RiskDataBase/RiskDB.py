@@ -14,14 +14,18 @@ from multiprocessing import Process, Queue
 
 from QuantStudio.Tools.DateTimeFun import cutDateTime
 from QuantStudio.RiskModel.RiskModelFun import decomposeCov2Corr
-from QuantStudio import __QS_Object__, __QS_Error__
+from QuantStudio import __QS_Object__, __QS_Error__, QSArgs
 from QuantStudio.Tools.api import Panel
 
 # 风险数据库基类, 必须存储的数据有:
 # 风险矩阵: Cov, Panel(items=[时点], major_axis=[ID], minor_axis=[ID])
 class RiskDB(__QS_Object__):
     """风险数据库"""
-    Name = Str("风险数据库", arg_type="String", label="名称", order=-100)
+    class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
+        Name = Str("风险数据库", arg_type="String", label="名称", order=-100)
+    @property
+    def Name(self):
+        return self._QSArgs.Name
     # 链接数据库
     def connect(self):
         return 0
@@ -57,15 +61,15 @@ class RiskDB(__QS_Object__):
         return 0
 
 # 风险表的遍历模式参数对象
-class _ErgodicMode(__QS_Object__):
+class _ErgodicMode(QSArgs):
     """遍历模式"""
     ForwardPeriod = Int(12, arg_type="Integer", label="向前缓冲时点数", order=0)
     BackwardPeriod = Int(0, arg_type="Integer", label="向后缓冲时点数", order=1)
     CacheSize = Int(300, arg_type="Integer", label="缓冲区大小", order=2)# 以 MB 为单位
     ErgodicDTs = List(arg_type="DateTimeList", label="遍历时点", order=3)
     ErgodicIDs = List(arg_type="IDList", label="遍历ID", order=4)
-    def __init__(self, sys_args={}, **kwargs):
-        super().__init__(sys_args=sys_args, **kwargs)
+    def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
+        super().__init__(owner=owner, sys_args=sys_args, config_file=config_file, **kwargs)
         self._isStarted = False
         self._CurDT = None
         self._CacheData = {}
@@ -73,6 +77,62 @@ class _ErgodicMode(__QS_Object__):
         state = self.__dict__.copy()
         if "_CacheDataProcess" in state: state["_CacheDataProcess"] = None
         return state
+    def start(self, dts, **kwargs):
+        if self._isStarted: return 0
+        self._DateTimes = np.array((self._Owner.getDateTime() if not self.ErgodicDTs else self.ErgodicDTs), dtype="O")
+        if self._DateTimes.shape[0]==0: raise __QS_Error__("风险表: '%s' 的默认时间序列为空, 请设置参数 '遍历模式-遍历时点' !" % self._Owner.Name)
+        self._IDs = (self._Owner.getID() if not self.ErgodicIDs else list(self.ErgodicIDs))
+        if not self._IDs: raise __QS_Error__("风险表: '%s' 的默认 ID 序列为空, 请设置参数 '遍历模式-遍历ID' !" % self._Owner.Name)
+        self._CurInd = -1
+        self._DTNum = self._DateTimes.shape[0]# 时点数
+        self._CacheDTs = []
+        self._CacheData = {}
+        self._Queue2SubProcess = Queue()
+        self._Queue2MainProcess = Queue()
+        if self.CacheSize>0:
+            if os.name=="nt":
+                self._TagName = str(uuid.uuid1())# 共享内存的 tag
+                self._MMAPCacheData = None
+            else:
+                self._TagName = None# 共享内存的 tag
+                self._MMAPCacheData = mmap.mmap(-1, int(self.CacheSize*2**20))# 当前共享内存缓冲区
+            self._CacheDataProcess = Process(target=_prepareRTMMAPCacheData, args=(self._Owner, self._MMAPCacheData), daemon=True)
+            self._CacheDataProcess.start()
+            if os.name=="nt": self._MMAPCacheData = mmap.mmap(-1, int(self.CacheSize*2**20), tagname=self._TagName)# 当前共享内存缓冲区
+        self._isStarted = True
+        return 0
+    def move(self, idt, *args, **kwargs):
+        if idt==self._CurDT: return 0
+        self._CurDT = idt
+        PreInd = self._CurInd
+        self._CurInd = PreInd + np.sum(self._DateTimes[PreInd+1:]<=idt)
+        if (self.CacheSize>0) and (self._CurInd>-1) and ((not self._CacheDTs) or (self._DateTimes[self._CurInd]>self._CacheDTs[-1])):# 需要读入缓冲区的数据
+            self._Queue2SubProcess.put((None,None))
+            DataLen = self._Queue2MainProcess.get()
+            CacheData = b""
+            while DataLen>0:
+                self._MMAPCacheData.seek(0)
+                CacheData += self._MMAPCacheData.read(DataLen)
+                self._Queue2SubProcess.put(DataLen)
+                DataLen = self._Queue2MainProcess.get()
+            self._CacheData = pickle.loads(CacheData)
+            if self._CurInd==PreInd+1:# 没有跳跃, 连续型遍历
+                self._Queue2SubProcess.put((self._CurInd, None))
+                self._CacheDTs = self._DateTimes[max((0, self._CurInd-self.BackwardPeriod)):min((self._DTNum, self._CurInd+self.ForwardPeriod+1))].tolist()
+            else:# 出现了跳跃
+                LastCacheInd = (self._DateTimes.searchsorted(self._CacheDTs[-1]) if self._CacheDTs else self._CurInd-1)
+                self._Queue2SubProcess.put((LastCacheInd+1, None))
+                self._CacheDTs = self._DateTimes[max((0, LastCacheInd+1-self.BackwardPeriod)):min((self._DTNum, LastCacheInd+1+self.ForwardPeriod+1))].tolist()
+        return 0
+    def end(self):
+        if not self._isStarted: return 0
+        self._CacheData = None
+        self._Queue2SubProcess.put(None)
+        self._Queue2SubProcess = self._Queue2MainProcess = self._CacheDataProcess = None
+        self._isStarted = False
+        self._CurDT = None
+        self._MMAPCacheData = None
+        return 0
 
 def _prepareRTMMAPCacheData(rt, mmap_cache):
     CacheData, CacheDTs, MMAPCacheData, DTNum = {}, [], mmap_cache, len(rt.ErgodicMode._DateTimes)
@@ -111,13 +171,15 @@ def _prepareRTMMAPCacheData(rt, mmap_cache):
 
 # 风险表基类
 class RiskTable(__QS_Object__):
-    ErgodicMode = Instance(_ErgodicMode, arg_type="ArgObject", label="遍历模式", order=-1)
+    class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
+        ErgodicMode = Instance(_ErgodicMode, arg_type="ArgObject", label="遍历模式", order=-1)
+        def __QS_initArgs__(self):
+            self.ErgodicMode = _ErgodicMode()
+    
     def __init__(self, name, rdb, sys_args={}, config_file=None, **kwargs):
         self._Name = name
         self._RiskDB = rdb# 风险表所属的风险库
         return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
-    def __QS_initArgs__(self):
-        self.ErgodicMode = _ErgodicMode()
     @property
     def Name(self):
         return self._Name
@@ -144,7 +206,7 @@ class RiskTable(__QS_Object__):
     def readCov(self, dts, ids=None):
         NonCachedDTs, Cov = [], {}
         for iDT in dts:
-            iCacheData = self.ErgodicMode._CacheData.get(iDT)
+            iCacheData = self._QSArgs.ErgodicMode._CacheData.get(iDT)
             if iCacheData is None:
                 NonCachedDTs.append(iDT)
                 continue
@@ -167,61 +229,11 @@ class RiskTable(__QS_Object__):
         return Panel(Corr, items=Cov.items, major_axis=Cov.major_axis, minor_axis=Cov.minor_axis)
     # -----------------------遍历模式---------------------------------------
     def start(self, dts, **kwargs):
-        if self.ErgodicMode._isStarted: return 0
-        self.ErgodicMode._DateTimes = np.array((self.getDateTime() if not self.ErgodicMode.ErgodicDTs else self.ErgodicMode.ErgodicDTs), dtype="O")
-        if self.ErgodicMode._DateTimes.shape[0]==0: raise __QS_Error__("风险表: '%s' 的默认时间序列为空, 请设置参数 '遍历模式-遍历时点' !" % self._Name)
-        self.ErgodicMode._IDs = (self.getID() if not self.ErgodicMode.ErgodicIDs else list(self.ErgodicMode.ErgodicIDs))
-        if not self.ErgodicMode._IDs: raise __QS_Error__("风险表: '%s' 的默认 ID 序列为空, 请设置参数 '遍历模式-遍历ID' !" % self._Name)
-        self.ErgodicMode._CurInd = -1
-        self.ErgodicMode._DTNum = self.ErgodicMode._DateTimes.shape[0]# 时点数
-        self.ErgodicMode._CacheDTs = []
-        self.ErgodicMode._CacheData = {}
-        self.ErgodicMode._Queue2SubProcess = Queue()
-        self.ErgodicMode._Queue2MainProcess = Queue()
-        if self.ErgodicMode.CacheSize>0:
-            if os.name=="nt":
-                self.ErgodicMode._TagName = str(uuid.uuid1())# 共享内存的 tag
-                self._MMAPCacheData = None
-            else:
-                self.ErgodicMode._TagName = None# 共享内存的 tag
-                self._MMAPCacheData = mmap.mmap(-1, int(self.ErgodicMode.CacheSize*2**20))# 当前共享内存缓冲区
-            self.ErgodicMode._CacheDataProcess = Process(target=_prepareRTMMAPCacheData, args=(self, self._MMAPCacheData), daemon=True)
-            self.ErgodicMode._CacheDataProcess.start()
-            if os.name=="nt": self._MMAPCacheData = mmap.mmap(-1, int(self.ErgodicMode.CacheSize*2**20), tagname=self.ErgodicMode._TagName)# 当前共享内存缓冲区
-        self.ErgodicMode._isStarted = True
-        return 0
+        return self._QSArgs.ErgodicMode.start(dts, **kwargs)
     def move(self, idt, *args, **kwargs):
-        if idt==self.ErgodicMode._CurDT: return 0
-        self.ErgodicMode._CurDT = idt
-        PreInd = self.ErgodicMode._CurInd
-        self.ErgodicMode._CurInd = PreInd + np.sum(self.ErgodicMode._DateTimes[PreInd+1:]<=idt)
-        if (self.ErgodicMode.CacheSize>0) and (self.ErgodicMode._CurInd>-1) and ((not self.ErgodicMode._CacheDTs) or (self.ErgodicMode._DateTimes[self.ErgodicMode._CurInd]>self.ErgodicMode._CacheDTs[-1])):# 需要读入缓冲区的数据
-            self.ErgodicMode._Queue2SubProcess.put((None,None))
-            DataLen = self.ErgodicMode._Queue2MainProcess.get()
-            CacheData = b""
-            while DataLen>0:
-                self._MMAPCacheData.seek(0)
-                CacheData += self._MMAPCacheData.read(DataLen)
-                self.ErgodicMode._Queue2SubProcess.put(DataLen)
-                DataLen = self.ErgodicMode._Queue2MainProcess.get()
-            self.ErgodicMode._CacheData = pickle.loads(CacheData)
-            if self.ErgodicMode._CurInd==PreInd+1:# 没有跳跃, 连续型遍历
-                self.ErgodicMode._Queue2SubProcess.put((self.ErgodicMode._CurInd, None))
-                self.ErgodicMode._CacheDTs = self.ErgodicMode._DateTimes[max((0, self.ErgodicMode._CurInd-self.ErgodicMode.BackwardPeriod)):min((self.ErgodicMode._DTNum, self.ErgodicMode._CurInd+self.ErgodicMode.ForwardPeriod+1))].tolist()
-            else:# 出现了跳跃
-                LastCacheInd = (self.ErgodicMode._DateTimes.searchsorted(self.ErgodicMode._CacheDTs[-1]) if self.ErgodicMode._CacheDTs else self.ErgodicMode._CurInd-1)
-                self.ErgodicMode._Queue2SubProcess.put((LastCacheInd+1, None))
-                self.ErgodicMode._CacheDTs = self.ErgodicMode._DateTimes[max((0, LastCacheInd+1-self.ErgodicMode.BackwardPeriod)):min((self.ErgodicMode._DTNum, LastCacheInd+1+self.ErgodicMode.ForwardPeriod+1))].tolist()
-        return 0
+        return self._QSArgs.ErgodicMode.move(idt, *args, **kwargs)
     def end(self):
-        if not self.ErgodicMode._isStarted: return 0
-        self.ErgodicMode._CacheData = None
-        self.ErgodicMode._Queue2SubProcess.put(None)
-        self.ErgodicMode._Queue2SubProcess = self.ErgodicMode._Queue2MainProcess = self.ErgodicMode._CacheDataProcess = None
-        self.ErgodicMode._isStarted = False
-        self.ErgodicMode._CurDT = None
-        self._MMAPCacheData = None
-        return 0
+        return self._QSArgs.ErgodicMode.end()
 
 # 多因子风险数据库基类, 即风险矩阵可以分解成 V=X*F*X'+D 的模型, 其中 D 是对角矩阵, 必须存储的数据有:
 # 因子风险矩阵: FactorCov(F), Panel(items=[时点], major_axis=[因子], minor_axis=[因子])
@@ -276,8 +288,40 @@ def _prepareFRTMMAPCacheData(rt, mmap_cache):
                                           "FactorData": FactorData.loc[:, iDT]}
                     FactorCov = SpecificRisk = FactorData = None
     return 0
+# 风险表的遍历模式参数对象
+class _FactorErgodicMode(_ErgodicMode):
+    """遍历模式"""
+    def start(self, dts, **kwargs):
+        if self._isStarted: return 0
+        self._DateTimes = np.array((self._Owner.getDateTime() if not self.ErgodicDTs else self.ErgodicDTs), dtype="O")
+        if self._DateTimes.shape[0]==0: raise __QS_Error__("风险表: '%s' 的默认时间序列为空, 请设置参数 '遍历模式-遍历时点' !" % self._Name)
+        self._IDs = (self._Owner.getID() if not self.ErgodicIDs else list(self.ErgodicIDs))
+        if not self._IDs: raise __QS_Error__("风险表: '%s' 的默认 ID 序列为空, 请设置参数 '遍历模式-遍历ID' !" % self._Name)
+        self._CurInd = -1
+        self._DTNum = self._DateTimes.shape[0]# 时点数
+        self._CacheDTs = []
+        self._CacheData = {}
+        self._Queue2SubProcess = Queue()
+        self._Queue2MainProcess = Queue()
+        if self.CacheSize>0:
+            if os.name=="nt":
+                self._TagName = str(uuid.uuid1())# 共享内存的 tag
+                self._MMAPCacheData = None
+            else:
+                self._TagName = None# 共享内存的 tag
+                self._MMAPCacheData = mmap.mmap(-1, int(self.CacheSize*2**20))# 当前共享内存缓冲区
+            self._CacheDataProcess = Process(target=_prepareFRTMMAPCacheData, args=(self, self._MMAPCacheData), daemon=True)
+            self._CacheDataProcess.start()
+            if os.name=="nt": self._MMAPCacheData = mmap.mmap(-1, int(self.CacheSize*2**20), tagname=self._TagName)# 当前共享内存缓冲区
+        self._isStarted = True
+        return 0
+
 # 多因子风险表基类
 class FactorRT(RiskTable):
+    class __QS_ArgClass__(RiskTable.__QS_ArgClass__):
+        ErgodicMode = Instance(_FactorErgodicMode, arg_type="ArgObject", label="遍历模式", order=-1)
+        def __QS_initArgs__(self):
+            self.ErgodicMode = _FactorErgodicMode()
     # -------------------------------维度信息-----------------------------------
     @property
     def FactorNames(self):
@@ -318,7 +362,7 @@ class FactorRT(RiskTable):
         return Panel(Data, items=dts)
     def readCov(self, dts, ids=None):
         Data = {}
-        CachedDTs = sorted(set(dts).intersection(self.ErgodicMode._CacheData))
+        CachedDTs = sorted(set(dts).intersection(self._QSArgs.ErgodicMode._CacheData))
         if CachedDTs:
             FactorCov = self.readFactorCov(dts=CachedDTs)
             FactorData = self.readFactorData(dts=CachedDTs, ids=ids)
@@ -332,7 +376,7 @@ class FactorRT(RiskTable):
                     iFactorData = FactorData.loc[:, iDT]
                 iCov = np.dot(np.dot(iFactorData.values, FactorCov[iDT].values), iFactorData.values.T) + np.diag(SpecificRisk.loc[iDT].values**2)
                 Data[iDT] = pd.DataFrame(iCov, index=iIDs, columns=iIDs)
-        NewDTs = sorted(set(dts).difference(self.ErgodicMode._CacheData))
+        NewDTs = sorted(set(dts).difference(self._QSArgs.ErgodicMode._CacheData))
         if NewDTs: Data.update(dict(self.__QS_readCov__(dts=NewDTs, ids=ids)))
         return Panel(Data, items=dts)
     # 读取因子风险矩阵
@@ -341,7 +385,7 @@ class FactorRT(RiskTable):
     def readFactorCov(self, dts):
         NonCachedDTs, Cov = [], {}
         for iDT in dts:
-            iCacheData = self.ErgodicMode._CacheData.get(iDT)
+            iCacheData = self._QSArgs.ErgodicMode._CacheData.get(iDT)
             if iCacheData is None:
                 NonCachedDTs.append(iDT)
                 continue
@@ -355,7 +399,7 @@ class FactorRT(RiskTable):
     def readSpecificRisk(self, dts, ids=None):
         NonCachedDTs, Data = [], {}
         for iDT in dts:
-            iCacheData = self.ErgodicMode._CacheData.get(iDT)
+            iCacheData = self._QSArgs.ErgodicMode._CacheData.get(iDT)
             if iCacheData is None:
                 NonCachedDTs.append(iDT)
                 continue
@@ -373,7 +417,7 @@ class FactorRT(RiskTable):
     def readFactorData(self, dts, ids=None):
         NonCachedDTs, Data = [], {}
         for iDT in dts:
-            iCacheData = self.ErgodicMode._CacheData.get(iDT)
+            iCacheData = self._QSArgs.ErgodicMode._CacheData.get(iDT)
             if iCacheData is None:
                 NonCachedDTs.append(iDT)
                 continue
@@ -391,27 +435,3 @@ class FactorRT(RiskTable):
     # 读取残余收益率
     def readSpecificReturn(self, dts, ids=None):
         return pd.DataFrame(index=dts, columns=ids)
-    def start(self, dts, **kwargs):
-        if self.ErgodicMode._isStarted: return 0
-        self.ErgodicMode._DateTimes = np.array((self.getDateTime() if not self.ErgodicMode.ErgodicDTs else self.ErgodicMode.ErgodicDTs), dtype="O")
-        if self.ErgodicMode._DateTimes.shape[0]==0: raise __QS_Error__("风险表: '%s' 的默认时间序列为空, 请设置参数 '遍历模式-遍历时点' !" % self._Name)
-        self.ErgodicMode._IDs = (self.getID() if not self.ErgodicMode.ErgodicIDs else list(self.ErgodicMode.ErgodicIDs))
-        if not self.ErgodicMode._IDs: raise __QS_Error__("风险表: '%s' 的默认 ID 序列为空, 请设置参数 '遍历模式-遍历ID' !" % self._Name)
-        self.ErgodicMode._CurInd = -1
-        self.ErgodicMode._DTNum = self.ErgodicMode._DateTimes.shape[0]# 时点数
-        self.ErgodicMode._CacheDTs = []
-        self.ErgodicMode._CacheData = {}
-        self.ErgodicMode._Queue2SubProcess = Queue()
-        self.ErgodicMode._Queue2MainProcess = Queue()
-        if self.ErgodicMode.CacheSize>0:
-            if os.name=="nt":
-                self.ErgodicMode._TagName = str(uuid.uuid1())# 共享内存的 tag
-                self._MMAPCacheData = None
-            else:
-                self.ErgodicMode._TagName = None# 共享内存的 tag
-                self._MMAPCacheData = mmap.mmap(-1, int(self.ErgodicMode.CacheSize*2**20))# 当前共享内存缓冲区
-            self.ErgodicMode._CacheDataProcess = Process(target=_prepareFRTMMAPCacheData, args=(self, self._MMAPCacheData), daemon=True)
-            self.ErgodicMode._CacheDataProcess.start()
-            if os.name=="nt": self._MMAPCacheData = mmap.mmap(-1, int(self.ErgodicMode.CacheSize*2**20), tagname=self.ErgodicMode._TagName)# 当前共享内存缓冲区
-        self.ErgodicMode._isStarted = True
-        return 0

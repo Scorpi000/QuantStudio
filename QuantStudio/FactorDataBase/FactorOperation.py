@@ -2,11 +2,11 @@
 """因子运算"""
 import os
 import shelve
-from multiprocessing import Queue, Event, Lock
+from multiprocessing import Queue, Event
 
 import pandas as pd
 import numpy as np
-from traits.api import Function, Dict, Enum, List, Int, Instance
+from traits.api import Callable, Dict, Enum, List, Int, Instance
 
 from QuantStudio import __QS_Error__
 from QuantStudio.FactorDataBase.FactorDB import Factor
@@ -18,7 +18,7 @@ def _DefaultOperator(f, idt, iid, x, args):
 class DerivativeFactor(Factor):
     """衍生因子"""
     class __QS_ArgClass__(Factor.__QS_ArgClass__):
-        Operator = Function(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
+        Operator = Callable(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
         ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
         DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=2)
     

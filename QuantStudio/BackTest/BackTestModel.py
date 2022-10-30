@@ -6,7 +6,6 @@ import webbrowser
 import numpy as np
 import pandas as pd
 from progressbar import ProgressBar
-from traits.api import List, Str
 from traitsui.api import Group
 from lxml import etree
 
@@ -16,7 +15,6 @@ from QuantStudio.Tools.QSObjects import QSPipe
 
 class BaseModule(__QS_Object__):
     """回测模块"""
-    Name = Str("回测模块")
     def __init__(self, name, sys_args={}, config_file=None, **kwargs):
         self.Name = name
         self._Model = None
@@ -150,8 +148,8 @@ def _runModelProcess(args):
 
 class BackTestModel(__QS_Object__):
     """回测模型"""
-    Modules = List(BaseModule)# 已经添加的测试模块, [测试模块对象]
     def __init__(self, sys_args={}, config_file=None, **kwargs):
+        self.Modules = []# 已经添加的测试模块, [测试模块对象]
         self._QS_TestDateTimes = []# 测试时间点序列, [datetime.datetime]
         self._TestDateTimeIndex = -1# 测试时间点索引
         self._TestDateIndex = pd.Series([], dtype=np.int64)# 测试日期最后一个时间点位于 _QS_TestDateTimes 中的索引

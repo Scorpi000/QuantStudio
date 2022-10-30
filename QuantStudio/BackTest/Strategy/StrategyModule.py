@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-import os
-import shutil
 import base64
 from io import BytesIO
 from copy import deepcopy
@@ -8,17 +6,16 @@ import datetime as dt
 
 import numpy as np
 import pandas as pd
-from traits.api import ListStr, Enum, List, Int, Float, Str, ListInt, Instance, Dict, on_trait_change
-from traitsui.api import Item, Group, View
+from traits.api import Enum, List, Float, ListInt, Instance, on_trait_change
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 
-from QuantStudio import __QS_Error__, __QS_Object__
+from QuantStudio import QSArgs
 from QuantStudio.BackTest.BackTestModel import BaseModule
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.Tools.StrategyTestFun import summaryStrategy, calcYieldSeq, calcLSYield, formatStrategySummary
 from QuantStudio.FactorDataBase.FactorDB import FactorTable
-from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
+from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage
 
 _QS_MinPositionNum = 1e-8# 会被忽略掉的最小持仓数量
 _QS_MinCash = 1e-8# 会被忽略掉的最小现金量
@@ -123,9 +120,10 @@ def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, 
 # 账户基类, 本身只能存放现金
 class Account(BaseModule):
     """账户"""
-    RiskFreeRate = Float(0.0, arg_type="Float", label="无风险利率", order=-1)
-    InitCash = Float(1e8, arg_type="Double", label="初始资金", order=0, low=0.0, high=np.inf, single_step=0.00001, decimals=5)
-    DebtLimit = Float(0.0, arg_type="Double", label="负债上限", order=1, low=0.0, high=np.inf, single_step=0.00001, decimals=5)
+    class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
+        RiskFreeRate = Float(0.0, arg_type="Float", label="无风险利率", order=-1)
+        InitCash = Float(1e8, arg_type="Double", label="初始资金", order=0, low=0.0, high=np.inf, single_step=0.00001, decimals=5)
+        DebtLimit = Float(0.0, arg_type="Double", label="负债上限", order=1, low=0.0, high=np.inf, single_step=0.00001, decimals=5)
     def __init__(self, name="Account", sys_args={}, config_file=None, **kwargs):
         self._Cash = None# 剩余现金, >=0,  array(shape=(nDT+1,))
         self._FrozenCash = 0# 当前被冻结的现金, >=0, float
@@ -139,7 +137,7 @@ class Account(BaseModule):
         if self._isStarted: return ()
         nDT = len(dts)
         self._Cash, self._Debt = np.zeros(nDT+1), np.zeros(nDT+1)
-        self._Cash[0] = self.InitCash
+        self._Cash[0] = self._QSArgs.InitCash
         self._FrozenCash = 0.0
         self._CashRecord = pd.DataFrame(columns=["时间点", "现金流", "备注"])
         self._DebtRecord = pd.DataFrame(columns=["时间点", "融资", "备注"])
@@ -159,7 +157,7 @@ class Account(BaseModule):
         CashSeries = self.getCashSeries()
         DebtSeries = self.getDebtSeries()
         AccountValueSeries = self.getAccountValueSeries()
-        self._Output = genAccountOutput(self.InitCash, CashSeries, DebtSeries, AccountValueSeries, self._CashRecord, self._DebtRecord, self._Model.DateIndexSeries, risk_free_rate=self.RiskFreeRate)
+        self._Output = genAccountOutput(self._QSArgs.InitCash, CashSeries, DebtSeries, AccountValueSeries, self._CashRecord, self._DebtRecord, self._Model.DateIndexSeries, risk_free_rate=self._QSArgs.RiskFreeRate)
         self._Output["现金流记录"] = self._CashRecord
         self._Output["融资记录"] = self._DebtRecord
         self._Output["交易记录"] = self._TradingRecord
@@ -175,7 +173,7 @@ class Account(BaseModule):
     # 当前账户可提取的现金, = Cash - FronzenCash + 负债上限 - Debt
     @property
     def AvailableCash(self):
-        return self._Cash[self._Model.DateTimeIndex+1] - self._FrozenCash + max(self.DebtLimit - self._Debt[self._Model.DateTimeIndex+1], 0)
+        return self._Cash[self._Model.DateTimeIndex+1] - self._FrozenCash + max(self._QSArgs.DebtLimit - self._Debt[self._Model.DateTimeIndex+1], 0)
     # 当前账户价值, = Cash - Debt
     @property
     def AccountValue(self):
@@ -215,7 +213,7 @@ class Account(BaseModule):
             self._Cash[iIndex] += cash_changed - DebtDec
         elif cash_changed<0:
             if -cash_changed>self._Cash[iIndex]:
-                DebtInc = min(- cash_changed - self._Cash[iIndex], self.DebtLimit-self._Debt[iIndex])
+                DebtInc = min(- cash_changed - self._Cash[iIndex], self._QSArgs.DebtLimit-self._Debt[iIndex])
                 self._Debt[iIndex] += DebtInc
                 self._DebtRecord.loc[self._DebtRecord.shape[0]] = (self._Model.DateTime, DebtInc, "")
                 self._Cash[iIndex] = 0
@@ -242,7 +240,7 @@ class Account(BaseModule):
         if DebtDelta<0: self._DebtRecord.loc[self._DebtRecord.shape[0]] = (self._Model.DateTime, DebtDelta, remark)
         return 0
 
-class _Benchmark(__QS_Object__):
+class _Benchmark(QSArgs):
     """基准"""
     FactorTable = Instance(FactorTable, arg_type="FactorTable", label="因子表", order=0)
     #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
@@ -272,9 +270,13 @@ class _Benchmark(__QS_Object__):
 # 策略基类
 class Strategy(BaseModule):
     """策略基类"""
-    Accounts = List(Account)# 策略所用到的账户
-    FactorTables = List(FactorTable)# 策略所用到的因子表
-    Benchmark = Instance(_Benchmark, arg_type="ArgObject", label="比较基准", order=0)
+    class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
+        Accounts = List(Account)# 策略所用到的账户
+        FactorTables = List(FactorTable)# 策略所用到的因子表
+        Benchmark = Instance(_Benchmark, arg_type="ArgObject", label="比较基准", order=0)
+        def __QS_initArgs__(self):
+            self.Benchmark = _Benchmark()
+        
     def __init__(self, name, accounts=[], fts=[], sys_args={}, config_file=None, **kwargs):
         self.Accounts = accounts# 策略所用到的账户
         self.FactorTables = fts# 策略所用到的因子表
@@ -282,8 +284,6 @@ class Strategy(BaseModule):
         self.UserData = {}# 用户数据存放
         self._AllSignals = {}# 存储所有生成的信号, {时点:信号}
         return super().__init__(name=name, sys_args=sys_args, config_file=config_file, **kwargs)
-    def __QS_initArgs__(self):
-        self.Benchmark = _Benchmark()
     def __QS_start__(self, mdl, dts, **kwargs):
         if self._isStarted: return ()
         self.UserData = {}
@@ -307,14 +307,6 @@ class Strategy(BaseModule):
         for iAccount in self.Accounts: iAccount.__QS_end__()
         self._Output = self._output()
         return super().__QS_end__()
-    def getViewItems(self, context_name=""):
-        Prefix = (context_name+"." if context_name else "")
-        Groups, Context = [], {}
-        for j, jAccount in enumerate(self.Accounts):
-            jItems, jContext = jAccount.getViewItems(context_name=context_name+"_Account"+str(j))
-            Groups.append(Group(*jItems, label=str(j)+"-"+jAccount.Name))
-            Context.update(jContext)
-        return ([Group(*Groups, orientation='horizontal', layout='tabbed', springy=True)], Context)
     # 返回策略在时点 idt 生成的信号
     def getSignal(self, idt): 
         return self._AllSignals.get(idt, None)
@@ -344,9 +336,9 @@ class Strategy(BaseModule):
             DebtRecord = iAccount.DebtRecord.append(DebtRecord)
             CashRecord = iAccount.CashRecord.append(CashRecord)
         DebtRecord = DebtRecord[DebtRecord["融资"]!=0]
-        StrategyOutput = genAccountOutput(InitCash, CashSeries, DebtSeries, AccountValueSeries, CashRecord, DebtRecord, self._Model.DateIndexSeries, risk_free_rate=self.Benchmark.RiskFreeRate)
-        if self.Benchmark.FactorTable is not None:# 设置了基准
-            BenchmarkPrice = self.Benchmark.FactorTable.readData(factor_names=[self.Benchmark.PriceFactor], dts=AccountValueSeries.index.tolist(), ids=[self.Benchmark.BenchmarkID]).iloc[0,:,0]
+        StrategyOutput = genAccountOutput(InitCash, CashSeries, DebtSeries, AccountValueSeries, CashRecord, DebtRecord, self._Model.DateIndexSeries, risk_free_rate=self._QSArgs.Benchmark.RiskFreeRate)
+        if self._QSArgs.Benchmark.FactorTable is not None:# 设置了基准
+            BenchmarkPrice = self._QSArgs.Benchmark.FactorTable.readData(factor_names=[self._QSArgs.Benchmark.PriceFactor], dts=AccountValueSeries.index.tolist(), ids=[self._QSArgs.Benchmark.BenchmarkID]).iloc[0,:,0]
             BenchmarkOutput = pd.DataFrame(calcYieldSeq(wealth_seq=BenchmarkPrice.values), index=BenchmarkPrice.index, columns=["基准收益率"])
             BenchmarkOutput["基准累计收益率"] = BenchmarkOutput["基准收益率"].cumsum()
             BenchmarkOutput["基准净值"] = BenchmarkPrice / BenchmarkPrice.iloc[0]
@@ -354,10 +346,10 @@ class Strategy(BaseModule):
                 LYield = (StrategyOutput["日期序列"]["无杠杆收益率"].values if "时间序列" not in StrategyOutput else StrategyOutput["时间序列"]["无杠杆收益率"].values)
             else:
                 LYield = (StrategyOutput["日期序列"]["收益率"].values if "时间序列" not in StrategyOutput else StrategyOutput["时间序列"]["收益率"].values)
-            if not self.Benchmark.RebalanceDTs: RebalanceIndex = None
+            if not self._QSArgs.Benchmark.RebalanceDTs: RebalanceIndex = None
             else:
                 RebalanceIndex = pd.Series(np.arange(BenchmarkOutput["基准收益率"].shape[0]), index=BenchmarkOutput["基准收益率"].index, dtype=int)
-                RebalanceIndex = sorted(RebalanceIndex.loc[RebalanceIndex.index.intersection(self.Benchmark.RebalanceDTs)].values)
+                RebalanceIndex = sorted(RebalanceIndex.loc[RebalanceIndex.index.intersection(self._QSArgs.Benchmark.RebalanceDTs)].values)
             BenchmarkOutput["相对收益率"] = calcLSYield(long_yield=LYield, short_yield=BenchmarkOutput["基准收益率"].values, rebalance_index=RebalanceIndex)
             BenchmarkOutput["相对累计收益率"] = BenchmarkOutput["相对收益率"].cumsum()
             BenchmarkOutput["相对净值"] = (1 + BenchmarkOutput["相对收益率"]).cumprod()
@@ -370,7 +362,7 @@ class Strategy(BaseModule):
                 BenchmarkOutput["相对累计收益率"] = BenchmarkOutput["相对收益率"].cumsum()
             BenchmarkOutput.index = StrategyOutput["日期序列"].index
             StrategyOutput["日期序列"] = pd.merge(StrategyOutput["日期序列"], BenchmarkOutput, left_index=True, right_index=True)
-            BenchmarkStatistics = summaryStrategy(BenchmarkOutput[["基准净值", "相对净值"]].values, list(BenchmarkOutput.index), init_wealth=[1, 1], risk_free_rate=self.Benchmark.RiskFreeRate)
+            BenchmarkStatistics = summaryStrategy(BenchmarkOutput[["基准净值", "相对净值"]].values, list(BenchmarkOutput.index), init_wealth=[1, 1], risk_free_rate=self._QSArgs.Benchmark.RiskFreeRate)
             BenchmarkStatistics.columns = ["基准表现", "相对表现"]
             StrategyOutput["统计数据"] = pd.merge(StrategyOutput["统计数据"], BenchmarkStatistics, left_index=True, right_index=True)
         Output["Strategy"] = StrategyOutput
@@ -576,7 +568,6 @@ class MultiStrategy(BaseModule):
         xData = np.arange(0, StrategyOutput["日期序列"]["账户价值"].shape[0])
         xTicks = np.arange(0, StrategyOutput["日期序列"]["账户价值"].shape[0], int(StrategyOutput["日期序列"]["账户价值"].shape[0]/10))
         xTickLabels = [StrategyOutput["日期序列"]["账户价值"].index[i].strftime("%Y-%m-%d") for i in xTicks]
-        yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
         iAxes = Fig.add_subplot(nRow, nCol, 1)
         for i, iCol in enumerate(StrategyOutput["日期序列"]["账户价值"].columns):
             iAxes.plot(xData, StrategyOutput["日期序列"]["账户价值"].values[:, i], label=iCol+"-账户价值", lw=2.5)

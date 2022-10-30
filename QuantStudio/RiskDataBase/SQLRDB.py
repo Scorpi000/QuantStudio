@@ -52,15 +52,16 @@ class _RiskTable(RiskTable):
 
 class SQLRDB(QSSQLObject, RiskDB):
     """基于关系数据库的风险数据库"""
-    Name = Str("SQLRDB", arg_type="String", label="名称", order=-100)
+    class __QS_ArgClass__(QSSQLObject.__QS_ArgClass__, RiskDB.__QS_ArgClass__):
+        Name = Str("SQLRDB", arg_type="String", label="名称", order=-100)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._TableAdditionalCols = {}# {表名:[额外的字段名]}
         self._Prefix = "QSR_"
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"SQLRDBConfig.json" if config_file is None else config_file), **kwargs)
     def connect(self):
         super().connect()
-        if self.DBType=="MySQL":
-            SQLStr = ("SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS WHERE table_schema='%s' " % self.DBName)
+        if self._QSArgs.DBType=="MySQL":
+            SQLStr = ("SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS WHERE table_schema='%s' " % self._QSArgs.DBName)
             SQLStr += ("AND TABLE_NAME LIKE '%s%%' " % self._Prefix)
             SQLStr += "AND COLUMN_NAME NOT IN ('Cov') "
             SQLStr += "ORDER BY TABLE_NAME, COLUMN_NAME"
@@ -79,18 +80,18 @@ class SQLRDB(QSSQLObject, RiskDB):
     def renameTable(self, old_table_name, new_table_name):
         if old_table_name not in self._TableAdditionalCols: raise __QS_Error__("表: '%s' 不存在!" % old_table_name)
         if (new_table_name!=old_table_name) and (new_table_name in self._TableAdditionalCols): raise __QS_Error__("表: '"+new_table_name+"' 已存在!")
-        SQLStr = "ALTER TABLE "+self.TablePrefix+self._Prefix+old_table_name+" RENAME TO "+self.TablePrefix+self._Prefix+new_table_name
+        SQLStr = "ALTER TABLE "+self._QSArgs.TablePrefix+self._Prefix+old_table_name+" RENAME TO "+self._QSArgs.TablePrefix+self._Prefix+new_table_name
         self.execute(SQLStr)
         self._TableAdditionalCols[new_table_name] = self._TableAdditionalCols.pop(old_table_name)
         return 0
     def deleteTable(self, table_name):
         if table_name not in self._TableAdditionalCols: return 0
-        SQLStr = 'DROP TABLE %s' % (self.TablePrefix+self._Prefix+table_name)
+        SQLStr = 'DROP TABLE %s' % (self._QSArgs.TablePrefix+self._Prefix+table_name)
         self.execute(SQLStr)
         self._TableAdditionalCols.pop(table_name)
         return 0
     def deleteDateTime(self, table_name, dts):
-        DBTableName = self.TablePrefix+self._Prefix+table_name
+        DBTableName = self._QSArgs.TablePrefix+self._Prefix+table_name
         if dts is None:
             SQLStr = "TRUNCATE TABLE "+DBTableName
             return self.execute(SQLStr)
@@ -99,7 +100,7 @@ class SQLRDB(QSSQLObject, RiskDB):
         SQLStr += "WHERE "+genSQLInCondition(DBTableName+".DateTime", DTs, is_str=True, max_num=1000)+" "
         return self.execute(SQLStr)
     def createTable(self, table_name):# 创建表
-        SQLStr = "CREATE TABLE IF NOT EXISTS %s (`DateTime` DATETIME(6) NOT NULL, `Cov` JSON NOT NULL, " % (self.TablePrefix+self._Prefix+table_name, )
+        SQLStr = "CREATE TABLE IF NOT EXISTS %s (`DateTime` DATETIME(6) NOT NULL, `Cov` JSON NOT NULL, " % (self._QSArgs.TablePrefix+self._Prefix+table_name, )
         SQLStr += "PRIMARY KEY (`DateTime`)) ENGINE=InnoDB DEFAULT CHARSET=utf8"
         self.execute(SQLStr)
         self._TableAdditionalCols[table_name] = self._TableAdditionalCols.get(table_name, ["DateTime"])
@@ -109,11 +110,11 @@ class SQLRDB(QSSQLObject, RiskDB):
             self._QS_Logger.warning("风险表 '%s' 索引创建失败: %s" % (table_name, str(e)))
         return 0
     def addIndex(self, index_name, table_name, fields, index_type="BTREE"):
-        SQLStr = "CREATE INDEX "+index_name+" USING "+index_type+" ON "+self.TablePrefix+table_name+"("+", ".join(fields)+")"
+        SQLStr = "CREATE INDEX "+index_name+" USING "+index_type+" ON "+self._QSArgs.TablePrefix+table_name+"("+", ".join(fields)+")"
         return self.execute(SQLStr)
     def writeData(self, table_name, idt, icov, **kwargs):
-        DBTableName = self.TablePrefix+self._Prefix+table_name
-        SQLStr = "INSERT INTO "+DBTableName+" (`DateTime`, `Cov`) VALUES ("+", ".join([("?" if self.Connector=="pyodbc" else "%s")]*2)+")"
+        DBTableName = self._QSArgs.TablePrefix+self._Prefix+table_name
+        SQLStr = "INSERT INTO "+DBTableName+" (`DateTime`, `Cov`) VALUES ("+", ".join([("?" if self._QSArgs.Connector=="pyodbc" else "%s")]*2)+")"
         if table_name not in self._TableAdditionalCols: self.createTable(table_name)
         else: SQLStr += " ON DUPLICATE KEY UPDATE Cov=VALUES(Cov)"
         Cursor = self._Connection.cursor()
@@ -269,7 +270,8 @@ class _FactorRiskTable(FactorRT):
 
 class SQLFRDB(QSSQLObject, FactorRDB):
     """基于关系型数据库的多因子风险数据库"""
-    Name = Str("SQLFRDB", arg_type="String", label="名称", order=-100)
+    class __QS_ArgClass__(QSSQLObject.__QS_ArgClass__, FactorRDB.__QS_ArgClass__):
+        Name = Str("SQLFRDB", arg_type="String", label="名称", order=-100)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._TableAdditionalCols = {}# {表名:[额外的字段名]}
         self._Prefix = "QSFR_"
@@ -277,8 +279,8 @@ class SQLFRDB(QSSQLObject, FactorRDB):
     def connect(self):
         super().connect()
         nPrefix = len(self._Prefix)
-        if self.DBType=="MySQL":
-            SQLStr = ("SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS WHERE table_schema='%s' " % self.DBName)
+        if self._QSArgs.DBType=="MySQL":
+            SQLStr = ("SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS WHERE table_schema='%s' " % self._QSArgs.DBName)
             SQLStr += ("AND TABLE_NAME LIKE '%s%%' " % self._Prefix)
             SQLStr += "AND COLUMN_NAME NOT IN ('FactorCov', 'FactorData', 'SpecificRisk', 'FactorReturn', 'SpecificReturn') "
             SQLStr += "ORDER BY TABLE_NAME, COLUMN_NAME"
@@ -301,7 +303,7 @@ class SQLFRDB(QSSQLObject, FactorRDB):
     def deleteDateTime(self, table_name, dts):
         return SQLRDB.deleteDateTime(self, table_name, dts)
     def createTable(self, table_name):# 创建表
-        SQLStr = "CREATE TABLE IF NOT EXISTS %s (`DateTime` DATETIME(6) NOT NULL, `FactorData` JSON, `FactorCov` JSON, `SpecificRisk` JSON, `FactorReturn` JSON, `SpecificReturn` JSON, " % (self.TablePrefix+self._Prefix+table_name, )
+        SQLStr = "CREATE TABLE IF NOT EXISTS %s (`DateTime` DATETIME(6) NOT NULL, `FactorData` JSON, `FactorCov` JSON, `SpecificRisk` JSON, `FactorReturn` JSON, `SpecificReturn` JSON, " % (self._QSArgs.TablePrefix+self._Prefix+table_name, )
         SQLStr += "PRIMARY KEY (`DateTime`)) ENGINE=InnoDB DEFAULT CHARSET=utf8"
         self.execute(SQLStr)
         self._TableAdditionalCols[table_name] = self._TableAdditionalCols.get(table_name, ["DateTime"])
@@ -311,11 +313,11 @@ class SQLFRDB(QSSQLObject, FactorRDB):
             self._QS_Logger.warning("风险表 '%s' 索引创建失败: %s" % (table_name, str(e)))
         return 0
     def addIndex(self, index_name, table_name, fields, index_type="BTREE"):
-        SQLStr = "CREATE INDEX "+index_name+" USING "+index_type+" ON "+self.TablePrefix+table_name+"("+", ".join(fields)+")"
+        SQLStr = "CREATE INDEX "+index_name+" USING "+index_type+" ON "+self._QSArgs.TablePrefix+table_name+"("+", ".join(fields)+")"
         return self.execute(SQLStr)
     def writeData(self, table_name, idt, factor_data=None, factor_cov=None, specific_risk=None, factor_ret=None, specific_ret=None, **kwargs):
         if table_name not in self._TableAdditionalCols: self.createTable(table_name)
-        DBTableName = self.TablePrefix+self._Prefix+table_name
+        DBTableName = self._QSArgs.TablePrefix+self._Prefix+table_name
         SQLStr = "INSERT INTO "+DBTableName+" (`DateTime`, "
         SubSQLStr = "ON DUPLICATE KEY UPDATE "
         Data = [idt]
@@ -351,7 +353,7 @@ class SQLFRDB(QSSQLObject, FactorRDB):
             if AlterSQLStr.find("JSON")!=-1: self.execute(AlterSQLStr[:-2])
         if len(Data)==1: return 0
         SQLStr, SubSQLStr = SQLStr[:-2], SubSQLStr[:-2]
-        SQLStr += ") VALUES ("+", ".join([("?" if self.Connector=="pyodbc" else "%s")]*len(Data))+") "+SubSQLStr
+        SQLStr += ") VALUES ("+", ".join([("?" if self._QSArgs.Connector=="pyodbc" else "%s")]*len(Data))+") "+SubSQLStr
         Cursor = self._Connection.cursor()
         Cursor.execute(SQLStr, tuple(Data))
         self._Connection.commit()

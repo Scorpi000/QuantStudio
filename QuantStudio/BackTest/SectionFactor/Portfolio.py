@@ -6,17 +6,15 @@ from io import BytesIO
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-from traits.api import ListStr, Enum, List, Int, Str, Instance, Dict, Bool, Tuple, on_trait_change
+from traits.api import ListStr, Enum, List, Int, Str, Bool, on_trait_change
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 import matplotlib.dates as mdate
 
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList, distributeEqual
-from QuantStudio.Tools.DataPreprocessingFun import prepareRegressData
-from QuantStudio.Tools.StrategyTestFun import calcPortfolioReturn, calcTurnover, calcMaxDrawdownRate, calcLSYield
+from QuantStudio.Tools.StrategyTestFun import calcTurnover, calcMaxDrawdownRate, calcLSYield
 from QuantStudio.BackTest.BackTestModel import BaseModule
-from QuantStudio.PortfolioConstructor import BasePC
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 
 def _QS_plotStatistics(axes, x_data, x_ticklabels, left_data, left_formatter, right_data=None, right_formatter=None, right_axes=True, title=None):
@@ -42,44 +40,46 @@ def _QS_plotStatistics(axes, x_data, x_ticklabels, left_data, left_formatter, ri
 
 class QuantilePortfolio(BaseModule):
     """分位数组合"""
-    #TestFactor = Enum(None, arg_type="SingleOption", label="测试因子", order=0)
-    FactorOrder = Enum("降序", "升序", arg_type="SingleOption", label="排序方向", order=1)
-    GroupNum = Int(10, arg_type="Integer", label="分组数", order=2)
-    #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=3)
-    #ClassFactor = Enum("无", arg_type="SingleOption", label="类别因子", order=4)
-    #WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=5)
-    CalcDTs = List(dt.datetime, arg_type="DateList", label="调仓时点", order=6)
-    MarketIDFilter = Str(arg_type="IDFilter", label="市场组合", order=7)
-    IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
-    Perturbation = Bool(False, arg_type="Bool", label="随机微扰", order=9)
+    class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
+        #TestFactor = Enum(None, arg_type="SingleOption", label="测试因子", order=0)
+        FactorOrder = Enum("降序", "升序", arg_type="SingleOption", label="排序方向", order=1)
+        GroupNum = Int(10, arg_type="Integer", label="分组数", order=2)
+        #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=3)
+        #ClassFactor = Enum("无", arg_type="SingleOption", label="类别因子", order=4)
+        #WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=5)
+        CalcDTs = List(dt.datetime, arg_type="DateList", label="调仓时点", order=6)
+        MarketIDFilter = Str(arg_type="IDFilter", label="市场组合", order=7)
+        IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
+        Perturbation = Bool(False, arg_type="Bool", label="随机微扰", order=9)
+        def __QS_initArgs__(self):
+            DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
+            self.add_trait("TestFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="测试因子", order=0))
+            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=3))
+            self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
+            self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=4))
+            self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=5))
+    
     def __init__(self, factor_table, name="分位数组合", sys_args={}, **kwargs):
         self._FactorTable = factor_table
         return super().__init__(name=name, sys_args=sys_args, **kwargs)
-    def __QS_initArgs__(self):
-        DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FactorTable.getFactorMetaData(key="DataType")))
-        self.add_trait("TestFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="测试因子", order=0))
-        self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=3))
-        self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
-        self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=4))
-        self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=5))
     def __QS_start__(self, mdl, dts, **kwargs):
         if self._isStarted: return ()
         super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
-        self._Output = {"净值":[[1] for i in range(self.GroupNum)]}
-        self._Output["投资组合"] = [[] for i in range(self.GroupNum)]
-        self._Output["换手率"] = [[] for i in range(self.GroupNum)]
+        self._Output = {"净值":[[1] for i in range(self._QSArgs.GroupNum)]}
+        self._Output["投资组合"] = [[] for i in range(self._QSArgs.GroupNum)]
+        self._Output["换手率"] = [[] for i in range(self._QSArgs.GroupNum)]
         self._Output["市场净值"] = [1]
         self._Output["调仓日"] = []
-        self._Output["QP_P_CurPos"] = [pd.Series() for i in range(self.GroupNum)]
+        self._Output["QP_P_CurPos"] = [pd.Series() for i in range(self._QSArgs.GroupNum)]
         self._Output["QP_P_MarketPos"] = pd.Series()
-        self._Output["GroupNum"] = self.GroupNum
+        self._Output["GroupNum"] = self._QSArgs.GroupNum
         self._CurCalcInd = 0
         return (self._FactorTable, )
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
         self._iDT = idt
-        Price = self._FactorTable.readData(dts=[idt], ids=self._FactorTable.getID(ifactor_name=self.PriceFactor), factor_names=[self.PriceFactor]).iloc[0, 0, :]
-        for i in range(self.GroupNum):
+        Price = self._FactorTable.readData(dts=[idt], ids=self._FactorTable.getID(ifactor_name=self._QSArgs.PriceFactor), factor_names=[self._QSArgs.PriceFactor]).iloc[0, 0, :]
+        for i in range(self._QSArgs.GroupNum):
             if len(self._Output["QP_P_CurPos"][i])==0:
                 self._Output["净值"][i].append(self._Output["净值"][i][-1])
             else:
@@ -93,26 +93,26 @@ class QuantilePortfolio(BaseModule):
             self._Output["市场净值"].append(self._Output["市场净值"][-1])
         else:
             self._Output["市场净值"].append((self._Output["QP_P_MarketPos"]*Price).sum())
-        if self.CalcDTs:
-            if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
-            self._CurCalcInd = self.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
-        IDs = self._FactorTable.getFilteredID(idt=idt, id_filter_str=self.IDFilter)
-        FactorData = self._FactorTable.readData(dts=[idt], ids=IDs, factor_names=[self.TestFactor]).iloc[0, 0, :]
+        if self._QSArgs.CalcDTs:
+            if idt not in self._QSArgs.CalcDTs[self._CurCalcInd:]: return 0
+            self._CurCalcInd = self._QSArgs.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
+        IDs = self._FactorTable.getFilteredID(idt=idt, id_filter_str=self._QSArgs.IDFilter)
+        FactorData = self._FactorTable.readData(dts=[idt], ids=IDs, factor_names=[self._QSArgs.TestFactor]).iloc[0, 0, :]
         FactorData = FactorData[pd.notnull(FactorData) & pd.notnull(Price[IDs])].copy()
         nID = FactorData.shape[0]
-        if self.Perturbation and (nID>0):
+        if self._QSArgs.Perturbation and (nID>0):
             FactorData = FactorData.astype("float")
             MinDiff = np.min(np.abs(np.diff(FactorData.unique())))
             FactorData += np.random.rand(nID) * MinDiff * 0.01
-        FactorData = FactorData.sort_values(ascending=(self.FactorOrder=="升序"), inplace=False)
+        FactorData = FactorData.sort_values(ascending=(self._QSArgs.FactorOrder=="升序"), inplace=False)
         IDs = list(FactorData.index)
-        if self.WeightFactor!="等权":
-            WeightData = self._FactorTable.readData(dts=[idt], ids=self._FactorTable.getID(ifactor_name=self.WeightFactor), factor_names=[self.WeightFactor]).iloc[0, 0, :]
+        if self._QSArgs.WeightFactor!="等权":
+            WeightData = self._FactorTable.readData(dts=[idt], ids=self._FactorTable.getID(ifactor_name=self._QSArgs.WeightFactor), factor_names=[self._QSArgs.WeightFactor]).iloc[0, 0, :]
         else:
             WeightData = pd.Series(1.0, index=self._FactorTable.getID())
-        if self.ClassFactor=="无":
-            nSubID = distributeEqual(nID, self.GroupNum, remainder_pos="middle")
-            for i in range(self.GroupNum):
+        if self._QSArgs.ClassFactor=="无":
+            nSubID = distributeEqual(nID, self._QSArgs.GroupNum, remainder_pos="middle")
+            for i in range(self._QSArgs.GroupNum):
                 iWealth = self._Output["净值"][i][-1]
                 iSubIDs = IDs[sum(nSubID[:i]):sum(nSubID[:i+1])]
                 iPortfolio = WeightData[iSubIDs]
@@ -127,17 +127,17 @@ class QuantilePortfolio(BaseModule):
                 elif nPortfolio==1:
                     self._Output["换手率"][i][-1] = 1
         else:
-            Portfolio = [{} for i in range(self.GroupNum)]
-            IndustryData = self._FactorTable.readData(dts=[idt], ids=IDs, factor_names=[self.ClassFactor]).iloc[0, 0, :]
+            Portfolio = [{} for i in range(self._QSArgs.GroupNum)]
+            IndustryData = self._FactorTable.readData(dts=[idt], ids=IDs, factor_names=[self._QSArgs.ClassFactor]).iloc[0, 0, :]
             AllIndustry = IndustryData.unique()
             for iIndustry in AllIndustry:
                 iMask = (IndustryData==iIndustry)
                 iIDIndex = IndustryData[iMask].index
-                iIDDistribution = distributeEqual(iIDIndex.shape[0], self.GroupNum, remainder_pos="middle")
-                for j in range(self.GroupNum):
+                iIDDistribution = distributeEqual(iIDIndex.shape[0], self._QSArgs.GroupNum, remainder_pos="middle")
+                for j in range(self._QSArgs.GroupNum):
                     jSubID = iIDIndex[sum(iIDDistribution[:j]):sum(iIDDistribution[:j+1])]
                     Portfolio[j].update({kID:WeightData[kID] for kID in jSubID})
-            for i in range(self.GroupNum):
+            for i in range(self._QSArgs.GroupNum):
                 iWealth = self._Output["净值"][i][-1]
                 iPortfolio = pd.Series(Portfolio[i])
                 iPortfolio = iPortfolio/iPortfolio.sum()
@@ -150,8 +150,8 @@ class QuantilePortfolio(BaseModule):
                     self._Output["换手率"][i][-1] = calcTurnover(self._Output["投资组合"][i][-2],self._Output["投资组合"][i][-1])
                 elif nPortfolio==1:
                     self._Output["换手率"][i][-1] = 1
-        if self.MarketIDFilter:
-            IDs = self._FactorTable.getFilteredID(idt=idt, id_filter_str=self.MarketIDFilter)
+        if self._QSArgs.MarketIDFilter:
+            IDs = self._FactorTable.getFilteredID(idt=idt, id_filter_str=self._QSArgs.MarketIDFilter)
         WeightData = WeightData[IDs]
         Price = Price[IDs]
         WeightData = WeightData[pd.notnull(WeightData) & pd.notnull(Price)]
@@ -173,11 +173,11 @@ class QuantilePortfolio(BaseModule):
         self._Output["净值"]["市场"] = pd.Series(self._Output.pop("市场净值")[1:], index=self._Model.DateTimeSeries)
         self._Output["收益率"] = self._Output["净值"].iloc[1:,:].values / self._Output["净值"].iloc[:-1,:].values - 1
         self._Output["收益率"] = pd.DataFrame(np.row_stack((np.zeros((1, GroupNum+1)), self._Output["收益率"])), index=self._Model.DateTimeSeries, columns=[i for i in range(GroupNum)]+["市场"])
-        if not self.CalcDTs:
+        if not self._QSArgs.CalcDTs:
             RebalanceIdx = None
         else:
             RebalanceIdx = pd.Series(np.arange(nDT), index=self._Model.DateTimeSeries)
-            RebalanceIdx = sorted(RebalanceIdx[RebalanceIdx.index.intersection(self.CalcDTs)])
+            RebalanceIdx = sorted(RebalanceIdx[RebalanceIdx.index.intersection(self._QSArgs.CalcDTs)])
         self._Output["收益率"]["L-S"] = calcLSYield(self._Output["收益率"].iloc[:, 0].values, self._Output["收益率"].iloc[:, -2].values, rebalance_index=RebalanceIdx)
         self._Output["净值"]["L-S"] = (1 + self._Output["收益率"]["L-S"]).cumprod()
         self._Output["换手率"] = pd.DataFrame(np.array(self._Output["换手率"]).T, index=self._Model.DateTimeSeries)
@@ -273,10 +273,10 @@ class QuantilePortfolio(BaseModule):
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
-        if len(self.ArgNames)>0:
+        if len(self._QSArgs.ArgNames)>0:
             HTML = "参数设置: "
             HTML += '<ul align="left">'
-            for iArgName in self.ArgNames:
+            for iArgName in self._QSArgs.ArgNames:
                 if iArgName!="调仓时点":
                     HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
                 elif self.Args[iArgName]:
@@ -304,36 +304,38 @@ class QuantilePortfolio(BaseModule):
 
 class FilterPortfolio(QuantilePortfolio):
     """条件筛选组合"""
-    PortfolioFilters = ListStr(arg_type="MultiOption", label="组合条件", order=0)
-    GroupNum = Int(0, arg_type="Integer", label="分组数", order=2)
-    #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=3)
-    #ClassFactor = Enum("无", arg_type="SingleOption", label="类别因子", order=4)
-    #WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=5)
-    CalcDTs = List(dt.datetime, arg_type="DateList", label="调仓时点", order=6)
-    MarketIDFilter = Str(arg_type="IDFilter", label="市场组合", order=7)
-    IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
+    class __QS_ArgClass__(QuantilePortfolio.__QS_ArgClass__):
+        PortfolioFilters = ListStr(arg_type="MultiOption", label="组合条件", order=0)
+        GroupNum = Int(0, arg_type="Integer", label="分组数", order=2)
+        #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=3)
+        #ClassFactor = Enum("无", arg_type="SingleOption", label="类别因子", order=4)
+        #WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=5)
+        CalcDTs = List(dt.datetime, arg_type="DateList", label="调仓时点", order=6)
+        MarketIDFilter = Str(arg_type="IDFilter", label="市场组合", order=7)
+        IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
+        def __QS_initArgs__(self):
+            DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
+            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1))
+            self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
+            self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=2))
+            self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=3))
+            self.remove_trait("FactorOrder")
+            self.remove_trait("Perturbation")
+            self.GroupNum = len(self.PortfolioFilters)
+        @on_trait_change("PortfolioFilters[]")
+        def _on_PortfolioFilters_changed(self, obj, name, old, new):
+            self.GroupNum = len(self.PortfolioFilters)
+        @on_trait_change("GroupNum")
+        def _on_GroupNum_changed(self, obj, name, old, new):
+            if self.GroupNum != len(self.PortfolioFilters):
+                raise __QS_Error__("分组数必须等于给定的组合条件数")
+    
     def __init__(self, factor_table, name="条件筛选组合", sys_args={}, **kwargs):
         return super().__init__(factor_table=factor_table, name=name, sys_args=sys_args, **kwargs)
-    def __QS_initArgs__(self):
-        DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FactorTable.getFactorMetaData(key="DataType")))
-        self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1))
-        self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
-        self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=2))
-        self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=3))
-        self.remove_trait("FactorOrder")
-        self.remove_trait("Perturbation")
-        self.GroupNum = len(self.PortfolioFilters)
-    @on_trait_change("PortfolioFilters[]")
-    def _on_PortfolioFilters_changed(self, obj, name, old, new):
-        self.GroupNum = len(self.PortfolioFilters)
-    @on_trait_change("GroupNum")
-    def _on_GroupNum_changed(self, obj, name, old, new):
-        if self.GroupNum != len(self.PortfolioFilters):
-            raise __QS_Error__("分组数必须等于给定的组合条件数")
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
         self._iDT = idt
-        Price = self._FactorTable.readData(dts=[idt], ids=self._FactorTable.getID(ifactor_name=self.PriceFactor), factor_names=[self.PriceFactor]).iloc[0, 0, :]
+        Price = self._FactorTable.readData(dts=[idt], ids=self._FactorTable.getID(ifactor_name=self._QSArgs.PriceFactor), factor_names=[self._QSArgs.PriceFactor]).iloc[0, 0, :]
         GroupNum = self._Output["GroupNum"]
         for i in range(GroupNum):
             if len(self._Output["QP_P_CurPos"][i])==0:
@@ -349,18 +351,18 @@ class FilterPortfolio(QuantilePortfolio):
             self._Output["市场净值"].append(self._Output["市场净值"][-1])
         else:
             self._Output["市场净值"].append((self._Output["QP_P_MarketPos"]*Price).sum())
-        if self.CalcDTs:
-            if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
-            self._CurCalcInd = self.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
-        IDs = self._FactorTable.getFilteredID(idt=idt, id_filter_str=self.IDFilter)
-        if self.WeightFactor!="等权":
-            WeightData = self._FactorTable.readData(dts=[idt], ids=self._FactorTable.getID(ifactor_name=self.WeightFactor), factor_names=[self.WeightFactor]).iloc[0, 0, :]
+        if self._QSArgs.CalcDTs:
+            if idt not in self._QSArgs.CalcDTs[self._CurCalcInd:]: return 0
+            self._CurCalcInd = self._QSArgs.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
+        IDs = self._FactorTable.getFilteredID(idt=idt, id_filter_str=self._QSArgs.IDFilter)
+        if self._QSArgs.WeightFactor!="等权":
+            WeightData = self._FactorTable.readData(dts=[idt], ids=self._FactorTable.getID(ifactor_name=self._QSArgs.WeightFactor), factor_names=[self._QSArgs.WeightFactor]).iloc[0, 0, :]
         else:
             WeightData = pd.Series(1.0, index=self._FactorTable.getID())
-        if self.ClassFactor=="无":
+        if self._QSArgs.ClassFactor=="无":
             for i in range(GroupNum):
                 iWealth = self._Output["净值"][i][-1]
-                iSubIDs = self._FactorTable.getFilteredID(idt, ids=IDs, id_filter_str=self.PortfolioFilters[i], args={})
+                iSubIDs = self._FactorTable.getFilteredID(idt, ids=IDs, id_filter_str=self._QSArgs.PortfolioFilters[i], args={})
                 iPortfolio = WeightData[iSubIDs]
                 iPortfolio = iPortfolio / iPortfolio.sum()
                 iPortfolio = iPortfolio[pd.notnull(iPortfolio)]
@@ -374,13 +376,13 @@ class FilterPortfolio(QuantilePortfolio):
                     self._Output["换手率"][i][-1] = 1
         else:
             Portfolio = [{} for i in range(GroupNum)]
-            IndustryData = self._FactorTable.readData(dts=[idt], ids=IDs, factor_names=[self.ClassFactor]).iloc[0, 0, :]
+            IndustryData = self._FactorTable.readData(dts=[idt], ids=IDs, factor_names=[self._QSArgs.ClassFactor]).iloc[0, 0, :]
             AllIndustry = IndustryData.unique()
             for iIndustry in AllIndustry:
                 iMask = (IndustryData==iIndustry)
                 iIDs = IndustryData[iMask].index.tolist()
                 for j in range(GroupNum):
-                    ijSubIDs = self._FactorTable.getFilteredID(idt, ids=iIDs, id_filter_str=self.PortfolioFilters[j], args={})
+                    ijSubIDs = self._FactorTable.getFilteredID(idt, ids=iIDs, id_filter_str=self._QSArgs.PortfolioFilters[j], args={})
                     Portfolio[j].update(WeightData.reindex(index=ijSubIDs).to_dict())
             for i in range(GroupNum):
                 iWealth = self._Output["净值"][i][-1]
@@ -395,8 +397,8 @@ class FilterPortfolio(QuantilePortfolio):
                     self._Output["换手率"][i][-1] = calcTurnover(self._Output["投资组合"][i][-2], self._Output["投资组合"][i][-1])
                 elif nPortfolio==1:
                     self._Output["换手率"][i][-1] = 1
-        if self.MarketIDFilter:
-            IDs = self._FactorTable.getFilteredID(idt=idt, id_filter_str=self.MarketIDFilter)
+        if self._QSArgs.MarketIDFilter:
+            IDs = self._FactorTable.getFilteredID(idt=idt, id_filter_str=self._QSArgs.MarketIDFilter)
         WeightData = WeightData[IDs]
         Price = Price[IDs]
         WeightData = WeightData[pd.notnull(WeightData) & pd.notnull(Price)]
@@ -408,10 +410,10 @@ class FilterPortfolio(QuantilePortfolio):
 
 class MultiPortfolio(BaseModule):
     """多组合对比"""
-    Modules = List(QuantilePortfolio, arg_type="List", label="对比模块", order=0)
     def __init__(self, name="多组合对比", sys_args={}, **kwargs):
         super().__init__(name=name, sys_args=sys_args, **kwargs)
         self._QS_isMulti = True
+        self.Modules = []
     def output(self, recalculate=False):
         if (not recalculate)  and self._Output: return self._Output
         self._Output = {"净值": {"L-S": pd.DataFrame(), "Top": pd.DataFrame(), "Bottom": pd.DataFrame(), "市场": pd.DataFrame()}, 
@@ -518,10 +520,10 @@ class MultiPortfolio(BaseModule):
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
-        if len(self.ArgNames)>0:
+        if len(self._QSArgs.ArgNames)>0:
             HTML = "参数设置: "
             HTML += '<ul align="left">'
-            for iArgName in self.ArgNames:
+            for iArgName in self._QSArgs.ArgNames:
                 if iArgName=="对比模块":
                     HTML += "<li>"+iArgName+": "+",".join([iModule.Name for iModule in self.Modules])+"</li>"
             HTML += "</ul>"

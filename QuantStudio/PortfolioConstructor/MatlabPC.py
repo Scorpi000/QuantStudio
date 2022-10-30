@@ -4,7 +4,6 @@ import os
 from multiprocessing import Lock
 
 import numpy as np
-import pandas as pd
 import matlab
 import matlab.engine
 
@@ -70,15 +69,15 @@ class MatlabPC(PortfolioConstructor):
         if self._EngLock is None: self._EngLock = Lock()
         return 0
     def init(self):
-        if self.OptimObjective.Type=="均值方差目标": self._MatlabScript = "solveMeanVariance"
-        elif self.OptimObjective.Type=="风险预算目标": self._MatlabScript = "solveRiskBudget"
-        elif self.OptimObjective.Type=="最大夏普率目标": self._MatlabScript = "solveMaxSharpe"
-        elif self.OptimObjective.Type=="最大分散化目标": self._MatlabScript = "solveMaxDiversification"
-        else: raise __QS_Error__("不支持的优化目标: '%s'" % self.OptimObjective.Type)
+        if self._QSArgs.OptimObjective.Type=="均值方差目标": self._MatlabScript = "solveMeanVariance"
+        elif self._QSArgs.OptimObjective.Type=="风险预算目标": self._MatlabScript = "solveRiskBudget"
+        elif self._QSArgs.OptimObjective.Type=="最大夏普率目标": self._MatlabScript = "solveMaxSharpe"
+        elif self._QSArgs.OptimObjective.Type=="最大分散化目标": self._MatlabScript = "solveMaxDiversification"
+        else: raise __QS_Error__("不支持的优化目标: '%s'" % self._QSArgs.OptimObjective.Type)
         return super().init()
     def _genOption(self):
         Options = {"Display":"0", "Solver":"Default"}
-        Options.update(self.OptimOption)
+        Options.update(self._QSArgs.OptimOption)
         return Options
     # 调用 MATLAB 求解优化问题
     def _solve(self, nvar, prepared_objective, prepared_constraints, prepared_option):

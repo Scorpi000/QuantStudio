@@ -4,7 +4,6 @@ import os
 import uuid
 import shutil
 import mmap
-import platform
 import pickle
 import gc
 import shelve
@@ -87,7 +86,7 @@ class WritableFactorDB(FactorDB):
     def offsetDateTime(self, lag, table_name, factor_names, args={}):
         if lag==0: return 0
         FT = self.getTable(table_name, args=args)
-        Data = FT.readData(factor_names=factor_names, ids=self.getID(), dts=self.getDateTime(), args=args)
+        Data = FT.readData(factor_names=factor_names, ids=FT.getID(), dts=FT.getDateTime(), args=args)
         if lag>0:
             Data.iloc[:, lag:, :] = Data.iloc[:,:-lag,:].values
             Data.iloc[:, :lag, :] = None
@@ -779,10 +778,10 @@ class FactorTable(__QS_Object__):
     # 获取因子对象
     def getFactor(self, ifactor_name, args={}, new_name=None):
         iFactor = Factor(name=ifactor_name, ft=self, logger=self._QS_Logger)
-        for iArgName in self.ArgNames:
+        for iArgName in self._QSArgs.ArgNames:
             if iArgName not in ("遍历模式", "运算模式"):
-                iTraitName, iTrait = self.getTrait(iArgName)
-                iFactor.add_trait(iTraitName, iTrait)
+                iTraitName, iTrait = self._QSArgs.getTrait(iArgName)
+                iFactor._QSArgs.add_trait(iTraitName, iTrait)
                 iFactor[iArgName] = args.get(iArgName, self[iArgName])
         if new_name is not None: iFactor.Name = new_name
         return iFactor
@@ -903,13 +902,13 @@ class CustomFT(FactorTable):
         if new_name is not None: iFactor.Name = new_name
         return iFactor
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
-        DateTimes = self._DateTimes
         if (start_dt is not None) or (end_dt is not None):
-            DateTimes = np.array(DateTimes, dtype="O")
+            DateTimes = np.array(self._DateTimes, dtype="O")
             if start_dt is not None: DateTimes = DateTimes[DateTimes>=start_dt]
             if end_dt is not None: DateTimes = DateTimes[DateTimes<=end_dt]
-            DateTimes = DateTimes.tolist()
-        return DateTimes
+            return DateTimes.tolist()
+        else:
+            return self._DateTimes
     def getID(self, ifactor_name=None, idt=None, args={}):
         return self._IDs
     def getIDMask(self, idt, ids=None, id_filter_str=None, args={}):
@@ -1007,7 +1006,7 @@ class CustomFT(FactorTable):
 def Factorize(factor_object, factor_name, args={}, **kwargs):
     factor_object.Name = factor_name
     for iArg, iVal in args.items(): factor_object[iArg] = iVal
-    if "logger" in kwargs: factor_object._QS_Logger = kwargs.logger
+    if "logger" in kwargs: factor_object._QS_Logger = kwargs["logger"]
     return factor_object
 def _UnitaryOperator(f, idt, iid, x, args):
     Fun = args.get("Fun", None)
@@ -1214,33 +1213,33 @@ class Factor(__QS_Object__):
     # -----------------------------重载运算符-------------------------------------
     def _genUnitaryOperatorInfo(self):
         if (self.Name==""):# 因子为中间运算因子
-            Args = {"Fun":self.Operator, "Arg":self.ModelArgs}
+            Args = {"Fun":self._QSArgs.Operator, "Arg":self._QSArgs.ModelArgs}
             return (self.Descriptors, Args)
         else:# 因子为正常因子
             return ([self], {})
     def _genBinaryOperatorInfo(self, other):
         if isinstance(other, Factor):# 两个因子运算
             if (self.Name=="") and (other.Name==""):# 两个因子因子名为空, 说明都是中间运算因子
-                Args = {"Fun1":self.Operator, "Fun2":other.Operator, "SepInd":len(self.Descriptors), "Arg1":self.ModelArgs, "Arg2":other.ModelArgs}
+                Args = {"Fun1":self._QSArgs.Operator, "Fun2":other._QSArgs.Operator, "SepInd":len(self.Descriptors), "Arg1":self._QSArgs.ModelArgs, "Arg2":other._QSArgs.ModelArgs}
                 return (self.Descriptors+other.Descriptors, Args)
             elif (self.Name==""):# 第一个因子为中间运算因子
-                Args = {"Fun1":self.Operator, "SepInd":len(self.Descriptors), "Arg1":self.ModelArgs}
+                Args = {"Fun1":self._QSArgs.Operator, "SepInd":len(self.Descriptors), "Arg1":self._QSArgs.ModelArgs}
                 return (self.Descriptors+[other], Args)
             elif (other.Name==""):# 第二个因子为中间运算因子
-                Args = {"Fun2":other.Operator, "SepInd":1, "Arg2":other.ModelArgs}
+                Args = {"Fun2":other._QSArgs.Operator, "SepInd":1, "Arg2":other._QSArgs.ModelArgs}
                 return ([self]+other.Descriptors, Args)
             else:# 两个因子均为正常因子
                 Args = {"SepInd":1}
                 return ([self, other], Args)
         elif (self.Name==""):# 中间运算因子+标量数据
-            Args = {"Fun1":self.Operator, "SepInd":len(self.Descriptors), "Data2":other, "Arg1":self.ModelArgs}
+            Args = {"Fun1":self._QSArgs.Operator, "SepInd":len(self.Descriptors), "Data2":other, "Arg1":self._QSArgs.ModelArgs}
             return (self.Descriptors, Args)
         else:# 正常因子+标量数据
             Args = {"SepInd":1, "Data2":other}
             return ([self], Args)
     def _genRBinaryOperatorInfo(self, other):
         if (self.Name==""):# 标量数据+中间运算因子
-            Args = {"Fun2":self.Operator, "SepInd":0, "Data1":other, "Arg2":self.ModelArgs}
+            Args = {"Fun2":self._QSArgs.Operator, "SepInd":0, "Data1":other, "Arg2":self._QSArgs.ModelArgs}
             return (self.Descriptors, Args)
         else:# 标量数据+正常因子
             Args = {"SepInd":0, "Data1":other}
@@ -1435,8 +1434,8 @@ class DataFactor(Factor):
         self._Data = data
         return super().__init__(name=name, ft=None, sys_args=sys_args, config_file=None, **kwargs)
     def getMetaData(self, key=None, args={}):
-        DataType = args.get("数据类型", self.DataType)
-        if key is None: return pd.Series({"DataType":DataType})
+        DataType = args.get("数据类型", self._QSArgs.DataType)
+        if key is None: return pd.Series({"DataType": DataType})
         elif key=="DataType": return DataType
         return None
     def getID(self, idt=None):
@@ -1463,9 +1462,9 @@ class DataFactor(Factor):
         else:
             Data = self._Data
         if (Data.columns.intersection(ids).shape[0]==0) or (Data.index.intersection(dts).shape[0]==0):
-            return pd.DataFrame(index=dts, columns=ids, dtype=("O" if self.DataType!="double" else np.float))
-        if self.LookBack==0: return Data.reindex(index=dts, columns=ids)
-        else: return fillNaByLookback(Data.reindex(index=sorted(Data.index.union(dts)), columns=ids), lookback=self.LookBack*24.0*3600).loc[dts, :]
+            return pd.DataFrame(index=dts, columns=ids, dtype=("O" if self._QSArgs.DataType!="double" else np.float))
+        if self._QSArgs.LookBack==0: return Data.reindex(index=dts, columns=ids)
+        else: return fillNaByLookback(Data.reindex(index=sorted(Data.index.union(dts)), columns=ids), lookback=self._QSArgs.LookBack*24.0*3600).loc[dts, :]
     def __QS_prepareCacheData__(self, ids=None):
         return self._Data
     def _QS_getData(self, dts, pids=None, **kwargs):

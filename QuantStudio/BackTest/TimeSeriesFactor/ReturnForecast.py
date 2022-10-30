@@ -5,13 +5,10 @@ from io import BytesIO
 
 import numpy as np
 import pandas as pd
-from traits.api import ListStr, Enum, List, Int, Bool, Float, Dict
-from traitsui.api import SetEditor, Item
+from traits.api import ListStr, Enum, List, Int, Float, Dict
 import statsmodels.api as sm
-from matplotlib.ticker import FuncFormatter
 from matplotlib.figure import Figure
 
-from QuantStudio import __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.Tools.StrategyTestFun import testTimingStrategy, summaryStrategy, formatStrategySummary, summaryTimingStrategy, formatTimingStrategySummary
 from QuantStudio.Tools.api import Panel
@@ -20,31 +17,28 @@ from QuantStudio.BackTest.TimeSeriesFactor.Correlation import _calcReturn
 
 class ReturnForecast(BaseModule):
     """收益率预测"""
-    TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
-    #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
-    ReturnType = Enum("简单收益率", "对数收益率", "价格变化量", arg_type="SingleOption", label="收益率类型", order=2)
-    ForecastPeriod = Int(1, arg_type="Integer", label="预测期数", order=3)
-    Lag = Int(0, arg_type="Integer", label="滞后期数", order=4)
-    CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=5)
-    SampleDTs = List(dt.datetime, arg_type="DateList", label="样本时点", order=6)
-    SummaryWindow = Float(np.inf, arg_type="Integer", label="统计窗口", order=7)
-    MinSummaryWindow = Int(2, arg_type="Integer", label="最小统计窗口", order=8)
-    ModelArgs = Dict(value={}, arg_type="Dict", label="模型参数", order=9)
-    HTMLPrintStatistics = List([], arg_type="List", label="打印统计量", order=10)
-    HTMLPlotStatistics = List([], arg_type="List", label="绘图统计量", order=11)
+    class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
+        TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
+        #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
+        ReturnType = Enum("简单收益率", "对数收益率", "价格变化量", arg_type="SingleOption", label="收益率类型", order=2)
+        ForecastPeriod = Int(1, arg_type="Integer", label="预测期数", order=3)
+        Lag = Int(0, arg_type="Integer", label="滞后期数", order=4)
+        CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=5)
+        SampleDTs = List(dt.datetime, arg_type="DateList", label="样本时点", order=6)
+        SummaryWindow = Float(np.inf, arg_type="Integer", label="统计窗口", order=7)
+        MinSummaryWindow = Int(2, arg_type="Integer", label="最小统计窗口", order=8)
+        ModelArgs = Dict(value={}, arg_type="Dict", label="模型参数", order=9)
+        HTMLPrintStatistics = List([], arg_type="List", label="打印统计量", order=10)
+        HTMLPlotStatistics = List([], arg_type="List", label="绘图统计量", order=11)
+        def __QS_initArgs__(self):
+            DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
+            self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
+            self.TestFactors.append(DefaultNumFactorList[0])
+            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1))
+            self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
     def __init__(self, factor_table, name="收益率预测", sys_args={}, **kwargs):
         self._FactorTable = factor_table
         super().__init__(name=name, sys_args=sys_args, **kwargs)
-    def __QS_initArgs__(self):
-        DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FactorTable.getFactorMetaData(key="DataType")))
-        self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
-        self.TestFactors.append(DefaultNumFactorList[0])
-        self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1))
-        self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
-    def getViewItems(self, context_name=""):
-        Items, Context = super().getViewItems(context_name=context_name)
-        Items[0].editor = SetEditor(values=self.trait("TestFactors").option_range)
-        return (Items, Context)
     # 用户实现的模型算子
     # 输入参数 : 
     # idt : 运行时点, datetime
@@ -67,7 +61,7 @@ class ReturnForecast(BaseModule):
         self._Output["证券价格"] = pd.DataFrame(columns=self._Output["证券ID"])
         self._Output["样本收益率"] = pd.DataFrame(columns=self._Output["证券ID"])
         self._Output["预测收益率"] = pd.DataFrame(columns=self._Output["证券ID"])
-        self._Output["因子值"] = {iID: pd.DataFrame(columns=self.TestFactors) for iID in self._Output["证券ID"]}
+        self._Output["因子值"] = {iID: pd.DataFrame(columns=self._QSArgs.TestFactors) for iID in self._Output["证券ID"]}
         self._Output["模型统计量"] = {}
         self._Output["因子统计量"] = {}
         self._CurCalcInd = 0
@@ -76,40 +70,40 @@ class ReturnForecast(BaseModule):
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
         self._iDT = idt
-        self._Output["证券价格"].loc[idt] = self._FactorTable.readData(dts=[idt], ids=self._Output["证券ID"], factor_names=[self.PriceFactor]).iloc[0, 0, :].values
+        self._Output["证券价格"].loc[idt] = self._FactorTable.readData(dts=[idt], ids=self._Output["证券ID"], factor_names=[self._QSArgs.PriceFactor]).iloc[0, 0, :].values
         isSampleDT = True
-        if self.SampleDTs:
-            if idt not in self.SampleDTs[self._CurSampleInd:]:
+        if self._QSArgs.SampleDTs:
+            if idt not in self._QSArgs.SampleDTs[self._CurSampleInd:]:
                 isSampleDT = False
             else:
-                self._CurSampleInd = self.SampleDTs[self._CurSampleInd:].index(idt) + self._CurSampleInd
-                if self._CurSampleInd - self.ForecastPeriod - self.Lag>=0:
-                    FactorDT = self.SampleDTs[self._CurSampleInd - self.ForecastPeriod - self.Lag]
-                    RtnStartDT = self.SampleDTs[self._CurSampleInd - self.ForecastPeriod]
-                    NewFactorDT = self.SampleDTs[self._CurSampleInd - self.Lag]
+                self._CurSampleInd = self._QSArgs.SampleDTs[self._CurSampleInd:].index(idt) + self._CurSampleInd
+                if self._CurSampleInd - self._QSArgs.ForecastPeriod - self._QSArgs.Lag>=0:
+                    FactorDT = self._QSArgs.SampleDTs[self._CurSampleInd - self._QSArgs.ForecastPeriod - self._QSArgs.Lag]
+                    RtnStartDT = self._QSArgs.SampleDTs[self._CurSampleInd - self._QSArgs.ForecastPeriod]
+                    NewFactorDT = self._QSArgs.SampleDTs[self._CurSampleInd - self._QSArgs.Lag]
                 else:
                     isSampleDT = False
         else:
             self._CurSampleInd = self._Model.DateTimeIndex
-            if self._CurSampleInd - self.ForecastPeriod - self.Lag<0:
+            if self._CurSampleInd - self._QSArgs.ForecastPeriod - self._QSArgs.Lag<0:
                 isSampleDT = False
             else:            
-                FactorDT = self._Model.DateTimeSeries[self._CurSampleInd - self.ForecastPeriod - self.Lag]
-                RtnStartDT = self._Model.DateTimeSeries[self._CurSampleInd - self.ForecastPeriod]
-                NewFactorDT = self._Model.DateTimeSeries[self._CurSampleInd - self.Lag]
+                FactorDT = self._Model.DateTimeSeries[self._CurSampleInd - self._QSArgs.ForecastPeriod - self._QSArgs.Lag]
+                RtnStartDT = self._Model.DateTimeSeries[self._CurSampleInd - self._QSArgs.ForecastPeriod]
+                NewFactorDT = self._Model.DateTimeSeries[self._CurSampleInd - self._QSArgs.Lag]
         if isSampleDT:
             Price = self._Output["证券价格"].loc[[RtnStartDT, idt]]
-            self._Output["样本收益率"].loc[idt] = _calcReturn(Price, return_type=self.ReturnType).iloc[-1].values
-            FactorData = self._FactorTable.readData(dts=[FactorDT], ids=self._Output["证券ID"], factor_names=list(self.TestFactors)).iloc[:, 0]
+            self._Output["样本收益率"].loc[idt] = _calcReturn(Price, return_type=self._QSArgs.ReturnType).iloc[-1].values
+            FactorData = self._FactorTable.readData(dts=[FactorDT], ids=self._Output["证券ID"], factor_names=list(self._QSArgs.TestFactors)).iloc[:, 0]
             for i, iID in enumerate(self._Output["证券ID"]): self._Output["因子值"][iID].loc[FactorDT] = FactorData.iloc[i].values
-        if self.CalcDTs:
-            if idt not in self.CalcDTs[self._CurCalcInd:]: return 0
-            self._CurCalcInd = self.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
+        if self._QSArgs.CalcDTs:
+            if idt not in self._QSArgs.CalcDTs[self._CurCalcInd:]: return 0
+            self._CurCalcInd = self._QSArgs.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
         else:
             self._CurCalcInd = self._Model.DateTimeIndex
-        if self._Output["样本收益率"].shape[0]<max(1, self.MinSummaryWindow): return 0
-        FactorData = self._FactorTable.readData(dts=[NewFactorDT], ids=self._Output["证券ID"], factor_names=list(self.TestFactors)).iloc[:, 0]
-        StartInd = int(max(0, self._Output["样本收益率"].shape[0] - self.SummaryWindow))
+        if self._Output["样本收益率"].shape[0]<max(1, self._QSArgs.MinSummaryWindow): return 0
+        FactorData = self._FactorTable.readData(dts=[NewFactorDT], ids=self._Output["证券ID"], factor_names=list(self._QSArgs.TestFactors)).iloc[:, 0]
+        StartInd = int(max(0, self._Output["样本收益率"].shape[0] - self._QSArgs.SummaryWindow))
         ForecastReturn = np.full((len(self._Output["证券ID"]),), np.nan)
         for i, iID in enumerate(self._Output["证券ID"]):
             Y = self._Output["样本收益率"].iloc[StartInd:, i]
@@ -120,7 +114,7 @@ class ReturnForecast(BaseModule):
                 self._Output["模型统计量"].setdefault(iID, pd.DataFrame(columns=iModelStatistics.index)).loc[idt] = iModelStatistics
             if iFactorStatistics is not None:
                 for jKey in iFactorStatistics:
-                    self._Output["因子统计量"].setdefault(iID, {}).setdefault(jKey, pd.DataFrame(columns=self.TestFactors)).loc[idt] = iFactorStatistics[jKey]
+                    self._Output["因子统计量"].setdefault(iID, {}).setdefault(jKey, pd.DataFrame(columns=self._QSArgs.TestFactors)).loc[idt] = iFactorStatistics[jKey]
         self._Output["预测收益率"].loc[idt] = ForecastReturn
         return 0
     def __QS_end__(self):
@@ -155,10 +149,10 @@ class ReturnForecast(BaseModule):
         # 滚动预测
         self._Output["滚动预测"] = {}
         self._Output["滚动预测"]["预测收益率"] = self._Output.pop("预测收益率").astype(np.float)
-        if self.CalcDTs:
-            self._Output["滚动预测"]["实际收益率"] = pd.DataFrame(_calcReturn(Price.reindex(index=self.CalcDTs).values, return_type=self.ReturnType), index=self.CalcDTs[1:], columns=IDs)
+        if self._QSArgs.CalcDTs:
+            self._Output["滚动预测"]["实际收益率"] = pd.DataFrame(_calcReturn(Price.reindex(index=self._QSArgs.CalcDTs).values, return_type=self._QSArgs.ReturnType), index=self._QSArgs.CalcDTs[1:], columns=IDs)
         else:
-            self._Output["滚动预测"]["实际收益率"] = pd.DataFrame(_calcReturn(Price.reindex(index=self._Model.DateTimeSeries).values, return_type=self.ReturnType), index=self._Model.DateTimeSeries[1:], columns=IDs)
+            self._Output["滚动预测"]["实际收益率"] = pd.DataFrame(_calcReturn(Price.reindex(index=self._Model.DateTimeSeries).values, return_type=self._QSArgs.ReturnType), index=self._Model.DateTimeSeries[1:], columns=IDs)
         self._Output["滚动预测"]["实际收益率"] = self._Output["滚动预测"]["实际收益率"].shift(-1).reindex(index=self._Output["滚动预测"]["预测收益率"].index)
         self._Output["滚动预测"]["绝对误差"] = (self._Output["滚动预测"]["预测收益率"] - self._Output["滚动预测"]["实际收益率"]).abs()
         self._Output["滚动预测"]["统计数据"] = pd.DataFrame({"均方误差": ((self._Output["滚动预测"]["预测收益率"] - self._Output["滚动预测"]["实际收益率"])**2).mean(), 
@@ -201,7 +195,7 @@ class ReturnForecast(BaseModule):
         return 0
     def genMatplotlibFig(self, file_path=None):
         iTargetNV = self._Output["择时策略"]["标的净值"]
-        if len(self.HTMLPlotStatistics)>0:
+        if len(self._QSArgs.HTMLPlotStatistics)>0:
             iStatistics = self._Output.get("模型统计量", None)
         else:
             iStatistics = None
@@ -236,7 +230,7 @@ class ReturnForecast(BaseModule):
             iAxes.set_title(str(jID)+" : 择时策略")
             if iStatistics is not None:
                 iAxes = Fig.add_subplot(nID, nCol, j*nCol+3)
-                for iKey in self.HTMLPlotStatistics:
+                for iKey in self._QSArgs.HTMLPlotStatistics:
                     if iKey in iStatistics:
                         iAxes.plot(xData1, iStatistics[iKey].iloc[:, j].values, label=iKey, lw=2.5)
                     else:
@@ -248,10 +242,10 @@ class ReturnForecast(BaseModule):
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     def _repr_html_(self):
-        if len(self.ArgNames)>0:
+        if len(self._QSArgs.ArgNames)>0:
             HTML = "参数设置: "
             HTML += '<ul align="left">'
-            for iArgName in self.ArgNames:
+            for iArgName in self._QSArgs.ArgNames:
                 if iArgName not in ("样本时点", "计算时点"):
                     HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
                 elif self.Args[iArgName]:
@@ -266,7 +260,7 @@ class ReturnForecast(BaseModule):
             iHTML = self._Output["全样本模型统计量"].to_html(formatters=[lambda x:'{0:.4f}'.format(x)]*self._Output["全样本模型统计量"].shape[1])
             Pos = iHTML.find(">")
             HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-        for iKey in self.HTMLPrintStatistics:
+        for iKey in self._QSArgs.HTMLPrintStatistics:
             if ("全样本因子统计量" in self._Output) and (iKey in self._Output["全样本因子统计量"]):
                 HTML += f"全样本因子统计量 - {iKey} : "
                 iHTML = self._Output["全样本因子统计量"][iKey].to_html(formatters=[lambda x:'{0:.4f}'.format(x)]*self._Output["全样本因子统计量"][iKey].shape[1])
@@ -316,18 +310,20 @@ class ReturnForecast(BaseModule):
 
 class OLS(ReturnForecast):
     """时间序列 OLS"""
+    class __QS_ArgClass__(ReturnForecast.__QS_ArgClass__):
+        def __QS_initArgs__(self):
+            super().__QS_initArgs__()
+            self.ModelArgs = {"常数项": True}
+            self.HTMLPrintStatistics = ["回归系数", "t统计量"]
+            self.HTMLPlotStatistics = ["R平方", "调整R平方"]
+    
     def __init__(self, factor_table, name="时间序列OLS", sys_args={}, **kwargs):
         return super().__init__(factor_table=factor_table, name=name, sys_args=sys_args, **kwargs)
-    def __QS_initArgs__(self):
-        super().__QS_initArgs__()
-        self.ModelArgs = {"常数项": True}
-        self.HTMLPrintStatistics = ["回归系数", "t统计量"]
-        self.HTMLPlotStatistics = ["R平方", "调整R平方"]
     def ModelOperator(self, idt, iid, sample_factor_data, sample_return, new_factor_data):
         ForecastReturn = np.nan
         FactorStatistics = pd.DataFrame(index=sample_factor_data.columns, columns=["回归系数", "t统计量"])
         Y= sample_return.values
-        hasConstant = self.ModelArgs.get("常数项", True)
+        hasConstant = self._QSArgs.ModelArgs.get("常数项", True)
         if hasConstant:
             X = sm.add_constant(sample_factor_data.values, prepend=True)
             NewX = np.r_[1, new_factor_data.values]

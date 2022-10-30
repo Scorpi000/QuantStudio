@@ -872,7 +872,7 @@ def summaryStrategy(wealth_seq, dts, dt_ruler=None, init_wealth=None, risk_free_
     SummaryIndex.extend(("最大回撤率", "最大回撤开始时点", "最大回撤结束时点"))
     MaxDrawdownRate, MaxDrawdownStartDT, MaxDrawdownEndDT = [], [], []
     for i in range(nCol):
-        iMaxDrawdownRate, iMaxDrawdownStartPos, iMaxDrawdownEndPos = calcMaxDrawdownRate(wealth_seq=wealth_seq[:, i])
+        iMaxDrawdownRate, iMaxDrawdownStartPos, iMaxDrawdownEndPos = calcMaxDrawdownRate(wealth_seq[:, i])
         MaxDrawdownRate.append(np.abs(iMaxDrawdownRate))
         MaxDrawdownStartDT.append((dts[iMaxDrawdownStartPos] if iMaxDrawdownStartPos is not None else None))
         MaxDrawdownEndDT.append((dts[iMaxDrawdownEndPos] if iMaxDrawdownEndPos is not None else None))

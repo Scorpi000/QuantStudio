@@ -1,12 +1,9 @@
 # -*- coding: utf-8 -*-
-import os
-
 import pandas as pd
 import numpy as np
-from traits.api import Float, Bool, Int, Str, Instance, List, Enum, Dict, Either, on_trait_change
+from traits.api import Float, Bool, Str, Instance, List, Enum, Dict, Either, on_trait_change
 
 from QuantStudio.Tools.DataTypeConversionFun import DummyVarTo01Var
-from QuantStudio.Tools.AuxiliaryFun import getFactorList
 from QuantStudio.Tools.IDFun import testIDFilterStr, filterID
 from QuantStudio import __QS_Object__, __QS_Error__
 
@@ -43,12 +40,13 @@ class OptimizationObjective(__QS_Object__):
 # L1 惩罚线性目标: f'*x + lambda1*sum(abs(x-c)) + lambda2*sum((x-c_pos)^+) + lambda3*sum((x-c_neg)^-),{'f':array(n,1),'lambda1':double,'c':array(n,1),'lambda2':double,'c_pos':array(n,1),'lambda3':double,'c_neg':array(n,1),'type':'L1_Linear'}
 # L1 惩罚二次目标: x'Sigma*x + Mu'*x + lambda1*sum(abs(x-c)) + lambda2*sum((x-c_pos)^+) + lambda3*sum((x-c_neg)^-),{'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Delta':array(n,1),'Mu':array(n,1),'lambda1':double,'c':array(n,1),'lambda2':double,'c_pos':array(n,1),'lambda3':double,'c_neg':array(n,1),'type':'L1_Quadratic'}, 其中, Sigma = X*F*X'+Delta
 class MeanVarianceObjective(OptimizationObjective):
-    Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=0)
-    ExpectedReturnCoef = Float(0.0, arg_type="Double", label="收益项系数", order=1)
-    RiskAversionCoef = Float(1.0, arg_type="Double", label="风险厌恶系数", order=2)
-    TurnoverPenaltyCoef = Float(0.0, arg_type="Double", label="换手惩罚系数", order=3)
-    BuyPenaltyCoef = Float(0.0, arg_type="Double", label="买入惩罚系数", order=4)
-    SellPenaltyCoef = Float(0.0, arg_type="Double", label="卖出惩罚系数", order=5)
+    class __QS_ArgClass__(OptimizationObjective.__QS_ArgClass__):
+        Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=0)
+        ExpectedReturnCoef = Float(0.0, arg_type="Double", label="收益项系数", order=1)
+        RiskAversionCoef = Float(1.0, arg_type="Double", label="风险厌恶系数", order=2)
+        TurnoverPenaltyCoef = Float(0.0, arg_type="Double", label="换手惩罚系数", order=3)
+        BuyPenaltyCoef = Float(0.0, arg_type="Double", label="买入惩罚系数", order=4)
+        SellPenaltyCoef = Float(0.0, arg_type="Double", label="卖出惩罚系数", order=5)
     @property
     def Type(self):
         return "均值方差目标"
@@ -58,61 +56,62 @@ class MeanVarianceObjective(OptimizationObjective):
     @property
     def Dependency(self):
         Dependency = {}
-        if self.RiskAversionCoef!=0.0: Dependency["协方差矩阵"] = True
-        if (self.TurnoverPenaltyCoef!=0.0) or (self.BuyPenaltyCoef!=0.0) or (self.SellPenaltyCoef!=0.0): Dependency["初始投资组合"] = True
-        if self.Benchmark: Dependency["基准投资组合"] = True
-        if self.ExpectedReturnCoef!=0.0: Dependency["预期收益"] = True
+        if self._QSArgs.RiskAversionCoef!=0.0: Dependency["协方差矩阵"] = True
+        if (self._QSArgs.TurnoverPenaltyCoef!=0.0) or (self._QSArgs.BuyPenaltyCoef!=0.0) or (self._QSArgs.SellPenaltyCoef!=0.0): Dependency["初始投资组合"] = True
+        if self._QSArgs.Benchmark: Dependency["基准投资组合"] = True
+        if self._QSArgs.ExpectedReturnCoef!=0.0: Dependency["预期收益"] = True
         return Dependency
     def genObjective(self):
         Sign = -1.0
         self._ObjectiveConstant = 0.0
-        if self.ExpectedReturnCoef!=0.0:
-            Mu = self.ExpectedReturnCoef * self._PC.ExpectedReturn.values.reshape((self._PC._nID, 1))
-            if self.Benchmark:
-                self._ObjectiveConstant += -self.ExpectedReturnCoef * np.dot(self._PC.ExpectedReturn.values, self._PC.BenchmarkHolding.values)
-                self._ObjectiveConstant += -self.ExpectedReturnCoef * np.dot(self._PC._BenchmarkExtraExpectedReturn.values, self._PC._BenchmarkExtra.values)
+        if self._QSArgs.ExpectedReturnCoef!=0.0:
+            Mu = self._QSArgs.ExpectedReturnCoef * self._PC.ExpectedReturn.values.reshape((self._PC._nID, 1))
+            if self._QSArgs.Benchmark:
+                self._ObjectiveConstant += -self._QSArgs.ExpectedReturnCoef * np.dot(self._PC.ExpectedReturn.values, self._PC.BenchmarkHolding.values)
+                self._ObjectiveConstant += -self._QSArgs.ExpectedReturnCoef * np.dot(self._PC._BenchmarkExtraExpectedReturn.values, self._PC._BenchmarkExtra.values)
         else:
             Mu = np.zeros((self._PC._nID, 1))
-        if self.RiskAversionCoef!=0.0:
+        if self._QSArgs.RiskAversionCoef!=0.0:
             Sigma = self._PC.CovMatrix.values
-            if self.Benchmark:
-                Mu += self.RiskAversionCoef * np.dot(self._PC._BenchmarkExtra.values, self._PC._BenchmarkExtraCov1.values).reshape((self._PC._nID, 1))
-                Mu += self.RiskAversionCoef * np.dot(self._PC.BenchmarkHolding.values, Sigma).reshape((self._PC._nID, 1))
-                self._ObjectiveConstant += -self.RiskAversionCoef/2 * np.dot(np.dot(self._PC._BenchmarkExtra.values, self._PC._BenchmarkExtraCov.values), self._PC._BenchmarkExtra.values)
-                self._ObjectiveConstant += -self.RiskAversionCoef * np.dot(np.dot(self._PC._BenchmarkExtra.values, self._PC._BenchmarkExtraCov1.values), self._PC.BenchmarkHolding.values)
-                self._ObjectiveConstant += -self.RiskAversionCoef/2 * np.dot(np.dot(self._PC.BenchmarkHolding.values, Sigma), self._PC.BenchmarkHolding.values)
+            if self._QSArgs.Benchmark:
+                Mu += self._QSArgs.RiskAversionCoef * np.dot(self._PC._BenchmarkExtra.values, self._PC._BenchmarkExtraCov1.values).reshape((self._PC._nID, 1))
+                Mu += self._QSArgs.RiskAversionCoef * np.dot(self._PC.BenchmarkHolding.values, Sigma).reshape((self._PC._nID, 1))
+                self._ObjectiveConstant += -self._QSArgs.RiskAversionCoef/2 * np.dot(np.dot(self._PC._BenchmarkExtra.values, self._PC._BenchmarkExtraCov.values), self._PC._BenchmarkExtra.values)
+                self._ObjectiveConstant += -self._QSArgs.RiskAversionCoef * np.dot(np.dot(self._PC._BenchmarkExtra.values, self._PC._BenchmarkExtraCov1.values), self._PC.BenchmarkHolding.values)
+                self._ObjectiveConstant += -self._QSArgs.RiskAversionCoef/2 * np.dot(np.dot(self._PC.BenchmarkHolding.values, Sigma), self._PC.BenchmarkHolding.values)
             if self._PC.FactorCov is None:
                 Objective = {"type":"Quadratic",
-                             "Sigma":-Sign * self.RiskAversionCoef/2 * Sigma,
+                             "Sigma":-Sign * self._QSArgs.RiskAversionCoef/2 * Sigma,
                              "Mu":Sign * Mu}
             else:
                 Objective = {"type":"Quadratic",
                              "X":self._PC.RiskFactorData.values,
-                             "F":-Sign * self.RiskAversionCoef/2 * self._PC.FactorCov.values,
-                             "Delta":-Sign * self.RiskAversionCoef/2 * self._PC.SpecificRisk.values.reshape((self._PC._nID, 1))**2,
+                             "F":-Sign * self._QSArgs.RiskAversionCoef/2 * self._PC.FactorCov.values,
+                             "Delta":-Sign * self._QSArgs.RiskAversionCoef/2 * self._PC.SpecificRisk.values.reshape((self._PC._nID, 1))**2,
                              "Mu":Sign * Mu}
         else:
             Objective = {"type":"Linear", "f":Sign * Mu}
-        if self.TurnoverPenaltyCoef!=0.0:
+        if self._QSArgs.TurnoverPenaltyCoef!=0.0:
             Objective['type'] = "L1_" + Objective['type'].split("_")[-1]
-            Objective.update({'lambda1':Sign * self.TurnoverPenaltyCoef,
+            Objective.update({'lambda1':Sign * self._QSArgs.TurnoverPenaltyCoef,
                               "c":self._PC.Holding.values.reshape((self._PC._nID, 1))})
-            self._ObjectiveConstant += -self.TurnoverPenaltyCoef * self._PC._HoldingExtra.abs().sum()
-        if self.BuyPenaltyCoef!=0.0:
+            self._ObjectiveConstant += -self._QSArgs.TurnoverPenaltyCoef * self._PC._HoldingExtra.abs().sum()
+        if self._QSArgs.BuyPenaltyCoef!=0.0:
             Objective['type'] = "L1_" + Objective['type'].split("_")[-1]
-            Objective.update({'lambda2':Sign * self.BuyPenaltyCoef,
+            Objective.update({'lambda2':Sign * self._QSArgs.BuyPenaltyCoef,
                               "c_pos":self._PC.Holding.values.reshape((self._PC._nID, 1))})
-            self._ObjectiveConstant += -self.BuyPenaltyCoef * self._PC._HoldingExtra[self._PC._HoldingExtra>0].sum()
-        if self.SellPenaltyCoef!=0.0:
+            self._ObjectiveConstant += -self._QSArgs.BuyPenaltyCoef * self._PC._HoldingExtra[self._PC._HoldingExtra>0].sum()
+        if self._QSArgs.SellPenaltyCoef!=0.0:
             Objective['type'] = "L1_" + Objective['type'].split("_")[-1]
-            Objective.update({'lambda3':Sign * self.SellPenaltyCoef,
+            Objective.update({'lambda3':Sign * self._QSArgs.SellPenaltyCoef,
                               "c_neg":self._PC.Holding.values.reshape((self._PC._nID, 1))})
-            self._ObjectiveConstant += -self.SellPenaltyCoef * (-self._PC._HoldingExtra[self._PC._HoldingExtra<0].sum())
+            self._ObjectiveConstant += -self._QSArgs.SellPenaltyCoef * (-self._PC._HoldingExtra[self._PC._HoldingExtra<0].sum())
         return Objective
 # 最大夏普率优化目标
 # 数学形式: (f'*x + f0) / sqrt(x'Sigma*x + Mu'x + q),{'f':array(n,1),'f0':double,'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Mu':array(n,1),'Delta':array(n,1),'q':double,'type':'Sharpe'},其中，Sigma = X*F*X'+Delta
 class MaxSharpeObjective(OptimizationObjective):
-    Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=0)
+    class __QS_ArgClass__(OptimizationObjective.__QS_ArgClass__):
+        Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=0)
     @property
     def Type(self):
         return "最大夏普率目标"
@@ -122,10 +121,10 @@ class MaxSharpeObjective(OptimizationObjective):
     @property
     def Dependency(self):
         Dependency = {"协方差矩阵":True, "预期收益":True}
-        if self.Benchmark: Dependency["基准投资组合"] = True
+        if self._QSArgs.Benchmark: Dependency["基准投资组合"] = True
         return Dependency
     def genObjective(self):
-        if not self.Benchmark:
+        if not self._QSArgs.Benchmark:
             if self._PC.FactorCov is None:
                 return {"type":"Sharpe","f":self._PC.ExpectedReturn.values.reshape((self._PC._nID, 1)),"f0":0.0,
                         "Sigma":self._PC.CovMatrix.values,"Mu":np.zeros((self._PC._nID, 1)),"q":0.0}
@@ -154,7 +153,14 @@ class MaxSharpeObjective(OptimizationObjective):
 # 风险预算优化目标
 # 数学形式: {'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Delta':array(n,1),'b':array(n,1),type':'Risk_Budget'}
 class RiskBudgetObjective(OptimizationObjective):
-    BudgetFactor = Enum("等权", arg_type="SingleOption", label="预算因子", order=0)
+    class __QS_ArgClass__(OptimizationObjective.__QS_ArgClass__):
+        BudgetFactor = Enum("等权", arg_type="SingleOption", label="预算因子", order=0)
+        def __QS_initArgs__(self):
+            if self._Owner._PC.FactorData is not None:
+                FactorNames = ["等权"]+self._Owner._PC.FactorData.columns.tolist()
+            else: FactorNames = ["等权"]
+            self.add_trait("BudgetFactor", Enum(*FactorNames, arg_type="SingleOption", label="预算因子", order=0))
+            return super().__QS_initArgs__()
     @property
     def Type(self):
         return "风险预算目标"
@@ -164,24 +170,18 @@ class RiskBudgetObjective(OptimizationObjective):
     @property
     def Dependency(self):
         Dependency = {"协方差矩阵":True}
-        if self.BudgetFactor!="等权": Dependency["因子"] = [self.BudgetFactor]
+        if self._QSArgs.BudgetFactor!="等权": Dependency["因子"] = [self._QSArgs.BudgetFactor]
         return Dependency
-    def __QS_initArgs__(self):
-        if self._PC.FactorData is not None:
-            FactorNames = ["等权"]+self._PC.FactorData.columns.tolist()
-        else: FactorNames = ["等权"]
-        self.add_trait("BudgetFactor", Enum(*FactorNames, arg_type="SingleOption", label="预算因子", order=0))
-        return super().__QS_initArgs__()
     def genObjective(self):
         if self._PC.FactorCov is None:
             Objective = {"type":"Risk_Budget", "Sigma":self._PC.CovMatrix.values}
         else:
             Objective = {"type":"Risk_Budget", "X":self._PC.RiskFactorData.values, "F":self._PC.FactorCov.values,
                          "Delta":self._PC.SpecificRisk.values.reshape((self._PC._nID, 1))**2}
-        if self.BudgetFactor=="等权":
+        if self._QSArgs.BudgetFactor=="等权":
             Objective["b"] = np.zeros((self._PC._nID, 1)) + 1/self._PC._nID
         else:
-            Objective["b"] = self._PC.FactorData.loc[:, [self.BudgetFactor]].values
+            Objective["b"] = self._PC.FactorData.loc[:, [self._QSArgs.BudgetFactor]].values
         return Objective
 
 
@@ -222,241 +222,246 @@ class Constraint(__QS_Object__):
 
 # 预算约束: i'*(w-benchmark) <=(==,>=) a, 转换成线性等式约束或线性不等式约束
 class BudgetConstraint(Constraint):
-    UpLimit = Float(1.0, arg_type="Double", label="限制上限", order=0)
-    DownLimit = Float(1.0, arg_type="Double", label="限制下限", order=1)
-    Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=2)
-    DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=3)
+    class __QS_ArgClass__(Constraint.__QS_ArgClass__):
+        UpLimit = Float(1.0, arg_type="Double", label="限制上限", order=0)
+        DownLimit = Float(1.0, arg_type="Double", label="限制下限", order=1)
+        Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=2)
+        DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=3)
     @property
     def Type(self):
         return "预算约束"
     @property
     def Dependency(self):
         Dependency = {}
-        if self.Benchmark: Dependency["基准投资组合"] = True
+        if self._QSArgs.Benchmark: Dependency["基准投资组合"] = True
         return Dependency
     def genConstraint(self):
-        if self.Benchmark:
+        if self._QSArgs.Benchmark:
             aAdj = self._PC.BenchmarkHolding.sum()+self._PC._BenchmarkExtra.sum()
         else:
             aAdj = 0.0
         Constraints = []
-        if self.UpLimit<self.DownLimit: raise __QS_Error__("限制上限必须大于等于限制下限!")
-        elif self.UpLimit==self.DownLimit:
+        if self._QSArgs.UpLimit<self._QSArgs.DownLimit: raise __QS_Error__("限制上限必须大于等于限制下限!")
+        elif self._QSArgs.UpLimit==self._QSArgs.DownLimit:
             Constraints.append({"type":"LinearEq",
                                 "Aeq":np.ones((1, self._PC._nID)),
-                                "beq":np.array([[self.UpLimit+aAdj]])})
+                                "beq":np.array([[self._QSArgs.UpLimit+aAdj]])})
         else:
-            if self.DownLimit>-np.inf:
+            if self._QSArgs.DownLimit>-np.inf:
                 Constraints.append({"type":"LinearIn",
                                     "A":-np.ones((1, self._PC._nID)),
-                                    "b":-np.array([[self.DownLimit+aAdj]])})
-            if self.UpLimit<np.inf:
+                                    "b":-np.array([[self._QSArgs.DownLimit+aAdj]])})
+            if self._QSArgs.UpLimit<np.inf:
                 Constraints.append({"type":"LinearIn",
                                     "A":np.ones((1, self._PC._nID)),
-                                    "b":np.array([[self.UpLimit+aAdj]])})
+                                    "b":np.array([[self._QSArgs.UpLimit+aAdj]])})
         return Constraints
 
 # 因子暴露约束: f'*(w-benchmark) <=(==,>=) a, 转换成线性等式约束或线性不等式约束
 class FactorExposeConstraint(Constraint):
-    FactorType = Enum("数值型", "类别型", arg_type="SingleOption", label="因子类型", order=0)
-    FactorNames = List(arg_type="MultiOption", label="因子名称", order=1, option_range=())
-    UpLimit = Float(0.0, arg_type="Double", label="限制上限", order=2)
-    DownLimit = Float(0.0, arg_type="Double", label="限制下限", order=3)
-    Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=4)
-    DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=5)
+    class __QS_ArgClass__(Constraint.__QS_ArgClass__):
+        FactorType = Enum("数值型", "类别型", arg_type="SingleOption", label="因子类型", order=0)
+        FactorNames = List(arg_type="MultiOption", label="因子名称", order=1, option_range=())
+        UpLimit = Float(0.0, arg_type="Double", label="限制上限", order=2)
+        DownLimit = Float(0.0, arg_type="Double", label="限制下限", order=3)
+        Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=4)
+        DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=5)
+        def __QS_initArgs__(self):
+            if self._Owner._PC.FactorData is not None:
+                FactorNames = self._Owner._PC.FactorData.columns.tolist()
+            else: FactorNames = []
+            self.add_trait("FactorNames", List(arg_type="MultiOption", label="因子名称", order=1, option_range=tuple(FactorNames)))
+            self.FactorNames = FactorNames[:1]
+            return super().__QS_initArgs__()
     @property
     def Type(self):
         return "因子暴露约束"
     @property
     def Dependency(self):
-        Dependency = {"因子":self.FactorNames}
-        if self.Benchmark: Dependency["基准投资组合"] = True
+        Dependency = {"因子":self._QSArgs.FactorNames}
+        if self._QSArgs.Benchmark: Dependency["基准投资组合"] = True
         return Dependency
-    def __QS_initArgs__(self):
-        if self._PC.FactorData is not None:
-            FactorNames = self._PC.FactorData.columns.tolist()
-        else: FactorNames = []
-        self.add_trait("FactorNames", List(arg_type="MultiOption", label="因子名称", order=1, option_range=tuple(FactorNames)))
-        self.FactorNames = FactorNames[:1]
-        return super().__QS_initArgs__()
     # 生成数值型因子暴露约束条件的优化器条件形式
     def _genNumFactorExposeConstraint(self):
-        if self.UpLimit<self.DownLimit: raise __QS_Error__("限制上限必须大于等于限制下限!")
+        if self._QSArgs.UpLimit<self._QSArgs.DownLimit: raise __QS_Error__("限制上限必须大于等于限制下限!")
         Constraints = []
-        FactorNames = list(self.FactorNames)
+        FactorNames = list(self._QSArgs.FactorNames)
         nFactor = len(FactorNames)
-        if self.Benchmark:
+        if self._QSArgs.Benchmark:
             aAdj = (np.dot(self._PC.BenchmarkHolding.values, self._PC.FactorData.loc[:, FactorNames].values) + np.dot(self._PC._BenchmarkExtra.values, self._PC._BenchmarkExtraFactorData.loc[:, FactorNames].values)).reshape((nFactor, 1))
         else:
             aAdj = np.zeros((nFactor, 1))
-        if self.UpLimit==self.DownLimit:
+        if self._QSArgs.UpLimit==self._QSArgs.DownLimit:
             Aeq = self._PC.FactorData.loc[:, FactorNames].values.T
             AeqSum = np.abs(Aeq).sum(axis=1)
             Mask = (AeqSum!=0.0)
             Constraints.append({"type":"LinearEq",
                                 "Aeq":Aeq[Mask,:],
-                                "beq":(self.UpLimit+aAdj)[Mask,:]})
+                                "beq":(self._QSArgs.UpLimit+aAdj)[Mask,:]})
         else:
             A = self._PC.FactorData.loc[:, FactorNames].values.T
             ASum = np.abs(A).sum(axis=1)
             Mask = (ASum!=0.0)
-            if self.DownLimit>-np.inf:
+            if self._QSArgs.DownLimit>-np.inf:
                 Constraints.append({"type":"LinearIn",
                                     "A":-A[Mask,:],
-                                    "b":-(self.DownLimit+aAdj)[Mask,:]})
-            if self.UpLimit<np.inf:
+                                    "b":-(self._QSArgs.DownLimit+aAdj)[Mask,:]})
+            if self._QSArgs.UpLimit<np.inf:
                 Constraints.append({"type":"LinearIn",
                                     "A":A[Mask,:],
-                                    "b":(self.UpLimit+aAdj)[Mask,:]})
+                                    "b":(self._QSArgs.UpLimit+aAdj)[Mask,:]})
         return Constraints
     # 生成类别型因子暴露约束条件的优化器条件形式
     def _genClassFactorExposeConstraint(self):
-        if self.UpLimit<self.DownLimit: raise __QS_Error__("限制上限必须大于等于限制下限!")
+        if self._QSArgs.UpLimit<self._QSArgs.DownLimit: raise __QS_Error__("限制上限必须大于等于限制下限!")
         Constraints = []
         if self._PC._Dependency.get("基准投资组合", False):
             AllFactorData = self._PC.FactorData.append(self._PC._BenchmarkExtraFactorData)
         else:
             AllFactorData = self._PC.FactorData
-        for iFactor in self.FactorNames:
+        for iFactor in self._QSArgs.FactorNames:
             iFactorData = AllFactorData[iFactor]
             iFactorData = DummyVarTo01Var(iFactorData, ignore_na=True, ignore_nonstring=True)
             nFactor = iFactorData.shape[1]
-            if self.Benchmark:
+            if self._QSArgs.Benchmark:
                 aAdj = (np.dot(self._PC.BenchmarkHolding.values, iFactorData.reindex(index=self._PC._TargetIDs).values) + np.dot(self._PC._BenchmarkExtra.values, iFactorData.reindex(index=self._PC._BenchmarkExtraIDs).values)).reshape((nFactor, 1))
             else:
                 aAdj = np.zeros((nFactor, 1))
-            if self.UpLimit==self.DownLimit:
+            if self._QSArgs.UpLimit==self._QSArgs.DownLimit:
                 Aeq = iFactorData.reindex(index=self._PC._TargetIDs).values.T
                 AeqSum = np.abs(Aeq).sum(axis=1)
                 Mask = (AeqSum!=0.0)
                 Constraints.append({"type":"LinearEq",
                                     "Aeq":Aeq[Mask,:],
-                                    "beq":(self.UpLimit+aAdj)[Mask, :]})
+                                    "beq":(self._QSArgs.UpLimit+aAdj)[Mask, :]})
             else:
                 A = iFactorData.reindex(index=self._PC._TargetIDs).values.T
                 ASum = np.abs(A).sum(axis=1)
                 Mask = (ASum!=0.0)
-                if self.DownLimit>-np.inf:
+                if self._QSArgs.DownLimit>-np.inf:
                     Constraints.append({"type":"LinearIn",
                                         "A":-A[Mask,:],
-                                        "b":-(self.DownLimit+aAdj)[Mask, :]})
-                if self.UpLimit<np.inf:
+                                        "b":-(self._QSArgs.DownLimit+aAdj)[Mask, :]})
+                if self._QSArgs.UpLimit<np.inf:
                     Constraints.append({"type":"LinearIn",
                                         "A":A[Mask,:],
-                                        "b":(self.UpLimit+aAdj)[Mask, :]})
+                                        "b":(self._QSArgs.UpLimit+aAdj)[Mask, :]})
         return Constraints
     # 生成因子暴露约束条件的优化器条件形式
     def genConstraint(self):
-        if self.FactorType=="数值型":
+        if self._QSArgs.FactorType=="数值型":
             return self._genNumFactorExposeConstraint()
         else:
             return self._genClassFactorExposeConstraint()
 
 # 权重约束: (w-benchmark) <=(>=) a, 转换成 Box 约束
 class WeightConstraint(Constraint):
-    TargetIDs = Str(arg_type="IDFilterStr", label="目标ID", order=0)
-    UpLimit = Either(Float(1.0), Str(), arg_type="Double", label="限制上限", order=1)
-    DownLimit = Either(Float(0.0), Str(), arg_type="Double", label="限制下限", order=2)
-    Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=3)
-    DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=4)
+    class __QS_ArgClass__(Constraint.__QS_ArgClass__):
+        TargetIDs = Str(arg_type="IDFilterStr", label="目标ID", order=0)
+        UpLimit = Either(Float(1.0), Str(), arg_type="Double", label="限制上限", order=1)
+        DownLimit = Either(Float(0.0), Str(), arg_type="Double", label="限制下限", order=2)
+        Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=3)
+        DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=4)
     @property
     def Type(self):
         return "权重约束"
     @property
     def Dependency(self):
         Dependency = {}
-        if self.Benchmark: Dependency["基准投资组合"] = True
-        if self.TargetIDs:
-            CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(self.TargetIDs)
+        if self._QSArgs.Benchmark: Dependency["基准投资组合"] = True
+        if self._QSArgs.TargetIDs:
+            CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(self._QSArgs.TargetIDs)
             if CompiledIDFilterStr is None: raise __QS_Error__("ID 过滤字符串有误!")
             Dependency["因子"] = IDFilterFactors
-        if isinstance(self.UpLimit, str):
-            Dependency["因子"] = Dependency.get("因子", [])+[self.UpLimit]
-        if isinstance(self.DownLimit, str):
-            Dependency["因子"] = Dependency.get("因子", [])+[self.DownLimit]
+        if isinstance(self._QSArgs.UpLimit, str):
+            Dependency["因子"] = Dependency.get("因子", [])+[self._QSArgs.UpLimit]
+        if isinstance(self._QSArgs.DownLimit, str):
+            Dependency["因子"] = Dependency.get("因子", [])+[self._QSArgs.DownLimit]
         return Dependency
     def genConstraint(self):
-        if not self.TargetIDs:
-            if isinstance(self.UpLimit, str): UpConstraint = self._PC.FactorData.loc[:, self.UpLimit]
-            else: UpConstraint = pd.Series(self.UpLimit, index=self._PC._TargetIDs)
-            if isinstance(self.DownLimit, str): DownConstraint = self._PC.FactorData.loc[:, self.DownLimit]
-            else: DownConstraint = pd.Series(self.DownLimit, index=self._PC._TargetIDs)
+        if not self._QSArgs.TargetIDs:
+            if isinstance(self._QSArgs.UpLimit, str): UpConstraint = self._PC.FactorData.loc[:, self._QSArgs.UpLimit]
+            else: UpConstraint = pd.Series(self._QSArgs.UpLimit, index=self._PC._TargetIDs)
+            if isinstance(self._QSArgs.DownLimit, str): DownConstraint = self._PC.FactorData.loc[:, self._QSArgs.DownLimit]
+            else: DownConstraint = pd.Series(self._QSArgs.DownLimit, index=self._PC._TargetIDs)
         else:
             UpConstraint = pd.Series(np.inf, index=self._PC._TargetIDs)
             DownConstraint = pd.Series(-np.inf, index=self._PC._TargetIDs)
-            TargetIDs = filterID(self._PC.FactorData, self.TargetIDs)
+            TargetIDs = filterID(self._PC.FactorData, self._QSArgs.TargetIDs)
             TargetIDs = list(set(TargetIDs).intersection(self._PC._TargetIDs))
-            if isinstance(self.UpLimit, str): UpConstraint[TargetIDs] = self._PC.FactorData.loc[TargetIDs, self.UpLimit]
-            else: UpConstraint[TargetIDs] = self.UpLimit
-            if isinstance(self.DownLimit, str): DownConstraint[TargetIDs] = self._PC.FactorData.loc[TargetIDs, self.DownLimit]
-            else: DownConstraint[TargetIDs] = self.DownLimit
-        if self.Benchmark:
+            if isinstance(self._QSArgs.UpLimit, str): UpConstraint[TargetIDs] = self._PC.FactorData.loc[TargetIDs, self._QSArgs.UpLimit]
+            else: UpConstraint[TargetIDs] = self._QSArgs.UpLimit
+            if isinstance(self._QSArgs.DownLimit, str): DownConstraint[TargetIDs] = self._PC.FactorData.loc[TargetIDs, self._QSArgs.DownLimit]
+            else: DownConstraint[TargetIDs] = self._QSArgs.DownLimit
+        if self._QSArgs.Benchmark:
             UpConstraint += self._PC.BenchmarkHolding
             DownConstraint += self._PC.BenchmarkHolding
         return [{"type":"Box", "lb":DownConstraint.values.reshape((self._PC._nID, 1)), "ub":UpConstraint.values.reshape((self._PC._nID, 1))}]
 # 换手约束: sum(abs(w-w0)) <=(==) a, 转换成 L1 范数约束, 正部总约束, 负部总约束
 class TurnoverConstraint(Constraint):
-    ConstraintType = Enum("总换手限制", "总买入限制", "总卖出限制", "买卖限制", "买入限制", "卖出限制", arg_type="SingleOption", label="限制类型", order=0)
-    AmtMultiple = Float(1.0, arg_type="Double", label="成交额倍数", order=1)
-    UpLimit = Float(0.7, arg_type="Double", label="限制上限", order=2)
-    DropPriority = Float(0, arg_type="Double", label="舍弃优先级", order=3)
+    class __QS_ArgClass__(Constraint.__QS_ArgClass__):
+        ConstraintType = Enum("总换手限制", "总买入限制", "总卖出限制", "买卖限制", "买入限制", "卖出限制", arg_type="SingleOption", label="限制类型", order=0)
+        AmtMultiple = Float(1.0, arg_type="Double", label="成交额倍数", order=1)
+        UpLimit = Float(0.7, arg_type="Double", label="限制上限", order=2)
+        DropPriority = Float(0, arg_type="Double", label="舍弃优先级", order=3)
     @property
     def Type(self):
         return "换手约束"
     @property
     def Dependency(self):
         Dependency = {"初始投资组合":True}
-        if (self.ConstraintType in ["买卖限制", "买入限制", "卖出限制"]) and (self.AmtMultiple!=0.0):
+        if (self._QSArgs.ConstraintType in ["买卖限制", "买入限制", "卖出限制"]) and (self._QSArgs.AmtMultiple!=0.0):
             Dependency["成交金额"] = True
             Dependency["总财富"] = True
         return Dependency
     def genConstraint(self):
         HoldingWeight = self._PC.Holding.values.reshape((self._PC._nID, 1))
-        if self.ConstraintType=="总换手限制":
-            aAdj = self.UpLimit - self._PC._HoldingExtra.abs().sum()
+        if self._QSArgs.ConstraintType=="总换手限制":
+            aAdj = self._QSArgs.UpLimit - self._PC._HoldingExtra.abs().sum()
             return [{"type":"L1", "c":HoldingWeight, "l":aAdj}]
-        elif self.ConstraintType=="总买入限制":
-            aAdj = self.UpLimit + self._PC._HoldingExtra[self._PC._HoldingExtra<0].sum()
+        elif self._QSArgs.ConstraintType=="总买入限制":
+            aAdj = self._QSArgs.UpLimit + self._PC._HoldingExtra[self._PC._HoldingExtra<0].sum()
             return [{"type":"Pos", "c_pos":HoldingWeight, "l":aAdj}]
-        elif self.ConstraintType=="总卖出限制":
-            aAdj = self.UpLimit - self._PC._HoldingExtra[self._PC._HoldingExtra>0].sum()
+        elif self._QSArgs.ConstraintType=="总卖出限制":
+            aAdj = self._QSArgs.UpLimit - self._PC._HoldingExtra[self._PC._HoldingExtra>0].sum()
             return [{"type":"Neg", "c_neg":HoldingWeight, "l":aAdj}]
-        if self.AmtMultiple==0.0:
-            aAdj = np.zeros((self._PC._nID, 1)) + self.UpLimit
+        if self._QSArgs.AmtMultiple==0.0:
+            aAdj = np.zeros((self._PC._nID, 1)) + self._QSArgs.UpLimit
         else:
-            aAdj = self._PC.AmountFactor.values.reshape((self._PC._nID, 1)) * self.AmtMultiple / self._PC.Wealth
-        if self.ConstraintType=="买卖限制":
+            aAdj = self._PC.AmountFactor.values.reshape((self._PC._nID, 1)) * self._QSArgs.AmtMultiple / self._PC.Wealth
+        if self._QSArgs.ConstraintType=="买卖限制":
             return [{"type":"Box", "ub":aAdj+HoldingWeight, "lb":-aAdj+HoldingWeight}]
-        elif self.ConstraintType=="买入限制":
+        elif self._QSArgs.ConstraintType=="买入限制":
             return [{"type":"Box", "ub":aAdj+HoldingWeight, "lb":np.zeros((self._PC._nID, 1))-np.inf}]
-        elif self.ConstraintType=="买入限制":
+        elif self._QSArgs.ConstraintType=="买入限制":
             return [{"type":"Box", "ub":np.zeros((self._PC._nID, 1))+np.inf, "lb":-aAdj+HoldingWeight}]
         return []
 # 波动率约束: (w-benchmark)'*Cov*(w-benchmark) <= a, 转换成二次约束
 class VolatilityConstraint(Constraint):
-    UpLimit = Float(0.06, arg_type="Double", label="限制上限", order=0)
-    Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=1)
-    DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=2)
+    class __QS_ArgClass__(Constraint.__QS_ArgClass__):
+        UpLimit = Float(0.06, arg_type="Double", label="限制上限", order=0)
+        Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=1)
+        DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=2)
     @property
     def Type(self):
         return "波动率约束"
     @property
     def Dependency(self):
         Dependency = {"协方差矩阵":True}
-        if self.Benchmark: Dependency["基准投资组合"] = True
+        if self._QSArgs.Benchmark: Dependency["基准投资组合"] = True
         return Dependency
     def genConstraint(self):
-        if self.Benchmark:
+        if self._QSArgs.Benchmark:
             Sigma = self._PC.CovMatrix.values
             BenchmarkWeight = self._PC.BenchmarkHolding.values
             Mu = -2*np.dot(BenchmarkWeight, Sigma) - 2*np.dot(self._PC._BenchmarkExtra.values, self._PC._BenchmarkExtraCov1.values)
             Mu = Mu.reshape((self._PC._nID, 1))
-            q = self.UpLimit**2 - np.dot(np.dot(BenchmarkWeight, Sigma), BenchmarkWeight)
+            q = self._QSArgs.UpLimit**2 - np.dot(np.dot(BenchmarkWeight, Sigma), BenchmarkWeight)
             q -= 2*np.dot(np.dot(self._PC._BenchmarkExtra.values, self._PC._BenchmarkExtraCov1.values), BenchmarkWeight)
             q -= np.dot(np.dot(self._PC._BenchmarkExtra.values, self._PC._BenchmarkExtraCov.values), self._PC._BenchmarkExtra.values)
         else:
             Mu = np.zeros((self._PC._nID, 1))
-            q = self.UpLimit**2
+            q = self._QSArgs.UpLimit**2
         Constraint = {"type":"Quadratic", "Mu":Mu, "q":q}
         if self._PC.FactorCov is not None:
             Constraint["X"] = self._PC.RiskFactorData.values
@@ -468,63 +473,93 @@ class VolatilityConstraint(Constraint):
 
 # 预期收益约束: r'*(w-benchmark) >= a, 转换成线性不等式约束
 class ExpectedReturnConstraint(Constraint):
-    DownLimit = Float(0.0, arg_type="Double", label="限制下限", order=0)
-    Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=1)
-    DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=2)
+    class __QS_ArgClass__(Constraint.__QS_ArgClass__):
+        DownLimit = Float(0.0, arg_type="Double", label="限制下限", order=0)
+        Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=1)
+        DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=2)
     @property
     def Type(self):
         return "预期收益约束"
     @property
     def Dependency(self):
         Dependency = {"预期收益":True}
-        if self.Benchmark: Dependency["基准投资组合"] = True
+        if self._QSArgs.Benchmark: Dependency["基准投资组合"] = True
         return Dependency
     def genConstraint(self):
         r = self._PC.ExpectedReturn.values.reshape((1, self._PC._nID))
-        if self.Benchmark:
-            aAdj = -self.DownLimit - np.dot(self._PC._BenchmarkExtraExpectedReturn.values, self._PC._BenchmarkExtra.values) - np.dot(r[0], self._PC.BenchmarkHolding.values)
+        if self._QSArgs.Benchmark:
+            aAdj = -self._QSArgs.DownLimit - np.dot(self._PC._BenchmarkExtraExpectedReturn.values, self._PC._BenchmarkExtra.values) - np.dot(r[0], self._PC.BenchmarkHolding.values)
             return [{"type":"LinearIn", "A":-r, "b":np.array([[aAdj]])}]
         else:
-            return [{"type":"LinearIn", "A":-r, "b":np.array([[-self.DownLimit]])}]
+            return [{"type":"LinearIn", "A":-r, "b":np.array([[-self._QSArgs.DownLimit]])}]
 # 非零数目约束: sum((w-benchmark!=0)<=N, 转换成非零数目约束
 class NonZeroNumConstraint(Constraint):
-    UpLimit = Float(150, arg_type="Double", label="限制上限", order=0)
-    Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=1)
-    DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=2)
+    class __QS_ArgClass__(Constraint.__QS_ArgClass__):
+        UpLimit = Float(150, arg_type="Double", label="限制上限", order=0)
+        Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=1)
+        DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=2)
     @property
     def Type(self):
         return "非零数目约束"
     @property
     def Dependency(self):
         Dependency = {}
-        if self.Benchmark: Dependency["基准投资组合"] = True
+        if self._QSArgs.Benchmark: Dependency["基准投资组合"] = True
         return Dependency
     def genConstraint(self):
-        if self.Benchmark:
-            N = (int(self.UpLimit - (self._PC._BenchmarkExtra.values!=0).sum()) if not np.isinf(self.UpLimit) else np.inf)
+        if self._QSArgs.Benchmark:
+            N = (int(self._QSArgs.UpLimit - (self._PC._BenchmarkExtra.values!=0).sum()) if not np.isinf(self._QSArgs.UpLimit) else np.inf)
             return [{"type":"NonZeroNum", "N":N, "b":self._PC.BenchmarkHolding.values.reshape((self._PC._nID, 1))}]
         else:
-            return [{"type":"NonZeroNum", "N":(int(self.UpLimit) if not np.isinf(self.UpLimit) else np.inf), "b":np.zeros((self._PC._nID, 1))}]
+            return [{"type":"NonZeroNum", "N":(int(self._QSArgs.UpLimit) if not np.isinf(self._QSArgs.UpLimit) else np.inf), "b":np.zeros((self._PC._nID, 1))}]
 
 
 
 # 投资组合构造器基类
 class PortfolioConstructor(__QS_Object__):
     """投资组合构造器"""
-    ExpectedReturn = Instance(pd.Series, arg_type="Series", label="预期收益", order=0)
-    CovMatrix = Instance(pd.DataFrame, arg_type="DataFrame", label="协方差矩阵", order=1)
-    FactorCov = Instance(pd.DataFrame, arg_type="DataFrame", label="因子协方差阵", order=2)
-    RiskFactorData = Instance(pd.DataFrame, arg_type="DataFrame", label="风险因子", order=3)
-    SpecificRisk = Instance(pd.Series, arg_type="Series", label="特异性风险", order=4)
-    Holding = Instance(pd.Series, arg_type="Series", label="初始投资组合", order=5)
-    BenchmarkHolding = Instance(pd.Series, arg_type="Series", label="基准投资组合", order=6)
-    AmountFactor = Instance(pd.Series, arg_type="Series", label="成交金额", order=7)
-    FactorData = Instance(pd.DataFrame, arg_type="DataFrame", label="因子暴露", order=8)
-    Wealth = Float(arg_type="Double", label="总财富", order=9)
-    TargetIDs = List(arg_type="IDList", label="目标ID", order=10)
-    OptimObjective = Instance(OptimizationObjective, arg_type="object", label="优化目标", order=11)
-    Constraints = List(Constraint, arg_type="List", label="约束条件", order=12)
-    OptimOption = Dict(arg_type="Dict", label="优化选项", order=13)
+    class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
+        ExpectedReturn = Instance(pd.Series, arg_type="Series", label="预期收益", order=0)
+        CovMatrix = Instance(pd.DataFrame, arg_type="DataFrame", label="协方差矩阵", order=1)
+        FactorCov = Instance(pd.DataFrame, arg_type="DataFrame", label="因子协方差阵", order=2)
+        RiskFactorData = Instance(pd.DataFrame, arg_type="DataFrame", label="风险因子", order=3)
+        SpecificRisk = Instance(pd.Series, arg_type="Series", label="特异性风险", order=4)
+        Holding = Instance(pd.Series, arg_type="Series", label="初始投资组合", order=5)
+        BenchmarkHolding = Instance(pd.Series, arg_type="Series", label="基准投资组合", order=6)
+        AmountFactor = Instance(pd.Series, arg_type="Series", label="成交金额", order=7)
+        FactorData = Instance(pd.DataFrame, arg_type="DataFrame", label="因子暴露", order=8)
+        Wealth = Float(arg_type="Double", label="总财富", order=9)
+        TargetIDs = List(arg_type="IDList", label="目标ID", order=10)
+        OptimObjective = Instance(OptimizationObjective, arg_type="object", label="优化目标", order=11)
+        Constraints = List(Constraint, arg_type="List", label="约束条件", order=12)
+        OptimOption = Dict(arg_type="Dict", label="优化选项", order=13)
+        @on_trait_change("OptimObjective")
+        def _on_OptimObjective_changed(self, obj, name, old, new):
+            self._Owner._ModelChanged = True
+        @on_trait_change("Constraints[]")
+        def _on_Constraints_changed(self, obj, name, old, new):
+            self._Owner._ModelChanged = True
+        @on_trait_change("TargetIDs")
+        def _on_TargetIDs_changed(self, obj, name, old, new):
+            if not self._Owner._isStarted: self._Owner._DataChanged = True
+        @on_trait_change("ExpectedReturn")
+        def _on_ExpectedReturn_changed(self, obj, name, old, new):
+            if not self._Owner._isStarted: self._Owner._DataChanged = True
+        @on_trait_change("CovMatrix")
+        def _on_CovMatrix_changed(self, obj, name, old, new):
+            if not self._Owner._isStarted: self._Owner._DataChanged = True
+        @on_trait_change("RiskFactorData")
+        def _on_RiskFactorData_changed(self, obj, name, old, new):
+            if not self._Owner._isStarted: self._Owner._DataChanged = True
+        @on_trait_change("SpecificRisk")
+        def _on_SpecificRisk_changed(self, obj, name, old, new):
+            if not self._Owner._isStarted: self._Owner._DataChanged = True
+        @on_trait_change("AmountFactor")
+        def _on_AmountFactor_changed(self, obj, name, old, new):
+            if not self._Owner._isStarted: self._Owner._DataChanged = True
+        @on_trait_change("FactorData")
+        def _on_FactorData_changed(self, obj, name, old, new):
+            if not self._Owner._isStarted: self._Owner._DataChanged = True
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         # 优化前必须指定的变量
         #self.ExpectedReturn = None# 当前的预期收益率，Series(index=self.TargetIDs)
@@ -557,44 +592,17 @@ class PortfolioConstructor(__QS_Object__):
         self._HoldingExtra = pd.Series()# 当前持仓相对于TargetIDs多出来的证券ID权重，pd.Series(index=self._HoldingExtraIDs)
         self._HoldingExtraAmount = pd.Series()# 当前持仓相对于TargetIDs多出来的证券ID对应的因子数据，pd.Series(index=self._HoldingExtraIDs)
         return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
-    @on_trait_change("OptimObjective")
-    def _on_OptimObjective_changed(self, obj, name, old, new):
-        self._ModelChanged = True
-    @on_trait_change("Constraints[]")
-    def _on_Constraints_changed(self, obj, name, old, new):
-        self._ModelChanged = True
-    @on_trait_change("TargetIDs")
-    def _on_TargetIDs_changed(self, obj, name, old, new):
-        if not self._isStarted: self._DataChanged = True
-    @on_trait_change("ExpectedReturn")
-    def _on_ExpectedReturn_changed(self, obj, name, old, new):
-        if not self._isStarted: self._DataChanged = True
-    @on_trait_change("CovMatrix")
-    def _on_CovMatrix_changed(self, obj, name, old, new):
-        if not self._isStarted: self._DataChanged = True
-    @on_trait_change("RiskFactorData")
-    def _on_RiskFactorData_changed(self, obj, name, old, new):
-        if not self._isStarted: self._DataChanged = True
-    @on_trait_change("SpecificRisk")
-    def _on_SpecificRisk_changed(self, obj, name, old, new):
-        if not self._isStarted: self._DataChanged = True
-    @on_trait_change("AmountFactor")
-    def _on_AmountFactor_changed(self, obj, name, old, new):
-        if not self._isStarted: self._DataChanged = True
-    @on_trait_change("FactorData")
-    def _on_FactorData_changed(self, obj, name, old, new):
-        if not self._isStarted: self._DataChanged = True
     # 求解优化问题, 返回: (Series(权重, index=[ID]) 或 None, 其他信息: {})
     def solve(self):
         self._isStarted = True
         self._Dependency = self.init()
         if self._DataChanged: self._preprocessData()
-        Objective = self.OptimObjective.genObjective()
+        Objective = self._QSArgs.OptimObjective.genObjective()
         MathConstraints = []
         DropedConstraintInds = {-1:[]}
         DropedConstraints = {-1:[]}
         iStartInd = -1
-        for i, iConstraint in enumerate(self.Constraints):
+        for i, iConstraint in enumerate(self._QSArgs.Constraints):
             iMathConstraints = iConstraint.genConstraint()
             MathConstraints.extend(iMathConstraints)
             iEndInd = iStartInd + len(iMathConstraints)
@@ -620,13 +628,13 @@ class PortfolioConstructor(__QS_Object__):
     def init(self):
         if self._ModelChanged:
             self._Dependency = {"因子":[]}
-            for iConstraint in self.Constraints:
+            for iConstraint in self._QSArgs.Constraints:
                 for jDependency, jValue in iConstraint.Dependency.items():
                     if jDependency=="因子":
                         self._Dependency["因子"].extend(jValue)
                     else:
                         self._Dependency[jDependency] = (self._Dependency.get(jDependency, False) or jValue)
-            for jDependency, jValue in self.OptimObjective.Dependency.items():
+            for jDependency, jValue in self._QSArgs.OptimObjective.Dependency.items():
                 if jDependency=="因子":
                     self._Dependency["因子"].extend(jValue)
                 else:
@@ -636,7 +644,7 @@ class PortfolioConstructor(__QS_Object__):
         return self._Dependency
     # 预处理数据
     def _preprocessData(self):
-        if self.TargetIDs: self._TargetIDs = set(self.TargetIDs)
+        if self._QSArgs.TargetIDs: self._TargetIDs = set(self._QSArgs.TargetIDs)
         else: self._TargetIDs = None
         if self._Dependency.get("预期收益", False):
             if self.ExpectedReturn is None: raise __QS_Error__("模型需要预期收益, 但尚未赋值!")
@@ -644,7 +652,7 @@ class PortfolioConstructor(__QS_Object__):
             if self._TargetIDs is None: self._TargetIDs = ExpectedReturn.index.tolist()
             else: self._TargetIDs = ExpectedReturn.index.intersection(self._TargetIDs).tolist()
         if self._Dependency.get("协方差矩阵", False):
-            if self.FactorCov is not None:
+            if self._QSArgs.FactorCov is not None:
                 if self.RiskFactorData is None: raise __QS_Error__("模型需要风险因子暴露, 但尚未赋值!")
                 if self.SpecificRisk is None: raise __QS_Error__("模型需要特异性风险, 但尚未赋值!")
                 RiskFactorData = self.RiskFactorData.dropna(how="any", axis=0)
@@ -683,14 +691,14 @@ class PortfolioConstructor(__QS_Object__):
             self._BenchmarkExtra = pd.Series()
         TargetBenchmarkExtraIDs = self._TargetIDs + self._BenchmarkExtraIDs
         if self._Dependency.get("协方差矩阵", False):
-            if self.FactorCov is not None:
+            if self._QSArgs.FactorCov is not None:
                 RiskFactorDataNAFillVal = self.RiskFactorData.mean()
                 SpecialRiskNAFillVal = self.SpecificRisk.mean()
                 self.RiskFactorData = self.RiskFactorData.reindex(index=TargetBenchmarkExtraIDs)
                 self.SpecificRisk = self.SpecificRisk.reindex(index=TargetBenchmarkExtraIDs)
                 self.RiskFactorData = self.RiskFactorData.fillna(RiskFactorDataNAFillVal)
                 self.SpecificRisk = self.SpecificRisk.fillna(SpecialRiskNAFillVal)
-                CovMatrix = np.dot(np.dot(self.RiskFactorData.values,self.FactorCov.values), self.RiskFactorData.values.T) + np.diag(self.SpecificRisk.values**2)
+                CovMatrix = np.dot(np.dot(self.RiskFactorData.values,self._QSArgs.FactorCov.values), self.RiskFactorData.values.T) + np.diag(self.SpecificRisk.values**2)
                 self.CovMatrix = pd.DataFrame(CovMatrix, index=TargetBenchmarkExtraIDs, columns=TargetBenchmarkExtraIDs)
                 self.RiskFactorData = self.RiskFactorData.reindex(index=self._TargetIDs)
                 self.SpecificRisk = self.SpecificRisk.reindex(index=self._TargetIDs)
@@ -755,13 +763,13 @@ class PortfolioConstructor(__QS_Object__):
         return (nVar, objective, PreparedConstraints, PreparedOption)
     # 整理选项参数
     def _genOption(self):
-        return self.OptimOption
+        return self._QSArgs.OptimOption
     # 求解一次优化问题, 返回: (array(nvar) 或 None, 其他信息: {})
     def _solve(self, nvar, prepared_objective, prepared_constraints, prepared_option):
         return (None, {})
     # 检查当前的优化问题是否可解
     def _checkSolvability(self):
-        for iConstraint in self.Constraints:
+        for iConstraint in self._QSArgs.Constraints:
             if iConstraint.Type not in self._SupportedContraintType:
                 return ("不支持类型为'%s' 的条件" % iConstraint.Type)
         return None

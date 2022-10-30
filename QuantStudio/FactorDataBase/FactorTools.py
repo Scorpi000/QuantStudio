@@ -22,8 +22,8 @@ def _genMultivariateOperatorInfo(*factors):
         iInd = str(i+1)
         if isinstance(iFactor, Factor):# 第i个操作子为因子
             if iFactor.Name=="":# 第i个因子为中间运算因子
-                Args["Fun"+iInd] = iFactor.Operator
-                Args["Arg"+iInd] = iFactor.ModelArgs
+                Args["Fun"+iInd] = iFactor._QSArgs.Operator
+                Args["Arg"+iInd] = iFactor._QSArgs.ModelArgs
                 Args["SepInd"+iInd] = Args.get("SepInd"+str(i),0)+len(iFactor.Descriptors)
                 Descriptors += iFactor.Descriptors
             else:# 第i个因子为最终因子
@@ -138,7 +138,7 @@ def fetch(f,pos=0,dtype="double", **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"pos":pos,"dtype":dtype}
     if isinstance(pos,str):
-        Args["OperatorArg"]['dtype'] = f.TempData['dtype']
+        Args["OperatorArg"]['dtype'] = f.UserData['dtype']
     return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_fetch,"参数":Args,"运算时点":"多时点","运算ID":"多ID","数据类型":dtype}, **kwargs)
 def _where(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
@@ -361,7 +361,6 @@ def _rolling_mean(f,idt,iid,x,args):
         return Data.rolling(**args["OperatorArg"]).mean().values[args["OperatorArg"]["window"]-1:]
     else:
         weights = np.array(args["OperatorArg"]["weights"])
-        TotalWeight = np.nansum(weights)
         return Data.rolling(**args["OperatorArg"]).apply(lambda x: np.nansum(x * weights) / np.nansum(pd.notnull(x) * weights),raw=True).values[args["OperatorArg"]["window"]-1:]
 def rolling_mean(f, window, min_periods=1, win_type=None, weights=None, **kwargs):
     Descriptors,Args = _genMultivariateOperatorInfo(f)
@@ -668,7 +667,7 @@ def rolling_regress(Y, *X, window=20, constant=True, half_life=np.inf, **kwargs)
         DataType = [('beta'+str(i),np.float) for i in range(nX)]
         DataType += [('t_beta'+str(i),np.float) for i in range(nX)]
     DataType += [('fvalue',np.float),('rsquared',np.float),('rsquared_adj',np.float)]
-    f.TempData["dtype"] = DataType
+    f.UserData["dtype"] = DataType
     return f
 def _rolling_regress_change(f,idt,iid,x,args):
     Y = _genOperatorData(f,idt,iid,x,args)[0]

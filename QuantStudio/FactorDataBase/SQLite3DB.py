@@ -82,9 +82,9 @@ class SQLite3DB(QSSQLite3Object, SQLDB):
         factor_info["DataType"] = factor_info["DataType"].str.lower()
         StrMask = factor_info["DataType"].str.contains("text")
         factor_info["FieldType"][StrMask] = "Date"
-        factor_info["FieldType"][(factor_info["DBFieldName"].str.lower()==self.IDField) & StrMask] = "ID"
+        factor_info["FieldType"][(factor_info["DBFieldName"].str.lower()==self._QSArgs.IDField) & StrMask] = "ID"
         factor_info["Supplementary"] = None
-        factor_info["Supplementary"][StrMask & (factor_info["DBFieldName"].str.lower()==self.DTField)] = "Default"
+        factor_info["Supplementary"][StrMask & (factor_info["DBFieldName"].str.lower()==self._QSArgs.DTField)] = "Default"
         factor_info["Description"] = ""
         factor_info["Nullable"] = np.where(factor_info["Nullable"].values==1, "NO", "YES")
         factor_info["FieldKey"] = np.where(factor_info["FieldKey"].values>0, "PRI", None)
@@ -92,7 +92,7 @@ class SQLite3DB(QSSQLite3Object, SQLDB):
         return factor_info
     def connect(self):
         QSSQLite3Object.connect(self)
-        nPrefix = len(self.InnerPrefix)
+        nPrefix = len(self._QSArgs.InnerPrefix)
         SQLStr = f"SELECT name AS DBTableName FROM sqlite_master WHERE type='table' AND name LIKE '{self.InnerPrefix}%%' ORDER BY name"
         self._TableInfo = pd.read_sql_query(SQLStr, self._Connection)
         self._TableInfo["TableName"] = self._TableInfo["DBTableName"].apply(lambda x: x[nPrefix:])
@@ -104,7 +104,7 @@ class SQLite3DB(QSSQLite3Object, SQLDB):
             Cursor.execute(f"PRAGMA table_info([{self.InnerPrefix+iTableName}])")
             iFactorInfo = np.array(Cursor.fetchall())
             iFactorInfo = pd.DataFrame(iFactorInfo[:, 1:6], columns=["DBFieldName", "DataType", "Nullable", "DefaultValue", "FieldKey"])
-            iFactorInfo = iFactorInfo[~iFactorInfo["DBFieldName"].isin(self.IgnoreFields)]
+            iFactorInfo = iFactorInfo[~iFactorInfo["DBFieldName"].isin(self._QSArgs.IgnoreFields)]
             if iFactorInfo.shape[0]>0:
                 iFactorInfo["TableName"] = iTableName
                 self._FactorInfo = self._FactorInfo.append(iFactorInfo)
@@ -119,10 +119,10 @@ class SQLite3DB(QSSQLite3Object, SQLDB):
         return eval("_"+Args["因子表类型"]+"(name='"+table_name+"', fdb=self, sys_args=Args, logger=self._QS_Logger)")
     def createTable(self, table_name, field_types):
         FieldTypes = field_types.copy()
-        FieldTypes[self.DTField] = FieldTypes.pop(self.DTField, "text NOT NULL")
-        FieldTypes[self.IDField] = FieldTypes.pop(self.IDField, "text NOT NULL")
-        self.createDBTable(self.InnerPrefix+table_name, FieldTypes, primary_keys=[self.DTField, self.IDField], index_fields=[self.IDField])
-        self._TableInfo = self._TableInfo.append(pd.Series([self.InnerPrefix+table_name, "WideTable"], index=["DBTableName", "TableClass"], name=table_name))
+        FieldTypes[self._QSArgs.DTField] = FieldTypes.pop(self._QSArgs.DTField, "text NOT NULL")
+        FieldTypes[self._QSArgs.IDField] = FieldTypes.pop(self._QSArgs.IDField, "text NOT NULL")
+        self.createDBTable(self._QSArgs.InnerPrefix+table_name, FieldTypes, primary_keys=[self._QSArgs.DTField, self._QSArgs.IDField], index_fields=[self._QSArgs.IDField])
+        self._TableInfo = self._TableInfo.append(pd.Series([self._QSArgs.InnerPrefix+table_name, "WideTable"], index=["DBTableName", "TableClass"], name=table_name))
         NewFactorInfo = pd.DataFrame(FieldTypes, index=["DataType"], columns=pd.Index(sorted(FieldTypes.keys()), name="DBFieldName")).T.reset_index()
         NewFactorInfo["TableName"] = table_name
         self._FactorInfo = self._FactorInfo.append(self._genFactorInfo(NewFactorInfo))

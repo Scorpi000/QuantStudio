@@ -6,7 +6,7 @@ import datetime as dt
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, Int, Str, Bool, List, ListStr, Dict, Function, File
+from traits.api import Enum, Int, Str, Bool, List, ListStr, Dict, Callable, File
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
@@ -134,8 +134,6 @@ class _AnalystConsensusTable(SQL_Table):
         return _saveRawDataWithReportANN(self, self._ANN_ReportFileName, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock)
     def __QS_genGroupInfo__(self, factors, operation_mode):
         PeriodGroup = {}
-        StartDT = dt.datetime.now()
-        FactorNames, RawFactorNames = [], set()
         for iFactor in factors:
             iPeriod = iFactor.Period
             if iPeriod not in PeriodGroup:
@@ -247,7 +245,7 @@ class _AnalystConsensusTable(SQL_Table):
 class _AnalystRatingDetailTable(SQL_Table):
     """分析师投资评级明细表"""
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
-        Operator = Function(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
+        Operator = Callable(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
         ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
         AdditionalFields = ListStr(arg_type="MultiOption", label="附加字段", order=2, option_range=())
         Deduplication = ListStr(arg_type="MultiOption", label="去重字段", order=3, option_range=())
@@ -333,7 +331,7 @@ class _AnalystRatingDetailTable(SQL_Table):
 class _AnalystEstDetailTable(SQL_Table):
     """分析师盈利预测明细表"""
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
-        Operator = Function(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
+        Operator = Callable(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
         ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
         ForwardYears = List(default=[0], label="向前年数", arg_type="ArgList", order=2)
         AdditionalFields = ListStr(arg_type="MultiOption", label="附加字段", order=3, option_range=())
@@ -492,7 +490,7 @@ class _ConstituentTable(SQL_ConstituentTable):
 class _FinancialTable(SQL_Table):
     """财务因子表"""
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
-        ReportDate = Enum("所有", "年报", "中报", "一季报", "三季报", Dict(), Function(), label="报告期", arg_type="SingleOption", order=0)
+        ReportDate = Enum("所有", "年报", "中报", "一季报", "三季报", Dict(), Callable(), label="报告期", arg_type="SingleOption", order=0)
         ReportType = List(["408001000", "408004000", "408005000"], label="报表类型", arg_type="MultiOption", order=1, option_range=("408001000", "408004000", "408005000"))
         CalcType = Enum("最新", "单季度", "TTM", label="计算方法", arg_type="SingleOption", order=2)
         YearLookBack = Int(0, label="回溯年数", arg_type="Integer", order=3)
