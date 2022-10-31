@@ -107,7 +107,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         self._TableInfo["TableClass"] = "WideTable"
         self._FactorInfo.pop("DBTableName")
         self._FactorInfo = self._genFactorInfo(self._FactorInfo)
-        return 0
+        return self
     @property
     def TableNames(self):
         return sorted(self._TableInfo.index)

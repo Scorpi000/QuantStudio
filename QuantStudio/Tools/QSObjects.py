@@ -141,7 +141,7 @@ class QSSQLObject(__QS_Object__):
             self._SQLFun = {"toDate": "CAST(%s AS DATE)"}# TOTEST
         else:
             raise NotImplementedError("'%s' 调用方法 connect 时错误: 尚不支持的数据库类型" % (self.Name, self._QSArgs.DBType))
-        return 0
+        return self
     def disconnect(self):
         if self._Connection is not None:
             try:
@@ -371,7 +371,7 @@ class QSSQLite3Object(QSSQLObject):
     def connect(self):
         self._connect()
         self._PlaceHolder = "?"
-        return 0
+        return self
     def getDBTable(self, table_format=None):
         try:
             SQLStr = "SELECT name FROM sqlite_master WHERE type='table'"

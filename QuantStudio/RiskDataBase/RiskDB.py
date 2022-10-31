@@ -28,7 +28,7 @@ class RiskDB(__QS_Object__):
         return self._QSArgs.Name
     # 链接数据库
     def connect(self):
-        return 0
+        return self
     # 断开风险数据库
     def disconnect(self):
         return 0
@@ -43,6 +43,8 @@ class RiskDB(__QS_Object__):
     # 返回风险表对象
     def getTable(self, table_name, args={}):
         return None
+    def __getitem__(self, table_name):
+        return self.getTable(table_name)
     # 设置表的元数据
     def setTableMetaData(self, table_name, key=None, value=None, meta_data=None):
         return 0
@@ -227,6 +229,17 @@ class RiskTable(__QS_Object__):
             iCorr, _ = decomposeCov2Corr(iCov.values)
             Corr[iDT] = pd.DataFrame(iCorr, index=iCov.index, columns=iCov.columns)
         return Panel(Corr, items=Cov.items, major_axis=Cov.major_axis, minor_axis=Cov.minor_axis)
+    def __getitem__(self, key):
+        if isinstance(key, tuple): key += (slice(None),) * (2 - len(key))
+        else: key = (key, slice(None))
+        if len(key)>2: raise IndexError("QuantStudio.RiskDataBase.RiskDB.RiskTable: Too many indexers")
+        DTs, IDs = key
+        if DTs==slice(None): DTs = self.getDateTime()
+        elif isinstance(DTs, dt.datetime): DTs = [DTs]
+        if IDs==slice(None): IDs = None
+        elif isinstance(IDs, str): IDs = [IDs]
+        Data = self.readCorr(DTs, ids=IDs)
+        return Data.loc[key[0], key[1], key[1]]
     # -----------------------遍历模式---------------------------------------
     def start(self, dts, **kwargs):
         return self._QSArgs.ErgodicMode.start(dts, **kwargs)

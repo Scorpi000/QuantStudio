@@ -39,7 +39,7 @@ class FactorDB(__QS_Object__):
     # ------------------------------数据源操作---------------------------------
     # 链接到数据库
     def connect(self):
-        return 0
+        return self
     # 断开到数据库的链接
     def disconnect(self):
         return 0
@@ -839,7 +839,7 @@ class FactorTable(__QS_Object__):
         elif isinstance(IDs, str): IDs = [IDs]
         Data = self.readData(FactorNames, IDs, DTs)
         return Data.loc[key]
-
+    
     # 启动遍历模式, dts: 遍历的时间点序列或者迭代器
     def start(self, dts, **kwargs):
         return self._QSArgs.ErgodicMode.start(dts=dts, **kwargs)

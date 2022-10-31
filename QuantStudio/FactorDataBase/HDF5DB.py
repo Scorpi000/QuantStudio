@@ -258,7 +258,7 @@ class HDF5DB(WritableFactorDB):
             os.chmod(self._LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
         self._DataLock = fasteners.InterProcessLock(self._LockFile)
         self._isAvailable = True
-        return 0
+        return self
     def disconnect(self):
         self._LockFile = None
         self._DataLock = None
@@ -545,8 +545,7 @@ class HDF5DB(WritableFactorDB):
 
 
 if __name__=="__main__":
-    HDB = HDF5DB(sys_args={"主目录": r"D:\HST\Research\QSDemo\Data\HDF5"})
-    HDB.connect()
+    HDB = HDF5DB(sys_args={"主目录": r"D:\Project\DemoData\HDF5"}).connect()
     print(HDB.Args)
     #print(HDB.TableNames)
     
@@ -581,7 +580,7 @@ if __name__=="__main__":
     print(Data)
     Data = F[:, "000001.SZ"]
     print(Data)
-    Data = F[dt.datetime(2022, 1, 1), "000001.SZ"]
+    Data = F[dt.datetime(2022, 1, 1), "000002.SZ"]
     print(Data)
 
     HDB.deleteTable("test_table")

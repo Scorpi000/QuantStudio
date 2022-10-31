@@ -399,7 +399,7 @@ class TushareDB(FactorDB):
     def connect(self):
         ts.set_token(self._QSArgs.Token)
         self._ts = ts.pro_api()
-        return 0
+        return self
     def disconnect(self):
         self._ts = None
         return 0

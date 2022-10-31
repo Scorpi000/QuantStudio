@@ -109,7 +109,7 @@ class SQLite3DB(QSSQLite3Object, SQLDB):
                 iFactorInfo["TableName"] = iTableName
                 self._FactorInfo = self._FactorInfo.append(iFactorInfo)
         self._FactorInfo = self._genFactorInfo(self._FactorInfo)
-        return 0
+        return self
     def __QS_initFTArgs__(self, table_name, args):
         Args = super().__QS_initFTArgs__(table_name=table_name, args=args)
         Args["时点格式"] = Args.get("时点格式", self._QSArgs.DTFmt)

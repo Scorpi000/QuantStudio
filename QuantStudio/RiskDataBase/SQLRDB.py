@@ -71,7 +71,7 @@ class SQLRDB(QSSQLObject, RiskDB):
                 self._TableAdditionalCols = pd.DataFrame(np.array(Rslt), columns=["表", "字段"]).set_index(["表"])["字段"]
                 nPrefix = len(self._Prefix)
                 self._TableAdditionalCols = {iTable[nPrefix:]:self._TableAdditionalCols.loc[[iTable]].tolist() for iTable in self._TableAdditionalCols.index.drop_duplicates()}
-        return 0
+        return self
     @property
     def TableNames(self):
         return sorted(self._TableAdditionalCols)
@@ -290,7 +290,7 @@ class SQLFRDB(QSSQLObject, FactorRDB):
                 self._TableAdditionalCols = pd.DataFrame(np.array(Rslt), columns=["表", "字段"]).set_index(["表"])["字段"]
                 nPrefix = len(self._Prefix)
                 self._TableAdditionalCols = {iTable[nPrefix:]:self._TableAdditionalCols.loc[[iTable]].tolist() for iTable in self._TableAdditionalCols.index.drop_duplicates()}
-        return 0
+        return self
     @property
     def TableNames(self):
         return sorted(self._TableAdditionalCols)

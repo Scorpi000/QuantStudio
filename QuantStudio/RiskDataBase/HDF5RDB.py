@@ -66,7 +66,7 @@ class HDF5RDB(RiskDB):
                         TableDT[iTable] = [dt.datetime.strptime(ijDT, "%Y-%m-%d %H:%M:%S.%f") for ijDT in iDTs]
         self._TableDT = TableDT
         self._isAvailable = True
-        return 0
+        return self
     def disconnect(self):
         self._TableDT = {}
         self._isAvailable = False
@@ -306,7 +306,7 @@ class HDF5FRDB(FactorRDB):
                         TableDT[iTable] = [dt.datetime.strptime(ijDT, "%Y-%m-%d %H:%M:%S.%f") for ijDT in iDTs]
         self._TableDT = TableDT
         self._isAvailable = True
-        return 0
+        return self
     def disconnect(self):
         self._TableDT = {}
         self._isAvailable = False
