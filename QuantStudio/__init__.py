@@ -108,6 +108,9 @@ class QSArgs(HasTraits):
     def __iter__(self):
         return iter(self._LabelTrait)
     
+    def __len__(self):
+        return len(self._LabelTrait)
+
     def __getitem__(self, key):
         return getattr(self, self._LabelTrait[key])
     
@@ -116,7 +119,31 @@ class QSArgs(HasTraits):
     
     def __delitem__(self, key):
         self.remove_trait(self._LabelTrait[key])
+
+    def __contains__(self, key):
+        return (key in self._LabelTrait)
+
+    def get(self, key, value=None):
+        if key in self._LabelTrait:
+            return getattr(self, self._LabelTrait[key])
+        else:
+            return value
     
+    def keys(self):
+        return tuple(self._ArgOrder.index)
+    
+    def values(self):
+        return (getattr(self, self._LabelTrait[iKey]) for iKey in self._ArgOrder)
+    
+    def update(self, args={}):
+        for iKey in self._ArgOrder.index.intersection(args.keys()):
+            setattr(self, self._LabelTrait[iKey], args[iKey])
+    
+    def clear(self):
+        for iArgName in self._ArgOrder.index:
+            iKey = self._LabelTrait[iArgName]
+            setattr(self, iKey, self.trait(iKey).default)
+
     def __QS_initArgs__(self):
         return None
 

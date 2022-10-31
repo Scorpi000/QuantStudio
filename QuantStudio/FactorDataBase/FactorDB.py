@@ -54,6 +54,9 @@ class FactorDB(__QS_Object__):
     # 返回因子表对象
     def getTable(self, table_name, args={}):
         return None
+    def __getitem__(self, table_name):
+        return self.getTable(table_name)
+
 
 # 支持写入的因子库, 接口类
 class WritableFactorDB(FactorDB):
@@ -782,7 +785,7 @@ class FactorTable(__QS_Object__):
             if iArgName not in ("遍历模式", "运算模式"):
                 iTraitName, iTrait = self._QSArgs.getTrait(iArgName)
                 iFactor._QSArgs.add_trait(iTraitName, iTrait)
-                iFactor[iArgName] = args.get(iArgName, self[iArgName])
+                iFactor._QSArgs[iArgName] = args.get(iArgName, self._QSArgs[iArgName])
         if new_name is not None: iFactor.Name = new_name
         return iFactor
     # 获取因子的元数据
@@ -822,6 +825,21 @@ class FactorTable(__QS_Object__):
     def readData(self, factor_names, ids, dts, args={}):
         if self._QSArgs.ErgodicMode._isStarted: return self._QSArgs.ErgodicMode._readData_ErgodicMode(factor_names=factor_names, ids=ids, dts=dts, args=args)
         return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args), factor_names=factor_names, ids=ids, dts=dts, args=args)
+    def __getitem__(self, key):
+        if isinstance(key, str): return self.getFactor(key)
+        elif isinstance(key, tuple): key += (slice(None),) * (3 - len(key))
+        else: key = (key, slice(None), slice(None))
+        if len(key)>3: raise IndexError("QuantStudio.FactorDataBase.FactorDB.FactorTable: Too many indexers")
+        FactorNames, DTs, IDs = key
+        if FactorNames==slice(None): FactorNames = self.FactorNames
+        elif isinstance(FactorNames, str): FactorNames = [FactorNames]
+        if DTs==slice(None): DTs = None
+        elif isinstance(DTs, dt.datetime): DTs = [DTs]
+        if IDs==slice(None): IDs = None
+        elif isinstance(IDs, str): IDs = [IDs]
+        Data = self.readData(FactorNames, IDs, DTs)
+        return Data.loc[key]
+
     # 启动遍历模式, dts: 遍历的时间点序列或者迭代器
     def start(self, dts, **kwargs):
         return self._QSArgs.ErgodicMode.start(dts=dts, **kwargs)
@@ -1118,6 +1136,17 @@ class Factor(__QS_Object__):
             NewCacheData = self._FactorTable.readData(factor_names=[self._NameInFT], ids=NewIDs, dts=self._CacheData.index.tolist(), args=self.Args).loc[self._NameInFT]
             self._CacheData = pd.merge(self._CacheData, NewCacheData, left_index=True, right_index=True)
         return self._CacheData.reindex(index=dts, columns=ids)
+    def __getitem__(self, key):
+        if isinstance(key, tuple): key += (slice(None),) * (2 - len(key))
+        else: key = (key, slice(None))
+        if len(key)>2: raise IndexError("QuantStudio.FactorDataBase.FactorDB.Factor: Too many indexers")
+        DTs, IDs = key
+        if DTs==slice(None): DTs = None
+        elif isinstance(DTs, dt.datetime): DTs = [DTs]
+        if IDs==slice(None): IDs = None
+        elif isinstance(IDs, str): IDs = [IDs]
+        Data = self.readData(IDs, DTs)
+        return Data.loc[key]
     # ------------------------------------运算模式------------------------------------
     # 获取数据的开始时点, start_dt:新起始时点, dt_dict: 当前所有因子的时点信息: {因子名 : 开始时点}, id_dict: 当前所有因子的准备原始数据的截面 ID 信息: {因子名 : ID 序列}
     def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
