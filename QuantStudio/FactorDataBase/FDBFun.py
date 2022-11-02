@@ -757,7 +757,7 @@ class SQL_WideTable(SQL_Table):
         if IgnoreTime: GroupAnnDTField = self.__QS_toDate__(GroupAnnDTField)
         SubSQLStr += GroupAnnDTField+" AS AnnDate, "
         SubSQLStr += "MAX("+EndDTField+") AS MaxEndDate "
-        SubSQLStr += self._genFromSQLStr(use_main_table=False, args=args)+f" WHERE {'TRUE' if self.FactorDB.DBType!='Oracle' else '(1=1)'} "
+        SubSQLStr += self._genFromSQLStr(use_main_table=False, args=args)+f" WHERE {'TRUE' if self.FactorDB._QSArgs.DBType!='Oracle' else '(1=1)'} "
         if StartDT is not None:
             SubSQLStr += "AND ("+AdjAnnDTField+">="+StartDT.strftime(DTFormat)+" "
             SubSQLStr += "OR "+EndDTField+">="+StartDT.strftime(DTFormat)+") "
@@ -767,7 +767,7 @@ class SQL_WideTable(SQL_Table):
         SubSQLStr += self._genConditionSQLStr(use_main_table=False, args=args)+" "
         if (self._MainTableName is None) or (self._MainTableName==self._DBTableName):
             SubSQLStr += self._genIDSQLStr(ids, args=args)+" "
-        SubSQLStr += "GROUP BY "+IDField+f", {GroupAnnDTField if self.FactorDB.DBType=='Oracle' else 'AnnDate'}"
+        SubSQLStr += "GROUP BY "+IDField+f", {GroupAnnDTField if self.FactorDB._QSArgs.DBType=='Oracle' else 'AnnDate'}"
         SQLStr = "SELECT t.AnnDate AS DT, "
         SQLStr += self._getIDField(args=args)+" AS ID, "
         SQLStr += "t.MaxEndDate AS MaxEndDate, "
@@ -1006,7 +1006,7 @@ class SQL_NarrowTable(SQL_Table):
             if DefaultField.shape[0]==0: self.FactorNameField = FactorFields.index[0]
             else: self.FactorNameField = DefaultField[0]
             ValueFields = self._Owner._FactorInfo[self._Owner._FactorInfo["FieldType"]=="Value"]
-            if ValueFields.shape[0]==0: ValueFields = self._FactorInfo
+            if ValueFields.shape[0]==0: ValueFields = self._Owner._FactorInfo
             self.add_trait("FactorValueField", Enum(*ValueFields.index.tolist(), arg_type="SingleOption", label="因子值字段", order=5))
             DefaultField = ValueFields[ValueFields["Supplementary"]=="Default"].index
             if DefaultField.shape[0]==0: self.FactorValueField = ValueFields.index[0]
@@ -1379,7 +1379,7 @@ class SQL_TimeSeriesTable(SQL_Table):
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr, args=args)+" "
-        SQLStr += f"WHERE {'TRUE' if self.FactorDB.DBType!='Oracle' else '(1=1)'} "
+        SQLStr += f"WHERE {'TRUE' if self.FactorDB._QSArgs.DBType!='Oracle' else '(1=1)'} "
         if StartDT is not None:
             SQLStr += "AND "+AdjDTField+">="+StartDT.strftime(DTFormat)+" "
         if EndDT is not None:
@@ -1450,7 +1450,7 @@ class SQL_TimeSeriesTable(SQL_Table):
         SubSQLStr += GroupAnnDTField+" AS AnnDate, "
         SubSQLStr += "MAX("+EndDTField+") AS MaxEndDate "
         SubSQLStr += self._genFromSQLStr(use_main_table=False, args=args)+" "
-        SubSQLStr += f"WHERE {'TRUE' if self.FactorDB.DBType!='Oracle' else '(1=1)'} "
+        SubSQLStr += f"WHERE {'TRUE' if self.FactorDB._QSArgs.DBType!='Oracle' else '(1=1)'} "
         if StartDT is not None:
             SubSQLStr += "AND ("+AdjAnnDTField+">="+StartDT.strftime(DTFormat)+" "
             SubSQLStr += "OR "+EndDTField+">="+StartDT.strftime(DTFormat)+") "
@@ -1458,7 +1458,7 @@ class SQL_TimeSeriesTable(SQL_Table):
             SubSQLStr += "AND ("+AdjAnnDTField+"<="+EndDT.strftime(DTFormat)+" "
             SubSQLStr += "AND "+EndDTField+"<="+EndDT.strftime(DTFormat)+") "
         SubSQLStr += self._genConditionSQLStr(use_main_table=False, args=args)+" "
-        SubSQLStr += f"GROUP BY {GroupAnnDTField if self.FactorDB.DBType=='Oracle' else 'AnnDate'}"
+        SubSQLStr += f"GROUP BY {GroupAnnDTField if self.FactorDB._QSArgs.DBType=='Oracle' else 'AnnDate'}"
         SQLStr = "SELECT t.AnnDate AS DT, "
         SQLStr += "t.MaxEndDate AS MaxEndDate, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
@@ -1992,20 +1992,20 @@ class SQL_FinancialTable(SQL_Table):
         if SQLStr: init_keyword = "AND"
         ReportDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self._QSArgs.DTField), "DBFieldName"]
         if args.get("忽略非季末报告", self._QSArgs.IgnoreNonQuarter) or (not ((args.get("报告期", self._QSArgs.ReportDate)=="所有") and (args.get("计算方法", self._QSArgs.CalcType)=="最新") and (args.get("回溯年数", self._QSArgs.YearLookBack)==0) and (args.get("回溯期数", self._QSArgs.PeriodLookBack)==0))):
-            if self._FactorDB.DBType=="SQL Server":
+            if self._FactorDB._QSArgs.DBType=="SQL Server":
                 SQLStr += " "+init_keyword+" TO_CHAR("+ReportDTField+",'MMDD') IN ('0331','0630','0930','1231')"
-            elif self._FactorDB.DBType=="MySQL":
+            elif self._FactorDB._QSArgs.DBType=="MySQL":
                 SQLStr += " "+init_keyword+" DATE_FORMAT("+ReportDTField+",'%m%d') IN ('0331','0630','0930','1231')"
-            elif self._FactorDB.DBType=="Oracle":
+            elif self._FactorDB._QSArgs.DBType=="Oracle":
                 SQLStr += " "+init_keyword+" TO_CHAR("+ReportDTField+",'MMdd') IN ('0331','0630','0930','1231')"
-            elif self._FactorDB.DBType=="sqlite3":
+            elif self._FactorDB._QSArgs.DBType=="sqlite3":
                 YearStartIdx = self._QSArgs.DTFmt.find("%Y") + 1
                 YearEndIdx = YearStartIdx + 4
                 DTFmt = self._QSArgs.DTFmt.replace("%Y", "")
                 ReportDays = "','".join((dt.datetime(2000, 3, 31).strftime(DTFmt), dt.datetime(2000, 6, 30).strftime(DTFmt), dt.datetime(2000, 9, 30).strftime(DTFmt), dt.datetime(2000, 12, 31).strftime(DTFmt)))
                 SQLStr += " "+init_keyword+f" (SUBSTR({ReportDTField}, {YearStartIdx}, {YearStartIdx-1}) ||  SUBSTR({ReportDTField}, {YearEndIdx})) IN ('{ReportDays}')"
             else:
-                raise __QS_Error__("SQL_FinancialTable._genConditionSQLStr 不支持的数据库类型: '%s'" % (self._FactorDB.DBType, ))
+                raise __QS_Error__("SQL_FinancialTable._genConditionSQLStr 不支持的数据库类型: '%s'" % (self._FactorDB._QSArgs.DBType, ))
             init_keyword = "AND"
         AdjustTypeField = args.get("调整类型字段", self._QSArgs.AdjustTypeField)
         if AdjustTypeField is not None:

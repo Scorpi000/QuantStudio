@@ -13,8 +13,6 @@ chardet
 progressbar2
 fasteners
 traits
-pyface
-traitsui
 tushare
 xlrd
 xlwt

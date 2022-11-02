@@ -6,7 +6,6 @@ import webbrowser
 import numpy as np
 import pandas as pd
 from progressbar import ProgressBar
-from traitsui.api import Group
 from lxml import etree
 
 from QuantStudio import __QS_Object__
@@ -52,8 +51,6 @@ class BaseModule(__QS_Object__):
         Tree = etree.ElementTree(etree.HTML(HTML))
         Tree.write(file_path)
         return webbrowser.open(file_path)
-
-
 
 
 def _runModel_SingleThread(idx, mdl, end_barrier, start_barrier, ft_lock):
@@ -172,15 +169,6 @@ class BackTestModel(__QS_Object__):
     @property
     def DateIndexSeries(self):
         return self._TestDateIndex
-    def getViewItems(self, context_name=""):
-        Prefix = (context_name+"." if context_name else "")
-        Groups, Context = [], {}
-        for j, jModule in enumerate(self.Modules):
-            jItems, jContext = jModule.getViewItems(context_name=Prefix+"Module"+str(j))
-            Groups.append(Group(*jItems, label=str(j)+"-"+jModule.Name))
-            Context.update(jContext)
-            Context[Prefix+"Module"+str(j)] = jModule
-        return (Groups, Context)
     # 运行模型
     def _penetrateModule(self, modules):
         AllModules = set()

@@ -15,37 +15,37 @@ from QuantStudio.FactorDataBase.FDBFun import SQL_WideTable, SQL_FeatureTable, S
 class _WideTable(SQL_WideTable):
     """SQLite3 宽因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
 
 class _NarrowTable(SQL_NarrowTable):
     """SQLite3 窄因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
 
 class _FeatureTable(SQL_FeatureTable):
     """SQLite3 特征因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
 
 class _TimeSeriesTable(SQL_TimeSeriesTable):
     """SQLite3 时序因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
 
 class _MappingTable(SQL_MappingTable):
     """SQLite3 映射因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
 
 class _ConstituentTable(SQL_ConstituentTable):
     """SQLite3 成份因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
 
 class _FinancialTable(SQL_FinancialTable):
     """SQLite3 财务因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
     
     def _genConditionSQLStr(self, use_main_table=True, init_keyword="AND", args={}):
         SQLStr = super()._genConditionSQLStr(use_main_table=use_main_table, init_keyword=init_keyword, args=args)
@@ -93,7 +93,7 @@ class SQLite3DB(QSSQLite3Object, SQLDB):
     def connect(self):
         QSSQLite3Object.connect(self)
         nPrefix = len(self._QSArgs.InnerPrefix)
-        SQLStr = f"SELECT name AS DBTableName FROM sqlite_master WHERE type='table' AND name LIKE '{self.InnerPrefix}%%' ORDER BY name"
+        SQLStr = f"SELECT name AS DBTableName FROM sqlite_master WHERE type='table' AND name LIKE '{self._QSArgs.InnerPrefix}%%' ORDER BY name"
         self._TableInfo = pd.read_sql_query(SQLStr, self._Connection)
         self._TableInfo["TableName"] = self._TableInfo["DBTableName"].apply(lambda x: x[nPrefix:])
         self._TableInfo["TableClass"] = "WideTable"
@@ -101,7 +101,7 @@ class SQLite3DB(QSSQLite3Object, SQLDB):
         self._FactorInfo = pd.DataFrame(columns=["TableName", "DBFieldName", "DataType"])
         Cursor = self.cursor()
         for iTableName in self._TableInfo.index:
-            Cursor.execute(f"PRAGMA table_info([{self.InnerPrefix+iTableName}])")
+            Cursor.execute(f"PRAGMA table_info([{self._QSArgs.InnerPrefix+iTableName}])")
             iFactorInfo = np.array(Cursor.fetchall())
             iFactorInfo = pd.DataFrame(iFactorInfo[:, 1:6], columns=["DBFieldName", "DataType", "Nullable", "DefaultValue", "FieldKey"])
             iFactorInfo = iFactorInfo[~iFactorInfo["DBFieldName"].isin(self._QSArgs.IgnoreFields)]

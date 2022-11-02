@@ -15,7 +15,7 @@ from multiprocessing import Process, Queue, Lock, cpu_count
 import numpy as np
 import pandas as pd
 from progressbar import ProgressBar
-from traits.api import Instance, Str, List, Int, Enum, ListStr
+from traits.api import Instance, Str, List, Int, Enum, ListStr, Either
 
 from QuantStudio import __QS_Object__, __QS_Error__, QSArgs
 from QuantStudio.Tools.api import Panel
@@ -151,17 +151,17 @@ class _ErgodicMode(QSArgs):
     def start(self, dts, **kwargs):
         if self._isStarted: return 0
         self._DateTimes = np.array((self._Owner.getDateTime() if not self.ErgodicDTs else self.ErgodicDTs), dtype="O")
-        if self._DateTimes.shape[0]==0: raise __QS_Error__("因子表: '%s' 的默认时间序列为空, 请设置参数 '遍历模式-遍历时点' !" % self.Name)
+        if self._DateTimes.shape[0]==0: raise __QS_Error__("因子表: '%s' 的默认时间序列为空, 请设置参数 '遍历模式-遍历时点' !" % self._Owner.Name)
         self._IDs = (self._Owner.getID() if not self.ErgodicIDs else list(self.ErgodicIDs))
-        if not self._IDs: raise __QS_Error__("因子表: '%s' 的默认 ID 序列为空, 请设置参数 '遍历模式-遍历ID' !" % self.Name)
+        if not self._IDs: raise __QS_Error__("因子表: '%s' 的默认 ID 序列为空, 请设置参数 '遍历模式-遍历ID' !" % self._Owner.Name)
         self._CurInd = -1# 当前时点在 dts 中的位置, 以此作为缓冲数据的依据
         self._DTNum = self._DateTimes.shape[0]# 时点数
         self._CacheDTs = []# 缓冲的时点序列
         self._CacheData = {}# 当前缓冲区
         self._CacheFactorNum = 0# 当前缓存因子个数, 小于等于 self.MaxFactorCacheNum
         self._CacheIDNum = 0# 当前缓存ID个数, 小于等于 self.MaxIDCacheNum
-        self._FactorReadNum = pd.Series(0, index=self.FactorNames)# 因子读取次数, pd.Series(读取次数, index=self.FactorNames)
-        self._IDReadNum = pd.Series()# ID读取次数, pd.Series(读取次数, index=self.FactorNames)
+        self._FactorReadNum = pd.Series(0, index=self._Owner.FactorNames)# 因子读取次数, pd.Series(读取次数, index=self._Owner.FactorNames)
+        self._IDReadNum = pd.Series()# ID读取次数, pd.Series(读取次数, index=self._Owner.FactorNames)
         self._Queue2SubProcess = Queue()# 主进程向数据准备子进程发送消息的管道
         self._Queue2MainProcess = Queue()# 数据准备子进程向主进程发送消息的管道
         if self.CacheSize>0:
@@ -171,8 +171,8 @@ class _ErgodicMode(QSArgs):
             else:
                 self._TagName = None# 共享内存的 tag
                 self._MMAPCacheData = mmap.mmap(-1, int(self.CacheSize*2**20))# 当前共享内存缓冲区
-            if self.CacheMode=="因子": self._CacheDataProcess = Process(target=_prepareMMAPFactorCacheData, args=(self, self._MMAPCacheData), daemon=True)
-            else: self._CacheDataProcess = Process(target=_prepareMMAPIDCacheData, args=(self, self._MMAPCacheData), daemon=True)
+            if self.CacheMode=="因子": self._CacheDataProcess = Process(target=_prepareMMAPFactorCacheData, args=(self._Owner, self._MMAPCacheData), daemon=True)
+            else: self._CacheDataProcess = Process(target=_prepareMMAPIDCacheData, args=(self._Owner, self._MMAPCacheData), daemon=True)
             self._CacheDataProcess.start()
             if os.name=="nt": self._MMAPCacheData = mmap.mmap(-1, int(self.CacheSize*2**20), tagname=self._TagName)# 当前共享内存缓冲区
         self._isStarted = True
@@ -404,7 +404,7 @@ class _OperationMode(QSArgs):
     FactorNames = ListStr(arg_type="MultiOption", label="运算因子", order=2)
     SubProcessNum = Int(0, arg_type="Integer", label="子进程数", order=3)
     DTRuler = List(dt.datetime, arg_type="DateTimeList", label="时点标尺", order=4)
-    SectionIDs = ListStr(arg_type="IDList", label="截面ID", order=5)
+    SectionIDs = Either(None, ListStr, arg_type="IDList", label="截面ID", order=5)
     def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
         self._FT = owner
         self._isStarted = False
@@ -570,9 +570,6 @@ class _OperationMode(QSArgs):
         for iFactorName, iFactor in self._FactorDict.items():
             iFactor._exit()
         return 0
-
-    
-    
     def write2FDB(self, factor_names, ids, dts, factor_db, table_name, if_exists="update", subprocess_num=cpu_count()-1, dt_ruler=None, section_ids=None, specific_target={}, **kwargs):
         if not isinstance(factor_db, WritableFactorDB): raise __QS_Error__("因子数据库: %s 不可写入!" % factor_db.Name)
         # print("==========因子运算==========", "1. 原始数据准备", sep="\n", end="\n")# Cython 不过
@@ -631,58 +628,59 @@ def _prepareRawData(args):
             for i in range(nGroup):
                 iFT, iFactorNames, iRawFactorNames, iDTs, iArgs = args['GroupInfo'][i]
                 iPrepareIDs = args["PrepareIDs"][i]
-                if iPrepareIDs is None: iPrepareIDs = args["FT"].OperationMode.IDs
+                if iPrepareIDs is None: iPrepareIDs = args["FT"]._QSArgs.OperationMode.IDs
                 iPID_PrepareIDs = args["PID_PrepareIDs"][i]
-                if iPID_PrepareIDs is None: iPID_PrepareIDs = args["FT"].OperationMode._PID_IDs
+                if iPID_PrepareIDs is None: iPID_PrepareIDs = args["FT"]._QSArgs.OperationMode._PID_IDs
                 iRawData = iFT.__QS_prepareRawData__(iRawFactorNames, iPrepareIDs, iDTs, iArgs)
-                iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"].OperationMode._RawDataDir, iPID_PrepareIDs, args["RawDataFileNames"][i], args["FT"].OperationMode._PID_Lock)
+                iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"]._QSArgs.OperationMode._RawDataDir, iPID_PrepareIDs, args["RawDataFileNames"][i], args["FT"]._QSArgs.OperationMode._PID_Lock)
                 ProgBar.update(i+1)
     else:# 运行模式为并行
         for i in range(nGroup):
             iFT, iFactorNames, iRawFactorNames, iDTs, iArgs = args['GroupInfo'][i]
             iPrepareIDs = args["PrepareIDs"][i]
-            if iPrepareIDs is None: iPrepareIDs = args["FT"].OperationMode.IDs
+            if iPrepareIDs is None: iPrepareIDs = args["FT"]._QSArgs.OperationMode.IDs
             iPID_PrepareIDs = args["PID_PrepareIDs"][i]
-            if iPID_PrepareIDs is None: iPID_PrepareIDs = args["FT"].OperationMode._PID_IDs
+            if iPID_PrepareIDs is None: iPID_PrepareIDs = args["FT"]._QSArgs.OperationMode._PID_IDs
             iRawData = iFT.__QS_prepareRawData__(iRawFactorNames, iPrepareIDs, iDTs, iArgs)
-            iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"].OperationMode._RawDataDir, iPID_PrepareIDs, args["RawDataFileNames"][i], args["FT"].OperationMode._PID_Lock)
+            iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"]._QSArgs.OperationMode._RawDataDir, iPID_PrepareIDs, args["RawDataFileNames"][i], args["FT"]._QSArgs.OperationMode._PID_Lock)
             args['Sub2MainQueue'].put((args["PID"], 1, None))
     return 0
 # 因子表运算子进程
 def _calculate(args):
     FT = args["FT"]
-    FT.OperationMode._iPID = args["PID"]
+    OperationMode = FT._QSArgs.OperationMode
+    OperationMode._iPID = args["PID"]
     # 分配任务
     TDB, TableName, SpecificTarget = args["FactorDB"], args["TableName"], args["specific_target"]
     if SpecificTarget:
         TaskDispatched = OrderedDict()# {(id(FactorDB), TableName) : (FatorDB, [Factor], [FactorName])}
-        for iFactorName in FT.OperationMode.FactorNames:
+        for iFactorName in OperationMode.FactorNames:
             iDB, iTableName, iTargetFactorName = SpecificTarget.get(iFactorName, (None, None, None))
             if iDB is None: iDB = TDB
             if iTableName is None: iTableName = TableName
             if iTargetFactorName is None: iTargetFactorName = iFactorName
             iDBTable = (id(iDB), iTableName)
             if iDBTable in TaskDispatched:
-                TaskDispatched[iDBTable][1].append(FT.OperationMode._FactorDict[iFactorName])
+                TaskDispatched[iDBTable][1].append(OperationMode._FactorDict[iFactorName])
                 TaskDispatched[iDBTable][2].append(iTargetFactorName)
             else:
-                TaskDispatched[iDBTable] = (iDB, [FT.OperationMode._FactorDict[iFactorName]], [iTargetFactorName])
+                TaskDispatched[iDBTable] = (iDB, [OperationMode._FactorDict[iFactorName]], [iTargetFactorName])
     else:
-        TaskDispatched = {(id(TDB), TableName): (TDB, FT.OperationMode._Factors, list(FT.OperationMode.FactorNames))}
+        TaskDispatched = {(id(TDB), TableName): (TDB, OperationMode._Factors, list(OperationMode.FactorNames))}
     # 执行任务
-    nTask = len(FT.OperationMode.FactorNames)
-    nDT = len(FT.OperationMode.DateTimes)
+    nTask = len(OperationMode.FactorNames)
+    nDT = len(OperationMode.DateTimes)
     TaskCount = 0
-    if FT.OperationMode.SubProcessNum==0:# 运行模式为串行
+    if OperationMode.SubProcessNum==0:# 运行模式为串行
         with ProgressBar(max_value=nTask) as ProgBar:
             for i, iTask in enumerate(TaskDispatched):
                 iDB, iFactors, iTargetFactorNames = TaskDispatched[iTask]
                 iTableName = iTask[1]
                 if hasattr(iDB, "writeFactorData"):
                     for j, jFactor in enumerate(iFactors):
-                        jData = jFactor._QS_getData(dts=FT.OperationMode.DateTimes, pids=[args["PID"]])
-                        if FT.OperationMode._FactorPrepareIDs[jFactor.Name] is not None:
-                            jData = jData.reindex(columns=FT.OperationMode.IDs)
+                        jData = jFactor._QS_getData(dts=OperationMode.DateTimes, pids=[args["PID"]])
+                        if OperationMode._FactorPrepareIDs[jFactor.Name] is not None:
+                            jData = jData.reindex(columns=OperationMode.IDs)
                         iDB.writeFactorData(jData, iTableName, iTargetFactorNames[j], if_exists=args["if_exists"], data_type=jFactor.getMetaData(key="DataType"), **args["kwargs"])
                         jData = None
                         TaskCount += 1
@@ -692,13 +690,13 @@ def _calculate(args):
                     iDTLen= int(np.ceil(nDT / iFactorNum))
                     iDataTypes = {iTargetFactorNames[j]:jFactor.getMetaData(key="DataType") for j, jFactor in enumerate(iFactors)}
                     for j in range(iFactorNum):
-                        jDTs = list(FT.OperationMode.DateTimes[j*iDTLen:(j+1)*iDTLen])
+                        jDTs = list(OperationMode.DateTimes[j*iDTLen:(j+1)*iDTLen])
                         if jDTs:
                             jData = {}
                             for k, kFactor in enumerate(iFactors):
                                 ijkData = kFactor._QS_getData(dts=jDTs, pids=[args["PID"]])
-                                if FT.OperationMode._FactorPrepareIDs[kFactor.Name] is not None:
-                                    ijkData = ijkData.reindex(columns=FT.OperationMode.IDs)
+                                if OperationMode._FactorPrepareIDs[kFactor.Name] is not None:
+                                    ijkData = ijkData.reindex(columns=OperationMode.IDs)
                                 jData[iTargetFactorNames[k]] = ijkData
                                 if j==0:
                                     TaskCount += 0.5
@@ -714,11 +712,11 @@ def _calculate(args):
             iTableName = iTask[1]
             if hasattr(iDB, "writeFactorData"):
                 for j, jFactor in enumerate(iFactors):
-                    if FT.OperationMode._FactorPrepareIDs[jFactor.Name] is not None:
-                        jData = jFactor._QS_getData(dts=FT.OperationMode.DateTimes, pids=None)
-                        jData = jData.reindex(columns=FT.OperationMode._PID_IDs[args["PID"]])
+                    if OperationMode._FactorPrepareIDs[jFactor.Name] is not None:
+                        jData = jFactor._QS_getData(dts=OperationMode.DateTimes, pids=None)
+                        jData = jData.reindex(columns=OperationMode._PID_IDs[args["PID"]])
                     else:
-                        jData = jFactor._QS_getData(dts=FT.OperationMode.DateTimes, pids=[args["PID"]])
+                        jData = jFactor._QS_getData(dts=OperationMode.DateTimes, pids=[args["PID"]])
                     iDB.writeFactorData(jData, iTableName, iTargetFactorNames[j], if_exists=args["if_exists"], data_type=jFactor.getMetaData(key="DataType"), **args["kwargs"])
                     jData = None
                     args["Sub2MainQueue"].put((args["PID"], 1, None))
@@ -727,12 +725,12 @@ def _calculate(args):
                 iDTLen= int(np.ceil(nDT / iFactorNum))
                 iDataTypes = {iTargetFactorNames[j]:jFactor.getMetaData(key="DataType") for j, jFactor in enumerate(iFactors)}
                 for j in range(iFactorNum):
-                    jDTs = list(FT.OperationMode.DateTimes[j*iDTLen:(j+1)*iDTLen])
+                    jDTs = list(OperationMode.DateTimes[j*iDTLen:(j+1)*iDTLen])
                     if jDTs:
                         jData = {}
                         for k, kFactor in enumerate(iFactors):
                             ijkData = kFactor._QS_getData(dts=jDTs, pids=[args["PID"]])
-                            if FT.OperationMode._FactorPrepareIDs[kFactor.Name] is not None:
+                            if OperationMode._FactorPrepareIDs[kFactor.Name] is not None:
                                 ijkData = ijkData.reindex(columns=FT.OperationMode.IDs)
                             jData[iTargetFactorNames[k]] = ijkData
                             if j==0: args["Sub2MainQueue"].put((args["PID"], 0.5, None))

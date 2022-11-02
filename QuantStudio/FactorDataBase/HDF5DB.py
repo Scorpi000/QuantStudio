@@ -238,7 +238,7 @@ class HDF5DB(WritableFactorDB):
         state["_DataLock"] = (True if self._DataLock is not None else False)
         return state
     def __setstate__(self, state):
-        super().__setstate__(state)
+        self.__dict__.update(state)
         if self._DataLock:
             self._DataLock = fasteners.InterProcessLock(self._LockFile)
         else:

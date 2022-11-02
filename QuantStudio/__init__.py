@@ -9,8 +9,6 @@ warnings.filterwarnings("ignore")
 import numpy as np
 import pandas as pd
 from traits.api import HasTraits
-from traitsui.api import Item, View
-from traitsui.menu import OKButton, CancelButton
 
 __QS_MainPath__ = os.path.split(os.path.realpath(__file__))[0]
 __QS_LibPath__ = __QS_MainPath__+os.sep+"Lib"

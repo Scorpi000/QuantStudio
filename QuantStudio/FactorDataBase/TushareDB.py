@@ -410,7 +410,7 @@ class TushareDB(FactorDB):
         state["_ts"] = self.isAvailable()
         return state
     def __setstate__(self, state):
-        super().__setstate__(state)
+        self.__dict__.update(state)
         if self._ts:
             self._ts = None
             self.connect()

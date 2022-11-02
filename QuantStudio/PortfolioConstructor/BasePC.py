@@ -514,7 +514,6 @@ class NonZeroNumConstraint(Constraint):
             return [{"type":"NonZeroNum", "N":(int(self._QSArgs.UpLimit) if not np.isinf(self._QSArgs.UpLimit) else np.inf), "b":np.zeros((self._PC._nID, 1))}]
 
 
-
 # 投资组合构造器基类
 class PortfolioConstructor(__QS_Object__):
     """投资组合构造器"""
