@@ -271,8 +271,6 @@ class _Benchmark(QSArgs):
 class Strategy(BaseModule):
     """策略基类"""
     class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
-        Accounts = List(Account)# 策略所用到的账户
-        FactorTables = List(FactorTable)# 策略所用到的因子表
         Benchmark = Instance(_Benchmark, arg_type="ArgObject", label="比较基准", order=0)
         def __QS_initArgs__(self):
             self.Benchmark = _Benchmark()
@@ -332,7 +330,7 @@ class Strategy(BaseModule):
             AccountValueSeries += iAccount.getAccountValueSeries()
             CashSeries += iAccount.getCashSeries()
             DebtSeries += iAccount.getDebtSeries()
-            InitCash += iAccount.InitCash
+            InitCash += iAccount._QSArgs.InitCash
             DebtRecord = iAccount.DebtRecord.append(DebtRecord)
             CashRecord = iAccount.CashRecord.append(CashRecord)
         DebtRecord = DebtRecord[DebtRecord["融资"]!=0]

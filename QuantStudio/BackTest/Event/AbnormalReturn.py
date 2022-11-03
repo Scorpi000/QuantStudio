@@ -59,7 +59,7 @@ class CMRM(BaseModule):
         if CurInd<=self._QSArgs.EventPreWindow+self._QSArgs.EstWindow: return 0
         self._Output["事件记录"][:, 2] += 1
         IDs = self._FactorTable.getFilteredID(idt=idt, id_filter_str=self._QSArgs.EventFilter)
-        nID, EventWindow = len(IDs), self._QSArgs.ventPreWindow+1+self._QSArgs.EventPostWindow
+        nID, EventWindow = len(IDs), self._QSArgs.EventPreWindow+1+self._QSArgs.EventPostWindow
         if nID>0:
             self._Output["事件记录"] = np.r_[self._Output["事件记录"], np.c_[IDs, [idt]*nID, np.zeros(shape=(nID, 1))]]
             self._Output["正常收益率"] = np.r_[self._Output["正常收益率"], np.full(shape=(nID, EventWindow), fill_value=np.nan)]
@@ -78,7 +78,7 @@ class CMRM(BaseModule):
             FilterMask = (FilterMask & (np.flipud(np.cumsum(np.flipud(FilterMask), axis=0))<=self._QSArgs.EstSampleLen))
             EstReturn[~FilterMask] = np.nan
             ExpectedReturn, Var = np.nanmean(EstReturn, axis=0), np.nanvar(EstReturn, axis=0, ddof=1)
-            FilterMask = ((np.sum(FilterMask, axis=0)<self._QSArgs._QSArgs.EstSampleLen) | (Var<1e-6))
+            FilterMask = ((np.sum(FilterMask, axis=0)<self._QSArgs.EstSampleLen) | (Var<1e-6))
             ExpectedReturn[FilterMask] = np.nan
             Var[FilterMask] = np.nan
             self._Output["正常收益率"][-nID:, :] = ExpectedReturn.reshape((nID, 1)).repeat(EventWindow, axis=1)
@@ -140,12 +140,12 @@ class CMRM(BaseModule):
         self._Output["J3统计量"]["p值"] = pd.DataFrame(norm.sf(np.abs(self._Output["J3统计量"]["J3"].values)), index=self._Output["J3统计量"]["J3"].index, columns=self._Output["J3统计量"]["J3"].columns)
         AR = AR[np.sum(np.isnan(AR), axis=1)==0, :]
         N = AR.shape[0]
-        L2 = self._QSArgs._QSArgs.EventPreWindow+1+self._QSArgs.EventPostWindow
+        L2 = self._QSArgs.EventPreWindow+1+self._QSArgs.EventPostWindow
         K = np.full_like(AR, np.nan)
         K[np.arange(N).repeat(L2), np.argsort(AR, axis=1).flatten()] = (np.arange(L2*N) % L2) + 1
         J4 = np.nansum(K-(L2+1)/2, axis=0) / N
         J4 = J4 / (np.nansum(J4**2) / L2)**0.5
-        self._Output["J4统计量"] = {"J4": pd.DataFrame(J4, index=np.arange(-self._QSArgs._QSArgs.EventPreWindow, 1+self._QSArgs.EventPostWindow), columns=["单时点"])}
+        self._Output["J4统计量"] = {"J4": pd.DataFrame(J4, index=np.arange(-self._QSArgs.EventPreWindow, 1+self._QSArgs.EventPostWindow), columns=["单时点"])}
         self._Output["J4统计量"]["p值"] = pd.DataFrame(norm.sf(np.abs(self._Output["J4统计量"]["J4"].values)), index=self._Output["J4统计量"]["J4"].index, columns=self._Output["J4统计量"]["J4"].columns)
         Index = pd.MultiIndex.from_arrays(self._Output.pop("事件记录")[:,:2].T, names=["ID", "时点"])
         self._Output["正常收益率"] = pd.DataFrame(self._Output["正常收益率"], columns=np.arange(-self._QSArgs.EventPreWindow, 1+self._QSArgs.EventPostWindow), index=Index).reset_index()

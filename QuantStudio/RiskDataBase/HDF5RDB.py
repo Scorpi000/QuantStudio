@@ -18,7 +18,7 @@ from QuantStudio.Tools.api import Panel
 class _RiskTable(RiskTable):
     def getMetaData(self, key=None, args={}):
         with self._RiskDB._DataLock:
-            with h5py.File(self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
+            with h5py.File(self._RiskDB._QSArgs.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
                 if key is None: return pd.Series(dict(File.attrs))
                 elif key in File.attrs: return File.attrs[key]
                 else: return None
@@ -27,7 +27,7 @@ class _RiskTable(RiskTable):
     def __QS_readCov__(self, dts, ids=None):
         Data = {}
         with self._RiskDB._DataLock:
-            with h5py.File(self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
+            with h5py.File(self._RiskDB._QSArgs.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
                 CovGroup = File["Cov"]
                 for iDT in dts:
                     iDTStr = iDT.strftime("%Y-%m-%d %H:%M:%S.%f")
@@ -142,7 +142,7 @@ class _FactorRiskTable(FactorRT):
         else:
             DTStr = DTs[-1].strftime("%Y-%m-%d %H:%M:%S.%f")
             with self._RiskDB._DataLock:
-                with h5py.File(self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
+                with h5py.File(self._RiskDB._QSArgs.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
                     if "FactorCov" in File:
                         Group = File["FactorCov"]
                         if DTStr in Group:
@@ -163,7 +163,7 @@ class _FactorRiskTable(FactorRT):
         if idt is None: idt = self._RiskDB._TableDT[self._Name][-1]
         DTStr = idt.strftime("%Y-%m-%d %H:%M:%S.%f")
         with self._RiskDB._DataLock:
-            with h5py.File(self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
+            with h5py.File(self._RiskDB._QSArgs.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
                 Group = File["SpecificRisk"]
                 if DTStr in Group:
                     if h5py.version.version>="3.0.0":
@@ -172,7 +172,7 @@ class _FactorRiskTable(FactorRT):
                         return sorted(Group[DTStr]["ID"][...])
                 else: return []
     def getFactorReturnDateTime(self, start_dt=None, end_dt=None):
-        FilePath = self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix
+        FilePath = self._RiskDB._QSArgs.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix
         with self._RiskDB._DataLock:
             if not os.path.isfile(FilePath): return []
             with h5py.File(FilePath, mode="r") as File:
@@ -181,7 +181,7 @@ class _FactorRiskTable(FactorRT):
         DTs = [dt.datetime.strptime(iDT, "%Y-%m-%d %H:%M:%S.%f") for iDT in DTs]
         return cutDateTime(DTs, start_dt=start_dt, end_dt=end_dt)
     def getSpecificReturnDateTime(self, start_dt=None, end_dt=None):
-        FilePath = self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix
+        FilePath = self._RiskDB._QSArgs.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix
         with self._RiskDB._DataLock:
             if not os.path.isfile(FilePath): return []
             with h5py.File(FilePath, mode="r") as File:
@@ -192,7 +192,7 @@ class _FactorRiskTable(FactorRT):
     def __QS_readFactorCov__(self, dts):
         Data = {}
         with self._RiskDB._DataLock:
-            with h5py.File(self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
+            with h5py.File(self._RiskDB._QSArgs.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
                 Group = File["FactorCov"]
                 for iDT in dts:
                     iDTStr = iDT.strftime("%Y-%m-%d %H:%M:%S.%f")
@@ -205,7 +205,7 @@ class _FactorRiskTable(FactorRT):
     def __QS_readSpecificRisk__(self, dts, ids=None):
         Data = {}
         with self._RiskDB._DataLock:
-            with h5py.File(self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
+            with h5py.File(self._RiskDB._QSArgs.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
                 Group = File["SpecificRisk"]
                 for iDT in dts:
                     iDTStr = iDT.strftime("%Y-%m-%d %H:%M:%S.%f")
@@ -220,7 +220,7 @@ class _FactorRiskTable(FactorRT):
     def __QS_readFactorData__(self, dts, ids=None):
         Data = {}
         with self._RiskDB._DataLock:
-            with h5py.File(self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
+            with h5py.File(self._RiskDB._QSArgs.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
                 Group = File["FactorData"]
                 for iDT in dts:
                     iDTStr = iDT.strftime("%Y-%m-%d %H:%M:%S.%f")
@@ -238,7 +238,7 @@ class _FactorRiskTable(FactorRT):
     def readFactorReturn(self, dts):
         Data = {}
         with self._RiskDB._DataLock:
-            with h5py.File(self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
+            with h5py.File(self._RiskDB._QSArgs.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
                 Group = File["FactorReturn"]
                 for iDT in dts:
                     iDTStr = iDT.strftime("%Y-%m-%d %H:%M:%S.%f")
@@ -251,7 +251,7 @@ class _FactorRiskTable(FactorRT):
     def readSpecificReturn(self, dts, ids=None):
         Data = {}
         with self._RiskDB._DataLock:
-            with h5py.File(self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
+            with h5py.File(self._RiskDB._QSArgs.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
                 Group = File["SpecificReturn"]
                 for iDT in dts:
                     iDTStr = iDT.strftime("%Y-%m-%d %H:%M:%S.%f")
@@ -266,7 +266,7 @@ class _FactorRiskTable(FactorRT):
     def readData(self, data_item, dts):
         Data = {}
         with self._RiskDB._DataLock:
-            with h5py.File(self._RiskDB.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
+            with h5py.File(self._RiskDB._QSArgs.MainDir+os.sep+self._Name+"."+self._RiskDB._Suffix, mode="r") as File:
                 if data_item not in File: return None
                 Group = File[data_item]
                 for iDT in dts:

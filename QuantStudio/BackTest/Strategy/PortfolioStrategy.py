@@ -42,13 +42,13 @@ class PortfolioStrategy(Strategy):
         TargetAccount = Instance(Account, label="目标账户", arg_type="ArgObject", order=6)
         TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=7)
         def __QS_initArgs__(self):
-            self.LongWeightAlloction = _WeightAllocation(ft=self._FT, owner=self)
-            self.ShortWeightAlloction = _WeightAllocation(ft=self._FT, owner=self)
+            self.LongWeightAlloction = _WeightAllocation(ft=self._Owner._FT, owner=self._Owner)
+            self.ShortWeightAlloction = _WeightAllocation(ft=self._Owner._FT, owner=self._Owner)
             return super().__QS_initArgs__()
         @on_trait_change("TargetAccount")
         def _on_TargetAccount_changed(self, obj, name, old, new):
-            if (self.TargetAccount is not None) and (self.TargetAccount not in self.Accounts): self.Accounts.append(self.TargetAccount)
-            elif (self.TargetAccount is None) and (old in self.Accounts): self.Accounts.remove(old)
+            if (self.TargetAccount is not None) and (self.TargetAccount not in self._Owner.Accounts): self._Owner.Accounts.append(self.TargetAccount)
+            elif (self.TargetAccount is None) and (old in self._Owner.Accounts): self._Owner.Accounts.remove(old)
             
     def __init__(self, name, factor_table=None, sys_args={}, config_file=None, **kwargs):
         self._FT = factor_table# 因子表
@@ -268,7 +268,7 @@ class HierarchicalFiltrationStrategy(PortfolioStrategy):
         def __QS_initArgs__(self):
             super().__QS_initArgs__()
             self.add_trait("Level0", Instance(_Filter, label="第0层", arg_type="ArgObject", order=9))
-            self.Level0 = _Filter(ft=self._FT, owner=self)
+            self.Level0 = _Filter(ft=self._Owner._FT, owner=self._Owner)
             self.LongWeightAlloction.ReAllocWeight = True
             self.ShortWeightAlloction.ReAllocWeight = True
         @on_trait_change("FiltrationLevel")
@@ -327,7 +327,7 @@ class HierarchicalFiltrationStrategy(PortfolioStrategy):
         IDs = original_ids
         FilterLevel = 0
         for i in range(self._QSArgs.FiltrationLevel):
-            iArgs = self["第"+str(i)+"层"]
+            iArgs = self._QSArgs["第"+str(i)+"层"]
             if iArgs.SignalType!=signal_type: continue
             if iArgs.IDFilter:
                 iIDs = self._FT.getFilteredID(idt, id_filter_str=iArgs.IDFilter)
@@ -368,7 +368,10 @@ class _SignalAdjustment(QSArgs):
 
 # 基于优化器的投资组合策略
 class OptimizerStrategy(PortfolioStrategy):
-    class __QS_ArgClass__(Strategy.__QS_ArgClass__):
+    class __QS_ArgClass__(PortfolioStrategy.__QS_ArgClass__):
+        SignalDelay = Int(0, label="信号滞后期", arg_type="Integer", order=1)
+        SignalValidity = Int(1, label="信号有效期", arg_type="Integer", order=2)
+        SignalDTs = List(label="信号触发时点", arg_type="DateTimeList", order=3)
         TargetIDs = Str(arg_type="IDFilterStr", label="目标ID", order=4)
         #ExpectedReturn = Enum(None, arg_type="SingleOption", label="预期收益", order=5)
         RiskTable = Instance(RiskTable, arg_type="RiskTable", label="风险表", order=6)
@@ -386,7 +389,7 @@ class OptimizerStrategy(PortfolioStrategy):
             self.add_trait("BenchmarkFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="基准权重", order=7))
             self.add_trait("AmountFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="成交金额", order=8))
             self.SignalAdjustment = _SignalAdjustment()
-            return super().__QS_initArgs__(self)
+            return super().__QS_initArgs__()
     
     def __init__(self, name, pc, factor_table=None, sys_args={}, config_file=None, **kwargs):
         self._PC = pc
@@ -445,27 +448,27 @@ class OptimizerStrategy(PortfolioStrategy):
         return LongSignal.add(ShortSignal, fill_value=0.0)
     def genSignal(self, idt, trading_record):
         if self._QSArgs.RiskTable is not None: self._QSArgs.RiskTable.move(idt)
-        IDs = self._PC.TargetIDs = self._FT.getID(idt=idt)
-        if self._QSArgs.TargetIDs: self._PC.TargetIDs = self._FT.getFilteredID(idt=idt, ids=IDs, id_filter_str=self._QSArgs.TargetIDs)
-        if self._Dependency.get("预期收益", False): self._PC.ExpectedReturn = self._FT.readData(factor_names=[self._QSArgs.ExpectedReturn], ids=IDs, dts=[idt]).iloc[0, 0, :]
+        IDs = self._PC._QSArgs.TargetIDs = self._FT.getID(idt=idt)
+        if self._QSArgs.TargetIDs: self._PC._QSArgs.TargetIDs = self._FT.getFilteredID(idt=idt, ids=IDs, id_filter_str=self._QSArgs.TargetIDs)
+        if self._Dependency.get("预期收益", False): self._PC._QSArgs.ExpectedReturn = self._FT.readData(factor_names=[self._QSArgs.ExpectedReturn], ids=IDs, dts=[idt]).iloc[0, 0, :]
         if self._Dependency.get("协方差矩阵", False):
             if isinstance(self._QSArgs.RiskTable, FactorRT):
-                self._PC.FactorCov = self._QSArgs.RiskTable.readFactorCov(dts=[idt]).iloc[0]
-                self._PC.RiskFactorData = self._QSArgs.RiskTable.readFactorData(dts=[idt], ids=IDs).iloc[:, 0]
-                self._PC.SpecificRisk = self._QSArgs.RiskTable.readSpecificRisk(dts=[idt], ids=IDs).iloc[0]
+                self._PC._QSArgs.FactorCov = self._QSArgs.RiskTable.readFactorCov(dts=[idt]).iloc[0]
+                self._PC._QSArgs.RiskFactorData = self._QSArgs.RiskTable.readFactorData(dts=[idt], ids=IDs).iloc[:, 0]
+                self._PC._QSArgs.SpecificRisk = self._QSArgs.RiskTable.readSpecificRisk(dts=[idt], ids=IDs).iloc[0]
             else:
-                self._PC.CovMatrix = dropRiskMatrixNA(self._QSArgs.RiskTable.readCov(dts=[idt], ids=IDs))
-        if self._Dependency.get("成交金额", False): self._PC.AmountFactor = self._FT.readData(factor_names=[self._QSArgs.AmountFactor], ids=IDs, dts=[idt]).iloc[0, 0, :]
-        if self._Dependency.get("因子", []): self._PC.FactorData = self._FT.readData(factor_names=self._Dependency["因子"], ids=IDs, dts=[idt]).iloc[:, 0, :]
-        if self._Dependency.get("基准投资组合", False): self._PC.BenchmarkHolding = self._FT.readData(factor_names=[self._QSArgs.BenchmarkFactor], ids=IDs, dts=[idt]).iloc[0, 0, :]
+                self._PC._QSArgs.CovMatrix = dropRiskMatrixNA(self._QSArgs.RiskTable.readCov(dts=[idt], ids=IDs))
+        if self._Dependency.get("成交金额", False): self._PC._QSArgs.AmountFactor = self._FT.readData(factor_names=[self._QSArgs.AmountFactor], ids=IDs, dts=[idt]).iloc[0, 0, :]
+        if self._Dependency.get("因子", []): self._PC._QSArgs.FactorData = self._FT.readData(factor_names=self._Dependency["因子"], ids=IDs, dts=[idt]).iloc[:, 0, :]
+        if self._Dependency.get("基准投资组合", False): self._PC._QSArgs.BenchmarkHolding = self._FT.readData(factor_names=[self._QSArgs.BenchmarkFactor], ids=IDs, dts=[idt]).iloc[0, 0, :]
         if self._Dependency.get("初始投资组合", False):
             AccountValue = self._QSArgs.TargetAccount.AccountValue
             if AccountValue!=0:
-                self._PC.Holding = self._QSArgs.TargetAccount.PositionAmount / abs(AccountValue)
+                self._PC._QSArgs.Holding = self._QSArgs.TargetAccount.PositionAmount / abs(AccountValue)
             else:
-                self._PC.Holding = pd.Series(0.0, index=self._QSArgs.TargetAccount.PositionAmount.index)
+                self._PC._QSArgs.Holding = pd.Series(0.0, index=self._QSArgs.TargetAccount.PositionAmount.index)
         if self._Dependency.get("总财富", False):
-            self._PC.Wealth = self._QSArgs.TargetAccount.AccountValue
+            self._PC._QSArgs.Wealth = self._QSArgs.TargetAccount.AccountValue
         RawSignal, ResultInfo = self._PC.solve()
         if ResultInfo.get("Status", 1)!=1:
             self._Status.append((idt, ResultInfo))

@@ -137,11 +137,12 @@ class _ErgodicMode(QSArgs):
         return 0
 
 def _prepareRTMMAPCacheData(rt, mmap_cache):
-    CacheData, CacheDTs, MMAPCacheData, DTNum = {}, [], mmap_cache, len(rt.ErgodicMode._DateTimes)
-    CacheSize = int(rt.ErgodicMode.CacheSize*2**20)
-    if os.name=='nt': MMAPCacheData = mmap.mmap(-1, CacheSize, tagname=rt.ErgodicMode._TagName)
+    ErgodicMode = rt._QSArgs.ErgodicMode
+    CacheData, CacheDTs, MMAPCacheData, DTNum = {}, [], mmap_cache, len(ErgodicMode._DateTimes)
+    CacheSize = int(ErgodicMode.CacheSize*2**20)
+    if os.name=='nt': MMAPCacheData = mmap.mmap(-1, CacheSize, tagname=ErgodicMode._TagName)
     while True:
-        Task = rt.ErgodicMode._Queue2SubProcess.get()# 获取任务
+        Task = ErgodicMode._Queue2SubProcess.get()# 获取任务
         if Task is None: break# 结束进程
         if (Task[0] is None) and (Task[1] is None):# 把数据装入缓存区
             CacheDataByte = pickle.dumps(CacheData)
@@ -152,16 +153,16 @@ def _prepareRTMMAPCacheData(rt, mmap_cache):
                 if iEndInd>iStartInd:
                     MMAPCacheData.seek(0)
                     MMAPCacheData.write(CacheDataByte[iStartInd:iEndInd])
-                    rt.ErgodicMode._Queue2MainProcess.put(iEndInd-iStartInd)
-                    rt.ErgodicMode._Queue2SubProcess.get()
-            rt.ErgodicMode._Queue2MainProcess.put(0)
+                    ErgodicMode._Queue2MainProcess.put(iEndInd-iStartInd)
+                    ErgodicMode._Queue2SubProcess.get()
+            ErgodicMode._Queue2MainProcess.put(0)
             del CacheDataByte
             gc.collect()
         else:# 准备缓冲区
-            CurInd = Task[0] + rt.ErgodicMode.ForwardPeriod + 1
+            CurInd = Task[0] + ErgodicMode.ForwardPeriod + 1
             if CurInd < DTNum:# 未到结尾处, 需要再准备缓存数据
                 OldCacheDTs = CacheDTs
-                CacheDTs = rt.ErgodicMode._DateTimes[max((0, CurInd-rt.ErgodicMode.BackwardPeriod)):min((DTNum, CurInd+rt.ErgodicMode.ForwardPeriod+1))]
+                CacheDTs = ErgodicMode._DateTimes[max((0, CurInd-ErgodicMode.BackwardPeriod)):min((DTNum, CurInd+ErgodicMode.ForwardPeriod+1))]
                 NewCacheDTs = sorted(set(CacheDTs).difference(OldCacheDTs))
                 DropDTs = set(OldCacheDTs).difference(CacheDTs)
                 for iDT in DropDTs: CacheData.pop(iDT)
@@ -176,7 +177,7 @@ class RiskTable(__QS_Object__):
     class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
         ErgodicMode = Instance(_ErgodicMode, arg_type="ArgObject", label="遍历模式", order=-1)
         def __QS_initArgs__(self):
-            self.ErgodicMode = _ErgodicMode()
+            self.ErgodicMode = _ErgodicMode(owner=self._Owner)
     
     def __init__(self, name, rdb, sys_args={}, config_file=None, **kwargs):
         self._Name = name
@@ -263,11 +264,12 @@ class FactorRDB(RiskDB):
         return 0
 
 def _prepareFRTMMAPCacheData(rt, mmap_cache):
-    CacheData, CacheDTs, MMAPCacheData, DTNum = {}, [], mmap_cache, len(rt.ErgodicMode._DateTimes)
-    CacheSize = int(rt.ErgodicMode.CacheSize*2**20)
-    if os.name=='nt': MMAPCacheData = mmap.mmap(-1, CacheSize, tagname=rt.ErgodicMode._TagName)
+    ErgodicMode = rt._QSArgs.ErgodicMode
+    CacheData, CacheDTs, MMAPCacheData, DTNum = {}, [], mmap_cache, len(ErgodicMode._DateTimes)
+    CacheSize = int(ErgodicMode.CacheSize*2**20)
+    if os.name=='nt': MMAPCacheData = mmap.mmap(-1, CacheSize, tagname=ErgodicMode._TagName)
     while True:
-        Task = rt.ErgodicMode._Queue2SubProcess.get()# 获取任务
+        Task = ErgodicMode._Queue2SubProcess.get()# 获取任务
         if Task is None: break# 结束进程
         if (Task[0] is None) and (Task[1] is None):# 把数据装入缓存区
             CacheDataByte = pickle.dumps(CacheData)
@@ -278,16 +280,16 @@ def _prepareFRTMMAPCacheData(rt, mmap_cache):
                 if iEndInd>iStartInd:
                     MMAPCacheData.seek(0)
                     MMAPCacheData.write(CacheDataByte[iStartInd:iEndInd])
-                    rt.ErgodicMode._Queue2MainProcess.put(iEndInd-iStartInd)
-                    rt.ErgodicMode._Queue2SubProcess.get()
-            rt.ErgodicMode._Queue2MainProcess.put(0)
+                    ErgodicMode._Queue2MainProcess.put(iEndInd-iStartInd)
+                    ErgodicMode._Queue2SubProcess.get()
+            ErgodicMode._Queue2MainProcess.put(0)
             del CacheDataByte
             gc.collect()
         else:# 准备缓冲区
-            CurInd = Task[0] + rt.ErgodicMode.ForwardPeriod + 1
+            CurInd = Task[0] + ErgodicMode.ForwardPeriod + 1
             if CurInd < DTNum:# 未到结尾处, 需要再准备缓存数据
                 OldCacheDTs = CacheDTs
-                CacheDTs = rt.ErgodicMode._DateTimes[max((0, CurInd-rt.ErgodicMode.BackwardPeriod)):min((DTNum, CurInd+rt.ErgodicMode.ForwardPeriod+1))]
+                CacheDTs = ErgodicMode._DateTimes[max((0, CurInd-ErgodicMode.BackwardPeriod)):min((DTNum, CurInd+ErgodicMode.ForwardPeriod+1))]
                 NewCacheDTs = sorted(set(CacheDTs).difference(OldCacheDTs))
                 DropDTs = set(OldCacheDTs).difference(CacheDTs)
                 for iDT in DropDTs: CacheData.pop(iDT)
@@ -323,7 +325,7 @@ class _FactorErgodicMode(_ErgodicMode):
             else:
                 self._TagName = None# 共享内存的 tag
                 self._MMAPCacheData = mmap.mmap(-1, int(self.CacheSize*2**20))# 当前共享内存缓冲区
-            self._CacheDataProcess = Process(target=_prepareFRTMMAPCacheData, args=(self, self._MMAPCacheData), daemon=True)
+            self._CacheDataProcess = Process(target=_prepareFRTMMAPCacheData, args=(self._Owner, self._MMAPCacheData), daemon=True)
             self._CacheDataProcess.start()
             if os.name=="nt": self._MMAPCacheData = mmap.mmap(-1, int(self.CacheSize*2**20), tagname=self._TagName)# 当前共享内存缓冲区
         self._isStarted = True
@@ -334,7 +336,7 @@ class FactorRT(RiskTable):
     class __QS_ArgClass__(RiskTable.__QS_ArgClass__):
         ErgodicMode = Instance(_FactorErgodicMode, arg_type="ArgObject", label="遍历模式", order=-1)
         def __QS_initArgs__(self):
-            self.ErgodicMode = _FactorErgodicMode()
+            self.ErgodicMode = _FactorErgodicMode(owner=self._Owner)
     # -------------------------------维度信息-----------------------------------
     @property
     def FactorNames(self):

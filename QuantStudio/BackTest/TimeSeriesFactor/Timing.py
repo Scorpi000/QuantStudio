@@ -424,7 +424,7 @@ class QuantileTiming(BaseModule):
         GroupNum = Int(3, arg_type="Integer", label="分组数", order=7)
         LSClearGroups = ListInt(arg_type="Integer", label="多空平仓组", order=8)
         def __QS_initArgs__(self):
-            DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FactorTable.getFactorMetaData(key="DataType")))
+            DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
             self.TestFactors.append(DefaultNumFactorList[0])
             self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=2))

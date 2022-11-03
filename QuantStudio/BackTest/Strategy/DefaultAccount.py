@@ -102,7 +102,7 @@ class DefaultAccount(Account):
         else:
             self._LastPrice = self._MarketFT.readData(factor_names=[self._QSArgs.Last], ids=self._IDs, dts=[idt]).iloc[0, 0]
         self._PositionNum.iloc[iIndex+1] = self._PositionNum.iloc[iIndex]# 初始化持仓
-        if self._QSArgs._QSArgs.Delay:# 撮合成交
+        if self._QSArgs.Delay:# 撮合成交
             self._iTradingRecord = self._matchOrder(idt)
             self._iTradingRecord = pd.DataFrame(self._iTradingRecord, index=np.arange(self._TradingRecord.shape[0], self._TradingRecord.shape[0]+len(self._iTradingRecord)), columns=self._TradingRecord.columns)
             self._TradingRecord = self._TradingRecord.append(self._iTradingRecord)

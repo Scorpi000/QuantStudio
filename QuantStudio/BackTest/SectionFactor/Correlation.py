@@ -20,7 +20,7 @@ from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage
 
 class SectionCorrelation(BaseModule):
     """因子截面相关性"""
-    class __QS_ArgClass___(BaseModule.__QS_ArgClass__):
+    class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
         TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
         FactorOrder = Dict(key_trait=Str(), value_trait=Enum("降序", "升序"), arg_type="ArgDict", label="排序方向", order=1)
         CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=2)
@@ -70,7 +70,7 @@ class SectionCorrelation(BaseModule):
         else:
             self._CurCalcInd = self._Model.DateTimeIndex
         IDs = self._FactorTable.getFilteredID(idt=idt, id_filter_str=self._QSArgs.IDFilter)
-        FactorExpose = self._FactorTable.readData(dts=[idt], ids=IDs, factor_names=list(set(self._QSArgs._QSArgs.TestFactors))).iloc[:, 0, :].astype("float")
+        FactorExpose = self._FactorTable.readData(dts=[idt], ids=IDs, factor_names=list(set(self._QSArgs.TestFactors))).iloc[:, 0, :].astype("float")
         if self._CorrMatrixNeeded and (self._QSArgs.RiskTable is not None):
             self._QSArgs.RiskTable.move(idt)
             CovMatrix = dropRiskMatrixNA(self._QSArgs.RiskTable.readCov(dts=[idt], ids=IDs).iloc[0])
@@ -127,7 +127,7 @@ class SectionCorrelation(BaseModule):
     def __QS_end__(self):
         if not self._isStarted: return 0
         super().__QS_end__()
-        for iMethod in self._QSArgs._QSArgs.CorrMethod:
+        for iMethod in self._QSArgs.CorrMethod:
             self._Output[iMethod] = pd.DataFrame(np.array(self._Output[iMethod]).T, columns=self._Output["FactorPair"], index=self._Output["时点"])
             iAvgName = iMethod+"均值"
             self._Output[iAvgName] = pd.DataFrame(index=list(self._QSArgs.TestFactors), columns=list(self._QSArgs.TestFactors), dtype="float")
