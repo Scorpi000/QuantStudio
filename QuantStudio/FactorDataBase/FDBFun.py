@@ -1012,9 +1012,11 @@ class SQL_NarrowTable(SQL_Table):
             if DefaultField.shape[0]==0: self.FactorValueField = ValueFields.index[0]
             else: self.FactorValueField = DefaultField[0]
             self._FactorNames = None# 所有的因子名列表或者对照字典
+
         @on_trait_change("FactorNameField")
         def _on_FactorNameField_changed(self, obj, name, old, new):
             if self.FactorNameField is not None: self._FactorNames = None
+        
     def __init__(self, name, fdb, sys_args={}, table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
         self._QS_IgnoredGroupArgs = ("遍历模式", "回溯天数", "只起始日回溯")

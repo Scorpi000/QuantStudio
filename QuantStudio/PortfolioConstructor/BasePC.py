@@ -532,6 +532,7 @@ class PortfolioConstructor(__QS_Object__):
         OptimObjective = Instance(OptimizationObjective, arg_type="object", label="优化目标", order=11)
         Constraints = List(Constraint, arg_type="List", label="约束条件", order=12)
         OptimOption = Dict(arg_type="Dict", label="优化选项", order=13)
+
         @on_trait_change("OptimObjective")
         def _on_OptimObjective_changed(self, obj, name, old, new):
             self._Owner._ModelChanged = True

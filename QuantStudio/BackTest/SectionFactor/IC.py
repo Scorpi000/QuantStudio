@@ -40,6 +40,11 @@ class IC(BaseModule):
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
             self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=3))
             self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=4))
+        
+        @property
+        def ObservedArgs(self):
+            return super().ObservedArgs + ("测试因子",)
+
         @on_trait_change("TestFactors[]")
         def _on_TestFactors_changed(self, obj, name, old, new):
             self.FactorOrder = {iFactorName:self.FactorOrder.get(iFactorName, "降序") for iFactorName in self.TestFactors}

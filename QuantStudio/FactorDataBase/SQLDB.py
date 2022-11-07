@@ -57,11 +57,13 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         DTField = Str("datetime", arg_type="String", label="时点字段", order=104)
         IDField = Str("code", arg_type="String", label="ID字段", order=105)
         CheckNullable = Bool(False, arg_type="Bool", label="检查缺失容许", order=106)
+
         @on_trait_change("DTField")
         def _on_DTField_changed(self, obj, name, old, new):
             if self._Owner._FactorInfo.shape[0]>0:
                 self._Owner._FactorInfo["Supplementary"][(self._Owner._FactorInfo["FieldType"]=="Date") & (self._Owner._FactorInfo["Supplementary"]=="Default")] = None
                 self._Owner._FactorInfo["Supplementary"][(self._Owner._FactorInfo["FieldType"]=="Date") & (self._Owner._FactorInfo["DBFieldName"]==new)] = "Default"
+        
         @on_trait_change("IDField")
         def _on_IDField_changed(self, obj, name, old, new):
             if self._Owner._FactorInfo.shape[0]>0:

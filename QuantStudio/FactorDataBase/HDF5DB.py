@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import fasteners
 import h5py
-from traits.api import Directory, Float, Str, Bool
+from traits.api import Directory, Float, Str, Bool, on_trait_change
 
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.Tools.api import Panel
@@ -224,6 +224,16 @@ class HDF5DB(WritableFactorDB):
         MainDir = Directory(label="主目录", arg_type="Directory", order=0)
         LockDir = Directory(label="锁目录", arg_type="Directory", order=1)
         FileOpenRetryNum = Float(np.inf, label="文件打开重试次数", arg_type="Float", order=2)
+
+        @on_trait_change("MainDir")
+        def _on_MainDir_changed(self, obj, name, old, new):
+            if self._Owner.isAvailable():
+                self._Owner.connect()
+        
+        @on_trait_change("LockDir")
+        def _on_LockDir_changed(self, obj, name, old, new):
+            if self._Owner.isAvailable():
+                self._Owner.connect()
     
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._LockFile = None# 文件锁的目标文件

@@ -31,6 +31,11 @@ class SectionCorrelation(BaseModule):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
             self.TestFactors = [DefaultNumFactorList[0], DefaultNumFactorList[-1]]
+        
+        @property
+        def ObservedArgs(self):
+            return super().ObservedArgs + ("测试因子", "风险表")
+
         @on_trait_change("TestFactors[]")
         def _on_TestFactors_changed(self, obj, name, old, new):
             self.FactorOrder = {iFactorName:self.FactorOrder.get(iFactorName, "降序") for iFactorName in self.TestFactors}

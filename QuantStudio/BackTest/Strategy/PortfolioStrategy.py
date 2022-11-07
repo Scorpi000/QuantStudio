@@ -45,6 +45,11 @@ class PortfolioStrategy(Strategy):
             self.LongWeightAlloction = _WeightAllocation(ft=self._Owner._FT, owner=self._Owner)
             self.ShortWeightAlloction = _WeightAllocation(ft=self._Owner._FT, owner=self._Owner)
             return super().__QS_initArgs__()
+        
+        @property
+        def ObservedArgs(self):
+            return super().ObservedArgs + ("目标账户",)
+
         @on_trait_change("TargetAccount")
         def _on_TargetAccount_changed(self, obj, name, old, new):
             if (self.TargetAccount is not None) and (self.TargetAccount not in self._Owner.Accounts): self._Owner.Accounts.append(self.TargetAccount)
@@ -241,6 +246,11 @@ class _Filter(QSArgs):
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
         self.add_trait("TargetFactor", Enum(*DefaultNumFactorList, label="目标因子", arg_type="SingleOption", order=2))
         self.GroupFactors.option_range = tuple(self._FT.FactorNames)
+    
+    @property
+    def ObservedArgs(self):
+        return super().ObservedArgs + ("筛选方式",)
+
     @on_trait_change("FiltrationType")
     def _on_FiltrationType_changed(self, obj, name, old, new):
         if new=="定量":
@@ -271,6 +281,11 @@ class HierarchicalFiltrationStrategy(PortfolioStrategy):
             self.Level0 = _Filter(ft=self._Owner._FT, owner=self._Owner)
             self.LongWeightAlloction.ReAllocWeight = True
             self.ShortWeightAlloction.ReAllocWeight = True
+        
+        @property
+        def ObservedArgs(self):
+            return super().ObservedArgs + ("筛选层数",)
+
         @on_trait_change("FiltrationLevel")
         def on_FiltrationLevel_changed(self, obj, name, old, new):
             if new>old:# 增加了筛选层数

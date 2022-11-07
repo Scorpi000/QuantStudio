@@ -429,6 +429,11 @@ class QuantileTiming(BaseModule):
             self.TestFactors.append(DefaultNumFactorList[0])
             self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=2))
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ["价","Price","price"])
+        
+        @property
+        def ObservedArgs(self):
+            return super().ObservedArgs + ("测试因子",)
+
         @on_trait_change("TestFactors[]")
         def _on_TestFactors_changed(self, obj, name, old, new):
             self.FactorOrder = {iFactorName:self.FactorOrder.get(iFactorName, "降序") for iFactorName in self.TestFactors}

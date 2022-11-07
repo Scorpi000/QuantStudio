@@ -20,10 +20,16 @@ class TimingStrategy(Strategy):
         TargetAccount = Instance(Account, label="目标账户", arg_type="ArgObject", order=4)
         ValueAllocated = Instance(pd.Series, arg_type="Series", label="资金分配", order=5)
         TradeTarget = Enum("锁定买卖金额", "锁定目标仓位", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=6)
+        
+        @property
+        def ObservedArgs(self):
+            return super().ObservedArgs + ("目标账户", "资金分配")
+        
         @on_trait_change("TargetAccount")
         def on_TargetAccount_changed(self, obj, name, old, new):
             if (self.TargetAccount is not None) and (self.TargetAccount not in self._Owner.Accounts): self._Owner.Accounts.append(self.TargetAccount)
             elif (self.TargetAccount is None) and (old in self._Owner.Accounts): self._Owner.Accounts.remove(old)
+        
         @on_trait_change("ValueAllocated")
         def on_ValueAllocated_changed(self, obj, name, old, new):
             self._Owner._isAllocationReseted = True

@@ -322,6 +322,11 @@ class FilterPortfolio(QuantilePortfolio):
             self.remove_trait("FactorOrder")
             self.remove_trait("Perturbation")
             self.GroupNum = len(self.PortfolioFilters)
+        
+        @property
+        def ObservedArgs(self):
+            return super().ObservedArgs + ("组合条件", "分组数")
+
         @on_trait_change("PortfolioFilters[]")
         def _on_PortfolioFilters_changed(self, obj, name, old, new):
             self.GroupNum = len(self.PortfolioFilters)

@@ -71,6 +71,10 @@ class QSArgs(HasTraits):
         return self._ArgOrder.index.tolist()
     
     @property
+    def ObservedArgs(self):
+        return ()
+
+    @property
     def Owner(self):
         return self._Owner
     

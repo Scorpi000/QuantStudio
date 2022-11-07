@@ -132,7 +132,7 @@ class _ErgodicMode(QSArgs):
     """遍历模式"""
     ForwardPeriod = Int(600, arg_type="Integer", label="向前缓冲时点数", order=0)
     BackwardPeriod = Int(1, arg_type="Integer", label="向后缓冲时点数", order=1)
-    CacheMode = Enum("因子", "ID", arg_type="SingleOption", label="缓冲模式", order=2)
+    CacheMode = Enum("因子", "ID", arg_type="SingleOption", label="缓冲模式", order=2, option_range=("因子", "ID"))
     MaxFactorCacheNum = Int(60, arg_type="Integer", label="最大缓冲因子数", order=3)
     MaxIDCacheNum = Int(10000, arg_type="Integer", label="最大缓冲ID数", order=4)
     CacheSize = Int(300, arg_type="Integer", label="缓冲区大小", order=5)# 以 MB 为单位
@@ -1422,7 +1422,7 @@ class Factor(__QS_Object__):
 # data: DataFrame(index=[时点], columns=[ID])
 class DataFactor(Factor):
     class __QS_ArgClass__(Factor.__QS_ArgClass__):
-        DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=0)
+        DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=0, option_range=("double", "string", "object"))
         LookBack = Int(0, arg_type="Integer", label="回溯天数", order=1)
     
     def __init__(self, name, data, sys_args={}, config_file=None, **kwargs):
