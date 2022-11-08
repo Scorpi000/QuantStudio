@@ -23,19 +23,19 @@ class FMPModel(BaseModule):
     class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
         #Portfolio = Enum(None, arg_type="SingleOption", label="策略组合", order=0)
         #BenchmarkPortfolio = Enum("无", arg_type="SingleOption", label="基准组合", order=1)
-        AttributeFactors = ListStr(arg_type="MultiOption", label="特征因子", order=2, option_range=())
+        #AttributeFactors = ListStr(arg_type="MultiOption", label="特征因子", order=2, option_range=())
         #IndustryFactor = Enum("无", arg_type="SingleOption", label="行业因子", order=3)
         #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=4)
         RiskTable = Instance(RiskTable, arg_type="RiskTable", label="风险表", order=5)
         CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=6)
         def __QS_initArgs__(self):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
-            self.add_trait("Portfolio", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="策略组合", order=0))
-            self.add_trait("BenchmarkPortfolio", Enum(*(["无"]+DefaultNumFactorList), arg_type="SingleOption", label="基准组合", order=1))
+            self.add_trait("Portfolio", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="策略组合", order=0, option_range=DefaultNumFactorList))
+            self.add_trait("BenchmarkPortfolio", Enum(*(["无"]+DefaultNumFactorList), arg_type="SingleOption", label="基准组合", order=1, option_range=["无"]+DefaultNumFactorList))
             self.add_trait("AttributeFactors", ListStr(arg_type="MultiOption", label="特征因子", order=2, option_range=tuple(DefaultNumFactorList)))
             self.AttributeFactors.append(DefaultNumFactorList[-1])
-            self.add_trait("IndustryFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="行业因子", order=3))
-            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=4))
+            self.add_trait("IndustryFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="行业因子", order=3, option_range=["无"]+DefaultStrFactorList))
+            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=4, option_range=DefaultNumFactorList))
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
             
     def __init__(self, factor_table, name="因子模拟组合绩效分析模型", sys_args={}, **kwargs):

@@ -424,14 +424,17 @@ class _OperationMode(QSArgs):
         self._FileSuffix = getShelveFileSuffix()
         if self._FileSuffix: self._FileSuffix = "." + self._FileSuffix
         super().__init__(owner=owner, sys_args=sys_args, config_file=config_file, **kwargs)
+    
     def __QS_initArgs__(self):
-        self.add_trait("FactorNames", ListStr(arg_type="MultiOption", label="运算因子", order=2))
+        self.add_trait("FactorNames", ListStr(arg_type="MultiOption", label="运算因子", order=2, option_range=self._Owner.FactorNames))
+    
     def __getstate__(self):
         state = self.__dict__.copy()
         # Remove the unpicklable entries.
         if (self._CacheDir is not None) and (not isinstance(self._CacheDir, str)):
             state["_CacheDir"] = self._CacheDir.name
         return state
+    
     def _genFactorDict(self, factors, factor_dict):
         for iFactor in factors:
             iFactor._OperationMode = self
@@ -441,6 +444,7 @@ class _OperationMode(QSArgs):
             self._FactorID[iFactor.Name] = len(factor_dict)
             factor_dict.update(self._genFactorDict(iFactor.Descriptors, factor_dict))
         return factor_dict
+    
     def _initOperation(self, **kwargs):
         # 检查时点, ID 序列的合法性
         if not self.DateTimes: raise __QS_Error__("运算时点序列不能为空!")
@@ -497,6 +501,7 @@ class _OperationMode(QSArgs):
         self._FactorPrepareIDs = {}# {因子名: 需要准备原始数据的 ID 序列}
         for iFactor in self._Factors:
             iFactor._QS_initOperation(self.DateTimes[0], self._FactorStartDT, self.SectionIDs, self._FactorPrepareIDs)
+    
     def _prepare(self, factor_names, ids, dts, **kwargs):
         self.FactorNames = factor_names
         self.DateTimes = dts

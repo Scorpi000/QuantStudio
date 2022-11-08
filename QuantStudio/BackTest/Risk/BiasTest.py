@@ -27,11 +27,11 @@ class BiasTest(BaseModule):
         LookBack = Int(12, arg_type="Integer", label="回溯期数", order=9)
         def __QS_initArgs__(self):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
-            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=3))
+            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=3, option_range=DefaultNumFactorList))
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
             self.add_trait("WeightFactors", ListStr(["等权"], arg_type="MultiOption", label="权重因子", order=4, option_range=tuple(["等权"]+DefaultNumFactorList)))
             self.add_trait("StyleFactors", ListStr(arg_type="MultiOption", label="风格因子", order=5, option_range=tuple(DefaultNumFactorList)))
-            self.add_trait("IndustryFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="行业因子", order=6))
+            self.add_trait("IndustryFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="行业因子", order=6, option_range=["无"]+DefaultStrFactorList))
             self.add_trait("IndustryNeutralFactors", ListStr(arg_type="MultiOption", label="行业中性因子", order=7, option_range=tuple(DefaultNumFactorList)))
     def __init__(self, factor_table, name="BiasTest", sys_args={}, **kwargs):
         self._FactorTable = factor_table

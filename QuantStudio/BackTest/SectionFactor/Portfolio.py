@@ -6,7 +6,7 @@ from io import BytesIO
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-from traits.api import ListStr, Enum, List, Int, Str, Bool, on_trait_change
+from traits.api import ListStr, Enum, List, Int, Str, on_trait_change
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 import matplotlib.dates as mdate
@@ -50,14 +50,14 @@ class QuantilePortfolio(BaseModule):
         CalcDTs = List(dt.datetime, arg_type="DateList", label="调仓时点", order=6)
         MarketIDFilter = Str(arg_type="IDFilter", label="市场组合", order=7)
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
-        Perturbation = Bool(False, arg_type="Bool", label="随机微扰", order=9)
+        Perturbation = Enum(False, True, arg_type="Bool", label="随机微扰", order=9)
         def __QS_initArgs__(self):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
-            self.add_trait("TestFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="测试因子", order=0))
-            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=3))
+            self.add_trait("TestFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="测试因子", order=0, option_range=DefaultNumFactorList))
+            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=3, option_range=DefaultNumFactorList))
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
-            self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=4))
-            self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=5))
+            self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=4, option_range=["无"]+DefaultStrFactorList))
+            self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=5, option_range=["等权"]+DefaultNumFactorList))
     
     def __init__(self, factor_table, name="分位数组合", sys_args={}, **kwargs):
         self._FactorTable = factor_table
@@ -305,7 +305,7 @@ class QuantilePortfolio(BaseModule):
 class FilterPortfolio(QuantilePortfolio):
     """条件筛选组合"""
     class __QS_ArgClass__(QuantilePortfolio.__QS_ArgClass__):
-        PortfolioFilters = ListStr(arg_type="MultiOption", label="组合条件", order=0)
+        PortfolioFilters = ListStr(arg_type="ListStr", label="组合条件", order=0)
         GroupNum = Int(0, arg_type="Integer", label="分组数", order=2)
         #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=3)
         #ClassFactor = Enum("无", arg_type="SingleOption", label="类别因子", order=4)
@@ -315,10 +315,10 @@ class FilterPortfolio(QuantilePortfolio):
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
         def __QS_initArgs__(self):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
-            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1))
+            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1, option_range=DefaultNumFactorList))
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
-            self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=2))
-            self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=3))
+            self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=2, option_range=["无"]+DefaultStrFactorList))
+            self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=3, option_range=["等权"]+DefaultNumFactorList))
             self.remove_trait("FactorOrder")
             self.remove_trait("Perturbation")
             self.GroupNum = len(self.PortfolioFilters)

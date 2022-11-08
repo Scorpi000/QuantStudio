@@ -2,7 +2,7 @@
 """投资组合配置型策略"""
 import pandas as pd
 import numpy as np
-from traits.api import Enum, List, Int, Float, Str, Bool, Instance, on_trait_change
+from traits.api import Enum, List, Int, Float, Str, Instance, on_trait_change
 
 from QuantStudio.Tools.AuxiliaryFun import getFactorList
 from QuantStudio.Tools.MathFun import CartesianProduct
@@ -15,21 +15,21 @@ from QuantStudio.RiskModel.RiskModelFun import dropRiskMatrixNA
 
 class _WeightAllocation(QSArgs):
     """权重分配"""
-    ReAllocWeight = Bool(False, label="重配权重", arg_type="Bool", order=0)
+    ReAllocWeight = Enum(False, True, label="重配权重", arg_type="Bool", order=0)
     #WeightFactor = Enum("等权", label="权重因子", arg_type="SingleOption", order=1)
     GroupFactors = List(label="分类因子", arg_type="MultiOption", order=2, option_range=())
     #GroupWeight = Enum("等权", label="类别权重", arg_type="SingleOption", order=3)
-    GroupMiss = Enum("忽略","全配", label="类别缺失", arg_type="SingleOption", order=4)
-    WeightMiss = Enum("舍弃", "填充均值", label="权重缺失", arg_type="SingleOption", order=5)
+    GroupMiss = Enum("忽略","全配", label="类别缺失", arg_type="SingleOption", order=4, option_range=["忽略", "全配"])
+    WeightMiss = Enum("舍弃", "填充均值", label="权重缺失", arg_type="SingleOption", order=5, option_range=["舍弃", "填充均值"])
     def __init__(self, ft=None, owner=None, sys_args={}, config_file=None, **kwargs):
         self._FT = ft
         return super().__init__(owner, sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         if self._FT is not None:
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
-            self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=1))
+            self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=1, option_range=["等权"]+DefaultNumFactorList))
             self.GroupFactors.option_range = tuple(self._FT.FactorNames)
-            self.add_trait("GroupWeight", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="类别权重", order=3))
+            self.add_trait("GroupWeight", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="类别权重", order=3, option_range=["等权"]+DefaultNumFactorList))
 
 # 投资组合策略
 class PortfolioStrategy(Strategy):
@@ -40,7 +40,7 @@ class PortfolioStrategy(Strategy):
         LongWeightAlloction = Instance(_WeightAllocation, label="多头权重配置", arg_type="ArgObject", order=4)
         ShortWeightAlloction = Instance(_WeightAllocation, label="空头权重配置", arg_type="ArgObject", order=5)
         TargetAccount = Instance(Account, label="目标账户", arg_type="ArgObject", order=6)
-        TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=7)
+        TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=7, option_range=["锁定买卖金额", "锁定目标权重", "锁定目标金额"])
         def __QS_initArgs__(self):
             self.LongWeightAlloction = _WeightAllocation(ft=self._Owner._FT, owner=self._Owner)
             self.ShortWeightAlloction = _WeightAllocation(ft=self._Owner._FT, owner=self._Owner)
@@ -223,18 +223,18 @@ class PortfolioStrategy(Strategy):
 # 分层筛选投资组合策略
 class _TurnoverBuffer(QSArgs):
     """换手缓冲"""
-    isBuffer = Bool(False, label="是否缓冲", arg_type="Bool", order=0)
+    isBuffer = Enum(False, True, label="是否缓冲", arg_type="Bool", order=0)
     FilterUpBuffer = Float(0.1, label="筛选上限缓冲区", arg_type="Double", order=1)
     FilterDownBuffer = Float(0.1, label="筛选下限缓冲区", arg_type="Double", order=2)
     FilterNumBuffer = Int(0, label="筛选数目缓冲区", arg_type="Integer", order=3)
 
 class _Filter(QSArgs):
     """筛选"""
-    SignalType = Enum("多头信号", "空头信号", label="信号类型", arg_type="SingleOption", order=0)
+    SignalType = Enum("多头信号", "空头信号", label="信号类型", arg_type="SingleOption", order=0, option_range=["多头信号", "空头信号"])
     IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=1)
     #TargetFactor = Enum(None, label="目标因子", arg_type="SingleOption", order=2)
-    FactorOrder = Enum("降序", "升序", label="排序方向", arg_type="SingleOption", order=3)
-    FiltrationType = Enum("定量", "定比", "定量&定比", label="筛选方式", arg_type="SingleOption", order=4)
+    FactorOrder = Enum("降序", "升序", label="排序方向", arg_type="SingleOption", order=3, option_range=["降序", "升序"])
+    FiltrationType = Enum("定量", "定比", "定量&定比", label="筛选方式", arg_type="SingleOption", order=4, option_range=["定量", "定比", "定量&定比"])
     FilterNum = Int(30, label="筛选数目", arg_type="Integer", order=5)
     GroupFactors = List(label="分类因子", arg_type="MultiOption", order=6, option_range=())
     TurnoverBuffer = Instance(_TurnoverBuffer, arg_type="ArgObject", label="换手缓冲", order=7)
@@ -244,7 +244,7 @@ class _Filter(QSArgs):
     def __QS_initArgs__(self):
         self.TurnoverBuffer = _TurnoverBuffer(owner=self._Owner)
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
-        self.add_trait("TargetFactor", Enum(*DefaultNumFactorList, label="目标因子", arg_type="SingleOption", order=2))
+        self.add_trait("TargetFactor", Enum(*DefaultNumFactorList, label="目标因子", arg_type="SingleOption", order=2, option_range=DefaultNumFactorList))
         self.GroupFactors.option_range = tuple(self._FT.FactorNames)
     
     @property
@@ -375,11 +375,11 @@ class HierarchicalFiltrationStrategy(PortfolioStrategy):
 
 class _SignalAdjustment(QSArgs):
     """信号调整"""
-    AdjustType = Enum("忽略小权重", "累计权重", arg_type="SingleOption", label="调整方式", order=0)
+    AdjustType = Enum("忽略小权重", "累计权重", arg_type="SingleOption", label="调整方式", order=0, option_range=["忽略小权重", "累计权重"])
     TinyWeightThreshold = Float(1e-5, arg_type="Double", label="小权重阈值", order=1)
     AccumulatedWeightThreshold = Float(0.97, label="权重累计阈值", arg_type="Double", order=2)
-    Normalization = Bool(False, label="是否归一", arg_type="Bool", order=3)
-    Display = Bool(False, label="打印信息", arg_type="Bool", order=4)
+    Normalization = Enum(False, True, label="是否归一", arg_type="Bool", order=3)
+    Display = Enum(False, True, label="打印信息", arg_type="Bool", order=4)
 
 # 基于优化器的投资组合策略
 class OptimizerStrategy(PortfolioStrategy):
@@ -394,15 +394,15 @@ class OptimizerStrategy(PortfolioStrategy):
         #AmountFactor = Enum(None, arg_type="SingleOption", label="成交金额", order=8)
         SignalAdjustment = Instance(_SignalAdjustment, arg_type="ArgObject", label="信号调整", order=9)
         TargetAccount = Instance(Account, label="目标账户", arg_type="ArgObject", order=10)
-        TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=11)
+        TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=11, option_range=["锁定买卖金额", "锁定目标权重", "锁定目标金额"])
         def __QS_initArgs__(self):
             self.remove_trait("LongWeightAlloction")
             self.remove_trait("ShortWeightAlloction")
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FT.getFactorMetaData(key="DataType")))
             DefaultNumFactorList.insert(0, None)
-            self.add_trait("ExpectedReturn", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="预期收益", order=5))
-            self.add_trait("BenchmarkFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="基准权重", order=7))
-            self.add_trait("AmountFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="成交金额", order=8))
+            self.add_trait("ExpectedReturn", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="预期收益", order=5, option_range=DefaultNumFactorList))
+            self.add_trait("BenchmarkFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="基准权重", order=7, option_range=DefaultNumFactorList))
+            self.add_trait("AmountFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="成交金额", order=8, option_range=DefaultNumFactorList))
             self.SignalAdjustment = _SignalAdjustment()
             return super().__QS_initArgs__()
     

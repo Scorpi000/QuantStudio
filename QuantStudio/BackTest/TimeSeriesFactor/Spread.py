@@ -15,7 +15,7 @@ class Cointegration(BaseModule):
     """协整检验"""
     class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
         #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=0)
-        PriceType = Enum("原始价格", "对数价格", arg_type="SingleOption", label="价格类型", order=1)
+        PriceType = Enum("原始价格", "对数价格", arg_type="SingleOption", label="价格类型", order=1, option_range=["原始价格", "对数价格"])
         CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=2)
         SummaryWindow = Float(np.inf, arg_type="Integer", label="统计窗口", order=3)
         MinSummaryWindow = Int(120, arg_type="Integer", label="最小统计窗口", order=4)
@@ -23,7 +23,7 @@ class Cointegration(BaseModule):
         CointArgs = Dict(arg_type="Dict", label="检验参数", order=6)
         def __QS_initArgs__(self):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
-            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=0))
+            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=0, option_range=DefaultNumFactorList))
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
             
     def __init__(self, factor_table, name="协整检验", sys_args={}, **kwargs):

@@ -9,7 +9,7 @@ from collections import OrderedDict
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, Str, Range, Password, File, Bool, Either
+from traits.api import Enum, Str, Range, Password, File
 
 from QuantStudio import __QS_Object__, __QS_Error__
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName
@@ -19,17 +19,17 @@ os.environ["NLS_LANG"] = "SIMPLIFIED CHINESE_CHINA.UTF8"
 class QSSQLObject(__QS_Object__):
     """基于关系数据库的对象"""
     class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
-        DBType = Enum("MySQL", "SQL Server", "Oracle", arg_type="SingleOption", label="数据库类型", order=0)
+        DBType = Enum("MySQL", "SQL Server", "Oracle", arg_type="SingleOption", label="数据库类型", order=0, option_range=["MySQL", "SQL Server", "Oracle"])
         DBName = Str("Scorpion", arg_type="String", label="数据库名", order=1)
         IPAddr = Str("127.0.0.1", arg_type="String", label="IP地址", order=2)
         Port = Range(low=0, high=65535, value=3306, arg_type="Integer", label="端口", order=3)
         User = Str("root", arg_type="String", label="用户名", order=4)
         Pwd = Password("", arg_type="String", label="密码", order=5)
         TablePrefix = Str("", arg_type="String", label="表名前缀", order=6)
-        CharSet = Enum("utf8", "gbk", "gb2312", "gb18030", "cp936", "big5", arg_type="SingleOption", label="字符集", order=7)
-        Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pymysql", "pyodbc", arg_type="SingleOption", label="连接器", order=8)
+        CharSet = Enum("utf8", "utf8mb4", "gbk", "gb2312", "gb18030", "cp936", "big5", arg_type="SingleOption", label="字符集", order=7, option_range=["utf8", "utf8mb4", "gbk", "gb2312", "gb18030", "cp936", "big5"])
+        Connector = Enum("default", "cx_Oracle", "pymssql", "mysql.connector", "pymysql", "pyodbc", arg_type="SingleOption", label="连接器", order=8, option_range=["default", "cx_Oracle", "pymssql", "mysql.connector", "pymysql", "pyodbc"])
         DSN = Str("", arg_type="String", label="数据源", order=9)
-        AdjustTableName = Bool(False, arg_type="Bool", label="调整表名", order=10)
+        AdjustTableName = Enum(False, True, arg_type="Bool", label="调整表名", order=10)
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._Connection = None# 连接对象
         self._Connector = None# 实际使用的数据库链接器
@@ -353,15 +353,16 @@ class QSSQLObject(__QS_Object__):
 class QSSQLite3Object(QSSQLObject):
     """基于 sqlite3 模块的对象"""
     class __QS_ArgClass__(QSSQLObject.__QS_ArgClass__):
-        DBType = Enum("sqlite3", arg_type="SingleOption", label="数据库类型", order=0)
-        Connector = Enum("sqlite3", arg_type="SingleOption", label="连接器", order=8)
-        SQLite3File = Either(Enum(":memory:"), File(), label="sqlite3文件", arg_type="File", order=11)
+        DBType = Enum("sqlite3", arg_type="SingleOption", label="数据库类型", order=0, option_range=["sqlite3"])
+        Connector = Enum("sqlite3", arg_type="SingleOption", label="连接器", order=8, option_range=["sqlite3"])
+        SQLite3File = File(label="sqlite3文件", arg_type="File", order=11)
     def _connect(self):
+        SQLite3File = (self._QSArgs.SQLite3File if self._QSArgs.SQLite3File else ":memory:")
         try:
             import sqlite3
-            self._Connection = sqlite3.connect(self._QSArgs.SQLite3File)
+            self._Connection = sqlite3.connect(SQLite3File)
         except Exception as e:
-            Msg = ("'%s' 尝试使用 sqlite3 连接数据库 '%s' 失败: %s" % (self.Name, self._QSArgs.SQLite3File, str(e)))
+            Msg = ("'%s' 尝试使用 sqlite3 连接数据库 '%s' 失败: %s" % (self.Name, SQLite3File, str(e)))
             self._QS_Logger.error(Msg)
             raise e
         else:

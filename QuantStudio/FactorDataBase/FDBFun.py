@@ -4,7 +4,7 @@ import datetime as dt
 
 import numpy as np
 import pandas as pd
-from traits.api import Str, Int, Bool, Float, Callable, Either, List, ListStr, Dict, Enum, Date, on_trait_change
+from traits.api import Str, Int, Float, Callable, Either, List, ListStr, Enum, Date, on_trait_change
 
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
@@ -280,29 +280,29 @@ def _QS_calcData_NarrowTable(raw_data, factor_names, ids, dts, data_type, args={
 class SQL_Table(FactorTable):
     """SQL 因子表"""
     class __QS_ArgClass__(FactorTable.__QS_ArgClass__):
-        FilterCondition = Str("", arg_type="Dict", label="筛选条件", order=100)
-        TableType = Str(arg_type="SingleOption", label="因子表类型", order=200)# 不可变
-        PreFilterID = Bool(True, arg_type="Bool", label="预筛选ID", order=201)
+        FilterCondition = Str("", arg_type="String", label="筛选条件", order=100)
+        TableType = Str(arg_type="String", label="因子表类型", order=200, mutable=False)# 不可变
+        PreFilterID = Enum(True, False, arg_type="Bool", label="预筛选ID", order=201)
         #DTField = Enum(None, arg_type="SingleOption", label="时点字段", order=202)
         #IDField = Enum(None, arg_type="SingleOption", label="ID字段", order=203)
-        DTFmt = Str("", arg_type="Dict", label="时点格式", order=204, mutable=False)
-        DateFmt = Str("", arg_type="Dict", label="日期格式", order=205, mutable=False)
-        UseIndex = ListStr(arg_type="MultiOption", label="使用索引", order=206)
-        ForceIndex = ListStr(arg_type="MultiOption", label="强制索引", order=207)
-        IgnoreIndex = ListStr(arg_type="MultiOption", label="忽略索引", order=208)
+        DTFmt = Str("", arg_type="String", label="时点格式", order=204, mutable=False)
+        DateFmt = Str("", arg_type="String", label="日期格式", order=205, mutable=False)
+        UseIndex = ListStr(arg_type="ListStr", label="使用索引", order=206)
+        ForceIndex = ListStr(arg_type="ListStr", label="强制索引", order=207)
+        IgnoreIndex = ListStr(arg_type="ListStr", label="忽略索引", order=208)
         def __QS_initArgs__(self):
             super().__QS_initArgs__()
             # 设置因子表类型
             self.TableType = self._Owner._TableInfo["TableClass"]
             # 解析 ID 字段, 至多一个 ID 字段
             IDFields = [None] + self._Owner._FactorInfo[pd.notnull(self._Owner._FactorInfo["FieldType"])].index.tolist()# ID 字段
-            self.add_trait("IDField", Enum(*IDFields, arg_type="SingleOption", label="ID字段", order=203))
+            self.add_trait("IDField", Enum(*IDFields, arg_type="SingleOption", label="ID字段", order=203, option_range=IDFields))
             self.IDField = None
             # 解析时点字段
             Mask = self._Owner._FactorInfo["FieldType"].str.lower().str.contains("date")
             Fields = self._Owner._FactorInfo[Mask].index.tolist()# 所有的时点字段列表
             Fields.append(None)
-            self.add_trait("DTField", Enum(*Fields, arg_type="SingleOption", label="时点字段", order=202))
+            self.add_trait("DTField", Enum(*Fields, arg_type="SingleOption", label="时点字段", order=202, option_range=Fields))
             iFactorInfo = self._Owner._FactorInfo[Mask & (self._Owner._FactorInfo["Supplementary"]=="Default")]
             if iFactorInfo.shape[0]>0: self.DTField = iFactorInfo.index[0]
             else: self.DTField = Fields[0]
@@ -596,17 +596,17 @@ class SQL_WideTable(SQL_Table):
     """SQL 宽因子表"""
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
         LookBack = Float(0, arg_type="Integer", label="回溯天数", order=0)
-        OnlyStartLookBack = Bool(False, label="只起始日回溯", arg_type="Bool", order=1)
-        OnlyLookBackNontarget = Bool(False, label="只回溯非目标日", arg_type="Bool", order=2)
-        OnlyLookBackDT = Bool(False, label="只回溯时点", arg_type="Bool", order=3)
+        OnlyStartLookBack = Enum(False, True, label="只起始日回溯", arg_type="Bool", order=1)
+        OnlyLookBackNontarget = Enum(False, True, label="只回溯非目标日", arg_type="Bool", order=2)
+        OnlyLookBackDT = Enum(False, True, label="只回溯时点", arg_type="Bool", order=3)
         #PublDTField = Enum(None, label="公告时点字段", arg_type="SingleOption", order=4)
-        IgnoreTime = Bool(False, label="忽略时间", arg_type="Bool", order=5)
-        EndDateASC = Bool(False, label="截止日期递增", arg_type="Bool", order=6)
+        IgnoreTime = Enum(False, True, label="忽略时间", arg_type="Bool", order=5)
+        EndDateASC = Enum(False, True, label="截止日期递增", arg_type="Bool", order=6)
         OrderFields = List(arg_type="List", label="排序字段", order=7)# [("字段名", "ASC" 或者 "DESC")]
-        MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=8)
+        MultiMapping = Enum(False, True, label="多重映射", arg_type="Bool", order=8)
         Operator = Either(Callable(), None, arg_type="Function", label="算子", order=9)
-        OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=10)
-        AdditionalFields = ListStr(arg_type="MultiOption", label="附加字段", order=11, option_range=())
+        OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=10, option_range=["object", "double", "string"])
+        AdditionalFields = ListStr(arg_type="ListStr", label="附加字段", order=11)
         PeriodLookBack = Either(None, Int(0), label="回溯期数", arg_type="Integer", order=12)
         RawLookBack = Float(0, arg_type="Integer", label="原始值回溯天数", order=13)
         def __QS_initArgs__(self):
@@ -614,7 +614,7 @@ class SQL_WideTable(SQL_Table):
             # 解析公告时点字段
             Fields = self._Owner._FactorInfo[self._Owner._FactorInfo["FieldType"].str.lower().str.contains("date")].index.tolist()# 所有的时点字段列表
             Fields += [None]
-            self.add_trait("PublDTField", Enum(*Fields, arg_type="SingleOption", label="公告时点字段", order=4))
+            self.add_trait("PublDTField", Enum(*Fields, arg_type="SingleOption", label="公告时点字段", order=4, option_range=Fields))
             PublDTField = self._Owner._FactorInfo["DBFieldName"][self._Owner._FactorInfo["FieldType"]=="AnnDate"]
             if PublDTField.shape[0]==0: self.PublDTField = None
             else: self.PublDTField = PublDTField.index[0]
@@ -989,25 +989,25 @@ class SQL_NarrowTable(SQL_Table):
     """SQL 窄因子表"""
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
         LookBack = Float(0, arg_type="Integer", label="回溯天数", order=0)
-        OnlyStartLookBack = Bool(False, label="只起始日回溯", arg_type="Bool", order=1)
-        OnlyLookBackNontarget = Bool(False, label="只回溯非目标日", arg_type="Bool", order=2)
-        OnlyLookBackDT = Bool(False, label="只回溯时点", arg_type="Bool", order=3)
+        OnlyStartLookBack = Enum(False, True, label="只起始日回溯", arg_type="Bool", order=1)
+        OnlyLookBackNontarget = Enum(False, True, label="只回溯非目标日", arg_type="Bool", order=2)
+        OnlyLookBackDT = Enum(False, True, label="只回溯时点", arg_type="Bool", order=3)
         #FactorNameField = Enum(None, arg_type="SingleOption", label="因子名字段", order=4)
         #FactorValueField = Enum(None, arg_type="SingleOption", label="因子值字段", order=5)
-        MultiMapping = Bool(True, label="多重映射", arg_type="Bool", order=6)
+        MultiMapping = Enum(True, False, label="多重映射", arg_type="Bool", order=6)
         Operator = Either(Callable(), None, arg_type="Function", label="算子", order=7)
-        OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=8)
+        OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=8, option_range=["object", "double", "string"])
         def __QS_initArgs__(self):
             super().__QS_initArgs__()
             FactorFields = self._Owner._FactorInfo[self._Owner._FactorInfo["FieldType"]=="Factor"]
             if FactorFields.shape[0]==0: FactorFields = self._Owner._FactorInfo
-            self.add_trait("FactorNameField", Enum(*FactorFields.index.tolist(), arg_type="SingleOption", label="因子名字段", order=4))
+            self.add_trait("FactorNameField", Enum(*FactorFields.index.tolist(), arg_type="SingleOption", label="因子名字段", order=4, option_range=FactorFields.index.tolist()))
             DefaultField = FactorFields[FactorFields["Supplementary"]=="Default"].index
             if DefaultField.shape[0]==0: self.FactorNameField = FactorFields.index[0]
             else: self.FactorNameField = DefaultField[0]
             ValueFields = self._Owner._FactorInfo[self._Owner._FactorInfo["FieldType"]=="Value"]
             if ValueFields.shape[0]==0: ValueFields = self._Owner._FactorInfo
-            self.add_trait("FactorValueField", Enum(*ValueFields.index.tolist(), arg_type="SingleOption", label="因子值字段", order=5))
+            self.add_trait("FactorValueField", Enum(*ValueFields.index.tolist(), arg_type="SingleOption", label="因子值字段", order=5, option_range=ValueFields.index.tolist()))
             DefaultField = ValueFields[ValueFields["Supplementary"]=="Default"].index
             if DefaultField.shape[0]==0: self.FactorValueField = ValueFields.index[0]
             else: self.FactorValueField = DefaultField[0]
@@ -1288,22 +1288,22 @@ class SQL_TimeSeriesTable(SQL_Table):
     """SQL 时序因子表"""
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
         LookBack = Float(0, arg_type="Integer", label="回溯天数", order=0)
-        OnlyStartLookBack = Bool(False, label="只起始日回溯", arg_type="Bool", order=1)
-        OnlyLookBackNontarget = Bool(False, label="只回溯非目标日", arg_type="Bool", order=2)
-        OnlyLookBackDT = Bool(False, label="只回溯时点", arg_type="Bool", order=3)
+        OnlyStartLookBack = Enum(False, True, label="只起始日回溯", arg_type="Bool", order=1)
+        OnlyLookBackNontarget = Enum(False, True, label="只回溯非目标日", arg_type="Bool", order=2)
+        OnlyLookBackDT = Enum(False, True, label="只回溯时点", arg_type="Bool", order=3)
         #PublDTField = Enum(None, label="公告时点字段", arg_type="SingleOption", order=4)
-        IgnoreTime = Bool(False, label="忽略时间", arg_type="Bool", order=5)
-        EndDateASC = Bool(False, label="截止日期递增", arg_type="Bool", order=6)
+        IgnoreTime = Enum(False, True, label="忽略时间", arg_type="Bool", order=5)
+        EndDateASC = Enum(False, True, label="截止日期递增", arg_type="Bool", order=6)
         OrderFields = List(arg_type="List", label="排序字段", order=7)# [("字段名", "ASC" 或者 "DESC")]
-        MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=8)
+        MultiMapping = Enum(False, True, label="多重映射", arg_type="Bool", order=8)
         Operator = Either(Callable(), None, arg_type="Function", label="算子", order=9)
-        OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=10)
+        OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=10, option_range=["object", "double", "string"])
         def __QS_initArgs__(self):
             super().__QS_initArgs__()
             # 解析公告时点字段
             Fields = self._Owner._FactorInfo[self._Owner._FactorInfo["FieldType"].str.lower().str.contains("date")].index.tolist()# 所有的时点字段列表
             Fields += [None]
-            self.add_trait("PublDTField", Enum(*Fields, arg_type="SingleOption", label="公告时点字段", order=4))
+            self.add_trait("PublDTField", Enum(*Fields, arg_type="SingleOption", label="公告时点字段", order=4, option_range=Fields))
             PublDTField = self._Owner._FactorInfo["DBFieldName"][self._Owner._FactorInfo["FieldType"]=="AnnDate"]
             if PublDTField.shape[0]==0: self.PublDTField = None
             else: self.PublDTField = PublDTField.index[0]
@@ -1537,15 +1537,15 @@ class SQL_TimeSeriesTable(SQL_Table):
 class SQL_MappingTable(SQL_Table):
     """SQL 映射因子表"""
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
-        OnlyStartFilled = Bool(False, label="只填起始日", arg_type="Bool", order=0)
-        MultiMapping = Bool(False, label="多重映射", arg_type="Bool", order=1)
+        OnlyStartFilled = Enum(False, True, label="只填起始日", arg_type="Bool", order=0)
+        MultiMapping = Enum(False, True, label="多重映射", arg_type="Bool", order=1)
         #EndDTField = Enum(None, arg_type="SingleOption", label="结束时点字段", order=2)
-        EndDTIncluded = Bool(True, label="包含结束时点", arg_type="Bool", order=3)
+        EndDTIncluded = Enum(True, False, label="包含结束时点", arg_type="Bool", order=3)
         def __QS_initArgs__(self):
             super().__QS_initArgs__()
             # 解析结束时点字段
             Fields = self._Owner._FactorInfo[self._Owner._FactorInfo["FieldType"].str.lower().str.contains("date")].index.tolist()# 所有的时点字段列表
-            self.add_trait("EndDTField", Enum(*Fields, arg_type="SingleOption", label="结束时点字段", order=2))
+            self.add_trait("EndDTField", Enum(*Fields, arg_type="SingleOption", label="结束时点字段", order=2, option_range=Fields))
             EndDTField = self._Owner._FactorInfo["DBFieldName"][self._Owner._FactorInfo["FieldType"]=="EndDate"]
             if EndDTField.shape[0]==0: self.EndDTField = Fields[0]
             else: self.EndDTField = EndDTField.index[0]
@@ -1758,24 +1758,24 @@ class SQL_ConstituentTable(SQL_Table):
         #GroupField = Enum(None, arg_type="SingleOption", label="类别字段", order=0)
         #EndDTField = Enum(None, arg_type="SingleOption", label="结束时点字段", order=1)
         #CurSignField = Enum(None, arg_type="SingleOption", label="当前状态字段", order=2)
-        EndDTIncluded = Bool(False, label="包含结束时点", arg_type="Bool", order=3)
+        EndDTIncluded = Enum(False, True, label="包含结束时点", arg_type="Bool", order=3)
         def __QS_initArgs__(self):
             super().__QS_initArgs__()
             FactorInfo = self._Owner._FactorInfo
             # 解析类别字段
             Fields = FactorInfo[pd.notnull(FactorInfo["FieldType"])].index.tolist()# 所有字段列表
-            self.add_trait("GroupField", Enum(*Fields, arg_type="SingleOption", label="类别字段", order=0))
+            self.add_trait("GroupField", Enum(*Fields, arg_type="SingleOption", label="类别字段", order=0, option_range=Fields))
             GroupField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="Group"]
             if GroupField.shape[0]==0: self.GroupField = Fields[0]
             else: self.GroupField = GroupField.index[0]
             # 解析当前状态字段
-            self.add_trait("CurSignField", Enum(*(Fields+[None]), arg_type="SingleOption", label="当前状态字段", order=2))
+            self.add_trait("CurSignField", Enum(*(Fields+[None]), arg_type="SingleOption", label="当前状态字段", order=2, option_range=Fields+[None]))
             CurSignField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="CurSign"]
             if CurSignField.shape[0]==0: self.CurSignField = None
             else: self.CurSignField = CurSignField.index[0]
             # 解析结束时点字段
             Fields = FactorInfo[FactorInfo["FieldType"].str.lower().str.contains("date")].index.tolist()# 所有的时点字段列表
-            self.add_trait("EndDTField", Enum(*Fields, arg_type="SingleOption", label="结束时点字段", order=1))
+            self.add_trait("EndDTField", Enum(*Fields, arg_type="SingleOption", label="结束时点字段", order=1, option_range=Fields))
             EndDTField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="EndDate"]
             if EndDTField.shape[0]==0: self.EndDTField = Fields[0]
             else: self.EndDTField = EndDTField.index[0]
@@ -1953,12 +1953,12 @@ def RollBackNPeriod(report_date, n_period):
 class SQL_FinancialTable(SQL_Table):
     """财务因子表"""
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
-        ReportDate = Enum("所有", "定期报告", "年报", "中报", "一季报", "三季报", Dict(), Callable(), label="报告期", arg_type="SingleOption", order=0)
-        CalcType = Enum("最新", "单季度", "TTM", label="计算方法", arg_type="SingleOption", order=1)
+        ReportDate = Enum("所有", "定期报告", "年报", "中报", "一季报", "三季报", label="报告期", arg_type="SingleOption", order=0, option_range=["所有", "定期报告", "年报", "中报", "一季报", "三季报"])
+        CalcType = Enum("最新", "单季度", "TTM", label="计算方法", arg_type="SingleOption", order=1, option_range=["最新", "单季度", "TTM"])
         YearLookBack = Int(0, label="回溯年数", arg_type="Integer", order=2)
         PeriodLookBack = Int(0, label="回溯期数", arg_type="Integer", order=3)
-        IgnoreMissing = Bool(True, label="忽略缺失", arg_type="Bool", order=4)
-        IgnoreNonQuarter = Bool(False, label="忽略非季末报告", arg_type="Bool", order=5)
+        IgnoreMissing = Enum(True, False, label="忽略缺失", arg_type="Bool", order=4)
+        IgnoreNonQuarter = Enum(False, True, label="忽略非季末报告", arg_type="Bool", order=5)
         #AdjustTypeField = Enum(None, label="调整类型字段", arg_type="SingleOption", order=6)
         #AdjustType = Str("2,1", label="调整类型", arg_type="String", order=7)
         #PublDTField = Enum(None, label="公告时点字段", arg_type="SingleOption", order=8)
@@ -1968,13 +1968,13 @@ class SQL_FinancialTable(SQL_Table):
             # 解析公告时点字段
             Fields = FactorInfo[FactorInfo["FieldType"].str.lower().str.contains("date")].index.tolist()# 所有的时点字段列表
             Fields += [None]
-            self.add_trait("PublDTField", Enum(*Fields, arg_type="SingleOption", label="公告时点字段", order=8))
+            self.add_trait("PublDTField", Enum(*Fields, arg_type="SingleOption", label="公告时点字段", order=8, option_range=Fields))
             PublDTField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="AnnDate"]
             if PublDTField.shape[0]==0: self.PublDTField = None
             else: self.PublDTField = PublDTField.index[0]
             # 调整类型字段
             Fields = [None]+FactorInfo.index.tolist()# 所有的字段列表
-            self.add_trait("AdjustTypeField", Enum(*Fields, arg_type="SingleOption", label="调整类型字段", order=6))
+            self.add_trait("AdjustTypeField", Enum(*Fields, arg_type="SingleOption", label="调整类型字段", order=6, option_range=Fields))
             AdjustTypeField = FactorInfo[FactorInfo["FieldType"]=="AdjustType"].index
             if AdjustTypeField.shape[0]==0: self.AdjustTypeField = None
             else: self.AdjustTypeField = AdjustTypeField[0]

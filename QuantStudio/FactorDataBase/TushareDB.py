@@ -159,7 +159,7 @@ class _MarketTable(_TSTable):
         def __QS_initArgs__(self):
             super().__QS_initArgs__()
             FactorInfo = self._Owner._FactorDB._FactorInfo.loc[self._Owner.Name]
-            self.add_trait("DateField", Enum(*self._Owner._DateFields, arg_type="SingleOption", label="日期字段", order=1))
+            self.add_trait("DateField", Enum(*self._Owner._DateFields, arg_type="SingleOption", label="日期字段", order=1, option_range=self._Owner._DateFields))
             DefaultDateField = FactorInfo[(FactorInfo["Supplementary"]=="DefaultDate") & (FactorInfo["FieldType"]=="Date")]
             if DefaultDateField.shape[0]>0: self.DateField = DefaultDateField.index[0]
             else: self.DateField = self._Owner._DateFields[0]

@@ -4,7 +4,7 @@ import datetime as dt
 
 import pandas as pd
 import numpy as np
-from traits.api import Enum, ListStr, Float, Str, Bool, Instance
+from traits.api import Enum, ListStr, Float, Str, Instance
 
 from QuantStudio import QSArgs
 from QuantStudio.BackTest.Strategy.StrategyModule import Account, cutDateTime
@@ -17,16 +17,16 @@ class _TradeLimit(QSArgs):
     TradeFee = Float(0.003, arg_type="Double", label="交易费率", order=2)
     #Amt = Enum(None, arg_type="SingleOption", label="成交额", order=3)
     AmtLimitRatio = Float(0.1, arg_type="Double", label="成交额限比", order=4)
-    PriceFillna = Enum(False, True, arg_type="SingleOption", label="价格缺失填充", order=5)
+    PriceFillna = Enum(False, True, arg_type="Bool", label="价格缺失填充", order=5)
     def __init__(self, account, direction, sys_args={}, config_file=None, **kwargs):
         self._Account = account
         self._Direction = direction
         return super().__init__(self._Account, sys_args=sys_args, config_file=config_file, **kwargs)
     def __QS_initArgs__(self):
         DefaultNumFactorList = [None] + self._Account.trait("Last").option_range
-        self.add_trait("TradePrice", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="成交价", order=0))
-        self.add_trait("Amt", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="成交额", order=3))
-        if self._Direction=="Sell": self.add_trait("ShortAllowed", Bool(False, arg_type="SingleOption", label="允许卖空", order=5))
+        self.add_trait("TradePrice", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="成交价", order=0, option_range=DefaultNumFactorList))
+        self.add_trait("Amt", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="成交额", order=3, option_range=DefaultNumFactorList))
+        if self._Direction=="Sell": self.add_trait("ShortAllowed", Enum(False, True, arg_type="Bool", label="允许卖空", order=5))
 
 # 基于价格和成交额数据的简单账户, 只支持市价单
 # market_ft: 提供价格数据的因子表, 时间频率任意
@@ -34,12 +34,12 @@ class _TradeLimit(QSArgs):
 class DefaultAccount(Account):
     """默认证券账户"""
     class __QS_ArgClass__(Account.__QS_ArgClass__):
-        Delay = Bool(True, arg_type="Bool", label="交易延迟", order=2)
+        Delay = Enum(True, False, arg_type="Bool", label="交易延迟", order=2)
         TargetIDs = ListStr(arg_type="IDList", label="目标ID", order=3)
         BuyLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="买入限制", order=4)
         SellLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="卖出限制", order=5)
         #Last = Enum(None, arg_type="SingleOption", label="最新价", order=6)
-        PriceFillna = Enum(False, True, arg_type="SingleOption", label="价格缺失填充", order=7)
+        PriceFillna = Enum(False, True, arg_type="Bool", label="价格缺失填充", order=7)
         def __QS_initArgs__(self):
             super().__QS_initArgs__()
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._MarketFT.getFactorMetaData(key="DataType")))

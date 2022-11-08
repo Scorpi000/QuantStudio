@@ -18,7 +18,7 @@ from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage
 class FamaMacBethRegression(BaseModule):
     """Fama-MacBeth 回归"""
     class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
-        TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
+        # TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
         #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
         #ClassFactor = Enum("无", arg_type="SingleOption", label="类别因子", order=2)
         CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=3)
@@ -28,9 +28,9 @@ class FamaMacBethRegression(BaseModule):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
             self.TestFactors.append(DefaultNumFactorList[0])
-            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1))
+            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1, option_range=DefaultNumFactorList))
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
-            self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=2))
+            self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=2, option_range=["无"]+DefaultStrFactorList))
             
     def __init__(self, factor_table, name="Fama-MacBeth 回归", sys_args={}, **kwargs):
         self._FactorTable = factor_table

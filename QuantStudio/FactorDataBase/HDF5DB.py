@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import fasteners
 import h5py
-from traits.api import Directory, Float, Str, Bool, on_trait_change
+from traits.api import Directory, Float, Str, on_trait_change
 
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.Tools.api import Panel
@@ -50,9 +50,9 @@ class _FactorTable(FactorTable):
     """HDF5DB 因子表"""
     class __QS_ArgClass__(FactorTable.__QS_ArgClass__):
         LookBack = Float(0, arg_type="Integer", label="回溯天数", order=0)
-        OnlyStartLookBack = Bool(False, label="只起始日回溯", arg_type="Bool", order=1)
-        OnlyLookBackNontarget = Bool(False, label="只回溯非目标日", arg_type="Bool", order=2)
-        OnlyLookBackDT = Bool(False, label="只回溯时点", arg_type="Bool", order=3)
+        OnlyStartLookBack = Enum(False, True, label="只起始日回溯", arg_type="Bool", order=1)
+        OnlyLookBackNontarget = Enum(False, True, label="只回溯非目标日", arg_type="Bool", order=2)
+        OnlyLookBackDT = Enum(False, True, label="只回溯时点", arg_type="Bool", order=3)
     
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         self._Suffix = fdb._Suffix# 文件后缀名

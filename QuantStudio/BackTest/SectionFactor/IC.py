@@ -22,24 +22,24 @@ def _QS_formatPandasPercentage(x):
 class IC(BaseModule):
     """IC"""
     class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
-        TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
+        # TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
         FactorOrder = Dict(key_trait=Str(), value_trait=Enum("降序", "升序"), arg_type="ArgDict", label="排序方向", order=1)
         #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=2)
         #ClassFactor = Enum("无", arg_type="SingleOption", label="类别因子", order=3)
         #WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=4)
         CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=5)
         LookBack = Int(1, arg_type="Integer", label="回溯期数", order=6)
-        CorrMethod = Enum("spearman", "pearson", "kendall", arg_type="SingleOption", label="相关性算法", order=7)
+        CorrMethod = Enum("spearman", "pearson", "kendall", arg_type="SingleOption", label="相关性算法", order=7, option_range=["spearman", "pearson", "kendall"])
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
         RollAvgPeriod = Int(12, arg_type="Integer", label="滚动平均期数", order=9)
         def __QS_initArgs__(self):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
             self.TestFactors.append(DefaultNumFactorList[0])
-            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=2))
+            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=2, option_range=DefaultNumFactorList))
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
-            self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=3))
-            self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=4))
+            self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=3, option_range=["无"]+DefaultStrFactorList))
+            self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=4, option_range=["等权"]+DefaultNumFactorList))
         
         @property
         def ObservedArgs(self):
@@ -181,13 +181,16 @@ class IC(BaseModule):
 class RiskAdjustedIC(IC):    
     """风险调整的 IC"""
     class __QS_ArgClass__(IC.__QS_ArgClass__):
-        RiskFactors = ListStr(arg_type="MultiOption", label="风险因子", order=2.5, option_range=())
+        # RiskFactors = ListStr(arg_type="MultiOption", label="风险因子", order=2.5, option_range=())
         def __QS_initArgs__(self):
             super().__QS_initArgs__()
             self.remove_trait("WeightFactor")
+            DefaultNumFactorList, _ = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
+            self.add_trait("RiskFactors", ListStr(arg_type="MultiOption", label="风险因子", order=2.5, option_range=tuple(DefaultNumFactorList)))
     
     def __init__(self, factor_table, name="风险调整的 IC", sys_args={}, **kwargs):
         return super().__init__(factor_table=factor_table, name=name, sys_args=sys_args, **kwargs)
+    
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
         self._iDT = idt
@@ -262,21 +265,21 @@ class ICDecay(BaseModule):
     """IC 衰减"""
     class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
         #TestFactor = Enum(None, arg_type="SingleOption", label="测试因子", order=0)
-        FactorOrder = Enum("降序","升序", arg_type="SingleOption", label="排序方向", order=1)
+        FactorOrder = Enum("降序","升序", arg_type="SingleOption", label="排序方向", order=1, option_range=["降序","升序"])
         #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=2)
         #ClassFactor = Enum("无", arg_type="SingleOption", label="类别因子", order=3)
         #WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=4)
         CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=5)
         LookBack = ListInt(np.arange(1,13).tolist(), arg_type="NultiOpotion", label="回溯期数", order=6)
-        CorrMethod = Enum("spearman", "pearson", "kendall", arg_type="SingleOption", label="相关性算法", order=7)
+        CorrMethod = Enum("spearman", "pearson", "kendall", arg_type="SingleOption", label="相关性算法", order=7, option_range=["spearman", "pearson", "kendall"])
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
         def __QS_initArgs__(self):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
-            self.add_trait("TestFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="测试因子", order=0))
-            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=2))
+            self.add_trait("TestFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="测试因子", order=0, option_range=DefaultNumFactorList))
+            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=2, option_range=DefaultNumFactorList))
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
-            self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=3))
-            self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=4))
+            self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=3, option_range=["无"]+DefaultStrFactorList))
+            self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=4, option_range=["等权"]+DefaultNumFactorList))
     
     def __init__(self, factor_table, name="IC 衰减", sys_args={}, **kwargs):
         self._FactorTable = factor_table

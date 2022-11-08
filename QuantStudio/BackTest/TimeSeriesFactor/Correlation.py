@@ -28,20 +28,20 @@ def _formatSummary(summary):
 class TimeSeriesCorrelation(BaseModule):
     """时间序列相关性"""
     class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
-        TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
+        #TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
         #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
-        ReturnType = Enum("简单收益率", "对数收益率", "价格变化量", arg_type="SingleOption", label="收益率类型", order=2)
+        ReturnType = Enum("简单收益率", "对数收益率", "价格变化量", arg_type="SingleOption", label="收益率类型", order=2, option_range=["简单收益率", "对数收益率", "价格变化量"])
         ForecastPeriod = Int(1, arg_type="Integer", label="预测期数", order=3)
         Lag = Int(0, arg_type="Integer", label="滞后期数", order=4)
         CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=5)
-        CorrMethod = Enum("pearson", "spearman", "kendall", arg_type="SingleOption", label="相关性算法", order=6)
+        CorrMethod = Enum("pearson", "spearman", "kendall", arg_type="SingleOption", label="相关性算法", order=6, option_range=["pearson", "spearman", "kendall"])
         SummaryWindow = Float(np.inf, arg_type="Integer", label="统计窗口", order=7)
         MinSummaryWindow = Int(2, arg_type="Integer", label="最小统计窗口", order=8)
         def __QS_initArgs__(self):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
             self.TestFactors.append(DefaultNumFactorList[0])
-            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1))
+            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1, option_range=DefaultNumFactorList))
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
     
     def __init__(self, factor_table, name="时间序列相关性", sys_args={}, **kwargs):

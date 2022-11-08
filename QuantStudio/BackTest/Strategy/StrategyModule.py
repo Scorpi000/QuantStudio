@@ -248,8 +248,8 @@ class _Benchmark(QSArgs):
     RebalanceDTs = List(dt.datetime, arg_type="DateTimeList", label="再平衡时点", order=3)
     RiskFreeRate = Float(0.0, arg_type="Float", label="无风险利率", order=4)
     def __QS_initArgs__(self):
-        self.add_trait("PriceFactor", Enum(None, arg_type="SingleOption", label="价格因子", order=1))
-        self.add_trait("BenchmarkID", Enum(None, arg_type="SingleOption", label="基准ID", order=2))
+        self.add_trait("PriceFactor", Enum(None, arg_type="SingleOption", label="价格因子", order=1, option_range=[None]))
+        self.add_trait("BenchmarkID", Enum(None, arg_type="SingleOption", label="基准ID", order=2, option_range=[None]))
     
     @property
     def ObservedArgs(self):
@@ -259,18 +259,21 @@ class _Benchmark(QSArgs):
     def _on_FactorTable_changed(self, obj, name, old, new):
         if self.FactorTable is not None:
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self.FactorTable.getFactorMetaData(key="DataType")))
-            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1))
+            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1, option_range=DefaultNumFactorList))
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
-            self.add_trait("BenchmarkID", Enum(*self.FactorTable.getID(ifactor_name=self.PriceFactor), arg_type="SingleOption", label="基准ID", order=2))
+            IDs = self.FactorTable.getID(ifactor_name=self.PriceFactor)
+            self.add_trait("BenchmarkID", Enum(*IDs, arg_type="SingleOption", label="基准ID", order=2, option_range=IDs))
         else:
-            self.add_trait("PriceFactor", Enum(None, arg_type="SingleOption", label="价格因子", order=1))
-            self.add_trait("BenchmarkID", Enum(None, arg_type="SingleOption", label="基准ID", order=2))
+            self.add_trait("PriceFactor", Enum(None, arg_type="SingleOption", label="价格因子", order=1, option_range=[None]))
+            self.add_trait("BenchmarkID", Enum(None, arg_type="SingleOption", label="基准ID", order=2, option_range=[None]))
+    
     @on_trait_change("PriceFactor")
     def _on_PriceFactor_changed(self, obj, name, old, new):
         if self.FactorTable is not None:
-            self.add_trait("BenchmarkID", Enum(*self.FactorTable.getID(ifactor_name=self.PriceFactor), arg_type="SingleOption", label="基准ID", order=2))
+            IDs = self.FactorTable.getID(ifactor_name=self.PriceFactor)
+            self.add_trait("BenchmarkID", Enum(*IDs, arg_type="SingleOption", label="基准ID", order=2, option_range=IDs))
         else:
-            self.add_trait("BenchmarkID", Enum(None, arg_type="SingleOption", label="基准ID", order=2))
+            self.add_trait("BenchmarkID", Enum(None, arg_type="SingleOption", label="基准ID", order=2, option_range=[None]))
 
 # 策略基类
 class Strategy(BaseModule):

@@ -16,16 +16,16 @@ from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage
 class IndustryDistribution(BaseModule):
     """因子值行业分布"""
     class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
-        TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
+        # TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
         #IndustryFactor = Enum(None, arg_type="SingleOption", label="行业因子", order=1)
-        Threshold = Enum("中位数","平均数","25%分位数","75%分位数",arg_type="SingleOption", label="阈值", order=2)
+        Threshold = Enum("中位数","平均数","25%分位数","75%分位数",arg_type="SingleOption", label="阈值", order=2, option_range=["中位数","平均数","25%分位数","75%分位数"])
         CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=3)
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=4)
         def __QS_initArgs__(self):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
             self.TestFactors.append(DefaultNumFactorList[0])
-            self.add_trait("IndustryFactor", Enum(*DefaultStrFactorList, arg_type="SingleOption", label="行业因子", order=1))
+            self.add_trait("IndustryFactor", Enum(*DefaultStrFactorList, arg_type="SingleOption", label="行业因子", order=1, option_range=DefaultStrFactorList))
     
     def __init__(self, factor_table, name="因子值行业分布", sys_args={}, **kwargs):
         self._FactorTable = factor_table

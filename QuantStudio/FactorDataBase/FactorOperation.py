@@ -20,7 +20,7 @@ class DerivativeFactor(Factor):
     class __QS_ArgClass__(Factor.__QS_ArgClass__):
         Operator = Callable(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
         ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
-        DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=2)
+        DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=2, option_range=["double", "string", "object"])
     
     def __init__(self, name="", descriptors=[], sys_args={}, **kwargs):
         self._Descriptors = descriptors
@@ -56,8 +56,8 @@ class DerivativeFactor(Factor):
 class PointOperation(DerivativeFactor):
     """单点运算"""
     class __QS_ArgClass__(DerivativeFactor.__QS_ArgClass__):
-        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
-        IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=4)
+        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3, option_range=["单时点", "多时点"])
+        IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=4, option_range=["单ID", "多ID"])
     def readData(self, ids, dts, **kwargs):
         StdData = self._calcData(ids=ids, dts=dts, descriptor_data=[iDescriptor.readData(ids=ids, dts=dts, **kwargs).values for iDescriptor in self._Descriptors])
         return pd.DataFrame(StdData, index=dts, columns=ids)
@@ -120,12 +120,12 @@ class PointOperation(DerivativeFactor):
 class TimeOperation(DerivativeFactor):
     """时间序列运算"""
     class __QS_ArgClass__(DerivativeFactor.__QS_ArgClass__):
-        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
-        IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=4)
+        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3, option_range=["单时点", "多时点"])
+        IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=4, option_range=["单ID", "多ID"])
         LookBack = List(arg_type="ArgList", label="回溯期数", order=5)# 描述子向前回溯的时点数(不包括当前时点)
         LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=6)# 描述子的回溯模式
         iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=7)
-        iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=8)
+        iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=8, option_range=["滚动窗口", "扩张窗口"])
         iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=9)
         def __QS_initArgs__(self):
             self.LookBack = [0]*len(self._Owner._Descriptors)
@@ -264,8 +264,8 @@ class TimeOperation(DerivativeFactor):
 class SectionOperation(DerivativeFactor):
     """截面运算"""
     class __QS_ArgClass__(DerivativeFactor.__QS_ArgClass__):
-        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
-        OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=4)
+        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3, option_range=["单时点", "多时点"])
+        OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=4, option_range=["全截面", "单ID"])
         DescriptorSection = List(arg_type="List", label="描述子截面", order=5)
         def __QS_initArgs__(self):
             super().__QS_initArgs__()
@@ -363,12 +363,12 @@ class SectionOperation(DerivativeFactor):
 class PanelOperation(DerivativeFactor):
     """面板运算"""
     class __QS_ArgClass__(DerivativeFactor.__QS_ArgClass__):
-        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
-        OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=4)
+        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3, option_range=["单时点", "多时点"])
+        OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=4, option_range=["全截面", "单ID"])
         LookBack = List(arg_type="ArgList", label="回溯期数", order=5)# 描述子向前回溯的时点数(不包括当前时点)
         LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=6)
         iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=7)
-        iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=8)
+        iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=8, option_range=["滚动窗口", "扩张窗口"])
         iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=9)
         DescriptorSection = List(arg_type="List", label="描述子截面", order=10)
         def __QS_initArgs__(self):

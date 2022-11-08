@@ -365,8 +365,8 @@ def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_d
 class _AnalystConsensusTable(_JY_SQL_Table):
     """分析师汇总表"""
     class __QS_ArgClass__(_JY_SQL_Table.__QS_ArgClass__):
-        CalcType = Enum("FY0", "FY1", "FY2", "Fwd12M", label="计算方法", arg_type="SingleOption", order=0)
-        Period = Enum(30,60,90,180, label="周期", arg_type="SingleOption", order=1)
+        CalcType = Enum("FY0", "FY1", "FY2", "Fwd12M", label="计算方法", arg_type="SingleOption", order=0, option_range=["FY0", "FY1", "FY2", "Fwd12M"])
+        Period = Enum(30,60,90,180, label="周期", arg_type="SingleOption", order=1, option_range=[30,60,90,180])
         LookBack = Int(0, arg_type="Integer", label="回溯天数", order=2)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
@@ -541,10 +541,10 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
         Operator = Callable(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
         ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
         ForwardYears = List(default=[0], label="向前年数", arg_type="ArgList", order=2)
-        AdditionalFields = ListStr(arg_type="MultiOption", label="附加字段", order=3, option_range=())
-        Deduplication = ListStr(arg_type="MultiOption", label="去重字段", order=4, option_range=())
+        AdditionalFields = ListStr(arg_type="ListStr", label="附加字段", order=3)
+        Deduplication = ListStr(arg_type="ListStr", label="去重字段", order=4)
         Period = Int(180, arg_type="Integer", label="周期", order=5)
-        DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=6)
+        DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=6, option_range=["double", "string", "object"])
         def __QS_initArgs__(self):
             super().__QS_initArgs__()
             self._Owner._InstituteField = self._Owner._FactorInfo[self._Owner._FactorInfo["FieldType"]=="Institute"].index[0]
@@ -678,10 +678,10 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
     class __QS_ArgClass__(_JY_SQL_Table.__QS_ArgClass__):
         Operator = Callable(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
         ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
-        AdditionalFields = ListStr(arg_type="MultiOption", label="附加字段", order=2, option_range=())
-        Deduplication = ListStr(arg_type="MultiOption", label="去重字段", order=3, option_range=())
+        AdditionalFields = ListStr(arg_type="ListStr", label="附加字段", order=2)
+        Deduplication = ListStr(arg_type="ListStr", label="去重字段", order=3)
         Period = Int(180, arg_type="Integer", label="周期", order=4)
-        DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=5)
+        DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=5, option_range=["double", "string", "object"])
         def __QS_initArgs__(self):
             super().__QS_initArgs__()
             self._Owner._InstituteField = self._Owner._FactorInfo[self._Owner._FactorInfo["FieldType"]=="Institute"].index[0]

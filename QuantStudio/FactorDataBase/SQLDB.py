@@ -4,7 +4,7 @@ import os
 
 import numpy as np
 import pandas as pd
-from traits.api import on_trait_change, Str, Bool, ListStr, Dict
+from traits.api import on_trait_change, Str, Enum, ListStr, Dict
 
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.QSObjects import QSSQLObject
@@ -50,13 +50,13 @@ class SQLDB(QSSQLObject, WritableFactorDB):
     """SQLDB"""
     class __QS_ArgClass__(QSSQLObject.__QS_ArgClass__, WritableFactorDB.__QS_ArgClass__):
         Name = Str("SQLDB", arg_type="String", label="名称", order=-100)
-        CheckWriteData = Bool(False, arg_type="Bool", label="检查写入值", order=100)
+        CheckWriteData = Enum(False, True, arg_type="Bool", label="检查写入值", order=100)
         IgnoreFields = ListStr(arg_type="List", label="忽略字段", order=101)
         InnerPrefix = Str("qs_", arg_type="String", label="内部前缀", order=102)
         FTArgs = Dict(label="因子表参数", arg_type="Dict", order=103)
         DTField = Str("datetime", arg_type="String", label="时点字段", order=104)
         IDField = Str("code", arg_type="String", label="ID字段", order=105)
-        CheckNullable = Bool(False, arg_type="Bool", label="检查缺失容许", order=106)
+        CheckNullable = Enum(False, True, arg_type="Bool", label="检查缺失容许", order=106)
 
         @on_trait_change("DTField")
         def _on_DTField_changed(self, obj, name, old, new):

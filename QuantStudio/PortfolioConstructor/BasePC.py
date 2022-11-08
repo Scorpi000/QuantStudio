@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import pandas as pd
 import numpy as np
-from traits.api import Float, Bool, Str, Instance, List, Enum, Dict, Either, on_trait_change
+from traits.api import Float, Str, Instance, List, ListStr, Enum, Dict, Either, on_trait_change
 
 from QuantStudio.Tools.DataTypeConversionFun import DummyVarTo01Var
 from QuantStudio.Tools.IDFun import testIDFilterStr, filterID
@@ -41,7 +41,7 @@ class OptimizationObjective(__QS_Object__):
 # L1 惩罚二次目标: x'Sigma*x + Mu'*x + lambda1*sum(abs(x-c)) + lambda2*sum((x-c_pos)^+) + lambda3*sum((x-c_neg)^-),{'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Delta':array(n,1),'Mu':array(n,1),'lambda1':double,'c':array(n,1),'lambda2':double,'c_pos':array(n,1),'lambda3':double,'c_neg':array(n,1),'type':'L1_Quadratic'}, 其中, Sigma = X*F*X'+Delta
 class MeanVarianceObjective(OptimizationObjective):
     class __QS_ArgClass__(OptimizationObjective.__QS_ArgClass__):
-        Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=0)
+        Benchmark = Enum(False, True, arg_type="Bool", label="相对基准", order=0)
         ExpectedReturnCoef = Float(0.0, arg_type="Double", label="收益项系数", order=1)
         RiskAversionCoef = Float(1.0, arg_type="Double", label="风险厌恶系数", order=2)
         TurnoverPenaltyCoef = Float(0.0, arg_type="Double", label="换手惩罚系数", order=3)
@@ -111,7 +111,7 @@ class MeanVarianceObjective(OptimizationObjective):
 # 数学形式: (f'*x + f0) / sqrt(x'Sigma*x + Mu'x + q),{'f':array(n,1),'f0':double,'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Mu':array(n,1),'Delta':array(n,1),'q':double,'type':'Sharpe'},其中，Sigma = X*F*X'+Delta
 class MaxSharpeObjective(OptimizationObjective):
     class __QS_ArgClass__(OptimizationObjective.__QS_ArgClass__):
-        Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=0)
+        Benchmark = Enum(False, True, arg_type="Bool", label="相对基准", order=0)
     @property
     def Type(self):
         return "最大夏普率目标"
@@ -154,12 +154,12 @@ class MaxSharpeObjective(OptimizationObjective):
 # 数学形式: {'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Delta':array(n,1),'b':array(n,1),type':'Risk_Budget'}
 class RiskBudgetObjective(OptimizationObjective):
     class __QS_ArgClass__(OptimizationObjective.__QS_ArgClass__):
-        BudgetFactor = Enum("等权", arg_type="SingleOption", label="预算因子", order=0)
+        # BudgetFactor = Enum("等权", arg_type="SingleOption", label="预算因子", order=0)
         def __QS_initArgs__(self):
             if self._Owner._PC._QSArgs.FactorData is not None:
                 FactorNames = ["等权"]+self._Owner._PC._QSArgs.FactorData.columns.tolist()
             else: FactorNames = ["等权"]
-            self.add_trait("BudgetFactor", Enum(*FactorNames, arg_type="SingleOption", label="预算因子", order=0))
+            self.add_trait("BudgetFactor", Enum(*FactorNames, arg_type="SingleOption", label="预算因子", order=0, option_range=FactorNames))
             return super().__QS_initArgs__()
     @property
     def Type(self):
@@ -225,7 +225,7 @@ class BudgetConstraint(Constraint):
     class __QS_ArgClass__(Constraint.__QS_ArgClass__):
         UpLimit = Float(1.0, arg_type="Double", label="限制上限", order=0)
         DownLimit = Float(1.0, arg_type="Double", label="限制下限", order=1)
-        Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=2)
+        Benchmark = Enum(False, True, arg_type="Bool", label="相对基准", order=2)
         DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=3)
     @property
     def Type(self):
@@ -260,17 +260,17 @@ class BudgetConstraint(Constraint):
 # 因子暴露约束: f'*(w-benchmark) <=(==,>=) a, 转换成线性等式约束或线性不等式约束
 class FactorExposeConstraint(Constraint):
     class __QS_ArgClass__(Constraint.__QS_ArgClass__):
-        FactorType = Enum("数值型", "类别型", arg_type="SingleOption", label="因子类型", order=0)
-        FactorNames = List(arg_type="MultiOption", label="因子名称", order=1, option_range=())
+        FactorType = Enum("数值型", "类别型", arg_type="SingleOption", label="因子类型", order=0, option_range=["数值型", "类别型"])
+        # FactorNames = ListStr(arg_type="MultiOption", label="因子名称", order=1, option_range=())
         UpLimit = Float(0.0, arg_type="Double", label="限制上限", order=2)
         DownLimit = Float(0.0, arg_type="Double", label="限制下限", order=3)
-        Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=4)
+        Benchmark = Enum(False, True, arg_type="Bool", label="相对基准", order=4)
         DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=5)
         def __QS_initArgs__(self):
             if self._Owner._PC._QSArgs.FactorData is not None:
                 FactorNames = self._Owner._PC._QSArgs.FactorData.columns.tolist()
             else: FactorNames = []
-            self.add_trait("FactorNames", List(arg_type="MultiOption", label="因子名称", order=1, option_range=tuple(FactorNames)))
+            self.add_trait("FactorNames", ListStr(arg_type="MultiOption", label="因子名称", order=1, option_range=tuple(FactorNames)))
             self.FactorNames = FactorNames[:1]
             return super().__QS_initArgs__()
     @property
@@ -360,7 +360,7 @@ class WeightConstraint(Constraint):
         TargetIDs = Str(arg_type="IDFilterStr", label="目标ID", order=0)
         UpLimit = Either(Float(1.0), Str(), arg_type="Double", label="限制上限", order=1)
         DownLimit = Either(Float(0.0), Str(), arg_type="Double", label="限制下限", order=2)
-        Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=3)
+        Benchmark = Enum(False, True, arg_type="Bool", label="相对基准", order=3)
         DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=4)
     @property
     def Type(self):
@@ -400,7 +400,7 @@ class WeightConstraint(Constraint):
 # 换手约束: sum(abs(w-w0)) <=(==) a, 转换成 L1 范数约束, 正部总约束, 负部总约束
 class TurnoverConstraint(Constraint):
     class __QS_ArgClass__(Constraint.__QS_ArgClass__):
-        ConstraintType = Enum("总换手限制", "总买入限制", "总卖出限制", "买卖限制", "买入限制", "卖出限制", arg_type="SingleOption", label="限制类型", order=0)
+        ConstraintType = Enum("总换手限制", "总买入限制", "总卖出限制", "买卖限制", "买入限制", "卖出限制", arg_type="SingleOption", label="限制类型", order=0, option_range=["总换手限制", "总买入限制", "总卖出限制", "买卖限制", "买入限制", "卖出限制"])
         AmtMultiple = Float(1.0, arg_type="Double", label="成交额倍数", order=1)
         UpLimit = Float(0.7, arg_type="Double", label="限制上限", order=2)
         DropPriority = Float(0, arg_type="Double", label="舍弃优先级", order=3)
@@ -440,7 +440,7 @@ class TurnoverConstraint(Constraint):
 class VolatilityConstraint(Constraint):
     class __QS_ArgClass__(Constraint.__QS_ArgClass__):
         UpLimit = Float(0.06, arg_type="Double", label="限制上限", order=0)
-        Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=1)
+        Benchmark = Enum(False, True, arg_type="Bool", label="相对基准", order=1)
         DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=2)
     @property
     def Type(self):
@@ -475,7 +475,7 @@ class VolatilityConstraint(Constraint):
 class ExpectedReturnConstraint(Constraint):
     class __QS_ArgClass__(Constraint.__QS_ArgClass__):
         DownLimit = Float(0.0, arg_type="Double", label="限制下限", order=0)
-        Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=1)
+        Benchmark = Enum(False, True, arg_type="Bool", label="相对基准", order=1)
         DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=2)
     @property
     def Type(self):
@@ -496,7 +496,7 @@ class ExpectedReturnConstraint(Constraint):
 class NonZeroNumConstraint(Constraint):
     class __QS_ArgClass__(Constraint.__QS_ArgClass__):
         UpLimit = Float(150, arg_type="Double", label="限制上限", order=0)
-        Benchmark = Bool(False, arg_type="Bool", label="相对基准", order=1)
+        Benchmark = Enum(False, True, arg_type="Bool", label="相对基准", order=1)
         DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=2)
     @property
     def Type(self):

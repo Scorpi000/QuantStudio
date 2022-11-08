@@ -17,7 +17,7 @@ class QuantileDifference(BaseModule):
     class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
         #TestFactor = Enum(None, arg_type="SingleOption", label="测试因子", order=0)
         #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
-        ReturnType = Enum("简单收益率", "对数收益率", "价格变化量", arg_type="SingleOption", label="收益率类型", order=2)
+        ReturnType = Enum("简单收益率", "对数收益率", "价格变化量", arg_type="SingleOption", label="收益率类型", order=2, option_range=["简单收益率", "对数收益率", "价格变化量"])
         ForecastPeriod = Int(1, arg_type="Integer", label="预测期数", order=3)
         Lag = Int(0, arg_type="Integer", label="滞后期数", order=4)
         CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=5)
@@ -26,8 +26,8 @@ class QuantileDifference(BaseModule):
         GroupNum = Int(3, arg_type="Integer", label="分组数", order=8)
         def __QS_initArgs__(self):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FactorTable.getFactorMetaData(key="DataType")))
-            self.add_trait("TestFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="测试因子", order=0))
-            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1))
+            self.add_trait("TestFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="测试因子", order=0, option_range=DefaultNumFactorList))
+            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1, option_range=DefaultNumFactorList))
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
             
     def __init__(self, factor_table, name="分位数法", sys_args={}, **kwargs):

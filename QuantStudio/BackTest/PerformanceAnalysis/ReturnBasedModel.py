@@ -19,15 +19,15 @@ class ReturnBasedStyleModel(BaseModule):
         TargetIDs = ListStr(arg_type="StrList", label="目标ID", order=1)
         #StyleNAV = Enum(None, arg_type="SingleOption", label="风格净值", order=2)
         StyleIDs = ListStr(arg_type="StrList", label="风格ID", order=3)
-        ReturnType = Enum("简单收益率", "对数收益率", "价格变化量", arg_type="SingleOption", label="收益率类型", order=4)
+        ReturnType = Enum("简单收益率", "对数收益率", "价格变化量", arg_type="SingleOption", label="收益率类型", order=4, option_range=["简单收益率", "对数收益率", "价格变化量"])
         CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=5)
         SummaryWindow = Float(240, arg_type="Integer", label="统计窗口", order=6)
         MinSummaryWindow = Int(20, arg_type="Integer", label="最小统计窗口", order=7)
         def __QS_initArgs__(self):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._TargetTable.getFactorMetaData(key="DataType")))
-            self.add_trait("TargetNAV", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="目标净值", order=0))
+            self.add_trait("TargetNAV", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="目标净值", order=0, option_range=DefaultNumFactorList))
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._StyleTable.getFactorMetaData(key="DataType")))
-            self.add_trait("StyleNAV", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="风格净值", order=2))
+            self.add_trait("StyleNAV", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="风格净值", order=2, option_range=DefaultNumFactorList))
             
     def __init__(self, target_table, style_table, name="基于收益率回归的风格分析模型", sys_args={}, **kwargs):
         self._TargetTable = target_table

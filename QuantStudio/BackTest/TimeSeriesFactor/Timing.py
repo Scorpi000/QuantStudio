@@ -5,7 +5,7 @@ from io import BytesIO
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, List, Int, Str, Float, Dict, ListStr, on_trait_change, ListInt, Bool
+from traits.api import Enum, List, Int, Str, Float, Dict, ListStr, on_trait_change, ListInt
 from matplotlib.figure import Figure
 from matplotlib import cm
 from scipy import stats
@@ -21,11 +21,12 @@ from QuantStudio.BackTest.BackTestModel import BaseModule
 class TargetPositionSignal(BaseModule):
     """目标仓位信号回测"""
     class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
-        TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
+        #TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
         #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
         def __QS_initArgs__(self):
-            DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
-            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1))
+            DefaultNumFactorList, _ = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
+            self.add_trait("TestFactors", ListStr(DefaultNumFactorList[:1], arg_type="MultiOption", label="测试因子", order=0, option_range=DefaultNumFactorList))
+            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1, option_range=DefaultNumFactorList))
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ["价","Price","price"])
     
     def __init__(self, factor_table, name="目标仓位信号回测", sys_args={}, **kwargs):
@@ -191,14 +192,15 @@ class TargetPositionSignal(BaseModule):
 class TradeSignal(BaseModule):
     """交易信号回测"""
     class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
-        TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
+        #TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
         #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
         CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=2)
-        EndClear = Bool(True, arg_type="Bool", label="结束清仓", order=3)
-        CalcIRR = Bool(False, arg_type="Bool", label="计算IRR", order=4)
+        EndClear = Enum(True, False, arg_type="Bool", label="结束清仓", order=3)
+        CalcIRR = Enum(False, True, arg_type="Bool", label="计算IRR", order=4)
         def __QS_initArgs__(self):
-            DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
-            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1))
+            DefaultNumFactorList, _ = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
+            self.add_trait("TestFactors", ListStr(DefaultNumFactorList[:1], arg_type="MultiOption", label="测试因子", order=0, option_range=DefaultNumFactorList))
+            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1, option_range=DefaultNumFactorList))
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ["价","Price","price"])
             
     def __init__(self, factor_table, name="交易信号回测", sys_args={}, **kwargs):
@@ -424,10 +426,10 @@ class QuantileTiming(BaseModule):
         GroupNum = Int(3, arg_type="Integer", label="分组数", order=7)
         LSClearGroups = ListInt(arg_type="Integer", label="多空平仓组", order=8)
         def __QS_initArgs__(self):
-            DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
+            DefaultNumFactorList, _ = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
             self.TestFactors.append(DefaultNumFactorList[0])
-            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=2))
+            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=2, option_range=DefaultNumFactorList))
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ["价","Price","price"])
         
         @property
