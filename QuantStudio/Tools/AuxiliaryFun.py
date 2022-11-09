@@ -1,6 +1,9 @@
 # coding=utf-8
 """常用的辅助函数"""
+import os
+import logging
 import itertools
+import datetime as dt
 from multiprocessing import Process, cpu_count, Queue
 
 import numpy as np
@@ -8,6 +11,21 @@ import pandas as pd
 from progressbar import ProgressBar
 
 from QuantStudio.Tools.DataTypeConversionFun import DictKeyValueTurn_List
+
+def getLogger(log_dir, log_level):
+    Fmt = "QuantStudio - %(asctime)s - %(levelname)s : %(message)s"
+    Logger = logging.getLogger()
+    if isinstance(log_dir, str) and os.path.isdir(log_dir):
+        LogFile = os.path.join(log_dir, "QuantStudio_"+dt.date.today().strftime("%Y%m%d")+".log")
+        LogHandler = logging.FileHandler(LogFile, mode="a")
+        LogHandler.setLevel(log_level)
+        LogHandler.setFormatter(logging.Formatter(Fmt))
+        Logger.addHandler(LogHandler)
+    else:
+        logging.root.setLevel(logging.NOTSET)
+        logging.basicConfig(level=log_level, format=Fmt)
+        Logger.setLevel(log_level)
+    return Logger
 
 # 产生一个有效的名字
 def genAvailableName(header,all_names,name_num=1,check_header=True,ignore_case=False):

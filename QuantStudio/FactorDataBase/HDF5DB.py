@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import fasteners
 import h5py
-from traits.api import Directory, Float, Str, on_trait_change
+from traits.api import Directory, Enum, Float, Str, on_trait_change
 
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.Tools.api import Panel

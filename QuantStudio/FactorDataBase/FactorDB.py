@@ -138,6 +138,7 @@ class _ErgodicMode(QSArgs):
     CacheSize = Int(300, arg_type="Integer", label="缓冲区大小", order=5)# 以 MB 为单位
     ErgodicDTs = List(arg_type="DateTimeList", label="遍历时点", order=6)
     ErgodicIDs = List(arg_type="IDList", label="遍历ID", order=7)
+    AutoMove = Enum(False, True, label="自动缓冲", arg_type="Bool", order=8)
     def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
         super().__init__(owner=owner, sys_args=sys_args, config_file=config_file, **kwargs)
         self._isStarted = False
@@ -286,6 +287,8 @@ class _ErgodicMode(QSArgs):
         return IDData.reindex(index=dts, columns=factor_names)
     
     def _readData_ErgodicMode(self, factor_names, ids, dts, args={}):
+        if args.get("遍历模式", {}).get("自动缓冲", self.AutoMove) and dts:
+            self.move(dts[-1])
         if self.CacheMode=="因子": return self._readData_FactorCacheMode(factor_names=factor_names, ids=ids, dts=dts, args=args)
         return Panel({iID: self._readIDData(iID, factor_names=factor_names, dts=dts, args=args) for iID in ids}, items=ids, major_axis=dts, minor_axis=factor_names).swapaxes(0, 2)
 
@@ -446,6 +449,7 @@ class _OperationMode(QSArgs):
         return factor_dict
     
     def _initOperation(self, **kwargs):
+        self._isStarted = True
         # 检查时点, ID 序列的合法性
         if not self.DateTimes: raise __QS_Error__("运算时点序列不能为空!")
         if not self.IDs: raise __QS_Error__("运算 ID 序列不能为空!")
@@ -561,7 +565,6 @@ class _OperationMode(QSArgs):
                         raise __QS_Error__(iMsg)
                     ProgBar.update(i+1)
             for iPrcs in Procs.values(): iPrcs.join()
-        self._isStarted = True
         return 0
     def _exit(self):
         if isinstance(self._CacheDir, str):
@@ -757,8 +760,8 @@ class FactorTable(__QS_Object__):
         ErgodicMode = Instance(_ErgodicMode, arg_type="ArgObject", label="遍历模式", order=-3)
         OperationMode = Instance(_OperationMode, arg_type="ArgObject", label="批量模式", order=-4)
         def __QS_initArgs__(self):
-            self.ErgodicMode = _ErgodicMode(owner=self._Owner)
-            self.OperationMode = _OperationMode(owner=self._Owner)
+            self.ErgodicMode = _ErgodicMode(owner=self._Owner, logger=self._QS_Logger)
+            self.OperationMode = _OperationMode(owner=self._Owner, logger=self._QS_Logger)
     
     def __init__(self, name, fdb=None, sys_args={}, config_file=None, **kwargs):
         self._Name = name
@@ -771,6 +774,22 @@ class FactorTable(__QS_Object__):
     @property
     def FactorDB(self):
         return self._FactorDB
+    def __enter__(self):
+        if self._QSArgs.ErgodicMode._isStarted:
+            self._QSArgs.ErgodicMode._OldArgs = {"自动缓冲": self._QSArgs.ErgodicMode.AutoMove}
+            self._QSArgs.ErgodicMode.AutoMove = True
+            self._QS_Logger.debug(f"因子表 '{self._Name}' 开启遍历运算模式")
+        elif self._QSArgs.OperationMode._isStarted:
+            self._QS_Logger.debug(f"因子表 '{self._Name}' 开启批量运算模式")
+        return self
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self._QSArgs.ErgodicMode._isStarted:
+            self.end()
+            self._QSArgs.ErgodicMode.update(self._QSArgs.ErgodicMode._OldArgs)
+            self._QS_Logger.debug(f"因子表 '{self._Name}' 结束遍历运算模式")
+        elif self._QSArgs.OperationMode._isStarted:
+            self._QS_Logger.debug(f"因子表 '{self._Name}' 结束批量运算模式")
+        return True
     # -------------------------------表的信息---------------------------------
     # 获取表的元数据
     def getMetaData(self, key=None, args={}):
@@ -843,9 +862,11 @@ class FactorTable(__QS_Object__):
         Data = self.readData(FactorNames, IDs, DTs)
         return Data.loc[key]
     
+    # ------------------------------------遍历模式------------------------------------
     # 启动遍历模式, dts: 遍历的时间点序列或者迭代器
     def start(self, dts, **kwargs):
-        return self._QSArgs.ErgodicMode.start(dts=dts, **kwargs)
+        self._QSArgs.ErgodicMode.start(dts=dts, **kwargs)
+        return self
     # 时间点向前移动, idt: 时间点, datetime.dateime
     def move(self, idt, **kwargs):
         return self._QSArgs.ErgodicMode.move(idt=idt, **kwargs)
@@ -895,7 +916,7 @@ class FactorTable(__QS_Object__):
     #     cache_dir: 计算过程中缓存文件存放的目录
     def write2FDB(self, factor_names, ids, dts, factor_db, table_name, if_exists="update", subprocess_num=cpu_count()-1, dt_ruler=None, section_ids=None, specific_target={}, **kwargs):
         return self._QSArgs.OperationMode.write2FDB(factor_names, ids, dts, factor_db, table_name, if_exists=if_exists, subprocess_num=subprocess_num, dt_ruler=dt_ruler, section_ids=section_ids, specific_target=specific_target, **kwargs)
-
+    
 # 自定义因子表
 class CustomFT(FactorTable):
     """自定义因子表"""
@@ -1016,7 +1037,7 @@ class CustomFT(FactorTable):
     def start(self, dts, **kwargs):
         super().start(dts=dts, **kwargs)
         for iFactor in self._Factors.values(): iFactor.start(dts=dts, **kwargs)
-        return 0
+        return self
     def end(self):
         super().end()
         for iFactor in self._Factors.values(): iFactor.end()

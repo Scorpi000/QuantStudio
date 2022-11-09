@@ -4,7 +4,7 @@ from . import DateTimeFun as DateTime
 from . import StrategyTestFun as Strategy
 from . import DataPreprocessingFun as Preprocess
 from . import FileFun as File
-from .AuxiliaryFun import genAvailableName
+from .AuxiliaryFun import genAvailableName, getLogger
 
 import pandas as pd
 if pd.__version__<'0.25.0':
