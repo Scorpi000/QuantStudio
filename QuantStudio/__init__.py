@@ -35,7 +35,7 @@ class QSArgs(HasTraits):
         super().__init__(**kwargs)
         self._Owner = owner
         self._LabelTrait = {}
-        self._ArgOrder = pd.Series()
+        self._ArgOrder = pd.Series(dtype=float)
         for iTraitName in self.visible_traits():
             iTrait = self.trait(iTraitName)
             if iTrait.arg_type is None: continue
