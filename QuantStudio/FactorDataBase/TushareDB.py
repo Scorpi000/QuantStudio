@@ -430,7 +430,7 @@ class TushareDB(FactorDB):
         if end_date is None: end_date = dt.date.today()
         end_date = end_date.strftime("%Y%m%d")
         Dates = self._ts.query("trade_cal", exchange=exchange, start_date=start_date, end_date=end_date, fields="cal_date", is_open="1")
-        if kwargs.get("output_type", "date")=="date": return [dt.datetime.strptime(iDate, "%Y%m%d").date() for iDate in Dates["cal_date"]]
+        if kwargs.get("output_type", "datetime")=="date": return [dt.datetime.strptime(iDate, "%Y%m%d").date() for iDate in Dates["cal_date"]]
         else: return [dt.datetime.strptime(iDate, "%Y%m%d") for iDate in Dates["cal_date"]]
     # 将 QuantStudio 的 ID 转化成数据库内部 ID
     def ID2DBID(self, ids):

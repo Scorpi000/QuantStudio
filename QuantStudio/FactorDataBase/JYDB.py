@@ -826,7 +826,7 @@ class JYDB(QSSQLObject, FactorDB):
         SQLStr = SQLStr.format(Prefix=self._QSArgs.TablePrefix, ExchangeCode=ExchangeCode,
                                StartDate=start_date.strftime("%Y-%m-%d"), EndDate=end_date.strftime("%Y-%m-%d"))
         Rslt = self.fetchall(SQLStr)
-        if kwargs.get("output_type", "date")=="date": return [iRslt[0].date() for iRslt in Rslt]
+        if kwargs.get("output_type", "datetime")=="date": return [iRslt[0].date() for iRslt in Rslt]
         else: return [iRslt[0] for iRslt in Rslt]
     # 获取指定日 date 的全体 A 股 ID
     # date: 指定日, datetime.date

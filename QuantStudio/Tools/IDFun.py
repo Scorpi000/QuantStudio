@@ -10,16 +10,19 @@ from QuantStudio import __QS_Error__
 # 给A股ID添加后缀
 def suffixAShareID(ids):
     if isinstance(ids, str):
-        if (ids[0] == '6') or (ids[0] == 'T'):
+        if ids[0] in ('6', 'T', '9'):
             return ids+'.SH'
-        elif (ids[0] == '0') or (ids[0] == '3'):
+        elif ids[0] in ('0', '3'):
             return ids+'.SZ'
+        else:
+            return ids+'.BJ'
         return ids
     else:
         NewIDs = []
         for iID in ids:
             NewIDs.append(suffixAShareID(iID))
         return NewIDs
+
 # 给ID去后缀
 def deSuffixID(ids,sep='.'):
     if isinstance(ids,str):

@@ -1039,7 +1039,7 @@ class WindDB2(QSSQLObject, FactorDB):
         ExchangeInfo = ExchangeInfo[ExchangeInfo["Description"].str.contains(exchange)]
         if ExchangeInfo.shape[0]==0: raise __QS_Error__("不支持交易所: '%s' 的交易日序列!" % exchange)
         else: Dates = self.getTable(ExchangeInfo.index[0]).getDateTime(iid=exchange, start_dt=start_date, end_dt=end_date)
-        if kwargs.get("output_type", "date")=="date": return list(map(lambda x: x.date(), Dates))
+        if kwargs.get("output_type", "datetime")=="date": return list(map(lambda x: x.date(), Dates))
         else: return Dates
     # 获取指定日 date 的全体 A 股 ID
     # date: 指定日, datetime.date
