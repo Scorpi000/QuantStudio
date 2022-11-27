@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+"""时序因子测试"""
+
 from .Difference import QuantileDifference
 from .Correlation import TimeSeriesCorrelation
 from .ReturnForecast import ReturnForecast, OLS
