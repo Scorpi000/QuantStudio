@@ -22,8 +22,8 @@ class SectionCorrelation(BaseModule):
     """因子截面相关性"""
     class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
         # TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
-        FactorOrder = Dict(key_trait=Str(), value_trait=Enum("降序", "升序"), arg_type="ArgDict", label="排序方向", order=1)
-        CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=2)
+        FactorOrder = Dict(key_trait=Str(), value_trait=Enum("降序", "升序"), arg_type="Dict", label="排序方向", order=1)
+        CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="计算时点", order=2)
         CorrMethod = ListStr(["spearman"], arg_type="MultiOption", label="相关性算法", order=3, option_range=("spearman", "pearson", "kendall"))
         RiskTable = Instance(RiskTable, arg_type="RiskTable", label="风险表", order=4)
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=5)
@@ -190,7 +190,7 @@ class FactorTurnover(BaseModule):
     """因子换手率"""
     class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
         # TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
-        CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=1)
+        CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="计算时点", order=1)
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=2)
         def __QS_initArgs__(self):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))

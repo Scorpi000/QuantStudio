@@ -47,7 +47,7 @@ class QuantilePortfolio(BaseModule):
         #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=3)
         #ClassFactor = Enum("无", arg_type="SingleOption", label="类别因子", order=4)
         #WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=5)
-        CalcDTs = List(dt.datetime, arg_type="DateList", label="调仓时点", order=6)
+        CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="调仓时点", order=6)
         MarketIDFilter = Str(arg_type="IDFilter", label="市场组合", order=7)
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
         Perturbation = Enum(False, True, arg_type="Bool", label="随机微扰", order=9)
@@ -310,7 +310,7 @@ class FilterPortfolio(QuantilePortfolio):
         #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=3)
         #ClassFactor = Enum("无", arg_type="SingleOption", label="类别因子", order=4)
         #WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=5)
-        CalcDTs = List(dt.datetime, arg_type="DateList", label="调仓时点", order=6)
+        CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="调仓时点", order=6)
         MarketIDFilter = Str(arg_type="IDFilter", label="市场组合", order=7)
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
         def __QS_initArgs__(self):

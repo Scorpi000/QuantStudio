@@ -27,7 +27,7 @@ class FMPModel(BaseModule):
         #IndustryFactor = Enum("无", arg_type="SingleOption", label="行业因子", order=3)
         #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=4)
         RiskTable = Instance(RiskTable, arg_type="RiskTable", label="风险表", order=5)
-        CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=6)
+        CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="计算时点", order=6)
         def __QS_initArgs__(self):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("Portfolio", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="策略组合", order=0, option_range=DefaultNumFactorList))

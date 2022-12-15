@@ -194,7 +194,7 @@ class TradeSignal(BaseModule):
     class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
         #TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
         #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
-        CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=2)
+        CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="计算时点", order=2)
         EndClear = Enum(True, False, arg_type="Bool", label="结束清仓", order=3)
         CalcIRR = Enum(False, True, arg_type="Bool", label="计算IRR", order=4)
         def __QS_initArgs__(self):
@@ -417,10 +417,10 @@ class QuantileTiming(BaseModule):
     """分位数择时"""
     class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
         TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
-        FactorOrder = Dict(key_trait=Str(), value_trait=Enum("降序", "升序"), arg_type="ArgDict", label="排序方向", order=1)
+        FactorOrder = Dict(key_trait=Str(), value_trait=Enum("降序", "升序"), arg_type="Dict", label="排序方向", order=1)
         #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=2)
-        CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=3)
-        SampleDTs = List(dt.datetime, arg_type="DateList", label="样本时点", order=4)
+        CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="计算时点", order=3)
+        SampleDTs = List(dt.datetime, arg_type="DateTimeList", label="样本时点", order=4)
         SummaryWindow = Float(np.inf, arg_type="Integer", label="统计窗口", order=5)
         MinSummaryWindow = Int(3, arg_type="Integer", label="最小统计窗口", order=6)
         GroupNum = Int(3, arg_type="Integer", label="分组数", order=7)

@@ -1,6 +1,7 @@
 # coding=utf-8
 """基于 SQL 数据库的因子库"""
 import os
+import datetime as dt
 
 import numpy as np
 import pandas as pd
@@ -259,6 +260,11 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         NewData = pd.DataFrame(NewData, columns=data.columns, dtype="O")
         if self._QSArgs.CheckNullable:
             NewData = self._dropWriteDataNa(NewData, table_name)
+        # 将时点类型的数据转换成 str
+        iDataType = self._FactorInfo["DataType"].loc[table_name]
+        StrftimeFun = lambda d: d.strftime("%Y-%m-%d %H:%M:%S.%f") if isinstance(d, dt.datetime) else (d.strftime("%Y-%m-%d") if isinstance(d, dt.date) else None)
+        for iFactorName in iDataType[iDataType.str.contains("date")].index:
+            NewData[iFactorName] = NewData[iFactorName].apply(StrftimeFun)
         return NewData.where(pd.notnull(NewData), None).to_records(index=False).tolist()
     def _dropWriteDataNa(self, data, table_name):
         DropNaFields = self._FactorInfo["Nullable"].loc[table_name].loc[data.columns]
@@ -343,6 +349,11 @@ class SQLDB(QSSQLObject, WritableFactorDB):
             NewData = NewData.astype("O").where(pd.notnull(NewData), None)
             if self._QSArgs.CheckNullable:
                 NewData = self._dropWriteDataNa(NewData, table_name)
+            # 将时点类型的数据转换成 str
+            iDataType = self._FactorInfo["DataType"].loc[table_name]
+            StrftimeFun = lambda d: d.strftime("%Y-%m-%d %H:%M:%S.%f") if isinstance(d, dt.datetime) else (d.strftime("%Y-%m-%d") if isinstance(d, dt.date) else None)
+            for iFactorName in iDataType[iDataType.str.contains("date")].index:
+                NewData[iFactorName] = NewData[iFactorName].apply(StrftimeFun)
             Cursor.executemany(SQLStr, NewData.reset_index().values.tolist())
         self.Connection.commit()
         Cursor.close()

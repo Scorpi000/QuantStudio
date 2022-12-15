@@ -20,7 +20,7 @@ class ReturnBasedStyleModel(BaseModule):
         #StyleNAV = Enum(None, arg_type="SingleOption", label="风格净值", order=2)
         StyleIDs = ListStr(arg_type="StrList", label="风格ID", order=3)
         ReturnType = Enum("简单收益率", "对数收益率", "价格变化量", arg_type="SingleOption", label="收益率类型", order=4, option_range=["简单收益率", "对数收益率", "价格变化量"])
-        CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=5)
+        CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="计算时点", order=5)
         SummaryWindow = Float(240, arg_type="Integer", label="统计窗口", order=6)
         MinSummaryWindow = Int(20, arg_type="Integer", label="最小统计窗口", order=7)
         def __QS_initArgs__(self):

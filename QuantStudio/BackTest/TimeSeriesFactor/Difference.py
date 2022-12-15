@@ -20,7 +20,7 @@ class QuantileDifference(BaseModule):
         ReturnType = Enum("简单收益率", "对数收益率", "价格变化量", arg_type="SingleOption", label="收益率类型", order=2, option_range=["简单收益率", "对数收益率", "价格变化量"])
         ForecastPeriod = Int(1, arg_type="Integer", label="预测期数", order=3)
         Lag = Int(0, arg_type="Integer", label="滞后期数", order=4)
-        CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=5)
+        CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="计算时点", order=5)
         SummaryWindow = Float(np.inf, arg_type="Integer", label="统计窗口", order=6)
         MinSummaryWindow = Int(2, arg_type="Integer", label="最小统计窗口", order=7)
         GroupNum = Int(3, arg_type="Integer", label="分组数", order=8)

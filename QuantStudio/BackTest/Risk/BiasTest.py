@@ -16,7 +16,7 @@ class BiasTest(BaseModule):
     """BiasTest"""
     class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
         RiskTable = Instance(RiskTable, arg_type="RiskTable", label="风险表", order=0)
-        CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=1)
+        CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="计算时点", order=1)
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=2)
         #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=3)
         #WeightFactors = ListStr(arg_type="MultiOption", label="权重因子", order=4 option_range=())

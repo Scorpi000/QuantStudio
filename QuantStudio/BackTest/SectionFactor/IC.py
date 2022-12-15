@@ -23,11 +23,11 @@ class IC(BaseModule):
     """IC"""
     class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
         # TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
-        FactorOrder = Dict(key_trait=Str(), value_trait=Enum("降序", "升序"), arg_type="ArgDict", label="排序方向", order=1)
+        FactorOrder = Dict(key_trait=Str(), value_trait=Enum("降序", "升序"), arg_type="Dict", label="排序方向", order=1)
         #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=2)
         #ClassFactor = Enum("无", arg_type="SingleOption", label="类别因子", order=3)
         #WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=4)
-        CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=5)
+        CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="计算时点", order=5)
         LookBack = Int(1, arg_type="Integer", label="回溯期数", order=6)
         CorrMethod = Enum("spearman", "pearson", "kendall", arg_type="SingleOption", label="相关性算法", order=7, option_range=["spearman", "pearson", "kendall"])
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
@@ -36,6 +36,7 @@ class IC(BaseModule):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
             self.TestFactors.append(DefaultNumFactorList[0])
+            self.FactorOrder = {iFactorName:self.FactorOrder.get(iFactorName, "降序") for iFactorName in self.TestFactors}
             self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=2, option_range=DefaultNumFactorList))
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
             self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=3, option_range=["无"]+DefaultStrFactorList))
@@ -269,7 +270,7 @@ class ICDecay(BaseModule):
         #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=2)
         #ClassFactor = Enum("无", arg_type="SingleOption", label="类别因子", order=3)
         #WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=4)
-        CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=5)
+        CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="计算时点", order=5)
         LookBack = ListInt(np.arange(1,13).tolist(), arg_type="NultiOpotion", label="回溯期数", order=6)
         CorrMethod = Enum("spearman", "pearson", "kendall", arg_type="SingleOption", label="相关性算法", order=7, option_range=["spearman", "pearson", "kendall"])
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)

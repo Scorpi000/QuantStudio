@@ -16,7 +16,7 @@ class Cointegration(BaseModule):
     class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
         #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=0)
         PriceType = Enum("原始价格", "对数价格", arg_type="SingleOption", label="价格类型", order=1, option_range=["原始价格", "对数价格"])
-        CalcDTs = List(dt.datetime, arg_type="DateList", label="计算时点", order=2)
+        CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="计算时点", order=2)
         SummaryWindow = Float(np.inf, arg_type="Integer", label="统计窗口", order=3)
         MinSummaryWindow = Int(120, arg_type="Integer", label="最小统计窗口", order=4)
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=5)

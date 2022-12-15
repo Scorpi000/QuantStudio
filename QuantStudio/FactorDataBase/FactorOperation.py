@@ -535,3 +535,39 @@ class PanelOperation(DerivativeFactor):
             PIDEvent.wait()
         self._isCacheDataOK = True
         return StdData
+
+# 将算子转换成因子定义的装饰器
+# operation_type: 因子运算类型, 可选: 'PointOperation', 'TimeOperation', 'SectionOperation', 'PanelOperation'
+# sys_args: 因子定义参数将
+def FactorOperation(operation_type, sys_args={}):
+    def Decorator(func):
+        def defFactor(f="", x=[], args={}):
+            Args = sys_args.copy()
+            Args.update(args)
+            Args["算子"] = func
+            if operation_type=="PointOperation":
+                return PointOperation(name=f, descriptors=x, sys_args=Args)
+            elif operation_type=="TimeOperation":
+                return TimeOperation(name=f, descriptors=x, sys_args=Args)
+            elif operation_type=="SectionOperation":
+                return SectionOperation(name=f, descriptors=x, sys_args=Args)
+            elif operation_type=="PanelOperation":
+                return PanelOperation(name=f, descriptors=x, sys_args=Args)
+            else:
+                raise __QS_Error__(f"错误的因子运算类型: '{operation_type}', 必须为 'PointOperation', 'TimeOperation', 'SectionOperation' 或者 'PanelOperation'")
+        return defFactor
+    return Decorator
+
+if __name__=="__main__":
+    @FactorOperation(operation_type="PointOperation", sys_args={"运算时点": "多时点"})
+    def test_fun(f, idt, iid, x, args):
+        return x[0] + 1
+    
+    from QuantStudio.FactorDataBase.FactorDB import DataFactor
+    Factor1 = DataFactor(name="Factor1", data=1)
+    
+    Factor2 = test_fun("Factor2", [Factor1])
+    
+    print(Factor2)
+    print(Factor2.Args)
+    print("===")
