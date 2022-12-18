@@ -184,5 +184,6 @@ class __QS_Object__:
     
     def _repr_html_(self):
         HTML = f"<b>类</b>: {html.escape(str(self.__class__))}<br/>"
+        HTML += f"<b>文档</b>: {html.escape(self.__doc__ if self.__doc__ else '')}<br/>"
         HTML += f"<b>参数</b>: " + self._QSArgs._repr_html_()
         return HTML

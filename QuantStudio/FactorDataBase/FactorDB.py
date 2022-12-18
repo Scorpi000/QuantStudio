@@ -1461,6 +1461,7 @@ class Factor(__QS_Object__):
     def _repr_html_(self):
         HTML = f"<b>名称</b>: {html.escape(self.Name)}<br/>"
         HTML += f"<b>来源因子表</b>: {html.escape(self.FactorTable.Name) if self.FactorTable is not None else ''}<br/>"
+        HTML += f"<b>原始名称</b>: {html.escape(self._NameInFT) if self.FactorTable is not None else ''}<br/>"
         HTML += f"<b>描述子列表</b>: {html.escape(str([iFactor.Name for iFactor in self.Descriptors]))}<br/>"
         MetaData = self.getMetaData()
         HTML += f"<b>元信息</b>: {dict2html(MetaData)}"
