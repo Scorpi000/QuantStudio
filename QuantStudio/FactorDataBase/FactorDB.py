@@ -1,14 +1,15 @@
 # coding=utf-8
-import time
 import os
-import uuid
-import shutil
-import mmap
-import pickle
 import gc
+import time
+import uuid
+import html
+import mmap
+import shutil
+import pickle
 import shelve
-import datetime as dt
 import tempfile
+import datetime as dt
 from collections import OrderedDict
 from multiprocessing import Process, Queue, Lock, cpu_count
 
@@ -23,6 +24,7 @@ from QuantStudio.Tools.IDFun import testIDFilterStr
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName, startMultiProcess, partitionListMovingSampling
 from QuantStudio.Tools.FileFun import getShelveFileSuffix
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
+from QuantStudio.Tools.DataTypeConversionFun import dict2html
 
 
 # 因子库, 只读, 接口类
@@ -56,6 +58,8 @@ class FactorDB(__QS_Object__):
         return None
     def __getitem__(self, table_name):
         return self.getTable(table_name)
+    def _repr_html_(self):
+        return f"<b>名称</b>: {html.escape(self.Name)}<br/>" + super()._repr_html_()
 
 
 # 支持写入的因子库, 接口类
@@ -917,6 +921,15 @@ class FactorTable(__QS_Object__):
     def write2FDB(self, factor_names, ids, dts, factor_db, table_name, if_exists="update", subprocess_num=cpu_count()-1, dt_ruler=None, section_ids=None, specific_target={}, **kwargs):
         return self._QSArgs.OperationMode.write2FDB(factor_names, ids, dts, factor_db, table_name, if_exists=if_exists, subprocess_num=subprocess_num, dt_ruler=dt_ruler, section_ids=section_ids, specific_target=specific_target, **kwargs)
     
+    def _repr_html_(self):
+        HTML = f"<b>名称</b>: {html.escape(self.Name)}<br/>"
+        HTML += f"<b>来源因子库</b>: {html.escape(self.FactorDB.Name) if self.FactorDB is not None else ''}<br/>"
+        HTML += f"<b>因子列表</b>: {html.escape(str(self.FactorNames))}<br/>"
+        MetaData = self.getMetaData()
+        HTML += f"<b>元信息</b>: {dict2html(MetaData)}"
+        return HTML + super()._repr_html_()
+    
+    
 # 自定义因子表
 class CustomFT(FactorTable):
     """自定义因子表"""
@@ -1444,6 +1457,15 @@ class Factor(__QS_Object__):
         Descriptors, Args = self._genUnitaryOperatorInfo()
         Args["OperatorType"] = "not"
         return PointOperation("", Descriptors, {"算子":_UnitaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID"}, logger=self._QS_Logger)
+    
+    def _repr_html_(self):
+        HTML = f"<b>名称</b>: {html.escape(self.Name)}<br/>"
+        HTML += f"<b>来源因子表</b>: {html.escape(self.FactorTable.Name) if self.FactorTable is not None else ''}<br/>"
+        HTML += f"<b>描述子列表</b>: {html.escape(str([iFactor.Name for iFactor in self.Descriptors]))}<br/>"
+        MetaData = self.getMetaData()
+        HTML += f"<b>元信息</b>: {dict2html(MetaData)}"
+        return HTML + super()._repr_html_()
+
 # 直接赋予数据产生的因子
 # data: DataFrame(index=[时点], columns=[ID])
 class DataFactor(Factor):

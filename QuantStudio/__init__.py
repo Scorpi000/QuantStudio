@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import html
 import platform
 import logging
 import json
@@ -25,6 +26,8 @@ elif platform.system()=="Darwin":
         mpl.rcParams["font.family"] = Font.get_family()
         mpl.rcParams["font.sans-serif"] = Font.get_name()
 mpl.rcParams['axes.unicode_minus'] = False
+
+from QuantStudio.Tools.DataTypeConversionFun import dict2html
 
 # 参数对象
 class QSArgs(HasTraits):
@@ -135,7 +138,10 @@ class QSArgs(HasTraits):
         return tuple(self._ArgOrder.index)
     
     def values(self):
-        return (getattr(self, self._LabelTrait[iKey]) for iKey in self._ArgOrder)
+        return (getattr(self, self._LabelTrait[iKey]) for iKey in self._ArgOrder.index)
+    
+    def items(self):
+        return zip(self.keys(), self.values())
     
     def update(self, args={}):
         for iKey in self._ArgOrder.index.intersection(args.keys()):
@@ -149,7 +155,10 @@ class QSArgs(HasTraits):
     def __QS_initArgs__(self):
         return None
 
-
+    def _repr_html_(self):
+        return dict2html(self, dict_class=(dict, pd.Series, QSArgs), dict_limit=np.inf)
+    
+    
 # Quant Studio 系统错误
 class __QS_Error__(Exception):
     """Quant Studio 错误"""
@@ -172,3 +181,8 @@ class __QS_Object__:
     @property
     def Args(self):
         return self._QSArgs
+    
+    def _repr_html_(self):
+        HTML = f"<b>类</b>: {html.escape(str(self.__class__))}<br/>"
+        HTML += f"<b>参数</b>: " + self._QSArgs._repr_html_()
+        return HTML

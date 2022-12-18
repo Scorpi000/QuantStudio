@@ -1,5 +1,7 @@
 # coding=utf-8
 """数据类型转换函数"""
+import html
+
 import numpy as np
 import pandas as pd
 
@@ -80,3 +82,44 @@ def strB2Q(ustring):
             inside_code += 65248
         rstring += chr(inside_code)
     return rstring
+
+# 将 dict 类型的数据转成 html 字符串
+def dict2html(dict_like, tag="ul", list_class=(list, np.ndarray), list_limit=5, dict_class=(dict, pd.Series), dict_limit=5):
+    if len(dict_like)>0:
+        HTML = f'<{tag} align="left">'
+        for iKey, iVal in dict_like.items():
+            iVal = dict_like[iKey]
+            iKey = html.escape(iKey)
+            if isinstance(iVal, list_class):
+                iNum = len(iVal)
+                if iNum>list_limit:
+                    iLastNum = int(list_limit / 2)
+                    iFirstNum = list_limit - iLastNum
+                    iVal = list(iVal[:iFirstNum]) + ["..."] + list(iVal[-iLastNum:])
+                iHTML = f'<{tag} align="left">'
+                for ijVal in iVal:
+                    iHTML += f"<li>{html.escape(str(ijVal))}</li>"
+                iHTML += f"</{tag}>"
+                HTML += f"<li>{iKey}{f'(共 {iNum} 个元素)' if iNum>list_limit else ''}: {iHTML}</li>"
+            elif isinstance(iVal, dict_class):
+                iKeys = list(iVal.keys())
+                iNum = len(iVal)
+                if iNum>dict_limit:
+                    iLastNum = int(dict_limit / 2)
+                    iFirstNum = dict_limit - iLastNum
+                    iKeys = list(iKeys[:iFirstNum]) + ["..."] + list(iKeys[-iLastNum:])
+                iHTML = f'<{tag} align="left">'
+                for ijKey in iKeys:
+                    ijVal = iVal.get(ijKey, "...")
+                    if isinstance(ijVal, dict_class):
+                        iHTML += f"<li>{html.escape(str(ijKey))}: {dict2html(ijVal, tag=tag, list_class=list_class, list_limit=list_limit, dict_class=dict_class, dict_limit=dict_limit)}</li>"
+                    else:
+                        iHTML += f"<li>{html.escape(str(ijKey))}: {html.escape(str(ijVal))}</li>"
+                iHTML += f"</{tag}>"
+                HTML += f"<li>{iKey}{f'(共 {iNum} 个元素)' if iNum>dict_limit else ''}: {iHTML}</li>"
+            else:
+                HTML += f"<li>{iKey}: {html.escape(str(iVal))}</li>"
+        HTML += f"</{tag}>"
+    else:
+        HTML = "<br/>"
+    return HTML
