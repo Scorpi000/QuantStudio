@@ -8,6 +8,7 @@ __*/
 _eric*/
 backup/
 TestCoverage.bat
+.DS_Store
 *.coverage
 *.e4p
 *.bak
