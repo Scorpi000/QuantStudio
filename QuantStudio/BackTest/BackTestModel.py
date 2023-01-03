@@ -7,10 +7,12 @@ import numpy as np
 import pandas as pd
 from progressbar import ProgressBar
 from lxml import etree
+from traits.api import Enum
 
 from QuantStudio import __QS_Object__
 from QuantStudio.Tools.AuxiliaryFun import startMultiProcess
 from QuantStudio.Tools.QSObjects import QSPipe
+from QuantStudio.Tools.DataTypeFun import traverseNestedDict, setNestedDictValue, getNestedDictValue
 
 class BaseModule(__QS_Object__):
     """回测模块"""
@@ -51,6 +53,45 @@ class BaseModule(__QS_Object__):
         Tree = etree.ElementTree(etree.HTML(HTML))
         Tree.write(file_path)
         return webbrowser.open(file_path)
+
+
+class MultiModule(BaseModule):
+    """多模块对比"""
+    class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
+        CompareCommon = Enum(True, False, arg_type="Bool", label="只对比共同结果", order=-1)
+    
+    def __init__(self, name="多模块对比", sys_args={}, **kwargs):
+        super().__init__(name=name, sys_args=sys_args, **kwargs)
+        self._QS_isMulti = True
+        self.Modules = []
+    
+    def output(self, recalculate=False):
+        if (not recalculate)  and self._Output: return self._Output
+        Output = {"对比结果": {}}
+        for i, iModule in enumerate(self.Modules):
+            iOutput = iModule.output(recalculate=recalculate)
+            iName = str(i)+"-"+iModule.Name
+            Output[iName] = iOutput
+            for jKeyList, jDF in traverseNestedDict(iOutput):
+                for kCol in jDF.columns:
+                    kVal = getNestedDictValue(Output["对比结果"], jKeyList+[str(kCol)])
+                    if kVal is None:
+                        if (i==0) or (not self._QSArgs.CompareCommon):
+                            kVal = pd.DataFrame({iName: jDF[kCol]})
+                        else:
+                            continue
+                    else:
+                        kVal[iName] = jDF[kCol]
+                    setNestedDictValue(Output["对比结果"], jKeyList+[str(kCol)], kVal)
+        if self._QSArgs.CompareCommon:
+            iOutput = {}
+            for jKeyList, jDF in traverseNestedDict(Output["对比结果"]):
+                if jDF.shape[1]==len(self.Modules):
+                    setNestedDictValue(iOutput, jKeyList, jDF)
+            Output["对比结果"] = iOutput
+        if not Output["对比结果"]: Output.pop("对比结果")
+        self._Output = Output
+        return self._Output
 
 
 def _runModel_SingleThread(idx, mdl, end_barrier, start_barrier, ft_lock):

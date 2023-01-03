@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from .BackTestModel import BackTestModel
+from .BackTestModel import BackTestModel, MultiModule
 from .SectionFactor import api as SectionFactor
 from .TimeSeriesFactor import api as TimeSeriesFactor
 from .Event import api as Event
