@@ -185,37 +185,37 @@ class _JY_SQL_Table(SQL_Table):
 class _WideTable(_JY_SQL_Table, SQL_WideTable):
     """聚源宽因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
 
 class _NarrowTable(_JY_SQL_Table, SQL_NarrowTable):
     """聚源窄因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
 
 class _FeatureTable(_JY_SQL_Table, SQL_FeatureTable):
     """聚源特征因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
 
 class _TimeSeriesTable(_JY_SQL_Table, SQL_TimeSeriesTable):
     """聚源时序因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
 
 class _MappingTable(_JY_SQL_Table, SQL_MappingTable):
     """聚源映射因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
 
 class _ConstituentTable(_JY_SQL_Table, SQL_ConstituentTable):
     """聚源成份因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
 
 class _FinancialTable(_JY_SQL_Table, SQL_FinancialTable):
     """聚源财务因子表"""
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
 
 # 财务指标因子表, 表结构特征:
 # 报告期字段, 表示财报的报告期
@@ -329,7 +329,7 @@ def genANN_ReportSQLStr(db_type, table_prefix, ids, report_period="1231", pre_fi
     SQLStr += DBTableName+".InfoPublDate, "+DBTableName+".EndDate"
     return SQLStr
 def _prepareReportANNRawData(fdb, ids, pre_filter_id=True):
-    SQLStr = genANN_ReportSQLStr(fdb.DBType, fdb.TablePrefix, ids, report_period="1231", pre_filter_id=pre_filter_id)
+    SQLStr = genANN_ReportSQLStr(fdb.DBType, fdb._QSArgs.TablePrefix, ids, report_period="1231", pre_filter_id=pre_filter_id)
     RawData = fdb.fetchall(SQLStr)
     if not RawData: RawData =  pd.DataFrame(columns=["ID", "公告日期", "报告期"])
     else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "公告日期", "报告期"])
@@ -369,7 +369,7 @@ class _AnalystConsensusTable(_JY_SQL_Table):
         Period = Enum(30,60,90,180, label="周期", arg_type="SingleOption", order=1, option_range=[30,60,90,180])
         LookBack = Int(0, arg_type="Integer", label="回溯天数", order=2)
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
         self._DateField = self._FactorInfo[self._FactorInfo["FieldType"]=="Date"].index[0]
         self._ReportDateField = self._FactorInfo[self._FactorInfo["FieldType"]=="ReportDate"].index[0]
         self._PeriodField = self._FactorInfo[self._FactorInfo["FieldType"]=="Period"].index[0]
@@ -551,7 +551,7 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
             self.Deduplication = [self._Owner._InstituteField]
     
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
         self._DateField = self._FactorInfo[self._FactorInfo["FieldType"]=="Date"].index[0]
         self._ReportDateField = self._FactorInfo[self._FactorInfo["FieldType"]=="ReportDate"].index[0]
         self._TempData = {}
@@ -687,7 +687,7 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
             self._Owner._InstituteField = self._Owner._FactorInfo[self._Owner._FactorInfo["FieldType"]=="Institute"].index[0]
             self.Deduplication = [self._Owner._InstituteField]
     def __init__(self, name, fdb, sys_args={}, **kwargs):
-        super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+        super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
         self._DateField = self._FactorInfo[self._FactorInfo["FieldType"]=="Date"].index[0]
         self._TempData = {}
         return

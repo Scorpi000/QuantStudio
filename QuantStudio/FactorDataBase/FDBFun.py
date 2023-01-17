@@ -544,7 +544,7 @@ class SQL_Table(FactorTable):
             init_keyword = "AND"
         else: SQLStr = ""
         for iConditionField in self._QSArgs._ConditionFields:
-            iConditionVal = args.get(iConditionField, self[iConditionField])
+            iConditionVal = args.get(iConditionField, self._QSArgs[iConditionField])
             if iConditionVal:
                 if self.__QS_identifyDataType__(self._FactorInfo.loc[iConditionField, "DataType"])!="double":
                     SQLStr += init_keyword+" "+self._DBTableName+"."+self._FactorInfo.loc[iConditionField, "DBFieldName"]+" IN ('"+"','".join(iConditionVal.split(","))+"') "
