@@ -628,8 +628,8 @@ class SQL_WideTable(SQL_Table):
     def __QS_genGroupInfo__(self, factors, operation_mode):
         ConditionGroup = {}
         for iFactor in factors:
-            iConditions = ";".join([iArgName+":"+str(iFactor[iArgName]) for iArgName in iFactor.ArgNames if iArgName not in self._QS_IgnoredGroupArgs])
-            if iFactor["回溯期数"] is None:
+            iConditions = ";".join([iArgName+":"+str(iFactor._QSArgs[iArgName]) for iArgName in iFactor._QSArgs.ArgNames if iArgName not in self._QS_IgnoredGroupArgs])
+            if iFactor._QSArgs["回溯期数"] is None:
                 iConditions += ";回溯期数:None"
             if iConditions not in ConditionGroup:
                 ConditionGroup[iConditions] = {"FactorNames":[iFactor.Name], 
@@ -640,8 +640,8 @@ class SQL_WideTable(SQL_Table):
                 ConditionGroup[iConditions]["FactorNames"].append(iFactor.Name)
                 ConditionGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
                 ConditionGroup[iConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], ConditionGroup[iConditions]["StartDT"])
-                ConditionGroup[iConditions]["args"]["回溯天数"] = max(ConditionGroup[iConditions]["args"]["回溯天数"], iFactor.LookBack)
-                ConditionGroup[iConditions]["args"]["原始值回溯天数"] = max(ConditionGroup[iConditions]["args"]["原始值回溯天数"], iFactor.RawLookBack)
+                ConditionGroup[iConditions]["args"]["回溯天数"] = max(ConditionGroup[iConditions]["args"]["回溯天数"], iFactor._QSArgs.LookBack)
+                ConditionGroup[iConditions]["args"]["原始值回溯天数"] = max(ConditionGroup[iConditions]["args"]["原始值回溯天数"], iFactor._QSArgs.RawLookBack)
         EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
         Groups = []
         for iConditions in ConditionGroup:

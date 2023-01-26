@@ -62,8 +62,12 @@ class _FactorTable(FactorTable):
         return sorted(listDirFile(self._FactorDB._QSArgs.MainDir+os.sep+self.Name, suffix=self._Suffix))
     def getMetaData(self, key=None, args={}):
         with self._FactorDB._getLock(self._Name) as DataLock:
-            if not os.path.isfile(self._FactorDB._QSArgs.MainDir+os.sep+self.Name+os.sep+"_TableInfo.h5"): return (pd.Series() if key is None else None)
-            return pd.Series(readNestedDictFromHDF5(self._FactorDB._QSArgs.MainDir+os.sep+self.Name+os.sep+"_TableInfo.h5", "/"+("" if key is None else key)))
+            if not os.path.isfile(self._FactorDB._QSArgs.MainDir+os.sep+self.Name+os.sep+"_TableInfo.h5"):
+                return (pd.Series() if key is None else None)
+            if key is None:
+                return pd.Series(readNestedDictFromHDF5(self._FactorDB._QSArgs.MainDir+os.sep+self.Name+os.sep+"_TableInfo.h5", "/"))
+            else:
+                return readNestedDictFromHDF5(self._FactorDB._QSArgs.MainDir+os.sep+self.Name+os.sep+"_TableInfo.h5", f"/{key}")
     def getFactorMetaData(self, factor_names=None, key=None, args={}):
         AllFactorNames = self.FactorNames
         if factor_names is None: factor_names = AllFactorNames
@@ -148,7 +152,7 @@ class _FactorTable(FactorTable):
                 else:
                     if dts and isinstance(dts[0], pd.Timestamp) and (pd.__version__>="0.20.0"): dts = [idt.to_pydatetime().timestamp() for idt in dts]
                     else: dts = [idt.timestamp() for idt in dts]
-                    DateTimes = pd.Series(np.arange(0, DateTimes.shape[0]), index=DateTimes, dtype=np.int)
+                    DateTimes = pd.Series(np.arange(0, DateTimes.shape[0]), index=DateTimes, dtype=int)
                     DateTimes = DateTimes[DateTimes.index.intersection(dts)]
                     nDT = DateTimes.shape[0]
                     if nDT==0:
@@ -340,6 +344,22 @@ class HDF5DB(WritableFactorDB):
         with self._DataLock:
             writeNestedDict2HDF5(meta_data, self._QSArgs.MainDir+os.sep+table_name+os.sep+"_TableInfo.h5", "/")
         return 0
+    def setFactorDef(self, table_name, def_file, if_exists="update"):
+        if not os.path.isfile(def_file):
+            Msg = f"因子文件: '{def_file}' 不存在"
+            self._QS_Logger.error(Msg)
+            raise __QS_Error__(Msg)
+        if if_exists=="append":
+            MetaData = self.getTable(table_name).getMetaData(key="_QS_FactorDef")
+            if MetaData.empty:
+                MetaData = []
+            else:
+                MetaData = MetaData["_QS_FactorDef"]
+        else:
+            MetaData = []
+        with open(def_file) as File:
+            MetaData.append(File.read())
+        self.setTableMetaData(table_name, key="_QS_FactorDef", value=MetaData)
     # ----------------------------因子操作---------------------------------
     def renameFactor(self, table_name, old_factor_name, new_factor_name):
         if old_factor_name==new_factor_name: return 0
@@ -454,7 +474,7 @@ class HDF5DB(WritableFactorDB):
                     DataFile.create_dataset("ID", shape=(factor_data.shape[1],), maxshape=(None,), dtype=StrDataType, data=factor_data.columns)
                     DataFile.create_dataset("DateTime", shape=(factor_data.shape[0],), maxshape=(None,), data=factor_data.index)
                     if data_type=="double":
-                        DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=np.float, fillvalue=np.nan, data=NewData)
+                        DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=float, fillvalue=np.nan, data=NewData)
                     elif data_type=="string":
                         DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=StrDataType, fillvalue=None, data=NewData)
                     elif data_type=="object":

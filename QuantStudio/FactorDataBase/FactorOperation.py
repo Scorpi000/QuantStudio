@@ -6,7 +6,8 @@ from multiprocessing import Queue, Event
 
 import pandas as pd
 import numpy as np
-from traits.api import Callable, Dict, Enum, List, Int, Instance
+import sympy
+from traits.api import Callable, Dict, Enum, List, Int, Instance, Str, Either
 
 from QuantStudio import __QS_Error__
 from QuantStudio.FactorDataBase.FactorDB import Factor
@@ -21,6 +22,7 @@ class DerivativeFactor(Factor):
         Operator = Callable(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
         ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
         DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=2, option_range=["double", "string", "object"])
+        Expression = Either(Str(""), Instance(sympy.Expr), arg_type="String", label="表达式", order=3)
     
     def __init__(self, name="", descriptors=[], sys_args={}, **kwargs):
         self._Descriptors = descriptors
@@ -41,6 +43,30 @@ class DerivativeFactor(Factor):
     def end(self):
         for iDescriptor in self._Descriptors: iDescriptor.end()
         return 0
+
+    def expression(self, penetrated=False):
+        if self._QSArgs.Expression:
+            if isinstance(self._QSArgs.Expression, str):
+                if penetrated:
+                    Vars = {f"_d{i+1}": iDescriptor.expression(penetrated=True) for i, iDescriptor in enumerate(self.Descriptors)}
+                else:
+                    Vars = {f"_d{i+1}": sympy.Symbol(iDescriptor.Name if iDescriptor.Name else f"_d{i+1}") for i, iDescriptor in enumerate(self.Descriptors)}
+                return sympy.sympify(self._QSArgs.Expression, locals=Vars)
+            else:
+                Expr = self._QSArgs.Expression
+                for i, iDescriptor in enumerate(self.Descriptors):
+                    if penetrated:
+                        iVar = iDescriptor.expression(penetrated=True)
+                    else:
+                        iVar = sympy.Symbol(iDescriptor.Name if iDescriptor.Name else f"_d{i+1}")
+                    Expr = Expr.subs(sympy.Symbol(f"_d{i+1}"), iVar)
+                return Expr
+        Fun = sympy.Function(self._QSArgs.Operator.__name__)
+        if penetrated:
+            Vars = [iDescriptor.expression(penetrated=True) for iDescriptor in self.Descriptors]
+        else:
+            Vars = [sympy.Symbol(iDescriptor.Name if iDescriptor.Name else f"_d{i+1}") for i, iDescriptor in enumerate(self.Descriptors)]
+        return Fun(*Vars)
 
 
 # 单点运算

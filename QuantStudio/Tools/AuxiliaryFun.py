@@ -1,6 +1,7 @@
 # coding=utf-8
 """常用的辅助函数"""
 import os
+import re
 import logging
 import itertools
 import datetime as dt
@@ -245,5 +246,31 @@ def runMultiProcess(pid="0", n_prc=cpu_count(), target_fun=None, arg={}, partiti
     for iPID, iPrcs in Procs.items(): iPrcs.join()
     return 0
 
+# 给定左边的标识符，查找右边与之匹配的标识符
+def findRightPair(txt, left_idx, left="(", right=")"):
+    LeftLen, RightLen = len(left), len(right)
+    Left, EndIdx = "", 0
+    for iMatch in re.finditer(r"\^|\$|\(|\[|\{|\)|\]|\}|\.|\+|\?|\*|\|", left):
+        Left += left[EndIdx:iMatch.start()] + "\\" + left[iMatch.start():iMatch.end()]
+        EndIdx = iMatch.end()
+    Right, EndIdx = "", 0
+    for iMatch in re.finditer(r"\^|\$|\(|\[|\{|\)|\]|\}|\.|\+|\?|\*|\|", right):
+        Right += right[EndIdx:iMatch.start()] + "\\" + right[iMatch.start():iMatch.end()]
+        EndIdx = iMatch.end()
+    LeftCount, StartIdx = 1, left_idx + LeftLen
+    for iMatch in re.finditer(f"{Left}|{Right}", txt[StartIdx:]):
+        iMark = txt[StartIdx:][iMatch.start():iMatch.end()]
+        if iMark == left:
+            LeftCount += 1
+        else:
+            LeftCount -= 1
+        if LeftCount == 0:
+            return StartIdx + iMatch.start()
+    return None
+
 if __name__=="__main__":
-    print(allocateDim(13))
+    # print(allocateDim(13))
+
+    Txt = "1 + (^((^(2+3)$)*4 + 5)$) / 2"
+    RightIdx = findRightPair(Txt, 4, left="(^(", right=")$)")
+    print(RightIdx)
