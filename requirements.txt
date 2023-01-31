@@ -17,3 +17,5 @@ tushare>=1.2.12
 xlrd<=1.2.0
 xlwt<=1.3.0
 openpyxl
+sympy
+ipython

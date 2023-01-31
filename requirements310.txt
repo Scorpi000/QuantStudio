@@ -18,3 +18,5 @@ xlrd
 xlwt
 openpyxl
 Jinja2
+sympy
+ipython
