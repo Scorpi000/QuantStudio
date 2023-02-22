@@ -174,9 +174,9 @@ class _JY_SQL_Table(SQL_Table):
                 iNewData[~iDataMask] = iMapInfo.iloc[:, 1][iMapMask].iloc[0]
             iMapInfo = iMapInfo[~iMapMask]
             if iOldDataType!="double":
-                iMapInfo["Old"] = iMapInfo["Old"].astype(np.str)
+                iMapInfo["Old"] = iMapInfo["Old"].astype(str)
             else:
-                iMapInfo["Old"] = iMapInfo["Old"].astype(np.float)
+                iMapInfo["Old"] = iMapInfo["Old"].astype(float)
             iMapInfo = iMapInfo.set_index(["Old"]).iloc[:, 0]
             iNewData[iDataMask] = iOldData.map(iMapInfo)[iDataMask]
             raw_data[iField] = iNewData
@@ -525,7 +525,7 @@ class _AnalystConsensusTable(_JY_SQL_Table):
                     if (iDate.month==2) and (iDate.day==29): Weight1 = Weight1/366
                     else:
                         Weight1 = Weight1/(dt.date(iDate.year+1, iDate.month, iDate.day)-iDate).days
-                    StdData[i, k] = Weight1*np.float(ObjectData1) + (1-Weight1)*np.float(ObjectData2)
+                    StdData[i, k] = Weight1*float(ObjectData1) + (1-Weight1)*float(ObjectData2)
         return StdData
 
 # f: 该算子所属的因子对象或因子表对象

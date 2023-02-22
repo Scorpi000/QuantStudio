@@ -1535,7 +1535,7 @@ class DataFactor(Factor):
                 self._DataContent = "ID"
             if "数据类型" not in sys_args:
                 try:
-                    data = data.astype(np.float)
+                    data = data.astype(float)
                 except:
                     sys_args["数据类型"] = "object"
                 else:
@@ -1544,7 +1544,7 @@ class DataFactor(Factor):
             self._DataContent = "Factor"
             if "数据类型" not in sys_args:
                 try:
-                    data = data.astype(np.float)
+                    data = data.astype(float)
                 except:
                     sys_args["数据类型"] = "object"
                 else:
@@ -1591,7 +1591,7 @@ class DataFactor(Factor):
         else:
             Data = self._Data
         if (Data.columns.intersection(ids).shape[0]==0) or (Data.index.intersection(dts).shape[0]==0):
-            return pd.DataFrame(index=dts, columns=ids, dtype=("O" if self._QSArgs.DataType!="double" else np.float))
+            return pd.DataFrame(index=dts, columns=ids, dtype=("O" if self._QSArgs.DataType!="double" else float))
         if self._QSArgs.LookBack==0: return Data.reindex(index=dts, columns=ids)
         else: return fillNaByLookback(Data.reindex(index=sorted(Data.index.union(dts)), columns=ids), lookback=self._QSArgs.LookBack*24.0*3600).loc[dts, :]
     def __QS_prepareCacheData__(self, ids=None):

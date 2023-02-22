@@ -88,7 +88,7 @@ class CMRM(BaseModule):
         Mask = (self._Output["事件记录"][:, 2]<=self._QSArgs.EventPostWindow)
         if np.sum(Mask)==0: return 0
         IDs = self._Output["事件记录"][:, 0][Mask]
-        RowPos, ColPos = np.arange(self._Output["异常收益率"].shape[0])[Mask].tolist(), (self._Output["事件记录"][Mask, 2]+self._QSArgs.EventPreWindow).astype(np.int)
+        RowPos, ColPos = np.arange(self._Output["异常收益率"].shape[0])[Mask].tolist(), (self._Output["事件记录"][Mask, 2]+self._QSArgs.EventPreWindow).astype(int)
         Price = self._FactorTable.readData(dts=[self._AllDTs[CurInd-1], idt], ids=sorted(set(IDs)), factor_names=[self._QSArgs.PriceFactor]).iloc[0, :, :].loc[:, IDs]
         self._Output["异常收益率"][RowPos, ColPos] = (_calcReturn(Price.values, return_type=self._QSArgs.ReturnType)[0] - self._Output["正常收益率"][RowPos, ColPos])
         return 0
@@ -243,7 +243,7 @@ class MAM(CMRM):
         Mask = (self._Output["事件记录"][:, 2]<=self._QSArgs.EventPostWindow)
         if np.sum(Mask)==0: return 0
         IDs = self._Output["事件记录"][:, 0][Mask]
-        RowPos, ColPos = np.arange(self._Output["异常收益率"].shape[0])[Mask].tolist(), (self._Output["事件记录"][Mask, 2]+self._QSArgs.EventPreWindow).astype(np.int)
+        RowPos, ColPos = np.arange(self._Output["异常收益率"].shape[0])[Mask].tolist(), (self._Output["事件记录"][Mask, 2]+self._QSArgs.EventPreWindow).astype(int)
         BPrice = self._BenchmarkFT.readData(factor_names=[self._QSArgs.BenchmarkPrice], ids=[self._QSArgs.BenchmarkID], dts=[self._AllDTs[CurInd-1], idt]).iloc[0, :, 0]
         BReturn = _calcReturn(BPrice.values, return_type=self._QSArgs.ReturnType).repeat(len(IDs), axis=0)
         self._Output["正常收益率"][RowPos, ColPos] = BReturn
@@ -335,7 +335,7 @@ class MM(CMRM):
         Mask = (self._Output["事件记录"][:, 2]<=self._QSArgs.EventPostWindow)
         if np.sum(Mask)==0: return 0
         IDs = self._Output["事件记录"][:, 0][Mask]
-        RowPos, ColPos = np.arange(self._Output["异常收益率"].shape[0])[Mask].tolist(), (self._Output["事件记录"][Mask, 2]+self._QSArgs.EventPreWindow).astype(np.int)
+        RowPos, ColPos = np.arange(self._Output["异常收益率"].shape[0])[Mask].tolist(), (self._Output["事件记录"][Mask, 2]+self._QSArgs.EventPreWindow).astype(int)
         BPrice = self._BenchmarkFT.readData(factor_names=[self._QSArgs.BenchmarkPrice], ids=[self._QSArgs.BenchmarkID], dts=[self._AllDTs[CurInd-1], idt]).iloc[0, :, 0]
         BReturn = _calcReturn(BPrice.values, return_type=self._QSArgs.ReturnType).repeat(len(IDs), axis=0)
         if (self._RateFT is not None) and bool(self._QSArgs.RiskFreeRate) and bool(self._QSArgs.RiskFreeRateID):
@@ -361,7 +361,7 @@ class MM(CMRM):
         Mask = (EventRecord[:, 2]<=self._QSArgs.EventPostWindow)
         Index = pd.MultiIndex.from_arrays(EventRecord[:,:2].T, names=["ID", "时点"])
         if np.sum(Mask)>0:
-            RowPos, ColPos = np.arange(self._Output["异常收益率"].shape[0])[Mask].tolist(), (EventRecord[Mask, 2]+self._QSArgs.EventPreWindow).astype(np.int)
+            RowPos, ColPos = np.arange(self._Output["异常收益率"].shape[0])[Mask].tolist(), (EventRecord[Mask, 2]+self._QSArgs.EventPreWindow).astype(int)
             for i in range(RowPos.shape[0]):
                 X = self._Output["市场超额收益率"][RowPos[i], :]
                 iMask = pd.notnull(X)
@@ -410,6 +410,6 @@ class CBBM(CMRM):# TODO
         IDs = self._Output["事件记录"][:, 0][Mask]
         Price = self._FactorTable.readData(dts=[self._AllDTs[CurInd-1], idt], ids=sorted(set(IDs)), factor_names=[self._QSArgs.PriceFactor]).iloc[0, :, :].loc[:, IDs]
         AbnormalReturn = (_calcReturn(Price.values, return_type=self._QSArgs.ReturnType)[0] - self._Output["正常收益率"][Mask, 0])
-        RowPos, ColPos = np.arange(self._Output["异常收益率"].shape[0])[Mask].tolist(), (self._Output["事件记录"][Mask, 2]+self._QSArgs.EventPreWindow).astype(np.int)
+        RowPos, ColPos = np.arange(self._Output["异常收益率"].shape[0])[Mask].tolist(), (self._Output["事件记录"][Mask, 2]+self._QSArgs.EventPreWindow).astype(int)
         self._Output["异常收益率"][RowPos, ColPos] = AbnormalReturn
         return 0

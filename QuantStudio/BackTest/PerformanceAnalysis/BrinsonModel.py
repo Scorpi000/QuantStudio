@@ -106,7 +106,7 @@ class BrinsonModel(BaseModule):
         self._Output["总计"]["主动个券选择超额收益"] = self._Output["主动个券选择超额收益"].sum(axis=1)
         self._Output["总计"]["交互作用超额收益"] = self._Output["交互作用超额收益"].sum(axis=1)
         self._Output["总计"]["总超额收益"] = self._Output["总超额收益"].sum(axis=1)
-        self._Output["多期综合"] = pd.DataFrame(dtype=np.float)
+        self._Output["多期综合"] = pd.DataFrame(dtype=float)
         self._Output["多期综合"]["策略组合收益"] = (self._Output["策略组合收益"] + 1).prod(axis=0) - 1
         self._Output["多期综合"]["基准组合收益"] = (self._Output["基准组合收益"] + 1).prod(axis=0) - 1
         self._Output["多期综合"]["主动资产配置组合收益"] = (self._Output["主动资产配置组合收益"] + 1).prod() - 1

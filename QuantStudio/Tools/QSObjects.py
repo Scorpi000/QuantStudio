@@ -612,7 +612,7 @@ class _LocIndexer(object):
             UniDType = DTypes.dropna().unique()
             UniDType = (UniDType[0] if UniDType.shape[0]==1 else np.dtype("O"))
             DTypes = DTypes.fillna(value=UniDType)
-            Items, MajorAxis, MinorAxis = (Items + 1).fillna(value=0).astype(np.int), (MajorAxis + 1).fillna(value=0).astype(np.int), (MinorAxis + 1).fillna(value=0).astype(np.int)
+            Items, MajorAxis, MinorAxis = (Items + 1).fillna(value=0).astype(int), (MajorAxis + 1).fillna(value=0).astype(int), (MinorAxis + 1).fillna(value=0).astype(int)
             TmpShape = (Items.max()+1, MajorAxis.max()+1, MinorAxis.max()+1)
             #TmpData = np.full(shape=TmpShape, fill_value=None, dtype=UniDType)
             TmpData, UniDType = _initArray(shape=TmpShape, dtype=UniDType)

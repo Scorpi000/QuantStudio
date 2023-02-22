@@ -92,7 +92,7 @@ def _section_group(f, idt, iid, x, args):
         iRank = DataPreprocessingFun.standardizeRank(FactorData[i], mask=(Mask[i] if Mask is not None else None), cat_data=(CatData[i].T if CatData is not None else None), **OperatorArg)
         iTotalNum = np.sum(pd.notnull(iRank))
         iGroupNums = np.cumsum(np.array(distributeEqual(iTotalNum, GroupNum, remainder_pos=RemainderPos))) / iTotalNum
-        iGroup = np.searchsorted(iGroupNums, iRank, side="right").astype(np.float)
+        iGroup = np.searchsorted(iGroupNums, iRank, side="right").astype(float)
         iGroup[pd.isnull(iRank)] = np.nan
         Rslt[i] = iGroup
     return Rslt

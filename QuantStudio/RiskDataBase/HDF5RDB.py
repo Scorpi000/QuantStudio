@@ -127,7 +127,7 @@ class HDF5RDB(RiskDB):
                 iGroup = CovGroup.create_group(iDTStr)
                 StrDataType = h5py.string_dtype(encoding="utf-8")
                 iGroup.create_dataset("ID", shape=(icov.shape[0], ), dtype=StrDataType, data=icov.index.values)
-                iGroup.create_dataset("Data", shape=icov.shape, dtype=np.float, data=icov.values)
+                iGroup.create_dataset("Data", shape=icov.shape, dtype=float, data=icov.values)
         if table_name not in self._TableDT: self._TableDT[table_name] = []
         if idt not in self._TableDT[table_name]:
             self._TableDT[table_name].append(idt)
@@ -339,42 +339,42 @@ class HDF5FRDB(FactorRDB):
                     iGroup = Group.create_group(iDTStr)
                     iGroup.create_dataset(name="Factor", shape=(factor_data.shape[1], ), dtype=StrType, data=factor_data.columns.values)
                     iGroup.create_dataset(name="ID", shape=(factor_data.shape[0], ), dtype=StrType, data=factor_data.index.values)
-                    iGroup.create_dataset(name="Data", shape=factor_data.shape, dtype=np.float, data=factor_data.values)
+                    iGroup.create_dataset(name="Data", shape=factor_data.shape, dtype=float, data=factor_data.values)
                 if factor_cov is not None:
                     if "FactorCov" not in File: Group = File.create_group("FactorCov")
                     else: Group = File["FactorCov"]
                     if iDTStr in Group: del Group[iDTStr]
                     iGroup = Group.create_group(iDTStr)
                     iGroup.create_dataset(name="Factor", shape=(factor_cov.shape[0], ), dtype=StrType, data=factor_cov.index.values)
-                    iGroup.create_dataset(name="Data", shape=factor_cov.shape, dtype=np.float, data=factor_cov.values)
+                    iGroup.create_dataset(name="Data", shape=factor_cov.shape, dtype=float, data=factor_cov.values)
                 if specific_risk is not None:
                     if "SpecificRisk" not in File: Group = File.create_group("SpecificRisk")
                     else: Group = File["SpecificRisk"]
                     if iDTStr in Group: del Group[iDTStr]
                     iGroup = Group.create_group(iDTStr)
                     iGroup.create_dataset(name="ID", shape=(specific_risk.shape[0], ), dtype=StrType, data=specific_risk.index.values)
-                    iGroup.create_dataset(name="Data", shape=specific_risk.shape, dtype=np.float, data=specific_risk.values)
+                    iGroup.create_dataset(name="Data", shape=specific_risk.shape, dtype=float, data=specific_risk.values)
                 if factor_ret is not None:
                     if "FactorReturn" not in File: Group = File.create_group("FactorReturn")
                     else: Group = File["FactorReturn"]
                     if iDTStr in Group: del Group[iDTStr]
                     iGroup = Group.create_group(iDTStr)
                     iGroup.create_dataset(name="Factor", shape=(factor_ret.shape[0], ), dtype=StrType, data=factor_ret.index.values)
-                    iGroup.create_dataset(name="Data", shape=factor_ret.shape, dtype=np.float, data=factor_ret.values)
+                    iGroup.create_dataset(name="Data", shape=factor_ret.shape, dtype=float, data=factor_ret.values)
                 if specific_ret is not None:
                     if "SpecificReturn" not in File: Group = File.create_group("SpecificReturn")
                     else: Group = File["SpecificReturn"]
                     if iDTStr in Group: del Group[iDTStr]
                     iGroup = Group.create_group(iDTStr)
                     iGroup.create_dataset(name="ID", shape=(specific_ret.shape[0], ), dtype=StrType, data=specific_ret.index.values)
-                    iGroup.create_dataset(name="Data", shape=specific_ret.shape, dtype=np.float, data=specific_ret.values)
+                    iGroup.create_dataset(name="Data", shape=specific_ret.shape, dtype=float, data=specific_ret.values)
                 for iKey, iValue in kwargs.items():
                     if iKey not in File: Group = File.create_group(iKey)
                     else: Group = File[iKey]
                     if iDTStr in Group: del Group[iDTStr]
                     iGroup = Group.create_group(iDTStr)
                     iGroup.create_dataset(name="index", shape=(iValue.shape[0], ), dtype=StrType, data=iValue.index.values)
-                    iGroup.create_dataset(name="Data", shape=iValue.shape, dtype=np.float, data=iValue.values)
+                    iGroup.create_dataset(name="Data", shape=iValue.shape, dtype=float, data=iValue.values)
                     if isinstance(iValue, pd.DataFrame): iGroup.create_dataset(name="columns", shape=(iValue.shape[1], ), dtype=StrType, data=iValue.columns.values)
         if table_name not in self._TableDT: self._TableDT[table_name] = []
         if idt not in self._TableDT[table_name]:

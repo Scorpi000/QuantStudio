@@ -519,7 +519,7 @@ class HDF5DB(WritableFactorDB):
     def fixData(self, table_name, factor_names):
         for iFactorName in factor_names:
             iFilePath = self._QSArgs.MainDir+os.sep+table_name+os.sep+iFactorName+"."+self._Suffix
-            FixMask = np.full(shape=(4, ), fill_value=True, dtype=np.bool)
+            FixMask = np.full(shape=(4, ), fill_value=True, dtype=bool)
             with self._DataLock:
                 with self._openHDF5File(iFilePath, mode="a") as DataFile:
                     # 修复 ID 长度和数据长度不符

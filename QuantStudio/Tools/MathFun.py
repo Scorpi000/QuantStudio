@@ -65,7 +65,7 @@ def genHurstExp(S, q=2, maxT=19):
     if isinstance(q, int):
         q = [q]
     lq = len(q)
-    q = np.array(q, dtype=np.int)
+    q = np.array(q, dtype=int)
     H  = np.zeros((maxT+1-5, lq))
     k = 0
     cc = np.zeros(2)

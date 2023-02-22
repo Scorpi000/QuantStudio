@@ -151,7 +151,7 @@ def _fetch(f,idt,iid,x,args):
     if isinstance(args["OperatorArg"]["pos"], str):
         return Data.astype(args["OperatorArg"]["dtype"])[args["OperatorArg"]["pos"]]
     SampleData = Data[0,0]
-    DataType = np.dtype([(str(i),(np.float if isinstance(SampleData[i], float) else "O")) for i in range(len(SampleData))])
+    DataType = np.dtype([(str(i),(float if isinstance(SampleData[i], float) else "O")) for i in range(len(SampleData))])
     return Data.astype(DataType)[str(args["OperatorArg"]["pos"])]
 def fetch(f, pos=0, dtype="double", **kwargs):
     Descriptors, Args, Exprs = _genMultivariateOperatorInfo(f)
@@ -799,12 +799,12 @@ def rolling_regress(Y, *X, window=20, constant=True, half_life=np.inf, **kwargs)
     nX = len(X)
     f = TimeOperation(kwargs.pop("factor_name", "rolling_regress"), Descriptors, {"算子": _rolling_regress, "参数": Args, "回溯期数": [window-1]*len(Descriptors), "运算时点": "多时点", "运算ID": "多ID", "数据类型": "object", "表达式": Expr}, **kwargs)
     if constant:
-        DataType = [('alpha',np.float)]+[('beta'+str(i),np.float) for i in range(nX)]
-        DataType += [('t_alpha',np.float)]+[('t_beta'+str(i),np.float) for i in range(nX)]
+        DataType = [('alpha',float)]+[('beta'+str(i),float) for i in range(nX)]
+        DataType += [('t_alpha',float)]+[('t_beta'+str(i),float) for i in range(nX)]
     else:
-        DataType = [('beta'+str(i),np.float) for i in range(nX)]
-        DataType += [('t_beta'+str(i),np.float) for i in range(nX)]
-    DataType += [('fvalue',np.float),('rsquared',np.float),('rsquared_adj',np.float)]
+        DataType = [('beta'+str(i),float) for i in range(nX)]
+        DataType += [('t_beta'+str(i),float) for i in range(nX)]
+    DataType += [('fvalue',float),('rsquared',float),('rsquared_adj',float)]
     f.UserData["dtype"] = DataType
     return f
 def _rolling_regress_change(f,idt,iid,x,args):

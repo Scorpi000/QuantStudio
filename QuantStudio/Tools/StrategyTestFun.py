@@ -981,8 +981,8 @@ def summaryTimingStrategy(position, price, ignore_position_level=True, n_per_yea
             iReturn = price[iEndIdx, i] / price[iStartIdx, i] - 1
             iAvgPositionLevel = np.array([np.mean(PositionNafilled[iStartIdx[j]:iEndIdx[j], i]) for j in range(iStartIdx.shape[0])])
         else:
-            iReturn = np.full(shape=iStartIdx.shape, fill_value=np.nan, dtype=np.float)
-            iAvgPositionLevel = np.full(shape=iStartIdx.shape, fill_value=np.nan, dtype=np.float)
+            iReturn = np.full(shape=iStartIdx.shape, fill_value=np.nan, dtype=float)
+            iAvgPositionLevel = np.full(shape=iStartIdx.shape, fill_value=np.nan, dtype=float)
             for j in range(iStartIdx.shape[0]):
                 ijPosition = position[iStartIdx[j]:iEndIdx[j], i]
                 ijIdx = np.where(~np.isnan(ijPosition))[0]
@@ -997,8 +997,8 @@ def summaryTimingStrategy(position, price, ignore_position_level=True, n_per_yea
             iReturn = - (price[iEndIdx, i] / price[iStartIdx, i] - 1)
             iAvgPositionLevel = np.array([np.mean(PositionNafilled[iStartIdx[j]:iEndIdx[j], i]) for j in range(iStartIdx.shape[0])])
         else:
-            iReturn = np.full(shape=iStartIdx.shape, fill_value=np.nan, dtype=np.float)
-            iAvgPositionLevel = np.full(shape=iStartIdx.shape, fill_value=np.nan, dtype=np.float)
+            iReturn = np.full(shape=iStartIdx.shape, fill_value=np.nan, dtype=float)
+            iAvgPositionLevel = np.full(shape=iStartIdx.shape, fill_value=np.nan, dtype=float)
             for j in range(iStartIdx.shape[0]):
                 ijPosition = np.abs(position[iStartIdx[j]:iEndIdx[j], i])
                 ijIdx = np.where(~np.isnan(ijPosition))[0]

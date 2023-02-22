@@ -148,7 +148,7 @@ class ReturnForecast(BaseModule):
             self._Output.pop("全样本因子统计量")
         # 滚动预测
         self._Output["滚动预测"] = {}
-        self._Output["滚动预测"]["预测收益率"] = self._Output.pop("预测收益率").astype(np.float)
+        self._Output["滚动预测"]["预测收益率"] = self._Output.pop("预测收益率").astype(float)
         if self._QSArgs.CalcDTs:
             self._Output["滚动预测"]["实际收益率"] = pd.DataFrame(_calcReturn(Price.reindex(index=self._QSArgs.CalcDTs).values, return_type=self._QSArgs.ReturnType), index=self._QSArgs.CalcDTs[1:], columns=IDs)
         else:

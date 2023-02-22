@@ -93,7 +93,7 @@ def adjustDataDTID(data, look_back, factor_names, ids, dts, only_start_lookback=
     if TargetDTs:
         Limits = look_back*24.0*3600
         if only_lookback_nontarget:# 只用非目标时间序列的数据回溯填充
-            Mask = pd.Series(np.full(shape=(AdjData.shape[1], ), fill_value=False, dtype=np.bool), index=AdjData.major_axis)
+            Mask = pd.Series(np.full(shape=(AdjData.shape[1], ), fill_value=False, dtype=bool), index=AdjData.major_axis)
             Mask[TargetDTs] = True
             FillMask = Mask.copy()
             FillMask[Mask.astype("int").diff()!=1] = False
@@ -107,7 +107,7 @@ def adjustDataDTID(data, look_back, factor_names, ids, dts, only_start_lookback=
             Limits = pd.DataFrame(0, index=AdjData.major_axis, columns=AdjData.minor_axis)
             Limits.loc[TargetDTs, :] = NewLimits
         if only_lookback_dt:
-            Mask = pd.Series(np.full(shape=(AdjData.shape[1], ), fill_value=False, dtype=np.bool), index=AdjData.major_axis)
+            Mask = pd.Series(np.full(shape=(AdjData.shape[1], ), fill_value=False, dtype=bool), index=AdjData.major_axis)
             Mask[TargetDTs] = True
             FillMask = Mask.copy()
             FillMask[Mask.astype("int").diff()!=1] = False
@@ -168,7 +168,7 @@ def _QS_calcListData_WideTable(raw_data, factor_names, ids, dts, args={}, **kwar
             iRawData[RowIdxMask] = None
             Data[iFactorName] = pd.DataFrame(iRawData, index=dts, columns=RawIDs)
             if OperatorDataType=="double":
-                Data[iFactorName] = Data[iFactorName].astype(np.float)
+                Data[iFactorName] = Data[iFactorName].astype(float)
         return Panel(Data, items=factor_names, major_axis=dts, minor_axis=RawIDs).loc[:, :, ids]
     else:
         Data = {}
@@ -178,7 +178,7 @@ def _QS_calcListData_WideTable(raw_data, factor_names, ids, dts, args={}, **kwar
             else:
                 Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
             if OperatorDataType=="double":
-                Data[iFactorName] = Data[iFactorName].astype(np.float)
+                Data[iFactorName] = Data[iFactorName].astype(float)
         Data = Panel(Data, items=factor_names)
         return adjustDataDTID(Data, args.get("回溯天数", 0), factor_names, ids, dts, args.get("只起始日回溯", False), args.get("只回溯非目标日", False), logger=kwargs.get("logger", None))
 
@@ -200,7 +200,7 @@ def _QS_calcData_WideTable(raw_data, factor_names, ids, dts, data_type, args={},
         if RawIDs.intersection(ids).shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         RowIdx = pd.DataFrame(np.arange(RowIdxMask.shape[0]).reshape((RowIdxMask.shape[0], 1)).repeat(RowIdxMask.shape[1], axis=1), index=RowIdxMask.index, columns=RawIDs)
         RowIdx[RowIdxMask] = np.nan
-        RowIdx = adjustDataDTID(Panel({"RowIdx": RowIdx}), args.get("回溯天数", 0), ["RowIdx"], RowIdx.columns.tolist(), dts, args.get("只起始日回溯", False), args.get("只回溯非目标日", False), logger=kwargs.get("logger", None)).iloc[0].values
+        RowIdx = adjustDataDTID(Panel({"RowIdx": RowIdx}), args.get("回溯天数", 0), ["RowIdx"], RowIdx.columns.tolist(), dts, args.get("只起始日回溯", False), args.get("只回溯非目标日", False), only_lookback_dt=True, logger=kwargs.get("logger", None)).iloc[0].values
         RowIdx[pd.isnull(RowIdx)] = -1
         RowIdx = RowIdx.astype(int)
         ColIdx = np.arange(RowIdx.shape[1]).reshape((1, RowIdx.shape[1])).repeat(RowIdx.shape[0], axis=0)
@@ -2167,9 +2167,9 @@ class SQL_FinancialTable(SQL_Table):
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         CalcType, YearLookBack, PeriodLookBack, ReportDate, IgnoreMissing = args.get("计算方法", self._QSArgs.CalcType), args.get("回溯年数", self._QSArgs.YearLookBack), args.get("回溯期数", self._QSArgs.PeriodLookBack), args.get("报告期", self._QSArgs.ReportDate), args.get("忽略缺失", self._QSArgs.IgnoreMissing)
-        if CalcType=="最新": Periods = np.array([0], dtype=np.int)
-        elif CalcType=="单季度": Periods = np.array([0, 1], dtype=np.int)
-        elif CalcType=="TTM": Periods = np.array([0, 1, 2, 3, 4], dtype=np.int)
+        if CalcType=="最新": Periods = np.array([0], dtype=int)
+        elif CalcType=="单季度": Periods = np.array([0, 1], dtype=int)
+        elif CalcType=="TTM": Periods = np.array([0, 1, 2, 3, 4], dtype=int)
         Periods += YearLookBack * 4 + PeriodLookBack
         raw_data["ReportPeriod"] = raw_data["ReportDate"].astype(str).str.slice(start=5, stop=10)
         Data = {}

@@ -190,7 +190,7 @@ def joinList(target_list, join_str):
     return Str
 # 对总数 n 分配维度
 def allocateDim(n, n_dim=2):
-    DimAllocation = np.zeros(n_dim, dtype=np.int) + int(n**(1/n_dim))
+    DimAllocation = np.zeros(n_dim, dtype=int) + int(n**(1/n_dim))
     i = 0
     while np.prod(DimAllocation)<n:
         DimAllocation[i] = DimAllocation[i] + 1
