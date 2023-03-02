@@ -1006,7 +1006,8 @@ class CustomFT(FactorTable):
     # 添加因子, factor_list: 因子对象列表
     def addFactors(self, factor_list=[], factor_table=None, factor_names=None, args={}):
         for iFactor in factor_list:
-            if iFactor.Name in self._Factors: raise __QS_Error__("因子: '%s' 有重名!" % iFactor.Name)
+            if iFactor.Name in self._Factors:
+                raise __QS_Error__("因子: '%s' 有重名!" % iFactor.Name)
             self._Factors[iFactor.Name] = iFactor
         if factor_table is None: return 0
         if factor_names is None: factor_names = factor_table.FactorNames

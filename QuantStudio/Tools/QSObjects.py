@@ -613,10 +613,10 @@ class _LocIndexer(object):
             UniDType = (UniDType[0] if UniDType.shape[0]==1 else np.dtype("O"))
             DTypes = DTypes.fillna(value=UniDType)
             Items, MajorAxis, MinorAxis = (Items + 1).fillna(value=0).astype(int), (MajorAxis + 1).fillna(value=0).astype(int), (MinorAxis + 1).fillna(value=0).astype(int)
-            TmpShape = (Items.max()+1, MajorAxis.max()+1, MinorAxis.max()+1)
+            TmpShape = (Items.max()+1 if Items.shape[0]>0 else 0, MajorAxis.max()+1 if MajorAxis.shape[0]>0 else 0, MinorAxis.max()+1 if MinorAxis.shape[0]>0 else 0)
             #TmpData = np.full(shape=TmpShape, fill_value=None, dtype=UniDType)
             TmpData, UniDType = _initArray(shape=TmpShape, dtype=UniDType)
-            TmpData[1:, 1:, 1:] = self._p._Data[:TmpShape[0]-1, :TmpShape[1]-1, :TmpShape[2]-1]
+            TmpData[1:, 1:, 1:] = self._p._Data[:max(0, TmpShape[0]-1), :max(0, TmpShape[1]-1), :max(0, TmpShape[2]-1)]
             p = Panel(data=TmpData[Items.values][:, MajorAxis.values][:, :, MinorAxis.values].astype(UniDType), items=Items.index, major_axis=MajorAxis.index, minor_axis=MinorAxis.index)
             p._DTypes = DTypes
             return p
@@ -987,12 +987,15 @@ if __name__=="__main__":
         #"a2": pd.DataFrame(np.random.randn(3,4), index=["b"+str(i) for i in range(1,4)], columns=["c"+str(i) for i in range(1,5)])
     #})
     import datetime as dt
+    # p = Panel(items=[1], major_axis=[1], minor_axis=[])
     p = Panel({"a": np.array([[dt.datetime(2021,10,22), dt.datetime(2021, 10, 23)], [None, dt.datetime(2021, 11, 23)]])})
-    df = p.loc[:, [0,1,2]].iloc[0]
-    print(df)
-    p1 = pd.Panel({"a": np.array([[dt.datetime(2021,10,22), dt.datetime(2021, 10, 23)], [None, dt.datetime(2021, 11, 23)]])})
-    df1 = p1.loc[:, [0,1,2]].iloc[0]
-    print(df1)
+    # p.loc[:, :, [0, 1]]
+    p.loc[:, :, []]
+    # df = p.loc[:, [0,1,2]].iloc[0]
+    # print(df)
+    # p1 = pd.Panel({"a": np.array([[dt.datetime(2021,10,22), dt.datetime(2021, 10, 23)], [None, dt.datetime(2021, 11, 23)]])})
+    # df1 = p1.loc[:, [0,1,2]].iloc[0]
+    # print(df1)
     #p = Panel(np.random.randn(2, 3, 4), items=["b", "a"])
     #print(p)
     #print(p.loc["a", :])

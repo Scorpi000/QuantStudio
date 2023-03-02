@@ -39,7 +39,12 @@ def _genMultivariateOperatorInfo(*factors):
         else:# 第i个操作子为标量
             Args["Data"+iInd] = iFactor
             Args["SepInd"+iInd] = Args.get("SepInd"+str(i),0)
-            Exprs.append(iFactor)
+            if iFactor is None:
+                Exprs.append(sympy.Symbol("None"))
+            elif isinstance(iFactor, str):
+                Exprs.append(sympy.Symbol(f"'{iFactor}'"))
+            else:
+                Exprs.append(iFactor)
     Args["nData"] = len(factors)
     return (Descriptors, Args, Exprs)
 def _genOperatorData(f, idt, iid, x, args):
