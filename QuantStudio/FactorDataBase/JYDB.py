@@ -3,7 +3,6 @@
 import re
 import os
 import json
-import shelve
 import datetime as dt
 
 import numpy as np
@@ -12,7 +11,6 @@ from traits.api import Enum, Int, Str, List, ListStr, Dict, Callable, File
 
 from QuantStudio.Tools.api import Panel
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
-from QuantStudio.Tools.FileFun import getShelveFileSuffix
 from QuantStudio.Tools.QSObjects import QSSQLObject
 from QuantStudio import __QS_Error__, __QS_LibPath__, __QS_MainPath__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB
@@ -338,10 +336,10 @@ def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_d
     isANNReport = raw_data._QS_ANNReport
     if isANNReport:
         PID = sorted(pid_lock)[0]
-        ANN_ReportFilePath = raw_data_dir+os.sep+PID+os.sep+report_ann_file
+        ANN_ReportFilePath = raw_data_dir+os.sep+PID+os.sep+report_ann_file+("."+ft._ANN_ReportFileSuffix if ft._ANN_ReportFileSuffix else "")
         pid_lock[PID].acquire()
-        if not os.path.isfile(ANN_ReportFilePath+("."+ft._ANN_ReportFileSuffix if ft._ANN_ReportFileSuffix else "")):# 没有报告期-公告日期数据, 提取该数据
-            with shelve.open(ANN_ReportFilePath) as ANN_ReportFile: pass
+        if not os.path.isfile(ANN_ReportFilePath):# 没有报告期-公告日期数据, 提取该数据
+            with pd.HDFStore(ANN_ReportFilePath) as ANN_ReportFile: pass
             pid_lock[PID].release()
             IDs = []
             for iPID in sorted(pid_ids): IDs.extend(pid_ids[iPID])
@@ -353,14 +351,14 @@ def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_d
     CommonCols = list(raw_data.columns.difference(set(factor_names)))
     AllIDs = set(raw_data.index)
     for iPID, iIDs in pid_ids.items():
-        with shelve.open(raw_data_dir+os.sep+iPID+os.sep+file_name) as iFile:
+        with pd.HDFStore(raw_data_dir+os.sep+iPID+os.sep+file_name+ft._QSArgs.OperationMode._FileSuffix) as iFile:
             iInterIDs = sorted(AllIDs.intersection(iIDs))
             iData = raw_data.loc[iInterIDs]
             for jFactorName in factor_names:
                 ijData = iData[CommonCols+[jFactorName]].reset_index()
                 if isANNReport: ijData.columns.name = raw_data_dir+os.sep+iPID+os.sep+report_ann_file
                 iFile[jFactorName] = ijData
-            iFile["_QS_IDs"] = iIDs
+            iFile["_QS_IDs"] = pd.Series(iIDs)
     return 0
 class _AnalystConsensusTable(_JY_SQL_Table):
     """分析师汇总表"""
@@ -375,7 +373,7 @@ class _AnalystConsensusTable(_JY_SQL_Table):
         self._PeriodField = self._FactorInfo[self._FactorInfo["FieldType"]=="Period"].index[0]
         self._TempData = {}
         self._ANN_ReportFileName = 'JY财务年报-公告日期'
-        self._ANN_ReportFileSuffix = getShelveFileSuffix()
+        self._ANN_ReportFileSuffix = "h5"
         return
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         if dts is not None:
@@ -448,9 +446,9 @@ class _AnalystConsensusTable(_JY_SQL_Table):
             CalcFun, FYNum, ANNReportData = self._calcIDData_Fwd12M, None, None
         else:
             CalcFun, FYNum = self._calcIDData_FY, int(CalcType[-1])
-            ANNReportPath = raw_data.columns.name
-            if (ANNReportPath is not None) and os.path.isfile(ANNReportPath+("."+self._ANN_ReportFileSuffix if self._ANN_ReportFileSuffix else "")):
-                with shelve.open(ANNReportPath) as ANN_ReportFile:
+            ANNReportPath = raw_data.columns.name+("."+self._ANN_ReportFileSuffix if self._ANN_ReportFileSuffix else "")
+            if (ANNReportPath is not None) and os.path.isfile(ANNReportPath):
+                with pd.HDFStore(ANNReportPath, mode="r") as ANN_ReportFile:
                     ANNReportData = ANN_ReportFile["RawData"]
             else:
                 ANNReportData = _prepareReportANNRawData(self._FactorDB, ids, pre_filter_id=args.get("预筛选ID", self._QSArgs.PreFilterID))
@@ -556,7 +554,7 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
         self._ReportDateField = self._FactorInfo[self._FactorInfo["FieldType"]=="ReportDate"].index[0]
         self._TempData = {}
         self._ANN_ReportFileName = "JY财务年报-公告日期"
-        self._ANN_ReportFileSuffix = getShelveFileSuffix()
+        self._ANN_ReportFileSuffix = "h5"
         return
     def __QS_genGroupInfo__(self, factors, operation_mode):
         FactorNames, RawFactorNames, StartDT = [], set(), dt.datetime.now()
@@ -618,15 +616,15 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
         DeduplicationFields = args.get("去重字段", self._QSArgs.Deduplication)
         AdditionalFields = list(set(args.get("附加字段", self._QSArgs.AdditionalFields)+DeduplicationFields))
         AllFields = list(set(factor_names+AdditionalFields))
-        ANNReportPath = raw_data.columns.name
+        ANNReportPath = raw_data.columns.name+("."+self._ANN_ReportFileSuffix if self._ANN_ReportFileSuffix else "")
         raw_data = raw_data.loc[:, ["日期", "ID", self._ReportDateField]+AllFields].set_index(["ID"])
         Period = args.get("周期", self._QSArgs.Period)
         ForwardYears = args.get("向前年数", self._QSArgs.ForwardYears)
         ModelArgs = args.get("参数", self._QSArgs.ModelArgs)
         Operator = args.get("算子", self._QSArgs.Operator)
         DataType = args.get("数据类型", self._QSArgs.DataType)
-        if (ANNReportPath is not None) and os.path.isfile(ANNReportPath+("."+self._ANN_ReportFileSuffix if self._ANN_ReportFileSuffix else "")):
-            with shelve.open(ANNReportPath) as ANN_ReportFile:
+        if (ANNReportPath is not None) and os.path.isfile(ANNReportPath):
+            with pd.HDFStore(ANNReportPath, mode="r") as ANN_ReportFile:
                 ANNReportData = ANN_ReportFile["RawData"]
         else:
             ANNReportData = _prepareReportANNRawData(self._FactorDB, ids, pre_filter_id=args.get("预筛选ID", self._QSArgs.PreFilterID))

@@ -17,6 +17,7 @@ tushare
 xlrd
 xlwt
 openpyxl
+tables
 Jinja2
 sympy
 ipython

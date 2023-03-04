@@ -126,15 +126,7 @@ def traverseDir(dir_path='.',suffix=None,traverse_subdir=True):
                     continue
             else:
                 continue
-# 删除shelve文件
-def deleteShelveFile(file_path):
-    if os.path.isfile(file_path+".dat"):
-        os.remove(file_path+".dat")
-    if os.path.isfile(file_path+".bak"):
-        os.remove(file_path+".bak")
-    if os.path.isfile(file_path+".dir"):
-        os.remove(file_path+".dir")
-    return 0
+
 # 输出字典序列到csv文件
 def writeDictSeries2CSV(dict_series,file_path):
     Index = list(dict_series.index)

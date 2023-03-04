@@ -7,7 +7,6 @@ import html
 import mmap
 import shutil
 import pickle
-import shelve
 import tempfile
 import datetime as dt
 from collections import OrderedDict
@@ -24,7 +23,6 @@ from QuantStudio import __QS_Object__, __QS_Error__, QSArgs
 from QuantStudio.Tools.api import Panel
 from QuantStudio.Tools.IDFun import testIDFilterStr
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName, startMultiProcess, partitionListMovingSampling
-from QuantStudio.Tools.FileFun import getShelveFileSuffix
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.DataTypeConversionFun import dict2html
 
@@ -434,8 +432,7 @@ class _OperationMode(QSArgs):
         self._RawDataDir = ""# 原始数据存放根目录
         self._CacheDataDir = ""# 中间数据存放根目录
         self._Event = {}# {因子名: (Sub2MainQueue, Event)}
-        self._FileSuffix = getShelveFileSuffix()
-        if self._FileSuffix: self._FileSuffix = "." + self._FileSuffix
+        self._FileSuffix = ".h5"
         super().__init__(owner=owner, sys_args=sys_args, config_file=config_file, **kwargs)
     
     def __QS_initArgs__(self):
@@ -906,19 +903,20 @@ class FactorTable(__QS_Object__):
             CommonCols = raw_data.columns.difference(factor_names).tolist()
             AllIDs = set(raw_data.index)
             for iPID, iIDs in pid_ids.items():
-                with shelve.open(raw_data_dir+os.sep+iPID+os.sep+file_name) as iFile:
-                    iInterIDs = sorted(AllIDs.intersection(iIDs))
-                    iData = raw_data.loc[iInterIDs]
+                iInterIDs = sorted(AllIDs.intersection(iIDs))
+                iData = raw_data.loc[iInterIDs]
+                # hdf5 格式
+                with pd.HDFStore(raw_data_dir+os.sep+iPID+os.sep+file_name+self._QSArgs.OperationMode._FileSuffix, mode="a") as iFile:
                     if factor_names:
                         for jFactorName in factor_names: iFile[jFactorName] = iData[CommonCols+[jFactorName]].reset_index()
                     else:
                         iFile["RawData"] = iData[CommonCols].reset_index()
-                    iFile["_QS_IDs"] = iIDs
+                    iFile["_QS_IDs"] = pd.Series(iIDs)
         else:# 如果原始数据没有 ID 列，则将所有数据分别存入子进程的原始文件中
             for iPID, iIDs in pid_ids.items():
-                with shelve.open(raw_data_dir+os.sep+iPID+os.sep+file_name) as iFile:
+                with pd.HDFStore(raw_data_dir+os.sep+iPID+os.sep+file_name+self._QSArgs.OperationMode._FileSuffix, mode="a") as iFile:
                     iFile["RawData"] = raw_data
-                    iFile["_QS_IDs"] = iIDs
+                    iFile["_QS_IDs"] = pd.Series(iIDs)
         return 0
     # 计算因子数据并写入因子库
     # specific_target: {因子名: (目标因子库对象, 目标因子表名, 目标因子名)}
@@ -1227,13 +1225,13 @@ class Factor(__QS_Object__):
         EndDT = self._OperationMode.DateTimes[-1]
         StartInd, EndInd = self._OperationMode.DTRuler.index(StartDT), self._OperationMode.DTRuler.index(EndDT)
         DTs = self._OperationMode.DTRuler[StartInd:EndInd+1]
-        RawDataFilePath = self._OperationMode._RawDataDir+os.sep+self._OperationMode._iPID+os.sep+self._RawDataFile
-        if os.path.isfile(RawDataFilePath+self._OperationMode._FileSuffix):
-            with shelve.open(RawDataFilePath, "r") as File:
-                PrepareIDs = File["_QS_IDs"]
+        RawDataFilePath = self._OperationMode._RawDataDir+os.sep+self._OperationMode._iPID+os.sep+self._RawDataFile+self._OperationMode._FileSuffix
+        if os.path.isfile(RawDataFilePath):
+            with pd.HDFStore(RawDataFilePath, mode="r") as File:
+                PrepareIDs = File["_QS_IDs"].to_list()
                 if self._NameInFT in File: RawData = File[self._NameInFT]
                 elif "RawData" in File: RawData = File["RawData"]
-                else: RawData =None
+                else: RawData = None
             if PrepareIDs is None: PrepareIDs = self._OperationMode._PID_IDs[self._OperationMode._iPID]
             if RawData is not None:
                 StdData = self._FactorTable.__QS_calcData__(RawData, factor_names=[self._NameInFT], ids=PrepareIDs, dts=DTs, args=self.Args).iloc[0]
@@ -1245,9 +1243,9 @@ class Factor(__QS_Object__):
             else: PrepareIDs = partitionListMovingSampling(PrepareIDs, len(self._OperationMode._PID_IDs))[self._OperationMode._PIDs.index(self._OperationMode._iPID)]
             StdData = self._FactorTable.readData(factor_names=[self._NameInFT], ids=PrepareIDs, dts=DTs, args=self.Args).iloc[0]
         with self._OperationMode._PID_Lock[self._OperationMode._iPID]:
-            with shelve.open(self._OperationMode._CacheDataDir+os.sep+self._OperationMode._iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])) as CacheFile:
+            with pd.HDFStore(self._OperationMode._CacheDataDir+os.sep+self._OperationMode._iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])+self._OperationMode._FileSuffix, mode="a") as CacheFile:
                 CacheFile["StdData"] = StdData
-                CacheFile["_QS_IDs"] = PrepareIDs
+                CacheFile["_QS_IDs"] = pd.Series(PrepareIDs)
         self._isCacheDataOK = True
         return StdData
     # 获取因子数据, pid=None表示取所有进程的数据
@@ -1262,23 +1260,19 @@ class Factor(__QS_Object__):
             StdData = self.__QS_prepareCacheData__()
             if (StdData is not None) and (self._OperationMode._iPID in pids):
                 pids.remove(self._OperationMode._iPID)
-                #IDs = StdData.columns.tolist()
             else:
                 StdData = None
-                #IDs = []
         else:
             StdData = None
-            #IDs = []
         while len(pids)>0:
             iPID = pids.pop()
-            iFilePath = self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])
-            if not os.path.isfile(iFilePath+self._OperationMode._FileSuffix):# 该进程的数据没有准备好
+            iFilePath = self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])+self._OperationMode._FileSuffix
+            if not os.path.isfile(iFilePath):# 该进程的数据没有准备好
                 pids.add(iPID)
                 continue
             with self._OperationMode._PID_Lock[iPID]:
-                with shelve.open(iFilePath, 'r') as CacheFile:
+                with pd.HDFStore(iFilePath, mode="r") as CacheFile:
                     iStdData = CacheFile["StdData"]
-                    #IDs.extend(CacheFile.get("_QS_IDs", self._OperationMode._PID_IDs[iPID]))
             if StdData is None:
                 StdData = iStdData
             else:
