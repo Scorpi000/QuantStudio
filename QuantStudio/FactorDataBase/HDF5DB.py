@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import fasteners
 import h5py
-from traits.api import Directory, Enum, Float, Str, on_trait_change
+from traits.api import Directory, Enum, Float, Str, Date, Either, on_trait_change
 
 from QuantStudio import __QS_Error__, __QS_ConfigPath__
 from QuantStudio.Tools.api import Panel
@@ -53,6 +53,7 @@ class _FactorTable(FactorTable):
         OnlyStartLookBack = Enum(False, True, label="只起始日回溯", arg_type="Bool", order=1)
         OnlyLookBackNontarget = Enum(False, True, label="只回溯非目标日", arg_type="Bool", order=2)
         OnlyLookBackDT = Enum(False, True, label="只回溯时点", arg_type="Bool", order=3)
+        TargetDT = Either(None, Date, arg_type="DateTime", label="目标时点", order=4)
     
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         self._Suffix = fdb._Suffix# 文件后缀名
@@ -116,11 +117,7 @@ class _FactorTable(FactorTable):
         else:
             return DTs            
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        LookBack = args.get("回溯天数", self._QSArgs.LookBack)
-        if LookBack==0:
-            Data = {iFactor: self._readFactorData(ifactor_name=iFactor, ids=ids, dts=dts, args=args) for iFactor in factor_names}
-        else:
-            Data = {iFactor: self.readFactorData(ifactor_name=iFactor, ids=ids, dts=dts, args=args) for iFactor in factor_names}
+        Data = {iFactor: self.readFactorData(ifactor_name=iFactor, ids=ids, dts=dts, args=args) for iFactor in factor_names}
         return Panel(Data, items=factor_names, major_axis=dts, minor_axis=ids)
     def _readFactorData(self, ifactor_name, ids, dts, args={}):
         FilePath = self._FactorDB._QSArgs.MainDir+os.sep+self.Name+os.sep+ifactor_name+"."+self._Suffix
@@ -190,6 +187,12 @@ class _FactorTable(FactorTable):
             Rslt = Rslt.applymap(lambda x: pickle.loads(bytes(x)) if isinstance(x, np.ndarray) and (x.shape[0]>0) else None)
         return Rslt.sort_index(axis=0)
     def readFactorData(self, ifactor_name, ids, dts, args={}):
+        TargetDT = args.get("目标时点", self._QSArgs.TargetDT)
+        if TargetDT:
+            Args = args.copy()
+            Args["目标时点"] = None
+            Data = self.readFactorData(ifactor_name=ifactor_name, ids=ids, dts=[TargetDT], args=Args)
+            return pd.DataFrame(Data.values.repeat(repeats=len(dts), axis=0), index=dts, columns=ids)
         LookBack = args.get("回溯天数", self._QSArgs.LookBack)
         if LookBack==0: return self._readFactorData(ifactor_name, ids, dts, args=args)
         if np.isinf(LookBack):
@@ -397,36 +400,36 @@ class HDF5DB(WritableFactorDB):
                 self.setFactorMetaData(table_name, ifactor_name=ifactor_name, key=iKey, value=meta_data[iKey], meta_data=None)
         return 0
     def _updateFactorData(self, factor_data, table_name, ifactor_name, data_type):
-        FilePath = self._QSArgs.MainDir+os.sep+table_name+os.sep+ifactor_name+"."+self._Suffix
+        FilePath = self._QSArgs.MainDir + os.sep + table_name + os.sep + ifactor_name + "." + self._Suffix
         with self._getLock(table_name) as DataLock:
             with self._openHDF5File(FilePath, mode="a") as DataFile:
                 OldDataType = DataFile.attrs["DataType"]
                 if data_type is None: data_type = OldDataType
                 factor_data, data_type = _identifyDataType(factor_data, data_type)
-                if OldDataType!=data_type: raise __QS_Error__("HDF5DB.writeFactorData: 表 '%s' 中因子 '%s' 的新数据无法转换成已有数据的数据类型 '%s'!" % (table_name, ifactor_name, OldDataType))
-                nOldDT, OldDateTimes = DataFile["DateTime"].shape[0], DataFile["DateTime"][...].tolist()
+                if OldDataType != data_type: raise __QS_Error__("HDF5DB.writeFactorData: 表 '%s' 中因子 '%s' 的新数据无法转换成已有数据的数据类型 '%s'!" % (table_name, ifactor_name, OldDataType))
+                nOldDT, OldDateTimes = DataFile["DateTime"].shape[0], DataFile["DateTime"][...]
                 NewDateTimes = factor_data.index.difference(OldDateTimes).values
-                if h5py.version.version<"3.0.0":
+                if h5py.version.version < "3.0.0":
                     OldIDs = DataFile["ID"][...]
                 else:
                     OldIDs = DataFile["ID"].asstr(encoding="utf-8")[...]
                 NewIDs = factor_data.columns.difference(OldIDs).values
-                DataFile["DateTime"].resize((nOldDT+NewDateTimes.shape[0], ))
+                DataFile["DateTime"].resize((nOldDT + NewDateTimes.shape[0],))
                 DataFile["DateTime"][nOldDT:] = NewDateTimes
-                DataFile["ID"].resize((OldIDs.shape[0]+NewIDs.shape[0], ))
+                DataFile["ID"].resize((OldIDs.shape[0] + NewIDs.shape[0],))
                 DataFile["ID"][OldIDs.shape[0]:] = NewIDs
                 DataFile["Data"].resize((DataFile["DateTime"].shape[0], DataFile["ID"].shape[0]))
-                if NewDateTimes.shape[0]>0:
+                if NewDateTimes.shape[0] > 0:
                     DataFile["Data"][nOldDT:, :] = _adjustData(factor_data.reindex(index=NewDateTimes, columns=np.r_[OldIDs, NewIDs]), data_type)
-                CrossedDateTimes = factor_data.index.intersection(OldDateTimes)
-                if CrossedDateTimes.shape[0]==0:
+                CrossedDateTimes = factor_data.index.intersection(OldDateTimes).values
+                if CrossedDateTimes.shape[0] == 0:
                     DataFile.flush()
                     return 0
-                if len(CrossedDateTimes)==len(OldDateTimes):
-                    if NewIDs.shape[0]>0:
+                if len(CrossedDateTimes) == len(OldDateTimes):
+                    if NewIDs.shape[0] > 0:
                         DataFile["Data"][:nOldDT, OldIDs.shape[0]:] = _adjustData(factor_data.reindex(index=OldDateTimes, columns=NewIDs), data_type)
                     CrossedIDs = factor_data.columns.intersection(OldIDs)
-                    if CrossedIDs.shape[0]>0:
+                    if CrossedIDs.shape[0] > 0:
                         OldIDs = OldIDs.tolist()
                         CrossedIDPos = [OldIDs.index(iID) for iID in CrossedIDs]
                         CrossedIDs = CrossedIDs[np.argsort(CrossedIDPos)]
@@ -434,23 +437,28 @@ class HDF5DB(WritableFactorDB):
                         DataFile["Data"][:nOldDT, CrossedIDPos] = _adjustData(factor_data.reindex(index=OldDateTimes, columns=CrossedIDs), data_type)
                     DataFile.flush()
                     return 0
-                CrossedDateTimePos = [OldDateTimes.index(iDT) for iDT in CrossedDateTimes]
+                Sorter = np.argsort(OldDateTimes)
+                CrossedDateTimePos = Sorter[np.searchsorted(OldDateTimes, CrossedDateTimes, sorter=Sorter)]
                 CrossedDateTimes = CrossedDateTimes[np.argsort(CrossedDateTimePos)]
                 CrossedDateTimePos.sort()
-                if NewIDs.shape[0]>0:
+                if NewIDs.shape[0] > 0:
                     DataFile["Data"][CrossedDateTimePos, OldIDs.shape[0]:] = _adjustData(factor_data.reindex(index=CrossedDateTimes, columns=NewIDs), data_type)
-                CrossedIDs = factor_data.columns.intersection(OldIDs)
-                if CrossedIDs.shape[0]>0:
+                CrossedIDs = factor_data.columns.intersection(OldIDs).values
+                if CrossedIDs.shape[0] > 0:
+                    Sorter = np.argsort(OldIDs)
+                    CrossedIDPos = Sorter[np.searchsorted(OldIDs, CrossedIDs, sorter=Sorter)]
+                    CrossedIDs = CrossedIDs[np.argsort(CrossedIDPos)]
+                    CrossedIDPos.sort()
                     NewData = _adjustData(factor_data.reindex(index=CrossedDateTimes, columns=CrossedIDs), data_type, order="F")
-                    OldIDs = OldIDs.tolist()
-                    if data_type=="object":
-                        for i, iID in enumerate(CrossedIDs):
-                            iPos = OldIDs.index(iID)
-                            DataFile["Data"][CrossedDateTimePos, iPos:iPos+1] = NewData[:, i:i+1]
-                    else:
-                        for i, iID in enumerate(CrossedIDs):
-                            iPos = OldIDs.index(iID)
-                            DataFile["Data"][CrossedDateTimePos, iPos] = NewData[:, i]
+                    CrossedIDSep = np.arange(CrossedIDPos.shape[0])[np.r_[True, np.diff(CrossedIDPos) > 1]]
+                    for i, iSep in enumerate(CrossedIDSep):
+                        if i < CrossedIDSep.shape[0]-1:
+                            iCrossedStartIdx, iCrossedEndIdx = iSep, CrossedIDSep[i + 1]
+                            iStartIdx, iEndIdx = CrossedIDPos[iSep], CrossedIDPos[CrossedIDSep[i + 1] - 1] + 1
+                        else:
+                            iCrossedStartIdx, iCrossedEndIdx = iSep, CrossedIDPos.shape[0]
+                            iStartIdx, iEndIdx = CrossedIDPos[iSep], CrossedIDPos[-1] + 1
+                        DataFile["Data"][CrossedDateTimePos, iStartIdx:iEndIdx] = NewData[:, iCrossedStartIdx:iCrossedEndIdx]
                 DataFile.flush()
         return 0
     def writeFactorData(self, factor_data, table_name, ifactor_name, if_exists="update", data_type=None, **kwargs):

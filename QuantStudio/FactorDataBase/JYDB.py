@@ -148,7 +148,7 @@ class _JY_SQL_Table(SQL_Table):
                     SecuCode = self._getSecuMainIDField()
                 else:
                     SecuCode = ""
-                iMapInfo = self._FactorDB.fetchall(iSQLStr.format(TablePrefix=self._FactorDB.TablePrefix, Keys=Keys, KeyCondition=KeyCondition, SecuCode=SecuCode))
+                iMapInfo = self._FactorDB.fetchall(iSQLStr.format(TablePrefix=self._FactorDB._QSArgs.TablePrefix, Keys=Keys, KeyCondition=KeyCondition, SecuCode=SecuCode))
             iDataType = _identifyDataType(self._FactorInfo.loc[iField, "DataType"])
             if iDataType=="double":
                 iNewData = pd.Series(np.nan, index=raw_data.index, dtype="float")

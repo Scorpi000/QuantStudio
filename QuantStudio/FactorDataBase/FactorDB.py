@@ -648,6 +648,8 @@ def _prepareRawData(args):
                 if iPID_PrepareIDs is None: iPID_PrepareIDs = args["FT"]._QSArgs.OperationMode._PID_IDs
                 iRawData = iFT.__QS_prepareRawData__(iRawFactorNames, iPrepareIDs, iDTs, iArgs)
                 iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"]._QSArgs.OperationMode._RawDataDir, iPID_PrepareIDs, args["RawDataFileNames"][i], args["FT"]._QSArgs.OperationMode._PID_Lock)
+                del iRawData
+                gc.collect()
                 ProgBar.update(i+1)
     else:# 运行模式为并行
         for i in range(nGroup):
@@ -658,6 +660,8 @@ def _prepareRawData(args):
             if iPID_PrepareIDs is None: iPID_PrepareIDs = args["FT"]._QSArgs.OperationMode._PID_IDs
             iRawData = iFT.__QS_prepareRawData__(iRawFactorNames, iPrepareIDs, iDTs, iArgs)
             iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"]._QSArgs.OperationMode._RawDataDir, iPID_PrepareIDs, args["RawDataFileNames"][i], args["FT"]._QSArgs.OperationMode._PID_Lock)
+            del iRawData
+            gc.collect()
             args['Sub2MainQueue'].put((args["PID"], 1, None))
     return 0
 # 因子表运算子进程
@@ -905,7 +909,6 @@ class FactorTable(__QS_Object__):
             for iPID, iIDs in pid_ids.items():
                 iInterIDs = sorted(AllIDs.intersection(iIDs))
                 iData = raw_data.loc[iInterIDs]
-                # hdf5 格式
                 with pd.HDFStore(raw_data_dir+os.sep+iPID+os.sep+file_name+self._QSArgs.OperationMode._FileSuffix, mode="a") as iFile:
                     if factor_names:
                         for jFactorName in factor_names: iFile[jFactorName] = iData[CommonCols+[jFactorName]].reset_index()

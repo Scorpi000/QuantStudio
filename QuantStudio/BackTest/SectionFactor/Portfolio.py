@@ -50,7 +50,8 @@ class QuantilePortfolio(BaseModule):
         CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="调仓时点", order=6)
         MarketIDFilter = Str(arg_type="IDFilter", label="市场组合", order=7)
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
-        Perturbation = Enum(False, True, arg_type="Bool", label="随机微扰", order=9)
+        PriceMiss = Enum("沿用前值", "填充为0", arg_type="SingleOption", label="价格缺失", order=9)
+        Perturbation = Enum(False, True, arg_type="Bool", label="随机微扰", order=10)
         def __QS_initArgs__(self):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="测试因子", order=0, option_range=DefaultNumFactorList))
@@ -72,30 +73,35 @@ class QuantilePortfolio(BaseModule):
         self._Output["调仓日"] = []
         self._Output["QP_P_CurPos"] = [pd.Series() for i in range(self._QSArgs.GroupNum)]
         self._Output["QP_P_MarketPos"] = pd.Series()
+        self._Output["QP_LastPrice"] = np.nan
         self._Output["GroupNum"] = self._QSArgs.GroupNum
         self._CurCalcInd = 0
         return (self._FactorTable, )
     def __QS_move__(self, idt, **kwargs):
         if self._iDT==idt: return 0
         self._iDT = idt
+        # 更新投资组合净值
         Price = self._FactorTable.readData(dts=[idt], ids=self._FactorTable.getID(ifactor_name=self._QSArgs.PriceFactor), factor_names=[self._QSArgs.PriceFactor]).iloc[0, 0, :]
+        self._Output["QP_LastPrice"] = Price.where(pd.notnull(Price), self._Output["QP_LastPrice"])
         for i in range(self._QSArgs.GroupNum):
             if len(self._Output["QP_P_CurPos"][i])==0:
-                self._Output["净值"][i].append(self._Output["净值"][i][-1])
+                iWealth = self._Output["净值"][i][-1]
+            elif self._QSArgs.PriceMiss=="沿用前值":
+                iWealth = (self._Output["QP_P_CurPos"][i] * self._Output["QP_LastPrice"]).sum()
             else:
-                iWealth = (self._Output["QP_P_CurPos"][i]*Price).sum()
-                if pd.notnull(iWealth):
-                    self._Output["净值"][i].append(iWealth)
-                else:
-                    self._Output["净值"][i].append(0)
+                iWealth = (self._Output["QP_P_CurPos"][i] * Price).sum()
+            self._Output["净值"][i].append(iWealth)
             self._Output["换手率"][i].append(0)
         if len(self._Output["QP_P_MarketPos"])==0:
             self._Output["市场净值"].append(self._Output["市场净值"][-1])
+        elif self._QSArgs.PriceMiss=="沿用前值":
+            self._Output["市场净值"].append((self._Output["QP_P_MarketPos"] * self._Output["QP_LastPrice"]).sum())
         else:
-            self._Output["市场净值"].append((self._Output["QP_P_MarketPos"]*Price).sum())
+            self._Output["市场净值"].append((self._Output["QP_P_MarketPos"] * Price).sum())
         if self._QSArgs.CalcDTs:
             if idt not in self._QSArgs.CalcDTs[self._CurCalcInd:]: return 0
             self._CurCalcInd = self._QSArgs.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
+        # 生成本期的分位数投资组合
         IDs = self._FactorTable.getFilteredID(idt=idt, id_filter_str=self._QSArgs.IDFilter)
         FactorData = self._FactorTable.readData(dts=[idt], ids=IDs, factor_names=[self._QSArgs.TestFactor]).iloc[0, 0, :]
         FactorData = FactorData[pd.notnull(FactorData) & pd.notnull(Price[IDs])].copy()
@@ -105,7 +111,7 @@ class QuantilePortfolio(BaseModule):
             MinDiff = np.min(np.abs(np.diff(FactorData.unique())))
             FactorData += np.random.rand(nID) * MinDiff * 0.01
         FactorData = FactorData.sort_values(ascending=(self._QSArgs.FactorOrder=="升序"), inplace=False)
-        IDs = list(FactorData.index)
+        IDs = FactorData.index.to_list()
         if self._QSArgs.WeightFactor!="等权":
             WeightData = self._FactorTable.readData(dts=[idt], ids=self._FactorTable.getID(ifactor_name=self._QSArgs.WeightFactor), factor_names=[self._QSArgs.WeightFactor]).iloc[0, 0, :]
         else:
@@ -150,6 +156,7 @@ class QuantilePortfolio(BaseModule):
                     self._Output["换手率"][i][-1] = calcTurnover(self._Output["投资组合"][i][-2],self._Output["投资组合"][i][-1])
                 elif nPortfolio==1:
                     self._Output["换手率"][i][-1] = 1
+        # 生成本期的市场投资组合
         if self._QSArgs.MarketIDFilter:
             IDs = self._FactorTable.getFilteredID(idt=idt, id_filter_str=self._QSArgs.MarketIDFilter)
         WeightData = WeightData[IDs]
@@ -165,6 +172,7 @@ class QuantilePortfolio(BaseModule):
         BaseModule.__QS_end__(self)
         self._Output.pop("QP_P_CurPos")
         self._Output.pop("QP_P_MarketPos")
+        self._Output.pop("QP_LastPrice")
         GroupNum = self._Output.pop("GroupNum")
         for i in range(GroupNum):
             self._Output["净值"][i].pop(0)
@@ -421,12 +429,14 @@ class MultiPortfolio(BaseModule):
         self.Modules = []
     def output(self, recalculate=False):
         if (not recalculate)  and self._Output: return self._Output
-        self._Output = {"净值": {"L-S": pd.DataFrame(), "Top": pd.DataFrame(), "Bottom": pd.DataFrame(), "市场": pd.DataFrame()}, 
-                         "收益率": {"L-S": pd.DataFrame(), "Top": pd.DataFrame(), "Bottom": pd.DataFrame(), "市场": pd.DataFrame()}, 
-                         "超额净值": {"Top": pd.DataFrame(), "Bottom": pd.DataFrame()},
-                         "超额收益率": {"Top": pd.DataFrame(), "Bottom": pd.DataFrame()},
-                         "换手率": {"Top": pd.DataFrame(), "Bottom": pd.DataFrame()},
-                         "统计数据": {"Top": None, "Bottom": None, "L-S": None, "市场": None}}
+        self._Output = {
+            "净值": {"L-S": pd.DataFrame(), "Top": pd.DataFrame(), "Bottom": pd.DataFrame(), "市场": pd.DataFrame()},
+            "收益率": {"L-S": pd.DataFrame(), "Top": pd.DataFrame(), "Bottom": pd.DataFrame(), "市场": pd.DataFrame()},
+            "超额净值": {"Top": pd.DataFrame(), "Bottom": pd.DataFrame()},
+            "超额收益率": {"Top": pd.DataFrame(), "Bottom": pd.DataFrame()},
+            "换手率": {"Top": pd.DataFrame(), "Bottom": pd.DataFrame()},
+            "统计数据": {"Top": None, "Bottom": None, "L-S": None, "市场": None}
+        }
         for i, iModule in enumerate(self.Modules):
             iOutput = iModule.output(recalculate=recalculate)
             iName = str(i)+"-"+iModule.Name

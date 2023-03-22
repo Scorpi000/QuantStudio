@@ -362,16 +362,18 @@ class SQL_Table(FactorTable):
         for iFactor in factors:
             iConditions = ";".join([iArgName+":"+str(iFactor._QSArgs[iArgName]) for iArgName in iFactor._QSArgs.ArgNames if iArgName not in self._QS_IgnoredGroupArgs])
             if iConditions not in ConditionGroup:
-                ConditionGroup[iConditions] = {"FactorNames":[iFactor.Name], 
-                                                       "RawFactorNames":{iFactor._NameInFT}, 
-                                                       "StartDT":operation_mode._FactorStartDT[iFactor.Name], 
-                                                       "args":iFactor.Args.to_dict()}
+                ConditionGroup[iConditions] = {
+                    "FactorNames":[iFactor.Name],
+                    "RawFactorNames":{iFactor._NameInFT},
+                    "StartDT":operation_mode._FactorStartDT[iFactor.Name],
+                    "args":iFactor.Args.to_dict()
+                }
             else:
                 ConditionGroup[iConditions]["FactorNames"].append(iFactor.Name)
                 ConditionGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
                 ConditionGroup[iConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], ConditionGroup[iConditions]["StartDT"])
                 if "回溯天数" in ConditionGroup[iConditions]["args"]:
-                    ConditionGroup[iConditions]["args"]["回溯天数"] = max(ConditionGroup[iConditions]["args"]["回溯天数"], iFactor.LookBack)
+                    ConditionGroup[iConditions]["args"]["回溯天数"] = max(ConditionGroup[iConditions]["args"]["回溯天数"], iFactor._QSArgs.LookBack)
         EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
         Groups = []
         for iConditions in ConditionGroup:
@@ -676,7 +678,7 @@ class SQL_WideTable(SQL_Table):
         IDField = self._DBTableName+"."+self._FactorInfo.loc[(IDField if IDField is not None else self._IDField), "DBFieldName"]
         SQLStr = "SELECT DISTINCT "+self._getIDField(args=args)+" AS ID "
         SQLStr += self._genFromSQLStr(args=args)+" "
-        if idt is not None: SQLStr += "WHERE "+DTField+"="+idt.strftime(self._DTFormat)+" "
+        if idt is not None: SQLStr += "WHERE "+DTField+"="+idt.strftime(self._DTFormat_WithTime)+" "
         else: SQLStr += "WHERE "+DTField+" IS NOT NULL "
         SQLStr += "AND "+IDField+" IS NOT NULL "
         SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
@@ -690,8 +692,8 @@ class SQL_WideTable(SQL_Table):
         SQLStr = "SELECT DISTINCT "+DTField+" "
         SQLStr += self._genFromSQLStr(args=args)+" "
         SQLStr += "WHERE "+DTField+" IS NOT NULL "
-        if start_dt is not None: SQLStr += "AND "+DTField+">="+start_dt.strftime(self._DTFormat)+" "
-        if end_dt is not None: SQLStr += "AND "+DTField+"<="+end_dt.strftime(self._DTFormat)+" "
+        if start_dt is not None: SQLStr += "AND "+DTField+">="+start_dt.strftime(self._DTFormat_WithTime)+" "
+        if end_dt is not None: SQLStr += "AND "+DTField+"<="+end_dt.strftime(self._DTFormat_WithTime)+" "
         if iid is not None: iid = [iid]
         SQLStr += self._genIDSQLStr(iid, args=args)+" "
         SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
@@ -1053,8 +1055,11 @@ class SQL_NarrowTable(SQL_Table):
                     return pd.Series(["object"]*len(factor_names), index=factor_names)
                 else:
                     return pd.Series([args.get("算子数据类型", self._QSArgs.OperatorDataType)]*len(factor_names), index=factor_names)
+        elif key is not None:
+            if factor_names is None: factor_names = self.FactorNames
+            return pd.Series(index=factor_names)
         else:
-            return super().getFactorMetaData(factor_names=factor_names, key=key, args=args)
+            return pd.DataFrame(self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args), columns=["DataType"])
     def getID(self, ifactor_name=None, idt=None, args={}):
         DTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self._QSArgs.DTField), "DBFieldName"]
         IDField = args.get("ID字段", self._QSArgs.IDField)
@@ -1159,9 +1164,9 @@ class SQL_NarrowTable(SQL_Table):
         SQLStr += self._genFromSQLStr(args=args)+" "
         SQLStr += self._genIDSQLStr(ids, init_keyword="WHERE", args=args)+" "
         if start_dt is not None:
-            SQLStr += "AND "+DTField+">="+start_dt.strftime(self._DTFormat)+" "
+            SQLStr += "AND "+DTField+">="+start_dt.strftime(self._DTFormat_WithTime)+" "
         if end_dt is not None:
-            SQLStr += "AND "+DTField+"<="+end_dt.strftime(self._DTFormat)+" "
+            SQLStr += "AND "+DTField+"<="+end_dt.strftime(self._DTFormat_WithTime)+" "
         SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
         FactorNames = self._getFactorNames(FactorNameField, check_list=True)
         if isinstance(FactorNames, list):
@@ -1197,6 +1202,8 @@ class SQL_NarrowTable(SQL_Table):
                     RawData.sort_values(by=["ID", "QS_DT", FactorNameField])
         if RawData.shape[0]==0: return RawData
         return self._adjustRawDataByRelatedField(RawData, [FactorNameField, FactorValueField])
+    def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock, **kwargs):
+        return super().__QS_saveRawData__(raw_data, [], raw_data_dir, pid_ids, file_name, pid_lock, **kwargs)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
         Args = self.Args.to_dict()
