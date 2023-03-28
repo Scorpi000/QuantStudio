@@ -126,7 +126,7 @@ def _isin(f,idt,iid,x,args):
 def isin(f, test_elements, **kwargs):
     Descriptors, Args, Exprs = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"test_elements": test_elements}
-    Expr = sympy.Function("isin")(*Exprs, set(test_elements))
+    Expr = sympy.Function("isin")(*Exprs, sympy.Symbol(f"'{str(test_elements)}'"))
     return PointOperation(kwargs.pop("factor_name", "isin"), Descriptors, {"算子": _isin, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "表达式": Expr}, **kwargs)
 def _applymap(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])

@@ -1078,6 +1078,8 @@ def _toExpr(obj):
         return obj
     elif isinstance(obj, sympy.logic.boolalg.Boolean):
         return sympy.Function("I")(obj)
+    elif isinstance(obj, str):
+        return sympy.Symbol(f"'{obj}'")
     else:
         # raise __QS_Error__(f"{obj} 转 sympy.Expr 失败, 不支持的 sympy 类型: {type(obj)}")
         return obj

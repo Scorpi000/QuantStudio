@@ -87,7 +87,10 @@ class QSArgs(HasTraits):
     
     def to_dict(self):
         return {iArgName:self[iArgName] for iArgName in self.ArgNames}
-        
+
+    def copy(self):
+        return self.to_dict()
+
     def getTrait(self, arg_name):
         return (self._LabelTrait[arg_name], self.trait(self._LabelTrait[arg_name]))
     
