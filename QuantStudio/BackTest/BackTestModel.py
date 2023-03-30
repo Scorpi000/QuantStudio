@@ -190,7 +190,7 @@ class BackTestModel(__QS_Object__):
         self.Modules = []# 已经添加的测试模块, [测试模块对象]
         self._QS_TestDateTimes = []# 测试时间点序列, [datetime.datetime]
         self._TestDateTimeIndex = -1# 测试时间点索引
-        self._TestDateIndex = pd.Series([], dtype=np.int64)# 测试日期最后一个时间点位于 _QS_TestDateTimes 中的索引
+        self._TestDateIndex = pd.Series([], dtype=np.int64, index=[])# 测试日期最后一个时间点位于 _QS_TestDateTimes 中的索引
         self._TestModules = []# 穿透多重模块后得到的所有基本模块列表
         self._Output = {}# 生成的结果集
         return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
@@ -221,6 +221,7 @@ class BackTestModel(__QS_Object__):
         return AllModules
     def run(self, dts, subprocess_num=0, multi_thread=False):
         self._QS_TestDateTimes = sorted(dts)
+        self._TestDateIndex = pd.Series([], dtype=np.int64, index=[])
         self._TestModules = list(self._penetrateModule(self.Modules))
         if subprocess_num>0: return self._runMultiProcs(subprocess_num, multi_thread)
         elif multi_thread: return self._runMultiThread()
