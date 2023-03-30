@@ -411,10 +411,20 @@ class SQL_Table(FactorTable):
             else:
                 IDField = self._MainTableName+"."+self._MainTableID
             IDFieldIsStr = self._IDFieldIsStr
-        if (ids is not None) and args.get("预筛选ID", self._QSArgs.PreFilterID):
-            SQLStr = init_keyword+" ("+genSQLInCondition(IDField, self.__QS_adjustID__(ids), is_str=IDFieldIsStr, max_num=1000)+")"
+        if ids is not None:
+            ids = self.__QS_adjustID__(ids)
+            if args.get("预筛选ID", self._QSArgs.PreFilterID):
+                SQLStr = init_keyword + " (" + genSQLInCondition(IDField, ids, is_str=IDFieldIsStr, max_num=1000) + ")"
+            elif IDFieldIsStr:
+                SQLStr = f"{init_keyword} ({IDField} >= '{min(ids)}' AND {IDField} <= '{max(ids)}')"
+            else:
+                SQLStr = f"{init_keyword} ({IDField} >= {min(ids)} AND {IDField} <= {max(ids)})"
         else:
-            SQLStr = init_keyword+" "+IDField+" IS NOT NULL"
+            SQLStr = init_keyword + " " + IDField + " IS NOT NULL"
+        # if (ids is not None) and args.get("预筛选ID", self._QSArgs.PreFilterID):
+        #     SQLStr = init_keyword+" ("+genSQLInCondition(IDField, self.__QS_adjustID__(ids), is_str=IDFieldIsStr, max_num=1000)+")"
+        # else:
+        #     SQLStr = init_keyword+" "+IDField+" IS NOT NULL"
         return SQLStr
     def _genFromSQLStr(self, setable_join_str=[], use_main_table=True, args={}):
         SQLStr = "FROM "+self._DBTableName+" "
