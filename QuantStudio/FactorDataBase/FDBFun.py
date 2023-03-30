@@ -1244,7 +1244,7 @@ class SQL_FeatureTable(SQL_WideTable):
         SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)
         MaxDT =  pd.DataFrame(self._FactorDB.fetchall(SQLStr), dtype="O")
         if MaxDT.empty: return None
-        return self.__QS_adjustDT__(Rslt.iloc[:, 0], args=args).iloc[0]
+        return self.__QS_adjustDT__(MaxDT.iloc[:, 0], args=args).iloc[0]
     def getID(self, ifactor_name=None, idt=None, args={}):
         DTField = args.get("时点字段", self._QSArgs.DTField)
         if pd.isnull(DTField):
