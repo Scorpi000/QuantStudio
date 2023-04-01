@@ -45,7 +45,11 @@ setuptools.setup(
         "tushare",# tushare 数据源
         "xlrd",# 读 Excel 文件
         "xlwt",# 写 Excel 文件
-        "openpyxl",# 写 Excel 文件
+        "openpyxl",# 读写 Excel 文件
+        "tables",
+        "Jinja2",
+        "sympy",
+        "ipython"
     ],
     package_data={"QuantStudio": ["Matlab/*", "Lib/*", "Resource/*"]}
 )
