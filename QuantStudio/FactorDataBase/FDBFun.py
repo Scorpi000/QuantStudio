@@ -1288,6 +1288,7 @@ class SQL_FeatureTable(SQL_WideTable):
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         RawData["QS_TargetDT"] = dt.datetime.combine(dt.date.today(), dt.time(0)) + dt.timedelta(1)
         RawData["QS_DT"] = RawData["QS_TargetDT"]
+        RawData["ID"] = self.__QS_restoreID__(RawData["ID"])
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
@@ -1645,6 +1646,7 @@ class SQL_MappingTable(SQL_Table):
         RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "QS_起始日", "QS_结束日"]+factor_names)
         RawData["QS_起始日"] = self.__QS_adjustDT__(RawData["QS_起始日"], args=args)
         RawData["QS_结束日"] = self.__QS_adjustDT__(RawData["QS_结束日"], args=args)
+        RawData["ID"] = self.__QS_restoreID__(RawData["ID"])
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
     def _calcMultiMappingData(self, raw_data, factor_names, ids, dts, args={}):
@@ -1840,7 +1842,7 @@ class SQL_ConstituentTable(SQL_Table):
         SQLStr += "AND "+IDField+" IS NOT NULL "
         SQLStr += self._genConditionSQLStr(args=args)+" "
         SQLStr += "ORDER BY ID"
-        return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
+        return self.__QS_restoreID__([iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)])
     # 返回指数 ID 为 ifactor_name 包含成份股 iid 的时间点序列
     # 如果 iid 为 None, 将返回指数 ifactor_name 的有记录数据的时间点序列
     # 如果 ifactor_name 为 None, 返回数据库表中有记录的所有时间点
@@ -1922,6 +1924,7 @@ class SQL_ConstituentTable(SQL_Table):
         RawData["InDate"] = self.__QS_adjustDT__(RawData["InDate"], args=args)
         RawData["OutDate"] = self.__QS_adjustDT__(RawData["OutDate"], args=args)
         RawData["Group"] = RawData["Group"].astype(str)
+        RawData["SecurityID"] = self.__QS_restoreID__(RawData["SecurityID"])
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         DeltaDT = dt.timedelta(int(not args.get("包含结束时点", self._QSArgs.EndDTIncluded)))
@@ -2063,7 +2066,7 @@ class SQL_FinancialTable(SQL_Table):
         SQLStr += "AND "+IDField+" IS NOT NULL "
         SQLStr += self._genConditionSQLStr(args=args)+" "
         SQLStr += "ORDER BY ID"
-        return [iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)]
+        return self.__QS_restoreID__([iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)])
     # 返回在给定 ID iid 的有财务报告的公告时点
     # 如果 iid 为 None, 将返回所有有财务报告的公告时点
     # 忽略 ifactor_name
@@ -2120,6 +2123,7 @@ class SQL_FinancialTable(SQL_Table):
         RawData.columns = ["ID", "AnnDate", "ReportDate", "AdjustType"]+factor_names
         RawData["AnnDate"] = self.__QS_adjustDT__(RawData["AnnDate"], args=args)
         RawData["ReportDate"] = self.__QS_adjustDT__(RawData["ReportDate"], args=args)
+        RawData["ID"] = self.__QS_restoreID__(RawData["ID"])
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
     def _calcData(self, raw_data, periods, factor_name, ids, dts, calc_type, report_date, ignore_missing, args={}):
