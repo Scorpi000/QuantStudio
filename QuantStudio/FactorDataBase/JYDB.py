@@ -20,10 +20,10 @@ from QuantStudio.FactorDataBase.FDBFun import adjustDataDTID, SQL_Table, SQL_Fea
 def _importInfo(info_file, info_resource, logger, out_info=False):
     Suffix = info_resource.split(".")[-1]
     if Suffix in ("xlsx", "xls"):
-        TableInfo = pd.read_excel(info_resource, "TableInfo").set_index(["TableName"])
-        FactorInfo = pd.read_excel(info_resource, "FactorInfo").set_index(['TableName', 'FieldName'])
-        ExchangeInfo = pd.read_excel(info_resource, "ExchangeInfo", dtype={"ExchangeCode":"O"}).set_index(["ExchangeCode"])
-        SecurityInfo = pd.read_excel(info_resource, "SecurityInfo", dtype={"SecurityCategoryCode":"O"}).set_index(["SecurityCategoryCode"])
+        TableInfo = pd.read_excel(info_resource, "TableInfo", engine="openpyxl").set_index(["TableName"])
+        FactorInfo = pd.read_excel(info_resource, "FactorInfo", engine="openpyxl").set_index(['TableName', 'FieldName'])
+        ExchangeInfo = pd.read_excel(info_resource, "ExchangeInfo", dtype={"ExchangeCode":"O"}, engine="openpyxl").set_index(["ExchangeCode"])
+        SecurityInfo = pd.read_excel(info_resource, "SecurityInfo", dtype={"SecurityCategoryCode":"O"}, engine="openpyxl").set_index(["SecurityCategoryCode"])
     elif Suffix=="json":
         Info = json.load(open(info_resource, "r"))
         TableInfo = pd.DataFrame(Info["TableInfo"]).T
