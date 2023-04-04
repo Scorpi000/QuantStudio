@@ -418,7 +418,8 @@ class SQL_Table(FactorTable):
             elif IDFieldIsStr:
                 SQLStr = f"{init_keyword} ({IDField} >= '{min(ids)}' AND {IDField} <= '{max(ids)}')"
             else:
-                SQLStr = f"{init_keyword} ({IDField} >= {min(ids)} AND {IDField} <= {max(ids)})"
+                ids = np.array(ids).astype(int)
+                SQLStr = f"{init_keyword} ({IDField} >= {np.min(ids)} AND {IDField} <= {np.max(ids)})"
         else:
             SQLStr = init_keyword + " " + IDField + " IS NOT NULL"
         # if (ids is not None) and args.get("预筛选ID", self._QSArgs.PreFilterID):
