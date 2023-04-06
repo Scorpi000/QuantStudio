@@ -286,7 +286,10 @@ def _nanmean(f,idt,iid,x,args):
 def nanmean(*factors, weights=None, ignore_nan_weight=True, **kwargs):
     Descriptors, Args, Exprs = _genMultivariateOperatorInfo(*factors)
     Args["OperatorArg"] = {"weights": weights, "ignore_nan_weight": ignore_nan_weight}
-    Expr = sympy.Function("nanmean")(*Exprs, sympy.Eq(sympy.Symbol("weights"), sympy.Symbol(str(list(weights)))), sympy.Eq(sympy.Symbol("ignore_nan_weight"), ignore_nan_weight))
+    if weights:
+        Expr = sympy.Function("nanmean")(*Exprs, sympy.Eq(sympy.Symbol("weights"), sympy.Symbol(str(list(weights)))), sympy.Eq(sympy.Symbol("ignore_nan_weight"), ignore_nan_weight))
+    else:
+        Expr = sympy.Function("nanmean")(*Exprs, sympy.Eq(sympy.Symbol("weights"), sympy.Symbol(str(weights))), sympy.Eq(sympy.Symbol("ignore_nan_weight"), ignore_nan_weight))
     return PointOperation(kwargs.get("factor_name", "nanmean"), Descriptors, {"算子": _nanmean, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "表达式": Expr}, **kwargs)
 def _nanstd(f,idt,iid,x,args):
     Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for iData in _genOperatorData(f,idt,iid,x,args)]
