@@ -467,8 +467,8 @@ class OptimizerStrategy(PortfolioStrategy):
         if self._QSArgs.TargetIDs: 
             TargetIDs = self._FT.getFilteredID(idt=idt, ids=IDs, id_filter_str=self._QSArgs.TargetIDs)
             if not TargetIDs:
-                self._QS_Logger.warning(f"OptimizerStrategy({self.Name}): {idt} 时的目标 ID 序列为空, 将没有信号生成!")
-                return None
+                self._QS_Logger.warning(f"OptimizerStrategy({self.Name}): {idt} 时的目标 ID 序列为空, 将生成清仓信号!")
+                return pd.Series()
             self._PC._QSArgs.TargetIDs = TargetIDs
         if self._Dependency.get("预期收益", False): self._PC._QSArgs.ExpectedReturn = self._FT.readData(factor_names=[self._QSArgs.ExpectedReturn], ids=IDs, dts=[idt]).iloc[0, 0, :]
         if self._Dependency.get("协方差矩阵", False):
