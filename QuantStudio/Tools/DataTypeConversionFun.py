@@ -41,11 +41,14 @@ def DummyVarTo01Var(dummy_var,ignore_na=False,ignores=[],ignore_nonstring=False)
     return OZVar
 
 # 将元素为 list 的 DataFrame 扩展成元素为标量的 DataFrame, index 将被 reset
-def expandListElementDataFrame(df, expand_index=True):
+def expandListElementDataFrame(df, expand_index=True, dropna=False, empty_list_mask=False):
     ElementLen = df.iloc[:, 0].apply(lambda x: len(x)+1 if isinstance(x, list) else 0)
-    Mask = (ElementLen>0)
+    EmptyListMask = (ElementLen == 1)
+    Mask = (ElementLen > 1)
     data = df[Mask]
-    if data.shape[0]==0: return (df.reset_index() if expand_index else df)
+    if data.shape[0]==0:
+        if dropna: df = df.dropna()
+        return (df.reset_index() if expand_index else df)
     if expand_index:
         nCol = data.shape[1]
         data = data.reset_index()
@@ -54,10 +57,24 @@ def expandListElementDataFrame(df, expand_index=True):
             data[Cols[i]] = data.pop(Cols[i]).apply(lambda x: [x]) * (ElementLen[Mask].values - 1)
         data = data.loc[:, Cols]
     data = pd.DataFrame(data.sum(axis=0).tolist(), index=data.columns).T
-    if expand_index:
-        return data.append(df[~Mask].reset_index(), ignore_index=True)
+    if dropna:
+        TailRslt = df[(~Mask) & EmptyListMask]
+        TailRslt[:] = None
+        if expand_index:
+            TailRslt = TailRslt.reset_index()
     else:
-        return data.append(df[~Mask], ignore_index=True)
+        TailRslt = df[~Mask]
+        TailRslt[:] = None
+        if expand_index:
+            TailRslt = TailRslt.reset_index()
+    Rslt = data.append(TailRslt, ignore_index=True)
+    if not empty_list_mask: return Rslt
+    RsltMask = pd.Series(False, index=data.index)
+    if dropna:
+        RsltMask = RsltMask.append(EmptyListMask[(~Mask) & EmptyListMask], ignore_index=True)
+    else:
+        RsltMask = RsltMask.append(EmptyListMask[~Mask], ignore_index=True)
+    return (Rslt, RsltMask)
 
 # 全角转半角
 def strQ2B(ustring):
