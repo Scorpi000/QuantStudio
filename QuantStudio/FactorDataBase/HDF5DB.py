@@ -458,7 +458,10 @@ class HDF5DB(WritableFactorDB):
                         else:
                             iCrossedStartIdx, iCrossedEndIdx = iSep, CrossedIDPos.shape[0]
                             iStartIdx, iEndIdx = CrossedIDPos[iSep], CrossedIDPos[-1] + 1
-                        DataFile["Data"][CrossedDateTimePos, iStartIdx:iEndIdx] = NewData[:, iCrossedStartIdx:iCrossedEndIdx]
+                        if data_type=="object":
+                            DataFile["Data"][CrossedDateTimePos, iStartIdx:iEndIdx] = np.ascontiguousarray(NewData[:, iCrossedStartIdx:iCrossedEndIdx])
+                        else:
+                            DataFile["Data"][CrossedDateTimePos, iStartIdx:iEndIdx] = NewData[:, iCrossedStartIdx:iCrossedEndIdx]
                 DataFile.flush()
         return 0
     def writeFactorData(self, factor_data, table_name, ifactor_name, if_exists="update", data_type=None, **kwargs):
