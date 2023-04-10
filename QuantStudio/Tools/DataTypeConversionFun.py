@@ -48,6 +48,7 @@ def expandListElementDataFrame(df, expand_index=True, dropna=False, empty_list_m
     data = df[Mask]
     if data.shape[0]==0:
         if dropna: df = df.dropna()
+        df[:] = None
         return (df.reset_index() if expand_index else df)
     if expand_index:
         nCol = data.shape[1]
