@@ -192,14 +192,19 @@ class _FactorTable(FactorTable):
             Args = args.copy()
             Args["目标时点"] = None
             Data = self.readFactorData(ifactor_name=ifactor_name, ids=ids, dts=[TargetDT], args=Args)
+            if dts is None: dts = self.getDateTime(ifactor_name=ifactor_name)
+            if ids is None: ids = self.getID(ifactor_name=ifactor_name)
             return pd.DataFrame(Data.values.repeat(repeats=len(dts), axis=0), index=dts, columns=ids)
         LookBack = args.get("回溯天数", self._QSArgs.LookBack)
         if LookBack==0: return self._readFactorData(ifactor_name, ids, dts, args=args)
         if np.isinf(LookBack):
             RawData = self._readFactorData(ifactor_name, ids, None, args=args)
         else:
-            StartDT = dts[0] - dt.timedelta(LookBack)
-            iDTs = self.getDateTime(ifactor_name=ifactor_name, start_dt=StartDT, end_dt=dts[-1], args=args)
+            if dts is not None:
+                StartDT = dts[0] - dt.timedelta(LookBack)
+                iDTs = self.getDateTime(ifactor_name=ifactor_name, start_dt=StartDT, end_dt=dts[-1], args=args)
+            else:
+                iDTs = None
             RawData = self._readFactorData(ifactor_name, ids, iDTs, args=args)
         if not args.get("只回溯时点", self._QSArgs.OnlyLookBackDT):
             RawData = Panel({ifactor_name: RawData})
