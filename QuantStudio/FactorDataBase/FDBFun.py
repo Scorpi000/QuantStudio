@@ -321,7 +321,7 @@ class SQL_Table(FactorTable):
         self._FactorInfo = factor_info
         self._SecurityInfo = security_info
         self._ExchangeInfo = exchange_info
-        self._QS_IgnoredGroupArgs = ("遍历模式", )
+        self._QS_IgnoredGroupArgs = ("遍历模式", "批量模式")
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         if not self._QSArgs.DateFmt:
             self._DTFormat = "'%Y-%m-%d'"
@@ -643,7 +643,7 @@ class SQL_WideTable(SQL_Table):
     
     def __init__(self, name, fdb, sys_args={}, table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
-        self._QS_IgnoredGroupArgs = ("遍历模式", "回溯天数", "只起始日回溯", "只回溯非目标日", "只回溯时点", "算子", "算子数据类型", "多重映射","原始值回溯天数")
+        self._QS_IgnoredGroupArgs = ("遍历模式", "批量模式", "回溯天数", "只起始日回溯", "只回溯非目标日", "只回溯时点", "算子", "算子数据类型", "多重映射","原始值回溯天数")
     def __QS_genGroupInfo__(self, factors, operation_mode):
         ConditionGroup = {}
         for iFactor in factors:
@@ -1031,7 +1031,7 @@ class SQL_NarrowTable(SQL_Table):
         
     def __init__(self, name, fdb, sys_args={}, table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
-        self._QS_IgnoredGroupArgs = ("遍历模式", "回溯天数", "只起始日回溯")
+        self._QS_IgnoredGroupArgs = ("遍历模式", "批量模式", "回溯天数", "只起始日回溯")
     def _getFactorNames(self, factor_field, check_list=False):
         if (factor_field==self._QSArgs.FactorNameField) and (self._QSArgs._FactorNames is not None): return self._QSArgs._FactorNames
         FactorField = self._DBTableName+"."+self._FactorInfo.loc[factor_field, "DBFieldName"]
@@ -1236,7 +1236,7 @@ class SQL_FeatureTable(SQL_WideTable):
     
     def __init__(self, name, fdb, sys_args={}, table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
-        self._QS_IgnoredGroupArgs = ("遍历模式", "多重映射", "算子", "算子数据类型")
+        self._QS_IgnoredGroupArgs = ("遍历模式", "批量模式", "多重映射", "算子", "算子数据类型")
     def _getMaxDT(self, args={}):
         DTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self._QSArgs.DTField), "DBFieldName"]
         SQLStr = "SELECT MAX("+DTField+") "
@@ -1330,7 +1330,7 @@ class SQL_TimeSeriesTable(SQL_Table):
     def __init__(self, name, fdb, sys_args={}, table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         sys_args["ID字段"] = None
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
-        self._QS_IgnoredGroupArgs = ("遍历模式", "回溯天数", "只起始日回溯", "只回溯非目标日", "只回溯时点", "算子", "算子数据类型", "多重映射")
+        self._QS_IgnoredGroupArgs = ("遍历模式", "批量模式", "回溯天数", "只起始日回溯", "只回溯非目标日", "只回溯时点", "算子", "算子数据类型", "多重映射")
     def getFactorMetaData(self, factor_names=None, key=None, args={}):
         if key=="DataType":
             if not args.get("多重映射", self._QSArgs.MultiMapping): return super().getFactorMetaData(factor_names=factor_names, key=key, args=args)
@@ -1565,7 +1565,7 @@ class SQL_MappingTable(SQL_Table):
     
     def __init__(self, name, fdb, sys_args={}, table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
-        self._QS_IgnoredGroupArgs = ("遍历模式", "只填起始日", "多重映射")
+        self._QS_IgnoredGroupArgs = ("遍历模式", "批量模式", "只填起始日", "多重映射")
     # 返回给定时点 idt 有数据的所有 ID
     # 如果 idt 为 None, 将返回所有有记录的 ID
     # 忽略 ifactor_name
