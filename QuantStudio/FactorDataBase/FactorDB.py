@@ -22,7 +22,7 @@ from IPython.display import Math
 from QuantStudio import __QS_Object__, __QS_Error__, QSArgs
 from QuantStudio.Tools.api import Panel
 from QuantStudio.Tools.IDFun import testIDFilterStr
-from QuantStudio.Tools.AuxiliaryFun import genAvailableName, startMultiProcess, partitionListMovingSampling
+from QuantStudio.Tools.AuxiliaryFun import genAvailableName, startMultiProcess, partitionListMovingSampling, partitionList
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.DataTypeConversionFun import dict2html
 
@@ -416,6 +416,7 @@ class _OperationMode(QSArgs):
     SubProcessNum = Int(0, arg_type="Integer", label="子进程数", order=3)
     DTRuler = List(dt.datetime, arg_type="DateTimeList", label="时点标尺", order=4)
     SectionIDs = Either(None, ListStr, arg_type="IDList", label="截面ID", order=5)
+    IDSplit = Enum("连续切分", "间隔切分", arg_type="SingleOption", label="ID切分", order=6)
     def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
         self._FT = owner
         self._isStarted = False
@@ -498,7 +499,12 @@ class _OperationMode(QSArgs):
             self._PIDs = []
             self._PID_IDs = {}
             nPrcs = min((self.SubProcessNum, len(self.IDs)))
-            SubIDs = partitionListMovingSampling(list(self.IDs), nPrcs)
+            if self.IDSplit=="连续切分":
+                SubIDs = partitionList(list(self.IDs), nPrcs)
+            elif self.IDSplit=="间隔切分":
+                SubIDs = partitionListMovingSampling(list(self.IDs), nPrcs)
+            else:
+                raise __QS_Error__(f"不支持的 ID 切分方式: {self.IDSplit}")
             self._PID_Lock = {}
             for i in range(nPrcs):
                 iPID = "0-"+str(i)
