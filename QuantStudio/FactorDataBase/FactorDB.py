@@ -407,9 +407,9 @@ def _prepareMMAPIDCacheData(ft, mmap_cache):
                     NewCacheData = None
     return 0
 
-# 因子表的运算模式参数对象
+# 因子表的批量模式参数对象
 class _OperationMode(QSArgs):
-    """运算模式"""
+    """批量模式"""
     DateTimes = List(dt.datetime, arg_type="DateTimeList", label="运算时点", order=0)
     IDs = ListStr(arg_type="IDList", label="运算ID", order=1)
     FactorNames = ListStr(arg_type="MultiOption", label="运算因子", order=2)
@@ -821,7 +821,7 @@ class FactorTable(__QS_Object__):
     def getFactor(self, ifactor_name, args={}, new_name=None):
         iFactor = Factor(name=ifactor_name, ft=self, logger=self._QS_Logger)
         for iArgName in self._QSArgs.ArgNames:
-            if iArgName not in ("遍历模式", "运算模式"):
+            if iArgName not in ("遍历模式", "批量模式"):
                 iTraitName, iTrait = self._QSArgs.getTrait(iArgName)
                 iFactor._QSArgs.add_trait(iTraitName, iTrait)
                 iFactor._QSArgs[iArgName] = args.get(iArgName, self._QSArgs[iArgName])
@@ -894,7 +894,7 @@ class FactorTable(__QS_Object__):
         return self._QSArgs.ErgodicMode.end()
     def __QS_onBackTestEndEvent__(self, event):
         return self.end()
-    # ------------------------------------运算模式------------------------------------
+    # ------------------------------------批量模式------------------------------------
     # 获取因子表准备原始数据的分组信息, [(因子表对象, [因子名], [原始因子名], [时点], {参数})]
     def __QS_genGroupInfo__(self, factors, operation_mode):
         StartDT = dt.datetime.now()
@@ -1168,8 +1168,8 @@ class Factor(__QS_Object__):
         # 遍历模式下的对象
         self._isStarted = False# 是否启动了遍历模式
         self._CacheData = None# 遍历模式下缓存的数据
-        # 运算模式下的对象
-        self._OperationMode = None# 运算模式对象
+        # 批量模式下的对象
+        self._OperationMode = None# 批量模式对象
         self._RawDataFile = ""# 原始数据存放地址
         self._isCacheDataOK = False# 是否准备好了缓存数据
         return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
@@ -1222,7 +1222,7 @@ class Factor(__QS_Object__):
         elif isinstance(IDs, str): IDs = [IDs]
         Data = self.readData(IDs, DTs)
         return Data.loc[key]
-    # ------------------------------------运算模式------------------------------------
+    # ------------------------------------批量模式------------------------------------
     # 获取数据的开始时点, start_dt:新起始时点, dt_dict: 当前所有因子的时点信息: {因子名 : 开始时点}, id_dict: 当前所有因子的准备原始数据的截面 ID 信息: {因子名 : ID 序列}
     def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
         OldStartDT = dt_dict.get(self.Name, start_dt)
@@ -1297,7 +1297,7 @@ class Factor(__QS_Object__):
         gc.collect()
         return StdData
     def _exit(self):
-        self._OperationMode = None# 运算模式对象
+        self._OperationMode = None# 批量模式对象
         self._RawDataFile = ""# 原始数据存放地址
         self._isCacheDataOK = False# 是否准备好了缓存数据
     # ------------------------------------遍历模式------------------------------------
