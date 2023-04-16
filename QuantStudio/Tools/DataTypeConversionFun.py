@@ -53,10 +53,11 @@ def expandListElementDataFrame(df, expand_index=True, dropna=False, empty_list_m
     if expand_index:
         nCol = data.shape[1]
         data = data.reset_index()
-        Cols = data.columns.tolist()
-        for i in range(data.shape[1] - nCol):
-            data[Cols[i]] = data.pop(Cols[i]).apply(lambda x: [x]) * (ElementLen[Mask].values - 1)
-        data = data.loc[:, Cols]
+        # Cols = data.columns.tolist()
+        # for i in range(data.shape[1] - nCol):
+        #     data[Cols[i]] = data.pop(Cols[i]).apply(lambda x: [x]) * (ElementLen[Mask].values - 1)
+        # data = data.loc[:, Cols]
+        data.iloc[:, :data.shape[1] - nCol] = (data.iloc[:, :data.shape[1] - nCol].applymap(lambda x: [x]).T * (ElementLen[Mask].values - 1)).T
     data = pd.DataFrame(data.sum(axis=0).tolist(), index=data.columns).T
     if dropna:
         TailRslt = df[(~Mask) & EmptyListMask]
@@ -68,13 +69,16 @@ def expandListElementDataFrame(df, expand_index=True, dropna=False, empty_list_m
         TailRslt[:] = None
         if expand_index:
             TailRslt = TailRslt.reset_index()
-    Rslt = data.append(TailRslt, ignore_index=True)
+    # Rslt = data.append(TailRslt, ignore_index=True)
+    Rslt = pd.concat((data, TailRslt), ignore_index=True)
     if not empty_list_mask: return Rslt
     RsltMask = pd.Series(False, index=data.index)
     if dropna:
-        RsltMask = RsltMask.append(EmptyListMask[(~Mask) & EmptyListMask], ignore_index=True)
+        # RsltMask = RsltMask.append(EmptyListMask[(~Mask) & EmptyListMask], ignore_index=True)
+        RsltMask = pd.concat((RsltMask, EmptyListMask[(~Mask) & EmptyListMask]), ignore_index=True)
     else:
-        RsltMask = RsltMask.append(EmptyListMask[~Mask], ignore_index=True)
+        # RsltMask = RsltMask.append(EmptyListMask[~Mask], ignore_index=True)
+        RsltMask = pd.concat((RsltMask, EmptyListMask[~Mask]), ignore_index=True)
     return (Rslt, RsltMask)
 
 # 全角转半角
@@ -141,3 +145,11 @@ def dict2html(dict_like, tag="ul", list_class=(list, np.ndarray), list_limit=5, 
     else:
         HTML = "<br/>"
     return HTML
+
+if __name__=="__main__":
+    df = np.full(shape=(3, 2), fill_value=None, dtype="O")
+    df[0, 0], df[0, 1] = [1, 2, 3], [2.1, 2.2, 2.3]
+    df[2, 0], df[2, 1] = [4], [2.4]
+    df = pd.DataFrame(df, index=pd.MultiIndex.from_tuples([("a", "a1"), ("a", "a2"), ("b", "b1")]), columns=["c1", "c2"])
+    df1 = expandListElementDataFrame(df, expand_index=True)
+    print("===")
