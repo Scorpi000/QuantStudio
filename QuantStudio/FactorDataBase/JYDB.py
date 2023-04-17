@@ -805,7 +805,7 @@ class JYDB(QSSQLObject, FactorDB):
                 Args.update(DefaultArgs)
                 Args.update(args)
                 return eval("_"+TableClass+"(name='"+table_name+"', fdb=self, sys_args=Args, logger=self._QS_Logger)")
-        Msg = ("因子库 '%s' 目前尚不支持因子表: '%s'" % (self.Name, table_name))
+        Msg = ("因子库 '%s' 目前尚不支持因子表: '%s'" % (self._QSArgs.Name, table_name))
         self._QS_Logger.error(Msg)
         raise __QS_Error__(Msg)
     # -----------------------------------------数据提取---------------------------------
@@ -894,7 +894,7 @@ class JYDB(QSSQLObject, FactorDB):
             IDs += self._getAllAStock(exchange=exchange.intersection(iExchange), date=date, is_current=is_current, start_date=start_date)
             exchange = exchange.difference(iExchange)
         if exchange:
-            Msg = f"外部因子库 '{self.Name}' 调用 getStockID 时错误: 尚不支持交易所 {str(exchange)}"
+            Msg = f"外部因子库 '{self._QSArgs.Name}' 调用 getStockID 时错误: 尚不支持交易所 {str(exchange)}"
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
         return IDs
@@ -926,7 +926,7 @@ class JYDB(QSSQLObject, FactorDB):
             for iExchg in exchange:
                 iExchgCode = ExchangeInfo[ExchangeInfo["Exchange"]==iExchg]
                 if iExchgCode.shape[0]==0:
-                    Msg = ("外部因子库 '%s' 调用 getBondID 时错误: 尚不支持交易所 '%s'" % (self.Name, iExchg))
+                    Msg = ("外部因子库 '%s' 调用 getBondID 时错误: 尚不支持交易所 '%s'" % (self._QSArgs.Name, iExchg))
                     self._QS_Logger.error(Msg)
                     raise __QS_Error__(Msg)
                 ExchgCodes.add(str(iExchgCode[0]))
