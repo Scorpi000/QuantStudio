@@ -355,7 +355,7 @@ def _tolist(f,idt,iid,x,args):
     else:
         return Panel(Data).sort_index(axis=0).to_frame(filter_observations=False).apply(lambda s: s.tolist(), axis=1).unstack().values
 def tolist(*factors, mask=None, **kwargs):
-        if mask is None:
+    if mask is None:
         Descriptors, Args, Exprs = _genMultivariateOperatorInfo(*factors)
     else:
         Descriptors, Args, Exprs = _genMultivariateOperatorInfo(mask, *factors)
