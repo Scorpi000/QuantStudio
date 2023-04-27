@@ -348,7 +348,12 @@ def regress_change_rate(*factors, **kwargs):
     return PointOperation(kwargs.pop("factor_name", "regress_change_rate"), Descriptors, {"算子": _regress_change_rate, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "表达式": Expr}, **kwargs)
 def _tolist(f,idt,iid,x,args):
     Data = {i: (iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for i, iData in enumerate(_genOperatorData(f,idt,iid,x,args))}
-    return Panel(Data).sort_index(axis=0).to_frame(filter_observations=False).apply(lambda s: s.tolist(), axis=1).unstack().values
+    if args["OperatorArg"]["mask"]:
+        Rslt = Panel(Data, major_axis=idt, minor_axis=iid).sort_index(axis=0).to_frame(filter_observations=False)
+        Rslt = Rslt[Rslt.pop(0)==1]
+        return Rslt.apply(lambda s: s.tolist(), axis=1).unstack().reindex(index=idt, columns=iid).values
+    else:
+        return Panel(Data).sort_index(axis=0).to_frame(filter_observations=False).apply(lambda s: s.tolist(), axis=1).unstack().values
 def tolist(*factors, **kwargs):
     Descriptors, Args, Exprs = _genMultivariateOperatorInfo(*factors)
     Expr = sympy.Function("tolist")(*Exprs)
