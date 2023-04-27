@@ -354,8 +354,12 @@ def _tolist(f,idt,iid,x,args):
         return Rslt.apply(lambda s: s.tolist(), axis=1).unstack().reindex(index=idt, columns=iid).values
     else:
         return Panel(Data).sort_index(axis=0).to_frame(filter_observations=False).apply(lambda s: s.tolist(), axis=1).unstack().values
-def tolist(*factors, **kwargs):
-    Descriptors, Args, Exprs = _genMultivariateOperatorInfo(*factors)
+def tolist(*factors, mask=None, **kwargs):
+        if mask is None:
+        Descriptors, Args, Exprs = _genMultivariateOperatorInfo(*factors)
+    else:
+        Descriptors, Args, Exprs = _genMultivariateOperatorInfo(mask, *factors)
+    Args["OperatorArg"] = {"mask": (mask is not None)}
     Expr = sympy.Function("tolist")(*Exprs)
     return PointOperation(kwargs.pop("factor_name", "tolist"), Descriptors, {"算子": _tolist, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "数据类型": "object", "表达式": Expr}, **kwargs)
 def _to_json(f, idt, iid, x, args):
