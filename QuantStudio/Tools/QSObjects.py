@@ -46,9 +46,6 @@ class QSSQLObject(__QS_Object__):
         if self._Connection: self._connect()
         else: self._Connection = None
     @property
-    def Name(self):
-        return "QSSQLObject"
-    @property
     def Connection(self):
         if self._Connection is not None:
             if os.getpid()!=self._PID: self._connect()# 如果进程号发生变化, 重连
