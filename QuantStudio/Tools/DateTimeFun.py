@@ -56,10 +56,12 @@ def getDateStartEndIndex(dts, dates):
             Index[i, 1] = iIndex-1
     return Index
 # 获取某个时点序列的月度时点序列
+# exact=False: 是否精确的取目标 monthday
 # postpone=True: 取每月大于等于 target_day 的第一个时点
 # postpone=False: 取每月小于等于 target_day 的最后一个时点
 # over_month=True: 表示允许跨月顺延
-def getMonthDateTime(dts, target_day=15, postpone=True, over_month=False):
+def getMonthDateTime(dts, target_day=15, exact=False, postpone=True, over_month=False):
+    if exact: return [iDT for iDT in sorted(dts) if iDT.day==target_day]
     if over_month:
         dts = np.array(sorted(dts), dtype="O")
         DTStrs = [iDT.strftime("%Y%m%d") for iDT in dts]
@@ -123,11 +125,13 @@ def getMonthLastDateTime(dts):
             TargetDTs.append(iDT)
     return TargetDTs
 # 获取某个时点序列的周度时点序列
-# postpone=True: 向前顺延, 取每周大于等于 target_weekday 的第一个时点
-# postpone=False: 向后顺延, 取每周小于等于 target_weekday 的最后一个时点
+# exact=False: 是否精确的取目标 weekday
+# postpone=True: 向后顺延, 取每周大于等于 target_weekday 的第一个时点
+# postpone=False: 向前顺延, 取每周小于等于 target_weekday 的最后一个时点
 # over_week=True: 表示允许跨周顺延
-def getWeekDateTime(dts, target_weekday=3, postpone=True, over_week=False):
+def getWeekDateTime(dts, target_weekday=3, exact=False, postpone=True, over_week=False):
     target_weekday -= 1
+    if exact: return [iDT for iDT in sorted(dts) if iDT.weekday==target_weekday]
     if over_week:
         dts = np.array(sorted(dts), dtype="O")
         if not postpone:
