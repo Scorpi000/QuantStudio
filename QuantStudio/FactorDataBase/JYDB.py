@@ -175,6 +175,7 @@ class _JY_SQL_Table(SQL_Table):
                 iMapInfo["Old"] = iMapInfo["Old"].astype(str)
             else:
                 iMapInfo["Old"] = iMapInfo["Old"].astype(float)
+                iOldData = iOldData.astype(float)
             iMapInfo = iMapInfo.set_index(["Old"]).iloc[:, 0]
             iNewData[iDataMask] = iOldData.map(iMapInfo)[iDataMask]
             raw_data[iField] = iNewData
