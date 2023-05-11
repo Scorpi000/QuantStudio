@@ -131,7 +131,7 @@ def getMonthLastDateTime(dts):
 # over_week=True: 表示允许跨周顺延
 def getWeekDateTime(dts, target_weekday=3, exact=False, postpone=True, over_week=False):
     target_weekday -= 1
-    if exact: return [iDT for iDT in sorted(dts) if iDT.weekday==target_weekday]
+    if exact: return [iDT for iDT in sorted(dts) if iDT.weekday()==target_weekday]
     if over_week:
         dts = np.array(sorted(dts), dtype="O")
         if not postpone:
