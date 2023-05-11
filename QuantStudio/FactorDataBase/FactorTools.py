@@ -415,6 +415,16 @@ def fromtimestamp(f, unit=1e9, **kwargs):
     Args["OperatorArg"] = {"unit": unit}
     Expr = sympy.Function("fromtimestamp")(*Exprs, sympy.Equality(sympy.Symbol("unit"), unit))
     return PointOperation(kwargs.pop("factor_name", "fromtimestamp"), Descriptors, {"算子": _fromtimestamp, "参数": Args, "数据类型": "object", "运算时点": "多时点", "运算ID": "多ID", "表达式": Expr}, **kwargs)
+def _strfunc(f, idt, iid, x, args):
+    Data = _genOperatorData(f, idt, iid, x, args)[0]
+    Axis = (0 if Data.shape[0]>Data.shape[1] else 1)
+    return pd.DataFrame(Data).apply(lambda s: getattr(s.str, args["OperatorArg"]["func"])(**args["OperatorArg"]["func_args"]), axis=Axis).values
+def strfunc(f, func="contains", func_args={}, data_type="double", **kwargs):
+    Descriptors, Args, Exprs = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"func": func, "func_args": func_args}
+    Expr = sympy.Function("strfunc")(*Exprs, sympy.Eq(sympy.Symbol("func"), sympy.Symbol(f"'{func}'")))
+    return PointOperation(kwargs.pop("factor_name", "strfunc"), Descriptors, {"算子": _strfunc, "参数": Args, "数据类型": data_type, "运算时点": "多时点", "运算ID": "多ID", "表达式": Expr}, **kwargs)
+
 # ----------------------时间序列运算--------------------------------
 def _rolling_mean(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
