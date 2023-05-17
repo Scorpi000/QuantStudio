@@ -404,9 +404,9 @@ class _AnalystConsensusTable(_JY_SQL_Table):
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         SQLStr += "AND "+PeriodField+"="+str(args.get("周期", self._QSArgs.Period))+" "
         if StartDT is not None:
-            SQLStr += "AND "+DateField+">='"+StartDT.strftime("%Y-%m-%d")+"' "
+            SQLStr += "AND "+DateField+">='"+StartDT.strftime("%Y-%m-%d %H:%M:%S")+"' "
         if EndDT is not None:
-            SQLStr += "AND "+DateField+"<='"+EndDT.strftime("%Y-%m-%d")+"' "
+            SQLStr += "AND "+DateField+"<='"+EndDT.strftime("%Y-%m-%d %H:%M:%S")+"' "
         SQLStr += "ORDER BY ID, "+DateField+", "+ReportDateField
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: RawData = pd.DataFrame(columns=['日期','ID','报告期']+factor_names)
@@ -600,9 +600,9 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
             SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         if StartDT is not None:
-            SQLStr += "AND "+DateField+">='"+StartDT.strftime("%Y-%m-%d")+"' "
+            SQLStr += "AND "+DateField+">='"+StartDT.strftime("%Y-%m-%d %H:%M:%S")+"' "
         if EndDT is not None:
-            SQLStr += "AND "+DateField+"<='"+EndDT.strftime("%Y-%m-%d")+"' "
+            SQLStr += "AND "+DateField+"<='"+EndDT.strftime("%Y-%m-%d %H:%M:%S")+"' "
         SQLStr += "ORDER BY ID, "+DateField+", "+ReportDateField
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: RawData = pd.DataFrame(columns=["日期", "ID", self._ReportDateField]+AllFields)
@@ -729,9 +729,9 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
             SQLStr += "WHERE "+self._MainTableName+"."+self._MainTableID+" IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND "+self._MainTableCondition+" "
         if StartDT is not None:
-            SQLStr += "AND "+DateField+">='"+StartDT.strftime("%Y-%m-%d")+"' "
+            SQLStr += "AND "+DateField+">='"+StartDT.strftime("%Y-%m-%d %H:%M:%S")+"' "
         if EndDT is not None:
-            SQLStr += "AND "+DateField+"<='"+EndDT.strftime("%Y-%m-%d")+"' "
+            SQLStr += "AND "+DateField+"<='"+EndDT.strftime("%Y-%m-%d %H:%M:%S")+"' "
         SQLStr += "ORDER BY ID, "+DateField
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["日期", "ID"]+AllFields)
@@ -823,7 +823,7 @@ class JYDB(QSSQLObject, FactorDB):
         SQLStr += "AND {Prefix}QT_TradingDayNew.SecuMarket={ExchangeCode} "
         SQLStr += "ORDER BY {Prefix}QT_TradingDayNew.TradingDate"
         SQLStr = SQLStr.format(Prefix=self._QSArgs.TablePrefix, ExchangeCode=ExchangeCode,
-                               StartDate=start_date.strftime("%Y-%m-%d"), EndDate=end_date.strftime("%Y-%m-%d"))
+                               StartDate=start_date.strftime("%Y-%m-%d %H:%M:%S"), EndDate=end_date.strftime("%Y-%m-%d %H:%M:%S"))
         Rslt = self.fetchall(SQLStr)
         if kwargs.get("output_type", "datetime")=="date": return [iRslt[0].date() for iRslt in Rslt]
         else: return [iRslt[0] for iRslt in Rslt]
@@ -832,7 +832,7 @@ class JYDB(QSSQLObject, FactorDB):
     # is_current: False 表示上市日在指定日之前的股票, True 表示上市日在指定日之前且尚未退市的股票
     # start_date: 起始日, 如果非 None, is_current=False 表示提取在 start_date 至 date 之间上市过的股票 ID, is_current=True 表示提取在 start_date 至 date 之间均保持上市的股票
     def _getAllAStock(self, date, is_current=True, start_date=None, exchange=("SSE", "SZSE", "BSE")):
-        if start_date is not None: start_date = start_date.strftime("%Y-%m-%d")
+        if start_date is not None: start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
         SQLStr = "SELECT CASE {Prefix}SecuMain.SecuMarket WHEN 83 THEN CONCAT({Prefix}SecuMain.SecuCode, '.SH') "
         SQLStr += "WHEN 90 THEN CONCAT({Prefix}SecuMain.SecuCode, '.SZ') "
         SQLStr += "WHEN 18 THEN CONCAT({Prefix}SecuMain.SecuCode, '.BJ') "
@@ -852,13 +852,13 @@ class JYDB(QSSQLObject, FactorDB):
                     SQLStr += "AND {Prefix}SecuMain.ListedDate <= '{StartDate}' "
             SQLStr += "AND {Prefix}SecuMain.InnerCode NOT IN ("+SubSQLStr+") "
         SQLStr += "ORDER BY {Prefix}SecuMain.SecuCode"
-        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d"), StartDate=start_date))]
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date))]
     # 获取指定日 date 的全体港股 ID
     # date: 指定日, datetime.date
     # is_current: False 表示上市日在指定日之前的港股, True 表示上市日在指定日之前且尚未退市的港股
     # start_date: 起始日, 如果非 None, is_current=False 表示提取在 start_date 至 date 之间上市过的股票 ID, is_current=True 表示提取在 start_date 至 date 之间均保持上市的股票
     def _getAllHKStock(self, date, is_current=True, start_date=None):
-        if start_date is not None: start_date = start_date.strftime("%Y-%m-%d")
+        if start_date is not None: start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
         SQLStr = "SELECT CONCAT({Prefix}HK_SecuMain.SecuCode, '.HK') "
         SQLStr += "FROM {Prefix}HK_SecuMain "
         SQLStr += "WHERE {Prefix}HK_SecuMain.SecuCategory IN (3,51,53,55,78) AND {Prefix}HK_SecuMain.SecuMarket = 72 "
@@ -872,7 +872,7 @@ class JYDB(QSSQLObject, FactorDB):
                 SQLStr += "AND {Prefix}HK_SecuMain.ListedDate <= '{StartDate}' "
                 SQLStr += "AND (({Prefix}HK_SecuMain.DelistingDate IS NULL) OR ({Prefix}HK_SecuMain.DelistingDate > '{Date}')) "
         SQLStr += "ORDER BY {Prefix}HK_SecuMain.SecuCode"
-        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d"), StartDate=start_date))]
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date))]
     # 获取指定日 date 的股票 ID
     # exchange: 交易所(str)或者交易所列表(list(str))
     # date: 指定日, 默认值 None 表示今天
@@ -906,7 +906,7 @@ class JYDB(QSSQLObject, FactorDB):
     # start_date: 起始日, 如果非 None, is_current=False 表示提取在 start_date 至 date 之间存续过的债券 ID, is_current=True 表示提取在 start_date 至 date 之间均保持存续的债券
     def getBondID(self, exchange=None, date=None, is_current=True, start_date=None, **kwargs):
         if date is None: date = dt.date.today()
-        if start_date is not None: start_date = start_date.strftime("%Y-%m-%d")
+        if start_date is not None: start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
         Exchange = self._TableInfo.loc["债券证券主表", "Exchange"]
         ExchangeField, ExchangeCodes = Exchange.split(":")
         ExchangeCodes = ExchangeCodes.split(",")
@@ -949,7 +949,7 @@ class JYDB(QSSQLObject, FactorDB):
                 SQLStr += "AND ((tt.EndDate IS NULL) OR (tt.EndDate >= '{Date}')) "
         SQLStr += "ORDER BY ID"
         try:
-            return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d"), StartDate=start_date))]
+            return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date))]
         except Exception as e:
             self._QS_Logger.warning("使用债券代码对照表(Bond_Code)提取债券 ID 失败: %s, 将使用证券主表(SecuMain)提取债券 ID, 将忽略参数 date, is_current, start_date!" % (str(e), ))
         SQLStr = "SELECT "+IDField+" AS ID FROM {Prefix}SecuMain tt "
@@ -970,7 +970,7 @@ class JYDB(QSSQLObject, FactorDB):
     # continue_contract_type: 连续合约类型, list(str), 可选 "主力合约", "期货指数", "次主力合约", "连续合约", "连一合约", "连二合约", "连三合约", "连四合约", "当月连续合约", "次月连续合约", "当季连续合约", "下季连续合约", "隔季连续合约"
     def getFutureID(self, exchange="CFFEX", future_code="IF", date=None, is_current=True, start_date=None, **kwargs):
         if date is None: date = dt.date.today()
-        if start_date is not None: start_date = start_date.strftime("%Y-%m-%d")
+        if start_date is not None: start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
         ExchangeInfo = self._ExchangeInfo
         Exchange = self._TableInfo.loc["期货合约", "Exchange"]
         ExchangeField, ExchangeCodes = Exchange.split(":")
@@ -1053,7 +1053,7 @@ class JYDB(QSSQLObject, FactorDB):
     # is_current: False 表示上市日在指定日之前的期权, True 表示上市日在指定日之前且尚未退市的期权
     def getOptionID(self, option_code="510050", date=None, is_current=True, start_date=None, **kwargs):
         if date is None: date = dt.date.today()
-        if start_date is not None: start_date = start_date.strftime("%Y-%m-%d")
+        if start_date is not None: start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
         SQLStr = "SELECT DISTINCT TradingCode FROM {Prefix}Opt_OptionContract "
         SQLStr += "WHERE TradingCode LIKE '{OptionCode}%%' "
         SQLStr += "AND IfReal=1 "
@@ -1067,13 +1067,13 @@ class JYDB(QSSQLObject, FactorDB):
                 SQLStr += "AND ListingDate <= '{StartDate}' "
                 SQLStr += "AND ((LastTradingDate IS NULL) OR (LastTradingDate >= '{Date}')) "        
         SQLStr += "ORDER BY TradingCode"
-        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d"), StartDate=start_date, OptionCode=option_code))]
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date, OptionCode=option_code))]
     # 获取指定日 date 基金 ID
     # date: 指定日, 默认值 None 表示今天
     # is_current: False 表示成立日在指定日之前的基金, True 表示成立日在指定日之前且尚未清盘的基金
     def getMutualFundID(self, exchange=None, date=None, is_current=True, start_date=None, **kwargs):
         if date is None: date = dt.date.today()
-        if start_date is not None: start_date = start_date.strftime("%Y-%m-%d")
+        if start_date is not None: start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
         SQLStr = "SELECT CONCAT({Prefix}SecuMain.SecuCode, '.OF') AS ID FROM {Prefix}mf_fundarchives "
         SQLStr += "INNER JOIN {Prefix}SecuMain ON {Prefix}SecuMain.InnerCode={Prefix}mf_fundarchives.InnerCode "
         SQLStr += "WHERE {Prefix}mf_fundarchives.EstablishmentDate <= '{Date}' "
@@ -1094,7 +1094,7 @@ class JYDB(QSSQLObject, FactorDB):
                 ExchgCodes.add(str(iExchgCode[0]))
             SQLStr += "AND {Prefix}SecuMain.SecuMarket IN ("+", ".join(ExchgCodes)+") "
         SQLStr += "ORDER BY ID"
-        Rslt = np.array(self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d"), StartDate=start_date)))
+        Rslt = np.array(self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date)))
         if Rslt.shape[0]>0: return Rslt[:, 0].tolist()
         else: return []
     # 获取行业 ID
@@ -1106,7 +1106,7 @@ class JYDB(QSSQLObject, FactorDB):
             AllStandards = self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix))
             raise __QS_Error__("无法识别的行业分类标准 : %s, 支持的行业分类标准有 : %s" % (standard, ", ".join(iStandard[0] for iStandard in AllStandards)))
         if date is None: date = dt.date.today()
-        if start_date is not None: start_date = start_date.strftime("%Y-%m-%d")
+        if start_date is not None: start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
         SQLStr = "SELECT IndustryNum FROM {Prefix}CT_IndustryType WHERE Standard="+str(Standard[0][0])+" "
         if pd.notnull(level):
             SQLStr += "AND Classification="+str(int(level))+" "
@@ -1120,7 +1120,7 @@ class JYDB(QSSQLObject, FactorDB):
                 SQLStr += "AND ((EffectiveDate IS NULL) OR (EffectiveDate <= '{StartDate}')) "
                 SQLStr += "AND ((CancelDate IS NULL) OR (CancelDate > '{Date}')) "
         SQLStr += "ORDER BY IndustryNum"
-        return [str(iRslt[0]) for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d"), StartDate=start_date))]
+        return [str(iRslt[0]) for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date))]
     # 获取宏观指标名称对应的指标 ID, TODO
     def getMacroIndicatorID(self, indicators, table_name=None):
         pass
