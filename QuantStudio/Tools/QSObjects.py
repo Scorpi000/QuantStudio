@@ -137,7 +137,8 @@ class QSSQLObject(__QS_Object__):
         elif self._QSArgs.DBType=="SQL Server":
             self._SQLFun = {"toDate": "CAST(%s AS DATE)"}# TOTEST
         else:
-            raise NotImplementedError("'%s' 调用方法 connect 时错误: 尚不支持的数据库类型" % (self.Name, self._QSArgs.DBType))
+            #raise NotImplementedError("'%s' 调用方法 connect 时错误: 尚不支持的数据库类型" % (self.Name, self._QSArgs.DBType))
+            self._SQLFun = {}
         return self
     def disconnect(self):
         if self._Connection is not None:

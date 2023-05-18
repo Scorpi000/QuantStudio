@@ -2133,7 +2133,7 @@ class SQL_FinancialTable(SQL_Table):
         RawData["ID"] = self.__QS_restoreID__(RawData["ID"])
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         if (self._FactorDB._QSArgs.DBType not in ("MySQL", "Oracle", "SQL Server")) and (args.get("忽略非季末报告", self._QSArgs.IgnoreNonQuarter) or (not ((args.get("报告期", self._QSArgs.ReportDate)=="所有") and (args.get("计算方法", self._QSArgs.CalcType)=="最新") and (args.get("回溯年数", self._QSArgs.YearLookBack)==0) and (args.get("回溯期数", self._QSArgs.PeriodLookBack)==0)))):
-            RawData = RawData[RawData["ReportDate"].dt.strftime("%m%d").str.isin(('0331','0630','0930','1231'))]
+            RawData = RawData[RawData["ReportDate"].dt.strftime("%m%d").isin(('0331','0630','0930','1231'))]
         return RawData
     def _calcData(self, raw_data, periods, factor_name, ids, dts, calc_type, report_date, ignore_missing, args={}):
         if ignore_missing: raw_data = raw_data[pd.notnull(raw_data[factor_name])]
