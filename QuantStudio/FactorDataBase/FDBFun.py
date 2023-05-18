@@ -2009,20 +2009,23 @@ class SQL_FinancialTable(SQL_Table):
         if args.get("忽略非季末报告", self._QSArgs.IgnoreNonQuarter) or (not ((args.get("报告期", self._QSArgs.ReportDate)=="所有") and (args.get("计算方法", self._QSArgs.CalcType)=="最新") and (args.get("回溯年数", self._QSArgs.YearLookBack)==0) and (args.get("回溯期数", self._QSArgs.PeriodLookBack)==0))):
             if self._FactorDB._QSArgs.DBType=="SQL Server":
                 SQLStr += " "+init_keyword+" TO_CHAR("+ReportDTField+",'MMDD') IN ('0331','0630','0930','1231')"
+                init_keyword = "AND"
             elif self._FactorDB._QSArgs.DBType=="MySQL":
                 SQLStr += " "+init_keyword+" DATE_FORMAT("+ReportDTField+",'%m%d') IN ('0331','0630','0930','1231')"
+                init_keyword = "AND"
             elif self._FactorDB._QSArgs.DBType=="Oracle":
                 SQLStr += " "+init_keyword+" TO_CHAR("+ReportDTField+",'MMdd') IN ('0331','0630','0930','1231')"
+                init_keyword = "AND"
             elif self._FactorDB._QSArgs.DBType=="sqlite3":
                 DTFmt = args.get("时点格式", self._QSArgs.DTFmt)
                 YearStartIdx = DTFmt.find("%Y") + 1
                 YearEndIdx = YearStartIdx + 4
                 DTFmt = DTFmt.replace("%Y", "")
                 ReportDays = "','".join((dt.datetime(2000, 3, 31).strftime(DTFmt), dt.datetime(2000, 6, 30).strftime(DTFmt), dt.datetime(2000, 9, 30).strftime(DTFmt), dt.datetime(2000, 12, 31).strftime(DTFmt)))
-                SQLStr += " "+init_keyword+f" (SUBSTR({ReportDTField}, {YearStartIdx}, {YearStartIdx-1}) ||  SUBSTR({ReportDTField}, {YearEndIdx})) IN ('{ReportDays}')"
-            else:
-                raise __QS_Error__("SQL_FinancialTable._genConditionSQLStr 不支持的数据库类型: '%s'" % (self._FactorDB._QSArgs.DBType, ))
-            init_keyword = "AND"
+                SQLStr += " "+init_keyword+f" (SUBSTR({ReportDTField}, {YearStartIdx}, {YearStartIdx-1}) || SUBSTR({ReportDTField}, {YearEndIdx})) IN ('{ReportDays}')"
+                init_keyword = "AND"
+            #else:
+                #raise __QS_Error__("SQL_FinancialTable._genConditionSQLStr 不支持的数据库类型: '%s'" % (self._FactorDB._QSArgs.DBType, ))
         AdjustTypeField = args.get("调整类型字段", self._QSArgs.AdjustTypeField)
         if AdjustTypeField is not None:
             iConditionVal = args.get("调整类型", self._QSArgs.AdjustType)
@@ -2035,13 +2038,13 @@ class SQL_FinancialTable(SQL_Table):
     def __QS_genGroupInfo__(self, factors, operation_mode):
         ConditionGroup = {}
         for iFactor in factors:
-            iConditions = (iFactor.IgnoreNonQuarter or (not ((iFactor.ReportDate=="所有") and (iFactor.CalcType=="最新") and (iFactor.YearLookBack==0) and (iFactor.PeriodLookBack==0))))
-            iConditions = (iConditions, iFactor.AdjustType, iFactor.Args.PreFilterID, ";".join([iCondition+":"+str(iFactor[iCondition]) for i, iCondition in enumerate(self._QSArgs._ConditionFields)]+["筛选条件:"+iFactor["筛选条件"]]))
+            iConditions = (iFactor._QSArgs.IgnoreNonQuarter or (not ((iFactor._QSArgs.ReportDate=="所有") and (iFactor._QSArgs.CalcType=="最新") and (iFactor._QSArgs.YearLookBack==0) and (iFactor._QSArgs.PeriodLookBack==0))))
+            iConditions = (iConditions, iFactor._QSArgs.AdjustType, iFactor._QSArgs.PreFilterID, ";".join([iCondition+":"+str(iFactor._QSArgs[iCondition]) for i, iCondition in enumerate(self._QSArgs._ConditionFields)]+["筛选条件:"+iFactor._QSArgs["筛选条件"]]))
             if iConditions not in ConditionGroup:
                 ConditionGroup[iConditions] = {"FactorNames":[iFactor.Name], 
                                                        "RawFactorNames":{iFactor._NameInFT}, 
                                                        "StartDT":operation_mode._FactorStartDT[iFactor.Name], 
-                                                       "args":iFactor.Args.to_dict()}
+                                                       "args":iFactor._QSArgs.to_dict()}
             else:
                 ConditionGroup[iConditions]["FactorNames"].append(iFactor.Name)
                 ConditionGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
@@ -2120,12 +2123,17 @@ class SQL_FinancialTable(SQL_Table):
         SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
         SQLStr += "ORDER BY ID, "+AnnDTField+", "
         SQLStr += ReportDTField + ", AdjustType"
-        RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)# TODO, 换成 fetchall
-        RawData.columns = ["ID", "AnnDate", "ReportDate", "AdjustType"]+factor_names
+        #RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)
+        #RawData.columns = ["ID", "AnnDate", "ReportDate", "AdjustType"]+factor_names
+        RawData = self._FactorDB.fetchall(SQLStr)
+        if not RawData: return pd.DataFrame(columns=["ID", "AnnDate", "ReportDate", "AdjustType"]+factor_names)
+        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "AnnDate", "ReportDate", "AdjustType"]+factor_names)
         RawData["AnnDate"] = self.__QS_adjustDT__(RawData["AnnDate"], args=args)
         RawData["ReportDate"] = self.__QS_adjustDT__(RawData["ReportDate"], args=args)
         RawData["ID"] = self.__QS_restoreID__(RawData["ID"])
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
+        if (self._FactorDB._QSArgs.DBType not in ("MySQL", "Oracle", "SQL Server")) and (args.get("忽略非季末报告", self._QSArgs.IgnoreNonQuarter) or (not ((args.get("报告期", self._QSArgs.ReportDate)=="所有") and (args.get("计算方法", self._QSArgs.CalcType)=="最新") and (args.get("回溯年数", self._QSArgs.YearLookBack)==0) and (args.get("回溯期数", self._QSArgs.PeriodLookBack)==0)))):
+            RawData = RawData[RawData["ReportDate"].dt.strftime("%m%d").str.isin(('0331','0630','0930','1231'))]
         return RawData
     def _calcData(self, raw_data, periods, factor_name, ids, dts, calc_type, report_date, ignore_missing, args={}):
         if ignore_missing: raw_data = raw_data[pd.notnull(raw_data[factor_name])]
