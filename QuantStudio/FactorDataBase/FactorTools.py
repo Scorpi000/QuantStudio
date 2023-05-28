@@ -64,11 +64,11 @@ def _genOperatorData(f, idt, iid, x, args):
 def _astype(f, idt, iid, x, args):
     Data = _genOperatorData(f, idt, iid, x, args)[0]
     return Data.astype(dtype=args["OperatorArg"]["dtype"])
-def astype(f, dtype, **kwargs):
+def astype(f, dtype, data_type="double", **kwargs):
     Descriptors, Args, Exprs = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"dtype": dtype}
     Expr = sympy.Function("astype")(*Exprs, sympy.Eq(sympy.Symbol("dtype"), sympy.Symbol(f"'{dtype}'") if isinstance(dtype, str) else sympy.Symbol(str(dtype))))
-    return PointOperation(kwargs.pop("factor_name", "astype"), Descriptors, {"算子": _astype, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "表达式": Expr}, **kwargs)
+    return PointOperation(kwargs.pop("factor_name", "astype"), Descriptors, {"算子": _astype, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "数据类型": data_type, "表达式": Expr}, **kwargs)
 def _log(f, idt, iid, x, args):
     Data = _genOperatorData(f, idt, iid, x, args)[0]
     Data[Data<=0] = np.nan
