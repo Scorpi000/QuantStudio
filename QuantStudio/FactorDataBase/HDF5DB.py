@@ -6,6 +6,7 @@ import shutil
 import pickle
 import time
 import datetime as dt
+from multiprocessing import Lock
 
 import numpy as np
 import pandas as pd
@@ -19,6 +20,8 @@ from QuantStudio.FactorDataBase.FactorDB import WritableFactorDB, FactorTable
 from QuantStudio.FactorDataBase.FDBFun import adjustDataDTID
 from QuantStudio.Tools.FileFun import listDirDir, listDirFile
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
+from QuantStudio.Tools.QSObjects import QSFileLock
+
 
 def _identifyDataType(factor_data, data_type=None):
     if (data_type is None) or (data_type=="double"):
@@ -236,6 +239,7 @@ class HDF5DB(WritableFactorDB):
         MainDir = Directory(label="主目录", arg_type="Directory", order=0)
         LockDir = Directory(label="锁目录", arg_type="Directory", order=1)
         FileOpenRetryNum = Float(np.inf, label="文件打开重试次数", arg_type="Float", order=2)
+        ProcessLock = Enum(True, False, label="进程锁", arg_type="Bool", order=3)
 
         @on_trait_change("MainDir")
         def _on_MainDir_changed(self, obj, name, old, new):
@@ -246,10 +250,16 @@ class HDF5DB(WritableFactorDB):
         def _on_LockDir_changed(self, obj, name, old, new):
             if self._Owner.isAvailable():
                 self._Owner.connect()
+        @on_trait_change("ProcessLock")
+        def _on_ProcessLock_changed(self, obj, name, old, new):
+            if self._Owner.isAvailable():
+                self._Owner.connect()
     
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._LockFile = None# 文件锁的目标文件
-        self._DataLock = None# 访问该因子库资源的锁, 防止并发访问冲突
+        self._DataLock = None# 访问该因子库资源的文件锁, 防止并发访问冲突
+        self._TableLock = None# 访问该因子表资源的临时文件锁, 防止并发访问冲突
+        self._ProcLock = None# 访问该因子库资源的进程锁, 防止并发访问冲突
         self._isAvailable = False
         self._Suffix = "hdf5"# 文件的后缀名
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"HDF5DBConfig.json" if config_file is None else config_file), **kwargs)
@@ -279,17 +289,19 @@ class HDF5DB(WritableFactorDB):
             open(self._LockFile, mode="a").close()
             os.chmod(self._LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
         self._DataLock = fasteners.InterProcessLock(self._LockFile)
+        if self._QSArgs.ProcessLock: self._ProcLock = Lock()
         self._isAvailable = True
         return self
     def disconnect(self):
         self._LockFile = None
         self._DataLock = None
+        self._ProcLock = None
         self._isAvailable = False
     def isAvailable(self):
         return self._isAvailable
     def _getLock(self, table_name=None):
         if table_name is None:
-            return self._DataLock
+            return QSFileLock(self._DataLock, proc_lock=self._ProcLock)
         TablePath = self._QSArgs.MainDir + os.sep + table_name
         if not os.path.isdir(TablePath):
             Msg = ("因子库 '%s' 调用 _getLock 时错误, 不存在因子表: '%s'" % (self.Name, table_name))
@@ -297,13 +309,13 @@ class HDF5DB(WritableFactorDB):
             raise __QS_Error__(Msg)
         LockFile = self._LockDir + os.sep + table_name + os.sep + "LockFile"
         if not os.path.isfile(LockFile):
-            with self._DataLock:
+            with QSFileLock(self._DataLock, proc_lock=self._ProcLock) as FileLock:
                 if not os.path.isdir(self._LockDir + os.sep + table_name):
                     os.mkdir(self._LockDir + os.sep + table_name)
                 if not os.path.isfile(LockFile):
                     open(LockFile, mode="a").close()
                     os.chmod(LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
-        return fasteners.InterProcessLock(LockFile)
+        return QSFileLock(LockFile, self._ProcLock)
     def _openHDF5File(self, filename, *args, **kwargs):
         i = 0
         while i<self._QSArgs.FileOpenRetryNum:
@@ -391,7 +403,7 @@ class HDF5DB(WritableFactorDB):
                         os.remove(iFilePath)
         return 0
     def setFactorMetaData(self, table_name, ifactor_name, key=None, value=None, meta_data=None):
-        with self._getLock(table_name) as DataLock:
+        with self._getLock(table_name=table_name) as DataLock:
             with self._openHDF5File(self._QSArgs.MainDir+os.sep+table_name+os.sep+ifactor_name+"."+self._Suffix, mode="a") as File:
                 if key is not None:
                     if key in File.attrs:
@@ -406,12 +418,13 @@ class HDF5DB(WritableFactorDB):
         return 0
     def _updateFactorData(self, factor_data, table_name, ifactor_name, data_type):
         FilePath = self._QSArgs.MainDir + os.sep + table_name + os.sep + ifactor_name + "." + self._Suffix
-        with self._getLock(table_name) as DataLock:
+        with self._getLock(table_name=table_name) as DataLock:
             with self._openHDF5File(FilePath, mode="a") as DataFile:
                 OldDataType = DataFile.attrs["DataType"]
                 if data_type is None: data_type = OldDataType
                 factor_data, data_type = _identifyDataType(factor_data, data_type)
-                if OldDataType != data_type: raise __QS_Error__("HDF5DB.writeFactorData: 表 '%s' 中因子 '%s' 的新数据无法转换成已有数据的数据类型 '%s'!" % (table_name, ifactor_name, OldDataType))
+                if OldDataType != data_type:
+                    raise __QS_Error__("HDF5DB.writeFactorData: 表 '%s' 中因子 '%s' 的新数据无法转换成已有数据的数据类型 '%s'!" % (table_name, ifactor_name, OldDataType))
                 nOldDT, OldDateTimes = DataFile["DateTime"].shape[0], DataFile["DateTime"][...]
                 NewDateTimes = factor_data.index.difference(OldDateTimes).values
                 if h5py.version.version < "3.0.0":

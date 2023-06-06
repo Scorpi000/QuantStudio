@@ -9,6 +9,7 @@ from collections import OrderedDict
 
 import numpy as np
 import pandas as pd
+import fasteners
 from traits.api import Enum, Str, Range, Password, File
 
 from QuantStudio import __QS_Object__, __QS_Error__
@@ -572,6 +573,29 @@ class QSMsgRouter(object):
             raise __QS_Error__(f"{name} 尚未注册为消息接收者!")
         return self._Listeners[name].get(block=block, timeout=timeout)
 
+# 文件锁
+class QSFileLock(object):
+    def __init__(self, path_or_lock, proc_lock=None):
+        if isinstance(path_or_lock, str):
+            self._FileLock = fasteners.InterProcessLock(path_or_lock)
+        else:
+            self._FileLock = path_or_lock
+        self._ProcLock = proc_lock
+    def acquire(self):
+        if self._ProcLock is not None: self._ProcLock.acquire()
+        return self._FileLock.acquire()
+    def release(self):
+        self._FileLock.release()
+        if self._ProcLock is not None: self._ProcLock.release()
+    def __enter__(self):
+        self.acquire()
+        return self
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.release()
+        return True
+
+
+# pandas Panel 的 QS 实现
 def _initArray(shape, dtype):
     if dtype in (np.dtype("datetime64[ns]"), np.dtype("datetime64"), np.dtype("timedelta64[ns]"), np.dtype("timedelta64")):
         return np.full(shape=shape, fill_value=np.nan, dtype=dtype), dtype
@@ -584,7 +608,6 @@ def _initArray(shape, dtype):
     else:
         return a, dtype
 
-# pandas Panel 的 QS 实现 TODO
 class _LocIndexer(object):
     def __init__(self, p):
         self._p = p
