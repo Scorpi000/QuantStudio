@@ -256,9 +256,11 @@ class QuantilePortfolio(BaseModule):
         Axes = Fig.add_subplot(nRow, nCol, 7)
         Axes.xaxis_date()
         Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
-        Axes.plot(self._Output["净值"].index, self._Output["净值"].iloc[:, 0].values, label=str(self._Output["净值"].iloc[:, 0].name), color="indianred", lw=2.5)
-        Axes.plot(self._Output["净值"].index, self._Output["净值"].iloc[:, -3].values, label=str(self._Output["净值"].iloc[:, -3].name), color="steelblue", lw=2.5)
-        Axes.plot(self._Output["净值"].index, self._Output["净值"]["市场"].values, label="市场", color="forestgreen", lw=2.5)
+        for i in range(self._Output["超额净值"].shape[1] - 2):
+            Axes.plot(self._Output["超额净值"].index, self._Output["超额净值"].iloc[:, i].values, label=str(self._Output["超额净值"].iloc[:, i].name), lw=2.5)
+        #Axes.plot(self._Output["净值"].index, self._Output["净值"].iloc[:, 0].values, label=str(self._Output["净值"].iloc[:, 0].name), color="indianred", lw=2.5)
+        #Axes.plot(self._Output["净值"].index, self._Output["净值"].iloc[:, -3].values, label=str(self._Output["净值"].iloc[:, -3].name), color="steelblue", lw=2.5)
+        #Axes.plot(self._Output["净值"].index, self._Output["净值"]["市场"].values, label="市场", color="forestgreen", lw=2.5)
         Axes.legend(loc='best')
         Axes = Fig.add_subplot(nRow, nCol, 8)
         xData = np.arange(0, self._Output["净值"].shape[0])
@@ -275,7 +277,7 @@ class QuantilePortfolio(BaseModule):
         Axes = Fig.add_subplot(nRow, nCol, 9)
         Axes.xaxis_date()
         Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
-        for i in range(self._Output["净值"].shape[1] - 2):
+        for i in range(self._Output["净值"].shape[1] - 1):
             Axes.plot(self._Output["净值"].index, self._Output["净值"].iloc[:, i].values, label=str(self._Output["净值"].iloc[:, i].name), lw=2.5)
         Axes.legend(loc='best')
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')

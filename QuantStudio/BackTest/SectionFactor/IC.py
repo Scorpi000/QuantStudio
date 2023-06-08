@@ -144,9 +144,12 @@ class IC(BaseModule):
             iAxes.yaxis.set_major_formatter(yMajorFormatter)
             iAxes.plot(xData, self._Output["IC的移动平均"].iloc[:, i].values, label="IC的移动平均", color="indianred", lw=2.5)
             iAxes.bar(xData, self._Output["IC"].iloc[:, i].values, label="IC", color="steelblue")
+            iRightAxes = iAxes.twinx()
+            iRightAxes.plot(xData, self._Output["截面宽度"].iloc[:, i].values, label="截面宽度", color="k", lw=1.5)
             iAxes.set_xticks(xTicks)
             iAxes.set_xticklabels(xTickLabels)
-            iAxes.legend(loc='best')
+            iAxes.legend(loc="upper left")
+            iRightAxes.legend(loc="upper right")
             iAxes.set_title(self._Output["IC"].columns[i])
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
