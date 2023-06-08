@@ -381,7 +381,7 @@ class SQL_Table(FactorTable):
             Groups.append((self, ConditionGroup[iConditions]["FactorNames"], list(ConditionGroup[iConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], ConditionGroup[iConditions]["args"]))
         return Groups
     def __QS_identifyDataType__(self, field_data_type):
-        field_data_type = field_data_type.str.lower()
+        field_data_type = field_data_type.lower()
         if (field_data_type.find("num")!=-1) or (field_data_type.find("int")!=-1) or (field_data_type.find("decimal")!=-1) or (field_data_type.find("double")!=-1) or (field_data_type.find("float")!=-1) or (field_data_type.find("real")!=-1):
             return "double"
         elif (field_data_type.find("char")!=-1) or (field_data_type.find("text")!=-1) or (field_data_type.find("str")!=-1):
