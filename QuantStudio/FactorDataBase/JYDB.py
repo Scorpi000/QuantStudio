@@ -421,18 +421,18 @@ class _AnalystConsensusTable(_JY_SQL_Table):
     def __QS_genGroupInfo__(self, factors, operation_mode):
         PeriodGroup = {}
         for iFactor in factors:
-            iConditions = (iFactor.Period, iFactor.PreFilterID)
+            iConditions = (iFactor._QSArgs.Period, iFactor._QSArgs.PreFilterID)
             if iConditions not in PeriodGroup:
                 PeriodGroup[iConditions] = {"FactorNames":[iFactor.Name], 
                                         "RawFactorNames":{iFactor._NameInFT}, 
                                         "StartDT":operation_mode._FactorStartDT[iFactor.Name], 
-                                        "args":{"周期": iFactor.Period, "计算方法":iFactor.CalcType, "回溯天数":iFactor.LookBack}}
+                                        "args":{"周期": iFactor._QSArgs.Period, "计算方法":iFactor._QSArgs.CalcType, "回溯天数":iFactor._QSArgs.LookBack}}
             else:
                 PeriodGroup[iConditions]["FactorNames"].append(iFactor.Name)
                 PeriodGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
                 PeriodGroup[iConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], PeriodGroup[iConditions]["StartDT"])
-                if iFactor.CalcType!="Fwd12M": PeriodGroup[iConditions]["args"]["计算方法"] = iFactor.CalcType
-                PeriodGroup[iConditions]["args"]["回溯天数"] = max(PeriodGroup[iConditions]["args"]["回溯天数"], iFactor.LookBack)
+                if iFactor._QSArgs.CalcType!="Fwd12M": PeriodGroup[iConditions]["args"]["计算方法"] = iFactor._QSArgs.CalcType
+                PeriodGroup[iConditions]["args"]["回溯天数"] = max(PeriodGroup[iConditions]["args"]["回溯天数"], iFactor._QSArgs.LookBack)
         EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
         Groups = []
         for iConditions in PeriodGroup:
@@ -563,9 +563,9 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
         for iFactor in factors:
             FactorNames.append(iFactor.Name)
             RawFactorNames.add(iFactor._NameInFT)
-            Args["附加字段"] = Args["附加字段"].union(set(iFactor.AdditionalFields))
-            Args["去重字段"] = Args["去重字段"].union(set(iFactor.Deduplication))
-            Args["周期"] = max(Args["周期"], iFactor.Period)
+            Args["附加字段"] = Args["附加字段"].union(set(iFactor._QSArgs.AdditionalFields))
+            Args["去重字段"] = Args["去重字段"].union(set(iFactor._QSArgs.Deduplication))
+            Args["周期"] = max(Args["周期"], iFactor._QSArgs.Period)
             StartDT = min(operation_mode._FactorStartDT[iFactor.Name], StartDT)
         EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
         StartInd = operation_mode.DTRuler.index(StartDT)
@@ -696,9 +696,9 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
         for iFactor in factors:
             FactorNames.append(iFactor.Name)
             RawFactorNames.add(iFactor._NameInFT)
-            Args["附加字段"] = Args["附加字段"].union(set(iFactor.AdditionalFields))
-            Args["去重字段"] = Args["去重字段"].union(set(iFactor.Deduplication))
-            Args["周期"] = max(Args["周期"], iFactor.Period)
+            Args["附加字段"] = Args["附加字段"].union(set(iFactor._QSArgs.AdditionalFields))
+            Args["去重字段"] = Args["去重字段"].union(set(iFactor._QSArgs.Deduplication))
+            Args["周期"] = max(Args["周期"], iFactor._QSArgs.Period)
             StartDT = min(operation_mode._FactorStartDT[iFactor.Name], StartDT)
         EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
         StartInd = operation_mode.DTRuler.index(StartDT)
