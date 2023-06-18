@@ -258,12 +258,16 @@ class _FinancialIndicatorTable(_FinancialTable):
         SQLStr += self._genIDSQLStr(ids, args=args)+" "
         SQLStr += "ORDER BY ID, LC_BalanceSheetAll.InfoPublDate, "
         SQLStr += ReportDateField
-        #RawData = self._FactorDB.fetchall(SQLStr)
-        #if not RawData: return pd.DataFrame(columns=["ID", "AnnDate", "ReportDate"]+factor_names)
-        #else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "AnnDate", "ReportDate"]+factor_names)
-        RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)
-        RawData.columns = ["ID", "AnnDate", "ReportDate"]+factor_names
+        # RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)
+        # RawData.columns = ["ID", "AnnDate", "ReportDate"]+factor_names
+        RawData = self._FactorDB.fetchall(SQLStr)
+        if not RawData: return pd.DataFrame(columns=["ID", "AnnDate", "ReportDate"] + factor_names)
+        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "AnnDate", "ReportDate"] + factor_names)
         RawData["AdjustType"] = 0
+        RawData["AnnDate"] = self.__QS_adjustDT__(RawData["AnnDate"], args=args)
+        RawData["ReportDate"] = self.__QS_adjustDT__(RawData["ReportDate"], args=args)
+        if (self._FactorDB._QSArgs.DBType not in ("MySQL", "Oracle", "SQL Server")) and (args.get("忽略非季末报告", self._QSArgs.IgnoreNonQuarter) or (not ((args.get("报告期", self._QSArgs.ReportDate)=="所有") and (args.get("计算方法", self._QSArgs.CalcType)=="最新") and (args.get("回溯年数", self._QSArgs.YearLookBack)==0) and (args.get("回溯期数", self._QSArgs.PeriodLookBack)==0)))):
+            RawData = RawData[RawData["ReportDate"].dt.strftime("%m%d").isin(('0331','0630','0930','1231'))]
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
     def _prepareRawDataMF(self, factor_names, ids, dts, args={}):
@@ -285,9 +289,16 @@ class _FinancialIndicatorTable(_FinancialTable):
         SQLStr += self._genIDSQLStr(ids, args=args)+" "
         SQLStr += "ORDER BY ID, MF_BalanceSheetNew.InfoPublDate, "
         SQLStr += ReportDateField
-        RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)
-        RawData.columns = ["ID", "AnnDate", "ReportDate"]+factor_names
+        # RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)
+        # RawData.columns = ["ID", "AnnDate", "ReportDate"]+factor_names
+        RawData = self._FactorDB.fetchall(SQLStr)
+        if not RawData: return pd.DataFrame(columns=["ID", "AnnDate", "ReportDate"] + factor_names)
+        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "AnnDate", "ReportDate"] + factor_names)
         RawData["AdjustType"] = 0
+        RawData["AnnDate"] = self.__QS_adjustDT__(RawData["AnnDate"], args=args)
+        RawData["ReportDate"] = self.__QS_adjustDT__(RawData["ReportDate"], args=args)
+        if (self._FactorDB._QSArgs.DBType not in ("MySQL", "Oracle", "SQL Server")) and (args.get("忽略非季末报告", self._QSArgs.IgnoreNonQuarter) or (not ((args.get("报告期", self._QSArgs.ReportDate)=="所有") and (args.get("计算方法", self._QSArgs.CalcType)=="最新") and (args.get("回溯年数", self._QSArgs.YearLookBack)==0) and (args.get("回溯期数", self._QSArgs.PeriodLookBack)==0)))):
+            RawData = RawData[RawData["ReportDate"].dt.strftime("%m%d").isin(('0331','0630','0930','1231'))]
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
 
@@ -313,6 +324,9 @@ def genANN_ReportSQLStr(db_type, table_prefix, ids, report_period="1231", pre_fi
     elif db_type=="Oracle":
         SQLStr += "TO_CHAR("+DBTableName+".InfoPublDate,'yyyyMMdd'), "
         ReportDateStr = "TO_CHAR("+DBTableName+".EndDate,'yyyyMMdd')"
+    else:
+        SQLStr += DBTableName+".InfoPublDate, "
+        ReportDateStr = DBTableName+".EndDate"
     SQLStr += ReportDateStr+" "
     SQLStr += "FROM "+DBTableName+" "
     SQLStr += "INNER JOIN "+table_prefix+"SecuMain "
@@ -322,16 +336,22 @@ def genANN_ReportSQLStr(db_type, table_prefix, ids, report_period="1231", pre_fi
         SQLStr += "AND ("+genSQLInCondition(table_prefix+"SecuMain.SecuCode", deSuffixID(ids), is_str=True, max_num=1000)+") "
     else:
         SQLStr += "AND "+table_prefix+"SecuMain.SecuCode IS NOT NULL "
-    if report_period is not None:
+    if (report_period is not None) and (db_type in ("SQL Server", "MySQL", "Oracle")):
         SQLStr += "AND "+ReportDateStr+" LIKE '%"+report_period+"' "
     SQLStr += "ORDER BY "+table_prefix+"SecuMain.SecuCode, "
     SQLStr += DBTableName+".InfoPublDate, "+DBTableName+".EndDate"
     return SQLStr
-def _prepareReportANNRawData(fdb, ids, pre_filter_id=True):
-    SQLStr = genANN_ReportSQLStr(fdb.DBType, fdb._QSArgs.TablePrefix, ids, report_period="1231", pre_filter_id=pre_filter_id)
+def _prepareReportANNRawData(fdb, ft, ids, pre_filter_id=True, args={}):
+    SQLStr = genANN_ReportSQLStr(fdb._QSArgs.DBType, fdb._QSArgs.TablePrefix, ids, report_period="1231", pre_filter_id=pre_filter_id)
     RawData = fdb.fetchall(SQLStr)
-    if not RawData: RawData =  pd.DataFrame(columns=["ID", "公告日期", "报告期"])
+    if not RawData: RawData = pd.DataFrame(columns=["ID", "公告日期", "报告期"])
     else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "公告日期", "报告期"])
+    if fdb._QSArgs.DBType not in ("SQL Server", "MySQL", "Oracle"):
+        RawData["公告日期"] = ft.__QS_adjustDT__(RawData["公告日期"], args=args)
+        RawData["公告日期"] = RawData["公告日期"].dt.strftime("%Y%m%d")
+        RawData["报告期"] = ft.__QS_adjustDT__(RawData["报告期"], args=args)
+        RawData["报告期"] = RawData["报告期"].dt.strftime("%Y%m%d")
+        RawData = RawData[RawData["报告期"].str.endswith("1231")]
     return RawData
 def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock, pre_filter_id=True):
     isANNReport = raw_data._QS_ANNReport
@@ -344,7 +364,7 @@ def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_d
             pid_lock[PID].release()
             IDs = []
             for iPID in sorted(pid_ids): IDs.extend(pid_ids[iPID])
-            RawData = _prepareReportANNRawData(ft.FactorDB, ids=IDs, pre_filter_id=pre_filter_id)
+            RawData = _prepareReportANNRawData(ft.FactorDB, ft, ids=IDs, pre_filter_id=pre_filter_id)
             super(_JY_SQL_Table, ft).__QS_saveRawData__(RawData, [], raw_data_dir, pid_ids, report_ann_file, pid_lock)
         else:
             pid_lock[PID].release()
@@ -386,12 +406,14 @@ class _AnalystConsensusTable(_JY_SQL_Table):
         ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._ReportDateField, "DBFieldName"]
         PeriodField = self._DBTableName+"."+self._FactorInfo.loc[self._PeriodField, "DBFieldName"]
         # 形成SQL语句, 日期, ID, 报告期, 数据
-        if self._FactorDB.DBType=="SQL Server":
+        if self._FactorDB._QSArgs.DBType=="SQL Server":
             SQLStr = "SELECT TO_CHAR("+DateField+",'YYYYMMDD'), "
-        elif self._FactorDB.DBType=="MySQL":
+        elif self._FactorDB._QSArgs.DBType=="MySQL":
             SQLStr = "SELECT DATE_FORMAT("+DateField+",'%Y%m%d'), "
-        elif self._FactorDB.DBType=="Oracle":
+        elif self._FactorDB._QSArgs.DBType=="Oracle":
             SQLStr = "SELECT TO_CHAR("+DateField+",'yyyyMMdd'), "
+        else:
+            SQLStr = f"SELECT {DateField}, "
         SQLStr += self._getIDField(args=args)+" AS ID, "
         SQLStr += "CONCAT("+ReportDateField+", '1231') AS ReportDate, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
@@ -414,6 +436,9 @@ class _AnalystConsensusTable(_JY_SQL_Table):
         RawData._QS_ANNReport = (args.get("计算方法", self._QSArgs.CalcType)!="Fwd12M")
         RawData._QS_PreFilterID = args.get("预筛选ID", self._QSArgs.PreFilterID)
         if RawData.shape[0]==0: return RawData
+        if self._FactorDB._QSArgs.DBType not in ("SQL Server", "MySQL", "Oracle"):
+            RawData["日期"] = self.__QS_adjustDT__(RawData["日期"])
+            RawData["日期"] = RawData["日期"].dt.strftime("%Y%m%d")
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
     def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock, **kwargs):
@@ -452,7 +477,7 @@ class _AnalystConsensusTable(_JY_SQL_Table):
                 with pd.HDFStore(ANNReportPath, mode="r") as ANN_ReportFile:
                     ANNReportData = ANN_ReportFile["RawData"]
             else:
-                ANNReportData = _prepareReportANNRawData(self._FactorDB, ids, pre_filter_id=args.get("预筛选ID", self._QSArgs.PreFilterID))
+                ANNReportData = _prepareReportANNRawData(self._FactorDB, self, ids, pre_filter_id=args.get("预筛选ID", self._QSArgs.PreFilterID), args=args)
             ANNReportData = ANNReportData.set_index(["ID"])
         raw_data = raw_data.set_index(["ID"])
         Data = {}
@@ -583,12 +608,14 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
         DateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
         ReportDateField = self._DBTableName+"."+self._FactorInfo.loc[self._ReportDateField, "DBFieldName"]
         # 形成SQL语句, 日期, ID, 报告期, 研究机构, 因子数据
-        if self._FactorDB.DBType=="SQL Server":
+        if self._FactorDB._QSArgs.DBType=="SQL Server":
             SQLStr = "SELECT TO_CHAR("+DateField+",'YYYYMMDD'), "
-        elif self._FactorDB.DBType=="MySQL":
+        elif self._FactorDB._QSArgs.DBType=="MySQL":
             SQLStr = "SELECT DATE_FORMAT("+DateField+",'%Y%m%d'), "
-        elif self._FactorDB.DBType=="Oracle":
+        elif self._FactorDB._QSArgs.DBType=="Oracle":
             SQLStr = "SELECT TO_CHAR("+DateField+",'yyyyMMdd'), "
+        else:
+            SQLStr = f"SELECT {DateField}, "
         SQLStr += self._getIDField(args=args)+" AS ID, "
         SQLStr += "CONCAT("+ReportDateField+", '1231') AS ReportDate, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(AllFields)
@@ -610,6 +637,9 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
         RawData._QS_ANNReport = True
         RawData._QS_PreFilterID = args.get("预筛选ID", self._QSArgs.PreFilterID)
         if RawData.shape[0]==0: return RawData
+        if self._FactorDB._QSArgs.DBType not in ("SQL Server", "MySQL", "Oracle"):
+            RawData["日期"] = self.__QS_adjustDT__(RawData["日期"])
+            RawData["日期"] = RawData["日期"].dt.strftime("%Y%m%d")
         RawData = self._adjustRawDataByRelatedField(RawData, AllFields)
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
@@ -628,7 +658,7 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
             with pd.HDFStore(ANNReportPath, mode="r") as ANN_ReportFile:
                 ANNReportData = ANN_ReportFile["RawData"]
         else:
-            ANNReportData = _prepareReportANNRawData(self._FactorDB, ids, pre_filter_id=args.get("预筛选ID", self._QSArgs.PreFilterID))
+            ANNReportData = _prepareReportANNRawData(self._FactorDB, self, ids, pre_filter_id=args.get("预筛选ID", self._QSArgs.PreFilterID), args=args)
         ANNReportData = ANNReportData.set_index(["ID"])
         AllIDs = set(raw_data.index)
         Data = {}
@@ -713,12 +743,14 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
         AllFields = list(set(factor_names+args.get("附加字段", self._QSArgs.AdditionalFields)+args.get("去重字段", self._QSArgs.Deduplication)))
         DateField = self._DBTableName+"."+self._FactorInfo.loc[self._DateField, "DBFieldName"]
         # 形成SQL语句, 日期, ID, 其他字段
-        if self._FactorDB.DBType=="SQL Server":
+        if self._FactorDB._QSArgs.DBType=="SQL Server":
             SQLStr = "SELECT TO_CHAR("+DateField+",'YYYYMMDD'), "
-        elif self._FactorDB.DBType=="MySQL":
+        elif self._FactorDB._QSArgs.DBType=="MySQL":
             SQLStr = "SELECT DATE_FORMAT("+DateField+",'%Y%m%d'), "
-        elif self._FactorDB.DBType=="Oracle":
+        elif self._FactorDB._QSArgs.DBType=="Oracle":
             SQLStr = "SELECT TO_CHAR("+DateField+",'yyyyMMdd'), "
+        else:
+            SQLStr = f"SELECT {DateField}, "
         SQLStr += self._getIDField(args=args)+" AS ID, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(AllFields)
         SQLStr += FieldSQLStr+" "
@@ -736,6 +768,9 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["日期", "ID"]+AllFields)
         else: RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["日期", "ID"]+AllFields)
+        if self._FactorDB._QSArgs.DBType not in ("SQL Server", "MySQL", "Oracle"):
+            RawData["日期"] = self.__QS_adjustDT__(RawData["日期"])
+            RawData["日期"] = RawData["日期"].dt.strftime("%Y%m%d")
         RawData = self._adjustRawDataByRelatedField(RawData, AllFields)
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
