@@ -301,8 +301,8 @@ class HDF5FRDB(FactorRDB):
         with self._DataLock:
             for iTable in AllTables:
                 with h5py.File(self._QSArgs.MainDir+os.sep+iTable+"."+self._Suffix, mode="r") as iFile:
-                    if "SpecificRisk" in iFile:
-                        iDTs = sorted(iFile["SpecificRisk"])
+                    if ("SpecificRisk" in iFile) or ("FactorReturn" in iFile) or ("FactorCov" in iFile) or ("SpecificReturn" in iFile) or ("FactorData" in iFile):
+                        iDTs = (sorted(iFile["SpecificRisk"]) if "SpecificRisk" in iFile else [])
                         TableDT[iTable] = [dt.datetime.strptime(ijDT, "%Y-%m-%d %H:%M:%S.%f") for ijDT in iDTs]
         self._TableDT = TableDT
         self._isAvailable = True
