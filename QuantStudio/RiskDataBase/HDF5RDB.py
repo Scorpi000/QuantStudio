@@ -275,10 +275,13 @@ class _FactorRiskTable(FactorRT):
                     iGroup = Group[iDTStr]
                     if "columns" in iGroup:
                         Type = "DataFrame"
-                        Data[iDT] = pd.DataFrame(iGroup["Data"][...], index=iGroup["index"][...], columns=iGroup["columns"][...])
+                        iIndex = (iGroup["index"][...] if h5py.version.version<"3.0.0" else iGroup["index"].asstr(encoding="utf-8")[...])
+                        iColumns = (iGroup["columns"][...] if h5py.version.version<"3.0.0" else iGroup["columns"].asstr(encoding="utf-8")[...])
+                        Data[iDT] = pd.DataFrame(iGroup["Data"][...], index=iIndex, columns=iColumns)
                     else:
                         Type = "Series"
-                        Data[iDT] = pd.Series(iGroup["Data"][...], index=iGroup["index"][...])
+                        iIndex = (iGroup["index"][...] if h5py.version.version<"3.0.0" else iGroup["index"].asstr(encoding="utf-8")[...])
+                        Data[iDT] = pd.Series(iGroup["Data"][...], index=iIndex)
         if not Data: return None
         if Type=="Series": return pd.DataFrame(Data).T.reindex(index=dts)
         else: return Panel(Data, items=dts)
