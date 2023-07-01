@@ -322,7 +322,7 @@ def calcDrawdown(wealth_seq):
     return (Drawdown, DrawdownDuration)
 # 仅计算最大回撤率, wealth_seq: 净值序列, array(shape=(m, n)); 返回最大回撤率
 def calcMD(wealth_seq):
-    return np.nanmin(wealth_seq / np.maximum.accumulate(wealth_seq, axis=0) - 1)
+    return np.nanmin(wealth_seq / np.maximum.accumulate(wealth_seq, axis=0) - 1, axis=0)
 # 计算最大回撤率, wealth_seq: 净值序列, array(shape=(n,)); 返回(最大回撤, 最大回撤开始位置, 最大回撤结束位置)
 def calcMaxDrawdownRate(wealth_seq):
     HighWater = wealth_seq[0]# 高水位线
