@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """因子运算"""
 import os
+import gc
 from multiprocessing import Queue, Event
 
 import pandas as pd
@@ -370,6 +371,7 @@ class SectionOperation(DerivativeFactor):
                         CacheFile["StdData"] = StdData.reindex(columns=iIDs)
                     CacheFile["_QS_IDs"] = pd.Series(iIDs)
         StdData = None# 释放数据
+        gc.collect()
         if self._OperationMode.SubProcessNum>0:
             Sub2MainQueue, PIDEvent = self._OperationMode._Event[self.Name]
             Sub2MainQueue.put(1)
@@ -554,6 +556,7 @@ class PanelOperation(DerivativeFactor):
                         CacheFile["StdData"] = StdData.reindex(columns=iIDs)
                     CacheFile["_QS_IDs"] = pd.Series(iIDs)
         StdData = None# 释放数据
+        gc.collect()
         if self._OperationMode.SubProcessNum>0:
             Sub2MainQueue, PIDEvent = self._OperationMode._Event[self.Name]
             Sub2MainQueue.put(1)
