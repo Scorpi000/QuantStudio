@@ -242,7 +242,7 @@ def _nanargmax(f,idt,iid,x,args):
     Data = np.array(Data)
     Mask = pd.isnull(Data)
     Data[Mask] = -np.inf
-    Rslt = np.nanargmax(Data,axis=0)
+    Rslt = np.nanargmax(Data, axis=0).astype(float)
     Mask = (np.sum(Mask,axis=0)==Data.shape[0])
     Rslt[Mask] = np.nan   
     return Rslt
@@ -255,7 +255,7 @@ def _nanargmin(f,idt,iid,x,args):
     Data = np.array(Data)
     Mask = pd.isnull(Data)
     Data[Mask] = np.inf
-    Rslt = np.nanargmin(Data,axis=0)
+    Rslt = np.nanargmin(Data, axis=0).astype(float)
     Mask = (np.sum(Mask,axis=0)==Data.shape[0])
     Rslt[Mask] = np.nan   
     return Rslt
