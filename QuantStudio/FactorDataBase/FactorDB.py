@@ -1011,7 +1011,13 @@ class CustomFT(FactorTable):
         return super().write2FDB(factor_names, ids, dts, factor_db, table_name, if_exists, subprocess_num, dt_ruler=dt_ruler, section_ids=section_ids, specific_target=specific_target, **kwargs)
     # ---------------新的接口------------------
     # 添加因子, factor_list: 因子对象列表
-    def addFactors(self, factor_list=[], factor_table=None, factor_names=None, args={}):
+    def addFactors(self, factor_list=[], factor_table=None, factor_names=None, replace=True, args={}):
+        if replace:
+            FactorNames = {iFactor.Name for iFactor in factor_list}
+            if factor_table is not None:
+                FactorNames = set(FactorNames).union(factor_table.FactorNames if factor_names is None else factor_names)
+            FactorNames = sorted(FactorNames.intersection(self.FactorNames))
+            if FactorNames: self.deleteFactors(factor_names=FactorNames)
         for iFactor in factor_list:
             if iFactor.Name in self._Factors:
                 raise __QS_Error__("因子: '%s' 有重名!" % iFactor.Name)
