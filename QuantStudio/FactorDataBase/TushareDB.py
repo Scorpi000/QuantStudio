@@ -6,7 +6,6 @@ import datetime as dt
 
 import numpy as np
 import pandas as pd
-import tushare as ts
 from traits.api import Enum, Int, Str, Callable
 
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
@@ -397,7 +396,9 @@ class TushareDB(FactorDB):
         self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"TushareDBInfo.xlsx"# 数据库信息源文件路径
         self._TableInfo, self._FactorInfo = updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger)
     def connect(self):
+        import tushare as ts
         ts.set_token(self._QSArgs.Token)
+        self._ts_module = ts
         self._ts = ts.pro_api()
         return self
     def disconnect(self):
