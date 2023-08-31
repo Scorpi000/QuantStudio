@@ -323,6 +323,7 @@ class FilterPortfolio(QuantilePortfolio):
         CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="调仓时点", order=6)
         MarketIDFilter = Str(arg_type="IDFilter", label="市场组合", order=7)
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
+        PriceMiss = Enum("沿用前值", "填充为0", arg_type="SingleOption", label="价格缺失", order=9)
         def __QS_initArgs__(self):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1, option_range=DefaultNumFactorList))
@@ -351,21 +352,23 @@ class FilterPortfolio(QuantilePortfolio):
         if self._iDT==idt: return 0
         self._iDT = idt
         Price = self._FactorTable.readData(dts=[idt], ids=self._FactorTable.getID(ifactor_name=self._QSArgs.PriceFactor), factor_names=[self._QSArgs.PriceFactor]).iloc[0, 0, :]
+        self._Output["QP_LastPrice"] = Price.where(pd.notnull(Price), self._Output["QP_LastPrice"])
         GroupNum = self._Output["GroupNum"]
         for i in range(GroupNum):
             if len(self._Output["QP_P_CurPos"][i])==0:
-                self._Output["净值"][i].append(self._Output["净值"][i][-1])
+                iWealth = self._Output["净值"][i][-1]
+            elif self._QSArgs.PriceMiss=="沿用前值":
+                iWealth = (self._Output["QP_P_CurPos"][i] * self._Output["QP_LastPrice"]).sum()
             else:
-                iWealth = (self._Output["QP_P_CurPos"][i]*Price).sum()
-                if pd.notnull(iWealth):
-                    self._Output["净值"][i].append(iWealth)
-                else:
-                    self._Output["净值"][i].append(0)
+                iWealth = (self._Output["QP_P_CurPos"][i] * Price).sum()
+            self._Output["净值"][i].append(iWealth)
             self._Output["换手率"][i].append(0)
         if len(self._Output["QP_P_MarketPos"])==0:
             self._Output["市场净值"].append(self._Output["市场净值"][-1])
+        elif self._QSArgs.PriceMiss=="沿用前值":
+            self._Output["市场净值"].append((self._Output["QP_P_MarketPos"] * self._Output["QP_LastPrice"]).sum())
         else:
-            self._Output["市场净值"].append((self._Output["QP_P_MarketPos"]*Price).sum())
+            self._Output["市场净值"].append((self._Output["QP_P_MarketPos"] * Price).sum())
         if self._QSArgs.CalcDTs:
             if idt not in self._QSArgs.CalcDTs[self._CurCalcInd:]: return 0
             self._CurCalcInd = self._QSArgs.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
