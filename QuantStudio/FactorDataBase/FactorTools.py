@@ -1919,7 +1919,7 @@ def merge(factors, descriptor_ids, data_type="object", **kwargs):
 def _chg_ids(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)[0]
     IDMap = args["OperatorArg"]["id_map"]
-    OldIDs = f.DescriptorSection[0]
+    OldIDs = f._QSArgs.DescriptorSection[0]
     Rslt = np.full(shape=(len(idt), len(iid)), fill_value=np.nan, dtype=Data.dtype)
     for i, iID in enumerate(iid):
         iOldID = IDMap.get(iID, None)
