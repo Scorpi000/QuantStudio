@@ -1064,7 +1064,7 @@ class CustomFT(FactorTable):
             self._IDFilterStr = id_filter_str
             return OldIDFilterStr
         CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(id_filter_str, self.FactorNames)
-        if CompiledIDFilterStr is None: raise __QS_Error__("条件字符串有误!")
+        if CompiledIDFilterStr is None: raise __QS_Error__(f"条件字符串有误: {id_filter_str}")
         self._IDFilterStr = id_filter_str
         self._CompiledIDFilter[id_filter_str] = (CompiledIDFilterStr, IDFilterFactors)
         return OldIDFilterStr
