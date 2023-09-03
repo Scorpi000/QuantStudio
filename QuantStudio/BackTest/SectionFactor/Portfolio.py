@@ -477,7 +477,7 @@ class FilterPortfolio(BaseModule):
     def genMatplotlibFig(self, file_path=None):
         GroupNum = self._Output["超额净值"].shape[1]
         nLS = self._Output["净值"].shape[1] - 1 - GroupNum
-        nRow, nCol = 3, 3 + int(0 if nLS <= 1 else (nLS - 2) // 3 + 1)
+        nRow, nCol = 3 + int(0 if nLS <= 1 else (nLS - 2) // 3 + 1), 3
         Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         xData = np.arange(1, GroupNum + 1)
         xTickLabels = [str(iInd) for iInd in self._Output["统计数据"].index[:GroupNum]]
