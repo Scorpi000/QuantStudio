@@ -506,7 +506,7 @@ class FilterPortfolio(BaseModule):
         Axes = Fig.add_subplot(nRow, nCol, 9)
         Axes.xaxis_date()
         Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
-        for i in range(GroupNum+1):
+        for i in range(GroupNum):
             iName = str(self._Output["净值"].columns[i])
             iNum = (self._Output["投资组合"][iName]>0).sum(axis=1)
             Axes.plot(iNum.index, iNum.values, label=f"{iName}: {round(iNum.mean(),2)}", lw=2.5)
