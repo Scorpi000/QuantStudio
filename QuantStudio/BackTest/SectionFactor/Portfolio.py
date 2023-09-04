@@ -460,7 +460,7 @@ class FilterPortfolio(BaseModule):
             RebalanceIdx = pd.Series(np.arange(nDT), index=self._Model.DateTimeSeries)
             RebalanceIdx = sorted(RebalanceIdx[RebalanceIdx.index.intersection(self._QSArgs.CalcDTs)])
         self._Output["换手率"] = pd.DataFrame(np.array(self._Output["换手率"]).T, index=self._Model.DateTimeSeries, columns=PortfolioNames)
-        self._Output["投资组合"] = {str(i): pd.DataFrame(self._Output["投资组合"][i], index=self._Output["调仓日"]) for i in range(GroupNum)}
+        self._Output["投资组合"] = {PortfolioNames[i]: pd.DataFrame(self._Output["投资组合"][i], index=self._Output["调仓日"]) for i in range(GroupNum)}
         self._Output["超额收益率"] = self._Output["收益率"].iloc[:, :GroupNum].copy()
         self._Output["超额净值"] = self._Output["超额收益率"].copy()
         for i in self._Output["超额收益率"]:
