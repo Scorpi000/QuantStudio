@@ -477,7 +477,7 @@ class FilterPortfolio(BaseModule):
     def genMatplotlibFig(self, file_path=None):
         GroupNum = self._Output["超额净值"].shape[1]
         nLS = self._Output["净值"].shape[1] - 1 - GroupNum
-        nRow, nCol = 3 + int(0 if nLS <= 1 else (nLS - 2) // 3 + 1), 3
+        nRow, nCol = 3 + int(0 if nLS <= 0 else (nLS - 1) // 3 + 1), 3
         Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         xData = np.arange(1, GroupNum + 1)
         xTickLabels = [str(iInd) for iInd in self._Output["统计数据"].index[:GroupNum]]
@@ -503,8 +503,17 @@ class FilterPortfolio(BaseModule):
             Axes.plot(self._Output["净值"].index, self._Output["净值"].iloc[:, i].values, label=str(self._Output["净值"].columns[i]), lw=2.5)
         Axes.legend(loc='best')
         Axes.set_title("多头净值")
+        Axes = Fig.add_subplot(nRow, nCol, 9)
+        Axes.xaxis_date()
+        Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
+        for i in range(GroupNum+1):
+            iName = str(self._Output["净值"].columns[i])
+            iNum = (self._Output["投资组合"][iName]>0).sum(axis=1)
+            Axes.plot(iNum.index, iNum.values, label=f"{iName}: {round(iNum.mean(),2)}", lw=2.5)
+        Axes.legend(loc='best')
+        Axes.set_title("持仓数量")
         for i in range(nLS):
-            Axes = Fig.add_subplot(nRow, nCol, 9+i)
+            Axes = Fig.add_subplot(nRow, nCol, 10+i)
             xData = np.arange(0, self._Output["净值"].shape[0])
             xTicks = np.arange(0, self._Output["净值"].shape[0], max(1, int(self._Output["净值"].shape[0]/8)))
             xTickLabels = [self._Output["净值"].index[i].strftime("%Y-%m-%d") for i in xTicks]
