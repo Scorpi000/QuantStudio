@@ -35,7 +35,7 @@ class _FactorTable(FactorTable):
         return sorted(self._Data[self._Name].keys())
     
     def getMetaData(self, key=None, args={}):
-        with self._Lock.
+        with self._Lock:
             if self._Name not in self._TableMeta:
                 return (pd.Series() if key is None else None)
             if key is None:
