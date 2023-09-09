@@ -2,7 +2,7 @@
 """内存因子库"""
 import os
 import datetime as dt
-from multiprocessing import Lock
+from multiprocessing import Lock, Manager
 
 import numpy as np
 import pandas as pd
@@ -130,9 +130,12 @@ class MemoryDB(WritableFactorDB):
     
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         self._isAvailable = False
-        self._Data = {}# 所有的因子数据
-        self._TableMeta = {}# 表元信息
-        self._FactorMeta = {}# 因子元信息
+        self._Lock = Lock()# 进程间库锁
+        self._Manager = Manager()
+        # self._Data = {}# 所有的因子数据
+        self._Data = self._Manager.dict()# 所有的因子数据
+        self._TableMeta = self._Manager.dict()# 表元信息
+        self._FactorMeta = self._Manager.dict()# 因子元信息
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"MemoryDBConfig.json" if config_file is None else config_file), **kwargs)
         return
     
@@ -237,34 +240,42 @@ class MemoryDB(WritableFactorDB):
     
     def writeFactorData(self, factor_data, table_name, ifactor_name, if_exists="update", data_type=None, **kwargs):
         if table_name not in self._Data:
-            self._Data[table_name] = {ifactor_name: factor_data}
+            with self._Lock:
+                self._Data[table_name] = {ifactor_name: factor_data}
             return 0
         if ifactor_name not in self._Data[table_name]:
-            self._Data[table_name][ifactor_name] = factor_data
+            with self._Lock:
+                iDict = self._Data[table_name]
+                iDict[ifactor_name] = factor_data
+                self._Data[table_name] = iDict
             return 0
-        iOldData = self._Data[table_name][ifactor_name]
-        iAllDTs = sorted(factor_data.index.union(iOldData.index))
-        iAllIDs = sorted(factor_data.columns.union(iOldData.columns))
-        iOldDTs = sorted(iOldData.index.difference(factor_data.index))
-        iOldIDs = sorted(iOldData.columns.difference(factor_data.columns))
-        iOldData, factor_data = iOldData.reindex(index=iAllDTs, columns=iAllIDs), factor_data.reindex(index=iAllDTs, columns=iAllIDs)
-        if if_exists=="update":
-            if iOldIDs: factor_data.loc[:, iOldIDs] = iOldData.loc[:, iOldIDs]
-            if iOldDTs: factor_data.loc[iOldDTs, :] = iOldData.loc[iOldDTs, :]
-        elif if_exists=="append":
-            factor_data = iOldData.where(pd.notnull(iOldData), factor_data)
-        elif if_exists=="update_notnull":
-            factor_data = factor_data.where(pd.notnull(factor_data), iOldData)
-        else:
-            Msg = ("因子库 '%s' 调用方法 writeData 错误: 不支持的写入方式 '%s'!" % (self.Name, str(if_exists)))
-            self._QS_Logger.error(Msg)
-            raise __QS_Error__(Msg)
-        self._Data[table_name][ifactor_name] = factor_data
+        with self._Lock:
+            iOldData = self._Data[table_name][ifactor_name]
+            iAllDTs = sorted(factor_data.index.union(iOldData.index))
+            iAllIDs = sorted(factor_data.columns.union(iOldData.columns))
+            iOldDTs = sorted(iOldData.index.difference(factor_data.index))
+            iOldIDs = sorted(iOldData.columns.difference(factor_data.columns))
+            iOldData, factor_data = iOldData.reindex(index=iAllDTs, columns=iAllIDs), factor_data.reindex(index=iAllDTs, columns=iAllIDs)
+            if if_exists=="update":
+                if iOldIDs: factor_data.loc[:, iOldIDs] = iOldData.loc[:, iOldIDs]
+                if iOldDTs: factor_data.loc[iOldDTs, :] = iOldData.loc[iOldDTs, :]
+            elif if_exists=="append":
+                factor_data = iOldData.where(pd.notnull(iOldData), factor_data)
+            elif if_exists=="update_notnull":
+                factor_data = factor_data.where(pd.notnull(factor_data), iOldData)
+            else:
+                Msg = ("因子库 '%s' 调用方法 writeData 错误: 不支持的写入方式 '%s'!" % (self.Name, str(if_exists)))
+                self._QS_Logger.error(Msg)
+                raise __QS_Error__(Msg)
+            iDict = self._Data[table_name]
+            iDict[ifactor_name] = factor_data
+            self._Data[table_name] = iDict
         return 0
     
     def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
         if table_name not in self._Data:
-            self._Data[table_name] = {iFactorName: data.loc[iFactorName] for iFactorName in data.items}
+            with self._Lock:
+                self._Data[table_name] = {iFactorName: data.loc[iFactorName] for iFactorName in data.items}
             return 0
         for iFactor in data.items:
             self.writeFactorData(data.loc[iFactor], table_name, iFactor, if_exists=if_exists, data_type=data_type.get(iFactor, None), **kwargs)
