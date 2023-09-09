@@ -138,15 +138,10 @@ class MemoryDB(WritableFactorDB):
     
     def connect(self):
         self._isAvailable = True
-        self._Data = {}
         return self
     
     def disconnect(self):
         self._isAvailable = False
-        # 清空所有数据
-        self._Data = {}# 所有的因子数据
-        self._TableMeta = {}# 表元信息
-        self._FactorMeta = {}# 因子元信息
     
     def isAvailable(self):
         return self._isAvailable
