@@ -267,7 +267,7 @@ class _ErgodicMode(QSArgs):
                 Data = Panel(items=Data.items, major_axis=dts, minor_axis=ids)
         if not DataFactorNames: return Data.loc[factor_names]
         #print("超出缓存区因子个数读取: "+str(DataFactorNames))# debug
-        return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=DataFactorNames, ids=ids, dts=dts, args=args), factor_names=DataFactorNames, ids=ids, dts=dts, args=args).join(Data).loc[factor_names]
+        return FT.__QS_calcData__(raw_data=FT.__QS_prepareRawData__(factor_names=DataFactorNames, ids=ids, dts=dts, args=args), factor_names=DataFactorNames, ids=ids, dts=dts, args=args).join(Data).loc[factor_names]
     
     def _readIDData(self, iid, factor_names, dts, args={}):
         FT = self._Owner
@@ -641,6 +641,17 @@ class _OperationMode(QSArgs):
         print(('耗时 : %.2f' % (time.perf_counter()-StartT, ))+"\n"+("总耗时 : %.2f" % (time.perf_counter()-TotalStartT, ))+"\n"+"="*28)
         return 0
     
+    def readData(self, factor_names, ids, dts, args={}):
+        from QuantStudio.FactorDataBase.MemoryDB import MemoryDB
+        MDB = MemoryDB().connect()
+        ModeArgs = args.get("批量模式", {})
+        DTRuler = ModeArgs.get("时点标尺", self.DTRuler)
+        SubprocessNum = ModeArgs.get("子进程数", self.SubProcessNum)
+        SectionIDs = ModeArgs.get("截面ID", None)
+        self.write2FDB(factor_names, ids, dts, MDB, "tmp_table", if_exists="update", subprocess_num=SubprocessNum, dt_ruler=DTRuler, section_ids=SectionIDs)
+        return MDB["tmp_table"].readData(factor_names=factor_names, ids=None, dts=None)
+    
+    
 # 因子表准备子进程
 def _prepareRawData(args):
     nGroup = len(args['GroupInfo'])
@@ -776,6 +787,7 @@ class FactorTable(__QS_Object__):
     class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
         ErgodicMode = Instance(_ErgodicMode, arg_type="ArgObject", label="遍历模式", order=-3)
         OperationMode = Instance(_OperationMode, arg_type="ArgObject", label="批量模式", order=-4)
+        OperationModeRead = Enum(False, True, arg_type="Bool", label="批量读取", order=-5)
         def __QS_initArgs__(self):
             self.ErgodicMode = _ErgodicMode(owner=self._Owner, logger=self._QS_Logger)
             self.OperationMode = _OperationMode(owner=self._Owner, logger=self._QS_Logger)
@@ -863,6 +875,7 @@ class FactorTable(__QS_Object__):
     # 读取数据, 返回: Panel(item=[因子], major_axis=[时间点], minor_axis=[ID])
     def readData(self, factor_names, ids, dts, args={}):
         if self._QSArgs.ErgodicMode._isStarted: return self._QSArgs.ErgodicMode._readData_ErgodicMode(factor_names=factor_names, ids=ids, dts=dts, args=args)
+        if args.get("批量读取", self._QSArgs.OperationModeRead): return self._QSArgs.OperationMode.readData(factor_names=factor_names, ids=ids, dts=dts, args=args)
         return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args), factor_names=factor_names, ids=ids, dts=dts, args=args)
     def __getitem__(self, key):
         if isinstance(key, str): return self.getFactor(key)
