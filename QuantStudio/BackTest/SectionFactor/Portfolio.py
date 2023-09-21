@@ -51,7 +51,7 @@ class QuantilePortfolio(BaseModule):
         CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="调仓时点", order=6)
         MarketIDFilter = Str(arg_type="IDFilter", label="市场组合", order=7)
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
-        PriceMiss = Enum("沿用前值", "填充为0", arg_type="SingleOption", label="价格缺失", order=9)
+        PriceMiss = Enum("沿用前值", "填充为0", arg_type="SingleOption", label="价格缺失", order=9, option_range=["沿用前值", "填充为0"])
         Perturbation = Enum(False, True, arg_type="Bool", label="随机微扰", order=10)
         def __QS_initArgs__(self):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
@@ -331,7 +331,7 @@ class FilterPortfolio(BaseModule):
         CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="调仓时点", order=4)
         MarketIDFilter = Str(arg_type="IDFilter", label="市场组合", order=5)
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=6)
-        PriceMiss = Enum("沿用前值", "填充为0", arg_type="SingleOption", label="价格缺失", order=7)
+        PriceMiss = Enum("沿用前值", "填充为0", arg_type="SingleOption", label="价格缺失", order=7, option_range=["沿用前值", "填充为0"])
         LSPairs = List(arg_type="List", label="多空对", order=8)
         def __QS_initArgs__(self):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
