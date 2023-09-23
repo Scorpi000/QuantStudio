@@ -826,7 +826,7 @@ class JYDB(QSSQLObject, FactorDB):
         if not os.path.isfile(self._QSArgs.DBInfoFile):
             if self._QSArgs.DBInfoFile:
                 try:
-                    InfoFile = getInfoFile(self._QSArgs.DBInfoFile)
+                    InfoFile = getInfoFile(self._QSArgs.DBInfoFile, suffix=".xlsx")
                 except Exception as e:
                     self._QS_Logger.warning("找不到指定的库信息文件 : '%s', 将使用默认库信息文件" % self._QSArgs.DBInfoFile)
                     self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"JYDBInfo.xlsx"# 默认数据库信息源文件路径

@@ -16,9 +16,9 @@ from QuantStudio.FactorDataBase.FactorDB import FactorTable
 from QuantStudio.Tools.api import Panel
 
 # 给定 URL 获取库信息文件
-def getInfoFile(url):
+def getInfoFile(url, suffix):
     Rsp = requests.get(url)
-    InfoFile = tempfile.NamedTemporaryFile()
+    InfoFile = tempfile.NamedTemporaryFile(suffix=suffix)
     InfoFile.write(Rsp.content)
     return InfoFile
 
