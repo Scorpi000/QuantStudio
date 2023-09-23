@@ -14,7 +14,8 @@ from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.QSObjects import QSSQLObject
 from QuantStudio import __QS_Error__, __QS_LibPath__, __QS_MainPath__, __QS_ConfigPath__
 from QuantStudio.FactorDataBase.FactorDB import FactorDB
-from QuantStudio.FactorDataBase.FDBFun import adjustDataDTID, SQL_Table, SQL_FeatureTable, SQL_WideTable, SQL_MappingTable, SQL_NarrowTable, SQL_TimeSeriesTable, SQL_ConstituentTable, SQL_FinancialTable
+from QuantStudio.FactorDataBase.FDBFun import getInfoFile, adjustDataDTID, SQL_Table, SQL_FeatureTable, SQL_WideTable, SQL_MappingTable, SQL_NarrowTable, SQL_TimeSeriesTable, SQL_ConstituentTable, SQL_FinancialTable
+    
 
 # 将信息源文件中的表和字段信息导入信息文件
 def _importInfo(info_file, info_resource, logger, out_info=False):
@@ -818,14 +819,25 @@ class JYDB(QSSQLObject, FactorDB):
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=(__QS_ConfigPath__+os.sep+"JYDBConfig.json" if config_file is None else config_file), **kwargs)
         self._InfoFilePath = __QS_LibPath__+os.sep+"JYDBInfo.hdf5"# 数据库信息文件路径
+        self._initInfo()
+        
+    def _initInfo(self):
+        # 数据库表信息, 数据库字段信息, 交易所信息, 证券信息
         if not os.path.isfile(self._QSArgs.DBInfoFile):
-            if self._QSArgs.DBInfoFile: self._QS_Logger.warning("找不到指定的库信息文件 : '%s'" % self._QSArgs.DBInfoFile)
-            self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"JYDBInfo.xlsx"# 默认数据库信息源文件路径
-            self._TableInfo, self._FactorInfo, self._ExchangeInfo, self._SecurityInfo = _updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger)# 数据库表信息, 数据库字段信息
+            if self._QSArgs.DBInfoFile:
+                try:
+                    InfoFile = getInfoFile(self._QSArgs.DBInfoFile)
+                except Exception as e:
+                    self._QS_Logger.warning("找不到指定的库信息文件 : '%s', 将使用默认库信息文件" % self._QSArgs.DBInfoFile)
+                    self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"JYDBInfo.xlsx"# 默认数据库信息源文件路径
+                    self._TableInfo, self._FactorInfo, self._ExchangeInfo, self._SecurityInfo = _updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger)
+                else:
+                    self._InfoResourcePath = self._QSArgs.DBInfoFile
+                    self._TableInfo, self._FactorInfo, self._ExchangeInfo, self._SecurityInfo = _updateInfo(self._InfoFilePath, InfoFile.name, self._QS_Logger, out_info=True)
         else:
             self._InfoResourcePath = self._QSArgs.DBInfoFile
-            self._TableInfo, self._FactorInfo, self._ExchangeInfo, self._SecurityInfo = _updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger, out_info=True)# 数据库表信息, 数据库字段信息
-        return
+            self._TableInfo, self._FactorInfo, self._ExchangeInfo, self._SecurityInfo = _updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger, out_info=True)
+        
     @property
     def TableNames(self):
         if self._TableInfo is not None: return self._TableInfo[pd.notnull(self._TableInfo["TableClass"])].index.tolist()

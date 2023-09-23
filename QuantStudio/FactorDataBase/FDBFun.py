@@ -1,6 +1,8 @@
 # coding=utf-8
 import os
 import datetime as dt
+import requests
+import tempfile
 
 import numpy as np
 import pandas as pd
@@ -12,6 +14,13 @@ from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.FactorDataBase.FactorDB import FactorTable
 from QuantStudio.Tools.api import Panel
+
+# 给定 URL 获取库信息文件
+def getInfoFile(url):
+    Rsp = requests.get(url)
+    InfoFile = tempfile.NamedTemporaryFile()
+    InfoFile.write(Rsp.content)
+    return InfoFile
 
 # Quant Studio 系统错误: 重复索引
 class __QS_Error_DuplicatedIndex__(__QS_Error__):
