@@ -824,16 +824,15 @@ class JYDB(QSSQLObject, FactorDB):
     def _initInfo(self):
         # 数据库表信息, 数据库字段信息, 交易所信息, 证券信息
         if not os.path.isfile(self._QSArgs.DBInfoFile):
-            if self._QSArgs.DBInfoFile:
-                try:
-                    InfoFile = getInfoFile(self._QSArgs.DBInfoFile, suffix=".xlsx")
-                except Exception as e:
-                    self._QS_Logger.warning("找不到指定的库信息文件 : '%s', 将使用默认库信息文件" % self._QSArgs.DBInfoFile)
-                    self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"JYDBInfo.xlsx"# 默认数据库信息源文件路径
-                    self._TableInfo, self._FactorInfo, self._ExchangeInfo, self._SecurityInfo = _updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger)
-                else:
-                    self._InfoResourcePath = self._QSArgs.DBInfoFile
-                    self._TableInfo, self._FactorInfo, self._ExchangeInfo, self._SecurityInfo = _updateInfo(self._InfoFilePath, InfoFile.name, self._QS_Logger, out_info=True)
+            try:
+                InfoFile = getInfoFile(self._QSArgs.DBInfoFile, suffix=".xlsx")
+            except Exception as e:
+                self._QS_Logger.warning("找不到指定的库信息文件 : '%s', 将使用默认库信息文件" % self._QSArgs.DBInfoFile)
+                self._InfoResourcePath = __QS_MainPath__+os.sep+"Resource"+os.sep+"JYDBInfo.xlsx"# 默认数据库信息源文件路径
+                self._TableInfo, self._FactorInfo, self._ExchangeInfo, self._SecurityInfo = _updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger)
+            else:
+                self._InfoResourcePath = self._QSArgs.DBInfoFile
+                self._TableInfo, self._FactorInfo, self._ExchangeInfo, self._SecurityInfo = _updateInfo(self._InfoFilePath, InfoFile.name, self._QS_Logger, out_info=True)
         else:
             self._InfoResourcePath = self._QSArgs.DBInfoFile
             self._TableInfo, self._FactorInfo, self._ExchangeInfo, self._SecurityInfo = _updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger, out_info=True)
