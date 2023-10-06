@@ -7,12 +7,14 @@ import sympy
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
+from numpy.lib import recfunctions as rfn
 
 from QuantStudio import __QS_Error__
 from QuantStudio.Tools.api import Panel
 from QuantStudio.FactorDataBase.FactorDB import Factor
 from QuantStudio.FactorDataBase.FactorOperation import PointOperation, TimeOperation, SectionOperation
 from QuantStudio.Tools import DataPreprocessingFun
+from QuantStudio.Tools.DataTypeConversionFun import expandListElementDataFrame
 
 
 def _genMultivariateOperatorInfo(*factors):
@@ -137,6 +139,20 @@ def applymap(f, func=id, data_type="double", **kwargs):
     Args["OperatorArg"] = {"func": func}
     Expr = sympy.Function(func.__name__)(*Exprs)
     return PointOperation(kwargs.pop("factor_name", "applymap"), Descriptors, {"算子": _applymap, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "数据类型": data_type, "表达式": Expr}, **kwargs)
+def _map(f, idt, iid, x, args):
+    Data = []
+    if args["OperatorArg"]["idt"]:
+        Data.append(np.array(idt, dtype="O").reshape((-1, 1)).repeat(len(iid), axis=1))
+    if args["OperatorArg"]["iid"]:
+        Data.append(np.array(iid, dtype="O").reshape((1, -1)).repeat(len(idt), axis=0))
+    Data.extend((iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for iData in _genOperatorData(f,idt,iid,x,args))
+    Data = np.array(Data)
+    return np.apply_along_axis(args["OperatorArg"]["func"], axis=0, arr=Data)
+def map(*factors, func=np.sum, idt=False, iid=False, data_type="double", **kwargs):
+    Descriptors, Args, Exprs = _genMultivariateOperatorInfo(*factors)
+    Args["OperatorArg"] = {"func": func, "idt": idt, "iid": iid}
+    Expr = sympy.Function(func.__name__)(*Exprs)
+    return PointOperation(kwargs.pop("factor_name", "map"), Descriptors, {"算子": _map, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "数据类型": data_type, "表达式": Expr}, **kwargs)
 def _map_value(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)[0]
     Mapping = pd.Series(args["OperatorArg"]["mapping"])
@@ -1952,3 +1968,22 @@ def map_section(f, mapping, mapping_ids, **kwargs):
     DescriptorIDs += [mapping_ids] * (EndInd - StartInd)
     Args["OperatorArg"] = {"mapping_ids": mapping_ids}
     return SectionOperation(FactorName, Descriptors, {"算子": _map_section, "参数": Args, "运算时点": "单时点", "描述子截面": DescriptorIDs, "数据类型": DataType, "表达式": Expr}, **kwargs)
+def _groupby(f, idt, iid, x, args):
+    Data = _genOperatorData(f,idt,iid,x,args)
+    f1 = expandListElementDataFrame(pd.DataFrame(Data[0], index=idt, columns=iid).stack().to_frame(), expand_index=True, dropna=True, empty_list_mask=False)
+    f1.columns = ["QS_DT", "QS_ID", "QS_Component"]
+    f1 = f1[f1["QS_Component"].notnull()]
+    f1["QS_Component"] = f1["QS_Component"].astype(str)
+    DescriptorIDs = f._QSArgs.DescriptorSection[-1]
+    Data = pd.DataFrame({f"f{i}": pd.DataFrame(iData, index=idt, columns=DescriptorIDs).stack() for i, iData in enumerate(Data[1:])})
+    Data = pd.merge(f1, Data, how="left", left_on=["QS_DT", "QS_Component"], right_index=True)
+    Rslt = Data.groupby(["QS_DT", "QS_ID"], as_index=True).apply(args["OperatorArg"]["func"])
+    if isinstance(Rslt, pd.Series):
+        return Rslt.unstack().reindex(index=idt, columns=iid)
+    Rslt = np.array([Rslt[iFactor].unstack().reindex(index=idt, columns=iid) for iFactor in Rslt.columns])
+    return rfn.unstructured_to_structured(Rslt.swapaxes(0, -1)).T
+def groupby(f, func, descriptor_ids, *factors, data_type="double", **kwargs):
+    Descriptors, Args, Exprs = _genMultivariateOperatorInfo(f, *factors)
+    Args["OperatorArg"] = {"func": func}
+    Expr = sympy.Function(func.__name__)(*Exprs)
+    return SectionOperation(kwargs.pop("factor_name", "groupby"), Descriptors, {"算子": _groupby, "参数": Args, "描述子截面": [None]+[descriptor_ids]*len(factors), "运算时点": "多时点", "输出形式": "全截面", "数据类型": data_type, "表达式": Expr}, **kwargs)
