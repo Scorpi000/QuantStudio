@@ -1615,7 +1615,7 @@ class DataFactor(Factor):
             Data = pd.DataFrame(self._Data.values.reshape((self._Data.shape[0], 1)).repeat(len(ids), axis=1), index=self._Data.index, columns=ids)
         else:
             Data = self._Data
-        if (Data.columns.intersection(ids).shape[0]==0) or (Data.index.intersection(dts).shape[0]==0):
+        if Data.columns.intersection(ids).shape[0]==0:
             return pd.DataFrame(index=dts, columns=ids, dtype=("O" if self._QSArgs.DataType!="double" else float))
         if self._QSArgs.LookBack==0: return Data.reindex(index=dts, columns=ids)
         else: return fillNaByLookback(Data.reindex(index=sorted(Data.index.union(dts)), columns=ids), lookback=self._QSArgs.LookBack*24.0*3600).loc[dts, :]
