@@ -437,7 +437,7 @@ class _OperationMode(QSArgs):
         super().__init__(owner=owner, sys_args=sys_args, config_file=config_file, **kwargs)
     
     def __QS_initArgs__(self):
-        self.add_trait("FactorNames", ListStr(arg_type="MultiOption", label="运算因子", order=2, option_range=self._Owner.FactorNames))
+        self.add_trait("FactorNames", ListStr(arg_type="MultiOption", label="运算因子", order=2))
     
     def __getstate__(self):
         state = self.__dict__.copy()
