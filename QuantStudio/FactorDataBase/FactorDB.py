@@ -767,7 +767,7 @@ def _calculate(args):
                         for k, kFactor in enumerate(iFactors):
                             ijkData = kFactor._QS_getData(dts=jDTs, pids=[args["PID"]])
                             if OperationMode._FactorPrepareIDs[kFactor.Name] is not None:
-                                ijkData = ijkData.reindex(columns=FT.OperationMode.IDs)
+                                ijkData = ijkData.reindex(columns=FT._QSArgs.OperationMode.IDs)
                             jData[iTargetFactorNames[k]] = ijkData
                             if j==0: args["Sub2MainQueue"].put((args["PID"], 0.5, None))
                         jData = Panel(jData, items=iTargetFactorNames, major_axis=jDTs)
