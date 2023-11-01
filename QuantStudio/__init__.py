@@ -123,7 +123,13 @@ class QSArgs(HasTraits):
         return getattr(self, self._LabelTrait[key])
     
     def __setitem__(self, key, value):
-        setattr(self, self._LabelTrait[key], value)
+        iTrait = self.trait(self._LabelTrait[key])
+        if iTrait.arg_type == "ArgObject":
+            iArgObj = self[key]
+            for iKey, iVal in value.items():
+                iArgObj[iKey] = iVal
+        else:
+            setattr(self, self._LabelTrait[key], value)
     
     def __delitem__(self, key):
         self.remove_trait(self._LabelTrait[key])
