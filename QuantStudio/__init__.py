@@ -30,6 +30,12 @@ mpl.rcParams['axes.unicode_minus'] = False
 from QuantStudio.Tools.DataTypeConversionFun import dict2html
 
 # 参数对象
+# trait 的附加属性
+#     label: 参数名称(对外使用)
+#     order: 参数的排序
+#     arg_type: 参数的类型: "String", "Integer", "Bool", "Float", "Dict", "List", "File", "Directory", "ArgObject"
+#     mutable: 初始化后是否可修改, 默认 None 可修改
+#     eq_arg: 是否用于判断两个参数对象相等, 默认 None 用于判断
 class QSArgs(HasTraits):
     """参数对象"""
     def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
@@ -136,6 +142,20 @@ class QSArgs(HasTraits):
 
     def __contains__(self, key):
         return (key in self._LabelTrait)
+    
+    def __eq__(self, other):
+        try:
+            for iArgName, iTraitName in self._LabelTrait.items():
+                iTrait = self.trait(iTraitName)
+                iOtherTrait = other.trait(iTraitName)
+                if iTrait.eq_arg:
+                    if getattr(self, iTraitName)!=getattr(other, iTraitName):
+                        return False
+        except Exception as e:
+            self._QS_Logger.warning(f"参数集 {self} 和 {other} 确定是否相等时错误: {e}")
+            return False
+        else:
+            return True
 
     def get(self, key, value=None):
         if key in self._LabelTrait:
