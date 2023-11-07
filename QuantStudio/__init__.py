@@ -149,7 +149,8 @@ class QSArgs(HasTraits):
                 iTrait = self.trait(iTraitName)
                 iOtherTrait = other.trait(iTraitName)
                 if iTrait.eq_arg:
-                    if getattr(self, iTraitName)!=getattr(other, iTraitName):
+                    iVal, iOtherVal = getattr(self, iTraitName), getattr(other, iTraitName)
+                    if (iVal is not iOrderVal) and np.any(iVal!=iOrderVal):
                         return False
         except Exception as e:
             self._QS_Logger.warning(f"参数集 {self} 和 {other} 确定是否相等时错误: {e}")
