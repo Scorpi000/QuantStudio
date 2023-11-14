@@ -785,8 +785,8 @@ def _calculate(args):
 class FactorTable(__QS_Object__):
     """因子表"""
     class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
-        ErgodicMode = Instance(_ErgodicMode, arg_type="ArgObject", label="遍历模式", order=-3)
-        OperationMode = Instance(_OperationMode, arg_type="ArgObject", label="批量模式", order=-4)
+        ErgodicMode = Instance(_ErgodicMode, arg_type="ArgObject", label="遍历模式", order=-3, eq_arg=False)
+        OperationMode = Instance(_OperationMode, arg_type="ArgObject", label="批量模式", order=-4, eq_arg=False)
         OperationModeRead = Enum(False, True, arg_type="Bool", label="批量读取", order=-5)
         def __QS_initArgs__(self):
             self.ErgodicMode = _ErgodicMode(owner=self._Owner, logger=self._QS_Logger)

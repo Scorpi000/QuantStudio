@@ -144,14 +144,24 @@ class QSArgs(HasTraits):
         return (key in self._LabelTrait)
     
     def __eq__(self, other):
+        if not isinstance(other, QSArgs): return False
         try:
             for iArgName, iTraitName in self._LabelTrait.items():
                 iTrait = self.trait(iTraitName)
                 iOtherTrait = other.trait(iTraitName)
-                if iTrait.eq_arg:
+                if iOtherTrait is None: return False
+                iEqArg, iOtherEqArg = bool(iTrait.eq_arg is None or iTrait.eq_arg), bool(iOtherTrait.eq_arg is None or iOtherTrait.eq_arg)
+                if iEqArg and iOtherEqArg:
                     iVal, iOtherVal = getattr(self, iTraitName), getattr(other, iTraitName)
-                    if (iVal is not iOrderVal) and np.any(iVal!=iOrderVal):
-                        return False
+                    if iVal is iOtherVal: continue
+                    if not (isinstance(other, type(iOtherVal)) or isinstance(iVal, type(iOtherVal))): return False
+                    if isinstance(iVal, (pd.DataFrame, pd.Series)) and (not iVal.equals(iOtherVal)): return False
+                    if isinstance(iVal, (np.ndarray, np.matrix)) and (not pd.DataFrame(iVal).equals(pd.DataFrame(iOtherVal))): return False
+                    if iVal!=iOtherVal: return False
+                elif (not iEqArg) and (not iOtherEqArg):
+                    continue
+                else:
+                    return False
         except Exception as e:
             self._QS_Logger.warning(f"参数集 {self} 和 {other} 确定是否相等时错误: {e}")
             return False
@@ -217,3 +227,9 @@ class __QS_Object__:
         HTML += f"<b>文档</b>: {html.escape(self.__doc__ if self.__doc__ else '')}<br/>"
         HTML += f"<b>参数</b>: " + self._QSArgs._repr_html_()
         return HTML
+
+if __name__=="__main__":
+    import QuantStudio.api as QS
+    HDB1 = QS.FactorDB.HDF5DB()
+    HDB2 = QS.FactorDB.HDF5DB()
+    print(HDB1.Args == HDB2.Args)
