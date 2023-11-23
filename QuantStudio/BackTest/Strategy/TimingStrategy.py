@@ -17,7 +17,7 @@ class TimingStrategy(Strategy):
         SignalDelay = Int(0, label="信号滞后期", arg_type="Integer", order=1)
         SigalValidity = Int(1, label="信号有效期", arg_type="Integer", order=2)
         SigalDTs = List(label="信号触发时点", arg_type="DateTimeList", order=3)
-        TargetAccount = Instance(Account, label="目标账户", arg_type="ArgObject", order=4)
+        TargetAccount = Instance(Account, label="目标账户", arg_type="QSObject", order=4)
         ValueAllocated = Instance(pd.Series, arg_type="Series", label="资金分配", order=5)
         TradeTarget = Enum("锁定买卖金额", "锁定目标仓位", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=6, option_range=["锁定买卖金额", "锁定目标仓位", "锁定目标金额"])
         
