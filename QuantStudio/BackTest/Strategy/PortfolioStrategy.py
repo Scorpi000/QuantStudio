@@ -39,7 +39,7 @@ class PortfolioStrategy(Strategy):
         SignalDTs = List(label="信号触发时点", arg_type="DateTimeList", order=3)
         LongWeightAlloction = Instance(_WeightAllocation, label="多头权重配置", arg_type="ArgObject", order=4)
         ShortWeightAlloction = Instance(_WeightAllocation, label="空头权重配置", arg_type="ArgObject", order=5)
-        TargetAccount = Instance(Account, label="目标账户", arg_type="ArgObject", order=6)
+        TargetAccount = Instance(Account, label="目标账户", arg_type="QSObject", order=6)
         TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=7, option_range=["锁定买卖金额", "锁定目标权重", "锁定目标金额"])
         def __QS_initArgs__(self):
             self.LongWeightAlloction = _WeightAllocation(ft=self._Owner._FT, owner=self._Owner)
@@ -393,7 +393,7 @@ class OptimizerStrategy(PortfolioStrategy):
         #BenchmarkFactor = Enum(None, arg_type="SingleOption", label="基准权重", order=7)
         #AmountFactor = Enum(None, arg_type="SingleOption", label="成交金额", order=8)
         SignalAdjustment = Instance(_SignalAdjustment, arg_type="ArgObject", label="信号调整", order=9)
-        TargetAccount = Instance(Account, label="目标账户", arg_type="ArgObject", order=10)
+        TargetAccount = Instance(Account, label="目标账户", arg_type="QSObject", order=10)
         TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=11, option_range=["锁定买卖金额", "锁定目标权重", "锁定目标金额"])
         def __QS_initArgs__(self):
             self.remove_trait("LongWeightAlloction")
