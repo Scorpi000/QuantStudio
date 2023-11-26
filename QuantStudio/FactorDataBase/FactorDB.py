@@ -60,6 +60,13 @@ class FactorDB(__QS_Object__):
         return self.getTable(table_name)
     def _repr_html_(self):
         return f"<b>名称</b>: {html.escape(self.Name)}<br/>" + super()._repr_html_()
+    
+    def equals(self, other):
+        if self is other: return True
+        if not isinstance(other, FactorDB): return False
+        if not (isinstance(other, type(self)) or isinstance(self, type(other))): return False
+        if self._QSArgs != other._QSArgs: return False
+        return True
 
 
 # 支持写入的因子库, 接口类
@@ -956,6 +963,15 @@ class FactorTable(__QS_Object__):
         HTML += f"<b>元信息</b>: {dict2html(MetaData)}"
         return HTML + super()._repr_html_()
     
+    def equals(self, other):
+        if self is other: return True
+        if not isinstance(other, FactorTable): return False
+        if not (isinstance(other, type(self)) or isinstance(self, type(other))): return False
+        if not self._FactorDB.equals(other._FactorDB): return False
+        if not (self._Name != other._Name): return False
+        if self._QSArgs != other._QSArgs: return False
+        return True
+    
     
 # 自定义因子表
 class CustomFT(FactorTable):
@@ -1089,6 +1105,15 @@ class CustomFT(FactorTable):
         super().end()
         for iFactor in self._Factors.values(): iFactor.end()
         return 0
+    
+    def equals(self, other):
+        if self is other: return True
+        if not super().equals(other): return False
+        if self._DateTimes != other._DateTimes: return False
+        if self._IDs != other._IDs: return False
+        if self._Factors != other._Factors: return False
+        return True
+
 
 # ---------- 内置的因子运算----------
 # 将运算结果转换成真正的可以存储的因子
@@ -1544,6 +1569,20 @@ class Factor(__QS_Object__):
         MetaData = MetaData[~MetaData.index.str.contains("_QS")]
         HTML += f"<b>元信息</b>: {dict2html(MetaData)}"
         return HTML + super()._repr_html_()
+    
+    def equals(self, other):
+        if self is other: return True
+        if not isinstance(other, Factor): return False
+        if not (isinstance(other, type(self)) or isinstance(self, type(other))): return False
+        if not self._FactorTable.equals(other._FactorTable): return False
+        if not (self._NameInFT != other._NameInFT): return False
+        if self._QSArgs != other._QSArgs: return False
+        if len(self.Descriptors) != len(other.Descriptors): return False
+        for i, iDescriptor in enumerate(self.Descriptors):
+            if iDescriptor != other.Descriptors[i]:
+                return False
+        return True
+
 
 # 直接赋予数据产生的因子
 # data: DataFrame(index=[时点], columns=[ID])
@@ -1637,3 +1676,10 @@ class DataFactor(Factor):
                     IDs = []
                     for iPID in pids: IDs.extend(PrepareIDs[self._OperationMode._PIDs.index(iPID)])
         return self.readData(sorted(IDs), dts = list(dts))
+    def equals(self, other):
+        if self is other: return True
+        if not super().equals(other): return False
+        if self._DataContent != other._DataContent: return False
+        if not (isinstance(self._Data, type(other._Data)) or isinstance(other._Data, type(self._Data))): return False
+        if isinstance(self._Data, (pd.DataFrame, pd.Series)) and (not self._Data.equals(other._Data)): return False
+        return (self._Data == other._Data)
