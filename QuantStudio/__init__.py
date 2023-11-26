@@ -154,9 +154,10 @@ class QSArgs(HasTraits):
                 if iEqArg and iOtherEqArg:
                     iVal, iOtherVal = getattr(self, iTraitName), getattr(other, iTraitName)
                     if iVal is iOtherVal: continue
-                    if not (isinstance(other, type(iOtherVal)) or isinstance(iVal, type(iOtherVal))): return False
+                    if not (isinstance(iOtherVal, type(iVal)) or isinstance(iVal, type(iOtherVal))): return False
                     if isinstance(iVal, (pd.DataFrame, pd.Series)) and (not iVal.equals(iOtherVal)): return False
                     if isinstance(iVal, (np.ndarray, np.matrix)) and (not pd.DataFrame(iVal).equals(pd.DataFrame(iOtherVal))): return False
+                    if isinstance(iVal, __QS_Object__) and (iVal is not iOtherVal): return False
                     if iVal!=iOtherVal: return False
                 elif (not iEqArg) and (not iOtherEqArg):
                     continue
