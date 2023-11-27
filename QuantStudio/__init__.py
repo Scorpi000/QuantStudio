@@ -39,6 +39,7 @@ from QuantStudio.Tools.DataTypeConversionFun import dict2html
 class QSArgs(HasTraits):
     """参数对象"""
     def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
+        self._QS_Frozen = False# 是否冻结参数, 不允许增删参数, 对于 mutable=False 的参数不允许修改值
         self._QS_Logger = kwargs.pop("logger", None)
         if self._QS_Logger is None: self._QS_Logger = __QS_Logger__
         super().__init__(**kwargs)
@@ -65,6 +66,7 @@ class QSArgs(HasTraits):
         Config.update(sys_args)
         for iArgName, iArgVal in Config.items():
             if iArgName in self._ArgOrder.index: self[iArgName] = iArgVal
+        self._QS_Frozen = True
         
     def __setstate__(self, state, trait_change_notify=False):
         return super().__setstate__(state, trait_change_notify=trait_change_notify)
@@ -101,6 +103,8 @@ class QSArgs(HasTraits):
         return (self._LabelTrait[arg_name], self.trait(self._LabelTrait[arg_name]))
     
     def add_trait(self, name, *trait):
+        if self._QS_Frozen and any(iTrait.arg_type is not None for iTrait in trait):
+            raise __QS_Error__(f"参数集已冻结, 不能增加参数 '{name}'")
         Rslt = super().add_trait(name, *trait)
         iTrait = self.trait(name)
         if iTrait.arg_type is None: return Rslt
@@ -113,6 +117,8 @@ class QSArgs(HasTraits):
     
     def remove_trait(self, name):
         if (name not in self.visible_traits()) or (self.trait(name).arg_type is None): return super().remove_trait(name)
+        if self._QS_Frozen:
+            raise __QS_Error__(f"参数集已冻结, 不能删除参数 '{name}'")
         iLabel = self.trait(name).label
         Rslt = super().remove_trait(name)
         self._LabelTrait.pop(iLabel)
@@ -130,6 +136,9 @@ class QSArgs(HasTraits):
     
     def __setitem__(self, key, value):
         iTrait = self.trait(self._LabelTrait[key])
+        iMutable = (True if iTrait.mutable is None else iTrait.mutable)
+        if self._QS_Frozen and (not iMutable):
+            raise __QS_Error__(f"参数集已冻结且参数 '{key}' 是不可变参数, 不能修改")
         if iTrait.arg_type == "ArgObject":
             iArgObj = self[key]
             for iKey, iVal in value.items():
@@ -138,6 +147,8 @@ class QSArgs(HasTraits):
             setattr(self, self._LabelTrait[key], value)
     
     def __delitem__(self, key):
+        if self._QS_Frozen:
+            raise __QS_Error__(f"参数集已冻结, 不能删除参数 '{key}'")
         self.remove_trait(self._LabelTrait[key])
 
     def __contains__(self, key):
@@ -186,13 +197,16 @@ class QSArgs(HasTraits):
     
     def update(self, args={}):
         for iKey in self._ArgOrder.index.intersection(args.keys()):
-            setattr(self, self._LabelTrait[iKey], args[iKey])
+            self[iKey] = args[iKey]
     
     def clear(self):
         for iArgName in self._ArgOrder.index:
             iKey = self._LabelTrait[iArgName]
-            setattr(self, iKey, self.trait(iKey).default)
-
+            iTrait = self.trait(iKey)
+            iMutable = (True if iTrait.mutable is None else iTrait.mutable)
+            if iMutable:
+                setattr(self, iKey, iTrait.default)
+    
     def __QS_initArgs__(self):
         return None
 

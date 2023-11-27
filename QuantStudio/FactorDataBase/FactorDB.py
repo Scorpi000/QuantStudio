@@ -16,7 +16,7 @@ import sympy
 import numpy as np
 import pandas as pd
 from progressbar import ProgressBar
-from traits.api import Instance, Str, List, Int, Enum, ListStr, Either
+from traits.api import Instance, Str, List, Int, Enum, ListStr, Either, Directory
 from IPython.display import Math
 
 from QuantStudio import __QS_Object__, __QS_Error__, QSArgs
@@ -424,6 +424,8 @@ class _OperationMode(QSArgs):
     DTRuler = List(dt.datetime, arg_type="DateTimeList", label="时点标尺", order=4)
     SectionIDs = Either(None, ListStr, arg_type="IDList", label="截面ID", order=5)
     IDSplit = Enum("连续切分", "间隔切分", arg_type="SingleOption", label="ID切分", order=6)
+    CacheDir = Directory(arg_type="Directory", label="缓存文件夹", order=7)
+    ClearCache = Enum(True, False, arg_type="Bool", label="清空缓存", order=8)
     def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
         self._FT = owner
         self._isStarted = False
@@ -486,21 +488,23 @@ class _OperationMode(QSArgs):
         self._FactorDict = self._genFactorDict(self._Factors, self._FactorDict)
         # 分配每个子进程的计算 ID 序列, 生成原始数据和缓存数据存储目录
         self._Event = {}# {因子名: (Sub2MainQueue, Event)}, 用于多进程同步的 Event 数据
-        if "cache_dir" not in kwargs:
+        CacheDir = kwargs.get("cache_dir", self.CacheDir)
+        if not os.path.isdir(CacheDir):
+            if CacheDir: self._QS_Logger.warning(f"缓存文件夹 '{CacheDir}' 不存在, 将使用系统的临时文件夹")
             self._CacheDir = tempfile.TemporaryDirectory()
             self._RawDataDir = self._CacheDir.name+os.sep+"RawData"# 原始数据存放根目录
             self._CacheDataDir = self._CacheDir.name+os.sep+"CacheData"# 中间数据存放根目录
         else:
-            self._CacheDir = kwargs["cache_dir"]
+            self._CacheDir = CacheDir
             self._RawDataDir = self._CacheDir+os.sep+"RawData"# 原始数据存放根目录
             self._CacheDataDir = self._CacheDir+os.sep+"CacheData"# 中间数据存放根目录
-        os.mkdir(self._RawDataDir)
-        os.mkdir(self._CacheDataDir)
+        if not os.path.isdir(self._RawDataDir): os.mkdir(self._RawDataDir)
+        if not os.path.isdir(self._CacheDataDir): os.mkdir(self._CacheDataDir)
         if self.SubProcessNum==0:# 串行模式
             self._PIDs = ["0"]
             self._PID_IDs = {"0":list(self.IDs)}
-            os.mkdir(self._RawDataDir+os.sep+"0")
-            os.mkdir(self._CacheDataDir+os.sep+"0")
+            if not os.path.isdir(self._RawDataDir+os.sep+"0"): os.mkdir(self._RawDataDir+os.sep+"0")
+            if not os.path.isdir(self._CacheDataDir+os.sep+"0"): os.mkdir(self._CacheDataDir+os.sep+"0")
             self._PID_Lock = {"0":Lock()}
         else:
             self._PIDs = []
@@ -517,8 +521,8 @@ class _OperationMode(QSArgs):
                 iPID = "0-"+str(i)
                 self._PIDs.append(iPID)
                 self._PID_IDs[iPID] = SubIDs[i]
-                os.mkdir(self._RawDataDir+os.sep+iPID)
-                os.mkdir(self._CacheDataDir+os.sep+iPID)
+                if not os.path.isdir(self._RawDataDir+os.sep+iPID): os.mkdir(self._RawDataDir+os.sep+iPID)
+                if not os.path.isdir(self._CacheDataDir+os.sep+iPID): os.mkdir(self._CacheDataDir+os.sep+iPID)
                 self._PID_Lock[iPID] = Lock()
         # 遍历所有因子对象, 调用其初始化方法, 生成所有因子的起始时点信息, 生成其需要准备原始数据的截面 ID
         self._FactorStartDT = {}# {因子名: 起始时点}
@@ -587,6 +591,7 @@ class _OperationMode(QSArgs):
             for iPrcs in Procs.values(): iPrcs.join()
         return 0
     def _exit(self):
+        if not self.ClearCache: return 0
         if isinstance(self._CacheDir, str):
             try:
                 shutil.rmtree(self._CacheDataDir)
@@ -842,8 +847,10 @@ class FactorTable(__QS_Object__):
         for iArgName in self._QSArgs.ArgNames:
             if iArgName not in ("遍历模式", "批量模式"):
                 iTraitName, iTrait = self._QSArgs.getTrait(iArgName)
+                iFactor._QSArgs._QS_Frozen = False
                 iFactor._QSArgs.add_trait(iTraitName, iTrait)
                 iFactor._QSArgs[iArgName] = args.get(iArgName, self._QSArgs[iArgName])
+                iFactor._QSArgs._QS_Frozen = True
         if new_name is not None: iFactor.Name = new_name
         return iFactor
     # 获取因子的元数据
