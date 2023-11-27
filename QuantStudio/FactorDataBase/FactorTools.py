@@ -171,8 +171,12 @@ def _fetch(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)[0]
     if isinstance(args["OperatorArg"]["pos"], str):
         return Data.astype(args["OperatorArg"]["dtype"])[args["OperatorArg"]["pos"]]
-    SampleData = Data[0,0]
-    DataType = np.dtype([(str(i),(float if isinstance(SampleData[i], float) else "O")) for i in range(len(SampleData))])
+    CompoundType = getattr(f._QSArgs, "CompoundType", None)
+    if CompoundType and isinstance(args["OperatorArg"]["pos"], str):
+        DataType = np.dtype(CompoundType)
+    else:
+        SampleData = Data[0,0]
+        DataType = np.dtype([(str(i),(float if isinstance(SampleData[i], float) else "O")) for i in range(len(SampleData))])
     return Data.astype(DataType)[str(args["OperatorArg"]["pos"])]
 def fetch(f, pos=0, dtype="double", **kwargs):
     Descriptors, Args, Exprs = _genMultivariateOperatorInfo(f)

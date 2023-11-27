@@ -25,12 +25,14 @@ class DerivativeFactor(Factor):
         ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
         DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=2, option_range=["double", "string", "object"], mutable=False)
         Expression = Either(Str(""), Instance(sympy.Expr), Instance(sympy.logic.boolalg.Boolean), arg_type="String", label="表达式", order=3)
-        InputFormat = Enum("numpy", "pandas", label="输入格式", order=4, arg_type="SingleOption", option_range=["numpy", "pandas"], mutable=False)
-        # ExpandDescriptors = Enum(arg_type="SingleOption", label="展开描述子", order=5)
+        CompoundType = List(arg_type="List", label="复合类型", order=4)
+        InputFormat = Enum("numpy", "pandas", label="输入格式", order=5, arg_type="SingleOption", option_range=["numpy", "pandas"], mutable=False)
+        # ExpandDescriptors = Enum(arg_type="SingleOption", label="展开描述子", order=6)
         def __QS_initArgs__(self):
             super().__QS_initArgs__()
             Descriptors = [iDescriptor.Name for iDescriptor in self._Owner._Descriptors]
-            self.add_trait("ExpandDescriptors", ListStr([], arg_type="MultiOption", label="展开描述子", order=5, option_range=Descriptors, mutable=False))
+            self.add_trait("ExpandDescriptors", ListStr([], arg_type="MultiOption", label="展开描述子", order=6, option_range=Descriptors, mutable=False))
+            if self.CompoundType: self.DataType = "object"
     
     def __init__(self, name="", descriptors=[], sys_args={}, **kwargs):
         self._Descriptors = descriptors
@@ -91,8 +93,8 @@ class DerivativeFactor(Factor):
 class PointOperation(DerivativeFactor):
     """单点运算"""
     class __QS_ArgClass__(DerivativeFactor.__QS_ArgClass__):
-        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=6, option_range=["单时点", "多时点"], mutable=False)
-        IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=7, option_range=["单ID", "多ID"], mutable=False)
+        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=7, option_range=["单时点", "多时点"], mutable=False)
+        IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=8, option_range=["单ID", "多ID"], mutable=False)
     def readData(self, ids, dts, **kwargs):
         if self._QSArgs.InputFormat=="numpy":
             StdData = self._calcData(ids=ids, dts=dts, descriptor_data=[iDescriptor.readData(ids=ids, dts=dts, **kwargs).values for iDescriptor in self._Descriptors])
@@ -129,12 +131,22 @@ class PointOperation(DerivativeFactor):
                 descriptor_data = descriptor_data.set_index(descriptor_data.columns[:2])
                 if not iOtherData.empty:
                     descriptor_data = pd.merge(descriptor_data, iOtherData, how="left", left_index=True, right_index=True)
+            if self._QSArgs.CompoundType:
+                CompoundCols = [iCol[0] for iCol in self._QSArgs.CompoundType]
+            else:
+                CompoundCols = None
             DescriptorNames = [iDescriptor.Name for iDescriptor in self._Descriptors]
             descriptor_data = descriptor_data.loc[:, DescriptorNames]
             if (self._QSArgs.DTMode=='多时点') and (self._QSArgs.IDMode=='多ID'):
                 StdData = Operator(self, dts, ids, descriptor_data, ModelArgs)
-                if isinstance(StdData, pd.DataFrame): return StdData.reindex(index=dts, columns=ids)
-                else: return StdData.unstack().reindex(index=dts, columns=ids)
+                if isinstance(StdData, pd.DataFrame):
+                    if isinstance(StdData.index, pd.MultiIndex):
+                        StdData = StdData.reindex(columns=CompoundCols).apply(lambda s: tuple(s)).unstack()
+                    return StdData.reindex(index=dts, columns=ids)
+                elif isinstance(StdData, pd.Series): 
+                    return StdData.unstack().reindex(index=dts, columns=ids)
+                else:
+                    raise __QS_Error__(f"不支持的返回格式: {StdData}")
             if self._QSArgs.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
             else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')   
             StdData = pd.DataFrame(StdData, index=dts, columns=ids)
@@ -145,10 +157,16 @@ class PointOperation(DerivativeFactor):
             elif (self._QSArgs.DTMode=='多时点') and (self._QSArgs.IDMode=='单ID'):
                 descriptor_data = descriptor_data.swaplevel(axis=0)
                 for j, jID in enumerate(ids):
-                    StdData.iloc[:, j] = Operator(self, dts, jID, descriptor_data.loc[jID], ModelArgs)
+                    iStdData = Operator(self, dts, jID, descriptor_data.loc[jID], ModelArgs)
+                    if isinstance(iStdData, pd.DataFrame):
+                        iStdData = iStdData.reindex(columns=CompoundCols).apply(lambda s: tuple(s))
+                    StdData.iloc[:, j] = iStdData
             elif (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='多ID'):
                 for i, iDT in enumerate(dts):
-                    StdData.iloc[i, :] = Operator(self, iDT, ids, descriptor_data.loc[iDT], ModelArgs)
+                    iStdData = Operator(self, iDT, ids, descriptor_data.loc[iDT], ModelArgs)
+                    if isinstance(iStdData, pd.DataFrame):
+                        iStdData = iStdData.reindex(columns=CompoundCols).apply(lambda s: tuple(s))
+                    StdData.iloc[i, :] = iStdData
         return StdData
     def __QS_prepareCacheData__(self, ids=None):
         PID = self._OperationMode._iPID
