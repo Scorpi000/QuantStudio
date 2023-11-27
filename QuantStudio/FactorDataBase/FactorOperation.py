@@ -7,7 +7,7 @@ from multiprocessing import Queue, Event
 import pandas as pd
 import numpy as np
 import sympy
-from traits.api import Callable, Dict, Enum, List, ListStr, Int, Instance, Str, Either
+from traits.api import Callable, Dict, Enum, List, ListInt, Int, Instance, Str, Either
 
 from QuantStudio import __QS_Error__
 from QuantStudio.FactorDataBase.FactorDB import Factor
@@ -27,11 +27,10 @@ class DerivativeFactor(Factor):
         Expression = Either(Str(""), Instance(sympy.Expr), Instance(sympy.logic.boolalg.Boolean), arg_type="String", label="表达式", order=3)
         CompoundType = List(arg_type="List", label="复合类型", order=4)
         InputFormat = Enum("numpy", "pandas", label="输入格式", order=5, arg_type="SingleOption", option_range=["numpy", "pandas"], mutable=False)
-        # ExpandDescriptors = Enum(arg_type="SingleOption", label="展开描述子", order=6)
+        # ExpandDescriptors = ListInt(arg_type="MultiOption", label="展开描述子", order=6)
         def __QS_initArgs__(self):
             super().__QS_initArgs__()
-            Descriptors = [iDescriptor.Name for iDescriptor in self._Owner._Descriptors]
-            self.add_trait("ExpandDescriptors", ListStr([], arg_type="MultiOption", label="展开描述子", order=6, option_range=Descriptors, mutable=False))
+            self.add_trait("ExpandDescriptors", ListInt([], arg_type="MultiOption", label="展开描述子", order=6, option_range=list(range(len(self._Owner._Descriptors))), mutable=False))
             if self.CompoundType: self.DataType = "object"
     
     def __init__(self, name="", descriptors=[], sys_args={}, **kwargs):
@@ -126,7 +125,7 @@ class PointOperation(DerivativeFactor):
         else:
             descriptor_data = Panel({iDescriptor.Name: descriptor_data[i] for i, iDescriptor in enumerate(self._Descriptors)}).to_frame(filter_observations=False)
             if self._QSArgs.ExpandDescriptors:
-                descriptor_data, iOtherData = descriptor_data.loc[:, self._QSArgs.ExpandDescriptors], descriptor_data.loc[:, descriptor_data.columns.difference(self._QSArgs.ExpandDescriptors)]
+                descriptor_data, iOtherData = descriptor_data.iloc[:, self._QSArgs.ExpandDescriptors], descriptor_data.loc[:, descriptor_data.columns.difference(descriptor_data.columns[self._QSArgs.ExpandDescriptors])]
                 descriptor_data = expandListElementDataFrame(descriptor_data, expand_index=True)
                 descriptor_data = descriptor_data.set_index(descriptor_data.columns[:2])
                 if not iOtherData.empty:
