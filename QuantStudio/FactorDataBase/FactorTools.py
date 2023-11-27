@@ -169,24 +169,29 @@ def map_value(f, mapping, data_type="double", **kwargs):
     return PointOperation(kwargs.pop("factor_name", "map_value"), Descriptors, {"算子": _map_value, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "数据类型": data_type, "表达式": Expr}, **kwargs)
 def _fetch(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)[0]
-    if isinstance(args["OperatorArg"]["pos"], str):
-        return Data.astype(args["OperatorArg"]["dtype"])[args["OperatorArg"]["pos"]]
-    CompoundType = getattr(f._QSArgs, "CompoundType", None)
+    CompoundType = args["OperatorArg"]["compound_type"]
     if CompoundType and isinstance(args["OperatorArg"]["pos"], str):
         DataType = np.dtype(CompoundType)
     else:
-        SampleData = Data[0,0]
+        SampleData = Data[0, 0]
         DataType = np.dtype([(str(i),(float if isinstance(SampleData[i], float) else "O")) for i in range(len(SampleData))])
     return Data.astype(DataType)[str(args["OperatorArg"]["pos"])]
 def fetch(f, pos=0, dtype="double", **kwargs):
     Descriptors, Args, Exprs = _genMultivariateOperatorInfo(f)
-    Args["OperatorArg"] = {"pos":pos, "dtype":dtype}
     if isinstance(pos, str):
-        Args["OperatorArg"]['dtype'] = f.UserData['dtype']
         Expr = sympy.Function("fetch")(*Exprs, sympy.Eq(sympy.Symbol("pos"), sympy.Symbol(f"'{pos}'")))
     else:
         Expr = sympy.Function("fetch")(*Exprs, sympy.Eq(sympy.Symbol("pos"), pos))
-    return PointOperation(kwargs.pop("factor_name", "fetch"), Descriptors, {"算子": _fetch, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "数据类型": dtype, "表达式": Expr}, **kwargs)
+    CompoundType = getattr(f._QSArgs, "CompoundType", None)
+    if CompoundType:
+        if isinstance(pos, str):
+            dtype = dict(CompoundType)[pos]
+        else:
+            pos, dtype = CompoundType[int(pos)]
+        dtype = ("object" if np.dtype(dtype)==np.dtype("O") else "double")
+    Args["OperatorArg"] = {"pos":pos, "compound_type": CompoundType}
+    DefaultFactorName = (pos if isinstance(pos, str) else f"fetch_{pos}")
+    return PointOperation(kwargs.pop("factor_name", DefaultFactorName), Descriptors, {"算子": _fetch, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "数据类型": dtype, "表达式": Expr}, **kwargs)
 def _where(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)
     return np.where(Data[1],Data[0],Data[2])
