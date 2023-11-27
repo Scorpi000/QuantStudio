@@ -123,24 +123,28 @@ class PointOperation(DerivativeFactor):
                 for i, iDT in enumerate(dts):
                     StdData[i, :] = Operator(self, iDT, ids, [iData[i, :] for iData in descriptor_data], ModelArgs)
         else:
-            descriptor_data = Panel({iDescriptor.Name: descriptor_data[i] for i, iDescriptor in enumerate(self._Descriptors)}).to_frame(filter_observations=False)
+            descriptor_data = Panel({f"d{i}": descriptor_data[i] for i in range(len(self._Descriptors))}).to_frame(filter_observations=False).sort_index(axis=1)
             if self._QSArgs.ExpandDescriptors:
                 descriptor_data, iOtherData = descriptor_data.iloc[:, self._QSArgs.ExpandDescriptors], descriptor_data.loc[:, descriptor_data.columns.difference(descriptor_data.columns[self._QSArgs.ExpandDescriptors])]
                 descriptor_data = expandListElementDataFrame(descriptor_data, expand_index=True)
-                descriptor_data = descriptor_data.set_index(descriptor_data.columns[:2])
+                descriptor_data = descriptor_data.set_index(descriptor_data.columns[:2].tolist())
                 if not iOtherData.empty:
                     descriptor_data = pd.merge(descriptor_data, iOtherData, how="left", left_index=True, right_index=True)
+                    descriptor_data = descriptor_data.sort_index(axis=1)
             if self._QSArgs.CompoundType:
                 CompoundCols = [iCol[0] for iCol in self._QSArgs.CompoundType]
             else:
                 CompoundCols = None
-            DescriptorNames = [iDescriptor.Name for iDescriptor in self._Descriptors]
-            descriptor_data = descriptor_data.loc[:, DescriptorNames]
             if (self._QSArgs.DTMode=='多时点') and (self._QSArgs.IDMode=='多ID'):
                 StdData = Operator(self, dts, ids, descriptor_data, ModelArgs)
                 if isinstance(StdData, pd.DataFrame):
                     if isinstance(StdData.index, pd.MultiIndex):
-                        StdData = StdData.reindex(columns=CompoundCols).apply(lambda s: tuple(s)).unstack()
+                        if StdData.index.duplicated().any():
+                            TmpData, Cols, StdData = {}, StdData.columns, StdData.groupby(axis=0, level=[0, 1], as_index=True)
+                            for iCol in Cols:
+                                TmpData[iCol] = StdData[iCol].apply(lambda s: s.tolist())
+                            StdData, TmpData = pd.DataFrame(TmpData).loc[:, Cols], None
+                        StdData = StdData.reindex(columns=CompoundCols).apply(lambda s: tuple(s), axis=1).unstack()
                     return StdData.reindex(index=dts, columns=ids)
                 elif isinstance(StdData, pd.Series): 
                     return StdData.unstack().reindex(index=dts, columns=ids)
@@ -158,13 +162,13 @@ class PointOperation(DerivativeFactor):
                 for j, jID in enumerate(ids):
                     iStdData = Operator(self, dts, jID, descriptor_data.loc[jID], ModelArgs)
                     if isinstance(iStdData, pd.DataFrame):
-                        iStdData = iStdData.reindex(columns=CompoundCols).apply(lambda s: tuple(s))
+                        iStdData = iStdData.reindex(columns=CompoundCols).apply(lambda s: tuple(s), axis=1)
                     StdData.iloc[:, j] = iStdData
             elif (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='多ID'):
                 for i, iDT in enumerate(dts):
                     iStdData = Operator(self, iDT, ids, descriptor_data.loc[iDT], ModelArgs)
                     if isinstance(iStdData, pd.DataFrame):
-                        iStdData = iStdData.reindex(columns=CompoundCols).apply(lambda s: tuple(s))
+                        iStdData = iStdData.reindex(columns=CompoundCols).apply(lambda s: tuple(s), axis=1)
                     StdData.iloc[i, :] = iStdData
         return StdData
     def __QS_prepareCacheData__(self, ids=None):

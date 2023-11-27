@@ -459,7 +459,8 @@ class _OperationMode(QSArgs):
         for iFactor in factors:
             iFactor._OperationMode = self
             if (not isinstance(iFactor.Name, str)) or (iFactor.Name=="") or (iFactor is not factor_dict.get(iFactor.Name, iFactor)):# 该因子命名错误或者未命名, 或者有因子重名
-                iFactor.Name = genAvailableName("TempFactor", factor_dict)
+                iNewName = genAvailableName("TempFactor", factor_dict)
+                iFactor.Name, self._FactorNameChgRecord[iNewName] = iNewName, iFactor.Name
             factor_dict[iFactor.Name] = iFactor
             self._FactorID[iFactor.Name] = len(factor_dict)
             factor_dict.update(self._genFactorDict(iFactor.Descriptors, factor_dict))
@@ -479,6 +480,7 @@ class _OperationMode(QSArgs):
         self._Factors = []# 因子列表, 只包括需要输出数据的因子对象
         self._FactorDict = {}# 因子字典, {因子名:因子}, 包括所有的因子, 即衍生因子所依赖的描述子也在内
         self._FactorID = {}# {因子名: 因子唯一的 ID 号(int)}
+        self._FactorNameChgRecord = {}# 因子名的修改记录, {修改后的名字: 原始名字}
         for i, iFactorName in enumerate(self.FactorNames):
             iFactor = self._Owner.getFactor(iFactorName)
             iFactor._OperationMode = self
@@ -602,6 +604,7 @@ class _OperationMode(QSArgs):
         self._isStarted = False
         for iFactorName, iFactor in self._FactorDict.items():
             iFactor._exit()
+            iFactor.Name = self._FactorNameChgRecord.get(iFactor.Name, iFactor.Name)
         return 0
     def write2FDB(self, factor_names, ids, dts, factor_db, table_name, if_exists="update", subprocess_num=cpu_count()-1, dt_ruler=None, section_ids=None, specific_target={}, **kwargs):
         if not isinstance(factor_db, WritableFactorDB): raise __QS_Error__("因子数据库: %s 不可写入!" % factor_db.Name)
