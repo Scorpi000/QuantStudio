@@ -171,7 +171,7 @@ def _fetch(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)[0]
     CompoundType = args["OperatorArg"]["compound_type"]
     if CompoundType and isinstance(args["OperatorArg"]["pos"], str):
-        DataType = np.dtype(CompoundType)
+        DataType = np.dtype([(iCol, float if iType=="double" else "O") for iCol, iType in CompoundType])
     else:
         SampleData = Data[0, 0]
         DataType = np.dtype([(str(i),(float if isinstance(SampleData[i], float) else "O")) for i in range(len(SampleData))])
@@ -188,7 +188,6 @@ def fetch(f, pos=0, dtype="double", **kwargs):
             dtype = dict(CompoundType)[pos]
         else:
             pos, dtype = CompoundType[int(pos)]
-        dtype = ("object" if np.dtype(dtype)==np.dtype("O") else "double")
     Args["OperatorArg"] = {"pos":pos, "compound_type": CompoundType}
     DefaultFactorName = (pos if isinstance(pos, str) else f"fetch_{pos}")
     return PointOperation(kwargs.pop("factor_name", DefaultFactorName), Descriptors, {"算子": _fetch, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "数据类型": dtype, "表达式": Expr}, **kwargs)
