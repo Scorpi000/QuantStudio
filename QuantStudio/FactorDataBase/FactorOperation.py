@@ -25,14 +25,20 @@ class DerivativeFactor(Factor):
         ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
         DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=2, option_range=["double", "string", "object"], mutable=False)
         Expression = Either(Str(""), Instance(sympy.Expr), Instance(sympy.logic.boolalg.Boolean), arg_type="String", label="表达式", order=3)
-        CompoundType = List(arg_type="List", label="复合类型", order=4)
+        CompoundType = List(arg_type="List", label="复合类型", order=4, mutable=False)
         InputFormat = Enum("numpy", "pandas", label="输入格式", order=5, arg_type="SingleOption", option_range=["numpy", "pandas"], mutable=False)
         # ExpandDescriptors = ListInt(arg_type="MultiOption", label="展开描述子", order=6)
+
+        def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
+            super().__init__(owner=owner, sys_args=sys_args, config_file=config_file, **kwargs)
+            self._QS_Frozen = False
+            if self.CompoundType: self.DataType = "object"
+            self._QS_Frozen = True
+
         def __QS_initArgs__(self):
             super().__QS_initArgs__()
             self.add_trait("ExpandDescriptors", ListInt([], arg_type="MultiOption", label="展开描述子", order=6, option_range=list(range(len(self._Owner._Descriptors))), mutable=False))
-            if self.CompoundType: self.DataType = "object"
-    
+
     def __init__(self, name="", descriptors=[], sys_args={}, **kwargs):
         self._Descriptors = descriptors
         self.UserData = {}
@@ -137,6 +143,7 @@ class PointOperation(DerivativeFactor):
             elif (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='多ID'):
                 for i, iDT in enumerate(dts):
                     StdData[i, :] = Operator(self, iDT, ids, [iData[i, :] for iData in descriptor_data], ModelArgs)
+            return StdData
         else:
             descriptor_data = Panel({f"d{i}": descriptor_data[i] for i in range(len(self._Descriptors))}).to_frame(filter_observations=False).sort_index(axis=1)
             if self._QSArgs.ExpandDescriptors:
@@ -145,35 +152,59 @@ class PointOperation(DerivativeFactor):
                 descriptor_data = descriptor_data.set_index(descriptor_data.columns[:2].tolist())
                 if not iOtherData.empty:
                     descriptor_data = pd.merge(descriptor_data, iOtherData, how="left", left_index=True, right_index=True)
-                    descriptor_data = descriptor_data.sort_index(axis=1)
+                descriptor_data = descriptor_data.sort_index(axis=1)
             if self._QSArgs.CompoundType:
                 CompoundCols = [iCol[0] for iCol in self._QSArgs.CompoundType]
             else:
                 CompoundCols = None
             if (self._QSArgs.DTMode=='多时点') and (self._QSArgs.IDMode=='多ID'):
                 StdData = Operator(self, dts, ids, descriptor_data, ModelArgs)
-                return self._QS_adjOutputPandas(df, CompoundCols, dts, ids)
-            if self._QSArgs.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
-            else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')   
-            StdData = pd.DataFrame(StdData, index=dts, columns=ids)
-            if (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='单ID'):
+                return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
+            elif (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='单ID'):
+                if self._QSArgs.DataType == 'double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
+                else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')
                 for i, iDT in enumerate(dts):
                     for j, jID in enumerate(ids):
-                        StdData.iloc[i, j] = Operator(self, iDT, jID, descriptor_data.loc[iDT].loc[jID], ModelArgs)
+                        iStdData = Operator(self, iDT, jID, descriptor_data.loc[iDT].loc[jID], ModelArgs)
+                        if isinstance(iStdData, pd.DataFrame):
+                            iStdData = tuple(iStdData.reindex(columns=CompoundCols).T.values.tolist())
+                        elif isinstance(iStdData, pd.Series):
+                            iStdData = tuple(iStdData.reindex(index=CompoundCols))
+                        StdData[i, j] = iStdData
+                return pd.DataFrame(StdData, index=dts, columns=ids)
             elif (self._QSArgs.DTMode=='多时点') and (self._QSArgs.IDMode=='单ID'):
                 descriptor_data = descriptor_data.swaplevel(axis=0)
+                StdData = []
                 for j, jID in enumerate(ids):
                     iStdData = Operator(self, dts, jID, descriptor_data.loc[jID], ModelArgs)
                     if isinstance(iStdData, pd.DataFrame):
-                        iStdData = iStdData.reindex(columns=CompoundCols).apply(lambda s: tuple(s), axis=1)
-                    StdData.iloc[:, j] = iStdData
+                        iStdData["_QS_ID"] = jID
+                    elif isinstance(iStdData, pd.Series):
+                        iStdData = iStdData.to_frame("_QS_Factor")
+                        iStdData["_QS_ID"] = jID
+                    else:
+                        raise __QS_Error__(f"不支持的返回格式: {iStdData}")
+                    StdData.append(iStdData)
+                StdData = pd.concat(StdData, axis=0, ignore_index=False).set_index(["_QS_ID"], append=True)
+                if StdData.shape[1]==1: StdData = StdData.iloc[:, 0]
+                return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
             elif (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='多ID'):
+                StdData = []
                 for i, iDT in enumerate(dts):
                     iStdData = Operator(self, iDT, ids, descriptor_data.loc[iDT], ModelArgs)
                     if isinstance(iStdData, pd.DataFrame):
-                        iStdData = iStdData.reindex(columns=CompoundCols).apply(lambda s: tuple(s), axis=1)
-                    StdData.iloc[i, :] = iStdData
-        return StdData
+                        iStdData["_QS_DT"] = iDT
+                    elif isinstance(iStdData, pd.Series):
+                        iStdData = iStdData.to_frame("_QS_Factor")
+                        iStdData["_QS_DT"] = iDT
+                    else:
+                        raise __QS_Error__(f"不支持的返回格式: {iStdData}")
+                    StdData.append(iStdData)
+                StdData = pd.concat(StdData, axis=0, ignore_index=False).set_index(["_QS_DT"], append=True)
+                StdData = StdData.swaplevel(axis=0)
+                if StdData.shape[1] == 1: StdData = StdData.iloc[:, 0]
+                return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
+
     def __QS_prepareCacheData__(self, ids=None):
         PID = self._OperationMode._iPID
         StartDT = self._OperationMode._FactorStartDT[self.Name]
@@ -330,41 +361,68 @@ class TimeOperation(DerivativeFactor):
             StdData = pd.DataFrame(StdData, columns=ids, index=DTRuler[-StdData.shape[0]:])
             if (self._QSArgs.iLookBackMode=="扩张窗口") or (self._QSArgs.iLookBack!=0):
                 descriptor_data[0] = StdData
-                descriptor_data = Panel({iDescriptor.Name: descriptor_data[i] for i, iDescriptor in enumerate([self]+self._Descriptors)}).loc[:, DTRuler].to_frame(filter_observations=False)
-                DescriptorNames = [self.Name] + [iDescriptor.Name for iDescriptor in self._Descriptors]
-            else:
-                descriptor_data = Panel({iDescriptor.Name: descriptor_data[i] for i, iDescriptor in enumerate(self._Descriptors)}).loc[:, DTRuler].to_frame(filter_observations=False)
-                DescriptorNames = [iDescriptor.Name for iDescriptor in self._Descriptors]
+            descriptor_data = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data))}).loc[:, DTRuler].to_frame(filter_observations=False).sort_index(axis=1)
             if self._QSArgs.ExpandDescriptors:
-                descriptor_data, iOtherData = descriptor_data.loc[:, self._QSArgs.ExpandDescriptors], descriptor_data.loc[:, descriptor_data.columns.difference(self._QSArgs.ExpandDescriptors)]
+                descriptor_data, iOtherData = descriptor_data.iloc[:, self._QSArgs.ExpandDescriptors], descriptor_data.loc[:, descriptor_data.columns.difference(descriptor_data.columns[self._QSArgs.ExpandDescriptors])]
                 descriptor_data = expandListElementDataFrame(descriptor_data, expand_index=True)
                 descriptor_data = descriptor_data.set_index(descriptor_data.columns[:2])
                 if not iOtherData.empty:
                     descriptor_data = pd.merge(descriptor_data, iOtherData, how="left", left_index=True, right_index=True)
-            descriptor_data = descriptor_data.loc[:, DescriptorNames]
+                descriptor_data = descriptor_data.sort_index(axis=1)
             if self._QSArgs.CompoundType:
                 CompoundCols = [iCol[0] for iCol in self._QSArgs.CompoundType]
             else:
                 CompoundCols = None
             if (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='单ID'):
+                StdData = StdData.values
                 descriptor_data = descriptor_data.swaplevel(axis=0)
                 for j, jID in enumerate(ids):
                     jDescriptorData = descriptor_data.loc[jID]
                     for i, iDT in enumerate(dts):
                         iDTs = DTRuler[max(0, MaxLookBack+i+1-MaxLen):i+1+MaxLookBack]
-                        StdData.iloc[iStartInd+i, j] = Operator(self, iDTs, jID, jDescriptorData.loc[iDTs], ModelArgs)
+                        iStdData = Operator(self, iDTs, jID, jDescriptorData.loc[iDTs], ModelArgs)
+                        if isinstance(iStdData, pd.DataFrame):
+                            iStdData = tuple(iStdData.reindex(columns=CompoundCols).T.values.tolist())
+                        elif isinstance(iStdData, pd.Series):
+                            iStdData = tuple(iStdData.reindex(index=CompoundCols))
+                        StdData[iStartInd + i, j] = iStdData
+                return pd.DataFrame(StdData[iStartInd:, :], index=dts, columns=ids)
             elif (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='多ID'):
+                StdData = []
                 for i, iDT in enumerate(dts):
                     iDTs = DTRuler[max(0, MaxLookBack+i+1-MaxLen):i+1+MaxLookBack]
-                    StdData.iloc[iStartInd+i, :] = Operator(self, iDTs, ids, descriptor_data.loc[iDTs], ModelArgs)
+                    iStdData = Operator(self, iDTs, ids, descriptor_data.loc[iDTs], ModelArgs)
+                    if isinstance(iStdData, pd.DataFrame):
+                        iStdData["_QS_DT"] = iDT
+                    elif isinstance(iStdData, pd.Series):
+                        iStdData = iStdData.to_frame("_QS_Factor")
+                        iStdData["_QS_DT"] = iDT
+                    else:
+                        raise __QS_Error__(f"不支持的返回格式: {iStdData}")
+                    StdData.append(iStdData)
+                StdData = pd.concat(StdData, axis=0, ignore_index=False).set_index(["_QS_DT"], append=True)
+                StdData = StdData.swaplevel(axis=0)
+                if StdData.shape[1] == 1: StdData = StdData.iloc[:, 0]
+                return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
             elif (self._QSArgs.DTMode=='多时点') and (self._QSArgs.IDMode=='单ID'):
                 descriptor_data = descriptor_data.swaplevel(axis=0)
+                StdData = []
                 for j, jID in enumerate(ids):
-                    StdData.iloc[iStartInd:, j] = Operator(self, DTRuler, jID, descriptor_data.loc[jID], ModelArgs)
+                    iStdData = Operator(self, DTRuler, jID, descriptor_data.loc[jID], ModelArgs)
+                    if isinstance(iStdData, pd.DataFrame):
+                        iStdData["_QS_ID"] = jID
+                    elif isinstance(iStdData, pd.Series):
+                        iStdData = iStdData.to_frame("_QS_Factor")
+                        iStdData["_QS_ID"] = jID
+                    else:
+                        raise __QS_Error__(f"不支持的返回格式: {iStdData}")
+                    StdData.append(iStdData)
+                StdData = pd.concat(StdData, axis=0, ignore_index=False).set_index(["_QS_ID"], append=True)
+                if StdData.shape[1] == 1: StdData = StdData.iloc[:, 0]
+                return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
             else:
                 StdData = Operator(self, DTRuler, ids, descriptor_data, ModelArgs)
-                return self._QS_adjOutputPandas(df, CompoundCols, dts, ids)
-            return StdData.iloc[iStartInd:, :]
+                return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
     
     def __QS_prepareCacheData__(self, ids=None):
         PID = self._OperationMode._iPID
@@ -479,39 +537,70 @@ class SectionOperation(DerivativeFactor):
                 else:
                     for j, jID in enumerate(ids):
                         StdData[:, j] = Operator(self, dts, jID, descriptor_data, ModelArgs)
+            return StdData
         else:
-            descriptor_data = Panel({iDescriptor.Name: descriptor_data[i] for i, iDescriptor in enumerate(self._Descriptors)}).to_frame(filter_observations=False)
+            descriptor_data = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data))}).to_frame(filter_observations=False).sort_index(axis=1)
             if self._QSArgs.ExpandDescriptors:
-                descriptor_data, iOtherData = descriptor_data.loc[:, self._QSArgs.ExpandDescriptors], descriptor_data.loc[:, descriptor_data.columns.difference(self._QSArgs.ExpandDescriptors)]
+                descriptor_data, iOtherData = descriptor_data.iloc[:, self._QSArgs.ExpandDescriptors], descriptor_data.loc[:, descriptor_data.columns.difference(descriptor_data.columns[self._QSArgs.ExpandDescriptors])]
                 descriptor_data = expandListElementDataFrame(descriptor_data, expand_index=True)
                 descriptor_data = descriptor_data.set_index(descriptor_data.columns[:2])
                 if not iOtherData.empty:
                     descriptor_data = pd.merge(descriptor_data, iOtherData, how="left", left_index=True, right_index=True)
-            descriptor_data = descriptor_data.loc[:, DescriptorNames]
+            descriptor_data = descriptor_data.sort_index(axis=1)
             if self._QSArgs.CompoundType:
                 CompoundCols = [iCol[0] for iCol in self._QSArgs.CompoundType]
             else:
                 CompoundCols = None
-            if self._QSArgs.DataType=="double": StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype="float")
-            else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype="O")
-            StdData = pd.DataFrame(StdData, index=dts, columns=ids)
             if self._QSArgs.OutputMode=="全截面":
                 if self._QSArgs.DTMode=="单时点":
+                    StdData = []
                     for i, iDT in enumerate(dts):
-                        StdData.iloc[i, :] = Operator(self, iDT, ids, descriptor_data.loc[iDT], ModelArgs)
+                        iStdData = Operator(self, iDT, ids, descriptor_data.loc[iDT], ModelArgs)
+                        if isinstance(iStdData, pd.DataFrame):
+                            iStdData["_QS_DT"] = iDT
+                        elif isinstance(iStdData, pd.Series):
+                            iStdData = iStdData.to_frame("_QS_Factor")
+                            iStdData["_QS_DT"] = iDT
+                        else:
+                            raise __QS_Error__(f"不支持的返回格式: {iStdData}")
+                        StdData.append(iStdData)
+                    StdData = pd.concat(StdData, axis=0, ignore_index=False).set_index(["_QS_DT"], append=True)
+                    StdData = StdData.swaplevel(axis=0)
+                    if StdData.shape[1] == 1: StdData = StdData.iloc[:, 0]
+                    return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
                 else:
                     StdData = Operator(self, dts, ids, descriptor_data, ModelArgs)
-                    return self._QS_adjOutputPandas(df, CompoundCols, dts, ids)
+                    return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
             else:
                 if self._QSArgs.DTMode=="单时点":
+                    if self._QSArgs.DataType == "double": StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype="float")
+                    else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype="O")
                     for i, iDT in enumerate(dts):
                         iDescriptorData = descriptor_data.loc[iDT]
                         for j, jID in enumerate(ids):
-                            StdData.iloc[i, j] = Operator(self, iDT, jID, iDescriptorData, ModelArgs)
+                            iStdData = Operator(self, iDT, jID, iDescriptorData, ModelArgs)
+                            if isinstance(iStdData, pd.DataFrame):
+                                iStdData = tuple(iStdData.reindex(columns=CompoundCols).T.values.tolist())
+                            elif isinstance(iStdData, pd.Series):
+                                iStdData = tuple(iStdData.reindex(index=CompoundCols))
+                            StdData[i, j] = iStdData
+                    return pd.DataFrame(StdData, index=dts, columns=ids)
                 else:
+                    StdData = []
                     for j, jID in enumerate(ids):
-                        StdData.iloc[:, j] = Operator(self, dts, jID, descriptor_data, ModelArgs)
-        return StdData
+                        iStdData = Operator(self, dts, jID, descriptor_data, ModelArgs)
+                        if isinstance(iStdData, pd.DataFrame):
+                            iStdData["_QS_ID"] = jID
+                        elif isinstance(iStdData, pd.Series):
+                            iStdData = iStdData.to_frame("_QS_Factor")
+                            iStdData["_QS_ID"] = jID
+                        else:
+                            raise __QS_Error__(f"不支持的返回格式: {iStdData}")
+                        StdData.append(iStdData)
+                    StdData = pd.concat(StdData, axis=0, ignore_index=False).set_index(["_QS_ID"], append=True)
+                    if StdData.shape[1] == 1: StdData = StdData.iloc[:, 0]
+                    return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
+
     def __QS_prepareCacheData__(self, ids=None):
         DTs = list(self._PID_DTs[self._OperationMode._iPID])
         IDs = self._OperationMode._FactorPrepareIDs[self.Name]
@@ -644,6 +733,7 @@ class PanelOperation(DerivativeFactor):
                 else:
                     iDescriptorData = pd.DataFrame(columns=iSectionIDs)
                 DescriptorData.append(iDescriptorData)
+            StdData = self._calcData(ids=SectionIDs, dts=DTRuler[StartInd:EndInd + 1], descriptor_data=DescriptorData, dt_ruler=DTRuler)
             return StdData.reindex(index=dts, columns=ids)
     
     def _calcData(self, ids, dts, descriptor_data, dt_ruler):
@@ -709,40 +799,68 @@ class PanelOperation(DerivativeFactor):
             StdData = pd.DataFrame(StdData, columns=ids, index=DTRuler[-StdData.shape[0]:])
             if (self._QSArgs.iLookBackMode=="扩张窗口") or (self._QSArgs.iLookBack!=0):
                 descriptor_data[0] = StdData
-                descriptor_data = Panel({iDescriptor.Name: descriptor_data[i] for i, iDescriptor in enumerate([self]+self._Descriptors)}).loc[:, DTRuler].to_frame(filter_observations=False)
-                DescriptorNames = [self.Name] + [iDescriptor.Name for iDescriptor in self._Descriptors]
-            else:
-                descriptor_data = Panel({iDescriptor.Name: descriptor_data[i] for i, iDescriptor in enumerate(self._Descriptors)}).loc[:, DTRuler].to_frame(filter_observations=False)
-                DescriptorNames = [iDescriptor.Name for iDescriptor in self._Descriptors]
+            descriptor_data = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data))}).loc[:, DTRuler].to_frame(filter_observations=False).sort_index(axis=1)
             if self._QSArgs.ExpandDescriptors:
-                descriptor_data, iOtherData = descriptor_data.loc[:, self._QSArgs.ExpandDescriptors], descriptor_data.loc[:, descriptor_data.columns.difference(self._QSArgs.ExpandDescriptors)]
+                descriptor_data, iOtherData = descriptor_data.iloc[:, self._QSArgs.ExpandDescriptors], descriptor_data.loc[:, descriptor_data.columns.difference(descriptor_data.columns[self._QSArgs.ExpandDescriptors])]
                 descriptor_data = expandListElementDataFrame(descriptor_data, expand_index=True)
                 descriptor_data = descriptor_data.set_index(descriptor_data.columns[:2])
                 if not iOtherData.empty:
                     descriptor_data = pd.merge(descriptor_data, iOtherData, how="left", left_index=True, right_index=True)
-            descriptor_data = descriptor_data.loc[:, DescriptorNames]
+                descriptor_data = descriptor_data.sort_index(axis=1)
             if self._QSArgs.CompoundType:
                 CompoundCols = [iCol[0] for iCol in self._QSArgs.CompoundType]
             else:
                 CompoundCols = None
             if self._QSArgs.OutputMode=='全截面':
                 if self._QSArgs.DTMode=='单时点':
+                    StdData = []
                     for i, iDT in enumerate(dts):
-                        iDTs = DTRuler[max(0, MaxLookBack+i+1-MaxLen):i+1+MaxLookBack]
-                        StdData.iloc[iStartInd+i, :] = Operator(self, iDTs, ids, descriptor_data.loc[iDTs], ModelArgs)
+                        iDTs = DTRuler[max(0, MaxLookBack + i + 1 - MaxLen):i + 1 + MaxLookBack]
+                        iStdData = Operator(self, iDTs, ids, descriptor_data.loc[iDTs], ModelArgs)
+                        if isinstance(iStdData, pd.DataFrame):
+                            iStdData["_QS_DT"] = iDT
+                        elif isinstance(iStdData, pd.Series):
+                            iStdData = iStdData.to_frame("_QS_Factor")
+                            iStdData["_QS_DT"] = iDT
+                        else:
+                            raise __QS_Error__(f"不支持的返回格式: {iStdData}")
+                        StdData.append(iStdData)
+                    StdData = pd.concat(StdData, axis=0, ignore_index=False).set_index(["_QS_DT"], append=True)
+                    StdData = StdData.swaplevel(axis=0)
+                    if StdData.shape[1] == 1: StdData = StdData.iloc[:, 0]
+                    return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
                 else:
                     StdData = Operator(self, DTRuler, ids, descriptor_data, ModelArgs)
-                    return self._QS_adjOutputPandas(df, CompoundCols, dts, ids)
+                    return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
             else:
                 if self._QSArgs.DTMode=='单时点':
+                    StdData = StdData.values
                     for i, iDT in enumerate(dts):
-                        iDTs = DTRuler[max(0, MaxLookBack+i+1-MaxLen):i+1+MaxLookBack]
+                        iDTs = DTRuler[max(0, MaxLookBack + i + 1 - MaxLen):i + 1 + MaxLookBack]
                         for j, jID in enumerate(ids):
-                            StdData.iloc[iStartInd+i, j] = Operator(self, iDTs, jID, descriptor_data.loc[iDTs], ModelArgs)
+                            iStdData = Operator(self, iDTs, jID, descriptor_data.loc[iDTs], ModelArgs)
+                            if isinstance(iStdData, pd.DataFrame):
+                                iStdData = tuple(iStdData.reindex(columns=CompoundCols).T.values.tolist())
+                            elif isinstance(iStdData, pd.Series):
+                                iStdData = tuple(iStdData.reindex(index=CompoundCols))
+                            StdData[iStartInd + i, j] = iStdData
+                    return pd.DataFrame(StdData[iStartInd:, :], index=dts, columns=ids)
                 else:
+                    descriptor_data = descriptor_data.swaplevel(axis=0)
+                    StdData = []
                     for j, jID in enumerate(ids):
-                        StdData.iloc[iStartInd:, j] = Operator(self, DTRuler, jID, descriptor_data, ModelArgs)
-            return StdData.iloc[iStartInd:, :]
+                        iStdData = Operator(self, DTRuler, jID, descriptor_data, ModelArgs)
+                        if isinstance(iStdData, pd.DataFrame):
+                            iStdData["_QS_ID"] = jID
+                        elif isinstance(iStdData, pd.Series):
+                            iStdData = iStdData.to_frame("_QS_Factor")
+                            iStdData["_QS_ID"] = jID
+                        else:
+                            raise __QS_Error__(f"不支持的返回格式: {iStdData}")
+                        StdData.append(iStdData)
+                    StdData = pd.concat(StdData, axis=0, ignore_index=False).set_index(["_QS_ID"], append=True)
+                    if StdData.shape[1] == 1: StdData = StdData.iloc[:, 0]
+                    return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
     
     def __QS_prepareCacheData__(self, ids=None):
         DTs = list(self._PID_DTs[self._OperationMode._iPID])
