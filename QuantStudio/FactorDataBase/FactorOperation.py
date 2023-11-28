@@ -77,6 +77,21 @@ class DerivativeFactor(Factor):
         else:
             Vars = [sympy.Symbol(iDescriptor.Name if iDescriptor.Name else f"_d{i+1}") for i, iDescriptor in enumerate(self.Descriptors)]
         return Fun(*Vars)
+    
+    def _QS_adjOutputPandas(self, df, cols, dts, ids):
+        if isinstance(df, pd.DataFrame):
+            if isinstance(df.index, pd.MultiIndex):
+                if df.index.duplicated().any():
+                    TmpData, Cols, df = {}, df.columns, df.groupby(axis=0, level=[0, 1], as_index=True)
+                    for iCol in Cols:
+                        TmpData[iCol] = df[iCol].apply(lambda s: s.tolist())
+                    df, TmpData = pd.DataFrame(TmpData).loc[:, Cols], None
+                df = df.reindex(columns=cols).apply(lambda s: tuple(s), axis=1).unstack()
+            return df.reindex(index=dts, columns=ids)
+        elif isinstance(df, pd.Series): 
+            return df.unstack().reindex(index=dts, columns=ids)
+        else:
+            raise __QS_Error__(f"不支持的返回格式: {df}")
 
 
 # 单点运算
@@ -137,19 +152,7 @@ class PointOperation(DerivativeFactor):
                 CompoundCols = None
             if (self._QSArgs.DTMode=='多时点') and (self._QSArgs.IDMode=='多ID'):
                 StdData = Operator(self, dts, ids, descriptor_data, ModelArgs)
-                if isinstance(StdData, pd.DataFrame):
-                    if isinstance(StdData.index, pd.MultiIndex):
-                        if StdData.index.duplicated().any():
-                            TmpData, Cols, StdData = {}, StdData.columns, StdData.groupby(axis=0, level=[0, 1], as_index=True)
-                            for iCol in Cols:
-                                TmpData[iCol] = StdData[iCol].apply(lambda s: s.tolist())
-                            StdData, TmpData = pd.DataFrame(TmpData).loc[:, Cols], None
-                        StdData = StdData.reindex(columns=CompoundCols).apply(lambda s: tuple(s), axis=1).unstack()
-                    return StdData.reindex(index=dts, columns=ids)
-                elif isinstance(StdData, pd.Series): 
-                    return StdData.unstack().reindex(index=dts, columns=ids)
-                else:
-                    raise __QS_Error__(f"不支持的返回格式: {StdData}")
+                return self._QS_adjOutputPandas(df, CompoundCols, dts, ids)
             if self._QSArgs.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
             else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')   
             StdData = pd.DataFrame(StdData, index=dts, columns=ids)
@@ -339,6 +342,10 @@ class TimeOperation(DerivativeFactor):
                 if not iOtherData.empty:
                     descriptor_data = pd.merge(descriptor_data, iOtherData, how="left", left_index=True, right_index=True)
             descriptor_data = descriptor_data.loc[:, DescriptorNames]
+            if self._QSArgs.CompoundType:
+                CompoundCols = [iCol[0] for iCol in self._QSArgs.CompoundType]
+            else:
+                CompoundCols = None
             if (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='单ID'):
                 descriptor_data = descriptor_data.swaplevel(axis=0)
                 for j, jID in enumerate(ids):
@@ -356,8 +363,7 @@ class TimeOperation(DerivativeFactor):
                     StdData.iloc[iStartInd:, j] = Operator(self, DTRuler, jID, descriptor_data.loc[jID], ModelArgs)
             else:
                 StdData = Operator(self, DTRuler, ids, descriptor_data, ModelArgs)
-                if isinstance(StdData, pd.DataFrame): return StdData.reindex(index=dts, columns=ids)
-                else: return StdData.unstack().reindex(index=dts, columns=ids)
+                return self._QS_adjOutputPandas(df, CompoundCols, dts, ids)
             return StdData.iloc[iStartInd:, :]
     
     def __QS_prepareCacheData__(self, ids=None):
@@ -481,8 +487,11 @@ class SectionOperation(DerivativeFactor):
                 descriptor_data = descriptor_data.set_index(descriptor_data.columns[:2])
                 if not iOtherData.empty:
                     descriptor_data = pd.merge(descriptor_data, iOtherData, how="left", left_index=True, right_index=True)
-            DescriptorNames = [iDescriptor.Name for iDescriptor in self._Descriptors]
             descriptor_data = descriptor_data.loc[:, DescriptorNames]
+            if self._QSArgs.CompoundType:
+                CompoundCols = [iCol[0] for iCol in self._QSArgs.CompoundType]
+            else:
+                CompoundCols = None
             if self._QSArgs.DataType=="double": StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype="float")
             else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype="O")
             StdData = pd.DataFrame(StdData, index=dts, columns=ids)
@@ -492,8 +501,7 @@ class SectionOperation(DerivativeFactor):
                         StdData.iloc[i, :] = Operator(self, iDT, ids, descriptor_data.loc[iDT], ModelArgs)
                 else:
                     StdData = Operator(self, dts, ids, descriptor_data, ModelArgs)
-                    if isinstance(StdData, pd.DataFrame): return StdData.reindex(index=dts, columns=ids)
-                    else: return StdData.unstack().reindex(index=dts, columns=ids)
+                    return self._QS_adjOutputPandas(df, CompoundCols, dts, ids)
             else:
                 if self._QSArgs.DTMode=="单时点":
                     for i, iDT in enumerate(dts):
@@ -713,6 +721,10 @@ class PanelOperation(DerivativeFactor):
                 if not iOtherData.empty:
                     descriptor_data = pd.merge(descriptor_data, iOtherData, how="left", left_index=True, right_index=True)
             descriptor_data = descriptor_data.loc[:, DescriptorNames]
+            if self._QSArgs.CompoundType:
+                CompoundCols = [iCol[0] for iCol in self._QSArgs.CompoundType]
+            else:
+                CompoundCols = None
             if self._QSArgs.OutputMode=='全截面':
                 if self._QSArgs.DTMode=='单时点':
                     for i, iDT in enumerate(dts):
@@ -720,8 +732,7 @@ class PanelOperation(DerivativeFactor):
                         StdData.iloc[iStartInd+i, :] = Operator(self, iDTs, ids, descriptor_data.loc[iDTs], ModelArgs)
                 else:
                     StdData = Operator(self, DTRuler, ids, descriptor_data, ModelArgs)
-                    if isinstance(StdData, pd.DataFrame): return StdData.reindex(index=dts, columns=ids)
-                    else: return StdData.unstack().reindex(index=dts, columns=ids)
+                    return self._QS_adjOutputPandas(df, CompoundCols, dts, ids)
             else:
                 if self._QSArgs.DTMode=='单时点':
                     for i, iDT in enumerate(dts):
