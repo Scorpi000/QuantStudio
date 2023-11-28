@@ -171,9 +171,15 @@ def _fetch(f,idt,iid,x,args):
     Data = _genOperatorData(f,idt,iid,x,args)[0]
     CompoundType = args["OperatorArg"]["compound_type"]
     if CompoundType and isinstance(args["OperatorArg"]["pos"], str):
-        DataType = np.dtype([(iCol, float if iType=="double" else "O") for iCol, iType in CompoundType])
+        DefaultData = np.array([[None]], dtype="O")
+        DefaultData[0, 0] = (None,) * len(CompoundType)
+        DefaultData = DefaultData.repeat(Data.shape[0], axis=0).repeat(Data.shape[1], axis=1)
+        Data = np.where(pd.notnull(Data), Data, DefaultData)
     else:
-        SampleData = Data[0, 0]
+        SampleData = Data[pd.notnull(Data)]
+        if SampleData.shape[0]==0:
+            return (np.full(Data.shape, fill_value=np.nan, dtype="float") if f._QSArgs.DataType=="double" else np.full(Data.shape, fill_value=None, dtype="O"))
+        SampleData = SampleData[0]
         DataType = np.dtype([(str(i),(float if isinstance(SampleData[i], float) else "O")) for i in range(len(SampleData))])
     return Data.astype(DataType)[str(args["OperatorArg"]["pos"])]
 def fetch(f, pos=0, dtype="double", **kwargs):
