@@ -175,6 +175,7 @@ def _fetch(f,idt,iid,x,args):
         DefaultData[0, 0] = (None,) * len(CompoundType)
         DefaultData = DefaultData.repeat(Data.shape[0], axis=0).repeat(Data.shape[1], axis=1)
         Data = np.where(pd.notnull(Data), Data, DefaultData)
+        DataType = np.dtype([(iCol, float if iType=="double" else "O") for iCol, iType in CompoundType])
     else:
         SampleData = Data[pd.notnull(Data)]
         if SampleData.shape[0]==0:
