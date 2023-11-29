@@ -98,6 +98,18 @@ class DerivativeFactor(Factor):
             return df.unstack().reindex(index=dts, columns=ids)
         else:
             raise __QS_Error__(f"不支持的返回格式: {df}")
+    
+    def _QS_partitionSectionIDs(self, section_ids):
+        SectionIdx = []  # [([ID], [idx])]
+        for i, iIDs in enumerate(section_ids):
+            for jIDs, jIdx in SectionIdx:
+                if iIDs == jIDs:
+                    jIdx.append(i)
+                    break
+            else:
+                SectionIdx.append((iIDs, [i]))
+        return SectionIdx
+
 
 
 # 单点运算
@@ -246,13 +258,13 @@ class PointOperation(DerivativeFactor):
 class TimeOperation(DerivativeFactor):
     """时间序列运算"""
     class __QS_ArgClass__(DerivativeFactor.__QS_ArgClass__):
-        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=6, option_range=["单时点", "多时点"], mutable=False)
-        IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=7, option_range=["单ID", "多ID"], mutable=False)
-        LookBack = List(arg_type="ArgList", label="回溯期数", order=8, mutable=False)# 描述子向前回溯的时点数(不包括当前时点)
-        LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=9, mutable=False)# 描述子的回溯模式
-        iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=10, mutable=False)
-        iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=11, option_range=["滚动窗口", "扩张窗口"], mutable=False)
-        iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=12)
+        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=7, option_range=["单时点", "多时点"], mutable=False)
+        IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=8, option_range=["单ID", "多ID"], mutable=False)
+        LookBack = List(arg_type="ArgList", label="回溯期数", order=9, mutable=False)# 描述子向前回溯的时点数(不包括当前时点)
+        LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=10, mutable=False)# 描述子的回溯模式
+        iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=11, mutable=False)
+        iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=12, option_range=["滚动窗口", "扩张窗口"], mutable=False)
+        iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=13)
         def __QS_initArgs__(self):
             super().__QS_initArgs__()
             self.LookBack = [0]*len(self._Owner._Descriptors)
@@ -476,9 +488,9 @@ class TimeOperation(DerivativeFactor):
 class SectionOperation(DerivativeFactor):
     """截面运算"""
     class __QS_ArgClass__(DerivativeFactor.__QS_ArgClass__):
-        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=6, option_range=["单时点", "多时点"], mutable=False)
-        OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=7, option_range=["全截面", "单ID"], mutable=False)
-        DescriptorSection = List(arg_type="List", label="描述子截面", order=8, mutable=False)
+        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=7, option_range=["单时点", "多时点"], mutable=False)
+        OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=8, option_range=["全截面", "单ID"], mutable=False)
+        DescriptorSection = List(arg_type="List", label="描述子截面", order=9, mutable=False)
         def __QS_initArgs__(self):
             super().__QS_initArgs__()
             self.DescriptorSection = [None]*len(self._Owner._Descriptors)
@@ -539,14 +551,20 @@ class SectionOperation(DerivativeFactor):
                         StdData[:, j] = Operator(self, dts, jID, descriptor_data, ModelArgs)
             return StdData
         else:
-            descriptor_data = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data))}).to_frame(filter_observations=False).sort_index(axis=1)
-            if self._QSArgs.ExpandDescriptors:
-                descriptor_data, iOtherData = descriptor_data.iloc[:, self._QSArgs.ExpandDescriptors], descriptor_data.loc[:, descriptor_data.columns.difference(descriptor_data.columns[self._QSArgs.ExpandDescriptors])]
-                descriptor_data = expandListElementDataFrame(descriptor_data, expand_index=True)
-                descriptor_data = descriptor_data.set_index(descriptor_data.columns[:2])
-                if not iOtherData.empty:
-                    descriptor_data = pd.merge(descriptor_data, iOtherData, how="left", left_index=True, right_index=True)
-            descriptor_data = descriptor_data.sort_index(axis=1)
+            SectionIdx = self._QS_partitionSectionIDs(self._QSArgs.DescriptorSection)
+            DescriptorData = []
+            for iSectionIDs, iIdx in SectionIdx:
+                iDescriptorData = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data)) if i in iIdx}).to_frame(filter_observations=False).sort_index(axis=1)
+                iExpandDescriptors = sorted(f"d{i}" for i in set(self._QSArgs.ExpandDescriptors).intersection(iIdx))
+                if iExpandDescriptors:
+                    iDescriptorData, iOtherData = iDescriptorData.iloc[:, iExpandDescriptors], iDescriptorData.loc[:, iDescriptorData.columns.difference(iExpandDescriptors)]
+                    iDescriptorData = expandListElementDataFrame(iDescriptorData, expand_index=True)
+                    iDescriptorData = iDescriptorData.set_index(iDescriptorData.columns[:2])
+                    if not iOtherData.empty:
+                        iDescriptorData = pd.merge(iDescriptorData, iOtherData, how="left", left_index=True, right_index=True)
+                iDescriptorData = iDescriptorData.sort_index(axis=1)
+                DescriptorData.append(iDescriptorData)
+            descriptor_data, DescriptorData = DescriptorData, None
             if self._QSArgs.CompoundType:
                 CompoundCols = [iCol[0] for iCol in self._QSArgs.CompoundType]
             else:
@@ -555,7 +573,7 @@ class SectionOperation(DerivativeFactor):
                 if self._QSArgs.DTMode=="单时点":
                     StdData = []
                     for i, iDT in enumerate(dts):
-                        iStdData = Operator(self, iDT, ids, descriptor_data.loc[iDT], ModelArgs)
+                        iStdData = Operator(self, iDT, ids, [iData.loc[iDT] for iData in descriptor_data], ModelArgs)
                         if isinstance(iStdData, pd.DataFrame):
                             iStdData["_QS_DT"] = iDT
                         elif isinstance(iStdData, pd.Series):
@@ -576,7 +594,7 @@ class SectionOperation(DerivativeFactor):
                     if self._QSArgs.DataType == "double": StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype="float")
                     else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype="O")
                     for i, iDT in enumerate(dts):
-                        iDescriptorData = descriptor_data.loc[iDT]
+                        iDescriptorData = [iData.loc[iDT] for iData in descriptor_data]
                         for j, jID in enumerate(ids):
                             iStdData = Operator(self, iDT, jID, iDescriptorData, ModelArgs)
                             if isinstance(iStdData, pd.DataFrame):
@@ -652,14 +670,14 @@ class SectionOperation(DerivativeFactor):
 class PanelOperation(DerivativeFactor):
     """面板运算"""
     class __QS_ArgClass__(DerivativeFactor.__QS_ArgClass__):
-        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=6, option_range=["单时点", "多时点"], mutable=False)
-        OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=7, option_range=["全截面", "单ID"], mutable=False)
-        LookBack = List(arg_type="ArgList", label="回溯期数", order=8, mutable=False)# 描述子向前回溯的时点数(不包括当前时点)
-        LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=9, mutable=False)
-        iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=10, mutable=False)
-        iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=11, option_range=["滚动窗口", "扩张窗口"], mutable=False)
-        iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=12)
-        DescriptorSection = List(arg_type="List", label="描述子截面", order=13, mutable=False)
+        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=7, option_range=["单时点", "多时点"], mutable=False)
+        OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=8, option_range=["全截面", "单ID"], mutable=False)
+        LookBack = List(arg_type="ArgList", label="回溯期数", order=9, mutable=False)# 描述子向前回溯的时点数(不包括当前时点)
+        LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=10, mutable=False)
+        iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=11, mutable=False)
+        iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=12, option_range=["滚动窗口", "扩张窗口"], mutable=False)
+        iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=13)
+        DescriptorSection = List(arg_type="List", label="描述子截面", order=14, mutable=False)
         def __QS_initArgs__(self):
             super().__QS_initArgs__()
             nDescriptor = len(self._Owner._Descriptors)
@@ -799,14 +817,20 @@ class PanelOperation(DerivativeFactor):
             StdData = pd.DataFrame(StdData, columns=ids, index=DTRuler[-StdData.shape[0]:])
             if (self._QSArgs.iLookBackMode=="扩张窗口") or (self._QSArgs.iLookBack!=0):
                 descriptor_data[0] = StdData
-            descriptor_data = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data))}).loc[:, DTRuler].to_frame(filter_observations=False).sort_index(axis=1)
-            if self._QSArgs.ExpandDescriptors:
-                descriptor_data, iOtherData = descriptor_data.iloc[:, self._QSArgs.ExpandDescriptors], descriptor_data.loc[:, descriptor_data.columns.difference(descriptor_data.columns[self._QSArgs.ExpandDescriptors])]
-                descriptor_data = expandListElementDataFrame(descriptor_data, expand_index=True)
-                descriptor_data = descriptor_data.set_index(descriptor_data.columns[:2])
-                if not iOtherData.empty:
-                    descriptor_data = pd.merge(descriptor_data, iOtherData, how="left", left_index=True, right_index=True)
-                descriptor_data = descriptor_data.sort_index(axis=1)
+            SectionIdx = self._QS_partitionSectionIDs(self._QSArgs.DescriptorSection)
+            DescriptorData = []
+            for iSectionIDs, iIdx in SectionIdx:
+                iDescriptorData = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data)) if i in iIdx}).loc[:, DTRuler].to_frame(filter_observations=False).sort_index(axis=1)
+                iExpandDescriptors = sorted(f"d{i}" for i in set(self._QSArgs.ExpandDescriptors).intersection(iIdx))
+                if iExpandDescriptors:
+                    iDescriptorData, iOtherData = iDescriptorData.iloc[:, iExpandDescriptors], iDescriptorData.loc[:, iDescriptorData.columns.difference(iExpandDescriptors)]
+                    iDescriptorData = expandListElementDataFrame(iDescriptorData, expand_index=True)
+                    iDescriptorData = iDescriptorData.set_index(iDescriptorData.columns[:2])
+                    if not iOtherData.empty:
+                        iDescriptorData = pd.merge(iDescriptorData, iOtherData, how="left", left_index=True, right_index=True)
+                iDescriptorData = iDescriptorData.sort_index(axis=1)
+                DescriptorData.append(iDescriptorData)
+            descriptor_data, DescriptorData = DescriptorData, None
             if self._QSArgs.CompoundType:
                 CompoundCols = [iCol[0] for iCol in self._QSArgs.CompoundType]
             else:
@@ -816,7 +840,7 @@ class PanelOperation(DerivativeFactor):
                     StdData = []
                     for i, iDT in enumerate(dts):
                         iDTs = DTRuler[max(0, MaxLookBack + i + 1 - MaxLen):i + 1 + MaxLookBack]
-                        iStdData = Operator(self, iDTs, ids, descriptor_data.loc[iDTs], ModelArgs)
+                        iStdData = Operator(self, iDTs, ids, [iData.loc[iDTs] for iData in descriptor_data], ModelArgs)
                         if isinstance(iStdData, pd.DataFrame):
                             iStdData["_QS_DT"] = iDT
                         elif isinstance(iStdData, pd.Series):
@@ -838,7 +862,7 @@ class PanelOperation(DerivativeFactor):
                     for i, iDT in enumerate(dts):
                         iDTs = DTRuler[max(0, MaxLookBack + i + 1 - MaxLen):i + 1 + MaxLookBack]
                         for j, jID in enumerate(ids):
-                            iStdData = Operator(self, iDTs, jID, descriptor_data.loc[iDTs], ModelArgs)
+                            iStdData = Operator(self, iDTs, jID, [iData.loc[iDTs] for iData in descriptor_data], ModelArgs)
                             if isinstance(iStdData, pd.DataFrame):
                                 iStdData = tuple(iStdData.reindex(columns=CompoundCols).T.values.tolist())
                             elif isinstance(iStdData, pd.Series):
