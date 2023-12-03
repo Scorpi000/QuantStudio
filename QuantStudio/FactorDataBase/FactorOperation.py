@@ -557,7 +557,7 @@ class SectionOperation(DerivativeFactor):
                 iDescriptorData = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data)) if i in iIdx}).to_frame(filter_observations=False).sort_index(axis=1)
                 iExpandDescriptors = sorted(f"d{i}" for i in set(self._QSArgs.ExpandDescriptors).intersection(iIdx))
                 if iExpandDescriptors:
-                    iDescriptorData, iOtherData = iDescriptorData.iloc[:, iExpandDescriptors], iDescriptorData.loc[:, iDescriptorData.columns.difference(iExpandDescriptors)]
+                    iDescriptorData, iOtherData = iDescriptorData.loc[:, iExpandDescriptors], iDescriptorData.loc[:, iDescriptorData.columns.difference(iExpandDescriptors)]
                     iDescriptorData = expandListElementDataFrame(iDescriptorData, expand_index=True)
                     iDescriptorData = iDescriptorData.set_index(iDescriptorData.columns[:2])
                     if not iOtherData.empty:
@@ -823,7 +823,7 @@ class PanelOperation(DerivativeFactor):
                 iDescriptorData = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data)) if i in iIdx}).loc[:, DTRuler].to_frame(filter_observations=False).sort_index(axis=1)
                 iExpandDescriptors = sorted(f"d{i}" for i in set(self._QSArgs.ExpandDescriptors).intersection(iIdx))
                 if iExpandDescriptors:
-                    iDescriptorData, iOtherData = iDescriptorData.iloc[:, iExpandDescriptors], iDescriptorData.loc[:, iDescriptorData.columns.difference(iExpandDescriptors)]
+                    iDescriptorData, iOtherData = iDescriptorData.loc[:, iExpandDescriptors], iDescriptorData.loc[:, iDescriptorData.columns.difference(iExpandDescriptors)]
                     iDescriptorData = expandListElementDataFrame(iDescriptorData, expand_index=True)
                     iDescriptorData = iDescriptorData.set_index(iDescriptorData.columns[:2])
                     if not iOtherData.empty:
