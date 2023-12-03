@@ -40,19 +40,23 @@ class QSArgs(HasTraits):
     """参数对象"""
     def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
         self._QS_Frozen = False# 是否冻结参数, 不允许增删参数, 对于 mutable=False 的参数不允许修改值
+        self._QS_Init = True# 是否在初始化状态
         self._QS_Logger = kwargs.pop("logger", None)
         if self._QS_Logger is None: self._QS_Logger = __QS_Logger__
         super().__init__(**kwargs)
         self._Owner = owner
         self._LabelTrait = {}
         self._ArgOrder = pd.Series(dtype=float)
+        self._ArgVisible = pd.Series(dtype=bool)
         for iTraitName in self.visible_traits():
             iTrait = self.trait(iTraitName)
             if iTrait.arg_type is None: continue
             iLabel = (iTrait.label if iTrait.label is not None else iTraitName)
             iOrder = (iTrait.order if iTrait.order is not None else np.inf)
+            iVisible = (iTrait.visible if iTrait.visible is not None else True)
             self._LabelTrait[iLabel] = iTraitName
             self._ArgOrder[iLabel] = iOrder
+            self._ArgVisible[iLabel] = iVisible
         self._ArgOrder.sort_values(inplace=True)
         self.__QS_initArgs__()
         self._ConfigFile, Config = None, {}
@@ -64,9 +68,17 @@ class QSArgs(HasTraits):
                     FileStr = File.read()
                     if FileStr: Config = json.loads(FileStr)
         Config.update(sys_args)
+        # ArgsIgnored = set(Config.keys()).difference(self._ArgOrder.index)
+        # if ArgsIgnored: self._QS_Logger.warning(f"参数 {ArgsIgnored} 不存在, 全体参数为: {self._ArgOrder.index.tolist()}")
+        # Config = {self._LabelTrait[iArgName]: iArgVal for iArgName, iArgVal in Config.items() if iArgName in self._ArgOrder.index}
+        # self.trait_set(trait_change_notify=False, traits=Config)
         for iArgName, iArgVal in Config.items():
-            if iArgName in self._ArgOrder.index: self[iArgName] = iArgVal
+            if iArgName in self._ArgOrder.index:
+                self[iArgName] = iArgVal
+            else:
+                self._QS_Logger.warning(f"参数 '{iArgName}' 不存在, 全体参数为: {self.ArgNames}")
         self._QS_Frozen = True
+        self._QS_Init = False
         
     def __setstate__(self, state, trait_change_notify=False):
         return super().__setstate__(state, trait_change_notify=trait_change_notify)
@@ -79,7 +91,7 @@ class QSArgs(HasTraits):
     
     @property
     def ArgNames(self):
-        return self._ArgOrder.index.tolist()
+        return self._ArgOrder[self._ArgVisible].index.tolist()
     
     @property
     def ObservedArgs(self):
@@ -110,8 +122,10 @@ class QSArgs(HasTraits):
         if iTrait.arg_type is None: return Rslt
         iLabel = (iTrait.label if iTrait.label is not None else name)
         iOrder = (iTrait.order if iTrait.order is not None else np.inf)
+        iVisible = (iTrait.visible if iTrait.visible is not None else True)
         self._LabelTrait[iLabel] = name
         self._ArgOrder[iLabel] = iOrder
+        self._ArgVisible[iLabel] = iVisible
         self._ArgOrder.sort_values(inplace=True)
         return Rslt
     
@@ -123,18 +137,29 @@ class QSArgs(HasTraits):
         Rslt = super().remove_trait(name)
         self._LabelTrait.pop(iLabel)
         self._ArgOrder.pop(iLabel)
+        self._ArgVisible.pop(iLabel)
         return Rslt
+
+    def _QS_setArgVisible(self, arg_name, visible=True):
+        if arg_name in self._ArgVisible.index:
+            self._ArgVisible[arg_name] = bool(visible)
+        else:
+            raise __QS_Error__(f"参数 '{arg_name}' 不存在!")
     
     def __iter__(self):
-        return iter(self._LabelTrait)
+        return iter(self._ArgOrder[self._ArgVisible].index)
     
     def __len__(self):
-        return len(self._LabelTrait)
+        return self._ArgOrder[self._ArgVisible].shape[0]
 
     def __getitem__(self, key):
+        if self._ArgVisible.get(key, False):
+            raise __QS_Error__(f"参数 '{key}' 不存在, 全体参数为: {self.ArgNames}")
         return getattr(self, self._LabelTrait[key])
     
     def __setitem__(self, key, value):
+        if self._ArgVisible.get(key, False):
+            raise __QS_Error__(f"参数 '{key}' 不存在, 全体参数为: {self.ArgNames}")
         iTrait = self.trait(self._LabelTrait[key])
         iMutable = (True if iTrait.mutable is None else iTrait.mutable)
         if self._QS_Frozen and (not iMutable):
@@ -147,12 +172,14 @@ class QSArgs(HasTraits):
             setattr(self, self._LabelTrait[key], value)
     
     def __delitem__(self, key):
+        if self._ArgVisible.get(key, False):
+            raise __QS_Error__(f"参数 '{key}' 不存在, 全体参数为: {self.ArgNames}")
         if self._QS_Frozen:
             raise __QS_Error__(f"参数集已冻结, 不能删除参数 '{key}'")
         self.remove_trait(self._LabelTrait[key])
 
     def __contains__(self, key):
-        return (key in self._LabelTrait)
+        return self._ArgVisible.get(key, False)
     
     def __eq__(self, other):
         if not isinstance(other, QSArgs): return False
@@ -181,22 +208,22 @@ class QSArgs(HasTraits):
             return True
 
     def get(self, key, value=None):
-        if key in self._LabelTrait:
+        if self._ArgVisible.get(key, False):
             return getattr(self, self._LabelTrait[key])
         else:
             return value
     
     def keys(self):
-        return tuple(self._ArgOrder.index)
+        return tuple(self._ArgOrder[self._ArgVisible].index)
     
     def values(self):
-        return (getattr(self, self._LabelTrait[iKey]) for iKey in self._ArgOrder.index)
+        return (getattr(self, self._LabelTrait[iKey]) for iKey in self._ArgOrder[self._ArgVisible].index)
     
     def items(self):
         return zip(self.keys(), self.values())
     
     def update(self, args={}):
-        for iKey in self._ArgOrder.index.intersection(args.keys()):
+        for iKey in self._ArgOrder[self._ArgVisible].index.intersection(args.keys()):
             self[iKey] = args[iKey]
     
     def clear(self):
@@ -242,9 +269,3 @@ class __QS_Object__:
         HTML += f"<b>文档</b>: {html.escape(self.__doc__ if self.__doc__ else '')}<br/>"
         HTML += f"<b>参数</b>: " + self._QSArgs._repr_html_()
         return HTML
-
-if __name__=="__main__":
-    import QuantStudio.api as QS
-    HDB1 = QS.FactorDB.HDF5DB()
-    HDB2 = QS.FactorDB.HDF5DB()
-    print(HDB1.Args == HDB2.Args)
