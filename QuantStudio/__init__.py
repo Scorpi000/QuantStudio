@@ -153,13 +153,13 @@ class QSArgs(HasTraits):
         return self._ArgOrder[self._ArgVisible].shape[0]
 
     def __getitem__(self, key):
-        if self._ArgVisible.get(key, False):
+        if not self._ArgVisible.get(key, False):
             raise __QS_Error__(f"参数 '{key}' 不存在, 全体参数为: {self.ArgNames}")
         return getattr(self, self._LabelTrait[key])
     
     def __setitem__(self, key, value):
-        if self._ArgVisible.get(key, False):
-            raise __QS_Error__(f"参数 '{key}' 不存在, 全体参数为: {self.ArgNames}")
+        if not self._ArgVisible.get(key, False):
+            self._QS_Logger.warning(f"参数 '{key}' 不存在, 全体参数为: {self.ArgNames}")
         iTrait = self.trait(self._LabelTrait[key])
         iMutable = (True if iTrait.mutable is None else iTrait.mutable)
         if self._QS_Frozen and (not iMutable):
@@ -172,8 +172,8 @@ class QSArgs(HasTraits):
             setattr(self, self._LabelTrait[key], value)
     
     def __delitem__(self, key):
-        if self._ArgVisible.get(key, False):
-            raise __QS_Error__(f"参数 '{key}' 不存在, 全体参数为: {self.ArgNames}")
+        if not self._ArgVisible.get(key, False):
+            self._QS_Logger.warning(f"参数 '{key}' 不存在, 全体参数为: {self.ArgNames}")
         if self._QS_Frozen:
             raise __QS_Error__(f"参数集已冻结, 不能删除参数 '{key}'")
         self.remove_trait(self._LabelTrait[key])
