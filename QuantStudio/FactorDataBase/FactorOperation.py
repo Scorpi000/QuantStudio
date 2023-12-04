@@ -377,7 +377,7 @@ class TimeOperation(DerivativeFactor):
             if self._QSArgs.ExpandDescriptors:
                 descriptor_data, iOtherData = descriptor_data.iloc[:, self._QSArgs.ExpandDescriptors], descriptor_data.loc[:, descriptor_data.columns.difference(descriptor_data.columns[self._QSArgs.ExpandDescriptors])]
                 descriptor_data = expandListElementDataFrame(descriptor_data, expand_index=True)
-                descriptor_data = descriptor_data.set_index(descriptor_data.columns[:2])
+                descriptor_data = descriptor_data.set_index(descriptor_data.columns[:2].tolist())
                 if not iOtherData.empty:
                     descriptor_data = pd.merge(descriptor_data, iOtherData, how="left", left_index=True, right_index=True)
                 descriptor_data = descriptor_data.sort_index(axis=1)
@@ -559,7 +559,7 @@ class SectionOperation(DerivativeFactor):
                 if iExpandDescriptors:
                     iDescriptorData, iOtherData = iDescriptorData.loc[:, iExpandDescriptors], iDescriptorData.loc[:, iDescriptorData.columns.difference(iExpandDescriptors)]
                     iDescriptorData = expandListElementDataFrame(iDescriptorData, expand_index=True)
-                    iDescriptorData = iDescriptorData.set_index(iDescriptorData.columns[:2])
+                    iDescriptorData = iDescriptorData.set_index(iDescriptorData.columns[:2].tolist())
                     if not iOtherData.empty:
                         iDescriptorData = pd.merge(iDescriptorData, iOtherData, how="left", left_index=True, right_index=True)
                 iDescriptorData = iDescriptorData.sort_index(axis=1)
@@ -825,7 +825,7 @@ class PanelOperation(DerivativeFactor):
                 if iExpandDescriptors:
                     iDescriptorData, iOtherData = iDescriptorData.loc[:, iExpandDescriptors], iDescriptorData.loc[:, iDescriptorData.columns.difference(iExpandDescriptors)]
                     iDescriptorData = expandListElementDataFrame(iDescriptorData, expand_index=True)
-                    iDescriptorData = iDescriptorData.set_index(iDescriptorData.columns[:2])
+                    iDescriptorData = iDescriptorData.set_index(iDescriptorData.columns[:2].tolist())
                     if not iOtherData.empty:
                         iDescriptorData = pd.merge(iDescriptorData, iOtherData, how="left", left_index=True, right_index=True)
                 iDescriptorData = iDescriptorData.sort_index(axis=1)
