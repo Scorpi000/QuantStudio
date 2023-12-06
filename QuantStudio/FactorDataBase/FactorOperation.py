@@ -28,6 +28,7 @@ class DerivativeFactor(Factor):
         CompoundType = List(arg_type="List", label="复合类型", order=4, mutable=False)
         InputFormat = Enum("numpy", "pandas", label="输入格式", order=5, arg_type="SingleOption", option_range=["numpy", "pandas"], mutable=False)
         # ExpandDescriptors = ListInt(arg_type="MultiOption", label="展开描述子", order=6)
+        Description = Str("", label="描述信息", order=7, arg_type="String")
 
         def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
             super().__init__(owner=owner, sys_args=sys_args, config_file=config_file, **kwargs)
@@ -50,8 +51,10 @@ class DerivativeFactor(Factor):
         return self._Descriptors
     def getMetaData(self, key=None, args={}):
         DataType = args.get("数据类型", self._QSArgs.DataType)
-        if key is None: return pd.Series({"DataType": DataType})
+        Description = args.get("描述信息", self._QSArgs.Description)
+        if key is None: return pd.Series({"DataType": DataType, "Description": Description})
         elif key=="DataType": return DataType
+        elif key=="Description": return Description
         return None
     def start(self, dts, **kwargs):
         for iDescriptor in self._Descriptors: iDescriptor.start(dts=dts, **kwargs)
