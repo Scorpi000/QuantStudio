@@ -16,7 +16,7 @@ import sympy
 import numpy as np
 import pandas as pd
 from progressbar import ProgressBar
-from traits.api import Instance, Str, List, Int, Enum, ListStr, Either, Directory
+from traits.api import Instance, Str, List, Int, Enum, ListStr, Either, Directory, Dict
 from IPython.display import Math
 
 from QuantStudio import __QS_Object__, __QS_Error__, QSArgs
@@ -986,6 +986,10 @@ class FactorTable(__QS_Object__):
 # 自定义因子表
 class CustomFT(FactorTable):
     """自定义因子表"""
+
+    class __QS_ArgClass__(FactorTable.__QS_ArgClass__):
+        MetaData = Dict({}, arg_type="Dict", label="元信息", order=-6, eq_arg=False)
+    
     def __init__(self, name, sys_args={}, config_file=None, **kwargs):
         self._DateTimes = []# 数据源可提取的最长时点序列，[datetime.datetime]
         self._IDs = []# 数据源可提取的最长ID序列，['600000.SH']
@@ -1001,6 +1005,9 @@ class CustomFT(FactorTable):
     @property
     def FactorNames(self):
         return sorted(self._Factors)
+    def getMetaData(self, key=None, args={}):
+        if key is None: return pd.Series(self._QSArgs.MetaData)
+        return self._QSArgs.MetaData.get(key, None)
     def getFactorMetaData(self, factor_names=None, key=None, args={}):
         if factor_names is None: factor_names = self.FactorNames
         if key is not None: return pd.Series({iFactorName: self._Factors[iFactorName].getMetaData(key) for iFactorName in factor_names})
@@ -1129,7 +1136,7 @@ class CustomFT(FactorTable):
 # 将运算结果转换成真正的可以存储的因子
 def Factorize(factor_object, factor_name, args={}, **kwargs):
     factor_object.Name = factor_name
-    for iArg, iVal in args.items(): factor_object[iArg] = iVal
+    for iArg, iVal in args.items(): factor_object._QSArgs[iArg] = iVal
     if "logger" in kwargs: factor_object._QS_Logger = kwargs["logger"]
     return factor_object
 
