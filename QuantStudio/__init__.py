@@ -35,12 +35,12 @@ from QuantStudio.Tools.DataTypeConversionFun import dict2html
 #     order: 参数的排序
 #     arg_type: 参数的类型: "String", "Integer", "Bool", "Float", "Dict", "List", "File", "Directory", "ArgObject"
 #     mutable: 初始化后是否可修改, 默认 None 可修改
+#     visible: 参数是否可见, 默认 None 可见
 #     eq_arg: 是否用于判断两个参数对象相等, 默认 None 用于判断
 class QSArgs(HasTraits):
     """参数对象"""
     def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
         self._QS_Frozen = False# 是否冻结参数, 不允许增删参数, 对于 mutable=False 的参数不允许修改值
-        self._QS_Init = True# 是否在初始化状态
         self._QS_Logger = kwargs.pop("logger", None)
         if self._QS_Logger is None: self._QS_Logger = __QS_Logger__
         super().__init__(**kwargs)
@@ -58,27 +58,18 @@ class QSArgs(HasTraits):
             self._ArgOrder[iLabel] = iOrder
             self._ArgVisible[iLabel] = iVisible
         self._ArgOrder.sort_values(inplace=True)
-        self.__QS_initArgs__()
         self._ConfigFile, Config = None, {}
         if config_file:
-            if not os.path.isfile(config_file): config_file = __QS_ConfigPath__+os.sep+config_file
+            if not os.path.isfile(config_file): config_file = __QS_ConfigPath__ + os.sep + config_file
             if os.path.isfile(config_file):
                 self._ConfigFile = config_file
                 with open(self._ConfigFile, "r", encoding="utf-8") as File:
                     FileStr = File.read()
                     if FileStr: Config = json.loads(FileStr)
         Config.update(sys_args)
-        # ArgsIgnored = set(Config.keys()).difference(self._ArgOrder.index)
-        # if ArgsIgnored: self._QS_Logger.warning(f"参数 {ArgsIgnored} 不存在, 全体参数为: {self._ArgOrder.index.tolist()}")
-        # Config = {self._LabelTrait[iArgName]: iArgVal for iArgName, iArgVal in Config.items() if iArgName in self._ArgOrder.index}
-        # self.trait_set(trait_change_notify=False, traits=Config)
-        for iArgName, iArgVal in Config.items():
-            if iArgName in self._ArgOrder.index:
-                self[iArgName] = iArgVal
-            else:
-                self._QS_Logger.warning(f"参数 '{iArgName}' 不存在, 全体参数为: {self.ArgNames}")
+        self.__QS_initArgs__()
+        self.update(Config)
         self._QS_Frozen = True
-        self._QS_Init = False
         
     def __setstate__(self, state, trait_change_notify=False):
         return super().__setstate__(state, trait_change_notify=trait_change_notify)
@@ -223,8 +214,9 @@ class QSArgs(HasTraits):
         return zip(self.keys(), self.values())
     
     def update(self, args={}):
-        for iKey in self._ArgOrder[self._ArgVisible].index.intersection(args.keys()):
-            self[iKey] = args[iKey]
+        ArgOrder = self._ArgOrder.reindex(index=list(args.keys())).sort_values()
+        for iArgName in ArgOrder.index:
+            self[iArgName] = args[iArgName]
     
     def clear(self):
         for iArgName in self._ArgOrder.index:
