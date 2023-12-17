@@ -23,7 +23,7 @@ class TargetPositionSignal(BaseModule):
     class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
         #TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
         #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             DefaultNumFactorList, _ = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactors", ListStr(DefaultNumFactorList[:1], arg_type="MultiOption", label="测试因子", order=0, option_range=DefaultNumFactorList))
             self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1, option_range=DefaultNumFactorList))
@@ -197,7 +197,7 @@ class TradeSignal(BaseModule):
         CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="计算时点", order=2)
         EndClear = Enum(True, False, arg_type="Bool", label="结束清仓", order=3)
         CalcIRR = Enum(False, True, arg_type="Bool", label="计算IRR", order=4)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             DefaultNumFactorList, _ = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactors", ListStr(DefaultNumFactorList[:1], arg_type="MultiOption", label="测试因子", order=0, option_range=DefaultNumFactorList))
             self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1, option_range=DefaultNumFactorList))
@@ -425,7 +425,7 @@ class QuantileTiming(BaseModule):
         MinSummaryWindow = Int(3, arg_type="Integer", label="最小统计窗口", order=6)
         GroupNum = Int(3, arg_type="Integer", label="分组数", order=7)
         LSClearGroups = ListInt(arg_type="Integer", label="多空平仓组", order=8)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             DefaultNumFactorList, _ = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
             self.TestFactors.append(DefaultNumFactorList[0])

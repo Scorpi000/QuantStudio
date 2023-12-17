@@ -24,7 +24,7 @@ class _WeightAllocation(QSArgs):
     def __init__(self, ft=None, owner=None, sys_args={}, config_file=None, **kwargs):
         self._FT = ft
         return super().__init__(owner, sys_args=sys_args, config_file=config_file, **kwargs)
-    def __QS_initArgs__(self):
+    def __QS_initArgs__(self, args={}):
         if self._FT is not None:
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
             self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=1, option_range=["等权"]+DefaultNumFactorList))
@@ -41,10 +41,10 @@ class PortfolioStrategy(Strategy):
         ShortWeightAlloction = Instance(_WeightAllocation, label="空头权重配置", arg_type="ArgObject", order=5)
         TargetAccount = Instance(Account, label="目标账户", arg_type="QSObject", order=6)
         TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=7, option_range=["锁定买卖金额", "锁定目标权重", "锁定目标金额"])
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             self.LongWeightAlloction = _WeightAllocation(ft=self._Owner._FT, owner=self._Owner)
             self.ShortWeightAlloction = _WeightAllocation(ft=self._Owner._FT, owner=self._Owner)
-            return super().__QS_initArgs__()
+            return super().__QS_initArgs__(args=args)
         
         @property
         def ObservedArgs(self):
@@ -241,7 +241,7 @@ class _Filter(QSArgs):
     def __init__(self, ft=None, owner=None, sys_args={}, config_file=None, **kwargs):
         self._FT = ft
         return super().__init__(owner, sys_args=sys_args, config_file=config_file, **kwargs)
-    def __QS_initArgs__(self):
+    def __QS_initArgs__(self, args={}):
         self.TurnoverBuffer = _TurnoverBuffer(owner=self._Owner)
         DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FT.getFactorMetaData(key="DataType")))
         self.add_trait("TargetFactor", Enum(*DefaultNumFactorList, label="目标因子", arg_type="SingleOption", order=2, option_range=DefaultNumFactorList))
@@ -275,8 +275,8 @@ class _Filter(QSArgs):
 class HierarchicalFiltrationStrategy(PortfolioStrategy):
     class __QS_ArgClass__(PortfolioStrategy.__QS_ArgClass__):
         FiltrationLevel = Int(1, label="筛选层数", arg_type="Integer", order=8)
-        def __QS_initArgs__(self):
-            super().__QS_initArgs__()
+        def __QS_initArgs__(self, args={}):
+            super().__QS_initArgs__(args=args)
             self.add_trait("Level0", Instance(_Filter, label="第0层", arg_type="ArgObject", order=9))
             self.Level0 = _Filter(ft=self._Owner._FT, owner=self._Owner)
             self.LongWeightAlloction.ReAllocWeight = True
@@ -395,7 +395,7 @@ class OptimizerStrategy(PortfolioStrategy):
         SignalAdjustment = Instance(_SignalAdjustment, arg_type="ArgObject", label="信号调整", order=9)
         TargetAccount = Instance(Account, label="目标账户", arg_type="QSObject", order=10)
         TradeTarget = Enum("锁定买卖金额", "锁定目标权重", "锁定目标金额", label="交易目标", arg_type="SingleOption", order=11, option_range=["锁定买卖金额", "锁定目标权重", "锁定目标金额"])
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             self.remove_trait("LongWeightAlloction")
             self.remove_trait("ShortWeightAlloction")
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FT.getFactorMetaData(key="DataType")))
@@ -404,7 +404,7 @@ class OptimizerStrategy(PortfolioStrategy):
             self.add_trait("BenchmarkFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="基准权重", order=7, option_range=DefaultNumFactorList))
             self.add_trait("AmountFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="成交金额", order=8, option_range=DefaultNumFactorList))
             self.SignalAdjustment = _SignalAdjustment()
-            return super().__QS_initArgs__()
+            return super().__QS_initArgs__(args=args)
     
     def __init__(self, name, pc, factor_table=None, sys_args={}, config_file=None, **kwargs):
         self._PC = pc

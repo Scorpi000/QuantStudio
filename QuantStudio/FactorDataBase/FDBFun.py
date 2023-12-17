@@ -299,8 +299,8 @@ class SQL_Table(FactorTable):
         UseIndex = ListStr(arg_type="ListStr", label="使用索引", order=206)
         ForceIndex = ListStr(arg_type="ListStr", label="强制索引", order=207)
         IgnoreIndex = ListStr(arg_type="ListStr", label="忽略索引", order=208)
-        def __QS_initArgs__(self):
-            super().__QS_initArgs__()
+        def __QS_initArgs__(self, args={}):
+            super().__QS_initArgs__(args=args)
             # 设置因子表类型
             self.TableType = self._Owner._TableInfo["TableClass"]
             # 解析 ID 字段, 至多一个 ID 字段
@@ -637,8 +637,8 @@ class SQL_WideTable(SQL_Table):
         AdditionalFields = ListStr(arg_type="ListStr", label="附加字段", order=11)
         PeriodLookBack = Either(None, Int(0), label="回溯期数", arg_type="Integer", order=12)
         RawLookBack = Float(0, arg_type="Integer", label="原始值回溯天数", order=13)
-        def __QS_initArgs__(self):
-            super().__QS_initArgs__()
+        def __QS_initArgs__(self, args={}):
+            super().__QS_initArgs__(args=args)
             # 解析公告时点字段
             Fields = self._Owner._FactorInfo[self._Owner._FactorInfo["FieldType"].str.lower().str.contains("date")].index.tolist()# 所有的时点字段列表
             Fields += [None]
@@ -1018,8 +1018,8 @@ class SQL_NarrowTable(SQL_Table):
         MultiMapping = Enum(True, False, label="多重映射", arg_type="Bool", order=6)
         Operator = Either(Callable(), None, arg_type="Function", label="算子", order=7)
         OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=8, option_range=["object", "double", "string"])
-        def __QS_initArgs__(self):
-            super().__QS_initArgs__()
+        def __QS_initArgs__(self, args={}):
+            super().__QS_initArgs__(args=args)
             FactorFields = self._Owner._FactorInfo[self._Owner._FactorInfo["FieldType"]=="Factor"]
             if FactorFields.shape[0]==0: FactorFields = self._Owner._FactorInfo
             self.add_trait("FactorNameField", Enum(*FactorFields.index.tolist(), arg_type="SingleOption", label="因子名字段", order=4, option_range=FactorFields.index.tolist()))
@@ -1239,8 +1239,8 @@ class SQL_FeatureTable(SQL_WideTable):
     class __QS_ArgClass__(SQL_WideTable.__QS_ArgClass__):
         LookBack = Float(np.inf, arg_type="Integer", label="回溯天数", order=0)
         TargetDT = Either(None, Date, arg_type="DateTime", label="目标时点", order=1)
-        def __QS_initArgs__(self):
-            super().__QS_initArgs__()
+        def __QS_initArgs__(self, args={}):
+            super().__QS_initArgs__(args=args)
             self.DTField = None
     
     def __init__(self, name, fdb, sys_args={}, table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
@@ -1323,8 +1323,8 @@ class SQL_TimeSeriesTable(SQL_Table):
         MultiMapping = Enum(False, True, label="多重映射", arg_type="Bool", order=8)
         Operator = Either(Callable(), None, arg_type="Function", label="算子", order=9)
         OperatorDataType = Enum("object", "double", "string", arg_type="SingleOption", label="算子数据类型", order=10, option_range=["object", "double", "string"])
-        def __QS_initArgs__(self):
-            super().__QS_initArgs__()
+        def __QS_initArgs__(self, args={}):
+            super().__QS_initArgs__(args=args)
             # 解析公告时点字段
             Fields = self._Owner._FactorInfo[self._Owner._FactorInfo["FieldType"].str.lower().str.contains("date")].index.tolist()# 所有的时点字段列表
             Fields += [None]
@@ -1561,8 +1561,8 @@ class SQL_MappingTable(SQL_Table):
         MultiMapping = Enum(False, True, label="多重映射", arg_type="Bool", order=1)
         #EndDTField = Enum(None, arg_type="SingleOption", label="结束时点字段", order=2)
         EndDTIncluded = Enum(True, False, label="包含结束时点", arg_type="Bool", order=3)
-        def __QS_initArgs__(self):
-            super().__QS_initArgs__()
+        def __QS_initArgs__(self, args={}):
+            super().__QS_initArgs__(args=args)
             # 解析结束时点字段
             Fields = self._Owner._FactorInfo[self._Owner._FactorInfo["FieldType"].str.lower().str.contains("date")].index.tolist()# 所有的时点字段列表
             self.add_trait("EndDTField", Enum(*Fields, arg_type="SingleOption", label="结束时点字段", order=2, option_range=Fields))
@@ -1780,8 +1780,8 @@ class SQL_ConstituentTable(SQL_Table):
         #EndDTField = Enum(None, arg_type="SingleOption", label="结束时点字段", order=1)
         #CurSignField = Enum(None, arg_type="SingleOption", label="当前状态字段", order=2)
         EndDTIncluded = Enum(False, True, label="包含结束时点", arg_type="Bool", order=3)
-        def __QS_initArgs__(self):
-            super().__QS_initArgs__()
+        def __QS_initArgs__(self, args={}):
+            super().__QS_initArgs__(args=args)
             FactorInfo = self._Owner._FactorInfo
             # 解析类别字段
             Fields = FactorInfo[pd.notnull(FactorInfo["FieldType"])].index.tolist()# 所有字段列表
@@ -1984,8 +1984,8 @@ class SQL_FinancialTable(SQL_Table):
         #AdjustTypeField = Enum(None, label="调整类型字段", arg_type="SingleOption", order=6)
         #AdjustType = Str("2,1", label="调整类型", arg_type="String", order=7)
         #PublDTField = Enum(None, label="公告时点字段", arg_type="SingleOption", order=8)
-        def __QS_initArgs__(self):
-            super().__QS_initArgs__()
+        def __QS_initArgs__(self, args={}):
+            super().__QS_initArgs__(args=args)
             FactorInfo = self._Owner._FactorInfo
             # 解析公告时点字段
             Fields = FactorInfo[FactorInfo["FieldType"].str.lower().str.contains("date")].index.tolist()# 所有的时点字段列表

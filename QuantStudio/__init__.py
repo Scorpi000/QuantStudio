@@ -67,7 +67,7 @@ class QSArgs(HasTraits):
                     FileStr = File.read()
                     if FileStr: Config = json.loads(FileStr)
         Config.update(sys_args)
-        self.__QS_initArgs__()
+        self.__QS_initArgs__(args=Config)
         self.update(Config)
         self._QS_Frozen = True
         
@@ -226,7 +226,7 @@ class QSArgs(HasTraits):
             if iMutable:
                 setattr(self, iKey, iTrait.default)
     
-    def __QS_initArgs__(self):
+    def __QS_initArgs__(self, args={}):
         return None
 
     def _repr_html_(self):

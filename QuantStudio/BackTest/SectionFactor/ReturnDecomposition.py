@@ -24,7 +24,7 @@ class FamaMacBethRegression(BaseModule):
         CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="计算时点", order=3)
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=4)
         RollAvgPeriod = Int(12, arg_type="Integer", label="滚动平均期数", order=5)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
             self.TestFactors.append(DefaultNumFactorList[0])

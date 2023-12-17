@@ -25,7 +25,7 @@ class BiasTest(BaseModule):
         #IndustryNeutralFactors = ListStr(arg_type="MultiOption", label="行业中性因子", order=7, option_range=())
         RandomNums = ListInt([20,50,100,200], arg_type="NultiOpotion", label="随机组合", order=8)
         LookBack = Int(12, arg_type="Integer", label="回溯期数", order=9)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=3, option_range=DefaultNumFactorList))
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])

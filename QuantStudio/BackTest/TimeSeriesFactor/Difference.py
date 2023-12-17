@@ -24,7 +24,7 @@ class QuantileDifference(BaseModule):
         SummaryWindow = Float(np.inf, arg_type="Integer", label="统计窗口", order=6)
         MinSummaryWindow = Int(2, arg_type="Integer", label="最小统计窗口", order=7)
         GroupNum = Int(3, arg_type="Integer", label="分组数", order=8)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="测试因子", order=0, option_range=DefaultNumFactorList))
             self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1, option_range=DefaultNumFactorList))

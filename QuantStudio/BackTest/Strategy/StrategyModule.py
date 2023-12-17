@@ -247,7 +247,7 @@ class _Benchmark(QSArgs):
     #BenchmarkID = Enum(None, arg_type="SingleOption", label="基准ID", order=2)
     RebalanceDTs = List(dt.datetime, arg_type="DateTimeList", label="再平衡时点", order=3)
     RiskFreeRate = Float(0.0, arg_type="Float", label="无风险利率", order=4)
-    def __QS_initArgs__(self):
+    def __QS_initArgs__(self, args={}):
         self.add_trait("PriceFactor", Enum(None, arg_type="SingleOption", label="价格因子", order=1, option_range=[None]))
         self.add_trait("BenchmarkID", Enum(None, arg_type="SingleOption", label="基准ID", order=2, option_range=[None]))
     
@@ -280,7 +280,7 @@ class Strategy(BaseModule):
     """策略基类"""
     class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
         Benchmark = Instance(_Benchmark, arg_type="ArgObject", label="比较基准", order=0)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             self.Benchmark = _Benchmark()
         
     def __init__(self, name, accounts=[], fts=[], sys_args={}, config_file=None, **kwargs):

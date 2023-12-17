@@ -32,7 +32,7 @@ class CMRM(BaseModule):
         EstWindow = Int(240, arg_type="Integer", label="估计窗口", order=5)
         EstSampleFilter = Str(arg_type="String", label="样本筛选", order=6)
         EstSampleLen = Int(20, arg_type="Integer", label="估计样本量", order=7)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=3, option_range=DefaultNumFactorList))
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
@@ -194,12 +194,12 @@ class MAM(CMRM):
     class __QS_ArgClass__(CMRM.__QS_ArgClass__):
         #BenchmarkPrice = Enum(None, arg_type="SingleOption", label="基准价格", order=8)
         BenchmarkID = Str(arg_type="String", label="基准ID", order=9)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._BenchmarkFT.getFactorMetaData(key="DataType")))
             self.add_trait("BenchmarkPrice", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="基准价格", order=6, option_range=DefaultNumFactorList))
             self.BenchmarkPrice = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
             self.BenchmarkID = self._Owner._BenchmarkFT.getID(ifactor_name=self.BenchmarkPrice)[0]
-            return super().__QS_initArgs__()
+            return super().__QS_initArgs__(args=args)
     def __init__(self, factor_table, benchmark_ft, name="市场调整模型", sys_args={}, **kwargs):
         self._BenchmarkFT = benchmark_ft
         return super().__init__(factor_table=factor_table, name=name, sys_args=sys_args, **kwargs)
@@ -258,7 +258,7 @@ class MM(CMRM):
         BenchmarkID = Str(arg_type="String", label="基准ID", order=9)
         # RiskFreeRate = Enum(None, arg_type="SingleOption", label="无风险利率", order=10)
         RiskFreeRateID = Str(arg_type="String", label="无风险利率ID", order=11)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._BenchmarkFT.getFactorMetaData(key="DataType")))
             self.add_trait("BenchmarkPrice", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="基准价格", order=6, option_range=DefaultNumFactorList))
             self.BenchmarkPrice = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
@@ -266,7 +266,7 @@ class MM(CMRM):
             if self._Owner._RateFT is not None:
                 DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._RateFT.getFactorMetaData(key="DataType")))
                 self.add_trait("RiskFreeRate", Enum(None, *DefaultNumFactorList, arg_type="SingleOption", label="无风险利率", order=8, option_range=[None]+DefaultNumFactorList))
-            return super().__QS_initArgs__()
+            return super().__QS_initArgs__(args=args)
     
     def __init__(self, factor_table, benchmark_ft, rate_table=None, name="市场模型", sys_args={}, **kwargs):
         self._BenchmarkFT = benchmark_ft# 提供基准数据的因子表
@@ -379,7 +379,7 @@ class CBBM(CMRM):# TODO
         #CharacteristicFactor = Enum(None, arg_type="SingleOption", label="特征因子", order=5)
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=6)
         FilterRatio = Float(0.1, arg_type="Double", label="筛选比例", order=7)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=3, option_range=DefaultNumFactorList))
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])

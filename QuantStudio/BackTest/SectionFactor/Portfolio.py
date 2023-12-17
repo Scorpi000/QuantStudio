@@ -53,7 +53,7 @@ class QuantilePortfolio(BaseModule):
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
         PriceMiss = Enum("沿用前值", "填充为0", arg_type="SingleOption", label="价格缺失", order=9, option_range=["沿用前值", "填充为0"])
         Perturbation = Enum(False, True, arg_type="Bool", label="随机微扰", order=10)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="测试因子", order=0, option_range=DefaultNumFactorList))
             self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=3, option_range=DefaultNumFactorList))
@@ -333,7 +333,7 @@ class FilterPortfolio(BaseModule):
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=6)
         PriceMiss = Enum("沿用前值", "填充为0", arg_type="SingleOption", label="价格缺失", order=7, option_range=["沿用前值", "填充为0"])
         LSPairs = List(arg_type="List", label="多空对", order=8)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1, option_range=DefaultNumFactorList))
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])

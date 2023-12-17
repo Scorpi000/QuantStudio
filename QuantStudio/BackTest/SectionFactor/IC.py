@@ -32,7 +32,7 @@ class IC(BaseModule):
         CorrMethod = Enum("spearman", "pearson", "kendall", arg_type="SingleOption", label="相关性算法", order=7, option_range=["spearman", "pearson", "kendall"])
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
         RollAvgPeriod = Int(12, arg_type="Integer", label="滚动平均期数", order=9)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
             self.TestFactors.append(DefaultNumFactorList[0])
@@ -186,8 +186,8 @@ class RiskAdjustedIC(IC):
     """风险调整的 IC"""
     class __QS_ArgClass__(IC.__QS_ArgClass__):
         # RiskFactors = ListStr(arg_type="MultiOption", label="风险因子", order=2.5, option_range=())
-        def __QS_initArgs__(self):
-            super().__QS_initArgs__()
+        def __QS_initArgs__(self, args={}):
+            super().__QS_initArgs__(args=args)
             self.remove_trait("WeightFactor")
             DefaultNumFactorList, _ = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("RiskFactors", ListStr(arg_type="MultiOption", label="风险因子", order=2.5, option_range=tuple(DefaultNumFactorList)))
@@ -277,7 +277,7 @@ class ICDecay(BaseModule):
         LookBack = ListInt(np.arange(1,13).tolist(), arg_type="NultiOpotion", label="回溯期数", order=6)
         CorrMethod = Enum("spearman", "pearson", "kendall", arg_type="SingleOption", label="相关性算法", order=7, option_range=["spearman", "pearson", "kendall"])
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="测试因子", order=0, option_range=DefaultNumFactorList))
             self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=2, option_range=DefaultNumFactorList))

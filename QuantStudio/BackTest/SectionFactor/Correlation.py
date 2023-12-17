@@ -28,7 +28,7 @@ class SectionCorrelation(BaseModule):
         RiskTable = Instance(RiskTable, arg_type="RiskTable", label="风险表", order=4)
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=5)
         
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
             self.TestFactors = [DefaultNumFactorList[0], DefaultNumFactorList[-1]]
@@ -192,7 +192,7 @@ class FactorTurnover(BaseModule):
         # TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
         CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="计算时点", order=1)
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=2)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
             self.TestFactors.append(DefaultNumFactorList[0])

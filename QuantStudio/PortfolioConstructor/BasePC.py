@@ -155,12 +155,12 @@ class MaxSharpeObjective(OptimizationObjective):
 class RiskBudgetObjective(OptimizationObjective):
     class __QS_ArgClass__(OptimizationObjective.__QS_ArgClass__):
         # BudgetFactor = Enum("等权", arg_type="SingleOption", label="预算因子", order=0)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             if self._Owner._PC._QSArgs.FactorData is not None:
                 FactorNames = ["等权"]+self._Owner._PC._QSArgs.FactorData.columns.tolist()
             else: FactorNames = ["等权"]
             self.add_trait("BudgetFactor", Enum(*FactorNames, arg_type="SingleOption", label="预算因子", order=0, option_range=FactorNames))
-            return super().__QS_initArgs__()
+            return super().__QS_initArgs__(args=args)
     @property
     def Type(self):
         return "风险预算目标"
@@ -266,13 +266,13 @@ class FactorExposeConstraint(Constraint):
         DownLimit = Float(0.0, arg_type="Double", label="限制下限", order=3)
         Benchmark = Enum(False, True, arg_type="Bool", label="相对基准", order=4)
         DropPriority = Float(-1.0, arg_type="Double", label="舍弃优先级", order=5)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             if self._Owner._PC._QSArgs.FactorData is not None:
                 FactorNames = self._Owner._PC._QSArgs.FactorData.columns.tolist()
             else: FactorNames = []
             self.add_trait("FactorNames", ListStr(arg_type="MultiOption", label="因子名称", order=1, option_range=tuple(FactorNames)))
             self.FactorNames = FactorNames[:1]
-            return super().__QS_initArgs__()
+            return super().__QS_initArgs__(args=args)
     @property
     def Type(self):
         return "因子暴露约束"

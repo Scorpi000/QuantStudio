@@ -37,7 +37,7 @@ class TimeSeriesCorrelation(BaseModule):
         CorrMethod = Enum("pearson", "spearman", "kendall", arg_type="SingleOption", label="相关性算法", order=6, option_range=["pearson", "spearman", "kendall"])
         SummaryWindow = Float(np.inf, arg_type="Integer", label="统计窗口", order=7)
         MinSummaryWindow = Int(2, arg_type="Integer", label="最小统计窗口", order=8)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
             self.TestFactors.append(DefaultNumFactorList[0])

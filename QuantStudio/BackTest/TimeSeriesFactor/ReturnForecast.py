@@ -30,7 +30,7 @@ class ReturnForecast(BaseModule):
         ModelArgs = Dict(value={}, arg_type="Dict", label="模型参数", order=9)
         HTMLPrintStatistics = List([], arg_type="List", label="打印统计量", order=10)
         HTMLPlotStatistics = List([], arg_type="List", label="绘图统计量", order=11)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
             self.TestFactors.append(DefaultNumFactorList[0])
@@ -311,8 +311,8 @@ class ReturnForecast(BaseModule):
 class OLS(ReturnForecast):
     """时间序列 OLS"""
     class __QS_ArgClass__(ReturnForecast.__QS_ArgClass__):
-        def __QS_initArgs__(self):
-            super().__QS_initArgs__()
+        def __QS_initArgs__(self, args={}):
+            super().__QS_initArgs__(args=args)
             self.ModelArgs = {"常数项": True}
             self.HTMLPrintStatistics = ["回归系数", "t统计量"]
             self.HTMLPlotStatistics = ["R平方", "调整R平方"]

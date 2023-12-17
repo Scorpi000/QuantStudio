@@ -445,7 +445,7 @@ class _OperationMode(QSArgs):
         self._FileSuffix = ".h5"
         super().__init__(owner=owner, sys_args=sys_args, config_file=config_file, **kwargs)
     
-    def __QS_initArgs__(self):
+    def __QS_initArgs__(self, args={}):
         self.add_trait("FactorNames", ListStr(arg_type="MultiOption", label="运算因子", order=2))
     
     def __getstate__(self):
@@ -803,7 +803,7 @@ class FactorTable(__QS_Object__):
         ErgodicMode = Instance(_ErgodicMode, arg_type="ArgObject", label="遍历模式", order=-3, eq_arg=False)
         OperationMode = Instance(_OperationMode, arg_type="ArgObject", label="批量模式", order=-4, eq_arg=False)
         OperationModeRead = Enum(False, True, arg_type="Bool", label="批量读取", order=-5)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             self.ErgodicMode = _ErgodicMode(owner=self._Owner, logger=self._QS_Logger)
             self.OperationMode = _OperationMode(owner=self._Owner, logger=self._QS_Logger)
     

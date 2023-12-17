@@ -570,8 +570,8 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
         Deduplication = ListStr(arg_type="ListStr", label="去重字段", order=4)
         Period = Int(180, arg_type="Integer", label="周期", order=5)
         DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=6, option_range=["double", "string", "object"])
-        def __QS_initArgs__(self):
-            super().__QS_initArgs__()
+        def __QS_initArgs__(self, args={}):
+            super().__QS_initArgs__(args=args)
             self._Owner._InstituteField = self._Owner._FactorInfo[self._Owner._FactorInfo["FieldType"]=="Institute"].index[0]
             self.Deduplication = [self._Owner._InstituteField]
     
@@ -712,8 +712,8 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
         Deduplication = ListStr(arg_type="ListStr", label="去重字段", order=3)
         Period = Int(180, arg_type="Integer", label="周期", order=4)
         DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=5, option_range=["double", "string", "object"])
-        def __QS_initArgs__(self):
-            super().__QS_initArgs__()
+        def __QS_initArgs__(self, args={}):
+            super().__QS_initArgs__(args=args)
             self._Owner._InstituteField = self._Owner._FactorInfo[self._Owner._FactorInfo["FieldType"]=="Institute"].index[0]
             self.Deduplication = [self._Owner._InstituteField]
     def __init__(self, name, fdb, sys_args={}, **kwargs):

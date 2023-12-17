@@ -101,8 +101,8 @@ class _CalendarTable(_TSTable):
 class _FeatureTable(_TSTable):
     """特征因子表"""
     class __QS_ArgClass__(_TSTable.__QS_ArgClass__):
-        def __QS_initArgs__(self):
-            super().__QS_initArgs__()
+        def __QS_initArgs__(self, args={}):
+            super().__QS_initArgs__(args=args)
             FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
             ConditionField = FactorInfo[pd.notnull(FactorInfo["Supplementary"])]
             for i, iCondition in enumerate(ConditionField.index):
@@ -155,8 +155,8 @@ class _MarketTable(_TSTable):
     """行情因子表"""
     class __QS_ArgClass__(_TSTable.__QS_ArgClass__):
         LookBack = Int(0, arg_type="Integer", label="回溯天数", order=0)
-        def __QS_initArgs__(self):
-            super().__QS_initArgs__()
+        def __QS_initArgs__(self, args={}):
+            super().__QS_initArgs__(args=args)
             FactorInfo = self._Owner._FactorDB._FactorInfo.loc[self._Owner.Name]
             self.add_trait("DateField", Enum(*self._Owner._DateFields, arg_type="SingleOption", label="日期字段", order=1, option_range=self._Owner._DateFields))
             DefaultDateField = FactorInfo[(FactorInfo["Supplementary"]=="DefaultDate") & (FactorInfo["FieldType"]=="Date")]
@@ -274,8 +274,8 @@ class _AnnTable(_TSTable):
         #ANNDate = Enum(None, arg_type="SingleOption", label="公告日期", order=0)
         Operator = Callable(arg_type="Function", label="算子", order=1)
         LookBack = Int(0, arg_type="Integer", label="回溯天数", order=2)
-        def __QS_initArgs__(self):
-            super().__QS_initArgs__()
+        def __QS_initArgs__(self, args={}):
+            super().__QS_initArgs__(args=args)
             FactorInfo = self._Owner._FactorDB._FactorInfo.loc[self.Name]
             for i, iCondition in enumerate(self._Owner._ConditionFields):
                 self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+2))

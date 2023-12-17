@@ -23,7 +23,7 @@ class ReturnBasedStyleModel(BaseModule):
         CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="计算时点", order=5)
         SummaryWindow = Float(240, arg_type="Integer", label="统计窗口", order=6)
         MinSummaryWindow = Int(20, arg_type="Integer", label="最小统计窗口", order=7)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._TargetTable.getFactorMetaData(key="DataType")))
             self.add_trait("TargetNAV", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="目标净值", order=0, option_range=DefaultNumFactorList))
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._StyleTable.getFactorMetaData(key="DataType")))

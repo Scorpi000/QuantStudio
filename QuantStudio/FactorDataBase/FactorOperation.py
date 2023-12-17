@@ -36,8 +36,8 @@ class DerivativeFactor(Factor):
             if self.CompoundType: self.DataType = "object"
             self._QS_Frozen = True
 
-        def __QS_initArgs__(self):
-            super().__QS_initArgs__()
+        def __QS_initArgs__(self, args={}):
+            super().__QS_initArgs__(args=args)
             self.add_trait("ExpandDescriptors", ListInt([], arg_type="MultiOption", label="展开描述子", order=6, option_range=list(range(len(self._Owner._Descriptors))), mutable=False))
 
     def __init__(self, name="", descriptors=[], sys_args={}, **kwargs):
@@ -268,8 +268,8 @@ class TimeOperation(DerivativeFactor):
         iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=11, mutable=False)
         iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=12, option_range=["滚动窗口", "扩张窗口"], mutable=False)
         iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=13)
-        def __QS_initArgs__(self):
-            super().__QS_initArgs__()
+        def __QS_initArgs__(self, args={}):
+            super().__QS_initArgs__(args=args)
             self.LookBack = [0]*len(self._Owner._Descriptors)
             self.LookBackMode = ["滚动窗口"]*len(self._Owner._Descriptors)
     
@@ -494,8 +494,8 @@ class SectionOperation(DerivativeFactor):
         DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=7, option_range=["单时点", "多时点"], mutable=False)
         OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=8, option_range=["全截面", "单ID"], mutable=False)
         DescriptorSection = List(arg_type="List", label="描述子截面", order=9, mutable=False)
-        def __QS_initArgs__(self):
-            super().__QS_initArgs__()
+        def __QS_initArgs__(self, args={}):
+            super().__QS_initArgs__(args=args)
             self.DescriptorSection = [None]*len(self._Owner._Descriptors)
     
     def readData(self, ids, dts, **kwargs):
@@ -681,8 +681,8 @@ class PanelOperation(DerivativeFactor):
         iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=12, option_range=["滚动窗口", "扩张窗口"], mutable=False)
         iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=13)
         DescriptorSection = List(arg_type="List", label="描述子截面", order=14, mutable=False)
-        def __QS_initArgs__(self):
-            super().__QS_initArgs__()
+        def __QS_initArgs__(self, args={}):
+            super().__QS_initArgs__(args=args)
             nDescriptor = len(self._Owner._Descriptors)
             self.LookBack = [0]*nDescriptor
             self.LookBackMode = ["滚动窗口"]*nDescriptor

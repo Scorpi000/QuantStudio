@@ -21,7 +21,7 @@ class IndustryDistribution(BaseModule):
         Threshold = Enum("中位数","平均数","25%分位数","75%分位数",arg_type="SingleOption", label="阈值", order=2, option_range=["中位数","平均数","25%分位数","75%分位数"])
         CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="计算时点", order=3)
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=4)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
             self.TestFactors.append(DefaultNumFactorList[0])

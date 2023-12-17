@@ -21,7 +21,7 @@ class Cointegration(BaseModule):
         MinSummaryWindow = Int(120, arg_type="Integer", label="最小统计窗口", order=4)
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=5)
         CointArgs = Dict(arg_type="Dict", label="检验参数", order=6)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=0, option_range=DefaultNumFactorList))
             self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])

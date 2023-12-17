@@ -176,7 +176,7 @@ def _prepareRTMMAPCacheData(rt, mmap_cache):
 class RiskTable(__QS_Object__):
     class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
         ErgodicMode = Instance(_ErgodicMode, arg_type="ArgObject", label="遍历模式", order=-1)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             self.ErgodicMode = _ErgodicMode(owner=self._Owner)
     
     def __init__(self, name, rdb, sys_args={}, config_file=None, **kwargs):
@@ -335,7 +335,7 @@ class _FactorErgodicMode(_ErgodicMode):
 class FactorRT(RiskTable):
     class __QS_ArgClass__(RiskTable.__QS_ArgClass__):
         ErgodicMode = Instance(_FactorErgodicMode, arg_type="ArgObject", label="遍历模式", order=-1)
-        def __QS_initArgs__(self):
+        def __QS_initArgs__(self, args={}):
             self.ErgodicMode = _FactorErgodicMode(owner=self._Owner)
     # -------------------------------维度信息-----------------------------------
     @property

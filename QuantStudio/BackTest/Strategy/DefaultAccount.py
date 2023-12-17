@@ -22,7 +22,7 @@ class _TradeLimit(QSArgs):
         self._Account = account
         self._Direction = direction
         return super().__init__(self._Account, sys_args=sys_args, config_file=config_file, **kwargs)
-    def __QS_initArgs__(self):
+    def __QS_initArgs__(self, args={}):
         DefaultNumFactorList = [None] + self._Account.trait("Last").option_range
         self.add_trait("TradePrice", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="成交价", order=0, option_range=DefaultNumFactorList))
         self.add_trait("Amt", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="成交额", order=3, option_range=DefaultNumFactorList))
@@ -40,8 +40,8 @@ class DefaultAccount(Account):
         SellLimit = Instance(_TradeLimit, allow_none=False, arg_type="ArgObject", label="卖出限制", order=5)
         #Last = Enum(None, arg_type="SingleOption", label="最新价", order=6)
         PriceFillna = Enum(False, True, arg_type="Bool", label="价格缺失填充", order=7)
-        def __QS_initArgs__(self):
-            super().__QS_initArgs__()
+        def __QS_initArgs__(self, args={}):
+            super().__QS_initArgs__(args=args)
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._MarketFT.getFactorMetaData(key="DataType")))
             self.add_trait("Last", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="最新价", order=6, option_range=DefaultNumFactorList))
             self.Last = searchNameInStrList(DefaultNumFactorList, ['新','收','Last','last','close','Close'])
