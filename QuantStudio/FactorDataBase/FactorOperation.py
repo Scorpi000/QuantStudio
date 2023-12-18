@@ -952,7 +952,8 @@ class PanelOperation(DerivativeFactor):
 def FactorOperation(operation_type, sys_args={}):
     def Decorator(func):
         def defFactor(f="", x=[], args={}):
-            Args = sys_args.copy()
+            Args, args = sys_args.copy(), args.copy()
+            Args.setdefault("参数", {}).update(args.pop("参数", {}))
             Args.update(args)
             Args["算子"] = func
             if operation_type=="PointOperation":
