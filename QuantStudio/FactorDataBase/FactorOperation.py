@@ -948,9 +948,11 @@ class PanelOperation(DerivativeFactor):
 
 # 将算子转换成因子定义的装饰器
 # operation_type: 因子运算类型, 可选: 'PointOperation', 'TimeOperation', 'SectionOperation', 'PanelOperation'
-# sys_args: 因子定义参数将
-def FactorOperation(operation_type, sys_args={}):
+# sys_args: 因子定义参数
+def FactorOperation(operation_type, sys_args={}, meta={}):
     def Decorator(func):
+        func._QS_Meta = meta
+        func._QS_Args = sys_args.copy()
         def defFactor(f="", x=[], args={}):
             Args, args = sys_args.copy(), args.copy()
             Args.setdefault("参数", {}).update(args.pop("参数", {}))
