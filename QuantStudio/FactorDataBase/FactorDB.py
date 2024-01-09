@@ -722,7 +722,7 @@ def _calculate(args):
     # 执行任务
     nTask = len(OperationMode.FactorNames)
     nDT = len(OperationMode.DateTimes)
-    TaskCount = 0
+    TaskCount, BatchNum = 0, OperationMode.WriteBatchNum
     if OperationMode.SubProcessNum==0:# 运行模式为串行
         with ProgressBar(max_value=nTask) as ProgBar:
             for i, iTask in enumerate(TaskDispatched):
