@@ -426,6 +426,7 @@ class _OperationMode(QSArgs):
     IDSplit = Enum("连续切分", "间隔切分", arg_type="SingleOption", label="ID切分", order=6)
     CacheDir = Directory(arg_type="Directory", label="缓存文件夹", order=7)
     ClearCache = Enum(True, False, arg_type="Bool", label="清空缓存", order=8)
+    WriteBatchNum = Int(1, arg_type="Integer", label="写入批次", order=9)
     def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
         self._FT = owner
         self._isStarted = False
@@ -738,9 +739,10 @@ def _calculate(args):
                         ProgBar.update(TaskCount)
                 else:
                     iFactorNum = len(iFactors)
-                    iDTLen= int(np.ceil(nDT / iFactorNum))
+                    iBatchNum = (iFactorNum if BatchNum<=0 else BatchNum)
+                    iDTLen= int(np.ceil(nDT / iBatchNum))
                     iDataTypes = {iTargetFactorNames[j]:jFactor.getMetaData(key="DataType") for j, jFactor in enumerate(iFactors)}
-                    for j in range(iFactorNum):
+                    for j in range(iBatchNum):
                         jDTs = list(OperationMode.DateTimes[j*iDTLen:(j+1)*iDTLen])
                         if jDTs:
                             jData = {}
@@ -755,7 +757,7 @@ def _calculate(args):
                             jData = Panel(jData, items=iTargetFactorNames, major_axis=jDTs)
                             iDB.writeData(jData, iTableName, if_exists=args["if_exists"], data_type=iDataTypes, **args["kwargs"])
                             jData = None
-                        TaskCount += 0.5
+                        TaskCount += 0.5 * iFactorNum / iBatchNum
                         ProgBar.update(TaskCount)
     else:
         for i, iTask in enumerate(TaskDispatched):
@@ -773,9 +775,10 @@ def _calculate(args):
                     args["Sub2MainQueue"].put((args["PID"], 1, None))
             else:
                 iFactorNum = len(iFactors)
-                iDTLen= int(np.ceil(nDT / iFactorNum))
+                iBatchNum = (iFactorNum if BatchNum <= 0 else BatchNum)
+                iDTLen= int(np.ceil(nDT / iBatchNum))
                 iDataTypes = {iTargetFactorNames[j]:jFactor.getMetaData(key="DataType") for j, jFactor in enumerate(iFactors)}
-                for j in range(iFactorNum):
+                for j in range(iBatchNum):
                     jDTs = list(OperationMode.DateTimes[j*iDTLen:(j+1)*iDTLen])
                     if jDTs:
                         jData = {}
@@ -788,7 +791,7 @@ def _calculate(args):
                         jData = Panel(jData, items=iTargetFactorNames, major_axis=jDTs)
                         iDB.writeData(jData, iTableName, if_exists=args["if_exists"], data_type=iDataTypes, **args["kwargs"])
                         jData = None
-                    args["Sub2MainQueue"].put((args["PID"], 0.5, None))
+                    args["Sub2MainQueue"].put((args["PID"], 0.5 * iFactorNum / iBatchNum, None))
     return 0
 
 # 因子表, 接口类
