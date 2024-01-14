@@ -1304,7 +1304,7 @@ class Factor(__QS_Object__):
         EndDT = self._OperationMode.DateTimes[-1]
         StartInd, EndInd = self._OperationMode.DTRuler.index(StartDT), self._OperationMode.DTRuler.index(EndDT)
         DTs = self._OperationMode.DTRuler[StartInd:EndInd+1]
-        PrepareIDs, RawData = self._OperationMode._Cache.readRawData(self._RawDataFile, self._OperationMode._iPID, self._NameInFT)
+        RawData, PrepareIDs = self._OperationMode._Cache.readRawData(self._RawDataFile, self._OperationMode._iPID, self._NameInFT)
         if PrepareIDs is None:
             PrepareIDs = self._OperationMode._FactorPrepareIDs[self.Name]
             if PrepareIDs is None: PrepareIDs = self._OperationMode._PID_IDs[self._OperationMode._iPID]
@@ -1312,7 +1312,7 @@ class Factor(__QS_Object__):
             StdData = self._FactorTable.__QS_calcData__(RawData, factor_names=[self._NameInFT], ids=PrepareIDs, dts=DTs, args=self.Args).iloc[0]
         else:
             StdData = self._FactorTable.readData(factor_names=[self._NameInFT], ids=PrepareIDs, dts=DTs, args=self.Args).iloc[0]
-        self._OperationMode._Cache.writeFactorData(self.Name+str(self._OperationMode._FactorID[self.Name]), StdData)
+        self._OperationMode._Cache.writeFactorData(self.Name+str(self._OperationMode._FactorID[self.Name]), StdData, pid=self._OperationMode._iPID)
         self._isCacheDataOK = True
         return StdData
     # 获取因子数据, pid=None表示取所有进程的数据
@@ -1320,7 +1320,7 @@ class Factor(__QS_Object__):
         if not self._isCacheDataOK:# 若没有准备好缓存数据, 准备缓存数据
             self.__QS_prepareCacheData__()
         StdData = self._OperationMode._Cache.readFactorData(self.Name+str(self._OperationMode._FactorID[self.Name]), pids=pids)
-        if pids is None:
+        if pids is not None:
             StdData = StdData.reindex(index=list(dts))
         elif self._OperationMode._FactorPrepareIDs[self.Name] is None:
             StdData = StdData.reindex(index=list(dts), columns=self._OperationMode.IDs)
