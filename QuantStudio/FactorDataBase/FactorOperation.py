@@ -241,10 +241,7 @@ class PointOperation(DerivativeFactor):
             for iDescriptor in self._Descriptors:
                 iDescriptor._QS_getData(DTs, pids=[PID])
             StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self._QSArgs.DataType=="double" else "O"))
-        with self._OperationMode._PID_Lock[PID]:
-            with pd.HDFStore(self._OperationMode._CacheDataDir+os.sep+PID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])+self._OperationMode._FileSuffix, mode="a") as CacheFile:
-                CacheFile["StdData"] = StdData
-                CacheFile["_QS_IDs"] = pd.Series(IDs)
+        self._OperationMode._Cache.writeFactorData(self.Name+str(self._OperationMode._FactorID[self.Name]), StdData, pid=PID, pid_ids={PID: IDs})
         self._isCacheDataOK = True
         return StdData
 
@@ -473,10 +470,7 @@ class TimeOperation(DerivativeFactor):
                 iDTs = list(self._OperationMode.DTRuler[max(0, iStartInd):StartInd]) + DTs
                 iDescriptor._QS_getData(iDTs, pids=[PID])
             StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self._QSArgs.DataType=="double" else "O"))
-        with self._OperationMode._PID_Lock[PID]:
-            with pd.HDFStore(self._OperationMode._CacheDataDir+os.sep+PID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])+self._OperationMode._FileSuffix) as CacheFile:
-                CacheFile["StdData"] = StdData
-                CacheFile["_QS_IDs"] = pd.Series(IDs)
+        self._OperationMode._Cache.writeFactorData(self.Name+str(self._OperationMode._FactorID[self.Name]), StdData, pid=PID, pid_ids={PID: IDs})
         self._isCacheDataOK = True
         return StdData
 
@@ -645,14 +639,7 @@ class SectionOperation(DerivativeFactor):
             PID_IDs = self._OperationMode._PID_IDs
         else:
             PID_IDs = {self._OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in enumerate(partitionListMovingSampling(IDs, len(self._OperationMode._PIDs)))}
-        for iPID, iIDs in PID_IDs.items():
-            with self._OperationMode._PID_Lock[iPID]:
-                with pd.HDFStore(self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])+self._OperationMode._FileSuffix) as CacheFile:
-                    if "StdData" in CacheFile:
-                        CacheFile["StdData"] = pd.concat([CacheFile["StdData"], StdData.reindex(columns=iIDs)]).sort_index()
-                    else:
-                        CacheFile["StdData"] = StdData.reindex(columns=iIDs)
-                    CacheFile["_QS_IDs"] = pd.Series(iIDs)
+        self._OperationMode._Cache.writeFactorData(self.Name + str(self._OperationMode._FactorID[self.Name]), StdData, pid=None, pid_ids=PID_IDs)
         StdData = None# 释放数据
         gc.collect()
         if self._OperationMode.SubProcessNum>0:
@@ -929,14 +916,7 @@ class PanelOperation(DerivativeFactor):
             PID_IDs = self._OperationMode._PID_IDs
         else:
             PID_IDs = {self._OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in enumerate(partitionListMovingSampling(IDs, len(self._OperationMode._PIDs)))}
-        for iPID, iIDs in PID_IDs.items():
-            with self._OperationMode._PID_Lock[iPID]:
-                with pd.HDFStore(self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])+self._OperationMode._FileSuffix) as CacheFile:
-                    if "StdData" in CacheFile:
-                        CacheFile["StdData"] = pd.concat([CacheFile["StdData"], StdData.reindex(columns=iIDs)]).sort_index()
-                    else:
-                        CacheFile["StdData"] = StdData.reindex(columns=iIDs)
-                    CacheFile["_QS_IDs"] = pd.Series(iIDs)
+        self._OperationMode._Cache.writeFactorData(self.Name + str(self._OperationMode._FactorID[self.Name]), StdData, pid=None, pid_ids=PID_IDs)
         StdData = None# 释放数据
         gc.collect()
         if self._OperationMode.SubProcessNum>0:
