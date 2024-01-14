@@ -1222,8 +1222,8 @@ class SQL_NarrowTable(SQL_Table):
                     RawData.sort_values(by=["ID", "QS_DT", FactorNameField])
         if RawData.shape[0]==0: return RawData
         return self._adjustRawDataByRelatedField(RawData, [FactorNameField, FactorValueField])
-    def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock, **kwargs):
-        return super().__QS_saveRawData__(raw_data, [], raw_data_dir, pid_ids, file_name, pid_lock, **kwargs)
+    def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, **kwargs):
+        return super().__QS_saveRawData__(raw_data, [], raw_data_dir, pid_ids, file_name, **kwargs)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
         Args = self.Args.to_dict()
