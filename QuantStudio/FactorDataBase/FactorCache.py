@@ -110,7 +110,7 @@ class FactorCache(__QS_Object__):
 
     # 读取原始数据
     def readRawData(self, file_name, pid, target_field):
-        RawDataFilePath = self._QSArgs._RawDataDir + os.sep + pid + os.sep + file_name + self._QSArgs.HDF5Suffix
+        RawDataFilePath = self._RawDataDir + os.sep + pid + os.sep + file_name + self._QSArgs.HDF5Suffix
         with self._PIDLock[pid]:
             if os.path.isfile(RawDataFilePath):
                 with pd.HDFStore(RawDataFilePath, mode="r") as File:
@@ -164,7 +164,7 @@ class FactorCache(__QS_Object__):
         StdData = []
         while len(pids)>0:
             iPID = pids.pop()
-            iFilePath = self._CacheDataDir + os.sep + pids + os.sep + file_name + self._QSArgs.HDF5Suffix
+            iFilePath = self._CacheDataDir + os.sep + iPID + os.sep + file_name + self._QSArgs.HDF5Suffix
             if not os.path.isfile(iFilePath):# 该进程的数据没有准备好
                 pids.add(iPID)
                 continue
