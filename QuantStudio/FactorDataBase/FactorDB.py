@@ -5,12 +5,10 @@ import time
 import uuid
 import html
 import mmap
-import shutil
 import pickle
-import tempfile
 import datetime as dt
 from collections import OrderedDict
-from multiprocessing import Process, Queue, Lock, cpu_count
+from multiprocessing import Process, Queue, cpu_count
 
 import sympy
 import numpy as np
@@ -20,6 +18,7 @@ from traits.api import Instance, Str, List, Int, Enum, ListStr, Either, Director
 from IPython.display import Math
 
 from QuantStudio import __QS_Object__, __QS_Error__, QSArgs
+from QuantStudio.FactorDataBase.FactorCache import FactorCache
 from QuantStudio.Tools.api import Panel
 from QuantStudio.Tools.IDFun import testIDFilterStr
 from QuantStudio.Tools.AuxiliaryFun import genAvailableName, startMultiProcess, partitionListMovingSampling, partitionList
@@ -439,22 +438,13 @@ class _OperationMode(QSArgs):
         self._PIDs = []# 所有的计算进程 ID, 单进程下默认为"0", 多进程为"0-i"
         self._PID_IDs = {}# 每个计算进程分配的 ID 列表, {PID:[ID]}
         self._PID_Lock = {}# 每个计算进程分配的缓存数据锁, {PID:Lock}
-        self._CacheDir = None# 缓存数据的临时文件夹
-        self._RawDataDir = ""# 原始数据存放根目录
-        self._CacheDataDir = ""# 中间数据存放根目录
+        self._Cache = None# 因子缓存对象
         self._Event = {}# {因子名: (Sub2MainQueue, Event)}
         self._FileSuffix = ".h5"
         super().__init__(owner=owner, sys_args=sys_args, config_file=config_file, **kwargs)
     
     def __QS_initArgs__(self, args={}):
         self.add_trait("FactorNames", ListStr(arg_type="MultiOption", label="运算因子", order=2))
-    
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        # Remove the unpicklable entries.
-        if (self._CacheDir is not None) and (not isinstance(self._CacheDir, str)):
-            state["_CacheDir"] = self._CacheDir.name
-        return state
     
     def _genFactorDict(self, factors, factor_dict):
         for iFactor in factors:
@@ -491,24 +481,9 @@ class _OperationMode(QSArgs):
         self._FactorDict = self._genFactorDict(self._Factors, self._FactorDict)
         # 分配每个子进程的计算 ID 序列, 生成原始数据和缓存数据存储目录
         self._Event = {}# {因子名: (Sub2MainQueue, Event)}, 用于多进程同步的 Event 数据
-        CacheDir = kwargs.get("cache_dir", self.CacheDir)
-        if not os.path.isdir(CacheDir):
-            if CacheDir: self._QS_Logger.warning(f"缓存文件夹 '{CacheDir}' 不存在, 将使用系统的临时文件夹")
-            self._CacheDir = tempfile.TemporaryDirectory()
-            self._RawDataDir = self._CacheDir.name+os.sep+"RawData"# 原始数据存放根目录
-            self._CacheDataDir = self._CacheDir.name+os.sep+"CacheData"# 中间数据存放根目录
-        else:
-            self._CacheDir = CacheDir
-            self._RawDataDir = self._CacheDir+os.sep+"RawData"# 原始数据存放根目录
-            self._CacheDataDir = self._CacheDir+os.sep+"CacheData"# 中间数据存放根目录
-        if not os.path.isdir(self._RawDataDir): os.mkdir(self._RawDataDir)
-        if not os.path.isdir(self._CacheDataDir): os.mkdir(self._CacheDataDir)
         if self.SubProcessNum==0:# 串行模式
             self._PIDs = ["0"]
             self._PID_IDs = {"0":list(self.IDs)}
-            if not os.path.isdir(self._RawDataDir+os.sep+"0"): os.mkdir(self._RawDataDir+os.sep+"0")
-            if not os.path.isdir(self._CacheDataDir+os.sep+"0"): os.mkdir(self._CacheDataDir+os.sep+"0")
-            self._PID_Lock = {"0":Lock()}
         else:
             self._PIDs = []
             self._PID_IDs = {}
@@ -519,14 +494,11 @@ class _OperationMode(QSArgs):
                 SubIDs = partitionListMovingSampling(list(self.IDs), nPrcs)
             else:
                 raise __QS_Error__(f"不支持的 ID 切分方式: {self.IDSplit}")
-            self._PID_Lock = {}
             for i in range(nPrcs):
                 iPID = "0-"+str(i)
                 self._PIDs.append(iPID)
                 self._PID_IDs[iPID] = SubIDs[i]
-                if not os.path.isdir(self._RawDataDir+os.sep+iPID): os.mkdir(self._RawDataDir+os.sep+iPID)
-                if not os.path.isdir(self._CacheDataDir+os.sep+iPID): os.mkdir(self._CacheDataDir+os.sep+iPID)
-                self._PID_Lock[iPID] = Lock()
+        self._Cache = FactorCache(sys_args={"缓存文件夹": kwargs.get("cache_dir", self.CacheDir), "进程ID": self._PID_IDs})
         # 遍历所有因子对象, 调用其初始化方法, 生成所有因子的起始时点信息, 生成其需要准备原始数据的截面 ID
         self._FactorStartDT = {}# {因子名: 起始时点}
         self._FactorPrepareIDs = {}# {因子名: 需要准备原始数据的 ID 序列}
@@ -594,14 +566,7 @@ class _OperationMode(QSArgs):
             for iPrcs in Procs.values(): iPrcs.join()
         return 0
     def _exit(self):
-        if not self.ClearCache: return 0
-        if isinstance(self._CacheDir, str):
-            try:
-                shutil.rmtree(self._CacheDataDir)
-                shutil.rmtree(self._RawDataDir)
-            except:
-                self._QS_Logger.warning("缓存文件: (%s, %s) 清理失败!" % (self._CacheDataDir, self._RawDataDir))
-        self._CacheDir = None
+        if self.ClearCache: self._Cache.clear()
         self._isStarted = False
         for iFactorName, iFactor in self._FactorDict.items():
             iFactor._exit()
@@ -680,7 +645,7 @@ def _prepareRawData(args):
                 iPID_PrepareIDs = args["PID_PrepareIDs"][i]
                 if iPID_PrepareIDs is None: iPID_PrepareIDs = args["FT"]._QSArgs.OperationMode._PID_IDs
                 iRawData = iFT.__QS_prepareRawData__(iRawFactorNames, iPrepareIDs, iDTs, iArgs)
-                iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"]._QSArgs.OperationMode._RawDataDir, iPID_PrepareIDs, args["RawDataFileNames"][i], args["FT"]._QSArgs.OperationMode._PID_Lock)
+                iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"]._QSArgs.OperationMode._Cache, iPID_PrepareIDs, args["RawDataFileNames"][i])
                 del iRawData
                 gc.collect()
                 ProgBar.update(i+1)
@@ -692,7 +657,7 @@ def _prepareRawData(args):
             iPID_PrepareIDs = args["PID_PrepareIDs"][i]
             if iPID_PrepareIDs is None: iPID_PrepareIDs = args["FT"]._QSArgs.OperationMode._PID_IDs
             iRawData = iFT.__QS_prepareRawData__(iRawFactorNames, iPrepareIDs, iDTs, iArgs)
-            iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"]._QSArgs.OperationMode._RawDataDir, iPID_PrepareIDs, args["RawDataFileNames"][i], args["FT"]._QSArgs.OperationMode._PID_Lock)
+            iFT.__QS_saveRawData__(iRawData, iRawFactorNames, args["FT"]._QSArgs.OperationMode._Cache, iPID_PrepareIDs, args["RawDataFileNames"][i])
             del iRawData
             gc.collect()
             args['Sub2MainQueue'].put((args["PID"], 1, None))
@@ -996,27 +961,9 @@ class FactorTable(__QS_Object__):
         EndDT = operation_mode.DateTimes[-1]
         StartInd, EndInd = operation_mode.DTRuler.index(StartDT), operation_mode.DTRuler.index(EndDT)
         return [(self, FactorNames, list(RawFactorNames), operation_mode.DTRuler[StartInd:EndInd+1], {})]
-    def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock, **kwargs):
-        if raw_data is None: return 0
-        if isinstance(raw_data, pd.DataFrame) and ("ID" in raw_data):# 如果原始数据有 ID 列，按照 ID 列划分后存入子进程的原始文件中
-            raw_data = raw_data.set_index(["ID"])
-            CommonCols = raw_data.columns.difference(factor_names).tolist()
-            AllIDs = set(raw_data.index)
-            for iPID, iIDs in pid_ids.items():
-                iInterIDs = sorted(AllIDs.intersection(iIDs))
-                iData = raw_data.loc[iInterIDs]
-                with pd.HDFStore(raw_data_dir+os.sep+iPID+os.sep+file_name+self._QSArgs.OperationMode._FileSuffix, mode="a") as iFile:
-                    if factor_names:
-                        for jFactorName in factor_names: iFile[jFactorName] = iData[CommonCols+[jFactorName]].reset_index()
-                    else:
-                        iFile["RawData"] = iData[CommonCols].reset_index()
-                    iFile["_QS_IDs"] = pd.Series(iIDs)
-        else:# 如果原始数据没有 ID 列，则将所有数据分别存入子进程的原始文件中
-            for iPID, iIDs in pid_ids.items():
-                with pd.HDFStore(raw_data_dir+os.sep+iPID+os.sep+file_name+self._QSArgs.OperationMode._FileSuffix, mode="a") as iFile:
-                    iFile["RawData"] = raw_data
-                    iFile["_QS_IDs"] = pd.Series(iIDs)
-        return 0
+    def __QS_saveRawData__(self, raw_data, factor_names, cache: FactorCache, pid_ids, file_name, **kwargs):
+        return cache.writeRawData(file_name, raw_data, target_fields=factor_names, additional_data=kwargs.get("additional_data", {}))
+
     # 计算因子数据并写入因子库
     # specific_target: {因子名: (目标因子库对象, 目标因子表名, 目标因子名)}
     # kwargs: 可选参数, 该参数同时传给因子库的 writeData 方法
@@ -1357,59 +1304,23 @@ class Factor(__QS_Object__):
         EndDT = self._OperationMode.DateTimes[-1]
         StartInd, EndInd = self._OperationMode.DTRuler.index(StartDT), self._OperationMode.DTRuler.index(EndDT)
         DTs = self._OperationMode.DTRuler[StartInd:EndInd+1]
-        RawDataFilePath = self._OperationMode._RawDataDir+os.sep+self._OperationMode._iPID+os.sep+self._RawDataFile+self._OperationMode._FileSuffix
-        if os.path.isfile(RawDataFilePath):
-            with pd.HDFStore(RawDataFilePath, mode="r") as File:
-                PrepareIDs = File["_QS_IDs"].to_list()
-                if self._NameInFT in File: RawData = File[self._NameInFT]
-                elif "RawData" in File: RawData = File["RawData"]
-                else: RawData = None
-            if PrepareIDs is None: PrepareIDs = self._OperationMode._PID_IDs[self._OperationMode._iPID]
-            if RawData is not None:
-                StdData = self._FactorTable.__QS_calcData__(RawData, factor_names=[self._NameInFT], ids=PrepareIDs, dts=DTs, args=self.Args).iloc[0]
-            else:
-                StdData = self._FactorTable.readData(factor_names=[self._NameInFT], ids=PrepareIDs, dts=DTs, args=self.Args).iloc[0]
-        else:
+        PrepareIDs, RawData = self._OperationMode._Cache.readRawData(self._RawDataFile, self._OperationMode._iPID, self._NameInFT)
+        if PrepareIDs is None:
             PrepareIDs = self._OperationMode._FactorPrepareIDs[self.Name]
             if PrepareIDs is None: PrepareIDs = self._OperationMode._PID_IDs[self._OperationMode._iPID]
-            else: PrepareIDs = partitionListMovingSampling(PrepareIDs, len(self._OperationMode._PID_IDs))[self._OperationMode._PIDs.index(self._OperationMode._iPID)]
+        if RawData is not None:
+            StdData = self._FactorTable.__QS_calcData__(RawData, factor_names=[self._NameInFT], ids=PrepareIDs, dts=DTs, args=self.Args).iloc[0]
+        else:
             StdData = self._FactorTable.readData(factor_names=[self._NameInFT], ids=PrepareIDs, dts=DTs, args=self.Args).iloc[0]
-        with self._OperationMode._PID_Lock[self._OperationMode._iPID]:
-            with pd.HDFStore(self._OperationMode._CacheDataDir+os.sep+self._OperationMode._iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])+self._OperationMode._FileSuffix, mode="a") as CacheFile:
-                CacheFile["StdData"] = StdData
-                CacheFile["_QS_IDs"] = pd.Series(PrepareIDs)
+        self._OperationMode._Cache.writeFactorData(self.Name+str(self._OperationMode._FactorID[self.Name]), StdData)
         self._isCacheDataOK = True
         return StdData
     # 获取因子数据, pid=None表示取所有进程的数据
     def _QS_getData(self, dts, pids=None, **kwargs):
-        if pids is None:
-            pids = set(self._OperationMode._PID_IDs)
-            AllPID = True
-        else:
-            pids = set(pids)
-            AllPID = False
         if not self._isCacheDataOK:# 若没有准备好缓存数据, 准备缓存数据
-            StdData = self.__QS_prepareCacheData__()
-            if (StdData is not None) and (self._OperationMode._iPID in pids):
-                pids.remove(self._OperationMode._iPID)
-            else:
-                StdData = None
-        else:
-            StdData = None
-        while len(pids)>0:
-            iPID = pids.pop()
-            iFilePath = self._OperationMode._CacheDataDir+os.sep+iPID+os.sep+self.Name+str(self._OperationMode._FactorID[self.Name])+self._OperationMode._FileSuffix
-            if not os.path.isfile(iFilePath):# 该进程的数据没有准备好
-                pids.add(iPID)
-                continue
-            with self._OperationMode._PID_Lock[iPID]:
-                with pd.HDFStore(iFilePath, mode="r") as CacheFile:
-                    iStdData = CacheFile["StdData"]
-            if StdData is None:
-                StdData = iStdData
-            else:
-                StdData = pd.merge(StdData, iStdData, how='inner', left_index=True, right_index=True)
-        if not AllPID:
+            self.__QS_prepareCacheData__()
+        StdData = self._OperationMode._Cache.readFactorData(self.Name+str(self._OperationMode._FactorID[self.Name]), pids=pids)
+        if pids is None:
             StdData = StdData.reindex(index=list(dts))
         elif self._OperationMode._FactorPrepareIDs[self.Name] is None:
             StdData = StdData.reindex(index=list(dts), columns=self._OperationMode.IDs)
