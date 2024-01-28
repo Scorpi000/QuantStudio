@@ -74,7 +74,7 @@ class FactorCache(__QS_Object__):
                     IfExist = True
                     break
                 else:
-                    with pd.HDFStore(iFilePath) as ANN_ReportFile:
+                    with pd.HDFStore(iFilePath) as iFile:
                         pass
         return IfExist
 
@@ -124,6 +124,12 @@ class FactorCache(__QS_Object__):
                 PrepareIDs, RawData = None, None
         return RawData, PrepareIDs
 
+    # 因子缓存是否存在
+    def checkFactorDataExistence(self, file_name, pid):
+        with self._PIDLock[pid]:
+            with pd.HDFStore(self._CacheDataDir + os.sep + pid + os.sep + file_name + self._QSArgs.HDF5Suffix) as CacheFile:
+                return "StdData" in CacheFile
+
     # 写入因子数据
     def writeFactorData(self, file_name, factor_data, pid=None, pid_ids=None):
         if pid:
@@ -148,7 +154,7 @@ class FactorCache(__QS_Object__):
                         CacheFile["_QS_IDs"] = pd.Series(iIDs)
 
     # 读取因子数据
-    def readFactorData(self, file_name, pids=None):
+    def readFactorData(self, file_name, pids=None, wait=True):
         if isinstance(pids, str):
             FilePath = self._CacheDataDir + os.sep + pids + os.sep + file_name + self._QSArgs.HDF5Suffix
             if not os.path.isfile(FilePath):
@@ -166,12 +172,14 @@ class FactorCache(__QS_Object__):
             iPID = pids.pop()
             iFilePath = self._CacheDataDir + os.sep + iPID + os.sep + file_name + self._QSArgs.HDF5Suffix
             if not os.path.isfile(iFilePath):# 该进程的数据没有准备好
-                pids.add(iPID)
+                if wait: pids.add(iPID)
                 continue
             iStdData = self.readFactorData(file_name, pids=iPID)
             if iStdData is not None: StdData.append(iStdData)
-        StdData = pd.concat(StdData, axis=1, join='inner', ignore_index=False)
-        return StdData
+        if StdData:
+            return pd.concat(StdData, axis=1, join='inner', ignore_index=False)
+        else:
+            return None
 
     # 清空缓存
     def clear(self):
