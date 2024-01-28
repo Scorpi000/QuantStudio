@@ -51,34 +51,17 @@ def _prepareReportANNRawData(fdb, ids):
     RawData = fdb.fetchall(SQLStr)
     if not RawData: return pd.DataFrame(columns=["ID", "公告日期", "报告期"])
     else: return pd.DataFrame(np.array(RawData), columns=["ID", "公告日期", "报告期"])
-def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock):
-    isANNReport = raw_data._QS_ANNReport
-    if isANNReport:
-        PID = sorted(pid_lock)[0]
-        ANN_ReportFilePath = raw_data_dir+os.sep+PID+os.sep+report_ann_file+("."+ft._ANN_ReportFileSuffix if ft._ANN_ReportFileSuffix else "")
-        pid_lock[PID].acquire()
-        if not os.path.isfile(ANN_ReportFilePath):# 没有报告期-公告日期数据, 提取该数据
-            with pd.HDFStore(ANN_ReportFilePath) as ANN_ReportFile: pass
-            pid_lock[PID].release()
-            IDs = []
-            for iPID in sorted(pid_ids): IDs.extend(pid_ids[iPID])
+
+def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, cache, pid_ids, file_name, **kwargs):
+    if raw_data._QS_ANNReport:
+        if not cache.createRawDataCache(report_ann_file):# 没有报告期-公告日期数据, 提取该数据
+            IDs = sum((pid_ids[iPID] for iPID in sorted(pid_ids)), [])
             RawData = _prepareReportANNRawData(ft.FactorDB, ids=IDs)
-            super(type(ft), ft).__QS_saveRawData__(RawData, [], raw_data_dir, pid_ids, report_ann_file, pid_lock)
-        else:
-            pid_lock[PID].release()
-    raw_data = raw_data.set_index(['ID'])
-    CommonCols = list(raw_data.columns.difference(set(factor_names)))
-    AllIDs = set(raw_data.index)
-    for iPID, iIDs in pid_ids.items():
-        with pd.HDFStore(raw_data_dir+os.sep+iPID+os.sep+file_name+ft._QSArgs.OperationMode._FileSuffix) as iFile:
-            iInterIDs = sorted(AllIDs.intersection(set(iIDs)))
-            iData = raw_data.loc[iInterIDs]
-            for jFactorName in factor_names:
-                ijData = iData[CommonCols+[jFactorName]].reset_index()
-                if isANNReport: ijData.columns.name = raw_data_dir+os.sep+iPID+os.sep+report_ann_file
-                iFile[jFactorName] = ijData
-            iFile["_QS_IDs"] = pd.Series(iIDs)
-    return 0
+            super(type(ft), ft).__QS_saveRawData__(RawData, [], cache, pid_ids, report_ann_file)
+        CachePath = {iPID: pd.Series([cache.getRawDataCachePath(report_ann_file, iPID)]) for iPID in pid_ids}
+        return super(type(ft), ft).__QS_saveRawData__(raw_data, factor_names, cache, pid_ids, file_name, additional_data=CachePath, **kwargs)
+    else:
+        return super(type(ft), ft).__QS_saveRawData__(raw_data, factor_names, cache, pid_ids, file_name, **kwargs)
 
 # f: 该算子所属的因子对象或因子表对象
 # idt: 当前所处的时点
@@ -103,7 +86,6 @@ class _AnalystConsensusTable(SQL_Table):
         self._PeriodField = FactorInfo[FactorInfo["FieldType"]=="Period"].index[0]
         self._TempData = {}
         self._ANN_ReportFileName = 'W2财务年报-公告日期'
-        self._ANN_ReportFileSuffix = "h5"
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         return
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
@@ -128,8 +110,8 @@ class _AnalystConsensusTable(SQL_Table):
         else: RawData = pd.DataFrame(np.array(RawData), columns=['日期','ID','报告期']+factor_names)
         RawData._QS_ANNReport = (CalcType!="Fwd12M")
         return RawData
-    def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock, **kwargs):
-        return _saveRawDataWithReportANN(self, self._ANN_ReportFileName, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock)
+    def __QS_saveRawData__(self, raw_data, factor_names, cache, pid_ids, file_name, **kwargs):
+        return _saveRawDataWithReportANN(self, self._ANN_ReportFileName, raw_data, factor_names, cache, pid_ids, file_name, **kwargs)
     def __QS_genGroupInfo__(self, factors, operation_mode):
         PeriodGroup = {}
         for iFactor in factors:
@@ -159,7 +141,7 @@ class _AnalystConsensusTable(SQL_Table):
             CalcFun, FYNum, ANNReportData = self._calcIDData_Fwd12M, None, None
         else:
             CalcFun, FYNum = self._calcIDData_FY, int(CalcType[-1])
-            ANNReportPath = raw_data.columns.name+("."+self._ANN_ReportFileSuffix if self._ANN_ReportFileSuffix else "")
+            ANNReportPath = (raw_data._QS_AdditionalData.iloc[0] if hasattr(raw_data, "_QS_AdditionalData") else None)
             if (ANNReportPath is not None) and os.path.isfile(ANNReportPath):
                 with pd.HDFStore(ANNReportPath, mode="r") as ANN_ReportFile:
                     ANNReportData = ANN_ReportFile["RawData"]
@@ -351,7 +333,6 @@ class _AnalystEstDetailTable(SQL_Table):
         self._CapitalField = FactorInfo[FactorInfo["FieldType"]=="Capital"].index[0]
         self._TempData = {}
         self._ANN_ReportFileName = 'W2财务年报-公告日期'
-        self._ANN_ReportFileSuffix = "h5"
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         return
     def __QS_genGroupInfo__(self, factors, operation_mode):
@@ -368,8 +349,8 @@ class _AnalystEstDetailTable(SQL_Table):
         StartInd = operation_mode.DTRuler.index(StartDT)
         Args["附加字段"], Args["去重字段"] = list(Args["附加字段"]), list(Args["去重字段"])
         return [(self, FactorNames, list(RawFactorNames), operation_mode.DTRuler[StartInd:EndInd+1], Args)]
-    def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock, **kwargs):
-        return _saveRawDataWithReportANN(self, self._ANN_ReportFileName, raw_data, factor_names, raw_data_dir, pid_ids, file_name, pid_lock)
+    def __QS_saveRawData__(self, raw_data, factor_names, cache, pid_ids, file_name, pid_lock, **kwargs):
+        return _saveRawDataWithReportANN(self, self._ANN_ReportFileName, raw_data, factor_names, cache, pid_ids, file_name, **kwargs)
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         StartDate -= dt.timedelta(args.get("周期", self._QSArgs.Period))
@@ -399,7 +380,7 @@ class _AnalystEstDetailTable(SQL_Table):
         DeduplicationFields = args.get("去重字段", self._QSArgs.Deduplication)
         AdditionalFields = list(set(args.get("附加字段", self._QSArgs.AdditionalFields)+DeduplicationFields))
         AllFields = list(set(factor_names+AdditionalFields))
-        ANNReportPath = raw_data.columns.name+("."+self._ANN_ReportFileSuffix if self._ANN_ReportFileSuffix else "")
+        ANNReportPath = (raw_data._QS_AdditionalData.iloc[0] if hasattr(raw_data, "_QS_AdditionalData") else None)
         raw_data = raw_data.loc[:, ["日期", "ID", self._ReportDateField, self._CapitalField]+AllFields].set_index(["ID"])
         Period = args.get("周期", self._QSArgs.Period)
         ForwardYears = args.get("向前年数", self._QSArgs.ForwardYears)
