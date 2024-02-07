@@ -455,6 +455,16 @@ def strfunc(f, func="contains", func_args={}, data_type="double", **kwargs):
     Args["OperatorArg"] = {"func": func, "func_args": func_args}
     Expr = sympy.Function("strfunc")(*Exprs, sympy.Eq(sympy.Symbol("func"), sympy.Symbol(f"'{func}'")))
     return PointOperation(kwargs.pop("factor_name", "strfunc"), Descriptors, {"算子": _strfunc, "参数": Args, "数据类型": data_type, "运算时点": "多时点", "运算ID": "多ID", "表达式": Expr}, **kwargs)
+def _sumlist(f,idt,iid,x,args):
+    Data = [pd.DataFrame(iData).applymap(lambda s: s if isinstance(s, list) else []).values for iData in _genOperatorData(f,idt,iid,x,args)]
+    Data = np.array(Data)
+    Rslt = np.sum(Data, axis=0)
+    return Rslt
+def sumlist(*factors, **kwargs):
+    Descriptors, Args, Exprs = _genMultivariateOperatorInfo(*factors)
+    Args["OperatorArg"] = {}
+    Expr = sympy.Function("sumlist")(*Exprs)
+    return PointOperation(kwargs.pop("factor_name", "sumlist"), Descriptors, {"算子": _sumlist, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "表达式": Expr}, **kwargs)
 
 # ----------------------时间序列运算--------------------------------
 def _rolling_mean(f,idt,iid,x,args):
