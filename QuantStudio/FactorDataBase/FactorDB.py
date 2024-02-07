@@ -153,7 +153,7 @@ class _ErgodicMode(QSArgs):
     ErgodicDTs = List(arg_type="DateTimeList", label="遍历时点", order=6)
     ErgodicIDs = List(arg_type="IDList", label="遍历ID", order=7)
     AutoMove = Enum(True, False, label="自动缓冲", arg_type="Bool", order=8)
-    CacheDir = Directory(arg_type="Directory", label="缓存文件夹", order=9)
+    CacheDir = Directory(arg_type="Directory", label="缓存目录", order=9)
     ClearCache = Enum(True, False, arg_type="Bool", label="清空缓存", order=10)
     def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
         super().__init__(owner=owner, sys_args=sys_args, config_file=config_file, **kwargs)
@@ -200,7 +200,7 @@ class _ErgodicMode(QSArgs):
             self._CacheDataProcess.start()
             if os.name=="nt": self._MMAPCacheData = mmap.mmap(-1, int(self.CacheSize*2**20), tagname=self._TagName)# 当前共享内存缓冲区
         if self.CacheDir and os.path.isdir(self.CacheDir):
-            self._FactorCache = FactorCache(sys_args={"缓存文件夹": self.CacheDir, "进程ID": {"0-0": self._IDs}})
+            self._FactorCache = FactorCache(sys_args={"缓存目录": self.CacheDir, "进程ID": {"0-0": self._IDs}})
         self._isStarted = True
         return 0
     
@@ -437,7 +437,7 @@ class _OperationMode(QSArgs):
     DTRuler = List(dt.datetime, arg_type="DateTimeList", label="时点标尺", order=4)
     SectionIDs = Either(None, ListStr, arg_type="IDList", label="截面ID", order=5)
     IDSplit = Enum("连续切分", "间隔切分", arg_type="SingleOption", label="ID切分", order=6)
-    CacheDir = Directory(arg_type="Directory", label="缓存文件夹", order=7)
+    CacheDir = Directory(arg_type="Directory", label="缓存目录", order=7)
     ClearCache = Enum(True, False, arg_type="Bool", label="清空缓存", order=8)
     WriteBatchNum = Int(1, arg_type="Integer", label="写入批次", order=9)
     def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
@@ -511,7 +511,7 @@ class _OperationMode(QSArgs):
                 iPID = "0-" + str(i)
                 self._PIDs.append(iPID)
                 self._PID_IDs[iPID] = SubIDs[i]
-        self._Cache = FactorCache(sys_args={"缓存文件夹": kwargs.get("cache_dir", self.CacheDir), "进程ID": self._PID_IDs})
+        self._Cache = FactorCache(sys_args={"缓存目录": kwargs.get("cache_dir", self.CacheDir), "进程ID": self._PID_IDs})
         # 遍历所有因子对象, 调用其初始化方法, 生成所有因子的起始时点信息, 生成其需要准备原始数据的截面 ID
         self._FactorStartDT = {}# {因子名: 起始时点}
         self._FactorPrepareIDs = {}# {因子名: 需要准备原始数据的 ID 序列}
@@ -1046,7 +1046,7 @@ class FactorTable(__QS_Object__):
         StartInd, EndInd = operation_mode.DTRuler.index(StartDT), operation_mode.DTRuler.index(EndDT)
         return [(self, FactorNames, list(RawFactorNames), operation_mode.DTRuler[StartInd:EndInd+1], {})]
     def __QS_saveRawData__(self, raw_data, factor_names, cache: FactorCache, pid_ids, file_name, **kwargs):
-        return cache.writeRawData(file_name, raw_data, target_fields=factor_names, additional_data=kwargs.get("additional_data", {}))
+        return cache.writeRawData(file_name, raw_data, target_fields=factor_names, additional_data=kwargs.get("additional_data", {}), pid_ids=pid_ids)
 
     # 计算因子数据并写入因子库
     # specific_target: {因子名: (目标因子库对象, 目标因子表名, 目标因子名)}
