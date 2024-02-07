@@ -15,7 +15,7 @@ from QuantStudio.Tools.QSObjects import QSFileLock
 
 class FactorCache(__QS_Object__):
     class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
-        CacheDir = Directory(arg_type="Directory", label="缓存文件夹", order=0)
+        CacheDir = Directory(arg_type="Directory", label="缓存目录", order=0)
         PIDIDs = Dict(arg_type="Dict", label="进程ID", order=1)# {PID: [ID]}
         HDF5Suffix = Str(".h5", arg_type="String", label="H5文件后缀", order=2)
 
@@ -37,7 +37,7 @@ class FactorCache(__QS_Object__):
     def _init(self):
         CacheDir = self._QSArgs.CacheDir
         if not os.path.isdir(CacheDir):
-            if CacheDir: self._QS_Logger.warning(f"缓存文件夹 '{CacheDir}' 不存在, 将使用系统的临时文件夹")
+            if CacheDir: self._QS_Logger.warning(f"缓存目录 '{CacheDir}' 不存在, 将使用系统的临时文件夹")
             self._CacheDir = tempfile.TemporaryDirectory()
             self._RawDataDir = self._CacheDir.name + os.sep + "RawData"  # 原始数据存放根目录
             self._CacheDataDir = self._CacheDir.name + os.sep + "CacheData"  # 中间数据存放根目录
@@ -83,13 +83,15 @@ class FactorCache(__QS_Object__):
         return self._RawDataDir + os.sep + pid + os.sep + file_name + self._QSArgs.HDF5Suffix
 
     # 写入原始数据
-    def writeRawData(self, file_name, raw_data, target_fields, additional_data={}):
+    def writeRawData(self, file_name, raw_data, target_fields, additional_data={}, pid_ids=None):
         if raw_data is None: return 0
+        if pid_ids is None: pid_ids = self._QSArgs.PIDIDs
         if isinstance(raw_data, pd.DataFrame) and ("ID" in raw_data):# 如果原始数据有 ID 列，按照 ID 列划分后存入子进程的原始文件中
             raw_data = raw_data.set_index(["ID"])
             CommonCols = raw_data.columns.difference(target_fields).tolist()
             AllIDs = set(raw_data.index)
-            for iPID, iIDs in self._QSArgs.PIDIDs.items():
+            for iPID, iIDs in pid_ids.items():
+                if iIDs is None: iIDs = self._QSArgs.PIDIDs.get(iPID, [])
                 iInterIDs = sorted(AllIDs.intersection(iIDs))
                 iData = raw_data.loc[iInterIDs]
                 with self._PIDLock[iPID]:
@@ -101,7 +103,8 @@ class FactorCache(__QS_Object__):
                         iFile["_QS_IDs"] = pd.Series(iIDs)
                         if iPID in additional_data: iFile["_QS_AdditionalData"] = additional_data[iPID]
         else:# 如果原始数据没有 ID 列，则将所有数据分别存入子进程的原始文件中
-            for iPID, iIDs in self._QSArgs.PIDIDs.items():
+            for iPID, iIDs in pid_ids.items():
+                if iIDs is None: iIDs = self._QSArgs.PIDIDs.get(iPID, [])
                 with self._PIDLock[iPID]:
                     with pd.HDFStore(self._RawDataDir+os.sep+iPID+os.sep+file_name+self._QSArgs.HDF5Suffix, mode="a") as iFile:
                         iFile["RawData"] = raw_data
