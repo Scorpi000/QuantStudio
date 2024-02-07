@@ -110,10 +110,13 @@ class _JY_SQL_Table(SQL_Table):
             IDField += "WHEN "+iCode+" THEN CONCAT(SecuCode, '"+ExchangeInfo.loc[iCode, "Suffix"]+"') "
         IDField += "ELSE SecuCode END"
         return IDField
-    def _adjustRawDataByRelatedField(self, raw_data, fields):
-        RelatedFields = self._FactorInfo["RelatedSQL"].reindex(index=fields)
+    def _adjustRawDataByRelatedField(self, raw_data, fields, args={}):
+        TransformSQL = args.get("转义SQL", {})
+        if (not TransformSQL) and ("RelatedSQL" not in self._FactorInfo): return raw_data
+        RelatedFields = pd.Series(TransformSQL).reindex(index=fields)
+        RelatedFields = RelatedFields.where(RelatedFields.notnull(), self._FactorInfo["RelatedSQL"].reindex(index=fields))
         RelatedFields = RelatedFields[pd.notnull(RelatedFields)]
-        if RelatedFields.shape[0]==0: return raw_data
+        if (not TransformSQL) and (RelatedFields.shape[0]==0): return raw_data
         for iField in RelatedFields.index:
             iOldData = raw_data.pop(iField)
             iDataMask = pd.notnull(iOldData)
