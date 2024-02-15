@@ -169,11 +169,15 @@ class QSSQLObject(__QS_Object__):
                 sql_str = re.sub(iTable, iTable, sql_str, flags=re.IGNORECASE)
         Cursor.execute(sql_str)
         return Cursor
-    def fetchall(self, sql_str):
+    def fetchall(self, sql_str, header=False):
         Cursor = self.cursor(sql_str=sql_str)
         Data = Cursor.fetchall()
+        if not header: 
+            Cursor.close()
+            return Data
+        Header = [iCol[0] for iCol in Cursor.description]
         Cursor.close()
-        return Data
+        return Data, Header
     def execute(self, sql_str):
         if self._Connection is None:
             Msg = ("'%s' 执行 SQL 命令失败: 数据库尚未连接!" % (self.Name,))

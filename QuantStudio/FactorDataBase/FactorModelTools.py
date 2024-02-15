@@ -5,14 +5,16 @@ import uuid
 
 import numpy as np
 import pandas as pd
+import sympy
 
 from QuantStudio import __QS_Error__
-from QuantStudio.FactorDataBase.FactorDB import Factor
+from QuantStudio.FactorDataBase.FactorDB import Factor, CustomFT
 from QuantStudio.FactorDataBase.FactorOperation import PointOperation, TimeOperation, SectionOperation, PanelOperation
 from QuantStudio.FactorDataBase.FactorTools import _genMultivariateOperatorInfo, _genOperatorData
 from QuantStudio.Tools import DataPreprocessingFun
 from QuantStudio.Tools.AuxiliaryFun import distributeEqual
 from QuantStudio.Tools.StrategyTestFun import testPortfolioStrategy_pd, calcLSYield
+from QuantStudio.BackTest.BackTestModel import BaseModule
 
 # 组合收益率
 def _portfolio_return(f, idt, iid, x, args):
@@ -48,9 +50,10 @@ def portfolio_return(mask, price=None, return_data=None, look_back=1, rebalance_
         Factors.append(return_data)
     if weight_data is not None:
         Factors.append(weight_data)
-    Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
+    Descriptors,Args,Exprs = _genMultivariateOperatorInfo(*Factors)
+    Expr = sympy.Function("portfolioReturn")(*Exprs, sympy.Equality(sympy.Symbol("look_back"), look_back))
     Args["OperatorArg"] = {"rebalance_dt_fun":rebalance_dt_fun, "price":(price is not None), "weight_data":(weight_data is not None)}
-    return PanelOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_portfolio_return,"参数":Args,"回溯期数":[look_back]*len(Descriptors),"运算时点":"多时点", "输出形式":"全截面", "描述子截面":[descriptor_ids]*len(Descriptors)},**kwargs)
+    return PanelOperation(kwargs.pop("factor_name", "portfolio_return"),Descriptors,{"算子":_portfolio_return,"参数":Args,"回溯期数":[look_back]*len(Descriptors),"运算时点":"多时点", "输出形式":"全截面", "描述子截面":[descriptor_ids]*len(Descriptors), "表达式": Expr},**kwargs)
 
 # 多空收益率
 def _long_short_return(f, idt, iid, x, args):
@@ -65,9 +68,10 @@ def _long_short_return(f, idt, iid, x, args):
     return LSReturn[f.LookBack[0]:]
 
 def long_short_return(long_return, short_return, look_back=1, rebalance_dt_fun=None, **kwargs):
-    Descriptors,Args = _genMultivariateOperatorInfo(long_return, short_return)
+    Descriptors,Args,Exprs = _genMultivariateOperatorInfo(long_return, short_return)
+    Expr = sympy.Function("longshortReturn")(*Exprs, sympy.Equality(sympy.Symbol("look_back"), look_back))
     Args["OperatorArg"] = {"rebalance_dt_fun":rebalance_dt_fun}
-    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_long_short_return,"参数":Args,"回溯期数":[look_back]*len(Descriptors),"运算时点":"多时点", "运算ID":"单ID"},**kwargs)
+    return TimeOperation(kwargs.pop("factor_name", "long_short_return"), Descriptors, {"算子":_long_short_return,"参数":Args,"回溯期数":[look_back]*len(Descriptors),"运算时点":"多时点", "运算ID":"单ID", "表达式": Expr},**kwargs)
 
 # 截面分组
 def _section_group(f, idt, iid, x, args):
@@ -113,17 +117,18 @@ def section_group(f, group_num=10, mask=None, cat_data=None, ascending=True, per
         OperatorArg["cat_data"] = len(cat_data)
     else:
         OperatorArg["cat_data"] = None
-    Descriptors,Args = _genMultivariateOperatorInfo(*Factors)
+    Descriptors,Args,Exprs = _genMultivariateOperatorInfo(*Factors)
+    Expr = sympy.Function("sectionGroup")(*Exprs, sympy.Equality(sympy.Symbol("group_num"), group_num))
     Args["OperatorArg"] = {"group_num": group_num, "ascending":ascending,"uniformization": True,"perturbation":perturbation,"offset": 0,"other_handle":other_handle, "remainder_pos": remainder_pos}
     Args["OperatorArg"].update(OperatorArg)
-    return SectionOperation(kwargs.pop("factor_name", str(uuid.uuid1())),Descriptors,{"算子":_section_group,"参数":Args,"运算时点":"多时点","输出形式":"全截面"}, **kwargs)
+    return SectionOperation(kwargs.pop("factor_name", "section_group"), Descriptors, {"算子":_section_group,"参数":Args,"运算时点":"多时点","输出形式":"全截面", "表达式": Expr}, **kwargs)
 
 # 分位数组合收益率: target_group 可选: 0~group_num-1, "L-S"
 def quantile_portfolio_return(f, price=None, return_data=None, target_group="L-S", group_num=10, look_back=1, rebalance_dt_fun=None, weight_data=None, descriptor_ids=None, 
                               mask=None, market_mask=None, cat_data=None, ascending=True, perturbation=False, remainder_pos="middle", **kwargs):
     if (target_group!="L-S") and (target_group not in np.arange(group_num)):
         raise __QS_Error__("输入变量 target_group 的可选值: %s" % (str(np.arange(group_num).tolist()+["L-S"]), ))
-    FactorName = kwargs.pop("factor_name", str(uuid.uuid1()))
+    FactorName = kwargs.pop("factor_name", "quantilePortfolioReturn")
     SectionGroup = section_group(f, group_num=group_num, mask=mask, cat_data=cat_data, ascending=ascending, perturbation=perturbation, remainder_pos=remainder_pos)
     if target_group=="L-S":
         LReturn = portfolio_return((SectionGroup==0), price=price, return_data=return_data, look_back=look_back, rebalance_dt_fun=rebalance_dt_fun, weight_data=weight_data, descriptor_ids=descriptor_ids)
