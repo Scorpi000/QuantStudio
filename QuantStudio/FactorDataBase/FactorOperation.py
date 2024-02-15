@@ -25,20 +25,21 @@ class DerivativeFactor(Factor):
         ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
         DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=2, option_range=["double", "string", "object"], mutable=False)
         Expression = Either(Str(""), Instance(sympy.Expr), Instance(sympy.logic.boolalg.Boolean), arg_type="String", label="表达式", order=3)
-        CompoundType = List(arg_type="List", label="复合类型", order=4, mutable=False)
-        InputFormat = Enum("numpy", "pandas", label="输入格式", order=5, arg_type="SingleOption", option_range=["numpy", "pandas"], mutable=False)
-        # ExpandDescriptors = ListInt(arg_type="MultiOption", label="展开描述子", order=6)
-        Description = Str("", label="描述信息", order=7, arg_type="String")
-
+        Description = Str("", label="描述信息", order=4, arg_type="String")
+        CompoundType = List(arg_type="List", label="复合类型", order=5, mutable=False)
+        InputFormat = Enum("numpy", "pandas", label="输入格式", order=6, arg_type="SingleOption", option_range=["numpy", "pandas"], mutable=False)
+        # ExpandDescriptors = ListInt(arg_type="MultiOption", label="展开描述子", order=7, mutable=False)
+        MultiMapping = Enum(False, True, arg_type="Bool", label="多重映射", order=8, mutable=False)
+        
         def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
             super().__init__(owner=owner, sys_args=sys_args, config_file=config_file, **kwargs)
             self._QS_Frozen = False
-            if self.CompoundType: self.DataType = "object"
+            if self.CompoundType or self.MultiMapping: self.DataType = "object"
             self._QS_Frozen = True
 
         def __QS_initArgs__(self, args={}):
             super().__QS_initArgs__(args=args)
-            self.add_trait("ExpandDescriptors", ListInt([], arg_type="MultiOption", label="展开描述子", order=6, option_range=list(range(len(self._Owner._Descriptors))), mutable=False))
+            self.add_trait("ExpandDescriptors", ListInt([], arg_type="MultiOption", label="展开描述子", order=7, option_range=list(range(len(self._Owner._Descriptors))), mutable=False))
 
     def __init__(self, name="", descriptors=[], sys_args={}, **kwargs):
         self._Descriptors = descriptors
@@ -90,14 +91,20 @@ class DerivativeFactor(Factor):
     def _QS_adjOutputPandas(self, df, cols, dts, ids):
         if isinstance(df, pd.DataFrame):
             if isinstance(df.index, pd.MultiIndex):
-                if df.index.duplicated().any():
+                if self._QSArgs.MultiMapping:
                     TmpData, Cols, df = {}, df.columns, df.groupby(axis=0, level=[0, 1], as_index=True)
                     for iCol in Cols:
                         TmpData[iCol] = df[iCol].apply(lambda s: s.tolist())
                     df, TmpData = pd.DataFrame(TmpData).loc[:, Cols], None
+                elif df.index.duplicated().any():
+                    raise __QS_Error__(f"因子 '{self.Name}' 的数据无法保证唯一性, 可以尝试将 '多重映射' 参数取值调整为 True")
                 df = df.reindex(columns=cols).apply(lambda s: tuple(s), axis=1).unstack()
             return df.reindex(index=dts, columns=ids)
-        elif isinstance(df, pd.Series): 
+        elif isinstance(df, pd.Series):
+            if isinstance(df.index, pd.MultiIndex):
+                df = df.groupby(axis=0, level=[0, 1], as_index=True).apply(lambda s: s.tolist())
+            elif df.index.duplicated().any():
+                raise __QS_Error__(f"因子 '{self.Name}' 的数据无法保证唯一性, 可以尝试将 '多重映射' 参数取值调整为 True")
             return df.unstack().reindex(index=dts, columns=ids)
         else:
             raise __QS_Error__(f"不支持的返回格式: {df}")
@@ -263,6 +270,7 @@ class TimeOperation(DerivativeFactor):
         IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=8, option_range=["单ID", "多ID"], mutable=False)
         LookBack = List(arg_type="ArgList", label="回溯期数", order=9, mutable=False)# 描述子向前回溯的时点数(不包括当前时点)
         LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=10, mutable=False)# 描述子的回溯模式
+        StartDT = List(arg_type="ArgList", label="起始时点", order=10.5, mutable=False)# 扩张窗口模式下描述子的起始时点, 如果为 None, 则使用回溯期数参数
         iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=11, mutable=False)
         iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=12, option_range=["滚动窗口", "扩张窗口"], mutable=False)
         iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=13)
@@ -270,19 +278,26 @@ class TimeOperation(DerivativeFactor):
             super().__QS_initArgs__(args=args)
             self.LookBack = [0]*len(self._Owner._Descriptors)
             self.LookBackMode = ["滚动窗口"]*len(self._Owner._Descriptors)
+            self.StartDT = [None]*len(self._Owner._Descriptors)
     
     def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
         super()._QS_initOperation(start_dt, dt_dict, prepare_ids, id_dict)
         if len(self._Descriptors)>len(self._QSArgs.LookBack): raise  __QS_Error__("时间序列运算因子 : '%s' 的参数'回溯期数'序列长度小于描述子个数!" % self.Name)
         StartDT = dt_dict[self.Name]
-        StartInd = self._OperationMode.DTRuler.index(StartDT)
+        DTRuler = list(self._OperationMode.DTRuler)
+        StartInd = DTRuler.index(StartDT)
         if (self._QSArgs.iLookBackMode=="扩张窗口") and (self._QSArgs.iInitData is not None) and (self._QSArgs.iInitData.shape[0]>0):
-            if self._QSArgs.iInitData.index[-1] not in self._OperationMode.DTRuler: self._QS_Logger.warning("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name, ))
-            else: StartInd = min(StartInd, self._OperationMode.DTRuler.index(self._QSArgs.iInitData.index[-1]) + 1)
+            if self._QSArgs.iInitData.index[-1] not in DTRuler: self._QS_Logger.warning("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name, ))
+            else: StartInd = min(StartInd, DTRuler.index(self._QSArgs.iInitData.index[-1]) + 1)
         for i, iDescriptor in enumerate(self._Descriptors):
-            iStartInd = StartInd - self._QSArgs.LookBack[i]
-            if iStartInd<0: self._QS_Logger.warning("注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足, 不足的部分将填充 nan!" % (self.Name, iDescriptor.Name))
-            iStartDT = self._OperationMode.DTRuler[max(0, iStartInd)]
+            if self._QSArgs.StartDT[i] is None:# 未指定起始时点
+                iStartInd = StartInd - self._QSArgs.LookBack[i]
+                if iStartInd<0: self._QS_Logger.warning("注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足, 不足的部分将填充 nan!" % (self.Name, iDescriptor.Name))
+                iStartDT = DTRuler[max(0, iStartInd)]
+            else:
+                iStartDT = self._QSArgs.StartDT[i]
+                if iStartDT<DTRuler[0]: self._QS_Logger.warning(f"注意: 对于因子 '{self.Name}' 的第 {i} 个描述起始时点 {iStartDT} 小于时点标尺的起始时点 {DTRuler[0]}, 时点标尺长度不足!")
+                iStartDT = max(iStartDT, DTRuler[0])
             iDescriptor._QS_initOperation(iStartDT, dt_dict, prepare_ids, id_dict)
     def readData(self, ids, dts, **kwargs):
         DTRuler = kwargs.get("dt_ruler", dts)
@@ -316,13 +331,16 @@ class TimeOperation(DerivativeFactor):
     def _calcData(self, ids, dts, descriptor_data, dt_ruler):
         if self._QSArgs.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
         else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')
+        StartInd, EndInd = dt_ruler.index(dts[0]), dt_ruler.index(dts[-1])
         StartIndAndLen, MaxLookBack, MaxLen = [], 0, 1
         for i in range(len(self._Descriptors)):
             iLookBack = self._QSArgs.LookBack[i]
-            if self._QSArgs.LookBackMode[i]=="滚动窗口":
+            if (self._QSArgs.LookBackMode[i]=="滚动窗口") and (self._QSArgs.StartDT[i] is None):
                 StartIndAndLen.append((iLookBack, iLookBack+1))
                 MaxLen = max(MaxLen, iLookBack+1)
             else:
+                if self._QSArgs.StartDT[i] is not None:
+                    iLookBack = max(0, StartInd - dt_ruler.index(self._QSArgs.StartDT[i]))
                 StartIndAndLen.append((iLookBack, np.inf))
                 MaxLen = np.inf
             MaxLookBack = max(MaxLookBack, iLookBack)
@@ -342,7 +360,7 @@ class TimeOperation(DerivativeFactor):
                 MaxLen = max(MaxLen, self._QSArgs.iLookBack+1)
             MaxLookBack = max(MaxLookBack, self._QSArgs.iLookBack)
             descriptor_data.insert(0, StdData)
-        StartInd, EndInd = dt_ruler.index(dts[0]), dt_ruler.index(dts[-1])
+        
         if StartInd>=MaxLookBack: DTRuler = dt_ruler[StartInd-MaxLookBack:EndInd+1]
         else: DTRuler = [None]*(MaxLookBack-StartInd) + dt_ruler[:EndInd+1]
         Operator, ModelArgs = self._QSArgs.Operator, self._QSArgs.ModelArgs
@@ -442,8 +460,9 @@ class TimeOperation(DerivativeFactor):
         PID = self._OperationMode._iPID
         StartDT = self._OperationMode._FactorStartDT[self.Name]
         EndDT = self._OperationMode.DateTimes[-1]
-        StartInd, EndInd = self._OperationMode.DTRuler.index(StartDT), self._OperationMode.DTRuler.index(EndDT)
-        DTs = list(self._OperationMode.DTRuler[StartInd:EndInd+1])
+        DTRuler = list(self._OperationMode.DTRuler)
+        StartInd, EndInd = DTRuler.index(StartDT), DTRuler.index(EndDT)
+        DTs = DTRuler[StartInd:EndInd+1]
         IDs = self._OperationMode._FactorPrepareIDs[self.Name]
         if IDs is None: IDs = list(self._OperationMode._PID_IDs[PID])
         else:
@@ -452,24 +471,39 @@ class TimeOperation(DerivativeFactor):
             DescriptorData = []
             if self._QSArgs.InputFormat=="numpy":
                 for i, iDescriptor in enumerate(self._Descriptors):
-                    iStartInd = StartInd - self._QSArgs.LookBack[i]
-                    iDTs = list(self._OperationMode.DTRuler[max(0, iStartInd):StartInd]) + DTs
+                    if self._QSArgs.StartDT[i] is None:
+                        iStartInd = StartInd - self._QSArgs.LookBack[i]
+                        iDTs = DTRuler[max(0, iStartInd):StartInd] + DTs
+                    else:
+                        iStartDT = max(self._QSArgs.StartDT[i], DTRuler[0])
+                        iStartInd = DTRuler.index(iStartDT)
+                        iDTs = DTRuler[iStartInd:DTRuler.index(DTs[-1])]
                     iDescriptorData = iDescriptor._QS_getData(iDTs, pids=[PID]).values
                     if iStartInd<0: iDescriptorData = np.r_[np.full(shape=(abs(iStartInd), iDescriptorData.shape[1]), fill_value=np.nan), iDescriptorData]
                     DescriptorData.append(iDescriptorData)
-                StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData, dt_ruler=self._OperationMode.DTRuler)
+                StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData, dt_ruler=DTRuler)
                 StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
             else:
                 for i, iDescriptor in enumerate(self._Descriptors):
-                    iStartInd = StartInd - self._QSArgs.LookBack[i]
-                    iDTs = list(self._OperationMode.DTRuler[max(0, iStartInd):StartInd]) + DTs
+                    if self._QSArgs.StartDT[i] is None:
+                        iStartInd = StartInd - self._QSArgs.LookBack[i]
+                        iDTs = DTRuler[max(0, iStartInd):StartInd] + DTs
+                    else:
+                        iStartDT = max(self._QSArgs.StartDT[i], DTRuler[0])
+                        iStartInd = DTRuler.index(iStartDT)
+                        iDTs = DTRuler[iStartInd:DTRuler.index(DTs[-1])]
                     iDescriptorData = iDescriptor._QS_getData(iDTs, pids=[PID])
                     DescriptorData.append(iDescriptorData)
-                StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData, dt_ruler=self._OperationMode.DTRuler)
+                StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData, dt_ruler=DTRuler)
         else:
             for i, iDescriptor in enumerate(self._Descriptors):
-                iStartInd = StartInd - self._QSArgs.LookBack[i]
-                iDTs = list(self._OperationMode.DTRuler[max(0, iStartInd):StartInd]) + DTs
+                if self._QSArgs.StartDT[i] is None:
+                    iStartInd = StartInd - self._QSArgs.LookBack[i]
+                    iDTs = DTRuler[max(0, iStartInd):StartInd] + DTs
+                else:
+                    iStartDT = max(self._QSArgs.StartDT[i], DTRuler[0])
+                    iStartInd = DTRuler.index(iStartDT)
+                    iDTs = DTRuler[iStartInd:DTRuler.index(DTs[-1])]
                 iDescriptor._QS_getData(iDTs, pids=[PID])
             StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self._QSArgs.DataType=="double" else "O"))
         self._OperationMode._Cache.writeFactorData(self.Name+str(self._OperationMode._FactorID[self.Name]), StdData, pid=PID, pid_ids={PID: IDs})
@@ -667,6 +701,7 @@ class PanelOperation(DerivativeFactor):
         OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=8, option_range=["全截面", "单ID"], mutable=False)
         LookBack = List(arg_type="ArgList", label="回溯期数", order=9, mutable=False)# 描述子向前回溯的时点数(不包括当前时点)
         LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=10, mutable=False)
+        StartDT = List(arg_type="ArgList", label="起始时点", order=10.5, mutable=False)# 扩张窗口模式下描述子的起始时点, 如果为 None, 则使用回溯期数参数
         iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=11, mutable=False)
         iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=12, option_range=["滚动窗口", "扩张窗口"], mutable=False)
         iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=13)
@@ -676,6 +711,7 @@ class PanelOperation(DerivativeFactor):
             nDescriptor = len(self._Owner._Descriptors)
             self.LookBack = [0]*nDescriptor
             self.LookBackMode = ["滚动窗口"]*nDescriptor
+            self.StartDT = [None]*nDescriptor
             self.DescriptorSection = [None]*nDescriptor
     
     def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
@@ -699,9 +735,14 @@ class PanelOperation(DerivativeFactor):
         PrepareIDs = id_dict.setdefault(self.Name, prepare_ids)
         if prepare_ids != PrepareIDs: raise __QS_Error__("因子 %s 指定了不同的截面!" % self.Name)
         for i, iDescriptor in enumerate(self._Descriptors):
-            iStartInd = StartInd - self._QSArgs.LookBack[i]
-            if iStartInd<0: self._QS_Logger.warning("注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足!" % (self.Name, iDescriptor.Name))
-            iStartDT = DTRuler[max(0, iStartInd)]
+            if self._QSArgs.StartDT[i] is None:# 未指定起始时点
+                iStartInd = StartInd - self._QSArgs.LookBack[i]
+                if iStartInd<0: self._QS_Logger.warning(f"注意: 对于因子 '{self.Name}' 的第 {i} 个描述子 '{iDescriptor.Name}', 时点标尺长度不足!")
+                iStartDT = DTRuler[max(0, iStartInd)]
+            else:
+                iStartDT = self._QSArgs.StartDT[i]
+                if iStartDT<DTRuler[0]: self._QS_Logger.warning(f"注意: 对于因子 '{self.Name}' 的第 {i} 个描述子 '{iDescriptor.Name}', 指定的起始时点 {iStartDT} 小于时点标尺的起始时点 {DTRuler[0]}, 时点标尺长度不足!")
+                iStartDT = max(iStartDT, DTRuler[0])
             if self._QSArgs.DescriptorSection[i] is None:
                 iDescriptor._QS_initOperation(iStartDT, dt_dict, prepare_ids, id_dict)
             else:
@@ -750,13 +791,16 @@ class PanelOperation(DerivativeFactor):
     def _calcData(self, ids, dts, descriptor_data, dt_ruler):
         if self._QSArgs.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
         else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')
+        StartInd, EndInd = dt_ruler.index(dts[0]), dt_ruler.index(dts[-1])
         StartIndAndLen, MaxLookBack, MaxLen = [], 0, 1
         for i, iDescriptor in enumerate(self._Descriptors):
             iLookBack = self._QSArgs.LookBack[i]
-            if self._QSArgs.LookBackMode[i]=="滚动窗口":
+            if (self._QSArgs.LookBackMode[i]=="滚动窗口") and (self._QSArgs.StartDT[i] is None):
                 StartIndAndLen.append((iLookBack, iLookBack+1))
                 MaxLen = max(MaxLen, iLookBack+1)
             else:
+                if self._QSArgs.StartDT[i] is not None:
+                    iLookBack = max(0, StartInd - dt_ruler.index(self._QSArgs.StartDT[i]))
                 StartIndAndLen.append((iLookBack, np.inf))
                 MaxLen = np.inf
             MaxLookBack = max(MaxLookBack, iLookBack)
@@ -776,7 +820,6 @@ class PanelOperation(DerivativeFactor):
                 MaxLen = max(MaxLen, self._QSArgs.iLookBack+1)
             descriptor_data.insert(0, StdData)
             MaxLookBack = max(MaxLookBack, self._QSArgs.iLookBack)
-        StartInd, EndInd = dt_ruler.index(dts[0]), dt_ruler.index(dts[-1])
         if StartInd>=MaxLookBack: DTRuler = dt_ruler[StartInd-MaxLookBack:EndInd+1]
         else: DTRuler = [None]*(MaxLookBack-StartInd) + dt_ruler[:EndInd+1]
         Operator, ModelArgs = self._QSArgs.Operator, self._QSArgs.ModelArgs
@@ -882,6 +925,7 @@ class PanelOperation(DerivativeFactor):
     
     def __QS_prepareCacheData__(self, ids=None):
         DTs = list(self._PID_DTs[self._OperationMode._iPID])
+        DTRuler = list(self._OperationMode.DTRuler)
         IDs = self._OperationMode._FactorPrepareIDs[self.Name]
         if IDs is None: IDs = list(self._OperationMode.IDs)
         if len(DTs)==0:# 该进程未分配到计算任务
@@ -891,29 +935,44 @@ class PanelOperation(DerivativeFactor):
             StdData = pd.DataFrame(columns=IDs, dtype=("float" if self._QSArgs.DataType=="double" else "O"))
         elif IDs:
             if self._QSArgs.InputFormat == "numpy":
-                DescriptorData, StartInd = [], self._OperationMode.DTRuler.index(DTs[0])
+                DescriptorData, StartInd = [], DTRuler.index(DTs[0])
                 for i, iDescriptor in enumerate(self._Descriptors):
-                    iStartInd = StartInd - self._QSArgs.LookBack[i]
-                    iDTs = list(self._OperationMode.DTRuler[max(0, iStartInd):StartInd]) + DTs
+                    if self._QSArgs.StartDT[i] is None:
+                        iStartInd = StartInd - self._QSArgs.LookBack[i]
+                        iDTs = DTRuler[max(0, iStartInd):StartInd] + DTs
+                    else:
+                        iStartDT = max(self._QSArgs.StartDT[i], DTRuler[0])
+                        iStartInd = DTRuler.index(iStartDT)
+                        iDTs = DTRuler[iStartInd:DTRuler.index(DTs[-1])]
                     iDescriptorData = iDescriptor._QS_getData(iDTs, pids=None).values
-                    if iStartInd<0: iDescriptorData = np.r_[np.full(shape=(abs(iStartInd), iDescriptorData.shape[1]), fill_value=np.nan), iDescriptorData]
+                    if iStartInd<0: iDescriptorData = np.r_[np.full(shape=(abs(iStartInd), iDescriptorData.shape[1]), fill_value=np.nan), iDescriptorData]                    
                     DescriptorData.append(iDescriptorData)
-                StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData, dt_ruler=self._OperationMode.DTRuler)
+                StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData, dt_ruler=DTRuler)
                 DescriptorData, iDescriptorData, StdData = None, None, pd.DataFrame(StdData, index=DTs, columns=IDs)
             else:
-                DescriptorData, StartInd = [], self._OperationMode.DTRuler.index(DTs[0])
+                DescriptorData, StartInd = [], DTRuler.index(DTs[0])
                 for i, iDescriptor in enumerate(self._Descriptors):
-                    iStartInd = StartInd - self._QSArgs.LookBack[i]
-                    iDTs = list(self._OperationMode.DTRuler[max(0, iStartInd):StartInd]) + DTs
+                    if self._QSArgs.StartDT[i] is None:
+                        iStartInd = StartInd - self._QSArgs.LookBack[i]
+                        iDTs = DTRuler[max(0, iStartInd):StartInd] + DTs
+                    else:
+                        iStartDT = max(self._QSArgs.StartDT[i], DTRuler[0])
+                        iStartInd = DTRuler.index(iStartDT)
+                        iDTs = DTRuler[iStartInd:DTRuler.index(DTs[-1])]
                     iDescriptorData = iDescriptor._QS_getData(iDTs, pids=None)
                     DescriptorData.append(iDescriptorData)
-                StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData, dt_ruler=self._OperationMode.DTRuler)
+                StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData, dt_ruler=DTRuler)
                 DescriptorData, iDescriptorData = None, None
         else:
-            DescriptorData, StartInd = [], self._OperationMode.DTRuler.index(DTs[0])
+            DescriptorData, StartInd = [], DTRuler.index(DTs[0])
             for i, iDescriptor in enumerate(self._Descriptors):
-                iStartInd = StartInd - self._QSArgs.LookBack[i]
-                iDTs = list(self._OperationMode.DTRuler[max(0, iStartInd):StartInd]) + DTs
+                if self._QSArgs.StartDT[i] is None:
+                    iStartInd = StartInd - self._QSArgs.LookBack[i]
+                    iDTs = DTRuler[max(0, iStartInd):StartInd] + DTs
+                else:
+                    iStartDT = max(self._QSArgs.StartDT[i], DTRuler[0])
+                    iStartInd = DTRuler.index(iStartDT)
+                    iDTs = DTRuler[iStartInd:DTRuler.index(DTs[-1])]
                 iDescriptor._QS_getData(iDTs, pids=None)
             StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self._QSArgs.DataType=="double" else "O"))
         if self._OperationMode._FactorPrepareIDs[self.Name] is None:
