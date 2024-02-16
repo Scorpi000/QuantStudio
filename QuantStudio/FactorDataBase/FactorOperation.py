@@ -100,14 +100,13 @@ class DerivativeFactor(Factor):
                     raise __QS_Error__(f"因子 '{self.Name}' 的数据无法保证唯一性, 可以尝试将 '多重映射' 参数取值调整为 True")
                 df = df.reindex(columns=cols).apply(lambda s: tuple(s), axis=1).unstack()
             return df.reindex(index=dts, columns=ids)
-        elif isinstance(df, pd.Series):
-            if isinstance(df.index, pd.MultiIndex):
+        elif isinstance(df, pd.Series) and isinstance(df.index, pd.MultiIndex):
+            if self._QSArgs.MultiMapping:
                 df = df.groupby(axis=0, level=[0, 1], as_index=True).apply(lambda s: s.tolist())
             elif df.index.duplicated().any():
                 raise __QS_Error__(f"因子 '{self.Name}' 的数据无法保证唯一性, 可以尝试将 '多重映射' 参数取值调整为 True")
             return df.unstack().reindex(index=dts, columns=ids)
-        else:
-            raise __QS_Error__(f"不支持的返回格式: {df}")
+        raise __QS_Error__(f"不支持的返回格式: {df}")
     
     def _QS_partitionSectionIDs(self, section_ids):
         SectionIdx = []  # [([ID], [idx])]
