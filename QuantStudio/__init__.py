@@ -151,6 +151,7 @@ class QSArgs(HasTraits):
     def __setitem__(self, key, value):
         if not self._ArgVisible.get(key, False):
             self._QS_Logger.warning(f"参数 '{key}' 不存在, 全体参数为: {self.ArgNames}")
+            return
         iTrait = self.trait(self._LabelTrait[key])
         iMutable = (True if iTrait.mutable is None else iTrait.mutable)
         if self._QS_Frozen and (not iMutable):
