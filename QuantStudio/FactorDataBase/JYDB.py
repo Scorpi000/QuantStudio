@@ -821,7 +821,11 @@ class JYDB(QSSQLObject, FactorDB):
         else:
             self._InfoResourcePath = self._QSArgs.DBInfoFile
             self._TableInfo, self._FactorInfo, self._ExchangeInfo, self._SecurityInfo = _updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger, out_info=True)
-        
+    
+    @property
+    def ExchangeInfo(self):
+        return self._ExchangeInfo.copy()
+
     @property
     def TableNames(self):
         if self._TableInfo is not None: return self._TableInfo[pd.notnull(self._TableInfo["TableClass"])].index.tolist()
