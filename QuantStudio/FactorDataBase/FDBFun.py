@@ -1096,7 +1096,7 @@ class SQL_WideTable(SQL_Table):
         RawData = pd.merge(MaxAnnDT, RawData.loc[:, ["ID","QS_DT","QS_TargetPeriod","QS_DT_y"]+factor_names],
                            left_on=["ID","QS_DT","QS_TargetPeriod","QS_DT_y"], right_on=["ID","QS_DT","QS_TargetPeriod","QS_DT_y"], how="inner", suffixes=("", "_y"))
         RawData["ID"] = self.__QS_restoreID__(RawData["ID"])
-        return self._adjustRawDataByRelatedField(RawData.loc[:, ["QS_DT", "ID"]+factor_names], factor_names)
+        return self._adjustRawDataByRelatedField(RawData.loc[:, ["QS_DT", "ID"]+factor_names], factor_names, args=args)
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         if args.get("多重映射", self._QSArgs.MultiMapping):
             OrderFields = args.get("排序字段", self._QSArgs.OrderFields)
@@ -1339,7 +1339,7 @@ class SQL_NarrowTable(SQL_Table):
                     RawData = pd.concat([NullRawData, RawData], ignore_index=True)
                     RawData.sort_values(by=["ID", "QS_DT", FactorNameField])
         if RawData.shape[0]==0: return RawData
-        return self._adjustRawDataByRelatedField(RawData, [FactorNameField, FactorValueField])
+        return self._adjustRawDataByRelatedField(RawData, [FactorNameField, FactorValueField], args=args)
     def __QS_saveRawData__(self, raw_data, factor_names, raw_data_dir, pid_ids, file_name, **kwargs):
         return super().__QS_saveRawData__(raw_data, [], raw_data_dir, pid_ids, file_name, **kwargs)
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
@@ -1413,7 +1413,7 @@ class SQL_FeatureTable(SQL_WideTable):
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["ID"]+factor_names)
         RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID"]+factor_names)
-        RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
+        RawData = self._adjustRawDataByRelatedField(RawData, factor_names, args=args)
         RawData["QS_TargetDT"] = dt.datetime.combine(dt.date.today(), dt.time(0)) + dt.timedelta(1)
         RawData["QS_DT"] = RawData["QS_TargetDT"]
         RawData["ID"] = self.__QS_restoreID__(RawData["ID"])
@@ -1542,7 +1542,7 @@ class SQL_TimeSeriesTable(SQL_Table):
                 RawData = pd.concat([NullRawData, RawData], ignore_index=True)
                 RawData.sort_values(by=["QS_DT"])
         if RawData.shape[0]==0: return RawData
-        return self._adjustRawDataByRelatedField(RawData, factor_names)
+        return self._adjustRawDataByRelatedField(RawData, factor_names, args=args)
     def _genNullIDSQLStr_WithPublDT(self, factor_names, ids, end_date, args={}):
         EndDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self._QSArgs.DTField), "DBFieldName"]
         AnnDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("公告时点字段", self._QSArgs.PublDTField), "DBFieldName"]
@@ -1630,7 +1630,7 @@ class SQL_TimeSeriesTable(SQL_Table):
             #RawData = RawData[(DTRank["QS_DT"]<=DTRank["MaxEndDate"]).values]
             DTRank = RawData.loc[:, "MaxEndDate"].astype(np.datetime64).rank(method="min")
             RawData = RawData[DTRank.values>=DTRank.cummax().values]
-        return self._adjustRawDataByRelatedField(RawData, factor_names)
+        return self._adjustRawDataByRelatedField(RawData, factor_names, args=args)
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         if args.get("多重映射", self._QSArgs.MultiMapping):
             OrderFields = args.get("排序字段", self._QSArgs.OrderFields)
@@ -1774,7 +1774,7 @@ class SQL_MappingTable(SQL_Table):
         RawData["QS_起始日"] = self.__QS_adjustDT__(RawData["QS_起始日"], args=args)
         RawData["QS_结束日"] = self.__QS_adjustDT__(RawData["QS_结束日"], args=args)
         RawData["ID"] = self.__QS_restoreID__(RawData["ID"])
-        RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
+        RawData = self._adjustRawDataByRelatedField(RawData, factor_names, args=args)
         return RawData
     def _calcMultiMappingData(self, raw_data, factor_names, ids, dts, args={}):
         Data, nDT, nFactor = {}, len(dts), len(factor_names)
@@ -2257,7 +2257,7 @@ class SQL_FinancialTable(SQL_Table):
         RawData["AnnDate"] = self.__QS_adjustDT__(RawData["AnnDate"], args=args)
         RawData["ReportDate"] = self.__QS_adjustDT__(RawData["ReportDate"], args=args)
         RawData["ID"] = self.__QS_restoreID__(RawData["ID"])
-        RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
+        RawData = self._adjustRawDataByRelatedField(RawData, factor_names, args=args)
         if (self._FactorDB._QSArgs.DBType not in ("MySQL", "Oracle", "SQL Server")) and (args.get("忽略非季末报告", self._QSArgs.IgnoreNonQuarter) or (not ((args.get("报告期", self._QSArgs.ReportDate)=="所有") and (args.get("计算方法", self._QSArgs.CalcType)=="最新") and (args.get("回溯年数", self._QSArgs.YearLookBack)==0) and (args.get("回溯期数", self._QSArgs.PeriodLookBack)==0)))):
             RawData = RawData[RawData["ReportDate"].dt.strftime("%m%d").isin(('0331','0630','0930','1231'))]
         return RawData
