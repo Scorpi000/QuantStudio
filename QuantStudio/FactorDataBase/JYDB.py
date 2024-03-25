@@ -121,7 +121,7 @@ class _JY_SQL_Table(SQL_Table):
             iOldData = raw_data.pop(iField)
             iDataMask = pd.notnull(iOldData)
             iOldDataType = _identifyDataType(self._FactorInfo.loc[iField[:-2], "DataType"])
-            iSQLStr = self._FactorInfo.loc[iField, "RelatedSQL"]
+            iSQLStr = RelatedFields.loc[iField]
             if iSQLStr[0]=="{":
                 iMapInfo = eval(iSQLStr).items()
             else:
