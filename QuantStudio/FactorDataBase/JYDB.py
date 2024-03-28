@@ -36,7 +36,7 @@ def _importInfo(info_file, info_resource, logger, out_info=False):
         Msg = ("不支持的库信息文件 : '%s'" % (info_resource, ))
         logger.error(Msg)
         raise __QS_Error__(Msg)
-    if not out_info:
+    if (not out_info) and info_file:
         try:
             from QuantStudio.Tools.DataTypeFun import writeNestedDict2HDF5
             writeNestedDict2HDF5(TableInfo, info_file, "/TableInfo")
