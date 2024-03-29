@@ -41,8 +41,9 @@ def DummyVarTo01Var(dummy_var,ignore_na=False,ignores=[],ignore_nonstring=False)
     return OZVar
 
 # 将元素为 list 的 DataFrame 扩展成元素为标量的 DataFrame, index 将被 reset
-def expandListElementDataFrame(df, expand_index=True, dropna=False, empty_list_mask=False):
-    ElementLen = df.iloc[:, 0].apply(lambda x: len(x)+1 if isinstance(x, list) else 0)
+def expandListElementDataFrame(df, expand_index=True, dropna=False, empty_list_mask=False, len_col=None):
+    if len_col is None: len_col = df.columns[0]
+    ElementLen = df[len_col].apply(lambda x: len(x)+1 if isinstance(x, list) else 0)
     EmptyListMask = (ElementLen == 1)
     Mask = (ElementLen > 1)
     data = df[Mask]
