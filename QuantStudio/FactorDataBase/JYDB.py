@@ -1060,9 +1060,9 @@ class JYDB(QSSQLObject, FactorDB):
         SQLStr += "WHERE "+ExchangeField+" IN ("+",".join(ExchangeCodes)+") "
         if future_code:
             if isinstance(future_code, str):
-                SQLStr += "AND LEFT(ContractCode, "+str(len(future_code))+")='"+future_code+"' "
+                SQLStr += "AND SUBSTRING(ContractCode, 1, "+str(len(future_code))+")='"+future_code+"' "
             else:
-                SQLStr += "AND (LEFT(ContractCode, 1) IN ('"+"','".join(future_code)+"') OR LEFT(ContractCode, 2) IN ('"+"','".join(future_code)+"')) "
+                SQLStr += "AND (SUBSTRING(ContractCode, 1, 1) IN ('"+"','".join(future_code)+"') OR SUBSTRING(ContractCode, 1, 2) IN ('"+"','".join(future_code)+"')) "
         ContractType = kwargs.get("contract_type", "月合约")
         ContinueContractType = kwargs.get("continue_contract_type", None)
         if ContractType!="所有": SQLStr += "AND IfReal="+("2" if ContractType=="连续合约" else "1")+" "
