@@ -1750,6 +1750,9 @@ class SQL_MappingTable(SQL_Table):
             StartDT, EndDT = dts[0], dts[-1]
         else:
             StartDT = EndDT = None
+        IgnoreTime = args.get("忽略时间", self._QSArgs.IgnoreTime)
+        if IgnoreTime: DTFormat = self._DTFormat
+        else: DTFormat = self._DTFormat_WithTime
         DTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("时点字段", self._QSArgs.DTField), "DBFieldName"]
         EndDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("结束时点字段", self._QSArgs.EndDTField), "DBFieldName"]
         # 形成SQL语句, ID, 开始日期, 结束日期, 因子数据
@@ -1762,11 +1765,11 @@ class SQL_MappingTable(SQL_Table):
         SQLStr += self._genIDSQLStr(ids, init_keyword="WHERE", args=args)+" "
         SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
         if StartDT is not None:
-            SQLStr += "AND (("+EndDTField+">="+StartDT.strftime(self._DTFormat)+") "
+            SQLStr += "AND (("+EndDTField+">="+StartDT.strftime(DTFormat)+") "
             SQLStr += "OR ("+EndDTField+" IS NULL) "
             SQLStr += "OR ("+EndDTField+"<"+DTField+")) "
         if EndDT is not None:
-            SQLStr += "AND "+DTField+"<="+EndDT.strftime(self._DTFormat)+" "
+            SQLStr += "AND "+DTField+"<="+EndDT.strftime(DTFormat)+" "
         SQLStr += "ORDER BY ID, "+DTField
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["ID", "QS_起始日", "QS_结束日"]+factor_names)
