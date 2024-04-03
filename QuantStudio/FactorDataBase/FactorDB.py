@@ -484,6 +484,7 @@ class _OperationMode(QSArgs):
         self._FactorDict = {}  # 因子字典, {因子名:因子}, 包括所有的因子, 即衍生因子所依赖的描述子也在内
         self._FactorID = {}  # {因子名: 因子唯一的 ID 号(int)}
         self._FactorNameChgRecord = {}  # 因子名的修改记录, {修改后的名字: 原始名字}
+        self._Event = {}# {因子名: (Sub2MainQueue, Event)}, 用于多进程同步的 Event 数据
         for i, iFactorName in enumerate(self._Owner.FactorNames):
             iFactor = self._Owner.getFactor(iFactorName)
             iFactor._OperationMode = self
@@ -569,7 +570,6 @@ class _OperationMode(QSArgs):
         elif (DTs.diff().iloc[1:]!=1).any(): raise __QS_Error__("运算时点序列的频率与时点标尺不一致!")
         # 检查因子的合法性, 解析出所有的因子(衍生因子所依赖的描述子也在内)
         if not self.FactorNames: self.FactorNames = self._Owner.FactorNames
-        self._Event = {}# {因子名: (Sub2MainQueue, Event)}, 用于多进程同步的 Event 数据
 
     # TODO: 重用已经有的原始数据缓存
     def _prepare(self, **kwargs):
