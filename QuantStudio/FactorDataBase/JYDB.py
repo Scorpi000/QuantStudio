@@ -182,7 +182,7 @@ class _JY_SQL_Table(SQL_Table):
                 iOldData = iOldData.astype(float)
             iMapInfo = iMapInfo.set_index(["Old"]).iloc[:, 0]
             # iNewData[iDataMask] = iOldData.map(iMapInfo)[iDataMask]
-            iNewData[iDataMask] = iOldData.replace(iMapInfo)[iDataMask]
+            iNewData = iOldData.replace(iMapInfo).where(iOldData.isin(iMapInfo.index), iNewData)
             raw_data[iField] = iNewData
         return raw_data
 
