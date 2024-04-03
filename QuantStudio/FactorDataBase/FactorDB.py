@@ -585,12 +585,13 @@ class _OperationMode(QSArgs):
         if self.SubProcessNum==0:
             Error = _prepareRawData(args)
         else:
-            nPrcs = min((self.SubProcessNum, len(args["GroupInfo"])))
+            nGroup = len(args["GroupInfo"])
+            nPrcs = min((self.SubProcessNum, nGroup))
             Procs,Main2SubQueue,Sub2MainQueue = startMultiProcess(pid="0", n_prc=nPrcs, target_fun=_prepareRawData,
                                                                   arg=args, partition_arg=["GroupInfo", "RawDataFileNames", "PrepareIDs", "PID_PrepareIDs"],
                                                                   n_partition_head=0, n_partition_tail=0,
                                                                   main2sub_queue="None", sub2main_queue="Single")
-            nGroup = len(GroupInfo)
+            
             with ProgressBar(max_value=nGroup) as ProgBar:
                 for i in range(nGroup):
                     iPID, Error, iMsg = Sub2MainQueue.get()
