@@ -616,7 +616,7 @@ class _OperationMode(QSArgs):
         else:
             nPrcs = len(self._PIDs)
             nTask = len(self._Factors) * nPrcs
-            EventState = {iFactorName: 0 for iFactorName in self._Event if iFactorName in self.FactorNames}
+            EventState = {iFactorName: 0 for iFactorName in self._Event}
             Procs, Main2SubQueue, Sub2MainQueue = startMultiProcess(pid="0", n_prc=nPrcs, target_fun=_calculate, arg=Args, main2sub_queue="None", sub2main_queue="Single")
             iProg = 0
             with ProgressBar(max_value=nTask) as ProgBar:
