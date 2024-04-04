@@ -466,6 +466,17 @@ def sumlist(*factors, **kwargs):
     Expr = sympy.Function("sumlist")(*Exprs)
     return PointOperation(kwargs.pop("factor_name", "sumlist"), Descriptors, {"算子": _sumlist, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "表达式": Expr}, **kwargs)
 
+def _list_like(f, idt, iid, x, args):
+    Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
+    Value = args["OperatorArg"]["value"]
+    return Data.applymap(lambda l: [Value]*len(l) if isinstance(l, list) else None).values
+
+def list_like(f, value, **kwargs):
+    Descriptors, Args, Exprs = _genMultivariateOperatorInfo(f)
+    Args["OperatorArg"] = {"value": value}
+    Expr = sympy.Function("listLike")(*Exprs)
+    return PointOperation(kwargs.pop("factor_name", "list_like"), Descriptors, {"算子": _list_like, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "表达式": Expr}, **kwargs)
+
 # ----------------------时间序列运算--------------------------------
 def _rolling_mean(f,idt,iid,x,args):
     Data = pd.DataFrame(_genOperatorData(f,idt,iid,x,args)[0])
