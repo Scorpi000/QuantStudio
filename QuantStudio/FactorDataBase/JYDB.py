@@ -915,13 +915,15 @@ class JYDB(QSSQLObject, FactorDB):
     # date: 指定日, datetime.date
     # is_current: False 表示上市日在指定日之前的美股, True 表示上市日在指定日之前且尚未退市的美股
     # start_date: 起始日, 如果非 None, is_current=False 表示提取在 start_date 至 date 之间上市过的股票 ID, is_current=True 表示提取在 start_date 至 date 之间均保持上市的股票
-    def _getAllUSStock(self, date, is_current=True, start_date=None):
+    def _getAllUSStock(self, date, is_current=True, start_date=None, exchange=("AMEX", "NASDAQ", "NYSE")):
         if start_date is not None: start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
-        SQLStr = "SELECT CASE {Prefix}US_SecuMain.SecuMarket WHEN 76 THEN CONCAT({Prefix}US_SecuMain.SecuCode, '.AMEX') "
-        SQLStr += "WHEN 77 THEN CONCAT({Prefix}US_SecuMain.SecuCode, 'NASDAQ') "
-        SQLStr += "WHEN 78 THEN CONCAT({Prefix}US_SecuMain.SecuCode, '.NYSE') "
-        SQLStr += "FROM {Prefix}US_SecuMain "
-        SQLStr += "WHERE {Prefix}US_SecuMain.ListedState IN (1,5,9) AND {Prefix}US_SecuMain.SecuMarket IN (76,77,78) "
+        SQLStr = "SELECT CASE {Prefix}US_SecuMain.SecuMarket WHEN 76 THEN CONCAT({Prefix}US_SecuMain.SecuCode, '.A') "
+        SQLStr += "WHEN 77 THEN CONCAT({Prefix}US_SecuMain.SecuCode, '.O') "
+        SQLStr += "WHEN 78 THEN CONCAT({Prefix}US_SecuMain.SecuCode, '.N') "
+        SQLStr += "ELSE {Prefix}US_SecuMain.SecuCode END FROM {Prefix}US_SecuMain "
+        SQLStr += "WHERE {Prefix}US_SecuMain.ListedState IN (1,5,9) "
+        SecuMarket = ", ".join(self._ExchangeInfo[self._ExchangeInfo["Exchange"].isin(exchange)].index)
+        SQLStr += "AND {Prefix}US_SecuMain.SecuMarket IN " + f"({SecuMarket}) "
         SQLStr += "AND {Prefix}US_SecuMain.ListedDate <= '{Date}' "
         if start_date is not None:
             SQLStr += "AND (({Prefix}US_SecuMain.DelistingDate IS NULL) OR ({Prefix}US_SecuMain.DelistingDate > '{StartDate}')) "
