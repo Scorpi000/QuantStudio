@@ -26,10 +26,11 @@ class DerivativeFactor(Factor):
         DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=2, option_range=["double", "string", "object"], mutable=False)
         Expression = Either(Str(""), Instance(sympy.Expr), Instance(sympy.logic.boolalg.Boolean), arg_type="String", label="表达式", order=3)
         Description = Str("", label="描述信息", order=4, arg_type="String")
-        CompoundType = List(arg_type="List", label="复合类型", order=5, mutable=False)
-        InputFormat = Enum("numpy", "pandas", label="输入格式", order=6, arg_type="SingleOption", option_range=["numpy", "pandas"], mutable=False)
-        # ExpandDescriptors = ListInt(arg_type="MultiOption", label="展开描述子", order=7, mutable=False)
+        InputFormat = Enum("numpy", "pandas", label="输入格式", order=5, arg_type="SingleOption", option_range=["numpy", "pandas"], mutable=False)
+        # ExpandDescriptors = ListInt(arg_type="MultiOption", label="展开描述子", order=6, mutable=False)
+        DescriptorCompoundType = List(arg_type="List", label="描述子复合类型", order=7, mutable=False)
         MultiMapping = Enum(False, True, arg_type="Bool", label="多重映射", order=8, mutable=False)
+        CompoundType = List(arg_type="List", label="复合类型", order=9, mutable=False)
         
         def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
             super().__init__(owner=owner, sys_args=sys_args, config_file=config_file, **kwargs)
@@ -40,6 +41,7 @@ class DerivativeFactor(Factor):
         def __QS_initArgs__(self, args={}):
             super().__QS_initArgs__(args=args)
             self.add_trait("ExpandDescriptors", ListInt([], arg_type="MultiOption", label="展开描述子", order=7, option_range=list(range(len(self._Owner._Descriptors))), mutable=False))
+            self.DescriptorCompoundType = [None] * len(self._Owner._Descriptors)
 
     def __init__(self, name="", descriptors=[], sys_args={}, **kwargs):
         self._Descriptors = descriptors
@@ -109,7 +111,7 @@ class DerivativeFactor(Factor):
         raise __QS_Error__(f"不支持的返回格式: {df}")
     
     def _QS_partitionSectionIDs(self, section_ids):
-        SectionIdx = []  # [([ID], [idx])]
+        SectionIdx = []# [([ID], [idx])]
         for i, iIDs in enumerate(section_ids):
             for jIDs, jIdx in SectionIdx:
                 if iIDs == jIDs:
@@ -118,7 +120,25 @@ class DerivativeFactor(Factor):
             else:
                 SectionIdx.append((iIDs, [i]))
         return SectionIdx
-
+    
+    def _QS_Compound2Frame(self, descriptor_data, compound_type_list):
+        if not any(compound_type_list): return descriptor_data
+        Data = []
+        for i in range(descriptor_data.shape[1]):
+            iCompoundType = compound_type_list[i]
+            if not iCompoundType:
+                Data.append(descriptor_data.iloc[:, i:i+1])
+            else:
+                iData = descriptor_data.iloc[:, i].values
+                DefaultData = np.array([None], dtype="O")
+                DefaultData[0] = (None,) * len(iCompoundType)
+                DefaultData = DefaultData.repeat(iData.shape[0], axis=0)
+                iData = np.where(pd.notnull(iData), iData, DefaultData)
+                iDataType = np.dtype([(iCol, float if iType=="double" else "O") for iCol, iType in iCompoundType])
+                iData = iData.astype(iDataType)
+                iData = pd.DataFrame({iName: pd.Series(iData[iName], index=descriptor_data.index) for iName, iDType in iCompoundType})
+                Data.append(iData)
+        return pd.concat(Data, axis=1, keys=descriptor_data.columns.tolist())
 
 
 # 单点运算
@@ -167,6 +187,7 @@ class PointOperation(DerivativeFactor):
             return StdData
         else:
             descriptor_data = Panel({f"d{i}": descriptor_data[i] for i in range(len(self._Descriptors))}).to_frame(filter_observations=False).sort_index(axis=1)
+            descriptor_data = self._QS_Compound2Frame(descriptor_data, self._QSArgs.DescriptorCompoundType)
             if self._QSArgs.ExpandDescriptors:
                 descriptor_data, iOtherData = descriptor_data.iloc[:, self._QSArgs.ExpandDescriptors], descriptor_data.loc[:, descriptor_data.columns.difference(descriptor_data.columns[self._QSArgs.ExpandDescriptors])]
                 descriptor_data = expandListElementDataFrame(descriptor_data, expand_index=True)
@@ -392,6 +413,7 @@ class TimeOperation(DerivativeFactor):
             if (self._QSArgs.iLookBackMode=="扩张窗口") or (self._QSArgs.iLookBack!=0):
                 descriptor_data[0] = StdData
             descriptor_data = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data))}).loc[:, DTRuler].to_frame(filter_observations=False).sort_index(axis=1)
+            descriptor_data = self._QS_Compound2Frame(descriptor_data, self._QSArgs.DescriptorCompoundType)
             if self._QSArgs.ExpandDescriptors:
                 descriptor_data, iOtherData = descriptor_data.iloc[:, self._QSArgs.ExpandDescriptors], descriptor_data.loc[:, descriptor_data.columns.difference(descriptor_data.columns[self._QSArgs.ExpandDescriptors])]
                 descriptor_data = expandListElementDataFrame(descriptor_data, expand_index=True)
@@ -587,6 +609,7 @@ class SectionOperation(DerivativeFactor):
             DescriptorData = []
             for iSectionIDs, iIdx in SectionIdx:
                 iDescriptorData = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data)) if i in iIdx}).to_frame(filter_observations=False).sort_index(axis=1)
+                iDescriptorData = self._QS_Compound2Frame(iDescriptorData, [self._QSArgs.DescriptorCompoundType[i] for i in range(len(descriptor_data)) if i in iIdx])
                 iExpandDescriptors = sorted(f"d{i}" for i in set(self._QSArgs.ExpandDescriptors).intersection(iIdx))
                 if iExpandDescriptors:
                     iDescriptorData, iOtherData = iDescriptorData.loc[:, iExpandDescriptors], iDescriptorData.loc[:, iDescriptorData.columns.difference(iExpandDescriptors)]
@@ -856,6 +879,7 @@ class PanelOperation(DerivativeFactor):
             DescriptorData = []
             for iSectionIDs, iIdx in SectionIdx:
                 iDescriptorData = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data)) if i in iIdx}).loc[:, DTRuler].to_frame(filter_observations=False).sort_index(axis=1)
+                iDescriptorData = self._QS_Compound2Frame(iDescriptorData, [self._QSArgs.DescriptorCompoundType[i] for i in range(len(descriptor_data)) if i in iIdx])
                 iExpandDescriptors = sorted(f"d{i}" for i in set(self._QSArgs.ExpandDescriptors).intersection(iIdx))
                 if iExpandDescriptors:
                     iDescriptorData, iOtherData = iDescriptorData.loc[:, iExpandDescriptors], iDescriptorData.loc[:, iDescriptorData.columns.difference(iExpandDescriptors)]
