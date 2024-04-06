@@ -952,9 +952,10 @@ def ewm_corr(f1, f2, com=None, span=None, halflife=None, alpha=None, min_periods
     Args["OperatorArg"] = {"com":com,"span":span,"halflife":halflife,"min_periods":min_periods,"adjust":adjust,"ignore_na":ignore_na}
     return TimeOperation(kwargs.pop("factor_name", "ewm_corr"), Descriptors, {"算子": _ewm_corr, "参数": Args, "回溯期数": [min_periods]*len(Descriptors), "运算时点": "多时点", "运算ID": "多ID", "表达式": Expr}, **kwargs)
 def _lag(f,idt,iid,x,args):
-    if args["OperatorArg"].get('dt_change_fun', None) is None: return x[0][args["OperatorArg"]['window']-args["OperatorArg"]['lag_period']:x[0].shape[0]-args["OperatorArg"]['lag_period']]
+    Data = _genOperatorData(f,idt,iid,x,args)[0]
+    if args["OperatorArg"].get('dt_change_fun', None) is None: return Data[args["OperatorArg"]['window']-args["OperatorArg"]['lag_period']:Data.shape[0]-args["OperatorArg"]['lag_period']]
     TargetDTs = args["OperatorArg"]['dt_change_fun'](idt)
-    Data = pd.DataFrame(x[0], index=idt)
+    Data = pd.DataFrame(Data, index=idt)
     TargetData = Data.reindex(index=TargetDTs).values
     TargetData[args["OperatorArg"]['lag_period']:] = TargetData[:-args["OperatorArg"]['lag_period']]
     if f.DataType!="double":
