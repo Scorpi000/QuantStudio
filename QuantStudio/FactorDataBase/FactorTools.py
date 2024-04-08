@@ -400,6 +400,17 @@ def to_json(f, **kwargs):
     Descriptors, Args, Exprs = _genMultivariateOperatorInfo(f)
     Expr = sympy.Function("toJson")(*Exprs)
     return PointOperation(kwargs.pop("factor_name", "to_json"), Descriptors, {"算子":_to_json, "参数":Args, "运算时点": "多时点", "运算ID": "多ID", "数据类型": "string", "表达式": Expr}, **kwargs)
+def _to_compound(f, idt, iid, x, args):
+    Data = {i: (iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for i, iData in enumerate(_genOperatorData(f,idt,iid,x,args))}
+    return Panel(Data).sort_index(axis=0).to_frame(filter_observations=False).apply(lambda s: tuple(s), axis=1).unstack().values
+def to_compound(*factors, fields=None, **kwargs):
+    if fields is None:
+        DataTypes = [(iFactor.Name, iFactor.getMetaData(key="DataType")) for iFactor in factors]
+    else:
+        DataTypes = [(factors[i].Name if not iField else iField, factors[i].getMetaData(key="DataType")) for i, iField in enumerate(fields)]
+    Descriptors, Args, Exprs = _genMultivariateOperatorInfo(*factors)
+    Expr = sympy.Function("toCompound")(*Exprs)
+    return PointOperation(kwargs.pop("factor_name", "to_compound"), Descriptors, {"算子": _to_compound, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "数据类型": "object", "表达式": Expr, "复合类型": DataTypes}, **kwargs)
 def _report_period_delta(last, prev):
     if pd.isnull(last) or pd.isnull(prev): return np.nan
     last, prev = pd.to_datetime(last), pd.to_datetime(prev)
