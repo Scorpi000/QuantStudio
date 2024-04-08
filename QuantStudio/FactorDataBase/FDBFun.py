@@ -2261,6 +2261,9 @@ class SQL_FinancialTable(SQL_Table):
         RawData["ReportDate"] = self.__QS_adjustDT__(RawData["ReportDate"], args=args)
         RawData["ID"] = self.__QS_restoreID__(RawData["ID"])
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names, args=args)
+        for iFactorName in factor_names:
+            if self.__QS_identifyDataType__(self._FactorInfo.loc[iFactorName, "DataType"])=="double":
+                RawData[iFactorName] = RawData[iFactorName].astype(float)
         if (self._FactorDB._QSArgs.DBType not in ("MySQL", "Oracle", "SQL Server")) and (args.get("忽略非季末报告", self._QSArgs.IgnoreNonQuarter) or (not ((args.get("报告期", self._QSArgs.ReportDate)=="所有") and (args.get("计算方法", self._QSArgs.CalcType)=="最新") and (args.get("回溯年数", self._QSArgs.YearLookBack)==0) and (args.get("回溯期数", self._QSArgs.PeriodLookBack)==0)))):
             RawData = RawData[RawData["ReportDate"].dt.strftime("%m%d").isin(('0331','0630','0930','1231'))]
         return RawData
