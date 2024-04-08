@@ -1021,7 +1021,8 @@ def FactorOperation(operation_type, sys_args={}, meta={}):
         func._QS_Args = sys_args.copy()
         def defFactor(f="", x=[], args={}):
             Args, args = sys_args.copy(), args.copy()
-            Args.setdefault("参数", {}).update(args.pop("参数", {}))
+            Args["参数"] = sys_args.get("参数", {}).copy()
+            Args["参数"].update(args.pop("参数", {}))
             Args.update(args)
             Args["算子"] = func
             if operation_type=="PointOperation":
