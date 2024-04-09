@@ -1035,7 +1035,7 @@ class JYDB(QSSQLObject, FactorDB):
     # kwargs:
     # contract_type: 合约类型, 可选 "月合约", "连续合约", "所有", 默认值 "月合约"
     # continue_contract_type: 连续合约类型, list(str), 可选 "主力合约", "期货指数", "次主力合约", "连续合约", "连一合约", "连二合约", "连三合约", "连四合约", "当月连续合约", "次月连续合约", "当季连续合约", "下季连续合约", "隔季连续合约"
-    def getFutureID(self, exchange="CFFEX", future_code="IF", date=None, is_current=True, start_date=None, **kwargs):
+    def getFutureID(self, exchange=None, future_code=None, date=None, is_current=True, start_date=None, **kwargs):
         if date is None: date = dt.date.today()
         if start_date is not None: start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
         ExchangeInfo = self._ExchangeInfo
@@ -1087,11 +1087,11 @@ class JYDB(QSSQLObject, FactorDB):
         SQLStr += "ORDER BY ID"
         if future_code:
             if isinstance(future_code, str):
-                return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y%m%d"), StartDate=start_date)) if re.findall("\D+", iRslt[0][:2])[0] == future_code]
+                return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date)) if re.findall("\D+", iRslt[0][:2])[0] == future_code]
             else:
-                return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y%m%d"), StartDate=start_date)) if re.findall("\D+", iRslt[0][:2])[0] in future_code]
+                return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date)) if re.findall("\D+", iRslt[0][:2])[0] in future_code]
         else:
-            return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y%m%d"), StartDate=start_date))]
+            return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date))]
     # 获取指定交易所 exchange 的期货代码
     # exchange: 交易所(str)或者交易所列表(list(str))
     # date: 指定日, 默认值 None 表示今天
