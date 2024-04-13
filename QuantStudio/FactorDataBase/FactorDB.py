@@ -440,6 +440,7 @@ class _OperationMode(QSArgs):
     CacheDir = Directory(arg_type="Directory", label="缓存目录", order=7)
     ClearCache = Enum(True, False, arg_type="Bool", label="清空缓存", order=8)
     WriteBatchNum = Int(1, arg_type="Integer", label="写入批次", order=9)
+    DataSubProcessNum = Int(-1, arg_type="Integer", label="数据准备子进程数", order=10)
     def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
         self._FT = owner
         self._isStarted = False
@@ -582,11 +583,12 @@ class _OperationMode(QSArgs):
             args["RawDataFileNames"].append(self._RawDataPreparation["RawDataFileNames"][i])
             args["PrepareIDs"].append(self._RawDataPreparation["PrepareIDs"][i])
             args["PID_PrepareIDs"].append(self._RawDataPreparation["PID_PrepareIDs"][i])
-        if self.SubProcessNum==0:
+        nProc = max(0, (self.DataSubProcessNum if self.DataSubProcessNum>=0 else self.SubProcessNum))
+        if nProc==0:
             Error = _prepareRawData(args)
         else:
             nGroup = len(args["GroupInfo"])
-            nPrcs = min((self.SubProcessNum, nGroup))
+            nPrcs = min(nProc, nGroup)
             Procs,Main2SubQueue,Sub2MainQueue = startMultiProcess(pid="0", n_prc=nPrcs, target_fun=_prepareRawData,
                                                                   arg=args, partition_arg=["GroupInfo", "RawDataFileNames", "PrepareIDs", "PID_PrepareIDs"],
                                                                   n_partition_head=0, n_partition_tail=0,
