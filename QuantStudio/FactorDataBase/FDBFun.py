@@ -613,7 +613,7 @@ class SQL_Table(FactorTable):
         if Suffix=="''": return RawIDField
         else: return "CONCAT("+RawIDField+", "+Suffix+")"
     def _adjustRawDataByRelatedField(self, raw_data, fields, args={}):
-        TransformSQL = args.get("转义SQL", {})
+        TransformSQL = args.get("转义SQL", self._QSArgs.TransformSQL)
         if (not TransformSQL) and ("RelatedSQL" not in self._FactorInfo): return raw_data
         RelatedFields = pd.Series(TransformSQL).reindex(index=fields)
         RelatedFields = RelatedFields.where(RelatedFields.notnull(), self._FactorInfo["RelatedSQL"].reindex(index=fields))
