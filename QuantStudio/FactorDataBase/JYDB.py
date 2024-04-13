@@ -111,7 +111,7 @@ class _JY_SQL_Table(SQL_Table):
         IDField += "ELSE SecuCode END"
         return IDField
     def _adjustRawDataByRelatedField(self, raw_data, fields, args={}):
-        TransformSQL = args.get("转义SQL", {})
+        TransformSQL = args.get("转义SQL", self._QSArgs.TransformSQL)
         if (not TransformSQL) and ("RelatedSQL" not in self._FactorInfo): return raw_data
         RelatedFields = pd.Series(TransformSQL).reindex(index=fields)
         RelatedFields = RelatedFields.where(RelatedFields.notnull(), self._FactorInfo["RelatedSQL"].reindex(index=fields))
@@ -273,7 +273,7 @@ class _FinancialIndicatorTable(_FinancialTable):
         RawData["ReportDate"] = self.__QS_adjustDT__(RawData["ReportDate"], args=args)
         if (self._FactorDB._QSArgs.DBType not in ("MySQL", "Oracle", "SQL Server")) and (args.get("忽略非季末报告", self._QSArgs.IgnoreNonQuarter) or (not ((args.get("报告期", self._QSArgs.ReportDate)=="所有") and (args.get("计算方法", self._QSArgs.CalcType)=="最新") and (args.get("回溯年数", self._QSArgs.YearLookBack)==0) and (args.get("回溯期数", self._QSArgs.PeriodLookBack)==0)))):
             RawData = RawData[RawData["ReportDate"].dt.strftime("%m%d").isin(('0331','0630','0930','1231'))]
-        RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
+        RawData = self._adjustRawDataByRelatedField(RawData, factor_names, args=args)
         return RawData
     def _prepareRawDataMF(self, factor_names, ids, dts, args={}):
         IDField = args.get("ID字段", self._QSArgs.IDField)
@@ -304,7 +304,7 @@ class _FinancialIndicatorTable(_FinancialTable):
         RawData["ReportDate"] = self.__QS_adjustDT__(RawData["ReportDate"], args=args)
         if (self._FactorDB._QSArgs.DBType not in ("MySQL", "Oracle", "SQL Server")) and (args.get("忽略非季末报告", self._QSArgs.IgnoreNonQuarter) or (not ((args.get("报告期", self._QSArgs.ReportDate)=="所有") and (args.get("计算方法", self._QSArgs.CalcType)=="最新") and (args.get("回溯年数", self._QSArgs.YearLookBack)==0) and (args.get("回溯期数", self._QSArgs.PeriodLookBack)==0)))):
             RawData = RawData[RawData["ReportDate"].dt.strftime("%m%d").isin(('0331','0630','0930','1231'))]
-        RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
+        RawData = self._adjustRawDataByRelatedField(RawData, factor_names, args=args)
         return RawData
 
 # 查找某个报告期对应的公告期
@@ -426,7 +426,7 @@ class _AnalystConsensusTable(_JY_SQL_Table):
         if self._FactorDB._QSArgs.DBType not in ("SQL Server", "MySQL", "Oracle"):
             RawData["日期"] = self.__QS_adjustDT__(RawData["日期"])
             RawData["日期"] = RawData["日期"].dt.strftime("%Y%m%d")
-        RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
+        RawData = self._adjustRawDataByRelatedField(RawData, factor_names, args=args)
         return RawData
     def __QS_saveRawData__(self, raw_data, factor_names, cache, pid_ids, file_name, **kwargs):
         return _saveRawDataWithReportANN(self, self._ANN_ReportFileName, raw_data, factor_names, cache, pid_ids, file_name, pre_filter_id=raw_data._QS_PreFilterID, **kwargs)
@@ -626,7 +626,7 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
         if self._FactorDB._QSArgs.DBType not in ("SQL Server", "MySQL", "Oracle"):
             RawData["日期"] = self.__QS_adjustDT__(RawData["日期"])
             RawData["日期"] = RawData["日期"].dt.strftime("%Y%m%d")
-        RawData = self._adjustRawDataByRelatedField(RawData, AllFields)
+        RawData = self._adjustRawDataByRelatedField(RawData, AllFields, args=args)
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         Dates = sorted({dt.datetime.combine(iDT.date(), dt.time(0)) for iDT in dts})
@@ -757,7 +757,7 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
         if self._FactorDB._QSArgs.DBType not in ("SQL Server", "MySQL", "Oracle"):
             RawData["日期"] = self.__QS_adjustDT__(RawData["日期"])
             RawData["日期"] = RawData["日期"].dt.strftime("%Y%m%d")
-        RawData = self._adjustRawDataByRelatedField(RawData, AllFields)
+        RawData = self._adjustRawDataByRelatedField(RawData, AllFields, args=args)
         return RawData
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         #if raw_data.shape[0]==0: return Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
