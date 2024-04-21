@@ -935,6 +935,30 @@ class JYDB(QSSQLObject, FactorDB):
                 SQLStr += "AND (({Prefix}US_SecuMain.DelistingDate IS NULL) OR ({Prefix}US_SecuMain.DelistingDate > '{Date}')) "
         SQLStr += "ORDER BY {Prefix}US_SecuMain.SecuCode"
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date))]
+    
+    # 获取指定日 date 的全体三板股票 ID
+    # date: 指定日, datetime.date
+    # is_current: False 表示上市日在指定日之前的三板股票, True 表示上市日在指定日之前且尚未退市的三板股票
+    # start_date: 起始日, 如果非 None, is_current=False 表示提取在 start_date 至 date 之间上市过的股票 ID, is_current=True 表示提取在 start_date 至 date 之间均保持上市的股票
+    def _getAllNQStock(self, date, is_current=True, start_date=None):
+        if start_date is not None: start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
+        SQLStr = "SELECT CONCAT({Prefix}NQ_SecuMain.SecuCode, '.NQ') "
+        SQLStr += "FROM {Prefix}NQ_SecuMain "
+        SQLStr += "WHERE {Prefix}NQ_SecuMain.SecuCategory IN (1, 41) AND {Prefix}NQ_SecuMain.SecuMarket = 81 "
+        SQLStr += "AND {Prefix}NQ_SecuMain.ListedDate <= '{Date}' "
+        if is_current or (start_date is not None):
+            SubSQLStr = "SELECT DISTINCT {Prefix}NQ_ListStatus.InnerCode FROM {Prefix}NQ_ListStatus "
+            SubSQLStr += "WHERE {Prefix}NQ_ListStatus.ChangeType = 4 "
+            if start_date is not None:
+                SubSQLStr += "AND {Prefix}NQ_ListStatus.ChangeDate <= '{StartDate}' "
+            if is_current:
+                SubSQLStr += "AND {Prefix}NQ_ListStatus.ChangeDate <= '{Date}' "
+                if start_date is not None:
+                    SQLStr += "AND {Prefix}NQ_SecuMain.ListedDate <= '{StartDate}' "
+            SQLStr += "AND {Prefix}NQ_SecuMain.InnerCode NOT IN ("+SubSQLStr+") "
+        SQLStr += "ORDER BY {Prefix}NQ_SecuMain.SecuCode"
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date))]
+    
     # 获取指定日 date 的股票 ID
     # exchange: 交易所(str)或者交易所列表(list(str))
     # date: 指定日, 默认值 None 表示今天
@@ -961,6 +985,10 @@ class JYDB(QSSQLObject, FactorDB):
         if not exchange.isdisjoint(iExchange):
             IDs += self._getAllUSStock(exchange=exchange.intersection(iExchange), date=date, is_current=is_current, start_date=start_date)
             exchange = exchange.difference(iExchange)
+        # 三板
+        if "NEEQ" in exchange:
+            IDs += self._getAllNQStock(date=date, is_current=is_current, start_date=start_date)
+            exchange.remove("NEEQ")
         if exchange:
             Msg = f"外部因子库 '{self._QSArgs.Name}' 调用 getStockID 时错误: 尚不支持交易所 {str(exchange)}"
             self._QS_Logger.error(Msg)
