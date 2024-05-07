@@ -257,6 +257,7 @@ class _Benchmark(QSArgs):
 
     @on_trait_change("FactorTable")
     def _on_FactorTable_changed(self, obj, name, old, new):
+        self._QS_Frozen = False
         if self.FactorTable is not None:
             DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self.FactorTable.getFactorMetaData(key="DataType")))
             self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1, option_range=DefaultNumFactorList))
@@ -266,14 +267,17 @@ class _Benchmark(QSArgs):
         else:
             self.add_trait("PriceFactor", Enum(None, arg_type="SingleOption", label="价格因子", order=1, option_range=[None]))
             self.add_trait("BenchmarkID", Enum(None, arg_type="SingleOption", label="基准ID", order=2, option_range=[None]))
+        self._QS_Frozen = True
     
     @on_trait_change("PriceFactor")
     def _on_PriceFactor_changed(self, obj, name, old, new):
+        self._QS_Frozen = False
         if self.FactorTable is not None:
             IDs = self.FactorTable.getID(ifactor_name=self.PriceFactor)
             self.add_trait("BenchmarkID", Enum(*IDs, arg_type="SingleOption", label="基准ID", order=2, option_range=IDs))
         else:
             self.add_trait("BenchmarkID", Enum(None, arg_type="SingleOption", label="基准ID", order=2, option_range=[None]))
+        self._QS_Frozen = True
 
 # 策略基类
 class Strategy(BaseModule):

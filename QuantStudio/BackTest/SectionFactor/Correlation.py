@@ -45,11 +45,13 @@ class SectionCorrelation(BaseModule):
         
         @on_trait_change("RiskTable")
         def _on_RiskDS_changed(self, obj, name, old, new):
+            self._QS_Frozen = False
             if new is None:
                 self.add_trait("CorrMethod", ListStr(arg_type="MultiOption", label="相关性算法", order=3, option_range=("spearman", "pearson", "kendall")))
             else:
                 self.add_trait("CorrMethod", ListStr(arg_type="MultiOption", label="相关性算法", order=3, option_range=("spearman", "pearson", "kendall", "factor-score correlation", "factor-portfolio correlation")))
             self.CorrMethod = list(set(self.CorrMethod).intersection(set(self.CorrMethod.option_range)))
+            self._QS_Frozen = True
     
     def __init__(self, factor_table, name="因子截面相关性", sys_args={}, **kwargs):
         self._FactorTable = factor_table

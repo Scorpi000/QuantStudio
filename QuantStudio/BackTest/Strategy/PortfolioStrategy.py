@@ -253,6 +253,7 @@ class _Filter(QSArgs):
 
     @on_trait_change("FiltrationType")
     def _on_FiltrationType_changed(self, obj, name, old, new):
+        self._QS_Frozen = False
         if new=="定量":
             if "FilterUpLimit" in self.ArgNames:
                 self.remove_trait("FilterUpLimit")
@@ -271,6 +272,7 @@ class _Filter(QSArgs):
             if "FilterUpLimit" not in self.ArgNames:
                 self.add_trait("FilterUpLimit", Float(0.1, label="筛选上限", arg_type="Double", order=5.1))
                 self.add_trait("FilterDownLimit", Float(0.0, label="筛选下限", arg_type="Double", order=5.2))
+        self._QS_Frozen = True
 
 class HierarchicalFiltrationStrategy(PortfolioStrategy):
     class __QS_ArgClass__(PortfolioStrategy.__QS_ArgClass__):
@@ -288,6 +290,7 @@ class HierarchicalFiltrationStrategy(PortfolioStrategy):
 
         @on_trait_change("FiltrationLevel")
         def on_FiltrationLevel_changed(self, obj, name, old, new):
+            self._QS_Frozen = False
             if new>old:# 增加了筛选层数
                 for i in range(max(0, old), max(0, new)):
                     self.add_trait("Level"+str(i), Instance(_Filter, label="第"+str(i)+"层", arg_type="ArgObject", order=9+i))
@@ -295,6 +298,7 @@ class HierarchicalFiltrationStrategy(PortfolioStrategy):
             elif new<old:# 减少了筛选层数
                 for i in range(max(0, old)-1, max(0, new)-1, -1):
                     self.remove_trait("Level"+str(i))
+            self._QS_Frozen = True
     
     def _filtrateID(self, idt, ids, args):
         FactorData = self._FT.readData(dts=[idt], ids=ids, factor_names=[args.TargetFactor]).iloc[0,0,:]
