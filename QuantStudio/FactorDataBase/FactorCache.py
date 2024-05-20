@@ -117,7 +117,7 @@ class FactorCache(__QS_Object__):
         with self._PIDLock[pid]:
             if os.path.isfile(RawDataFilePath):
                 with pd.HDFStore(RawDataFilePath, mode="r") as File:
-                    PrepareIDs = File["_QS_IDs"].to_list()
+                    PrepareIDs = (File["_QS_IDs"].to_list() if "_QS_IDs" in File else None)
                     if target_field in File: RawData = File[target_field]
                     elif "RawData" in File: RawData = File["RawData"]
                     else: RawData = None
