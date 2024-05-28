@@ -68,9 +68,15 @@ class QSArgs(HasTraits):
                     if FileStr: Config = json.loads(FileStr)
         Config.update(sys_args)
         self.__QS_initArgs__(args=Config)
-        self.update(Config)
+        self.__QS_initArgValue__(args=Config)
         self._QS_Frozen = True
-        
+    
+    def __QS_initArgs__(self, args={}):
+        return None
+    
+    def __QS_initArgValue__(self, args={}):
+        return self.update(args)
+
     def __setstate__(self, state, trait_change_notify=False):
         return super().__setstate__(state, trait_change_notify=trait_change_notify)
     
@@ -226,9 +232,6 @@ class QSArgs(HasTraits):
             iMutable = (True if iTrait.mutable is None else iTrait.mutable)
             if iMutable:
                 setattr(self, iKey, iTrait.default)
-    
-    def __QS_initArgs__(self, args={}):
-        return None
 
     def _repr_html_(self):
         return dict2html(self, dict_class=(dict, pd.Series, QSArgs), dict_limit=np.inf)
