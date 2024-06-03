@@ -518,7 +518,7 @@ class _OperationMode(QSArgs):
         self._FactorStartDT = {}# {因子名: 起始时点}
         self._FactorPrepareIDs = {}# {因子名: 需要准备原始数据的 ID 序列}
         for iFactor in self._Factors:
-            iFactor._QS_initOperation(self.DateTimes[0], self._FactorStartDT, self.SectionIDs, self._FactorPrepareIDs)
+            iFactor._QS_initOperation(self.DateTimes[0], self._FactorStartDT, None, self._FactorPrepareIDs)
         # 分组准备数据
         InitGroups = {}  # {id(因子表) : [(因子表, [因子], [ID])]}
         for iFactor in self._FactorDict.values():
