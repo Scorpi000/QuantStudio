@@ -1108,9 +1108,9 @@ class JYDB(QSSQLObject, FactorDB):
                     SQLStr += "AND ((LastTradingDate IS NULL) OR (LastTradingDate >= '{Date}')) "
         elif ContinueContractType is not None:
             if isinstance(ContinueContractType, str):
-                SubSQLStr = f"SELECT DM FROM {{Prefix}}CT_SystemConst WHERE LB = 2352 AD MS ='{ContinueContractType}'"
+                SubSQLStr = f"SELECT DM FROM {{Prefix}}CT_SystemConst WHERE LB = 2352 AND MS ='{ContinueContractType}'"
             else:
-                SubSQLStr = "SELECT DM FROM {Prefix}CT_SystemConst WHERE LB = 2352 AD MS IN ("+"', '".join(ContinueContractType)+"')"
+                SubSQLStr = "SELECT DM FROM {Prefix}CT_SystemConst WHERE LB = 2352 AND MS IN ("+"', '".join(ContinueContractType)+"')"
             SQLStr += f"AND ContinueContType IN ({SubSQLStr}) "
         SQLStr += "ORDER BY ID"
         if future_code:
