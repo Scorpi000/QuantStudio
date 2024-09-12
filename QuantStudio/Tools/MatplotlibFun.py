@@ -1,9 +1,26 @@
 # -*- coding: utf-8 -*-
+import os
+import platform
+
 import numpy as np
 import pandas as pd
 import matplotlib
+from matplotlib.pylab import mpl
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
+from matplotlib.font_manager import FontProperties
+
+
+# 初始化 matplotlib 的一些设置，比如字体
+def initMatplotlib():
+    if platform.system()=="Windows":
+        mpl.rcParams['font.sans-serif'] = ["SimHei"]
+    elif platform.system()=="Darwin":
+        if os.path.isfile("/Library/Fonts/Arial Unicode.ttf"):
+            Font = FontProperties(fname="/Library/Fonts/Arial Unicode.ttf")
+            mpl.rcParams["font.family"] = Font.get_family()
+            mpl.rcParams["font.sans-serif"] = Font.get_name()
+    mpl.rcParams['axes.unicode_minus'] = False
 
 # 绘制热图
 def plotHeatMap(df, ax):

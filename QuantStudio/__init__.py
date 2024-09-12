@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 import os
 import html
-import platform
-import logging
 import json
+import uuid
+import logging
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -11,23 +11,13 @@ import numpy as np
 import pandas as pd
 from traits.api import HasTraits
 
+from QuantStudio.Tools.DataTypeConversionFun import dict2html
+
 __QS_MainPath__ = os.path.split(os.path.realpath(__file__))[0]
 __QS_LibPath__ = __QS_MainPath__+os.sep+"Lib"
 __QS_ConfigPath__ = os.path.expanduser("~")+os.sep+"QuantStudioConfig"
 __QS_Logger__ = logging.getLogger()
 
-from matplotlib.pylab import mpl
-if platform.system()=="Windows":
-    mpl.rcParams['font.sans-serif'] = ["SimHei"]
-elif platform.system()=="Darwin":
-    if os.path.isfile("/Library/Fonts/Arial Unicode.ttf"):
-        from matplotlib.font_manager import FontProperties
-        Font = FontProperties(fname="/Library/Fonts/Arial Unicode.ttf")
-        mpl.rcParams["font.family"] = Font.get_family()
-        mpl.rcParams["font.sans-serif"] = Font.get_name()
-mpl.rcParams['axes.unicode_minus'] = False
-
-from QuantStudio.Tools.DataTypeConversionFun import dict2html
 
 # 参数对象
 # trait 的附加属性
@@ -221,7 +211,7 @@ class QSArgs(HasTraits):
         return zip(self.keys(), self.values())
     
     def update(self, args={}):
-        ArgOrder = self._ArgOrder.reindex(index=list(args.keys())).sort_values()
+        ArgOrder = self._ArgOrder.reindex(index=self._ArgOrder.index.intersection(args.keys())).sort_values()
         for iArgName in ArgOrder.index:
             self[iArgName] = args[iArgName]
     
@@ -248,9 +238,15 @@ class __QS_Object__:
     __QS_ArgClass__ = QSArgs
     
     def __init__(self, sys_args={}, config_file=None, **kwargs):
+        self._QSID = str(uuid.uuid1())
         self._QS_Logger = kwargs.pop("logger", None)
         if self._QS_Logger is None: self._QS_Logger = __QS_Logger__
         self._QSArgs = self.__QS_ArgClass__(owner=self, sys_args=sys_args, config_file=config_file, logger=self._QS_Logger)
+    
+    # 全局唯一标识
+    @property
+    def QSID(self):
+        return self._QSID
     
     @property
     def Logger(self):
@@ -262,6 +258,7 @@ class __QS_Object__:
     
     def _repr_html_(self):
         HTML = f"<b>类</b>: {html.escape(str(self.__class__))}<br/>"
+        HTML += f"<b>QSID</b>: {self._QSID}<br/>"
         HTML += f"<b>文档</b>: {html.escape(self.__doc__ if self.__doc__ else '')}<br/>"
         HTML += f"<b>参数</b>: " + self._QSArgs._repr_html_()
         return HTML

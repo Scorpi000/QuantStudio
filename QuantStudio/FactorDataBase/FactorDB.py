@@ -10,12 +10,10 @@ import datetime as dt
 from collections import OrderedDict
 from multiprocessing import Process, Queue, cpu_count
 
-import sympy
 import numpy as np
 import pandas as pd
 from progressbar import ProgressBar
 from traits.api import Instance, Str, List, Int, Enum, ListStr, Either, Directory, Dict
-from IPython.display import Math
 
 from QuantStudio import __QS_Object__, __QS_Error__, QSArgs
 from QuantStudio.FactorDataBase.FactorCache import FactorCache
@@ -154,7 +152,7 @@ class _ErgodicMode(QSArgs):
     ErgodicIDs = List(arg_type="IDList", label="遍历ID", order=7)
     AutoMove = Enum(True, False, label="自动缓冲", arg_type="Bool", order=8)
     CacheDir = Directory(arg_type="Directory", label="缓存目录", order=9)
-    ClearCache = Enum(True, False, arg_type="Bool", label="清空缓存", order=10)
+    
     def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
         super().__init__(owner=owner, sys_args=sys_args, config_file=config_file, **kwargs)
         self._isStarted = False
@@ -238,7 +236,6 @@ class _ErgodicMode(QSArgs):
         self._isStarted = False
         self._CurDT = None
         self._MMAPCacheData = None
-        if self.ClearCache: self._FactorCache.clear()
         return 0
 
     def _readData_FactorCacheMode(self, factor_names, ids, dts, args={}):
@@ -438,7 +435,6 @@ class _OperationMode(QSArgs):
     SectionIDs = Either(None, ListStr, arg_type="IDList", label="截面ID", order=5)
     IDSplit = Enum("连续切分", "间隔切分", arg_type="SingleOption", label="ID切分", order=6)
     CacheDir = Directory(arg_type="Directory", label="缓存目录", order=7)
-    ClearCache = Enum(True, False, arg_type="Bool", label="清空缓存", order=8)
     WriteBatchNum = Int(1, arg_type="Integer", label="写入批次", order=9)
     DataSubProcessNum = Int(-1, arg_type="Integer", label="数据准备子进程数", order=10)
     def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
@@ -462,40 +458,35 @@ class _OperationMode(QSArgs):
     def __QS_initArgs__(self, args={}):
         self.add_trait("FactorNames", ListStr(arg_type="MultiOption", label="运算因子", order=2))
     
-    def _genFactorDict(self, factors, factor_dict, parent_factor=None):
+    def _genFactorDict(self, factors, factor_dict):
         for iFactor in factors:
             iFactor._OperationMode = self
-            if (not isinstance(iFactor.Name, str)) or (iFactor.Name=="") or (iFactor is not factor_dict.get(iFactor.Name, iFactor)):# 该因子命名错误或者未命名, 或者有因子重名
-                # iNewName = genAvailableName("TempFactor", factor_dict)
-                iNewName = f"_QS_TempFactor_{id(iFactor)}"
-                iFactor.Name, self._FactorNameChgRecord[iNewName] = iNewName, iFactor.Name
-            factor_dict[iFactor.Name] = iFactor
-            self._FactorID[iFactor.Name] = id(iFactor)# len(factor_dict)
-            iParentFactor = (iFactor if parent_factor is None else parent_factor)
-            factor_dict.update(self._genFactorDict(iFactor.Descriptors, factor_dict, iParentFactor))
-            if iFactor.FactorTable is not None:
-                self._Factor2RawFactor[iParentFactor.Name].add(iFactor.Name)
+            factor_dict[iFactor.QSID] = iFactor
+            factor_dict.update(self._genFactorDict(iFactor.Descriptors, factor_dict))
+            if iFactor.FactorTable is not None: self._RawFactorIDs.add(iFactor.QSID)
         return factor_dict
 
     # 初始化模式, 只在模式开始时运行
     def _initMode(self, **kwargs):
         self._isStarted = True
-        self._Factor2RawFactor = {}# 因子对应的基础因子名称列表, {因子名: {基础因子名}}
-        self._Factors = []  # 因子列表, 只包括需要输出数据的因子对象
-        self._FactorDict = {}  # 因子字典, {因子名:因子}, 包括所有的因子, 即衍生因子所依赖的描述子也在内
-        self._FactorID = {}  # {因子名: 因子唯一的 ID 号(int)}
-        self._FactorNameChgRecord = {}  # 因子名的修改记录, {修改后的名字: 原始名字}
-        self._Event = {}# {因子名: (Sub2MainQueue, Event)}, 用于多进程同步的 Event 数据
+        self._Factors = []# 因子列表, 只包括需要输出数据的因子对象
+        self._RawFactorIDs = set()# 基本因子QSID列表, 即需要准备原始数据的因子
+        self._FactorDict = {}# 因子字典, {因子QSID:因子}, 包括所有的因子, 即衍生因子所依赖的描述子也在内
+        self._Event = {}# {因子QSID: (Sub2MainQueue, Event)}, 用于多进程同步的 Event 数据
         for i, iFactorName in enumerate(self._Owner.FactorNames):
             iFactor = self._Owner.getFactor(iFactorName)
             iFactor._OperationMode = self
             self._Factors.append(iFactor)
-            self._FactorDict[iFactorName] = iFactor
-            self._FactorID[iFactorName] = id(iFactor)# i
-            self._Factor2RawFactor[iFactorName] = set()
+            self._FactorDict[iFactor.QSID] = iFactor
+            if iFactor.FactorTable is not None: self._RawFactorIDs.add(iFactor.QSID)
         self._FactorDict = self._genFactorDict(self._Factors, self._FactorDict)
+        self._RawFactorIDs = sorted(self._RawFactorIDs)
+        # 遍历所有因子对象, 调用其初始化方法, 生成所有因子的起始时点信息, 生成其需要准备原始数据的截面 ID
+        self._FactorStartDT = {}# {因子ID: 起始时点}
+        self._FactorPrepareIDs = {}# {因子ID: 需要准备原始数据的 ID 序列}
+        for iFactor in self._Factors:
+            iFactor._QS_initOperation(self.DateTimes[0], self._FactorStartDT, None, self._FactorPrepareIDs)
         # 分配每个子进程的计算 ID 序列, 生成原始数据和缓存数据存储目录
-        if not self.SectionIDs: self.SectionIDs = self._FT.getID()
         if self.SubProcessNum == 0:# 串行模式
             self._PIDs = ["0"]
             self._PID_IDs = {"0": list(self.SectionIDs)}
@@ -514,17 +505,25 @@ class _OperationMode(QSArgs):
                 self._PIDs.append(iPID)
                 self._PID_IDs[iPID] = SubIDs[i]
         self._Cache = FactorCache(sys_args={"缓存目录": kwargs.get("cache_dir", self.CacheDir), "进程ID": self._PID_IDs})
-        # 遍历所有因子对象, 调用其初始化方法, 生成所有因子的起始时点信息, 生成其需要准备原始数据的截面 ID
-        self._FactorStartDT = {}# {因子名: 起始时点}
-        self._FactorPrepareIDs = {}# {因子名: 需要准备原始数据的 ID 序列}
-        for iFactor in self._Factors:
-            iFactor._QS_initOperation(self.DateTimes[0], self._FactorStartDT, None, self._FactorPrepareIDs)
+
+    def _initOperation(self, **kwargs):
+        # 检查时点, ID 序列的合法性
+        if not self.DateTimes: raise __QS_Error__("运算时点序列不能为空!")
+        if not self.IDs: raise __QS_Error__("运算 ID 序列不能为空!")
+        # 检查时点标尺是否合适
+        DTs = pd.Series(np.arange(0, len(self.DTRuler)), index=list(self.DTRuler)).reindex(index=list(self.DateTimes))
+        if pd.isnull(DTs).any(): raise __QS_Error__("运算时点序列超出了时点标尺!")
+        elif (DTs.diff().iloc[1:]!=1).any(): raise __QS_Error__("运算时点序列的频率与时点标尺不一致!")
+        # 检查因子的合法性
+        if not self.FactorNames: self.FactorNames = self._Owner.FactorNames
+    
+    def _prepare(self, **kwargs):
         # 分组准备数据
-        InitGroups = {}  # {id(因子表) : [(因子表, [因子], [ID])]}
-        for iFactor in self._FactorDict.values():
-            if iFactor.FactorTable is None: continue
-            iFTID = id(iFactor.FactorTable)
-            iPrepareIDs = self._FactorPrepareIDs[iFactor.Name]
+        InitGroups = {}  # {因子表 QSID: [(因子表, [因子], [ID])]}
+        for iFactorID in self._RawFactorIDs:
+            iFactor = self._FactorDict[iFactorID]
+            iFTID = iFactor.FactorTable.QSID
+            iPrepareIDs = self._FactorPrepareIDs[iFactorID]
             if iFTID not in InitGroups:
                 InitGroups[iFTID] = [(iFactor.FactorTable, [iFactor], iPrepareIDs)]
             else:
@@ -560,20 +559,7 @@ class _OperationMode(QSArgs):
             GroupInfo.extend(iGroupInfo)
         self._RawFactorGroupIdx = pd.Series(self._RawFactorGroupIdx, dtype=int)
         self._RawDataPreparation = dict(GroupInfo=GroupInfo, RawDataFileNames=RawDataFileNames, PrepareIDs=PrepareIDs, PID_PrepareIDs=PID_PrepareIDs)
-
-    def _initOperation(self, **kwargs):
-        # 检查时点, ID 序列的合法性
-        if not self.DateTimes: raise __QS_Error__("运算时点序列不能为空!")
-        if not self.IDs: raise __QS_Error__("运算 ID 序列不能为空!")
-        # 检查时点标尺是否合适
-        DTs = pd.Series(np.arange(0, len(self.DTRuler)), index=list(self.DTRuler)).reindex(index=list(self.DateTimes))
-        if pd.isnull(DTs).any(): raise __QS_Error__("运算时点序列超出了时点标尺!")
-        elif (DTs.diff().iloc[1:]!=1).any(): raise __QS_Error__("运算时点序列的频率与时点标尺不一致!")
-        # 检查因子的合法性, 解析出所有的因子(衍生因子所依赖的描述子也在内)
-        if not self.FactorNames: self.FactorNames = self._Owner.FactorNames
-
-    # TODO: 重用已经有的原始数据缓存
-    def _prepare(self, **kwargs):
+        
         GroupIdx = []
         for iFactorName in self.FactorNames:
             GroupIdx += self._RawFactorGroupIdx.loc[list(self._Factor2RawFactor[iFactorName])].tolist()
@@ -604,11 +590,10 @@ class _OperationMode(QSArgs):
                     ProgBar.update(i+1)
             for iPrcs in Procs.values(): iPrcs.join()
         return 0
+    
     def _exit(self):
-        if self.ClearCache: self._Cache.clear()
-        for iFactorName, iFactor in self._FactorDict.items():
+        for iFactor in self._FactorDict.values():
             iFactor._exit()
-            iFactor.Name = self._FactorNameChgRecord.get(iFactor.Name, iFactor.Name)
         return 0
 
     def _calculate(self, factor_db, table_name, if_exists, specific_target, **kwargs):
@@ -651,6 +636,7 @@ class _OperationMode(QSArgs):
         DTRuler = args.get("时点标尺", self.DTRuler)
         self.DTRuler = (dts if DTRuler is None else DTRuler)
         self.SectionIDs = args.get("截面ID", self.SectionIDs)
+        if not self.SectionIDs: self.SectionIDs = self._FT.getID()
         self.FactorNames = factor_names
         self.DateTimes = dts
         self.IDs = ids
@@ -690,15 +676,12 @@ class _OperationMode(QSArgs):
         if not self.SectionIDs: self.SectionIDs = self._FT.getID()
         self.IDs = (self.SectionIDs if not ids else ids)
         self.DTRuler = (self.DTRuler if self.DTRuler else self._FT.getDateTime())
-        self._OldArgs = {}
-        self._OldArgs["清空缓存"], self.ClearCache = self.ClearCache, False
         self._initMode(**kwargs)
         self._isStarted = True
 
     # 结束批量模式
     def end(self):
         if not self._isStarted: return 0
-        self.update(self._OldArgs)
         self._exit()
         self._isStarted = False
         return 0
@@ -849,28 +832,17 @@ class FactorTable(__QS_Object__):
     def __init__(self, name, fdb=None, sys_args={}, config_file=None, **kwargs):
         self._Name = name
         self._FactorDB = fdb# 因子表所属的因子库, None 表示自定义的因子表
+        self._QS_GroupArgs = None# 准备原始数据决定分组的参数集，如果为 None，表示每个因子单独分组
         return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     
     @property
     def Name(self):
         return self._Name
+    
     @property
     def FactorDB(self):
         return self._FactorDB
-    def __enter__(self):
-        if self._QSArgs.ErgodicMode._isStarted:
-            self._QSArgs.ErgodicMode._OldArgs = {"自动缓冲": self._QSArgs.ErgodicMode.AutoMove}
-            self._QSArgs.ErgodicMode.AutoMove = True
-        elif self._QSArgs.OperationMode._isStarted:
-            self._QS_Logger.debug(f"因子表 '{self._Name}' 开启批量运算模式")
-        else:
-            self._QS_Logger.warning(f"当前未开启任何运算模式!")
-        return self
-    def __exit__(self, exc_type, exc_value, traceback):
-        if self._QSArgs.ErgodicMode._isStarted:
-            self._QSArgs.ErgodicMode.update(self._QSArgs.ErgodicMode._OldArgs)
-        self.end()
-        return (exc_type is None)
+    
     # -------------------------------表的信息---------------------------------
     # 获取表的元数据
     def getMetaData(self, key=None, args={}):
@@ -977,12 +949,72 @@ class FactorTable(__QS_Object__):
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         return []
     # -------------------------------读取数据---------------------------------
+    # 准备原始数据
+    # context dict: 
+    #     FactorStartDT: {因子QSID: datetime}, 因子数据需要的最早时点
+    #     FactorEndDT: datetime, 因子数据需要的结束时点
+    #     DTRuler: [datetime], 时点标尺
+    # executor: 线程池或者进程池, None 表示非并行
+    def _prepareRawData(self, factors, context, executor=None):
+        if self._QS_GroupArgs is None:# 每个因子单独准备
+            StartDT = dt.datetime.now()
+            FactorNames, RawFactorNames = [], set()
+            for iFactor in factors:
+                FactorNames.append(iFactor.Name)
+                RawFactorNames.add(iFactor._NameInFT)
+                StartDT = min((StartDT, operation_mode._FactorStartDT[iFactor.QSID]))
+            EndDT = operation_mode.DateTimes[-1]
+            StartInd, EndInd = operation_mode.DTRuler.index(StartDT), operation_mode.DTRuler.index(EndDT)
+            return [(self, FactorNames, list(RawFactorNames), operation_mode.DTRuler[StartInd:EndInd+1], {})]            
+    
+    # 获取因子表准备原始数据的分组信息, [(因子表对象, [因子名], [原始因子名], [时点], {参数})]
+    def __QS_genGroupInfo__(self, factors, context):
+        if self._QS_GroupArgs is None: return# 每个因子单独准备
+        StartDT = dt.datetime.now()
+        FactorNames, RawFactorNames = [], set()
+        for iFactor in factors:
+            FactorNames.append(iFactor.Name)
+            RawFactorNames.add(iFactor._NameInFT)
+            StartDT = min((StartDT, operation_mode._FactorStartDT[iFactor.QSID]))
+        EndDT = operation_mode.DateTimes[-1]
+        StartInd, EndInd = operation_mode.DTRuler.index(StartDT), operation_mode.DTRuler.index(EndDT)
+        return [(self, FactorNames, list(RawFactorNames), operation_mode.DTRuler[StartInd:EndInd+1], {})]
+    
+    def __QS_genGroupInfo__(self, factors, operation_mode):
+        ConditionGroup = {}
+        for iFactor in factors:
+            iConditions = ";".join([iArgName+":"+str(iFactor._QSArgs[iArgName]) for iArgName in iFactor._QSArgs.ArgNames if iArgName in self._QS_GroupArgs])
+            if iConditions not in ConditionGroup:
+                ConditionGroup[iConditions] = {
+                    "FactorNames":[iFactor.Name],
+                    "RawFactorNames":{iFactor._NameInFT},
+                    "StartDT":operation_mode._FactorStartDT[iFactor.Name],
+                    "args":iFactor.Args.to_dict()
+                }
+            else:
+                ConditionGroup[iConditions]["FactorNames"].append(iFactor.Name)
+                ConditionGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
+                ConditionGroup[iConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], ConditionGroup[iConditions]["StartDT"])
+                if "回溯天数" in ConditionGroup[iConditions]["args"]:
+                    ConditionGroup[iConditions]["args"]["回溯天数"] = max(ConditionGroup[iConditions]["args"]["回溯天数"], iFactor._QSArgs.LookBack)
+        EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
+        Groups = []
+        for iConditions in ConditionGroup:
+            StartInd = operation_mode.DTRuler.index(ConditionGroup[iConditions]["StartDT"])
+            Groups.append((self, ConditionGroup[iConditions]["FactorNames"], list(ConditionGroup[iConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], ConditionGroup[iConditions]["args"]))
+        return Groups
+    
+    def __QS_saveRawData__(self, raw_data, factor_names, cache: FactorCache, pid_ids, file_name, **kwargs):
+        return cache.writeRawData(file_name, raw_data, target_fields=factor_names, additional_data=kwargs.get("additional_data", {}), pid_ids=pid_ids)
+    
     # 准备原始数据的接口
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         return None
+    
     # 计算数据的接口, 返回: Panel(item=[因子], major_axis=[时间点], minor_axis=[ID])
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         return None
+    
     # 读取数据, 返回: Panel(item=[因子], major_axis=[时间点], minor_axis=[ID])
     def readData(self, factor_names, ids, dts, args={}):
         if self._QSArgs.ErgodicMode._isStarted: return self._QSArgs.ErgodicMode.readData(factor_names=factor_names, ids=ids, dts=dts, args=args)
@@ -1004,6 +1036,18 @@ class FactorTable(__QS_Object__):
         return Data.loc[key]
     
     # ------------------------------------运算模式------------------------------------
+    def __enter__(self):
+        if self._QSArgs.ErgodicMode._isStarted:
+            self._QSArgs.ErgodicMode.AutoMove = True
+        elif self._QSArgs.OperationMode._isStarted:
+            self._QS_Logger.debug(f"因子表 '{self._Name}' 开启批量运算模式")
+        else:
+            self._QS_Logger.warning(f"当前未开启任何运算模式!")
+        return self
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.end()
+        return (exc_type is None)
+    
     # 启动运算模式, dts: 遍历的时间点序列或者迭代器
     def start(self, dts, mode="遍历模式", ids=None, mode_args={}, **kwargs):
         if mode=="遍历模式":
@@ -1037,20 +1081,6 @@ class FactorTable(__QS_Object__):
         return 0
 
     # ------------------------------------批量模式------------------------------------
-    # 获取因子表准备原始数据的分组信息, [(因子表对象, [因子名], [原始因子名], [时点], {参数})]
-    def __QS_genGroupInfo__(self, factors, operation_mode):
-        StartDT = dt.datetime.now()
-        FactorNames, RawFactorNames = [], set()
-        for iFactor in factors:
-            FactorNames.append(iFactor.Name)
-            RawFactorNames.add(iFactor._NameInFT)
-            StartDT = min((StartDT, operation_mode._FactorStartDT[iFactor.Name]))
-        EndDT = operation_mode.DateTimes[-1]
-        StartInd, EndInd = operation_mode.DTRuler.index(StartDT), operation_mode.DTRuler.index(EndDT)
-        return [(self, FactorNames, list(RawFactorNames), operation_mode.DTRuler[StartInd:EndInd+1], {})]
-    def __QS_saveRawData__(self, raw_data, factor_names, cache: FactorCache, pid_ids, file_name, **kwargs):
-        return cache.writeRawData(file_name, raw_data, target_fields=factor_names, additional_data=kwargs.get("additional_data", {}), pid_ids=pid_ids)
-
     # 计算因子数据并写入因子库
     # specific_target: {因子名: (目标因子库对象, 目标因子表名, 目标因子名)}
     # kwargs: 可选参数, 该参数同时传给因子库的 writeData 方法
@@ -1238,28 +1268,6 @@ def Factorize(factor_object, factor_name, args={}, **kwargs):
     if "logger" in kwargs: factor_object._QS_Logger = kwargs["logger"]
     return factor_object
 
-def _toExpr(obj):
-    if isinstance(obj, sympy.Expr):
-        return obj
-    elif isinstance(obj, sympy.logic.boolalg.Boolean):
-        return sympy.Function("I")(obj)
-    elif isinstance(obj, str):
-        return sympy.Symbol(f"'{obj}'")
-    else:
-        # raise __QS_Error__(f"{obj} 转 sympy.Expr 失败, 不支持的 sympy 类型: {type(obj)}")
-        return obj
-
-def _toBoolean(obj):
-    if isinstance(obj, sympy.Symbol):
-        return sympy.Eq(obj, 1)
-    elif isinstance(obj, sympy.logic.boolalg.Boolean):
-        return obj
-    elif isinstance(obj, sympy.Expr):
-        return sympy.Eq(obj, 1)
-    else:
-        # raise __QS_Error__(f"{obj} 转 sympy.logic.boolalg.Boolean 失败, 不支持的 sympy 类型: {type(obj)}")
-        return obj
-
 def _UnitaryOperator(f, idt, iid, x, args):
     Fun = args.get("Fun", None)
     if Fun is not None: Data = Fun(f, idt, iid, x, args["Arg"])
@@ -1400,11 +1408,11 @@ class Factor(__QS_Object__):
     # ------------------------------------批量模式------------------------------------
     # 获取数据的开始时点, start_dt:新起始时点, dt_dict: 当前所有因子的时点信息: {因子名 : 开始时点}, id_dict: 当前所有因子的准备原始数据的截面 ID 信息: {因子名 : ID 序列}
     def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
-        OldStartDT = dt_dict.get(self.Name, start_dt)
-        dt_dict[self.Name] = (start_dt if start_dt<OldStartDT else OldStartDT)
-        PrepareIDs = id_dict.setdefault(self.Name, prepare_ids)
+        OldStartDT = dt_dict.get(self.QSID, start_dt)
+        dt_dict[self.QSID] = (start_dt if start_dt<OldStartDT else OldStartDT)
+        PrepareIDs = id_dict.setdefault(self.QSID, prepare_ids)
         if prepare_ids != PrepareIDs:
-            raise __QS_Error__("因子 %s 指定了不同的截面!" % self.Name)
+            raise __QS_Error__("因子 %s (QSID: %s) 指定了不同的截面!" % (self.Name, self.QSID))
     # 准备缓存数据
     def __QS_prepareCacheData__(self, ids=None):
         StartDT = self._OperationMode._FactorStartDT[self.Name]
@@ -1457,213 +1465,189 @@ class Factor(__QS_Object__):
     def _genUnitaryOperatorInfo(self):
         if (self.Name==""):# 因子为中间运算因子
             Args = {"Fun":self._QSArgs.Operator, "Arg":self._QSArgs.ModelArgs}
-            Exprs = self._QSArgs.Expression
-            return (self.Descriptors, Args, Exprs)
+            return (self.Descriptors, Args)
         else:# 因子为正常因子
-            Exprs = sympy.Symbol("_d1")
-            return ([self], {}, Exprs)
+            return [self], {}
     def _genBinaryOperatorInfo(self, other):
         if isinstance(other, Factor):# 两个因子运算
             if (self.Name=="") and (other.Name==""):# 两个因子因子名为空, 说明都是中间运算因子
                 Args = {"Fun1":self._QSArgs.Operator, "Fun2":other._QSArgs.Operator, "SepInd":len(self.Descriptors), "Arg1":self._QSArgs.ModelArgs, "Arg2":other._QSArgs.ModelArgs}
-                Exprs = [self._QSArgs.Expression, other._QSArgs.Expression]
-                nDescriptor = len(self.Descriptors)
-                for i in range(len(other.Descriptors), 0, -1):
-                    Exprs[1] = Exprs[1].subs(sympy.Symbol(f"_d{i}"), sympy.Symbol(f"_d{nDescriptor+i}"))
-                return (self.Descriptors+other.Descriptors, Args, Exprs)
+                return self.Descriptors+other.Descriptors, Args
             elif (self.Name==""):# 第一个因子为中间运算因子
                 Args = {"Fun1":self._QSArgs.Operator, "SepInd":len(self.Descriptors), "Arg1":self._QSArgs.ModelArgs}
-                Exprs = [self._QSArgs.Expression, sympy.Symbol(f"_d{len(self.Descriptors)+1}")]
-                return (self.Descriptors+[other], Args, Exprs)
+                return self.Descriptors+[other], Args
             elif (other.Name==""):# 第二个因子为中间运算因子
                 Args = {"Fun2":other._QSArgs.Operator, "SepInd":1, "Arg2":other._QSArgs.ModelArgs}
-                Exprs = [sympy.Symbol(f"_d1"), other._QSArgs.Expression]
-                for i in range(len(other.Descriptors), 0, -1):
-                    Exprs[1] = Exprs[1].subs(sympy.Symbol(f"_d{i}"), sympy.Symbol(f"_d{i+1}"))
-                return ([self]+other.Descriptors, Args, Exprs)
+                return [self]+other.Descriptors, Args
             else:# 两个因子均为正常因子
                 Args = {"SepInd":1}
-                Exprs = [sympy.Symbol(f"_d1"), sympy.Symbol(f"_d2")]
-                return ([self, other], Args, Exprs)
+                return [self, other], Args
         elif (self.Name==""):# 中间运算因子+标量数据
             Args = {"Fun1":self._QSArgs.Operator, "SepInd":len(self.Descriptors), "Data2":other, "Arg1":self._QSArgs.ModelArgs}
-            Exprs = [self._QSArgs.Expression, other]
-            return (self.Descriptors, Args, Exprs)
+            return self.Descriptors, Args
         else:# 正常因子+标量数据
             Args = {"SepInd":1, "Data2":other}
-            Exprs = [sympy.Symbol(f"_d1"), other]
-            return ([self], Args, Exprs)
+            return [self], Args
     def _genRBinaryOperatorInfo(self, other):
         if (self.Name==""):# 标量数据+中间运算因子
             Args = {"Fun2":self._QSArgs.Operator, "SepInd":0, "Data1":other, "Arg2":self._QSArgs.ModelArgs}
-            Exprs = [other, self._QSArgs.Expression]
-            return (self.Descriptors, Args, Exprs)
+            return self.Descriptors, Args
         else:# 标量数据+正常因子
             Args = {"SepInd":0, "Data1":other}
-            Exprs = [other, sympy.Symbol("_d1")]
-            return ([self], Args, Exprs)
+            return [self], Args
     def __add__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genBinaryOperatorInfo(other)
+        Descriptors, Args = self._genBinaryOperatorInfo(other)
         Args["OperatorType"] = "add"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toExpr(Exprs[0]) + _toExpr(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 + _d1"}, logger=self._QS_Logger)
     def __radd__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genRBinaryOperatorInfo(other)
+        Descriptors, Args = self._genRBinaryOperatorInfo(other)
         Args["OperatorType"] = "add"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toExpr(Exprs[0]) + _toExpr(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 + _d1"}, logger=self._QS_Logger)
     def __sub__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genBinaryOperatorInfo(other)
+        Descriptors, Args = self._genBinaryOperatorInfo(other)
         Args["OperatorType"] = "sub"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toExpr(Exprs[0]) - _toExpr(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 - _d1"}, logger=self._QS_Logger)
     def __rsub__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genRBinaryOperatorInfo(other)
+        Descriptors, Args = self._genRBinaryOperatorInfo(other)
         Args["OperatorType"] = "sub"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toExpr(Exprs[0]) - _toExpr(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 - _d1"}, logger=self._QS_Logger)
     def __mul__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors,Args, Exprs = self._genBinaryOperatorInfo(other)
+        Descriptors,Args = self._genBinaryOperatorInfo(other)
         Args["OperatorType"] = "mul"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toExpr(Exprs[0]) * _toExpr(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 * _d1"}, logger=self._QS_Logger)
     def __rmul__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genRBinaryOperatorInfo(other)
+        Descriptors, Args = self._genRBinaryOperatorInfo(other)
         Args["OperatorType"] = "mul"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toExpr(Exprs[0]) * _toExpr(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 * _d1"}, logger=self._QS_Logger)
     def __pow__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genBinaryOperatorInfo(other)
+        Descriptors, Args = self._genBinaryOperatorInfo(other)
         Args["OperatorType"] = "pow"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toExpr(Exprs[0]) ** _toExpr(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 ** _d1"}, logger=self._QS_Logger)
     def __rpow__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genRBinaryOperatorInfo(other)
+        Descriptors, Args = self._genRBinaryOperatorInfo(other)
         Args["OperatorType"] = "pow"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toExpr(Exprs[0]) ** _toExpr(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 ** _d1"}, logger=self._QS_Logger)
     def __truediv__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genBinaryOperatorInfo(other)
+        Descriptors, Args = self._genBinaryOperatorInfo(other)
         Args["OperatorType"] = "div"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toExpr(Exprs[0]) / _toExpr(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 / _d1"}, logger=self._QS_Logger)
     def __rtruediv__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genRBinaryOperatorInfo(other)
+        Descriptors, Args = self._genRBinaryOperatorInfo(other)
         Args["OperatorType"] = "div"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toExpr(Exprs[0]) / _toExpr(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 / _d1"}, logger=self._QS_Logger)
     def __floordiv__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genBinaryOperatorInfo(other)
+        Descriptors, Args = self._genBinaryOperatorInfo(other)
         Args["OperatorType"] = "floordiv"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toExpr(Exprs[0]) // _toExpr(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 // _d1"}, logger=self._QS_Logger)
     def __rfloordiv__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genRBinaryOperatorInfo(other)
+        Descriptors, Args = self._genRBinaryOperatorInfo(other)
         Args["OperatorType"] = "floordiv"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toExpr(Exprs[0]) // _toExpr(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 // _d1"}, logger=self._QS_Logger)
     def __mod__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genBinaryOperatorInfo(other)
+        Descriptors, Args = self._genBinaryOperatorInfo(other)
         Args["OperatorType"] = "mod"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toExpr(Exprs[0]) % _toExpr(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 % _d1"}, logger=self._QS_Logger)
     def __rmod__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genRBinaryOperatorInfo(other)
+        Descriptors, Args = self._genRBinaryOperatorInfo(other)
         Args["OperatorType"] = "mod"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toExpr(Exprs[0]) % _toExpr(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 % _d1"}, logger=self._QS_Logger)
     def __and__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genBinaryOperatorInfo(other)
+        Descriptors, Args = self._genBinaryOperatorInfo(other)
         Args["OperatorType"] = "and"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toBoolean(Exprs[0]) & _toBoolean(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 & _d1"}, logger=self._QS_Logger)
     def __rand__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genRBinaryOperatorInfo(other)
+        Descriptors, Args = self._genRBinaryOperatorInfo(other)
         Args["OperatorType"] = "and"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toBoolean(Exprs[0]) & _toBoolean(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 & _d1"}, logger=self._QS_Logger)
     def __or__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genBinaryOperatorInfo(other)
+        Descriptors, Args = self._genBinaryOperatorInfo(other)
         Args["OperatorType"] = "or"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toBoolean(Exprs[0]) | _toBoolean(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 | _d1"}, logger=self._QS_Logger)
     def __ror__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genRBinaryOperatorInfo(other)
+        Descriptors, Args = self._genRBinaryOperatorInfo(other)
         Args["OperatorType"] = "or"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toBoolean(Exprs[0]) | _toBoolean(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 | _d1"}, logger=self._QS_Logger)
     def __xor__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genBinaryOperatorInfo(other)
+        Descriptors, Args = self._genBinaryOperatorInfo(other)
         Args["OperatorType"] = "xor"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toBoolean(Exprs[0]) ^ _toBoolean(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 ^ _d1"}, logger=self._QS_Logger)
     def __rxor__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genRBinaryOperatorInfo(other)
+        Descriptors, Args = self._genRBinaryOperatorInfo(other)
         Args["OperatorType"] = "xor"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toBoolean(Exprs[0]) ^ _toBoolean(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 ^ _d1"}, logger=self._QS_Logger)
     def __lt__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genBinaryOperatorInfo(other)
+        Descriptors, Args = self._genBinaryOperatorInfo(other)
         Args["OperatorType"] = "<"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toExpr(Exprs[0]) < _toExpr(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 < _d1"}, logger=self._QS_Logger)
     def __le__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genBinaryOperatorInfo(other)
+        Descriptors, Args = self._genBinaryOperatorInfo(other)
         Args["OperatorType"] = "<="
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toExpr(Exprs[0]) < _toExpr(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 <= _d1"}, logger=self._QS_Logger)
     def __eq__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genBinaryOperatorInfo(other)
+        Descriptors, Args = self._genBinaryOperatorInfo(other)
         Args["OperatorType"] = "=="
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": sympy.Eq(_toExpr(Exprs[0]), _toExpr(Exprs[1]))}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 = _d1"}, logger=self._QS_Logger)
     def __ne__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genBinaryOperatorInfo(other)
+        Descriptors, Args = self._genBinaryOperatorInfo(other)
         Args["OperatorType"] = "!="
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": sympy.Unequality(_toExpr(Exprs[0]), _toExpr(Exprs[1]))}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 != _d1"}, logger=self._QS_Logger)
     def __gt__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genBinaryOperatorInfo(other)
+        Descriptors, Args = self._genBinaryOperatorInfo(other)
         Args["OperatorType"] = ">"
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toExpr(Exprs[0]) > _toExpr(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 > _d1"}, logger=self._QS_Logger)
     def __ge__(self, other):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genBinaryOperatorInfo(other)
+        Descriptors, Args = self._genBinaryOperatorInfo(other)
         Args["OperatorType"] = ">="
-        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": _toExpr(Exprs[0]) >= _toExpr(Exprs[1])}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_BinaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "_d0 >= _d1"}, logger=self._QS_Logger)
     def __neg__(self):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genUnitaryOperatorInfo()
+        Descriptors, Args = self._genUnitaryOperatorInfo()
         Args["OperatorType"] = "neg"
-        return PointOperation("", Descriptors, {"算子":_UnitaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": - _toExpr(Exprs)}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_UnitaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "- _d0"}, logger=self._QS_Logger)
     def __pos__(self):
         return self
     def __abs__(self):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genUnitaryOperatorInfo()
+        Descriptors, Args = self._genUnitaryOperatorInfo()
         Args["OperatorType"] = "abs"
-        return PointOperation("", Descriptors, {"算子":_UnitaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": abs(_toExpr(Exprs))}, logger=self._QS_Logger)
+        return PointOperation("", Descriptors, {"算子":_UnitaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "ABS(_d0)"}, logger=self._QS_Logger)
     def __invert__(self):
         from QuantStudio.FactorDataBase.FactorOperation import PointOperation
-        Descriptors, Args, Exprs = self._genUnitaryOperatorInfo()
+        Descriptors, Args = self._genUnitaryOperatorInfo()
         Args["OperatorType"] = "not"
-        return PointOperation("", Descriptors, {"算子":_UnitaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": ~ _toBoolean(Exprs)}, logger=self._QS_Logger)
-
-    def expression(self, penetrated=False):
-        return sympy.Symbol(self.Name)
-
+        return PointOperation("", Descriptors, {"算子":_UnitaryOperator, "参数":Args, "运算时点":"多时点", "运算ID":"多ID", "表达式": "~ _d0"}, logger=self._QS_Logger)
+    
     def _repr_html_(self):
         HTML = f"<b>名称</b>: {html.escape(self.Name)}<br/>"
         HTML += f"<b>来源因子表</b>: {html.escape(self.FactorTable.Name) if self.FactorTable is not None else ''}<br/>"
         HTML += f"<b>原始名称</b>: {html.escape(self._NameInFT) if self.FactorTable is not None else ''}<br/>"
         HTML += f"<b>描述子列表</b>: {html.escape(str([iFactor.Name for iFactor in self.Descriptors]))}<br/>"
-        Expr = self.expression(penetrated=False)
-        Mappings = {iSymbol: iSymbol.name.replace("_", r"\_") for iSymbol in Expr.free_symbols}
-        HTML += f"<b>表达式</b>: {html.escape(Math(sympy.latex(Expr, symbol_names=Mappings, mul_symbol='times'))._repr_latex_())}<br/>"
-        Expr = self.expression(penetrated=True)
-        Mappings = {iSymbol: iSymbol.name.replace("_", r"\_") for iSymbol in Expr.free_symbols}
-        HTML += f"<b>表达式(穿透)</b>: {html.escape(Math(sympy.latex(Expr, symbol_names=Mappings, mul_symbol='times'))._repr_latex_())}<br/>"
         MetaData = self.getMetaData()
         MetaData = MetaData[~MetaData.index.str.contains("_QS")]
         HTML += f"<b>元信息</b>: {dict2html(MetaData)}"
