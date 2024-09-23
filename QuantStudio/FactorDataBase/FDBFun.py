@@ -16,6 +16,47 @@ from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.FactorDataBase.FactorDB import FactorTable
 from QuantStudio.Tools.api import Panel
 
+# -------------------------------数据变换------------------------------------
+# 时间平移, 沿着时间轴将所有数据纵向移动 lag 期, lag>0 向前移动, lag<0 向后移动, 空出来的地方填 nan
+def offsetDateTime(fdb, lag, table_name, factor_names, args={}):
+    if lag==0: return 0
+    FT = fdb.getTable(table_name, args=args)
+    Data = FT.readData(factor_names=factor_names, ids=FT.getID(), dts=FT.getDateTime(), args=args)
+    if lag>0:
+        Data.iloc[:, lag:, :] = Data.iloc[:,:-lag,:].values
+        Data.iloc[:, :lag, :] = None
+    elif lag<0:
+        Data.iloc[:, :lag, :] = Data.iloc[:,-lag:,:].values
+        Data.iloc[:, :lag, :] = None
+    DataType = FT.getFactorMetaData(factor_names, key="DataType", args=args).to_dict()
+    fdb.deleteFactor(table_name, factor_names)
+    fdb.writeData(Data, table_name, data_type=DataType)
+    return 0
+
+# 数据变换, 对原来的时间和ID序列通过某种变换函数得到新的时间序列和ID序列, 调整数据
+def changeData(fdb, table_name, factor_names, ids, dts, args={}):
+    FT = fdb.getTable(table_name, args=args)
+    Data = FT.readData(factor_names=factor_names, ids=ids, dts=dts, args=args)
+    DataType = FT.getFactorMetaData(factor_names, key="DataType", args=args).to_dict()
+    fdb.deleteFactor(table_name, factor_names)
+    fdb.writeData(Data, table_name, data_type=DataType)
+    return 0
+
+# 填充缺失值
+def fillNA(fdb, filled_value, table_name, factor_names, ids, dts, args={}):
+    Data = fdb.getTable(table_name).readData(factor_names=factor_names, ids=ids, dts=dts, args=args)
+    Data.fillna(filled_value, inplace=True)
+    fdb.writeData(Data, table_name, if_exists='update')
+    return 0
+
+# 替换数据
+def replaceData(fdb, old_value, new_value, table_name, factor_names, ids, dts, args={}):
+    Data = fdb.getTable(table_name).readData(factor_names=factor_names, ids=ids, dts=dts, args=args)
+    Data = Data.where(Data!=old_value, new_value)
+    fdb.writeData(Data, table_name, if_exists='update')
+    return 0
+
+
 # 给定 URL 获取库信息文件
 def getInfoFile(url, suffix):
     Rsp = requests.get(url)

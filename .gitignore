@@ -9,6 +9,7 @@ _eric*/
 backup/
 TestCoverage.bat
 .DS_Store
+.ipynb_checkpoints/
 *.coverage
 *.e4p
 *.bak

@@ -10,7 +10,7 @@ import numpy as np
 from traits.api import Dict, Enum, List, ListInt, Int, Instance, Str, Either, Range
 
 from QuantStudio import __QS_Error__, __QS_Object__
-from QuantStudio.FactorDataBase.FactorDB import Factor
+from QuantStudio.FactorDataBase.FactorDB import Factor, DataFactor
 from QuantStudio.Tools.AuxiliaryFun import partitionList, partitionListMovingSampling
 from QuantStudio.Tools.QSObjects import Panel
 from QuantStudio.Tools.DataTypeConversionFun import expandListElementDataFrame
@@ -18,20 +18,18 @@ from QuantStudio.Tools.DataTypeConversionFun import expandListElementDataFrame
 class FactorOperator(__QS_Object__):
     class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
         OperatorType = Enum("Point", "Time", "Section", "Panel", arg_type="SingleOption", label="算子类型", order=0, option_range=["Point", "Time", "Section", "Panel"], mutable=False)
-        Name = Str("FactorOperator", label="名称", order=1, arg_type="String", mutable=False)
-        Arity = Range(value=1, low=1, high=None, label="入参数", order=1, arg_type="Integer", mutable=False)
-        MaxArity = Range(value=0, low=0, high=None, label="最大入参数", order=1, arg_type="Integer", mutable=False)
-        ModelArgs = Dict(arg_type="Dict", label="参数", order=1, mutable=False)
-        DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=2, option_range=["double", "string", "object"], mutable=False)
-        Expression = Str("", arg_type="String", label="表达式", order=3)
-        Description = Str("", label="描述信息", order=4, arg_type="String")
-        Unit = Str("", label="量纲", order=5, arg_type="String", mutable=False)
-        Meta = Dict(arg_type="Dict", label="元信息", order=1)
-        InputFormat = Enum("numpy", "pandas", label="输入格式", order=5, arg_type="SingleOption", option_range=["numpy", "pandas"], mutable=False)
-        ExpandDescriptors = ListInt(arg_type="MultiOption", label="展开描述子", order=6, mutable=False)
-        DescriptorCompoundType = List(arg_type="List", label="描述子复合类型", order=7, mutable=False)
-        MultiMapping = Enum(False, True, arg_type="Bool", label="多重映射", order=8, mutable=False)
-        CompoundType = List(arg_type="List", label="复合类型", order=9, mutable=False)
+        Name = Str("FactorOperator", label="名称", order=1, arg_type="String")
+        ModelArgs = Dict(arg_type="Dict", label="参数", order=2, mutable=False)
+        Arity = Range(value=1, low=1, high=None, label="入参数", order=3, arg_type="Integer", mutable=False)
+        MaxArity = Range(value=0, low=0, high=None, label="最大入参数", order=4, arg_type="Integer", mutable=False)
+        DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=5, option_range=["double", "string", "object"], mutable=False)
+        Description = Str("", label="描述信息", order=6, arg_type="String")
+        Meta = Dict(arg_type="Dict", label="元信息", order=7)
+        InputFormat = Enum("numpy", "pandas", label="输入格式", order=8, arg_type="SingleOption", option_range=["numpy", "pandas"], mutable=False)
+        ExpandDescriptors = ListInt(arg_type="MultiOption", label="展开描述子", order=9, mutable=False)
+        DescriptorCompoundType = List(arg_type="List", label="描述子复合类型", order=10, mutable=False)
+        MultiMapping = Enum(False, True, arg_type="Bool", label="多重映射", order=11, mutable=False)
+        CompoundType = List(arg_type="List", label="复合类型", order=12, mutable=False)
         
         def __QS_initArgValue__(self, args={}):
             if args.get("复合类型", []) or args.get("多重映射", False): args["数据类型"] = "object"
@@ -122,7 +120,7 @@ class FactorOperator(__QS_Object__):
     def calcData(self, factor, ids, dts, descriptor_data, dt_ruler=None):
         raise NotImplementedError
     
-    def __call__(self, *x, factor_name:Optional[str]=None, args:dict={}, factor_args:dict={}):
+    def __call__(self, *x, args:dict={}, factor_name:Optional[str]=None, factor_args:dict={}, **kwargs):
         raise NotImplementedError
 
 # 单点算子
@@ -139,12 +137,13 @@ class PointOperator(FactorOperator):
     """单点算子"""
     class __QS_ArgClass__(FactorOperator.__QS_ArgClass__):
         OperatorType = Enum("Point", arg_type="SingleOption", label="算子类型", order=0, option_range=["Point"], mutable=False)
-        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=7, option_range=["单时点", "多时点"], mutable=False)
-        IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=8, option_range=["单ID", "多ID"], mutable=False)
+        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=13, option_range=["单时点", "多时点"], mutable=False)
+        IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=14, option_range=["单ID", "多ID"], mutable=False)
     
-    def __call__(self, *x, factor_name:Optional[str]=None, args:dict={}, factor_args:dict={}):
+    def __call__(self, *x, args:dict={}, factor_name:Optional[str]=None, factor_args:dict={}, **kwargs):
         Operator = self._QS_makeOperator(*x, args=args)
-        return PointOperation(name=(Operator._QSArgs.Name if not factor_name else factor_name), descriptors=x, sys_args={"算子": Operator, **factor_args})
+        Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(name=f"d{i}", data=iFactor)) for i, iFactor in enumerate(x)]
+        return PointOperation(name=(Operator._QSArgs.Name if not factor_name else factor_name), descriptors=Descriptors, sys_args={"算子": Operator, **factor_args}, **kwargs)
     
     def calcData(self, factor, ids, dts, descriptor_data, dt_ruler=None):
         ModelArgs = self._QSArgs.ModelArgs.copy()
@@ -242,14 +241,15 @@ class PointOperator(FactorOperator):
 class TimeOperator(FactorOperator):
     """时序算子"""
     class __QS_ArgClass__(FactorOperator.__QS_ArgClass__):
-        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=7, option_range=["单时点", "多时点"], mutable=False)
-        IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=8, option_range=["单ID", "多ID"], mutable=False)
-        LookBack = List(arg_type="ArgList", label="回溯期数", order=9, mutable=False)# 描述子向前回溯的时点数(不包括当前时点)
-        LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=10, mutable=False)# 描述子的回溯模式
-        StartDT = List(arg_type="ArgList", label="起始时点", order=10.5, mutable=False)# 扩张窗口模式下描述子的起始时点, 如果为 None, 则使用回溯期数参数
-        iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=11, mutable=False)
-        iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=12, option_range=["滚动窗口", "扩张窗口"], mutable=False)
-        iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=13)
+        OperatorType = Enum("Time", arg_type="SingleOption", label="算子类型", order=0, option_range=["Time"], mutable=False)
+        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=13, option_range=["单时点", "多时点"], mutable=False)
+        IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=14, option_range=["单ID", "多ID"], mutable=False)
+        LookBack = List(arg_type="ArgList", label="回溯期数", order=15, mutable=False)# 描述子向前回溯的时点数(不包括当前时点)
+        LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=16, mutable=False)# 描述子的回溯模式
+        StartDT = List(arg_type="ArgList", label="起始时点", order=17, mutable=False)# 扩张窗口模式下描述子的起始时点, 如果为 None, 则使用回溯期数参数
+        iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=18, mutable=False)
+        iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=19, option_range=["滚动窗口", "扩张窗口"], mutable=False)
+        iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=20)
         
         def __QS_initArgValue__(self, args={}):
             if "回溯期数" in args:
@@ -263,19 +263,26 @@ class TimeOperator(FactorOperator):
     def _QS_makeOperator(self, *x, args:dict={}):
         args = args.copy()
         LookBack = args.get("回溯期数", self._QSArgs.LookBack)
-        if not LookBack: args["回溯期数"] = [0] * len(x)
+        if not LookBack: LookBack = [0] * len(x)
         elif len(LookBack)<len(x): raise  __QS_Error__("时序算子 '%s'(QSID: %s) 的参数 '回溯期数' 序列长度小于描述子个数!" % (self._QSArgs.Name, self.QSID))
+        if LookBack[:len(x)]==self._QSArgs.LookBack[:len(x)]: args.pop("回溯期数", None)
+        else: args["回溯期数"] = LookBack
         LookBackMode = args.get("回溯模式", self._QSArgs.LookBackMode)
-        if not LookBackMode: args["回溯模式"] = ["滚动窗口"] * len(x)
+        if not LookBackMode: LookBackMode = ["滚动窗口"] * len(x)
         elif len(LookBackMode)<len(x): raise  __QS_Error__("时序算子 '%s'(QSID: %s) 的参数 '回溯模式' 序列长度小于描述子个数!" % (self._QSArgs.Name, self.QSID))
+        if LookBackMode[:len(x)]==self._QSArgs.LookBackMode[:len(x)]: args.pop("回溯模式", None)
+        else: args["回溯模式"] = LookBackMode
         StartDT = args.get("起始时点", self._QSArgs.StartDT)
-        if not StartDT: args["起始时点"] = [None] * len(x)
+        if not StartDT: StartDT = [None] * len(x)
         elif len(StartDT)<len(x): raise  __QS_Error__("时序算子 '%s'(QSID: %s) 的参数 '起始时点' 序列长度小于描述子个数!" % (self._QSArgs.Name, self.QSID))
+        if StartDT[:len(x)]==self._QSArgs.StartDT[:len(x)]: args.pop("起始时点", None)
+        else: args["起始时点"] = StartDT
         return super()._QS_makeOperator(*x, args=args)
     
-    def __call__(self, *x, factor_name:Optional[str]=None, args:dict={}, factor_args:dict={}):
+    def __call__(self, *x, args:dict={}, factor_name:Optional[str]=None, factor_args:dict={}, **kwargs):
         Operator = self._QS_makeOperator(*x, args=args)
-        return TimeOperation(name=(self._QSArgs.Name if not factor_name else factor_name), descriptors=x, sys_args={"算子": Operator, **factor_args})
+        Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(name=f"d{i}", data=iFactor)) for i, iFactor in enumerate(x)]
+        return TimeOperation(name=(self._QSArgs.Name if not factor_name else factor_name), descriptors=Descriptors, sys_args={"算子": Operator, **factor_args}, **kwargs)
     
     def calcData(self, factor, ids, dts, descriptor_data, dt_ruler=None):
         if self._QSArgs.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
@@ -419,12 +426,14 @@ class TimeOperator(FactorOperator):
 class SectionOperator(FactorOperator):
     """截面算子"""
     class __QS_ArgClass__(FactorOperator.__QS_ArgClass__):
-        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=7, option_range=["单时点", "多时点"], mutable=False)
-        OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=8, option_range=["全截面", "单ID"], mutable=False)
+        OperatorType = Enum("Section", arg_type="SingleOption", label="算子类型", order=0, option_range=["Section"], mutable=False)
+        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=13, option_range=["单时点", "多时点"], mutable=False)
+        OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=14, option_range=["全截面", "单ID"], mutable=False)
     
-    def __call__(self, *x, factor_name:Optional[str]=None, args:dict={}, factor_args:dict={}):
+    def __call__(self, *x, args:dict={}, factor_name:Optional[str]=None, factor_args:dict={}, **kwargs):
         Operator = self._QS_makeOperator(*x, args=args)
-        return SectionOperation(name=(self._QSArgs.Name if not factor_name else factor_name), descriptors=x, sys_args={"算子": Operator, **factor_args})
+        Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(name=f"d{i}", data=iFactor)) for i, iFactor in enumerate(x)]
+        return SectionOperation(name=(self._QSArgs.Name if not factor_name else factor_name), descriptors=Descriptors, sys_args={"算子": Operator, **factor_args}, **kwargs)
         
     def calcData(self, factor, ids, dts, descriptor_data, dt_ruler=None):
         ModelArgs = self._QSArgs.ModelArgs.copy()
@@ -531,14 +540,15 @@ class SectionOperator(FactorOperator):
 class PanelOperator(FactorOperator):
     """面板算子"""
     class __QS_ArgClass__(FactorOperator.__QS_ArgClass__):
-        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=7, option_range=["单时点", "多时点"], mutable=False)
-        OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=8, option_range=["全截面", "单ID"], mutable=False)
-        LookBack = List(arg_type="ArgList", label="回溯期数", order=9, mutable=False)# 描述子向前回溯的时点数(不包括当前时点)
-        LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=10, mutable=False)
-        StartDT = List(arg_type="ArgList", label="起始时点", order=10.5, mutable=False)# 扩张窗口模式下描述子的起始时点, 如果为 None, 则使用回溯期数参数
-        iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=11, mutable=False)
-        iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=12, option_range=["滚动窗口", "扩张窗口"], mutable=False)
-        iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=13)
+        OperatorType = Enum("Panel", arg_type="SingleOption", label="算子类型", order=0, option_range=["Panel"], mutable=False)
+        DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=13, option_range=["单时点", "多时点"], mutable=False)
+        OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=14, option_range=["全截面", "单ID"], mutable=False)
+        LookBack = List(arg_type="ArgList", label="回溯期数", order=15, mutable=False)# 描述子向前回溯的时点数(不包括当前时点)
+        LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=16, mutable=False)
+        StartDT = List(arg_type="ArgList", label="起始时点", order=17, mutable=False)# 扩张窗口模式下描述子的起始时点, 如果为 None, 则使用回溯期数参数
+        iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=18, mutable=False)
+        iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=19, option_range=["滚动窗口", "扩张窗口"], mutable=False)
+        iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=20)
         
         def __QS_initArgValue__(self, args={}):
             if "回溯期数" in args:
@@ -552,19 +562,26 @@ class PanelOperator(FactorOperator):
     def _QS_makeOperator(self, *x, args:dict={}):
         args = args.copy()
         LookBack = args.get("回溯期数", self._QSArgs.LookBack)
-        if not LookBack: args["回溯期数"] = [0] * len(x)
+        if not LookBack: LookBack = [0] * len(x)
         elif len(LookBack)<len(x): raise  __QS_Error__("面板算子 '%s'(QSID: %s) 的参数 '回溯期数' 序列长度小于描述子个数!" % (self._QSArgs.Name, self.QSID))
+        if LookBack[:len(x)]==self._QSArgs.LookBack[:len(x)]: args.pop("回溯期数", None)
+        else: args["回溯期数"] = LookBack
         LookBackMode = args.get("回溯模式", self._QSArgs.LookBackMode)
-        if not LookBackMode: args["回溯模式"] = ["滚动窗口"] * len(x)
+        if not LookBackMode: LookBackMode = ["滚动窗口"] * len(x)
         elif len(LookBackMode)<len(x): raise  __QS_Error__("面板算子 '%s'(QSID: %s) 的参数 '回溯模式' 序列长度小于描述子个数!" % (self._QSArgs.Name, self.QSID))
+        if LookBackMode[:len(x)]==self._QSArgs.LookBackMode[:len(x)]: args.pop("回溯模式", None)
+        else: args["回溯模式"] = LookBackMode
         StartDT = args.get("起始时点", self._QSArgs.StartDT)
-        if not StartDT: args["起始时点"] = [None] * len(x)
-        elif len(StartDT)<len(x): raise  __QS_Error__("面板算子 '%s'(QSID: %s) 的参数 '起始时点' 序列长度小于描述子个数!" % (self._QSArgs.Name, self.QSID))        
+        if not StartDT: StartDT = [None] * len(x)
+        elif len(StartDT)<len(x): raise  __QS_Error__("面板算子 '%s'(QSID: %s) 的参数 '起始时点' 序列长度小于描述子个数!" % (self._QSArgs.Name, self.QSID))
+        if StartDT[:len(x)]==self._QSArgs.StartDT[:len(x)]: args.pop("起始时点", None)
+        else: args["起始时点"] = StartDT
         return super()._QS_makeOperator(*x, args=args)
     
-    def __call__(self, *x, factor_name:Optional[str]=None, args:dict={}, factor_args:dict={}):
+    def __call__(self, *x, args:dict={}, factor_name:Optional[str]=None, factor_args:dict={}, **kwargs):
         Operator = self._QS_makeOperator(*x, args=args)
-        return PanelOperation(name=(self._QSArgs.Name if not factor_name else factor_name), descriptors=x, sys_args={"算子": Operator, **factor_args})
+        Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(name=f"d{i}", data=iFactor)) for i, iFactor in enumerate(x)]
+        return PanelOperation(name=(self._QSArgs.Name if not factor_name else factor_name), descriptors=Descriptors, sys_args={"算子": Operator, **factor_args}, **kwargs)
     
     def calcData(self, factor, ids, dts, descriptor_data, dt_ruler=None):
         if self._QSArgs.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
@@ -707,7 +724,7 @@ class PanelOperator(FactorOperator):
 # 算子工厂函数
 # operator_type: 算子类型, 可选: 'Point', 'Time', 'Section', 'Panel'
 # sys_args: 算子参数
-def makeFactorOperator(operator_type, func, sys_args={}, **kwargs):
+def makeFactorOperator(func, operator_type, sys_args={}, **kwargs):
     if not callable(func): raise __QS_Error__("func 必须是可调用对象!")
     if operator_type == "Point":
         FactorOperator = PointOperator(sys_args=sys_args, config_file=None, **kwargs)
@@ -724,7 +741,7 @@ def makeFactorOperator(operator_type, func, sys_args={}, **kwargs):
 
 # 将函数转换成因子定义的装饰器
 def FactorOperatorized(operator_type, sys_args={}):
-    return partial(makeFactorOperator, operator_type, sys_args=sys_args)
+    return partial(makeFactorOperator, operator_type=operator_type, sys_args=sys_args)
 
 class DerivativeFactor(Factor):
     """衍生因子"""
@@ -1211,14 +1228,14 @@ if __name__=="__main__":
     # 工厂函数方式
     def test_point(f, idt, iid, x, args):
         return x[0] + x[1]
-    test_point = makeFactorOperator("Point", test_point, sys_args={"入参数": 2, "运算时点": "多时点", "运算ID": "多ID"})    
+    test_point = makeFactorOperator(test_point, "Point", sys_args={"入参数": 2, "运算时点": "多时点", "运算ID": "多ID"})    
     Factor4 = test_point(Factor1, Factor2, factor_name="Factor4")
     
     # 装饰器方式
     @FactorOperatorized(operator_type="Time", sys_args={"入参数": 1, "运算ID": "多ID", "回溯期数": [3-1]})
     def test_time(f, idt, iid, x, args):
         return np.nansum(x[0], axis=0)
-    Factor5 = test_time(Factor1, factor_name="Factor5", args={"回溯期数": [2-1]}, factor_args={"描述信息": "我是 Factor5!"})
+    Factor5 = test_time(Factor1, args={"回溯期数": [2-1]}, factor_name="Factor5", factor_args={"描述信息": "我是 Factor5!"})
     print(Factor5.getMetaData(key="Description"))
     
     # 直接实例化方式, 不推荐
@@ -1228,7 +1245,7 @@ if __name__=="__main__":
     
     def test_panel(f, idt, iid, x, args):
         return np.argsort(np.argsort(x[0][0]))    
-    Factor7 = PanelOperation(name="Factor7", descriptors=[Factor2], sys_args={"算子": makeFactorOperator("Panel", test_panel, sys_args={"运算时点": "单时点", "回溯期数": [1-1]}), "描述子截面": [IDs]})
+    Factor7 = PanelOperation(name="Factor7", descriptors=[Factor2], sys_args={"算子": makeFactorOperator(test_panel, "Panel", sys_args={"运算时点": "单时点", "回溯期数": [1-1]}), "描述子截面": [IDs]})
     
     print(Factor1.readData(ids=IDs, dts=DTs))
     print(Factor2.readData(ids=IDs, dts=DTs))

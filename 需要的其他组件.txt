@@ -1,8 +1,0 @@
-Neo4j：
-1. 安装 APOC：https://www.cnblogs.com/jpfss/p/11365342.html
-
-SPARQL:
-1. sparqlwrapper
-
-Elasticsearch
-1. elasticsearch<8.0.0
