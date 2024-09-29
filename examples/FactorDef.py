@@ -20,7 +20,7 @@ Volume = DataFactor(name="Volume", data=pd.DataFrame(np.random.rand(len(DTs), le
 Industry = DataFactor(name="Industry", data=pd.Series(np.random.choice(["Fin", "TMT", "Ind"], size=(len(IDs),)), index=IDs))
     
 # 表达式方式
-Mid = Factorize((Open + Close) / 2, factor_name="Mid")
+Rng = Factorize((Close - Open) / ((Open + Close) / 2), factor_name="Rng")
 
 # 内置算子
 Vol_5d = fd.rolling_sum(Volume, window=5, min_priods=1, factor_name="Volume_5d")
@@ -35,18 +35,19 @@ Vol_5d_Decorator = rolling5DSum(Volume, factor_name="Volume_5d_Decorator")
 def calcRank(f, idt, iid, x, args):
     return np.argsort(np.argsort(x[0]))
 calc_rank = makeFactorOperator(calcRank, operator_type="Section", sys_args={"名称": "rank", "入参数": 1, "运算时点": "单时点", "输出形式": "全截面"})    
-MidRank = calc_rank(Mid, factor_name="MidRank")
+RngRank = calc_rank(Rng, factor_name="RngRank")
 
 # 自定义算子, 直接实例化方式, 不推荐
 from QuantStudio.FactorDataBase.FactorOperation import SectionOperation
-MidRank_Inst = SectionOperation(name="MidRank_Inst", descriptors=[Mid], sys_args={"算子": calcRank, "运算时点": "单时点"})
+RngRank_Inst = SectionOperation(name="RngRank_Inst", descriptors=[Rng], sys_args={"算子": calcRank, "运算时点": "单时点"})
 
-# 输出数据
-print(Open.Name, Open.readData(ids=IDs, dts=DTs), sep="\n")
-print(Close.Name, Close.readData(ids=IDs, dts=DTs), sep="\n")
-print(Volume.Name, Volume.readData(ids=IDs, dts=DTs), sep="\n")
-print(Mid.Name, Mid.readData(ids=IDs, dts=DTs), sep="\n")
-print(Vol_5d.Name, Vol_5d.readData(ids=IDs, dts=DTs), sep="\n")
-print(Vol_5d_Decorator.Name, Vol_5d_Decorator.readData(ids=IDs, dts=DTs), sep="\n")
-print(MidRank.Name, MidRank.readData(ids=IDs, dts=DTs), sep="\n")
-print(MidRank_Inst.Name, MidRank_Inst.readData(ids=IDs, dts=DTs), sep="\n")
+if __name__=="__main__":
+    # 输出数据
+    print(Open.Name, Open.readData(ids=IDs, dts=DTs), sep="\n")
+    print(Close.Name, Close.readData(ids=IDs, dts=DTs), sep="\n")
+    print(Volume.Name, Volume.readData(ids=IDs, dts=DTs), sep="\n")
+    print(Mid.Name, Mid.readData(ids=IDs, dts=DTs), sep="\n")
+    print(Vol_5d.Name, Vol_5d.readData(ids=IDs, dts=DTs), sep="\n")
+    print(Vol_5d_Decorator.Name, Vol_5d_Decorator.readData(ids=IDs, dts=DTs), sep="\n")
+    print(RngRank.Name, RngRank.readData(ids=IDs, dts=DTs), sep="\n")
+    print(RngRank_Inst.Name, RngRank_Inst.readData(ids=IDs, dts=DTs), sep="\n")

@@ -52,7 +52,7 @@ class RollingSum(TimeOperator):
 class StandardizeRank(SectionOperator):
     class __QS_ArgClass__(SectionOperator.__QS_ArgClass__):
         def __QS_initArgValue__(self, args={}):
-            Args = {"名称": "standardizeRank", "入参数": 1, "最大入参数": 3, "运算时点": "多时点", "输出形式": "全截面", "参数": dict(ascending=True, uniformization=True, perturbation=False, offset=0.5, other_handle='填充None')}
+            Args = {"名称": "standardizeRank", "入参数": 1, "最大入参数": 3, "运算时点": "多时点", "输出形式": "全截面"}
             Args.update(args)
             return super().__QS_initArgValue__(args=Args)
     
@@ -65,7 +65,7 @@ class StandardizeRank(SectionOperator):
             Rslt[i] = DataPreprocessingFun.standardizeRank(FactorData[i], mask=Mask[i], cat_data=CatData[i], **args)
         return Rslt
     
-    def __call__(self, f:Factor, mask:Optional[Factor]=None, cat_data:Optional[Factor]=None, *, ascending:Optional[bool]=None, uniformization:Optional[bool]=None, perturbation:Optional[bool]=None, offset:Optional[float]=None, other_handle:Optional[str]=None, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
+    def __call__(self, f:Factor, mask:Optional[Factor]=None, cat_data:Optional[Factor]=None, *, ascending:bool=True, uniformization:bool=True, perturbation:bool=False, offset:float=0.5, other_handle:str='填充None', factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
         Factors = [f]
         if mask is not None: Factors.append(mask)
         if cat_data is not None: Factors.append(cat_data)
@@ -102,4 +102,4 @@ if __name__=="__main__":
     print(Factor6.readData(ids=IDs, dts=DTs))
     print(Factor7.readData(ids=IDs, dts=DTs))
     
-    print("===")    
+    print("===")

@@ -21,7 +21,7 @@ class FactorOperator(__QS_Object__):
         Name = Str("FactorOperator", label="名称", order=1, arg_type="String")
         ModelArgs = Dict(arg_type="Dict", label="参数", order=2, mutable=False)
         Arity = Range(value=1, low=1, high=None, label="入参数", order=3, arg_type="Integer", mutable=False)
-        MaxArity = Range(value=0, low=0, high=None, label="最大入参数", order=4, arg_type="Integer", mutable=False)
+        MaxArity = Range(value=0, low=-1, high=None, label="最大入参数", order=4, arg_type="Integer", mutable=False)
         DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=5, option_range=["double", "string", "object"], mutable=False)
         Description = Str("", label="描述信息", order=6, arg_type="String")
         Meta = Dict(arg_type="Dict", label="元信息", order=7)
@@ -35,15 +35,22 @@ class FactorOperator(__QS_Object__):
             if args.get("复合类型", []) or args.get("多重映射", False): args["数据类型"] = "object"
             Arity = args.get("入参数", self.Arity)
             MaxArity = args.get("最大入参数", self.MaxArity)
-            if (MaxArity!=0) and (Arity>MaxArity):
+            if (MaxArity>0) and (Arity>MaxArity):
                 raise __QS_Error__(f"最小入参数必须小于等于最大入参数!")
             return super().__QS_initArgValue__(args=args)
+    
+    @property
+    def Name(self):
+        return self._QSArgs.Name
     
     def _QS_checkArity(self, *x):
         Arity = len(x)
         if self._QSArgs.MaxArity==0:
             if Arity!=self._QSArgs.Arity:
                 return (False, f"因子算子 {self._QSArgs.Name} 实际传入的因子数量 {Arity} 和指定的入参数 {self._QSArgs.Arity} 不符!")
+        elif self._QSArgs.MaxArity<0:
+            if Arity < self._QSArgs.Arity:
+                return (False, f"因子算子 {self._QSArgs.Name} 实际传入的因子数量 {Arity} 小于最小入参数 {self._QSArgs.Arity}!")
         else:
             if Arity > self._QSArgs.MaxArity:
                 return (False, f"因子算子 {self._QSArgs.Name} 实际传入的因子数量 {Arity} 大于最大入参数 {self._QSArgs.MaxArity}!")
@@ -142,7 +149,7 @@ class PointOperator(FactorOperator):
     
     def __call__(self, *x, args:dict={}, factor_name:Optional[str]=None, factor_args:dict={}, **kwargs):
         Operator = self._QS_makeOperator(*x, args=args)
-        Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(name=f"d{i}", data=iFactor)) for i, iFactor in enumerate(x)]
+        Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(name=f"D{i}", data=iFactor)) for i, iFactor in enumerate(x)]
         return PointOperation(name=(Operator._QSArgs.Name if not factor_name else factor_name), descriptors=Descriptors, sys_args={"算子": Operator, **factor_args}, **kwargs)
     
     def calcData(self, factor, ids, dts, descriptor_data, dt_ruler=None):
@@ -281,7 +288,7 @@ class TimeOperator(FactorOperator):
     
     def __call__(self, *x, args:dict={}, factor_name:Optional[str]=None, factor_args:dict={}, **kwargs):
         Operator = self._QS_makeOperator(*x, args=args)
-        Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(name=f"d{i}", data=iFactor)) for i, iFactor in enumerate(x)]
+        Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(name=f"D{i}", data=iFactor)) for i, iFactor in enumerate(x)]
         return TimeOperation(name=(self._QSArgs.Name if not factor_name else factor_name), descriptors=Descriptors, sys_args={"算子": Operator, **factor_args}, **kwargs)
     
     def calcData(self, factor, ids, dts, descriptor_data, dt_ruler=None):
@@ -432,7 +439,7 @@ class SectionOperator(FactorOperator):
     
     def __call__(self, *x, args:dict={}, factor_name:Optional[str]=None, factor_args:dict={}, **kwargs):
         Operator = self._QS_makeOperator(*x, args=args)
-        Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(name=f"d{i}", data=iFactor)) for i, iFactor in enumerate(x)]
+        Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(name=f"D{i}", data=iFactor)) for i, iFactor in enumerate(x)]
         return SectionOperation(name=(self._QSArgs.Name if not factor_name else factor_name), descriptors=Descriptors, sys_args={"算子": Operator, **factor_args}, **kwargs)
         
     def calcData(self, factor, ids, dts, descriptor_data, dt_ruler=None):
@@ -458,11 +465,12 @@ class SectionOperator(FactorOperator):
                         StdData[:, j] = self.calculate(factor, dts, jID, descriptor_data, ModelArgs)
             return StdData
         else:
-            SectionIdx = self._QS_partitionSectionIDs(self._QSArgs.DescriptorSection)
+            SectionIdx = self._QS_partitionSectionIDs(factor._QSArgs.DescriptorSection)
             DescriptorData = []
+            DescriptorCompoundType = ([None]*len(descriptor_data) if not self._QSArgs.DescriptorCompoundType else self._QSArgs.DescriptorCompoundType)
             for iSectionIDs, iIdx in SectionIdx:
                 iDescriptorData = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data)) if i in iIdx}).to_frame(filter_observations=False).sort_index(axis=1)
-                iDescriptorData = self._QS_Compound2Frame(iDescriptorData, [self._QSArgs.DescriptorCompoundType[i] for i in range(len(descriptor_data)) if i in iIdx])
+                iDescriptorData = self._QS_Compound2Frame(iDescriptorData, [DescriptorCompoundType[i] for i in range(len(descriptor_data)) if i in iIdx])
                 iExpandDescriptors = sorted(f"d{i}" for i in set(self._QSArgs.ExpandDescriptors).intersection(iIdx))
                 if iExpandDescriptors:
                     iDescriptorData, iOtherData = iDescriptorData.loc[:, iExpandDescriptors], iDescriptorData.loc[:, iDescriptorData.columns.difference(iExpandDescriptors)]
@@ -580,7 +588,7 @@ class PanelOperator(FactorOperator):
     
     def __call__(self, *x, args:dict={}, factor_name:Optional[str]=None, factor_args:dict={}, **kwargs):
         Operator = self._QS_makeOperator(*x, args=args)
-        Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(name=f"d{i}", data=iFactor)) for i, iFactor in enumerate(x)]
+        Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(name=f"D{i}", data=iFactor)) for i, iFactor in enumerate(x)]
         return PanelOperation(name=(self._QSArgs.Name if not factor_name else factor_name), descriptors=Descriptors, sys_args={"算子": Operator, **factor_args}, **kwargs)
     
     def calcData(self, factor, ids, dts, descriptor_data, dt_ruler=None):
@@ -651,9 +659,10 @@ class PanelOperator(FactorOperator):
                 descriptor_data[0] = StdData
             SectionIdx = self._QS_partitionSectionIDs(factor._QSArgs.DescriptorSection)
             DescriptorData = []
+            DescriptorCompoundType = ([None]*len(descriptor_data) if not self._QSArgs.DescriptorCompoundType else self._QSArgs.DescriptorCompoundType)
             for iSectionIDs, iIdx in SectionIdx:
                 iDescriptorData = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data)) if i in iIdx}).loc[:, DTRuler].to_frame(filter_observations=False).sort_index(axis=1)
-                iDescriptorData = self._QS_Compound2Frame(iDescriptorData, [self._QSArgs.DescriptorCompoundType[i] for i in range(len(descriptor_data)) if i in iIdx])
+                iDescriptorData = self._QS_Compound2Frame(iDescriptorData, [DescriptorCompoundType[i] for i in range(len(descriptor_data)) if i in iIdx])
                 iExpandDescriptors = sorted(f"d{i}" for i in set(self._QSArgs.ExpandDescriptors).intersection(iIdx))
                 if iExpandDescriptors:
                     iDescriptorData, iOtherData = iDescriptorData.loc[:, iExpandDescriptors], iDescriptorData.loc[:, iDescriptorData.columns.difference(iExpandDescriptors)]

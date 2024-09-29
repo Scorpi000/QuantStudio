@@ -758,6 +758,15 @@ class DataFactor(Factor):
                         sys_args["数据类型"] = "double"
         self._Data = data
         return super().__init__(name=name, ft=None, sys_args=sys_args, config_file=None, **kwargs)
+    
+    @property
+    def Data(self):
+        return self._Data
+    
+    @property
+    def DataContent(self):
+        return self._DataContent
+    
     def getMetaData(self, key=None, args={}):
         DataType = args.get("数据类型", self._QSArgs.DataType)
         if key is None: return pd.Series({"DataType": DataType})
