@@ -71,8 +71,8 @@ class __QS_Error_DuplicatedIndex__(__QS_Error__):
 
 # 将信息源文件中的表和字段信息导入信息文件
 def importInfo(info_file, info_resource, out_info=False):
-    TableInfo = pd.read_excel(info_resource, "TableInfo").set_index(["TableName"], engine="openpyxl")
-    FactorInfo = pd.read_excel(info_resource, 'FactorInfo').set_index(['TableName', 'FieldName'], engine="openpyxl")
+    TableInfo = pd.read_excel(info_resource, "TableInfo", engine="openpyxl").set_index(["TableName"])
+    FactorInfo = pd.read_excel(info_resource, 'FactorInfo', engine="openpyxl").set_index(['TableName', 'FieldName'])
     if not out_info:
         try:
             from QuantStudio.Tools.DataTypeFun import writeNestedDict2HDF5

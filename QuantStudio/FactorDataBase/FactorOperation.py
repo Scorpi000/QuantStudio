@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """因子运算"""
 import gc
+import datetime as dt
 from functools import partial
 from typing import Optional
 from multiprocessing import Queue, Event
@@ -121,6 +122,18 @@ class FactorOperator(__QS_Object__):
                 Data.append(iData)
         return pd.concat(Data, axis=1, keys=descriptor_data.columns.tolist())
     
+    def _QS_getCalcDTs(self, factor, dts, mask=False):
+        CalcDTs = factor._QSArgs.CalcDTRuler
+        if CalcDTs:
+            StartIdx, EndIdx = np.searchsorted(CalcDTs, dts[0], side="left"), np.searchsorted(CalcDTs, dts[-1], side="right")
+            CalcDTs = CalcDTs[StartIdx:EndIdx]
+            if mask:
+                return np.isin(dts, CalcDTs)
+            else:
+                return set(CalcDTs)
+        else:
+            return None
+    
     def calculate(self, f, idt, iid, x, args):
         raise NotImplementedError
     
@@ -154,25 +167,46 @@ class PointOperator(FactorOperator):
     
     def calcData(self, factor, ids, dts, descriptor_data, dt_ruler=None):
         ModelArgs = self._QSArgs.ModelArgs.copy()
-        ModelArgs.update(factor.Args.ModelArgs)
+        ModelArgs.update(factor._QSArgs.ModelArgs)
         if self._QSArgs.InputFormat == "numpy":
-            if (self._QSArgs.DTMode=='多时点') and (self._QSArgs.IDMode=='多ID'):
-                return self.calculate(factor, dts, ids, descriptor_data, ModelArgs)
             if self._QSArgs.DataType=='double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
             else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')
-            if (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='单ID'):
+            if (self._QSArgs.DTMode=='多时点') and (self._QSArgs.IDMode=='多ID'):
+                CalcMask = self._QS_getCalcDTs(factor, dts, mask=True)
+                if CalcMask is not None:
+                    descriptor_data = [iData[CalcMask] for iData in descriptor_data]
+                    dts = np.array(dts, dtype="O")[CalcMask].tolist()
+                    iStdData = self.calculate(factor, dts, ids, descriptor_data, ModelArgs)
+                    StdData[CalcMask, :] = iStdData
+                else:
+                    return self.calculate(factor, dts, ids, descriptor_data, ModelArgs)
+            elif (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='单ID'):
+                CalcDTs = self._QS_getCalcDTs(factor, dts, mask=False)
                 for i, iDT in enumerate(dts):
+                    if (CalcDTs is not None) and (iDT not in CalcDTs): continue
                     for j, jID in enumerate(ids):
                         StdData[i, j] = self.calculate(factor, iDT, jID, [iData[i, j] for iData in descriptor_data], ModelArgs)
             elif (self._QSArgs.DTMode=='多时点') and (self._QSArgs.IDMode=='单ID'):
-                for j, jID in enumerate(ids):
-                    StdData[:, j] = self.calculate(factor, dts, jID, [iData[:, j] for iData in descriptor_data], ModelArgs)
+                CalcMask = self._QS_getCalcDTs(factor, dts, mask=True)
+                if CalcMask is None:
+                    for j, jID in enumerate(ids):
+                        StdData[:, j] = self.calculate(factor, dts, jID, [iData[:, j] for iData in descriptor_data], ModelArgs)
+                else:
+                    dts = np.array(dts, dtype="O")[CalcMask].tolist()
+                    for j, jID in enumerate(ids):
+                        StdData[CalcMask, j] = self.calculate(factor, dts, jID, [iData[CalcMask, j] for iData in descriptor_data], ModelArgs)
             elif (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='多ID'):
+                CalcDTs = self._QS_getCalcDTs(factor, dts, mask=False)
                 for i, iDT in enumerate(dts):
+                    if (CalcDTs is not None) and (iDT not in CalcDTs): continue
                     StdData[i, :] = self.calculate(factor, iDT, ids, [iData[i, :] for iData in descriptor_data], ModelArgs)
             return StdData
         else:
-            descriptor_data = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data))}).to_frame(filter_observations=False).sort_index(axis=1)
+            CalcMask = self._QS_getCalcDTs(factor, dts, mask=True)
+            if CalcMask is not None:
+                descriptor_data = Panel({f"d{i}": descriptor_data[i][CalcMask] for i in range(len(descriptor_data))}).to_frame(filter_observations=False).sort_index(axis=1, key=lambda x: x.str.replace("d", "").astype(int))                                
+            else:
+                descriptor_data = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data))}).to_frame(filter_observations=False).sort_index(axis=1, key=lambda x: x.str.replace("d", "").astype(int))
             descriptor_data = self._QS_Compound2Frame(descriptor_data, self._QSArgs.DescriptorCompoundType)
             if self._QSArgs.ExpandDescriptors:
                 descriptor_data, iOtherData = descriptor_data.iloc[:, self._QSArgs.ExpandDescriptors], descriptor_data.loc[:, descriptor_data.columns.difference(descriptor_data.columns[self._QSArgs.ExpandDescriptors])]
@@ -181,18 +215,21 @@ class PointOperator(FactorOperator):
                 if not iOtherData.empty:
                     descriptor_data.index, iOtherData.index = descriptor_data.index.rename(("DT", "ID")), iOtherData.index.rename(("DT", "ID"))
                     descriptor_data = pd.merge(descriptor_data, iOtherData, how="left", left_index=True, right_index=True)
-                descriptor_data = descriptor_data.sort_index(axis=1)
+                descriptor_data = descriptor_data.sort_index(axis=1, key=lambda x: x.str.replace("d", "").astype(int))
             if self._QSArgs.CompoundType:
                 CompoundCols = [iCol[0] for iCol in self._QSArgs.CompoundType]
             else:
                 CompoundCols = None
             if (self._QSArgs.DTMode=='多时点') and (self._QSArgs.IDMode=='多ID'):
-                StdData = self.calculate(factor, dts, ids, descriptor_data, ModelArgs)
-                return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
+                DTs = (np.array(dts, dtype="O")[CalcMask].tolist() if CalcMask is not None else dts)
+                StdData = self.calculate(factor, DTs, ids, descriptor_data, ModelArgs)
+                return self._QS_adjOutputPandas(StdData, CompoundCols, DTs, ids).reindex(index=dts)
             elif (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='单ID'):
                 if self._QSArgs.DataType == 'double': StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
                 else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')
+                CalcDTs = (set(np.array(dts, dtype="O")[CalcMask]) if CalcMask is not None else None)
                 for i, iDT in enumerate(dts):
+                    if (CalcDTs is not None) and (iDT not in CalcDTs): continue
                     for j, jID in enumerate(ids):
                         iStdData = self.calculate(factor, iDT, jID, descriptor_data.loc[iDT].loc[jID], ModelArgs)
                         if isinstance(iStdData, pd.DataFrame):
@@ -203,9 +240,10 @@ class PointOperator(FactorOperator):
                 return pd.DataFrame(StdData, index=dts, columns=ids)
             elif (self._QSArgs.DTMode=='多时点') and (self._QSArgs.IDMode=='单ID'):
                 descriptor_data = descriptor_data.swaplevel(axis=0)
+                CalcDTs = (np.array(dts, dtype="O")[CalcMask].tolist() if CalcMask is not None else dts)
                 StdData = []
                 for j, jID in enumerate(ids):
-                    iStdData = self.calculate(factor, dts, jID, descriptor_data.loc[jID], ModelArgs)
+                    iStdData = self.calculate(factor, CalcDTs, jID, descriptor_data.loc[jID], ModelArgs)
                     if isinstance(iStdData, pd.DataFrame):
                         iStdData["_QS_ID"] = jID
                     elif isinstance(iStdData, pd.Series):
@@ -216,10 +254,11 @@ class PointOperator(FactorOperator):
                     StdData.append(iStdData)
                 StdData = pd.concat(StdData, axis=0, ignore_index=False).set_index(["_QS_ID"], append=True)
                 if StdData.shape[1]==1: StdData = StdData.iloc[:, 0]
-                return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
+                return self._QS_adjOutputPandas(StdData, CompoundCols, CalcDTs, ids).reindex(index=dts)
             elif (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='多ID'):
+                CalcDTs = (np.array(dts, dtype="O")[CalcMask].tolist() if CalcMask is not None else dts)
                 StdData = []
-                for i, iDT in enumerate(dts):
+                for i, iDT in enumerate(CalcDTs):
                     iStdData = self.calculate(factor, iDT, ids, descriptor_data.loc[iDT], ModelArgs)
                     if isinstance(iStdData, pd.DataFrame):
                         iStdData["_QS_DT"] = iDT
@@ -232,7 +271,7 @@ class PointOperator(FactorOperator):
                 StdData = pd.concat(StdData, axis=0, ignore_index=False).set_index(["_QS_DT"], append=True)
                 StdData = StdData.swaplevel(axis=0)
                 if StdData.shape[1] == 1: StdData = StdData.iloc[:, 0]
-                return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
+                return self._QS_adjOutputPandas(StdData, CompoundCols, CalcDTs, ids).reindex(index=dts)
     
     
 # 时序算子
@@ -330,7 +369,9 @@ class TimeOperator(FactorOperator):
         ModelArgs.update(factor.Args.ModelArgs)
         if self._QSArgs.InputFormat == "numpy":
             if (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='单ID'):
+                CalcDTs = self._QS_getCalcDTs(factor, dts, mask=False)
                 for i, iDT in enumerate(dts):
+                    if (CalcDTs is not None) and (iDT not in CalcDTs): continue
                     iDTs = DTRuler[max(0, MaxLookBack+i+1-MaxLen):i+1+MaxLookBack]
                     for j, jID in enumerate(ids):
                         x = []
@@ -339,7 +380,9 @@ class TimeOperator(FactorOperator):
                             x.append(kDescriptorData[max(0, kStartInd+1+i-kLen):kStartInd+1+i, j])
                         StdData[iStartInd+i, j] = self.calculate(factor, iDTs, jID, x, ModelArgs)
             elif (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='多ID'):
+                CalcDTs = self._QS_getCalcDTs(factor, dts, mask=False)
                 for i, iDT in enumerate(dts):
+                    if (CalcDTs is not None) and (iDT not in CalcDTs): continue
                     iDTs = DTRuler[max(0, MaxLookBack+i+1-MaxLen):i+1+MaxLookBack]
                     x = []
                     for k,kDescriptorData in enumerate(descriptor_data):
@@ -349,14 +392,23 @@ class TimeOperator(FactorOperator):
             elif (self._QSArgs.DTMode=='多时点') and (self._QSArgs.IDMode=='单ID'):
                 for j, jID in enumerate(ids):
                     StdData[iStartInd:, j] = self.calculate(factor, DTRuler, jID, [kDescriptorData[:, j] for kDescriptorData in descriptor_data], ModelArgs)
+                StdData = StdData[iStartInd:, :]
+                CalcMask = self._QS_getCalcDTs(factor, dts, mask=True)
+                if CalcMask is not None:
+                    StdData[~CalcMask, :] = None
+                return StdData
             else:
-                return self.calculate(factor, DTRuler, ids, descriptor_data, ModelArgs)
+                StdData = self.calculate(factor, DTRuler, ids, descriptor_data, ModelArgs)[iStartInd:, :]
+                CalcMask = self._QS_getCalcDTs(factor, dts, mask=True)
+                if CalcMask is not None:
+                    StdData[~CalcMask, :] = None
+                return StdData
             return StdData[iStartInd:, :]
         else:
             StdData = pd.DataFrame(StdData, columns=ids, index=DTRuler[-StdData.shape[0]:])
             if (self._QSArgs.iLookBackMode=="扩张窗口") or (self._QSArgs.iLookBack!=0):
                 descriptor_data[0] = StdData
-            descriptor_data = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data))}).loc[:, DTRuler].to_frame(filter_observations=False).sort_index(axis=1)
+            descriptor_data = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data))}).loc[:, DTRuler].to_frame(filter_observations=False).sort_index(axis=1, key=lambda x: x.str.replace("d", "").astype(int))
             descriptor_data = self._QS_Compound2Frame(descriptor_data, self._QSArgs.DescriptorCompoundType)
             if self._QSArgs.ExpandDescriptors:
                 descriptor_data, iOtherData = descriptor_data.iloc[:, self._QSArgs.ExpandDescriptors], descriptor_data.loc[:, descriptor_data.columns.difference(descriptor_data.columns[self._QSArgs.ExpandDescriptors])]
@@ -365,7 +417,7 @@ class TimeOperator(FactorOperator):
                 if not iOtherData.empty:
                     descriptor_data.index, iOtherData.index = descriptor_data.index.rename(("DT", "ID")), iOtherData.index.rename(("DT", "ID"))
                     descriptor_data = pd.merge(descriptor_data, iOtherData, how="left", left_index=True, right_index=True)
-                descriptor_data = descriptor_data.sort_index(axis=1)
+                descriptor_data = descriptor_data.sort_index(axis=1, key=lambda x: x.str.replace("d", "").astype(int))
             if self._QSArgs.CompoundType:
                 CompoundCols = [iCol[0] for iCol in self._QSArgs.CompoundType]
             else:
@@ -373,9 +425,11 @@ class TimeOperator(FactorOperator):
             if (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='单ID'):
                 StdData = StdData.values
                 descriptor_data = descriptor_data.swaplevel(axis=0)
+                CalcDTs = self._QS_getCalcDTs(factor, dts, mask=False)
                 for j, jID in enumerate(ids):
                     jDescriptorData = descriptor_data.loc[jID]
                     for i, iDT in enumerate(dts):
+                        if (CalcDTs is not None) and (iDT not in CalcDTs): continue
                         iDTs = DTRuler[max(0, MaxLookBack+i+1-MaxLen):i+1+MaxLookBack]
                         iStdData = self.calculate(factor, iDTs, jID, jDescriptorData.loc[iDTs], ModelArgs)
                         if isinstance(iStdData, pd.DataFrame):
@@ -385,8 +439,10 @@ class TimeOperator(FactorOperator):
                         StdData[iStartInd + i, j] = iStdData
                 return pd.DataFrame(StdData[iStartInd:, :], index=dts, columns=ids)
             elif (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='多ID'):
+                CalcDTs = self._QS_getCalcDTs(factor, dts, mask=False)
                 StdData = []
                 for i, iDT in enumerate(dts):
+                    if (CalcDTs is not None) and (iDT not in CalcDTs): continue
                     iDTs = DTRuler[max(0, MaxLookBack+i+1-MaxLen):i+1+MaxLookBack]
                     iStdData = self.calculate(factor, iDTs, ids, descriptor_data.loc[iDTs], ModelArgs)
                     if isinstance(iStdData, pd.DataFrame):
@@ -400,7 +456,7 @@ class TimeOperator(FactorOperator):
                 StdData = pd.concat(StdData, axis=0, ignore_index=False).set_index(["_QS_DT"], append=True)
                 StdData = StdData.swaplevel(axis=0)
                 if StdData.shape[1] == 1: StdData = StdData.iloc[:, 0]
-                return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
+                return self._QS_adjOutputPandas(StdData, CompoundCols, sorted(CalcDTs), ids).reindex(index=dts)
             elif (self._QSArgs.DTMode=='多时点') and (self._QSArgs.IDMode=='单ID'):
                 descriptor_data = descriptor_data.swaplevel(axis=0)
                 StdData = []
@@ -416,10 +472,18 @@ class TimeOperator(FactorOperator):
                     StdData.append(iStdData)
                 StdData = pd.concat(StdData, axis=0, ignore_index=False).set_index(["_QS_ID"], append=True)
                 if StdData.shape[1] == 1: StdData = StdData.iloc[:, 0]
-                return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
+                StdData = self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
+                CalcMask = self._QS_getCalcDTs(factor, dts, mask=True)
+                if CalcMask is not None:
+                    StdData[~CalcMask] = None
+                return StdData
             else:
                 StdData = self.calculate(factor, DTRuler, ids, descriptor_data, ModelArgs)
-                return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
+                StdData = self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
+                CalcMask = self._QS_getCalcDTs(factor, dts, mask=True)
+                if CalcMask is not None:
+                    StdData[~CalcMask] = None
+                return StdData
 
 
 # 截面算子
@@ -450,28 +514,50 @@ class SectionOperator(FactorOperator):
             else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype="O")
             if self._QSArgs.OutputMode=="全截面":
                 if self._QSArgs.DTMode=="单时点":
+                    CalcDTs = self._QS_getCalcDTs(factor, dts, mask=False)
                     for i, iDT in enumerate(dts):
+                        if (CalcDTs is not None) and (iDT not in CalcDTs): continue
                         StdData[i, :] = self.calculate(factor, iDT, ids, [kDescriptorData[i] for kDescriptorData in descriptor_data], ModelArgs)
                 else:
-                    StdData = self.calculate(factor, dts, ids, descriptor_data, ModelArgs)
+                    CalcMask = self._QS_getCalcDTs(factor, dts, mask=True)
+                    if CalcMask is not None:
+                        descriptor_data = [iData[CalcMask] for iData in descriptor_data]
+                        dts = np.array(dts, dtype="O")[CalcMask].tolist()
+                        iStdData = self.calculate(factor, dts, ids, descriptor_data, ModelArgs)
+                        StdData[CalcMask, :] = iStdData
+                    else:
+                        StdData = self.calculate(factor, dts, ids, descriptor_data, ModelArgs)
             else:
                 if self._QSArgs.DTMode=="单时点":
+                    CalcDTs = self._QS_getCalcDTs(factor, dts, mask=False)
                     for i, iDT in enumerate(dts):
+                        if (CalcDTs is not None) and (iDT not in CalcDTs): continue
                         x = [kDescriptorData[i] for kDescriptorData in descriptor_data]
                         for j, jID in enumerate(ids):
                             StdData[i, j] = self.calculate(factor, iDT, jID, x, ModelArgs)
                 else:
-                    for j, jID in enumerate(ids):
-                        StdData[:, j] = self.calculate(factor, dts, jID, descriptor_data, ModelArgs)
+                    CalcMask = self._QS_getCalcDTs(factor, dts, mask=True)
+                    if CalcMask is not None:
+                        descriptor_data = [iData[CalcMask] for iData in descriptor_data]
+                        dts = np.array(dts, dtype="O")[CalcMask].tolist()
+                        for j, jID in enumerate(ids):
+                            StdData[CalcMask, j] = self.calculate(factor, dts, jID, descriptor_data, ModelArgs)
+                    else:
+                        for j, jID in enumerate(ids):
+                            StdData[:, j] = self.calculate(factor, dts, jID, descriptor_data, ModelArgs)
             return StdData
         else:
             SectionIdx = self._QS_partitionSectionIDs(factor._QSArgs.DescriptorSection)
             DescriptorData = []
             DescriptorCompoundType = ([None]*len(descriptor_data) if not self._QSArgs.DescriptorCompoundType else self._QSArgs.DescriptorCompoundType)
+            CalcMask = self._QS_getCalcDTs(factor, dts, mask=True)
             for iSectionIDs, iIdx in SectionIdx:
-                iDescriptorData = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data)) if i in iIdx}).to_frame(filter_observations=False).sort_index(axis=1)
+                if CalcMask is not None:
+                    iDescriptorData = Panel({f"d{i}": descriptor_data[i][CalcMask] for i in range(len(descriptor_data)) if i in iIdx}).to_frame(filter_observations=False).sort_index(axis=1, key=lambda x: x.str.replace("d", "").astype(int))
+                else:
+                    iDescriptorData = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data)) if i in iIdx}).to_frame(filter_observations=False).sort_index(axis=1, key=lambda x: x.str.replace("d", "").astype(int))
                 iDescriptorData = self._QS_Compound2Frame(iDescriptorData, [DescriptorCompoundType[i] for i in range(len(descriptor_data)) if i in iIdx])
-                iExpandDescriptors = sorted(f"d{i}" for i in set(self._QSArgs.ExpandDescriptors).intersection(iIdx))
+                iExpandDescriptors = sorted((f"d{i}" for i in set(self._QSArgs.ExpandDescriptors).intersection(iIdx)), key=lambda x: int(x[1:]))
                 if iExpandDescriptors:
                     iDescriptorData, iOtherData = iDescriptorData.loc[:, iExpandDescriptors], iDescriptorData.loc[:, iDescriptorData.columns.difference(iExpandDescriptors)]
                     iDescriptorData = expandListElementDataFrame(iDescriptorData, expand_index=True)
@@ -479,7 +565,7 @@ class SectionOperator(FactorOperator):
                     if not iOtherData.empty:
                         iDescriptorData.index, iOtherData.index = iDescriptorData.index.rename(("DT", "ID")), iOtherData.index.rename(("DT", "ID"))
                         iDescriptorData = pd.merge(iDescriptorData, iOtherData, how="left", left_index=True, right_index=True)
-                iDescriptorData = iDescriptorData.sort_index(axis=1)
+                iDescriptorData = iDescriptorData.sort_index(axis=1, key=lambda x: x.str.replace("d", "").astype(int))
                 DescriptorData.append(iDescriptorData)
             descriptor_data, DescriptorData = DescriptorData, None
             if self._QSArgs.CompoundType:
@@ -487,9 +573,10 @@ class SectionOperator(FactorOperator):
             else:
                 CompoundCols = None
             if self._QSArgs.OutputMode=="全截面":
+                CalcDTs = (np.array(dts, dtype="O")[CalcMask].tolist() if CalcMask is not None else dts)
                 if self._QSArgs.DTMode=="单时点":
                     StdData = []
-                    for i, iDT in enumerate(dts):
+                    for i, iDT in enumerate(CalcDTs):
                         iStdData = self.calculate(factor, iDT, ids, [iData.loc[iDT] for iData in descriptor_data], ModelArgs)
                         if isinstance(iStdData, pd.DataFrame):
                             iStdData["_QS_DT"] = iDT
@@ -502,15 +589,17 @@ class SectionOperator(FactorOperator):
                     StdData = pd.concat(StdData, axis=0, ignore_index=False).set_index(["_QS_DT"], append=True)
                     StdData = StdData.swaplevel(axis=0)
                     if StdData.shape[1] == 1: StdData = StdData.iloc[:, 0]
-                    return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
+                    return self._QS_adjOutputPandas(StdData, CompoundCols, CalcDTs, ids).reindex(index=dts)
                 else:
-                    StdData = self.calculate(factor, dts, ids, descriptor_data, ModelArgs)
-                    return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
+                    StdData = self.calculate(factor, CalcDTs, ids, descriptor_data, ModelArgs)
+                    return self._QS_adjOutputPandas(StdData, CompoundCols, CalcDTs, ids).reindex(index=dts)
             else:
                 if self._QSArgs.DTMode=="单时点":
                     if self._QSArgs.DataType == "double": StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype="float")
                     else: StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype="O")
+                    CalcDTs = (set(np.array(dts, dtype="O")[CalcMask]) if CalcMask is not None else None)
                     for i, iDT in enumerate(dts):
+                        if (CalcDTs is not None) and (iDT not in CalcDTs): continue
                         iDescriptorData = [iData.loc[iDT] for iData in descriptor_data]
                         for j, jID in enumerate(ids):
                             iStdData = self.calculate(factor, iDT, jID, iDescriptorData, ModelArgs)
@@ -521,9 +610,10 @@ class SectionOperator(FactorOperator):
                             StdData[i, j] = iStdData
                     return pd.DataFrame(StdData, index=dts, columns=ids)
                 else:
+                    CalcDTs = (np.array(dts, dtype="O")[CalcMask].tolist() if CalcMask is not None else dts)
                     StdData = []
                     for j, jID in enumerate(ids):
-                        iStdData = self.calculate(factor, dts, jID, descriptor_data, ModelArgs)
+                        iStdData = self.calculate(factor, CalcDTs, jID, descriptor_data, ModelArgs)
                         if isinstance(iStdData, pd.DataFrame):
                             iStdData["_QS_ID"] = jID
                         elif isinstance(iStdData, pd.Series):
@@ -534,7 +624,7 @@ class SectionOperator(FactorOperator):
                         StdData.append(iStdData)
                     StdData = pd.concat(StdData, axis=0, ignore_index=False).set_index(["_QS_ID"], append=True)
                     if StdData.shape[1] == 1: StdData = StdData.iloc[:, 0]
-                    return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
+                    return self._QS_adjOutputPandas(StdData, CompoundCols, CalcDTs, ids).reindex(index=dts)
 
 
 # 面板算子
@@ -630,7 +720,9 @@ class PanelOperator(FactorOperator):
         if self._QSArgs.InputFormat == "numpy":
             if self._QSArgs.OutputMode=='全截面':
                 if self._QSArgs.DTMode=='单时点':
+                    CalcDTs = self._QS_getCalcDTs(factor, dts, mask=False)
                     for i, iDT in enumerate(dts):
+                        if (CalcDTs is not None) and (iDT not in CalcDTs): continue
                         iDTs = DTRuler[max(0, MaxLookBack+i+1-MaxLen):i+1+MaxLookBack]
                         x = []
                         for k, kDescriptorData in enumerate(descriptor_data):
@@ -638,10 +730,16 @@ class PanelOperator(FactorOperator):
                             x.append(kDescriptorData[max(0, kStartInd+1+i-kLen):kStartInd+1+i])
                         StdData[iStartInd+i, :] = self.calculate(factor, iDTs, ids, x, ModelArgs)
                 else:
-                    return self.calculate(factor, DTRuler, ids, descriptor_data, ModelArgs)
+                    StdData = self.calculate(factor, DTRuler, ids, descriptor_data, ModelArgs)[iStartInd:, :]
+                    CalcMask = self._QS_getCalcDTs(factor, dts, mask=True)
+                    if CalcMask is not None:
+                        StdData[~CalcMask, :] = None
+                    return StdData
             else:
                 if self._QSArgs.DTMode=='单时点':
+                    CalcDTs = self._QS_getCalcDTs(factor, dts, mask=False)
                     for i, iDT in enumerate(dts):
+                        if (CalcDTs is not None) and (iDT not in CalcDTs): continue
                         iDTs = DTRuler[max(0, MaxLookBack+i+1-MaxLen):i+1+MaxLookBack]
                         x = []
                         for k, kDescriptorData in enumerate(descriptor_data):
@@ -652,6 +750,11 @@ class PanelOperator(FactorOperator):
                 else:
                     for j, jID in enumerate(ids):
                         StdData[iStartInd:, j] = self.calculate(factor, DTRuler, jID, descriptor_data, ModelArgs)
+                    StdData = StdData[iStartInd:, :]
+                    CalcMask = self._QS_getCalcDTs(factor, dts, mask=True)
+                    if CalcMask is not None:
+                        StdData[~CalcMask, :] = None
+                    return StdData
             return StdData[iStartInd:, :]
         else:
             StdData = pd.DataFrame(StdData, columns=ids, index=DTRuler[-StdData.shape[0]:])
@@ -661,9 +764,9 @@ class PanelOperator(FactorOperator):
             DescriptorData = []
             DescriptorCompoundType = ([None]*len(descriptor_data) if not self._QSArgs.DescriptorCompoundType else self._QSArgs.DescriptorCompoundType)
             for iSectionIDs, iIdx in SectionIdx:
-                iDescriptorData = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data)) if i in iIdx}).loc[:, DTRuler].to_frame(filter_observations=False).sort_index(axis=1)
+                iDescriptorData = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data)) if i in iIdx}).loc[:, DTRuler].to_frame(filter_observations=False).sort_index(axis=1, key=lambda x: x.str.replace("d", "").astype(int))
                 iDescriptorData = self._QS_Compound2Frame(iDescriptorData, [DescriptorCompoundType[i] for i in range(len(descriptor_data)) if i in iIdx])
-                iExpandDescriptors = sorted(f"d{i}" for i in set(self._QSArgs.ExpandDescriptors).intersection(iIdx))
+                iExpandDescriptors = sorted((f"d{i}" for i in set(self._QSArgs.ExpandDescriptors).intersection(iIdx)), key=lambda x: int(x[1:]))
                 if iExpandDescriptors:
                     iDescriptorData, iOtherData = iDescriptorData.loc[:, iExpandDescriptors], iDescriptorData.loc[:, iDescriptorData.columns.difference(iExpandDescriptors)]
                     iDescriptorData = expandListElementDataFrame(iDescriptorData, expand_index=True)
@@ -671,7 +774,7 @@ class PanelOperator(FactorOperator):
                     if not iOtherData.empty:
                         iDescriptorData.index, iOtherData.index = iDescriptorData.index.rename(("DT", "ID")), iOtherData.index.rename(("DT", "ID"))
                         iDescriptorData = pd.merge(iDescriptorData, iOtherData, how="left", left_index=True, right_index=True)
-                iDescriptorData = iDescriptorData.sort_index(axis=1)
+                iDescriptorData = iDescriptorData.sort_index(axis=1, key=lambda x: x.str.replace("d", "").astype(int))
                 DescriptorData.append(iDescriptorData)
             descriptor_data, DescriptorData = DescriptorData, None
             if self._QSArgs.CompoundType:
@@ -680,8 +783,10 @@ class PanelOperator(FactorOperator):
                 CompoundCols = None
             if self._QSArgs.OutputMode=='全截面':
                 if self._QSArgs.DTMode=='单时点':
+                    CalcDTs = self._QS_getCalcDTs(factor, dts, mask=False)
                     StdData = []
                     for i, iDT in enumerate(dts):
+                        if (CalcDTs is not None) and (iDT not in CalcDTs): continue
                         iDTs = DTRuler[max(0, MaxLookBack + i + 1 - MaxLen):i + 1 + MaxLookBack]
                         iStdData = self.calculate(factor, iDTs, ids, [iData.loc[iDTs] for iData in descriptor_data], ModelArgs)
                         if isinstance(iStdData, pd.DataFrame):
@@ -695,14 +800,20 @@ class PanelOperator(FactorOperator):
                     StdData = pd.concat(StdData, axis=0, ignore_index=False).set_index(["_QS_DT"], append=True)
                     StdData = StdData.swaplevel(axis=0)
                     if StdData.shape[1] == 1: StdData = StdData.iloc[:, 0]
-                    return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
+                    return self._QS_adjOutputPandas(StdData, CompoundCols, sorted(CalcDTs), ids).reindex(index=dts)
                 else:
                     StdData = self.calculate(factor, DTRuler, ids, descriptor_data, ModelArgs)
-                    return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
+                    StdData = self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
+                    CalcMask = self._QS_getCalcDTs(factor, dts, mask=True)
+                    if CalcMask is not None:
+                        StdData[~CalcMask] = None
+                    return StdData
             else:
                 if self._QSArgs.DTMode=='单时点':
+                    CalcDTs = self._QS_getCalcDTs(factor, dts, mask=False)
                     StdData = StdData.values
                     for i, iDT in enumerate(dts):
+                        if (CalcDTs is not None) and (iDT not in CalcDTs): continue
                         iDTs = DTRuler[max(0, MaxLookBack + i + 1 - MaxLen):i + 1 + MaxLookBack]
                         for j, jID in enumerate(ids):
                             iStdData = self.calculate(factor, iDTs, jID, [iData.loc[iDTs] for iData in descriptor_data], ModelArgs)
@@ -727,7 +838,11 @@ class PanelOperator(FactorOperator):
                         StdData.append(iStdData)
                     StdData = pd.concat(StdData, axis=0, ignore_index=False).set_index(["_QS_ID"], append=True)
                     if StdData.shape[1] == 1: StdData = StdData.iloc[:, 0]
-                    return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
+                    StdData = self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
+                    CalcMask = self._QS_getCalcDTs(factor, dts, mask=True)
+                    if CalcMask is not None:
+                        StdData[~CalcMask] = None
+                    return StdData
 
 
 # 算子工厂函数
@@ -758,6 +873,7 @@ class DerivativeFactor(Factor):
         Operator = Instance(FactorOperator, arg_type="QSObject", label="算子", order=0, mutable=False)
         ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
         Meta = Dict(arg_type="Dict", label="元信息", order=2)
+        CalcDTRuler = List(dt.datetime, arg_type="DateTimeList", label="计算时点标尺", order=3, mutable=False)
     
     def __init__(self, name="", descriptors=[], sys_args={}, **kwargs):
         self._Descriptors = descriptors
@@ -780,15 +896,7 @@ class DerivativeFactor(Factor):
         elif key=="DataType": return DataType
         else: return self._QSArgs.get(key, None)
         return None
-    
-    def start(self, dts, **kwargs):
-        for iDescriptor in self._Descriptors: iDescriptor.start(dts=dts, **kwargs)
-        return 0
-    
-    def end(self):
-        for iDescriptor in self._Descriptors: iDescriptor.end()
-        return 0
-    
+
 
 class PointOperation(DerivativeFactor):
     """单点运算"""
@@ -805,6 +913,9 @@ class PointOperation(DerivativeFactor):
         return super().__init__(name=name, descriptors=descriptors, sys_args={"算子": Operator, **FactorArgs}, **kwargs)
         
     def readData(self, ids, dts, **kwargs):
+        Context = self.BatchContext
+        if Context is not None:
+            return Context.readData(factors=[self], ids=ids, dts=dts, **kwargs).iloc[0]
         if self._Operator._QSArgs.InputFormat=="numpy":
             StdData = self._Operator.calcData(factor=self, ids=ids, dts=dts, descriptor_data=[iDescriptor.readData(ids=ids, dts=dts, **kwargs).values for iDescriptor in self._Descriptors])
             return pd.DataFrame(StdData, index=dts, columns=ids)
@@ -812,35 +923,31 @@ class PointOperation(DerivativeFactor):
             StdData = self._Operator.calcData(factor=self, ids=ids, dts=dts, descriptor_data=[iDescriptor.readData(ids=ids, dts=dts, **kwargs) for iDescriptor in self._Descriptors])
             return StdData
     
-    def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
-        super()._QS_initOperation(start_dt, dt_dict, prepare_ids, id_dict)
+    def __QSBC_initOperation__(self, context, dt_range, section_ids):
+        super().__QSBC_initOperation__(context, dt_range, section_ids)
         for i, iDescriptor in enumerate(self._Descriptors):
-            iDescriptor._QS_initOperation(dt_dict[self.QSID], dt_dict, prepare_ids, id_dict)
+            iDescriptor.__QSBC_initOperation__(context, dt_range, section_ids)
     
-    def __QS_prepareCacheData__(self, ids=None):
-        PID = self._OperationMode._iPID
-        StartDT = self._OperationMode._FactorStartDT[self.Name]
-        EndDT = self._OperationMode.DateTimes[-1]
-        StartInd, EndInd = self._OperationMode.DTRuler.index(StartDT), self._OperationMode.DTRuler.index(EndDT)
-        DTs = list(self._OperationMode.DTRuler[StartInd:EndInd+1])
-        IDs = self._OperationMode._FactorPrepareIDs[self.Name]
-        if IDs is None:
-            IDs = list(self._OperationMode._PID_IDs[PID])
-        else:
-            IDs = partitionListMovingSampling(IDs, len(self._OperationMode._PIDs))[self._OperationMode._PIDs.index(PID)]
+    def __QSBC_prepareCacheData__(self, dt_range):
+        Context = self.BatchContext
+        PID = Context._iPID
+        DTs = Context.getDateTime(dt_range)
+        if not DTs: return 0
+        IDs = Context.getID(self._QSID, [PID])
         if IDs:
-            if self._QSArgs.InputFormat=="numpy":
-                StdData = self._Operator.calcData(factor=self, ids=IDs, dts=DTs, descriptor_data=[iDescriptor._QS_getData(DTs, pids=[PID]).values for iDescriptor in self._Descriptors])
+            if self._Operator._QSArgs.InputFormat=="numpy":
+                StdData = self._Operator.calcData(factor=self, ids=IDs, dts=DTs, descriptor_data=[iDescriptor.__QSBC_getData__(DTs, pids=[PID]).values for iDescriptor in self._Descriptors])
                 StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
             else:
-                StdData = self._Operator.calcData(factor=self, ids=IDs, dts=DTs, descriptor_data=[iDescriptor._QS_getData(DTs, pids=[PID]) for iDescriptor in self._Descriptors])
+                StdData = self._Operator.calcData(factor=self, ids=IDs, dts=DTs, descriptor_data=[iDescriptor.__QSBC_getData__(DTs, pids=[PID]) for iDescriptor in self._Descriptors])
         else:
             for iDescriptor in self._Descriptors:
-                iDescriptor._QS_getData(DTs, pids=[PID])
+                iDescriptor.__QSBC_getData__(DTs, pids=[PID])
             StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self._Operator._QSArgs.DataType=="double" else "O"))
-        self._OperationMode._Cache.writeFactorData(self.Name+str(self._OperationMode._FactorID[self.Name]), StdData, pid=PID, pid_ids={PID: IDs})
-        self._isCacheDataOK = True
-        return StdData
+        Context._Cache.writeFactorData(key=self._QSID, target_field="StdData", factor_data=StdData, pid_ids={PID: IDs}, pid=PID, if_exists="append")
+        Context.updateDTRange(factor_id=self._QSID, dt_range=dt_range)
+        Context._Cache.writeFactorData(key=self._QSID, target_field="DTRange", factor_data=Context._CachedDTRange[self._QSID], pid_ids=None, pid=PID, if_exists="replace")
+        return 0
 
 class TimeOperation(DerivativeFactor):
     """时间序列运算"""
@@ -855,27 +962,11 @@ class TimeOperation(DerivativeFactor):
             "描述信息": sys_args.pop("描述信息", ""),
         }
         return super().__init__(name=name, descriptors=descriptors, sys_args={"算子": Operator, **FactorArgs}, **kwargs)
-
-    def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
-        super()._QS_initOperation(start_dt, dt_dict, prepare_ids, id_dict)
-        StartDT = dt_dict[self.QSID]
-        DTRuler = list(self._OperationMode.DTRuler)
-        StartInd = DTRuler.index(StartDT)
-        if (self._Operator._QSArgs.iLookBackMode=="扩张窗口") and (self._Operator._QSArgs.iInitData is not None) and (self._Operator._QSArgs.iInitData.shape[0]>0):
-            if self._Operator._QSArgs.iInitData.index[-1] not in DTRuler: self._QS_Logger.warning("注意: 因子 '%s'(QSID: %s) 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name, self.QSID))
-            else: StartInd = min(StartInd, DTRuler.index(self._Operator._QSArgs.iInitData.index[-1]) + 1)
-        for i, iDescriptor in enumerate(self._Descriptors):
-            if self._Operator._QSArgs.StartDT[i] is None:# 未指定起始时点
-                iStartInd = StartInd - self._Operator._QSArgs.LookBack[i]
-                if iStartInd<0: self._QS_Logger.warning("注意: 对于因子 '%s'(QSID: %s) 的描述子 '%s'(QSID: %s), 时点标尺长度不足, 不足的部分将填充 nan!" % (self.Name, self.QSID, iDescriptor.Name, iDescriptor.QSID))
-                iStartDT = DTRuler[max(0, iStartInd)]
-            else:
-                iStartDT = self._Operator._QSArgs.StartDT[i]
-                if iStartDT<DTRuler[0]: self._QS_Logger.warning(f"注意: 对于因子 '{self.Name}'(QSID: {self.QSID}) 的第 {i} 个描述子起始时点 {iStartDT} 小于时点标尺的起始时点 {DTRuler[0]}, 时点标尺长度不足!")
-                iStartDT = max(iStartDT, DTRuler[0])
-            iDescriptor._QS_initOperation(iStartDT, dt_dict, prepare_ids, id_dict)
     
     def readData(self, ids, dts, **kwargs):
+        Context = self.BatchContext
+        if Context is not None:
+            return Context.readData(factors=[self], ids=ids, dts=dts, **kwargs).iloc[0]
         DTRuler = kwargs.get("dt_ruler", dts)
         Operator = self._Operator
         StartInd = (DTRuler.index(dts[0]) if dts[0] in DTRuler else 0)
@@ -906,17 +997,33 @@ class TimeOperation(DerivativeFactor):
             StdData = Operator.calcData(factor=self, ids=ids, dts=DTRuler[StartInd:EndInd+1], descriptor_data=DescriptorData, dt_ruler=DTRuler)
             return StdData.reindex(index=dts)
     
-    def __QS_prepareCacheData__(self, ids=None):
-        PID = self._OperationMode._iPID
-        StartDT = self._OperationMode._FactorStartDT[self.Name]
-        EndDT = self._OperationMode.DateTimes[-1]
-        DTRuler = list(self._OperationMode.DTRuler)
-        StartInd, EndInd = DTRuler.index(StartDT), DTRuler.index(EndDT)
-        DTs = DTRuler[StartInd:EndInd+1]
-        IDs = self._OperationMode._FactorPrepareIDs[self.Name]
-        if IDs is None: IDs = list(self._OperationMode._PID_IDs[PID])
-        else:
-            IDs = partitionListMovingSampling(IDs, len(self._OperationMode._PIDs))[self._OperationMode._PIDs.index(PID)]
+    def __QSBC_initOperation__(self, context, dt_range, section_ids):
+        super().__QSBC_initOperation__(context, dt_range, section_ids)
+        StartDT, EndDT = context._DTRange[self.QSID]
+        DTRuler = context._QSArgs.DTRuler
+        StartIdx = np.searchsorted(DTRuler, StartDT)
+        if (self._Operator._QSArgs.iLookBackMode=="扩张窗口") and (self._Operator._QSArgs.iInitData is not None) and (self._Operator._QSArgs.iInitData.shape[0]>0):
+            if self._Operator._QSArgs.iInitData.index[-1] not in DTRuler: self._QS_Logger.warning("注意: 因子 '%s'(QSID: %s) 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name, self.QSID))
+            else: StartIdx = min(StartIdx, DTRuler.index(self._Operator._QSArgs.iInitData.index[-1]) + 1)
+        for i, iDescriptor in enumerate(self._Descriptors):
+            if self._Operator._QSArgs.StartDT[i] is None:# 未指定起始时点
+                iStartIdx = StartIdx - self._Operator._QSArgs.LookBack[i]
+                if iStartIdx < 0: self._QS_Logger.warning("注意: 对于因子 '%s'(QSID: %s) 的描述子 '%s'(QSID: %s), 时点标尺长度不足, 不足的部分将填充 nan!" % (self.Name, self.QSID, iDescriptor.Name, iDescriptor.QSID))
+                iStartDT = DTRuler[max(0, iStartIdx)]
+            else:
+                iStartDT = self._Operator._QSArgs.StartDT[i]
+                if iStartDT < DTRuler[0]: self._QS_Logger.warning(f"注意: 对于因子 '{self.Name}'(QSID: {self.QSID}) 的第 {i} 个描述子起始时点 {iStartDT} 小于时点标尺的起始时点 {DTRuler[0]}, 时点标尺长度不足!")
+                iStartDT = max(iStartDT, DTRuler[0])
+            iDescriptor.__QSBC_initOperation__(context, (iStartDT, EndDT), section_ids)
+    
+    def __QSBC_prepareCacheData__(self, dt_range):
+        Context = self.BatchContext
+        PID = Context._iPID
+        DTs = Context.getDateTime(dt_range)
+        if not DTs: return 0
+        IDs = Context.getID(self._QSID, [PID])
+        DTRuler = list(Context._QSArgs.DTRuler)
+        StartInd = DTRuler.index(DTs[0])
         Operator = self._Operator
         if IDs:
             DescriptorData = []
@@ -929,7 +1036,7 @@ class TimeOperation(DerivativeFactor):
                         iStartDT = max(Operator._QSArgs.StartDT[i], DTRuler[0])
                         iStartInd = DTRuler.index(iStartDT)
                         iDTs = DTRuler[iStartInd:DTRuler.index(DTs[-1])]
-                    iDescriptorData = iDescriptor._QS_getData(iDTs, pids=[PID]).values
+                    iDescriptorData = iDescriptor.__QSBC_getData__(iDTs, pids=[PID]).values
                     if iStartInd<0: iDescriptorData = np.r_[np.full(shape=(abs(iStartInd), iDescriptorData.shape[1]), fill_value=np.nan), iDescriptorData]
                     DescriptorData.append(iDescriptorData)
                 StdData = Operator.calcData(factor=self, ids=IDs, dts=DTs, descriptor_data=DescriptorData, dt_ruler=DTRuler)
@@ -943,7 +1050,7 @@ class TimeOperation(DerivativeFactor):
                         iStartDT = max(Operator._QSArgs.StartDT[i], DTRuler[0])
                         iStartInd = DTRuler.index(iStartDT)
                         iDTs = DTRuler[iStartInd:DTRuler.index(DTs[-1])]
-                    iDescriptorData = iDescriptor._QS_getData(iDTs, pids=[PID])
+                    iDescriptorData = iDescriptor.__QSBC_getData__(iDTs, pids=[PID])
                     DescriptorData.append(iDescriptorData)
                 StdData = Operator.calcData(factor=self, ids=IDs, dts=DTs, descriptor_data=DescriptorData, dt_ruler=DTRuler)
         else:
@@ -955,11 +1062,12 @@ class TimeOperation(DerivativeFactor):
                     iStartDT = max(Operator._QSArgs.StartDT[i], DTRuler[0])
                     iStartInd = DTRuler.index(iStartDT)
                     iDTs = DTRuler[iStartInd:DTRuler.index(DTs[-1])]
-                iDescriptor._QS_getData(iDTs, pids=[PID])
+                iDescriptor.__QSBC_getData__(iDTs, pids=[PID])
             StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if Operator._QSArgs.DataType=="double" else "O"))
-        self._OperationMode._Cache.writeFactorData(self.Name+str(self._OperationMode._FactorID[self.Name]), StdData, pid=PID, pid_ids={PID: IDs})
-        self._isCacheDataOK = True
-        return StdData
+        Context._Cache.writeFactorData(key=self._QSID, target_field="StdData", factor_data=StdData, pid_ids={PID: IDs}, pid=PID, if_exists="append")
+        Context.updateDTRange(factor_id=self._QSID, dt_range=dt_range)
+        Context._Cache.writeFactorData(key=self._QSID, target_field="DTRange", factor_data=Context._CachedDTRange[self._QSID], pid_ids=None, pid=PID, if_exists="replace")
+        return 0
 
 class SectionOperation(DerivativeFactor):
     """截面运算"""
@@ -984,6 +1092,9 @@ class SectionOperation(DerivativeFactor):
         return super().__init__(name=name, descriptors=descriptors, sys_args={"算子": Operator, **FactorArgs}, **kwargs)
             
     def readData(self, ids, dts, **kwargs):
+        Context = self.BatchContext
+        if Context is not None:
+            return Context.readData(factors=[self], ids=ids, dts=dts, **kwargs).iloc[0]
         Operator = self._Operator
         SectionIDs = kwargs.pop("section_ids", ids)
         DescriptorData = []
@@ -1002,57 +1113,51 @@ class SectionOperation(DerivativeFactor):
             StdData = Operator.calcData(factor=self, ids=SectionIDs, dts=dts, descriptor_data=DescriptorData)
             return StdData.reindex(columns=ids)
     
-    def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
-        OldStartDT = dt_dict.get(self.QSID, None)
-        if (OldStartDT is None) or (start_dt<OldStartDT):
-            dt_dict[self.QSID] = start_dt
-            StartInd, EndInd = self._OperationMode.DTRuler.index(dt_dict[self.QSID]), self._OperationMode.DTRuler.index(self._OperationMode.DateTimes[-1])
-            DTs = self._OperationMode.DTRuler[StartInd:EndInd+1]
-            DTPartition = partitionList(DTs, len(self._OperationMode._PIDs))
-            self._PID_DTs = {iPID:DTPartition[i] for i, iPID in enumerate(self._OperationMode._PIDs)}
-        PrepareIDs = id_dict.setdefault(self.QSID, prepare_ids)
-        if prepare_ids != PrepareIDs: raise __QS_Error__("因子 '%s'(QSID: %s) 指定了不同的截面!" % (self.Name, self.QSID))
+    def __QSBC_initOperation__(self, context, dt_range, section_ids):
+        super().__QSBC_initOperation__(context, dt_range, section_ids)
         for i, iDescriptor in enumerate(self._Descriptors):
             if self._QSArgs.DescriptorSection[i] is None:
-                iDescriptor._QS_initOperation(start_dt, dt_dict, prepare_ids, id_dict)
+                iDescriptor.__QSBC_initOperation__(context, dt_range, section_ids)
             else:
-                iDescriptor._QS_initOperation(start_dt, dt_dict, self._QSArgs.DescriptorSection[i], id_dict)
-        if (self._OperationMode.SubProcessNum>0) and (self.QSID not in self._OperationMode._Event):
-            self._OperationMode._Event[self.QSID] = (Queue(), Event())
+                iDescriptor.__QSBC_initOperation__(context, dt_range, self._QSArgs.DescriptorSection[i])
+        if (context._QSArgs.CalcConcurrentNum > 0) and (self.QSID not in context._Event):
+            context._Event[self.QSID] = (Queue(), Event())
         
-    def __QS_prepareCacheData__(self, ids=None):
+    def __QSBC_prepareCacheData__(self, dt_range):
+        Context = self.BatchContext
+        PID = Context._iPID
+        DTs = Context.getDateTime(dt_range)
+        if not DTs: return 0
+        IDs = Context.getID(self._QSID, pids=None)
+        DTPartition = partitionList(DTs, len(Context._PIDs))
+        DTs = DTPartition[Context._PIDs.index(PID)]
         Operator = self._Operator
-        DTs = list(self._PID_DTs[self._OperationMode._iPID])
-        IDs = self._OperationMode._FactorPrepareIDs[self.Name]
-        if IDs is None: IDs = list(self._OperationMode.IDs)
         if len(DTs)==0:# 该进程未分配到计算任务
-            iDTs = [self._OperationMode.DateTimes[-1]]
+            iDTs = [Context._DateTimes[-1]]
             for i, iDescriptor in enumerate(self._Descriptors):
-                iDescriptor._QS_getData(iDTs, pids=None)
+                iDescriptor.__QSBC_getData__(iDTs, pids=None)
             StdData = pd.DataFrame(columns=IDs, dtype=("float" if Operator._QSArgs.DataType=="double" else "O"))
         elif IDs:
             if Operator._QSArgs.InputFormat == "numpy":
-                StdData = Operator.calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor._QS_getData(DTs, pids=None).values for iDescriptor in self._Descriptors])
+                StdData = Operator.calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor.__QSBC_getData__(DTs, pids=None).values for iDescriptor in self._Descriptors])
                 StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
             else:
-                StdData = Operator.calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor._QS_getData(DTs, pids=None) for iDescriptor in self._Descriptors])
+                StdData = Operator.calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor.__QSBC_getData__(DTs, pids=None) for iDescriptor in self._Descriptors])
         else:
             for iDescriptor in self._Descriptors:
-                iDescriptor._QS_getData(DTs, pids=None)
+                iDescriptor.__QSBC_getData__(DTs, pids=None)
             StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if Operator._QSArgs.DataType=="double" else "O"))
-        if self._OperationMode._FactorPrepareIDs[self.Name] is None:
-            PID_IDs = self._OperationMode._PID_IDs
-        else:
-            PID_IDs = {self._OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in enumerate(partitionListMovingSampling(IDs, len(self._OperationMode._PIDs)))}
-        self._OperationMode._Cache.writeFactorData(self.Name + str(self._OperationMode._FactorID[self.Name]), StdData, pid=None, pid_ids=PID_IDs)
+        PID_IDs = Context.getPIDID(self._QSID)
+        Context._Cache.writeFactorData(key=self._QSID, target_field="StdData", factor_data=StdData, pid_ids=PID_IDs, pid=None, if_exists="append")
+        Context.updateDTRange(factor_id=self._QSID, dt_range=dt_range)
+        Context._Cache.writeFactorData(key=self._QSID, target_field="DTRange", factor_data=Context._CachedDTRange[self._QSID], pid_ids=PID_IDs, pid=None, if_exists="replace")
         StdData = None# 释放数据
         gc.collect()
-        if self._OperationMode.SubProcessNum>0:
-            Sub2MainQueue, PIDEvent = self._OperationMode._Event[self.Name]
+        if Context._QSArgs.CalcConcurrentNum>0:
+            Sub2MainQueue, PIDEvent = Context._Event[self._QSID]
             Sub2MainQueue.put(1)
             PIDEvent.wait()
-        self._isCacheDataOK = True
-        return StdData
+        return 0
 
 class PanelOperation(DerivativeFactor):
     """面板运算"""
@@ -1075,45 +1180,11 @@ class PanelOperation(DerivativeFactor):
             "描述子截面": sys_args.pop("描述子截面", [None] * len(descriptors)),
         }
         return super().__init__(name=name, descriptors=descriptors, sys_args={"算子": Operator, **FactorArgs}, **kwargs)
-        
-    def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
-        Operator = self._Operator
-        if len(self._Descriptors)>len(Operator._QSArgs.LookBack): raise  __QS_Error__("面板运算因子 '%s'(QSID: %s) 的参数'回溯期数'序列长度小于描述子个数!" % (self.Name, self.QSID))
-        OldStartDT = dt_dict.get(self.QSID, None)
-        DTRuler = self._OperationMode.DTRuler
-        if (OldStartDT is None) or (start_dt<OldStartDT):
-            StartDT = dt_dict[self.QSID] = start_dt
-            StartInd, EndInd = DTRuler.index(StartDT), DTRuler.index(self._OperationMode.DateTimes[-1])
-            if (Operator._QSArgs.iLookBackMode=="扩张窗口") and (Operator._QSArgs.iInitData is not None) and (Operator._QSArgs.iInitData.shape[0]>0):
-                if Operator._QSArgs.iInitData.index[-1] not in self._OperationMode.DTRuler: self._QS_Logger.warning("注意: 因子 '%s'(QSID: %s) 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name, self.QSID))
-                else: StartInd = min(StartInd, self._OperationMode.DTRuler.index(Operator._QSArgs.iInitData.index[-1]) + 1)
-            DTs = DTRuler[StartInd:EndInd+1]
-            if Operator._QSArgs.iLookBackMode=="扩张窗口":
-                DTPartition = [DTs]+[[]]*(len(self._OperationMode._PIDs)-1)
-            else:
-                DTPartition = partitionList(DTs, len(self._OperationMode._PIDs))
-            self._PID_DTs = {iPID:DTPartition[i] for i, iPID in enumerate(self._OperationMode._PIDs)}
-        else:
-            StartInd = DTRuler.index(OldStartDT)
-        PrepareIDs = id_dict.setdefault(self.QSID, prepare_ids)
-        if prepare_ids != PrepareIDs: raise __QS_Error__("因子 '%s'(QSID: %s) 指定了不同的截面!" % (self.Name, self.QSID))
-        for i, iDescriptor in enumerate(self._Descriptors):
-            if Operator._QSArgs.StartDT[i] is None:# 未指定起始时点
-                iStartInd = StartInd - Operator._QSArgs.LookBack[i]
-                if iStartInd<0: self._QS_Logger.warning(f"注意: 对于因子 '{self.Name}'(QSID: {self.QSID}) 的第 {i} 个描述子 '{iDescriptor.Name}'(QSID: {iDescriptor.QSID}), 时点标尺长度不足!")
-                iStartDT = DTRuler[max(0, iStartInd)]
-            else:
-                iStartDT = Operator._QSArgs.StartDT[i]
-                if iStartDT<DTRuler[0]: self._QS_Logger.warning(f"注意: 对于因子 '{self.Name}'(QSID: {self.QSID}) 的第 {i} 个描述子 '{iDescriptor.Name}'(QSID: {iDescriptor.QSID}), 指定的起始时点 {iStartDT} 小于时点标尺的起始时点 {DTRuler[0]}, 时点标尺长度不足!")
-                iStartDT = max(iStartDT, DTRuler[0])
-            if self._QSArgs.DescriptorSection[i] is None:
-                iDescriptor._QS_initOperation(iStartDT, dt_dict, prepare_ids, id_dict)
-            else:
-                iDescriptor._QS_initOperation(iStartDT, dt_dict, self._QSArgs.DescriptorSection[i], id_dict)
-        if (self._OperationMode.SubProcessNum>0) and (self.QSID not in self._OperationMode._Event):
-            self._OperationMode._Event[self.QSID] = (Queue(), Event())
-    
+
     def readData(self, ids, dts, **kwargs):
+        Context = self.BatchContext
+        if Context is not None:
+            return Context.readData(factors=[self], ids=ids, dts=dts, **kwargs).iloc[0]
         Operator = self._Operator
         DTRuler = kwargs.get("dt_ruler", dts)
         SectionIDs = kwargs.pop("section_ids", ids)
@@ -1152,17 +1223,50 @@ class PanelOperation(DerivativeFactor):
                 DescriptorData.append(iDescriptorData)
             StdData = Operator.calcData(factor=self, ids=SectionIDs, dts=DTRuler[StartInd:EndInd + 1], descriptor_data=DescriptorData, dt_ruler=DTRuler)
             return StdData.reindex(index=dts, columns=ids)
-        
-    def __QS_prepareCacheData__(self, ids=None):
+    
+    def __QSBC_initOperation__(self, context, dt_range, section_ids):
         Operator = self._Operator
-        DTs = list(self._PID_DTs[self._OperationMode._iPID])
-        DTRuler = list(self._OperationMode.DTRuler)
-        IDs = self._OperationMode._FactorPrepareIDs[self.Name]
-        if IDs is None: IDs = list(self._OperationMode.IDs)
+        if len(self._Descriptors)>len(Operator._QSArgs.LookBack): raise  __QS_Error__("面板运算因子 '%s'(QSID: %s) 的参数'回溯期数'序列长度小于描述子个数!" % (self.Name, self.QSID))
+        super().__QSBC_initOperation__(context, dt_range, section_ids)
+        StartDT, EndDT = context._DTRange[self.QSID]
+        DTRuler = context._QSArgs.DTRuler
+        StartIdx = np.searchsorted(DTRuler, StartDT)
+        if (Operator._QSArgs.iLookBackMode=="扩张窗口") and (Operator._QSArgs.iInitData is not None) and (Operator._QSArgs.iInitData.shape[0]>0):
+            if Operator._QSArgs.iInitData.index[-1] not in DTRuler: self._QS_Logger.warning("注意: 因子 '%s'(QSID: %s) 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name, self.QSID))
+            else: StartIdx = min(StartIdx, DTRuler.index(Operator._QSArgs.iInitData.index[-1]) + 1)
+        for i, iDescriptor in enumerate(self._Descriptors):
+            if Operator._QSArgs.StartDT[i] is None:# 未指定起始时点
+                iStartIdx = StartIdx - Operator._QSArgs.LookBack[i]
+                if iStartIdx < 0: self._QS_Logger.warning(f"注意: 对于因子 '{self.Name}'(QSID: {self.QSID}) 的第 {i} 个描述子 '{iDescriptor.Name}'(QSID: {iDescriptor.QSID}), 时点标尺长度不足!")
+                iStartDT = DTRuler[max(0, iStartIdx)]
+            else:
+                iStartDT = Operator._QSArgs.StartDT[i]
+                if iStartDT < DTRuler[0]: self._QS_Logger.warning(f"注意: 对于因子 '{self.Name}'(QSID: {self.QSID}) 的第 {i} 个描述子 '{iDescriptor.Name}'(QSID: {iDescriptor.QSID}), 指定的起始时点 {iStartDT} 小于时点标尺的起始时点 {DTRuler[0]}, 时点标尺长度不足!")
+                iStartDT = max(iStartDT, DTRuler[0])
+            if self._QSArgs.DescriptorSection[i] is None:
+                iDescriptor.__QSBC_initOperation__(context, (iStartDT, EndDT), section_ids)
+            else:
+                iDescriptor.__QSBC_initOperation__(context, (iStartDT, EndDT), self._QSArgs.DescriptorSection[i])
+        if (context._QSArgs.CalcConcurrentNum>0) and (self.QSID not in context._Event):
+            context._Event[self.QSID] = (Queue(), Event())
+    
+    def __QSBC_prepareCacheData__(self, dt_range):
+        Context = self.BatchContext
+        PID = Context._iPID
+        DTs = Context.getDateTime(dt_range)
+        if not DTs: return 0
+        DTRuler = list(Context._QSArgs.DTRuler)
+        if Operator._QSArgs.iLookBackMode=="扩张窗口":
+            DTPartition = [DTs]+[[]]*(len(Context._PIDs)-1)
+        else:
+            DTPartition = partitionList(DTs, len(Context._PIDs))
+        DTs = DTPartition[Context._PIDs.index(PID)]
+        IDs = Context.getID(self._QSID, pids=None)
+        Operator = self._Operator
         if len(DTs)==0:# 该进程未分配到计算任务
-            iDTs = [self._OperationMode.DateTimes[-1]]
+            iDTs = [Context._DateTimes[-1]]
             for i, iDescriptor in enumerate(self._Descriptors):
-                iDescriptor._QS_getData(iDTs, pids=None)
+                iDescriptor.__QSBC_getData__(iDTs, pids=None)
             StdData = pd.DataFrame(columns=IDs, dtype=("float" if Operator._QSArgs.DataType=="double" else "O"))
         elif IDs:
             if Operator._QSArgs.InputFormat == "numpy":
@@ -1175,7 +1279,7 @@ class PanelOperation(DerivativeFactor):
                         iStartDT = max(Operator._QSArgs.StartDT[i], DTRuler[0])
                         iStartInd = DTRuler.index(iStartDT)
                         iDTs = DTRuler[iStartInd:DTRuler.index(DTs[-1])]
-                    iDescriptorData = iDescriptor._QS_getData(iDTs, pids=None).values
+                    iDescriptorData = iDescriptor.__QSBC_getData__(iDTs, pids=None).values
                     if iStartInd<0: iDescriptorData = np.r_[np.full(shape=(abs(iStartInd), iDescriptorData.shape[1]), fill_value=np.nan), iDescriptorData]                    
                     DescriptorData.append(iDescriptorData)
                 StdData = Operator.calcData(factor=self, ids=IDs, dts=DTs, descriptor_data=DescriptorData, dt_ruler=DTRuler)
@@ -1190,7 +1294,7 @@ class PanelOperation(DerivativeFactor):
                         iStartDT = max(Operator._QSArgs.StartDT[i], DTRuler[0])
                         iStartInd = DTRuler.index(iStartDT)
                         iDTs = DTRuler[iStartInd:DTRuler.index(DTs[-1])]
-                    iDescriptorData = iDescriptor._QS_getData(iDTs, pids=None)
+                    iDescriptorData = iDescriptor.__QSBC_getData__(iDTs, pids=None)
                     DescriptorData.append(iDescriptorData)
                 StdData = Operator.calcData(factor=self, ids=IDs, dts=DTs, descriptor_data=DescriptorData, dt_ruler=DTRuler)
                 DescriptorData, iDescriptorData = None, None
@@ -1204,21 +1308,19 @@ class PanelOperation(DerivativeFactor):
                     iStartDT = max(Operator._QSArgs.StartDT[i], DTRuler[0])
                     iStartInd = DTRuler.index(iStartDT)
                     iDTs = DTRuler[iStartInd:DTRuler.index(DTs[-1])]
-                iDescriptor._QS_getData(iDTs, pids=None)
+                iDescriptor.__QSBC_getData__(iDTs, pids=None)
             StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if Operator._QSArgs.DataType=="double" else "O"))
-        if self._OperationMode._FactorPrepareIDs[self.Name] is None:
-            PID_IDs = self._OperationMode._PID_IDs
-        else:
-            PID_IDs = {self._OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in enumerate(partitionListMovingSampling(IDs, len(self._OperationMode._PIDs)))}
-        self._OperationMode._Cache.writeFactorData(self.Name + str(self._OperationMode._FactorID[self.Name]), StdData, pid=None, pid_ids=PID_IDs)
+        PID_IDs = Context.getPIDID(self._QSID)
+        Context._Cache.writeFactorData(key=self._QSID, target_field="StdData", factor_data=StdData, pid_ids=PID_IDs, pid=None, if_exists="append")
+        Context.updateDTRange(factor_id=self._QSID, dt_range=dt_range)
+        Context._Cache.writeFactorData(key=self._QSID, target_field="DTRange", factor_data=Context._CachedDTRange[self._QSID], pid_ids=PID_IDs, pid=None, if_exists="replace")
         StdData = None# 释放数据
         gc.collect()
-        if self._OperationMode.SubProcessNum>0:
-            Sub2MainQueue, PIDEvent = self._OperationMode._Event[self.Name]
+        if Context._QSArgs.CalcConcurrentNum>0:
+            Sub2MainQueue, PIDEvent = Context._Event[self._QSID]
             Sub2MainQueue.put(1)
             PIDEvent.wait()
-        self._isCacheDataOK = True
-        return StdData
+        return 0
 
 
 

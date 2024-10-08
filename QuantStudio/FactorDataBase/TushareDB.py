@@ -1,5 +1,5 @@
 # coding=utf-8
-"""基于 tushare 的因子库(TODO)"""
+"""基于 tushare 的因子库"""
 import os
 from collections import OrderedDict
 import datetime as dt
@@ -16,6 +16,7 @@ from QuantStudio.FactorDataBase.FDBFun import updateInfo
 from QuantStudio.Tools.api import Panel
 
 class _TSTable(FactorTable):
+    
     def getMetaData(self, key=None, args={}):
         TableInfo = self._FactorDB._TableInfo.loc[self.Name]
         if key is None:
@@ -26,6 +27,7 @@ class _TSTable(FactorTable):
     def FactorNames(self):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         return FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()
+    
     def getFactorMetaData(self, factor_names=None, key=None, args={}):
         if factor_names is None:
             factor_names = self.FactorNames
@@ -48,16 +50,19 @@ class _TSTable(FactorTable):
 
 class _CalendarTable(_TSTable):
     """交易日历因子表"""
+    
     def __init__(self, name, fdb, sys_args={}, **kwargs):
         FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
         self._DateField = FactorInfo[FactorInfo["FieldType"]=="Date"].index[0]
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
         return
+    
     # 返回交易所列表
     # 忽略 ifactor_name, idt
     def getID(self, ifactor_name=None, idt=None, args={}):
         return  self._FactorDB._TableInfo.loc[self.Name, "Supplementary"].split(",")
+    
     # 返回交易所为 iid 的交易日列表
     # 如果 iid 为 None, 将返回表中有记录数据的时间点序列
     # 忽略 ifactor_name
@@ -71,6 +76,7 @@ class _CalendarTable(_TSTable):
         if iid is None: iid="SSE"
         Dates = self._FactorDB._ts.query(DBTableName, exchange=iid, start_date=start_dt, end_date=end_dt, fields=DateField, is_open="1")
         return [dt.datetime(int(iDate[:4]), int(iDate[4:6]), int(iDate[6:8])) for iDate in Dates[DateField].values]
+    
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         DBTableName = self._FactorDB._TableInfo.loc[self.Name, "DBTableName"]
         FieldDict = self._FactorDB._FactorInfo['DBFieldName'].loc[self.Name].loc[[self._DateField, self._IDField]+factor_names]
@@ -82,12 +88,13 @@ class _CalendarTable(_TSTable):
             iData.index = [iID] * iData.shape[0]
             if RawData is None: RawData = iData
             else: RawData = RawData.append(iData)
-        if RawData is None: return pd.DataFrame(columns=["ID", "日期"]+factor_names)
-        RawData.index, RawData.columns = np.arange(RawData.shape[0]), ["ID", "日期"]+factor_names
+        if RawData is None: return pd.DataFrame(columns=["QS_ID", "QS_DT"]+factor_names)
+        RawData.index, RawData.columns = np.arange(RawData.shape[0]), ["QS_ID", "QS_DT"]+factor_names
         return RawData
+    
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-        raw_data = raw_data.set_index(["日期", "ID"])
+        raw_data = raw_data.set_index(["QS_DT", "QS_ID"])
         DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
         Data = {}
         for iFactorName in raw_data.columns:
@@ -100,6 +107,7 @@ class _CalendarTable(_TSTable):
 
 class _FeatureTable(_TSTable):
     """特征因子表"""
+    
     class __QS_ArgClass__(_TSTable.__QS_ArgClass__):
         def __QS_initArgs__(self, args={}):
             super().__QS_initArgs__(args=args)
@@ -112,11 +120,14 @@ class _FeatureTable(_TSTable):
         FactorInfo = fdb._FactorInfo.loc[name]
         self._IDField = FactorInfo[FactorInfo["FieldType"]=="ID"].index[0]
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+    
     def getID(self, ifactor_name=None, idt=None, args={}):
         RawData = self.__QS_prepareRawData__(factor_names=[], ids=[], dts=[], args=args)
         return sorted(RawData["ID"])
+    
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         return []
+    
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         Fields = [self._IDField]+factor_names
@@ -142,19 +153,22 @@ class _FeatureTable(_TSTable):
         else:
             RawData = self._FactorDB._ts.query(DBTableName, fields=FieldStr)
         RawData = RawData.loc[:, DBFields]
-        RawData.columns = ["ID"]+factor_names
-        RawData["ID"] = self._FactorDB.DBID2ID(RawData["ID"])
+        RawData.columns = ["QS_ID"]+factor_names
+        RawData["QS_ID"] = self._FactorDB.DBID2ID(RawData["QS_ID"])
         return RawData
+    
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        raw_data = raw_data.set_index(["ID"])
+        raw_data = raw_data.set_index(["QS_ID"])
         if raw_data.index.intersection(ids).shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         raw_data = raw_data.reindex(index=ids)
         return Panel(raw_data.values.T.reshape((raw_data.shape[1], raw_data.shape[0], 1)).repeat(len(dts), axis=2), items=factor_names, major_axis=ids, minor_axis=dts).swapaxes(1, 2)
 
 class _MarketTable(_TSTable):
     """行情因子表"""
+    
     class __QS_ArgClass__(_TSTable.__QS_ArgClass__):
         LookBack = Int(0, arg_type="Integer", label="回溯天数", order=0)
+        
         def __QS_initArgs__(self, args={}):
             super().__QS_initArgs__(args=args)
             FactorInfo = self._Owner._FactorDB._FactorInfo.loc[self._Owner.Name]
@@ -174,39 +188,24 @@ class _MarketTable(_TSTable):
         self._DateFields = FactorInfo[FactorInfo["FieldType"]=="Date"].index.tolist()
         self._ConditionFields = FactorInfo[FactorInfo["FieldType"]=="Condition"].index.tolist()# 所有的条件字段列表
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+        self._QS_GroupArgs = tuple(self._ConditionFields)
         return
+    
     @property
     def FactorNames(self):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         return FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()+self._DateFields
+    
     def getID(self, ifactor_name=None, idt=None, args={}):
         if self._IDField is None: return ["000000.HST"]
         TableType = self._FactorDB._TableInfo.loc[self.Name, "Supplementary"]
         if TableType=="A股": return self._FactorDB.getStockID(index_id="全体A股", is_current=False)
         elif TableType=="期货": return self._FactorDB.getFutureID(future_code=None, is_current=False)
         return []
+    
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         return self._FactorDB.getTradeDay(start_date=start_dt, end_date=end_dt, exchange="", output_type="datetime")
-    def __QS_genGroupInfo__(self, factors, operation_mode):
-        DateConditionGroup = {}
-        for iFactor in factors:
-            iDateConditions = (iFactor.DateField, ";".join([iArgName+":"+iFactor[iArgName] for iArgName in iFactor.ArgNames if iArgName!="回溯天数"]))
-            if iDateConditions not in DateConditionGroup:
-                DateConditionGroup[iDateConditions] = {"FactorNames":[iFactor.Name], 
-                                                       "RawFactorNames":{iFactor._NameInFT}, 
-                                                       "StartDT":operation_mode._FactorStartDT[iFactor.Name], 
-                                                       "args":iFactor.Args.copy()}
-            else:
-                DateConditionGroup[iDateConditions]["FactorNames"].append(iFactor.Name)
-                DateConditionGroup[iDateConditions]["RawFactorNames"].add(iFactor._NameInFT)
-                DateConditionGroup[iDateConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], DateConditionGroup[iDateConditions]["StartDT"])
-                DateConditionGroup[iDateConditions]["args"]["回溯天数"] = max(DateConditionGroup[iDateConditions]["args"]["回溯天数"], iFactor.LookBack)
-        EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
-        Groups = []
-        for iDateConditions in DateConditionGroup:
-            StartInd = operation_mode.DTRuler.index(DateConditionGroup[iDateConditions]["StartDT"])
-            Groups.append((self, DateConditionGroup[iDateConditions]["FactorNames"], list(DateConditionGroup[iDateConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], DateConditionGroup[iDateConditions]["args"]))
-        return Groups
+    
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         StartDate, EndDate = dts[0].date(), dts[-1].date()
@@ -229,8 +228,8 @@ class _MarketTable(_TSTable):
         StartDate, EndDate = StartDate.strftime("%Y%m%d"), EndDate.strftime("%Y%m%d")
         if self._IDField is None:
             RawData = self._FactorDB._ts.query(DBTableName, start_date=StartDate, end_date=EndDate, fields=FieldStr, **Conditions)
-            RawData.insert(0, "ID", "000000.HST")
-            DBFields.insert(0, "ID")
+            RawData.insert(0, "QS_ID", "000000.HST")
+            DBFields.insert(0, "QS_ID")
         elif pd.isnull(self._IDType):
             for iID in self._FactorDB.ID2DBID(ids):
                 Conditions[DBFields[0]] = iID
@@ -238,12 +237,13 @@ class _MarketTable(_TSTable):
         elif self._IDType=="Non-Finite":
             RawData = self._FactorDB._ts.query(DBTableName, start_date=StartDate, end_date=EndDate, fields=FieldStr, **Conditions)
         RawData = RawData.loc[:, DBFields]
-        RawData.columns = ["ID", "日期"]+factor_names
-        RawData["ID"] = self._FactorDB.DBID2ID(RawData["ID"])
-        return RawData.sort_values(by=["ID", "日期"])
+        RawData.columns = ["QS_ID", "QS_DT"]+factor_names
+        RawData["QS_ID"] = self._FactorDB.DBID2ID(RawData["QS_ID"])
+        return RawData.sort_values(by=["QS_ID", "QS_DT"])
+    
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-        raw_data = raw_data.set_index(["日期", "ID"])
+        raw_data = raw_data.set_index(["QS_DT", "QS_ID"])
         DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
         Data = {}
         for iFactorName in raw_data.columns:
@@ -270,10 +270,11 @@ class _MarketTable(_TSTable):
 # 先填充表中已有的数据, 然后根据回溯天数参数填充缺失的时点
 class _AnnTable(_TSTable):
     """公告信息表"""
+    
     class __QS_ArgClass__(_TSTable.__QS_ArgClass__):
-        #ANNDate = Enum(None, arg_type="SingleOption", label="公告日期", order=0)
         Operator = Callable(arg_type="Function", label="算子", order=1)
         LookBack = Int(0, arg_type="Integer", label="回溯天数", order=2)
+        
         def __QS_initArgs__(self, args={}):
             super().__QS_initArgs__(args=args)
             FactorInfo = self._Owner._FactorDB._FactorInfo.loc[self.Name]
@@ -288,39 +289,24 @@ class _AnnTable(_TSTable):
         else: self._IDField, self._IDType = IDInfo.index[0], IDInfo["Supplementary"].iloc[0]
         self._AnnDateField = FactorInfo[FactorInfo["FieldType"]=="ANNDate"].index[0]# 公告日期
         self._ConditionFields = FactorInfo[FactorInfo["FieldType"]=="Condition"].index.tolist()# 所有的条件字段列表
+        self._QS_GroupArgs = (*self._ConditionFields, )
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+    
     @property
     def FactorNames(self):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         return FactorInfo[FactorInfo["FieldType"]=="因子"].index.tolist()+[self._AnnDateField]
+    
     def getID(self, ifactor_name=None, idt=None, args={}):
         if self._IDField is None: return ["000000.HST"]
         TableType = self._FactorDB._TableInfo.loc[self.Name, "Supplementary"]
         if TableType=="A股": return self._FactorDB.getStockID(index_id="全体A股", is_current=False)
         elif TableType=="期货": return self._FactorDB.getFutureID(future_code=None, is_current=False)
         return []
+    
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
         return self._FactorDB.getTradeDay(start_date=start_dt, end_date=end_dt, exchange="", output_type="datetime")
-    def __QS_genGroupInfo__(self, factors, operation_mode):
-        ConditionGroup = {}
-        for iFactor in factors:
-            iConditions = ";".join([iArgName+":"+iFactor[iArgName] for iArgName in iFactor.ArgNames if iArgName not in ("回溯天数", "算子")])
-            if iConditions not in ConditionGroup:
-                ConditionGroup[iConditions] = {"FactorNames":[iFactor.Name], 
-                                               "RawFactorNames":{iFactor._NameInFT}, 
-                                               "StartDT":operation_mode._FactorStartDT[iFactor.Name], 
-                                               "args":iFactor.Args.copy()}
-            else:
-                ConditionGroup[iConditions]["FactorNames"].append(iFactor.Name)
-                ConditionGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
-                ConditionGroup[iConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], ConditionGroup[iConditions]["StartDT"])
-                ConditionGroup[iConditions]["args"]["回溯天数"] = max(ConditionGroup[iConditions]["args"]["回溯天数"], iFactor.LookBack)
-        EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
-        Groups = []
-        for iConditions in ConditionGroup:
-            StartInd = operation_mode.DTRuler.index(ConditionGroup[iConditions]["StartDT"])
-            Groups.append((self, ConditionGroup[iConditions]["FactorNames"], list(ConditionGroup[iConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], ConditionGroup[iConditions]["args"]))
-        return Groups
+    
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         FactorInfo = self._FactorDB._FactorInfo.loc[self.Name]
         StartDate, EndDate = dts[0].date(), dts[-1].date()
@@ -362,12 +348,13 @@ class _AnnTable(_TSTable):
         elif self._IDType=="Non-Finite":
             RawData = self._FactorDB._ts.query(DBTableName, start_date=StartDate, end_date=EndDate, fields=FieldStr, **Conditions)
         RawData = RawData.loc[:, DBFields]
-        RawData.columns = ["ID", "日期"]+factor_names
-        RawData["ID"] = self._FactorDB.DBID2ID(RawData["ID"])
-        return RawData.sort_values(by=["ID", "日期"])
+        RawData.columns = ["QS_ID", "QS_DT"]+factor_names
+        RawData["QS_ID"] = self._FactorDB.DBID2ID(RawData["QS_ID"])
+        return RawData.sort_values(by=["QS_ID", "QS_DT"])
+    
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-        raw_data = raw_data.set_index(["日期", "ID"])
+        raw_data = raw_data.set_index(["QS_DT", "QS_ID"])
         Operator = args.get("算子", self._QSArgs.Operator)
         if Operator is None: Operator = (lambda x: x.tolist())
         Data = {}
