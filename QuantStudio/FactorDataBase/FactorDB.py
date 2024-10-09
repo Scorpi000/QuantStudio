@@ -109,6 +109,8 @@ class FactorTable(__QS_Object__):
         self._Name = name
         self._FactorDB = fdb# 因子表所属的因子库, None 表示自定义的因子表
         self._QS_GroupArgs = None# 准备原始数据决定分组的参数集，如果为 None，表示每个因子单独分组
+        self._QS_LookbackArgs = ("回溯天数",)
+        self._QS_RawDataMaskCols = ["QS_ID", "QS_DT"]
         self._BatchContext = None# 批量运算运行时环境
         return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
     
@@ -329,16 +331,17 @@ class FactorTable(__QS_Object__):
                 ConditionGroup[iConditions]["FactorIDs"].append(iFactor._QSID)
                 ConditionGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
                 ConditionGroup[iConditions]["DTRange"] = (min(iDTRange[0], ConditionGroup[iConditions]["DTRange"][0]), max(iDTRange[1], ConditionGroup[iConditions]["DTRange"][1]))
-                if "回溯天数" in ConditionGroup[iConditions]["Args"]:
-                    ConditionGroup[iConditions]["Args"]["回溯天数"] = max(ConditionGroup[iConditions]["Args"]["回溯天数"], iFactor._QSArgs.FTArgs["回溯天数"])
+                for jLookbackArg in self._QS_LookbackArgs:
+                    if jLookbackArg in ConditionGroup[iConditions]["Args"]:
+                        ConditionGroup[iConditions]["Args"][jLookbackArg] = max(ConditionGroup[iConditions]["Args"][jLookbackArg], iFactor._QSArgs.FTArgs[jLookbackArg])
         return list(ConditionGroup.values())
         
     def __QSBC_saveRawData__(self, raw_data, key, target_fields, pid_ids, **kwargs):
         if (raw_data is None) or raw_data.empty: return 0
         Context = self.BatchContext
         Cache = Context._Cache
+        MaskCols = raw_data.columns.intersection(self._QS_RawDataMaskCols).tolist()
         CommonCols = raw_data.columns.difference(target_fields).tolist()
-        MaskCols = ["QS_ID"] + (["QS_DT"] if "QS_DT" in raw_data.columns else [])
         for iFactorName in target_fields:
             iRawData = raw_data.loc[:, CommonCols+[iFactorName]]
             iKey = key+"-"+iFactorName

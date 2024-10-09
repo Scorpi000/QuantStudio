@@ -123,7 +123,7 @@ class HDF5Cache(FactorCache):
                         pass
         return IfExist
 
-    def writeRawData(self, key, raw_data, pid_ids, id_col="ID", if_exists="append"):
+    def writeRawData(self, key, raw_data, pid_ids, id_col="QS_ID", if_exists="append"):
         if raw_data is None: return 0
         for iField, iRawData in raw_data.items():
             if isinstance(iRawData, pd.DataFrame) and (id_col in iRawData):# 如果原始数据有 ID 列，按照 ID 列划分后存入子进程的原始文件中
