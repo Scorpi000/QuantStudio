@@ -9,12 +9,102 @@ import numpy as np
 import pandas as pd
 from traits.api import Str, Int, Float, Callable, Either, List, ListStr, Enum, Date, Dict, on_trait_change
 
-from QuantStudio import __QS_Error__, QSArgs
+from QuantStudio import __QS_Error__
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.FactorDataBase.FactorDB import FactorTable
 from QuantStudio.Tools.api import Panel
+
+# 查找因子对象, def_path: 以/分割的因子查找路径, 比如 年化收益率/0/1
+def searchFactor(factors, qs_id=None, factor_name=None, def_path=None, only_one=True, raise_error=True):
+    FactorNames = [iFactor.Name for iFactor in factors]
+    if def_path is not None:
+        def_path = def_path.split("/")
+        if def_path[0] in FactorNames:
+            iIdx = FactorNames.index(def_path[0])
+        else:
+            try:
+                iIdx = int(def_path[0])
+            except:
+                return None
+        iFactor = factors[iIdx]
+        for iIdx in def_path[1:]:
+            try:
+                iFactor = iFactor.Descriptors[int(iIdx)]
+            except:
+                if raise_error:
+                    raise __QS_Error__(f"查找不到因子: {def_path}")
+                return None
+        if (factor_name is not None) and (iFactor.Name != factor_name):
+            if raise_error:
+                if factor_name is not None:
+                    raise __QS_Error__(f"查找不到因子({factor_name}): {def_path}")
+                else:
+                    raise __QS_Error__(f"查找不到因子: {def_path}")
+            return None
+        else:
+            return iFactor
+    elif factor_name is not None:
+        def _searchFactor(factors, factor_name):
+            Factors = []
+            for iFactor in factors:
+                if iFactor.Name == factor_name:
+                    Factors.append(iFactor)
+                Factors += _searchFactor(iFactor.Descriptors, factor_name)
+            return Factors
+
+        Factors = []
+        for i, iFactorName in enumerate(FactorNames):
+            iFactor = factors[i]
+            if iFactorName == factor_name:
+                Factors.append(iFactor)
+            Factors += _searchFactor(iFactor.Descriptors, factor_name)
+        if only_one:
+            if len(Factors) == 1:
+                return Factors[0]
+            elif len(Factors) == 0:
+                if raise_error:
+                    raise __QS_Error__(f"查找不到因子: {factor_name}")
+                else:
+                    return None
+            else:
+                if raise_error:
+                    raise __QS_Error__(f"因子({factor_name}) 不止一个!")
+                else:
+                    return None
+        else:
+            return Factors
+    elif qs_id is not None:
+        def _searchFactorByID(factors, qs_id):
+            Factors = []
+            for iFactor in factors:
+                if iFactor._QSID == qs_id:
+                    Factors.append(iFactor)
+                Factors += _searchFactorByID(iFactor.Descriptors, qs_id)
+            return Factors
+        Factors = []
+        for i, iFactor in enumerate(factors):
+            if iFactor._QSID == qs_id:
+                Factors.append(iFactor)
+            Factors += _searchFactorByID(iFactor.Descriptors, qs_id)
+        if only_one:
+            if len(Factors) == 1:
+                return Factors[0]
+            elif len(Factors) == 0:
+                if raise_error:
+                    raise __QS_Error__(f"查找不到因子: QSID='{qs_id}'")
+                else:
+                    return None
+            else:
+                if raise_error:
+                    raise __QS_Error__(f"因子(QSID='{qs_id}') 不止一个!")
+                else:
+                    return None
+        else:
+            return Factors
+    else:
+        raise __QS_Error__("参数 def_path, factor_name 和 qs_id 不能同时为 None!")
 
 # -------------------------------数据变换------------------------------------
 # 时间平移, 沿着时间轴将所有数据纵向移动 lag 期, lag>0 向前移动, lag<0 向后移动, 空出来的地方填 nan
