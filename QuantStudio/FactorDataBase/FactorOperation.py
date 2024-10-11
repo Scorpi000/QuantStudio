@@ -456,7 +456,10 @@ class TimeOperator(FactorOperator):
                 StdData = pd.concat(StdData, axis=0, ignore_index=False).set_index(["_QS_DT"], append=True)
                 StdData = StdData.swaplevel(axis=0)
                 if StdData.shape[1] == 1: StdData = StdData.iloc[:, 0]
-                return self._QS_adjOutputPandas(StdData, CompoundCols, sorted(CalcDTs), ids).reindex(index=dts)
+                if CalcDTs is not None:
+                    return self._QS_adjOutputPandas(StdData, CompoundCols, sorted(CalcDTs), ids).reindex(index=dts)
+                else:
+                    return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
             elif (self._QSArgs.DTMode=='多时点') and (self._QSArgs.IDMode=='单ID'):
                 descriptor_data = descriptor_data.swaplevel(axis=0)
                 StdData = []
@@ -800,7 +803,10 @@ class PanelOperator(FactorOperator):
                     StdData = pd.concat(StdData, axis=0, ignore_index=False).set_index(["_QS_DT"], append=True)
                     StdData = StdData.swaplevel(axis=0)
                     if StdData.shape[1] == 1: StdData = StdData.iloc[:, 0]
-                    return self._QS_adjOutputPandas(StdData, CompoundCols, sorted(CalcDTs), ids).reindex(index=dts)
+                    if CalcDTs is not None:
+                        return self._QS_adjOutputPandas(StdData, CompoundCols, sorted(CalcDTs), ids).reindex(index=dts)
+                    else:
+                        return self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)
                 else:
                     StdData = self.calculate(factor, DTRuler, ids, descriptor_data, ModelArgs)
                     StdData = self._QS_adjOutputPandas(StdData, CompoundCols, dts, ids)

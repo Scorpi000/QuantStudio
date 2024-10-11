@@ -426,7 +426,7 @@ class SQLTable(FactorTable):
         super().__init__(name, fdb=fdb, sys_args=sys_args, config_file=config_file, **kwargs)
         if not self._QSArgs.QuerySQL: raise __QS_Error__("参数 '查询SQL' 不能为空!")
         self._TablePrefix = table_prefix
-        self._QS_GroupArgs = self._QS_GroupArgs + ("查询SQL", "SQL数据类型", "时点格式", "因子表类型")
+        self._QS_GroupArgs = (self._QS_GroupArgs if self._QS_GroupArgs else tuple()) + ("查询SQL", "SQL数据类型", "时点格式", "因子表类型")
     
     def __QS_adjustID__(self, ids):
         return ids
@@ -579,7 +579,7 @@ class SQL_Table(FactorTable):
         self._SecurityInfo = security_info
         self._ExchangeInfo = exchange_info
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
-        self._QS_GroupArgs = self._QS_GroupArgs + ("筛选条件", "预筛选ID", "时点字段", "ID字段", "时点格式", "日期格式", "忽略时间", "使用索引", "强制索引", "忽略索引", "转义SQL", *self._QSArgs._ConditionFields)
+        self._QS_GroupArgs = (self._QS_GroupArgs if self._QS_GroupArgs else tuple()) + ("筛选条件", "预筛选ID", "时点字段", "ID字段", "时点格式", "日期格式", "忽略时间", "使用索引", "强制索引", "忽略索引", "转义SQL", *self._QSArgs._ConditionFields)
         if not self._QSArgs.DateFmt:
             self._DTFormat = "'%Y-%m-%d'"
         else:
@@ -880,7 +880,7 @@ class SQL_WideTable(SQL_Table):
     
     def __init__(self, name, fdb, sys_args={}, table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
-        self._QS_GroupArgs = self._QS_GroupArgs + ("公告时点字段", "截止日期递增", "排序字段", "附加字段", "回溯期数")
+        self._QS_GroupArgs = (self._QS_GroupArgs if self._QS_GroupArgs else tuple()) + ("公告时点字段", "截止日期递增", "排序字段", "附加字段", "回溯期数")
         self._QS_LookbackArgs = self._QS_LookbackArgs + ("原始值回溯天数",)
     
     def getFactorMetaData(self, factor_names=None, key=None, args={}):
@@ -1257,7 +1257,7 @@ class SQL_NarrowTable(SQL_Table):
         
     def __init__(self, name, fdb, sys_args={}, table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
-        self._QS_GroupArgs = self._QS_GroupArgs + ("因子名字段", "因子值字段")
+        self._QS_GroupArgs = (self._QS_GroupArgs if self._QS_GroupArgs else tuple()) + ("因子名字段", "因子值字段")
         self._QS_RawDataMaskCols = ["QS_ID", "QS_DT", "FactorName"]
     
     def _getFactorNames(self, factor_field, check_list=False):
@@ -1489,7 +1489,7 @@ class SQL_FeatureTable(SQL_WideTable):
     
     def __init__(self, name, fdb, sys_args={}, table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
-        self._QS_GroupArgs = self._QS_GroupArgs + ("目标时点",)
+        self._QS_GroupArgs = (self._QS_GroupArgs if self._QS_GroupArgs else tuple()) + ("目标时点",)
         self._QS_RawDataMaskCols = ["QS_ID"]
         
     def _getMaxDT(self, args={}):
@@ -1589,7 +1589,7 @@ class SQL_TimeSeriesTable(SQL_Table):
     def __init__(self, name, fdb, sys_args={}, table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         sys_args["ID字段"] = None
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
-        self._QS_GroupArgs = self._QS_GroupArgs + ("公告时点字段", "截止日期递增", "排序字段")
+        self._QS_GroupArgs = (self._QS_GroupArgs if self._QS_GroupArgs else tuple()) + ("公告时点字段", "截止日期递增", "排序字段")
         self._QS_RawDataMaskCols = ["QS_DT"]
     
     def getFactorMetaData(self, factor_names=None, key=None, args={}):
@@ -1834,7 +1834,7 @@ class SQL_MappingTable(SQL_Table):
     
     def __init__(self, name, fdb, sys_args={}, table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
-        self._QS_GroupArgs = self._QS_GroupArgs + ("结束时点字段", "包含结束时点")
+        self._QS_GroupArgs = (self._QS_GroupArgs if self._QS_GroupArgs else tuple()) + ("结束时点字段", "包含结束时点")
         self._QS_RawDataMaskCols = ["QS_ID", "QS_起始日", "QS_结束日"]
     
     # 返回给定时点 idt 有数据的所有 ID
@@ -2076,7 +2076,7 @@ class SQL_ConstituentTable(SQL_Table):
     
     def __init__(self, name, fdb, sys_args={},  table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
-        self._QS_GroupArgs = self._QS_GroupArgs + ("类别字段", "结束时点字段", "当前状态字段")
+        self._QS_GroupArgs = (self._QS_GroupArgs if self._QS_GroupArgs else tuple()) + ("类别字段", "结束时点字段", "当前状态字段")
         self._QS_RawDataMaskCols = ["QS_ID", "Group", "InDate", "OutDate"]
         self._AllGroups = None
     
@@ -2291,7 +2291,7 @@ class SQL_FinancialTable(SQL_Table):
     def __init__(self, name, fdb, sys_args={},  table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
         self._TempData = {}
-        self._QS_GroupArgs = self._QS_GroupArgs + ("调整类型", "公告时点字段", "调整类型字段")
+        self._QS_GroupArgs = (self._QS_GroupArgs if self._QS_GroupArgs else tuple()) + ("调整类型", "公告时点字段", "调整类型字段")
         self._QS_RawDataMaskCols = ["QS_ID", "AnnDate", "ReportDate", "AdjustType"]
     
     def _genConditionSQLStr(self, use_main_table=True, init_keyword="AND", args={}):

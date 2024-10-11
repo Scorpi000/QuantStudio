@@ -188,7 +188,7 @@ class _MarketTable(_TSTable):
         self._DateFields = FactorInfo[FactorInfo["FieldType"]=="Date"].index.tolist()
         self._ConditionFields = FactorInfo[FactorInfo["FieldType"]=="Condition"].index.tolist()# 所有的条件字段列表
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
-        self._QS_GroupArgs = tuple(self._ConditionFields)
+        self._QS_GroupArgs = (self._QS_GroupArgs if self._QS_GroupArgs else tuple()) + tuple(self._ConditionFields)
         return
     
     @property
@@ -289,7 +289,7 @@ class _AnnTable(_TSTable):
         else: self._IDField, self._IDType = IDInfo.index[0], IDInfo["Supplementary"].iloc[0]
         self._AnnDateField = FactorInfo[FactorInfo["FieldType"]=="ANNDate"].index[0]# 公告日期
         self._ConditionFields = FactorInfo[FactorInfo["FieldType"]=="Condition"].index.tolist()# 所有的条件字段列表
-        self._QS_GroupArgs = (*self._ConditionFields, )
+        self._QS_GroupArgs = (self._QS_GroupArgs if self._QS_GroupArgs else tuple()) + (*self._ConditionFields, )
         return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
     
     @property

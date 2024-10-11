@@ -1,7 +1,7 @@
 # coding=utf-8
 """内置的因子运算"""
 import datetime as dt
-from typing import Optional, Dict
+from typing import Optional, Dict, Union
 
 import numpy as np
 import pandas as pd
@@ -28,6 +28,41 @@ class Log(PointOperator):
         factor_args.setdefault("参数", {}).update({"base": base} if base is not None else {})
         return super().__call__(f, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
 
+class Fetch(PointOperator):
+    class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
+        def __QS_initArgValue__(self, args={}):
+            Args = {"名称": "fetch", "入参数": 1, "最大入参数": 1, "运算时点": "多时点", "运算ID": "多ID", "参数": {"pos": 0}}
+            Args.update(args)
+            return super().__QS_initArgValue__(args=Args)
+    
+    def calculate(self, f, idt, iid, x, args):
+        Data = x[0]
+        CompoundType = args["compound_type"]
+        if CompoundType and isinstance(args["pos"], str):
+            DefaultData = np.array([[None]], dtype="O")
+            DefaultData[0, 0] = (None,) * len(CompoundType)
+            DefaultData = DefaultData.repeat(Data.shape[0], axis=0).repeat(Data.shape[1], axis=1)
+            Data = np.where(pd.notnull(Data), Data, DefaultData)
+            DataType = np.dtype([(iCol, float if iType=="double" else "O") for iCol, iType in CompoundType])
+        else:
+            SampleData = Data[pd.notnull(Data)]
+            if SampleData.shape[0]==0:
+                return (np.full(Data.shape, fill_value=np.nan, dtype="float") if f._QSArgs.DataType=="double" else np.full(Data.shape, fill_value=None, dtype="O"))
+            SampleData = SampleData[0]
+            DataType = np.dtype([(str(i),(float if isinstance(SampleData[i], float) else "O")) for i in range(len(SampleData))])
+        return Data.astype(DataType)[str(args["pos"])]
+    
+    def __call__(self, f, pos:Union[int, str]=0, dtype:str="double", factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
+        CompoundType = getattr(f._QSArgs, "CompoundType", None)
+        if CompoundType:
+            if isinstance(pos, str):
+                dtype = dict(CompoundType)[pos]
+            else:
+                pos, dtype = CompoundType[int(pos)]
+        factor_args = factor_args.copy()
+        factor_args.setdefault("参数", {}).update({"pos": pos, "compound_type": CompoundType})
+        return super().__call__(f, args=({} if dtype=="double" else {"数据类型": dtype}), factor_name=factor_name, factor_args=factor_args, **kwargs)
+
 
 # ----------------------时序运算--------------------------------
 class RollingSum(TimeOperator):
@@ -41,7 +76,7 @@ class RollingSum(TimeOperator):
         Data = pd.DataFrame(x[0])
         return Data.rolling(**args).sum().values[self.Args["回溯期数"][0]:]
     
-    def __call__(self, f:Factor, /, window:Optional[int]=None, min_periods:Optional[int]=None, win_type:Optional[str]=None, auto_lookback:bool=True, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
+    def __call__(self, f:Factor, window:Optional[int]=None, min_periods:Optional[int]=None, win_type:Optional[str]=None, auto_lookback:bool=True, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
         Args = ({"回溯期数": [window-1]} if auto_lookback and (window is not None) else {})
         factor_args = factor_args.copy()
         factor_args.setdefault("参数", {}).update({"window": window, "min_periods": min_periods, "win_type": win_type})

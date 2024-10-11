@@ -754,19 +754,23 @@ class DataFactor(Factor):
         elif key=="DataType": return DataType
         return None
     def getID(self, idt=None):
-        if (self._OperationMode is not None) and (self._OperationMode._isStarted): return self._OperationMode.IDs
+        Context = self.BatchContext
+        if Context is not None: return Context._QSArgs["截面ID"]
         if self._DataContent=="Factor":
             return self._Data.columns.tolist()
         elif self._DataContent=="ID":
             return self._Data.index.tolist()
         else:
             return []
+    
     def getDateTime(self, iid=None, start_dt=None, end_dt=None):
-        if (self._OperationMode is not None) and (self._OperationMode._isStarted): return self._OperationMode.DateTimes
+        Context = self.BatchContext
+        if Context is not None: return Context._QSArgs["时点标尺"]
         if self._DataContent in ("DateTime", "Factor"):
             return self._Data.index.tolist()
         else:
             return []
+    
     def readData(self, ids, dts, **kwargs):
         if self._DataContent=="Value":
             if self._QSArgs.DataType in ("double", "string"):
@@ -811,13 +815,13 @@ def Factorize(factor_object, factor_name, args={}, **kwargs):
 # 批量运算运行时环境
 class BatchContext(__QS_Object__):
     class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
-        DTRuler = List(dt.datetime, arg_type="DateTimeList", label="时点标尺", order=0, mutable=False)
+        DTRuler = List(dt.datetime, arg_type="DateTimeList", label="时点标尺", order=0)
         MinDTUnit = Instance(klass=dt.timedelta, factory=dt.timedelta(1), arg_type="TimeDelta", label="最小时间单位", order=1)
         DefaultSectionIDs = List(Str, arg_type="IDList", label="截面ID", order=1.5)
         FactorSectionIDs = Dict(arg_type="IDList", label="特别截面ID", order=2)# {因子对象的 QSID: [ID]}
-        IOConcurrentNum = Int(100, arg_type="Integer", label="IO并发数", order=3, mutable=False)
-        CalcConcurrentNum = Int(0, arg_type="Integer", label="计算并发数", order=4, mutable=False)
-        IDSplit = Enum("连续切分", "间隔切分", arg_type="SingleOption", label="ID切分", order=5, mutable=False)
+        IOConcurrentNum = Int(100, arg_type="Integer", label="IO并发数", order=3)
+        CalcConcurrentNum = Int(0, arg_type="Integer", label="计算并发数", order=4)
+        IDSplit = Enum("连续切分", "间隔切分", arg_type="SingleOption", label="ID切分", order=5)
         WriteBatchNum = Int(1, arg_type="Integer", label="写入批次", order=6)
         Verbose = Enum(True, False, arg_type="Bool", label="打印信息", order=7)
         ClearCache = Enum(True, False, arg_type="Bool", label="清空缓存", order=8)
@@ -970,7 +974,7 @@ class BatchContext(__QS_Object__):
         SectionIDs = self._FactorSectionIDs.get(factor_id, self._SectionIDs)
         if pids is not None:
             PIDIDs = self.getPIDID(factor_id=factor_id)
-            return sorted(sum((PIDIDs[iPID] for iPID in pids), start=[]))
+            return sorted(sum((PIDIDs[iPID] for iPID in pids), []))
         elif SectionIDs is None:
             return self._SectionIDs
         else:
