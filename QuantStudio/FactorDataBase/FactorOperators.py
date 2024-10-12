@@ -28,6 +28,19 @@ class Log(PointOperator):
         factor_args.setdefault("参数", {}).update({"base": base} if base is not None else {})
         return super().__call__(f, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
 
+class Where(PointOperator):
+    class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
+        def __QS_initArgValue__(self, args={}):
+            Args = {"名称": "where", "入参数": 3, "最大入参数": 3, "运算时点": "多时点", "运算ID": "多ID", "参数": {}}
+            Args.update(args)
+            return super().__QS_initArgValue__(args=Args)
+    
+    def calculate(self, f, idt, iid, x, args):
+        return np.where(x[1], x[0], x[2])
+    
+    def __call__(self, f, mask, other, dtype:str="double", factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
+        return super().__call__(f, mask, other, args=({} if dtype=="double" else {"数据类型": dtype}), factor_name=factor_name, factor_args=factor_args, **kwargs)
+
 class Fetch(PointOperator):
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __QS_initArgValue__(self, args={}):
@@ -83,7 +96,7 @@ class Strftime(PointOperator):
 class Strptime(PointOperator):
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __QS_initArgValue__(self, args={}):
-            Args = {"名称": "strftime", "入参数": 1, "最大入参数": 1, "数据类型": "object", "运算时点": "多时点", "运算ID": "多ID", "参数": {"dt_format": "%Y%m%d"}}
+            Args = {"名称": "strptime", "入参数": 1, "最大入参数": 1, "数据类型": "object", "运算时点": "多时点", "运算ID": "多ID", "参数": {"dt_format": "%Y%m%d"}}
             Args.update(args)
             return super().__QS_initArgValue__(args=Args)
     
@@ -94,7 +107,7 @@ class Strptime(PointOperator):
             return pd.DataFrame(Data).applymap(lambda x: dt.datetime.strptime(x, DTFormat) if pd.notnull(x) else None).values
         else:
             return pd.DataFrame(Data).applymap(lambda x: dt.datetime.strptime(x, DTFormat).date() if pd.notnull(x) else None).values
-        
+    
     def __call__(self, f, dt_format:str="%Y%m%d", is_datetime:bool=True, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
         factor_args = factor_args.copy()
         factor_args.setdefault("参数", {}).update({"dt_format": dt_format, "is_datetime": is_datetime})
