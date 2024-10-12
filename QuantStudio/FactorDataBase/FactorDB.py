@@ -1094,7 +1094,7 @@ class BatchContext(__QS_Object__):
                             jData = jFactor.__QSBC_getData__(dts=self._DateTimes, pids=[task["PID"]])
                             if self._FactorSectionIDs.get(jFactor.QSID, None) is not None:
                                 jData = jData.reindex(columns=self._IDs)
-                            iDB.writeFactorData(jData, iTableName, iTargetFactorNames[j], if_exists=args["if_exists"], data_type=jFactor.getMetaData(key="DataType"), **task["kwargs"])
+                            iDB.writeFactorData(jData, iTableName, iTargetFactorNames[j], if_exists=task["if_exists"], data_type=jFactor.getMetaData(key="DataType"), **task["kwargs"])
                             jData = None
                             TaskCount += 1
                             ProgBar.update(TaskCount)

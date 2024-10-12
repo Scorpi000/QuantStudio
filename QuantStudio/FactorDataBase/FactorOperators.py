@@ -63,6 +63,43 @@ class Fetch(PointOperator):
         factor_args.setdefault("参数", {}).update({"pos": pos, "compound_type": CompoundType})
         return super().__call__(f, args=({} if dtype=="double" else {"数据类型": dtype}), factor_name=factor_name, factor_args=factor_args, **kwargs)
 
+class Strftime(PointOperator):
+    class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
+        def __QS_initArgValue__(self, args={}):
+            Args = {"名称": "strftime", "入参数": 1, "最大入参数": 1, "数据类型": "string", "运算时点": "多时点", "运算ID": "多ID", "参数": {"dt_format": "%Y%m%d"}}
+            Args.update(args)
+            return super().__QS_initArgValue__(args=Args)
+    
+    def calculate(self, f, idt, iid, x, args):
+        Data = x[0]
+        DTFormat = args["dt_format"]
+        return pd.DataFrame(Data).applymap(lambda x: x.strftime(DTFormat) if pd.notnull(x) else None).values
+    
+    def __call__(self, f, dt_format:str="%Y%m%d", factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
+        factor_args = factor_args.copy()
+        factor_args.setdefault("参数", {}).update({"dt_format": dt_format})
+        return super().__call__(f, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+
+class Strptime(PointOperator):
+    class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
+        def __QS_initArgValue__(self, args={}):
+            Args = {"名称": "strftime", "入参数": 1, "最大入参数": 1, "数据类型": "object", "运算时点": "多时点", "运算ID": "多ID", "参数": {"dt_format": "%Y%m%d"}}
+            Args.update(args)
+            return super().__QS_initArgValue__(args=Args)
+    
+    def calculate(self, f, idt, iid, x, args):
+        Data = x[0]
+        DTFormat = args["dt_format"]
+        if args["is_datetime"]:
+            return pd.DataFrame(Data).applymap(lambda x: dt.datetime.strptime(x, DTFormat) if pd.notnull(x) else None).values
+        else:
+            return pd.DataFrame(Data).applymap(lambda x: dt.datetime.strptime(x, DTFormat).date() if pd.notnull(x) else None).values
+        
+    def __call__(self, f, dt_format:str="%Y%m%d", is_datetime:bool=True, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
+        factor_args = factor_args.copy()
+        factor_args.setdefault("参数", {}).update({"dt_format": dt_format, "is_datetime": is_datetime})
+        return super().__call__(f, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+
 
 # ----------------------时序运算--------------------------------
 class RollingSum(TimeOperator):
