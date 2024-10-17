@@ -40,6 +40,10 @@ class FactorOperator(__QS_Object__):
                 raise __QS_Error__(f"最小入参数必须小于等于最大入参数!")
             return super().__QS_initArgValue__(args=args)
     
+    def __init__(self, sys_args={}, config_file=None, **kwargs):
+        super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
+        self._QS_CachedOperators = {}
+    
     @property
     def Name(self):
         return self._QSArgs.Name
@@ -59,10 +63,14 @@ class FactorOperator(__QS_Object__):
                 return (False, f"因子算子 {self._QSArgs.Name} 实际传入的因子数量 {Arity} 小于最小入参数 {self._QSArgs.Arity}!")
         return (True, None)
     
-    def _QS_makeOperator(self, *x, args:dict={}):
+    def _QS_makeOperator(self, *x, args:dict={}, cached_id=None):
         isOK, Msg = self._QS_checkArity(*x)
         if not isOK: raise __QS_Error__(Msg)
         if not args: return self
+        elif cached_id is not None:
+            if cached_id not in self._QS_CachedOperators:
+                self._QS_CachedOperators[cached_id] = self._QS_makeOperator(*x, args=args, cached_id=None)
+            return self._QS_CachedOperators[cached_id]
         else:
             Args, args = self._QSArgs.to_dict(), args.copy()
             Args["参数"].update(args.pop("参数", {}))
@@ -161,7 +169,7 @@ class PointOperator(FactorOperator):
         IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=14, option_range=["单ID", "多ID"], mutable=False)
     
     def __call__(self, *x, args:dict={}, factor_name:Optional[str]=None, factor_args:dict={}, **kwargs):
-        Operator = self._QS_makeOperator(*x, args=args)
+        Operator = self._QS_makeOperator(*x, args=args, cached_id=kwargs.pop("cached_id", None))
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(name=f"D{i}", data=iFactor)) for i, iFactor in enumerate(x)]
         return PointOperation(name=(Operator._QSArgs.Name if not factor_name else factor_name), descriptors=Descriptors, sys_args={"算子": Operator, **factor_args}, **kwargs)
     
@@ -306,7 +314,7 @@ class TimeOperator(FactorOperator):
                     args["起始时点"] = [None] * len(args["回溯期数"])
             return super().__QS_initArgValue__(args=args)
     
-    def _QS_makeOperator(self, *x, args:dict={}):
+    def _QS_makeOperator(self, *x, args:dict={}, cached_id=None):
         args = args.copy()
         LookBack = args.get("回溯期数", self._QSArgs.LookBack)
         if not LookBack: LookBack = [0] * len(x)
@@ -323,10 +331,10 @@ class TimeOperator(FactorOperator):
         elif len(StartDT)<len(x): raise  __QS_Error__("时序算子 '%s'(QSID: %s) 的参数 '起始时点' 序列长度小于描述子个数!" % (self._QSArgs.Name, self.QSID))
         if StartDT[:len(x)]==self._QSArgs.StartDT[:len(x)]: args.pop("起始时点", None)
         else: args["起始时点"] = StartDT
-        return super()._QS_makeOperator(*x, args=args)
+        return super()._QS_makeOperator(*x, args=args, cached_id=cached_id)
     
     def __call__(self, *x, args:dict={}, factor_name:Optional[str]=None, factor_args:dict={}, **kwargs):
-        Operator = self._QS_makeOperator(*x, args=args)
+        Operator = self._QS_makeOperator(*x, args=args, cached_id=kwargs.pop("cached_id", None))
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(name=f"D{i}", data=iFactor)) for i, iFactor in enumerate(x)]
         return TimeOperation(name=(self._QSArgs.Name if not factor_name else factor_name), descriptors=Descriptors, sys_args={"算子": Operator, **factor_args}, **kwargs)
     
@@ -505,7 +513,7 @@ class SectionOperator(FactorOperator):
         OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=14, option_range=["全截面", "单ID"], mutable=False)
     
     def __call__(self, *x, args:dict={}, factor_name:Optional[str]=None, factor_args:dict={}, **kwargs):
-        Operator = self._QS_makeOperator(*x, args=args)
+        Operator = self._QS_makeOperator(*x, args=args, cached_id=kwargs.pop("cached_id", None))
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(name=f"D{i}", data=iFactor)) for i, iFactor in enumerate(x)]
         return SectionOperation(name=(self._QSArgs.Name if not factor_name else factor_name), descriptors=Descriptors, sys_args={"算子": Operator, **factor_args}, **kwargs)
         
@@ -660,7 +668,7 @@ class PanelOperator(FactorOperator):
                     args["起始时点"] = [None] * len(args["回溯期数"])
             return super().__QS_initArgValue__(args=args)
     
-    def _QS_makeOperator(self, *x, args:dict={}):
+    def _QS_makeOperator(self, *x, args:dict={}, cached_id=None):
         args = args.copy()
         LookBack = args.get("回溯期数", self._QSArgs.LookBack)
         if not LookBack: LookBack = [0] * len(x)
@@ -677,10 +685,10 @@ class PanelOperator(FactorOperator):
         elif len(StartDT)<len(x): raise  __QS_Error__("面板算子 '%s'(QSID: %s) 的参数 '起始时点' 序列长度小于描述子个数!" % (self._QSArgs.Name, self.QSID))
         if StartDT[:len(x)]==self._QSArgs.StartDT[:len(x)]: args.pop("起始时点", None)
         else: args["起始时点"] = StartDT
-        return super()._QS_makeOperator(*x, args=args)
+        return super()._QS_makeOperator(*x, args=args, cached_id=cached_id)
     
     def __call__(self, *x, args:dict={}, factor_name:Optional[str]=None, factor_args:dict={}, **kwargs):
-        Operator = self._QS_makeOperator(*x, args=args)
+        Operator = self._QS_makeOperator(*x, args=args, cached_id=kwargs.pop("cached_id", None))
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(name=f"D{i}", data=iFactor)) for i, iFactor in enumerate(x)]
         return PanelOperation(name=(self._QSArgs.Name if not factor_name else factor_name), descriptors=Descriptors, sys_args={"算子": Operator, **factor_args}, **kwargs)
     

@@ -132,7 +132,7 @@ class HDF5Cache(FactorCache):
                 for jPID, jIDs in pid_ids.items():
                     jInterIDs = sorted(AllIDs.intersection(jIDs))
                     ijRawData = iRawData.loc[jInterIDs]
-                    with self._PIDLock[jPID]:
+                    with self._DataLock:
                         with pd.HDFStore(self._RawDataDir+os.sep+jPID+os.sep+key+self._QSArgs.HDF5Suffix, mode="a") as jFile:
                             if (iField in jFile) and (if_exists=="append"):
                                 jFile[iField] = pd.concat([jFile[iField], ijRawData.reset_index()], ignore_index=True)
@@ -140,7 +140,7 @@ class HDF5Cache(FactorCache):
                                 jFile[iField] = ijRawData.reset_index()
             else:# 如果原始数据没有 ID 列，则将所有数据分别存入子进程的原始文件中
                 for jPID, jIDs in pid_ids.items():
-                    with self._PIDLock[jPID]:
+                    with self._DataLock:
                         with pd.HDFStore(self._RawDataDir+os.sep+jPID+os.sep+key+self._QSArgs.HDF5Suffix, mode="a") as jFile:
                             if (iField in jFile) and (if_exists=="append"):
                                 jFile[iField] = pd.concat([jFile[iField], iRawData], ignore_index=True)

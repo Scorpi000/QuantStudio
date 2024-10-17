@@ -560,7 +560,8 @@ class Factor(__QS_Object__):
             if len(RawData)==1: RawData = RawData["RawData"]
             StdData = self._FactorTable.__QS_calcData__(RawData, factor_names=[self._NameInFT], ids=iSectionIDs, dts=DTs, args=self._QSArgs.FTArgs).iloc[0]
         else:
-            StdData = self._FactorTable.readData(factor_names=[self._NameInFT], ids=iSectionIDs, dts=DTs, args=self._QSArgs.FTArgs).iloc[0]
+            RawData = self._FactorTable.__QS_prepareRawData__(factor_names=[self._NameInFT], ids=iSectionIDs, dts=DTs, args=self._QSArgs.FTArgs)
+            StdData = self._FactorTable.__QS_calcData__(raw_data=RawData, factor_names=[self._NameInFT], ids=iSectionIDs, dts=DTs, args=self._QSArgs.FTArgs).iloc[0]
         Context._Cache.writeFactorData(key=self._QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=Context._iPID, if_exists="append")
         Context.updateDTRange(factor_id=self._QSID, dt_range=dt_range)
         Context._Cache.writeFactorData(key=self._QSID, target_field="DTRange", factor_data=Context._CachedDTRange[self._QSID], pid_ids=None, pid=Context._iPID, if_exists="replace")
