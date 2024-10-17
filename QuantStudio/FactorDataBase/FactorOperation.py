@@ -1153,10 +1153,10 @@ class SectionOperation(DerivativeFactor):
             StdData = pd.DataFrame(columns=IDs, dtype=("float" if Operator._QSArgs.DataType=="double" else "O"))
         elif IDs:
             if Operator._QSArgs.InputFormat == "numpy":
-                StdData = Operator.calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor.__QSBC_getData__(DTs, pids=None).values for iDescriptor in self._Descriptors])
+                StdData = Operator.calcData(factor=self, ids=IDs, dts=DTs, descriptor_data=[iDescriptor.__QSBC_getData__(DTs, pids=None).values for iDescriptor in self._Descriptors])
                 StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
             else:
-                StdData = Operator.calcData(ids=IDs, dts=DTs, descriptor_data=[iDescriptor.__QSBC_getData__(DTs, pids=None) for iDescriptor in self._Descriptors])
+                StdData = Operator.calcData(factor=self, ids=IDs, dts=DTs, descriptor_data=[iDescriptor.__QSBC_getData__(DTs, pids=None) for iDescriptor in self._Descriptors])
         else:
             for iDescriptor in self._Descriptors:
                 iDescriptor.__QSBC_getData__(DTs, pids=None)

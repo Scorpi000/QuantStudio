@@ -547,6 +547,24 @@ class RollingMean(TimeOperator):
         return super().__call__(f, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
 
 
+class RollingStd(TimeOperator):
+    def __init__(self, window:int=1, min_periods:int=1, win_type:Optional[str]=None, ddof=1, auto_lookback:bool=True, sys_args={}, config_file=None, **kwargs):
+        Args = {"名称": "rollingStd", "入参数": 1, "最大入参数": 1, "数据类型": "double", "运算时点": "多时点", "运算ID": "多ID", "回溯期数": [1-1], "参数": {"window": window, "min_periods": min_periods, "win_type": win_type, "ddof": ddof}}
+        if auto_lookback and (window is not None):
+            Args["回溯期数"] = [window-1]
+        Args.update(sys_args)
+        return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
+    
+    def calculate(self, f, idt, iid, x, args):
+        Data = pd.DataFrame(x[0])
+        args = args.copy()
+        ddof = args.pop("ddof")
+        return Data.rolling(**args).apply(lambda x:np.nanstd(x, ddof=ddof), raw=True).values[self.Args["回溯期数"][0]:]        
+        
+    def __call__(self, f:Factor, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
+        return super().__call__(f, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+    
+
 # ----------------------截面运算--------------------------------
 class StandardizeRank(SectionOperator):
     def __init__(self, ascending:bool=True, uniformization:bool=True, perturbation:bool=False, offset:float=0.5, other_handle:str='填充None', sys_args={}, config_file=None, **kwargs):
