@@ -167,14 +167,8 @@ class Where(PointOperator):
         return super().__call__(f, mask, other, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
 
 class Fetch(PointOperator):
-    def __init__(self, pos:Union[int, str]=0, dtype:str="double", sys_args={}, config_file=None, **kwargs):
-        CompoundType = getattr(f._QSArgs, "CompoundType", None)
-        if CompoundType:
-            if isinstance(pos, str):
-                dtype = dict(CompoundType)[pos]
-            else:
-                pos, dtype = CompoundType[int(pos)]        
-        Args = {"名称": "fetch", "入参数": 1, "最大入参数": 1, "数据类型": dtype, "运算时点": "多时点", "运算ID": "多ID", "参数": {"pos": pos, "compound_type": CompoundType}}
+    def __init__(self, sys_args={}, config_file=None, **kwargs):
+        Args = {"名称": "fetch", "入参数": 1, "最大入参数": 1, "数据类型": "double", "运算时点": "多时点", "运算ID": "多ID", "参数": {}}
         Args.update(sys_args)
         return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
     
@@ -195,8 +189,16 @@ class Fetch(PointOperator):
             DataType = np.dtype([(str(i),(float if isinstance(SampleData[i], float) else "O")) for i in range(len(SampleData))])
         return Data.astype(DataType)[str(args["pos"])]
     
-    def __call__(self, f, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
-        return super().__call__(f, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+    def __call__(self, f, pos:Union[int, str]=0, dtype:str="double", factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
+        CompoundType = getattr(f._QSArgs, "CompoundType", None)
+        if CompoundType:
+            if isinstance(pos, str):
+                dtype = dict(CompoundType)[pos]
+            else:
+                pos, dtype = CompoundType[int(pos)]
+        factor_args = factor_args.copy()
+        factor_args.setdefault("参数", {}).update({"pos": pos, "compound_type": CompoundType})
+        return super().__call__(f, args=({} if dtype=="double" else {"数据类型": dtype}), factor_name=factor_name, factor_args=factor_args, **kwargs)
 
 class Strftime(PointOperator):
     def __init__(self, dt_format:str="%Y%m%d", sys_args={}, config_file=None, **kwargs):
