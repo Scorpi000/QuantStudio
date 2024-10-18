@@ -511,6 +511,36 @@ class RollingSum(TimeOperator):
     def __call__(self, f:Factor, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
         return super().__call__(f, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
 
+class RollingMax(TimeOperator):
+    def __init__(self, window:int=1, min_periods:int=1, win_type:Optional[str]=None, auto_lookback:bool=True, sys_args={}, config_file=None, **kwargs):
+        Args = {"名称": "rollingMax", "入参数": 1, "最大入参数": 1, "数据类型": "double", "运算时点": "多时点", "运算ID": "多ID", "回溯期数": [1-1], "参数": {"window": window, "min_periods": min_periods, "win_type": win_type}}
+        if auto_lookback and (window is not None):
+            Args["回溯期数"] = [window-1]
+        Args.update(sys_args)
+        return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
+    
+    def calculate(self, f, idt, iid, x, args):
+        Data = pd.DataFrame(x[0])
+        return Data.rolling(**args).max().values[self.Args["回溯期数"][0]:]
+    
+    def __call__(self, f:Factor, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
+        return super().__call__(f, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+
+class RollingMin(TimeOperator):
+    def __init__(self, window:int=1, min_periods:int=1, win_type:Optional[str]=None, auto_lookback:bool=True, sys_args={}, config_file=None, **kwargs):
+        Args = {"名称": "rollingMin", "入参数": 1, "最大入参数": 1, "数据类型": "double", "运算时点": "多时点", "运算ID": "多ID", "回溯期数": [1-1], "参数": {"window": window, "min_periods": min_periods, "win_type": win_type}}
+        if auto_lookback and (window is not None):
+            Args["回溯期数"] = [window-1]
+        Args.update(sys_args)
+        return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
+    
+    def calculate(self, f, idt, iid, x, args):
+        Data = pd.DataFrame(x[0])
+        return Data.rolling(**args).min().values[self.Args["回溯期数"][0]:]
+    
+    def __call__(self, f:Factor, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
+        return super().__call__(f, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+
 class RollingProd(TimeOperator):
     def __init__(self, window:int=1, min_periods:int=1, auto_lookback:bool=True, sys_args={}, config_file=None, **kwargs):
         Args = {"名称": "rollingProd", "入参数": 1, "最大入参数": 1, "数据类型": "double", "运算时点": "单时点", "运算ID": "多ID", "回溯期数": [1-1], "参数": {"window": window, "min_periods": min_periods}}
