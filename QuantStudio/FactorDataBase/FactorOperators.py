@@ -315,14 +315,14 @@ class NanMean(PointOperator):
         return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
     
     def calculate(self, f, idt, iid, x, args):
-        Data = np.array(Data)
+        Data = np.array(x)
         Weights = args["weights"]
         if Weights is None:
             if args["ignore_nan_weight"]:
-                return np.nanmean(Data,axis=0)
-            Weights = [1] * len(Data)
+                return np.nanmean(Data, axis=0)
+            Weights = [1] * Data.shape[0]
         Rslt = np.zeros(Data.shape[1:])
-        WeightArray = np.zeros(Data[0].shape)
+        WeightArray = np.zeros(Data.shape[1:])
         for i, iData in enumerate(Data):
             iMask = pd.notnull(iData)
             WeightArray += iMask * Weights[i]
@@ -333,7 +333,7 @@ class NanMean(PointOperator):
             return Rslt / WeightArray
         else:
             Rslt[WeightArray==0.0] = np.nan
-            return Rslt / len(Data)
+            return Rslt / Data.shape[0]
     
     def __call__(self, *factors, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
         return super().__call__(*factors, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
