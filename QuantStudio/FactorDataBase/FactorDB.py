@@ -281,7 +281,7 @@ class FactorTable(__QS_Object__):
         return list(ConditionGroup.values())
         
     def __QSBC_saveRawData__(self, raw_data, key, target_fields, pid_ids, **kwargs):
-        if (raw_data is None) or raw_data.empty: return 0
+        if raw_data is None: return 0
         Context = self.BatchContext
         Cache = Context._Cache
         MaskCols = raw_data.columns.intersection(self._QS_RawDataMaskCols).tolist()
@@ -561,6 +561,7 @@ class Factor(__QS_Object__):
             StdData = self._FactorTable.__QS_calcData__(RawData, factor_names=[self._NameInFT], ids=iSectionIDs, dts=DTs, args=self._QSArgs.FTArgs).iloc[0]
         else:
             RawData = self._FactorTable.__QS_prepareRawData__(factor_names=[self._NameInFT], ids=iSectionIDs, dts=DTs, args=self._QSArgs.FTArgs)
+            if RawData is not None: self._QS_Logger.warning(f"因子 {self.Name} (QSID: {self._QSID}) 的原始数据缓存丢失!")
             StdData = self._FactorTable.__QS_calcData__(raw_data=RawData, factor_names=[self._NameInFT], ids=iSectionIDs, dts=DTs, args=self._QSArgs.FTArgs).iloc[0]
         Context._Cache.writeFactorData(key=self._QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=Context._iPID, if_exists="append")
         Context.updateDTRange(factor_id=self._QSID, dt_range=dt_range)

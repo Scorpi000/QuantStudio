@@ -1269,6 +1269,7 @@ class PanelOperation(DerivativeFactor):
         PID = Context._iPID
         DTs = Context.getDateTime(dt_range)
         if not DTs: return 0
+        Operator = self._Operator
         DTRuler = list(Context._QSArgs.DTRuler)
         if Operator._QSArgs.iLookBackMode=="扩张窗口":
             DTPartition = [DTs]+[[]]*(len(Context._PIDs)-1)
@@ -1276,7 +1277,6 @@ class PanelOperation(DerivativeFactor):
             DTPartition = partitionList(DTs, len(Context._PIDs))
         DTs = DTPartition[Context._PIDs.index(PID)]
         IDs = Context.getID(self._QSID, pids=None)
-        Operator = self._Operator
         if len(DTs)==0:# 该进程未分配到计算任务
             iDTs = [Context._DateTimes[-1]]
             for i, iDescriptor in enumerate(self._Descriptors):
