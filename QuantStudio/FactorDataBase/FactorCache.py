@@ -8,17 +8,22 @@ from multiprocessing import Lock
 
 import numpy as np
 import pandas as pd
-from traits.api import Directory, Str, ListStr
+from traits.api import Directory, Str, ListStr, Enum
 
 from QuantStudio import __QS_Object__
 from QuantStudio.Tools.QSObjects import QSFileLock
 
 class FactorCache(__QS_Object__):
     class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
-        PIDs = ListStr(arg_type="List", label="进程ID", order=0)
+        PIDs = ListStr(arg_type="List", label="进程ID", order=-2)
+        ClearStart = Enum(True, False, arg_type="Bool", label="启动时清空", order=-1)
     
     # 初始化缓存
     def start(self):
+        raise NotImplementedError
+    
+    # 结束缓存
+    def end(self, clear=True):
         raise NotImplementedError
     
     # 原始数据缓存是否存在
@@ -57,9 +62,9 @@ class FactorCache(__QS_Object__):
 
 class HDF5Cache(FactorCache):
     class __QS_ArgClass__(FactorCache.__QS_ArgClass__):
-        CacheDir = Directory(arg_type="Directory", label="缓存目录", order=1)
-        HDF5Suffix = Str(".h5", arg_type="String", label="H5文件后缀", order=2)
-
+        CacheDir = Directory(arg_type="Directory", label="缓存目录", order=0)
+        HDF5Suffix = Str(".h5", arg_type="String", label="H5文件后缀", order=1)
+    
     def __init__(self, sys_args={}, config_file=None, **kwargs):
         super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
         self._isStarted = False
@@ -94,6 +99,9 @@ class HDF5Cache(FactorCache):
             open(LockFile, mode="a").close()
             os.chmod(LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
         self._DataLock = QSFileLock(LockFile, proc_lock=Lock())
+        if self._QSArgs.ClearStart:
+            self.clearRawData()
+            self.clearFactorData()
         with self._DataLock:
             if not os.path.isdir(self._RawDataDir): os.mkdir(self._RawDataDir)
             if not os.path.isdir(self._FactorDataDir): os.mkdir(self._FactorDataDir)
@@ -107,7 +115,18 @@ class HDF5Cache(FactorCache):
                     os.chmod(iLockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
                 self._PIDLock[iPID] = QSFileLock(iLockFile, proc_lock=Lock())
         self._isStarted = True
-
+    
+    def end(self, clear=True):
+        if clear:
+            self.clearRawData()
+            self.clearFactorData()
+            LockFile = (self._CacheDir if isinstance(self._CacheDir, str) else self._CacheDir.name) + os.sep + "LockFile"
+            try:
+                if os.path.isfile(LockFile): os.remove(LockFile)
+            except Exception as e:
+                self._QS_Logger.error(f"锁文件: {LockFile} 清理失败: {e}")
+        self._isStarted = False
+        
     def checkRawDataExistence(self, key, pids=None, if_not_exists="create"):
         if pids is None: pids = self._QSArgs.PIDs
         IfExist = False
@@ -168,14 +187,14 @@ class HDF5Cache(FactorCache):
                 try:
                     if os.path.isdir(self._RawDataDir): shutil.rmtree(self._RawDataDir)
                 except Exception as e:
-                    self._QS_Logger.warning(f"原始数据缓存目录: {self._RawDataDir} 清理失败: {e}")
+                    self._QS_Logger.error(f"原始数据缓存目录: {self._RawDataDir} 清理失败: {e}")
             else:
                 for iPID in self._QSArgs.PIDs:
                     iRawDataFilePath = self._RawDataDir + os.sep + iPID + os.sep + key + self._QSArgs.HDF5Suffix
                     try:
                         if os.path.isfile(iRawDataFilePath): os.remove(iRawDataFilePath)
                     except Exception as e:
-                        self._QS_Logger.warning(f"原始数据缓存文件: {iRawDataFilePath} 清理失败: {e}")
+                        self._QS_Logger.error(f"原始数据缓存文件: {iRawDataFilePath} 清理失败: {e}")
     
     def checkFactorDataExistence(self, key, pids=None):
         if pids is None: pids = self._QSArgs.PIDs
@@ -238,11 +257,11 @@ class HDF5Cache(FactorCache):
                 try:
                     if os.path.isdir(self._FactorDataDir): shutil.rmtree(self._FactorDataDir)
                 except Exception as e:
-                    self._QS_Logger.warning(f"因子数据缓存目录: {self._FactorDataDir} 清理失败: {e}")
+                    self._QS_Logger.error(f"因子数据缓存目录: {self._FactorDataDir} 清理失败: {e}")
             else:
                 for iPID in self._QSArgs.PIDs:
                     iFilePath = self._FactorDataDir + os.sep + iPID + os.sep + key + self._QSArgs.HDF5Suffix
                     try:
                         if os.path.isfile(iFilePath): os.remove(iFilePath)
                     except Exception as e:
-                        self._QS_Logger.warning(f"因子数据缓存文件: {iFilePath} 清理失败: {e}")
+                        self._QS_Logger.error(f"因子数据缓存文件: {iFilePath} 清理失败: {e}")

@@ -874,9 +874,7 @@ class BatchContext(__QS_Object__):
     def end(self):
         self._isStarted = False
         __QS_BatchContext__.remove(self)
-        if self._QSArgs.ClearCache:
-            self._Cache.clearFactorData()
-            self._Cache.clearRawData()
+        self._Cache.end(clear=self._QSArgs.ClearCache)
     
     def __enter__(self):
         self.start()
