@@ -114,9 +114,11 @@ class HDF5Cache(FactorCache):
                     open(iLockFile, mode="a").close()
                     os.chmod(iLockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
                 self._PIDLock[iPID] = QSFileLock(iLockFile, proc_lock=Lock())
+        self._ArgsTraitFronzen, self._ArgsValueFrozen = self._QSArgs._QS_freeze(trait=True, value=True)
         self._isStarted = True
     
     def end(self, clear=True):
+        if not self._isStarted: return
         if clear:
             self.clearRawData()
             self.clearFactorData()
@@ -125,6 +127,7 @@ class HDF5Cache(FactorCache):
                 if os.path.isfile(LockFile): os.remove(LockFile)
             except Exception as e:
                 self._QS_Logger.error(f"锁文件: {LockFile} 清理失败: {e}")
+        self._QSArgs._QS_freeze(trait=self._ArgsTraitFronzen, value=self._ArgsValueFrozen)
         self._isStarted = False
         
     def checkRawDataExistence(self, key, pids=None, if_not_exists="create"):

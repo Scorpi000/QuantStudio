@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 import QuantStudio.api as QS
-import QuantStudio.FactorDataBase.FactorOperators as fd
+import QuantStudio.FactorDataBase.FactorOperators as fo
 from QuantStudio.FactorDataBase.FactorDB import DataFactor, Factorize
 from QuantStudio.FactorDataBase.FactorOperation import makeFactorOperator, FactorOperatorized
 
@@ -18,12 +18,12 @@ Open = DataFactor(name="Open", data=pd.DataFrame(np.random.rand(len(DTs), len(ID
 Close = DataFactor(name="Close", data=pd.DataFrame(np.random.rand(len(DTs), len(IDs)) * 10, index=DTs, columns=IDs))
 Volume = DataFactor(name="Volume", data=pd.DataFrame(np.random.rand(len(DTs), len(IDs)) * 10000, index=DTs, columns=IDs))
 Industry = DataFactor(name="Industry", data=pd.Series(np.random.choice(["Fin", "TMT", "Ind"], size=(len(IDs),)), index=IDs))
-    
+
 # 表达式方式
 Rng = Factorize((Close - Open) / ((Open + Close) / 2), factor_name="Rng")
 
 # 内置算子
-Vol_5d = fd.rolling_sum(Volume, window=5, min_priods=1, factor_name="Volume_5d")
+Vol_5d = fo.RollingSum(window=5, min_priods=1)(Volume, factor_name="Volume_5d")
     
 # 自定义算子, 装饰器方式
 @FactorOperatorized(operator_type="Time", sys_args={"名称": "rolling_5d_sum", "入参数": 1, "运算时点": "单时点", "运算ID": "多ID", "回溯期数": [5-1]})

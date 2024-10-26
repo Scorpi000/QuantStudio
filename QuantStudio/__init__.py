@@ -30,7 +30,8 @@ __QS_Logger__ = logging.getLogger()
 class QSArgs(HasTraits):
     """参数对象"""
     def __init__(self, owner=None, sys_args={}, config_file=None, **kwargs):
-        self._QS_Frozen = False# 是否冻结参数, 不允许增删参数, 对于 mutable=False 的参数不允许修改值
+        self._QS_TraitFrozen = False# 是否冻结参数属性, 不允许增删参数, False 时对于 mutable=False 的参数允许修改值
+        self._QS_ValueFrozen = False# 是否冻结参数值, 不允许修改参数值, False 时对于 mutable=False 的参数不允许修改值
         self._QS_Logger = kwargs.pop("logger", None)
         if self._QS_Logger is None: self._QS_Logger = __QS_Logger__
         super().__init__(**kwargs)
@@ -59,7 +60,7 @@ class QSArgs(HasTraits):
         Config.update(sys_args)
         self.__QS_initArgs__(args=Config)
         self.__QS_initArgValue__(args=Config)
-        self._QS_Frozen = True
+        self._QS_TraitFrozen = True
     
     def __QS_initArgs__(self, args={}):
         return None
@@ -92,6 +93,14 @@ class QSArgs(HasTraits):
     def Logger(self):
         return self._QS_Logger
     
+    # 冻结参数
+    # trait: True 冻结属性，不允许增删属性
+    # value: True 冻结参数值, 不允许修改参数值
+    def _QS_freeze(self, trait=None, value=None):
+        TraitFrozen, self._QS_TraitFrozen = self._QS_TraitFrozen, (self._QS_TraitFrozen if trait is not None else bool(trait))
+        ValueFrozen, self._QS_ValueFrozen = self._QS_ValueFrozen, (self._QS_ValueFrozen if value is not None else bool(value))
+        return TraitFrozen, ValueFrozen
+    
     def to_dict(self):
         return {iArgName:self[iArgName] for iArgName in self.ArgNames}
 
@@ -102,7 +111,7 @@ class QSArgs(HasTraits):
         return (self._LabelTrait[arg_name], self.trait(self._LabelTrait[arg_name]))
     
     def add_trait(self, name, *trait):
-        if self._QS_Frozen and any(iTrait.arg_type is not None for iTrait in trait):
+        if self._QS_TraitFrozen and any(iTrait.arg_type is not None for iTrait in trait):
             raise __QS_Error__(f"参数集已冻结, 不能增加参数 '{name}'")
         Rslt = super().add_trait(name, *trait)
         iTrait = self.trait(name)
@@ -118,7 +127,7 @@ class QSArgs(HasTraits):
     
     def remove_trait(self, name):
         if (name not in self.visible_traits()) or (self.trait(name).arg_type is None): return super().remove_trait(name)
-        if self._QS_Frozen:
+        if self._QS_TraitFrozen:
             raise __QS_Error__(f"参数集已冻结, 不能删除参数 '{name}'")
         iLabel = self.trait(name).label
         Rslt = super().remove_trait(name)
@@ -150,8 +159,8 @@ class QSArgs(HasTraits):
             return
         iTrait = self.trait(self._LabelTrait[key])
         iMutable = (True if iTrait.mutable is None else iTrait.mutable)
-        if self._QS_Frozen and (not iMutable):
-            raise __QS_Error__(f"参数集已冻结且参数 '{key}' 是不可变参数, 不能修改")
+        if self._QS_TraitFrozen and ((not iMutable) or self._QS_ValueFrozen):
+            raise __QS_Error__(f"参数 '{key}' 的取值已冻结, 不能修改")
         if iTrait.arg_type == "ArgObject":
             iArgObj = self[key]
             for iKey, iVal in value.items():
@@ -162,7 +171,7 @@ class QSArgs(HasTraits):
     def __delitem__(self, key):
         if not self._ArgVisible.get(key, False):
             self._QS_Logger.warning(f"参数 '{key}' 不存在, 全体参数为: {self.ArgNames}")
-        if self._QS_Frozen:
+        if self._QS_TraitFrozen:
             raise __QS_Error__(f"参数集已冻结, 不能删除参数 '{key}'")
         self.remove_trait(self._LabelTrait[key])
 

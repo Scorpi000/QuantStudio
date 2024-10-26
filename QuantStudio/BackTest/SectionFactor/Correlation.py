@@ -2,6 +2,7 @@
 import datetime as dt
 import base64
 from io import BytesIO
+from typing import Optional, Dict
 
 import numpy as np
 import pandas as pd
@@ -17,6 +18,7 @@ from QuantStudio.BackTest.BackTestModel import BaseModule
 from QuantStudio.RiskDataBase.RiskDB import RiskTable
 from QuantStudio.RiskModel.RiskModelFun import dropRiskMatrixNA
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
+
 
 class SectionCorrelation(BaseModule):
     """因子截面相关性"""
@@ -45,13 +47,13 @@ class SectionCorrelation(BaseModule):
         
         @on_trait_change("RiskTable")
         def _on_RiskDS_changed(self, obj, name, old, new):
-            self._QS_Frozen = False
+            TraitFrozen, ValueFrozen = self._QS_freeze(trait=False)
             if new is None:
                 self.add_trait("CorrMethod", ListStr(arg_type="MultiOption", label="相关性算法", order=3, option_range=("spearman", "pearson", "kendall")))
             else:
                 self.add_trait("CorrMethod", ListStr(arg_type="MultiOption", label="相关性算法", order=3, option_range=("spearman", "pearson", "kendall", "factor-score correlation", "factor-portfolio correlation")))
             self.CorrMethod = list(set(self.CorrMethod).intersection(set(self.CorrMethod.option_range)))
-            self._QS_Frozen = True
+            self._QS_freeze(trait=TraitFrozen, value=ValueFrozen)
     
     def __init__(self, factor_table, name="因子截面相关性", sys_args={}, **kwargs):
         self._FactorTable = factor_table

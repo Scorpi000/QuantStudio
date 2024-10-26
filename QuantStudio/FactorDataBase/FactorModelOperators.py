@@ -11,11 +11,10 @@ from QuantStudio.FactorDataBase.FactorDB import Factor
 from QuantStudio.FactorDataBase.FactorOperation import SectionOperator
 
 class Corr(SectionOperator):
-    class __QS_ArgClass__(SectionOperator.__QS_ArgClass__):
-        def __QS_initArgValue__(self, args={}):
-            Args = {"名称": "calcCorr", "入参数": 2, "最大入参数": -1, "运算时点": "单时点", "输出形式": "全截面", "输入格式": "pandas"}
-            Args.update(args)
-            return super().__QS_initArgValue__(args=Args)
+    def __init__(self, corr_method:str="spearman", sys_args={}, config_file=None, **kwargs):
+        Args = {"名称": "calcCorr", "入参数": 2, "最大入参数": -1, "运算时点": "单时点", "输出形式": "全截面", "输入格式": "pandas", "参数": {"corr_method": corr_method}}
+        Args.update(sys_args)
+        return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
     
     def calculate(self, f, idt, iid, x, args):
         Return = x[0].pop("d0")
@@ -26,7 +25,7 @@ class Corr(SectionOperator):
         Rslt.index = iid
         return Rslt
     
-    def __call__(self, f:Factor, *factors, mask:Optional[Factor]=None, descriptor_ids=None, corr_method:str="spearman", factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
+    def __call__(self, f:Factor, *factors, mask:Optional[Factor]=None, descriptor_ids=None, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
         Factors = [f]
         if mask is not None: Factors.append(mask)
         if factors: Factors += factors

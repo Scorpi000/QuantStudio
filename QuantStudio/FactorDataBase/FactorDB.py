@@ -862,7 +862,7 @@ class BatchContext(__QS_Object__):
         return self._Cache
     
     def start(self):
-        self._isStarted = True
+        if self._isStarted: return
         if self._QSArgs.CalcConcurrentNum == 0:# 串行模式
             self._PIDs = [self._iPID]
         else:
@@ -870,11 +870,15 @@ class BatchContext(__QS_Object__):
         self._Cache._QSArgs.PIDs = self._PIDs
         self._Cache.start()
         __QS_BatchContext__.append(self)
+        self._ArgsTraitFronzen, self._ArgsValueFrozen = self._QSArgs._QS_freeze(trait=True, value=True)
+        self._isStarted = True
     
     def end(self):
-        self._isStarted = False
+        if not self._isStarted: return
         __QS_BatchContext__.remove(self)
         self._Cache.end(clear=self._QSArgs.ClearCache)
+        self._QSArgs._QS_freeze(trait=self._ArgsTraitFronzen, value=self._ArgsValueFrozen)
+        self._isStarted = False
     
     def __enter__(self):
         self.start()
