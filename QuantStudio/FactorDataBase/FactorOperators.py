@@ -288,7 +288,7 @@ class Rank(PointOperator):
     
     def calculate(self, f, idt, iid, x, args):
         Data = np.array(x) * (float(args["ascending"]) * 2 - 1)
-        Rslt = np.argsort(np.argsort(Data, axis=0), axis=0)[0]
+        Rslt = np.argsort(np.argsort(Data, axis=0), axis=0)[0].astype(float)
         Rslt[pd.isnull(Data[0])] = np.nan
         if args["uniformization"]:
             TotalNum = np.sum(pd.notnull(Data), axis=0)
@@ -568,7 +568,7 @@ class RollingMin(TimeOperator):
 
 class RollingRank(TimeOperator):
     def __init__(self, window:int=1, min_periods:int=1, ascending:bool=True, uniformization:bool=True, sys_args={}, config_file=None, **kwargs):
-        Args = {"名称": "rollingRank", "入参数": 1, "最大入参数": 1, "数据类型": "double", "运算时点": "多时点", "运算ID": "多ID", "回溯期数": [window-1], "参数": {"window": window, "min_periods": min_periods, "win_type": win_type, "ascending": ascending, "uniformization": uniformization}}
+        Args = {"名称": "rollingRank", "入参数": 1, "最大入参数": 1, "数据类型": "double", "运算时点": "多时点", "运算ID": "多ID", "回溯期数": [window-1], "参数": {"window": window, "min_periods": min_periods, "ascending": ascending, "uniformization": uniformization}}
         Args.update(sys_args)
         return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
     
@@ -601,11 +601,12 @@ class RollingMean(TimeOperator):
     
     def calculate(self, f, idt, iid, x, args):
         Data = pd.DataFrame(x[0])
-        if not args["weights"]:
-            return Data.rolling(**args).mean().values[self.Args["回溯期数"][0]:]
+        Args = args.copy()
+        weights = Args.pop("weights")
+        if not weights:
+            return Data.rolling(**Args).mean().values[self.Args["回溯期数"][0]:]
         else:
-            Args = args.copy()
-            weights = np.array(Args.pop("weights"))
+            weights = np.array(weights)
             return Data.rolling(**Args).apply(lambda x: np.nansum(x * weights) / np.nansum(pd.notnull(x) * weights), raw=True).values[self.Args["回溯期数"][0]:]
     
     def __call__(self, f:Factor, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
@@ -693,10 +694,14 @@ class RollingRegress(TimeOperator):
         Args.update({iKey: kwargs[iKey] for iKey in Args if iKey in kwargs})
         factor_args = factor_args.copy()
         Args.update(factor_args.get("参数", {}))
-        Factors = [endog] + exog
+        Factors = [endog, *exog]
         if "回溯期数" not in factor_args:
             if Args["window"] - 1 > self._QSArgs["回溯期数"][0]: factor_args["回溯期数"] = [Args["window"]-1]
             else: factor_args["回溯期数"] = [self._QSArgs["回溯期数"][0]] * len(Factors)
+        if "回溯模式" not in factor_args:
+            factor_args["回溯模式"] = ["滚动窗口"] * len(factor_args["回溯期数"])
+        if "起始时点" not in factor_args:
+            factor_args["起始时点"] = [None] * len(factor_args["回溯期数"])
         Outputs = [None, "alpha"] + [f"beta{i}" for i in range(len(exog))] if exog else (None, "alpha", "beta")
         if Args["output"] not in Outputs:
             raise __QS_Error__(f"算子 RollingRegress 的参数 output 只能取值为 {Outputs}, 不支持 {Args['output']}")
@@ -742,8 +747,8 @@ class SectionRank(SectionOperator):
         return super().__call__(*Factors, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
 
 class Aggregate(SectionOperator):
-    def __init__(self, aggr_fun=np.nansum, descriptor_ids=None, dtype="double", sys_args={}, config_file=None, **kwargs):
-        Args = {"名称": "aggregate", "入参数": 1, "最大入参数": 3, "数据类型": dtype, "运算时点": "单时点", "输出形式": "全截面", "描述子截面": [descriptor_ids], "参数": {"aggr_fun": aggr_fun, "mask": False, "cat_data": False, "dtype": dtype, "section_chged": (descriptor_ids is not None)}}
+    def __init__(self, aggr_func=np.nansum, descriptor_ids=None, dtype="double", sys_args={}, config_file=None, **kwargs):
+        Args = {"名称": "aggregate", "入参数": 1, "最大入参数": 3, "数据类型": dtype, "运算时点": "单时点", "输出形式": "全截面", "描述子截面": [descriptor_ids], "参数": {"aggr_func": aggr_func, "mask": False, "cat_data": False, "dtype": dtype, "section_chged": (descriptor_ids is not None)}}
         Args.update(sys_args)
         return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
         
@@ -754,14 +759,14 @@ class Aggregate(SectionOperator):
             Mask = (x[1]==1)
         else:
             Mask = np.full(FactorData.shape, fill_value=True)
-        AggrFun = args["aggr_fun"]
+        AggrFunc = args["aggr_func"]
         if args["cat_data"]:
             CatData = x[-1]
             Rslt = np.full(shape=(nID, ), fill_value=np.nan)
             if args["section_chged"]:
                 for i, iID in enumerate(iid):
                     iMask = ((CatData==iID) & Mask)
-                    Rslt[i] = AggrFun(FactorData[iMask])
+                    Rslt[i] = AggrFunc(FactorData[iMask])
             else:
                 AllCats = pd.unique(CatData.flatten())
                 for i, iCat in enumerate(AllCats):
@@ -769,9 +774,9 @@ class Aggregate(SectionOperator):
                         iMask = (pd.isnull(CatData) & Mask)
                     else:
                         iMask = ((CatData==iCat) & Mask)
-                    Rslt[iMask] = AggrFun(FactorData[iMask])
+                    Rslt[iMask] = AggrFunc(FactorData[iMask])
         else:
-            Rslt = np.full(shape=(nID, ), fill_value=AggrFun(FactorData[Mask]))
+            Rslt = np.full(shape=(nID, ), fill_value=AggrFunc(FactorData[Mask]))
         return Rslt
 
     def __call__(self, f, mask=None, cat_data=None, *, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
@@ -910,7 +915,7 @@ class SectionRegress(SectionOperator):
         Args.update({iKey: kwargs[iKey] for iKey in Args if iKey in kwargs})
         factor_args = factor_args.copy()
         Args.update(factor_args.get("参数", {}))
-        Factors = [endog] + exog
+        Factors = [endog, *exog]
         Outputs = [None, "alpha"] + [f"beta{i}" for i in range(len(exog))] if exog else (None, "alpha", "beta")
         if Args["output"] not in Outputs:
             raise __QS_Error__(f"算子 SectionRegress 的参数 output 只能取值为 {Outputs}, 不支持 {Args['output']}")
@@ -956,10 +961,14 @@ class PanelRegress(PanelOperator):
         Args.update({iKey: kwargs[iKey] for iKey in Args if iKey in kwargs})
         factor_args = factor_args.copy()
         Args.update(factor_args.get("参数", {}))
-        Factors = [endog] + exog
+        Factors = [endog, *exog]
         if "回溯期数" not in factor_args:
             if Args["window"] - 1 > self._QSArgs["回溯期数"][0]: factor_args["回溯期数"] = [Args["window"]-1]
             else: factor_args["回溯期数"] = [self._QSArgs["回溯期数"][0]] * len(Factors)
+        if "回溯模式" not in factor_args:
+            factor_args["回溯模式"] = ["滚动窗口"] * len(factor_args["回溯期数"])
+        if "起始时点" not in factor_args:
+            factor_args["起始时点"] = [None] * len(factor_args["回溯期数"])
         Outputs = [None, "alpha"] + [f"beta{i}" for i in range(len(exog))] if exog else (None, "alpha", "beta")
         if Args["output"] not in Outputs:
             raise __QS_Error__(f"算子 PanelRegress 的参数 output 只能取值为 {Outputs}, 不支持 {Args['output']}")
@@ -986,8 +995,9 @@ if __name__=="__main__":
     Factor1 = DataFactor(name="Factor1", data=1)
     Factor2 = DataFactor(name="Factor2", data=pd.DataFrame(np.random.randn(len(DTs), len(IDs)), index=DTs, columns=IDs))
     
+    
     rolling_sum = RollingSum(window=3, min_periods=3)
-    rank_section = RankSection()    
+    rank_section = SectionRank()    
     
     Factor3 = Log(base=np.e)(Factor2, factor_name="Factor3")
     
