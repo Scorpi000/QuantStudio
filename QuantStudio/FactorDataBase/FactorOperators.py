@@ -487,7 +487,7 @@ class Lag(TimeOperator):
     
     def calculate(self, f, idt, iid, x, args):
         Data = x[0]
-        if args.get('dt_change_fun', None) is None: return Data[self.Args["回溯期数"][0]-args['lag_period']:Data.shape[0]-args['lag_period']]
+        if args.get('dt_change_fun', None) is None: return Data[f.Args["回溯期数"][0]-args['lag_period']:Data.shape[0]-args['lag_period']]
         TargetDTs = args['dt_change_fun'](idt)
         Data = pd.DataFrame(Data, index=idt)
         TargetData = Data.reindex(index=TargetDTs).values
@@ -497,7 +497,7 @@ class Lag(TimeOperator):
         else:
             Data = pd.DataFrame(index=Data.index,columns=iid,dtype="float")
         Data.loc[TargetDTs] = TargetData
-        return Data.fillna(method='pad').values[self.Args["回溯期数"][0]:]
+        return Data.fillna(method='pad').values[f.Args["回溯期数"][0]:]
     
     def __call__(self, f:Factor, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
         Args = self._QSArgs["参数"].copy()
@@ -519,7 +519,7 @@ class RollingSum(TimeOperator):
         return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
     
     def calculate(self, f, idt, iid, x, args):
-        return pd.DataFrame(x[0]).rolling(**args).sum().values[self.Args["回溯期数"][0]:]
+        return pd.DataFrame(x[0]).rolling(**args).sum().values[f.Args["回溯期数"][0]:]
     
     def __call__(self, f:Factor, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
         Args = self._QSArgs["参数"].copy()
@@ -537,7 +537,7 @@ class RollingMax(TimeOperator):
         return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
     
     def calculate(self, f, idt, iid, x, args):
-        return pd.DataFrame(x[0]).rolling(**args).max().values[self.Args["回溯期数"][0]:]
+        return pd.DataFrame(x[0]).rolling(**args).max().values[f.Args["回溯期数"][0]:]
     
     def __call__(self, f:Factor, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
         Args = self._QSArgs["参数"].copy()
@@ -555,7 +555,7 @@ class RollingMin(TimeOperator):
         return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
     
     def calculate(self, f, idt, iid, x, args):
-        return pd.DataFrame(x[0]).rolling(**args).min().values[self.Args["回溯期数"][0]:]
+        return pd.DataFrame(x[0]).rolling(**args).min().values[f.Args["回溯期数"][0]:]
     
     def __call__(self, f:Factor, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
         Args = self._QSArgs["参数"].copy()
@@ -578,9 +578,9 @@ class RollingRank(TimeOperator):
         if not args.pop("ascending"):
             Data = - Data
         Uniformization = args.pop("uniformization")
-        Rslt = Data.rolling(**args).rank().values[self.Args["回溯期数"][0]:] - 1
+        Rslt = Data.rolling(**args).rank().values[f.Args["回溯期数"][0]:] - 1
         if Uniformization:
-            Rslt = Rslt / Data.rolling(**args).count().values[self.Args["回溯期数"][0]:]
+            Rslt = Rslt / Data.rolling(**args).count().values[f.Args["回溯期数"][0]:]
         return Rslt
     
     def __call__(self, f:Factor, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
@@ -604,10 +604,10 @@ class RollingMean(TimeOperator):
         Args = args.copy()
         weights = Args.pop("weights")
         if not weights:
-            return Data.rolling(**Args).mean().values[self.Args["回溯期数"][0]:]
+            return Data.rolling(**Args).mean().values[f.Args["回溯期数"][0]:]
         else:
             weights = np.array(weights)
-            return Data.rolling(**Args).apply(lambda x: np.nansum(x * weights) / np.nansum(pd.notnull(x) * weights), raw=True).values[self.Args["回溯期数"][0]:]
+            return Data.rolling(**Args).apply(lambda x: np.nansum(x * weights) / np.nansum(pd.notnull(x) * weights), raw=True).values[f.Args["回溯期数"][0]:]
     
     def __call__(self, f:Factor, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
         Args = self._QSArgs["参数"].copy()
@@ -629,7 +629,7 @@ class RollingStd(TimeOperator):
         Data = pd.DataFrame(x[0])
         args = args.copy()
         ddof = args.pop("ddof")
-        return Data.rolling(**args).apply(lambda x:np.nanstd(x, ddof=ddof), raw=True).values[self.Args["回溯期数"][0]:]
+        return Data.rolling(**args).apply(lambda x:np.nanstd(x, ddof=ddof), raw=True).values[f.Args["回溯期数"][0]:]
         
     def __call__(self, f:Factor, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
         Args = self._QSArgs["参数"].copy()
@@ -656,7 +656,7 @@ class RollingChangeRate(TimeOperator):
         Rslt[Mask & (Numerator>0)] = 1.0
         Rslt[Mask & (Numerator<0)] = -1.0
         Rslt[Mask & (Numerator==0)] = 0.0
-        return Rslt
+        return Rslt[f.Args["回溯期数"][0]-args["window"]+1:]
         
     def __call__(self, f:Factor, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
         Args = self._QSArgs["参数"].copy()
