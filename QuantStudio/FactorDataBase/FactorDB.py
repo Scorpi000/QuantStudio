@@ -238,7 +238,7 @@ class _ErgodicMode(QSArgs):
         self._isStarted = False
         self._CurDT = None
         self._MMAPCacheData = None
-        if self.ClearCache: self._FactorCache.clear()
+        if (self._FactorCache is not None) and self.ClearCache: self._FactorCache.clear()
         return 0
 
     def _readData_FactorCacheMode(self, factor_names, ids, dts, args={}):
