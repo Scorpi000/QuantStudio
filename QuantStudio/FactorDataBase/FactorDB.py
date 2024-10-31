@@ -918,6 +918,26 @@ class BatchContext(__QS_Object__):
                 StartDT = StartIdx["EndDT"].iloc[0] + self._QSArgs.MinDTUnit
                 return (StartDT, dt_range[1])
     
+    # 更新缓存的时点范围
+    def _mergeDTRange(self, cached_dt_range, i):
+        DTRuler = self._QSArgs.DTRuler
+        iStartDT, iEndDT = cached_dt_range["StartDT"].iloc[i], cached_dt_range["EndDT"].iloc[i]
+        DropIdx = []
+        if i>0:
+            iPreEndDT = cached_dt_range["EndDT"].iloc[i-1]
+            iPreEndIdx, iStartdIdx = np.searchsorted(DTRuler, iPreEndDT, side="left"), np.searchsorted(DTRuler, iStartDT, side="right")
+            if iPreEndIdx==iStartdIdx-1:# 两区间连续，合并
+                cached_dt_range.at[cached_dt_range.index[i], "StartDT"] = cached_dt_range["StartDT"].iloc[i-1]
+                DropIdx.append(cached_dt_range.index[i-1])
+        if i<cached_dt_range.shape[0]-1:
+            iPostStartDT = cached_dt_range["StartDT"].iloc[i+1]
+            iEndIdx, iPostStartIdx = np.searchsorted(DTRuler, iEndDT, side="left"), np.searchsorted(DTRuler, iPostStartDT, side="right")
+            if iEndIdx==iPostStartIdx-1:# 两区间连续，合并
+                cached_dt_range.at[cached_dt_range.index[i], "EndDT"] = cached_dt_range["EndDT"].iloc[i+1]
+                DropIdx.append(cached_dt_range.index[i+1])
+        if not DropIdx: cached_dt_range = cached_dt_range.drop(index=DropIdx)
+        return cached_dt_range
+
     def updateDTRange(self, factor_id, dt_range):
         CachedDTRange = self._CachedDTRange.get(factor_id, None)
         if CachedDTRange is None:
@@ -929,7 +949,9 @@ class BatchContext(__QS_Object__):
         if StartIdx.empty and EndIdx.empty:# 新区间起始结束点均在空档里
             CachedDTRange = CachedDTRange[~((CachedDTRange["StartDT"]>=dt_range[0]) & (CachedDTRange["EndDT"]<=dt_range[1]))]
             CachedDTRange.loc[nRange] = dt_range
-            self._CachedDTRange[factor_id] = CachedDTRange.sort_values(["StartDT"], ignore_index=True)
+            CachedDTRange = CachedDTRange.sort_values(["StartDT"])
+            i = CachedDTRange.index.tolist().index(nRange)
+            self._CachedDTRange[factor_id] = self._mergeDTRange(CachedDTRange, i).reset_index(drop=True)
         elif (not StartIdx.empty) and (not EndIdx.empty):# 新区间起始结束点均在已有区间里
             StartIdx, EndIdx = StartIdx.index[0], EndIdx.index[0]
             if StartIdx==EndIdx:# 已有区间完全覆盖新区间
@@ -938,17 +960,23 @@ class BatchContext(__QS_Object__):
                 StartDT, EndDT = CachedDTRange.at[StartIdx, "StartDT"], CachedDTRange.at[EndIdx, "EndDT"]
                 CachedDTRange = CachedDTRange[(CachedDTRange.index<StartIdx) | (CachedDTRange.index>EndIdx)]
                 CachedDTRange.loc[nRange] = (StartDT, EndDT)
-                self._CachedDTRange[factor_id] = CachedDTRange.sort_values(["StartDT"], ignore_index=True)
+                CachedDTRange = CachedDTRange.sort_values(["StartDT"])
+                i = CachedDTRange.index.tolist().index(nRange)
+                self._CachedDTRange[factor_id] = self._mergeDTRange(CachedDTRange, i).reset_index(drop=True)
         elif StartIdx.empty and (not EndIdx.empty):# 新区间起始点在空档里, 结束点在已有区间里
             EndDT = EndIdx["EndDT"].iloc[0]
             CachedDTRange = CachedDTRange[~((CachedDTRange["StartDT"]>=dt_range[0]) & (CachedDTRange["EndDT"]<=EndDT))]
             CachedDTRange.loc[nRange] = (dt_range[0], EndDT)
-            self._CachedDTRange[factor_id] = CachedDTRange.sort_values(["StartDT"], ignore_index=True)
+            CachedDTRange = CachedDTRange.sort_values(["StartDT"])
+            i = CachedDTRange.index.tolist().index(nRange)
+            self._CachedDTRange[factor_id] = self._mergeDTRange(CachedDTRange, i).reset_index(drop=True)
         else:# 新区间起始点在已有区间里, 结束点在空档里
             StartDT = StartIdx["StartDT"].iloc[0]
             CachedDTRange = CachedDTRange[~((CachedDTRange["StartDT"]>=StartDT) & (CachedDTRange["EndDT"]<=dt_range[1]))]
             CachedDTRange.loc[nRange] = (StartDT, dt_range[1])
-            self._CachedDTRange[factor_id] = CachedDTRange.sort_values(["StartDT"], ignore_index=True)
+            CachedDTRange = CachedDTRange.sort_values(["StartDT"])
+            i = CachedDTRange.index.tolist().index(nRange)
+            self._CachedDTRange[factor_id] = self._mergeDTRange(CachedDTRange, i).reset_index(drop=True)
     
     def getDateTime(self, dt_range):
         StartIdx, EndIdx = np.searchsorted(self._QSArgs.DTRuler, dt_range[0], side="left"), np.searchsorted(self._QSArgs.DTRuler, dt_range[1], side="right")
