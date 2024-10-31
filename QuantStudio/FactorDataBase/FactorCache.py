@@ -217,7 +217,11 @@ class HDF5Cache(FactorCache):
                     iIDs = pid_ids.get(iPID)
                     with pd.HDFStore(self._FactorDataDir + os.sep + iPID + os.sep + key + self._QSArgs.HDF5Suffix) as CacheFile:
                         if (target_field in CacheFile) and (if_exists=="append"):
-                            CacheFile[target_field] = pd.concat([CacheFile[target_field], factor_data.reindex(columns=iIDs)], ignore_index=False).sort_index()
+                            iOldData = CacheFile[target_field]
+                            iFactorData = factor_data.reindex(columns=iIDs)
+                            iFactorData = pd.concat([iOldData, iFactorData], ignore_index=False)
+                            iFactorData = iFactorData[~iFactorData.index.duplicated()]
+                            CacheFile[target_field] = iFactorData.sort_index()
                         else:
                             CacheFile[target_field] = factor_data.reindex(columns=iIDs)
                 else:

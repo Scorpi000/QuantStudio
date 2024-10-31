@@ -910,7 +910,9 @@ class BatchContext(__QS_Object__):
                 if StartIdx==EndIdx:# 已有区间完全覆盖新区间
                     return None
                 else:# 新区间跨区间
-                    return dt_range
+                    StartDT = StartIdx["EndDT"].iloc[0] + self._QSArgs.MinDTUnit
+                    EndDT = EndIdx["StartDT"].iloc[0] - self._QSArgs.MinDTUnit
+                    return (StartDT, EndDT)
             elif StartIdx.empty and (not EndIdx.empty):# 新区间起始点在空档里, 结束点在已有区间里
                 EndDT = EndIdx["StartDT"].iloc[0] - self._QSArgs.MinDTUnit
                 return (dt_range[0], EndDT)
@@ -929,13 +931,13 @@ class BatchContext(__QS_Object__):
             if iPreEndIdx==iStartdIdx-2:# 两区间连续，合并
                 cached_dt_range.at[cached_dt_range.index[i], "StartDT"] = cached_dt_range["StartDT"].iloc[i-1]
                 DropIdx.append(cached_dt_range.index[i-1])
-        if i<cached_dt_range.shape[0]-2:
+        if i<cached_dt_range.shape[0]-1:
             iPostStartDT = cached_dt_range["StartDT"].iloc[i+1]
             iEndIdx, iPostStartIdx = np.searchsorted(DTRuler, iEndDT, side="left"), np.searchsorted(DTRuler, iPostStartDT, side="right")
-            if iEndIdx==iPostStartIdx-1:# 两区间连续，合并
+            if iEndIdx==iPostStartIdx-2:# 两区间连续，合并
                 cached_dt_range.at[cached_dt_range.index[i], "EndDT"] = cached_dt_range["EndDT"].iloc[i+1]
                 DropIdx.append(cached_dt_range.index[i+1])
-        if not DropIdx: cached_dt_range = cached_dt_range.drop(index=DropIdx)
+        if DropIdx: cached_dt_range = cached_dt_range.drop(index=DropIdx)
         return cached_dt_range
 
     def updateDTRange(self, factor_id, dt_range):
@@ -1000,7 +1002,10 @@ class BatchContext(__QS_Object__):
             return self._PID_IDs
         else:
             ParentPID = "-".join(self._iPID.split("-")[:-1])
-            return {f"{ParentPID}-{i}": iIDs for i, iIDs in enumerate(self.splitID(SectionIDs))}
+            if ParentPID:
+                return {f"{ParentPID}-{i}": iIDs for i, iIDs in enumerate(self.splitID(SectionIDs))}
+            else:
+                return {str(i): iIDs for i, iIDs in enumerate(self.splitID(SectionIDs))}
     
     def getID(self, factor_id, pids=None):
         SectionIDs = self._FactorSectionIDs.get(factor_id, self._SectionIDs)
