@@ -926,10 +926,10 @@ class BatchContext(__QS_Object__):
         if i>0:
             iPreEndDT = cached_dt_range["EndDT"].iloc[i-1]
             iPreEndIdx, iStartdIdx = np.searchsorted(DTRuler, iPreEndDT, side="left"), np.searchsorted(DTRuler, iStartDT, side="right")
-            if iPreEndIdx==iStartdIdx-1:# 两区间连续，合并
+            if iPreEndIdx==iStartdIdx-2:# 两区间连续，合并
                 cached_dt_range.at[cached_dt_range.index[i], "StartDT"] = cached_dt_range["StartDT"].iloc[i-1]
                 DropIdx.append(cached_dt_range.index[i-1])
-        if i<cached_dt_range.shape[0]-1:
+        if i<cached_dt_range.shape[0]-2:
             iPostStartDT = cached_dt_range["StartDT"].iloc[i+1]
             iEndIdx, iPostStartIdx = np.searchsorted(DTRuler, iEndDT, side="left"), np.searchsorted(DTRuler, iPostStartDT, side="right")
             if iEndIdx==iPostStartIdx-1:# 两区间连续，合并
