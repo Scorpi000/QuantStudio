@@ -69,9 +69,9 @@ class QuantilePortfolio(BaseModule):
         self._BmkPortfolio = MaskPortfolio()(mask=(self._BmkMask if self._BmkMask else self._Mask), weight=self._Weight, descriptor_ids=self._SectionIDs)
         calcPortfolioNV = PortfolioNV(sys_args={"参数": {"价格缺失": self._QSArgs.PriceMiss}})
         self._PortfolioNV = [calcPortfolioNV(iPortfolio, self._Price, descriptor_ids=self._SectionIDs) for iPortfolio in self._PortfolioList]
-        self._PortfolioIDs = [f"p{i}" for i in range(len(self._PortfolioList))]
+        self._PortfolioIDs = [f"P{i}" for i in range(len(self._PortfolioList))]
         self._PortfolioNV.append(calcPortfolioNV(self._BmkPortfolio, self._Price, descriptor_ids=self._SectionIDs))
-        self._PortfolioIDs.append("bmk")
+        self._PortfolioIDs.append("Bmk")
         self._PortfolioNV = fo.ConcatSection(descriptor_sections=[[iID] for iID in self._PortfolioIDs])(*self._PortfolioNV, factor_name=self.Name, factor_args={"截面ID": self._PortfolioIDs})
         Tasks += [(iPortfolio, self._SectionIDs) for iPortfolio in self._PortfolioList] + [(self._BmkPortfolio, self._PortfolioIDs), (self._PortfolioNV, self._PortfolioIDs)]
         return Tasks
@@ -86,7 +86,7 @@ class QuantilePortfolio(BaseModule):
         self._Output["统计数据"]["年化收益率"] = (1+TotalReturn)**(1/nYear)-1
         self._Output["统计数据"]["波动率"] = self._Output["收益率"].std()*np.sqrt(nDT/nYear)
         self._Output["统计数据"]["Sharpe比率"] = self._Output["统计数据"]["年化收益率"]/self._Output["统计数据"]["波动率"]
-        self._Output["统计数据"]["t统计量(Sharpe比率)"] = (self._Output["统计数据"]["Sharpe比率"]-self._Output["统计数据"]["Sharpe比率"]["bmk"])/np.sqrt(2/nYear)
+        self._Output["统计数据"]["t统计量(Sharpe比率)"] = (self._Output["统计数据"]["Sharpe比率"]-self._Output["统计数据"]["Sharpe比率"]["Bmk"])/np.sqrt(2/nYear)
         self._Output["统计数据"]["平均换手率"] = self._Output["换手率"].mean()
         self._Output["统计数据"]["最大回撤率"] = pd.Series(np.nan,index=self._Output["统计数据"].index)
         self._Output["统计数据"]["最大回撤开始时间"] = pd.Series(index=self._Output["统计数据"].index,dtype="O")
@@ -111,7 +111,7 @@ class QuantilePortfolio(BaseModule):
             self._Output["统计数据"].loc[iCol, "超额最大回撤开始时间"] = (self._Output["超额净值"].index[iStartPos] if iStartPos is not None else None)
             self._Output["统计数据"].loc[iCol, "超额最大回撤结束时间"] = (self._Output["超额净值"].index[iEndPos] if iEndPos is not None else None)
         self._Output["统计数据"]["CAPM Alpha"], self._Output["统计数据"]["CAPM Beta"] = 0.0, 0.0
-        xData = sm.add_constant(self._Output["收益率"]["bmk"].values, prepend=True)
+        xData = sm.add_constant(self._Output["收益率"]["Bmk"].values, prepend=True)
         for iCol in self._Output["收益率"].columns:
             yData = self._Output["收益率"][iCol].values
             try:
@@ -142,7 +142,7 @@ class QuantilePortfolio(BaseModule):
         self._Output["超额收益率"] = self._Output["收益率"].iloc[:, :GroupNum].copy()
         self._Output["超额净值"] = self._Output["超额收益率"].iloc[:, :GroupNum].copy()
         for i in self._Output["超额收益率"]:
-            self._Output["超额收益率"][i] = calcLSYield(self._Output["超额收益率"][i].values, self._Output["收益率"]["bmk"].values, rebalance_index=RebalanceIdx)
+            self._Output["超额收益率"][i] = calcLSYield(self._Output["超额收益率"][i].values, self._Output["收益率"]["Bmk"].values, rebalance_index=RebalanceIdx)
             self._Output["超额净值"][i] = (1+self._Output["超额收益率"][i]).cumprod()
         self._QS_calcStats()
         return 0
@@ -158,8 +158,8 @@ class QuantilePortfolio(BaseModule):
         _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 1), xData, xTickLabels, self._Output["统计数据"]["年化超额收益率"].iloc[:GroupNum], PercentageFormatter, self._Output["统计数据"]["胜率"].iloc[:GroupNum], PercentageFormatter)
         _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 2), xData, xTickLabels, self._Output["统计数据"]["信息比率"].iloc[:GroupNum], PercentageFormatter, None)
         _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 3), xData, xTickLabels, self._Output["统计数据"]["超额最大回撤率"].iloc[:GroupNum], PercentageFormatter, None)
-        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 4), xData, xTickLabels, self._Output["统计数据"]["年化收益率"].iloc[:GroupNum], PercentageFormatter, pd.Series(self._Output["统计数据"].loc["市场", "年化收益率"], index=self._Output["统计数据"].index[:GroupNum], name="市场"), PercentageFormatter, False)
-        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 5), xData, xTickLabels, self._Output["统计数据"]["Sharpe比率"].iloc[:GroupNum], FloatFormatter, pd.Series(self._Output["统计数据"].loc["市场", "Sharpe比率"], index=self._Output["统计数据"].index[:GroupNum], name="市场"), FloatFormatter, False)
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 4), xData, xTickLabels, self._Output["统计数据"]["年化收益率"].iloc[:GroupNum], PercentageFormatter, pd.Series(self._Output["统计数据"].loc["Bmk", "年化收益率"], index=self._Output["统计数据"].index[:GroupNum], name="基准"), PercentageFormatter, False)
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 5), xData, xTickLabels, self._Output["统计数据"]["Sharpe比率"].iloc[:GroupNum], FloatFormatter, pd.Series(self._Output["统计数据"].loc["Bmk", "Sharpe比率"], index=self._Output["统计数据"].index[:GroupNum], name="基准"), FloatFormatter, False)
         _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 6), xData, xTickLabels, self._Output["统计数据"]["平均换手率"].iloc[:GroupNum], PercentageFormatter, None)
         Axes = Fig.add_subplot(nRow, nCol, 7)
         Axes.xaxis_date()
@@ -351,7 +351,7 @@ class FilterPortfolio(BaseModule):
             self._Output["净值"][i].pop(0)
         nDT = len(self._Model.DateTimeSeries)
         self._Output["净值"] = pd.DataFrame(np.array(self._Output["净值"]).T, index=self._Model.DateTimeSeries, columns=PortfolioNames)
-        self._Output["净值"]["市场"] = pd.Series(self._Output.pop("市场净值")[1:], index=self._Model.DateTimeSeries)
+        self._Output["净值"]["Bmk"] = pd.Series(self._Output.pop("市场净值")[1:], index=self._Model.DateTimeSeries)
         self._Output["收益率"] = self._Output["净值"].iloc[1:,:].values / self._Output["净值"].iloc[:-1,:].values - 1
         self._Output["收益率"] = pd.DataFrame(np.row_stack((np.zeros((1, GroupNum+1)), self._Output["收益率"])), index=self._Model.DateTimeSeries, columns=PortfolioNames+["市场"])
         if not self._QSArgs.CalcDTs:
@@ -466,15 +466,16 @@ class MultiPortfolio(BaseModule):
         super().__init__(name=name, sys_args=sys_args, **kwargs)
         self._QS_isMulti = True
         self.Modules = []
+    
     def output(self, recalculate=False):
         if (not recalculate)  and self._Output: return self._Output
         self._Output = {
-            "净值": {"L-S": pd.DataFrame(), "Top": pd.DataFrame(), "Bottom": pd.DataFrame(), "市场": pd.DataFrame()},
-            "收益率": {"L-S": pd.DataFrame(), "Top": pd.DataFrame(), "Bottom": pd.DataFrame(), "市场": pd.DataFrame()},
+            "净值": {"L-S": pd.DataFrame(), "Top": pd.DataFrame(), "Bottom": pd.DataFrame(), "Bmk": pd.DataFrame()},
+            "收益率": {"L-S": pd.DataFrame(), "Top": pd.DataFrame(), "Bottom": pd.DataFrame(), "Bmk": pd.DataFrame()},
             "超额净值": {"Top": pd.DataFrame(), "Bottom": pd.DataFrame()},
             "超额收益率": {"Top": pd.DataFrame(), "Bottom": pd.DataFrame()},
             "换手率": {"Top": pd.DataFrame(), "Bottom": pd.DataFrame()},
-            "统计数据": {"Top": None, "Bottom": None, "L-S": None, "市场": None}
+            "统计数据": {"Top": None, "Bottom": None, "L-S": None, "Bmk": None}
         }
         for i, iModule in enumerate(self.Modules):
             iOutput = iModule.output(recalculate=recalculate)
@@ -482,11 +483,11 @@ class MultiPortfolio(BaseModule):
             self._Output[iName] = iOutput
             self._Output["净值"]["Top"][iName] = iOutput["净值"].iloc[:, 0]
             self._Output["净值"]["Bottom"][iName] = iOutput["净值"].iloc[:, -3]
-            self._Output["净值"]["市场"][iName] = iOutput["净值"]["市场"]
+            self._Output["净值"]["Bmk"][iName] = iOutput["净值"]["Bmk"]
             self._Output["净值"]["L-S"][iName] = iOutput["净值"]["L-S"]
             self._Output["收益率"]["Top"][iName] = iOutput["收益率"].iloc[:, 0]
             self._Output["收益率"]["Bottom"][iName] = iOutput["收益率"].iloc[:, -3]
-            self._Output["收益率"]["市场"][iName] = iOutput["收益率"]["市场"]
+            self._Output["收益率"]["Bmk"][iName] = iOutput["收益率"]["Bmk"]
             self._Output["收益率"]["L-S"][iName] = iOutput["收益率"]["L-S"]
             self._Output["超额净值"]["Top"][iName] = iOutput["超额净值"].iloc[:, 0]
             self._Output["超额净值"]["Bottom"][iName] = iOutput["超额净值"].iloc[:, -3]
@@ -498,12 +499,13 @@ class MultiPortfolio(BaseModule):
                 self._Output["统计数据"]["Top"] = pd.DataFrame(columns=iOutput["统计数据"].columns)
                 self._Output["统计数据"]["Bottom"] = pd.DataFrame(columns=iOutput["统计数据"].columns)
                 self._Output["统计数据"]["L-S"] = pd.DataFrame(columns=iOutput["统计数据"].columns)
-                self._Output["统计数据"]["市场"] = pd.DataFrame(columns=iOutput["统计数据"].columns)
+                self._Output["统计数据"]["Bmk"] = pd.DataFrame(columns=iOutput["统计数据"].columns)
             self._Output["统计数据"]["Top"].loc[iName] = iOutput["统计数据"].iloc[0, :]
             self._Output["统计数据"]["Bottom"].loc[iName] = iOutput["统计数据"].iloc[-3, :]
             self._Output["统计数据"]["L-S"].loc[iName] = iOutput["统计数据"].loc["L-S", :]
-            self._Output["统计数据"]["市场"].loc[iName] = iOutput["统计数据"].loc["市场", :]
+            self._Output["统计数据"]["Bmk"].loc[iName] = iOutput["统计数据"].loc["Bmk", :]
         return self._Output
+    
     def genMatplotlibFig(self, file_path=None):
         nRow, nCol = 8, 3
         Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
@@ -573,6 +575,7 @@ class MultiPortfolio(BaseModule):
         Axes.set_title("L-S 组合净值")
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
+    
     def _repr_html_(self):
         if len(self._QSArgs.ArgNames)>0:
             HTML = "参数设置: "

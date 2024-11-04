@@ -13,7 +13,8 @@ from QuantStudio.FactorDataBase.FactorOperation import PanelOperator, SectionOpe
 import QuantStudio.FactorDataBase.FactorOperators as fo
 from QuantStudio.Tools.StrategyTestFun import testPortfolioStrategy_pd
 
-class ICModelArgs(QSArgs):
+# IC
+class _ICModelArgs(QSArgs):
     FactorOrder = Enum("降序", "升序", arg_type="SingleOption", label="排序方向", order=0)
     LookBack = Int(1, arg_type="Integer", label="回溯期数", order=1)
     CorrMethod = Enum("spearman", "pearson", "kendall", arg_type="SingleOption", label="相关性算法", order=2, option_range=["spearman", "pearson", "kendall"])
@@ -21,10 +22,10 @@ class ICModelArgs(QSArgs):
 class IC(PanelOperator):
     """IC"""
     class __QS_ArgClass__(PanelOperator.__QS_ArgClass__):
-        ModelArgs = Instance(ICModelArgs, arg_type="ArgObject", label="参数", order=2, mutable=False)
+        ModelArgs = Instance(_ICModelArgs, arg_type="ArgObject", label="参数", order=2, mutable=False)
     
         def __QS_initArgs__(self, args={}):
-            self.ModelArgs = ICModelArgs(owner=self._Owner)
+            self.ModelArgs = _ICModelArgs(owner=self._Owner)
             return super().__QS_initArgs__(args=args)
     
     def __init__(self, sys_args={}, config_file=None, **kwargs):
@@ -107,6 +108,7 @@ class IC(PanelOperator):
         }
         return f
 
+# 筛选投资组合
 class MaskPortfolio(SectionOperator):
     """筛选投资组合"""
     def __init__(self, sys_args={}, config_file=None, **kwargs):
@@ -153,7 +155,8 @@ def makeQuantilePortfolio(factor:Factor, mask:Optional[Factor]=None, cat_data:Op
         Portfolio.append(iPortfolio)
     return Portfolio
 
-class PortfolioNVModelArgs(QSArgs):
+# 投资组合净值
+class _PortfolioNVModelArgs(QSArgs):
     PriceMiss = Enum("沿用前值", "填充为0", arg_type="SingleOption", label="价格缺失", order=0, option_range=["沿用前值", "填充为0"])
     
 class PortfolioNV(PanelOperator):
@@ -184,6 +187,72 @@ class PortfolioNV(PanelOperator):
         factor_args["参数"] = Args
         if descriptor_ids is not None: factor_args["描述子截面"] = [descriptor_ids] * 2
         return super().__call__(portfolio, price, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+
+
+class Corr(SectionOperator):
+    def __init__(self, corr_method:str="spearman", sys_args={}, config_file=None, **kwargs):
+        Args = {"名称": "calcCorr", "入参数": 2, "最大入参数": -1, "运算时点": "单时点", "输出形式": "全截面", "输入格式": "pandas", "参数": {"corr_method": corr_method}}
+        Args.update(sys_args)
+        return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
+    
+    def calculate(self, f, idt, iid, x, args):
+        Return = x[0].pop("d0")
+        if args["mask"]: 
+            Mask = x[0].pop("d1").astype(bool)
+            Return[~Mask] = np.nan
+        Rslt = x[0].corrwith(Return, method=args["corr_method"])
+        Rslt.index = iid
+        return Rslt
+    
+    def __call__(self, f:Factor, *factors, mask:Optional[Factor]=None, descriptor_ids=None, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
+        Factors = [f]
+        if mask is not None: Factors.append(mask)
+        if factors: Factors += factors
+        else: raise __QS_Error__(f"算子 {self.__class__}: 必须至少指定一个因子!")
+        factor_args = factor_args.copy()
+        factor_args.setdefault("参数", {}).update({"mask": (mask is not None), "corr_method": corr_method})
+        if descriptor_ids is not None: factor_args["描述子截面"] = [descriptor_ids] * len(Factors)
+        return super().__call__(*Factors, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+
+
+# 截面相关性
+class _SectionCorrelationModelArgs(QSArgs):
+    FactorOrder = Enum("降序", "升序", arg_type="SingleOption", label="排序方向", order=0)
+    LookBack = Int(1, arg_type="Integer", label="回溯期数", order=1)
+    CorrMethod = Enum("spearman", "pearson", "kendall", arg_type="SingleOption", label="相关性算法", order=2, option_range=["spearman", "pearson", "kendall"])
+
+class SectionCorrelation(SectionOperator):
+    """截面相关性"""
+    class __QS_ArgClass__(PanelOperator.__QS_ArgClass__):
+        ModelArgs = Instance(_SectionCorrelationModelArgs, arg_type="ArgObject", label="参数", order=2, mutable=False)
+    
+        def __QS_initArgs__(self, args={}):
+            self.ModelArgs = _SectionCorrelationModelArgs(owner=self._Owner)
+            return super().__QS_initArgs__(args=args)
+    
+    def __init__(self, sys_args={}, config_file=None, **kwargs):
+        Args = {"名称": "calcIC", "入参数": 2, "最大入参数": -1, "数据类型": "double", "运算时点": "多时点", "输出形式": "全截面", "回溯期数": [0, 0], "回溯模式": ["扩张窗口", "扩张窗口"]}
+        Args.update(sys_args)
+        return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
+
+    def calculate(self, f, idt, iid, x, args):
+        Return = x[0].pop("d0")
+        if args["mask"]: 
+            Mask = x[0].pop("d1").astype(bool)
+            Return[~Mask] = np.nan
+        Rslt = x[0].corrwith(Return, method=args["corr_method"])
+        Rslt.index = iid
+        return Rslt
+    
+    def __call__(self, f:Factor, *factors, mask:Optional[Factor]=None, descriptor_ids=None, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
+        Factors = [f]
+        if mask is not None: Factors.append(mask)
+        if factors: Factors += factors
+        else: raise __QS_Error__(f"算子 {self.__class__}: 必须至少指定一个因子!")
+        factor_args = factor_args.copy()
+        factor_args.setdefault("参数", {}).update({"mask": (mask is not None), "corr_method": corr_method})
+        if descriptor_ids is not None: factor_args["描述子截面"] = [descriptor_ids] * len(Factors)
+        return super().__call__(*Factors, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
 
 
 if __name__=="__main__":
