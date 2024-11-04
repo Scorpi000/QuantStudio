@@ -122,7 +122,7 @@ class IC(BaseModule):
             HTML += "</ul>"
         else:
             HTML = ""
-        Formatters = [_QS_formatPandasPercentage]*4+[lambda x:'{0:.4f}'.format(x)]+[lambda x:'{0:.2f}'.format(x)]*3+[lambda x:'{0:.0f}'.format(x)]
+        Formatters = [_QS_formatPandasPercentage]*4+[lambda x:'{0:.4f}'.format(x), lambda x:'{0:.0f}'.format(x)]+[lambda x:'{0:.2f}'.format(x)]*3
         iHTML = self._Output["统计数据"].to_html(formatters=Formatters)
         Pos = iHTML.find(">")
         HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
