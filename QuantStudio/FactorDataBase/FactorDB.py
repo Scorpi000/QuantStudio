@@ -1366,7 +1366,7 @@ class Factor(__QS_Object__):
                 CacheData = self._FactorTable.readData(factor_names=[self._NameInFT], ids=ids, dts=dts, args=self.Args).loc[self._NameInFT]
                 self._FactorCache.writeFactorData(CacheFileName, CacheData, pid="0-0")
                 return CacheData
-        elif self._CacheData is None:
+        else:
             if self._CacheData is None:
                 CacheData = self._FactorTable.readData(factor_names=[self._NameInFT], ids=ids, dts=dts, args=self.Args).loc[self._NameInFT]
                 self._CacheData = CacheData.copy()
