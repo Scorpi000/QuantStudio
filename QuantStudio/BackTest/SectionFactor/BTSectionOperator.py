@@ -4,8 +4,7 @@ from typing import Optional, Dict
 
 import numpy as np
 import pandas as pd
-from numpy.lib import recfunctions as rfn
-from traits.api import Int, Enum, Instance, List
+from traits.api import Int, Enum, Instance
 
 from QuantStudio import __QS_Error__, QSArgs
 from QuantStudio.FactorDataBase.FactorDB import Factor
@@ -42,7 +41,7 @@ class IC(PanelOperator):
             Price = Price.reindex(columns=DTs)
         else:
             DTs = Price.columns
-        Return = Price.pct_change()
+        Return = Price.T.pct_change().T
         if f.UserData["mask"]: 
             Mask, x = pd.DataFrame(x[0].T==1, columns=idt, index=SectionIDs), x[1:]
             Mask = (Mask.reindex(columns=DTs).fillna(False) & Price.notnull())
@@ -345,14 +344,14 @@ if __name__=="__main__":
     Factor1 = DataFactor(name="Factor1", data=pd.DataFrame(np.random.randn(len(DTRuler), len(IDs)), index=DTRuler, columns=IDs))
     Factor2 = DataFactor(name="Factor2", data=pd.DataFrame(np.random.randn(len(DTRuler), len(IDs)), index=DTRuler, columns=IDs))
     
-    #calcIC = IC(sys_args={
-        #"参数": {
-            #"回溯期数": 1,
-            #"相关性算法": "spearman"
-        #}
-    #})
-    #FIC = calcIC(Price, Factor1, Factor2, cat_data=Industry, descriptor_ids=IDs, factor_name="IC", factor_args={"计算时点标尺": MonthDTRuler, "回溯期数": [32-1]*4})
-    #print(FIC.readData(ids=["Factor1", "Factor2"], dts=MonthDTs, dt_ruler=DTRuler))
+    calcIC = IC(sys_args={
+        "参数": {
+            "回溯期数": 1,
+            "相关性算法": "spearman"
+        }
+    })
+    FIC = calcIC(Price, Factor1, Factor2, cat_data=Industry, descriptor_ids=IDs, factor_name="IC", factor_args={"计算时点标尺": MonthDTRuler, "回溯期数": [32-1]*4})
+    print(FIC.readData(ids=["Factor1", "Factor2"], dts=MonthDTs, dt_ruler=DTRuler))
     
     #print(Factor1.Name, Factor1.readData(ids=IDs, dts=MonthDTs), sep="\n", end="\n\n")
     #calcMaskPortfolio = MaskPortfolio()
@@ -368,8 +367,8 @@ if __name__=="__main__":
     #FCorr = calcCorr(Price, Factor1, Factor2, descriptor_ids=IDs, factor_name="SectionCorrelation", factor_args={"计算时点标尺": MonthDTRuler})
     #print(FCorr.readData(ids=["Factor1", "Factor2"], dts=MonthDTs, dt_ruler=DTRuler))
     
-    orthogonalize = Orthogonalization(constant=True, drop_dummy_na=False)
-    FOth = orthogonalize(Factor1, Factor2, descriptor_ids=IDs, factor_name="Orthogonalization", factor_args={"计算时点标尺": MonthDTRuler})
-    print(FOth.readData(ids=IDs, dts=MonthDTs))
+    #orthogonalize = Orthogonalization(constant=True, drop_dummy_na=False)
+    #FOth = orthogonalize(Factor1, Factor2, descriptor_ids=IDs, factor_name="Orthogonalization", factor_args={"计算时点标尺": MonthDTRuler})
+    #print(FOth.readData(ids=IDs, dts=MonthDTs))
     
     print("===")
