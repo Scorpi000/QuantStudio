@@ -6,4 +6,3 @@ from .WindDB2 import WindDB2
 from .JYDB import JYDB
 from .TushareDB import TushareDB
 from .FactorOperation import PointOperation, TimeOperation, SectionOperation, PanelOperation
-from . import FactorTools
