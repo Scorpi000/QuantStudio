@@ -108,6 +108,7 @@ class IC(PanelOperator):
         }
         return f
 
+
 # 筛选投资组合
 class MaskPortfolio(SectionOperator):
     """筛选投资组合"""
@@ -155,16 +156,17 @@ def makeQuantilePortfolio(factor:Factor, mask:Optional[Factor]=None, cat_data:Op
         Portfolio.append(iPortfolio)
     return Portfolio
 
+
 # 投资组合净值
 class _PortfolioNVModelArgs(QSArgs):
     PriceMiss = Enum("沿用前值", "填充为0", arg_type="SingleOption", label="价格缺失", order=0, option_range=["沿用前值", "填充为0"])
     
 class PortfolioNV(PanelOperator):
     class __QS_ArgClass__(PanelOperator.__QS_ArgClass__):
-        ModelArgs = Instance(PortfolioNVModelArgs, arg_type="ArgObject", label="参数", order=2, mutable=False)
+        ModelArgs = Instance(_PortfolioNVModelArgs, arg_type="ArgObject", label="参数", order=2, mutable=False)
         
         def __QS_initArgs__(self, args={}):
-            self.ModelArgs = PortfolioNVModelArgs(owner=self._Owner)
+            self.ModelArgs = _PortfolioNVModelArgs(owner=self._Owner)
             return super().__QS_initArgs__(args=args)
 
     def __init__(self, sys_args={}, config_file=None, **kwargs):
@@ -189,41 +191,14 @@ class PortfolioNV(PanelOperator):
         return super().__call__(portfolio, price, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
 
 
-class Corr(SectionOperator):
-    def __init__(self, corr_method:str="spearman", sys_args={}, config_file=None, **kwargs):
-        Args = {"名称": "calcCorr", "入参数": 2, "最大入参数": -1, "运算时点": "单时点", "输出形式": "全截面", "输入格式": "pandas", "参数": {"corr_method": corr_method}}
-        Args.update(sys_args)
-        return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
-    
-    def calculate(self, f, idt, iid, x, args):
-        Return = x[0].pop("d0")
-        if args["mask"]: 
-            Mask = x[0].pop("d1").astype(bool)
-            Return[~Mask] = np.nan
-        Rslt = x[0].corrwith(Return, method=args["corr_method"])
-        Rslt.index = iid
-        return Rslt
-    
-    def __call__(self, f:Factor, *factors, mask:Optional[Factor]=None, descriptor_ids=None, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
-        Factors = [f]
-        if mask is not None: Factors.append(mask)
-        if factors: Factors += factors
-        else: raise __QS_Error__(f"算子 {self.__class__}: 必须至少指定一个因子!")
-        factor_args = factor_args.copy()
-        factor_args.setdefault("参数", {}).update({"mask": (mask is not None), "corr_method": corr_method})
-        if descriptor_ids is not None: factor_args["描述子截面"] = [descriptor_ids] * len(Factors)
-        return super().__call__(*Factors, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
-
-
 # 截面相关性
 class _SectionCorrelationModelArgs(QSArgs):
     FactorOrder = Enum("降序", "升序", arg_type="SingleOption", label="排序方向", order=0)
-    LookBack = Int(1, arg_type="Integer", label="回溯期数", order=1)
-    CorrMethod = Enum("spearman", "pearson", "kendall", arg_type="SingleOption", label="相关性算法", order=2, option_range=["spearman", "pearson", "kendall"])
+    CorrMethod = Enum("spearman", "pearson", "kendall", arg_type="SingleOption", label="相关性算法", order=1, option_range=["spearman", "pearson", "kendall"])
 
 class SectionCorrelation(SectionOperator):
     """截面相关性"""
-    class __QS_ArgClass__(PanelOperator.__QS_ArgClass__):
+    class __QS_ArgClass__(SectionOperator.__QS_ArgClass__):
         ModelArgs = Instance(_SectionCorrelationModelArgs, arg_type="ArgObject", label="参数", order=2, mutable=False)
     
         def __QS_initArgs__(self, args={}):
@@ -231,28 +206,53 @@ class SectionCorrelation(SectionOperator):
             return super().__QS_initArgs__(args=args)
     
     def __init__(self, sys_args={}, config_file=None, **kwargs):
-        Args = {"名称": "calcIC", "入参数": 2, "最大入参数": -1, "数据类型": "double", "运算时点": "多时点", "输出形式": "全截面", "回溯期数": [0, 0], "回溯模式": ["扩张窗口", "扩张窗口"]}
+        Args = {"名称": "calcSectionCorrelation", "入参数": 2, "最大入参数": -1, "数据类型": "double", "运算时点": "多时点", "输出形式": "全截面"}
         Args.update(sys_args)
         return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
 
     def calculate(self, f, idt, iid, x, args):
-        Return = x[0].pop("d0")
-        if args["mask"]: 
-            Mask = x[0].pop("d1").astype(bool)
-            Return[~Mask] = np.nan
-        Rslt = x[0].corrwith(Return, method=args["corr_method"])
-        Rslt.index = iid
-        return Rslt
+        SectionIDs = (f._QSArgs.DescriptorSection[0] if f._QSArgs.DescriptorSection[0] else iid)
+        TargetFactor, x = pd.DataFrame(x[0].T, columns=idt, index=SectionIDs), x[1:]
+        if f._QSArgs.CalcDTRuler:
+            DTs = sorted(set(idt).intersection(f._QSArgs.CalcDTRuler))
+            TargetFactor = TargetFactor.reindex(columns=DTs)
+        else:
+            DTs = Price.columns
+        if f.UserData["mask"]: 
+            Mask, x = pd.DataFrame(x[0].T==1, columns=idt, index=SectionIDs), x[1:]
+            Mask = (Mask.reindex(columns=DTs).fillna(False) & TargetFactor.notnull())
+        else:
+            Mask = TargetFactor.notnull()
+        if args["排序方向"]=="升序": TargetFactor = - TargetFactor
+        Corr = pd.DataFrame(index=DTs, columns=iid)
+        FactorNames = f._QSArgs.SectionIDs
+        for i, iFactorName in enumerate(iid):
+            if iFactorName not in FactorNames: continue
+            iIdx = FactorNames.index(iFactorName)
+            iFactorData = pd.DataFrame(x[iIdx].T, columns=idt, index=SectionIDs)
+            iFactorData = iFactorData.reindex(columns=DTs)
+            iMask = (Mask & iFactorData.notnull())
+            Corr[iFactorName] = TargetFactor.where(iMask, np.nan).corrwith(iFactorData, method=args["相关性算法"])
+        return Corr.reindex(index=idt).values
     
     def __call__(self, f:Factor, *factors, mask:Optional[Factor]=None, descriptor_ids=None, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
         Factors = [f]
         if mask is not None: Factors.append(mask)
         if factors: Factors += factors
         else: raise __QS_Error__(f"算子 {self.__class__}: 必须至少指定一个因子!")
+        Args = dict(self._QSArgs["参数"])
         factor_args = factor_args.copy()
-        factor_args.setdefault("参数", {}).update({"mask": (mask is not None), "corr_method": corr_method})
+        Args.update(factor_args.get("参数", {}))
+        if "截面ID" not in factor_args: factor_args["截面ID"] = [iFactor.Name for iFactor in factors]
+        if len(set(factor_args["截面ID"]))<len(factor_args["截面ID"]):
+            raise __QS_Error__(f"算子 {self.__class__}: 因子名有重复: {factor_args['截面ID']}")
         if descriptor_ids is not None: factor_args["描述子截面"] = [descriptor_ids] * len(Factors)
-        return super().__call__(*Factors, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+        factor_args["参数"] = Args
+        f = super().__call__(*Factors, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+        f.UserData = {
+            "mask": (mask is not None)
+        }
+        return f
 
 
 if __name__=="__main__":
@@ -272,19 +272,27 @@ if __name__=="__main__":
     Factor1 = DataFactor(name="Factor1", data=pd.DataFrame(np.random.randn(len(DTRuler), len(IDs)), index=DTRuler, columns=IDs))
     Factor2 = DataFactor(name="Factor2", data=pd.DataFrame(np.random.randn(len(DTRuler), len(IDs)), index=DTRuler, columns=IDs))
     
-    calcIC = IC(sys_args={
-        "参数": {
-            "回溯期数": 1,
-            "相关性算法": "spearman"
-        }
-    })
-    FIC = calcIC(Price, Factor1, Factor2, cat_data=Industry, descriptor_ids=IDs, factor_name="IC", factor_args={"计算时点标尺": MonthDTRuler, "回溯期数": [32-1]*4})
-    print(FIC.readData(ids=["Factor1", "Factor2"], dts=MonthDTs, dt_ruler=DTRuler))
+    #calcIC = IC(sys_args={
+        #"参数": {
+            #"回溯期数": 1,
+            #"相关性算法": "spearman"
+        #}
+    #})
+    #FIC = calcIC(Price, Factor1, Factor2, cat_data=Industry, descriptor_ids=IDs, factor_name="IC", factor_args={"计算时点标尺": MonthDTRuler, "回溯期数": [32-1]*4})
+    #print(FIC.readData(ids=["Factor1", "Factor2"], dts=MonthDTs, dt_ruler=DTRuler))
     
     #print(Factor1.Name, Factor1.readData(ids=IDs, dts=MonthDTs), sep="\n", end="\n\n")
     #calcMaskPortfolio = MaskPortfolio()
     #FMP = calcMaskPortfolio(Factor1 > 0, descriptor_ids=IDs, factor_name="QP", factor_args={"计算时点标尺": MonthDTRuler})
     #Data = FMP.readData(ids=IDs, dts=MonthDTs)
     #print(Data)
+    
+    calcCorr = SectionCorrelation(sys_args={
+        "参数": {
+            "相关性算法": "spearman"
+        }
+    })
+    FCorr = calcCorr(Price, Factor1, Factor2, descriptor_ids=IDs, factor_name="SectionCorrelation", factor_args={"计算时点标尺": MonthDTRuler})
+    print(FCorr.readData(ids=["Factor1", "Factor2"], dts=MonthDTs, dt_ruler=DTRuler))    
     
     print("===")
