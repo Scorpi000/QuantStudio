@@ -719,7 +719,7 @@ class RollingRegress(TimeOperator):
 
 # ----------------------截面运算--------------------------------
 class SectionRank(SectionOperator):
-    def __init__(self, ascending:bool=True, uniformization:bool=True, dtype:str="double", sys_args={}, config_file=None, **kwargs):
+    def __init__(self, ascending:bool=True, uniformization:bool=True, sys_args={}, config_file=None, **kwargs):
         Args = {"名称": "rankSection", "入参数": 1, "最大入参数": 3, "数据类型": "double", "运算时点": "多时点", "输出形式": "全截面", "参数": {"uniformization": uniformization, "ascending": ascending, "mask": False, "cat_data": False}}
         Args.update(sys_args)
         return super().__init__(sys_args=Args, config_file=config_file, **kwargs)

@@ -12,6 +12,7 @@ from QuantStudio.FactorDataBase.FactorDB import Factor
 from QuantStudio.FactorDataBase.FactorOperation import PanelOperator, SectionOperator
 import QuantStudio.FactorDataBase.FactorOperators as fo
 from QuantStudio.Tools.StrategyTestFun import testPortfolioStrategy_pd
+from QuantStudio.Tools import DataPreprocessingFun
 
 # IC
 class _ICModelArgs(QSArgs):
@@ -255,6 +256,78 @@ class SectionCorrelation(SectionOperator):
         return f
 
 
+
+# 截面分位数标准化
+class QuantileStandardization(SectionOperator):
+    def __init__(self, ascending:bool=True, uniformization:bool=True, sys_args={}, config_file=None, **kwargs):
+        Args = {"名称": "calcQuantileStandardization", "入参数": 1, "最大入参数": 3, "数据类型": "double", "运算时点": "多时点", "输出形式": "全截面", "参数": {"uniformization": uniformization, "ascending": ascending, "mask": False, "cat_data": False}}
+        Args.update(sys_args)
+        return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
+    
+    def calculate(self, f, idt, iid, x, args):
+        FactorData, args = x[0], args.copy()
+        Mask = (x[1].astype(bool) if args.pop("mask") else [None] * FactorData.shape[0])
+        CatData = (x[-1] if args.pop("cat_data") else [None] * FactorData.shape[0])
+        Rslt = np.full_like(FactorData, fill_value=np.nan)
+        for i in range(FactorData.shape[0]):
+            Rslt[i] = DataPreprocessingFun.standardizeQuantile(FactorData[i], mask=Mask[i], cat_data=CatData[i], perturbation=False, **args)
+        return Rslt
+    
+    def __call__(self, f:Factor, mask:Optional[Factor]=None, cat_data:Optional[Factor]=None, *, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
+        Factors = [f]
+        if mask is not None: Factors.append(mask)
+        if cat_data is not None: Factors.append(cat_data)
+        Args = self._QSArgs["参数"].copy()
+        Args.update({iKey: kwargs[iKey] for iKey in Args if iKey in kwargs})
+        factor_args = factor_args.copy()
+        Args.update(factor_args.get("参数", {}))
+        Args["mask"] = (mask is not None)
+        Args["cat_data"] = (cat_data is not None)
+        factor_args["参数"] = Args
+        return super().__call__(*Factors, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+
+
+# 正交化
+class Orthogonalization(SectionOperator):
+    def __init__(self, constant=False, drop_dummy_na=False, sys_args={}, config_file=None, **kwargs):
+        Args = {"名称": "orthogonalize", "入参数": 1, "最大入参数": 3, "数据类型": "double", "运算时点": "单时点", "输出形式": "全截面", "参数": {"constant": constant, "drop_dummy_na": drop_dummy_na}}
+        Args.update(sys_args)
+        return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
+    
+    def calculate(self, f, idt, iid, x, args):
+        Y = x[0]
+        if f.UserData["mask"]: 
+            Mask, x = (x[0]==1), x[1:]
+        else:
+            Mask = None
+        if f.UserData["dummy_data"]: 
+            DummyData, x = x[0], x[1:]
+        else:
+            DummyData = None
+        X = np.array(x, dtype=float).T
+        Rslt = DataPreprocessingFun.orthogonalize(Y, X=X, mask=Mask, dummy_data=DummyData, **args)
+        return Rslt
+        
+    def __call__(self, f:Factor, *exog, mask:Optional[Factor]=None, dummy_data:Optional[Factor]=None, descriptor_ids=None, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
+        Factors = [f]
+        if mask is not None: Factors.append(mask)
+        if dummy_data is not None: Factors.append(dummy_data)
+        if exog: Factors += exog
+        else: raise __QS_Error__(f"算子 {self.__class__}: 必须至少指定一个回归因子!")
+        Args = dict(self._QSArgs["参数"])
+        Args.update({iKey: kwargs[iKey] for iKey in Args if iKey in kwargs})
+        factor_args = factor_args.copy()
+        Args.update(factor_args.get("参数", {}))
+        factor_args["参数"] = Args
+        factor_args["描述子截面"] = [descriptor_ids] * len(Factors)
+        f = super().__call__(*Factors, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+        f.UserData = {
+            "mask": (mask is not None),
+            "dummy_data": (dummy_data is not None)
+        }
+        return f
+
+
 if __name__=="__main__":
     from QuantStudio.FactorDataBase.FactorDB import DataFactor
     from QuantStudio.Tools.DateTimeFun import getNaturalDay, getMonthLastDateTime
@@ -287,12 +360,16 @@ if __name__=="__main__":
     #Data = FMP.readData(ids=IDs, dts=MonthDTs)
     #print(Data)
     
-    calcCorr = SectionCorrelation(sys_args={
-        "参数": {
-            "相关性算法": "spearman"
-        }
-    })
-    FCorr = calcCorr(Price, Factor1, Factor2, descriptor_ids=IDs, factor_name="SectionCorrelation", factor_args={"计算时点标尺": MonthDTRuler})
-    print(FCorr.readData(ids=["Factor1", "Factor2"], dts=MonthDTs, dt_ruler=DTRuler))    
+    #calcCorr = SectionCorrelation(sys_args={
+        #"参数": {
+            #"相关性算法": "spearman"
+        #}
+    #})
+    #FCorr = calcCorr(Price, Factor1, Factor2, descriptor_ids=IDs, factor_name="SectionCorrelation", factor_args={"计算时点标尺": MonthDTRuler})
+    #print(FCorr.readData(ids=["Factor1", "Factor2"], dts=MonthDTs, dt_ruler=DTRuler))
+    
+    orthogonalize = Orthogonalization(constant=True, drop_dummy_na=False)
+    FOth = orthogonalize(Factor1, Factor2, descriptor_ids=IDs, factor_name="Orthogonalization", factor_args={"计算时点标尺": MonthDTRuler})
+    print(FOth.readData(ids=IDs, dts=MonthDTs))
     
     print("===")
