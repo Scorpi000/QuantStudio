@@ -47,7 +47,20 @@ class IC(BaseModule):
     def __QS_start__(self, mdl, dts, **kwargs):
         Tasks = super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._Output = {}
+        if self._QSArgs.CalcDTs:
+            DTRuler = self.Model.Context.Args["时点标尺"]
+            CalcStartIdx = np.searchsorted(self._QSArgs.CalcDTs, dts[0], side="left")
+            if CalcStartIdx==0:
+                Lookback = 0
+            else:
+                StartIdx = np.searchsorted(DTRuler, dts[0], side="left")
+                PreIdx = np.searchsorted(DTRuler, self._QSArgs.CalcDTs[CalcStartIdx - 1], side="left")
+                Lookback = StartIdx - PreIdx
+        else:
+            Lookback = 1
+        nFactor = 1 + len(self._Factors) + (self._Mask is not None) + (self._CatData is not None) + (self._Weight is not None)
         self._IC = ICOperator(sys_args={
+            "回溯期数": [Lookback] * nFactor,
             "参数": {
                 "排序方向": self._QSArgs.FactorOrder,
                 "回溯期数": self._QSArgs.LookBack,
