@@ -29,14 +29,14 @@ if __name__=="__main__":
     
     Model = QS.BackTest.BackTestModel()
     
-    iModule = QS.BackTest.SectionFactor.IC(Price, Factor1, Factor2, section_ids=SectionIDs, name="IC", sys_args={
-        "排序方向": "降序",
-        "计算时点": MonthDTRuler,
-        "回溯期数": 1,
-        "相关性算法": "spearman",
-        "滚动平均期数": 3
-    })
-    Model.Modules.append(iModule)
+    #iModule = QS.BackTest.SectionFactor.IC(Price, Factor1, Factor2, section_ids=SectionIDs, name="IC", sys_args={
+        #"排序方向": "降序",
+        #"计算时点": MonthDTRuler,
+        #"回溯期数": 1,
+        #"相关性算法": "spearman",
+        #"滚动平均期数": 3
+    #})
+    #Model.Modules.append(iModule)
     
     iModule = QS.BackTest.SectionFactor.QuantilePortfolio(Factor1, Price, section_ids=SectionIDs, name="分位数组合", sys_args={
         "排序方向": "降序",
@@ -44,7 +44,11 @@ if __name__=="__main__":
         "调仓时点": MonthDTRuler,
         "价格缺失": "沿用前值"
     })
-    Model.Modules.append(iModule)
+    #Model.Modules.append(iModule)
+    
+    iMultiModule = QS.BackTest.SectionFactor.MultiPortfolio(name="多组合对比")
+    iMultiModule.Modules.append(iModule)
+    Model.Modules.append(iMultiModule)
     
     Cache = HDF5Cache(sys_args={"缓存目录": "/home/hst/桌面/Cache"})
     Context = BatchContext(Cache, sys_args={

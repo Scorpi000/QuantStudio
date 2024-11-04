@@ -229,7 +229,7 @@ class FilterPortfolio(BaseModule):
         #ClassFactor = Enum("无", arg_type="SingleOption", label="类别因子", order=2)
         #WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=3)
         CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="调仓时点", order=4)
-        MarketIDFilter = Str(arg_type="IDFilter", label="市场组合", order=5)
+        MarketIDFilter = Str(arg_type="IDFilter", label="基准组合", order=5)
         IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=6)
         PriceMiss = Enum("沿用前值", "填充为0", arg_type="SingleOption", label="价格缺失", order=7, option_range=["沿用前值", "填充为0"])
         LSPairs = List(arg_type="List", label="多空对", order=8)
@@ -251,7 +251,7 @@ class FilterPortfolio(BaseModule):
         self._Output = {"净值":[[1] for i in range(GroupNum)]}
         self._Output["投资组合"] = [[] for i in range(GroupNum)]
         self._Output["换手率"] = [[] for i in range(GroupNum)]
-        self._Output["市场净值"] = [1]
+        self._Output["基准净值"] = [1]
         self._Output["调仓日"] = []
         self._Output["QP_P_CurPos"] = [pd.Series() for i in range(GroupNum)]
         self._Output["QP_P_MarketPos"] = pd.Series()
@@ -276,11 +276,11 @@ class FilterPortfolio(BaseModule):
             self._Output["净值"][i].append(iWealth)
             self._Output["换手率"][i].append(0)
         if len(self._Output["QP_P_MarketPos"])==0:
-            self._Output["市场净值"].append(self._Output["市场净值"][-1])
+            self._Output["基准净值"].append(self._Output["基准净值"][-1])
         elif self._QSArgs.PriceMiss=="沿用前值":
-            self._Output["市场净值"].append((self._Output["QP_P_MarketPos"] * self._Output["QP_LastPrice"]).sum())
+            self._Output["基准净值"].append((self._Output["QP_P_MarketPos"] * self._Output["QP_LastPrice"]).sum())
         else:
-            self._Output["市场净值"].append((self._Output["QP_P_MarketPos"] * Price).sum())
+            self._Output["基准净值"].append((self._Output["QP_P_MarketPos"] * Price).sum())
         if self._QSArgs.CalcDTs:
             if idt not in self._QSArgs.CalcDTs[self._CurCalcInd:]: return 0
             self._CurCalcInd = self._QSArgs.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
@@ -334,7 +334,7 @@ class FilterPortfolio(BaseModule):
         Price = Price[IDs]
         WeightData = WeightData[pd.notnull(WeightData) & pd.notnull(Price)]
         WeightData = WeightData / WeightData.sum()
-        self._Output["QP_P_MarketPos"] = WeightData * self._Output["市场净值"][-1] / Price
+        self._Output["QP_P_MarketPos"] = WeightData * self._Output["基准净值"][-1] / Price
         self._Output["QP_P_MarketPos"] = self._Output["QP_P_MarketPos"][pd.notnull(self._Output["QP_P_MarketPos"])]
         self._Output["调仓日"].append(idt)
         return 0
@@ -351,9 +351,9 @@ class FilterPortfolio(BaseModule):
             self._Output["净值"][i].pop(0)
         nDT = len(self._Model.DateTimeSeries)
         self._Output["净值"] = pd.DataFrame(np.array(self._Output["净值"]).T, index=self._Model.DateTimeSeries, columns=PortfolioNames)
-        self._Output["净值"]["Bmk"] = pd.Series(self._Output.pop("市场净值")[1:], index=self._Model.DateTimeSeries)
+        self._Output["净值"]["Bmk"] = pd.Series(self._Output.pop("基准净值")[1:], index=self._Model.DateTimeSeries)
         self._Output["收益率"] = self._Output["净值"].iloc[1:,:].values / self._Output["净值"].iloc[:-1,:].values - 1
-        self._Output["收益率"] = pd.DataFrame(np.row_stack((np.zeros((1, GroupNum+1)), self._Output["收益率"])), index=self._Model.DateTimeSeries, columns=PortfolioNames+["市场"])
+        self._Output["收益率"] = pd.DataFrame(np.row_stack((np.zeros((1, GroupNum+1)), self._Output["收益率"])), index=self._Model.DateTimeSeries, columns=PortfolioNames+["Bmk"])
         if not self._QSArgs.CalcDTs:
             RebalanceIdx = None
         else:
@@ -364,7 +364,7 @@ class FilterPortfolio(BaseModule):
         self._Output["超额收益率"] = self._Output["收益率"].iloc[:, :GroupNum].copy()
         self._Output["超额净值"] = self._Output["超额收益率"].copy()
         for i in self._Output["超额收益率"]:
-            self._Output["超额收益率"][i] = calcLSYield(self._Output["超额收益率"][i].values, self._Output["收益率"]["市场"].values, rebalance_index=RebalanceIdx)
+            self._Output["超额收益率"][i] = calcLSYield(self._Output["超额收益率"][i].values, self._Output["收益率"]["Bmk"].values, rebalance_index=RebalanceIdx)
             self._Output["超额净值"][i] = (1+self._Output["超额收益率"][i]).cumprod()
         for iLPortfolio, iSPortfolio in self._QSArgs.LSPairs:
             iLIdx, iSIdx = PortfolioNames.index(iLPortfolio), PortfolioNames.index(iSPortfolio)
@@ -386,8 +386,8 @@ class FilterPortfolio(BaseModule):
         _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 1), xData, xTickLabels, self._Output["统计数据"]["年化超额收益率"].iloc[:GroupNum], PercentageFormatter, self._Output["统计数据"]["胜率"].iloc[:GroupNum], PercentageFormatter)
         _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 2), xData, xTickLabels, self._Output["统计数据"]["信息比率"].iloc[:GroupNum], PercentageFormatter, None)
         _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 3), xData, xTickLabels, self._Output["统计数据"]["超额最大回撤率"].iloc[:GroupNum], PercentageFormatter, None)
-        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 4), xData, xTickLabels, self._Output["统计数据"]["年化收益率"].iloc[:GroupNum], PercentageFormatter, pd.Series(self._Output["统计数据"].loc["市场", "年化收益率"], index=self._Output["统计数据"].index[:GroupNum], name="市场"), PercentageFormatter, False)
-        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 5), xData, xTickLabels, self._Output["统计数据"]["Sharpe比率"].iloc[:GroupNum], FloatFormatter, pd.Series(self._Output["统计数据"].loc["市场", "Sharpe比率"], index=self._Output["统计数据"].index[:GroupNum], name="市场"), FloatFormatter, False)
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 4), xData, xTickLabels, self._Output["统计数据"]["年化收益率"].iloc[:GroupNum], PercentageFormatter, pd.Series(self._Output["统计数据"].loc["Bmk", "年化收益率"], index=self._Output["统计数据"].index[:GroupNum], name="Bmk"), PercentageFormatter, False)
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 5), xData, xTickLabels, self._Output["统计数据"]["Sharpe比率"].iloc[:GroupNum], FloatFormatter, pd.Series(self._Output["统计数据"].loc["Bmk", "Sharpe比率"], index=self._Output["统计数据"].index[:GroupNum], name="Bmk"), FloatFormatter, False)
         _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 6), xData, xTickLabels, self._Output["统计数据"]["平均换手率"].iloc[:GroupNum], PercentageFormatter, None)
         Axes = Fig.add_subplot(nRow, nCol, 7)
         Axes.xaxis_date()
@@ -528,9 +528,9 @@ class MultiPortfolio(BaseModule):
         _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 13), xData, xTickLabels, self._Output["统计数据"]["L-S"]["年化收益率"], PercentageFormatter, None, title="L-S 组合年化收益率")
         _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 14), xData, xTickLabels, self._Output["统计数据"]["L-S"]["Sharpe比率"], FloatFormatter, None, title="L-S 组合 Sharpe 比率")
         _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 15), xData, xTickLabels, self._Output["统计数据"]["L-S"]["最大回撤率"], PercentageFormatter, None, title="L-S 组合最大回撤Æ率")
-        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 16), xData, xTickLabels, self._Output["统计数据"]["市场"]["年化收益率"], PercentageFormatter, None, title="市场组合年化收益率")
-        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 17), xData, xTickLabels, self._Output["统计数据"]["市场"]["Sharpe比率"], FloatFormatter, None, title="市场组合 Sharpe 比率")
-        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 18), xData, xTickLabels, self._Output["统计数据"]["市场"]["最大回撤率"], PercentageFormatter, None, title="市场组合最大回撤率")
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 16), xData, xTickLabels, self._Output["统计数据"]["Bmk"]["年化收益率"], PercentageFormatter, None, title="基准组合年化收益率")
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 17), xData, xTickLabels, self._Output["统计数据"]["Bmk"]["Sharpe比率"], FloatFormatter, None, title="基准组合 Sharpe 比率")
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 18), xData, xTickLabels, self._Output["统计数据"]["Bmk"]["最大回撤率"], PercentageFormatter, None, title="基准组合最大回撤率")
         Axes = Fig.add_subplot(nRow, nCol, 19)
         Axes.xaxis_date()
         Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
@@ -548,10 +548,10 @@ class MultiPortfolio(BaseModule):
         Axes = Fig.add_subplot(nRow, nCol, 21)
         Axes.xaxis_date()
         Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
-        for i in range(self._Output["净值"]["市场"].shape[1]):
-            Axes.plot(self._Output["净值"]["市场"].index, self._Output["净值"]["市场"].iloc[:, i].values, label=str(self._Output["净值"]["市场"].columns[i]), lw=2.5)
+        for i in range(self._Output["净值"]["Bmk"].shape[1]):
+            Axes.plot(self._Output["净值"]["Bmk"].index, self._Output["净值"]["Bmk"].iloc[:, i].values, label=str(self._Output["净值"]["Bmk"].columns[i]), lw=2.5)
         Axes.legend(loc='best')
-        Axes.set_title("市场组合净值")
+        Axes.set_title("基准组合净值")
         Axes = Fig.add_subplot(nRow, nCol, 22)
         Axes.xaxis_date()
         Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
