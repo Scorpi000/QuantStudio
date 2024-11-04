@@ -47,8 +47,9 @@ class IC(BaseModule):
     def __QS_start__(self, mdl, dts, **kwargs):
         Tasks = super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._Output = {}
-        if self._QSArgs.CalcDTs:
-            DTRuler = self.Model.Context.Args["时点标尺"]
+        Context = self._Model.BatchContext
+        if self._QSArgs.CalcDTs and (Context is not None):
+            DTRuler = Context.Args["时点标尺"]
             CalcStartIdx = np.searchsorted(self._QSArgs.CalcDTs, dts[0], side="left")
             if CalcStartIdx==0:
                 Lookback = 0
