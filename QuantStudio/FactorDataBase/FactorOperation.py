@@ -280,7 +280,7 @@ class PointOperator(FactorOperator):
             return self._QS_adjOutputPandas(StdData, CompoundCols, CalcDTs, ids).reindex(index=dts)
     
     def calcData(self, factor, ids, dts, descriptor_data, dt_ruler=None, section_ids=None):
-        ModelArgs = self._QSArgs.ModelArgs.copy()
+        ModelArgs = dict(self._QSArgs.ModelArgs)
         ModelArgs.update(factor._QSArgs.ModelArgs)
         if self._QSArgs.InputFormat == "numpy":
             return self._calcDataNumpy(factor, ids, dts, descriptor_data, ModelArgs)
@@ -465,8 +465,8 @@ class TimeOperator(FactorOperator):
             descriptor_data[factor._QSArgs.iInitFactor] = StdData
         if StartIdx >= MaxLookBack: DTRuler = dt_ruler[StartIdx-MaxLookBack:EndIdx]
         else: DTRuler = [None] * (MaxLookBack - StartIdx) + dt_ruler[:EndIdx]
-        ModelArgs = self._QSArgs.ModelArgs
-        ModelArgs.update(factor.Args.ModelArgs)
+        ModelArgs = dict(self._QSArgs.ModelArgs)
+        ModelArgs.update(factor._QSArgs.ModelArgs)
         if self._QSArgs.InputFormat == "numpy":
             return self._calcDataNumpy(factor, ids, dts, descriptor_data, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, ModelArgs, StdData)
         else:
@@ -613,7 +613,7 @@ class SectionOperator(FactorOperator):
                 return self._QS_adjOutputPandas(StdData, CompoundCols, CalcDTs, ids).reindex(index=dts)
     
     def calcData(self, factor, ids, dts, descriptor_data, dt_ruler=None, section_ids=None):
-        ModelArgs = self._QSArgs.ModelArgs.copy()
+        ModelArgs = dict(self._QSArgs.ModelArgs)
         ModelArgs.update(factor._QSArgs.ModelArgs)
         if section_ids is None: section_ids = ids
         if self._QSArgs.InputFormat == "numpy":
@@ -809,8 +809,8 @@ class PanelOperator(FactorOperator):
             descriptor_data[factor._QSArgs.iInitFactor] = StdData
         if StartIdx >= MaxLookBack: DTRuler = dt_ruler[StartIdx-MaxLookBack:EndIdx]
         else: DTRuler = [None] * (MaxLookBack - StartIdx) + dt_ruler[:EndIdx]
-        ModelArgs = self._QSArgs.ModelArgs
-        ModelArgs.update(factor.Args.ModelArgs)
+        ModelArgs = dict(self._QSArgs.ModelArgs)
+        ModelArgs.update(factor._QSArgs.ModelArgs)
         if self._QSArgs.InputFormat == "numpy":
             return self._calcDataNumpy(factor, ids, dts, descriptor_data, DTRuler, section_ids, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, ModelArgs, StdData)
         else:
@@ -883,11 +883,7 @@ class PointOperation(DerivativeFactor):
         if Operator is None: raise __QS_Error__("创建衍生因子必须指定算子!")
         if not isinstance(Operator, FactorOperator): Operator = makeFactorOperator(operator_type="Point", func=Operator, args=sys_args, logger=descriptors[0]._QS_Logger)
         elif not isinstance(Operator, PointOperator): raise __QS_Error__(f"类型为 PointOperation 的衍生因子 {name} 的算子类型必须为 PointOperator, 但传入的算子类型为 {Operator.__class__}")
-        FactorArgs = {
-            "参数": sys_args.pop("参数", {}),
-            "描述信息": sys_args.pop("描述信息", ""),
-        }
-        return super().__init__(name=name, descriptors=descriptors, sys_args={"算子": Operator, **FactorArgs}, **kwargs)
+        return super().__init__(name=name, descriptors=descriptors, sys_args={"算子": Operator, **sys_args}, **kwargs)
         
     def readData(self, ids, dts, **kwargs):
         Context = self.BatchContext
@@ -944,13 +940,11 @@ class TimeOperation(DerivativeFactor):
             "回溯期数": sys_args.pop("回溯期数", Operator._QSArgs.LookBack),
             "回溯模式": sys_args.pop("回溯模式", Operator._QSArgs.LookBackMode),
             "起始时点": sys_args.pop("起始时点", Operator._QSArgs.StartDT),
-            "起始因子": sys_args.pop("起始因子", Operator._QSArgs.iInitFactor),
-            "参数": sys_args.pop("参数", {}),
-            "描述信息": sys_args.pop("描述信息", ""),
+            "起始因子": sys_args.pop("起始因子", Operator._QSArgs.iInitFactor)
         }
         if not FactorArgs["回溯模式"]: FactorArgs["回溯模式"] = ["滚动窗口"] * len(FactorArgs["回溯期数"])
         if not FactorArgs["起始时点"]: FactorArgs["起始时点"] = [None] * len(FactorArgs["回溯期数"])
-        return super().__init__(name=name, descriptors=descriptors, sys_args={"算子": Operator, **FactorArgs}, **kwargs)
+        return super().__init__(name=name, descriptors=descriptors, sys_args={"算子": Operator, **FactorArgs, **sys_args}, **kwargs)
     
     def _QS_checkConsistency(self):
         Operator = self._Operator
@@ -1075,12 +1069,10 @@ class SectionOperation(DerivativeFactor):
         if not isinstance(Operator, FactorOperator): Operator = makeFactorOperator(operator_type="Section", func=Operator, args=sys_args, logger=descriptors[0]._QS_Logger)
         elif not isinstance(Operator, SectionOperator): raise __QS_Error__(f"类型为 SectionOperation 的衍生因子 {name} 的算子类型必须为 SectionOperator, 但传入的算子类型为 {Operator.__class__}")
         FactorArgs = {
-            "描述子截面": sys_args.pop("描述子截面", Operator._QSArgs.DescriptorSection),
-            "参数": sys_args.pop("参数", {}),
-            "描述信息": sys_args.pop("描述信息", "")
+            "描述子截面": sys_args.pop("描述子截面", Operator._QSArgs.DescriptorSection)
         }
         if not FactorArgs["描述子截面"]: FactorArgs["描述子截面"] = [None] * len(descriptors)
-        return super().__init__(name=name, descriptors=descriptors, sys_args={"算子": Operator, **FactorArgs}, **kwargs)
+        return super().__init__(name=name, descriptors=descriptors, sys_args={"算子": Operator, **FactorArgs, **sys_args}, **kwargs)
     
     def _QS_checkConsistency(self):
         Operator = self._Operator
@@ -1176,14 +1168,12 @@ class PanelOperation(DerivativeFactor):
             "回溯期数": sys_args.pop("回溯期数", Operator._QSArgs.LookBack),
             "回溯模式": sys_args.pop("回溯模式", Operator._QSArgs.LookBackMode),
             "起始时点": sys_args.pop("起始时点", Operator._QSArgs.StartDT),
-            "起始因子": sys_args.pop("起始因子", Operator._QSArgs.iInitFactor),
-            "参数": sys_args.pop("参数", {}),
-            "描述信息": sys_args.pop("描述信息", "")
+            "起始因子": sys_args.pop("起始因子", Operator._QSArgs.iInitFactor)
         }
         if not FactorArgs["回溯模式"]: FactorArgs["回溯模式"] = ["滚动窗口"] * len(FactorArgs["回溯期数"])
         if not FactorArgs["起始时点"]: FactorArgs["起始时点"] = [None] * len(FactorArgs["回溯期数"])
         if not FactorArgs["描述子截面"]: FactorArgs["描述子截面"] = [None] * len(descriptors)
-        return super().__init__(name=name, descriptors=descriptors, sys_args={"算子": Operator, **FactorArgs}, **kwargs)
+        return super().__init__(name=name, descriptors=descriptors, sys_args={"算子": Operator, **FactorArgs, **sys_args}, **kwargs)
     
     def _QS_checkConsistency(self):
         Operator = self._Operator

@@ -675,7 +675,7 @@ class RollingRegress(TimeOperator):
             Args["数据类型"] = "object"
             Args["复合类型"] = [("alpha", "double"), ("beta", "double")]
         else:
-            Args["数据类型"] = "double"        
+            Args["数据类型"] = "double"
         return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
     
     def calculate(self, f, idt, iid, x, args):
@@ -714,7 +714,7 @@ class RollingRegress(TimeOperator):
         elif DataType=="object":
             CompoundType = [("alpha", "double")] + [(f"beta{i}", "double") for i in range(len(exog))]
             if CompoundType!=self._QSArgs.CompoundType:
-                return super().__call__(*Factors, args={"复合类型": CompoundType}, factor_name=factor_name, factor_args=factor_args, **kwargs)                
+                return super().__call__(*Factors, args={"复合类型": CompoundType}, factor_name=factor_name, factor_args=factor_args, **kwargs)
         return super().__call__(*Factors, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
 
 # ----------------------截面运算--------------------------------
