@@ -179,7 +179,7 @@ class PortfolioNV(PanelOperator):
         Portfolio = pd.DataFrame(x[0], index=idt, columns=SectionIDs)
         Price = pd.DataFrame(x[1], index=idt, columns=SectionIDs)
         if args["价格缺失"]=="沿用前值": Price = Price.fillna(method="pad")
-        NV = testPortfolioStrategy_pd(Portfolio, Price)
+        NV = testPortfolioStrategy_pd(Portfolio.dropna(how="all"), Price)
         return np.reshape(NV.values, (-1, 1)).repeat(len(iid), axis=1)
 
     def __call__(self, portfolio:Factor, price:Factor, descriptor_ids=None, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
@@ -344,20 +344,24 @@ if __name__=="__main__":
     Factor1 = DataFactor(name="Factor1", data=pd.DataFrame(np.random.randn(len(DTRuler), len(IDs)), index=DTRuler, columns=IDs))
     Factor2 = DataFactor(name="Factor2", data=pd.DataFrame(np.random.randn(len(DTRuler), len(IDs)), index=DTRuler, columns=IDs))
     
-    calcIC = IC(sys_args={
-        "参数": {
-            "回溯期数": 1,
-            "相关性算法": "spearman"
-        }
-    })
-    FIC = calcIC(Price, Factor1, Factor2, cat_data=Industry, descriptor_ids=IDs, factor_name="IC", factor_args={"计算时点标尺": MonthDTRuler, "回溯期数": [32-1]*4})
-    print(FIC.readData(ids=["Factor1", "Factor2"], dts=MonthDTs, dt_ruler=DTRuler))
+    #calcIC = IC(sys_args={
+        #"参数": {
+            #"回溯期数": 1,
+            #"相关性算法": "spearman"
+        #}
+    #})
+    #FIC = calcIC(Price, Factor1, Factor2, cat_data=Industry, descriptor_ids=IDs, factor_name="IC", factor_args={"计算时点标尺": MonthDTRuler, "回溯期数": [32-1]*4})
+    #print(FIC.readData(ids=["Factor1", "Factor2"], dts=MonthDTs, dt_ruler=DTRuler))
     
-    #print(Factor1.Name, Factor1.readData(ids=IDs, dts=MonthDTs), sep="\n", end="\n\n")
-    #calcMaskPortfolio = MaskPortfolio()
-    #FMP = calcMaskPortfolio(Factor1 > 0, descriptor_ids=IDs, factor_name="QP", factor_args={"计算时点标尺": MonthDTRuler})
-    #Data = FMP.readData(ids=IDs, dts=MonthDTs)
-    #print(Data)
+    print(Factor1.Name, Factor1.readData(ids=IDs, dts=MonthDTs), sep="\n", end="\n\n")
+    calcMaskPortfolio = MaskPortfolio()
+    FMP = calcMaskPortfolio(Factor1 > 0, descriptor_ids=IDs, factor_name="QP", factor_args={"计算时点标尺": MonthDTRuler})
+    Data = FMP.readData(ids=IDs, dts=MonthDTs)
+    print(Data)
+    calcPortfolioNV = PortfolioNV()
+    FNV = calcPortfolioNV(FMP, Price)
+    NVData = FNV.readData(ids=IDs, dts=DTs)
+    print(NVData)    
     
     #calcCorr = SectionCorrelation(sys_args={
         #"参数": {
