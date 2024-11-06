@@ -258,15 +258,15 @@ class SectionCorrelation(SectionOperator):
 
 # 截面分位数标准化
 class QuantileStandardization(SectionOperator):
-    def __init__(self, ascending:bool=True, uniformization:bool=True, sys_args={}, config_file=None, **kwargs):
-        Args = {"名称": "calcQuantileStandardization", "入参数": 1, "最大入参数": 3, "数据类型": "double", "运算时点": "多时点", "输出形式": "全截面", "参数": {"uniformization": uniformization, "ascending": ascending, "mask": False, "cat_data": False}}
+    def __init__(self, ascending:bool=True, sys_args={}, config_file=None, **kwargs):
+        Args = {"名称": "calcQuantileStandardization", "入参数": 1, "最大入参数": 3, "数据类型": "double", "运算时点": "多时点", "输出形式": "全截面", "参数": {"ascending": ascending}}
         Args.update(sys_args)
         return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
     
     def calculate(self, f, idt, iid, x, args):
-        FactorData, args = x[0], args.copy()
-        Mask = (x[1].astype(bool) if args.pop("mask") else [None] * FactorData.shape[0])
-        CatData = (x[-1] if args.pop("cat_data") else [None] * FactorData.shape[0])
+        FactorData = x[0]
+        Mask = (x[1].astype(bool) if f.UserData["mask"] else [None] * FactorData.shape[0])
+        CatData = (x[-1] if f.UserData["cat_data"] else [None] * FactorData.shape[0])
         Rslt = np.full_like(FactorData, fill_value=np.nan)
         for i in range(FactorData.shape[0]):
             Rslt[i] = DataPreprocessingFun.standardizeQuantile(FactorData[i], mask=Mask[i], cat_data=CatData[i], perturbation=False, **args)
@@ -276,20 +276,24 @@ class QuantileStandardization(SectionOperator):
         Factors = [f]
         if mask is not None: Factors.append(mask)
         if cat_data is not None: Factors.append(cat_data)
-        Args = self._QSArgs["参数"].copy()
+        Args = dict(self._QSArgs["参数"])
         Args.update({iKey: kwargs[iKey] for iKey in Args if iKey in kwargs})
         factor_args = factor_args.copy()
         Args.update(factor_args.get("参数", {}))
         Args["mask"] = (mask is not None)
         Args["cat_data"] = (cat_data is not None)
         factor_args["参数"] = Args
-        return super().__call__(*Factors, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
-
+        f = super().__call__(*Factors, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+        f.UserData = {
+            "mask": (mask is not None),
+            "cat_data": (cat_data is not None)
+        }
+        return f
 
 # 正交化
 class Orthogonalization(SectionOperator):
     def __init__(self, constant=False, drop_dummy_na=False, sys_args={}, config_file=None, **kwargs):
-        Args = {"名称": "orthogonalize", "入参数": 1, "最大入参数": 3, "数据类型": "double", "运算时点": "单时点", "输出形式": "全截面", "参数": {"constant": constant, "drop_dummy_na": drop_dummy_na}}
+        Args = {"名称": "orthogonalize", "入参数": 1, "最大入参数": -1, "数据类型": "double", "运算时点": "单时点", "输出形式": "全截面", "参数": {"constant": constant, "drop_dummy_na": drop_dummy_na}}
         Args.update(sys_args)
         return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
     
