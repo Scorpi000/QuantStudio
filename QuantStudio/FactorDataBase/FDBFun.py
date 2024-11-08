@@ -2444,6 +2444,7 @@ class SQL_FinancialTable(SQL_Table):
     
     def _calcData(self, raw_data, periods, factor_name, ids, dts, calc_type, report_date, ignore_missing, args={}):
         if ignore_missing: raw_data = raw_data[pd.notnull(raw_data[factor_name])]
+        if raw_data.empty: return pd.DataFrame(index=dts, columns=ids)
         # TargetReportDate: 每个 ID 每个公告日对应的最大报告期
         TargetReportDate = raw_data.loc[:, ["QS_ID", "AnnDate", "ReportDate"]]
         if report_date=="年报": TargetReportDate.loc[raw_data["ReportPeriod"]!="12-31", "ReportDate"] = dt.datetime(1899,12,31)
