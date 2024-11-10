@@ -2,6 +2,7 @@
 """因子缓存"""
 import os
 import stat
+import time
 import shutil
 import tempfile
 from multiprocessing import Lock
@@ -52,7 +53,7 @@ class FactorCache(__QS_Object__):
         raise NotImplementedError
     
     # 读取因子数据
-    def readFactorData(self, key, target_field="StdData", pids=None, wait=True):
+    def readFactorData(self, key, ipid, target_field="StdData", pids=None, wait=True, wait_seconds=0.1):
         raise NotImplementedError
     
     # 清空缓存
@@ -231,7 +232,7 @@ class HDF5Cache(FactorCache):
                         else:
                             CacheFile[target_field] = factor_data
     
-    def readFactorData(self, key, target_field="StdData", pids=None, wait=True):
+    def readFactorData(self, key, ipid, target_field="StdData", pids=None, wait=True, wait_seconds=0.1):
         if isinstance(pids, str):
             FilePath = self._FactorDataDir + os.sep + pids + os.sep + key + self._QSArgs.HDF5Suffix
             if not os.path.isfile(FilePath):
@@ -240,18 +241,40 @@ class HDF5Cache(FactorCache):
                 with pd.HDFStore(FilePath, mode="r") as CacheFile:
                     FactorData = CacheFile[target_field]
             return FactorData
+        iFilePath = self._FactorDataDir + os.sep + ipid + os.sep + key + self._QSArgs.HDF5Suffix
+        with self._PIDLock[ipid]:
+            with pd.HDFStore(iFilePath, mode="r") as CacheFile:
+                DTNum = CacheFile.get_storer(target_field).shape[0]
         if pids is None:
             pids = set(self._QSArgs.PIDs)
         else:
             pids = set(pids)
         StdData = []
+        MTime = {}
         while len(pids)>0:
             iPID = pids.pop()
             iFilePath = self._FactorDataDir + os.sep + iPID + os.sep + key + self._QSArgs.HDF5Suffix
             if not os.path.isfile(iFilePath):# 该进程的数据没有准备好
-                if wait: pids.add(iPID)
+                if wait:
+                    pids.add(iPID)
+                    if wait_seconds>0: time.sleep(wait_seconds)
                 continue
-            iStdData = self.readFactorData(key, target_field=target_field, pids=iPID)
+            elif wait:
+                iMTime = os.path.getmtime(iFilePath)
+                if (iPID not in MTime) or (iMTime > MTime[iPID]):
+                    MTime[iPID] = iMTime
+                    with self._PIDLock[iPID]:
+                        with pd.HDFStore(iFilePath, mode="r") as CacheFile:
+                            iDTNum = CacheFile.get_storer(target_field).shape[0]
+                    if iDTNum!=DTNum:
+                        pids.add(iPID)
+                        if wait_seconds>0: time.sleep(wait_seconds)
+                        continue
+                else:
+                    pids.add(iPID)
+                    if wait_seconds>0: time.sleep(wait_seconds)
+                    continue
+            iStdData = self.readFactorData(key, ipid, target_field=target_field, pids=iPID)
             if iStdData is not None: StdData.append(iStdData)
         if StdData:
             return pd.concat(StdData, axis=1, join='outer', ignore_index=False)

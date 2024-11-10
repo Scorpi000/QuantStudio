@@ -552,7 +552,10 @@ class Factor(__QS_Object__):
     # 准备缓存数据
     def __QSBC_prepareCacheData__(self, dt_range):
         Context = self.BatchContext
-        DTs = Context.getDateTime(dt_range)
+        DTRange = Context.getDTRange(self._QSID, dt_range)
+        if DTRange is None:# 不需要准备缓存数据
+            return 0
+        DTs = Context.getDateTime(DTRange)
         if not DTs: return 0
         RawKey = Context._FactorRawDataKeys.get(self._QSID, None)
         PIDIDs = Context.getPIDID(self._QSID)
@@ -569,17 +572,14 @@ class Factor(__QS_Object__):
             if RawData is not None: self._QS_Logger.warning(f"因子 {self.Name} (QSID: {self._QSID}) 的原始数据缓存丢失!")
             StdData = self._FactorTable.__QS_calcData__(raw_data=RawData, factor_names=[self._NameInFT], ids=iSectionIDs, dts=DTs, args=self._QSArgs.FTArgs).iloc[0]
         Context._Cache.writeFactorData(key=self._QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=Context._iPID, if_exists="append")
-        Context.updateDTRange(factor_id=self._QSID, dt_range=dt_range)
-        Context._Cache.writeFactorData(key=self._QSID, target_field="DTRange", factor_data=Context._CachedDTRange[self._QSID], pid_ids=None, pid=Context._iPID, if_exists="replace")
+        Context.updateDTRange(factor_id=self._QSID, dt_range=DTRange)
         return 0
     
     # 获取因子数据, pid=None表示取所有进程的数据
     def __QSBC_getData__(self, dts, pids=None, **kwargs):
         Context = self.BatchContext
-        DTRange = Context.getDTRange(self._QSID, (dts[0], dts[-1]))
-        if DTRange is not None:# 需要准备缓存数据
-            self.__QSBC_prepareCacheData__(DTRange)
-        StdData = Context.Cache.readFactorData(key=self._QSID, target_field="StdData", pids=pids)
+        self.__QSBC_prepareCacheData__((dts[0], dts[-1]))
+        StdData = Context.Cache.readFactorData(key=self._QSID, ipid=Context._iPID, target_field="StdData", pids=pids)
         IDs = Context.getID(self._QSID, pids=pids)
         return StdData.reindex(index=dts, columns=IDs)
     
@@ -954,7 +954,7 @@ class BatchContext(__QS_Object__):
         nRange = CachedDTRange.shape[0]
         if StartIdx.empty and EndIdx.empty:# 新区间起始结束点均在空档里
             CachedDTRange = CachedDTRange[~((CachedDTRange["StartDT"]>=dt_range[0]) & (CachedDTRange["EndDT"]<=dt_range[1]))]
-            CachedDTRange.loc[nRange] = dt_range
+            CachedDTRange.loc[nRange] = list(dt_range)
             CachedDTRange = CachedDTRange.sort_values(["StartDT"])
             i = CachedDTRange.index.tolist().index(nRange)
             self._CachedDTRange[factor_id] = self._mergeDTRange(CachedDTRange, i).reset_index(drop=True)
@@ -965,21 +965,21 @@ class BatchContext(__QS_Object__):
             else:# 新区间跨区间
                 StartDT, EndDT = CachedDTRange.at[StartIdx, "StartDT"], CachedDTRange.at[EndIdx, "EndDT"]
                 CachedDTRange = CachedDTRange[(CachedDTRange.index<StartIdx) | (CachedDTRange.index>EndIdx)]
-                CachedDTRange.loc[nRange] = (StartDT, EndDT)
+                CachedDTRange.loc[nRange] = [StartDT, EndDT]
                 CachedDTRange = CachedDTRange.sort_values(["StartDT"])
                 i = CachedDTRange.index.tolist().index(nRange)
                 self._CachedDTRange[factor_id] = self._mergeDTRange(CachedDTRange, i).reset_index(drop=True)
         elif StartIdx.empty and (not EndIdx.empty):# 新区间起始点在空档里, 结束点在已有区间里
             EndDT = EndIdx["EndDT"].iloc[0]
             CachedDTRange = CachedDTRange[~((CachedDTRange["StartDT"]>=dt_range[0]) & (CachedDTRange["EndDT"]<=EndDT))]
-            CachedDTRange.loc[nRange] = (dt_range[0], EndDT)
+            CachedDTRange.loc[nRange] = [dt_range[0], EndDT]
             CachedDTRange = CachedDTRange.sort_values(["StartDT"])
             i = CachedDTRange.index.tolist().index(nRange)
             self._CachedDTRange[factor_id] = self._mergeDTRange(CachedDTRange, i).reset_index(drop=True)
         else:# 新区间起始点在已有区间里, 结束点在空档里
             StartDT = StartIdx["StartDT"].iloc[0]
             CachedDTRange = CachedDTRange[~((CachedDTRange["StartDT"]>=StartDT) & (CachedDTRange["EndDT"]<=dt_range[1]))]
-            CachedDTRange.loc[nRange] = (StartDT, dt_range[1])
+            CachedDTRange.loc[nRange] = [StartDT, dt_range[1]]
             CachedDTRange = CachedDTRange.sort_values(["StartDT"])
             i = CachedDTRange.index.tolist().index(nRange)
             self._CachedDTRange[factor_id] = self._mergeDTRange(CachedDTRange, i).reset_index(drop=True)
@@ -1039,7 +1039,6 @@ class BatchContext(__QS_Object__):
         if pd.isnull(DTs).any(): raise __QS_Error__("运算时点序列超出了时点标尺!")
         #elif (DTs.diff().iloc[1:]!=1).any(): raise __QS_Error__("运算时点序列的频率与时点标尺不一致!")
         
-        self._postprocessContext()
         self._DTRange = {}
         
         # 收集所有的因子以及需要准备原始数据的因子
@@ -1059,13 +1058,6 @@ class BatchContext(__QS_Object__):
         else:
             SubIDs = self.splitID(self._SectionIDs)
             self._PID_IDs = {self._PIDs[i]: iIDs for i, iIDs in enumerate(SubIDs)}
-    
-    # 单次运算结束后的处理
-    def _postprocessContext(self):
-        if self._QSArgs.CalcConcurrentNum > 0:
-            # 从缓存中更新 DTRange
-            for iFactorID, iFactor in self._iFactorDict.items():
-                self._CachedDTRange[iFactorID] = self._Cache.readFactorData(key=iFactorID, target_field="DTRange", pids=self._PIDs[0])
     
     # 并发的原始数据准备
     # task: {"FactorIDs": [因子 QSID], "FT": 因子表对象, "RawFactorNames": {原始因子名}, "DTRange": (起始时点, 结束时点), "SectionIDs": [ID], "Args": {参数}}
@@ -1197,6 +1189,8 @@ class BatchContext(__QS_Object__):
                             iDB.writeData(jData, iTableName, if_exists=task["if_exists"], data_type=iDataTypes, **task["kwargs"])
                             jData = None
                         task["Sub2MainQueue"].put((task["PID"], 0.5 * iFactorNum / iBatchNum, None))
+            CachedDTRange = {iFactorID: self._CachedDTRange[iFactorID] for iFactorID in self._iFactorDict if iFactorID in self._CachedDTRange}
+            task["Sub2MainQueue"].put((task["PID"], -1, CachedDTRange))
         return 0
     
     def _write2FDB(self, factor_db, table_name, if_exists, specific_target, **kwargs):
@@ -1208,7 +1202,7 @@ class BatchContext(__QS_Object__):
             nTask = len(self._Factors) * nPrcs
             EventState = {iFactorID: 0 for iFactorID in self._Event}
             Procs, Main2SubQueue, Sub2MainQueue = startMultiProcess(pid="0", n_prc=nPrcs, target_fun=self._parallel_write2FDB, arg=Task, main2sub_queue="None", sub2main_queue="Single")
-            iProg = 0
+            iProg, DTRangeUpdated = 0, False
             with ProgressBar(max_value=nTask) as ProgBar:
                 while True:
                     nEvent = len(EventState)
@@ -1222,11 +1216,20 @@ class BatchContext(__QS_Object__):
                             if EventState[iFactorID] >= nPrcs:
                                 self._Event[iFactorID][1].set()
                                 EventState.pop(iFactorID)
-                    while ((not Sub2MainQueue.empty()) or (nEvent == 0)) and (iProg < nTask):
+                    while ((not Sub2MainQueue.empty()) or (nEvent == 0)) and ((iProg < nTask) or (not DTRangeUpdated)):
                         iPID, iSubProg, iMsg = Sub2MainQueue.get()
-                        iProg += iSubProg
-                        ProgBar.update(iProg)
-                    if iProg >= nTask: break
+                        if iSubProg >= 0:# 接收到因子数据
+                            iProg += iSubProg
+                            ProgBar.update(iProg)
+                        elif not DTRangeUpdated:# 接收到进程结束信号
+                            for iFactorID, iDTRange in iMsg.items():
+                                if iFactorID not in self._CachedDTRange:
+                                    self._CachedDTRange[iFactorID] = iDTRange
+                                else:
+                                    for jDTRange in iDTRange.astype("O").to_records(index=False):
+                                        self.updateDTRange(iFactorID, jDTRange)
+                            DTRangeUpdated = True
+                    if (iProg >= nTask) and DTRangeUpdated: break
             for iPID, iPrcs in Procs.items(): iPrcs.join()
         return 0
     
@@ -1255,7 +1258,6 @@ class BatchContext(__QS_Object__):
         self._write2FDB(factor_db, table_name, if_exists, specific_target=kwargs.pop("specific_target", {}), **kwargs)
         print(("耗时 : %.2f" % (time.perf_counter()-StartT, ))+"\n3. 运算后处理\n")
         StartT = time.perf_counter()
-        #self._postprocessContext()
         factor_db.connect()
         print(('耗时 : %.2f' % (time.perf_counter()-StartT, ))+"\n"+("总耗时 : %.2f" % (time.perf_counter()-TotalStartT, ))+"\n"+"="*28)
         return 0
@@ -1280,6 +1282,8 @@ class BatchContext(__QS_Object__):
                 jData = jData.reindex(columns=sorted(jData.columns.intersection(jIDs)))
                 task["Sub2MainQueue"].put((task["PID"], 1, (jFactor.Name, jData)))
                 Data[jFactor.Name] = jData
+            CachedDTRange = {iFactorID: self._CachedDTRange[iFactorID] for iFactorID in self._iFactorDict if iFactorID in self._CachedDTRange}
+            task["Sub2MainQueue"].put((task["PID"], -1, CachedDTRange))
         return Data
     
     # 因子计算
@@ -1287,12 +1291,13 @@ class BatchContext(__QS_Object__):
         Task = {"PID": "0", "kwargs": kwargs}
         if self._QSArgs.CalcConcurrentNum <= 0:
             Data = self._parallel_calculate(Task)
+            Data = Panel(Data)
         else:
             nPrcs = len(self._PIDs)
             nTask = len(self._Factors) * nPrcs
             EventState = {iFactorID: 0 for iFactorID in self._Event}
             Procs, Main2SubQueue, Sub2MainQueue = startMultiProcess(pid="0", n_prc=nPrcs, target_fun=self._parallel_calculate, arg=Task, main2sub_queue="None", sub2main_queue="Single")
-            iProg = 0
+            iProg, DTRangeUpdated = 0, False
             Data = {}
             with ProgressBar(max_value=nTask) as ProgBar:
                 while True:
@@ -1307,14 +1312,23 @@ class BatchContext(__QS_Object__):
                             if EventState[iFactorID] >= nPrcs:
                                 self._Event[iFactorID][1].set()
                                 EventState.pop(iFactorID)
-                    while ((not Sub2MainQueue.empty()) or (nEvent == 0)) and (iProg < nTask):
+                    while ((not Sub2MainQueue.empty()) or (nEvent == 0)) and ((iProg < nTask) or (not DTRangeUpdated)):
                         iPID, iSubProg, iMsg = Sub2MainQueue.get()
-                        iProg += iSubProg
-                        ProgBar.update(iProg)
-                        Data.setdefault(iMsg[0], []).append(iMsg[1])
-                    if iProg >= nTask: break
+                        if iSubProg >= 0:# 接收到因子数据
+                            iProg += iSubProg
+                            ProgBar.update(iProg)
+                            Data.setdefault(iMsg[0], []).append(iMsg[1])
+                        elif not DTRangeUpdated:# 接收到进程结束信号
+                            for iFactorID, iDTRange in iMsg.items():
+                                if iFactorID not in self._CachedDTRange:
+                                    self._CachedDTRange[iFactorID] = iDTRange
+                                else:
+                                    for jDTRange in iDTRange.astype("O").to_records(index=False):
+                                        self.updateDTRange(iFactorID, jDTRange)
+                            DTRangeUpdated = True
+                    if (iProg >= nTask) and DTRangeUpdated: break
             for iPID, iPrcs in Procs.items(): iPrcs.join()
-            Data = Panel({jFactorName: pd.concat(jData, join="outer", axis=1, ignore_index=False) for jFactorName, jData in Data.items()})
+            Data = Panel({jFactorName: pd.concat(jData, join="outer", axis=1, ignore_index=False).sort_index(axis=1) for jFactorName, jData in Data.items()})
         return Data
     
     # kwargs:
@@ -1339,7 +1353,6 @@ class BatchContext(__QS_Object__):
         Data = self._calculate(**kwargs)
         print(("耗时 : %.2f" % (time.perf_counter()-StartT, ))+"\n3. 运算后处理\n")
         StartT = time.perf_counter()
-        #self._postprocessContext()
         print(('耗时 : %.2f' % (time.perf_counter()-StartT, ))+"\n"+("总耗时 : %.2f" % (time.perf_counter()-TotalStartT, ))+"\n"+"="*28)
         return Data
     

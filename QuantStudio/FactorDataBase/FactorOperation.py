@@ -903,8 +903,10 @@ class PointOperation(DerivativeFactor):
     
     def __QSBC_prepareCacheData__(self, dt_range):
         Context = self.BatchContext
+        DTRange = Context.getDTRange(self._QSID, dt_range)
+        if DTRange is None: return 0
         PID = Context._iPID
-        DTs = Context.getDateTime(dt_range)
+        DTs = Context.getDateTime(DTRange)
         if not DTs: return 0
         IDs = Context.getID(self._QSID, [PID])
         if IDs:
@@ -918,8 +920,7 @@ class PointOperation(DerivativeFactor):
                 iDescriptor.__QSBC_getData__(DTs, pids=[PID])
             StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self._Operator._QSArgs.DataType=="double" else "O"))
         Context._Cache.writeFactorData(key=self._QSID, target_field="StdData", factor_data=StdData, pid_ids={PID: IDs}, pid=PID, if_exists="append")
-        Context.updateDTRange(factor_id=self._QSID, dt_range=dt_range)
-        Context._Cache.writeFactorData(key=self._QSID, target_field="DTRange", factor_data=Context._CachedDTRange[self._QSID], pid_ids=None, pid=PID, if_exists="replace")
+        Context.updateDTRange(factor_id=self._QSID, dt_range=DTRange)
         return 0
 
 class TimeOperation(DerivativeFactor):
@@ -1019,7 +1020,9 @@ class TimeOperation(DerivativeFactor):
     
     def __QSBC_prepareCacheData__(self, dt_range):
         Context = self.BatchContext
-        DTs = Context.getDateTime(dt_range)
+        DTRange = Context.getDTRange(self._QSID, dt_range)
+        if DTRange is None: return 0
+        DTs = Context.getDateTime(DTRange)
         if not DTs: return 0
         PID = Context._iPID
         IDs = Context.getID(self._QSID, [PID])
@@ -1053,8 +1056,7 @@ class TimeOperation(DerivativeFactor):
         else:
             StdData = Operator.calcData(factor=self, ids=IDs, dts=DTs, descriptor_data=DescriptorData, dt_ruler=DTRuler)
         Context._Cache.writeFactorData(key=self._QSID, target_field="StdData", factor_data=StdData, pid_ids={PID: IDs}, pid=PID, if_exists="append")
-        Context.updateDTRange(factor_id=self._QSID, dt_range=dt_range)
-        Context._Cache.writeFactorData(key=self._QSID, target_field="DTRange", factor_data=Context._CachedDTRange[self._QSID], pid_ids=None, pid=PID, if_exists="replace")
+        Context.updateDTRange(factor_id=self._QSID, dt_range=DTRange)
         return 0
 
 class SectionOperation(DerivativeFactor):
@@ -1114,32 +1116,30 @@ class SectionOperation(DerivativeFactor):
         
     def __QSBC_prepareCacheData__(self, dt_range):
         Context = self.BatchContext
+        DTRange = Context.getDTRange(self._QSID, dt_range)
+        if DTRange is None: return 0
         PID = Context._iPID
-        DTs = Context.getDateTime(dt_range)
+        DTs = Context.getDateTime(DTRange)
         if not DTs: return 0
+        for iDescriptor in self._Descriptors:
+            iDescriptor.__QSBC_prepareCacheData__(DTRange)
         IDs = Context.getID(self._QSID, pids=None)
         DTPartition = partitionList(DTs, len(Context._PIDs))
-        DTs = DTPartition[Context._PIDs.index(PID)]
+        iDTs = DTPartition[Context._PIDs.index(PID)]
         Operator = self._Operator
-        if not DTs:# 该进程未分配到计算任务
-            iDTs = [Context._DateTimes[-1]]
-            for i, iDescriptor in enumerate(self._Descriptors):
-                iDescriptor.__QSBC_getData__(iDTs, pids=None)
+        if not iDTs:# 该进程未分配到计算任务
             StdData = pd.DataFrame(columns=IDs, dtype=("float" if Operator._QSArgs.DataType=="double" else "O"))
         elif IDs:
             if Operator._QSArgs.InputFormat == "numpy":
-                StdData = Operator.calcData(factor=self, ids=IDs, dts=DTs, descriptor_data=[iDescriptor.__QSBC_getData__(DTs, pids=None).values for iDescriptor in self._Descriptors])
-                StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
+                StdData = Operator.calcData(factor=self, ids=IDs, dts=iDTs, descriptor_data=[iDescriptor.__QSBC_getData__(iDTs, pids=None).values for iDescriptor in self._Descriptors])
+                StdData = pd.DataFrame(StdData, index=iDTs, columns=IDs)
             else:
-                StdData = Operator.calcData(factor=self, ids=IDs, dts=DTs, descriptor_data=[iDescriptor.__QSBC_getData__(DTs, pids=None) for iDescriptor in self._Descriptors])
+                StdData = Operator.calcData(factor=self, ids=IDs, dts=iDTs, descriptor_data=[iDescriptor.__QSBC_getData__(iDTs, pids=None) for iDescriptor in self._Descriptors])
         else:
-            for iDescriptor in self._Descriptors:
-                iDescriptor.__QSBC_getData__(DTs, pids=None)
-            StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if Operator._QSArgs.DataType=="double" else "O"))
+            StdData = pd.DataFrame(index=iDTs, columns=IDs, dtype=("float" if Operator._QSArgs.DataType=="double" else "O"))
         PID_IDs = Context.getPIDID(self._QSID)
         Context._Cache.writeFactorData(key=self._QSID, target_field="StdData", factor_data=StdData, pid_ids=PID_IDs, pid=None, if_exists="append")
-        Context.updateDTRange(factor_id=self._QSID, dt_range=dt_range)
-        Context._Cache.writeFactorData(key=self._QSID, target_field="DTRange", factor_data=Context._CachedDTRange[self._QSID], pid_ids=PID_IDs, pid=None, if_exists="replace")
+        Context.updateDTRange(factor_id=self._QSID, dt_range=DTRange)
         StdData = None# 释放数据
         gc.collect()
         if Context._QSArgs.CalcConcurrentNum>0:
@@ -1257,11 +1257,26 @@ class PanelOperation(DerivativeFactor):
     
     def __QSBC_prepareCacheData__(self, dt_range):
         Context = self.BatchContext
-        DTs = Context.getDateTime(dt_range)
+        DTRange = Context.getDTRange(self._QSID, dt_range)
+        if DTRange is None: return 0
+        DTs = Context.getDateTime(DTRange)
         if not DTs: return 0
         PID = Context._iPID
         Operator = self._Operator
         DTRuler = list(Context._QSArgs.DTRuler)
+        # 描述子准备数据
+        StartIdx, EndIdx = DTRuler.index(DTs[0]), DTRuler.index(DTs[-1])
+        for i, iDescriptor in enumerate(self._Descriptors):
+            if self._QSArgs.StartDT[i] is None:# 没有指定起始时点
+                iStartIdx, iEndIdx = StartIdx - self._QSArgs.LookBack[i], EndIdx
+            else:
+                iStartIdx, iEndIdx = np.searchsorted(DTRuler, max(self._QSArgs.StartDT[i], DTRuler[0]), side="left"), EndIdx
+            if i==self._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
+                iEndIdx = StartIdx - 1
+            iDTs = DTRuler[max(iStartIdx, 0):iEndIdx+1]
+            if iDTs:
+                iDescriptor.__QSBC_prepareCacheData__((iDTs[0], iDTs[-1]))
+        # 切分时点序列
         if (self._QSArgs.iInitFactor>=0) and (self._QSArgs.LookBackMode[self._QSArgs.iInitFactor]=="扩张窗口"):
             DTPartition = [DTs]+[[]]*(len(Context._PIDs)-1)
         else:
@@ -1269,9 +1284,6 @@ class PanelOperation(DerivativeFactor):
         DTs = DTPartition[Context._PIDs.index(PID)]
         IDs = Context.getID(self._QSID, pids=None)
         if not DTs:# 该切片未分配到计算任务
-            iDTs = [Context._DateTimes[-1]]
-            for i, iDescriptor in enumerate(self._Descriptors):
-                iDescriptor.__QSBC_getData__(iDTs, pids=None)
             StdData = pd.DataFrame(columns=IDs, dtype=("float" if Operator._QSArgs.DataType=="double" else "O"))
         else:
             StartIdx, EndIdx = DTRuler.index(DTs[0]), DTRuler.index(DTs[-1])
@@ -1304,8 +1316,7 @@ class PanelOperation(DerivativeFactor):
             DescriptorData, iDescriptorData = None, None
         PID_IDs = Context.getPIDID(self._QSID)
         Context._Cache.writeFactorData(key=self._QSID, target_field="StdData", factor_data=StdData, pid_ids=PID_IDs, pid=None, if_exists="append")
-        Context.updateDTRange(factor_id=self._QSID, dt_range=dt_range)
-        Context._Cache.writeFactorData(key=self._QSID, target_field="DTRange", factor_data=Context._CachedDTRange[self._QSID], pid_ids=PID_IDs, pid=None, if_exists="replace")
+        Context.updateDTRange(factor_id=self._QSID, dt_range=DTRange)
         StdData = None# 释放数据
         gc.collect()
         if Context._QSArgs.CalcConcurrentNum>0:
