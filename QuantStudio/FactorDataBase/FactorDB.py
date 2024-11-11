@@ -550,11 +550,12 @@ class Factor(__QS_Object__):
             raise __QS_Error__("因子 %s (QSID: %s) 指定了不同的截面!" % (self.Name, self.QSID))
     
     # 准备缓存数据
-    def __QSBC_prepareCacheData__(self, dt_range):
+    def __QSBC_prepareCacheData__(self):
         Context = self.BatchContext
-        DTRange = Context.getDTRange(self._QSID, dt_range)
-        if DTRange is None:# 不需要准备缓存数据
-            return 0
+        DTRange = Context._DTRange.get(self._QSID, None)
+        if DTRange is None: return 0
+        DTRange = Context.getDTRange(self._QSID, DTRange)
+        if DTRange is None: return 0
         DTs = Context.getDateTime(DTRange)
         if not DTs: return 0
         RawKey = Context._FactorRawDataKeys.get(self._QSID, None)
@@ -578,7 +579,7 @@ class Factor(__QS_Object__):
     # 获取因子数据, pid=None表示取所有进程的数据
     def __QSBC_getData__(self, dts, pids=None, **kwargs):
         Context = self.BatchContext
-        self.__QSBC_prepareCacheData__((dts[0], dts[-1]))
+        self.__QSBC_prepareCacheData__()
         StdData = Context.Cache.readFactorData(key=self._QSID, ipid=Context._iPID, target_field="StdData", pids=pids)
         IDs = Context.getID(self._QSID, pids=pids)
         return StdData.reindex(index=dts, columns=IDs)
@@ -803,8 +804,8 @@ class DataFactor(Factor):
         if isinstance(self._Data, (pd.DataFrame, pd.Series)) and (not self._Data.equals(other._Data)): return False
         return (self._Data == other._Data)
     
-    def __QSBC_prepareCacheData__(self, ids=None):
-        return self._Data
+    def __QSBC_prepareCacheData__(self):
+        return 0
     
     def __QSBC_getData__(self, dts, pids=None, **kwargs):
         IDs = self.BatchContext.getID(self._QSID, pids=pids)

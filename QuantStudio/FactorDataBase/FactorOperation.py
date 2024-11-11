@@ -901,9 +901,11 @@ class PointOperation(DerivativeFactor):
         for i, iDescriptor in enumerate(self._Descriptors):
             iDescriptor.__QSBC_initOperation__(context, dt_range, section_ids)
     
-    def __QSBC_prepareCacheData__(self, dt_range):
+    def __QSBC_prepareCacheData__(self):
         Context = self.BatchContext
-        DTRange = Context.getDTRange(self._QSID, dt_range)
+        DTRange = Context._DTRange.get(self._QSID, None)
+        if DTRange is None: return 0
+        DTRange = Context.getDTRange(self._QSID, DTRange)
         if DTRange is None: return 0
         PID = Context._iPID
         DTs = Context.getDateTime(DTRange)
@@ -1018,9 +1020,11 @@ class TimeOperation(DerivativeFactor):
                 iEndDT = EndDT
             iDescriptor.__QSBC_initOperation__(context, (DTRuler[iStartIdx], iEndDT), section_ids)
     
-    def __QSBC_prepareCacheData__(self, dt_range):
+    def __QSBC_prepareCacheData__(self):
         Context = self.BatchContext
-        DTRange = Context.getDTRange(self._QSID, dt_range)
+        DTRange = Context._DTRange.get(self._QSID, None)
+        if DTRange is None: return 0
+        DTRange = Context.getDTRange(self._QSID, DTRange)
         if DTRange is None: return 0
         DTs = Context.getDateTime(DTRange)
         if not DTs: return 0
@@ -1114,15 +1118,17 @@ class SectionOperation(DerivativeFactor):
         if (context._QSArgs.CalcConcurrentNum > 0) and (self.QSID not in context._Event):
             context._Event[self.QSID] = (Queue(), Event())
         
-    def __QSBC_prepareCacheData__(self, dt_range):
+    def __QSBC_prepareCacheData__(self):
         Context = self.BatchContext
-        DTRange = Context.getDTRange(self._QSID, dt_range)
+        DTRange = Context._DTRange.get(self._QSID, None)
+        if DTRange is None: return 0
+        DTRange = Context.getDTRange(self._QSID, DTRange)
         if DTRange is None: return 0
         PID = Context._iPID
         DTs = Context.getDateTime(DTRange)
         if not DTs: return 0
         for iDescriptor in self._Descriptors:
-            iDescriptor.__QSBC_prepareCacheData__(DTRange)
+            iDescriptor.__QSBC_prepareCacheData__()
         IDs = Context.getID(self._QSID, pids=None)
         DTPartition = partitionList(DTs, len(Context._PIDs))
         iDTs = DTPartition[Context._PIDs.index(PID)]
@@ -1255,9 +1261,11 @@ class PanelOperation(DerivativeFactor):
         if (context._QSArgs.CalcConcurrentNum>0) and (self.QSID not in context._Event):
             context._Event[self.QSID] = (Queue(), Event())
     
-    def __QSBC_prepareCacheData__(self, dt_range):
+    def __QSBC_prepareCacheData__(self):
         Context = self.BatchContext
-        DTRange = Context.getDTRange(self._QSID, dt_range)
+        DTRange = Context._DTRange.get(self._QSID, None)
+        if DTRange is None: return 0
+        DTRange = Context.getDTRange(self._QSID, DTRange)
         if DTRange is None: return 0
         DTs = Context.getDateTime(DTRange)
         if not DTs: return 0
@@ -1265,17 +1273,8 @@ class PanelOperation(DerivativeFactor):
         Operator = self._Operator
         DTRuler = list(Context._QSArgs.DTRuler)
         # 描述子准备数据
-        StartIdx, EndIdx = DTRuler.index(DTs[0]), DTRuler.index(DTs[-1])
-        for i, iDescriptor in enumerate(self._Descriptors):
-            if self._QSArgs.StartDT[i] is None:# 没有指定起始时点
-                iStartIdx, iEndIdx = StartIdx - self._QSArgs.LookBack[i], EndIdx
-            else:
-                iStartIdx, iEndIdx = np.searchsorted(DTRuler, max(self._QSArgs.StartDT[i], DTRuler[0]), side="left"), EndIdx
-            if i==self._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
-                iEndIdx = StartIdx - 1
-            iDTs = DTRuler[max(iStartIdx, 0):iEndIdx+1]
-            if iDTs:
-                iDescriptor.__QSBC_prepareCacheData__((iDTs[0], iDTs[-1]))
+        for iDescriptor in self._Descriptors:
+            iDescriptor.__QSBC_prepareCacheData__()
         # 切分时点序列
         if (self._QSArgs.iInitFactor>=0) and (self._QSArgs.LookBackMode[self._QSArgs.iInitFactor]=="扩张窗口"):
             DTPartition = [DTs]+[[]]*(len(Context._PIDs)-1)
