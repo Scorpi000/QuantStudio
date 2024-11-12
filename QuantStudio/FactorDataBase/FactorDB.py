@@ -1239,8 +1239,6 @@ class BatchContext(__QS_Object__):
             while FinishedNum < nPrcs:
                 iPID, iSubProg, iMsg = Sub2MainQueue.get()
                 FinishedNum += (iSubProg < 0)
-            Sub2MainQueue.clear()
-            Sub2MainQueue.close()
             for iPID, iPrcs in Procs.items(): iPrcs.join()
         return 0
     
@@ -1345,8 +1343,6 @@ class BatchContext(__QS_Object__):
             while FinishedNum < nPrcs:
                 iPID, iSubProg, iMsg = Sub2MainQueue.get()
                 FinishedNum += (iSubProg < 0)
-            Sub2MainQueue.clear()
-            Sub2MainQueue.close()
             for iPID, iPrcs in Procs.items(): iPrcs.join()
             Data = {jFactorName: pd.concat(jData, join="outer", axis=1, ignore_index=False).sort_index(axis=1) for jFactorName, jData in Data.items()}
         if not self._SpecificIDs:
