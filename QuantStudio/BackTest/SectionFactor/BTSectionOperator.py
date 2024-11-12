@@ -254,8 +254,6 @@ class SectionCorrelation(SectionOperator):
         }
         return f
 
-
-
 # 截面分位数标准化
 class QuantileStandardization(SectionOperator):
     def __init__(self, ascending:bool=True, sys_args={}, config_file=None, **kwargs):
@@ -296,7 +294,7 @@ class Orthogonalization(SectionOperator):
         return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
     
     def calculate(self, f, idt, iid, x, args):
-        Y = x[0]
+        Y, x = x[0], x[1:]
         if f.UserData["mask"]: 
             Mask, x = (x[0]==1), x[1:]
         else:
