@@ -852,6 +852,7 @@ class BatchContext(__QS_Object__):
         self._DateTimes = None# 当前运行的时点序列
         self._IDs = None# 当前运行的 ID 序列
         self._FactorIDs = {}# 当前运行的特别指定的因子的 ID 序列
+        self._SpecificIDs = []# 当前运行特别指定的因子 ID 序列, [(factor, ids)]
         self._iPID = "0"# 对象所在的进程 ID
         self._PIDs = []# 所有的计算进程 ID, 单进程下默认为"0", 多进程为"0-i"
         self._PID_IDs = {}# 每个计算进程分配的 ID 列表, {PID: [ID]}
@@ -1203,7 +1204,7 @@ class BatchContext(__QS_Object__):
             nTask = len(self._Factors) * nPrcs
             EventState = {iFactorID: 0 for iFactorID in self._Event}
             Procs, Main2SubQueue, Sub2MainQueue = startMultiProcess(pid="0", n_prc=nPrcs, target_fun=self._parallel_write2FDB, arg=Task, main2sub_queue="None", sub2main_queue="Single")
-            iProg, DTRangeUpdated = 0, False
+            iProg, DTRangeUpdated, FinishedNum = 0, False, 0
             with ProgressBar(max_value=nTask) as ProgBar:
                 while True:
                     nEvent = len(EventState)
@@ -1230,7 +1231,16 @@ class BatchContext(__QS_Object__):
                                     for jDTRange in iDTRange.astype("O").to_records(index=False):
                                         self.updateDTRange(iFactorID, jDTRange)
                             DTRangeUpdated = True
+                            FinishedNum += 1
+                        else:
+                            FinishedNum += 1
                     if (iProg >= nTask) and DTRangeUpdated: break
+            # 清空 Queue，否则子进程有可能不退出
+            while FinishedNum < nPrcs:
+                iPID, iSubProg, iMsg = Sub2MainQueue.get()
+                FinishedNum += (iSubProg < 0)
+            Sub2MainQueue.clear()
+            Sub2MainQueue.close()
             for iPID, iPrcs in Procs.items(): iPrcs.join()
         return 0
     
@@ -1248,7 +1258,8 @@ class BatchContext(__QS_Object__):
         if (not self._IDs) and self._Factors: raise __QS_Error__("运算 ID 序列不能为空!")
         self._SectionIDs = (self._QSArgs.DefaultSectionIDs if section_ids is None else sorted(section_ids))
         self._FactorIDs = {}
-        for iFactor, iIDs in kwargs.pop("specific_ids", []):
+        self._SpecificIDs = kwargs.pop("specific_ids", [])
+        for iFactor, iIDs in self._SpecificIDs:
             self._Factors.append(iFactor)
             self._FactorIDs[iFactor._QSID] = iIDs
         
@@ -1292,13 +1303,12 @@ class BatchContext(__QS_Object__):
         Task = {"PID": "0", "kwargs": kwargs}
         if self._QSArgs.CalcConcurrentNum <= 0:
             Data = self._parallel_calculate(Task)
-            Data = Panel(Data)
         else:
             nPrcs = len(self._PIDs)
             nTask = len(self._Factors) * nPrcs
             EventState = {iFactorID: 0 for iFactorID in self._Event}
             Procs, Main2SubQueue, Sub2MainQueue = startMultiProcess(pid="0", n_prc=nPrcs, target_fun=self._parallel_calculate, arg=Task, main2sub_queue="None", sub2main_queue="Single")
-            iProg, DTRangeUpdated = 0, False
+            iProg, DTRangeUpdated, FinishedNum = 0, False, 0
             Data = {}
             with ProgressBar(max_value=nTask) as ProgBar:
                 while True:
@@ -1327,9 +1337,20 @@ class BatchContext(__QS_Object__):
                                     for jDTRange in iDTRange.astype("O").to_records(index=False):
                                         self.updateDTRange(iFactorID, jDTRange)
                             DTRangeUpdated = True
+                            FinishedNum += 1
+                        else:
+                            FinishedNum += 1
                     if (iProg >= nTask) and DTRangeUpdated: break
+            # 清空 Queue，否则子进程有可能不退出
+            while FinishedNum < nPrcs:
+                iPID, iSubProg, iMsg = Sub2MainQueue.get()
+                FinishedNum += (iSubProg < 0)
+            Sub2MainQueue.clear()
+            Sub2MainQueue.close()
             for iPID, iPrcs in Procs.items(): iPrcs.join()
-            Data = Panel({jFactorName: pd.concat(jData, join="outer", axis=1, ignore_index=False).sort_index(axis=1) for jFactorName, jData in Data.items()})
+            Data = {jFactorName: pd.concat(jData, join="outer", axis=1, ignore_index=False).sort_index(axis=1) for jFactorName, jData in Data.items()}
+        if not self._SpecificIDs:
+            Data = Panel(Data)
         return Data
     
     # kwargs:
@@ -1343,7 +1364,8 @@ class BatchContext(__QS_Object__):
         if (not self._IDs) and self._Factors: raise __QS_Error__("运算 ID 序列不能为空!")
         self._SectionIDs = (self._QSArgs.DefaultSectionIDs if section_ids is None else sorted(section_ids))
         self._FactorIDs = {}
-        for iFactor, iIDs in kwargs.pop("specific_ids", []):
+        self._SpecificIDs = kwargs.pop("specific_ids", [])
+        for iFactor, iIDs in self._SpecificIDs:
             self._Factors.append(iFactor)
             self._FactorIDs[iFactor._QSID] = iIDs
         
