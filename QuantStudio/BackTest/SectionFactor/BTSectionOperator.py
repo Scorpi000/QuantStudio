@@ -280,8 +280,6 @@ class QuantileStandardization(SectionOperator):
         Args.update({iKey: kwargs[iKey] for iKey in Args if iKey in kwargs})
         factor_args = factor_args.copy()
         Args.update(factor_args.get("参数", {}))
-        Args["mask"] = (mask is not None)
-        Args["cat_data"] = (cat_data is not None)
         factor_args["参数"] = Args
         f = super().__call__(*Factors, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
         f.UserData = {
