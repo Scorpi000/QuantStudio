@@ -246,7 +246,7 @@ class HDF5Cache(FactorCache):
             with pd.HDFStore(iFilePath, mode="r") as CacheFile:
                 DTNum = CacheFile.get_storer(target_field).shape
                 if DTNum is None: DTNum = CacheFile[target_field].shape[0]
-                else: DTNum = DTNum.shape[0]
+                else: DTNum = DTNum[0]
         if pids is None:
             pids = set(self._QSArgs.PIDs)
         else:
@@ -269,7 +269,7 @@ class HDF5Cache(FactorCache):
                         with pd.HDFStore(iFilePath, mode="r") as CacheFile:
                             iDTNum = CacheFile.get_storer(target_field).shape
                             if iDTNum is None: iDTNum = CacheFile[target_field].shape[0]
-                            else: iDTNum = iDTNum.shape[0]
+                            else: iDTNum = iDTNum[0]
                     if iDTNum!=DTNum:
                         pids.add(iPID)
                         if wait_seconds>0: time.sleep(wait_seconds)

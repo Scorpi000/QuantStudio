@@ -170,7 +170,7 @@ class PortfolioNV(PanelOperator):
             return super().__QS_initArgs__(args=args)
 
     def __init__(self, sys_args={}, config_file=None, **kwargs):
-        Args = {"名称": "calcPortfolioNV", "入参数": 2, "最大入参数": 2, "运算时点": "多时点", "回溯期数": [0, 0], "输出形式": "全截面", "数据类型":"double"}
+        Args = {"名称": "calcPortfolioNV", "入参数": 2, "最大入参数": 2, "运算时点": "多时点", "回溯期数": [0, 0], "回溯模式": ["扩张窗口", "扩张窗口"], "输出形式": "全截面", "数据类型":"double"}
         Args.update(sys_args)
         return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
 
