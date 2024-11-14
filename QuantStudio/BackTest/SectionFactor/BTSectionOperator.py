@@ -83,10 +83,16 @@ class IC(PanelOperator):
         if mask is not None: Factors.append(mask)
         if cat_data is not None: Factors.append(cat_data)
         if weight is not None: Factors.append(weight)
-        if factors: Factors += factors
-        else: raise __QS_Error__(f"算子 {self.__class__}: 必须至少指定一个因子!")
-        Args = dict(self._QSArgs["参数"])
+        if not factors: raise __QS_Error__(f"算子 {self.__class__}: 必须至少指定一个因子!")
         factor_args = factor_args.copy()
+        if "截面ID" not in factor_args:
+            FactorDict = {iFactor.Name: iFactor for iFactor in factors}
+            if len(FactorDict)<len(factors):
+                raise __QS_Error__(f"算子 {self.__class__}: 因子名有重复: {list(FactorDict)}")
+            factor_args["截面ID"] = sorted(FactorDict.keys())
+            factors = [FactorDict[iFactorName] for iFactorName in factor_args["截面ID"]]
+        Factors += factors
+        Args = dict(self._QSArgs["参数"])
         Args.update(factor_args.get("参数", {}))
         if "回溯期数" not in factor_args:
             factor_args["回溯期数"] = [self._QSArgs["回溯期数"][0]] * len(Factors)
@@ -94,10 +100,6 @@ class IC(PanelOperator):
             factor_args["回溯模式"] = ["扩张窗口"] * len(factor_args["回溯期数"])
         if "起始时点" not in factor_args:
             factor_args["起始时点"] = [None] * len(factor_args["回溯期数"])
-        if "截面ID" not in factor_args:
-            factor_args["截面ID"] = [iFactor.Name for iFactor in factors]
-        if len(set(factor_args["截面ID"]))<len(factor_args["截面ID"]):
-            raise __QS_Error__(f"算子 {self.__class__}: 因子名有重复: {factor_args['截面ID']}")
         if descriptor_ids is not None: factor_args["描述子截面"] = [descriptor_ids] * len(Factors)
         factor_args["参数"] = Args
         f = super().__call__(*Factors, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
@@ -177,6 +179,7 @@ class PortfolioNV(PanelOperator):
     def calculate(self, f, idt, iid, x, args):
         SectionIDs = (f._QSArgs.DescriptorSection[0] if f._QSArgs.DescriptorSection[0] else iid)
         Portfolio = pd.DataFrame(x[0], index=idt, columns=SectionIDs)
+        Portfolio = Portfolio.dropna(axis=0, how="all")
         Price = pd.DataFrame(x[1], index=idt, columns=SectionIDs)
         if args["价格缺失"]=="沿用前值": Price = Price.fillna(method="pad")
         NV = testPortfolioStrategy_pd(Portfolio.dropna(how="all"), Price)

@@ -68,12 +68,11 @@ class QuantilePortfolio(BaseModule):
         self._PortfolioList = makeQuantilePortfolio(self._Factor, mask=self._Mask, cat_data=self._CatData, weight=self._Weight, descriptor_ids=self._SectionIDs, rebalance_dts=RebalanceDTs, ascending=(self._QSArgs.FactorOrder=="升序"), group_num=self._QSArgs.GroupNum)
         self._BmkPortfolio = MaskPortfolio()(mask=(self._BmkMask if self._BmkMask else self._Mask), weight=self._Weight, descriptor_ids=self._SectionIDs)
         calcPortfolioNV = PortfolioNV(sys_args={"参数": {"价格缺失": self._QSArgs.PriceMiss}})
-        self._PortfolioNV = [calcPortfolioNV(iPortfolio, self._Price, descriptor_ids=self._SectionIDs) for iPortfolio in self._PortfolioList]
-        self._PortfolioIDs = [f"P{i}" for i in range(len(self._PortfolioList))]
-        self._PortfolioNV.append(calcPortfolioNV(self._BmkPortfolio, self._Price, descriptor_ids=self._SectionIDs))
-        self._PortfolioIDs.append("Bmk")
-        self._PortfolioNV = fo.ConcatSection(descriptor_sections=[[iID] for iID in self._PortfolioIDs])(*self._PortfolioNV, factor_name=self.Name, factor_args={"截面ID": self._PortfolioIDs})
-        Tasks += [(iPortfolio, self._SectionIDs) for iPortfolio in self._PortfolioList] + [(self._BmkPortfolio, self._PortfolioIDs), (self._PortfolioNV, self._PortfolioIDs)]
+        self._PortfolioNV = {f"P{i}": calcPortfolioNV(iPortfolio, self._Price, descriptor_ids=self._SectionIDs) for i, iPortfolio in enumerate(self._PortfolioList)}
+        self._PortfolioNV["Bmk"] = calcPortfolioNV(self._BmkPortfolio, self._Price, descriptor_ids=self._SectionIDs)
+        self._PortfolioIDs = sorted(self._PortfolioNV.keys())
+        self._PortfolioNV = fo.ConcatSection(descriptor_sections=[[iID] for iID in self._PortfolioIDs])(*[self._PortfolioNV[iID] for iID in self._PortfolioIDs], factor_name=self.Name, factor_args={"截面ID": self._PortfolioIDs})
+        Tasks += [(iPortfolio, self._SectionIDs) for iPortfolio in self._PortfolioList] + [(self._BmkPortfolio, self._SectionIDs), (self._PortfolioNV, self._PortfolioIDs)]
         return Tasks
     
     def _QS_calcStats(self):
