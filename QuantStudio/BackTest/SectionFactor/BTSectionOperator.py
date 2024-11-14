@@ -177,20 +177,23 @@ class PortfolioNV(PanelOperator):
         return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
 
     def calculate(self, f, idt, iid, x, args):
-        SectionIDs = (f._QSArgs.DescriptorSection[0] if f._QSArgs.DescriptorSection[0] else iid)
-        Portfolio = pd.DataFrame(x[1], index=idt, columns=SectionIDs)
-        Price = pd.DataFrame(x[2], index=idt, columns=SectionIDs)
+        SectionIDs = (f._QSArgs.DescriptorSection[1] if f._QSArgs.DescriptorSection[1] else iid)
+        Portfolio = pd.DataFrame(x[1], index=idt[1:], columns=SectionIDs)
+        Price = pd.DataFrame(x[2], index=idt[1:], columns=SectionIDs)
         if args["价格缺失"]=="沿用前值": Price = Price.fillna(method="pad")
         NV = testPortfolioStrategy_pd(Portfolio.dropna(how="all"), Price)
-        return np.reshape(NV.values, (-1, 1)).repeat(len(iid), axis=1) * x[0][-1]
+        if pd.isnull(NV.iloc[0]):
+            NV.iloc[0] = 1
+            NV = NV.fillna(method="pad")
+        return np.reshape(NV.values, (-1, 1)).repeat(len(iid), axis=1) * x[0][0]
 
     def __call__(self, portfolio:Factor, price:Factor, init_nv=1, descriptor_ids=None, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
         Args = dict(self._QSArgs["参数"])
         factor_args = factor_args.copy()
         Args.update(factor_args.get("参数", {}))
         factor_args["参数"] = Args
-        if descriptor_ids is not None: factor_args["描述子截面"] = [descriptor_ids] * 3
-        return super().__call__(portfolio, price, init_nv, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+        if descriptor_ids is not None: factor_args["描述子截面"] = [None, descriptor_ids, descriptor_ids]
+        return super().__call__(init_nv, portfolio, price, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
 
 
 # 截面相关性
@@ -360,10 +363,10 @@ if __name__=="__main__":
     FMP = calcMaskPortfolio(Factor1 > 0, descriptor_ids=IDs, factor_name="QP", factor_args={"计算时点标尺": MonthDTRuler})
     Data = FMP.readData(ids=IDs, dts=DTs)
     print(Data)
-    #calcPortfolioNV = PortfolioNV()
-    #FNV = calcPortfolioNV(FMP, Price)
-    #NVData = FNV.readData(ids=IDs, dts=DTs)
-    #print(NVData)
+    calcPortfolioNV = PortfolioNV()
+    FNV = calcPortfolioNV(FMP, Price)
+    NVData = FNV.readData(ids=IDs, dts=DTs, dt_ruler=DTRuler)
+    print(NVData)
     
     #calcCorr = SectionCorrelation(sys_args={
         #"参数": {

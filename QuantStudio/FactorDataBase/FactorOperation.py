@@ -669,7 +669,7 @@ class PanelOperator(FactorOperator):
                         x.append(kDescriptorData[max(0, kStartInd+1+i-kLen):kStartInd+1+i])
                     StdData[iStartIdx+i, :] = self.calculate(factor, iDTs, SectionIDs, x, ModelArgs)
             else:
-                StdData = self.calculate(factor, DTRuler, SectionIDs, descriptor_data, ModelArgs)[iStartIdx:, :]
+                StdData = self.calculate(factor, DTRuler, SectionIDs, descriptor_data, ModelArgs)
                 CalcMask = self._QS_getCalcDTs(factor, dts, mask=True)
                 if CalcMask is not None:
                     StdData[~CalcMask, :] = None
