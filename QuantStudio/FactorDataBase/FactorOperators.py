@@ -720,14 +720,14 @@ class RollingRegress(TimeOperator):
 # ----------------------截面运算--------------------------------
 class SectionRank(SectionOperator):
     def __init__(self, ascending:bool=True, uniformization:bool=True, sys_args={}, config_file=None, **kwargs):
-        Args = {"名称": "rankSection", "入参数": 1, "最大入参数": 3, "数据类型": "double", "运算时点": "多时点", "输出形式": "全截面", "参数": {"uniformization": uniformization, "ascending": ascending, "mask": False, "cat_data": False}}
+        Args = {"名称": "rankSection", "入参数": 1, "最大入参数": 3, "数据类型": "double", "运算时点": "多时点", "输出形式": "全截面", "参数": {"uniformization": uniformization, "ascending": ascending}}
         Args.update(sys_args)
         return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
     
     def calculate(self, f, idt, iid, x, args):
-        FactorData, args = x[0], args.copy()
-        Mask = (x[1].astype(bool) if args.pop("mask") else [None] * FactorData.shape[0])
-        CatData = (x[-1] if args.pop("cat_data") else [None] * FactorData.shape[0])
+        FactorData = x[0]
+        Mask = (x[1].astype(bool) if f.UserData["mask"] else [None] * FactorData.shape[0])
+        CatData = (x[-1] if f.UserData["cat_data"] else [None] * FactorData.shape[0])
         Rslt = np.full_like(FactorData, fill_value=np.nan)
         for i in range(FactorData.shape[0]):
             Rslt[i] = DataPreprocessingFun.standardizeRank(FactorData[i], mask=Mask[i], cat_data=CatData[i], perturbation=False, offset=0, **args)
@@ -741,29 +741,32 @@ class SectionRank(SectionOperator):
         Args.update({iKey: kwargs[iKey] for iKey in Args if iKey in kwargs})
         factor_args = factor_args.copy()
         Args.update(factor_args.get("参数", {}))
-        Args["mask"] = (mask is not None)
-        Args["cat_data"] = (cat_data is not None)
         factor_args["参数"] = Args
-        return super().__call__(*Factors, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+        f = super().__call__(*Factors, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+        f.UserData = {
+            "mask": (mask is not None),
+            "cat_data": (cat_data is not None)
+        }
+        return f
 
 class Aggregate(SectionOperator):
     def __init__(self, aggr_func=np.nansum, descriptor_ids=None, dtype="double", sys_args={}, config_file=None, **kwargs):
-        Args = {"名称": "aggregate", "入参数": 1, "最大入参数": 3, "数据类型": dtype, "运算时点": "单时点", "输出形式": "全截面", "描述子截面": [descriptor_ids], "参数": {"aggr_func": aggr_func, "mask": False, "cat_data": False, "dtype": dtype, "section_chged": (descriptor_ids is not None)}}
+        Args = {"名称": "aggregate", "入参数": 1, "最大入参数": 3, "数据类型": dtype, "运算时点": "单时点", "输出形式": "全截面", "描述子截面": [descriptor_ids], "参数": {"aggr_func": aggr_func, "dtype": dtype}}
         Args.update(sys_args)
         return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
         
     def calculate(self, f, idt, iid, x, args):
         nID = len(iid)
         FactorData = x[0]
-        if args["mask"]:
+        if f.UserData["mask"]:
             Mask = (x[1]==1)
         else:
             Mask = np.full(FactorData.shape, fill_value=True)
         AggrFunc = args["aggr_func"]
-        if args["cat_data"]:
+        if f.UserData["cat_data"]:
             CatData = x[-1]
             Rslt = np.full(shape=(nID, ), fill_value=np.nan)
-            if args["section_chged"]:
+            if f.UserData["section_chged"]:
                 for i, iID in enumerate(iid):
                     iMask = ((CatData==iID) & Mask)
                     Rslt[i] = AggrFunc(FactorData[iMask])
@@ -787,15 +790,18 @@ class Aggregate(SectionOperator):
         Args.update({iKey: kwargs[iKey] for iKey in Args if iKey in kwargs})
         factor_args = factor_args.copy()
         Args.update(factor_args.get("参数", {}))
-        Args["mask"] = (mask is not None)
-        Args["cat_data"] = (cat_data is not None)
         factor_args["描述子截面"] = [kwargs.get("descriptor_ids", self._QSArgs.DescriptorSection[0])] * len(Factors)
-        Args["section_chged"] = (factor_args["描述子截面"][0] is not None)
         factor_args["参数"] = Args
         if factor_args["参数"]["dtype"]!=self._QSArgs["参数"]["dtype"]:
-            return super().__call__(*Factors, args={"数据类型": factor_args["参数"]["dtype"]}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+            f = super().__call__(*Factors, args={"数据类型": factor_args["参数"]["dtype"]}, factor_name=factor_name, factor_args=factor_args, **kwargs)
         else:
-            return super().__call__(*Factors, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+            f = super().__call__(*Factors, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+        f.UserData = {
+            "mask": (mask is not None),
+            "cat_data": (cat_data is not None),
+            "section_chged": (factor_args["描述子截面"][0] is not None)
+        }
+        return f
 
 class Disaggregate(SectionOperator):
     def __init__(self, aggr_ids, disaggr_ids=None, sys_args={}, config_file=None, **kwargs):
