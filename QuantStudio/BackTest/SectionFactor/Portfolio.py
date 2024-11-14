@@ -126,8 +126,11 @@ class QuantilePortfolio(BaseModule):
         super().__QS_end__(factor_data)
         GroupNum = self._QSArgs.GroupNum
         self._Output["净值"] = factor_data[self._PortfolioNV._QSID]
+        PIDs = sorted(self._Output["净值"].columns, key=lambda s: np.inf if s=="Bmk" else int(s[1:]))
+        self._Output["净值"] = self._Output["净值"].reindex(columns=PIDs)
         RebalanceDTs = sorted(self._Output["净值"].index.intersection(self._QSArgs.CalcDTs))
-        self._Output["投资组合"] = {self._PortfolioIDs[i]: factor_data[iPortfolio._QSID].reindex(index=RebalanceDTs) for i, iPortfolio in enumerate(self._PortfolioList+[self._BmkPortfolio])}
+        self._Output["投资组合"] = {f"P{i}": factor_data[iPortfolio._QSID].reindex(index=RebalanceDTs) for i, iPortfolio in enumerate(self._PortfolioList)}
+        self._Output["投资组合"]["Bmk"] = factor_data[self._BmkPortfolio._QSID].reindex(index=RebalanceDTs)
         self._Output["收益率"] = self._Output["净值"].pct_change()
         self._Output["收益率"].iloc[0] = 0
         if not self._QSArgs.CalcDTs:
@@ -137,7 +140,7 @@ class QuantilePortfolio(BaseModule):
             RebalanceIdx = sorted(RebalanceIdx[RebalanceIdx.index.intersection(self._QSArgs.CalcDTs)])
         self._Output["收益率"]["L-S"] = calcLSYield(self._Output["收益率"].iloc[:, 0].values, self._Output["收益率"].iloc[:, -2].values, rebalance_index=RebalanceIdx)
         self._Output["净值"]["L-S"] = (1 + self._Output["收益率"]["L-S"]).cumprod()
-        self._Output["换手率"] = pd.DataFrame({iID: self._Output["投资组合"][iID].diff().abs().sum(axis=1) for i, iID in enumerate(self._PortfolioIDs)}).reindex(columns=self._PortfolioIDs)
+        self._Output["换手率"] = pd.DataFrame({iID: self._Output["投资组合"][iID].diff().abs().sum(axis=1) for i, iID in enumerate(PIDs)}).reindex(columns=PIDs)
         self._Output["超额收益率"] = self._Output["收益率"].iloc[:, :GroupNum].copy()
         self._Output["超额净值"] = self._Output["超额收益率"].iloc[:, :GroupNum].copy()
         for i in self._Output["超额收益率"]:
