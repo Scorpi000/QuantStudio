@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 from lxml import etree
 from traits.api import Enum
-from progressbar import ProgressBar
 
 from QuantStudio import __QS_Object__, __QS_Error__
 from QuantStudio.FactorDataBase import __QS_BatchContext__
@@ -131,13 +130,11 @@ class BackTestModel(__QS_Object__):
         Tasks = []
         for j, jModule in enumerate(self._TestModules):
             jTasks = jModule.__QS_start__(mdl=self, dts=dts)
-            for iFactor, iIDs in jTasks: iFactor.Name = iFactor._QSID
             Tasks += jTasks
         print(("耗时 : %.2f" % (time.perf_counter()-TotalStartT, ))+"\n2. 因子计算")
         StartT = time.perf_counter()
         Context = self.BatchContext
-        FactorData = Context.readData(factors=[], ids=[], dts=dts, specific_ids=Tasks)
-        FactorData = dict(FactorData)
+        FactorData = Context.readData(factors=[], ids=[], dts=dts, specific_ids=Tasks, qs_id_key=True)
         print(("耗时 : %.2f" % (time.perf_counter()-StartT, ))+"\n3. 结果生成")
         StartT = time.perf_counter()
         for jModule in self._TestModules: jModule.__QS_end__(factor_data=FactorData)

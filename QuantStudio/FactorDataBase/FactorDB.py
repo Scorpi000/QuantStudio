@@ -839,7 +839,7 @@ class BatchContext(__QS_Object__):
         # 多次运行的相关信息
         self._FactorDict = {}# 因子字典, {因子 QSID: 因子}, 包括所有的因子, 即衍生因子所依赖的描述子也在内
         self._CachedDTRange = {}# 已经缓存的因子数据时点范围, {因子 QSID: DataFrame(columns=["StartDT", "EndDT"])}
-        self._FactorSectionIDs = {}
+        self._FactorSectionIDs = {}# 因子截面, {因子 QSID: [ID]}
         self._FactorRawDataKeys = {}# {因子 QSID: (因子表 QSID, ConditionStr, RawFactorName)}
         self._Cache = cache# 因子缓存对象
         
@@ -847,12 +847,12 @@ class BatchContext(__QS_Object__):
         self._Factors = []# 因子列表, 当前生成数据的因子
         self._iFactorDict = {}# 当前运行所涉及到的因子, {因子 QSID: 因子}
         self._DTRange = {}# 当前运行需要计算的时点范围
-        self._SectionIDs = None# 当前运行需要计算的截面 ID
+        self._SectionIDs = None# 当前运行需要计算的默认截面 ID
         self._RawFactorIDs = []# 当前基本因子 QSID 列表, 即需要准备原始数据的因子
         self._DateTimes = None# 当前运行的时点序列
         self._IDs = None# 当前运行的 ID 序列
-        self._FactorIDs = {}# 当前运行的特别指定的因子的 ID 序列
-        self._SpecificIDs = []# 当前运行特别指定的因子 ID 序列, [(factor, ids)]
+        self._SpecificIDs = {}# 当前运行特别指定的因子 ID 序列, {QSID: [ID]}
+        self._QSIDKey = False# 当前运行返回的结果是否使用因子 QSID 作为 key
         self._iPID = "0"# 对象所在的进程 ID
         self._PIDs = []# 所有的计算进程 ID, 单进程下默认为"0", 多进程为"0-i"
         self._PID_IDs = {}# 每个计算进程分配的 ID 列表, {PID: [ID]}
@@ -1039,9 +1039,6 @@ class BatchContext(__QS_Object__):
         # 检查时点标尺是否合适
         DTs = pd.Series(np.arange(0, len(self._QSArgs.DTRuler)), index=self._QSArgs.DTRuler).reindex(index=self._DateTimes)
         if pd.isnull(DTs).any(): raise __QS_Error__("运算时点序列超出了时点标尺!")
-        #elif (DTs.diff().iloc[1:]!=1).any(): raise __QS_Error__("运算时点序列的频率与时点标尺不一致!")
-        
-        self._DTRange = {}
         
         # 收集所有的因子以及需要准备原始数据的因子
         self._RawFactorIDs = set()# 基本因子 QSID 列表, 即需要准备原始数据的因子
@@ -1051,6 +1048,7 @@ class BatchContext(__QS_Object__):
         self._FactorDict.update(self._iFactorDict)
         
         # 遍历所有因子对象, 调用其初始化方法, 生成所有因子的时点范围, 生成其需要准备原始数据的截面 ID
+        self._DTRange = {}
         for iFactor in self._Factors:
             iFactor.__QSBC_initOperation__(self, (self._DateTimes[0], self._DateTimes[-1]), self._SectionIDs)
         
@@ -1134,7 +1132,7 @@ class BatchContext(__QS_Object__):
                     if hasattr(iDB, "writeFactorData"):
                         for j, jFactor in enumerate(iFactors):
                             jData = jFactor.__QSBC_getData__(dts=self._DateTimes, pids=[task["PID"]])
-                            jData = jData.reindex(columns=self._FactorIDs.get(jFactor._QSID, self._IDs))
+                            jData = jData.reindex(columns=self._SpecificIDs.get(jFactor._QSID, self._IDs))
                             iDB.writeFactorData(jData, iTableName, iTargetFactorNames[j], if_exists=task["if_exists"], data_type=jFactor.getMetaData(key="DataType"), **task["kwargs"])
                             jData = None
                             TaskCount += 1
@@ -1150,7 +1148,7 @@ class BatchContext(__QS_Object__):
                                 jData = {}
                                 for k, kFactor in enumerate(iFactors):
                                     ijkData = kFactor.__QSBC_getData__(dts=jDTs, pids=[task["PID"]])
-                                    ijkData = ijkData.reindex(columns=self._FactorIDs.get(kFactor._QSID, self._IDs))
+                                    ijkData = ijkData.reindex(columns=self._SpecificIDs.get(kFactor._QSID, self._IDs))
                                     jData[iTargetFactorNames[k]] = ijkData
                                     if j==0:
                                         TaskCount += 0.5
@@ -1167,7 +1165,7 @@ class BatchContext(__QS_Object__):
                 if hasattr(iDB, "writeFactorData"):
                     for j, jFactor in enumerate(iFactors):
                         jData = jFactor.__QSBC_getData__(dts=self._DateTimes, pids=[task["PID"]])
-                        jIDs = sorted(jData.columns.intersection(self._FactorIDs.get(jFactor._QSID, self._IDs)))
+                        jIDs = sorted(jData.columns.intersection(self._SpecificIDs.get(jFactor._QSID, self._IDs)))
                         jData = jData.reindex(columns=jIDs)
                         iDB.writeFactorData(jData, iTableName, iTargetFactorNames[j], if_exists=task["if_exists"], data_type=jFactor.getMetaData(key="DataType"), **task["kwargs"])
                         jData = None
@@ -1183,7 +1181,7 @@ class BatchContext(__QS_Object__):
                             jData = {}
                             for k, kFactor in enumerate(iFactors):
                                 ijkData = kFactor.__QSBC_getData__(dts=jDTs, pids=[task["PID"]])
-                                ijkIDs = sorted(ijkData.columns.intersection(self._FactorIDs.get(kFactor._QSID, self._IDs)))
+                                ijkIDs = sorted(ijkData.columns.intersection(self._SpecificIDs.get(kFactor._QSID, self._IDs)))
                                 ijkData = ijkData.reindex(columns=ijkIDs)
                                 jData[iTargetFactorNames[k]] = ijkData
                                 if j==0: task["Sub2MainQueue"].put((task["PID"], 0.5, None))
@@ -1244,8 +1242,8 @@ class BatchContext(__QS_Object__):
     
     # 因子计算并写入因子库
     # kwargs: 
-    #     specific_target: 特别指定的写入设置, {因子名: (因子库对象, 目标表名, 目标因子名)}
     #     specific_ids: 特别指定的因子 ID 序列, [(factor, ids)]
+    #     specific_target: 特别指定的写入设置, {因子名: (因子库对象, 目标表名, 目标因子名)}
     def write2FDB(self, factors, ids, dts, factor_db, table_name, if_exists="update", section_ids=None, **kwargs):
         if not isinstance(factor_db, WritableFactorDB): raise __QS_Error__("因子数据库: %s 不可写入!" % factor_db.Name)
         print("==========因子运算==========\n1. 原始数据准备\n")
@@ -1255,11 +1253,10 @@ class BatchContext(__QS_Object__):
         self._IDs = sorted(ids)
         if (not self._IDs) and self._Factors: raise __QS_Error__("运算 ID 序列不能为空!")
         self._SectionIDs = (self._QSArgs.DefaultSectionIDs if section_ids is None else sorted(section_ids))
-        self._FactorIDs = {}
-        self._SpecificIDs = kwargs.pop("specific_ids", [])
-        for iFactor, iIDs in self._SpecificIDs:
+        self._SpecificIDs = {}
+        for iFactor, iIDs in kwargs.pop("specific_ids", []):
             self._Factors.append(iFactor)
-            self._FactorIDs[iFactor._QSID] = iIDs
+            self._SpecificIDs[iFactor._QSID] = iIDs
         
         self._initContext(**kwargs)
         self._prepare(**kwargs)
@@ -1275,26 +1272,25 @@ class BatchContext(__QS_Object__):
     # 并发的因子计算
     def _parallel_calculate(self, task):
         self._iPID = task["PID"]
-        Data = {}
         if self._QSArgs.CalcConcurrentNum <= 0:# 运行模式为串行
+            Data = {}
             TaskCount = 0
             with ProgressBar(max_value=len(self._Factors)) as ProgBar:
                 for j, jFactor in enumerate(self._Factors):
                     jData = jFactor.__QSBC_getData__(dts=self._DateTimes, pids=[task["PID"]])
-                    jData = jData.reindex(columns=self._FactorIDs.get(jFactor._QSID, self._IDs))
-                    Data[jFactor.Name] = jData
+                    jData = jData.reindex(columns=self._SpecificIDs.get(jFactor._QSID, self._IDs))
+                    Data[jFactor._QSID if self._QSIDKey else jFactor.Name] = jData
                     TaskCount += 1
                     ProgBar.update(TaskCount)
+            return Data
         else:
             for j, jFactor in enumerate(self._Factors):
                 jData = jFactor.__QSBC_getData__(dts=self._DateTimes, pids=[task["PID"]])
-                jIDs = self._FactorIDs.get(jFactor._QSID, self._IDs)
+                jIDs = self._SpecificIDs.get(jFactor._QSID, self._IDs)
                 jData = jData.reindex(columns=sorted(jData.columns.intersection(jIDs)))
-                task["Sub2MainQueue"].put((task["PID"], 1, (jFactor.Name, jData)))
-                Data[jFactor.Name] = jData
+                task["Sub2MainQueue"].put((task["PID"], 1, (jFactor._QSID if self._QSIDKey else jFactor.Name, jData)))
             CachedDTRange = {iFactorID: self._CachedDTRange[iFactorID] for iFactorID in self._iFactorDict if iFactorID in self._CachedDTRange}
             task["Sub2MainQueue"].put((task["PID"], -1, CachedDTRange))
-        return Data
     
     # 因子计算
     def _calculate(self, **kwargs):
@@ -1351,6 +1347,7 @@ class BatchContext(__QS_Object__):
     
     # kwargs:
     #     specific_ids: 特别指定的因子 ID 序列, [(factor, ids)]
+    #     qs_id_key: 返回的数据使用因子 QSID 作为 key
     def readData(self, factors, ids, dts, section_ids=None, **kwargs):
         print("==========因子运算==========\n1. 原始数据准备\n")
         TotalStartT = time.perf_counter()
@@ -1359,11 +1356,11 @@ class BatchContext(__QS_Object__):
         self._IDs = sorted(ids)
         if (not self._IDs) and self._Factors: raise __QS_Error__("运算 ID 序列不能为空!")
         self._SectionIDs = (self._QSArgs.DefaultSectionIDs if section_ids is None else sorted(section_ids))
-        self._FactorIDs = {}
-        self._SpecificIDs = kwargs.pop("specific_ids", [])
-        for iFactor, iIDs in self._SpecificIDs:
+        self._QSIDKey = kwargs.pop("qs_id_key", False)
+        self._SpecificIDs = {}
+        for iFactor, iIDs in kwargs.pop("specific_ids", []):
             self._Factors.append(iFactor)
-            self._FactorIDs[iFactor._QSID] = iIDs
+            self._SpecificIDs[iFactor._QSID] = iIDs
         
         self._initContext(**kwargs)
         self._prepare(**kwargs)
