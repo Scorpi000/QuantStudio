@@ -2077,7 +2077,7 @@ class SQL_ConstituentTable(SQL_Table):
     def __init__(self, name, fdb, sys_args={},  table_prefix="", table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=table_prefix, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
         self._QS_GroupArgs = (self._QS_GroupArgs if self._QS_GroupArgs else tuple()) + ("类别字段", "结束时点字段", "当前状态字段")
-        self._QS_RawDataMaskCols = ["QS_ID", "Group", "InDate", "OutDate"]
+        self._QS_RawDataMaskCols = ["QS_ID", "Group", "InDate", "OutDate", "CurSign"]
         self._AllGroups = None
     
     @property
@@ -2214,6 +2214,23 @@ class SQL_ConstituentTable(SQL_Table):
         RawData["Group"] = RawData["Group"].astype(str)
         RawData["QS_ID"] = self.__QS_restoreID__(RawData["QS_ID"])
         return RawData
+    
+    def __QSBC_saveRawData__(self, raw_data, key, target_fields, pid_ids, **kwargs):
+        if raw_data is None: return 0
+        Context = self.BatchContext
+        Cache = Context._Cache
+        MaskCols = raw_data.columns.intersection(self._QS_RawDataMaskCols).tolist()
+        for iFactorName in target_fields:
+            iRawData = raw_data[raw_data["Group"]==iFactorName]
+            iKey = key+"-"+iFactorName
+            iOldData = Cache.readRawData(iKey, target_fields=None, pids=None)
+            if iOldData:
+                iOldData = iOldData["RawData"]
+                iOldData["QS_Mask"] = 1
+                iRawData = pd.merge(iRawData, iOldData.loc[:, [*MaskCols, "QS_Mask"]], how="left", left_on=MaskCols, right_on=MaskCols)
+                iOldData.pop("QS_Mask")
+                iRawData = pd.concat([iOldData, iRawData[iRawData.pop("QS_Mask").isnull()]], ignore_index=True).sort_values(MaskCols)
+            Cache.writeRawData(iKey, {"RawData": iRawData}, pid_ids, id_col="QS_ID", if_exists="replace")
     
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         DeltaDT = dt.timedelta(int(not args.get("包含结束时点", self._QSArgs.EndDTIncluded)))
