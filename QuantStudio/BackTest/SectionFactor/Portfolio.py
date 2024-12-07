@@ -7,7 +7,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-from traits.api import List, Enum, List, Int, Range
+from traits.api import List, Enum, List, Int, Float
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 import matplotlib.dates as mdate
@@ -48,7 +48,7 @@ class MultiPortfolio(BaseModule):
         CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="调仓时点", order=6)
         PriceMiss = Enum("沿用前值", "填充为0", arg_type="SingleOption", label="价格缺失", order=7, option_range=["沿用前值", "填充为0"])
         LSPairs = List(arg_type="List", label="多空对", order=8)# [(i, j)]
-        FeeRate = Range(0, 1, value=0, arg_type="Double", label="交易费率", order=9)
+        FeeRate = Float(value=0, arg_type="Double", label="交易费率", order=9)
         
     def __init__(self, *portfolio, price:Factor, section_ids=None, name="多组合对比", sys_args={}, **kwargs):
         self._Price = price
@@ -140,8 +140,8 @@ class MultiPortfolio(BaseModule):
         PortfolioNum = self._Output["净值"].shape[1]
         nRow, nCol = 2, 3
         Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
-        xData = np.arange(1, PortfolioNum + 1)
-        xTickLabels = [str(iInd) for iInd in self._Output["统计数据"]]
+        xData = np.arange(1, self._Output["统计数据"].shape[0] + 1)
+        xTickLabels = [str(iInd) for iInd in self._Output["统计数据"].index]
         PercentageFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
         FloatFormatter = FuncFormatter(lambda x, pos: '%.2f' % (x, ))
         _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 1), xData, xTickLabels, self._Output["统计数据"]["年化收益率"], PercentageFormatter, self._Output["统计数据"]["平均换手率"], PercentageFormatter, True)
@@ -168,7 +168,8 @@ class MultiPortfolio(BaseModule):
         nLS = self._Output["多空净值"].shape[1]
         nRow, nCol = 2, 3
         LSFig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
-        xData = np.arange(1, nLS + 1)
+        xData = np.arange(1, self._Output["多空统计数据"].shape[0] + 1)
+        xTickLabels = [str(iInd) for iInd in self._Output["多空统计数据"].index]
         _QS_plotStatistics(LSFig.add_subplot(nRow, nCol, 1), xData, xTickLabels, self._Output["多空统计数据"]["年化收益率"], PercentageFormatter, self._Output["多空统计数据"]["胜率"], PercentageFormatter, True)
         _QS_plotStatistics(LSFig.add_subplot(nRow, nCol, 2), xData, xTickLabels, self._Output["多空统计数据"]["信息比率"], PercentageFormatter, None)
         _QS_plotStatistics(LSFig.add_subplot(nRow, nCol, 3), xData, xTickLabels, self._Output["多空统计数据"]["最大回撤率"], PercentageFormatter, None)
@@ -198,6 +199,8 @@ class MultiPortfolio(BaseModule):
         Figs = self.genMatplotlibFig()
         Formatters = [_QS_formatPandasPercentage]*3 + [lambda x:'{0:.2f}'.format(x)] + [_QS_formatPandasPercentage]*2 + [lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else "NaT"]*2
         iHTML = self._Output["统计数据"].to_html(formatters=Formatters)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         # figure 保存为二进制文件
         Buffer = BytesIO()
         Figs[0].savefig(Buffer, bbox_inches='tight')
