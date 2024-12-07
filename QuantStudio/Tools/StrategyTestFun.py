@@ -787,16 +787,22 @@ def testPortfolioStrategy(portfolio, price, fee=0.0, long_margin=1.0, short_marg
 # 给定投资组合(持仓金额比例)的策略向量化回测(自融资策略), 数据类型 pandas
 # portfolio: 每期的目标投资组合, DataFrame(index=DTs, columns=IDs), DTs: 时间序列, IDs: 证券代码
 # price: 价格序列, DataFrame(index=DTs, columns=IDs), DTs: 时间序列, IDs: 证券代码
-# 说明: price 的 DTs 和 portfolio 的 DTs 可能不一致，price 的 IDs 包含 portfolio 的 IDs
-# 返回: Series(index=DTs), DTs 和 price 的 DTs 保持一致
-def testPortfolioStrategy_pd(portfolio, price):
+# fee: 手续费率, scalar
+# 说明: price 的 index 和 portfolio 的 index 可能不一致，price 的 columns 必须包含 portfolio 的 columns
+# 返回: Series(index=DTs), index 和 price 的 index 保持一致
+def testPortfolioStrategy_pd(portfolio, price, fee=0):
     portfolio = portfolio.fillna(0.0)
     AllDTs = sorted(price.index.union(portfolio.index))
     AllPrice = price.reindex(index=AllDTs, columns=portfolio.columns).fillna(method="ffill").fillna(method="bfill")
     RebalancePrice = AllPrice.loc[portfolio.index]
     # 计算再平衡时点的净值
     RebalanceReturn = RebalancePrice / RebalancePrice.shift(1).fillna(method="bfill") - 1
-    RebalanceNV = ((portfolio.shift(1) * RebalanceReturn).sum(axis=1) + 1).cumprod()
+    CashWeight = 1 - portfolio.sum(axis=1)# 现金权重
+    PreTradingPortfolio = portfolio.shift(1).fillna(0) * (1 + RebalanceReturn)# 调仓前组合
+    PreTradingNV = PreTradingPortfolio.sum(axis=1) + CashWeight.shift(1).fillna(1)
+    PreTradingPortfolio = (PreTradingPortfolio.T / PreTradingNV).T
+    Fee = ((portfolio - PreTradingPortfolio).abs() * fee).sum(axis=1) * PreTradingNV# 交易费
+    RebalanceNV = (PreTradingNV - Fee).cumprod()
     # 计算所有时点的净值
     CostPrice = RebalancePrice.reindex(index=AllDTs).fillna(method="ffill").fillna(method="bfill")
     NV = (portfolio.reindex(index=AllDTs).fillna(method="ffill") * (AllPrice / CostPrice - 1)).sum(axis=1) + 1
@@ -1036,7 +1042,6 @@ def formatTimingStrategySummary(summary):
 # PositionNum: 持仓数量
 # AvgUnitCost: 平均单位成本
 def testAIPStrategy(aip_amount, price):
-    Mask = pd.isnull(aip_amount)
     Capital = np.nancumsum(aip_amount, axis=0)
     PositionNum = np.nancumsum(aip_amount / price, axis=0)
     Amount = PositionNum * price
@@ -1044,3 +1049,64 @@ def testAIPStrategy(aip_amount, price):
     CumReturn[Capital<=0] = 0
     AvgUnitCost = Capital / PositionNum
     return CumReturn, Amount, Capital, PositionNum, AvgUnitCost
+
+if __name__ == "__main__":
+    np.random.seed(0)
+    r = -0.1 + np.random.rand(10, 5) * 0.2
+    c = np.cumprod(1 + r, axis=0)
+    p = np.random.choice([0, 1, 2], (3, 5))
+    p = (p.T / np.sum(p, axis=1)).T
+    
+    #print(p)
+    #print(r)
+    #print(c)
+    #nv, t = testPortfolioStrategy(p, c)
+    
+    def testPortfolioStrategy_Std(portfolio, price, fee=0):
+        if not isinstance(fee, pd.DataFrame): fee = pd.DataFrame(fee, index=portfolio.index, columns=portfolio.columns)
+        AllDTs = sorted(price.index.union(portfolio.index))
+        AllPrice = price.reindex(index=AllDTs, columns=portfolio.columns).fillna(method="ffill").fillna(method="bfill")
+        NV = pd.Series(index=AllDTs, dtype=float)
+        iPrePrice = AllPrice.iloc[0]
+        iPrePortfolio = pd.Series(0, index=portfolio.columns)
+        iPreCash = 1
+        iPreNV = 1
+        for i, iDT in enumerate(AllDTs):
+            iPrice = AllPrice.iloc[i]
+            if iDT < portfolio.index[0]:
+                iPrePrice = iPrice
+                continue
+            iReturn = iPrice / iPrePrice - 1
+            iPreTrading = iPreNV * iPrePortfolio * (1 + iReturn)
+            iNV = iPreTrading.sum() + iPreCash
+            if iDT in portfolio.index:
+                iPortfolio = portfolio.loc[iDT]
+                iFee = ((iNV * iPortfolio - iPreTrading).abs() * fee.loc[iDT]).sum()
+                iNV = iNV - iFee
+                iPrePortfolio = iPortfolio
+                iPreCash = iNV * (1 - iPortfolio.sum())
+            else:
+                iPrePortfolio = iPreTrading / iNV
+            NV.iloc[i] = iNV
+            iPreNV = iNV
+            iPrePrice = iPrice
+        return NV.reindex(index=price.index)
+    
+    DTs = [dt.datetime(2000,1,1) + dt.timedelta(i) for i in range(c.shape[0])]
+    IDs = [str(i).zfill(6)+".SZ" for i in range(c.shape[1])]
+    c = pd.DataFrame(c, index=DTs, columns=IDs)
+    pDTs = sorted(np.random.choice(DTs, size=p.shape[0], replace=False))
+    p = pd.DataFrame(p, index=pDTs, columns=IDs).fillna(0)
+    #p.iloc[:, -1] = 0
+    f = pd.DataFrame(np.random.rand(*p.shape) / 100, index=p.index, columns=p.columns)
+    
+    print(c)
+    print(p)
+    print(f)
+    nv_std = testPortfolioStrategy_Std(p, c, fee=f)
+    nv = testPortfolioStrategy_pd(p, c, fee=f)
+    print(nv_std)
+    print(nv)
+    #print(t)
+    
+    print("===")

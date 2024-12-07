@@ -172,28 +172,29 @@ class PortfolioNV(PanelOperator):
             return super().__QS_initArgs__(args=args)
 
     def __init__(self, sys_args={}, config_file=None, **kwargs):
-        Args = {"名称": "calcPortfolioNV", "入参数": 3, "最大入参数": 3, "运算时点": "多时点", "起始因子": 0, "回溯期数": [1, 0, 0], "回溯模式": ["扩张窗口", "扩张窗口", "扩张窗口"], "输出形式": "全截面", "数据类型":"double"}
+        Args = {"名称": "calcPortfolioNV", "入参数": 4, "最大入参数": 4, "运算时点": "多时点", "起始因子": 0, "回溯期数": [1, 0, 0, 0], "回溯模式": ["扩张窗口", "扩张窗口", "扩张窗口", "扩张窗口"], "输出形式": "全截面", "数据类型":"double"}
         Args.update(sys_args)
         return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
 
     def calculate(self, f, idt, iid, x, args):
         SectionIDs = (f._QSArgs.DescriptorSection[1] if f._QSArgs.DescriptorSection[1] else iid)
-        Portfolio = pd.DataFrame(x[1], index=idt[1:], columns=SectionIDs)
+        Portfolio = pd.DataFrame(x[1], index=idt[1:], columns=SectionIDs).dropna(how="all")
         Price = pd.DataFrame(x[2], index=idt[1:], columns=SectionIDs)
+        FeeRate = pd.DataFrame(x[3], index=idt[1:], columns=SectionIDs).reindex(index=Portfolio.index)
         if args["价格缺失"]=="沿用前值": Price = Price.fillna(method="pad")
-        NV = testPortfolioStrategy_pd(Portfolio.dropna(how="all"), Price)
+        NV = testPortfolioStrategy_pd(Portfolio.dropna(how="all"), Price, fee=FeeRate)
         if pd.isnull(NV.iloc[0]):
             NV.iloc[0] = 1
             NV = NV.fillna(method="pad")
         return np.reshape(NV.values, (-1, 1)).repeat(len(iid), axis=1) * x[0][0]
 
-    def __call__(self, portfolio:Factor, price:Factor, init_nv=1, descriptor_ids=None, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
+    def __call__(self, portfolio:Factor, price:Factor, init_nv=1, fee_rate=0, descriptor_ids=None, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
         Args = dict(self._QSArgs["参数"])
         factor_args = factor_args.copy()
         Args.update(factor_args.get("参数", {}))
         factor_args["参数"] = Args
         if descriptor_ids is not None: factor_args["描述子截面"] = [None, descriptor_ids, descriptor_ids]
-        return super().__call__(init_nv, portfolio, price, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+        return super().__call__(init_nv, portfolio, price, fee_rate, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
 
 
 # 截面相关性
