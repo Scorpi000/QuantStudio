@@ -115,34 +115,67 @@ class IC(PanelOperator):
 class MaskPortfolio(SectionOperator):
     """筛选投资组合"""
     def __init__(self, sys_args={}, config_file=None, **kwargs):
-        Args = {"名称": "calcMaskPortfolio", "入参数": 1, "最大入参数": 2, "运算时点": "多时点", "输出形式": "全截面", "数据类型":"double"}
+        Args = {"名称": "calcMaskPortfolio", "入参数": 1, "最大入参数": 4, "运算时点": "多时点", "输出形式": "全截面", "数据类型":"double"}
         Args.update(sys_args)
         return super().__init__(sys_args=Args, config_file=config_file, **kwargs)
 
     def calculate(self, f, idt, iid, x, args):
         SectionIDs = (f._QSArgs.DescriptorSection[0] if f._QSArgs.DescriptorSection[0] else iid)
-        Mask = pd.DataFrame(x[0]==1, index=idt, columns=SectionIDs)
-        if len(x)==2:
-            Weight = pd.DataFrame(x[1], index=idt, columns=SectionIDs)
+        Mask, x = pd.DataFrame(x[0]==1, index=idt, columns=SectionIDs), x[1:]
+        if f.UserData["weight"]:
+            Weight, x = pd.DataFrame(x[0], index=idt, columns=SectionIDs), x[1:]
         else:
             Weight = pd.DataFrame(1, index=idt, columns=SectionIDs)
+        if f.UserData["cat_data"]:
+            CatData, x = pd.DataFrame(x[0], index=idt, columns=SectionIDs).fillna("None"), x[1:]
+            if f.UserData["cat_weight"]:
+                CatWeight = pd.DataFrame(x[-1], index=idt, columns=SectionIDs)
+            else:
+                CatWeight = pd.DataFrame(1, index=idt, columns=SectionIDs)
         if f._QSArgs.CalcDTRuler:
             RebalanceDTs = sorted(set(idt).intersection(f._QSArgs.CalcDTRuler))
             Mask = Mask.reindex(index=RebalanceDTs).fillna(False)
             Weight = Weight.reindex(index=RebalanceDTs)
-        Porftolio = Weight.where(Mask, np.nan)
-        Porftolio = (Porftolio.T / Porftolio.sum(axis=1)).T
-        return Porftolio.reindex(index=idt, columns=iid).values
+            if f.UserData["cat_data"]:
+                CatData = CatData.reindex(index=RebalanceDTs)
+                CatWeight = CatWeight.reindex(index=RebalanceDTs)
+        if not f.UserData["cat_data"]:
+            Porftolio = Weight.where(Mask, np.nan)
+            Porftolio = (Porftolio.T / Porftolio.sum(axis=1)).T
+            return Porftolio.reindex(index=idt, columns=iid).values
+        else:
+            Rslt = pd.DataFrame({"mask": Mask.stack(), "weight": Weight.stack(), "cat_data": CatData.stack(), "cat_weight": CatWeight.stack()}).reset_index()
+            Rslt.columns = ["dt", "id"] + Rslt.columns[2:].tolist()
+            if not Rslt["mask"].any(): return np.full(shape=(len(idt), len(iid)), fill_value=np.nan, dtype=float)
+            Tmp = Rslt.groupby(["dt", "cat_data"])[["cat_weight"]].sum().reset_index()
+            if not f.UserData["cat_weight"]: Tmp["cat_weight"] = 1
+            Tmp = pd.merge(Tmp, Tmp.groupby(["dt"])["cat_weight"].sum().to_frame("total_cat_weight"), how="left", left_on=["dt"], right_index=True)
+            Tmp["cat_weight"] = Tmp["cat_weight"] / Tmp["total_cat_weight"]
+            Rslt = Rslt[Rslt["mask"]]
+            Rslt = pd.merge(Rslt, Tmp.loc[:, ["dt", "cat_data", "cat_weight"]], how="left", left_on=["dt", "cat_data"], right_on=["dt", "cat_data"], suffixes=("", "_total"))
+            Rslt = pd.merge(Rslt, Rslt.groupby(["dt", "cat_data"])[["weight"]].sum(), how="left", left_on=["dt", "cat_data"], right_index=True, suffixes=("", "_total"))
+            Rslt["weight"] = Rslt["weight"] / Rslt["weight_total"] * Rslt["cat_weight_total"]
+            return Rslt.set_index(["dt", "id"])["weight"].unstack().reindex(index=idt, columns=iid).values
     
-    def __call__(self, mask:Factor, weight:Optional[Factor]=None, descriptor_ids=None, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
+    def __call__(self, mask:Factor, weight:Optional[Factor]=None, cat_data:Optional[Factor]=None, cat_weight:Optional[Factor]=None, descriptor_ids=None, factor_name:Optional[str]=None, factor_args:Dict={}, **kwargs):
         Factors = [mask]
         if weight is not None: Factors.append(weight)
+        if cat_data is not None:
+            Factors.append(cat_data)
+            if cat_weight is not None:
+                Factors.append(cat_weight)
         Args = dict(self._QSArgs["参数"])
         factor_args = factor_args.copy()
         Args.update(factor_args.get("参数", {}))
         factor_args["参数"] = Args
         if descriptor_ids is not None: factor_args["描述子截面"] = [descriptor_ids] * len(Factors)
-        return super().__call__(*Factors, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+        f = super().__call__(*Factors, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
+        f.UserData = {
+            "weight": (weight is not None),
+            "cat_data": (cat_data is not None),
+            "cat_weight": (cat_weight is not None)
+        }
+        return f        
 
 
 # 分位数组合
@@ -349,6 +382,7 @@ if __name__=="__main__":
     Price = DataFactor(name="Price", data=pd.DataFrame(np.random.rand(len(DTRuler), len(IDs)) * 10, index=DTRuler, columns=IDs))
     Factor1 = DataFactor(name="Factor1", data=pd.DataFrame(np.random.randn(len(DTRuler), len(IDs)), index=DTRuler, columns=IDs))
     Factor2 = DataFactor(name="Factor2", data=pd.DataFrame(np.random.randn(len(DTRuler), len(IDs)), index=DTRuler, columns=IDs))
+    Weight = DataFactor(name="Weight", data=pd.DataFrame(np.random.rand(len(DTRuler), len(IDs)), index=DTRuler, columns=IDs))
     
     #calcIC = IC(sys_args={
         #"参数": {
@@ -359,15 +393,23 @@ if __name__=="__main__":
     #FIC = calcIC(Price, Factor1, Factor2, cat_data=Industry, descriptor_ids=IDs, factor_name="IC", factor_args={"计算时点标尺": MonthDTRuler, "回溯期数": [32-1]*4})
     #print(FIC.readData(ids=["Factor1", "Factor2"], dts=MonthDTs, dt_ruler=DTRuler))
     
-    print(Factor1.Name, Factor1.readData(ids=IDs, dts=MonthDTs), sep="\n", end="\n\n")
+    Factor1Data = Factor1.readData(ids=IDs, dts=MonthDTs)
+    print(Factor1.Name, Factor1Data, sep="\n", end="\n\n")
+    Mask = (Factor1 > 0)
+    MaskData = Mask.readData(ids=IDs, dts=MonthDTs)
+    print("Mask", MaskData, sep="\n", end="\n\n")
+    IndustryData = Industry.readData(ids=IDs, dts=MonthDTs)
+    print("Industry", IndustryData, sep="\n", end="\n\n")
+    WeightData = Weight.readData(ids=IDs, dts=MonthDTs)
+    print("Weight", WeightData, sep="\n", end="\n\n")
     calcMaskPortfolio = MaskPortfolio()
-    FMP = calcMaskPortfolio(Factor1 > 0, descriptor_ids=IDs, factor_name="QP", factor_args={"计算时点标尺": MonthDTRuler})
+    FMP = calcMaskPortfolio(Mask, cat_data=Industry, cat_weight=Weight, descriptor_ids=IDs, factor_name="QP", factor_args={"计算时点标尺": MonthDTRuler})
     Data = FMP.readData(ids=IDs, dts=DTs)
     print(Data)
-    calcPortfolioNV = PortfolioNV()
-    FNV = calcPortfolioNV(FMP, Price)
-    NVData = FNV.readData(ids=IDs, dts=DTs, dt_ruler=DTRuler)
-    print(NVData)
+    #calcPortfolioNV = PortfolioNV()
+    #FNV = calcPortfolioNV(FMP, Price)
+    #NVData = FNV.readData(ids=IDs, dts=DTs, dt_ruler=DTRuler)
+    #print(NVData)
     
     #calcCorr = SectionCorrelation(sys_args={
         #"参数": {
