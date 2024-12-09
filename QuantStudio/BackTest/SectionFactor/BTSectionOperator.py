@@ -229,7 +229,7 @@ class PortfolioNV(PanelOperator):
         factor_args = factor_args.copy()
         Args.update(factor_args.get("参数", {}))
         factor_args["参数"] = Args
-        if descriptor_ids is not None: factor_args["描述子截面"] = [descriptor_ids] * 4
+        if descriptor_ids is not None: factor_args["描述子截面"] = [None] + [descriptor_ids] * 3
         return super().__call__(init_nv, portfolio, price, fee_rate, args={}, factor_name=factor_name, factor_args=factor_args, **kwargs)
 
 
