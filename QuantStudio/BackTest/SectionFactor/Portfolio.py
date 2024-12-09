@@ -50,11 +50,10 @@ class MultiPortfolio(BaseModule):
         LSPairs = List(arg_type="List", label="多空对", order=8)# [(i, j)]
         FeeRate = Float(value=0, arg_type="Double", label="交易费率", order=9)
         
-    def __init__(self, *portfolio, price:Factor, section_ids=None, name="多组合对比", sys_args={}, **kwargs):
-        self._Price = price
-        self._PortfolioList = portfolio
-        self._SectionIDs = section_ids
-        self._PortfolioIDs = [iPortfolio.Name for iPortfolio in self._PortfolioList]
+    # portfolio_info: (portfolio, price, section_ids)
+    def __init__(self, *portfolio_info, name="多组合对比", sys_args={}, **kwargs):
+        self._PortfolioInfo = portfolio_info
+        self._PortfolioIDs = [iPortfolio.Name for iPortfolio, _, _ in self._PortfolioInfo]
         if np.unique(self._PortfolioIDs).shape[0] < len(self._PortfolioIDs):
             raise __QS_Error__(f"传给模块 '{name}' 的投资组合有重名: {self._PortfolioIDs}")
         return super().__init__(name=name, sys_args=sys_args, **kwargs)
@@ -63,10 +62,10 @@ class MultiPortfolio(BaseModule):
         Tasks = super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
         self._Output = {}
         calcPortfolioNV = PortfolioNV(sys_args={"参数": {"价格缺失": self._QSArgs.PriceMiss}})
-        self._PortfolioNV = {self._PortfolioIDs[i]: calcPortfolioNV(iPortfolio, self._Price, init_nv=1, fee_rate=self._QSArgs.FeeRate, descriptor_ids=self._SectionIDs) for i, iPortfolio in enumerate(self._PortfolioList)}
+        self._PortfolioNV = {iPortfolio.Name: calcPortfolioNV(iPortfolio, iPrice, init_nv=1, fee_rate=self._QSArgs.FeeRate, descriptor_ids=iSectionIDs) for iPortfolio, iPrice, iSectionIDs in self._PortfolioInfo}
         SortedPortfolioIDs = sorted(self._PortfolioIDs)
         self._PortfolioNV = fo.ConcatSection(descriptor_sections=[[iID] for iID in SortedPortfolioIDs])(*[self._PortfolioNV[iID] for iID in SortedPortfolioIDs], factor_name=self.Name, factor_args={"截面ID": SortedPortfolioIDs})
-        Tasks += [(iPortfolio, self._SectionIDs) for iPortfolio in self._PortfolioList] + [(self._PortfolioNV, SortedPortfolioIDs)]
+        Tasks += [(iPortfolio, iSectionIDs) for iPortfolio, _, iSectionIDs in self._PortfolioInfo] + [(self._PortfolioNV, SortedPortfolioIDs)]
         return Tasks
     
     def __QS_end__(self, factor_data):
@@ -74,7 +73,7 @@ class MultiPortfolio(BaseModule):
         self._Output["净值"] = factor_data[self._PortfolioNV._QSID]
         self._Output["净值"] = self._Output["净值"].reindex(columns=self._PortfolioIDs)
         RebalanceDTs = sorted(self._Output["净值"].index.intersection(self._QSArgs.CalcDTs))
-        self._Output["投资组合"] = {self._PortfolioIDs[i]: factor_data[iPortfolio._QSID].reindex(index=RebalanceDTs) for i, iPortfolio in enumerate(self._PortfolioList)}
+        self._Output["投资组合"] = {iPortfolio.Name: factor_data[iPortfolio._QSID].reindex(index=RebalanceDTs) for iPortfolio, _, _ in self._PortfolioInfo}
         self._Output["换手率"] = pd.DataFrame({iID: self._Output["投资组合"][iID].diff().abs().sum(axis=1) for i, iID in enumerate(self._PortfolioIDs)}).reindex(columns=self._PortfolioIDs)
         self._Output["收益率"] = self._Output["净值"].pct_change()
         self._Output["收益率"].iloc[0] = 0
