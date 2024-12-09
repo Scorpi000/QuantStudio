@@ -163,7 +163,7 @@ class MultiPortfolio(BaseModule):
             Axes.plot(iNum.index, iNum.values, label=f"{iName}: {round(iNum.mean(),2)}", lw=2.5)
         Axes.legend(loc='best')
         Axes.set_title("持仓数量")
-        if not self._QSArgs.LSPairs: return Fig
+        if not self._QSArgs.LSPairs: return (Fig,)
         # 多空组合
         nLS = self._Output["多空净值"].shape[1]
         nRow, nCol = 2, 3
