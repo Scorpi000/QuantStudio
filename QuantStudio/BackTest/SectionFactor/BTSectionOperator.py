@@ -12,6 +12,7 @@ from QuantStudio.FactorDataBase.FactorOperation import PanelOperator, SectionOpe
 import QuantStudio.FactorDataBase.FactorOperators as fo
 from QuantStudio.Tools.StrategyTestFun import testPortfolioStrategy_pd
 from QuantStudio.Tools import DataPreprocessingFun
+from QuantStudio.Tools.QSObjects import Panel
 
 # IC
 class _ICModelArgs(QSArgs):
@@ -127,7 +128,8 @@ class MaskPortfolio(SectionOperator):
         else:
             Weight = pd.DataFrame(1, index=idt, columns=SectionIDs)
         if f.UserData["cat_data"]:
-            CatData, x = pd.DataFrame(x[0], index=idt, columns=SectionIDs).fillna("None"), x[1:]
+            CatData, x = pd.DataFrame(x[0], index=idt, columns=SectionIDs), x[1:]
+            CatData = CatData.where(CatData.notnull(), "None")
             if f.UserData["cat_weight"]:
                 CatWeight = pd.DataFrame(x[-1], index=idt, columns=SectionIDs)
             else:
@@ -144,7 +146,8 @@ class MaskPortfolio(SectionOperator):
             Porftolio = (Porftolio.T / Porftolio.sum(axis=1)).T
             return Porftolio.reindex(index=idt, columns=iid).values
         else:
-            Rslt = pd.DataFrame({"mask": Mask.stack(), "weight": Weight.stack(), "cat_data": CatData.stack(), "cat_weight": CatWeight.stack()}).reset_index()
+            #Rslt = pd.DataFrame({"mask": Mask.stack(), "weight": Weight.stack(), "cat_data": CatData.stack(), "cat_weight": CatWeight.stack()}).reset_index()
+            Rslt = Panel({"mask": Mask, "weight": Weight, "cat_data": CatData, "cat_weight": CatWeight}).to_frame().reset_index()
             Rslt.columns = ["dt", "id"] + Rslt.columns[2:].tolist()
             if not Rslt["mask"].any(): return np.full(shape=(len(idt), len(iid)), fill_value=np.nan, dtype=float)
             Tmp = Rslt.groupby(["dt", "cat_data"])[["cat_weight"]].sum().reset_index()
