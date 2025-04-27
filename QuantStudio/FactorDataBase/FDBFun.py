@@ -1678,6 +1678,7 @@ class SQL_MappingTable(SQL_Table):
         MultiMapping = Enum(False, True, label="多重映射", arg_type="Bool", order=1)
         #EndDTField = Enum(None, arg_type="SingleOption", label="结束时点字段", order=2)
         EndDTIncluded = Enum(True, False, label="包含结束时点", arg_type="Bool", order=3)
+        StartDTNullable = Enum(False, True, label="起始时点可空", arg_type="Bool", order=4)
         def __QS_initArgs__(self, args={}):
             super().__QS_initArgs__(args=args)
             # 解析结束时点字段
@@ -1764,17 +1765,23 @@ class SQL_MappingTable(SQL_Table):
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr, args=args)+" "
         SQLStr += self._genIDSQLStr(ids, init_keyword="WHERE", args=args)+" "
         SQLStr += self._genConditionSQLStr(use_main_table=True, args=args)+" "
+        StartDTNullable = args.get("起始时点可空", self._QSArgs.StartDTNullable)
         if StartDT is not None:
             SQLStr += "AND (("+EndDTField+">="+StartDT.strftime(DTFormat)+") "
             SQLStr += "OR ("+EndDTField+" IS NULL) "
             SQLStr += "OR ("+EndDTField+"<"+DTField+")) "
         if EndDT is not None:
-            SQLStr += "AND "+DTField+"<="+EndDT.strftime(DTFormat)+" "
+            if StartDTNullable:
+                SQLStr += "AND (("+DTField+"<="+EndDT.strftime(DTFormat)+") "
+                SQLStr += "OR ("+DTField+" IS NULL)) "
+            else:
+                SQLStr += "AND "+DTField+"<="+EndDT.strftime(DTFormat)+" "
         SQLStr += "ORDER BY ID, "+DTField
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["ID", "QS_起始日", "QS_结束日"]+factor_names)
         RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "QS_起始日", "QS_结束日"]+factor_names)
         RawData["QS_起始日"] = self.__QS_adjustDT__(RawData["QS_起始日"], args=args)
+        if StartDTNullable: RawData["QS_起始日"] = RawData["QS_起始日"].fillna(dt.datetime(1970, 1, 1))
         RawData["QS_结束日"] = self.__QS_adjustDT__(RawData["QS_结束日"], args=args)
         RawData["ID"] = self.__QS_restoreID__(RawData["ID"])
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names, args=args)
