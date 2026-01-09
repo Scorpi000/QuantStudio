@@ -1,12 +1,15 @@
 # coding=utf-8
 """数据结构"""
+import json
 import pickle
+import hashlib
+import inspect
+from typing import Any, Dict, Callable, Set
 
 import numpy as np
 import pandas as pd
 import h5py
 
-from QuantStudio import __QS_Error__
 
 # ---------------------嵌套字典--------------------------
 # 拷贝嵌套字典, 
@@ -121,7 +124,7 @@ def traverseNestedDict(nested_dict, axis=np.inf):
 def swapaxesNestedDictDataFrame(nested_dict, axis1, axis2):
     Depth = getNestDepth(nested_dict)+2
     if (axis1>=Depth) or (axis2>=Depth):
-        raise __QS_Error__("给出的交换层级: '%d'<->'%d' 超出了嵌套深度 '%d'" % (axis1, axis2, Depth))
+        raise Exception("给出的交换层级: '%d'<->'%d' 超出了嵌套深度 '%d'" % (axis1, axis2, Depth))
     axis1, axis2 = min(axis1, axis2), max(axis1, axis2)
     if axis1==axis2:
         return nested_dict
@@ -151,16 +154,223 @@ def swapaxesNestedDictDataFrame(nested_dict, axis1, axis2):
             NewDict = setNestedDictValue(NewDict, iKeyList, pd.DataFrame(iVal).T.sort_index(axis=0))
     return NewDict
 
-if __name__=="__main__":
-    import datetime as dt
+# ---------------------对象唯一ID--------------------------
+def serialize_function(func: Callable, visited: Set[int]) -> Dict[str, Any]:
+    """
+    序列化函数的核心特征：
+    - 字节码、常量、变量名
+    - 闭包捕获的值
+    - 默认参数
+    """
+    code = func.__code__
+
+    # 处理闭包
+    closure = None
+    if func.__closure__:
+        closure = [serialize_value(cell.cell_contents, visited) for cell in func.__closure__]
+
+    return {
+        '__type__': 'function',
+        # 'name': func.__name__,
+        # 'doc': func.__doc__ or '',
+        'code': code.co_code.hex(),# 字节码
+        # 'consts': [serialize_value(c, visited) for c in code.co_consts],
+        'names': code.co_names,# 引用的全局变量名
+        # 'varnames': code.co_varnames,# 局部变量名
+        # 'argcount': code.co_argcount,
+        'defaults': serialize_value(func.__defaults__, visited),
+        # 'freevars': code.co_freevars,# 闭包变量名
+        'closure': closure
+    }
+
+def serialize_object(obj: Any, visited: Set[int]) -> Dict[str, Any]:
+    """序列化普通对象的类和属性"""
+    return {
+        '__type__': 'object',
+        '__class__': obj.__class__.__name__,
+        '__module__': obj.__class__.__module__,
+        'attributes': {k: serialize_value(v, visited) for k, v in sorted(obj.__dict__.items())}
+    }
+
+def serialize_pandas(df: pd.DataFrame | pd.Series, visited: Set[int]):
+    return {
+        '__type__': 'pandas.DataFrame' if isinstance(df, pd.DataFrame) else "pandas.Series",
+        "value": serialize_value(df.to_dict(), visited)
+    }
+
+def serialize_numpy(a: np.ndarray, visited: Set[int]):
+    return {
+        "__type__": "numpy.ndarray",
+        "value": serialize_value(a.flatten(order="C"), visited)
+    }
+
+def serialize_value(value: Any, visited: Set[int] = None) -> Any:
+    """
+    将任意值序列化为可哈希的字典/列表/基本类型结构
+    支持循环引用检测
+    """
+    if visited is None:
+        visited = set()
+
+    # 处理循环引用
+    obj_id = id(value)
+    if obj_id in visited:
+        return {'__ref__': obj_id}
+    visited.add(obj_id)
+
+    try:
+        # 基本不可变类型直接返回
+        if isinstance(value, (int, float, str, bool, type(None))):
+            return value
+        # 容器类型递归处理
+        elif isinstance(value, (list, tuple)):
+            return [serialize_value(v, visited) for v in value]
+        elif isinstance(value, dict):
+            return {serialize_value(k, visited): serialize_value(v, visited) for k, v in sorted(value.items())}
+        # 函数和方法
+        elif inspect.isfunction(value):
+            return serialize_function(value, visited)
+        elif inspect.ismethod(value):
+            return serialize_function(value.__func__, visited)
+        # pandas 对象
+        elif isinstance(value, (pd.DataFrame, pd.Series)):
+            return serialize_pandas(value, visited)
+        # numpy 对象
+        elif isinstance(value, np.ndarray):
+            return serialize_numpy(value, visited)
+        # 普通对象
+        elif hasattr(value, '__dict__'):
+            return serialize_object(value, visited)
+        # 其他类型（如内置类型）
+        else:
+            return {
+                '__type__': 'other',
+                '__class__': value.__class__.__name__,
+                'repr': repr(value)
+            }
+    finally:
+        visited.remove(obj_id)
+
+def generate_object_id(obj: Any) -> str:
+    """
+    为Python对象生成唯一且稳定的ID
+
+    特性：
+    1. 基于对象内容和结构生成SHA256哈希
+    2. 属性相同的对象(包括函数)ID相同
+    3. 跨程序重启ID保持不变
+    4. 支持循环引用
+
+    限制说明：
+    1. 对于动态修改__dict__的对象，修改后ID会变化
+    2. 闭包函数会捕获cell_contents的值，但不同运行时相同的闭包值会产生相同ID
+    3. 外部全局变量变化不会影响函数ID（只监控函数体本身）
+    4. 对于C扩展对象或内置类型，可能无法完美序列化
+    5. 大对象序列化可能有性能开销，建议缓存ID
+
+    返回：40字符的16进制哈希字符串
+    """
+    visited = set()
+    serialized = serialize_value(obj, visited)
+
+    # 确定性JSON序列化
+    json_str = json.dumps(
+        serialized,
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(',', ':')
+    )
+
+    # 生成SHA256哈希
+    return hashlib.sha256(json_str.encode('utf-8')).hexdigest()
+
+def dict2id(d):
+    json_str = json.dumps(
+        serialize_value(d, visited=set()),
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(',', ':')
+    )
+    return hashlib.sha256(json_str.encode('utf-8')).hexdigest()
+
+if __name__ == "__main__1":
     Bar2 = pd.DataFrame(np.random.randn(3,2), index=["中文", "b2", "b3"], columns=["中文", "我是个例子"])
     Bar2.iloc[0,0] = np.nan
-    TestData = {"Bar1":{"a": {"a1": pd.DataFrame(np.random.rand(5,3)),
-                                              "a2": pd.DataFrame(np.random.rand(4,3))},
-                                      "b": pd.DataFrame(['a']*150,columns=['c'])},
-                          "Bar2": Bar2}
+    TestData = {
+        "Bar1": {
+            "a": {
+                "a1": pd.DataFrame(np.random.rand(5,3)),
+                "a2": pd.DataFrame(np.random.rand(4,3))
+            },
+            "b": pd.DataFrame(['a']*150,columns=['c'])
+        },
+        "Bar2": Bar2
+    }
     Depth = getNestDepth(TestData)
     print(Depth)
-    #for iKeyList, iVal in traverseNestedDict(TestData, axis=1):
-        #print(iKeyList, " : ", iVal)
+    for iKeyList, iVal in traverseNestedDict(TestData, axis=1):
+        print(iKeyList, " : ", iVal)
     print(swapaxesNestedDictDataFrame(TestData, 1, 3))
+
+if __name__ == "__main__":
+    x1, x2 = 4, 4
+
+
+    # 测试1：函数ID一致性
+    def aha1():
+        y1 = 3
+
+        def func_a(a1, a2=1, **kwargs):
+            global x1
+            return f"hello{x1 + y1 + a2}"
+
+        return func_a
+
+
+    def aha2():
+        y2 = 3
+
+        def func_b(b1, b2=2, **kwargs):
+            global x2
+            return f"hello{x2 + y2 + b2}"
+
+        return func_b
+
+
+    print(serialize_function(aha1(), visited=set()))
+    print(serialize_function(aha2(), visited=set()))
+
+
+    def example_function(x):
+        """示例函数"""
+        return x * 2
+
+
+    class User:
+        def __init__(self, name, age, handler):
+            self.name = name
+            self.age = age
+            self.handler = handler
+            self.tags = ['user', 'active']
+
+        def __repr__(self):
+            return f"User({self.name})"
+
+
+    # 测试2：对象ID一致性
+    user1 = User("Alice", 30, example_function)
+    user2 = User("Alice", 30, example_function)  # 相同属性
+    user3 = User("Bob", 25, example_function)  # 不同属性
+
+    id1 = generate_object_id(user1)
+    id2 = generate_object_id(user2)
+    id3 = generate_object_id(user3)
+
+    print(f"相同属性对象ID一致: {id1 == id2}")  # True
+    print(f"不同属性对象ID不同: {id1 == id3}")  # False
+
+    df1 = pd.DataFrame(np.random.randn(5, 3))
+    df2 = df1.copy()
+    print(serialize_object(df1, visited=set()))
+    print(serialize_object(df2, visited=set()))
+

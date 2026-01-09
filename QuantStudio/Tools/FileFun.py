@@ -14,7 +14,7 @@ import pandas as pd
 import fasteners
 import openpyxl
 
-from QuantStudio import __QS_Error__
+from QuantStudio.Core import __QS_Error__
 
 # 产生一个有效的文件
 def genAvailableFile(header, target_dir, suffix="csv", name_num=1, check_header=True, ignore_case=True, lock_file=".LockFile"):

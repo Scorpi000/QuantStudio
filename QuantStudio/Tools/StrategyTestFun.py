@@ -15,7 +15,7 @@ import statsmodels.api as sm
 
 from QuantStudio.Tools.DateTimeFun import getDateSeries
 from QuantStudio.Tools.FileFun import listDirFile, readCSV2Pandas
-from QuantStudio import __QS_Error__
+from QuantStudio.Core import __QS_Error__
 
 # 迭代法求解在考虑交易费且无交易限制假设下执行交易后的财富值
 # p_holding: 当前持有的投资组合, Series(权重,index=[ID])
