@@ -1,10 +1,12 @@
 import datetime as dt
+from collections import OrderedDict
 from typing import List, Optional, Any
 
 import pandas as pd
 
 from QuantStudio.Core import __QS_Error__
 from QuantStudio.Core.Node import Node, Context
+from QuantStudio.Core.QSObject import Panel
 
 
 class FactorContext(Context):
@@ -23,19 +25,26 @@ class Factor(Node):
 
     def __init__(self, descriptors: List["Factor"] = [], args: dict = {}, config_file: Optional[str] = None, **kwargs):
         return super().__init__(deps=descriptors, args=args, config_file=config_file, **kwargs)
+    
+    @property
+    def FactorDB(self):
+        return None
 
     @property
     def Descriptors(self):
         return self.Deps
 
     # 获取 ID 序列
-    def getID(self, idt=None):
+    def getID(self, idt=None, **kwargs):
         return []
 
     # 获取时间点序列
-    def getDateTime(self, iid=None, start_dt=None, end_dt=None):
+    def getDateTime(self, iid=None, start_dt=None, end_dt=None, **kwargs):
         return []
-
+    
+    def readData(self, ids, dts):
+        raise NotImplementedError
+    
     # init_data: {"start_dt", "section_ids"}
     def init_compute(self, path: List[str], init_data: Any, context: Context) -> List[Any]:
         FactorState = context.NodeState.setdefault(self.QSID, {})
@@ -47,20 +56,33 @@ class Factor(Node):
         if self.QSID in path: return []
         return [init_data] * len(self.Deps)
 
+
 class CompoundFactor(Factor):
     """复合因子"""
     class __QS_ArgClass__(Factor.__QS_ArgClass__):
         pass
 
     def __init__(self, descriptors: List["Factor"] = [], args: dict = {}, config_file: Optional[str] = None, **kwargs):
-        return super().__init__(deps=descriptors, args=args, config_file=config_file, **kwargs)
-
+        super().__init__(deps=descriptors, args=args, config_file=config_file, **kwargs)
+        self._Descriptors = OrderedDict((iFactor._QSArgs.Name, iFactor) for iFactor in self.Deps)
+        if len(self._Descriptors)<len(self.Deps):
+            raise __QS_Error__(f"因子有重名: {[iFactor._QSArgs.Name for iFactor in self.Deps]}")
+    
+    @property
+    def FactorNames(self):
+        return list(self._Descriptors.keys())
+    
     # 返回因子对象
-    def getFactor(self, factor_name, sub_factor_name=None, args={}):
-        return None
+    def getFactor(self, factor_name, args={}):
+        return self._Descriptors[factor_name]
 
     def __getitem__(self, factor_name):
-        return self.getFactor(table_name)
+        return self.getFactor(factor_name)
+    
+    def readData(self, ids, dts, factor_names=None):
+        if not factor_names: factor_names = self.FactorNames
+        Data = {iFactor: self.getFactor(iFactor).readData(ids=ids, dts=dts) for iFactor in factor_names}
+        return Panel(Data, items=factor_names, major_axis=dts, minor_axis=ids)
 
 
 class DataFactor(Factor):

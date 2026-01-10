@@ -121,7 +121,10 @@ class __QS_Object__:
                     FileStr = File.read()
                     if FileStr: Config = json.loads(FileStr)
             else:
+                self._ConfigFile = None
                 self._QS_Logger.warning("找不到配置文件")
+        else:
+            self._ConfigFile = None
         args = Config | args | {"Owner": self, "Logger": self._QS_Logger}
         self._QSArgs = self.__QS_ArgClass__(**args)
 
@@ -145,7 +148,11 @@ class __QS_Object__:
     @property
     def Logger(self):
         return self._QS_Logger
-
+    
+    def new(self, args={}):
+        args = self._QSArgs.model_dump() | args
+        return self.__class__(args=args, config_file=self._ConfigFile, logger=self._QS_Logger)
+    
     def _repr_html_(self):
         HTML = f"<b>类</b>: {html.escape(str(self.__class__.__name__))}<br/>"
         HTML += f"<b>文档</b>: {html.escape(self.__doc__ if self.__doc__ else '')}<br/>"

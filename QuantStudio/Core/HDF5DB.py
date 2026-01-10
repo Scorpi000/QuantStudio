@@ -16,13 +16,12 @@ import h5py
 from pydantic import Field, DirectoryPath
 
 from QuantStudio.Core import __QS_Error__, __QS_ConfigPath__
-# from QuantStudio.Tools.api import Panel
 from QuantStudio.Core.FactorDB import WritableFactorDB
-from QuantStudio.Core.Factor import CompoundFactor
-# from QuantStudio.FactorDataBase.FDBFun import adjustDataDTID
-from QuantStudio.Tools.FileFun import listDirDir, listDirFile
+from QuantStudio.Core.Factor import CompoundFactor, Factor
+from QuantStudio.Core.utils import adjustDataDTID
+from QuantStudio.Core.QSObject import QSFileLock, Panel
+from QuantStudio.Tools.FileFun import listDirFile
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
-from QuantStudio.Tools.QSObjects import QSFileLock
 
 
 def _identifyDataType(factor_data, data_type=None):
@@ -55,36 +54,47 @@ def _adjustData(data, data_type, order="C"):
         raise __QS_Error__("不支持的数据类型: %s" % data_type)
 
 
-class _CompoundFactor(CompoundFactor):
+class _HDF5CompoundFactor(CompoundFactor):
     """HDF5DB 复合因子"""
 
+    def __init__(self, fdb, args={}, **kwargs):
+        self._FactorDB = fdb
+        self._Suffix = fdb._Suffix# 文件后缀名
+        return super().__init__(descriptors=[], args=args, **kwargs)
+    
+    @property
+    def FactorNames(self):
+        return sorted(listDirFile(self._FactorDB._QSArgs.MainDir / self._QSArgs.Name, suffix=self._Suffix))
+
+    def getMetaData(self, key=None):
+        with self._FactorDB._getLock(self._QSArgs.Name) as DataLock:
+            if not os.path.isfile(self._FactorDB._QSArgs.MainDir / self._QSArgs.Name / "_CompoundFactorInfo.h5"):
+                return (pd.Series() if key is None else None)
+            if key is None:
+                return pd.Series(readNestedDictFromHDF5(self._FactorDB._QSArgs.MainDir / self._QSArgs.Name / "_CompoundFactorInfo.h5", "/"))
+            else:
+                return readNestedDictFromHDF5(self._FactorDB._QSArgs.MainDir / self.Name / "_CompoundFactorInfo.h5", f"/{key}")
+
+    
+class HDF5Factor(Factor):
     class __QS_ArgClass__(CompoundFactor.__QS_ArgClass__):
+        CompoundFactor: str = Field(title="所属复合因子", frozen=True)
         LookBack: int | Literal[np.inf] = Field(default=0, title="回溯天数", frozen=True)
         OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True)
         OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True)
         OnlyLookBackDT: bool = Field(default=False, title="只回溯时点", frozen=True)
         TargetDT: Optional[dt.datetime] = Field(default=None, title="目标时点", frozen=True)
-
-    def __init__(self, name, fdb, sys_args={}, **kwargs):
+    
+    def __init__(self, fdb, compound_factor, args={}, **kwargs):
+        self._FactorDB = fdb
         self._Suffix = fdb._Suffix  # 文件后缀名
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
-
-    @property
-    def FactorNames(self):
-        return sorted(listDirFile(self._FactorDB._QSArgs.MainDir + os.sep + self.Name, suffix=self._Suffix))
-
-    def getMetaData(self, key=None, args={}):
-        with self._FactorDB._getLock(self._Name) as DataLock:
-            if not os.path.isfile(self._FactorDB._QSArgs.MainDir + os.sep + self.Name + os.sep + "_TableInfo.h5"):
-                return (pd.Series() if key is None else None)
-            if key is None:
-                return pd.Series(readNestedDictFromHDF5(
-                    self._FactorDB._QSArgs.MainDir + os.sep + self.Name + os.sep + "_TableInfo.h5", "/"))
-            else:
-                return readNestedDictFromHDF5(
-                    self._FactorDB._QSArgs.MainDir + os.sep + self.Name + os.sep + "_TableInfo.h5", f"/{key}")
-
-    def getFactorMetaData(self, factor_names=None, key=None, args={}):
+        return super().__init__(descriptors=[], args=args, **kwargs)
+    
+    def new(self, args={}):
+        args = self._QSArgs.model_dump() | args
+        return self.__class__(fdb=self._FactorDB, args=args, logger=self._QS_Logger)
+    
+    def getMetaData(self, factor_names=None, key=None, args={}):
         AllFactorNames = self.FactorNames
         if factor_names is None:
             factor_names = AllFactorNames
@@ -105,31 +115,26 @@ class _CompoundFactor(CompoundFactor):
         if key is None:
             return pd.DataFrame(MetaData).T.reindex(index=factor_names)
         else:
-            return pd.Series(MetaData).reindex(index=factor_names)
+            return pd.Series(MetaData).reindex(index=factor_names)    
 
-    def getID(self, ifactor_name=None, idt=None, args={}):
-        if ifactor_name is None: ifactor_name = self.FactorNames[0]
-        with self._FactorDB._getLock(self._Name) as DataLock:
+    def getID(self, idt=None, **kwargs):
+        with self._FactorDB._getLock(self._QSArgs.CompoundFactor) as DataLock:
             with self._FactorDB._openHDF5File(
-                    self._FactorDB._QSArgs.MainDir + os.sep + self.Name + os.sep + ifactor_name + "." + self._Suffix,
-                    mode="r") as ijFile:
+                    self._FactorDB._QSArgs.MainDir / self._QSArgs.CompoundFactor / f"{self._QSArgs.Name}.{self._Suffix}", mode="r") as ijFile:
                 if h5py.version.version >= "3.0.0":
                     IDs = ijFile["ID"].asstr(encoding="utf-8")[...]
                 else:
                     IDs = ijFile["ID"][...]
         IDs = sorted(IDs)
         if idt is not None:
-            Data = self.readFactorData(ifactor_name, ids=IDs, dts=[idt]).iloc[0]
+            Data = self.readData(ids=IDs, dts=[idt]).iloc[0]
             return Data[pd.notnull(Data)].index.tolist()
         else:
             return IDs
-
-    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
-        if ifactor_name is None: ifactor_name = self.FactorNames[0]
-        with self._FactorDB._getLock(self._Name) as DataLock:
-            with self._FactorDB._openHDF5File(
-                    self._FactorDB._QSArgs.MainDir + os.sep + self.Name + os.sep + ifactor_name + "." + self._Suffix,
-                    mode="r") as ijFile:
+    
+    def getDateTime(self, iid=None, start_dt=None, end_dt=None, **kwargs):
+        with self._FactorDB._getLock(self._QSArgs.CompoundFactor) as DataLock:
+            with self._FactorDB._openHDF5File(self._FactorDB._QSArgs.MainDir / self._QSArgs.CompoundFactor / (self._QSArgs.Name + "." + self._Suffix), mode="r") as ijFile:
                 Timestamps = ijFile["DateTime"][...]
         if start_dt is not None:
             if isinstance(start_dt, pd.Timestamp) and (pd.__version__ >= "0.20.0"):
@@ -145,21 +150,16 @@ class _CompoundFactor(CompoundFactor):
             Timestamps = Timestamps[Timestamps <= end_dt]
         DTs = sorted(dt.datetime.fromtimestamp(iTimestamp) for iTimestamp in Timestamps)
         if iid is not None:
-            Data = self.readFactorData(ifactor_name, ids=[iid], dts=DTs).iloc[:, 0]
+            Data = self.readData(ids=[iid], dts=DTs).iloc[:, 0]
             return Data[pd.notnull(Data)].index.tolist()
         else:
-            return DTs
-
-    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        Data = {iFactor: self.readFactorData(ifactor_name=iFactor, ids=ids, dts=dts, args=args) for iFactor in
-                factor_names}
-        return Panel(Data, items=factor_names, major_axis=dts, minor_axis=ids)
-
-    def _readFactorData(self, ifactor_name, ids, dts, args={}):
-        FilePath = self._FactorDB._QSArgs.MainDir + os.sep + self.Name + os.sep + ifactor_name + "." + self._Suffix
-        if not os.path.isfile(FilePath): raise __QS_Error__(
-            "因子库 '%s' 的因子表 '%s' 中不存在因子 '%s'!" % (self._FactorDB.Name, self.Name, ifactor_name))
-        with self._FactorDB._getLock(self._Name) as DataLock:
+            return DTs    
+    
+    
+    def _readData(self, ids, dts):
+        FilePath = self._FactorDB._QSArgs.MainDir / self._QSArgs.CompoundFactor / (self._QSArgs.Name + "." + self._Suffix)
+        if not os.path.isfile(FilePath): raise __QS_Error__("因子库 '%s' 的复合因子 '%s' 中不存在因子 '%s'!" % (self._FactorDB.Name, self._QSArgs._CompoundFactor, self._QSArgs.Name))
+        with self._FactorDB._getLock(self._QSArgs.CompoundFactor) as DataLock:
             with self._FactorDB._openHDF5File(FilePath, mode="r") as DataFile:
                 DataType = DataFile.attrs["DataType"]
                 DateTimes = DataFile["DateTime"][...]
@@ -170,19 +170,16 @@ class _CompoundFactor(CompoundFactor):
                 if dts is None:
                     if ids is None:
                         if (h5py.version.version >= "3.0.0") and (DataType == "string"):
-                            Rslt = pd.DataFrame(DataFile["Data"].asstr(encoding="utf-8")[...], index=DateTimes,
-                                                columns=IDs).sort_index(axis=1)
+                            Rslt = pd.DataFrame(DataFile["Data"].asstr(encoding="utf-8")[...], index=DateTimes, columns=IDs).sort_index(axis=1)
                         else:
                             Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).sort_index(axis=1)
                     elif set(ids).isdisjoint(IDs):
                         Rslt = pd.DataFrame(index=DateTimes, columns=ids)
                     else:
                         if (h5py.version.version >= "3.0.0") and (DataType == "string"):
-                            Rslt = pd.DataFrame(DataFile["Data"].asstr(encoding="utf-8")[...], index=DateTimes,
-                                                columns=IDs).reindex(columns=ids)
+                            Rslt = pd.DataFrame(DataFile["Data"].asstr(encoding="utf-8")[...], index=DateTimes, columns=IDs).reindex(columns=ids)
                         else:
-                            Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).reindex(
-                                columns=ids)
+                            Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).reindex(columns=ids)
                     Rslt.index = [dt.datetime.fromtimestamp(itms) for itms in Rslt.index]
                 elif (ids is not None) and set(ids).isdisjoint(IDs):
                     Rslt = pd.DataFrame(index=dts, columns=ids)
@@ -205,29 +202,22 @@ class _CompoundFactor(CompoundFactor):
                         DateTimes = DateTimes.index.values
                         if ids is None:
                             if (h5py.version.version >= "3.0.0") and (DataType == "string"):
-                                Rslt = pd.DataFrame(DataFile["Data"].asstr(encoding="utf-8")[Mask, :], index=DateTimes,
-                                                    columns=IDs).reindex(index=dts).sort_index(axis=1)
+                                Rslt = pd.DataFrame(DataFile["Data"].asstr(encoding="utf-8")[Mask, :], index=DateTimes, columns=IDs).reindex(index=dts).sort_index(axis=1)
                             else:
-                                Rslt = pd.DataFrame(DataFile["Data"][Mask, :], index=DateTimes, columns=IDs).reindex(
-                                    index=dts).sort_index(axis=1)
+                                Rslt = pd.DataFrame(DataFile["Data"][Mask, :], index=DateTimes, columns=IDs).reindex(index=dts).sort_index(axis=1)
                         else:
                             IDRuler = pd.Series(np.arange(0, IDs.shape[0]), index=IDs)
                             IDRuler = IDRuler.reindex(index=ids)
                             StartInd, EndInd = int(IDRuler.min()), int(IDRuler.max())
                             if (h5py.version.version >= "3.0.0") and (DataType == "string"):
-                                Rslt = pd.DataFrame(DataFile["Data"].asstr(encoding="utf-8")[Mask, StartInd:EndInd + 1],
-                                                    index=DateTimes, columns=IDs[StartInd:EndInd + 1]).reindex(
-                                    index=dts, columns=ids)
+                                Rslt = pd.DataFrame(DataFile["Data"].asstr(encoding="utf-8")[Mask, StartInd:EndInd + 1], index=DateTimes, columns=IDs[StartInd:EndInd + 1]).reindex(index=dts, columns=ids)
                             else:
-                                Rslt = pd.DataFrame(DataFile["Data"][Mask, StartInd:EndInd + 1], index=DateTimes,
-                                                    columns=IDs[StartInd:EndInd + 1]).reindex(index=dts, columns=ids)
+                                Rslt = pd.DataFrame(DataFile["Data"][Mask, StartInd:EndInd + 1], index=DateTimes, columns=IDs[StartInd:EndInd + 1]).reindex(index=dts, columns=ids)
                     else:
                         if (h5py.version.version >= "3.0.0") and (DataType == "string"):
-                            Rslt = pd.DataFrame(DataFile["Data"].asstr(encoding="utf-8")[...],
-                                                index=DataFile["DateTime"][...], columns=IDs).reindex(index=dts)
+                            Rslt = pd.DataFrame(DataFile["Data"].asstr(encoding="utf-8")[...], index=DataFile["DateTime"][...], columns=IDs).reindex(index=dts)
                         else:
-                            Rslt = pd.DataFrame(DataFile["Data"][...], index=DataFile["DateTime"][...],
-                                                columns=IDs).reindex(index=dts)
+                            Rslt = pd.DataFrame(DataFile["Data"][...], index=DataFile["DateTime"][...], columns=IDs).reindex(index=dts)
                         if ids is not None:
                             Rslt = Rslt.reindex(columns=ids)
                         else:
@@ -241,44 +231,33 @@ class _CompoundFactor(CompoundFactor):
                 lambda x: pickle.loads(bytes(x)) if isinstance(x, np.ndarray) and (x.shape[0] > 0) else None)
         return Rslt.sort_index(axis=0)
 
-    def readFactorData(self, ifactor_name, ids, dts, args={}):
-        TargetDT = args.get("目标时点", self._QSArgs.TargetDT)
-        if TargetDT:
-            Args = args.copy()
-            Args["目标时点"] = None
-            Data = self.readFactorData(ifactor_name=ifactor_name, ids=ids, dts=[TargetDT], args=Args)
-            if dts is None: dts = self.getDateTime(ifactor_name=ifactor_name)
-            if ids is None: ids = self.getID(ifactor_name=ifactor_name)
+    def readData(self, ids, dts):
+        if self._QSArgs.TargetDT:
+            Data = self.new(args={"TargetDT": None}).readData(ids=ids, dts=[self._QSArgs.TargetDT])
+            if dts is None: dts = self.getDateTime()
+            if ids is None: ids = self.getID()
             return pd.DataFrame(Data.values.repeat(repeats=len(dts), axis=0), index=dts, columns=ids)
-        LookBack = args.get("回溯天数", self._QSArgs.LookBack)
-        if LookBack == 0: return self._readFactorData(ifactor_name, ids, dts, args=args)
+        LookBack = self._QSArgs.LookBack
+        if LookBack == 0: return self._readData(ids, dts)
         if np.isinf(LookBack):
-            RawData = self._readFactorData(ifactor_name, ids, None, args=args)
+            RawData = self._readData(ids, None)
         else:
             if dts is not None:
                 StartDT = dts[0] - dt.timedelta(LookBack)
-                iDTs = self.getDateTime(ifactor_name=ifactor_name, start_dt=StartDT, end_dt=dts[-1], args=args)
+                iDTs = self.getDateTime(start_dt=StartDT, end_dt=dts[-1])
             else:
                 iDTs = None
-            RawData = self._readFactorData(ifactor_name, ids, iDTs, args=args)
-        if not args.get("只回溯时点", self._QSArgs.OnlyLookBackDT):
-            RawData = Panel({ifactor_name: RawData})
-            return adjustDataDTID(RawData, LookBack, [ifactor_name], ids, dts,
-                                  args.get("只起始日回溯", self._QSArgs.OnlyStartLookBack),
-                                  args.get("只回溯非目标日", self._QSArgs.OnlyLookBackNontarget),
-                                  logger=self._QS_Logger).iloc[0]
+            RawData = self._readData(ids, iDTs)
+        if not self._QSArgs.OnlyLookBackDT:
+            RawData = Panel({self._QSArgs.Name: RawData})
+            return adjustDataDTID(RawData, LookBack, [self._QSArgs.Name], ids, dts, self._QSArgs.OnlyStartLookBack, self._QSArgs.OnlyLookBackNontarget, logger=self._QS_Logger).iloc[0]
         RawData = RawData.dropna(axis=0, how="all").dropna(axis=1, how="all")
         RowIdxMask = pd.isnull(RawData)
         if RowIdxMask.shape[1] == 0: return pd.DataFrame(index=dts, columns=ids)
         RawIDs = RowIdxMask.columns
-        RowIdx = pd.DataFrame(
-            np.arange(RowIdxMask.shape[0]).reshape((RowIdxMask.shape[0], 1)).repeat(RowIdxMask.shape[1], axis=1),
-            index=RowIdxMask.index, columns=RawIDs)
+        RowIdx = pd.DataFrame(np.arange(RowIdxMask.shape[0]).reshape((RowIdxMask.shape[0], 1)).repeat(RowIdxMask.shape[1], axis=1), index=RowIdxMask.index, columns=RawIDs)
         RowIdx[RowIdxMask] = np.nan
-        RowIdx = adjustDataDTID(Panel({"RowIdx": RowIdx}), LookBack, ["RowIdx"], RawIDs.tolist(), dts,
-                                args.get("只起始日回溯", self._QSArgs.OnlyStartLookBack),
-                                args.get("只回溯非目标日", self._QSArgs.OnlyLookBackNontarget),
-                                logger=self._QS_Logger).iloc[0].values
+        RowIdx = adjustDataDTID(Panel({"RowIdx": RowIdx}), LookBack, ["RowIdx"], RawIDs.tolist(), dts, self._QSArgs.OnlyStartLookBack, self._QSArgs.OnlyLookBackNontarget, logger=self._QS_Logger).iloc[0].values
         RowIdx[pd.isnull(RowIdx)] = -1
         RowIdx = RowIdx.astype(int)
         ColIdx = np.arange(RowIdx.shape[1]).reshape((1, RowIdx.shape[1])).repeat(RowIdx.shape[0], axis=0)
@@ -286,8 +265,10 @@ class _CompoundFactor(CompoundFactor):
         RawData = RawData.values[RowIdx, ColIdx]
         RawData[RowIdxMask] = None
         return pd.DataFrame(RawData, index=dts, columns=RawIDs).reindex(columns=ids)
-
-
+    
+    
+    
+    
 # 基于 HDF5 文件的因子数据库
 # 每一个复合因子是一个文件夹, 每个因子是一个 HDF5 文件
 # 每个 HDF5 文件有三个 Dataset: DateTime, ID, Data;
