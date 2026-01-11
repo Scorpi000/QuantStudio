@@ -1,4 +1,4 @@
-# coding=utf-8
+# -*- coding: utf-8 -*-
 """基于 HDF5 文件的因子库"""
 import os
 import stat
@@ -54,30 +54,8 @@ def _adjustData(data, data_type, order="C"):
         raise __QS_Error__("不支持的数据类型: %s" % data_type)
 
 
-class _HDF5CompoundFactor(CompoundFactor):
-    """HDF5DB 复合因子"""
-
-    def __init__(self, fdb, args={}, **kwargs):
-        self._FactorDB = fdb
-        self._Suffix = fdb._Suffix# 文件后缀名
-        return super().__init__(descriptors=[], args=args, **kwargs)
-    
-    @property
-    def FactorNames(self):
-        return sorted(listDirFile(self._FactorDB._QSArgs.MainDir / self._QSArgs.Name, suffix=self._Suffix))
-
-    def getMetaData(self, key=None):
-        with self._FactorDB._getLock(self._QSArgs.Name) as DataLock:
-            if not os.path.isfile(self._FactorDB._QSArgs.MainDir / self._QSArgs.Name / "_CompoundFactorInfo.h5"):
-                return (pd.Series() if key is None else None)
-            if key is None:
-                return pd.Series(readNestedDictFromHDF5(self._FactorDB._QSArgs.MainDir / self._QSArgs.Name / "_CompoundFactorInfo.h5", "/"))
-            else:
-                return readNestedDictFromHDF5(self._FactorDB._QSArgs.MainDir / self.Name / "_CompoundFactorInfo.h5", f"/{key}")
-
-    
 class HDF5Factor(Factor):
-    class __QS_ArgClass__(CompoundFactor.__QS_ArgClass__):
+    class __QS_ArgClass__(Factor.__QS_ArgClass__):
         CompoundFactor: str = Field(title="所属复合因子", frozen=True)
         LookBack: int | Literal[np.inf] = Field(default=0, title="回溯天数", frozen=True)
         OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True)
@@ -85,7 +63,7 @@ class HDF5Factor(Factor):
         OnlyLookBackDT: bool = Field(default=False, title="只回溯时点", frozen=True)
         TargetDT: Optional[dt.datetime] = Field(default=None, title="目标时点", frozen=True)
     
-    def __init__(self, fdb, compound_factor, args={}, **kwargs):
+    def __init__(self, fdb, args={}, **kwargs):
         self._FactorDB = fdb
         self._Suffix = fdb._Suffix  # 文件后缀名
         return super().__init__(descriptors=[], args=args, **kwargs)
@@ -94,33 +72,19 @@ class HDF5Factor(Factor):
         args = self._QSArgs.model_dump() | args
         return self.__class__(fdb=self._FactorDB, args=args, logger=self._QS_Logger)
     
-    def getMetaData(self, factor_names=None, key=None, args={}):
-        AllFactorNames = self.FactorNames
-        if factor_names is None:
-            factor_names = AllFactorNames
-        elif set(factor_names).isdisjoint(AllFactorNames):
-            return super().getFactorMetaData(factor_names=factor_names, key=key, args=args)
-        with self._FactorDB._getLock(self._Name) as DataLock:
-            MetaData = {}
-            for iFactorName in factor_names:
-                if iFactorName in AllFactorNames:
-                    with self._FactorDB._openHDF5File(
-                            self._FactorDB._QSArgs.MainDir + os.sep + self.Name + os.sep + iFactorName + "." + self._Suffix,
-                            mode="r") as File:
-                        if key is None:
-                            MetaData[iFactorName] = pd.Series(dict(File.attrs))
-                        elif key in File.attrs:
-                            MetaData[iFactorName] = File.attrs[key]
-        if not MetaData: return super().getFactorMetaData(factor_names=factor_names, key=key, args=args)
-        if key is None:
-            return pd.DataFrame(MetaData).T.reindex(index=factor_names)
-        else:
-            return pd.Series(MetaData).reindex(index=factor_names)    
+    def getMetaData(self, key=None):
+        with self._FactorDB._getLock(self._QSArgs.CompoundFactor) as DataLock:
+            with self._FactorDB._openHDF5File(self._FactorDB._QSArgs.MainDir / self._QSArgs.CompoundFactor / (self._QSArgs.Name + "." + self._Suffix), mode="r") as File:
+                if key is None:
+                    return dict(File.attrs)
+                elif key in File.attrs:
+                    return File.attrs[key]
+                else:
+                    return None
 
     def getID(self, idt=None, **kwargs):
         with self._FactorDB._getLock(self._QSArgs.CompoundFactor) as DataLock:
-            with self._FactorDB._openHDF5File(
-                    self._FactorDB._QSArgs.MainDir / self._QSArgs.CompoundFactor / f"{self._QSArgs.Name}.{self._Suffix}", mode="r") as ijFile:
+            with self._FactorDB._openHDF5File( self._FactorDB._QSArgs.MainDir / self._QSArgs.CompoundFactor / f"{self._QSArgs.Name}.{self._Suffix}", mode="r") as ijFile:
                 if h5py.version.version >= "3.0.0":
                     IDs = ijFile["ID"].asstr(encoding="utf-8")[...]
                 else:
@@ -154,8 +118,7 @@ class HDF5Factor(Factor):
             return Data[pd.notnull(Data)].index.tolist()
         else:
             return DTs    
-    
-    
+
     def _readData(self, ids, dts):
         FilePath = self._FactorDB._QSArgs.MainDir / self._QSArgs.CompoundFactor / (self._QSArgs.Name + "." + self._Suffix)
         if not os.path.isfile(FilePath): raise __QS_Error__("因子库 '%s' 的复合因子 '%s' 中不存在因子 '%s'!" % (self._FactorDB.Name, self._QSArgs._CompoundFactor, self._QSArgs.Name))
@@ -231,7 +194,7 @@ class HDF5Factor(Factor):
                 lambda x: pickle.loads(bytes(x)) if isinstance(x, np.ndarray) and (x.shape[0] > 0) else None)
         return Rslt.sort_index(axis=0)
 
-    def readData(self, ids, dts):
+    def readData(self, ids, dts, **kwargs):
         if self._QSArgs.TargetDT:
             Data = self.new(args={"TargetDT": None}).readData(ids=ids, dts=[self._QSArgs.TargetDT])
             if dts is None: dts = self.getDateTime()
@@ -266,9 +229,32 @@ class HDF5Factor(Factor):
         RawData[RowIdxMask] = None
         return pd.DataFrame(RawData, index=dts, columns=RawIDs).reindex(columns=ids)
     
-    
-    
-    
+
+class HDF5CompoundFactor(CompoundFactor):
+    """HDF5DB 复合因子"""
+    class __QS_ArgClass__(Factor.__QS_ArgClass__):
+        LookBack: int | Literal[np.inf] = Field(default=0, title="回溯天数", frozen=True)
+        OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True)
+        OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True)
+        OnlyLookBackDT: bool = Field(default=False, title="只回溯时点", frozen=True)
+        TargetDT: Optional[dt.datetime] = Field(default=None, title="目标时点", frozen=True)
+
+    def __init__(self, fdb, args={}, **kwargs):
+        self._FactorDB = fdb
+        CompoundFactorName = args["Name"]
+        FactorList = [HDF5Factor(fdb=fdb, args=args | {"CompoundFactor": CompoundFactorName, "Name": iFactorName}, **kwargs) for iFactorName in sorted(listDirFile(self._FactorDB._QSArgs.MainDir / CompoundFactorName, suffix=fdb._Suffix))]
+        return super().__init__(descriptors=FactorList, args=args, **kwargs)
+
+    def getMetaData(self, key=None):
+        with self._FactorDB._getLock(self._QSArgs.Name) as DataLock:
+            if not os.path.isfile(self._FactorDB._QSArgs.MainDir / self._QSArgs.Name / "_CompoundFactorInfo.h5"):
+                return (pd.Series() if key is None else None)
+            if key is None:
+                return pd.Series(readNestedDictFromHDF5(self._FactorDB._QSArgs.MainDir / self._QSArgs.Name / "_CompoundFactorInfo.h5", "/"))
+            else:
+                return readNestedDictFromHDF5(self._FactorDB._QSArgs.MainDir / self.Name / "_CompoundFactorInfo.h5", f"/{key}")
+
+
 # 基于 HDF5 文件的因子数据库
 # 每一个复合因子是一个文件夹, 每个因子是一个 HDF5 文件
 # 每个 HDF5 文件有三个 Dataset: DateTime, ID, Data;
@@ -373,7 +359,7 @@ class HDF5DB(WritableFactorDB):
     def getFactor(self, factor_name, args={}):
         if not os.path.isdir(self._QSArgs.MainDir / factor_name):
             raise __QS_Error__("HDF5DB.getFactor: 因子 '%s' 不存在!" % factor_name)
-        return _CompoundFactor(name=factor_name, fdb=self, args=args, logger=self._QS_Logger)
+        return HDF5CompoundFactor(fdb=self, args={"Name": factor_name}, logger=self._QS_Logger)
 
     def renameFactor(self, old_factor_name, new_factor_name, compound_factor_name=None):
         if old_factor_name == new_factor_name: return 0
@@ -397,7 +383,7 @@ class HDF5DB(WritableFactorDB):
                     shutil.rmtree(FactorPath, ignore_errors=True)
         else:
             FactorPath = self._QSArgs.MainDir / compound_factor_name
-            FactorNames = set(listDirFile(FactorPath, suffix=self._Suffix))
+            FactorNames = listDirFile(FactorPath, suffix=self._Suffix)
             with self._DataLock:
                 if FactorNames == [factor_name]:
                     shutil.rmtree(FactorPath, ignore_errors=True)
@@ -530,9 +516,9 @@ class HDF5DB(WritableFactorDB):
                 factor_data.index = DTs
                 return 0
         if if_exists == "update":
-            self._updateFactorData(factor_data, table_name, ifactor_name, data_type)
+            self._updateFactorData(factor_data, compound_factor_name, factor_name, data_type)
         else:
-            OldData = self.getTable(table_name).readFactorData(ifactor_name=ifactor_name, ids=factor_data.columns.tolist(), dts=DTs.tolist())
+            OldData = self.getFactor(compound_factor_name).readFactorData(ifactor_name=factor_name, ids=factor_data.columns.tolist(), dts=DTs.tolist())
             OldData.index = factor_data.index
             if if_exists == "append":
                 factor_data = OldData.where(pd.notnull(OldData), factor_data)
@@ -542,7 +528,7 @@ class HDF5DB(WritableFactorDB):
                 Msg = ("因子库 '%s' 调用方法 writeFactorData 错误: 不支持的写入方式 '%s'!" % (self.Name, str(if_exists)))
                 self._QS_Logger.error(Msg)
                 raise __QS_Error__(Msg)
-            self._updateFactorData(factor_data, table_name, ifactor_name, data_type)
+            self._updateFactorData(factor_data, compound_factor_name, factor_name, data_type)
         factor_data.index = DTs
         return 0
 
@@ -553,36 +539,29 @@ class HDF5DB(WritableFactorDB):
 
 
 if __name__ == "__main__":
-    from pathlib import Path
     HDB = HDF5DB(args={"MainDir": r"C:\Users\hst\Project\Data\HDF5DB"}).connect()
     print(HDB.Args)
     print(HDB.FactorNames)
 
-    # FT = HDB.getTable("stock_cn_quote_adj_no_nafilled")
-    # print(FT.FactorNames)
-
-    # IDs = FT.getID()
-    # DTs = FT.getDateTime()
-
-    # Data = FT.readData(factor_names=FT.FactorNames, ids=IDs[:5], dts=DTs[-7:])
-    # print(Data)
-
-    # print(Data.iloc[0])
-    # print(Data.loc[:, :, IDs[0]])
-
     df = pd.DataFrame([(None, "aha"), ("中文", "aaa")], index=[dt.datetime(2022, 1, 1), dt.datetime(2022, 1, 2)], columns=["000001.SZ", "000002.SZ"], dtype="O")
-    HDB.writeFactorData(df, compound_factor_name="test_table", factor_name="factor1", data_type="string")
+    HDB.writeFactorData(df, compound_factor_name="test_cfactor", factor_name="factor1", data_type="string")
 
-    # FT = HDB.getTable("test_table")
-    FT = HDB["test_table"]
-    # Data = FT.readData(FT.FactorNames, ids=None, dts=None)
-    F = FT["factor1"]
+    CF = HDB.getFactor("test_cfactor")
+    # CF = HDB["test_cfactor"]
+    print(CF.Args)
+
+    print(CF.FactorNames)
+
+    IDs = CF.getID()
+    print(IDs)
+    DTs = CF.getDateTime()
+    print(DTs)
+
+    Data = CF.readData(ids=None, dts=None, factor_names=CF.FactorNames)
+    print(Data)
+    F = CF.getFactor("factor1")
     print(F)
-    Data = FT[FT.FactorNames]
-    print(Data)
-    Data = FT[FT.FactorNames, [dt.datetime(2022, 1, 1)]]
-    print(Data)
-    Data = FT[FT.FactorNames, dt.datetime(2022, 1, 1)]
+    Data = F.readData(ids=None, dts=None)
     print(Data)
 
     Data = F[[dt.datetime(2022, 1, 1)]]
@@ -592,17 +571,6 @@ if __name__ == "__main__":
     Data = F[dt.datetime(2022, 1, 1), "000002.SZ"]
     print(Data)
 
-    HDB.deleteTable("test_table")
-
-    ## 数据转移
-    # SDB = HDF5DB(sys_args={"主目录": r"D:\Data\HDF5Data_Old"})
-    # SDB.connect()
-    # Tables = ["stock_cn_quote_adj_no_nafilled"]
-    # for iTable in Tables:
-    # iFT = SDB.getTable(iTable)
-    # for jFactor in iFT.FactorNames:
-    # ijData = iFT.readFactorData(jFactor, None, None)
-    ##ijData.columns = [iID.decode("utf-8") for iID in ijData.columns]
-    # HDB.writeFactorData(ijData, iTable, jFactor)
+    HDB.deleteFactor(factor_name="factor1", compound_factor_name="test_cfactor")
 
     print("===")

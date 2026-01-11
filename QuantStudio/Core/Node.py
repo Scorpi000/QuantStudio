@@ -16,7 +16,7 @@ class Context(BaseModel):
 class Node(__QS_Object__):
     """节点类，以节点为中心的计算单元"""
     class __QS_ArgClass__(QSArgs):
-        name: str = Field(frozen=True, title="名称")
+        Name: str = Field(frozen=True, title="名称")
 
     def __init__(self, deps:List["Node"]=[], args:dict={}, config_file:Optional[str]=None, **kwargs):
         self.Deps = deps
