@@ -10,13 +10,12 @@ import numpy as np
 import pandas as pd
 from pydantic import Field, FilePath
 
-from QuantStudio.Tools.api import Panel
-from QuantStudio.Tools.SQLDBFun import genSQLInCondition
-from QuantStudio.Core.QSObject import QSSQLObject
-from QuantStudio.Core import __QS_Error__
 from QuantStudio import __QS_MainPath__, __QS_ConfigPath__
-from QuantStudio.FactorDataBase.FactorDB import FactorDB
-from QuantStudio.FactorDataBase.FDBFun import getInfoFile, adjustDataDTID, SQL_Table, SQL_FeatureTable, SQL_WideTable, SQL_MappingTable, SQL_NarrowTable, SQL_TimeSeriesTable, SQL_ConstituentTable, SQL_FinancialTable
+from QuantStudio.Core import __QS_Error__
+from QuantStudio.Core.QSObject import Panel, QSSQLObject
+from QuantStudio.Tools.SQLDBFun import genSQLInCondition
+from QuantStudio.Core.FactorDB import FactorDB
+from QuantStudio.Core.FactorUtils import getInfoFile, adjustDataDTID, SQL_Table, SQL_FeatureTable, SQL_WideTable, SQL_MappingTable, SQL_NarrowTable, SQL_TimeSeriesTable, SQL_ConstituentTable, SQL_FinancialTable
 
 
 # 将信息源文件中的表和字段信息导入信息文件
@@ -996,17 +995,17 @@ class JYDB(QSSQLObject, FactorDB):
         return self._ExchangeInfo.copy()
 
     @property
-    def TableNames(self):
+    def FactorNames(self):
         if self._TableInfo is not None:
             return self._TableInfo[pd.notnull(self._TableInfo["TableClass"])].index.tolist()
         else:
             return []
 
-    def getTable(self, table_name, args={}):
-        if table_name in self._TableInfo.index:
-            TableClass = args.get("因子表类型", self._TableInfo.loc[table_name, "TableClass"])
+    def getFactor(self, factor_name, args={}):
+        if factor_name in self._TableInfo.index:
+            TableClass = args.get("因子表类型", self._TableInfo.loc[factor_name, "TableClass"])
             if pd.notnull(TableClass) and (TableClass != ""):
-                DefaultArgs = self._TableInfo.loc[table_name, "DefaultArgs"]
+                DefaultArgs = self._TableInfo.loc[factor_name, "DefaultArgs"]
                 if pd.isnull(DefaultArgs):
                     DefaultArgs = {}
                 else:
@@ -1014,9 +1013,9 @@ class JYDB(QSSQLObject, FactorDB):
                 Args = self._QSArgs.FTArgs.copy()
                 Args.update(DefaultArgs)
                 Args.update(args)
-                return eval(
-                    "_" + TableClass + "(name='" + table_name + "', fdb=self, sys_args=Args, logger=self._QS_Logger)")
-        Msg = ("因子库 '%s' 目前尚不支持因子表: '%s'" % (self._QSArgs.Name, table_name))
+                Args["Name"] = factor_name
+                return eval("_" + TableClass + "(fdb=self, args=Args, logger=self._QS_Logger)")
+        Msg = ("因子库 '%s' 目前尚不支持复合因子: '%s'" % (self._QSArgs.Name, factor_name))
         self._QS_Logger.error(Msg)
         raise __QS_Error__(Msg)
 
@@ -1440,5 +1439,5 @@ class JYDB(QSSQLObject, FactorDB):
 
 
 if __name__ == "__main__":
-    iDB = JYDB()
+    iDB = JYDB().connect()
     iDB.getStockID()

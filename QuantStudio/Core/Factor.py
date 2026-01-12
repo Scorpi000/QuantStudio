@@ -3,6 +3,7 @@ import datetime as dt
 from collections import OrderedDict
 from typing import List, Optional, Any, LiteralString
 
+import numpy as np
 import pandas as pd
 from pydantic import Field
 
@@ -89,25 +90,33 @@ class CompoundFactor(Factor):
         return list(self._Descriptors.keys())
     
     # 返回因子对象
-    def getFactor(self, factor_name, args={}):
-        if not args:
-            return self._Descriptors[factor_name]
+    def getFactor(self, factor_name_or_list: str | list[str], args={}):
+        if isinstance(factor_name_or_list, str):
+            if not args:
+                return self._Descriptors[factor_name_or_list]
+            else:
+                return self._Descriptors[factor_name_or_list].new(args=args)
         else:
-            return self._Descriptors[factor_name].new(args=args)
-
+            Descriptors = [self._Descriptors[iFactorName] for iFactorName in factor_name_or_list]
+            Args = self._QSArgs.to_dict(repr=False) | args
+            return CompoundFactor(descriptors=Descriptors, args=Args)
+    
+    def getFactorMetaData(self, factor_name, key=None):
+        return self._Descriptors[factor_name].getMetaData(key=key)
+    
     # 获取 ID 序列
     def getID(self, idt=None, factor_name=None, **kwargs):
         if not factor_name: factor_name = self.FactorNames[0]
-        return self.getFactor(factor_name=factor_name).getID(idt=idt, **kwargs)
+        return self.getFactor(factor_name_or_list=factor_name).getID(idt=idt, **kwargs)
 
     # 获取时间点序列
     def getDateTime(self, iid=None, start_dt=None, end_dt=None, factor_name=None, **kwargs):
         if not factor_name: factor_name = self.FactorNames[0]
-        return self.getFactor(factor_name=factor_name).getDatetime(iid=iid, start_dt=start_dt, end_dt=end_dt, **kwargs)
+        return self.getFactor(factor_name_or_list=factor_name).getDatetime(iid=iid, start_dt=start_dt, end_dt=end_dt, **kwargs)
     
     def readData(self, ids, dts, factor_names=None, **kwargs):
         if not factor_names: factor_names = self.FactorNames
-        Data = {iFactor: self.getFactor(iFactor).readData(ids=ids, dts=dts) for iFactor in factor_names}
+        Data = {iFactor: self.getFactor(factor_name_or_list=iFactor).readData(ids=ids, dts=dts) for iFactor in factor_names}
         return Panel(Data, items=factor_names, major_axis=dts, minor_axis=ids)
 
     def __getitem__(self, key):
@@ -121,6 +130,26 @@ class CompoundFactor(Factor):
         elif isinstance(IDs, str): IDs = [IDs]
         Data = self.readData(IDs, DTs)
         return Data.loc[(slice(None), key)]
+
+
+class CompoundExtractedFactor(Factor):
+    def __init__(self, compound_factor: CompoundFactor, args: dict = {}, config_file: Optional[str] = None, **kwargs):
+        super().__init__(descriptors=[compound_factor], args=args, config_file=config_file, **kwargs)
+        self._CompoundFactor = compound_factor
+        if self._QSArgs.Name not in self._CompoundFactor.FactorNames:
+            raise __QS_Error__(f"复合因子{compound_factor._QSArgs}中不存在因子{self._QSArgs.Name}")
+    
+    def getID(self, idt=None, **kwargs):
+        return self._CompoundFactor.getID(idt=idt, factor_name=self._QSArgs.Name, **kwargs)
+    
+    def getDateTime(self, iid=None, start_dt=None, end_dt=None, **kwargs):
+        return self._CompoundFactor.getDateTime(iid=iid, start_dt=start_dt, end_dt=end_dt, factor_name=self._QSArgs.Name, **kwargs)
+    
+    def readData(self, ids, dts, **kwargs):
+        return self._CompoundFactor.readData(ids=ids, dts=dts, factor_names=[self._QSArgs.Name], **kwargs).loc[self._QSArgs.Name]
+    
+    def getMetaData(self, key=None):
+        return self._CompoundFactor.getFactorMetaData(factor_name=self._QSArgs.Name, key=key)
 
 
 # 直接赋予数据产生的因子
@@ -204,3 +233,17 @@ class DataFactor(Factor):
             return Data.reindex(index=dts, columns=ids)
         else:
             return fillNaByLookback(Data.reindex(index=sorted(Data.index.union(dts)), columns=ids), lookback=self._QSArgs.LookBack * 24.0 * 3600).loc[dts, :]
+
+if __name__=="__main__":
+    nDT, nID = 5, 3
+    DTs = [dt.datetime(2025, 1, 1) + dt.timedelta(i) for i in range(nDT)]
+    IDs = [str(i).zfill(6)+".SZ" for i in range(1, nID+1)]
+    Data = pd.DataFrame(
+        np.random.randn(nDT, nID), 
+        index=DTs,
+        columns=IDs
+    )
+    F = DataFactor(data=Data, args={"Name": "test_factor"})
+    print(F.Args)
+    print(F.readData(ids=IDs, dts=DTs))
+    

@@ -52,9 +52,12 @@ class QSArgs(BaseModel):
             if self.Owner: self.Owner._QS_ID = None
         return super().__setattr__(name, value)
 
-    # 以 dict 形式返回所有可见的参数和参数值
-    def to_dict(self):
-        return {field: getattr(self, field) for field, info in self.__pydantic_fields__.items() if info.repr}
+    # 以 dict 形式返回所有参数和参数值, repr=True: 仅返回可见参数
+    def to_dict(self, repr=True):
+        if repr:
+            return {field: getattr(self, field) for field, info in self.__pydantic_fields__.items() if info.repr}
+        else:
+            return {field: getattr(self, field) for field, info in self.__pydantic_fields__.items()}
 
     def __getitem__(self, key):
         if not hasattr(self, key):
@@ -177,6 +180,7 @@ if __name__ == "__main__":
     print(args.__pydantic_fields__)
     print(args.model_dump())
     print(args.to_dict())
+    print(args.to_dict(repr=False))
     # print(args._repr_html_())
 
     print("===")

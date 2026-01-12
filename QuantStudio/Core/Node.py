@@ -21,6 +21,10 @@ class Node(__QS_Object__):
     def __init__(self, deps:List["Node"]=[], args:dict={}, config_file:Optional[str]=None, **kwargs):
         self.Deps = deps
         return super().__init__(args=args, config_file=config_file, **kwargs)
+    
+    @property
+    def Name(self):
+        return self._QSArgs.Name
 
     def model_dump(self):
         if getattr(self, "_Dumped", False):
