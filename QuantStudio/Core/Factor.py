@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 import datetime as dt
 from collections import OrderedDict
-from typing import List, Optional, Any, LiteralString
+from typing import List, Optional, Any, Literal, Tuple
 
 import numpy as np
 import pandas as pd
-from pydantic import Field
+from pydantic import Field, BaseModel
 
 from QuantStudio.Core import __QS_Error__
 from QuantStudio.Core.Node import Node, Context
@@ -17,11 +17,17 @@ class FactorContext(Context):
     # node_state: {节点ID: {"start_dt", "section_ids"}}
     dt_ruler: List[dt.datetime]
 
+class FactorLocalContext(BaseModel):
+    dts: List[dt.datetime]
+    ids: List[str]
+
 # 因子
 # 因子可看做一个 DataFrame(index=[时间点], columns=[ID])
 # 时间点数据类型是 datetime.datetime, ID 的数据类型是 str
 class Factor(Node):
     """因子"""
+    class __QS_ArgClass__(Node.__QS_ArgClass__):
+        Name: str = Field(default="Factor", frozen=True, title="名称")
 
     def __init__(self, descriptors: List["Factor"] = [], args: dict = {}, config_file: Optional[str] = None, **kwargs):
         return super().__init__(deps=descriptors, args=args, config_file=config_file, **kwargs)
@@ -71,6 +77,12 @@ class Factor(Node):
             raise __QS_Error__(f"因子 {self._QSArgs.name}({self.QSID}) 指定了不同的截面!")
         if self.QSID in path: return []
         return [init_data] * len(self.Deps)
+
+    def forward_compute(self, path: List[str], fwd_data: Any, context: Context) -> Tuple[List[Any], Any]:
+        return [fwd_data] * len(self.Deps), fwd_data
+
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Any=None) -> Any:
+        pass
 
 
 # 复合因子
@@ -129,7 +141,10 @@ class CompoundFactor(Factor):
         if IDs==slice(None): IDs = None
         elif isinstance(IDs, str): IDs = [IDs]
         Data = self.readData(IDs, DTs)
-        return Data.loc[(slice(None), key)]
+        return Data.loc[(slice(None), ) + key]
+
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
+        return Panel(bwd_data_list, items=self.FactorNames, major_axis=local_context.dts, minor_axis=local_context.ids)
 
 
 class CompoundExtractedFactor(Factor):
@@ -156,7 +171,8 @@ class CompoundExtractedFactor(Factor):
 # data: DataFrame(index=[时点], columns=[ID])
 class DataFactor(Factor):
     class __QS_ArgClass__(Factor.__QS_ArgClass__):
-        DataType: LiteralString["double", "string", "object"] = Field(default="double", frozen=True, title="数据类型")
+        Name: str = Field(default="DataFactor", frozen=True, title="名称")
+        DataType: Literal["double", "string", "object"] = Field(default="double", frozen=True, title="数据类型")
         LookBack: int = Field(default=0, title="回溯天数", frozen=True)
 
     def __init__(self, data, args: dict={}, config_file: Optional[str] = None, **kwargs):
@@ -234,7 +250,11 @@ class DataFactor(Factor):
         else:
             return fillNaByLookback(Data.reindex(index=sorted(Data.index.union(dts)), columns=ids), lookback=self._QSArgs.LookBack * 24.0 * 3600).loc[dts, :]
 
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
+        return self.readData(ids=local_context.ids, dts=local_context.dts)
+
 if __name__=="__main__":
+    np.random.seed(0)
     nDT, nID = 5, 3
     DTs = [dt.datetime(2025, 1, 1) + dt.timedelta(i) for i in range(nDT)]
     IDs = [str(i).zfill(6)+".SZ" for i in range(1, nID+1)]
@@ -246,4 +266,5 @@ if __name__=="__main__":
     F = DataFactor(data=Data, args={"Name": "test_factor"})
     print(F.Args)
     print(F.readData(ids=IDs, dts=DTs))
-    
+
+    print("===")

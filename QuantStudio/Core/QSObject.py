@@ -3,7 +3,7 @@ import os
 import re
 from pathlib import Path
 from collections import OrderedDict
-from typing import LiteralString
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -19,15 +19,15 @@ class QSSQLObject(__QS_Object__):
     """基于关系数据库的对象"""
     class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
         Name: str = Field(default="QSSQLObject", frozen=True, title="名称")
-        DBType: LiteralString["MySQL", "SQL Server", "Oracle"] = Field(default="MySQL", frozen=True, title="数据库类型")
+        DBType: Literal["MySQL", "SQL Server", "Oracle"] = Field(default="MySQL", frozen=True, title="数据库类型")
         DBName: str = Field(default="Scorpion", title="数据库名", frozen=True)
         IPAddr: str = Field(default="127.0.0.1", title="IP地址", frozen=True)
         Port: int = Field(default=3306, ge=0, le=65535, title="端口", frozen=True)
         User: str = Field(default="root", title="用户名", frozen=True)
         Pwd: str = Field(default="", title="密码", frozen=True)
         TablePrefix: str = Field(default="", title="表名前缀", frozen=True)
-        CharSet: LiteralString["utf8", "utf8mb4", "gbk", "gb2312", "gb18030", "cp936", "big5"] = Field(default="utf8", title="字符集", frozen=True)
-        Connector: LiteralString["default", "cx_Oracle", "pymssql", "mysql.connector", "pymysql", "pyodbc"] = Field(default="default", title="连接器", frozen=True)
+        CharSet: Literal["utf8", "utf8mb4", "gbk", "gb2312", "gb18030", "cp936", "big5"] = Field(default="utf8", title="字符集", frozen=True)
+        Connector: Literal["default", "cx_Oracle", "pymssql", "mysql.connector", "pymysql", "pyodbc"] = Field(default="default", title="连接器", frozen=True)
         DSN: str = Field(default="", title="数据源", frozen=True)
         AdjustTableName: bool = Field(default=False, title="调整表名", frozen=True)
 

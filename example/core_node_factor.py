@@ -7,27 +7,51 @@ from pydantic import Field
 
 from QuantStudio.Core.Node import Node, Context
 from QuantStudio.Core.CalcEngine import SimpleEngine, RecursiveEngine
+from QuantStudio.Core.Factor import Factor, DataFactor, CompoundFactor, FactorContext, FactorLocalContext
 
 
-class Factor(Node):
-    class __QS_ArgClass__(Node.__QS_ArgClass__):
-        lookback: List[int] = Field(default=[])
+if __name__=="__main__":
+    np.random.seed(0)
+    nDT, nID = 5, 3
+    DTs = [dt.datetime(2025, 1, 1) + dt.timedelta(i) for i in range(nDT)]
+    IDs = [str(i).zfill(6) + ".SZ" for i in range(1, nID + 1)]
+    DTRuler = [DTs[0] - dt.timedelta(i) for i in range(1, 3)] + DTs
+    F1 = DataFactor(data=pd.DataFrame(np.random.randn(nDT, nID), index=DTs, columns=IDs), args={"Name": "test_factor1"})
+    F2 = DataFactor(data=pd.DataFrame(np.random.randn(nDT, nID), index=DTs, columns=IDs), args={"Name": "test_factor2"})
+    F = CompoundFactor(descriptors=[F1, F2], args={"Name": "test_cfactor"})
 
-    def __init__(self, deps: List["Node"] = [], args: dict = {}, config_file: Optional[str] = None, **kwargs):
-        if "name" not in args: args["name"] = "factor"
-        return super().__init__(deps=deps, args=args, config_file=config_file, **kwargs)
+    Engine = SimpleEngine()
+    # Engine = RecursiveEngine()
+    TestContext = FactorContext(dt_ruler=DTRuler)
+    TestLocalContext = FactorLocalContext(dts=DTs, ids=IDs)
+    Rslt = Engine.run([F], TestContext, fwd_data_list=[TestLocalContext], init_data_list=[{"start_dt": DTs[0], "section_ids": IDs}])
+    print(Rslt)
 
-    def forward_compute(self, path: List[str], fwd_data: Any, context: Context) -> Tuple[List[Any], Any]:
-        DTRuler = context.dt_ruler
-        StartIdx = DTRuler.index(fwd_data[0])
-        return [DTRuler[max(StartIdx - iLookback, 0):] for iLookback in self._QSArgs.lookback], DTRuler[StartIdx:]
+    print("===")
 
-    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: Context,
-                         local_context: Any = None) -> Any:
-        if bwd_data_list:
-            return bwd_data_list[np.argmax(self._QSArgs.lookback)]
-        else:
-            return local_context
+
+
+
+
+
+# class Factor(Node):
+#     class __QS_ArgClass__(Node.__QS_ArgClass__):
+#         lookback: List[int] = Field(default=[])
+#
+#     def __init__(self, deps: List["Node"] = [], args: dict = {}, config_file: Optional[str] = None, **kwargs):
+#         if "name" not in args: args["name"] = "factor"
+#         return super().__init__(deps=deps, args=args, config_file=config_file, **kwargs)
+#
+#     def forward_compute(self, path: List[str], fwd_data: Any, context: Context) -> Tuple[List[Any], Any]:
+#         DTRuler = context.dt_ruler
+#         StartIdx = DTRuler.index(fwd_data[0])
+#         return [DTRuler[max(StartIdx - iLookback, 0):] for iLookback in self._QSArgs.lookback], DTRuler[StartIdx:]
+#
+#     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: Context, local_context: Any = None) -> Any:
+#         if bwd_data_list:
+#             return bwd_data_list[np.argmax(self._QSArgs.lookback)]
+#         else:
+#             return local_context
 
 if __name__=="__main__1":
     class FactorContext(Context):
@@ -109,7 +133,7 @@ class Signal(Node):
         else:
             return pd.Series()
 
-if __name__ == "__main__":
+if __name__ == "__main__1":
     Account = Account(deps=[])
     Signal = Signal(deps=[Account])
     Account.Deps.append(Signal)
