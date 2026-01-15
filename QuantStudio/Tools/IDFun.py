@@ -5,7 +5,7 @@ import re
 import numpy as np
 import pandas as pd
 
-from QuantStudio import __QS_Error__
+from QuantStudio.Core import __QS_Error__
 
 # 给A股ID添加后缀
 def suffixAShareID(ids):

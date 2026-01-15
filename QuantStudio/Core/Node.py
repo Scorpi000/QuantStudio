@@ -6,9 +6,12 @@ from pydantic import Field, BaseModel, ConfigDict
 from QuantStudio.Core import __QS_Object__, QSArgs
 
 
-class Context(BaseModel):
-    NodeDict: Dict[str, "Node"] = Field(default={}, description="{节点ID: Node}, 本次运算的所有 Node，由计算引擎生成")
-    NodeState: Dict[str, Any] = Field(default={}, description="{节点ID: Any}, 运算中用于存储节点的临时数据，由节点生成和维护")
+class Context(QSArgs):
+    NodeDict: Dict[str, "Node"] = Field(default={}, title="节点集", description="{节点ID: Node}, 本次运算的所有 Node，由计算引擎生成")
+    NodeState: Dict[str, Any] = Field(default={}, title="节点状态", description="{节点ID: Any}, 运算中用于存储节点的临时数据，由节点生成和维护")
+    PrepareNodeDict: Dict[str, Tuple[str, Any]] = Field(default={}, title="准备节点列表", description="{准备ID: (节点ID, Any)}, 需要执行准备操作的节点列表")
+    PID: str = Field(default="0", title="运行ID", description="当前的运行 ID, 默认为 '0'")
+    PIDList: List[str] = Field(default=["0"], title="所有运行ID")
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -53,7 +56,7 @@ class Node(__QS_Object__):
 
     def init_compute(self, path: List[str], init_data: Any, context: Context) -> List[Any]:
         """
-        按照边的方向传递数据执行初始化
+        按照边的方向传递数据执行初始化，可以修改 context 中的全局变量，最好不要有耗时的计算
         :param path: 运行至当前节点的路径, 所有上游节点 ID 的 list
         :param init_data: 上游传递的数据
         :param context: 全局上下文对象
@@ -61,6 +64,14 @@ class Node(__QS_Object__):
         """
         if self.QSID in path: return []
         return [init_data] * len(self.Deps)
+
+    def prepare_compute(self, prepare_data: Any, context: Context) -> None:
+        """
+        准备计算，不可以修改 context 中的全局变量，最好将 IO 操作在这里实现，只对 context.PrepareNodeDict 中的节点执行该操作
+        :param context: 全局上下文对象
+        :return: 无返回值
+        """
+        pass
 
     def forward_compute(self, path: List[str], fwd_data: Any, context: Context) -> Tuple[List[Any], Any]:
         """
@@ -81,4 +92,4 @@ class Node(__QS_Object__):
         :param local_context: 运算时局部上下文对象
         :return: 产生的消息列表
         """
-        raise NotImplementedError("子类必须实现compute方法")
+        raise NotImplementedError("子类必须实现 backward_compute 方法")

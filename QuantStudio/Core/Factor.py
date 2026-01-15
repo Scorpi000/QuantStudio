@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
+import time
 import datetime as dt
 from collections import OrderedDict
-from typing import List, Optional, Any, Literal, Tuple
+from typing import List, Optional, Any, Literal, Tuple, Dict
 
 import numpy as np
 import pandas as pd
@@ -10,16 +11,58 @@ from pydantic import Field, BaseModel
 from QuantStudio.Core import __QS_Error__
 from QuantStudio.Core.Node import Node, Context
 from QuantStudio.Core.QSObject import Panel
+from QuantStudio.Core.FactorCache import FactorCache
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
+from QuantStudio.Tools.AuxiliaryFun import partitionListMovingSampling, partitionList
 
 
 class FactorContext(Context):
-    # node_state: {节点ID: {"start_dt", "section_ids"}}
-    dt_ruler: List[dt.datetime]
+    # NodeDict: {节点ID: Factor}
+    # NodeState: {节点ID: {"start_dt", "section_ids"}}
+    # PID: str = Field(default="0", title="运行ID", description="当前的运行 ID, 默认为 '0'")
+    # PIDList: List[str] = Field(default=["0"], title="所有运行ID")
+    DTRuler: List[dt.datetime] = Field(title="时点标尺", description="当前运行计算时点标尺", frozen=True)
+    DefaultSectionIDs: List[str] = Field(title="默认截面", description="当前运行需要计算的默认截面 ID", frozen=True)
+    IDSplit: Literal["连续切分", "间隔切分"] = Field(default="连续切分", title="ID切分", frozen=True)
+    FactorDataCache: FactorCache = Field(title="因子缓存", frozen=True)
+
+    def model_post_init(self, context: Any, /) -> None:
+        self._DefaultPIDIDs = self.splitID(self.DefaultSectionIDs)
+
+    def getDateTime(self, dt_range):
+        StartIdx, EndIdx = np.searchsorted(self.DTRuler, dt_range[0], side="left"), np.searchsorted(self.DTRuler, dt_range[1], side="right")
+        return self.DTRuler[StartIdx:EndIdx]
+
+    @property
+    def DefaultPIDIDs(self):
+        return self._DefaultPIDIDs
+
+    # 划分 ID
+    def splitID(self, ids):
+        nPrcs = len(self.PIDList)
+        if nPrcs == 0: return {}
+        elif nPrcs == 1: return {self.PIDList[0]: ids}
+        if self.IDSplit == "连续切分":
+            SubIDs = partitionList(ids, nPrcs)
+        elif self.IDSplit == "间隔切分":
+            SubIDs = partitionListMovingSampling(ids, nPrcs)
+        else:
+            raise __QS_Error__(f"不支持的 ID 切分方式: {self.IDSplit}")
+        return {iPID: SubIDs[i] for i, iPID in enumerate(self.PIDList)}
+
+    def getID(self, factor_id, pids=None):
+        if pids is not None:
+            PIDIDs = self.NodeState[factor_id]["pid_ids"]
+            return sorted(sum((PIDIDs[iPID] for iPID in pids), []))
+        else:
+            return self.NodeState[factor_id]["section_ids"]
+
 
 class FactorLocalContext(BaseModel):
     dts: List[dt.datetime]
     ids: List[str]
+    pids: Optional[List[str]] = Field(default=None)
+
 
 # 因子
 # 因子可看做一个 DataFrame(index=[时间点], columns=[ID])
@@ -28,28 +71,41 @@ class Factor(Node):
     """因子"""
     class __QS_ArgClass__(Node.__QS_ArgClass__):
         Name: str = Field(default="Factor", frozen=True, title="名称")
+        SectionIDs: Optional[List[str]] = Field(default=None, title="截面ID", frozen=True)
 
-    def __init__(self, descriptors: List["Factor"] = [], args: dict = {}, config_file: Optional[str] = None, **kwargs):
-        return super().__init__(deps=descriptors, args=args, config_file=config_file, **kwargs)
-    
+    def __init__(self, ft=None, descriptors: List["Factor"] = [], args: dict = {}, config_file: Optional[str] = None, **kwargs):
+        self._FactorTable = ft
+        if ft and descriptors:
+            raise __QS_Error__("因子表和描述子列表不能都存在!")
+        if ft:
+            return super().__init__(deps=[ft], args=args, config_file=config_file, **kwargs)
+        else:
+            return super().__init__(deps=descriptors, args=args, config_file=config_file, **kwargs)
+
     @property
-    def FactorDB(self):
-        return None
+    def FactorTable(self):
+        return self._FactorTable
 
     @property
     def Descriptors(self):
         return self.Deps
 
     def getMetaData(self, key=None):
-        if not key: return {}
+        if self._FactorTable:
+            return self._FactorTable.getFactorMetaData(factor_names=[self._NameInFT], key=key).loc[self._QSArgs.Name]
+        if not key: return pd.Series
         else: return None
 
     # 获取 ID 序列
     def getID(self, idt=None, **kwargs):
-        return []
+        if self._FactorTable is not None:
+            return self._FactorTable.getID(ifactor_name=self._QSArgs.Name, idt=idt, **kwargs)
+        return self._QSArgs.SectionIDs
 
     # 获取时间点序列
     def getDateTime(self, iid=None, start_dt=None, end_dt=None, **kwargs):
+        if self._FactorTable is not None:
+            return self._FactorTable.getDateTime(ifactor_name=self._QSArgs.Name, iid=iid, start_dt=start_dt, end_dt=end_dt, **kwargs)
         return []
     
     def readData(self, ids, dts, **kwargs):
@@ -66,105 +122,77 @@ class Factor(Node):
         elif isinstance(IDs, str): IDs = [IDs]
         Data = self.readData(IDs, DTs)
         return Data.loc[key]
-    
-    # init_data: {"start_dt", "section_ids"}
-    def init_compute(self, path: List[str], init_data: Any, context: Context) -> List[Any]:
-        FactorState = context.NodeState.setdefault(self.QSID, {})
-        FactorState["start_dt"] = min(init_data["start_dt"], FactorState.get("start_dt", pd.NaT))
-        if "section_ids" not in FactorState:
-            FactorState["section_ids"] = init_data["section_ids"]
-        elif init_data["section_ids"] != FactorState["section_ids"]:
-            raise __QS_Error__(f"因子 {self._QSArgs.name}({self.QSID}) 指定了不同的截面!")
-        if self.QSID in path: return []
-        return [init_data] * len(self.Deps)
 
-    def forward_compute(self, path: List[str], fwd_data: Any, context: Context) -> Tuple[List[Any], Any]:
-        return [fwd_data] * len(self.Deps), fwd_data
-
-    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Any=None) -> Any:
-        pass
-
-
-# 复合因子
-# 复合因子可看做一个 Panel(items=[因子], major_axis=[时间点], minor_axis=[ID])
-# 时间点数据类型是 datetime.datetime, ID 的数据类型是 str
-class CompoundFactor(Factor):
-    """复合因子"""
-
-    def __init__(self, descriptors: List["Factor"] = [], args: dict = {}, config_file: Optional[str] = None, **kwargs):
-        super().__init__(descriptors=descriptors, args=args, config_file=config_file, **kwargs)
-        self._Descriptors = OrderedDict((iFactor._QSArgs.Name, iFactor) for iFactor in self.Deps)
-        if len(self._Descriptors)<len(self.Deps):
-            raise __QS_Error__(f"因子有重名: {[iFactor._QSArgs.Name for iFactor in self.Deps]}")
-    
-    @property
-    def FactorNames(self):
-        return list(self._Descriptors.keys())
-    
-    # 返回因子对象
-    def getFactor(self, factor_name_or_list: str | list[str], args={}):
-        if isinstance(factor_name_or_list, str):
-            if not args:
-                return self._Descriptors[factor_name_or_list]
-            else:
-                return self._Descriptors[factor_name_or_list].new(args=args)
+    # 准备缓存数据
+    def __QS_prepareCacheData__(self, context: FactorContext):
+        DTRange = context.NodeState.get(self.QSID, {}).get("dt_range", None)
+        if DTRange is None: return 0
+        DTRange = context.FactorDataCache.getDTRange(key=self.QSID, dt_range=DTRange)
+        if DTRange is None: return 0
+        DTs = context.getDateTime(DTRange)
+        if not DTs: return 0
+        if self._FactorTable:
+            RawKey = self._FactorTable.PrepareID
         else:
-            Descriptors = [self._Descriptors[iFactorName] for iFactorName in factor_name_or_list]
-            Args = self._QSArgs.to_dict(repr=False) | args
-            return CompoundFactor(descriptors=Descriptors, args=Args)
-    
-    def getFactorMetaData(self, factor_name, key=None):
-        return self._Descriptors[factor_name].getMetaData(key=key)
-    
-    # 获取 ID 序列
-    def getID(self, idt=None, factor_name=None, **kwargs):
-        if not factor_name: factor_name = self.FactorNames[0]
-        return self.getFactor(factor_name_or_list=factor_name).getID(idt=idt, **kwargs)
+            RawKey = None
+        PIDIDs = context.NodeState[self.QSID]["pid_ids"]
+        iSectionIDs = PIDIDs[context.PID]
+        if RawKey is None:
+            RawData = None
+        else:
+            RawData = context.FactorDataCache.readRawData(key=RawKey + "-" + self._QSArgs.Name, target_fields=None, pids=[context.PID])
+        if RawData:
+            if len(RawData) == 1: RawData = RawData["RawData"]
+            StdData = self._FactorTable.__QS_calcData__(RawData, factor_names=[self._QSArgs.Name], ids=iSectionIDs, dts=DTs).iloc[0]
+        elif self._FactorTable:
+            RawData = self._FactorTable.__QS_prepareRawData__(factor_names=[self._QSArgs.Name], ids=iSectionIDs, dts=DTs)
+            if RawData is not None: self._QS_Logger.warning(f"因子 {self._QSArgs.Name} (QSID: {self.QSID}) 的原始数据缓存丢失!")
+            StdData = self._FactorTable.__QS_calcData__(raw_data=RawData, factor_names=[self._NameInFT], ids=iSectionIDs, dts=DTs).iloc[0]
+        else:
+            return 0
+        context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=context.PID, if_exists="append")
+        context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=DTRange)
+        return 0
 
-    # 获取时间点序列
-    def getDateTime(self, iid=None, start_dt=None, end_dt=None, factor_name=None, **kwargs):
-        if not factor_name: factor_name = self.FactorNames[0]
-        return self.getFactor(factor_name_or_list=factor_name).getDatetime(iid=iid, start_dt=start_dt, end_dt=end_dt, **kwargs)
-    
-    def readData(self, ids, dts, factor_names=None, **kwargs):
-        if not factor_names: factor_names = self.FactorNames
-        Data = {iFactor: self.getFactor(factor_name_or_list=iFactor).readData(ids=ids, dts=dts) for iFactor in factor_names}
-        return Panel(Data, items=factor_names, major_axis=dts, minor_axis=ids)
+    # init_data: {"dt_range", "section_ids"}
+    # NodeState: {"dt_range", "section_ids", "pid_ids"}
+    def init_compute(self, path: List[str], init_data: Any, context: FactorContext) -> List[Any]:
+        FactorState = context.NodeState.setdefault(self.QSID, {})
+        # 处理时点
+        DTRange = FactorState.get("dt_range", None)
+        if DTRange is None:
+            FactorState["dt_range"] = init_data["dt_range"]
+        else:
+            FactorState["dt_range"] = (min(DTRange[0], init_data["dt_range"][0]), max(DTRange[1], init_data["dt_range"][1]))
+        # 处理截面ID
+        if "section_ids" in FactorState: SectionIDs = FactorState["section_ids"]
+        elif self._QSArgs.SectionIDs: SectionIDs = self._QSArgs.SectionIDs
+        else: SectionIDs = init_data["section_ids"]
+        if init_data["section_ids"] != SectionIDs:
+            raise __QS_Error__(f"因子 {self._QSArgs.Name}({self.QSID}) 指定了不同的截面!")
+        if "section_ids" not in FactorState:
+            FactorState["section_ids"] = SectionIDs
+            if SectionIDs == context.DefaultSectionIDs:
+                FactorState["pid_ids"] = context.DefaultPIDIDs
+            else:
+                FactorState["pid_ids"] = context.splitID(SectionIDs)
+        # 默认
+        if self.QSID in path: return []
+        if self._FactorTable:
+            return [{"dt_range": FactorState["dt_range"], "section_ids": SectionIDs, "sub_factor_name": self._QSArgs.Name}] * len(self.Deps)
+        else:
+            return [{"dt_range": FactorState["dt_range"], "section_ids": SectionIDs}] * len(self.Deps)
 
-    def __getitem__(self, key):
-        if isinstance(key, tuple): key += (slice(None),) * (2 - len(key))
-        else: key = (key, slice(None))
-        if len(key)>2: raise IndexError("QuantStudio.Core.Factor: Too many indexers")
-        DTs, IDs = key
-        if DTs==slice(None): DTs = None
-        elif isinstance(DTs, dt.datetime): DTs = [DTs]
-        if IDs==slice(None): IDs = None
-        elif isinstance(IDs, str): IDs = [IDs]
-        Data = self.readData(IDs, DTs)
-        return Data.loc[(slice(None), ) + key]
+    def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
+        if self._FactorTable:
+            return [], fwd_data
+        else:
+            return super().forward_compute(path=path, fwd_data=fwd_data, context=context)
 
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
-        return Panel(bwd_data_list, items=self.FactorNames, major_axis=local_context.dts, minor_axis=local_context.ids)
-
-
-class CompoundExtractedFactor(Factor):
-    def __init__(self, compound_factor: CompoundFactor, args: dict = {}, config_file: Optional[str] = None, **kwargs):
-        super().__init__(descriptors=[compound_factor], args=args, config_file=config_file, **kwargs)
-        self._CompoundFactor = compound_factor
-        if self._QSArgs.Name not in self._CompoundFactor.FactorNames:
-            raise __QS_Error__(f"复合因子{compound_factor._QSArgs}中不存在因子{self._QSArgs.Name}")
-    
-    def getID(self, idt=None, **kwargs):
-        return self._CompoundFactor.getID(idt=idt, factor_name=self._QSArgs.Name, **kwargs)
-    
-    def getDateTime(self, iid=None, start_dt=None, end_dt=None, **kwargs):
-        return self._CompoundFactor.getDateTime(iid=iid, start_dt=start_dt, end_dt=end_dt, factor_name=self._QSArgs.Name, **kwargs)
-    
-    def readData(self, ids, dts, **kwargs):
-        return self._CompoundFactor.readData(ids=ids, dts=dts, factor_names=[self._QSArgs.Name], **kwargs).loc[self._QSArgs.Name]
-    
-    def getMetaData(self, key=None):
-        return self._CompoundFactor.getFactorMetaData(factor_name=self._QSArgs.Name, key=key)
+        self.__QS_prepareCacheData__(context=context)
+        StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.pids)
+        return StdData.reindex(index=local_context.dts, columns=local_context.ids)
 
 
 # 直接赋予数据产生的因子

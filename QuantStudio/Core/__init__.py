@@ -16,6 +16,8 @@ from QuantStudio import __QS_ConfigPath__
 
 __QS_Logger__ = logging.getLogger()
 
+# 全局批量运行时环境
+__QS_Context__ = []
 
 # Quant Studio 系统错误
 class __QS_Error__(Exception):

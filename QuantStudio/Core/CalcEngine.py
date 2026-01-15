@@ -7,9 +7,15 @@ from QuantStudio.Core.Node import Node, Context
 
 class SimpleEngine(__QS_Object__):
     def run(self, node_list: List[Node], context: Context, init_data_list: Optional[List[Any]]=None, fwd_data_list: Optional[List[Any]]=None) -> List[Any]:
+        # 初始化
         if not init_data_list: init_data_list = [None] * len(node_list)
         for i, iNode in enumerate(node_list):
             iNode.init([], init_data_list[i], context)
+        # 准备计算
+        for _, iPrepareData in context.PrepareNodeDict.items():
+            iNodeID, iPrepareData = iPrepareData
+            context.NodeDict[iNodeID].prepare_compute(iPrepareData, context)
+        # 主计算
         if not fwd_data_list: fwd_data_list = [None] * len(node_list)
         return [iNode.compute([], fwd_data_list[i], context) for i, iNode in enumerate(node_list)]
 

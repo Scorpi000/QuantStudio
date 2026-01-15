@@ -5,32 +5,45 @@ import numpy as np
 import pandas as pd
 from pydantic import Field
 
-from QuantStudio.Core.Node import Node, Context
+from QuantStudio.Core.Node import Node
 from QuantStudio.Core.CalcEngine import SimpleEngine, RecursiveEngine
-from QuantStudio.Core.Factor import Factor, DataFactor, CompoundFactor, FactorContext, FactorLocalContext
+from QuantStudio.Core.Factor import Factor, DataFactor, FactorContext, FactorLocalContext
+from QuantStudio.Core.BaoStockDB import BaoStockDB
+from QuantStudio.Core.FactorCache import HDF5Cache
 
 
 if __name__=="__main__":
+    BSDB = BaoStockDB().connect()
+    print(BSDB.FactorNames)
+
+    FT = BSDB.getTable("A股K线数据")
+    Open = FT.getFactor("open")
+    Close = FT.getFactor("close")
+
     np.random.seed(0)
-    nDT, nID = 5, 3
-    DTs = [dt.datetime(2025, 1, 1) + dt.timedelta(i) for i in range(nDT)]
-    IDs = [str(i).zfill(6) + ".SZ" for i in range(1, nID + 1)]
-    DTRuler = [DTs[0] - dt.timedelta(i) for i in range(1, 3)] + DTs
-    F1 = DataFactor(data=pd.DataFrame(np.random.randn(nDT, nID), index=DTs, columns=IDs), args={"Name": "test_factor1"})
-    F2 = DataFactor(data=pd.DataFrame(np.random.randn(nDT, nID), index=DTs, columns=IDs), args={"Name": "test_factor2"})
-    F = CompoundFactor(descriptors=[F1, F2], args={"Name": "test_cfactor"})
+    nDT, nID = 10, 5
+    SectionIDs = [str(i).zfill(6) + ".SZ" for i in range(1, nID + 1)]
+    DTRuler = [dt.datetime(2025, 1, 1) + dt.timedelta(i) for i in range(nDT)]
+    IDs, DTs = SectionIDs[:3], DTRuler[-5:]
 
     Engine = SimpleEngine()
-    # Engine = RecursiveEngine()
-    TestContext = FactorContext(dt_ruler=DTRuler)
-    TestLocalContext = FactorLocalContext(dts=DTs, ids=IDs)
-    Rslt = Engine.run([F], TestContext, fwd_data_list=[TestLocalContext], init_data_list=[{"start_dt": DTs[0], "section_ids": IDs}])
+    Cache = HDF5Cache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "CacheDir": r"C:\Users\hst\Desktop\Cache", "PIDs": ["0"]})
+    Cache.start()
+    Context = FactorContext(
+        PID="0",
+        PIDList=["0"],
+        DTRuler=DTRuler,
+        DefaultSectionIDs=SectionIDs,
+        SpecificSectionIDs={},
+        IDSplit="连续切分",
+        FactorDataCache=Cache
+    )
+    LocalContext = FactorLocalContext(dts=DTs, ids=IDs)
+    FactorList = [Open, Close]
+    Rslt = Engine.run(FactorList, Context, fwd_data_list=[LocalContext]*len(FactorList), init_data_list=[{"dt_range": (DTs[0], DTs[-1]), "section_ids": SectionIDs}]*len(FactorList))
     print(Rslt)
 
     print("===")
-
-
-
 
 
 
@@ -53,21 +66,21 @@ if __name__=="__main__":
 #         else:
 #             return local_context
 
-if __name__=="__main__1":
-    class FactorContext(Context):
-        dt_ruler: List[int]
-
-    Factor1 = Factor(deps=[], args={"name": "f1"})
-    Factor2 = Factor(deps=[], args={"name": "f2"})
-    Factor3 = Factor(deps=[Factor1, Factor2], args={"lookback": [0, 1], "name": "f3"})
-
-    Engine = SimpleEngine()
-    # Engine = RecursiveEngine()
-    TestContext = FactorContext(dt_ruler=list(range(10)))
-    Rslt = Engine.run([Factor3], TestContext, fwd_data_list=[[3, 4]])
-    print(Rslt)
-
-    print("===")
+# if __name__=="__main__1":
+#     class FactorContext(Context):
+#         dt_ruler: List[int]
+#
+#     Factor1 = Factor(deps=[], args={"name": "f1"})
+#     Factor2 = Factor(deps=[], args={"name": "f2"})
+#     Factor3 = Factor(deps=[Factor1, Factor2], args={"lookback": [0, 1], "name": "f3"})
+#
+#     Engine = SimpleEngine()
+#     # Engine = RecursiveEngine()
+#     TestContext = FactorContext(dt_ruler=list(range(10)))
+#     Rslt = Engine.run([Factor3], TestContext, fwd_data_list=[[3, 4]])
+#     print(Rslt)
+#
+#     print("===")
 
 
 class Account(Node):
