@@ -301,7 +301,7 @@ class BaoStockDB(FactorDB):
             self._TableInfo, self._FactorInfo, self._ArgInfo = _updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger, out_info=True)  # 数据库表信息, 数据库字段信息
 
     @property
-    def FactorNames(self):
+    def TableNames(self):
         if self._TableInfo is not None:
             return self._TableInfo.index.tolist()
         else:
@@ -359,7 +359,7 @@ class BaoStockDB(FactorDB):
 
 if __name__ == "__main__":
     BSDB = BaoStockDB().connect()
-    print(BSDB.FactorNames)
+    print(BSDB.TableNames)
 
     # DTs = BSDB.getTradeDay(start_date=dt.datetime(2022, 1, 1), end_date=dt.datetime(2022, 1, 31))
     # print(DTs)
@@ -372,11 +372,11 @@ if __name__ == "__main__":
     # )
     # print(Data)
 
-    CF1 = BSDB.getFactor("A股K线数据", args={"APIArgs": {"frequency": "d"}, "LookBack": 1})
+    CF1 = BSDB.getTable("A股K线数据", args={"APIArgs": {"frequency": "d"}, "LookBack": 1})
     print(CF1.model_dump())
     print(CF1.QSID)
     print(CF1.PrepareID)
-    CF2 = BSDB.getFactor("A股K线数据", args={"LookBack": 0})
+    CF2 = BSDB.getTable("A股K线数据", args={"LookBack": 0})
     print(CF2.model_dump())
     print(CF2.QSID)
     print(CF2.PrepareID)
