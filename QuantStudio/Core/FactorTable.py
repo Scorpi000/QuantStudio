@@ -59,8 +59,8 @@ class FactorTable(Node):
         return []
 
     # 获取因子对象
-    def getFactor(self, ifactor_name:str):
-        return Factor(ft=self, args={"Name": ifactor_name}, logger=self._QS_Logger)
+    def getFactor(self, ifactor_name:str, args={}):
+        return Factor(ft=self, args=args | {"Name": ifactor_name}, logger=self._QS_Logger)
 
     # 获取因子的元数据
     def getFactorMetaData(self, factor_names, key=None):

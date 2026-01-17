@@ -27,6 +27,19 @@ class FactorCache(__QS_Object__):
         super().__init__(args=args, config_file=config_file, **kwargs)
         self._CachedDTRange = {}  # 已经缓存的因子数据时点范围, {因子 QSID: DataFrame(columns=["StartDT", "EndDT"])}
 
+    # 并发运行后返回需要同步的内容
+    def getUpdateData(self) -> dict:
+        return {"_CachedDTRange": self._CachedDTRange}
+
+    # 并发运行后更新同步内容
+    def updateCache(self, update_data: dict):
+        for iFactorID, iDTRange in update_data.get("_CachedDTRange", {}).items():
+            if iFactorID not in self._CachedDTRange:
+                self._CachedDTRange[iFactorID] = iDTRange
+            else:
+                for iDTRange in iDTRange.astype("O").to_records(index=False):
+                    self.updateDTRange(iFactorID, iDTRange)
+
     # 更新缓存的时点范围
     def _mergeDTRange(self, cached_dt_range, i):
         DTRuler = self._QSArgs.DTRuler

@@ -4,7 +4,7 @@ import re
 import os
 import json
 import datetime as dt
-from typing import Optional
+from typing import Optional, Literal, Callable, List
 
 import numpy as np
 import pandas as pd
@@ -214,64 +214,62 @@ class _JY_SQL_Table(SQL_Table):
 class _WideTable(_JY_SQL_Table, SQL_WideTable):
     """聚源宽因子表"""
 
-    def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix,
-                                table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name],
-                                security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+    def __init__(self, fdb, args={}, **kwargs):
+        Name = args["Name"]
+        return super().__init__(fdb=fdb, args=args, table_info=fdb._TableInfo.loc[Name], factor_info=fdb._FactorInfo.loc[Name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
 
 
 class _NarrowTable(_JY_SQL_Table, SQL_NarrowTable):
     """聚源窄因子表"""
 
-    def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix,
-                                table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name],
-                                security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+    def __init__(self, fdb, args={}, **kwargs):
+        Name = args["Name"]
+        return super().__init__(fdb=fdb, args=args, table_info=fdb._TableInfo.loc[Name], factor_info=fdb._FactorInfo.loc[Name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+
 
 
 class _FeatureTable(_JY_SQL_Table, SQL_FeatureTable):
     """聚源特征因子表"""
 
-    def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix,
-                                table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name],
-                                security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+    def __init__(self, fdb, args={}, **kwargs):
+        Name = args["Name"]
+        return super().__init__(fdb=fdb, args=args, table_info=fdb._TableInfo.loc[Name], factor_info=fdb._FactorInfo.loc[Name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+
 
 
 class _TimeSeriesTable(_JY_SQL_Table, SQL_TimeSeriesTable):
     """聚源时序因子表"""
 
-    def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix,
-                                table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name],
-                                security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+    def __init__(self, fdb, args={}, **kwargs):
+        Name = args["Name"]
+        return super().__init__(fdb=fdb, args=args, table_info=fdb._TableInfo.loc[Name], factor_info=fdb._FactorInfo.loc[Name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+
 
 
 class _MappingTable(_JY_SQL_Table, SQL_MappingTable):
     """聚源映射因子表"""
 
-    def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix,
-                                table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name],
-                                security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+    def __init__(self, fdb, args={}, **kwargs):
+        Name = args["Name"]
+        return super().__init__(fdb=fdb, args=args, table_info=fdb._TableInfo.loc[Name], factor_info=fdb._FactorInfo.loc[Name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+
 
 
 class _ConstituentTable(_JY_SQL_Table, SQL_ConstituentTable):
     """聚源成份因子表"""
 
-    def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix,
-                                table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name],
-                                security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+    def __init__(self, fdb, args={}, **kwargs):
+        Name = args["Name"]
+        return super().__init__(fdb=fdb, args=args, table_info=fdb._TableInfo.loc[Name], factor_info=fdb._FactorInfo.loc[Name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+
 
 
 class _FinancialTable(_JY_SQL_Table, SQL_FinancialTable):
     """聚源财务因子表"""
 
-    def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix,
-                                table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name],
-                                security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+    def __init__(self, fdb, args={}, **kwargs):
+        Name = args["Name"]
+        return super().__init__(fdb=fdb, args=args, table_info=fdb._TableInfo.loc[Name], factor_info=fdb._FactorInfo.loc[Name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
 
 
 # 财务指标因子表, 表结构特征:
@@ -280,10 +278,10 @@ class _FinancialTable(_JY_SQL_Table, SQL_FinancialTable):
 class _FinancialIndicatorTable(_FinancialTable):
     """财务指标因子表"""
 
-    def __init__(self, name, fdb, sys_args={}, **kwargs):
-        super().__init__(name=name, fdb=fdb, sys_args=sys_args, **kwargs)
+    def __init__(self, fdb, args={}, **kwargs):
+        super().__init__(fdb=fdb, args=args, **kwargs)
         if self._TableInfo["SecurityType"] not in ("A股", "公募基金"):
-            raise __QS_Error__("FinancialIndicatorTable 类型的因子表 '%s' 中的证券为不支持的证券类型!" % (name,))
+            raise __QS_Error__("FinancialIndicatorTable 类型的因子表 '%s' 中的证券为不支持的证券类型!" % (self._QSArgs.Name,))
         return
 
     def getID(self, ifactor_name=None, idt=None, args={}):  # TODO
@@ -460,15 +458,13 @@ class _AnalystConsensusTable(_JY_SQL_Table):
     """分析师汇总表"""
 
     class __QS_ArgClass__(_JY_SQL_Table.__QS_ArgClass__):
-        CalcType = Enum("FY0", "FY1", "FY2", "Fwd12M", label="计算方法", arg_type="SingleOption", order=0,
-                        option_range=["FY0", "FY1", "FY2", "Fwd12M"])
-        Period = Enum(30, 60, 90, 180, label="周期", arg_type="SingleOption", order=1, option_range=[30, 60, 90, 180])
-        LookBack = Int(0, arg_type="Integer", label="回溯天数", order=2)
+        CalcType: Literal["FY0", "FY1", "FY2", "Fwd12M"] = Field(default="FY0", title="计算方法", frozen=True)
+        Period: Literal[30, 60, 90, 180] = Field(default=30, title="周期", frozen=True)
+        LookBack: int = Field(default=0, title="回溯天数", frozen=True)
 
-    def __init__(self, name, fdb, sys_args={}, **kwargs):
-        super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix,
-                         table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name],
-                         security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+    def __init__(self, fdb, args={}, **kwargs):
+        Name = args["Name"]
+        super().__init__(fdb=fdb, args=args, table_info=fdb._TableInfo.loc[Name], factor_info=fdb._FactorInfo.loc[Name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
         self._DateField = self._FactorInfo[self._FactorInfo["FieldType"] == "Date"].index[0]
         self._ReportDateField = self._FactorInfo[self._FactorInfo["FieldType"] == "ReportDate"].index[0]
         self._PeriodField = self._FactorInfo[self._FactorInfo["FieldType"] == "Period"].index[0]
@@ -668,25 +664,17 @@ class _AnalystEstDetailTable(_JY_SQL_Table):
     """分析师盈利预测明细表"""
 
     class __QS_ArgClass__(_JY_SQL_Table.__QS_ArgClass__):
-        Operator = Callable(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
-        ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
-        ForwardYears = List(default=[0], label="向前年数", arg_type="ArgList", order=2)
-        AdditionalFields = ListStr(arg_type="ListStr", label="附加字段", order=3)
-        Deduplication = ListStr(arg_type="ListStr", label="去重字段", order=4)
-        Period = Int(180, arg_type="Integer", label="周期", order=5)
-        DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=6,
-                        option_range=["double", "string", "object"])
+        Operator: Callable = Field(default=_DefaultOperator, title="算子", frozen=True)
+        ModelArgs: dict = Field(default={}, title="参数", frozen=True)
+        ForwardYears: List[int] = Field(default=[0], title="向前年数", frozen=True)
+        AdditionalFields: List[str] = Field(default=[], title="附加字段", frozen=True)
+        Deduplication: List[str] = Field(default=[], title="去重字段", frozen=True)
+        Period: int = Field(default=180, title="周期", frozen=True)
+        DataType: Literal["double", "string", "object"] = Field(default="double", title="数据类型", frozen=True)
 
-        def __QS_initArgs__(self, args={}):
-            super().__QS_initArgs__(args=args)
-            self._Owner._InstituteField = \
-            self._Owner._FactorInfo[self._Owner._FactorInfo["FieldType"] == "Institute"].index[0]
-            self.Deduplication = [self._Owner._InstituteField]
-
-    def __init__(self, name, fdb, sys_args={}, **kwargs):
-        super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix,
-                         table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name],
-                         security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+    def __init__(self, fdb, args={}, **kwargs):
+        Name = args["Name"]
+        super().__init__(fdb=fdb, args=args, table_info=fdb._TableInfo.loc[Name], factor_info=fdb._FactorInfo.loc[Name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
         self._DateField = self._FactorInfo[self._FactorInfo["FieldType"] == "Date"].index[0]
         self._ReportDateField = self._FactorInfo[self._FactorInfo["FieldType"] == "ReportDate"].index[0]
         self._TempData = {}
@@ -836,24 +824,16 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
     """分析师投资评级明细表"""
 
     class __QS_ArgClass__(_JY_SQL_Table.__QS_ArgClass__):
-        Operator = Callable(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
-        ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
-        AdditionalFields = ListStr(arg_type="ListStr", label="附加字段", order=2)
-        Deduplication = ListStr(arg_type="ListStr", label="去重字段", order=3)
-        Period = Int(180, arg_type="Integer", label="周期", order=4)
-        DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=5,
-                        option_range=["double", "string", "object"])
+        Operator: Callable = Field(default=_DefaultOperator, title="算子", frozen=True)
+        ModelArgs: dict = Field(default={}, title="参数", frozen=True)
+        AdditionalFields: List[str] = Field(default=[], title="附加字段", frozen=True)
+        Deduplication: List[str] = Field(default=[], title="去重字段", frozen=True)
+        Period: int = Field(default=180, title="周期", frozen=True)
+        DataType: Literal["double", "string", "object"] = Field(default="double", title="数据类型", frozen=True)
 
-        def __QS_initArgs__(self, args={}):
-            super().__QS_initArgs__(args=args)
-            self._Owner._InstituteField = \
-            self._Owner._FactorInfo[self._Owner._FactorInfo["FieldType"] == "Institute"].index[0]
-            self.Deduplication = [self._Owner._InstituteField]
-
-    def __init__(self, name, fdb, sys_args={}, **kwargs):
-        super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb._QSArgs.TablePrefix,
-                         table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name],
-                         security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+    def __init__(self, fdb, args={}, **kwargs):
+        Name = args["Name"]
+        super().__init__(fdb=fdb, args=args, table_info=fdb._TableInfo.loc[Name], factor_info=fdb._FactorInfo.loc[Name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
         self._DateField = self._FactorInfo[self._FactorInfo["FieldType"] == "Date"].index[0]
         self._TempData = {}
         return
@@ -995,30 +975,28 @@ class JYDB(QSSQLObject, FactorDB):
         return self._ExchangeInfo.copy()
 
     @property
-    def FactorNames(self):
+    def TableNames(self):
         if self._TableInfo is not None:
             return self._TableInfo[pd.notnull(self._TableInfo["TableClass"])].index.tolist()
         else:
             return []
 
-    def getFactor(self, factor_name, args={}):
-        if factor_name in self._TableInfo.index:
-            TableClass = args.get("因子表类型", self._TableInfo.loc[factor_name, "TableClass"])
-            if pd.notnull(TableClass) and (TableClass != ""):
-                DefaultArgs = self._TableInfo.loc[factor_name, "DefaultArgs"]
-                if pd.isnull(DefaultArgs):
-                    DefaultArgs = {}
-                else:
-                    DefaultArgs = eval(DefaultArgs)
+    def getTable(self, table_name, args={}):
+        if table_name in self._TableInfo.index:
+            TableClass = args.get("因子表类型", self._TableInfo.loc[table_name, "TableClass"])
+            if pd.notnull(TableClass) and (TableClass!=""):
+                DefaultArgs = self._TableInfo.loc[table_name, "DefaultArgs"]
+                if pd.isnull(DefaultArgs): DefaultArgs = {}
+                else: DefaultArgs = eval(DefaultArgs)
                 Args = self._QSArgs.FTArgs.copy()
                 Args.update(DefaultArgs)
                 Args.update(args)
-                Args["Name"] = factor_name
-                return eval("_" + TableClass + "(fdb=self, args=Args, logger=self._QS_Logger)")
-        Msg = ("因子库 '%s' 目前尚不支持复合因子: '%s'" % (self._QSArgs.Name, factor_name))
+                Args["Name"] = table_name
+                return eval("_"+TableClass+"(fdb=self, args=Args, logger=self._QS_Logger)")
+        Msg = ("因子库 '%s' 目前尚不支持因子表: '%s'" % (self._QSArgs.Name, table_name))
         self._QS_Logger.error(Msg)
         raise __QS_Error__(Msg)
-
+    
     # -----------------------------------------数据提取---------------------------------
     # 给定起始日期和结束日期, 获取交易所交易日期, 目前支持: "SSE", "SZSE", "SHFE", "DCE", "CZCE", "INE", "CFFEX"
     def getTradeDay(self, start_date=None, end_date=None, exchange="SSE", **kwargs):
@@ -1313,12 +1291,10 @@ class JYDB(QSSQLObject, FactorDB):
         if future_code:
             if isinstance(future_code, str):
                 return [iRslt[0] for iRslt in self.fetchall(
-                    SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"),
-                                  StartDate=start_date)) if re.findall("\D+", iRslt[0][:2])[0] == future_code]
+                    SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date)) if re.findall(r"\D+", iRslt[0][:2])[0] == future_code]
             else:
                 return [iRslt[0] for iRslt in self.fetchall(
-                    SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"),
-                                  StartDate=start_date)) if re.findall("\D+", iRslt[0][:2])[0] in future_code]
+                    SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date)) if re.findall(r"\D+", iRslt[0][:2])[0] in future_code]
         else:
             return [iRslt[0] for iRslt in self.fetchall(
                 SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"),
@@ -1438,6 +1414,3 @@ class JYDB(QSSQLObject, FactorDB):
         pass
 
 
-if __name__ == "__main__":
-    iDB = JYDB().connect()
-    iDB.getStockID()

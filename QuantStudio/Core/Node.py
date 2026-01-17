@@ -12,8 +12,17 @@ class Context(QSArgs):
     PrepareNodeDict: Dict[str, Tuple[str, Any]] = Field(default={}, title="准备节点列表", description="{准备ID: (节点ID, Any)}, 需要执行准备操作的节点列表")
     PID: str = Field(default="0", title="运行ID", description="当前的运行 ID, 默认为 '0'")
     PIDList: List[str] = Field(default=["0"], title="所有运行ID")
+    Event: dict = Field(default={}, title="", description="{节点ID: (Sub2MainQueue, Event)}, 用于多进程同步的 Event 数据")
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    # 并发运行后返回需要同步的内容
+    def getUpdateData(self) -> dict:
+        return {}
+
+    # 并发运行后更新同步内容
+    def updateContext(self, update_data: dict):
+        return
 
 
 class Node(__QS_Object__):

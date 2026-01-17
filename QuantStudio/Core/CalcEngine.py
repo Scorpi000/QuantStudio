@@ -1,25 +1,114 @@
 # -*- coding: utf-8 -*-
-from typing import Any, List, Optional
+import concurrent.futures
+from typing import Any, List, Optional, Callable, Union
+
+from pydantic import Field
+from progressbar import ProgressBar
 
 from QuantStudio.Core import __QS_Object__
 from QuantStudio.Core.Node import Node, Context
+from QuantStudio.Tools.AuxiliaryFun import startMultiProcess
 
 
-class SimpleEngine(__QS_Object__):
-    def run(self, node_list: List[Node], context: Context, init_data_list: Optional[List[Any]]=None, fwd_data_list: Optional[List[Any]]=None) -> List[Any]:
-        # 初始化
+class Engine(__QS_Object__):
+
+    # 初始化
+    def init(self, node_list: List[Node], context: Context, init_data_list: Optional[List[Any]]=None):
         if not init_data_list: init_data_list = [None] * len(node_list)
         for i, iNode in enumerate(node_list):
             iNode.init([], init_data_list[i], context)
-        # 准备计算
+
+    # 准备数据
+    def prepare(self, node_list: List[Node], context: Context):
         for _, iPrepareData in context.PrepareNodeDict.items():
             iNodeID, iPrepareData = iPrepareData
             context.NodeDict[iNodeID].prepare_compute(iPrepareData, context)
-        # 主计算
+
+    # 主计算
+    def compute(self, node_list: List[Node], context: Context, fwd_data_list: Optional[List[Any]]=None):
         if not fwd_data_list: fwd_data_list = [None] * len(node_list)
         return [iNode.compute([], fwd_data_list[i], context) for i, iNode in enumerate(node_list)]
 
-class RecursiveEngine(__QS_Object__):
+    def run(self, node_list: List[Node], context: Context, init_data_list: Optional[List[Any]]=None, fwd_data_list: Optional[List[Any]]=None) -> List[Any]:
+        self.init(node_list=node_list, context=context, init_data_list=init_data_list)
+        self.prepare(node_list=node_list, context=context)
+        return self.compute(node_list=node_list, context=context, fwd_data_list=fwd_data_list)
+
+
+def _execute_task(task):
+    print(task["PID"], "start")
+    NodeList, Context, FwdDataList = task["NodeList"], task["Context"], task["FwdDataList"]
+    Context.PID = task["PID"]
+    for i, iNode in enumerate(NodeList):
+        iRslt = iNode.compute([], FwdDataList[i], Context)
+        task["Sub2MainQueue"].put((task["PID"], 1, (iNode.QSID, iRslt)))
+    task["Sub2MainQueue"].put((task["PID"], -1, Context.getUpdateData()))
+    print(task["PID"], "finish")
+
+class ParallelEngine(Engine):
+
+    class __QS_ArgClass__(Engine.__QS_ArgClass__):
+        IOConcurrentNum: Optional[int] = Field(default=None, title="IO并发数", frozen=True, ge=1)
+        RsltMerger: Union[Callable, List[Callable]] = Field(default=lambda x: x, title="结果合并器", frozen=False)
+
+    def prepare(self, node_list: List[Node], context: Context):
+        if not context.PrepareNodeDict: return
+        Futures = []
+        IOConcurrentNum = (self._QSArgs.IOConcurrentNum if self._QSArgs.IOConcurrentNum is not None else len(context.PrepareNodeDict))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=IOConcurrentNum) as Executor:
+            for _, iPrepareData in context.PrepareNodeDict.items():
+                iNodeID, iPrepareData = iPrepareData
+                iFuture = Executor.submit(context.NodeDict[iNodeID].prepare_compute, iPrepareData, context)
+                Futures.append(iFuture)
+            with ProgressBar(max_value=len(Futures)) as ProgBar:
+                for iFuture in concurrent.futures.as_completed(Futures):
+                    iFuture.result()
+                    ProgBar.update(ProgBar.value + 1)
+
+    def compute(self, node_list: List[Node], context: Context, fwd_data_list: Optional[List[Any]]=None):
+        nTask = len(context.PIDList)
+        Task = {"PID": context.PID, "NodeList": node_list, "Context": context, "FwdDataList": fwd_data_list}
+        nProg = len(node_list) * nTask
+        EventState = {iNodeID: 0 for iNodeID in context.Event}
+        Procs, Main2SubQueue, Sub2MainQueue = startMultiProcess(pid=context.PID, n_prc=nTask, target_fun=_execute_task, arg=Task, main2sub_queue="None", sub2main_queue="Single")
+        iProg, ContextUpdated, FinishedNum = 0, False, 0
+        Data = {}
+        with ProgressBar(max_value=nProg) as ProgBar:
+            while True:
+                nEvent = len(EventState)
+                if nEvent > 0:
+                    NodeIDs = tuple(EventState.keys())
+                    for iNodeID in NodeIDs:
+                        iQueue = context.Event[iNodeID][0]
+                        while not iQueue.empty():
+                            jInc = iQueue.get()
+                            EventState[iNodeID] += jInc
+                        if EventState[iNodeID] >= nTask:
+                            context.Event[iNodeID][1].set()
+                            EventState.pop(iNodeID)
+                while ((not Sub2MainQueue.empty()) or (nEvent == 0)) and ((iProg < nProg) or (not ContextUpdated)):
+                    iPID, iSubProg, iMsg = Sub2MainQueue.get()
+                    if iSubProg >= 0:  # 接收到因子数据
+                        iProg += iSubProg
+                        ProgBar.update(iProg)
+                        Data.setdefault(iMsg[0], []).append(iMsg[1])
+                    elif not ContextUpdated:# 接收到进程结束信号
+                        context.updateContext(iMsg)
+                        ContextUpdated = True
+                        FinishedNum += 1
+                    else:
+                        FinishedNum += 1
+                if (iProg >= nProg) and ContextUpdated: break
+        # 清空 Queue，否则子进程有可能不退出
+        while FinishedNum < nTask:
+            iPID, iSubProg, iMsg = Sub2MainQueue.get()
+            FinishedNum += (iSubProg < 0)
+        for iPID, iPrcs in Procs.items(): iPrcs.join()
+        Merger = self._QSArgs.RsltMerger if isinstance(self._QSArgs.RsltMerger, list) else [self._QSArgs.RsltMerger] * len(node_list)
+        return [Merger[i](Data[iNode.QSID]) for i, iNode in enumerate(node_list)]
+
+
+class StackEngine(Engine):
     def run(self, node_list: List[Node], context: Context, init_data_list: Optional[List[Any]]=None, fwd_data_list: Optional[List[Any]]=None) -> List[Any]:
         if not init_data_list: init_data_list = [None] * len(node_list)
         for i, iNode in enumerate(node_list):

@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
-import time
 import datetime as dt
-from collections import OrderedDict
-from typing import List, Optional, Any, Literal, Tuple, Dict
+from typing import List, Optional, Any, Literal, Tuple
 
 import numpy as np
 import pandas as pd
@@ -21,6 +19,7 @@ class FactorContext(Context):
     # NodeState: {节点ID: {"start_dt", "section_ids"}}
     # PID: str = Field(default="0", title="运行ID", description="当前的运行 ID, 默认为 '0'")
     # PIDList: List[str] = Field(default=["0"], title="所有运行ID")
+    # Event: dict = Field(default={}, title="", description="{节点ID: (Sub2MainQueue, Event)}, 用于多进程同步的 Event 数据")
     DTRuler: List[dt.datetime] = Field(title="时点标尺", description="当前运行计算时点标尺", frozen=True)
     DefaultSectionIDs: List[str] = Field(title="默认截面", description="当前运行需要计算的默认截面 ID", frozen=True)
     IDSplit: Literal["连续切分", "间隔切分"] = Field(default="连续切分", title="ID切分", frozen=True)
@@ -29,9 +28,25 @@ class FactorContext(Context):
     def model_post_init(self, context: Any, /) -> None:
         self._DefaultPIDIDs = self.splitID(self.DefaultSectionIDs)
 
+    # 并发运行后返回需要同步的内容
+    def getUpdateData(self) -> dict:
+        UpdateData = super().getUpdateData()
+        UpdateData["cache"] = self.FactorDataCache.getUpdateData()
+        return UpdateData
+
+    # 并发运行后更新同步内容
+    def updateContext(self, update_data: dict):
+        self.FactorDataCache.updateCache(update_data.pop("cache", {}))
+        return super().updateContext(update_data)
+
     def getDateTime(self, dt_range):
         StartIdx, EndIdx = np.searchsorted(self.DTRuler, dt_range[0], side="left"), np.searchsorted(self.DTRuler, dt_range[1], side="right")
         return self.DTRuler[StartIdx:EndIdx]
+
+    def __setattr__(self, name, value):
+        if name == "PIDList":
+            self._DefaultPIDIDs = self.splitID(self.DefaultSectionIDs)
+        return super().__setattr__(name, value)
 
     @property
     def DefaultPIDIDs(self):
@@ -59,9 +74,10 @@ class FactorContext(Context):
 
 
 class FactorLocalContext(BaseModel):
-    dts: List[dt.datetime]
-    ids: List[str]
-    pids: Optional[List[str]] = Field(default=None)
+    DTs: List[dt.datetime]
+    IDs: List[str]
+    PIDs: Optional[List[str]] = Field(default=None)
+    ExtraData: dict = Field(default={})
 
 
 # 因子
@@ -109,6 +125,8 @@ class Factor(Node):
         return []
     
     def readData(self, ids, dts, **kwargs):
+        if self.FactorTable:
+            return self.FactorTable.readData(factor_names=[self._QSArgs.Name], ids=ids, dts=dts).iloc[0]
         raise NotImplementedError
 
     def __getitem__(self, key):
@@ -147,7 +165,7 @@ class Factor(Node):
         elif self._FactorTable:
             RawData = self._FactorTable.__QS_prepareRawData__(factor_names=[self._QSArgs.Name], ids=iSectionIDs, dts=DTs)
             if RawData is not None: self._QS_Logger.warning(f"因子 {self._QSArgs.Name} (QSID: {self.QSID}) 的原始数据缓存丢失!")
-            StdData = self._FactorTable.__QS_calcData__(raw_data=RawData, factor_names=[self._NameInFT], ids=iSectionIDs, dts=DTs).iloc[0]
+            StdData = self._FactorTable.__QS_calcData__(raw_data=RawData, factor_names=[self._QSArgs.Name], ids=iSectionIDs, dts=DTs).iloc[0]
         else:
             return 0
         context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=context.PID, if_exists="append")
@@ -191,8 +209,8 @@ class Factor(Node):
 
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
         self.__QS_prepareCacheData__(context=context)
-        StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.pids)
-        return StdData.reindex(index=local_context.dts, columns=local_context.ids)
+        StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs)
+        return StdData.reindex(index=local_context.DTs, columns=StdData.columns.intersection(local_context.IDs)).sort_index(axis=1)
 
 
 # 直接赋予数据产生的因子
@@ -279,7 +297,7 @@ class DataFactor(Factor):
             return fillNaByLookback(Data.reindex(index=sorted(Data.index.union(dts)), columns=ids), lookback=self._QSArgs.LookBack * 24.0 * 3600).loc[dts, :]
 
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
-        return self.readData(ids=local_context.ids, dts=local_context.dts)
+        return self.readData(ids=local_context.IDs, dts=local_context.DTs)
 
 if __name__=="__main__":
     np.random.seed(0)
