@@ -22,7 +22,7 @@ class FactorOperator(__QS_Object__):
         OperatorType: Literal["Point", "Time", "Section", "Panel"] = Field(title="算子类型", frozen=True)
         Name: str = Field(default="FactorOperator", title="名称", frozen=True)
         ModelArgs: dict = Field(default={}, title="参数", frozen=True)
-        Arity: int = Field(default=1, ge=1, label="入参数", frozen=True)
+        Arity: Optional[int] = Field(default=None, ge=1, label="入参数", frozen=True)
         DataType: Literal["double", "string", "object"] = Field(default="double",title="数据类型", frozen=True)
         Description: str = Field(default="", label="描述信息", frozen=False, exclude=True)
         Meta: dict = Field(default={}, title="元信息", frozen=False, exclude=True)
@@ -44,12 +44,20 @@ class FactorOperator(__QS_Object__):
     @property
     def Name(self):
         return self._QSArgs.Name
-
-    def _QS_checkArity(self, *x):
+    
+    def model_dump(self):
+        DumpedModel = super().model_dump()
+        DumpedModel["__func__"] = self.calculate
+        return DumpedModel
+    
+    def _QS_validate(self, *x):
         Arity = len(x)
-        if Arity != self._QSArgs.Arity:
-            return (False, f"因子算子 {self._QSArgs.Name} 实际传入的因子数量 {Arity} 和指定的入参数 {self._QSArgs.Arity} 不符!")
-        return (True, None)
+        if self._QSArgs.Arity is None:
+            return self.new(args={"Arity": Arity})
+        elif Arity != self._QSArgs.Arity:
+            raise __QS_Error__(f"因子算子 {self._QSArgs.Name} 实际传入的因子数量 {Arity} 和指定的入参数 {self._QSArgs.Arity} 不符!")
+        else:
+            return self
 
     def _QS_adjOutputPandas(self, df, cols, dts, ids):
         if isinstance(df, pd.DataFrame):
@@ -156,8 +164,9 @@ class PointOperator(FactorOperator):
         IDMode: Literal["单ID", "多ID"] = Field(default="单ID", title="运算ID", frozen=True)
 
     def __call__(self, *x, factor_args: dict = {}, **kwargs):
+        Operator = self._QS_validate(*x)
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for i, iFactor in enumerate(x)]
-        return PointOperation(descriptors=Descriptors, args={"Operator": self, **factor_args}, **kwargs)
+        return PointOperation(descriptors=Descriptors, args={"Operator": Operator, **factor_args}, **kwargs)
 
     def _calcDataNumpy(self, factor, ids, dts, descriptor_data, ModelArgs):
         if self._QSArgs.DataType == 'double':
@@ -331,8 +340,9 @@ class TimeOperator(FactorOperator):
             return super().model_post_init(context)
     
     def __call__(self, *x, factor_args:dict={}, **kwargs):
+        Operator = self._QS_validate(*x)
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for i, iFactor in enumerate(x)]
-        return TimeOperation(descriptors=Descriptors, args={"Operator": self, **factor_args}, **kwargs)
+        return TimeOperation(descriptors=Descriptors, args={"Operator": Operator, **factor_args}, **kwargs)
     
     def _calcDataNumpy(self, factor, ids, dts, descriptor_data, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, ModelArgs, StdData):
         if (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='单ID'):
@@ -461,30 +471,27 @@ class TimeOperator(FactorOperator):
         StartIdx, EndIdx = np.searchsorted(dt_ruler, dts[0], side="left"), np.searchsorted(dt_ruler, dts[-1], side="right")
         StartIndAndLen, MaxLookBack, MaxLen = [], 0, 1# StartIndAndLen: [(开始位置, 数据长度)], MaxLookBack: 最大回溯期, MaxLen: 最大数据长度
         for i in range(len(descriptor_data)):
-            iLookBack = factor._QSArgs.LookBack[i]
-            if (factor._QSArgs.LookBackMode[i]=="滚动窗口") or (factor._QSArgs.StartDT[i] is None):
+            iLookBack = self._QSArgs.LookBack[i]
+            if (self._QSArgs.LookBackMode[i]=="滚动窗口") or (self._QSArgs.StartDT[i] is None):
                 StartIndAndLen.append((iLookBack, iLookBack+1))
                 MaxLen = max(MaxLen, iLookBack+1)
             else:
-                iLookBack = max(0, StartIdx - np.searchsorted(dt_ruler, factor._QSArgs.StartDT[i], side="left"))
+                iLookBack = max(0, StartIdx - np.searchsorted(dt_ruler, self._QSArgs.StartDT[i], side="left"))
                 StartIndAndLen.append((iLookBack, np.inf))
                 MaxLen = np.inf
             MaxLookBack = max(MaxLookBack, iLookBack)
         iStartIdx = 0
-        if factor._QSArgs.iInitFactor>=0:# 自身回溯
-            StdData = np.r_[descriptor_data[factor._QSArgs.iInitFactor], StdData]
-            iStartIdx = descriptor_data[factor._QSArgs.iInitFactor].shape[0]
-            descriptor_data[factor._QSArgs.iInitFactor] = StdData
+        if self._QSArgs.iInitFactor>=0:# 自身回溯
+            StdData = np.r_[descriptor_data[self._QSArgs.iInitFactor], StdData]
+            iStartIdx = descriptor_data[self._QSArgs.iInitFactor].shape[0]
+            descriptor_data[self._QSArgs.iInitFactor] = StdData
         if StartIdx >= MaxLookBack: DTRuler = dt_ruler[StartIdx-MaxLookBack:EndIdx]
         else: DTRuler = [None] * (MaxLookBack - StartIdx) + dt_ruler[:EndIdx]
-        ModelArgs = dict(self._QSArgs.ModelArgs)
-        ModelArgs.update(factor._QSArgs.ModelArgs)
+        ModelArgs = self._QSArgs.ModelArgs
         if self._QSArgs.InputFormat == "numpy":
             return self._calcDataNumpy(factor, ids, dts, descriptor_data, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, ModelArgs, StdData)
         else:
             return self._calcDataPandas(factor, ids, dts, descriptor_data, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, ModelArgs, StdData)
-
-
 
 
 # 截面算子
@@ -515,8 +522,9 @@ class SectionOperator(FactorOperator):
             return super().model_post_init(context)
     
     def __call__(self, *x, factor_args:dict={}, **kwargs):
+        Operator = self._QS_validate(*x)
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for i, iFactor in enumerate(x)]
-        return SectionOperation(descriptors=Descriptors, args={"Operator": self, **factor_args}, **kwargs)
+        return SectionOperation(descriptors=Descriptors, args={"Operator": Operator, **factor_args}, **kwargs)
         
     def _calcDataNumpy(self, factor, ids, dts, descriptor_data, SectionIDs, ModelArgs):
         if self._QSArgs.DataType=="double": StdData = np.full(shape=(len(dts), len(SectionIDs)), fill_value=np.nan, dtype="float")
@@ -637,8 +645,7 @@ class SectionOperator(FactorOperator):
                 return self._QS_adjOutputPandas(StdData, CompoundCols, CalcDTs, ids).reindex(index=dts)
     
     def calcData(self, factor, ids, dts, descriptor_data, dt_ruler=None, section_ids=None):
-        ModelArgs = dict(self._QSArgs.ModelArgs)
-        ModelArgs.update(factor._QSArgs.ModelArgs)
+        ModelArgs = self._QSArgs.ModelArgs
         if section_ids is None: section_ids = ids
         if self._QSArgs.InputFormat == "numpy":
             return self._calcDataNumpy(factor, ids, dts, descriptor_data, section_ids, ModelArgs)
@@ -689,8 +696,9 @@ class PanelOperator(FactorOperator):
             return super().model_post_init(context)
     
     def __call__(self, *x, factor_args:dict={}, **kwargs):
+        Operator = self._QS_validate(*x)
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for i, iFactor in enumerate(x)]
-        return PanelOperation(descriptors=Descriptors, args={"Operator": self, **factor_args}, **kwargs)
+        return PanelOperation(descriptors=Descriptors, args={"Operator": Operator, **factor_args}, **kwargs)
     
     def _calcDataNumpy(self, factor, ids, dts, descriptor_data, DTRuler, SectionIDs, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, ModelArgs, StdData):
         if self._QSArgs.OutputMode=='全截面':
@@ -829,28 +837,26 @@ class PanelOperator(FactorOperator):
         StartIdx, EndIdx = np.searchsorted(dt_ruler, dts[0], side="left"), np.searchsorted(dt_ruler, dts[-1], side="right")
         StartIndAndLen, MaxLookBack, MaxLen = [], 0, 1# StartIndAndLen: [(开始位置, 数据长度)], MaxLookBack: 最大回溯期, MaxLen: 最大数据长度
         for i in range(len(descriptor_data)):
-            iLookBack = factor._QSArgs.LookBack[i]
-            if (factor._QSArgs.LookBackMode[i]=="滚动窗口") or (factor._QSArgs.StartDT[i] is None):
+            iLookBack = self._QSArgs.LookBack[i]
+            if (self._QSArgs.LookBackMode[i]=="滚动窗口") or (self._QSArgs.StartDT[i] is None):
                 StartIndAndLen.append((iLookBack, iLookBack+1))
                 MaxLen = max(MaxLen, iLookBack+1)
             else:
-                iLookBack = max(0, StartIdx - np.searchsorted(dt_ruler, factor._QSArgs.StartDT[i], side="left"))
+                iLookBack = max(0, StartIdx - np.searchsorted(dt_ruler, self._QSArgs.StartDT[i], side="left"))
                 StartIndAndLen.append((iLookBack, np.inf))
                 MaxLen = np.inf
             MaxLookBack = max(MaxLookBack, iLookBack)
         iStartIdx = 0
-        if factor._QSArgs.iInitFactor>=0:# 自身回溯
-            StdData = np.r_[descriptor_data[factor._QSArgs.iInitFactor], StdData]
-            iStartIdx = descriptor_data[factor._QSArgs.iInitFactor].shape[0]
-            descriptor_data[factor._QSArgs.iInitFactor] = StdData
+        if self._QSArgs.iInitFactor>=0:# 自身回溯
+            StdData = np.r_[descriptor_data[self._QSArgs.iInitFactor], StdData]
+            iStartIdx = descriptor_data[self._QSArgs.iInitFactor].shape[0]
+            descriptor_data[self._QSArgs.iInitFactor] = StdData
         if StartIdx >= MaxLookBack: DTRuler = dt_ruler[StartIdx-MaxLookBack:EndIdx]
         else: DTRuler = [None] * (MaxLookBack - StartIdx) + dt_ruler[:EndIdx]
-        ModelArgs = dict(self._QSArgs.ModelArgs)
-        ModelArgs.update(factor._QSArgs.ModelArgs)
         if self._QSArgs.InputFormat == "numpy":
-            return self._calcDataNumpy(factor, ids, dts, descriptor_data, DTRuler, section_ids, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, ModelArgs, StdData)
+            return self._calcDataNumpy(factor, ids, dts, descriptor_data, DTRuler, section_ids, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, self._QSArgs.ModelArgs, StdData)
         else:
-            return self._calcDataPandas(factor, ids, dts, descriptor_data, DTRuler, section_ids, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, ModelArgs, StdData)
+            return self._calcDataPandas(factor, ids, dts, descriptor_data, DTRuler, section_ids, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, self._QSArgs.ModelArgs, StdData)
 
 
 # 算子工厂函数
@@ -904,11 +910,11 @@ class DerivativeFactor(Factor):
     def getMetaData(self, key=None):
         DataType = self._Operator._QSArgs.DataType
         if key is None:
-            return {"DataType": DataType, **self._QSArgs.Meta}
+            return pd.Series({"DataType": DataType, **self._QSArgs.Meta})
         elif key == "DataType":
             return DataType
         else:
-            return self._QSArgs.get(key, None)
+            return self._QSArgs.Meta.get(key, None)
         return None
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
@@ -922,8 +928,9 @@ class DerivativeFactor(Factor):
                 StdData = pd.DataFrame(StdData, index=DTs, columns=iSectionIDs)
             else:
                 StdData = self._Operator.calcData(factor=self, ids=iSectionIDs, dts=DTs, descriptor_data=bwd_data_list, dt_ruler=context.DTRuler, section_ids=iSectionIDs)
-        context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids={context.PID: iSectionIDs}, pid=context.PID, if_exists="append")
-        context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(DTs[0], DTs[1]))
+        if context.FactorDataCache:
+            context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids={context.PID: iSectionIDs}, pid=context.PID, if_exists="append")
+            context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(DTs[0], DTs[1]))
         return StdData.reindex(index=DTs, columns=StdData.columns.intersection(IDs)).sort_index(axis=1)
     
 class PointOperation(DerivativeFactor):
@@ -934,8 +941,9 @@ class PointOperation(DerivativeFactor):
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
         DTRange = context.NodeState.get(self.QSID, {}).get("dt_range", None)
         if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
-        DTRange = context.FactorDataCache.getDTRange(self.QSID, DTRange)
-        if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
+        if context.FactorDataCache:
+            DTRange = context.FactorDataCache.getDTRange(self.QSID, DTRange)
+            if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
         DTs = context.getDateTime(DTRange)
         if not DTs: return [], FactorLocalContext(DTs=[], IDs=IDs)
         return [FactorLocalContext(IDs=context.getID(self.QSID, [context.PID]), DTs=DTs)] * len(self.Deps), FactorLocalContext(IDs=fwd_data.IDs, DTs=DTs)
@@ -969,8 +977,9 @@ class TimeOperation(DerivativeFactor):
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
         DTRange = context.NodeState.get(self.QSID, {}).get("dt_range", None)
         if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
-        DTRange = context.FactorDataCache.getDTRange(self.QSID, DTRange)
-        if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
+        if context.FactorDataCache:
+            DTRange = context.FactorDataCache.getDTRange(self.QSID, DTRange)
+            if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
         DTs = context.getDateTime(DTRange)
         if not DTs: return [], FactorLocalContext(DTs=[], IDs=IDs)
         DTRuler = context.DTRuler
@@ -1006,8 +1015,9 @@ class SectionOperation(DerivativeFactor):
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
         DTRange = context.NodeState.get(self.QSID, {}).get("dt_range", None)
         if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
-        DTRange = context.FactorDataCache.getDTRange(self.QSID, DTRange)
-        if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
+        if context.FactorDataCache:
+            DTRange = context.FactorDataCache.getDTRange(self.QSID, DTRange)
+            if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
         DTs = context.getDateTime(DTRange)
         if not DTs: return [], FactorLocalContext(DTs=[], IDs=IDs)
         PID = context.PID
@@ -1029,8 +1039,9 @@ class SectionOperation(DerivativeFactor):
             else:
                 StdData = self._Operator.calcData(factor=self, ids=SectionIDs, dts=DTs, descriptor_data=bwd_data_list, dt_ruler=context.DTRuler, section_ids=SectionIDs)
         PIDIDs = context.NodeState[self.QSID]["pid_ids"]
-        context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=None, if_exists="append")
-        context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(DTs[0], DTs[1]))
+        if context.FactorDataCache:
+            context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=None, if_exists="append")
+            context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(DTs[0], DTs[1]))
         if len(context.PIDList) > 1:
             Sub2MainQueue, PIDEvent = context.Event[self.QSID]
             Sub2MainQueue.put(1)
@@ -1070,8 +1081,9 @@ class PanelOperation(DerivativeFactor):
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
         DTRange = context.NodeState.get(self.QSID, {}).get("dt_range", None)
         if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
-        DTRange = context.FactorDataCache.getDTRange(self.QSID, DTRange)
-        if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
+        if context.FactorDataCache:
+            DTRange = context.FactorDataCache.getDTRange(self.QSID, DTRange)
+            if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
         DTs = context.getDateTime(DTRange)
         if not DTs: return [], FactorLocalContext(DTs=[], IDs=IDs)
         DTRuler = context.DTRuler
@@ -1099,9 +1111,10 @@ class PanelOperation(DerivativeFactor):
                 StdData = pd.DataFrame(StdData, index=DTs, columns=SectionIDs)
             else:
                 StdData = self._Operator.calcData(factor=self, ids=SectionIDs, dts=DTs, descriptor_data=bwd_data_list, dt_ruler=context.DTRuler, section_ids=SectionIDs)
-        PIDIDs = context.NodeState[self.QSID]["pid_ids"]
-        context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=None, if_exists="append")
-        context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(DTs[0], DTs[1]))
+        if context.FactorDataCache:
+            PIDIDs = context.NodeState[self.QSID]["pid_ids"]
+            context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=None, if_exists="append")
+            context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(DTs[0], DTs[1]))
         if len(context.PIDList) > 1:
             Sub2MainQueue, PIDEvent = context.Event[self.QSID]
             Sub2MainQueue.put(1)

@@ -2,7 +2,7 @@
 """基于 BaoStock 的因子库(http://baostock.com/baostock/)(TODO)"""
 import os
 import datetime as dt
-from typing import Optional, Literal, List, Any
+from typing import Optional, Literal
 
 import numpy as np
 import pandas as pd
@@ -13,12 +13,8 @@ from QuantStudio.Core import __QS_Error__
 from QuantStudio import __QS_MainPath__, __QS_ConfigPath__
 from QuantStudio.Core.FactorDB import FactorDB
 from QuantStudio.Core.FactorTable import FactorTable
-from QuantStudio.Core.Factor import FactorContext, FactorLocalContext
-from QuantStudio.Core.Node import Context
-from QuantStudio.Core.utils import _QS_calcData_WideTable
-from QuantStudio.Tools.IDFun import suffixAShareID
+from QuantStudio.Core.FactorUtils import _QS_calcData_WideTable
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries
-from QuantStudio.Tools.DataTypeFun import dict2id
 
 
 # 将信息源文件中的表和字段信息导入信息文件
@@ -112,7 +108,7 @@ class _BSTable(FactorTable):
             APIArgs[iArgName] = iArgVal
         return APIArgs
 
-    def __QS_adjustID__(self, ids):
+    def __QS_adjustID__(self, ids: list[str]):
         IDAdj = self._QSArgs.IDAdj
         if IDAdj == "无":
             return ids
@@ -121,8 +117,10 @@ class _BSTable(FactorTable):
         else:
             raise __QS_Error__(f"BaoStockDB._BSTable: 不支持的 ID 调整方法 '{IDAdj}'")
 
-    def __QS_restoreID__(self, ids):
-        return ids
+    def __QS_restoreID__(self, ids: pd.Series):
+        ids = ids.str.split(".", expand=True)
+        ids[0] = ids[0].str.upper()
+        return ids[1] + "." + ids[0]
 
     def __QS_adjustDT__(self, dts):
         DTFmt = self._QSArgs.DTFmt
@@ -131,26 +129,6 @@ class _BSTable(FactorTable):
         else:
             return [dt.datetime.strptime(iDT, DTFmt) if pd.notnull(iDT) else pd.NaT for iDT in dts]
 
-    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        return None
-
-    def __QS_saveRawData__(self, raw_data, key, target_fields, pid_ids, context: FactorContext, **kwargs):
-        if raw_data is None: return 0
-        Cache = context.FactorDataCache
-        MaskCols = raw_data.columns.intersection(self._QS_RawDataMaskCols).tolist()
-        CommonCols = raw_data.columns.difference(target_fields).tolist()
-        for iFactorName in target_fields:
-            iRawData = raw_data.loc[:, CommonCols+[iFactorName]]
-            iKey = key+"-"+iFactorName
-            iOldData = Cache.readRawData(iKey, target_fields=None, pids=None)
-            if iOldData:
-                iOldData = iOldData["RawData"]
-                iOldData["QS_Mask"] = 1
-                iRawData = pd.merge(iRawData, iOldData.loc[:, [*MaskCols, "QS_Mask"]], how="left", left_on=MaskCols, right_on=MaskCols)
-                iOldData.pop("QS_Mask")
-                iRawData = pd.concat([iOldData, iRawData[iRawData.pop("QS_Mask").isnull()]], ignore_index=True).sort_values(MaskCols)
-            Cache.writeRawData(iKey, {"RawData": iRawData}, pid_ids, id_col="QS_ID", if_exists="replace")
-
     def getMetaData(self, key=None):
         TableInfo = self._FactorDB._TableInfo.loc[self._QSArgs.Name]
         if key is None:
@@ -158,30 +136,22 @@ class _BSTable(FactorTable):
         else:
             return TableInfo.get(key, None)
 
-    def getFactorMetaData(self, factor_name, key=None):
+    def getFactorMetaData(self, factor_names=None, key=None):
+        if factor_names is None: factor_names = self.FactorNames
         FactorInfo = self._FactorDB._FactorInfo.loc[self._QSArgs.Name]
         if key == "DataType":
-            if hasattr(self, "_DataType"): return self._DataType.loc[factor_name]
-            iDataType = FactorInfo.loc[factor_name, "DataType"].lower()
-            if iDataType.find("str") != -1:
-                iDataType = "string"
-            else:
-                iDataType = "double"
+            iDataType = FactorInfo.loc[factor_names, "DataType"].str.lower()
+            iDataType = pd.Series(np.where(iDataType.str.find("str")!=-1, "string", "double"), index=iDataType.index)
             return iDataType
         elif key == "Description":
-            return FactorInfo.loc[factor_name, "Description"]
+            return FactorInfo.loc[factor_names, "Description"]
         elif key is None:
-            return {
-                "DataType": self.getFactorMetaData(factor_name, key="DataType"),
-                "Description": self.getFactorMetaData(factor_name, key="Description")
-            }
+            return FactorInfo.loc[factor_names, ["DataType", "Description"]]
         else:
             return None
 
 
 class _DTTable(_BSTable):
-    """DTTable"""
-
     class __QS_ArgClass__(_BSTable.__QS_ArgClass__):
         LookBack: int = Field(default=0, title="回溯天数", frozen=True, ge=0)
 
@@ -190,7 +160,7 @@ class _DTTable(_BSTable):
         self._QS_PrepareIgnoredArgs += ("LookBack",)
 
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
-        StartDT = dts[0] - dt.timedelta(args.get("回溯天数", self._QSArgs.LookBack))
+        StartDT = dts[0] - dt.timedelta(args.get("LookBack", self._QSArgs.LookBack))
         DTs = getDateTimeSeries(StartDT, dts[0]) + dts[1:]
         APIName = self._TableInfo.loc["DBTableName"]
         ArgInfo = self._ArgInfo
@@ -201,7 +171,7 @@ class _DTTable(_BSTable):
         for iDT in DTs:
             APIArgs[DTArg] = iDT.strftime("%Y-%m-%d")
             try:
-                iRawData = getattr(self._FactorDB._bs, APIName)(**APIArgs)
+                iRawData = getattr(bs, APIName)(**APIArgs).get_data()
             except:
                 continue
             iRawData["QS_DT"] = iDT
@@ -209,26 +179,20 @@ class _DTTable(_BSTable):
         IDField = self._FactorInfo.index[self._FactorInfo["FieldType"] == "ID"][0]
         if RawData:
             RawData = pd.concat(RawData, axis=0, ignore_index=True)
-            RawData = RawData.rename(columns={IDField: "ID"}).reindex(columns=["ID", "QS_DT"] + factor_names)
-            RawData["ID"] = RawData["ID"].apply(suffixAShareID)
-            return RawData.sort_values(by=["ID", "QS_DT"])
+            RawData = RawData.rename(columns={IDField: "QS_ID"}).reindex(columns=["QS_ID", "QS_DT"] + factor_names)
+            RawData["QS_ID"] = self.__QS_restoreID__(RawData["QS_ID"])
+            return RawData.sort_values(by=["QS_ID", "QS_DT"])
         else:
-            return pd.DataFrame(columns=["ID", "QS_DT"] + factor_names)
+            return pd.DataFrame(columns=["QS_ID", "QS_DT"] + factor_names)
 
-    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType", args=args)
-        Args = self.Args.to_dict()
-        Args.update(args)
-        ErrorFmt = {
-            "DuplicatedIndex": "%s 的表 %s 无法保证唯一性 : {Error}, 可以尝试将 '多重映射' 参数取值调整为 True" % (
-                self._FactorDB.Name, self.Name)}
-        return _QS_calcData_WideTable(raw_data, factor_names, ids, dts, DataType, args=Args, logger=self._QS_Logger,
-                                      error_fmt=ErrorFmt)
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts):
+        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
+        Args = self._QSArgs.to_dict(repr=False)
+        ErrorFmt = {"DuplicatedIndex": "%s 的表 %s 无法保证唯一性 : {Error}, 可以尝试将 '多重映射' 参数取值调整为 True" % (self._FactorDB.Name, self.Name)}
+        return _QS_calcData_WideTable(raw_data, factor_names, ids, dts, DataType, args=Args, logger=self._QS_Logger, error_fmt=ErrorFmt)
 
 
 class _DTRangeTable(_BSTable):
-    """DTRangeTable"""
-
     class __QS_ArgClass__(_BSTable.__QS_ArgClass__):
         LookBack: int = Field(default=0, title="回溯天数", frozen=True, ge=0)
 
@@ -236,8 +200,7 @@ class _DTRangeTable(_BSTable):
         super().__init__(fdb=fdb, args=args, **kwargs)
         self._QS_PrepareIgnoredArgs += ("LookBack",)
 
-    def __QS_prepareRawData__(self, ids, dts, args={}, factor_names=None, **kwargs):
-        if not factor_names: factor_names = self.FactorNames
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         StartDate, EndDate = dts[0].date(), dts[-1].date()
         StartDate -= dt.timedelta(args.get("LookBack", self._QSArgs.LookBack))
         APIName = self._TableInfo.loc["DBTableName"]
@@ -271,17 +234,14 @@ class _DTRangeTable(_BSTable):
         else:
             return pd.DataFrame(columns=["QS_ID", "QS_DT"] + factor_names)
 
-    def __QS_calcData__(self, raw_data, ids, dts, factor_names=None, **kwargs):
-        if not factor_names: factor_names = self.FactorNames
-        DataType = pd.Series({iFactorName: self.getFactorMetaData(factor_name=iFactorName, key="DataType") for iFactorName in factor_names})
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts):
+        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
         Args = self._QSArgs.to_dict(repr=False)
         ErrorFmt = {"DuplicatedIndex": "%s 的表 %s 无法保证唯一性 : {Error}, 可以尝试将 '多重映射' 参数取值调整为 True" % (self._FactorDB.Name, self.Name)}
         return _QS_calcData_WideTable(raw_data, factor_names, ids, dts, DataType, args=Args, logger=self._QS_Logger, error_fmt=ErrorFmt)
 
 
 class BaoStockDB(FactorDB):
-    """BaoStockDB"""
-
     class __QS_ArgClass__(FactorDB.__QS_ArgClass__):
         Name: str = Field(default="BaoStockDB", title="名称", frozen=True)
         UserID: str = Field(default="anonymous", title="用户ID", frozen=True)
@@ -356,37 +316,88 @@ class BaoStockDB(FactorDB):
         Rslt = rs.get_data()
         return Rslt["calendar_date"][Rslt["is_trading_day"] == "1"].apply(lambda d: dt.datetime.strptime(d, "%Y-%m-%d")).tolist()
 
-
+    # 获取指定日 date 的全体 A 股 ID
+    # date: 指定日, datetime.date
+    # is_current: False 表示上市日在指定日之前的股票, True 表示上市日在指定日之前且尚未退市的股票
+    def _getAllAStock(self, date, is_current=True, exchange=("SSE", "SZSE")):
+        ExchgSuffix = {"SSE": "SH", "SZSE": "SZ"}
+        ExchgSuffix = {ExchgSuffix[Exchg] for Exchg in exchange}
+        DTs = self.getTradeDay(start_date=date-dt.timedelta(30), end_date=date)
+        for iDT in reversed(DTs):
+            rs = bs.query_all_stock(day=iDT.strftime("%Y-%m-%d"))# 当参数“day”为空时，默认取当天日期。闭市后日K线数据更新，该接口才会返回当天数据，否则返回空。
+            if rs.error_code != "0":
+                raise __QS_Error__(f"BaoStockDB.getTradeDay query_trade_dates 错误码: {rs.error_code}, 错误信息: {rs.error_msg}")
+            Rslt = rs.get_data()
+            if not Rslt.empty:
+                break
+        else:
+            Rslt = pd.DataFrame(columns=["code", "tradeStatus"])
+        if is_current:
+            Rslt = Rslt[Rslt["tradeStatus"]=="1"]
+        Rslt = Rslt["code"].str.split(".", expand=True)
+        Rslt[0] = Rslt[0].str.upper()
+        Initial = Rslt[1].str.slice(0, 1)
+        Rslt = Rslt[((Rslt[0]=="SH") & (Initial=="6")) | ((Rslt[0]=="SZ") & (Initial.isin(("0", "3"))))]
+        return sorted(Rslt[1] + "." + Rslt[0])
+    
+    # 获取指定日 date 的股票 ID
+    # exchange: 交易所(str)或者交易所列表(list(str))
+    # date: 指定日, 默认值 None 表示今天
+    # is_current: False 表示上市日期在指定日之前的股票, True 表示上市日期在指定日之前且尚未退市的股票
+    def getStockID(self, exchange=("SSE", "SZSE"), date=None, is_current=True, **kwargs):
+        if date is None: date = dt.date.today()
+        if isinstance(exchange, str):
+            exchange = {exchange}
+        else:
+            exchange = set(exchange)
+        IDs = []
+        # A 股
+        iExchange = {"SSE", "SZSE"}
+        if not exchange.isdisjoint(iExchange):
+            IDs += self._getAllAStock(exchange=exchange.intersection(iExchange), date=date, is_current=is_current)
+            exchange = exchange.difference(iExchange)
+        if exchange:
+            Msg = f"外部因子库 '{self._QSArgs.Name}' 调用 getStockID 时错误: 尚不支持交易所 {str(exchange)}"
+            self._QS_Logger.error(Msg)
+            raise __QS_Error__(Msg)
+        return IDs
+    
+    
+    
 if __name__ == "__main__":
     BSDB = BaoStockDB().connect()
     print(BSDB.TableNames)
 
-    # DTs = BSDB.getTradeDay(start_date=dt.datetime(2022, 1, 1), end_date=dt.datetime(2022, 1, 31))
-    # print(DTs)
-
-    # CF = BSDB.getFactor("A股K线数据", args={})
-    # Data = CF.readData(
-    #     factor_names=["open", "close"],
-    #     ids=["600000.SH"],
-    #     dts=[dt.datetime(2022, 10, 28), dt.datetime(2022, 10, 31)]
-    # )
-    # print(Data)
-
-    CF1 = BSDB.getTable("A股K线数据", args={"APIArgs": {"frequency": "d"}, "LookBack": 1})
-    print(CF1.model_dump())
-    print(CF1.QSID)
-    print(CF1.PrepareID)
-    CF2 = BSDB.getTable("A股K线数据", args={"LookBack": 0})
-    print(CF2.model_dump())
-    print(CF2.QSID)
-    print(CF2.PrepareID)
-
-    # CF = BSDB.getFactor("A股K线数据", args={})
-    # F = CF.getFactor("open")
-    # Data = F.readData(
-    #     ids=["600000.SH"],
-    #     dts=[dt.datetime(2022, 10, 28), dt.datetime(2022, 10, 31)]
-    # )
-    # print(Data)
-
+    #DTs = BSDB.getTradeDay(start_date=dt.datetime(2022, 1, 1), end_date=dt.datetime(2022, 1, 31))
+    #print(DTs)
+    
+    #IDs = BSDB.getStockID()
+    #print(IDs)
+    
+    ## 测试 QSID
+    #FT1 = BSDB.getTable("A股K线数据", args={"APIArgs": {"frequency": "d"}, "LookBack": 1})
+    #print(FT1.model_dump())
+    #print(FT1.QSID)
+    #print(FT1.PrepareID)
+    #FT2 = BSDB.getTable("A股K线数据", args={"LookBack": 0})
+    #print(FT2.model_dump())
+    #print(FT2.QSID)
+    #print(FT2.PrepareID)
+    
+    #FT = BSDB.getTable("A股K线数据", args={})
+    #Data = FT.readData(
+        #factor_names=["open", "close"],
+        #ids=["600000.SH"],
+        #dts=[dt.datetime(2022, 10, 28), dt.datetime(2022, 10, 31)]
+    #)
+    #print(Data)
+    
+    FT = BSDB.getTable("行业分类", args={})
+    Data = FT.readData(
+        factor_names=["industry"],
+        ids=["600000.SH"],
+        dts=[dt.datetime(2022, 10, 28), dt.datetime(2022, 10, 31)]
+    )
+    print(Data.iloc[0])
+    
     print("===")

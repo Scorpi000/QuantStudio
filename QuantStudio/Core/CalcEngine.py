@@ -9,7 +9,6 @@ from QuantStudio.Core import __QS_Object__
 from QuantStudio.Core.Node import Node, Context
 from QuantStudio.Tools.AuxiliaryFun import startMultiProcess
 
-
 class Engine(__QS_Object__):
 
     # 初始化
@@ -149,3 +148,7 @@ class StackEngine(Engine):
             iRslt = DataStack.pop()
             Rslt.append(iRslt)
         return Rslt
+
+
+# 全局计算引擎
+__QS_Engine__ = [Engine()]

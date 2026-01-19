@@ -8,10 +8,11 @@ from pydantic import Field, BaseModel
 
 from QuantStudio.Core import __QS_Error__
 from QuantStudio.Core.Node import Node, Context
-from QuantStudio.Core.QSObject import Panel
 from QuantStudio.Core.FactorCache import FactorCache
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.AuxiliaryFun import partitionListMovingSampling, partitionList
+from QuantStudio.Core.Node import __QS_Context__
+from QuantStudio.Core.CalcEngine import __QS_Engine__, Engine
 
 
 class FactorContext(Context):
@@ -23,7 +24,7 @@ class FactorContext(Context):
     DTRuler: List[dt.datetime] = Field(title="时点标尺", description="当前运行计算时点标尺", frozen=True)
     DefaultSectionIDs: List[str] = Field(title="默认截面", description="当前运行需要计算的默认截面 ID", frozen=True)
     IDSplit: Literal["连续切分", "间隔切分"] = Field(default="连续切分", title="ID切分", frozen=True)
-    FactorDataCache: FactorCache = Field(title="因子缓存", frozen=True)
+    FactorDataCache: Optional[FactorCache] = Field(default=None, title="因子缓存", frozen=True)
 
     def model_post_init(self, context: Any, /) -> None:
         self._DefaultPIDIDs = self.splitID(self.DefaultSectionIDs)
@@ -31,12 +32,12 @@ class FactorContext(Context):
     # 并发运行后返回需要同步的内容
     def getUpdateData(self) -> dict:
         UpdateData = super().getUpdateData()
-        UpdateData["cache"] = self.FactorDataCache.getUpdateData()
+        if self.FactorDataCache: UpdateData["cache"] = self.FactorDataCache.getUpdateData()
         return UpdateData
 
     # 并发运行后更新同步内容
     def updateContext(self, update_data: dict):
-        self.FactorDataCache.updateCache(update_data.pop("cache", {}))
+        if self.FactorDataCache: self.FactorDataCache.updateCache(update_data.pop("cache", {}))
         return super().updateContext(update_data)
 
     def getDateTime(self, dt_range):
@@ -97,7 +98,11 @@ class Factor(Node):
             return super().__init__(deps=[ft], args=args, config_file=config_file, **kwargs)
         else:
             return super().__init__(deps=descriptors, args=args, config_file=config_file, **kwargs)
-
+    
+    def new(self, args={}):
+        args = self._QSArgs.model_dump() | args
+        return self.__class__(ft=self._FactorTable, descriptors=self.Deps, args=args, config_file=self._ConfigFile, logger=self._QS_Logger)    
+    
     @property
     def FactorTable(self):
         return self._FactorTable
@@ -125,9 +130,14 @@ class Factor(Node):
         return []
     
     def readData(self, ids, dts, **kwargs):
-        if self.FactorTable:
-            return self.FactorTable.readData(factor_names=[self._QSArgs.Name], ids=ids, dts=dts).iloc[0]
-        raise NotImplementedError
+        SectionIDs = kwargs.get("section_ids", ids)
+        if not __QS_Context__: Context = FactorContext(DTRuler=kwargs.get("dt_ruler", dts), DefaultSectionIDs=SectionIDs)
+        else: Context = __QS_Context__[-1]
+        if not __QS_Engine__: ExecEngine = Engine()
+        else: ExecEngine = __QS_Engine__[-1]
+        LocalContext = FactorLocalContext(DTs=dts, IDs=ids)
+        Rslt = ExecEngine.run([self], Context, fwd_data_list=[LocalContext], init_data_list=[{"dt_range": (dts[0], dts[-1]), "section_ids": SectionIDs}])
+        return Rslt[0]
 
     def __getitem__(self, key):
         if isinstance(key, tuple): key += (slice(None),) * (2 - len(key))
@@ -208,11 +218,136 @@ class Factor(Node):
             return super().forward_compute(path=path, fwd_data=fwd_data, context=context)
 
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
-        self.__QS_prepareCacheData__(context=context)
-        StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs)
-        return StdData.reindex(index=local_context.DTs, columns=StdData.columns.intersection(local_context.IDs)).sort_index(axis=1)
-
-
+        if context.FactorDataCache:
+            self.__QS_prepareCacheData__(context=context)
+            StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs)
+            return StdData.reindex(index=local_context.DTs, columns=StdData.columns.intersection(local_context.IDs)).sort_index(axis=1)
+        elif self._FactorTable:
+            RawData = self._FactorTable.__QS_prepareRawData__(factor_names=[self._QSArgs.Name], ids=local_context.IDs, dts=local_context.DTs)
+            return self._FactorTable.__QS_calcData__(raw_data=RawData, factor_names=[self._QSArgs.Name], ids=local_context.IDs, dts=local_context.DTs).iloc[0]
+        else:
+            raise NotImplementedError
+    
+    # -----------------------------重载运算符-------------------------------------
+    def __add__(self, other):
+        from QuantStudio.Core.BasicOperator import add
+        return add(self, other)
+    
+    def __radd__(self, other):
+        from QuantStudio.Core.BasicOperator import add
+        return add(other, self)
+    
+    def __sub__(self, other):
+        from QuantStudio.Core.BasicOperator import sub
+        return sub(self, other)
+    
+    def __rsub__(self, other):
+        from QuantStudio.Core.BasicOperator import sub
+        return sub(other, self)
+    
+    def __mul__(self, other):
+        from QuantStudio.Core.BasicOperator import mul
+        return mul(self, other)
+    
+    def __rmul__(self, other):
+        from QuantStudio.Core.BasicOperator import mul
+        return mul(other, self)
+    
+    def __pow__(self, other):
+        from QuantStudio.Core.BasicOperator import qs_pow
+        return qs_pow(self, other)
+    
+    def __rpow__(self, other):
+        from QuantStudio.Core.BasicOperator import qs_pow
+        return qs_pow(other, self)
+    
+    def __truediv__(self, other):
+        from QuantStudio.Core.BasicOperator import div
+        return div(self, other)
+    
+    def __rtruediv__(self, other):
+        from QuantStudio.Core.BasicOperator import div
+        return div(other, self)
+    
+    def __floordiv__(self, other):
+        from QuantStudio.Core.BasicOperator import floordiv
+        return floordiv(self, other)
+    
+    def __rfloordiv__(self, other):
+        from QuantStudio.Core.BasicOperator import floordiv
+        return floordiv(other, self)
+    
+    def __mod__(self, other):
+        from QuantStudio.Core.BasicOperator import mod
+        return mod(self, other)
+        
+    def __rmod__(self, other):
+        from QuantStudio.Core.BasicOperator import mod
+        return mod(other, self)
+    
+    def __and__(self, other):
+        from QuantStudio.Core.BasicOperator import qs_and
+        return qs_and(self, other)
+        
+    def __rand__(self, other):
+        from QuantStudio.Core.BasicOperator import qs_and
+        return qs_and(other, self)
+    
+    def __or__(self, other):
+        from QuantStudio.Core.BasicOperator import qs_or
+        return qs_or(self, other)        
+    
+    def __ror__(self, other):
+        from QuantStudio.Core.BasicOperator import qs_or
+        return qs_or(other, self)
+    
+    def __xor__(self, other):
+        from QuantStudio.Core.BasicOperator import xor
+        return xor(self, other)
+        
+    def __rxor__(self, other):
+        from QuantStudio.Core.BasicOperator import xor
+        return xor(other, self)
+    
+    def __lt__(self, other):
+        from QuantStudio.Core.BasicOperator import lt
+        return lt(self, other)
+    
+    def __le__(self, other):
+        from QuantStudio.Core.BasicOperator import le
+        return le(self, other)
+    
+    def __eq__(self, other):
+        from QuantStudio.Core.BasicOperator import eq
+        return eq(self, other)
+    
+    def __ne__(self, other):
+        from QuantStudio.Core.BasicOperator import neq
+        return neq(self, other)
+    
+    def __gt__(self, other):
+        from QuantStudio.Core.BasicOperator import gt
+        return gt(self, other)
+    
+    def __ge__(self, other):
+        from QuantStudio.Core.BasicOperator import ge
+        return ge(self, other)
+    
+    def __neg__(self):
+        from QuantStudio.Core.BasicOperator import neg
+        return neg(self)
+    
+    def __pos__(self):
+        return self
+    
+    def __abs__(self):
+        from QuantStudio.Core.BasicOperator import qs_abs
+        return qs_abs(self)
+    
+    def __invert__(self):
+        from QuantStudio.Core.BasicOperator import qs_not
+        return qs_not(self)
+    
 # 直接赋予数据产生的因子
 # data: DataFrame(index=[时点], columns=[ID])
 class DataFactor(Factor):

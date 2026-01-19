@@ -5,10 +5,12 @@ from typing import List, Any, Optional
 import numpy as np
 import pandas as pd
 
-from QuantStudio.Core import __QS_Error__, __QS_Context__
-from QuantStudio.Core.Node import Node
+from QuantStudio.Core import __QS_Error__
+from QuantStudio.Core.Node import Node, __QS_Context__
 from QuantStudio.Core.FactorDB import FactorDB
 from QuantStudio.Core.Factor import Factor, FactorContext, FactorLocalContext
+from QuantStudio.Core.CalcEngine import __QS_Engine__, Engine
+from QuantStudio.Core.QSObject import Panel
 from QuantStudio.Tools.IDFun import testIDFilterStr
 from QuantStudio.Tools.DataTypeConversionFun import dict2html
 from QuantStudio.Tools.DataTypeFun import dict2id
@@ -63,7 +65,8 @@ class FactorTable(Node):
         return Factor(ft=self, args=args | {"Name": ifactor_name}, logger=self._QS_Logger)
 
     # 获取因子的元数据
-    def getFactorMetaData(self, factor_names, key=None):
+    def getFactorMetaData(self, factor_names=None, key=None):
+        if factor_names is None: factor_names = self.FactorNames
         if key is None:
             return pd.DataFrame(index=factor_names, dtype=np.dtype("O"))
         else:
@@ -105,8 +108,15 @@ class FactorTable(Node):
 
     # 读取数据, 返回: Panel(item=[因子], major_axis=[时间点], minor_axis=[ID])
     def readData(self, factor_names, ids, dts, **kwargs):
-        return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts), factor_names=factor_names, ids=ids, dts=dts)
-
+        if not __QS_Context__:
+            return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts), factor_names=factor_names, ids=ids, dts=dts)
+        else: Context = __QS_Context__[-1]
+        if not __QS_Engine__: ExecEngine = Engine()
+        else: ExecEngine = __QS_Engine__[-1]
+        LocalContext = FactorLocalContext(DTs=dts, IDs=ids)
+        Rslt = ExecEngine.run([self.getFactor(ifactor_name=iFactorName) for iFactorName in factor_names], Context, fwd_data_list=[LocalContext], init_data_list=[{"dt_range": (dts[0], dts[-1]), "section_ids": kwargs.get("section_ids", ids)}])
+        return Panel({Rslt[i] for i, iFactorName in enumerate(factor_names)})
+    
     def __getitem__(self, key):
         if isinstance(key, str):
             return self.getFactor(key)
@@ -183,6 +193,6 @@ class FactorTable(Node):
             PIDIDs = context.splitID(SectionIDs)
         self.__QS_saveRawData__(raw_data=RawData, key=self.PrepareID, target_fields=FactorNames, pid_ids=PIDIDs, context=context)
         return 0
-
+    
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
         return None

@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
 from typing import Any, List, Optional, Dict, Tuple
 
-from pydantic import Field, BaseModel, ConfigDict
+from pydantic import Field, ConfigDict
 
 from QuantStudio.Core import __QS_Object__, QSArgs
+
+
+# 全局运行时环境
+__QS_Context__ = []
 
 
 class Context(QSArgs):
@@ -13,7 +17,7 @@ class Context(QSArgs):
     PID: str = Field(default="0", title="运行ID", description="当前的运行 ID, 默认为 '0'")
     PIDList: List[str] = Field(default=["0"], title="所有运行ID")
     Event: dict = Field(default={}, title="", description="{节点ID: (Sub2MainQueue, Event)}, 用于多进程同步的 Event 数据")
-
+    
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     # 并发运行后返回需要同步的内容
@@ -37,6 +41,10 @@ class Node(__QS_Object__):
     @property
     def Name(self):
         return self._QSArgs.Name
+    
+    def new(self, args={}):
+        args = self._QSArgs.model_dump() | args
+        return self.__class__(deps=self.Deps, args=args, config_file=self._ConfigFile, logger=self._QS_Logger)
 
     def model_dump(self):
         if getattr(self, "_Dumped", False):

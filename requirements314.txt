@@ -1,0 +1,9 @@
+pydantic
+numpy
+pandas
+chardet
+progressbar2
+fasteners
+h5py
+baostock
+openpyxl

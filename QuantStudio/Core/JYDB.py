@@ -16,6 +16,7 @@ from QuantStudio.Core.QSObject import Panel, QSSQLObject
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Core.FactorDB import FactorDB
 from QuantStudio.Core.FactorUtils import getInfoFile, adjustDataDTID, SQL_Table, SQL_FeatureTable, SQL_WideTable, SQL_MappingTable, SQL_NarrowTable, SQL_TimeSeriesTable, SQL_ConstituentTable, SQL_FinancialTable
+from QuantStudio.Tools.DataTypeFun import dict2id
 
 
 # 将信息源文件中的表和字段信息导入信息文件
@@ -227,14 +228,12 @@ class _NarrowTable(_JY_SQL_Table, SQL_NarrowTable):
         return super().__init__(fdb=fdb, args=args, table_info=fdb._TableInfo.loc[Name], factor_info=fdb._FactorInfo.loc[Name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
 
 
-
 class _FeatureTable(_JY_SQL_Table, SQL_FeatureTable):
     """聚源特征因子表"""
 
     def __init__(self, fdb, args={}, **kwargs):
         Name = args["Name"]
         return super().__init__(fdb=fdb, args=args, table_info=fdb._TableInfo.loc[Name], factor_info=fdb._FactorInfo.loc[Name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
-
 
 
 class _TimeSeriesTable(_JY_SQL_Table, SQL_TimeSeriesTable):
@@ -245,14 +244,12 @@ class _TimeSeriesTable(_JY_SQL_Table, SQL_TimeSeriesTable):
         return super().__init__(fdb=fdb, args=args, table_info=fdb._TableInfo.loc[Name], factor_info=fdb._FactorInfo.loc[Name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
 
 
-
 class _MappingTable(_JY_SQL_Table, SQL_MappingTable):
     """聚源映射因子表"""
 
     def __init__(self, fdb, args={}, **kwargs):
         Name = args["Name"]
         return super().__init__(fdb=fdb, args=args, table_info=fdb._TableInfo.loc[Name], factor_info=fdb._FactorInfo.loc[Name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
-
 
 
 class _ConstituentTable(_JY_SQL_Table, SQL_ConstituentTable):
@@ -284,10 +281,10 @@ class _FinancialIndicatorTable(_FinancialTable):
             raise __QS_Error__("FinancialIndicatorTable 类型的因子表 '%s' 中的证券为不支持的证券类型!" % (self._QSArgs.Name,))
         return
 
-    def getID(self, ifactor_name=None, idt=None, args={}):  # TODO
+    def getID(self, ifactor_name=None, idt=None):  # TODO
         return []
 
-    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):  # TODO
+    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None):  # TODO
         return []
 
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
@@ -299,13 +296,11 @@ class _FinancialIndicatorTable(_FinancialTable):
             raise __QS_Error__("FinancialIndicatorTable 类型的因子表 '%s' 中的证券为不支持的证券类型!" % (self.Name,))
 
     def _prepareRawDataAStock(self, factor_names, ids, dts, args={}):
-        ReportDateField = self._DBTableName + "." + self._FactorInfo.loc[
-            args.get("时点字段", self._QSArgs.DTField), "DBFieldName"]
-        IDField = args.get("ID字段", self._QSArgs.IDField)
-        IDField = self._DBTableName + "." + self._FactorInfo.loc[
-            (IDField if IDField is not None else self._IDField), "DBFieldName"]
+        ReportDateField = self._DBTableName + "." + self._FactorInfo.loc[args.get("DTField", self._QSArgs.DTField), "DBFieldName"]
+        IDField = args.get("IDField", self._QSArgs.IDField)
+        IDField = self._DBTableName + "." + self._FactorInfo.loc[(IDField if IDField is not None else self._IDField), "DBFieldName"]
         # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
-        SQLStr = "SELECT " + self._getIDField(args=args) + " AS ID, "
+        SQLStr = "SELECT " + self._getIDField() + " AS ID, "
         SQLStr += "LC_BalanceSheetAll.InfoPublDate, "
         SQLStr += ReportDateField + ", "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
@@ -317,8 +312,8 @@ class _FinancialIndicatorTable(_FinancialTable):
         SQLStr += "WHERE LC_BalanceSheetAll.BulletinType = 20 "
         SQLStr += "AND LC_BalanceSheetAll.IfMerged = 1 "
         SQLStr += "AND LC_BalanceSheetAll.IfAdjusted = 2 "
-        SQLStr += self._genConditionSQLStr(use_main_table=True, args=args) + " "
-        SQLStr += self._genIDSQLStr(ids, args=args) + " "
+        SQLStr += self._genConditionSQLStr(use_main_table=True) + " "
+        SQLStr += self._genIDSQLStr(ids) + " "
         SQLStr += "ORDER BY ID, LC_BalanceSheetAll.InfoPublDate, "
         SQLStr += ReportDateField
         # RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)
@@ -327,26 +322,19 @@ class _FinancialIndicatorTable(_FinancialTable):
         if not RawData: return pd.DataFrame(columns=["ID", "AnnDate", "ReportDate"] + factor_names)
         RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "AnnDate", "ReportDate"] + factor_names)
         RawData["AdjustType"] = 0
-        RawData["AnnDate"] = self.__QS_adjustDT__(RawData["AnnDate"], args=args)
-        RawData["ReportDate"] = self.__QS_adjustDT__(RawData["ReportDate"], args=args)
-        if (self._FactorDB._QSArgs.DBType not in ("MySQL", "Oracle", "SQL Server")) and (
-                args.get("忽略非季末报告", self._QSArgs.IgnoreNonQuarter) or (not (
-                (args.get("报告期", self._QSArgs.ReportDate) == "所有") and (
-                args.get("计算方法", self._QSArgs.CalcType) == "最新") and (
-                        args.get("回溯年数", self._QSArgs.YearLookBack) == 0) and (
-                        args.get("回溯期数", self._QSArgs.PeriodLookBack) == 0)))):
+        RawData["AnnDate"] = self.__QS_adjustDT__(RawData["AnnDate"])
+        RawData["ReportDate"] = self.__QS_adjustDT__(RawData["ReportDate"])
+        if (self._FactorDB._QSArgs.DBType not in ("MySQL", "Oracle", "SQL Server")) and (args.get("IgnoreNonQuarter", self._QSArgs.IgnoreNonQuarter) or (not ((args.get("ReportDate", self._QSArgs.ReportDate) == "所有") and (args.get("CalcType", self._QSArgs.CalcType) == "最新") and (args.get("YearLookBack", self._QSArgs.YearLookBack) == 0) and (args.get("PeriodLookBack", self._QSArgs.PeriodLookBack) == 0)))):
             RawData = RawData[RawData["ReportDate"].dt.strftime("%m%d").isin(('0331', '0630', '0930', '1231'))]
-        RawData = self._adjustRawDataByRelatedField(RawData, factor_names, args=args)
+        RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
 
     def _prepareRawDataMF(self, factor_names, ids, dts, args={}):
-        IDField = args.get("ID字段", self._QSArgs.IDField)
-        IDField = self._DBTableName + "." + self._FactorInfo.loc[
-            (IDField if IDField is not None else self._IDField), "DBFieldName"]
-        ReportDateField = self._DBTableName + "." + self._FactorInfo.loc[
-            args.get("时点字段", self._QSArgs.DTField), "DBFieldName"]
+        IDField = args.get("IDField", self._QSArgs.IDField)
+        IDField = self._DBTableName + "." + self._FactorInfo.loc[(IDField if IDField is not None else self._IDField), "DBFieldName"]
+        ReportDateField = self._DBTableName + "." + self._FactorInfo.loc[args.get("DTField", self._QSArgs.DTField), "DBFieldName"]
         # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
-        SQLStr = "SELECT " + self._getIDField(args=args) + " AS ID, "
+        SQLStr = "SELECT " + self._getIDField() + " AS ID, "
         SQLStr += "MF_BalanceSheetNew.InfoPublDate, "
         SQLStr += ReportDateField + ", "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
@@ -356,8 +344,8 @@ class _FinancialIndicatorTable(_FinancialTable):
         SQLStr += "ON (" + IDField + "=MF_BalanceSheetNew.InnerCode "
         SQLStr += "AND " + ReportDateField + "=MF_BalanceSheetNew.EndDate) "
         SQLStr += "WHERE MF_BalanceSheetNew.Mark = 2 "
-        SQLStr += self._genConditionSQLStr(use_main_table=True, args=args) + " "
-        SQLStr += self._genIDSQLStr(ids, args=args) + " "
+        SQLStr += self._genConditionSQLStr(use_main_table=True) + " "
+        SQLStr += self._genIDSQLStr(ids) + " "
         SQLStr += "ORDER BY ID, MF_BalanceSheetNew.InfoPublDate, "
         SQLStr += ReportDateField
         # RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)
@@ -366,16 +354,11 @@ class _FinancialIndicatorTable(_FinancialTable):
         if not RawData: return pd.DataFrame(columns=["ID", "AnnDate", "ReportDate"] + factor_names)
         RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "AnnDate", "ReportDate"] + factor_names)
         RawData["AdjustType"] = 0
-        RawData["AnnDate"] = self.__QS_adjustDT__(RawData["AnnDate"], args=args)
-        RawData["ReportDate"] = self.__QS_adjustDT__(RawData["ReportDate"], args=args)
-        if (self._FactorDB._QSArgs.DBType not in ("MySQL", "Oracle", "SQL Server")) and (
-                args.get("忽略非季末报告", self._QSArgs.IgnoreNonQuarter) or (not (
-                (args.get("报告期", self._QSArgs.ReportDate) == "所有") and (
-                args.get("计算方法", self._QSArgs.CalcType) == "最新") and (
-                        args.get("回溯年数", self._QSArgs.YearLookBack) == 0) and (
-                        args.get("回溯期数", self._QSArgs.PeriodLookBack) == 0)))):
+        RawData["AnnDate"] = self.__QS_adjustDT__(RawData["AnnDate"])
+        RawData["ReportDate"] = self.__QS_adjustDT__(RawData["ReportDate"])
+        if (self._FactorDB._QSArgs.DBType not in ("MySQL", "Oracle", "SQL Server")) and (args.get("IgnoreNonQuarter", self._QSArgs.IgnoreNonQuarter) or (not ((args.get("ReportDate", self._QSArgs.ReportDate) == "所有") and (args.get("CalcType", self._QSArgs.CalcType) == "最新") and (args.get("YearLookBack", self._QSArgs.YearLookBack) == 0) and (args.get("PeriodLookBack", self._QSArgs.PeriodLookBack) == 0)))):
             RawData = RawData[RawData["ReportDate"].dt.strftime("%m%d").isin(('0331', '0630', '0930', '1231'))]
-        RawData = self._adjustRawDataByRelatedField(RawData, factor_names, args=args)
+        RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
         return RawData
 
 
@@ -440,16 +423,14 @@ def _prepareReportANNRawData(fdb, ft, ids, pre_filter_id=True, args={}):
     return RawData
 
 
-def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, cache, pid_ids, file_name,
-                              pre_filter_id=True, **kwargs):
+def _saveRawDataWithReportANN(ft, report_ann_file, raw_data, factor_names, cache, pid_ids, file_name, pre_filter_id=True, **kwargs):
     if raw_data._QS_ANNReport:
-        if not cache.createRawDataCache(report_ann_file):  # 没有报告期-公告日期数据, 提取该数据
+        if not cache.createRawDataCache(report_ann_file):# 没有报告期-公告日期数据, 提取该数据
             IDs = sum((pid_ids[iPID] for iPID in sorted(pid_ids)), [])
             RawData = _prepareReportANNRawData(ft.FactorDB, ft, ids=IDs, pre_filter_id=pre_filter_id)
             super(_JY_SQL_Table, ft).__QS_saveRawData__(RawData, [], cache, pid_ids, report_ann_file)
         CachePath = {iPID: pd.Series([cache.getRawDataCachePath(report_ann_file, iPID)]) for iPID in pid_ids}
-        return super(_JY_SQL_Table, ft).__QS_saveRawData__(raw_data, factor_names, cache, pid_ids, file_name,
-                                                           additional_data=CachePath, **kwargs)
+        return super(_JY_SQL_Table, ft).__QS_saveRawData__(raw_data, factor_names, cache, pid_ids, file_name, additional_data=CachePath, **kwargs)
     else:
         return super(_JY_SQL_Table, ft).__QS_saveRawData__(raw_data, factor_names, cache, pid_ids, file_name, **kwargs)
 
@@ -470,14 +451,24 @@ class _AnalystConsensusTable(_JY_SQL_Table):
         self._PeriodField = self._FactorInfo[self._FactorInfo["FieldType"] == "Period"].index[0]
         self._TempData = {}
         self._ANN_ReportFileName = 'JY财务年报-公告日期'
-        return
-
+        self._QS_PrepareIgnoredArgs += ("CalcType", )
+    
+    @property
+    def PrepareID(self):
+        if not self._QS_PrepareIgnoredArgs: return self.QSID
+        if (not getattr(self, "_QS_ID", None)) or (not getattr(self, "_QS_PrepareID", None)):
+            DumpedMdl = self.model_dump()
+            DumpedMdl["__qsargs__"] = {iArg: iVal for iArg, iVal in DumpedMdl["__qsargs__"].items() if iArg not in self._QS_PrepareIgnoredArgs}
+            DumpedMdl["__qsargs__"]["CalcType"] = ("Fwd12M" if self._QSArgs.CalcType == "Fwd12M" else "FY")
+            self._QS_PrepareID = dict2id(DumpedMdl)
+        return self._QS_PrepareID
+    
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         if dts is not None:
             StartDT, EndDT = dts[0], dts[-1]
         else:
             StartDT = EndDT = None
-        if StartDT is not None: StartDT -= dt.timedelta(args.get("回溯天数", self._QSArgs.LookBack))
+        if StartDT is not None: StartDT -= dt.timedelta(args.get("LookBack", self._QSArgs.LookBack))
         DateField = self._DBTableName + "." + self._FactorInfo.loc[self._DateField, "DBFieldName"]
         ReportDateField = self._DBTableName + "." + self._FactorInfo.loc[self._ReportDateField, "DBFieldName"]
         PeriodField = self._DBTableName + "." + self._FactorInfo.loc[self._PeriodField, "DBFieldName"]
@@ -490,18 +481,17 @@ class _AnalystConsensusTable(_JY_SQL_Table):
             SQLStr = "SELECT TO_CHAR(" + DateField + ",'yyyyMMdd'), "
         else:
             SQLStr = f"SELECT {DateField}, "
-        SQLStr += self._getIDField(args=args) + " AS ID, "
+        SQLStr += self._getIDField() + " AS ID, "
         SQLStr += "CONCAT(" + ReportDateField + ", '1231') AS ReportDate, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr + " "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr) + " "
-        if args.get("预筛选ID", self._QSArgs.PreFilterID):
-            SQLStr += "WHERE (" + genSQLInCondition(self._MainTableName + "." + self._MainTableID, deSuffixID(ids),
-                                                    is_str=self._IDFieldIsStr, max_num=1000) + ") "
+        if args.get("PreFilterID", self._QSArgs.PreFilterID):
+            SQLStr += "WHERE (" + genSQLInCondition(self._MainTableName + "." + self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000) + ") "
         else:
             SQLStr += "WHERE " + self._MainTableName + "." + self._MainTableID + " IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND " + self._MainTableCondition + " "
-        SQLStr += "AND " + PeriodField + "=" + str(args.get("周期", self._QSArgs.Period)) + " "
+        SQLStr += "AND " + PeriodField + "=" + str(args.get("Period", self._QSArgs.Period)) + " "
         if StartDT is not None:
             SQLStr += "AND " + DateField + ">='" + StartDT.strftime("%Y-%m-%d %H:%M:%S") + "' "
         if EndDT is not None:
@@ -512,47 +502,16 @@ class _AnalystConsensusTable(_JY_SQL_Table):
             RawData = pd.DataFrame(columns=['日期', 'ID', '报告期'] + factor_names)
         else:
             RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=['日期', 'ID', '报告期'] + factor_names)
-        RawData._QS_ANNReport = (args.get("计算方法", self._QSArgs.CalcType) != "Fwd12M")
-        RawData._QS_PreFilterID = args.get("预筛选ID", self._QSArgs.PreFilterID)
+        RawData._QS_ANNReport = (args.get("CalcType", self._QSArgs.CalcType) != "Fwd12M")
+        RawData._QS_PreFilterID = args.get("PreFilterID", self._QSArgs.PreFilterID)
         if RawData.shape[0] == 0: return RawData
         if self._FactorDB._QSArgs.DBType not in ("SQL Server", "MySQL", "Oracle"):
             RawData["日期"] = self.__QS_adjustDT__(RawData["日期"])
             RawData["日期"] = RawData["日期"].dt.strftime("%Y%m%d")
-        RawData = self._adjustRawDataByRelatedField(RawData, factor_names, args=args)
-        return RawData
+        return self._adjustRawDataByRelatedField(RawData, factor_names)
 
-    def __QS_saveRawData__(self, raw_data, factor_names, cache, pid_ids, file_name, **kwargs):
-        return _saveRawDataWithReportANN(self, self._ANN_ReportFileName, raw_data, factor_names, cache, pid_ids,
-                                         file_name, pre_filter_id=raw_data._QS_PreFilterID, **kwargs)
-
-    def __QS_genGroupInfo__(self, factors, operation_mode):
-        PeriodGroup = {}
-        for iFactor in factors:
-            iConditions = (iFactor._QSArgs.Period, iFactor._QSArgs.PreFilterID)
-            if iConditions not in PeriodGroup:
-                PeriodGroup[iConditions] = {"FactorNames": [iFactor.Name],
-                                            "RawFactorNames": {iFactor._NameInFT},
-                                            "StartDT": operation_mode._FactorStartDT[iFactor.Name],
-                                            "args": {"周期": iFactor._QSArgs.Period,
-                                                     "计算方法": iFactor._QSArgs.CalcType,
-                                                     "回溯天数": iFactor._QSArgs.LookBack}}
-            else:
-                PeriodGroup[iConditions]["FactorNames"].append(iFactor.Name)
-                PeriodGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
-                PeriodGroup[iConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name],
-                                                          PeriodGroup[iConditions]["StartDT"])
-                if iFactor._QSArgs.CalcType != "Fwd12M": PeriodGroup[iConditions]["args"][
-                    "计算方法"] = iFactor._QSArgs.CalcType
-                PeriodGroup[iConditions]["args"]["回溯天数"] = max(PeriodGroup[iConditions]["args"]["回溯天数"],
-                                                                   iFactor._QSArgs.LookBack)
-        EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
-        Groups = []
-        for iConditions in PeriodGroup:
-            StartInd = operation_mode.DTRuler.index(PeriodGroup[iConditions]["StartDT"])
-            Groups.append(
-                (self, PeriodGroup[iConditions]["FactorNames"], list(PeriodGroup[iConditions]["RawFactorNames"]),
-                 operation_mode.DTRuler[StartInd:EndInd + 1], PeriodGroup[iConditions]["args"]))
-        return Groups
+    def __QS_saveRawData__(self, raw_data, factor_names, cache, pid_ids, file_name, **kwargs):# TODO
+        return _saveRawDataWithReportANN(self, self._ANN_ReportFileName, raw_data, factor_names, cache, pid_ids, file_name, pre_filter_id=raw_data._QS_PreFilterID, **kwargs)
 
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         if raw_data.shape[0] == 0: return Panel(np.nan, items=factor_names, major_axis=dts, minor_axis=ids)
@@ -836,7 +795,6 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
         super().__init__(fdb=fdb, args=args, table_info=fdb._TableInfo.loc[Name], factor_info=fdb._FactorInfo.loc[Name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
         self._DateField = self._FactorInfo[self._FactorInfo["FieldType"] == "Date"].index[0]
         self._TempData = {}
-        return
 
     def __QS_genGroupInfo__(self, factors, operation_mode):
         FactorNames, RawFactorNames, StartDT = [], set(), dt.datetime.now()
@@ -858,9 +816,8 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
             StartDT, EndDT = dts[0], dts[-1]
         else:
             StartDT = EndDT = None
-        if StartDT is not None: StartDT -= dt.timedelta(args.get("周期", self._QSArgs.Period))
-        AllFields = list(set(factor_names + args.get("附加字段", self._QSArgs.AdditionalFields) + args.get("去重字段",
-                                                                                                           self._QSArgs.Deduplication)))
+        if StartDT is not None: StartDT -= dt.timedelta(args.get("Period", self._QSArgs.Period))
+        AllFields = list(set(factor_names + args.get("AdditionalFields", self._QSArgs.AdditionalFields) + args.get("Deduplication", self._QSArgs.Deduplication)))
         DateField = self._DBTableName + "." + self._FactorInfo.loc[self._DateField, "DBFieldName"]
         # 形成SQL语句, 日期, ID, 其他字段
         if self._FactorDB._QSArgs.DBType == "SQL Server":
@@ -876,8 +833,7 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
         SQLStr += FieldSQLStr + " "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr) + " "
         if args.get("预筛选ID", self._QSArgs.PreFilterID):
-            SQLStr += "WHERE (" + genSQLInCondition(self._MainTableName + "." + self._MainTableID, deSuffixID(ids),
-                                                    is_str=self._IDFieldIsStr, max_num=1000) + ") "
+            SQLStr += "WHERE (" + genSQLInCondition(self._MainTableName + "." + self._MainTableID, deSuffixID(ids), is_str=self._IDFieldIsStr, max_num=1000) + ") "
         else:
             SQLStr += "WHERE " + self._MainTableName + "." + self._MainTableID + " IS NOT NULL "
         if pd.notnull(self._MainTableCondition): SQLStr += "AND " + self._MainTableCondition + " "
@@ -894,7 +850,7 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
         if self._FactorDB._QSArgs.DBType not in ("SQL Server", "MySQL", "Oracle"):
             RawData["日期"] = self.__QS_adjustDT__(RawData["日期"])
             RawData["日期"] = RawData["日期"].dt.strftime("%Y%m%d")
-        RawData = self._adjustRawDataByRelatedField(RawData, AllFields, args=args)
+        RawData = self._adjustRawDataByRelatedField(RawData, AllFields)
         return RawData
 
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
@@ -931,8 +887,7 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
                         ijTemp = ijRawData.groupby(by=DeduplicationFields)[["日期"]].max()
                         ijTemp = ijTemp.reset_index()
                         ijTemp[DeduplicationFields] = ijTemp[DeduplicationFields].astype("O")
-                        ijRawData = pd.merge(ijTemp, ijRawData, how='left', left_on=DeduplicationFields + ["日期"],
-                                             right_on=DeduplicationFields + ["日期"])
+                        ijRawData = pd.merge(ijTemp, ijRawData, how='left', left_on=DeduplicationFields + ["日期"], right_on=DeduplicationFields + ["日期"])
                     kData[i, j] = Operator(self, iDate, jID, ijRawData, ModelArgs)
             Data[kFactorName] = kData
         return Panel(Data, items=factor_names, major_axis=Dates, minor_axis=ids).loc[:, dts]
