@@ -13,7 +13,7 @@ import pandas as pd
 from pydantic import Field, DirectoryPath
 
 from QuantStudio.Core import __QS_Object__, __QS_Error__
-from QuantStudio.Tools.QSObjects import QSFileLock
+from QuantStudio.Core.QSObject import QSFileLock
 
 
 class FactorCache(__QS_Object__):

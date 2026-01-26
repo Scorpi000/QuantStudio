@@ -9,8 +9,10 @@ from QuantStudio.Core.Node import Node
 from QuantStudio.Core.CalcEngine import Engine, ParallelEngine, StackEngine
 from QuantStudio.Core.Factor import Factor, DataFactor, FactorContext, FactorLocalContext
 from QuantStudio.Core.BaoStockDB import BaoStockDB
+from QuantStudio.Core.HDF5DB import HDF5DB
 from QuantStudio.Core.FactorCache import HDF5Cache
 from QuantStudio.Core.FactorOperation import PointOperation, makeFactorOperator
+from QuantStudio.Core.FactorStorer import FactorStorer
 
 
 if __name__ == "__main__":
@@ -51,7 +53,10 @@ if __name__ == "__main__":
     )
     LocalContext = FactorLocalContext(DTs=DTs, IDs=IDs)
     FactorList = [Factor2, Factor3]
-    Rslt = ExecEngine.run(FactorList, Context, fwd_data_list=[LocalContext]*len(FactorList), init_data_list=[{"dt_range": (DTs[0], DTs[-1]), "section_ids": SectionIDs}]*len(FactorList))
+    #Rslt = ExecEngine.run([Storer], Context, fwd_data_list=[LocalContext]*len(FactorList), init_data_list=[{"dt_range": (DTs[0], DTs[-1]), "section_ids": SectionIDs}]*len(FactorList))
+    TDB = HDF5DB().connect()
+    Storer = FactorStorer(deps=[Factor2, Factor3], args={"TargetFDB": TDB, "TargetTable": "test_table", "IfExists": "update"})
+    Rslt = ExecEngine.run([Storer], Context, fwd_data_list=[LocalContext], init_data_list=[{"dt_range": (DTs[0], DTs[-1]), "section_ids": SectionIDs}])
     print(Rslt)
     
     print("===")
