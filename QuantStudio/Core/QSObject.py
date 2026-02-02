@@ -19,7 +19,7 @@ class QSSQLObject(__QS_Object__):
     """基于关系数据库的对象"""
     class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
         Name: str = Field(default="QSSQLObject", frozen=True, title="名称")
-        DBType: Literal["MySQL", "SQL Server", "Oracle"] = Field(default="MySQL", frozen=True, title="数据库类型")
+        DBType: Literal["MySQL", "SQL Server", "Oracle", "PostgreSQL"] = Field(default="MySQL", frozen=True, title="数据库类型")
         DBName: str = Field(default="Scorpion", title="数据库名", frozen=True)
         IPAddr: str = Field(default="127.0.0.1", title="IP地址", frozen=True)
         Port: int = Field(default=3306, ge=0, le=65535, title="端口", frozen=True)
@@ -27,7 +27,7 @@ class QSSQLObject(__QS_Object__):
         Pwd: str = Field(default="", title="密码", frozen=True)
         TablePrefix: str = Field(default="", title="表名前缀", frozen=True)
         CharSet: Literal["utf8", "utf8mb4", "gbk", "gb2312", "gb18030", "cp936", "big5"] = Field(default="utf8", title="字符集", frozen=True)
-        Connector: Literal["default", "cx_Oracle", "pymssql", "mysql.connector", "pymysql", "pyodbc"] = Field(default="default", title="连接器", frozen=True)
+        Connector: Literal["default", "cx_Oracle", "pymssql", "mysql.connector", "pymysql", "psycopg2", "pyodbc"] = Field(default="default", title="连接器", frozen=True)
         DSN: str = Field(default="", title="数据源", frozen=True)
         AdjustTableName: bool = Field(default=False, title="调整表名", frozen=True)
 
@@ -92,6 +92,16 @@ class QSSQLObject(__QS_Object__):
                 if Connector!="default": raise e
             else:
                 self._Connector = "mysql.connector"
+        elif (Connector=="psycopg2") or ((Connector=="default") and (DBType=="PostgreSQL")):
+            try:
+                import psycopg2
+                self._Connection = psycopg2.connect(host=IPAddr, port=int(Port), user=User, password=Pwd, database=DBName)
+            except Exception as e:
+                Msg = ("'%s' 尝试使用 psycopg2 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, User, IPAddr, Port, DBName, str(e)))
+                self._QS_Logger.error(Msg)
+                if Connector!="default": raise e
+            else:
+                self._Connector = "mysql.connector"
         elif Connector=="pymysql":
             try:
                 import pymysql
@@ -142,6 +152,8 @@ class QSSQLObject(__QS_Object__):
         # 设置 SQL 相关特异性函数
         if self._QSArgs.DBType=="MySQL":
             self._SQLFun = {"toDate": "DATE(%s)"}
+        elif self._QSArgs.DBType=="PostgreSQL":
+            self._SQLFun = {"toDate": "CAST(%s AS DATE)"}
         elif self._QSArgs.DBType=="Oracle":
             self._SQLFun = {"toDate": "CAST(%s AS DATE)"}# TOTEST
         elif self._QSArgs.DBType=="SQL Server":
@@ -215,6 +227,9 @@ class QSSQLObject(__QS_Object__):
                 TableField = "table_name"
             elif self._QSArgs.DBType=="Oracle":
                 SQLStr = "SELECT table_name FROM user_tables WHERE TABLESPACE_NAME IS NOT NULL AND user='"+self._QSArgs.User+"'"
+                TableField = "table_name"
+            elif self._QSArgs.DBType=="PostgreSQL":
+                SQLStr = f"SELECT table_name FROM information_schema.tables WHERE table_catalog='{self._QSArgs.DBName}' AND table_schema='public' AND table_type='BASE TABLE'"
                 TableField = "table_name"
             else:
                 raise __QS_Error__("不支持的数据库类型 '%s'" % self._QSArgs.DBType)
@@ -298,6 +313,9 @@ class QSSQLObject(__QS_Object__):
         try:
             if self._QSArgs.DBType=="MySQL":
                 SQLStr = ("SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM information_schema.columns WHERE table_schema='%s' " % self._QSArgs.DBName)
+                TableField, ColField = "TABLE_NAME", "COLUMN_NAME"
+            elif self._QSArgs.DBType=="PostgreSQL":
+                SQLStr = "SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM information_schema.columns WHERE table_schema = 'public' AND table_catalog = '{self._QSArgs.DBName}'"
                 TableField, ColField = "TABLE_NAME", "COLUMN_NAME"
             elif self._QSArgs.DBType=="SQL Server":
                 SQLStr = ("SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM information_schema.columns WHERE table_schema='%s' " % self._QSArgs.DBName)

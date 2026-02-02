@@ -3,7 +3,7 @@ import os
 import datetime as dt
 import requests
 import tempfile
-from typing import Literal, Optional, Callable, Union
+from typing import Literal, Optional, Callable, Union, Any
 
 import numpy as np
 import pandas as pd
@@ -58,7 +58,7 @@ def updateInfo(info_file, info_resource, logger, out_info=False):
     if not os.path.isfile(info_resource): raise __QS_Error__("缺失数据库信息源文件: %s" % info_resource)
     return importInfo(info_file, info_resource)
 
-def adjustDateTime(data, dts, fillna=False, **kwargs):
+def adjustDateTime(data, dts, fillna=False, method="ffill"):
     if isinstance(data, (pd.DataFrame, pd.Series)):
         if data.shape[0]==0:
             if isinstance(data, pd.DataFrame): data = pd.DataFrame(index=dts, columns=data.columns)
@@ -68,7 +68,12 @@ def adjustDateTime(data, dts, fillna=False, **kwargs):
                 AllDTs = data.index.union(dts)
                 AllDTs = AllDTs.sort_values()
                 data = data.reindex(index=AllDTs)
-                data = data.fillna(**kwargs)
+                if method in ("ffill", "pad"):
+                    data = data.ffill()
+                elif method=="bfill":
+                    data = data.bfill()
+                else:
+                    raise __QS_Error__(f"不支持的 method: {method}")
             data = data.reindex(index=dts)
     else:
         if data.shape[1]==0:
@@ -79,7 +84,12 @@ def adjustDateTime(data, dts, fillna=False, **kwargs):
                 AllDTs = data.major_axis.union(dts)
                 AllDTs = AllDTs.sort_values()
                 data = data.loc[:, AllDTs, :]
-                data = Panel({data.items[i]:data.iloc[i].fillna(axis=0, **kwargs) for i in range(data.shape[0])}, items=data.items, major_axis=AllDTs, minor_axis=data.minor_axis)
+                if method in ("ffill", "pad"):
+                    data = Panel({data.items[i]:data.iloc[i].ffill(axis=0) for i in range(data.shape[0])}, items=data.items, major_axis=AllDTs, minor_axis=data.minor_axis)
+                elif method=="bfill":
+                    data = Panel({data.items[i]:data.iloc[i].bfill(axis=0) for i in range(data.shape[0])}, items=data.items, major_axis=AllDTs, minor_axis=data.minor_axis)
+                else:
+                    raise __QS_Error__(f"不支持的 method: {method}")
             data = data.loc[FactorNames, dts, :]
     return data
 
@@ -127,9 +137,9 @@ def adjustDataDTID(data, look_back, factor_names, ids, dts, only_start_lookback=
             NewLimits = TimeDelta.cumsum()
             Temp = NewLimits.copy()
             Temp[~FillMask] = np.nan
-            Temp = Temp.fillna(method="pad")
+            Temp = Temp.ffill()
             TimeDelta[~FillMask] = np.nan
-            NewLimits = NewLimits - Temp + TimeDelta.fillna(method="pad")
+            NewLimits = NewLimits - Temp + TimeDelta.ffill()
             if isinstance(Limits, pd.DataFrame):
                 Limits.loc[TargetDTs, :] = np.minimum(NewLimits.values.reshape((NewLimits.shape[0], 1)).repeat(AdjData.shape[2], axis=1), Limits.loc[TargetDTs].values)
             else:
@@ -139,7 +149,7 @@ def adjustDataDTID(data, look_back, factor_names, ids, dts, only_start_lookback=
         MajorAxis, MinorAxis = AdjData.major_axis, AdjData.minor_axis
         AdjData = dict(AdjData)
         if np.isinf(look_back) and (not only_lookback_nontarget) and (not only_lookback_dt):
-            for iFactorName in AdjData: AdjData[iFactorName] = AdjData[iFactorName].fillna(method="pad")
+            for iFactorName in AdjData: AdjData[iFactorName] = AdjData[iFactorName].ffill()
         else:
             for iFactorName in AdjData: AdjData[iFactorName] = fillNaByLookback(AdjData[iFactorName], lookback=Limits)
         AdjData = Panel(AdjData, items=factor_names, major_axis=MajorAxis, minor_axis=MinorAxis)
@@ -445,33 +455,40 @@ class SQL_Table(FactorTable):
         IgnoreIndex: list[str] = Field(default=[], title="忽略索引", frozen=True)
         TransformSQL: dict = Field(default={}, title="转义SQL", frozen=True)# {因子: sql}
         TablePrefix: str = Field(default="", title="表名前缀", frozen=True)
-        
-        def __QS_initArgs__(self, args={}):
-            super().__QS_initArgs__(args=args)
+        AdditionalCondition: dict = Field(default={}, title="附加条件", frozen=True)
+
+        def __init__(self, /, **data: Any) -> None:
+            Owner = data["Owner"]
             # 设置因子表类型
-            self.TableType = self._Owner._TableInfo["TableClass"]
+            data["TableType"] = Owner._TableInfo["TableClass"]
             # 解析 ID 字段, 至多一个 ID 字段
-            IDFields = [None] + self._Owner._FactorInfo[pd.notnull(self._Owner._FactorInfo["FieldType"])].index.tolist()# ID 字段
-            self.add_trait("IDField", Enum(*IDFields, arg_type="SingleOption", label="ID字段", order=203, option_range=IDFields))
-            self.IDField = None
+            Fields = [None] + Owner._FactorInfo[pd.notnull(Owner._FactorInfo["FieldType"])].index.tolist()# ID 字段
+            if "IDField" not in data:
+                data["IDField"] = None
+            elif data["IDField"] not in Fields:
+                raise __QS_Error__(f"字段 {data['IDField']} 不能设置为ID字段，可选项为：{Fields}")
             # 解析时点字段
-            Mask = self._Owner._FactorInfo["FieldType"].str.lower().str.contains("date")
-            Fields = self._Owner._FactorInfo[Mask].index.tolist()# 所有的时点字段列表
+            Mask = Owner._FactorInfo["FieldType"].str.lower().str.contains("date")
+            Fields = Owner._FactorInfo[Mask].index.tolist()# 所有的时点字段列表
             Fields.append(None)
-            self.add_trait("DTField", Enum(*Fields, arg_type="SingleOption", label="时点字段", order=202, option_range=Fields))
-            iFactorInfo = self._Owner._FactorInfo[Mask & (self._Owner._FactorInfo["Supplementary"]=="Default")]
-            if iFactorInfo.shape[0]>0: self.DTField = iFactorInfo.index[0]
-            else: self.DTField = Fields[0]
-            # 解析条件字段
-            self._ConditionFields = self._Owner._FactorInfo[self._Owner._FactorInfo["FieldType"]=="Condition"].index.tolist()
-            for i, iCondition in enumerate(self._ConditionFields):
-                self.add_trait("Condition"+str(i), Str("", arg_type="String", label=iCondition, order=i+101))
-                iConditionVal = self._Owner._FactorInfo.loc[iCondition, "Supplementary"]
+            iFactorInfo = Owner._FactorInfo[Mask & (Owner._FactorInfo["Supplementary"]=="Default")]
+            if "DTField" not in data:
+                if iFactorInfo.shape[0]>0: data["DTField"] = iFactorInfo.index[0]
+                else: data["DTField"] = Fields[0]
+            elif data["DTField"] not in Fields:
+                raise __QS_Error__(f"字段 {data['DTField']} 不能设置为时点字段，可选项为：{Fields}")
+            # 解析附加条件
+            ConditionFields = Owner._FactorInfo[Owner._FactorInfo["FieldType"]=="Condition"].index.tolist()
+            AdditionalCondition = {}
+            for iCondition in ConditionFields:
+                iConditionVal = Owner._FactorInfo.loc[iCondition, "Supplementary"]
                 if pd.isnull(iConditionVal) or (isinstance(iConditionVal, str) and (iConditionVal.lower() in ("", "nan"))):
-                    self[iCondition] = ""
+                    AdditionalCondition[iCondition] = ""
                 else:
-                    self[iCondition] = str(iConditionVal).strip()
-    
+                    AdditionalCondition[iCondition] = str(iConditionVal).strip()
+            data["AdditionalCondition"] = AdditionalCondition | data.get("AdditionalCondition", {})
+            return super().__init__(**data)
+
     def __init__(self, fdb, table_info=None, factor_info=None, security_info=None, exchange_info=None, args={}, **kwargs):
         self._TableInfo = table_info
         self._FactorInfo = factor_info
@@ -725,8 +742,7 @@ class SQL_Table(FactorTable):
             SQLStr = init_keyword+" "+FilterStr.format(Table=self._DBTableName, TablePrefix=self._QSArgs.TablePrefix)+" "
             init_keyword = "AND"
         else: SQLStr = ""
-        for iConditionField in self._QSArgs._ConditionFields:
-            iConditionVal = self._QSArgs[iConditionField]
+        for iConditionField, iConditionVal in self._QSArgs.AdditionalCondition.items():
             if iConditionVal:
                 if self.__QS_identifyDataType__(self._FactorInfo.loc[iConditionField, "DataType"])!="double":
                     SQLStr += init_keyword+" "+self._DBTableName+"."+self._FactorInfo.loc[iConditionField, "DBFieldName"]+" IN ('"+"','".join(iConditionVal.split(","))+"') "
@@ -757,15 +773,18 @@ class SQL_Table(FactorTable):
     def FactorNames(self):
         return self._FactorInfo[pd.notnull(self._FactorInfo["FieldType"])].index.tolist()
     
-    def getFactorMetaData(self, factor_name, key=None):
-        MetaData = {
-            "DataType": self.__QS_identifyDataType__(self._FactorInfo.loc[factor_name, "DataType"]),
-            "Description": self._FactorInfo.loc[factor_name, "Description"]
-        }
-        if key:
-            return MetaData.get(key, None)
-        else:
+    def getFactorMetaData(self, factor_names=None, key=None):
+        if not factor_names: factor_names = self.FactorNames
+        if key=="Description":
+            return self._FactorInfo["Description"].loc[factor_names]
+        elif key == "DataType":
+            return self._FactorInfo["DataType"].loc[factor_names].apply(self.__QS_identifyDataType__)
+        elif not key:
+            MetaData = self._FactorInfo.loc[factor_names, ["DataType", "Description"]]
+            MetaData["DataType"] = MetaData["DataType"].apply(self.__QS_identifyDataType__)
             return MetaData
+        else:
+            return super().getFactorMetaData(factor_names=factor_names, key=key)
     
     # 新方法: 读取 SQL 数据, 返回 DataFrame
     def readSQLData(self, factor_names, ids=None, start_dt=None, end_dt=None):
@@ -780,7 +799,7 @@ class SQL_Table(FactorTable):
 class SQL_WideTable(SQL_Table):
     """SQL 宽因子表"""
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
-        LookBack: Union[int, np.inf] = Field(default=0, title="回溯天数", frozen=True, ge=0)
+        LookBack: Union[int, float] = Field(default=0, title="回溯天数", frozen=True, ge=0)
         OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True)
         OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True)
         OnlyLookBackDT: bool = Field(default=False, title="只回溯时点", frozen=True)
@@ -2278,15 +2297,15 @@ class SQL_FinancialTable(SQL_Table):
                 ReportPeriod = iData.loc[:, "ReportPeriod"].where(pd.notnull(iData.loc[:, "ReportPeriod"]), "None").unstack().T
                 iData = iData.loc[:, factor_name].where(pd.notnull(iData.loc[:, factor_name]), np.inf).unstack().T
                 iIndex = iData.index.union(dts).sort_values()
-                Data[iPeriod] = iData.reindex(index=iIndex).fillna(method="pad").reindex(index=dts, columns=ids)
-                ReportPeriod = ReportPeriod.reindex(index=iIndex).fillna(method="pad").reindex(index=dts, columns=ids)
+                Data[iPeriod] = iData.reindex(index=iIndex).ffill().reindex(index=dts, columns=ids)
+                ReportPeriod = ReportPeriod.reindex(index=iIndex).ffill().reindex(index=dts, columns=ids)
                 Data[iPeriod] = Data[iPeriod].where(Data[iPeriod]!=np.inf, np.nan)
                 ReportPeriod = ReportPeriod.where(ReportPeriod!="None", None)
             else:
                 iData = iData.loc[:, ["QS_ID", "AnnDate", factor_name]].groupby(by=["QS_ID", "AnnDate"], as_index=True).last()
                 iData = iData.loc[:, factor_name].where(pd.notnull(iData.loc[:, factor_name]), np.inf).unstack().T
                 iIndex = iData.index.union(dts).sort_values()
-                Data[iPeriod] = iData.reindex(index=iIndex).fillna(method="pad").reindex(index=dts, columns=ids)
+                Data[iPeriod] = iData.reindex(index=iIndex).ffill().reindex(index=dts, columns=ids)
                 Data[iPeriod] = Data[iPeriod].where(Data[iPeriod]!=np.inf, np.nan)
             iData = None
         if calc_type=="最新": return Data[periods[0]]

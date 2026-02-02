@@ -68,9 +68,8 @@ class Applymap(PointOperator):
         return super().__init__(args=Args, config_file=config_file, **kwargs)
     
     def calculate(self, f, idt, iid, x, args):
-        return pd.DataFrame(x[0]).applymap(args["func"]).values
+        return pd.DataFrame(x[0]).map(args["func"]).values
     
-
 class Where(PointOperator):
     def __init__(self, dtype:str="double", args={}, config_file=None, **kwargs):
         Args = {"Name": "where"} | args | {"Arity": 3, "DataType": dtype, "DTMode": "多时点", "IDMode": "多ID"}
@@ -114,8 +113,7 @@ class Strftime(PointOperator):
     
     def calculate(self, f, idt, iid, x, args):
         DTFormat = args["dt_format"]
-        return pd.DataFrame(x[0]).applymap(lambda x: x.strftime(DTFormat) if pd.notnull(x) else None).values
-    
+        return pd.DataFrame(x[0]).map(lambda x: x.strftime(DTFormat) if pd.notnull(x) else None).values
 
 class Strptime(PointOperator):
     def __init__(self, dt_format:str="%Y%m%d", args={}, config_file=None, **kwargs):
@@ -125,7 +123,7 @@ class Strptime(PointOperator):
     
     def calculate(self, f, idt, iid, x, args):
         DTFormat = args["dt_format"]
-        return pd.DataFrame(x[0]).applymap(lambda x: dt.datetime.strptime(x, DTFormat) if pd.notnull(x) else None).values
+        return pd.DataFrame(x[0]).map(lambda x: dt.datetime.strptime(x, DTFormat) if pd.notnull(x) else None).values
 
 class Sum(PointOperator):
     def __init__(self, all_nan:float=0, dtype:str="double", args={}, config_file=None, **kwargs):
@@ -307,7 +305,7 @@ class ToJson(PointOperator):
         return super().__init__(args=Args, config_file=config_file, **kwargs)
     
     def calculate(self, f, idt, iid, x, args):
-        return pd.DataFrame(x[0]).applymap(lambda v: json.dumps(v, ensure_ascii=False) if pd.notnull(v) else None).values
+        return pd.DataFrame(x[0]).map(lambda v: json.dumps(v, ensure_ascii=False) if pd.notnull(v) else None).values
 
 class ToCompound(PointOperator):
     def __init__(self, args={}, config_file=None, **kwargs):

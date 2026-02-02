@@ -1369,3 +1369,13 @@ class JYDB(QSSQLObject, FactorDB):
         pass
 
 
+if __name__=="__main__":
+    TDB = JYDB().connect()
+    print(TDB.TableNames)
+
+    DTs = TDB.getTradeDay(start_date=dt.datetime(2026, 1, 1))
+    print(DTs)
+
+    IDs = TDB.getStockID(date=dt.datetime(2026, 2, 2), is_current=False)
+
+    print("===")

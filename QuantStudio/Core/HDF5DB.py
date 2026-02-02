@@ -23,7 +23,7 @@ from QuantStudio.Core.FactorTable import FactorTable
 from QuantStudio.Core.FactorUtils import adjustDataDTID
 from QuantStudio.Tools.FileFun import listDirFile
 from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
-from QuantStudio.Tools.QSObjects import QSFileLock
+from QuantStudio.Core.QSObject import QSFileLock
 
 
 def _identifyDataType(factor_data, data_type=None):
