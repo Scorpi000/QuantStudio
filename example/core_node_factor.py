@@ -10,7 +10,7 @@ from QuantStudio.Core.CalcEngine import Engine, ParallelEngine, StackEngine
 from QuantStudio.Core.Factor import Factor, DataFactor, FactorContext, FactorLocalContext
 from QuantStudio.Core.BaoStockDB import BaoStockDB
 from QuantStudio.Core.HDF5DB import HDF5DB
-from QuantStudio.Core.FactorCache import HDF5Cache
+from QuantStudio.Core.FactorCache import HDF5Cache, FeatherCache
 from QuantStudio.Core.FactorOperation import PointOperation, makeFactorOperator
 from QuantStudio.Core.FactorStorer import FactorStorer
 
@@ -41,7 +41,7 @@ if __name__ == "__main__":
     })
     
     ExecEngine = Engine()
-    Cache = HDF5Cache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "CacheDir": r"C:\Users\hst\Desktop\Cache", "PIDs": ["0"]})
+    Cache = FeatherCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "CacheDir": r"C:\Users\hst\Desktop\Cache", "PIDs": ["0"]})
     Cache.start()
     Context = FactorContext(
         PID="0",
@@ -55,7 +55,7 @@ if __name__ == "__main__":
     FactorList = [Factor2, Factor3]
     #Rslt = ExecEngine.run([Storer], Context, fwd_data_list=[LocalContext]*len(FactorList), init_data_list=[{"dt_range": (DTs[0], DTs[-1]), "section_ids": SectionIDs}]*len(FactorList))
     TDB = HDF5DB().connect()
-    Storer = FactorStorer(deps=[Factor2, Factor3], args={"TargetFDB": TDB, "TargetTable": "test_table", "IfExists": "update"})
+    Storer = FactorStorer(deps=[Factor2, Factor3], args={"TargetFDB": TDB, "TargetTable": "test_table1", "IfExists": "update"})
     Rslt = ExecEngine.run([Storer], Context, fwd_data_list=[LocalContext], init_data_list=[{"dt_range": (DTs[0], DTs[-1]), "section_ids": SectionIDs}])
     print(Rslt)
     
