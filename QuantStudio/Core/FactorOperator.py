@@ -18,21 +18,6 @@ from QuantStudio.Tools import DataPreprocessingFun
 
 
 # ----------------------单点运算--------------------------------
-class Identity(PointOperator):
-    def __init__(self, args={}, config_file=None, **kwargs):
-        Args = {"Name": "identity", "DataType": "object"} | args | {"Arity": 1, "DTMode": "多时点", "IDMode": "多ID", "CacheEnabled": False}
-        return super().__init__(args=Args, config_file=config_file, **kwargs)
-    
-    def calculate(self, f, idt, iid, x, args):
-        return x[0]
-    
-    def __call__(self, f, factor_args:Dict={}, **kwargs):
-        DataType = f.getMetaData(key="DataType")
-        if DataType != self._QSArgs.DataType:
-            return super(Identity, self.new(args={"DataType": DataType})).__call__(f, factor_args=factor_args, **kwargs)
-        else:
-            return super().__call__(f, factor_args=factor_args, **kwargs)
-
 class AsType(PointOperator):
     def __init__(self, dtype:str="double", args={}, config_file=None, **kwargs):
         Args = {"Name": "astype"} | args | {"Arity": 1, "DataType": dtype, "DTMode": "多时点", "IDMode": "多ID"}

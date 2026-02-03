@@ -36,11 +36,7 @@ class FactorOperator(__QS_Object__):
             if ("DataType" not in data) and (data.get("CompoundType", []) or data.get("MultiMapping", False)):
                 data["DataType"] = "object"
             return super().__init__(**data)
-
-    def __init__(self, args={}, config_file=None, **kwargs):
-        super().__init__(args=args, config_file=config_file, **kwargs)
-        self._QS_CachedOperators = {}
-
+    
     @property
     def Name(self):
         return self._QSArgs.Name
@@ -49,6 +45,12 @@ class FactorOperator(__QS_Object__):
         DumpedModel = super().model_dump()
         DumpedModel["__func__"] = self.calculate
         return DumpedModel
+    
+    def new(self, args={}):
+        NewOperator = super().new(args=args)
+        if getattr(self.calculate, "__self__", None) != self:
+            NewOperator.calculate = self.calculate
+        return NewOperator
     
     def _QS_validate(self, *x):
         Arity = len(x)
@@ -322,21 +324,22 @@ class TimeOperator(FactorOperator):
         iInitFactor: int = Field(default=-1, title="起始因子", ge=-1, frozen=True)
         
         def __init__(self, /, **data):
-            Arity = data.get("Arity", self.__pydantic_fields__["Arity"].default)
-            if "LookBack" not in data: data["LookBack"] = [0] * Arity
-            if "LookBackMode" not in data: data["LookBackMode"] = ["滚动窗口"] * Arity
-            if "StartDT" not in data: data["StartDT"] = [None] * Arity
+            Arity = data.get("Arity", 0)
+            if not data.get("LookBack", []): data["LookBack"] = [0] * Arity
+            if not data.get("LookBackMode", []): data["LookBackMode"] = ["滚动窗口"] * Arity
+            if not data.get("StartDT", []): data["StartDT"] = [None] * Arity
             return super().__init__(**data)
         
         def model_post_init(self, context: Any, /) -> None:
-            if self.Arity != len(self.LookBack):
-                raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 LookBack({self.__pydantic_fields__['LookBack'].title}): {self.LookBack} 的长度不一致!")
-            if self.Arity != len(self.LookBackMode):
-                raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 LookBackMode({self.__pydantic_fields__['LookBackMode'].title}): {self.LookBackMode} 的长度不一致!")
-            if self.Arity != len(self.StartDT):
-                raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 StartDT({self.__pydantic_fields__['StartDT'].title}): {self.StartDT} 的长度不一致!")
-            if self.iInitFactor >= self.Arity:
-                raise __QS_Error__(f"算子{self.Name}的 iInitFactor({self.__pydantic_fields__['iInitFactor'].title}): {self.iInitFactor} 超出了 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity}!")
+            if self.Arity is not None:
+                if self.Arity != len(self.LookBack):
+                    raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 LookBack({self.__pydantic_fields__['LookBack'].title}): {self.LookBack} 的长度不一致!")
+                if self.Arity != len(self.LookBackMode):
+                    raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 LookBackMode({self.__pydantic_fields__['LookBackMode'].title}): {self.LookBackMode} 的长度不一致!")
+                if self.Arity != len(self.StartDT):
+                    raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 StartDT({self.__pydantic_fields__['StartDT'].title}): {self.StartDT} 的长度不一致!")
+                if self.iInitFactor >= self.Arity:
+                    raise __QS_Error__(f"算子{self.Name}的 iInitFactor({self.__pydantic_fields__['iInitFactor'].title}): {self.iInitFactor} 超出了 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity}!")
             return super().model_post_init(context)
     
     def __call__(self, *x, factor_args:dict={}, **kwargs):
@@ -512,12 +515,12 @@ class SectionOperator(FactorOperator):
         DescriptorSection: List[Optional[List[str]]] = Field(default=[], title="描述子截面", frozen=True)
         
         def __init__(self, /, **data):
-            Arity = data.get("Arity", self.__pydantic_fields__["Arity"].default)
-            if "DescriptorSection" not in data: data["DescriptorSection"] = [None] * Arity
+            Arity = data.get("Arity", 0)
+            if not data.get("DescriptorSection", []): data["DescriptorSection"] = [None] * Arity
             return super().__init__(**data)
         
         def model_post_init(self, context: Any, /) -> None:
-            if self.Arity != len(self.DescriptorSection):
+            if (self.Arity is not None) and (self.Arity != len(self.DescriptorSection)):
                 raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 DescriptorSection({self.__pydantic_fields__['DescriptorSection'].title}): {self.DescriptorSection} 的长度不一致!")
             return super().model_post_init(context)
     
@@ -675,24 +678,25 @@ class PanelOperator(FactorOperator):
         iInitFactor: int = Field(default=-1, title="起始因子", ge=-1, frozen=True)
         
         def __init__(self, /, **data):
-            Arity = data.get("Arity", self.__pydantic_fields__["Arity"].default)
-            if "DescriptorSection" not in data: data["DescriptorSection"] = [None] * Arity
-            if "LookBack" not in data: data["LookBack"] = [0] * Arity
-            if "LookBackMode" not in data: data["LookBackMode"] = ["滚动窗口"] * Arity
-            if "StartDT" not in data: data["StartDT"] = [None] * Arity
+            Arity = data.get("Arity", 0)
+            if not data.get("DescriptorSection", []): data["DescriptorSection"] = [None] * Arity
+            if not data.get("LookBack", []): data["LookBack"] = [0] * Arity
+            if not data.get("LookBackMode", []): data["LookBackMode"] = ["滚动窗口"] * Arity
+            if not data.get("StartDT", []): data["StartDT"] = [None] * Arity
             return super().__init__(**data)
          
         def model_post_init(self, context: Any, /) -> None:
-            if self.Arity != len(self.DescriptorSection):
-                raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 DescriptorSection({self.__pydantic_fields__['DescriptorSection'].title}): {self.DescriptorSection} 的长度不一致!")            
-            if self.Arity != len(self.LookBack):
-                raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 LookBack({self.__pydantic_fields__['LookBack'].title}): {self.LookBack} 的长度不一致!")
-            if self.Arity != len(self.LookBackMode):
-                raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 LookBackMode({self.__pydantic_fields__['LookBackMode'].title}): {self.LookBackMode} 的长度不一致!")
-            if self.Arity != len(self.StartDT):
-                raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 StartDT({self.__pydantic_fields__['StartDT'].title}): {self.StartDT} 的长度不一致!")
-            if self.iInitFactor >= self.Arity:
-                raise __QS_Error__(f"算子{self.Name}的 iInitFactor({self.__pydantic_fields__['iInitFactor'].title}): {self.iInitFactor} 超出了 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity}!")
+            if self.Arity is not None:
+                if self.Arity != len(self.DescriptorSection):
+                    raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 DescriptorSection({self.__pydantic_fields__['DescriptorSection'].title}): {self.DescriptorSection} 的长度不一致!")            
+                if self.Arity != len(self.LookBack):
+                    raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 LookBack({self.__pydantic_fields__['LookBack'].title}): {self.LookBack} 的长度不一致!")
+                if self.Arity != len(self.LookBackMode):
+                    raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 LookBackMode({self.__pydantic_fields__['LookBackMode'].title}): {self.LookBackMode} 的长度不一致!")
+                if self.Arity != len(self.StartDT):
+                    raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 StartDT({self.__pydantic_fields__['StartDT'].title}): {self.StartDT} 的长度不一致!")
+                if self.iInitFactor >= self.Arity:
+                    raise __QS_Error__(f"算子{self.Name}的 iInitFactor({self.__pydantic_fields__['iInitFactor'].title}): {self.iInitFactor} 超出了 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity}!")
             return super().model_post_init(context)
     
     def __call__(self, *x, factor_args:dict={}, **kwargs):
@@ -895,6 +899,8 @@ class DerivativeFactor(Factor):
     def __init__(self, descriptors, args={}, config_file=None, **kwargs):
         self.UserData = {}
         if descriptors: kwargs.setdefault("logger", descriptors[0]._QS_Logger)
+        Operator = args["Operator"]._QS_validate(*descriptors)
+        args = {"Name": Operator._QSArgs.Name} | args | {"Operator": Operator}
         super().__init__(descriptors=descriptors, args=args, config_file=config_file, **kwargs)
         self._Operator = self._QSArgs.Operator
         self._QS_checkConsistency()
@@ -902,7 +908,7 @@ class DerivativeFactor(Factor):
     # 检查因子定义的相容性
     def _QS_checkConsistency(self):
         pass
-
+    
     @property
     def Operator(self):
         return self._Operator
@@ -918,7 +924,6 @@ class DerivativeFactor(Factor):
         return None
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
-        DTs, IDs = local_context.DTs, local_context.IDs
         if bwd_data_list:
             CalcDTs = local_context.ExtraData["CalcDTs"]
             iSectionIDs = context.getID(self.QSID, [context.PID])
@@ -930,16 +935,15 @@ class DerivativeFactor(Factor):
                     StdData = pd.DataFrame(StdData, index=CalcDTs, columns=iSectionIDs)
                 else:
                     StdData = self._Operator.calcData(factor=self, ids=iSectionIDs, dts=CalcDTs, descriptor_data=bwd_data_list, dt_ruler=context.DTRuler, section_ids=iSectionIDs)
-            if context.FactorDataCache and self._QSArgs.CacheEnabled:
+            if context.FactorDataCache and self._QSArgs.CacheEnabled and (not StdData.empty):
                 context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids={context.PID: iSectionIDs}, pid=context.PID, if_exists="append")
-                context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(DTs[0], DTs[-1]))
-                StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs)
-        elif context.FactorDataCache and self._QSArgs.CacheEnabled:
+                context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(CalcDTs[0], CalcDTs[-1]))
+        DTs, IDs = local_context.DTs, local_context.IDs
+        if not (DTs and IDs): return pd.DataFrame(index=DTs, columns=IDs)
+        if context.FactorDataCache and self._QSArgs.CacheEnabled:
             StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs)
-        else:
-            if DTs or IDs:
-                raise __QS_Error__("走到了不该走到的地方!")
-            return pd.DataFrame(index=DTs, columns=IDs)
+        elif not bwd_data_list:
+            raise __QS_Error__("走到了不该走到的地方!")
         return StdData.reindex(index=DTs, columns=IDs)
     
 class PointOperation(DerivativeFactor):
@@ -1029,7 +1033,7 @@ class SectionOperation(DerivativeFactor):
             if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
         CalcDTs = context.getDateTime(DTRange)
         if not CalcDTs: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs)
-        if context.FactorDataCache and self._QSArgs.CacheEnabled:
+        if context.FactorDataCache and self._QSArgs.CacheEnabled and (len(context.PIDList) > 1):
             PID = context.PID
             DTPartition = partitionList(CalcDTs, len(context.PIDList))
             CalcDTs = DTPartition[context.PIDList.index(PID)]
@@ -1038,7 +1042,6 @@ class SectionOperation(DerivativeFactor):
         return [FactorLocalContext(IDs=context.getID(iDescriptor.QSID, pids=None), DTs=CalcDTs, PIDs=context.PIDList) for iDescriptor in self.Deps], FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, ExtraData={"CalcDTs": CalcDTs})
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
-        DTs, IDs = local_context.DTs, local_context.IDs
         if bwd_data_list:
             CalcDTs = local_context.ExtraData["CalcDTs"]
             SectionIDs = context.getID(self.QSID, pids=None)
@@ -1054,16 +1057,16 @@ class SectionOperation(DerivativeFactor):
                 PIDIDs = context.NodeState[self.QSID]["pid_ids"]
                 context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=None, if_exists="append")
                 context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(CalcDTs[0], CalcDTs[-1]))
-        elif not (context.FactorDataCache and self._QSArgs.CacheEnabled):
-            if DTs or IDs:
-                raise __QS_Error__("走到了不该走到的地方!")
-            StdData = pd.DataFrame(index=DTs, columns=IDs)
         if len(context.PIDList) > 1:
             Sub2MainQueue, PIDEvent = context.Event[self.QSID]
             Sub2MainQueue.put(1)
             PIDEvent.wait()
+        DTs, IDs = local_context.DTs, local_context.IDs
+        if not (DTs and IDs): return pd.DataFrame(index=DTs, columns=IDs)
         if context.FactorDataCache and self._QSArgs.CacheEnabled:
             StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs)
+        elif not bwd_data_list:
+            raise __QS_Error__("走到了不该走到的地方!")
         return StdData.reindex(index=DTs, columns=IDs)
 
 
@@ -1104,6 +1107,12 @@ class PanelOperation(DerivativeFactor):
             if DTRange is None: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs)
         CalcDTs = context.getDateTime(DTRange)
         if not CalcDTs: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs)
+        if context.FactorDataCache and self._QSArgs.CacheEnabled and (len(context.PIDList) > 1):
+            PID = context.PID
+            DTPartition = partitionList(CalcDTs, len(context.PIDList))
+            CalcDTs = DTPartition[context.PIDList.index(PID)]
+        if not CalcDTs:
+            return [FactorLocalContext(IDs=context.getID(iDescriptor.QSID, pids=None), DTs=CalcDTs, PIDs=context.PIDList) for iDescriptor in self.Deps], FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, ExtraData={"CalcDTs": CalcDTs})
         DTRuler = context.DTRuler
         StartIdx, EndIdx = DTRuler.index(CalcDTs[0]), DTRuler.index(CalcDTs[-1])
         FwdData = []
@@ -1115,11 +1124,10 @@ class PanelOperation(DerivativeFactor):
             if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
                 iEndIdx = StartIdx - 1
             iDTs = DTRuler[max(iStartIdx, 0):iEndIdx+1]
-            FwdData.append(FactorLocalContext(IDs=context.getID(iDescriptor.QSID, pids=None), DTs=iDTs))
+            FwdData.append(FactorLocalContext(IDs=context.getID(iDescriptor.QSID, pids=None), DTs=iDTs, PIDs=context.PIDList))
         return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, ExtraData={"CalcDTs": CalcDTs})
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
-        DTs, IDs = local_context.DTs, local_context.IDs
         if bwd_data_list:
             CalcDTs = local_context.ExtraData["CalcDTs"]
             SectionIDs = context.getID(self.QSID, pids=None)
@@ -1135,16 +1143,16 @@ class PanelOperation(DerivativeFactor):
                 PIDIDs = context.NodeState[self.QSID]["pid_ids"]
                 context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=None, if_exists="append")
                 context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(CalcDTs[0], CalcDTs[-1]))
-        elif not (context.FactorDataCache and self._QSArgs.CacheEnabled):
-            if DTs or IDs:
-                raise __QS_Error__("走到了不该走到的地方!")
-            StdData = pd.DataFrame(index=DTs, columns=IDs)
         if len(context.PIDList) > 1:
             Sub2MainQueue, PIDEvent = context.Event[self.QSID]
             Sub2MainQueue.put(1)
             PIDEvent.wait()
+        DTs, IDs = local_context.DTs, local_context.IDs
+        if not (DTs and IDs): return pd.DataFrame(index=DTs, columns=IDs)
         if context.FactorDataCache and self._QSArgs.CacheEnabled:
             StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs)
+        elif not bwd_data_list:
+            raise __QS_Error__("走到了不该走到的地方!")
         return StdData.reindex(index=DTs, columns=IDs)
     
     
@@ -1152,7 +1160,8 @@ class PanelOperation(DerivativeFactor):
 if __name__ == "__main__":
     import datetime as dt
 
-    from QuantStudio.Core.Factor import DataFactor, Factorize
+    from QuantStudio.Core.Factor import DataFactor
+    from QuantStudio.Core.BasicOperator import rename
 
     IDs = [f"00000{i}.SZ" for i in range(1, 6)]
     DTs = [dt.datetime(2020, 1, 1) + dt.timedelta(i) for i in range(4)]
@@ -1160,7 +1169,7 @@ if __name__ == "__main__":
     Factor2 = DataFactor(name="Factor2", data=pd.DataFrame(np.random.randn(len(DTs), len(IDs)), index=DTs, columns=IDs))
 
     # 表达式方式
-    Factor3 = Factorize(Factor1 + Factor2, factor_name="Factor3")
+    Factor3 = rename(Factor1 + Factor2, factor_name="Factor3")
 
 
     # 工厂函数方式

@@ -102,7 +102,7 @@ class Factor(Node):
     
     def new(self, args={}):
         args = self._QSArgs.model_dump() | args
-        return self.__class__(ft=self._FactorTable, descriptors=self.Deps, args=args, config_file=self._ConfigFile, logger=self._QS_Logger)    
+        return self.__class__(ft=self._FactorTable, descriptors=self.Deps, args=args, config_file=self._ConfigFile, logger=self._QS_Logger)
     
     @property
     def FactorTable(self):
@@ -153,7 +153,7 @@ class Factor(Node):
         return Data.loc[key]
 
     # 准备缓存数据
-    def __QS_prepareCacheData__(self, context: FactorContext):
+    def _prepareCacheData(self, context: FactorContext):
         DTRange = context.NodeState.get(self.QSID, {}).get("dt_range", None)
         if DTRange is None: return 0
         DTRange = context.FactorDataCache.getDTRange(key=self.QSID, dt_range=DTRange)
@@ -221,7 +221,7 @@ class Factor(Node):
 
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
         if context.FactorDataCache and self._QSArgs.CacheEnabled:
-            self.__QS_prepareCacheData__(context=context)
+            self._prepareCacheData(context=context)
             StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs)
             return StdData.reindex(index=local_context.DTs, columns=StdData.columns.intersection(local_context.IDs)).sort_index(axis=1)
         elif self._FactorTable:
@@ -393,8 +393,12 @@ class DataFactor(Factor):
                     else:
                         args["DataType"] = "double"
         self._Data = data
-        return super().__init__(descriptors=[], args=args, config_file=config_file, **kwargs)
-
+        return super().__init__(ft=None, descriptors=[], args=args, config_file=config_file, **kwargs)
+    
+    def new(self, args={}):
+        args = self._QSArgs.model_dump() | args
+        return self.__class__(data=self._Data, args=args, config_file=self._ConfigFile, logger=self._QS_Logger)
+    
     def getMetaData(self, key=None):
         DataType = self._QSArgs.DataType
         if key is None:

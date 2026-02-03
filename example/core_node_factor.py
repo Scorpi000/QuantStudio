@@ -8,7 +8,8 @@ from pydantic import Field
 from QuantStudio.Core.Node import Node
 from QuantStudio.Core.CalcEngine import Engine, ParallelEngine, StackEngine
 from QuantStudio.Core.Factor import Factor, DataFactor, FactorContext, FactorLocalContext
-from QuantStudio.Core.BasicOperator import Factorize
+from QuantStudio.Core.BasicOperator import rename
+from QuantStudio.Core.FactorOperator import SectionRank
 from QuantStudio.Core.BaoStockDB import BaoStockDB
 from QuantStudio.Core.HDF5DB import HDF5DB
 from QuantStudio.Core.FactorCache import HDF5Cache, FeatherCache
@@ -40,13 +41,16 @@ if __name__ == "__main__":
                 "IDMode": "多ID"
             }
         ),
-        # "CacheEnabled": False
+        #"CacheEnabled": False
     })
 
-    Factor4 = Factorize(Factor3 + 1, factor_name="Factor4")
+    Factor4 = rename(Factor3 + 1, factor_name="Factor4")
+    Factor5 = rename(Factor2, factor_name="Factor5")
+    
+    Factor6 = SectionRank()(Factor3, factor_args={"Name": "Factor6"})
     
     ExecEngine = Engine()
-    Cache = FeatherCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "CacheDir": r"D:\Data\FactorCache", "PIDs": ["0"]})
+    Cache = FeatherCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "CacheDir": r"C:\Users\hst\Project\Data\FactorCache", "PIDs": ["0"]})
     Cache.start()
     Context = FactorContext(
         PID="0",
@@ -57,7 +61,7 @@ if __name__ == "__main__":
         FactorDataCache=Cache
     )
     LocalContext = FactorLocalContext(DTs=DTs, IDs=IDs)
-    FactorList = [Factor2, Factor3, Factor4]
+    FactorList = [Factor2, Factor3, Factor4, Factor6]
     Rslt = ExecEngine.run(FactorList, Context, fwd_data_list=[LocalContext]*len(FactorList), init_data_list=[{"dt_range": (DTs[0], DTs[-1]), "section_ids": SectionIDs}]*len(FactorList))
     # TDB = HDF5DB().connect()
     # Storer = FactorStorer(deps=[Factor2, Factor3], args={"TargetFDB": TDB, "TargetTable": "test_table1", "IfExists": "update"})

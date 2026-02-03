@@ -1,14 +1,35 @@
 # coding=utf-8
 """基本的因子运算"""
 import datetime as dt
+from typing import Dict
 
 import numpy as np
 import pandas as pd
 
 from QuantStudio.Core.Factor import Factor
-from QuantStudio.Core.FactorOperation import PointOperator
+from QuantStudio.Core.FactorOperation import DerivativeFactor, PointOperator
 
 # ----------------------单点运算--------------------------------
+class Rename(PointOperator):
+    def __init__(self, args={}, config_file=None, **kwargs):
+        Args = {"Name": "rename", "DataType": "object"} | args | {"Arity": 1, "DTMode": "多时点", "IDMode": "多ID"}
+        return super().__init__(args=Args, config_file=config_file, **kwargs)
+    
+    def calculate(self, f, idt, iid, x, args):
+        return x[0]
+    
+    def __call__(self, f: Factor, factor_name: str, factor_args:Dict={}, **kwargs):
+        if not f.FactorTable:
+            factor = f.new(args=factor_args | {"Name": factor_name})
+            if "logger" in kwargs: factor._QS_Logger = kwargs["logger"]
+            return factor
+        DataType = f.getMetaData(key="DataType")
+        factor_args = {"CacheEnabled": False} | factor_args | {"Name": factor_name}
+        if DataType != self._QSArgs.DataType:
+            return super(Rename, self.new(args={"DataType": DataType})).__call__(f, factor_args=factor_args, **kwargs)
+        else:
+            return super().__call__(f, factor_args=factor_args, **kwargs)
+
 class Neg(PointOperator):
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         
@@ -217,6 +238,7 @@ class Neq(PointOperator):
     def calculate(self, f, idt, iid, x, args):
         return x[0] != x[1]
 
+rename = Rename()
 neg = Neg()
 qs_abs = Abs()
 qs_not = Not()
@@ -237,12 +259,6 @@ ge = GE()
 eq = Eq()
 neq = Neq()
 
-# 为因子表达式产生的因子更改其他信息
-def Factorize(factor: Factor, factor_name: str, args: dict={}, **kwargs):
-    factor = factor.new(args=args| {"Name": factor_name})
-    if "logger" in kwargs: factor._QS_Logger = kwargs["logger"]
-    return factor
-
 
 if __name__=="__main__":
     from QuantStudio.Core.Factor import DataFactor
@@ -253,14 +269,14 @@ if __name__=="__main__":
     Factor1 = DataFactor(data=1, args={"Name": "Factor1"})
     Factor2 = DataFactor(data=pd.DataFrame(np.random.randn(len(DTs), len(IDs)), index=DTs, columns=IDs), args={"Name": "Factor2"})
     
-    Factor3 = Factorize(Factor1 + Factor2, factor_name="Factor3")
+    Factor3 = rename(Factor1 + Factor2, factor_name="Factor3")
     Factor4 = sub(Factor1, Factor2, factor_name="Factor4")
     print(Factor4.model_dump())
     print(Factor4.QSID)
     Factor5 = Sub()(Factor1, Factor2, factor_name="Factor5")
     print(Factor5.model_dump())
     print(Factor5.QSID)
-    Factor6 = Factorize(1 - Factor2, factor_name="Factor6")
+    Factor6 = rename(1 - Factor2, factor_name="Factor6")
     
     print(Factor1.readData(ids=IDs, dts=DTs))
     print(Factor2.readData(ids=IDs, dts=DTs))
