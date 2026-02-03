@@ -47,9 +47,9 @@ def _adjustData(data, data_type, order="C"):
         return data.astype("float").values
     elif data_type == "object":
         if order == "C":
-            return np.ascontiguousarray(data.applymap(lambda x: np.frombuffer(pickle.dumps(x), dtype=np.uint8)).values)
+            return np.ascontiguousarray(data.map(lambda x: np.frombuffer(pickle.dumps(x), dtype=np.uint8)).values)
         elif order == "F":
-            return np.asfortranarray(data.applymap(lambda x: np.frombuffer(pickle.dumps(x), dtype=np.uint8)).values)
+            return np.asfortranarray(data.map(lambda x: np.frombuffer(pickle.dumps(x), dtype=np.uint8)).values)
         else:
             raise __QS_Error__("不支持的参数 order 值: %s" % order)
     else:
@@ -218,7 +218,7 @@ class _FactorTable(FactorTable):
             Rslt = Rslt.where(pd.notnull(Rslt), None)
             Rslt = Rslt.where(Rslt != "", None)
         elif DataType == "object":
-            Rslt = Rslt.applymap(lambda x: pickle.loads(bytes(x)) if isinstance(x, np.ndarray) and (x.shape[0] > 0) else None)
+            Rslt = Rslt.map(lambda x: pickle.loads(bytes(x)) if isinstance(x, np.ndarray) and (x.shape[0] > 0) else None)
         return Rslt.sort_index(axis=0)
 
     def readFactorData(self, ifactor_name, ids, dts):
@@ -513,7 +513,7 @@ class HDF5DB(WritableFactorDB):
             if not os.path.isfile(FilePath):
                 factor_data, data_type = _identifyDataType(factor_data, data_type)
                 NewData = _adjustData(factor_data, data_type)
-                open(FilePath, mode="a").close()  # h5py 直接创建文件名包含中文的文件会报错.
+                open(FilePath, mode="a").close()# h5py 直接创建文件名包含中文的文件会报错.
                 # StrDataType = h5py.special_dtype(vlen=str)
                 StrDataType = h5py.string_dtype(encoding="utf-8")
                 with self._openHDF5File(FilePath, mode="a") as DataFile:

@@ -77,14 +77,14 @@ class FactorCache(__QS_Object__):
                 if StartIdx == EndIdx:  # 已有区间完全覆盖新区间
                     return None
                 else:  # 新区间跨区间
-                    StartDT = StartIdx["EndDT"].iloc[0] + self.MinDTUnit
-                    EndDT = EndIdx["StartDT"].iloc[0] - self.MinDTUnit
+                    StartDT = StartIdx["EndDT"].iloc[0] + self._QSArgs.MinDTUnit
+                    EndDT = EndIdx["StartDT"].iloc[0] - self._QSArgs.MinDTUnit
                     return (StartDT, EndDT)
             elif StartIdx.empty and (not EndIdx.empty):  # 新区间起始点在空档里, 结束点在已有区间里
-                EndDT = EndIdx["StartDT"].iloc[0] - self.MinDTUnit
+                EndDT = EndIdx["StartDT"].iloc[0] - self._QSArgs.MinDTUnit
                 return (dt_range[0], EndDT)
             else:  # 新区间起始点在已有区间里, 结束点在空档里
-                StartDT = StartIdx["EndDT"].iloc[0] + self.MinDTUnit
+                StartDT = StartIdx["EndDT"].iloc[0] + self._QSArgs.MinDTUnit
                 return (StartDT, dt_range[1])
 
     def updateDTRange(self, key, dt_range):
@@ -425,7 +425,7 @@ class FeatherCache(FileCache):
 
     def readDataFrame(self, path: str, target_fields: Optional[list[str]]=None):
         if not os.path.isdir(path): return {}
-        if not target_fields: target_fields = [iFile[:len(self._FileSuffix)] for iFile in os.listdir(path)]
+        if not target_fields: target_fields = [iFile[:-len(self._FileSuffix)] for iFile in os.listdir(path)]
         RawData = {}
         for iField in target_fields:
             iPath = os.path.join(path, iField + self._FileSuffix)

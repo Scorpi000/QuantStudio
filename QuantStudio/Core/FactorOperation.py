@@ -919,19 +919,28 @@ class DerivativeFactor(Factor):
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
         DTs, IDs = local_context.DTs, local_context.IDs
-        iSectionIDs = context.getID(self.QSID, [context.PID])
-        if (not iSectionIDs) or (not DTs):
-            StdData = pd.DataFrame(index=DTs, columns=iSectionIDs, dtype=("float" if self._Operator._QSArgs.DataType == "double" else "O"))
-        else:
-            if self._Operator._QSArgs.InputFormat == "numpy":
-                StdData = self._Operator.calcData(factor=self, ids=iSectionIDs, dts=DTs, descriptor_data=[iBwdData.values for iBwdData in bwd_data_list], dt_ruler=context.DTRuler, section_ids=iSectionIDs)
-                StdData = pd.DataFrame(StdData, index=DTs, columns=iSectionIDs)
+        if bwd_data_list:
+            CalcDTs = local_context.ExtraData["CalcDTs"]
+            iSectionIDs = context.getID(self.QSID, [context.PID])
+            if (not iSectionIDs) or (not CalcDTs):
+                StdData = pd.DataFrame(index=CalcDTs, columns=iSectionIDs, dtype=("float" if self._Operator._QSArgs.DataType == "double" else "O"))
             else:
-                StdData = self._Operator.calcData(factor=self, ids=iSectionIDs, dts=DTs, descriptor_data=bwd_data_list, dt_ruler=context.DTRuler, section_ids=iSectionIDs)
-        if context.FactorDataCache:
-            context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids={context.PID: iSectionIDs}, pid=context.PID, if_exists="append")
-            context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(DTs[0], DTs[1]))
-        return StdData.reindex(index=DTs, columns=StdData.columns.intersection(IDs)).sort_index(axis=1)
+                if self._Operator._QSArgs.InputFormat == "numpy":
+                    StdData = self._Operator.calcData(factor=self, ids=iSectionIDs, dts=CalcDTs, descriptor_data=[iBwdData.values for iBwdData in bwd_data_list], dt_ruler=context.DTRuler, section_ids=iSectionIDs)
+                    StdData = pd.DataFrame(StdData, index=CalcDTs, columns=iSectionIDs)
+                else:
+                    StdData = self._Operator.calcData(factor=self, ids=iSectionIDs, dts=CalcDTs, descriptor_data=bwd_data_list, dt_ruler=context.DTRuler, section_ids=iSectionIDs)
+            if context.FactorDataCache and self._QSArgs.CacheEnabled:
+                context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids={context.PID: iSectionIDs}, pid=context.PID, if_exists="append")
+                context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(DTs[0], DTs[-1]))
+                StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs)
+        elif context.FactorDataCache and self._QSArgs.CacheEnabled:
+            StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs)
+        else:
+            if DTs or IDs:
+                raise __QS_Error__("走到了不该走到的地方!")
+            return pd.DataFrame(index=DTs, columns=IDs)
+        return StdData.reindex(index=DTs, columns=IDs)
     
 class PointOperation(DerivativeFactor):
     """单点运算"""
@@ -940,13 +949,13 @@ class PointOperation(DerivativeFactor):
 
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
         DTRange = context.NodeState.get(self.QSID, {}).get("dt_range", None)
-        if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
-        if context.FactorDataCache:
+        if DTRange is None: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs)
+        if context.FactorDataCache and self._QSArgs.CacheEnabled:
             DTRange = context.FactorDataCache.getDTRange(self.QSID, DTRange)
-            if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
-        DTs = context.getDateTime(DTRange)
-        if not DTs: return [], FactorLocalContext(DTs=[], IDs=IDs)
-        return [FactorLocalContext(IDs=context.getID(self.QSID, [context.PID]), DTs=DTs)] * len(self.Deps), FactorLocalContext(IDs=fwd_data.IDs, DTs=DTs)
+            if DTRange is None: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs)
+        CalcDTs = context.getDateTime(DTRange)
+        if not CalcDTs: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs)
+        return [FactorLocalContext(IDs=context.getID(self.QSID, [context.PID]), DTs=CalcDTs)] * len(self.Deps), FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, ExtraData={"CalcDTs": CalcDTs})
 
 
 class TimeOperation(DerivativeFactor):
@@ -976,17 +985,17 @@ class TimeOperation(DerivativeFactor):
     
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
         DTRange = context.NodeState.get(self.QSID, {}).get("dt_range", None)
-        if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
-        if context.FactorDataCache:
+        if DTRange is None: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs)
+        if context.FactorDataCache and self._QSArgs.CacheEnabled:
             DTRange = context.FactorDataCache.getDTRange(self.QSID, DTRange)
-            if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
-        DTs = context.getDateTime(DTRange)
-        if not DTs: return [], FactorLocalContext(DTs=[], IDs=IDs)
+            if DTRange is None: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs)
+        CalcDTs = context.getDateTime(DTRange)
+        if not CalcDTs: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs)
         DTRuler = context.DTRuler
-        StartIdx, EndIdx = DTRuler.index(DTs[0]), DTRuler.index(DTs[-1])
+        StartIdx, EndIdx = DTRuler.index(CalcDTs[0]), DTRuler.index(CalcDTs[-1])
         iSectionIDs = context.getID(self.QSID, [context.PID])
         FwdData = []
-        for i, iDescriptor in enumerate(self.Deps):
+        for i in range(len(self.Deps)):
             if (self._Operator._QSArgs.LookBackMode[i]=="滚动窗口") or (self._Operator._QSArgs.StartDT[i] is None):
                 iStartIdx, iEndIdx = StartIdx - self._Operator._QSArgs.LookBack[i], EndIdx
             else:
@@ -995,7 +1004,7 @@ class TimeOperation(DerivativeFactor):
                 iEndIdx = StartIdx - 1
             iDTs = DTRuler[max(iStartIdx, 0):iEndIdx+1]
             FwdData.append(FactorLocalContext(IDs=iSectionIDs, DTs=iDTs))
-        return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=DTs)
+        return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, ExtraData={"CalcDTs": CalcDTs})
 
 
 class SectionOperation(DerivativeFactor):
@@ -1014,39 +1023,48 @@ class SectionOperation(DerivativeFactor):
     
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
         DTRange = context.NodeState.get(self.QSID, {}).get("dt_range", None)
-        if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
-        if context.FactorDataCache:
+        if DTRange is None: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs)
+        if context.FactorDataCache and self._QSArgs.CacheEnabled:
             DTRange = context.FactorDataCache.getDTRange(self.QSID, DTRange)
             if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
-        DTs = context.getDateTime(DTRange)
-        if not DTs: return [], FactorLocalContext(DTs=[], IDs=IDs)
-        PID = context.PID
-        DTPartition = partitionList(DTs, len(context.PIDList))
-        iDTs = DTPartition[context.PIDList.index(PID)]
-        if not iDTs:# 该进程未分配到计算任务
-            return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
-        return [FactorLocalContext(IDs=context.getID(iDescriptor.QSID, pids=None), DTs=iDTs) for iDescriptor in self.Deps], FactorLocalContext(IDs=fwd_data.IDs, DTs=iDTs)
+        CalcDTs = context.getDateTime(DTRange)
+        if not CalcDTs: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs)
+        if context.FactorDataCache and self._QSArgs.CacheEnabled:
+            PID = context.PID
+            DTPartition = partitionList(CalcDTs, len(context.PIDList))
+            CalcDTs = DTPartition[context.PIDList.index(PID)]
+            # if not CalcDTs:# 该进程未分配到计算任务
+            #     return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs)
+        return [FactorLocalContext(IDs=context.getID(iDescriptor.QSID, pids=None), DTs=CalcDTs, PIDs=context.PIDList) for iDescriptor in self.Deps], FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, ExtraData={"CalcDTs": CalcDTs})
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
         DTs, IDs = local_context.DTs, local_context.IDs
-        SectionIDs = context.getID(self.QSID, pids=None)
-        if (not SectionIDs) or (not DTs):
-            StdData = pd.DataFrame(index=DTs, columns=SectionIDs, dtype=("float" if self._Operator._QSArgs.DataType == "double" else "O"))
-        else:
-            if self._Operator._QSArgs.InputFormat == "numpy":
-                StdData = self._Operator.calcData(factor=self, ids=SectionIDs, dts=DTs, descriptor_data=[iBwdData.values for iBwdData in bwd_data_list], dt_ruler=context.DTRuler, section_ids=SectionIDs)
-                StdData = pd.DataFrame(StdData, index=DTs, columns=SectionIDs)
+        if bwd_data_list:
+            CalcDTs = local_context.ExtraData["CalcDTs"]
+            SectionIDs = context.getID(self.QSID, pids=None)
+            if (not SectionIDs) or (not CalcDTs):
+                StdData = pd.DataFrame(index=CalcDTs, columns=SectionIDs, dtype=("float" if self._Operator._QSArgs.DataType == "double" else "O"))
             else:
-                StdData = self._Operator.calcData(factor=self, ids=SectionIDs, dts=DTs, descriptor_data=bwd_data_list, dt_ruler=context.DTRuler, section_ids=SectionIDs)
-        PIDIDs = context.NodeState[self.QSID]["pid_ids"]
-        if context.FactorDataCache:
-            context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=None, if_exists="append")
-            context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(DTs[0], DTs[1]))
+                if self._Operator._QSArgs.InputFormat == "numpy":
+                    StdData = self._Operator.calcData(factor=self, ids=SectionIDs, dts=CalcDTs, descriptor_data=[iBwdData.values for iBwdData in bwd_data_list], dt_ruler=context.DTRuler, section_ids=SectionIDs)
+                    StdData = pd.DataFrame(StdData, index=CalcDTs, columns=SectionIDs)
+                else:
+                    StdData = self._Operator.calcData(factor=self, ids=SectionIDs, dts=CalcDTs, descriptor_data=bwd_data_list, dt_ruler=context.DTRuler, section_ids=SectionIDs)
+            if context.FactorDataCache and self._QSArgs.CacheEnabled and (not StdData.empty):
+                PIDIDs = context.NodeState[self.QSID]["pid_ids"]
+                context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=None, if_exists="append")
+                context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(CalcDTs[0], CalcDTs[-1]))
+        elif not (context.FactorDataCache and self._QSArgs.CacheEnabled):
+            if DTs or IDs:
+                raise __QS_Error__("走到了不该走到的地方!")
+            StdData = pd.DataFrame(index=DTs, columns=IDs)
         if len(context.PIDList) > 1:
             Sub2MainQueue, PIDEvent = context.Event[self.QSID]
             Sub2MainQueue.put(1)
             PIDEvent.wait()
-        return StdData.reindex(index=DTs, columns=IDs).sort_index(axis=1)
+        if context.FactorDataCache and self._QSArgs.CacheEnabled:
+            StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs)
+        return StdData.reindex(index=DTs, columns=IDs)
 
 
 class PanelOperation(DerivativeFactor):
@@ -1080,14 +1098,14 @@ class PanelOperation(DerivativeFactor):
     
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
         DTRange = context.NodeState.get(self.QSID, {}).get("dt_range", None)
-        if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
-        if context.FactorDataCache:
+        if DTRange is None: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs)
+        if context.FactorDataCache and self._QSArgs.CacheEnabled:
             DTRange = context.FactorDataCache.getDTRange(self.QSID, DTRange)
-            if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
-        DTs = context.getDateTime(DTRange)
-        if not DTs: return [], FactorLocalContext(DTs=[], IDs=IDs)
+            if DTRange is None: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs)
+        CalcDTs = context.getDateTime(DTRange)
+        if not CalcDTs: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs)
         DTRuler = context.DTRuler
-        StartIdx, EndIdx = DTRuler.index(DTs[0]), DTRuler.index(DTs[-1])
+        StartIdx, EndIdx = DTRuler.index(CalcDTs[0]), DTRuler.index(CalcDTs[-1])
         FwdData = []
         for i, iDescriptor in enumerate(self.Deps):
             if (self._Operator._QSArgs.LookBackMode[i]=="滚动窗口") or (self._Operator._QSArgs.StartDT[i] is None):
@@ -1098,28 +1116,36 @@ class PanelOperation(DerivativeFactor):
                 iEndIdx = StartIdx - 1
             iDTs = DTRuler[max(iStartIdx, 0):iEndIdx+1]
             FwdData.append(FactorLocalContext(IDs=context.getID(iDescriptor.QSID, pids=None), DTs=iDTs))
-        return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=DTs)
+        return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, ExtraData={"CalcDTs": CalcDTs})
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
         DTs, IDs = local_context.DTs, local_context.IDs
-        SectionIDs = context.getID(self.QSID, pids=None)
-        if (not SectionIDs) or (not DTs):
-            StdData = pd.DataFrame(index=DTs, columns=SectionIDs, dtype=("float" if self._Operator._QSArgs.DataType == "double" else "O"))
-        else:
-            if self._Operator._QSArgs.InputFormat == "numpy":
-                StdData = self._Operator.calcData(factor=self, ids=SectionIDs, dts=DTs, descriptor_data=[iBwdData.values for iBwdData in bwd_data_list], dt_ruler=context.DTRuler, section_ids=SectionIDs)
-                StdData = pd.DataFrame(StdData, index=DTs, columns=SectionIDs)
+        if bwd_data_list:
+            CalcDTs = local_context.ExtraData["CalcDTs"]
+            SectionIDs = context.getID(self.QSID, pids=None)
+            if (not SectionIDs) or (not CalcDTs):
+                StdData = pd.DataFrame(index=CalcDTs, columns=SectionIDs, dtype=("float" if self._Operator._QSArgs.DataType == "double" else "O"))
             else:
-                StdData = self._Operator.calcData(factor=self, ids=SectionIDs, dts=DTs, descriptor_data=bwd_data_list, dt_ruler=context.DTRuler, section_ids=SectionIDs)
-        if context.FactorDataCache:
-            PIDIDs = context.NodeState[self.QSID]["pid_ids"]
-            context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=None, if_exists="append")
-            context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(DTs[0], DTs[1]))
+                if self._Operator._QSArgs.InputFormat == "numpy":
+                    StdData = self._Operator.calcData(factor=self, ids=SectionIDs, dts=CalcDTs, descriptor_data=[iBwdData.values for iBwdData in bwd_data_list], dt_ruler=context.DTRuler, section_ids=SectionIDs)
+                    StdData = pd.DataFrame(StdData, index=CalcDTs, columns=SectionIDs)
+                else:
+                    StdData = self._Operator.calcData(factor=self, ids=SectionIDs, dts=CalcDTs, descriptor_data=bwd_data_list, dt_ruler=context.DTRuler, section_ids=SectionIDs)
+            if context.FactorDataCache and self._QSArgs.CacheEnabled and (not StdData.empty):
+                PIDIDs = context.NodeState[self.QSID]["pid_ids"]
+                context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=None, if_exists="append")
+                context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(CalcDTs[0], CalcDTs[-1]))
+        elif not (context.FactorDataCache and self._QSArgs.CacheEnabled):
+            if DTs or IDs:
+                raise __QS_Error__("走到了不该走到的地方!")
+            StdData = pd.DataFrame(index=DTs, columns=IDs)
         if len(context.PIDList) > 1:
             Sub2MainQueue, PIDEvent = context.Event[self.QSID]
             Sub2MainQueue.put(1)
             PIDEvent.wait()
-        return StdData.reindex(index=DTs, columns=IDs).sort_index(axis=1)
+        if context.FactorDataCache and self._QSArgs.CacheEnabled:
+            StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs)
+        return StdData.reindex(index=DTs, columns=IDs)
     
     
     

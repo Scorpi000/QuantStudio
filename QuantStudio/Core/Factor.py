@@ -89,6 +89,7 @@ class Factor(Node):
     class __QS_ArgClass__(Node.__QS_ArgClass__):
         Name: str = Field(default="Factor", frozen=True, title="名称")
         SectionIDs: Optional[List[str]] = Field(default=None, title="截面ID", frozen=True)
+        CacheEnabled: bool = Field(default=True, frozen=True, title="启用缓存")
 
     def __init__(self, ft=None, descriptors: List["Factor"] = [], args: dict = {}, config_file: Optional[str] = None, **kwargs):
         self._FactorTable = ft
@@ -219,7 +220,7 @@ class Factor(Node):
             return super().forward_compute(path=path, fwd_data=fwd_data, context=context)
 
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
-        if context.FactorDataCache:
+        if context.FactorDataCache and self._QSArgs.CacheEnabled:
             self.__QS_prepareCacheData__(context=context)
             StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs)
             return StdData.reindex(index=local_context.DTs, columns=StdData.columns.intersection(local_context.IDs)).sort_index(axis=1)

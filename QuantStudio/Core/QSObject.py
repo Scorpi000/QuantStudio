@@ -41,7 +41,7 @@ class QSSQLObject(__QS_Object__):
 
     def __getstate__(self):
         state = self.__dict__.copy()
-        state["_Connection"] = (True if self.isAvailable() else False)
+        state["_Connection"] = (self._Connection is not None)
         return state
 
     def __setstate__(self, state):

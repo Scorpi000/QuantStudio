@@ -8,6 +8,7 @@ from pydantic import Field
 from QuantStudio.Core.Node import Node
 from QuantStudio.Core.CalcEngine import Engine, ParallelEngine, StackEngine
 from QuantStudio.Core.Factor import Factor, DataFactor, FactorContext, FactorLocalContext
+from QuantStudio.Core.BasicOperator import Factorize
 from QuantStudio.Core.BaoStockDB import BaoStockDB
 from QuantStudio.Core.HDF5DB import HDF5DB
 from QuantStudio.Core.FactorCache import HDF5Cache, FeatherCache
@@ -26,6 +27,7 @@ if __name__ == "__main__":
     Factor2 = DataFactor(data=pd.DataFrame(np.random.randn(len(DTs), len(IDs)), index=DTs, columns=IDs), args={"Name": "Factor2"})
     
     def add(f, idt, iid, x, args):
+        print("add")
         return x[0] + x[1]
     
     Factor3 = PointOperation(descriptors=[Factor1, Factor2], args={
@@ -37,11 +39,14 @@ if __name__ == "__main__":
                 "DTMode": "多时点",
                 "IDMode": "多ID"
             }
-        )
+        ),
+        # "CacheEnabled": False
     })
+
+    Factor4 = Factorize(Factor3 + 1, factor_name="Factor4")
     
     ExecEngine = Engine()
-    Cache = FeatherCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "CacheDir": r"C:\Users\hst\Desktop\Cache", "PIDs": ["0"]})
+    Cache = FeatherCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "CacheDir": r"D:\Data\FactorCache", "PIDs": ["0"]})
     Cache.start()
     Context = FactorContext(
         PID="0",
@@ -52,11 +57,11 @@ if __name__ == "__main__":
         FactorDataCache=Cache
     )
     LocalContext = FactorLocalContext(DTs=DTs, IDs=IDs)
-    FactorList = [Factor2, Factor3]
-    #Rslt = ExecEngine.run([Storer], Context, fwd_data_list=[LocalContext]*len(FactorList), init_data_list=[{"dt_range": (DTs[0], DTs[-1]), "section_ids": SectionIDs}]*len(FactorList))
-    TDB = HDF5DB().connect()
-    Storer = FactorStorer(deps=[Factor2, Factor3], args={"TargetFDB": TDB, "TargetTable": "test_table1", "IfExists": "update"})
-    Rslt = ExecEngine.run([Storer], Context, fwd_data_list=[LocalContext], init_data_list=[{"dt_range": (DTs[0], DTs[-1]), "section_ids": SectionIDs}])
+    FactorList = [Factor2, Factor3, Factor4]
+    Rslt = ExecEngine.run(FactorList, Context, fwd_data_list=[LocalContext]*len(FactorList), init_data_list=[{"dt_range": (DTs[0], DTs[-1]), "section_ids": SectionIDs}]*len(FactorList))
+    # TDB = HDF5DB().connect()
+    # Storer = FactorStorer(deps=[Factor2, Factor3], args={"TargetFDB": TDB, "TargetTable": "test_table1", "IfExists": "update"})
+    # Rslt = ExecEngine.run([Storer], Context, fwd_data_list=[LocalContext], init_data_list=[{"dt_range": (DTs[0], DTs[-1]), "section_ids": SectionIDs}])
     print(Rslt)
     
     print("===")
