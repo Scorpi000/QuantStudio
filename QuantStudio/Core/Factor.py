@@ -114,7 +114,7 @@ class Factor(Node):
 
     def getMetaData(self, key=None):
         if self._FactorTable:
-            return self._FactorTable.getFactorMetaData(factor_names=[self._NameInFT], key=key).loc[self._QSArgs.Name]
+            return self._FactorTable.getFactorMetaData(factor_names=[self._QSArgs.Name], key=key).loc[self._QSArgs.Name]
         if not key: return pd.Series
         else: return None
 
