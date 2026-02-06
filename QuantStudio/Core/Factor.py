@@ -110,7 +110,10 @@ class Factor(Node):
 
     @property
     def Descriptors(self):
-        return self.Deps
+        if self._FactorTable:
+            return []
+        else:
+            return self.Deps
 
     def getMetaData(self, key=None):
         if self._FactorTable:
