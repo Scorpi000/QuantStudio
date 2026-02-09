@@ -36,7 +36,7 @@ class FactorOperator(__QS_Object__):
             if ("DataType" not in data) and (data.get("CompoundType", []) or data.get("MultiMapping", False)):
                 data["DataType"] = "object"
             return super().__init__(**data)
-    
+
     @property
     def Name(self):
         return self._QSArgs.Name

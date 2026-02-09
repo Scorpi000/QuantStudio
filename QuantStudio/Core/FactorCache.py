@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 from pydantic import Field, DirectoryPath
 
+from QuantStudio import __QS_ConfigPath__
 from QuantStudio.Core import __QS_Object__, __QS_Error__
 from QuantStudio.Core.QSObject import QSFileLock
 
@@ -403,7 +404,7 @@ class FileCache(FactorCache):
 class FeatherCache(FileCache):
     
     def __init__(self, args={}, config_file=None, **kwargs):
-        super().__init__(args=args, config_file=config_file, **kwargs)
+        super().__init__(args=args, config_file=(__QS_ConfigPath__ + os.sep + "FeatherCacheConfig.json" if config_file is None else config_file), **kwargs)
         self._FileSuffix = ".feather"
     
     def createPath(self, path: str):

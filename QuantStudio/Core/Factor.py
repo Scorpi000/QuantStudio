@@ -361,7 +361,7 @@ class DataFactor(Factor):
 
     def __init__(self, data, args: dict={}, config_file: Optional[str] = None, **kwargs):
         if isinstance(data, pd.Series):
-            if data.index.is_all_dates:
+            if pd.api.types.is_datetime64_any_dtype(data.index):
                 self._DataContent = "DateTime"
             else:
                 self._DataContent = "ID"

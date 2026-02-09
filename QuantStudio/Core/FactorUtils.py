@@ -1715,6 +1715,20 @@ class SQL_MappingTable(SQL_Table):
         MultiMapping: bool = Field(default=False, title="多重映射", frozen=True)
         EndDTField: str = Field(title="结束时点字段", frozen=True)
         EndDTIncluded: bool = Field(default=True, title="包含结束时点", frozen=True)
+
+        def __init__(self, /, **data: Any) -> None:
+            Owner = data["Owner"]
+            # 解析结束时点字段
+            if "EndDTField" not in data:
+                Fields = Owner._FactorInfo[Owner._FactorInfo["FieldType"].str.lower().str.contains("date")].index.tolist()# 所有的时点字段列表
+                EndDTField = Owner._FactorInfo["DBFieldName"][Owner._FactorInfo["FieldType"]=="EndDate"]
+                if EndDTField.shape[0]==0: EndDTField = Fields[0]
+                else: EndDTField = EndDTField.index[0]
+                data["EndDTField"] = EndDTField
+            if "EndDTIncluded" not in data:
+                EndDTIncluded = Owner._FactorInfo.loc[data["EndDTField"], "Supplementary"]
+                data["EndDTIncluded"] = (pd.isnull(EndDTIncluded) or (EndDTIncluded=="包含"))
+            return super().__init__(**data)
     
     def __init__(self, fdb, args={}, table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(fdb=fdb, args=args, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
