@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 import concurrent.futures
+from multiprocessing import Process, Queue
 from typing import Any, List, Optional, Callable, Union
 
 from pydantic import Field
 from progressbar import ProgressBar
 
-from QuantStudio.Core import __QS_Object__
+from QuantStudio.Core import __QS_Object__, __QS_Error__
 from QuantStudio.Core.Node import Node, Context
-from QuantStudio.Tools.AuxiliaryFun import startMultiProcess
+
 
 class Engine(__QS_Object__):
 
@@ -65,11 +66,20 @@ class ParallelEngine(Engine):
                     ProgBar.update(ProgBar.value + 1)
 
     def compute(self, node_list: List[Node], context: Context, fwd_data_list: Optional[List[Any]]=None):
+        if len(node_list) != len(fwd_data_list): raise __QS_Error__("node_list 和 fwd_data_list 长度不一致!")
         nTask = len(context.PIDList)
-        Task = {"PID": context.PID, "NodeList": node_list, "Context": context, "FwdDataList": fwd_data_list}
+        SplitedContext = context.split(nTask)
+        SplitedFwdDataList = zip(*[(FwdData.split(nTask, context) if hasattr(FwdData, "split") else [FwdData] * nTask) for FwdData in fwd_data_list])
+        Sub2MainQueue = Queue()
+        Procs = {}
+        for i, iFwdDataList in enumerate(SplitedFwdDataList):
+            iPID = context.PIDList[i]
+            iTask = {"PID": iPID, "NodeList": node_list, "Context": SplitedContext[i], "FwdDataList": iFwdDataList, "Sub2MainQueue": Sub2MainQueue}
+            Procs[iPID] = Process(target=_execute_task, args=(iTask,))
+            Procs[iPID].start()
+        
         nProg = len(node_list) * nTask
         EventState = {iNodeID: 0 for iNodeID in context.Event}
-        Procs, Main2SubQueue, Sub2MainQueue = startMultiProcess(pid=context.PID, n_prc=nTask, target_fun=_execute_task, arg=Task, main2sub_queue="None", sub2main_queue="Single")
         iProg, ContextUpdated, FinishedNum = 0, False, 0
         Data = {}
         with ProgressBar(max_value=nProg) as ProgBar:

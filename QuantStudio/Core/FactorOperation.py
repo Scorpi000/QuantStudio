@@ -924,9 +924,9 @@ class DerivativeFactor(Factor):
         return None
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
+        iSectionIDs = context.getID(self.QSID, [context.PID])
         if bwd_data_list:
             CalcDTs = local_context.ExtraData["CalcDTs"]
-            iSectionIDs = context.getID(self.QSID, [context.PID])
             if (not iSectionIDs) or (not CalcDTs):
                 StdData = pd.DataFrame(index=CalcDTs, columns=iSectionIDs, dtype=("float" if self._Operator._QSArgs.DataType == "double" else "O"))
             else:
@@ -939,12 +939,13 @@ class DerivativeFactor(Factor):
                 context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids={context.PID: iSectionIDs}, pid=context.PID, if_exists="append")
                 context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(CalcDTs[0], CalcDTs[-1]))
         DTs, IDs = local_context.DTs, local_context.IDs
-        if not (DTs and IDs): return pd.DataFrame(index=DTs, columns=IDs)
+        iIDs = sorted(set(iSectionIDs).intersection(IDs))
+        if not (DTs and iIDs): return pd.DataFrame(index=DTs, columns=iIDs)
         if context.FactorDataCache and self._QSArgs.CacheEnabled:
             StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs)
         elif not bwd_data_list:
             raise __QS_Error__("走到了不该走到的地方!")
-        return StdData.reindex(index=DTs, columns=IDs)
+        return StdData.reindex(index=DTs, columns=iIDs)
     
 class PointOperation(DerivativeFactor):
     """单点运算"""
@@ -1042,17 +1043,17 @@ class SectionOperation(DerivativeFactor):
         return [FactorLocalContext(IDs=context.getID(iDescriptor.QSID, pids=None), DTs=CalcDTs, PIDs=context.PIDList) for iDescriptor in self.Deps], FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, ExtraData={"CalcDTs": CalcDTs})
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
+        iSectionIDs = context.getID(self.QSID, pids=None)
         if bwd_data_list:
             CalcDTs = local_context.ExtraData["CalcDTs"]
-            SectionIDs = context.getID(self.QSID, pids=None)
-            if (not SectionIDs) or (not CalcDTs):
-                StdData = pd.DataFrame(index=CalcDTs, columns=SectionIDs, dtype=("float" if self._Operator._QSArgs.DataType == "double" else "O"))
+            if (not iSectionIDs) or (not CalcDTs):
+                StdData = pd.DataFrame(index=CalcDTs, columns=iSectionIDs, dtype=("float" if self._Operator._QSArgs.DataType == "double" else "O"))
             else:
                 if self._Operator._QSArgs.InputFormat == "numpy":
-                    StdData = self._Operator.calcData(factor=self, ids=SectionIDs, dts=CalcDTs, descriptor_data=[iBwdData.values for iBwdData in bwd_data_list], dt_ruler=context.DTRuler, section_ids=SectionIDs)
-                    StdData = pd.DataFrame(StdData, index=CalcDTs, columns=SectionIDs)
+                    StdData = self._Operator.calcData(factor=self, ids=iSectionIDs, dts=CalcDTs, descriptor_data=[iBwdData.values for iBwdData in bwd_data_list], dt_ruler=context.DTRuler, section_ids=iSectionIDs)
+                    StdData = pd.DataFrame(StdData, index=CalcDTs, columns=iSectionIDs)
                 else:
-                    StdData = self._Operator.calcData(factor=self, ids=SectionIDs, dts=CalcDTs, descriptor_data=bwd_data_list, dt_ruler=context.DTRuler, section_ids=SectionIDs)
+                    StdData = self._Operator.calcData(factor=self, ids=iSectionIDs, dts=CalcDTs, descriptor_data=bwd_data_list, dt_ruler=context.DTRuler, section_ids=iSectionIDs)
             if context.FactorDataCache and self._QSArgs.CacheEnabled and (not StdData.empty):
                 PIDIDs = context.NodeState[self.QSID]["pid_ids"]
                 context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=None, if_exists="append")
@@ -1062,12 +1063,13 @@ class SectionOperation(DerivativeFactor):
             Sub2MainQueue.put(1)
             PIDEvent.wait()
         DTs, IDs = local_context.DTs, local_context.IDs
-        if not (DTs and IDs): return pd.DataFrame(index=DTs, columns=IDs)
+        iIDs = sorted(set(iSectionIDs).intersection(IDs))
+        if not (DTs and iIDs): return pd.DataFrame(index=DTs, columns=iIDs)
         if context.FactorDataCache and self._QSArgs.CacheEnabled:
             StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs)
         elif not bwd_data_list:
             raise __QS_Error__("走到了不该走到的地方!")
-        return StdData.reindex(index=DTs, columns=IDs)
+        return StdData.reindex(index=DTs, columns=iIDs)
 
 
 class PanelOperation(DerivativeFactor):
@@ -1128,17 +1130,17 @@ class PanelOperation(DerivativeFactor):
         return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, ExtraData={"CalcDTs": CalcDTs})
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
+        iSectionIDs = context.getID(self.QSID, pids=None)
         if bwd_data_list:
             CalcDTs = local_context.ExtraData["CalcDTs"]
-            SectionIDs = context.getID(self.QSID, pids=None)
-            if (not SectionIDs) or (not CalcDTs):
-                StdData = pd.DataFrame(index=CalcDTs, columns=SectionIDs, dtype=("float" if self._Operator._QSArgs.DataType == "double" else "O"))
+            if (not iSectionIDs) or (not CalcDTs):
+                StdData = pd.DataFrame(index=CalcDTs, columns=iSectionIDs, dtype=("float" if self._Operator._QSArgs.DataType == "double" else "O"))
             else:
                 if self._Operator._QSArgs.InputFormat == "numpy":
-                    StdData = self._Operator.calcData(factor=self, ids=SectionIDs, dts=CalcDTs, descriptor_data=[iBwdData.values for iBwdData in bwd_data_list], dt_ruler=context.DTRuler, section_ids=SectionIDs)
-                    StdData = pd.DataFrame(StdData, index=CalcDTs, columns=SectionIDs)
+                    StdData = self._Operator.calcData(factor=self, ids=iSectionIDs, dts=CalcDTs, descriptor_data=[iBwdData.values for iBwdData in bwd_data_list], dt_ruler=context.DTRuler, section_ids=iSectionIDs)
+                    StdData = pd.DataFrame(StdData, index=CalcDTs, columns=iSectionIDs)
                 else:
-                    StdData = self._Operator.calcData(factor=self, ids=SectionIDs, dts=CalcDTs, descriptor_data=bwd_data_list, dt_ruler=context.DTRuler, section_ids=SectionIDs)
+                    StdData = self._Operator.calcData(factor=self, ids=iSectionIDs, dts=CalcDTs, descriptor_data=bwd_data_list, dt_ruler=context.DTRuler, section_ids=iSectionIDs)
             if context.FactorDataCache and self._QSArgs.CacheEnabled and (not StdData.empty):
                 PIDIDs = context.NodeState[self.QSID]["pid_ids"]
                 context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=None, if_exists="append")
@@ -1148,12 +1150,13 @@ class PanelOperation(DerivativeFactor):
             Sub2MainQueue.put(1)
             PIDEvent.wait()
         DTs, IDs = local_context.DTs, local_context.IDs
-        if not (DTs and IDs): return pd.DataFrame(index=DTs, columns=IDs)
+        iIDs = sorted(set(iSectionIDs).intersection(IDs))
+        if not (DTs and iIDs): return pd.DataFrame(index=DTs, columns=iIDs)
         if context.FactorDataCache and self._QSArgs.CacheEnabled:
             StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs)
         elif not bwd_data_list:
             raise __QS_Error__("走到了不该走到的地方!")
-        return StdData.reindex(index=DTs, columns=IDs)
+        return StdData.reindex(index=DTs, columns=iIDs)
     
     
     

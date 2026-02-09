@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from typing import Any, List, Optional, Dict, Tuple
+from typing import Any, List, Optional, Dict, Tuple, Literal
 
 from pydantic import Field, ConfigDict
 
@@ -16,6 +16,7 @@ class Context(QSArgs):
     PrepareNodeDict: Dict[str, Tuple[str, Any]] = Field(default={}, title="准备节点列表", description="{准备ID: (节点ID, Any)}, 需要执行准备操作的节点列表")
     PID: str = Field(default="0", title="运行ID", description="当前的运行 ID, 默认为 '0'")
     PIDList: List[str] = Field(default=["0"], title="所有运行ID")
+    SplitType: Literal["连续切分", "间隔切分"] = Field(default="连续切分", title="切分方式", frozen=True)
     Event: dict = Field(default={}, title="", description="{节点ID: (Sub2MainQueue, Event)}, 用于多进程同步的 Event 数据")
     
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -27,6 +28,18 @@ class Context(QSArgs):
     # 并发运行后更新同步内容
     def updateContext(self, update_data: dict):
         return
+    
+    # 并发运行时切分自身成 n 份
+    def split(self, n: int, **kwargs):
+        return [self] * n    
+
+
+class LocalContext(QSArgs):
+    ExtraData: dict = Field(default={})
+    
+    # 并发运行时切分自身成 n 份
+    def split(self, n: int, context: Context, **kwargs):
+        return [self] * n
 
 
 class Node(__QS_Object__):

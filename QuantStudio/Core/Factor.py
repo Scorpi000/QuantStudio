@@ -4,10 +4,10 @@ from typing import List, Optional, Any, Literal, Tuple
 
 import numpy as np
 import pandas as pd
-from pydantic import Field, BaseModel
+from pydantic import Field
 
 from QuantStudio.Core import __QS_Error__
-from QuantStudio.Core.Node import Node, Context
+from QuantStudio.Core.Node import Node, Context, LocalContext
 from QuantStudio.Core.FactorCache import FactorCache
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.AuxiliaryFun import partitionListMovingSampling, partitionList
@@ -23,7 +23,6 @@ class FactorContext(Context):
     # Event: dict = Field(default={}, title="", description="{节点ID: (Sub2MainQueue, Event)}, 用于多进程同步的 Event 数据")
     DTRuler: List[dt.datetime] = Field(title="时点标尺", description="当前运行计算时点标尺", frozen=True)
     DefaultSectionIDs: List[str] = Field(title="默认截面", description="当前运行需要计算的默认截面 ID", frozen=True)
-    IDSplit: Literal["连续切分", "间隔切分"] = Field(default="连续切分", title="ID切分", frozen=True)
     FactorDataCache: Optional[FactorCache] = Field(default=None, title="因子缓存", frozen=True)
 
     def model_post_init(self, context: Any, /) -> None:
@@ -58,12 +57,12 @@ class FactorContext(Context):
         nPrcs = len(self.PIDList)
         if nPrcs == 0: return {}
         elif nPrcs == 1: return {self.PIDList[0]: ids}
-        if self.IDSplit == "连续切分":
+        if self.SplitType == "连续切分":
             SubIDs = partitionList(ids, nPrcs)
-        elif self.IDSplit == "间隔切分":
+        elif self.SplitType == "间隔切分":
             SubIDs = partitionListMovingSampling(ids, nPrcs)
         else:
-            raise __QS_Error__(f"不支持的 ID 切分方式: {self.IDSplit}")
+            raise __QS_Error__(f"不支持的 ID 切分方式: {self.SplitType}")
         return {iPID: SubIDs[i] for i, iPID in enumerate(self.PIDList)}
 
     def getID(self, factor_id, pids=None):
@@ -74,11 +73,10 @@ class FactorContext(Context):
             return self.NodeState[factor_id]["section_ids"]
 
 
-class FactorLocalContext(BaseModel):
+class FactorLocalContext(LocalContext):
     DTs: List[dt.datetime]
     IDs: List[str]
     PIDs: Optional[List[str]] = Field(default=None)
-    ExtraData: dict = Field(default={})
 
 
 # 因子
