@@ -22,7 +22,7 @@ from QuantStudio.Core.FactorDB import WritableFactorDB
 from QuantStudio.Core.FactorTable import FactorTable
 from QuantStudio.Core.FactorUtils import adjustDataDTID
 from QuantStudio.Tools.FileFun import listDirFile
-from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5
+from QuantStudio.Tools.DataTypeFun import readNestedDictFromHDF5, writeNestedDict2HDF5, IntOrInf
 from QuantStudio.Core.QSObject import QSFileLock
 
 
@@ -60,7 +60,7 @@ class _FactorTable(FactorTable):
     """HDF5DB 因子表"""
 
     class __QS_ArgClass__(FactorTable.__QS_ArgClass__):
-        LookBack: Union[int, np.inf] = Field(default=0, title="回溯天数", ge=0, frozen=True)
+        LookBack: IntOrInf = Field(default=0, title="回溯天数", ge=0, frozen=True)
         OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True)
         OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True)
         OnlyLookBackDT: bool = Field(default=False, title="只回溯时点", frozen=True)
@@ -272,7 +272,7 @@ class HDF5DB(WritableFactorDB):
         Name: str = Field(default="HDF5DB", title="名称", frozen=True)
         MainDir: DirectoryPath = Field(title="主目录", frozen=True)
         LockDir: Optional[DirectoryPath] = Field(default=None, title="锁目录", frozen=True)
-        FileOpenRetryNum: Union[int, np.inf] = Field(default=np.inf, title="文件打开重试次数", frozen=False, exclude=True)
+        FileOpenRetryNum: IntOrInf = Field(default=np.inf, title="文件打开重试次数", frozen=False, exclude=True, ge=1)
         ProcessLock: bool = Field(default=True, title="进程锁", frozen=True)
 
     def __init__(self, args={}, config_file=None, **kwargs):

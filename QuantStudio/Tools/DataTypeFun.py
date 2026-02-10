@@ -4,12 +4,25 @@ import json
 import pickle
 import hashlib
 import inspect
-from typing import Any, Dict, Callable, Set
+from typing import Any, Dict, Callable, Set, Annotated, Union
 
 import numpy as np
 import pandas as pd
 import h5py
+from pydantic import BeforeValidator
+from pydantic.types import AllowInfNan
 
+
+# ---------------------特殊类型--------------------------
+def validate_int_or_inf(v):
+    if isinstance(v, bool):# 排除 bool（bool 是 int 子类）
+        raise ValueError('bool 不被允许')
+    if isinstance(v, int):
+        return v
+    if isinstance(v, float) and np.isinf(v):
+        return np.inf
+    raise ValueError(f'必须是 int 或 inf, 得到 {v}')
+IntOrInf = Annotated[Union[int, float], BeforeValidator(validate_int_or_inf)]
 
 # ---------------------嵌套字典--------------------------
 # 拷贝嵌套字典, 

@@ -6,6 +6,7 @@ from functools import partial
 from typing import Optional, Literal, List, Any, Tuple
 from multiprocessing import Queue, Event
 
+import dill
 import pandas as pd
 import numpy as np
 from pydantic import Field
@@ -36,6 +37,19 @@ class FactorOperator(__QS_Object__):
             if ("DataType" not in data) and (data.get("CompoundType", []) or data.get("MultiMapping", False)):
                 data["DataType"] = "object"
             return super().__init__(**data)
+
+    def __getstate__(self):
+        if "calculate" in self.__dict__:
+            state = self.__dict__.copy()
+            # Remove the unpicklable entries.
+            state["calculate"] = dill.dumps(self.calculate)
+            return state
+        else:
+            return super().__getstate__()
+    
+    def __setstate__(self, state):
+        if "calculate" in state: state["calculate"] = dill.loads(state["calculate"])
+        self.__dict__.update(state)
 
     @property
     def Name(self):
@@ -868,6 +882,7 @@ class PanelOperator(FactorOperator):
 # sys_args: 算子参数
 def makeFactorOperator(func, operator_type, args={}, **kwargs):
     if not callable(func): raise __QS_Error__("func 必须是可调用对象!")
+    if "Name" not in args: args["Name"] = func.__qualname__
     if operator_type == "Point":
         FactorOperator = PointOperator(args=args, config_file=None, **kwargs)
     elif operator_type == "Time":
@@ -881,11 +896,9 @@ def makeFactorOperator(func, operator_type, args={}, **kwargs):
     FactorOperator.calculate = func
     return FactorOperator
 
-
 # 将函数转换成因子定义的装饰器
 def FactorOperatorized(operator_type, args={}, **kwargs):
     return partial(makeFactorOperator, operator_type=operator_type, args=args, **kwargs)
-
 
 class DerivativeFactor(Factor):
     """衍生因子"""

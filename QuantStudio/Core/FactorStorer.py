@@ -23,7 +23,7 @@ class FactorStorer(Node):
         if hasattr(self._QSArgs.TargetFDB, "writeFactorData"):
             for i, iData in enumerate(bwd_data_list):
                 iDataType = self.Deps[i].getMetaData(key="DataType")
-                print(f"DEBUG {context.PID} 写入 {self.Deps[i]._QSArgs.Name}: ", iData)
+                # print(f"DEBUG {context.PID} 写入 {self.Deps[i]._QSArgs.Name}: ", iData)
                 self._QSArgs.TargetFDB.writeFactorData(factor_data=iData, table_name=self._QSArgs.TargetTable, ifactor_name=self.Deps[i]._QSArgs.Name, if_exists=self._QSArgs.IfExists, data_type=iDataType)
         else:
             DataType = {iFactor._QSArgs.Name: iFactor.getMetaData(key="DataType") for iFactor in self.Deps}

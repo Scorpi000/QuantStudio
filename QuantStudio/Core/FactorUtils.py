@@ -15,6 +15,7 @@ from QuantStudio.Core.QSObject import Panel
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
+from QuantStudio.Tools.DataTypeFun import IntOrInf
 
 
 # 给定 URL 获取库信息文件
@@ -435,10 +436,6 @@ class SQLQueryTable(FactorTable):
 # factor_info: DataFrame(index=[], columns=["DBFieldName", "DataType", "FieldType", "Supplementary", "Description"]), 可选的 columns=["RelatedSQL"]
 # security_info: DataFrame(index=[], columns=["Suffix"])
 # exchange_info: DataFrame(index=[], columns=["Suffix"])
-# 参数编号分配:
-# 0 - 100: 因子表特定参数
-# 100 - 199: 条件参数, 100: 通用筛选条件
-# 200 - 299: 通用参数
 class SQL_Table(FactorTable):
     """SQL 因子表"""
     class __QS_ArgClass__(FactorTable.__QS_ArgClass__):
@@ -799,7 +796,7 @@ class SQL_Table(FactorTable):
 class SQL_WideTable(SQL_Table):
     """SQL 宽因子表"""
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
-        LookBack: Union[int, float] = Field(default=0, title="回溯天数", frozen=True, ge=0)
+        LookBack: IntOrInf = Field(default=0, title="回溯天数", frozen=True, ge=0)
         OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True)
         OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True)
         OnlyLookBackDT: bool = Field(default=False, title="只回溯时点", frozen=True)
@@ -1008,7 +1005,7 @@ class SQL_WideTable(SQL_Table):
         SQLStr += self._getIDField()+" AS ID, "
         FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
         SQLStr += FieldSQLStr+" "
-        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinSt)+" "
+        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
         SQLStr += "WHERE ("+IDField+", "+AdjDTField+") IN ("+SubSQLStr+") "
         SQLStr += ConditionSQLStr
         return SQLStr
@@ -1159,7 +1156,7 @@ class SQL_WideTable(SQL_Table):
 class SQL_NarrowTable(SQL_Table):
     """SQL 窄因子表"""
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
-        LookBack: Union[int, np.inf] = Field(default=0, title="回溯天数", frozen=True, ge=0)
+        LookBack: IntOrInf = Field(default=0, title="回溯天数", frozen=True, ge=0)
         OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True)
         OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True)
         OnlyLookBackDT: bool = Field(default=False, title="只回溯时点", frozen=True)
@@ -1394,7 +1391,7 @@ class SQL_NarrowTable(SQL_Table):
 class SQL_FeatureTable(SQL_WideTable):
     """SQL 特征因子表"""
     class __QS_ArgClass__(SQL_WideTable.__QS_ArgClass__):
-        LookBack: Union[int, np.inf] = Field(default=np.inf, title="回溯天数", frozen=True, ge=0)
+        LookBack: IntOrInf = Field(default=np.inf, title="回溯天数", frozen=True, ge=0)
         TargetDT: Optional[dt.datetime] = Field(default=None, title="目标时点", frozen=True)
     
     def __init__(self, fdb, args={}, table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
@@ -1472,7 +1469,7 @@ class SQL_FeatureTable(SQL_WideTable):
 class SQL_TimeSeriesTable(SQL_Table):
     """SQL 时序因子表"""
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
-        LookBack: Union[int, np.inf] = Field(default=np.inf, title="回溯天数", frozen=True, ge=0)
+        LookBack: IntOrInf = Field(default=np.inf, title="回溯天数", frozen=True, ge=0)
         OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True)
         OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True)
         OnlyLookBackDT: bool = Field(default=False, title="只回溯时点", frozen=True)

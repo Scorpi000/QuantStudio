@@ -46,6 +46,7 @@ setuptools.setup(
         "xlrd",# 读 Excel 文件
         "xlwt",# 写 Excel 文件
         "openpyxl",# 读写 Excel 文件
+        "dill",
         "tables",
         "Jinja2",
         "sympy",

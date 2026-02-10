@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import concurrent.futures
 from multiprocessing import Process, Queue
+from concurrent.futures import ProcessPoolExecutor
 from typing import Any, List, Optional, Callable, Union
 
 from pydantic import Field
@@ -65,7 +66,7 @@ class ParallelEngine(Engine):
                     iFuture.result()
                     ProgBar.update(ProgBar.value + 1)
 
-    def compute(self, node_list: List[Node], context: Context, fwd_data_list: Optional[List[Any]]=None):
+    def compute1(self, node_list: List[Node], context: Context, fwd_data_list: Optional[List[Any]]=None):
         if len(node_list) != len(fwd_data_list): raise __QS_Error__("node_list 和 fwd_data_list 长度不一致!")
         nTask = len(context.PIDList)
         SplitedContext = context.split(nTask)
@@ -116,6 +117,56 @@ class ParallelEngine(Engine):
         Merger = self._QSArgs.RsltMerger if isinstance(self._QSArgs.RsltMerger, list) else [self._QSArgs.RsltMerger] * len(node_list)
         return [Merger[i](Data[iNode.QSID]) for i, iNode in enumerate(node_list)]
 
+    def compute(self, node_list: List[Node], context: Context, fwd_data_list: Optional[List[Any]]=None):
+        if len(node_list) != len(fwd_data_list): raise __QS_Error__("node_list 和 fwd_data_list 长度不一致!")
+        nTask = len(context.PIDList)
+        SplitedContext = context.split(nTask)
+        SplitedFwdDataList = zip(*[(FwdData.split(nTask, context) if hasattr(FwdData, "split") else [FwdData] * nTask) for FwdData in fwd_data_list])
+        Sub2MainQueue = Queue()
+        Procs = {}
+        for i, iFwdDataList in enumerate(SplitedFwdDataList):
+            iPID = context.PIDList[i]
+            iTask = {"PID": iPID, "NodeList": node_list, "Context": SplitedContext[i], "FwdDataList": iFwdDataList, "Sub2MainQueue": Sub2MainQueue}
+            Procs[iPID] = Process(target=_execute_task, args=(iTask,))
+            Procs[iPID].start()
+        
+        nProg = len(node_list) * nTask
+        EventState = {iNodeID: 0 for iNodeID in context.Event}
+        iProg, ContextUpdated, FinishedNum = 0, False, 0
+        Data = {}
+        with ProgressBar(max_value=nProg) as ProgBar:
+            while True:
+                nEvent = len(EventState)
+                if nEvent > 0:
+                    NodeIDs = tuple(EventState.keys())
+                    for iNodeID in NodeIDs:
+                        iQueue = context.Event[iNodeID][0]
+                        while not iQueue.empty():
+                            jInc = iQueue.get()
+                            EventState[iNodeID] += jInc
+                        if EventState[iNodeID] >= nTask:
+                            context.Event[iNodeID][1].set()
+                            EventState.pop(iNodeID)
+                while ((not Sub2MainQueue.empty()) or (nEvent == 0)) and ((iProg < nProg) or (not ContextUpdated)):
+                    iPID, iSubProg, iMsg = Sub2MainQueue.get()
+                    if iSubProg >= 0:  # 接收到因子数据
+                        iProg += iSubProg
+                        ProgBar.update(iProg)
+                        Data.setdefault(iMsg[0], []).append(iMsg[1])
+                    elif not ContextUpdated:# 接收到进程结束信号
+                        context.updateContext(iMsg)
+                        ContextUpdated = True
+                        FinishedNum += 1
+                    else:
+                        FinishedNum += 1
+                if (iProg >= nProg) and ContextUpdated: break
+        # 清空 Queue，否则子进程有可能不退出
+        while FinishedNum < nTask:
+            iPID, iSubProg, iMsg = Sub2MainQueue.get()
+            FinishedNum += (iSubProg < 0)
+        for iPID, iPrcs in Procs.items(): iPrcs.join()
+        Merger = self._QSArgs.RsltMerger if isinstance(self._QSArgs.RsltMerger, list) else [self._QSArgs.RsltMerger] * len(node_list)
+        return [Merger[i](Data[iNode.QSID]) for i, iNode in enumerate(node_list)]
 
 class StackEngine(Engine):
     def run(self, node_list: List[Node], context: Context, init_data_list: Optional[List[Any]]=None, fwd_data_list: Optional[List[Any]]=None) -> List[Any]:
