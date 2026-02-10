@@ -2153,9 +2153,39 @@ class SQL_FinancialTable(SQL_Table):
         IgnoreMissing: bool = Field(default=True, title="忽略缺失", frozen=True)
         IgnoreNonQuarter: bool = Field(default=False, title="忽略非季末报告", frozen=True)
         AdjustTypeField: str = Field(title="调整类型字段", frozen=True)
-        AdjustType: str = Field(default="2,1", title="调整类型", frozen=True)
+        AdjustType: str = Field(title="调整类型", frozen=True)
         PublDTField: str = Field(title="公告时点字段", frozen=True)
     
+        def __init__(self, /, **data: Any) -> None:
+            Owner = data["Owner"]
+            FactorInfo = Owner._FactorInfo
+            # 解析公告时点字段
+            Fields = [None] + FactorInfo[FactorInfo["FieldType"].str.lower().str.contains("date")].index.tolist()# 所有的时点字段列表
+            if "PublDTField" not in data:
+                PublDTField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="AnnDate"]
+                if PublDTField.shape[0]==0: data["PublDTField"] = None
+                else: data["PublDTField"] = PublDTField.index[0]
+            elif data["PublDTField"] not in Fields:
+                raise __QS_Error__(f"字段 {data['PublDTField']} 不能设置为公告时点字段，可选项为：{Fields}")
+            # 调整类型字段
+            Fields = [None] + FactorInfo.index.tolist()# 所有的字段列表
+            if "AdjustTypeField" not in data:
+                AdjustTypeField = FactorInfo[FactorInfo["FieldType"]=="AdjustType"].index
+                if AdjustTypeField.shape[0]==0: data["AdjustTypeField"] = None
+                else: data["AdjustTypeField"] = AdjustTypeField[0]
+            elif data["AdjustTypeField"] not in Fields:
+                raise __QS_Error__(f"字段 {data['AdjustTypeField']} 不能设置为调整类型字段，可选项为：{Fields}")
+            if "AdjustType" not in data:
+                if data["AdjustTypeField"] is not None:
+                    iConditionVal = FactorInfo.loc[data["AdjustTypeField"], "Supplementary"]
+                    if pd.isnull(iConditionVal) or (isinstance(iConditionVal, str) and (iConditionVal.lower() in ("", "nan"))):
+                        data["AdjustType"] = ""
+                    else:
+                        data["AdjustType"] = str(iConditionVal).strip()
+                else:
+                    data["AdjustType"] = ""
+            return super().__init__(**data)
+
     def __init__(self, fdb, args={}, table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(fdb=fdb, args=args, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
         self._TempData = {}
