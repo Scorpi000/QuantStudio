@@ -34,7 +34,6 @@ setuptools.setup(
         "matplotlib",# 绘图
         "statsmodels",# 概率统计
         "h5py",# HDF5 文件
-        "cx-Oracle>=5.2.1",# Oracle 数据库
         "pymssql>=2.1.3",# SQL Server 数据库
         "mysql-connector-python<=8.0.16",# MySQL 数据库
         "pyodbc>=4.0.14",# ODBC

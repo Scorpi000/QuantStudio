@@ -150,7 +150,7 @@ class FactorTable(Node):
         HTML += f"<b>元信息</b>: {dict2html(MetaData)}"
         return HTML + super()._repr_html_()
 
-    def __QS_saveRawData__(self, raw_data, key, target_fields, pid_ids, context, **kwargs):
+    def __QS_saveRawData__(self, raw_data, key, target_fields, pid_ids, context: FactorContext, **kwargs):
         if raw_data is None: return 0
         Cache = context.FactorDataCache
         MaskCols = raw_data.columns.intersection(self._QS_RawDataMaskCols).tolist()

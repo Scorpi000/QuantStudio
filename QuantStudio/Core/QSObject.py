@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import re
+import time
 from pathlib import Path
 from collections import OrderedDict
 from typing import Literal
@@ -28,6 +29,8 @@ class QSSQLObject(__QS_Object__):
         TablePrefix: str = Field(default="", title="表名前缀", frozen=True)
         CharSet: Literal["utf8", "utf8mb4", "gbk", "gb2312", "gb18030", "cp936", "big5"] = Field(default="utf8", title="字符集", frozen=True)
         Connector: Literal["default", "cx_Oracle", "pymssql", "mysql.connector", "pymysql", "psycopg2", "pyodbc"] = Field(default="default", title="连接器", frozen=True)
+        ConnRetryNum: int = Field(default=3, title="连接重试次数", frozen=False, ge=1)
+        ConnIntervalSeconds: float = Field(default=30, title="连接重试间隔", frozen=False, ge=0)
         DSN: str = Field(default="", title="数据源", frozen=True)
         AdjustTableName: bool = Field(default=False, title="调整表名", frozen=True)
 
@@ -63,55 +66,74 @@ class QSSQLObject(__QS_Object__):
         Connector, IPAddr, Port, User, Pwd, DBName, DBType, CharSet = self._QSArgs.Connector, self._QSArgs.IPAddr, self._QSArgs.Port, self._QSArgs.User, self._QSArgs.Pwd, self._QSArgs.DBName, self._QSArgs.DBType, self._QSArgs.CharSet
         self._Connection = None
         if (Connector=="cx_Oracle") or ((Connector=="default") and (DBType=="Oracle")):
-            try:
-                import cx_Oracle
-                self._Connection = cx_Oracle.connect(User, Pwd, cx_Oracle.makedsn(IPAddr, str(Port), DBName))
-            except Exception as e:
-                Msg = ("'%s' 尝试使用 cx_Oracle 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, User, IPAddr, Port, DBName, str(e)))
-                self._QS_Logger.error(Msg)
-                if Connector!="default": raise e
+            for i in range(self._QSArgs.ConnRetryNum):
+                try:
+                    import cx_Oracle
+                    self._Connection = cx_Oracle.connect(User, Pwd, cx_Oracle.makedsn(IPAddr, str(Port), DBName))
+                except Exception as e:
+                    Msg = ("'%s' 第 %d 次尝试使用 cx_Oracle 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, i+1, User, IPAddr, Port, DBName, str(e)))
+                    self._QS_Logger.error(Msg)
+                    time.sleep(self._QSArgs.ConnIntervalSeconds)
+                else:
+                    self._Connector = "cx_Oracle"
+                    break
             else:
-                self._Connector = "cx_Oracle"
+                if Connector != "default": raise e
         elif (Connector=="pymssql") or ((Connector=="default") and (DBType=="SQL Server")):
-            try:
-                import pymssql
-                self._Connection = pymssql.connect(server=IPAddr, port=str(Port), user=User, password=Pwd, database=DBName, charset=CharSet)
-            except Exception as e:
-                Msg = ("'%s' 尝试使用 pymssql 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, User, IPAddr, Port, DBName, str(e)))
-                self._QS_Logger.error(Msg)
-                if Connector!="default": raise e
+            for i in range(self._QSArgs.ConnRetryNum):
+                try:
+                    import pymssql
+                    self._Connection = pymssql.connect(server=IPAddr, port=str(Port), user=User, password=Pwd, database=DBName, charset=CharSet)
+                except Exception as e:
+                    Msg = ("'%s' 第 %d 次尝试使用 pymssql 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, i+1, User, IPAddr, Port, DBName, str(e)))
+                    self._QS_Logger.error(Msg)
+                    time.sleep(self._QSArgs.ConnIntervalSeconds)
+                else:
+                    self._Connector = "pymssql"
+                    break
             else:
-                self._Connector = "pymssql"
+                if Connector != "default": raise e
         elif (Connector=="mysql.connector") or ((Connector=="default") and (DBType=="MySQL")):
-            try:
-                import mysql.connector
-                self._Connection = mysql.connector.connect(host=IPAddr, port=str(Port), user=User, password=Pwd, database=DBName, charset=CharSet, autocommit=True)
-            except Exception as e:
-                Msg = ("'%s' 尝试使用 mysql.connector 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, User, IPAddr, Port, DBName, str(e)))
-                self._QS_Logger.error(Msg)
-                if Connector!="default": raise e
+            for i in range(self._QSArgs.ConnRetryNum):
+                try:
+                    import mysql.connector
+                    self._Connection = mysql.connector.connect(host=IPAddr, port=str(Port), user=User, password=Pwd, database=DBName, charset=CharSet, autocommit=True)
+                except Exception as e:
+                    Msg = ("'%s' 第 %d 次尝试使用 mysql.connector 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, i+1, User, IPAddr, Port, DBName, str(e)))
+                    self._QS_Logger.error(Msg)
+                    time.sleep(self._QSArgs.ConnIntervalSeconds)
+                else:
+                    self._Connector = "mysql.connector"
             else:
-                self._Connector = "mysql.connector"
+                if Connector != "default": raise e
         elif (Connector=="psycopg2") or ((Connector=="default") and (DBType=="PostgreSQL")):
-            try:
-                import psycopg2
-                self._Connection = psycopg2.connect(host=IPAddr, port=int(Port), user=User, password=Pwd, database=DBName)
-            except Exception as e:
-                Msg = ("'%s' 尝试使用 psycopg2 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, User, IPAddr, Port, DBName, str(e)))
-                self._QS_Logger.error(Msg)
+            for i in range(self._QSArgs.ConnRetryNum):
+                try:
+                    import psycopg2
+                    self._Connection = psycopg2.connect(host=IPAddr, port=int(Port), user=User, password=Pwd, database=DBName)
+                except Exception as e:
+                    Msg = ("'%s' 第 %d 次尝试使用 psycopg2 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, i+1, User, IPAddr, Port, DBName, str(e)))
+                    self._QS_Logger.error(Msg)
+                    time.sleep(self._QSArgs.ConnIntervalSeconds)
+                else:
+                    self._Connector = "psycopg2"
+                    break
+            else:
                 if Connector!="default": raise e
-            else:
-                self._Connector = "mysql.connector"
         elif Connector=="pymysql":
-            try:
-                import pymysql
-                self._Connection = pymysql.connect(host=IPAddr, port=Port, user=User, password=Pwd, db=DBName, charset=CharSet)
-            except Exception as e:
-                Msg = ("'%s' 尝试使用 pymysql 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, User, IPAddr, Port, DBName, str(e)))
-                self._QS_Logger.error(Msg)
-                raise e
+            for i in range(self._QSArgs.ConnRetryNum):
+                try:
+                    import pymysql
+                    self._Connection = pymysql.connect(host=IPAddr, port=Port, user=User, password=Pwd, db=DBName, charset=CharSet)
+                except Exception as e:
+                    Msg = ("'%s' 第 %d 次尝试使用 pymysql 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, i+1, User, IPAddr, Port, DBName, str(e)))
+                    self._QS_Logger.error(Msg)
+                    time.sleep(self._QSArgs.ConnIntervalSeconds)
+                else:
+                    self._Connector = "pymysql"
+                    break
             else:
-                self._Connector = "pymysql"
+                raise e
         if self._Connection is None:
             if Connector not in ("default", "pyodbc"):
                 self._Connection = None
@@ -119,22 +141,33 @@ class QSSQLObject(__QS_Object__):
                 self._QS_Logger.error(Msg)
                 raise __QS_Error__(Msg)
             elif self._QSArgs.DSN:
-                try:
-                    import pyodbc
-                    self._Connection = pyodbc.connect("DSN=%s;PWD=%s" % (self._QSArgs.DSN, Pwd))
-                except Exception as e:
-                    Msg = ("'%s' 尝试使用 pyodbc 连接数据库 'DSN: %s' 失败: %s" % (self.Name, self._QSArgs.DSN, str(e)))
-                    self._QS_Logger.error(Msg)
+                for i in range(self._QSArgs.ConnRetryNum):
+                    try:
+                        import pyodbc
+                        self._Connection = pyodbc.connect("DSN=%s;PWD=%s" % (self._QSArgs.DSN, Pwd))
+                    except Exception as e:
+                        Msg = ("'%s' 第 %d 次尝试使用 pyodbc 连接数据库 'DSN: %s' 失败: %s" % (self.Name, i+1, self._QSArgs.DSN, str(e)))
+                        self._QS_Logger.error(Msg)
+                        time.sleep(self._QSArgs.ConnIntervalSeconds)
+                    else:
+                        self._Connector = "pyodbc"
+                        break
+                else:
                     raise e
             else:
-                try:
-                    import pyodbc
-                    self._Connection = pyodbc.connect("DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s" % (DBType, DBName, IPAddr+","+str(Port), User, Pwd))
-                except Exception as e:
-                    Msg = ("'%s' 尝试使用 pyodbc 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, User, IPAddr, Port, DBName, str(e)))
-                    self._QS_Logger.error(Msg)
+                for i in range(self._QSArgs.ConnRetryNum):
+                    try:
+                        import pyodbc
+                        self._Connection = pyodbc.connect("DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s" % (DBType, DBName, IPAddr+","+str(Port), User, Pwd))
+                    except Exception as e:
+                        Msg = ("'%s' 第 %d 次尝试使用 pyodbc 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, i+1, User, IPAddr, Port, DBName, str(e)))
+                        self._QS_Logger.error(Msg)
+                        time.sleep(self._QSArgs.ConnIntervalSeconds)
+                    else:
+                        self._Connector = "pyodbc"
+                        break
+                else:
                     raise e
-            self._Connector = "pyodbc"
         self._PID = os.getpid()
         return 0
 
@@ -412,7 +445,6 @@ class QSFileLock(object):
         return self
     def __exit__(self, exc_type, exc_value, traceback):
         self.release()
-        return True
 
 
 # pandas Panel 的 QS 实现

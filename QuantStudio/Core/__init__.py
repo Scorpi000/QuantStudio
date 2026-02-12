@@ -14,7 +14,13 @@ from QuantStudio.Tools.DataTypeFun import dict2id
 from QuantStudio import __QS_ConfigPath__
 
 
-__QS_Logger__ = logging.getLogger()
+__QS_Logger__ = logging.getLogger('QS')
+__QS_Logger__.setLevel(logging.INFO)
+_QSLogHandler = logging.StreamHandler()
+_QSLogHandler.setLevel(logging.INFO)
+_QSLogHandler.setFormatter(logging.Formatter('%(asctime)s | %(name)s | %(levelname)s : %(message)s'))
+__QS_Logger__.addHandler(_QSLogHandler)
+
 
 # Quant Studio 系统错误
 class __QS_Error__(Exception):

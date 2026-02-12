@@ -1,6 +1,7 @@
 pydantic
 numpy
 pandas
+pyarrow
 chardet
 progressbar2
 fasteners

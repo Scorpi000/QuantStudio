@@ -329,8 +329,8 @@ class HDF5DB(WritableFactorDB):
         LockFile = self._LockDir / table_name / "LockFile"
         if not os.path.isfile(LockFile):
             with QSFileLock(self._DataLock, proc_lock=self._ProcLock) as FileLock:
-                if not os.path.isdir(self._LockDir + os.sep + table_name):
-                    os.mkdir(self._LockDir + os.sep + table_name)
+                if not os.path.isdir(self._LockDir / table_name):
+                    os.mkdir(self._LockDir / table_name)
                 if not os.path.isfile(LockFile):
                     open(LockFile, mode="a").close()
                     os.chmod(LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
