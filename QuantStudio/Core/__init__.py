@@ -31,7 +31,7 @@ class __QS_Error__(Exception):
 # 参数对象
 # 参数属性
 #   frozen: 初始化后是否可修改, 默认 None 可修改
-#   exclude: 参数是否用于生成 ID，默认 False 用于生成
+#   exclude: 参数是否不用于生成 ID，默认 False 用于生成
 #   repr: 参数是否可见, 默认 True 可见
 #   title: 参数名称(对外展示用)
 #   description: 描述信息

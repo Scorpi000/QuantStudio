@@ -20,19 +20,20 @@ class QSSQLObject(__QS_Object__):
     """基于关系数据库的对象"""
     class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
         Name: str = Field(default="QSSQLObject", frozen=True, title="名称")
-        DBType: Literal["MySQL", "SQL Server", "Oracle", "PostgreSQL"] = Field(default="MySQL", frozen=True, title="数据库类型")
-        DBName: str = Field(default="Scorpion", title="数据库名", frozen=True)
-        IPAddr: str = Field(default="127.0.0.1", title="IP地址", frozen=True)
-        Port: int = Field(default=3306, ge=0, le=65535, title="端口", frozen=True)
-        User: str = Field(default="root", title="用户名", frozen=True)
-        Pwd: str = Field(default="", title="密码", frozen=True)
-        TablePrefix: str = Field(default="", title="表名前缀", frozen=True)
-        CharSet: Literal["utf8", "utf8mb4", "gbk", "gb2312", "gb18030", "cp936", "big5"] = Field(default="utf8", title="字符集", frozen=True)
-        Connector: Literal["default", "cx_Oracle", "pymssql", "mysql.connector", "pymysql", "psycopg2", "pyodbc"] = Field(default="default", title="连接器", frozen=True)
-        ConnRetryNum: int = Field(default=3, title="连接重试次数", frozen=False, ge=1)
-        ConnIntervalSeconds: float = Field(default=30, title="连接重试间隔", frozen=False, ge=0)
-        DSN: str = Field(default="", title="数据源", frozen=True)
-        AdjustTableName: bool = Field(default=False, title="调整表名", frozen=True)
+        DBType: Literal["MySQL", "SQL Server", "Oracle", "PostgreSQL"] = Field(default="MySQL", frozen=True, title="数据库类型", exclude=True)
+        DBName: str = Field(default="Scorpion", title="数据库名", frozen=True, exclude=True)
+        IPAddr: str = Field(default="127.0.0.1", title="IP地址", frozen=True, exclude=True)
+        Port: int = Field(default=3306, ge=0, le=65535, title="端口", frozen=True, exclude=True)
+        User: str = Field(default="root", title="用户名", frozen=True, exclude=True)
+        Pwd: str = Field(default="", title="密码", frozen=True, exclude=True)
+        TablePrefix: str = Field(default="", title="表名前缀", frozen=True, exclude=True)
+        CharSet: Literal["utf8", "utf8mb4", "gbk", "gb2312", "gb18030", "cp936", "big5"] = Field(default="utf8", title="字符集", frozen=True, exclude=True)
+        Connector: Literal["default", "cx_Oracle", "pymssql", "mysql.connector", "pymysql", "psycopg2", "pyodbc"] = Field(default="default", title="连接器", frozen=True, exclude=True)
+        ConnRetryNum: int = Field(default=3, title="连接重试次数", frozen=False, ge=1, exclude=True)
+        ConnIntervalSeconds: float = Field(default=30, title="连接重试间隔", frozen=False, ge=0, exclude=True)
+        DSN: str = Field(default="", title="数据源", frozen=True, exclude=True)
+        AdditionalConnArgs: dict = Field(default={}, title="其他连接参数", frozen=False, exclude=True)
+        AdjustTableName: bool = Field(default=False, title="调整表名", frozen=True, exclude=True)
 
     def __init__(self, args={}, config_file=None, **kwargs):
         self._Connection = None# 连接对象
@@ -69,7 +70,7 @@ class QSSQLObject(__QS_Object__):
             for i in range(self._QSArgs.ConnRetryNum):
                 try:
                     import cx_Oracle
-                    self._Connection = cx_Oracle.connect(User, Pwd, cx_Oracle.makedsn(IPAddr, str(Port), DBName))
+                    self._Connection = cx_Oracle.connect(User, Pwd, cx_Oracle.makedsn(IPAddr, str(Port), DBName), **self._QSArgs.AdditionalConnArgs)
                 except Exception as e:
                     Msg = ("'%s' 第 %d 次尝试使用 cx_Oracle 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, i+1, User, IPAddr, Port, DBName, str(e)))
                     self._QS_Logger.error(Msg)
@@ -83,7 +84,7 @@ class QSSQLObject(__QS_Object__):
             for i in range(self._QSArgs.ConnRetryNum):
                 try:
                     import pymssql
-                    self._Connection = pymssql.connect(server=IPAddr, port=str(Port), user=User, password=Pwd, database=DBName, charset=CharSet)
+                    self._Connection = pymssql.connect(server=IPAddr, port=str(Port), user=User, password=Pwd, database=DBName, charset=CharSet, **self._QSArgs.AdditionalConnArgs)
                 except Exception as e:
                     Msg = ("'%s' 第 %d 次尝试使用 pymssql 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, i+1, User, IPAddr, Port, DBName, str(e)))
                     self._QS_Logger.error(Msg)
@@ -97,7 +98,7 @@ class QSSQLObject(__QS_Object__):
             for i in range(self._QSArgs.ConnRetryNum):
                 try:
                     import mysql.connector
-                    self._Connection = mysql.connector.connect(host=IPAddr, port=str(Port), user=User, password=Pwd, database=DBName, charset=CharSet, autocommit=True)
+                    self._Connection = mysql.connector.connect(host=IPAddr, port=str(Port), user=User, password=Pwd, database=DBName, charset=CharSet, autocommit=True, **self._QSArgs.AdditionalConnArgs)
                 except Exception as e:
                     Msg = ("'%s' 第 %d 次尝试使用 mysql.connector 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, i+1, User, IPAddr, Port, DBName, str(e)))
                     self._QS_Logger.error(Msg)
@@ -110,7 +111,7 @@ class QSSQLObject(__QS_Object__):
             for i in range(self._QSArgs.ConnRetryNum):
                 try:
                     import psycopg2
-                    self._Connection = psycopg2.connect(host=IPAddr, port=int(Port), user=User, password=Pwd, database=DBName)
+                    self._Connection = psycopg2.connect(host=IPAddr, port=int(Port), user=User, password=Pwd, database=DBName, **self._QSArgs.AdditionalConnArgs)
                 except Exception as e:
                     Msg = ("'%s' 第 %d 次尝试使用 psycopg2 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, i+1, User, IPAddr, Port, DBName, str(e)))
                     self._QS_Logger.error(Msg)
@@ -124,7 +125,7 @@ class QSSQLObject(__QS_Object__):
             for i in range(self._QSArgs.ConnRetryNum):
                 try:
                     import pymysql
-                    self._Connection = pymysql.connect(host=IPAddr, port=Port, user=User, password=Pwd, db=DBName, charset=CharSet)
+                    self._Connection = pymysql.connect(host=IPAddr, port=Port, user=User, password=Pwd, db=DBName, charset=CharSet, **self._QSArgs.AdditionalConnArgs)
                 except Exception as e:
                     Msg = ("'%s' 第 %d 次尝试使用 pymysql 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, i+1, User, IPAddr, Port, DBName, str(e)))
                     self._QS_Logger.error(Msg)
@@ -144,7 +145,7 @@ class QSSQLObject(__QS_Object__):
                 for i in range(self._QSArgs.ConnRetryNum):
                     try:
                         import pyodbc
-                        self._Connection = pyodbc.connect("DSN=%s;PWD=%s" % (self._QSArgs.DSN, Pwd))
+                        self._Connection = pyodbc.connect("DSN=%s;PWD=%s" % (self._QSArgs.DSN, Pwd), **self._QSArgs.AdditionalConnArgs)
                     except Exception as e:
                         Msg = ("'%s' 第 %d 次尝试使用 pyodbc 连接数据库 'DSN: %s' 失败: %s" % (self.Name, i+1, self._QSArgs.DSN, str(e)))
                         self._QS_Logger.error(Msg)
@@ -158,7 +159,7 @@ class QSSQLObject(__QS_Object__):
                 for i in range(self._QSArgs.ConnRetryNum):
                     try:
                         import pyodbc
-                        self._Connection = pyodbc.connect("DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s" % (DBType, DBName, IPAddr+","+str(Port), User, Pwd))
+                        self._Connection = pyodbc.connect("DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s" % (DBType, DBName, IPAddr+","+str(Port), User, Pwd), **self._QSArgs.AdditionalConnArgs)
                     except Exception as e:
                         Msg = ("'%s' 第 %d 次尝试使用 pyodbc 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, i+1, User, IPAddr, Port, DBName, str(e)))
                         self._QS_Logger.error(Msg)

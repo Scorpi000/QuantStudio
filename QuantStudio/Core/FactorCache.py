@@ -3,6 +3,7 @@ import os
 import stat
 import time
 import shutil
+import pickle
 import tempfile
 import datetime as dt
 from typing import Optional, List, Literal
@@ -10,7 +11,7 @@ from multiprocessing import Lock
 
 import numpy as np
 import pandas as pd
-from pydantic import Field, DirectoryPath
+from pydantic import Field, DirectoryPath, FilePath
 
 from QuantStudio import __QS_ConfigPath__
 from QuantStudio.Core import __QS_Object__, __QS_Error__
@@ -22,10 +23,11 @@ class FactorCache(__QS_Object__):
         PIDs: list[str] = Field(title="进程ID", frozen=True)
         DTRuler: List[dt.datetime] = Field(title="时点标尺", description="当前运行计算时点标尺", frozen=True)
         MinDTUnit: dt.timedelta = Field(default=dt.timedelta(1), title="最小时间单位", frozen=True)
-        ClearStart: bool = Field(default=True, title="启动时清空")
+        StartMode: Literal["new", "continue"] = Field(default="new", title="启动模式", description="启动缓存的方式: new 表示清空已有数据重新构造缓存；continue 表示通过 load 恢复之前的缓存状态")
 
     def __init__(self, args: dict={}, config_file=None, **kwargs):
         super().__init__(args=args, config_file=config_file, **kwargs)
+        self._isStarted = False # 缓存是否已经启动
         self._CachedDTRange = {}  # 已经缓存的因子数据时点范围, {因子 QSID: DataFrame(columns=["StartDT", "EndDT"])}
 
     # 并发运行后返回需要同步的内容
@@ -133,13 +135,32 @@ class FactorCache(__QS_Object__):
             i = CachedDTRange.index.tolist().index(nRange)
             self._CachedDTRange[key] = self._mergeDTRange(CachedDTRange, i).reset_index(drop=True)
 
-    # 初始化缓存
-    def start(self):
+    # 暂存缓存状态
+    def dump(self):
         raise NotImplementedError
 
-    # 结束缓存
-    def end(self, clear=True):
+    # 恢复缓存状态
+    def load(self):
         raise NotImplementedError
+
+    # 初始化缓存
+    def start(self):
+        if self._isStarted: return
+        if self._QSArgs.StartMode == "new":
+            self.clearRawData()
+            self.clearFactorData()
+        elif self._QSArgs.StartMode == "continue":
+            self.load()
+        self._isStarted = True
+
+    # 结束缓存
+    def end(self, clear=False):
+        if clear:
+            self.clearRawData()
+            self.clearFactorData()
+        else:
+            self.dump()
+        self._isStarted = False
 
     # 原始数据缓存是否存在
     def checkRawDataExistence(self, key, pids=None, if_not_exists="create"):
@@ -181,11 +202,11 @@ class FactorCache(__QS_Object__):
 class FileCache(FactorCache):
     class __QS_ArgClass__(FactorCache.__QS_ArgClass__):
         CacheDir: Optional[DirectoryPath] = Field(default=None, title="缓存目录", frozen=True)
+        StateFile: FilePath = Field(default="state.pkl", title="状态文件", frozen=True, description="用于存储缓存的状态")
         Suffix: str = Field(default="", title="后缀", frozen=True)
 
     def __init__(self, args={}, config_file=None, **kwargs):
         super().__init__(args=args, config_file=config_file, **kwargs)
-        self._isStarted = False
         self._CacheDir = None  # 缓存主目录
         self._RawDataDir = None  # 原始数据存放根目录
         self._FactorDataDir = None  # 因子数据存放根目录
@@ -211,6 +232,28 @@ class FileCache(FactorCache):
     def readDataFrame(self, path: str, target_fields: Optional[list[str]]=None):
         raise NotImplementedError
     
+    # 暂存缓存状态
+    def dump(self):
+        State = {
+            "_CachedDTRange": self._CachedDTRange
+        }
+        if os.path.isfile(self._QSArgs.StateFile):
+            StateFilePath = self._QSArgs.StateFile
+        else:
+            StateFilePath = os.path.join(self._QSArgs.CacheDir, self._QSArgs.StateFile)
+        with open(StateFilePath, mode="wb") as StateFile:
+            pickle.dump(State, StateFile)
+
+    # 恢复缓存状态
+    def load(self):
+        if os.path.isfile(self._QSArgs.StateFile):
+            StateFilePath = self._QSArgs.StateFile
+        else:
+            StateFilePath = os.path.join(self._QSArgs.CacheDir, self._QSArgs.StateFile)
+        with open(StateFilePath, mode="rb") as StateFile:
+            State = pickle.load(StateFile)
+        self.__dict__.update(State)
+
     def start(self):
         if self._isStarted: return
         CacheDir = self._QSArgs.CacheDir
@@ -229,9 +272,11 @@ class FileCache(FactorCache):
             open(LockFile, mode="a").close()
             os.chmod(LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
         self._DataLock = QSFileLock(LockFile, proc_lock=Lock())
-        if self._QSArgs.ClearStart:
+        if self._QSArgs.StartMode == "new":
             self.clearRawData()
             self.clearFactorData()
+        elif self._QSArgs.StartMode == "continue":
+            self.load()
         with self._DataLock:
             if not os.path.isdir(self._RawDataDir): os.mkdir(self._RawDataDir)
             if not os.path.isdir(self._FactorDataDir): os.mkdir(self._FactorDataDir)
@@ -246,7 +291,7 @@ class FileCache(FactorCache):
                 self._PIDLock[iPID] = QSFileLock(iLockFile, proc_lock=Lock())
         self._isStarted = True
 
-    def end(self, clear=True):
+    def end(self, clear=False):
         if not self._isStarted: return
         if clear:
             self.clearRawData()
@@ -256,6 +301,8 @@ class FileCache(FactorCache):
                 if os.path.isfile(LockFile): os.remove(LockFile)
             except Exception as e:
                 self._QS_Logger.error(f"锁文件: {LockFile} 清理失败: {e}")
+        else:
+            self.dump()
         self._isStarted = False
 
     def checkRawDataExistence(self, key, pids=None, if_not_exists="create"):
@@ -397,7 +444,7 @@ class FileCache(FactorCache):
                         if os.path.isfile(iPath): os.remove(iPath)
                         elif os.path.isdir(iPath): shutil.rmtree(iPath)
                     except Exception as e:
-                        self._QS_Logger.error(f"因子数据缓存: {iFilePath} 清理失败: {e}")
+                        self._QS_Logger.error(f"因子数据缓存: {iPath} 清理失败: {e}")
         return super().clearFactorData(key=key)
 
 
