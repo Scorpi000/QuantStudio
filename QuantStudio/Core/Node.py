@@ -123,3 +123,12 @@ class Node(__QS_Object__):
         :return: 产生的消息列表
         """
         raise NotImplementedError("子类必须实现 backward_compute 方法")
+    
+    def merge_result(self, result_list: List[Any], context: Context) -> Any:
+        """
+        合并并行计算产生的结果
+        :param result_list: 并行计算产生的结果列表
+        :param context: 运算时全局上下文对象
+        :return: 合并后的结果
+        """        
+        return result_list

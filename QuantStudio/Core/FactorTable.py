@@ -8,7 +8,7 @@ import pandas as pd
 from QuantStudio.Core import __QS_Error__
 from QuantStudio.Core.Node import Node, __QS_Context__
 from QuantStudio.Core.FactorDB import FactorDB
-from QuantStudio.Core.Factor import Factor, FactorContext, FactorLocalContext
+from QuantStudio.Core.Factor import Factor, FactorContext, FactorLocalContext, FactorInitData
 from QuantStudio.Core.CalcEngine import __QS_Engine__, Engine
 from QuantStudio.Core.QSObject import Panel
 from QuantStudio.Tools.IDFun import testIDFilterStr
@@ -167,7 +167,7 @@ class FactorTable(Node):
                 iRawData = pd.concat([iOldData, iRawData[iRawData.pop("QS_Mask").isnull()]], ignore_index=True).sort_values(MaskCols)
             Cache.writeRawData(iKey, {"RawData": iRawData}, pid_ids, id_col="QS_ID", if_exists="replace")
 
-    def init_compute(self, path: List[str], init_data: Any, context: FactorContext) -> List[Any]:
+    def init_compute(self, path: List[str], init_data: FactorInitData, context: FactorContext) -> List[Any]:
         PrepareData = {
             "FactorNames": [],
             "DTRange": init_data["dt_range"],
@@ -175,9 +175,9 @@ class FactorTable(Node):
             "Args": self._QSArgs.to_dict(repr=False)
         }
         _, PrepareData = context.PrepareNodeDict.setdefault(self.PrepareID, (self.QSID, PrepareData))
-        if init_data["sub_factor_name"] not in PrepareData["FactorNames"]:
-            PrepareData["FactorNames"].append(init_data["sub_factor_name"])
-        PrepareData["DTRange"] = (min(init_data["dt_range"][0], PrepareData["DTRange"][0]), max(init_data["dt_range"][1], PrepareData["DTRange"][1]))
+        if init_data.SubFactorName not in PrepareData["FactorNames"]:
+            PrepareData["FactorNames"].append(init_data.SubFactorName)
+        PrepareData["DTRange"] = (min(init_data.DTRange[0], PrepareData["DTRange"][0]), max(init_data.DTRange[1], PrepareData["DTRange"][1]))
         for iArg in self._QS_LookbackArgs:
             if hasattr(self._QSArgs, iArg):
                 PrepareData["Args"][iArg] = max(PrepareData["Args"][iArg], self._QSArgs[iArg])

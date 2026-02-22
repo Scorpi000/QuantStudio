@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from pydantic import Field
 
-from QuantStudio.Core import __QS_Error__
+from QuantStudio.Core import __QS_Error__, QSArgs
 from QuantStudio.Core.Node import Node, Context, LocalContext
 from QuantStudio.Core.FactorCache import FactorCache
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
@@ -79,6 +79,12 @@ class FactorLocalContext(LocalContext):
     PIDs: Optional[List[str]] = Field(default=None)
 
 
+class FactorInitData(QSArgs):
+    DTRange: Tuple[dt.datetime, dt.datetime]
+    SectionIDs: List[str]
+    SubFactorName: Optional[str] = Field(default=None)
+
+
 # 因子
 # 因子可看做一个 DataFrame(index=[时间点], columns=[ID])
 # 时间点数据类型是 datetime.datetime, ID 的数据类型是 str
@@ -87,6 +93,7 @@ class Factor(Node):
     class __QS_ArgClass__(Node.__QS_ArgClass__):
         Name: str = Field(default="Factor", frozen=True, title="名称")
         SectionIDs: Optional[List[str]] = Field(default=None, title="截面ID", frozen=True)
+        CalcDTRuler: Optional[List[dt.datetime]] = Field(default=None, title="计算时点标尺", frozen=True)
         CacheEnabled: bool = Field(default=True, frozen=True, title="启用缓存")
 
     def __init__(self, ft=None, descriptors: List["Factor"] = [], args: dict = {}, config_file: Optional[str] = None, **kwargs):
@@ -152,7 +159,19 @@ class Factor(Node):
         elif isinstance(IDs, str): IDs = [IDs]
         Data = self.readData(IDs, DTs)
         return Data.loc[key]
-
+    
+    def _QS_getCalcDTs(self, dts:list[dt.datetime], mask:bool=False):
+        CalcDTs = self._QSArgs.CalcDTRuler
+        if CalcDTs:
+            StartIdx, EndIdx = np.searchsorted(CalcDTs, dts[0], side="left"), np.searchsorted(CalcDTs, dts[-1], side="right")
+            CalcDTs = CalcDTs[StartIdx:EndIdx]
+            if mask:
+                return np.isin(dts, CalcDTs)
+            else:
+                return CalcDTs
+        else:
+            return None
+    
     # 准备缓存数据
     def _prepareCacheData(self, context: FactorContext):
         DTRange = context.NodeState.get(self.QSID, {}).get("dt_range", None)
@@ -167,39 +186,44 @@ class Factor(Node):
             RawKey = None
         PIDIDs = context.NodeState[self.QSID]["pid_ids"]
         iSectionIDs = PIDIDs[context.PID]
-        if RawKey is None:
-            RawData = None
+        CalcDTs = self._QS_getCalcDTs(DTs, mask=False)
+        if (CalcDTs is not None) and (not CalcDTs): 
+            StdData = pd.DataFrame(index=DTs, columns=iSectionIDs)
         else:
-            RawData = context.FactorDataCache.readRawData(key=RawKey + "-" + self._QSArgs.Name, target_fields=None, pids=[context.PID])
-        if RawData:
-            if len(RawData) == 1: RawData = RawData["RawData"]
-            StdData = self._FactorTable.__QS_calcData__(RawData, factor_names=[self._QSArgs.Name], ids=iSectionIDs, dts=DTs).iloc[0]
-        elif self._FactorTable:
-            RawData = self._FactorTable.__QS_prepareRawData__(factor_names=[self._QSArgs.Name], ids=iSectionIDs, dts=DTs)
-            if RawData is not None:
-                self._QS_Logger.warning(f"因子 {self._QSArgs.Name} (QSID: {self.QSID}) 的原始数据缓存丢失!")
-            StdData = self._FactorTable.__QS_calcData__(raw_data=RawData, factor_names=[self._QSArgs.Name], ids=iSectionIDs, dts=DTs).iloc[0]
-        else:
-            return 0
+            if RawKey is None:
+                RawData = None
+            else:
+                RawData = context.FactorDataCache.readRawData(key=RawKey + "-" + self._QSArgs.Name, target_fields=None, pids=[context.PID])
+            if RawData:
+                if len(RawData) == 1: RawData = RawData["RawData"]
+                StdData = self._FactorTable.__QS_calcData__(RawData, factor_names=[self._QSArgs.Name], ids=iSectionIDs, dts=CalcDTs or DTs).iloc[0]
+            elif self._FactorTable:
+                RawData = self._FactorTable.__QS_prepareRawData__(factor_names=[self._QSArgs.Name], ids=iSectionIDs, dts=CalcDTs or DTs)
+                if RawData is not None:
+                    self._QS_Logger.warning(f"因子 {self._QSArgs.Name} (QSID: {self.QSID}) 的原始数据缓存丢失!")
+                StdData = self._FactorTable.__QS_calcData__(raw_data=RawData, factor_names=[self._QSArgs.Name], ids=iSectionIDs, dts=CalcDTs or DTs).iloc[0]
+            else:
+                return 0
+            if CalcDTs: StdData = StdData.reindex(index=DTs)
         context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=context.PID, if_exists="append")
         context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=DTRange)
         return 0
 
-    # init_data: {"dt_range", "section_ids"}
     # NodeState: {"dt_range", "section_ids", "pid_ids"}
-    def init_compute(self, path: List[str], init_data: Any, context: FactorContext) -> List[Any]:
+    def init_compute(self, path: List[str], init_data: FactorInitData, context: FactorContext) -> List[FactorInitData]:
         FactorState = context.NodeState.setdefault(self.QSID, {})
         # 处理时点
         DTRange = FactorState.get("dt_range", None)
         if DTRange is None:
-            FactorState["dt_range"] = init_data["dt_range"]
+            FactorState["dt_range"] = init_data.DTRange
         else:
-            FactorState["dt_range"] = (min(DTRange[0], init_data["dt_range"][0]), max(DTRange[1], init_data["dt_range"][1]))
+            FactorState["dt_range"] = (min(DTRange[0], init_data.DTRange[0]), max(DTRange[1], init_data.DTRange[1]))
         # 处理截面ID
+        InitSectionIDs = (init_data.SectionIDs if init_data.SectionIDs else context.DefaultSectionIDs)
         if "section_ids" in FactorState: SectionIDs = FactorState["section_ids"]
         elif self._QSArgs.SectionIDs: SectionIDs = self._QSArgs.SectionIDs
-        else: SectionIDs = init_data["section_ids"]
-        if init_data["section_ids"] != SectionIDs:
+        else: SectionIDs = InitSectionIDs
+        if InitSectionIDs != SectionIDs:
             raise __QS_Error__(f"因子 {self._QSArgs.Name}({self.QSID}) 指定了不同的截面!")
         if "section_ids" not in FactorState:
             FactorState["section_ids"] = SectionIDs
@@ -210,9 +234,9 @@ class Factor(Node):
         # 默认
         if self.QSID in path: return []
         if self._FactorTable:
-            return [{"dt_range": FactorState["dt_range"], "section_ids": SectionIDs, "sub_factor_name": self._QSArgs.Name}] * len(self.Deps)
+            return [FactorInitData(DTRange=FactorState["dt_range"], SectionIDs=SectionIDs, SubFactorName=self._QSArgs.Name)] * len(self.Deps)
         else:
-            return [{"dt_range": FactorState["dt_range"], "section_ids": SectionIDs}] * len(self.Deps)
+            return [FactorInitData(DTRange=FactorState["dt_range"], SectionIDs=SectionIDs)] * len(self.Deps)
 
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
         if self._FactorTable:
@@ -230,6 +254,10 @@ class Factor(Node):
             return self._FactorTable.__QS_calcData__(raw_data=RawData, factor_names=[self._QSArgs.Name], ids=local_context.IDs, dts=local_context.DTs).iloc[0]
         else:
             raise NotImplementedError
+    
+    def merge_result(self, result_list: List[Any], context: FactorContext) -> Any:
+        Data = pd.concat(result_list, join="outer", axis=1, ignore_index=False)
+        return Data.sort_index(axis=1)
     
     # -----------------------------重载运算符-------------------------------------
     def __add__(self, other):
@@ -360,30 +388,15 @@ class DataFactor(Factor):
         LookBack: int = Field(default=0, title="回溯天数", frozen=True)
 
     def __init__(self, data, args: dict={}, config_file: Optional[str] = None, **kwargs):
-        if isinstance(data, pd.Series):
-            if pd.api.types.is_datetime64_any_dtype(data.index):
-                self._DataContent = "DateTime"
+        if "DataType" not in args:
+            if isinstance(data, (pd.Series, pd.DataFrame)):
+                try:
+                    data = data.astype(float)
+                except:
+                    args["DataType"] = "object"
+                else:
+                    args["DataType"] = "double"
             else:
-                self._DataContent = "ID"
-            if "DataType" not in args:
-                try:
-                    data = data.astype(float)
-                except:
-                    args["DataType"] = "object"
-                else:
-                    args["DataType"] = "double"
-        elif isinstance(data, pd.DataFrame):
-            self._DataContent = "Factor"
-            if "DataType" not in args:
-                try:
-                    data = data.astype(float)
-                except:
-                    args["DataType"] = "object"
-                else:
-                    args["DataType"] = "double"
-        else:
-            self._DataContent = "Value"
-            if "DataType" not in args:
                 if isinstance(data, str):
                     args["DataType"] = "string"
                 else:
@@ -393,8 +406,45 @@ class DataFactor(Factor):
                         args["DataType"] = "object"
                     else:
                         args["DataType"] = "double"
-        self._Data = data
-        return super().__init__(ft=None, descriptors=[], args=args, config_file=config_file, **kwargs)
+        super().__init__(ft=None, descriptors=[], args=args, config_file=config_file, **kwargs)
+        SectionIDs = self._QSArgs.SectionIDs
+        if isinstance(data, pd.Series):
+            if pd.api.types.is_datetime64_any_dtype(data.index):
+                CalcMask = self._QS_getCalcDTs(data.index, mask=True)
+                if SectionIDs is None:
+                    self._DataContent = "DateTime"
+                else:
+                    self._DataContent = "Factor"
+                    data = pd.DataFrame(np.repeat(np.reshape(data.values, (-1, 1)), len(SectionIDs), axis=1), index=data.index, columns=SectionIDs)
+                if CalcMask is not None: data = data[CalcMask]
+            else:
+                CalcDTs = self._QSArgs.CalcDTRuler
+                if CalcDTs is None:
+                    self._DataContent = "ID"
+                    if SectionIDs is not None: data = data.reindex(index=SectionIDs)
+                else:
+                    self._DataContent = "Factor"
+                    data = pd.DataFrame(np.repeat(np.reshape(data.values, (1, -1)), len(CalcDTs), axis=0), index=CalcDTs, columns=data.index)
+                    if SectionIDs is not None: data = data.reindex(columns=SectionIDs)
+        elif isinstance(data, pd.DataFrame):
+            self._DataContent = "Factor"
+            if SectionIDs is not None: data = data.reindex(columns=SectionIDs)
+            CalcMask = self._QS_getCalcDTs(data.index, mask=True)
+            if CalcMask is not None: data = data[CalcMask]
+        else:
+            CalcDTs = self._QSArgs.CalcDTRuler
+            if (SectionIDs is not None) and (CalcDTs is not None):
+                self._DataContent = "Factor"
+                data = pd.DataFrame([(data,)*len(SectionIDs)]*len(CalcDTs), index=CalcDTs, columns=SectionIDs)
+            elif SectionIDs is not None:
+                self._DataContent = "ID"
+                data = pd.Series([data] * len(SectionIDs), index=SectionIDs)
+            elif CalcDTs is not None:
+                self._DataContent = "DateTime"
+                data = pd.Series([data] * len(CalcDTs), index=CalcDTs)
+            else:
+                self._DataContent = "Value"
+        self._Data = data        
     
     def new(self, args={}):
         args = self._QSArgs.model_dump() | args

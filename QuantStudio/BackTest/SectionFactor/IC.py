@@ -2,176 +2,222 @@
 import datetime as dt
 import base64
 from io import BytesIO
+from typing import Optional, Literal
+from multiprocessing import Queue, Event
 
 import numpy as np
 import pandas as pd
-from traits.api import ListStr, Enum, List, ListInt, Int, Str, Dict, on_trait_change
+from numpy.lib.recfunctions import unstructured_to_structured
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
+from pydantic import Field
+from traits.api import ListStr, Enum, List, ListInt, Int, Str, Dict, on_trait_change
 
+from QuantStudio.Core import __QS_Error__
+from QuantStudio.Core.Factor import Factor, FactorContext, FactorLocalContext
+from QuantStudio.Core.FactorOperation import PanelOperator, SectionOperator
+from QuantStudio.BackTest.BackTestModel import BTLocalContext, BTOutputNode, BTReportNode
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.Tools.DataPreprocessingFun import prepareRegressData
-from QuantStudio.BackTest.BackTestModel import BaseModule
 
 def _QS_formatMatplotlibPercentage(x, pos):
     return '%.2f%%' % (x*100, )
+
 def _QS_formatPandasPercentage(x):
     return '{0:.2f}%'.format(x*100)
-class IC(BaseModule):
-    """IC"""
-    class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
-        # TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
-        FactorOrder = Dict(key_trait=Str(), value_trait=Enum("降序", "升序"), arg_type="Dict", label="排序方向", order=1)
-        #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=2)
-        #ClassFactor = Enum("无", arg_type="SingleOption", label="类别因子", order=3)
-        #WeightFactor = Enum("等权", arg_type="SingleOption", label="权重因子", order=4)
-        CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="计算时点", order=5)
-        LookBack = Int(1, arg_type="Integer", label="回溯期数", order=6)
-        CorrMethod = Enum("spearman", "pearson", "kendall", arg_type="SingleOption", label="相关性算法", order=7, option_range=["spearman", "pearson", "kendall"])
-        IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=8)
-        RollAvgPeriod = Int(12, arg_type="Integer", label="滚动平均期数", order=9)
-        def __QS_initArgs__(self, args={}):
-            DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
-            self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
-            self.TestFactors.append(DefaultNumFactorList[0])
-            self.FactorOrder = {iFactorName:self.FactorOrder.get(iFactorName, "降序") for iFactorName in self.TestFactors}
-            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=2, option_range=DefaultNumFactorList))
-            self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
-            self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=3, option_range=["无"]+DefaultStrFactorList))
-            self.add_trait("WeightFactor", Enum(*(["等权"]+DefaultNumFactorList), arg_type="SingleOption", label="权重因子", order=4, option_range=["等权"]+DefaultNumFactorList))
-        
-        @property
-        def ObservedArgs(self):
-            return super().ObservedArgs + ("测试因子",)
 
-        @on_trait_change("TestFactors[]")
-        def _on_TestFactors_changed(self, obj, name, old, new):
-            self.FactorOrder = {iFactorName:self.FactorOrder.get(iFactorName, "降序") for iFactorName in self.TestFactors}
+class Breadth(SectionOperator):
+    def __init__(self, descriptor_ids=None, args={}, config_file=None, **kwargs):
+        Args = {"Name": "Breadth"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DescriptorSection": [descriptor_ids], "DataType": "double"}
+        return super().__init__(args=Args, config_file=config_file, **kwargs)
     
-    def __init__(self, factor_table, name="IC", sys_args={}, **kwargs):
-        self._FactorTable = factor_table
-        super().__init__(name=name, sys_args=sys_args, **kwargs)
-    def __QS_start__(self, mdl, dts, **kwargs):
-        if self._isStarted: return ()
-        super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
-        self._Output = {}
-        self._Output["IC"] = {iFactorName:[] for iFactorName in self._QSArgs.TestFactors}
-        self._Output["截面宽度"] = {iFactorName:[] for iFactorName in self._QSArgs.TestFactors}
-        self._Output["时点"] = []
-        self._CurCalcInd = 0
-        return (self._FactorTable, )
-    def __QS_move__(self, idt, **kwargs):
-        if self._iDT==idt: return 0
-        self._iDT = idt
-        if self._QSArgs.CalcDTs:
-            if idt not in self._QSArgs.CalcDTs[self._CurCalcInd:]: return 0
-            self._CurCalcInd = self._QSArgs.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
-            PreInd = self._CurCalcInd - self._QSArgs.LookBack
-            LastInd = self._CurCalcInd - 1
-            PreDateTime = self._QSArgs.CalcDTs[PreInd]
-            LastDateTime = self._QSArgs.CalcDTs[LastInd]
+    def calculate(self, f, idt, iid, x, args):
+        SectionIDs = (self._QSArgs.DescriptorSection[0] if self._QSArgs.DescriptorSection[0] else iid)
+        if f._QSArgs.CalcDTRuler:
+            DTs = sorted(set(idt).intersection(f._QSArgs.CalcDTRuler))
         else:
-            self._CurCalcInd = self._Model.DateTimeIndex
-            PreInd = self._CurCalcInd - self._QSArgs.LookBack
-            LastInd = self._CurCalcInd - 1
-            PreDateTime = self._Model.DateTimeSeries[PreInd]
-            LastDateTime = self._Model.DateTimeSeries[LastInd]
-        if (PreInd<0) or (LastInd<0):
-            for iFactorName in self._QSArgs.TestFactors:
-                self._Output["IC"][iFactorName].append(np.nan)
-                self._Output["截面宽度"][iFactorName].append(np.nan)
-            self._Output["时点"].append(idt)
-            return 0
-        PreIDs = self._FactorTable.getFilteredID(idt=PreDateTime, id_filter_str=self._QSArgs.IDFilter)
-        FactorExpose = self._FactorTable.readData(dts=[PreDateTime], ids=PreIDs, factor_names=list(self._QSArgs.TestFactors)).iloc[:, 0, :]
-        Price = self._FactorTable.readData(dts=[LastDateTime, idt], ids=PreIDs, factor_names=[self._QSArgs.PriceFactor]).iloc[0, :, :]
-        Ret = Price.iloc[-1] / Price.iloc[0] - 1
-        if self._QSArgs.ClassFactor!="无":# 进行收益率的类别调整
-            IndustryData = self._FactorTable.readData(dts=[LastDateTime], ids=PreIDs, factor_names=[self._QSArgs.ClassFactor]).iloc[0, 0, :]
-            AllIndustry = IndustryData.unique()
-            if self._QSArgs.WeightFactor=="等权":
-                for iIndustry in AllIndustry:
-                    iMask = (IndustryData==iIndustry)
-                    Ret[iMask] -= Ret[iMask].mean()
-            else:
-                WeightData = self._FactorTable.readData(dts=[LastDateTime], ids=PreIDs, factor_names=[self._QSArgs.WeightFactor]).iloc[0, 0, :]
-                for iIndustry in AllIndustry:
-                    iMask = (IndustryData==iIndustry)
-                    iWeight = WeightData[iMask]
-                    iRet = Ret[iMask]
-                    Ret[iMask] -= (iRet*iWeight).sum() / iWeight[pd.notnull(iWeight) & pd.notnull(iRet)].sum(skipna=False)
-        for iFactorName in self._QSArgs.TestFactors:
-            self._Output["IC"][iFactorName].append(FactorExpose[iFactorName].corr(Ret, method=self._QSArgs.CorrMethod))
-            self._Output["截面宽度"][iFactorName].append(pd.notnull(FactorExpose[iFactorName]).sum())
-        self._Output["时点"].append(idt)
-        return 0
-    def __QS_end__(self):
-        if not self._isStarted: return 0
-        super().__QS_end__()
-        CalcDateTimes = self._Output.pop("时点")
-        self._Output["截面宽度"] = pd.DataFrame(self._Output["截面宽度"], index=CalcDateTimes)
-        self._Output["IC"] = pd.DataFrame(self._Output["IC"], index=CalcDateTimes)
-        for i, iFactorName in enumerate(self._QSArgs.TestFactors):
-            if self._QSArgs.FactorOrder[iFactorName]=="升序": self._Output["IC"][iFactorName] = -self._Output["IC"][iFactorName]
-        self._Output["IC的移动平均"] = self._Output["IC"].copy()
-        for i in range(len(CalcDateTimes)):
-            if i<self._QSArgs.RollAvgPeriod-1: self._Output["IC的移动平均"].iloc[i,:] = np.nan
-            else: self._Output["IC的移动平均"].iloc[i,:] = self._Output["IC"].iloc[i-self._QSArgs.RollAvgPeriod+1:i+1, :].mean()
-        self._Output["统计数据"] = pd.DataFrame(index=self._Output["IC"].columns)
-        self._Output["统计数据"]["平均值"] = self._Output["IC"].mean()
-        self._Output["统计数据"]["标准差"] = self._Output["IC"].std()
-        self._Output["统计数据"]["最小值"] = self._Output["IC"].min()
-        self._Output["统计数据"]["最大值"] = self._Output["IC"].max()
-        self._Output["统计数据"]["IC_IR"] = self._Output["统计数据"]["平均值"] / self._Output["统计数据"]["标准差"]
-        self._Output["统计数据"]["t统计量"] = np.nan
-        self._Output["统计数据"]["平均截面宽度"] = self._Output["截面宽度"].mean()
-        self._Output["统计数据"]["IC×Sqrt(N)"] = self._Output["统计数据"]["平均值"]*np.sqrt(self._Output["统计数据"]["平均截面宽度"])
-        self._Output["统计数据"]["有效期数"] = 0.0
-        for iFactor in self._Output["IC"]: self._Output["统计数据"].loc[iFactor,"有效期数"] = pd.notnull(self._Output["IC"][iFactor]).sum()
-        self._Output["统计数据"]["t统计量"] = (self._Output["统计数据"]["有效期数"]**0.5)*self._Output["统计数据"]["IC_IR"]
-        return 0
-    def genMatplotlibFig(self, file_path=None):
-        nRow, nCol = self._Output["IC"].shape[1]//3+(self._Output["IC"].shape[1]%3!=0), min(3, self._Output["IC"].shape[1])
+            DTs = idt
+        if f.UserData["mask"]: 
+            Mask, x = pd.DataFrame(x[0]==1, index=idt, columns=SectionIDs), x[1:]
+            Mask = Mask.reindex(columns=DTs).fillna(False)
+        else:
+            Mask = pd.DataFrame(True, index=DTs, columns=SectionIDs)
+        Breadth = pd.DataFrame(index=DTs, columns=iid)
+        FactorNames = f._QSArgs.SectionIDs
+        Mask = Mask.shift(args["period_lookback"], axis=0).fillna(False)
+        for i, iFactorName in enumerate(iid):
+            if iFactorName not in FactorNames: continue
+            iIdx = FactorNames.index(iFactorName)
+            iFactorData = pd.DataFrame(x[iIdx], index=idt, columns=SectionIDs)
+            iFactorData = iFactorData.reindex(index=DTs).shift(args["period_lookback"], axis=0)
+            iMask = (Mask & iFactorData.notnull())
+            Breadth[iFactorName] = iMask.sum(axis=1)
+        return Breadth.reindex(index=idt).values[self._QSArgs.LookBack[0]:]    
+    
+    def __call__(self, *x, mask: Optional[Factor]=None, factor_args:Dict={}, **kwargs):
+        Factors = []
+        if mask is not None: Factors.append(mask)
+        if not x: raise __QS_Error__("测试因子列表 x 不可为空!")
+        else: Factors += x
+        Args = {
+            "Arity": len(Factors),
+            "DescriptorSection": [self._QSArgs.DescriptorSection[0]] * len(Factors)
+        }
+        factor_args = {"SectionIDs": [f"x-{i}" for i in range(len(x))]} | factor_args
+        f = super(Breadth, self.new(args=Args)).__call__(*Factors, factor_args=factor_args, **kwargs)
+        f.UserData = {"mask": (mask is not None)}
+        return f    
+
+class IC(PanelOperator):
+    def __init__(self, lookback:int, period_lookback:int=1, corr_method:Literal["spearman", "pearson", "kendall"]="spearman", descriptor_ids=None, args={}, config_file=None, **kwargs):
+        Args = {"Name": "IC"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "LookBack": [lookback], "DescriptorSection": [descriptor_ids], "DataType": "object"}
+        Args["ModelArgs"] = Args.get("ModelArgs", {}) | {"corr_method": corr_method, "period_lookback": period_lookback}
+        return super().__init__(args=Args, config_file=config_file, **kwargs)
+    
+    def calculate(self, f, idt, iid, x, args):
+        SectionIDs = (self._QSArgs.DescriptorSection[0] if self._QSArgs.DescriptorSection[0] else iid)
+        Price, x = pd.DataFrame(x[0].T, columns=idt, index=SectionIDs), x[1:]
+        if f._QSArgs.CalcDTRuler:
+            DTs = sorted(set(idt).intersection(f._QSArgs.CalcDTRuler))
+            Price = Price.reindex(columns=DTs)
+        else:
+            DTs = Price.columns
+        Return = Price.T.pct_change().T
+        if f.UserData["mask"]: 
+            Mask, x = pd.DataFrame(x[0].T==1, columns=idt, index=SectionIDs), x[1:]
+            Mask = (Mask.reindex(columns=DTs).fillna(False) & Price.notnull())
+        else:
+            Mask = Price.notnull()
+        if f.UserData["cat_data"]: 
+            CatData, x = pd.DataFrame(x[0].T, columns=idt, index=SectionIDs), x[1:]
+            CatData = CatData.reindex(columns=DTs)
+        else:
+            CatData = None
+        if f.UserData["weight"]: 
+            Weight, x = pd.DataFrame(x[0].T, columns=idt, index=SectionIDs), x[1:]
+            Weight = Weight.reindex(columns=DTs)
+        else:
+            Weight = pd.DataFrame(1, columns=DTs, index=SectionIDs)
+        if CatData is not None:# 进行收益率的类别调整
+            Price = Price.where(CatData.notnull(), np.nan)
+            AllCates = np.unique(CatData)
+            for iCate in AllCates:
+                iMask = ((CatData==iCate) & Mask)
+                iWeight = Weight.where(iMask, np.nan)
+                iReturn = (Return * iWeight.shift(1, axis=1)).sum(axis=0) / iWeight.shift(1, axis=1).sum(axis=0)
+                Return = Return.where(~iMask.shift(1, axis=1).fillna(False), Return - iReturn)
+        IC, Breadth = pd.DataFrame(index=DTs, columns=iid), pd.DataFrame(index=DTs, columns=iid)
+        FactorNames = f._QSArgs.SectionIDs
+        Mask = Mask.shift(args["period_lookback"], axis=1).fillna(False)
+        for i, iFactorName in enumerate(iid):
+            if iFactorName not in FactorNames: continue
+            iIdx = FactorNames.index(iFactorName)
+            iFactorData = pd.DataFrame(x[iIdx].T, columns=idt, index=SectionIDs)
+            iFactorData = iFactorData.reindex(columns=DTs).shift(args["period_lookback"], axis=1)
+            iMask = (Mask & iFactorData.notnull())
+            IC[iFactorName] = Return.where(iMask, np.nan).corrwith(iFactorData, method=args["corr_method"])
+            Breadth[iFactorName] = iMask.sum(axis=0)
+        Rslt = np.array([IC.reindex(index=idt).values[self._QSArgs.LookBack[0]:], Breadth.reindex(index=idt).values[self._QSArgs.LookBack[0]:]])
+        return unstructured_to_structured(Rslt.swapaxes(0, -1), dtype=np.dtype([("IC", float), ("Breadth", int)])).T
+        
+    def __call__(self, *x, price:Factor, mask: Optional[Factor]=None, cat_data: Optional[Factor]=None, weight: Optional[Factor]=None, factor_args:Dict={}, **kwargs):
+        Factors = [price]
+        if mask is not None: Factors.append(mask)
+        if cat_data is not None: Factors.append(cat_data)
+        if weight is not None: Factors.append(weight)
+        if not x: raise __QS_Error__("测试因子列表 x 不可为空!")
+        else: Factors += x
+        Args = {
+            "Arity": len(Factors), 
+            "LookBack": [self._QSArgs.LookBack[0]] * len(Factors),
+            "DescriptorSection": [self._QSArgs.DescriptorSection[0]] * len(Factors)
+        }
+        if "SectionIDs" not in factor_args:
+            PosNum = int(np.log10(len(x))) + 1
+            SectionIDs = [f"x-{str(i).zfill(PosNum)}" for i in range(len(x))]
+            factor_args["SectionIDs"] = SectionIDs
+        elif len(set(factor_args["SectionIDs"]))!=len(x) or (sorted(factor_args["SectionIDs"])!=factor_args["SectionIDs"]):
+            raise __QS_Error__(f"截面ID : {factor_args['SectionIDs']} 长度不等于测试因子列表 x 的长度, 或者有重复, 或者非升序排列!")
+        f = super(IC, self.new(args=Args)).__call__(*Factors, factor_args=factor_args, **kwargs)
+        f.UserData = {"mask": (mask is not None), "cat_data": (cat_data is not None), "weight": (weight is not None), "factor_name_list": [f.Name for f in x]}
+        return f
+
+class ICOutput(BTOutputNode):
+    """ICOutput"""
+    class __QS_ArgClass__(BTOutputNode.__QS_ArgClass__):
+        Name: str = Field(default="ICOutput", frozen=True, title="名称")
+        RollingAvgPeriod: int = Field(default=12, frozen=True, title="移动平均期数")
+        
+    def __init__(self, ic: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        super().__init__(deps=[ic], args=args, config_file=config_file, **kwargs)
+    
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[BTLocalContext]=None) -> dict:
+        SectionIDs = self.Deps[0].SectionIDs
+        FactorNameList = self.Deps[0].UserData["factor_name_list"]
+        FactorNameList = [FactorNameList[SectionIDs.index(iID)] for iID in IC.columns]        
+        IC, Breadth = bwd_data_list[0]["IC"], bwd_data_list[0]["Breadth"]
+        Output = {
+            "截面宽度": Breadth.dropna(how="all", axis=0),
+            "IC": IC.dropna(how="all", axis=0)
+        }
+        Output["IC的移动平均"] = Output["IC"].copy()
+        for i in range(Output["IC"].shape[0]):
+            if i<self._QSArgs.RollingAvgPeriod-1: Output["IC的移动平均"].iloc[i, :] = np.nan
+            else: Output["IC的移动平均"].iloc[i, :] = Output["IC"].iloc[i-self._QSArgs.RollingAvgPeriod+1:i+1, :].mean()
+        Output["统计数据"] = pd.DataFrame(index=Output["IC"].columns)
+        Output["统计数据"]["平均值"] = Output["IC"].mean()
+        Output["统计数据"]["标准差"] = Output["IC"].std()
+        Output["统计数据"]["最小值"] = Output["IC"].min()
+        Output["统计数据"]["最大值"] = Output["IC"].max()
+        Output["统计数据"]["IC_IR"] = Output["统计数据"]["平均值"] / Output["统计数据"]["标准差"]
+        Output["统计数据"]["t统计量"] = np.nan
+        Output["统计数据"]["平均截面宽度"] = Output["截面宽度"].mean()
+        Output["统计数据"]["IC×Sqrt(N)"] = Output["统计数据"]["平均值"]*np.sqrt(Output["统计数据"]["平均截面宽度"])
+        Output["统计数据"]["有效期数"] = 0.0
+        for iFactor in Output["IC"]: Output["统计数据"].loc[iFactor, "有效期数"] = pd.notnull(Output["IC"][iFactor]).sum()
+        Output["统计数据"]["t统计量"] = Output["统计数据"]["有效期数"]**0.5 * Output["统计数据"]["IC_IR"]
+        return Output
+    
+class ICReport(BTReportNode):
+    """ICReport"""
+    class __QS_ArgClass__(BTReportNode.__QS_ArgClass__):
+        Name: str = Field(default="ICReport", frozen=True, title="名称")    
+    
+    def __init__(self, ic_output: ICOutput, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        super().__init__(deps=[ic_output], args=args, config_file=config_file, **kwargs)
+    
+    def genMatplotlibFig(self, output, file_path=None):
+        nRow, nCol = output["IC"].shape[1]//3+(output["IC"].shape[1]%3!=0), min(3, output["IC"].shape[1])
         Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
-        xData = np.arange(0, self._Output["IC"].shape[0])
-        xTicks = np.arange(0, self._Output["IC"].shape[0], max(1, int(self._Output["IC"].shape[0]/10)))
-        xTickLabels = [self._Output["IC"].index[i].strftime("%Y-%m-%d") for i in xTicks]
+        xData = np.arange(0, output["IC"].shape[0])
+        xTicks = np.arange(0, output["IC"].shape[0], max(1, int(output["IC"].shape[0]/10)))
+        xTickLabels = [output["IC"].index[i].strftime("%Y-%m-%d") for i in xTicks]
         yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
-        for i in range(self._Output["IC"].shape[1]):
+        for i in range(output["IC"].shape[1]):
             iAxes = Fig.add_subplot(nRow, nCol, i+1)
             iAxes.yaxis.set_major_formatter(yMajorFormatter)
-            iAxes.plot(xData, self._Output["IC的移动平均"].iloc[:, i].values, label="IC的移动平均", color="indianred", lw=2.5)
-            iAxes.bar(xData, self._Output["IC"].iloc[:, i].values, label="IC", color="steelblue")
+            iAxes.plot(xData, output["IC的移动平均"].iloc[:, i].values, label="IC的移动平均", color="indianred", lw=2.5)
+            iAxes.bar(xData, output["IC"].iloc[:, i].values, label="IC", color="steelblue")
             iRightAxes = iAxes.twinx()
-            iRightAxes.plot(xData, self._Output["截面宽度"].iloc[:, i].values, label="截面宽度", color="k", lw=1.5)
+            iRightAxes.plot(xData, output["截面宽度"].iloc[:, i].values, label="截面宽度", color="k", lw=1.5)
             iAxes.set_xticks(xTicks)
             iAxes.set_xticklabels(xTickLabels)
             iAxes.legend(loc="upper left")
             iRightAxes.legend(loc="upper right")
-            iAxes.set_title(self._Output["IC"].columns[i])
+            iAxes.set_title(output["IC"].columns[i])
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
-    def _repr_html_(self):
-        if len(self._QSArgs.ArgNames)>0:
-            HTML = "参数设置: "
-            HTML += '<ul align="left">'
-            for iArgName in self._QSArgs.ArgNames:
-                if iArgName!="计算时点":
-                    HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
-                elif self.Args[iArgName]:
-                    HTML += "<li>"+iArgName+": 自定义时点</li>"
-                else:
-                    HTML += "<li>"+iArgName+": 所有时点</li>"
-            HTML += "</ul>"
-        else:
-            HTML = ""
+    
+    def backward_compute(self, path: List[str], bwd_data_list: List[dict], context: FactorContext, local_context: Optional[BTLocalContext]=None) -> str:
+        HTML = ""
+        Output = bwd_data_list[0]
         Formatters = [_QS_formatPandasPercentage]*4+[lambda x:'{0:.4f}'.format(x)]+[lambda x:'{0:.2f}'.format(x)]*3+[lambda x:'{0:.0f}'.format(x)]
-        iHTML = self._Output["统计数据"].to_html(formatters=Formatters)
+        iHTML = Output["统计数据"].to_html(formatters=Formatters)
         Pos = iHTML.find(">")
         HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-        Fig = self.genMatplotlibFig()
+        Fig = self.genMatplotlibFig(Output)
         # figure 保存为二进制文件
         Buffer = BytesIO()
         Fig.savefig(Buffer, bbox_inches='tight')
@@ -265,7 +311,7 @@ class RiskAdjustedIC(IC):
         self._Output["时点"].append(idt)
         return 0
 
-class ICDecay(BaseModule):
+class ICDecay(PanelOperator):
     """IC 衰减"""
     class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
         #TestFactor = Enum(None, arg_type="SingleOption", label="测试因子", order=0)
