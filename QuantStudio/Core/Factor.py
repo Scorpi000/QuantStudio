@@ -105,9 +105,9 @@ class Factor(Node):
         else:
             return super().__init__(deps=descriptors, args=args, config_file=config_file, **kwargs)
     
-    def new(self, args={}):
-        args = self._QSArgs.model_dump() | args
-        return self.__class__(ft=self._FactorTable, descriptors=self.Deps, args=args, config_file=self._ConfigFile, logger=self._QS_Logger)
+    def new(self, args={}, **kwargs):
+        kwargs = {"ft": self._FactorTable, "descriptors": self.Descriptors} | kwargs
+        return super().new(args=args, **kwargs)
     
     @property
     def FactorTable(self):
@@ -446,9 +446,9 @@ class DataFactor(Factor):
                 self._DataContent = "Value"
         self._Data = data        
     
-    def new(self, args={}):
-        args = self._QSArgs.model_dump() | args
-        return self.__class__(data=self._Data, args=args, config_file=self._ConfigFile, logger=self._QS_Logger)
+    def new(self, args={}, **kwargs):
+        kwargs = {"data": self._Data} | kwargs
+        return super().new(args=args, **kwargs)
     
     def getMetaData(self, key=None):
         DataType = self._QSArgs.DataType

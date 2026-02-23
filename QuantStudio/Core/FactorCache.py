@@ -467,9 +467,9 @@ class FeatherCache(FileCache):
             OldData = pd.read_feather(FilePath)
             Data = pd.concat([OldData, data], ignore_index=ignore_index)
             if not ignore_index: Data = Data[~Data.index.duplicated()]
-            Data.sort_index().to_feather(FilePath)
+            Data.sort_index().to_feather(FilePath, compression="uncompressed")
         else:
-            data.to_feather(FilePath)
+            data.to_feather(FilePath, compression="uncompressed")
 
     def readDataFrame(self, path: str, target_fields: Optional[list[str]]=None):
         if not os.path.isdir(path): return {}

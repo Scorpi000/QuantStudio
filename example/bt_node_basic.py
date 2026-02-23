@@ -3,14 +3,12 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from pydantic import Field
 
-from QuantStudio.Core.Node import Node
 from QuantStudio.Core.CalcEngine import Engine, ParallelEngine
 from QuantStudio.Core.Factor import DataFactor, FactorContext, FactorLocalContext, FactorInitData
 from QuantStudio.Core.FactorCache import FeatherCache
 from QuantStudio.BackTest.BackTestModel import BTInitData, BTLocalContext
-from QuantStudio.BackTest.SectionFactor.IC import IC, ICOutput, ICReport
+from QuantStudio.BackTest.SectionFactor.IC import CalcIC, ICOutput, ICReport
 
 
 if __name__ == "__main__":
@@ -20,13 +18,14 @@ if __name__ == "__main__":
     DTRuler = [dt.datetime(2025, 1, 1) + dt.timedelta(i) for i in range(nDT)]
     IDs, DTs = SectionIDs[:3], DTRuler[-5:]
     
-    Factor1 = DataFactor(data=1, args={"Name": "Factor1"})
-    Factor2 = DataFactor(data=pd.DataFrame(np.random.randn(len(DTs), len(IDs)), index=DTs, columns=IDs), args={"Name": "Factor2"})
-    FactorIC = IC(lookback=1)(Factor1, price=Factor2)
+    #Factor1 = DataFactor(data=1, args={"Name": "Factor1"})
+    Factor1 = DataFactor(data=pd.DataFrame(np.random.randn(len(DTs), len(SectionIDs)), index=DTs, columns=SectionIDs), args={"Name": "Factor1"})
+    Factor2 = DataFactor(data=pd.DataFrame(np.random.randn(len(DTs), len(SectionIDs)), index=DTs, columns=SectionIDs), args={"Name": "Factor2"})
+    FactorIC = CalcIC(lookback=1, descriptor_ids=SectionIDs)(Factor1, price=Factor2)
     BTModule = ICReport(ICOutput(FactorIC, args={"RollingAvgPeriod": 2}))
     
     ExecEngine = Engine()
-    Cache = FeatherCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "CacheDir": Path("~/Project/Data/FactorCache"), "PIDs": ["0"]})
+    Cache = FeatherCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "CacheDir": Path(r"C:\Users\hst\Project\Data\FactorCache"), "PIDs": ["0"]})
     Cache.start()
     Context = FactorContext(
         PID="0",

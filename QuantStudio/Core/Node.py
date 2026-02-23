@@ -55,9 +55,9 @@ class Node(__QS_Object__):
     def Name(self):
         return self._QSArgs.Name
     
-    def new(self, args={}):
-        args = self._QSArgs.model_dump() | args
-        return self.__class__(deps=self.Deps, args=args, config_file=self._ConfigFile, logger=self._QS_Logger)
+    def new(self, args={}, **kwargs):
+        kwargs = {"deps": self.Deps} | kwargs
+        return super().new(args=args, **kwargs)
 
     def model_dump(self):
         if getattr(self, "_Dumped", False):

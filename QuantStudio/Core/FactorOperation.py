@@ -23,9 +23,9 @@ class FactorOperator(__QS_Object__):
         OperatorType: Literal["Point", "Time", "Section", "Panel"] = Field(title="算子类型", frozen=True)
         Name: str = Field(default="FactorOperator", title="名称", frozen=True)
         ModelArgs: dict = Field(default={}, title="参数", frozen=True)
-        Arity: Optional[int] = Field(default=None, ge=1, label="入参数", frozen=True)
+        Arity: Optional[int] = Field(default=None, ge=1, title="入参数", frozen=True)
         DataType: Literal["double", "string", "object"] = Field(default="double",title="数据类型", frozen=True)
-        Description: str = Field(default="", label="描述信息", frozen=False, exclude=True)
+        Description: str = Field(default="", title="描述信息", frozen=False, exclude=True)
         Meta: dict = Field(default={}, title="元信息", frozen=False, exclude=True)
         InputFormat: Literal["numpy", "pandas"] = Field(default="numpy", title="输入格式", frozen=True)
         ExpandDescriptors: list[int] = Field(default=[], title="展开描述子", frozen=True)
@@ -60,16 +60,16 @@ class FactorOperator(__QS_Object__):
         DumpedModel["__func__"] = self.calculate
         return DumpedModel
     
-    def new(self, args={}):
-        NewOperator = super().new(args=args)
+    def new(self, args={}, **kwargs):
+        NewOperator = super().new(args=args, **kwargs)
         if getattr(self.calculate, "__self__", None) != self:
             NewOperator.calculate = self.calculate
         return NewOperator
     
-    def _QS_validate(self, *x):
+    def _QS_validate(self, *x, **kwargs):
         Arity = len(x)
         if self._QSArgs.Arity is None:
-            return self.new(args={"Arity": Arity})
+            return self.new(args={"Arity": Arity}, **kwargs)
         elif Arity != self._QSArgs.Arity:
             raise __QS_Error__(f"因子算子 {self._QSArgs.Name} 实际传入的因子数量 {Arity} 和指定的入参数 {self._QSArgs.Arity} 不符!")
         else:
@@ -167,7 +167,7 @@ class PointOperator(FactorOperator):
         IDMode: Literal["单ID", "多ID"] = Field(default="单ID", title="运算ID", frozen=True)
 
     def __call__(self, *x, factor_args: dict = {}, **kwargs):
-        Operator = self._QS_validate(*x)
+        Operator = self._QS_validate(*x, **kwargs.pop("operator_kwargs", {}))
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for i, iFactor in enumerate(x)]
         return PointOperation(descriptors=Descriptors, args={"Operator": Operator, **factor_args}, **kwargs)
 
@@ -345,7 +345,7 @@ class TimeOperator(FactorOperator):
             return super().model_post_init(context)
     
     def __call__(self, *x, factor_args:dict={}, **kwargs):
-        Operator = self._QS_validate(*x)
+        Operator = self._QS_validate(*x, **kwargs.pop("operator_kwargs", {}))
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for i, iFactor in enumerate(x)]
         return TimeOperation(descriptors=Descriptors, args={"Operator": Operator, **factor_args}, **kwargs)
     
@@ -531,7 +531,7 @@ class SectionOperator(FactorOperator):
             return super().model_post_init(context)
     
     def __call__(self, *x, factor_args:dict={}, **kwargs):
-        Operator = self._QS_validate(*x)
+        Operator = self._QS_validate(*x, **kwargs.pop("operator_kwargs", {}))
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for i, iFactor in enumerate(x)]
         return SectionOperation(descriptors=Descriptors, args={"Operator": Operator, **factor_args}, **kwargs)
         
@@ -708,7 +708,7 @@ class PanelOperator(FactorOperator):
             return super().model_post_init(context)
     
     def __call__(self, *x, factor_args:dict={}, **kwargs):
-        Operator = self._QS_validate(*x)
+        Operator = self._QS_validate(*x, **kwargs.pop("operator_kwargs", {}))
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for i, iFactor in enumerate(x)]
         return PanelOperation(descriptors=Descriptors, args={"Operator": Operator, **factor_args}, **kwargs)
     
@@ -910,7 +910,7 @@ class DerivativeFactor(Factor):
     def __init__(self, descriptors, args={}, config_file=None, **kwargs):
         self.UserData = {}
         if descriptors: kwargs.setdefault("logger", descriptors[0]._QS_Logger)
-        Operator = args["Operator"]._QS_validate(*descriptors)
+        Operator = args["Operator"]._QS_validate(*descriptors, **kwargs.pop("operator_kwargs", {}))
         args = {"Name": Operator._QSArgs.Name} | args | {"Operator": Operator}
         super().__init__(descriptors=descriptors, args=args, config_file=config_file, **kwargs)
         self._Operator = self._QSArgs.Operator
@@ -1108,6 +1108,8 @@ class PanelOperation(DerivativeFactor):
             iInitData = {"DTRange": (DTRuler[iStartIdx], iEndDT)}
             if self._Operator._QSArgs.DescriptorSection[i] is not None:
                 iInitData["SectionIDs"] = self._Operator._QSArgs.DescriptorSection[i]
+            else:
+                iInitData["SectionIDs"] = init_data.SectionIDs
             InitData[i] = InitData[i].__class__(**iInitData)
         if (len(context.PIDList) > 1) and (self.QSID not in context.Event):
             context._Event[self.QSID] = (Queue(), Event())

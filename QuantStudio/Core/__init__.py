@@ -157,9 +157,10 @@ class __QS_Object__:
     def Logger(self):
         return self._QS_Logger
     
-    def new(self, args={}):
+    def new(self, args={}, **kwargs):
         args = self._QSArgs.model_dump() | args
-        return self.__class__(args=args, config_file=self._ConfigFile, logger=self._QS_Logger)
+        kwargs = {"logger": self._QS_Logger, "config_file": self._ConfigFile} | kwargs
+        return self.__class__(args=args, **kwargs)
     
     def _repr_html_(self):
         HTML = f"<b>类</b>: {html.escape(str(self.__class__.__name__))}<br/>"
