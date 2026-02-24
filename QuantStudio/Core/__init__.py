@@ -122,7 +122,7 @@ class __QS_Object__:
         if self._QS_Logger is None: self._QS_Logger = __QS_Logger__
         Config = {}
         if config_file:
-            if not os.path.isfile(config_file): config_file = __QS_ConfigPath__ + os.sep + config_file
+            if not os.path.isfile(config_file) and (not config_file.startswith(__QS_ConfigPath__)): config_file = __QS_ConfigPath__ + os.sep + config_file
             if os.path.isfile(config_file):
                 self._ConfigFile = config_file
                 with open(self._ConfigFile, "r", encoding="utf-8") as File:
@@ -130,7 +130,7 @@ class __QS_Object__:
                     if FileStr: Config = json.loads(FileStr)
             else:
                 self._ConfigFile = None
-                self._QS_Logger.warning("找不到配置文件")
+                self._QS_Logger.warning(f"找不到配置文件: {config_file}")
         else:
             self._ConfigFile = None
         args = Config | args | {"Owner": self, "Logger": self._QS_Logger}
