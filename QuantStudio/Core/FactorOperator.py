@@ -332,17 +332,17 @@ class Lag(TimeOperator):
     
     def calculate(self, f, idt, iid, x, args):
         Data = x[0]
-        if args.get('dt_change_fun', None) is None: return Data[f.Args["LookBack"][0]-args['lag_period']:Data.shape[0]-args['lag_period']]
+        if args.get('dt_change_fun', None) is None: return Data[self.Args["LookBack"][0]-args['lag_period']:Data.shape[0]-args['lag_period']]
         TargetDTs = args['dt_change_fun'](idt)
         Data = pd.DataFrame(Data, index=idt)
         TargetData = Data.reindex(index=TargetDTs).values
         TargetData[args['lag_period']:] = TargetData[:-args['lag_period']]
-        if f.DataType!="double":
+        if self._QSArgs.DataType!="double":
             Data = pd.DataFrame(np.empty(Data.shape,dtype="O"),index=Data.index,columns=iid)
         else:
             Data = pd.DataFrame(index=Data.index,columns=iid,dtype="float")
         Data.loc[TargetDTs] = TargetData
-        return Data.fillna(method='pad').values[f.Args["LookBack"][0]:]
+        return Data.fillna(method='pad').values[self.Args["LookBack"][0]:]
     
     def __call__(self, f: Factor, factor_args:Dict={}, **kwargs):
         DataType = f.getMetaData(key="DataType")
@@ -363,9 +363,9 @@ class RollingRank(TimeOperator):
         if not args.pop("ascending"):
             Data = - Data
         Uniformization = args.pop("uniformization")
-        Rslt = Data.rolling(**args).rank().values[f.Args["LookBack"][0]:] - 1
+        Rslt = Data.rolling(**args).rank().values[self.Args["LookBack"][0]:] - 1
         if Uniformization:
-            Rslt = Rslt / Data.rolling(**args).count().values[f.Args["LookBack"][0]:]
+            Rslt = Rslt / Data.rolling(**args).count().values[self.Args["LookBack"][0]:]
         return Rslt
     
 
@@ -381,10 +381,10 @@ class RollingMean(TimeOperator):
         Args = args.copy()
         weights = Args.pop("weights")
         if not weights:
-            return Data.rolling(**Args).mean().values[f.Args["LookBack"][0]:]
+            return Data.rolling(**Args).mean().values[self.Args["LookBack"][0]:]
         else:
             weights = np.array(weights)
-            return Data.rolling(**Args).apply(lambda x: np.nansum(x * weights) / np.nansum(pd.notnull(x) * weights), raw=True).values[f.Args["LookBack"][0]:]
+            return Data.rolling(**Args).apply(lambda x: np.nansum(x * weights) / np.nansum(pd.notnull(x) * weights), raw=True).values[self.Args["LookBack"][0]:]
     
         
 class RollingApply(TimeOperator):
@@ -415,7 +415,7 @@ class RollingChangeRate(TimeOperator):
         Rslt[Mask & (Numerator>0)] = 1.0
         Rslt[Mask & (Numerator<0)] = -1.0
         Rslt[Mask & (Numerator==0)] = 0.0
-        return Rslt[f.Args["LookBack"][0]-args["window"]+1:]
+        return Rslt[self.Args["LookBack"][0]-args["window"]+1:]
         
 
 class RollingRegress(TimeOperator):
@@ -535,7 +535,7 @@ class Disaggregate(SectionOperator):
         if args["cat_data"]:
             CatData = x[-1]
             Rslt = np.full(shape=(nDT, nID), fill_value=np.nan)
-            for i, iID in enumerate(f.Args["描述子截面"][0]):
+            for i, iID in enumerate(self.Args.DescriptorSection[0]):
                 iMask = (CatData==iID)
                 Rslt[iMask] = FactorData[:, [i]].repeat(nID, axis=1)[iMask]
         else:
@@ -560,7 +560,7 @@ class ConcatSection(SectionOperator):
         return super().__init__(args=Args, config_file=config_file, **kwargs)
         
     def calculate(self, f, idt, iid, x, args):
-        return pd.DataFrame(np.concatenate(x, axis=1), columns=sum(((iid if iIDs is None else iIDs) for iIDs in f.Args.DescriptorSection), [])).reindex(columns=iid).values
+        return pd.DataFrame(np.concatenate(x, axis=1), columns=sum(((iid if iIDs is None else iIDs) for iIDs in self.Args.DescriptorSection), [])).reindex(columns=iid).values
     
 
 class ChgSection(SectionOperator):

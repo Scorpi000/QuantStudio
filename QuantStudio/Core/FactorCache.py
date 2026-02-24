@@ -184,11 +184,11 @@ class FactorCache(__QS_Object__):
         raise NotImplementedError
 
     # 写入因子数据
-    def writeFactorData(self, key, factor_data, pid_ids, pid=None, target_field="StdData", if_exists="append"):
+    def writeFactorData(self, key, factor_data, pid_ids, pid=None, target_field="StdData", if_exists="append", data_type=None):
         raise NotImplementedError
 
     # 读取因子数据
-    def readFactorData(self, key, ipid, target_field="StdData", pids=None, wait=True, wait_seconds=0.1):
+    def readFactorData(self, key, ipid, target_field="StdData", pids=None, wait=True, wait_seconds=0.1, data_type=None):
         raise NotImplementedError
 
     # 清空缓存
@@ -226,10 +226,31 @@ class FileCache(FactorCache):
     def getPathMTime(self, path: str):
         raise NotImplementedError
     
-    def writeDataFrame(self, path: str, target_field: str, data: pd.DataFrame, if_exists: Literal["append", "replace"]="replace", ignore_index=True):
+    def writeDataFramePickle(self, path: str, target_field: str, data: pd.DataFrame, if_exists: Literal["append", "replace"]="replace", ignore_index=True, file_suffix=".pkl"):
+        if not os.path.isdir(path): os.makedirs(path, exist_ok=True)
+        FilePath = os.path.join(path, target_field + file_suffix)
+        if (if_exists=="append") and os.path.isfile(FilePath):
+            OldData = pd.read_pickle(FilePath)
+            Data = pd.concat([OldData, data], ignore_index=ignore_index)
+            if not ignore_index: Data = Data[~Data.index.duplicated()]
+            Data.sort_index().to_pickle(FilePath)
+        else:
+            data.to_pickle(FilePath)
+
+    def readDataFramePickle(self, path: str, target_fields: Optional[list[str]]=None, file_suffix=".pkl"):
+        if not os.path.isdir(path): return {}
+        if not target_fields: target_fields = [iFile[:-len(file_suffix)] for iFile in os.listdir(path)]
+        RawData = {}
+        for iField in target_fields:
+            iPath = os.path.join(path, iField + file_suffix)
+            if os.path.isfile(iPath):
+                RawData[iField] = pd.read_pickle(iPath)
+        return RawData
+
+    def writeDataFrame(self, path: str, target_field: str, data: pd.DataFrame, if_exists: Literal["append", "replace"]="replace", ignore_index=True, data_type=None):
         raise NotImplementedError
 
-    def readDataFrame(self, path: str, target_fields: Optional[list[str]]=None):
+    def readDataFrame(self, path: str, target_fields: Optional[list[str]]=None, data_type=None):
         raise NotImplementedError
     
     # 暂存缓存状态
@@ -374,28 +395,28 @@ class FileCache(FactorCache):
                 IfExist = os.path.exists(iPath) or IfExist
         return IfExist
 
-    def writeFactorData(self, key, factor_data, pid_ids, pid=None, target_field="StdData", if_exists="append"):
+    def writeFactorData(self, key, factor_data, pid_ids, pid=None, target_field="StdData", if_exists="append", data_type=None):
         PIDs = (self._QSArgs.PIDs if pid is None else [pid])
         for iPID in PIDs:
             with self._PIDLock[iPID]:
                 if pid_ids is not None:
                     iIDs = pid_ids.get(iPID)
                     iPath = self._FactorDataDir + os.sep + iPID + os.sep + key + self._QSArgs.Suffix
-                    self.writeDataFrame(path=iPath, target_field=target_field, data=factor_data.reindex(columns=iIDs), if_exists=if_exists, ignore_index=False)
+                    self.writeDataFrame(path=iPath, target_field=target_field, data=factor_data.reindex(columns=iIDs), if_exists=if_exists, ignore_index=False, data_type=data_type)
                 else:
                     iPath = self._FactorDataDir + os.sep + iPID + os.sep + key + self._QSArgs.Suffix
-                    self.writeDataFrame(path=iPath, target_field=target_field, data=factor_data, if_exists=if_exists, ignore_index=False)
+                    self.writeDataFrame(path=iPath, target_field=target_field, data=factor_data, if_exists=if_exists, ignore_index=False, data_type=data_type)
 
-    def readFactorData(self, key, ipid, target_field="StdData", pids=None, wait=True, wait_seconds=0.1):
+    def readFactorData(self, key, ipid, target_field="StdData", pids=None, wait=True, wait_seconds=0.1, data_type=None):
         if isinstance(pids, str):
             Path = self._FactorDataDir + os.sep + pids + os.sep + key + self._QSArgs.Suffix
             if not os.path.exists(Path):
                 return None
             with self._PIDLock[pids]:
-                return self.readDataFrame(path=Path, target_fields=[target_field]).get(target_field, None)
+                return self.readDataFrame(path=Path, target_fields=[target_field], data_type=data_type).get(target_field, None)
         iPath = self._FactorDataDir + os.sep + ipid + os.sep + key + self._QSArgs.Suffix
         with self._PIDLock[ipid]:
-            DTNum = self.readDataFrame(path=iPath, target_fields=[target_field]).get(target_field, pd.DataFrame()).shape[0]
+            DTNum = self.readDataFrame(path=iPath, target_fields=[target_field], data_type=data_type).get(target_field, pd.DataFrame()).shape[0]
         if pids is None:
             pids = {ipid}
         else:
@@ -414,7 +435,7 @@ class FileCache(FactorCache):
                 iMTime = self.getPathMTime(iPath)
                 if (iPID not in MTime) or (iMTime > MTime[iPID]):
                     MTime[iPID] = iMTime
-                    iDTNum = self.readDataFrame(path=iPath, target_fields=[target_field]).get(target_field, pd.DataFrame()).shape[0]
+                    iDTNum = self.readDataFrame(path=iPath, target_fields=[target_field], data_type=data_type).get(target_field, pd.DataFrame()).shape[0]
                     if iDTNum != DTNum:
                         pids.add(iPID)
                         if wait_seconds > 0: time.sleep(wait_seconds)
@@ -423,7 +444,7 @@ class FileCache(FactorCache):
                     pids.add(iPID)
                     if wait_seconds > 0: time.sleep(wait_seconds)
                     continue
-            iStdData = self.readFactorData(key, ipid, target_field=target_field, pids=iPID)
+            iStdData = self.readFactorData(key, ipid, target_field=target_field, pids=iPID, data_type=data_type)
             if iStdData is not None: StdData.append(iStdData)
         if StdData:
             return pd.concat(StdData, axis=1, join='outer', ignore_index=False)
@@ -459,8 +480,9 @@ class FeatherCache(FileCache):
     
     def getPathMTime(self, path: str):
         return max(os.path.getmtime(os.path.join(path, ifile)) for ifile in ["."]+os.listdir(path))
-    
-    def writeDataFrame(self, path: str, target_field: str, data: pd.DataFrame, if_exists: Literal["append", "replace"]="replace", ignore_index=True):
+
+    def writeDataFrame(self, path: str, target_field: str, data: pd.DataFrame, if_exists: Literal["append", "replace"]="replace", ignore_index=True, data_type=None):
+        if data_type=="object": return self.writeDataFramePickle(path=path, target_field=target_field, data=data, if_exists=if_exists, ignore_index=ignore_index)
         if not os.path.isdir(path): os.makedirs(path, exist_ok=True)
         FilePath = os.path.join(path, target_field + self._FileSuffix)
         if (if_exists=="append") and os.path.isfile(FilePath):
@@ -471,7 +493,8 @@ class FeatherCache(FileCache):
         else:
             data.to_feather(FilePath, compression="uncompressed")
 
-    def readDataFrame(self, path: str, target_fields: Optional[list[str]]=None):
+    def readDataFrame(self, path: str, target_fields: Optional[list[str]]=None, data_type=None):
+        if data_type=="object": return self.readDataFramePickle(path=path, target_fields=target_fields)
         if not os.path.isdir(path): return {}
         if not target_fields: target_fields = [iFile[:-len(self._FileSuffix)] for iFile in os.listdir(path)]
         RawData = {}

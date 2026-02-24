@@ -327,6 +327,7 @@ class TimeOperator(FactorOperator):
         
         def __init__(self, /, **data):
             Arity = data.get("Arity", 0)
+            if Arity is None: Arity = 0
             if not data.get("LookBack", []): data["LookBack"] = [0] * Arity
             if not data.get("LookBackMode", []): data["LookBackMode"] = ["滚动窗口"] * Arity
             if not data.get("StartDT", []): data["StartDT"] = [None] * Arity
@@ -522,6 +523,7 @@ class SectionOperator(FactorOperator):
         
         def __init__(self, /, **data):
             Arity = data.get("Arity", 0)
+            if Arity is None: Arity = 0
             if not data.get("DescriptorSection", []): data["DescriptorSection"] = [None] * Arity
             return super().__init__(**data)
         
@@ -687,6 +689,7 @@ class PanelOperator(FactorOperator):
         
         def __init__(self, /, **data):
             Arity = data.get("Arity", 0)
+            if Arity is None: Arity = 0
             if not data.get("DescriptorSection", []): data["DescriptorSection"] = [None] * Arity
             if not data.get("LookBack", []): data["LookBack"] = [0] * Arity
             if not data.get("LookBackMode", []): data["LookBackMode"] = ["滚动窗口"] * Arity
@@ -932,7 +935,6 @@ class DerivativeFactor(Factor):
             return DataType
         else:
             return self._QSArgs.Meta.get(key, None)
-        return None
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
         iSectionIDs = context.getID(self.QSID, [context.PID])
@@ -947,13 +949,13 @@ class DerivativeFactor(Factor):
                 else:
                     StdData = self._Operator.calcData(factor=self, ids=iSectionIDs, dts=CalcDTs, descriptor_data=bwd_data_list, dt_ruler=context.DTRuler, section_ids=iSectionIDs)
             if context.FactorDataCache and self._QSArgs.CacheEnabled and (not StdData.empty):
-                context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids={context.PID: iSectionIDs}, pid=context.PID, if_exists="append")
+                context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids={context.PID: iSectionIDs}, pid=context.PID, if_exists="append", data_type=self._Operator._QSArgs.DataType)
                 context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(CalcDTs[0], CalcDTs[-1]))
         DTs, IDs = local_context.DTs, local_context.IDs
         iIDs = sorted(set(iSectionIDs).intersection(IDs))
         if not (DTs and iIDs): return pd.DataFrame(index=DTs, columns=iIDs)
         if context.FactorDataCache and self._QSArgs.CacheEnabled:
-            StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs)
+            StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs, data_type=self._Operator._QSArgs.DataType)
         elif not bwd_data_list:
             raise __QS_Error__("走到了不该走到的地方!")
         return StdData.reindex(index=DTs, columns=iIDs)
@@ -1042,7 +1044,7 @@ class SectionOperation(DerivativeFactor):
         if DTRange is None: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs)
         if context.FactorDataCache and self._QSArgs.CacheEnabled:
             DTRange = context.FactorDataCache.getDTRange(self.QSID, DTRange)
-            if DTRange is None: return [], FactorLocalContext(DTs=[], IDs=fwd_data.IDs)
+            if DTRange is None: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs)
         CalcDTs = context.getDateTime(DTRange)
         if not CalcDTs: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs)
         if context.FactorDataCache and self._QSArgs.CacheEnabled and (len(context.PIDList) > 1):
@@ -1067,7 +1069,7 @@ class SectionOperation(DerivativeFactor):
                     StdData = self._Operator.calcData(factor=self, ids=iSectionIDs, dts=CalcDTs, descriptor_data=bwd_data_list, dt_ruler=context.DTRuler, section_ids=iSectionIDs)
             if context.FactorDataCache and self._QSArgs.CacheEnabled and (not StdData.empty):
                 PIDIDs = context.NodeState[self.QSID]["pid_ids"]
-                context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=None, if_exists="append")
+                context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=None, if_exists="append", data_type=self._Operator._QSArgs.DataType)
                 context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(CalcDTs[0], CalcDTs[-1]))
         if len(context.PIDList) > 1:
             Sub2MainQueue, PIDEvent = context.Event[self.QSID]
@@ -1077,7 +1079,7 @@ class SectionOperation(DerivativeFactor):
         iIDs = sorted(set(iSectionIDs).intersection(IDs))
         if not (DTs and iIDs): return pd.DataFrame(index=DTs, columns=iIDs)
         if context.FactorDataCache and self._QSArgs.CacheEnabled:
-            StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs)
+            StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs, data_type=self._Operator._QSArgs.DataType)
         elif not bwd_data_list:
             raise __QS_Error__("走到了不该走到的地方!")
         return StdData.reindex(index=DTs, columns=iIDs)
@@ -1157,7 +1159,7 @@ class PanelOperation(DerivativeFactor):
                     StdData = self._Operator.calcData(factor=self, ids=iSectionIDs, dts=CalcDTs, descriptor_data=bwd_data_list, dt_ruler=context.DTRuler, section_ids=iSectionIDs)
             if context.FactorDataCache and self._QSArgs.CacheEnabled and (not StdData.empty):
                 PIDIDs = context.NodeState[self.QSID]["pid_ids"]
-                context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=None, if_exists="append")
+                context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=None, if_exists="append", data_type=self._Operator._QSArgs.DataType)
                 context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(CalcDTs[0], CalcDTs[-1]))
         if len(context.PIDList) > 1:
             Sub2MainQueue, PIDEvent = context.Event[self.QSID]
@@ -1167,7 +1169,7 @@ class PanelOperation(DerivativeFactor):
         iIDs = sorted(set(iSectionIDs).intersection(IDs))
         if not (DTs and iIDs): return pd.DataFrame(index=DTs, columns=iIDs)
         if context.FactorDataCache and self._QSArgs.CacheEnabled:
-            StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs)
+            StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs, data_type=self._Operator._QSArgs.DataType)
         elif not bwd_data_list:
             raise __QS_Error__("走到了不该走到的地方!")
         return StdData.reindex(index=DTs, columns=iIDs)

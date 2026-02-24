@@ -41,6 +41,9 @@ class Neg(PointOperator):
     def calculate(self, f, idt, iid, x, args):
         return - x[0]
 
+    def __call__(self, *x, factor_args:Dict={}, **kwargs):
+        factor_args = {"CacheEnabled": False} | factor_args
+        return super().__call__(*x, factor_args=factor_args, **kwargs)
 
 class Abs(PointOperator):
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
@@ -51,6 +54,10 @@ class Abs(PointOperator):
     
     def calculate(self, f, idt, iid, x, args):
         return np.abs(x[0])
+    
+    def __call__(self, *x, factor_args:Dict={}, **kwargs):
+        factor_args = {"CacheEnabled": False} | factor_args
+        return super().__call__(*x, factor_args=factor_args, **kwargs)
 
 class Not(PointOperator):
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
@@ -61,6 +68,10 @@ class Not(PointOperator):
     
     def calculate(self, f, idt, iid, x, args):
         return ~ x[0].astype(bool)
+    
+    def __call__(self, *x, factor_args:Dict={}, **kwargs):
+        factor_args = {"CacheEnabled": False} | factor_args
+        return super().__call__(*x, factor_args=factor_args, **kwargs)
 
 class Add(PointOperator):
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
@@ -71,6 +82,10 @@ class Add(PointOperator):
     
     def calculate(self, f, idt, iid, x, args):
         return x[0] + x[1]
+    
+    def __call__(self, *x, factor_args:Dict={}, **kwargs):
+        factor_args = {"CacheEnabled": False} | factor_args
+        return super().__call__(*x, factor_args=factor_args, **kwargs)
 
 
 class Sub(PointOperator):
@@ -82,6 +97,10 @@ class Sub(PointOperator):
     
     def calculate(self, f, idt, iid, x, args):
         return x[0] - x[1]
+    
+    def __call__(self, *x, factor_args:Dict={}, **kwargs):
+        factor_args = {"CacheEnabled": False} | factor_args
+        return super().__call__(*x, factor_args=factor_args, **kwargs)
 
 
 class Mul(PointOperator):
@@ -93,6 +112,10 @@ class Mul(PointOperator):
     
     def calculate(self, f, idt, iid, x, args):
         return x[0] * x[1]
+    
+    def __call__(self, *x, factor_args:Dict={}, **kwargs):
+        factor_args = {"CacheEnabled": False} | factor_args
+        return super().__call__(*x, factor_args=factor_args, **kwargs)
 
 class Div(PointOperator):
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
@@ -103,6 +126,10 @@ class Div(PointOperator):
     
     def calculate(self, f, idt, iid, x, args):
         return x[0] / np.where(x[1]==0, np.nan, x[1])
+    
+    def __call__(self, *x, factor_args:Dict={}, **kwargs):
+        factor_args = {"CacheEnabled": False} | factor_args
+        return super().__call__(*x, factor_args=factor_args, **kwargs)
 
 
 class FloorDiv(PointOperator):
@@ -114,6 +141,10 @@ class FloorDiv(PointOperator):
     
     def calculate(self, f, idt, iid, x, args):
         return x[0] // np.where(x[1]==0, np.nan, x[1])
+    
+    def __call__(self, *x, factor_args:Dict={}, **kwargs):
+        factor_args = {"CacheEnabled": False} | factor_args
+        return super().__call__(*x, factor_args=factor_args, **kwargs)
 
 
 class Mod(PointOperator):
@@ -125,6 +156,10 @@ class Mod(PointOperator):
     
     def calculate(self, f, idt, iid, x, args):
         return x[0] % np.where(x[1]==0, np.nan, x[1])
+    
+    def __call__(self, *x, factor_args:Dict={}, **kwargs):
+        factor_args = {"CacheEnabled": False} | factor_args
+        return super().__call__(*x, factor_args=factor_args, **kwargs)
 
 
 class Pow(PointOperator):
@@ -138,6 +173,10 @@ class Pow(PointOperator):
         r = x[0] ** x[1]
         r[np.isinf(r)] = np.nan
         return r
+    
+    def __call__(self, *x, factor_args:Dict={}, **kwargs):
+        factor_args = {"CacheEnabled": False} | factor_args
+        return super().__call__(*x, factor_args=factor_args, **kwargs)
 
 
 class And(PointOperator):
@@ -150,6 +189,9 @@ class And(PointOperator):
     def calculate(self, f, idt, iid, x, args):
         return x[0].astype(bool) & x[1].astype(bool)
 
+    def __call__(self, *x, factor_args:Dict={}, **kwargs):
+        factor_args = {"CacheEnabled": False} | factor_args
+        return super().__call__(*x, factor_args=factor_args, **kwargs)
 
 class Or(PointOperator):
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
@@ -160,6 +202,10 @@ class Or(PointOperator):
     
     def calculate(self, f, idt, iid, x, args):
         return x[0].astype(bool) | x[1].astype(bool)
+    
+    def __call__(self, *x, factor_args:Dict={}, **kwargs):
+        factor_args = {"CacheEnabled": False} | factor_args
+        return super().__call__(*x, factor_args=factor_args, **kwargs)
 
 
 class Xor(PointOperator):
@@ -172,6 +218,9 @@ class Xor(PointOperator):
     def calculate(self, f, idt, iid, x, args):
         return x[0].astype(bool) ^ x[1].astype(bool)
 
+    def __call__(self, *x, factor_args:Dict={}, **kwargs):
+        factor_args = {"CacheEnabled": False} | factor_args
+        return super().__call__(*x, factor_args=factor_args, **kwargs)
 
 class LT(PointOperator):
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
@@ -182,6 +231,10 @@ class LT(PointOperator):
     
     def calculate(self, f, idt, iid, x, args):
         return x[0] < x[1]
+    
+    def __call__(self, *x, factor_args:Dict={}, **kwargs):
+        factor_args = {"CacheEnabled": False} | factor_args
+        return super().__call__(*x, factor_args=factor_args, **kwargs)
 
 
 class LE(PointOperator):
@@ -193,6 +246,10 @@ class LE(PointOperator):
     
     def calculate(self, f, idt, iid, x, args):
         return x[0] <= x[1]
+    
+    def __call__(self, *x, factor_args:Dict={}, **kwargs):
+        factor_args = {"CacheEnabled": False} | factor_args
+        return super().__call__(*x, factor_args=factor_args, **kwargs)
 
 
 class GT(PointOperator):
@@ -204,6 +261,10 @@ class GT(PointOperator):
     
     def calculate(self, f, idt, iid, x, args):
         return x[0] > x[1]
+    
+    def __call__(self, *x, factor_args:Dict={}, **kwargs):
+        factor_args = {"CacheEnabled": False} | factor_args
+        return super().__call__(*x, factor_args=factor_args, **kwargs)
 
 
 class GE(PointOperator):
@@ -215,6 +276,10 @@ class GE(PointOperator):
     
     def calculate(self, f, idt, iid, x, args):
         return x[0] >= x[1]
+    
+    def __call__(self, *x, factor_args:Dict={}, **kwargs):
+        factor_args = {"CacheEnabled": False} | factor_args
+        return super().__call__(*x, factor_args=factor_args, **kwargs)
 
 
 class Eq(PointOperator):
@@ -226,6 +291,10 @@ class Eq(PointOperator):
     
     def calculate(self, f, idt, iid, x, args):
         return x[0] == x[1]
+    
+    def __call__(self, *x, factor_args:Dict={}, **kwargs):
+        factor_args = {"CacheEnabled": False} | factor_args
+        return super().__call__(*x, factor_args=factor_args, **kwargs)
 
 
 class Neq(PointOperator):
@@ -237,6 +306,10 @@ class Neq(PointOperator):
     
     def calculate(self, f, idt, iid, x, args):
         return x[0] != x[1]
+    
+    def __call__(self, *x, factor_args:Dict={}, **kwargs):
+        factor_args = {"CacheEnabled": False} | factor_args
+        return super().__call__(*x, factor_args=factor_args, **kwargs)
 
 rename = Rename()
 neg = Neg()

@@ -232,8 +232,8 @@ def fillNaByLookback(data, lookback, dts=None):
     else: dts = np.array(dts)
     Ind = pd.DataFrame(np.r_[0, np.diff(dts).astype("float")].reshape((data.shape[0], 1)).repeat(data.shape[1], axis=1).cumsum(axis=0))
     Ind1 = Ind.where(pd.notnull(data.values), other=np.nan)
-    Ind1.fillna(method="pad", inplace=True)
-    data = data.fillna(method="pad")
+    Ind1.ffill(inplace=True)
+    data = data.ffill()
     data.where(((Ind.values-Ind1.values)/10**9<=lookback), np.nan, inplace=True)
     if isDF: return data
     else: return data.values

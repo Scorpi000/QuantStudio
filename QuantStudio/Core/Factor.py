@@ -100,6 +100,7 @@ class Factor(Node):
         self._FactorTable = ft
         if ft and descriptors:
             raise __QS_Error__("因子表和描述子列表不能都存在!")
+        kwargs.pop("deps", None)
         if ft:
             return super().__init__(deps=[ft], args=args, config_file=config_file, **kwargs)
         else:
@@ -205,7 +206,8 @@ class Factor(Node):
             else:
                 return 0
             if CalcDTs: StdData = StdData.reindex(index=DTs)
-        context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=context.PID, if_exists="append")
+        DataType = self.getMetaData(key="DataType")
+        context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=context.PID, if_exists="append", data_type=DataType)
         context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=DTRange)
         return 0
 
@@ -247,7 +249,7 @@ class Factor(Node):
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
         if context.FactorDataCache and self._QSArgs.CacheEnabled:
             self._prepareCacheData(context=context)
-            StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs)
+            StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs, data_type=self.getMetaData(key="DataType"))
             return StdData.reindex(index=local_context.DTs, columns=StdData.columns.intersection(local_context.IDs)).sort_index(axis=1)
         elif self._FactorTable:
             RawData = self._FactorTable.__QS_prepareRawData__(factor_names=[self._QSArgs.Name], ids=local_context.IDs, dts=local_context.DTs)
@@ -406,6 +408,14 @@ class DataFactor(Factor):
                         args["DataType"] = "object"
                     else:
                         args["DataType"] = "double"
+        elif args["DataType"]=="double":
+            if isinstance(data, (pd.Series, pd.DataFrame)):
+                data = data.astype(float)
+            else:
+                data = float(data)
+        elif args["DataType"]=="string":
+            if not isinstance(data, (pd.Series, pd.DataFrame)):
+                data = str(data)
         super().__init__(ft=None, descriptors=[], args=args, config_file=config_file, **kwargs)
         SectionIDs = self._QSArgs.SectionIDs
         if isinstance(data, pd.Series):
@@ -487,6 +497,10 @@ class DataFactor(Factor):
             return Data.reindex(index=dts, columns=ids)
         else:
             return fillNaByLookback(Data.reindex(index=sorted(Data.index.union(dts)), columns=ids), lookback=self._QSArgs.LookBack * 24.0 * 3600).loc[dts, :]
+
+    # NodeState: {"dt_range", "section_ids", "pid_ids"}
+    def init_compute(self, path: List[str], init_data: FactorInitData, context: FactorContext) -> List[FactorInitData]:
+        return []
 
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
         return self.readData(ids=local_context.IDs, dts=local_context.DTs)

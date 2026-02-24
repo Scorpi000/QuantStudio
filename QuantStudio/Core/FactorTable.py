@@ -170,8 +170,8 @@ class FactorTable(Node):
     def init_compute(self, path: List[str], init_data: FactorInitData, context: FactorContext) -> List[Any]:
         PrepareData = {
             "FactorNames": [],
-            "DTRange": init_data["dt_range"],
-            "SectionIDs": init_data["section_ids"],
+            "DTRange": init_data.DTRange,
+            "SectionIDs": init_data.SectionIDs,
             "Args": self._QSArgs.to_dict(repr=False)
         }
         _, PrepareData = context.PrepareNodeDict.setdefault(self.PrepareID, (self.QSID, PrepareData))

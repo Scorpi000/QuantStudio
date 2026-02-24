@@ -183,9 +183,9 @@ def _QS_calcListData_WideTable(raw_data, factor_names, ids, dts, args={}, **kwar
         Data = {}
         for iFactorName in factor_names:
             if AdditionalFields:
-                iRawData = raw_data.reindex(columns=[iFactorName]+AdditionalFields).groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
+                iRawData = raw_data.reindex(columns=[iFactorName]+AdditionalFields).groupby(level=[0, 1]).apply(Operator).unstack()
             else:
-                iRawData = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
+                iRawData = raw_data[iFactorName].groupby(level=[0, 1]).apply(Operator).unstack()
             iRawData = iRawData.values[RowIdx, ColIdx]
             iRawData[RowIdxMask] = None
             Data[iFactorName] = pd.DataFrame(iRawData, index=dts, columns=RawIDs)
@@ -196,9 +196,9 @@ def _QS_calcListData_WideTable(raw_data, factor_names, ids, dts, args={}, **kwar
         Data = {}
         for iFactorName in factor_names:
             if AdditionalFields:
-                Data[iFactorName] = raw_data.reindex(columns=[iFactorName]+AdditionalFields).groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
+                Data[iFactorName] = raw_data.reindex(columns=[iFactorName]+AdditionalFields).groupby(level=[0, 1]).apply(Operator).unstack()
             else:
-                Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
+                Data[iFactorName] = raw_data[iFactorName].groupby(level=[0, 1]).apply(Operator).unstack()
             if OperatorDataType=="double":
                 Data[iFactorName] = Data[iFactorName].astype(float)
         Data = Panel(Data, items=factor_names)
@@ -223,8 +223,7 @@ def _QS_calcData_WideTable(raw_data, factor_names, ids, dts, data_type, args={},
         RowIdx = pd.DataFrame(np.arange(RowIdxMask.shape[0]).reshape((RowIdxMask.shape[0], 1)).repeat(RowIdxMask.shape[1], axis=1), index=RowIdxMask.index, columns=RawIDs)
         RowIdx[RowIdxMask] = np.nan
         RowIdx = adjustDataDTID(Panel({"RowIdx": RowIdx}), args.get("LookBack", 0), ["RowIdx"], RowIdx.columns.tolist(), dts, args.get("OnlyStartLookBack", False), args.get("OnlyLookBackNontarget", False), only_lookback_dt=True, logger=kwargs.get("logger", None)).iloc[0].values
-        RowIdx[pd.isnull(RowIdx)] = -1
-        RowIdx = RowIdx.astype(int)
+        RowIdx = np.where(pd.isnull(RowIdx), -1, RowIdx).astype(int)
         ColIdx = np.arange(RowIdx.shape[1]).reshape((1, RowIdx.shape[1])).repeat(RowIdx.shape[0], axis=0)
         RowIdxMask = (RowIdx==-1)
         Data = {}
@@ -260,7 +259,7 @@ def _QS_calcListData_NarrowTable(raw_data, factor_names, ids, dts, args={}, **kw
     Data = {}
     for iFactorName in factor_names:
         if iFactorName in raw_data:
-            Data[iFactorName] = raw_data.loc[iFactorName].groupby(axis=0, level=[0, 1]).apply(Operator).unstack()
+            Data[iFactorName] = raw_data.loc[iFactorName].groupby(level=[0, 1]).apply(Operator).unstack()
     if not Data: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
     Data = Panel(Data, items=factor_names).swapaxes(1, 2)
     return adjustDataDTID(Data, args.get("LookBack", 0), factor_names, ids, dts, args.get("OnlyStartLookBack", False), args.get("OnlyLookBackNontarget", False), args.get("OnlyLookBackDT", False), logger=kwargs.get("logger", None))
@@ -440,7 +439,7 @@ class SQL_Table(FactorTable):
     """SQL 因子表"""
     class __QS_ArgClass__(FactorTable.__QS_ArgClass__):
         FilterCondition: str = Field(default="", title="筛选条件", frozen=True)
-        TableType: Literal["WideTable", "NarrowTable", "FeatureTable", "TimeSeriesTable", "MappingTable", "ConstituentTable", "FinancialTable"] = Field(default="WideTable", title="因子表类型", frozen=True)# 不可变
+        TableType: str = Field(default="WideTable", title="因子表类型", frozen=True)
         PreFilterID: bool = Field(default=True, title="预筛选ID", frozen=True)
         DTField: Optional[str] = Field(default=None, title="时点字段", frozen=True)
         IDField: Optional[str] = Field(default=None, title="ID字段", frozen=True)
@@ -552,7 +551,7 @@ class SQL_Table(FactorTable):
         return Groups
     def __QS_identifyDataType__(self, field_data_type):
         field_data_type = field_data_type.lower()
-        if (field_data_type.find("num")!=-1) or (field_data_type.find("int")!=-1) or (field_data_type.find("decimal")!=-1) or (field_data_type.find("double")!=-1) or (field_data_type.find("float")!=-1) or (field_data_type.find("real")!=-1):
+        if (field_data_type.find("num")!=-1) or (field_data_type.find("int")!=-1) or (field_data_type.find("decimal")!=-1) or (field_data_type.find("double")!=-1) or (field_data_type.find("float")!=-1) or (field_data_type.find("real")!=-1) or (field_data_type.find("money")!=-1):
             return "double"
         elif (field_data_type.find("char")!=-1) or (field_data_type.find("text")!=-1) or (field_data_type.find("str")!=-1):
             return "string"
@@ -974,10 +973,10 @@ class SQL_WideTable(SQL_Table):
                     RawData.sort_values(by=["QS_ID", "QS_DT"])
         if RawData.shape[0]==0: return RawData.loc[:, ["QS_DT", "QS_ID"]+factor_names]
         if args.get("EndDateASC", self._QSArgs.EndDateASC):# 删除截止日期非递增的记录
-            #DTRank = RawData.loc[:, ["QS_ID", "QS_DT", "MaxEndDate"]].set_index(["QS_ID"]).astype(np.datetime64).groupby(axis=0, level=0).rank(method="min")
+            #DTRank = RawData.loc[:, ["QS_ID", "QS_DT", "MaxEndDate"]].set_index(["QS_ID"]).astype(np.datetime64).groupby(level=0).rank(method="min")
             #RawData = RawData[(DTRank["QS_DT"]<=DTRank["MaxEndDate"]).values]
-            DTRank = RawData.loc[:, ["QS_ID", "MaxEndDate"]].set_index(["QS_ID"]).astype(np.datetime64).groupby(axis=0, level=0).rank(method="min")["MaxEndDate"]
-            RawData = RawData[DTRank.values>=DTRank.groupby(axis=0, level=0).cummax().values]
+            DTRank = RawData.loc[:, ["QS_ID", "MaxEndDate"]].set_index(["QS_ID"]).astype(np.datetime64).groupby(level=0).rank(method="min")["MaxEndDate"]
+            RawData = RawData[DTRank.values>=DTRank.groupby(level=0).cummax().values]
         return self._adjustRawDataByRelatedField(RawData.loc[:, ["QS_DT", "QS_ID"]+factor_names], factor_names)
     
     def _genNullIDSQLStr_IgnorePublDT(self, factor_names, ids, end_date, args={}):
@@ -1110,7 +1109,7 @@ class SQL_WideTable(SQL_Table):
         RawData["QS_DT"] = self.__QS_adjustDT__(RawData["QS_DT"]).astype(np.datetime64)
         RawData["QS_EndDT"] = self.__QS_adjustDT__(RawData["QS_EndDT"]).astype(np.datetime64)
         # 回溯期数
-        RawData["QS_EndDTPeriod"] = RawData.loc[:, ["QS_ID", "QS_EndDT"]].set_index(["QS_ID"]).groupby(axis=0, level=0).rank(method="dense").values
+        RawData["QS_EndDTPeriod"] = RawData.loc[:, ["QS_ID", "QS_EndDT"]].set_index(["QS_ID"]).groupby(level=0).rank(method="dense").values
         RawData["QS_TargetPeriod"] = RawData["QS_EndDTPeriod"] - args.get("PeriodLookBack", self._QSArgs.PeriodLookBack)
         TargetPeriod = RawData.loc[:, ["QS_ID","QS_DT","QS_TargetPeriod"]].groupby(by=["QS_ID", "QS_DT"]).max().reset_index()
         if args.get("EndDateASC", self._QSArgs.EndDateASC):
@@ -1692,7 +1691,7 @@ class SQL_TimeSeriesTable(SQL_Table):
             if Operator is None: Operator = (lambda x: x.tolist())
             Data = {}
             for iFactorName in factor_names:
-                Data[iFactorName] = raw_data[iFactorName].groupby(axis=0, level=0).apply(Operator)
+                Data[iFactorName] = raw_data[iFactorName].groupby(level=0).apply(Operator)
             Data = pd.DataFrame(Data).loc[:, factor_names]
         else:
             Data = raw_data.loc[:, factor_names]
@@ -1944,8 +1943,29 @@ class SQL_ConstituentTable(SQL_Table):
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
         GroupField: str = Field(title="类别字段", frozen=True)
         EndDTField: str = Field(title="结束时点字段", frozen=True)
-        CurSignField: str = Field(title="当前状态字段", frozen=True)
+        CurSignField: Optional[str] = Field(default=None, title="当前状态字段", frozen=True)
         EndDTIncluded: bool = Field(default=False, title="包含结束时点", frozen=True)
+
+        def __init__(self, /, **data: Any) -> None:
+            Owner = data["Owner"]
+            FactorInfo = Owner._FactorInfo
+            # 解析类别字段
+            Fields = FactorInfo[pd.notnull(FactorInfo["FieldType"])].index.tolist()# 所有字段列表
+            GroupField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="Group"]
+            if GroupField.shape[0]==0: data["GroupField"] = Fields[0]
+            else: data["GroupField"] = GroupField.index[0]
+            # 解析当前状态字段
+            CurSignField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="CurSign"]
+            if CurSignField.shape[0]==0: data["CurSignField"] = None
+            else: data["CurSignField"] = CurSignField.index[0]
+            # 解析结束时点字段
+            Fields = FactorInfo[FactorInfo["FieldType"].str.lower().str.contains("date")].index.tolist()# 所有的时点字段列表
+            EndDTField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="EndDate"]
+            if EndDTField.shape[0]==0: data["EndDTField"] = Fields[0]
+            else: data["EndDTField"] = EndDTField.index[0]
+            EndDTIncluded = FactorInfo.loc[data["EndDTField"], "Supplementary"]
+            data["EndDTIncluded"] = (pd.isnull(EndDTIncluded) or (EndDTIncluded=="包含"))
+            return super().__init__(**data)
         
     def __init__(self, fdb, args={},  table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(fdb=fdb, args=args, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
@@ -2072,7 +2092,7 @@ class SQL_ConstituentTable(SQL_Table):
         if CurSignField is not None: SQLStr += self._DBTableName+"."+self._FactorInfo.loc[CurSignField, "DBFieldName"]+" AS CurSign "# 最新标志
         else: SQLStr += "NULL AS CurSign "# 最新标志
         SQLStr += self._genFromSQLStr()+" "
-        SQLStr += "WHERE ("+genSQLInCondition(GroupField, factor_names, is_str=(self.__QS_identifyDataType__(self._FactorInfo["DataType"].loc[GroupField])!="double"), max_num=1000)+") "
+        SQLStr += "WHERE ("+genSQLInCondition(GroupField, factor_names, is_str=(self.__QS_identifyDataType__(self._FactorInfo["DataType"].loc[args.get("GroupField", self._QSArgs.GroupField)])!="double"), max_num=1000)+") "
         SQLStr += self._genIDSQLStr(ids)+" "
         if StartDT is not None:
             SQLStr += "AND (("+OutDTField+">"+StartDT.strftime(self._DTFormat)+") "
@@ -2119,7 +2139,7 @@ class SQL_ConstituentTable(SQL_Table):
                 for k in range(jIDRawData.shape[0]):
                     kStartDate = jIDRawData["InDate"].iloc[k].date()
                     kEndDate = (jIDRawData["OutDate"].iloc[k].date()-DeltaDT if jIDRawData["OutDate"].iloc[k] is not None else dt.date.today())
-                    iData[jID].loc[kStartDate:kEndDate] = 1
+                    iData.loc[kStartDate:kEndDate, jID] = 1
             Data[iGroup] = iData
         Data = Panel(Data, major_axis=DateSeries)
         if Data.minor_axis.intersection(ids).shape[0]==0: return Panel(0.0, items=factor_names, major_axis=dts, minor_axis=ids)
@@ -2152,9 +2172,9 @@ class SQL_FinancialTable(SQL_Table):
         PeriodLookBack: int = Field(default=0, title="回溯期数", frozen=True, ge=0)
         IgnoreMissing: bool = Field(default=True, title="忽略缺失", frozen=True)
         IgnoreNonQuarter: bool = Field(default=False, title="忽略非季末报告", frozen=True)
-        AdjustTypeField: str = Field(title="调整类型字段", frozen=True)
+        AdjustTypeField: Optional[str] = Field(default=None, title="调整类型字段", frozen=True)
         AdjustType: str = Field(title="调整类型", frozen=True)
-        PublDTField: str = Field(title="公告时点字段", frozen=True)
+        PublDTField: Optional[str] = Field(default=None, title="公告时点字段", frozen=True)
     
         def __init__(self, /, **data: Any) -> None:
             Owner = data["Owner"]
