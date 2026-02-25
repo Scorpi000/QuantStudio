@@ -180,7 +180,7 @@ class FeatherDTCache(FileDTCache):
         super().__init__(args=args, config_file=(__QS_ConfigPath__ + os.sep + "FeatherDTCacheConfig.json" if config_file is None else config_file), **kwargs)
     
     def writeDataFrame(self, path: str, data: pd.DataFrame, if_exists: Literal["append", "replace"]="replace", ignore_index: bool=True, data_type: Optional[str]=None):
-        if data_type=="object": return self.writeDataFramePickle(path=path[:-len(self._QSArgs.Suffix)]+".pkl", data=data, if_exists=if_exists, ignore_index=ignore_index)
+        if data_type=="object": return self.writeDataFramePickle(path=path[:len(path)-len(self._QSArgs.Suffix)]+".pkl", data=data, if_exists=if_exists, ignore_index=ignore_index)
         Dir = os.path.split(path)[0]
         if not os.path.isdir(Dir): os.makedirs(Dir, exist_ok=True)
         if (if_exists=="append") and os.path.isfile(path):
@@ -192,7 +192,7 @@ class FeatherDTCache(FileDTCache):
             data.to_feather(path, compression="uncompressed")
 
     def readDataFrame(self, path: str, data_type: Optional[str]=None):
-        if data_type=="object": return self.readDataFramePickle(path=path[:-len(self._QSArgs.Suffix)]+".pkl")
+        if data_type=="object": return self.readDataFramePickle(path=path[:len(path)-len(self._QSArgs.Suffix)]+".pkl")
         if not os.path.isfile(path): return None
         return pd.read_feather(path)
 

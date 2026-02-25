@@ -102,8 +102,7 @@ class FileFactorCache(FileDTCache, FactorCache):
     def start(self):
         if self._isStarted: return
         CacheDir = self._QSArgs.CacheDir
-        CacheDir = self._QSArgs.CacheDir
-        if not os.path.isdir(CacheDir):
+        if (not CacheDir) or (not os.path.isdir(CacheDir)):
             if CacheDir: self._QS_Logger.warning(f"缓存目录 '{CacheDir}' 不存在, 将使用系统的临时文件夹")
             self._CacheDirObj = tempfile.TemporaryDirectory()
             self._CacheDir = self._CacheDirObj.name
@@ -179,6 +178,7 @@ class FileFactorCache(FileDTCache, FactorCache):
         for iPID in pids:
             iRawDataPath = self._RawDataDir + os.sep + iPID + os.sep + key
             with self._PIDLock[iPID]:
+                if not os.path.isdir(iRawDataPath): continue
                 if target_fields is None: target_fields = [iFile[:-len(self._QSArgs.Suffix)] for iFile in os.listdir(iRawDataPath)]
                 for jField in target_fields:
                     jPath = os.path.join(iRawDataPath, jField + self._QSArgs.Suffix)
@@ -293,7 +293,7 @@ class FileFactorCache(FileDTCache, FactorCache):
 
 class FeatherFactorCache(FileFactorCache, FeatherDTCache):
     class __QS_ArgClass__(FileFactorCache.__QS_ArgClass__, FeatherDTCache.__QS_ArgClass__):
-        pass
+        Suffix: str = Field(default=".feather", title="后缀", frozen=True)
     
     def __init__(self, args={}, config_file=None, **kwargs):
         super().__init__(args=args, config_file=(__QS_ConfigPath__ + os.sep + "FeatherFactorCacheConfig.json" if config_file is None else config_file), **kwargs)

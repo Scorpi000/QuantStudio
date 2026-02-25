@@ -923,6 +923,16 @@ class DerivativeFactor(Factor):
     def _QS_checkConsistency(self):
         pass
     
+    # 获取描述子的截面ID
+    def _QS_getDescriptorSectionIDs(self, i, context):
+        iDescriptor = self.Descriptors[i]
+        if hasattr(self._Operator, "DescriptorSection") and (self._Operator._QSArgs.DescriptorSection[i] is not None):
+            return self._Operator._QSArgs.DescriptorSection[i]
+        elif iDescriptor._QSArgs.SectionIDs:
+            return iDescriptor._QSArgs.SectionIDs
+        else:
+            return context.DefaultSectionIDs
+
     @property
     def Operator(self):
         return self._Operator
@@ -1053,7 +1063,7 @@ class SectionOperation(DerivativeFactor):
             CalcDTs = DTPartition[context.PIDList.index(PID)]
             # if not CalcDTs:# 该进程未分配到计算任务
             #     return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs)
-        return [FactorLocalContext(IDs=context.getID(iDescriptor.QSID, pids=None), DTs=CalcDTs, PIDs=context.PIDList) for iDescriptor in self.Deps], FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, ExtraData={"CalcDTs": CalcDTs})
+        return [FactorLocalContext(IDs=self._QS_getDescriptorSectionIDs(i, context), DTs=CalcDTs, PIDs=context.PIDList) for i, iDescriptor in enumerate(self.Descriptors)], FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, ExtraData={"CalcDTs": CalcDTs})
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
         iSectionIDs = context.getID(self.QSID, pids=None)
@@ -1130,7 +1140,7 @@ class PanelOperation(DerivativeFactor):
             DTPartition = partitionList(CalcDTs, len(context.PIDList))
             CalcDTs = DTPartition[context.PIDList.index(PID)]
         if not CalcDTs:
-            return [FactorLocalContext(IDs=context.getID(iDescriptor.QSID, pids=None), DTs=CalcDTs, PIDs=context.PIDList) for iDescriptor in self.Deps], FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, ExtraData={"CalcDTs": CalcDTs})
+            return [FactorLocalContext(IDs=self._QS_getDescriptorSectionIDs(i, context), DTs=CalcDTs, PIDs=context.PIDList) for i, iDescriptor in enumerate(self.Descriptors)], FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, ExtraData={"CalcDTs": CalcDTs})
         DTRuler = context.DTRuler
         StartIdx, EndIdx = DTRuler.index(CalcDTs[0]), DTRuler.index(CalcDTs[-1])
         FwdData = []
@@ -1142,7 +1152,7 @@ class PanelOperation(DerivativeFactor):
             if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
                 iEndIdx = StartIdx - 1
             iDTs = DTRuler[max(iStartIdx, 0):iEndIdx+1]
-            FwdData.append(FactorLocalContext(IDs=context.getID(iDescriptor.QSID, pids=None), DTs=iDTs, PIDs=context.PIDList))
+            FwdData.append(FactorLocalContext(IDs=self._QS_getDescriptorSectionIDs(i, context), DTs=iDTs, PIDs=context.PIDList))
         return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, ExtraData={"CalcDTs": CalcDTs})
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:

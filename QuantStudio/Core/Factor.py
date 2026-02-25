@@ -80,9 +80,9 @@ class FactorLocalContext(LocalContext):
 
 
 class FactorInitData(QSArgs):
-    DTRange: Tuple[dt.datetime, dt.datetime]
-    SectionIDs: List[str]
-    SubFactorName: Optional[str] = Field(default=None)
+    DTRange: Tuple[dt.datetime, dt.datetime] = Field(title="时点区间")
+    SectionIDs: Optional[List[str]] = Field(default=None, title="截面ID")
+    SubFactorName: Optional[str] = Field(default=None, title="因子名称", description="传递给因子表用于准备原始数据的因子名称")
 
 
 # 因子
@@ -399,6 +399,7 @@ class DataFactor(Factor):
                 else:
                     args["DataType"] = "double"
             else:
+                args.setdefault("Name", str(data))
                 if isinstance(data, str):
                     args["DataType"] = "string"
                 else:
@@ -412,9 +413,11 @@ class DataFactor(Factor):
             if isinstance(data, (pd.Series, pd.DataFrame)):
                 data = data.astype(float)
             else:
+                args.setdefault("Name", str(data))
                 data = float(data)
         elif args["DataType"]=="string":
             if not isinstance(data, (pd.Series, pd.DataFrame)):
+                args.setdefault("Name", str(data))
                 data = str(data)
         super().__init__(ft=None, descriptors=[], args=args, config_file=config_file, **kwargs)
         SectionIDs = self._QSArgs.SectionIDs

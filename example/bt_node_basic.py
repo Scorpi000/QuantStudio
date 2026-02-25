@@ -1,31 +1,45 @@
 import datetime as dt
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from QuantStudio.Core.CalcEngine import Engine, ParallelEngine
 from QuantStudio.Core.Factor import DataFactor, FactorContext, FactorLocalContext, FactorInitData
-from QuantStudio.Core.FactorCache import FeatherCache
+from QuantStudio.Core.FactorCache import FeatherFactorCache
 from QuantStudio.BackTest.BackTestModel import BTInitData, BTLocalContext
-from QuantStudio.BackTest.SectionFactor.IC import CalcIC, ICOutput, ICReport
+from QuantStudio.BackTest.SectionFactor.IC import CalcIC, IC
+from QuantStudio.BackTest.SectionFactor.Portfolio import makeQuantilePortfolio, MultiPortfolio, CalcPortfolioNV
+from QuantStudio.Tools.DateTimeFun import getNaturalDay, getMonthLastDateTime
 
 
 if __name__ == "__main__":
     np.random.seed(0)
-    nDT, nID = 10, 5
-    SectionIDs = [str(i).zfill(6) + ".SZ" for i in range(1, nID + 1)]
-    DTRuler = [dt.datetime(2025, 1, 1) + dt.timedelta(i) for i in range(nDT)]
-    IDs, DTs = SectionIDs[:3], DTRuler[-5:]
-    
-    #Factor1 = DataFactor(data=1, args={"Name": "Factor1"})
-    Factor1 = DataFactor(data=pd.DataFrame(np.random.randn(len(DTs), len(SectionIDs)), index=DTs, columns=SectionIDs), args={"Name": "Factor1"})
-    Factor2 = DataFactor(data=pd.DataFrame(np.random.randn(len(DTs), len(SectionIDs)), index=DTs, columns=SectionIDs), args={"Name": "Factor2"})
-    FactorIC = CalcIC(lookback=1, descriptor_ids=SectionIDs)(Factor1, price=Factor2)
-    BTModule = ICReport(ICOutput(FactorIC, args={"RollingAvgPeriod": 2}))
+    SectionIDs = [f"{str(i).zfill(6)}.SZ" for i in range(1, 21)]
+    IDs = SectionIDs
+    DTRuler = getNaturalDay(dt.datetime(2019, 1, 1), dt.datetime(2020, 12, 31))
+    DTs = getNaturalDay(dt.datetime(2020, 1, 1), dt.datetime(2020, 12, 31))
+    MonthDTRuler = getMonthLastDateTime(DTRuler)
+    MonthDTs = getMonthLastDateTime(DTs)
+
+    Mask = DataFactor(data=pd.DataFrame(np.random.randint(0, 2, size=(len(DTRuler), len(SectionIDs))).astype(bool), index=DTRuler, columns=SectionIDs), args={"Name": "Mask"})
+    Industry = DataFactor(data=pd.Series(np.random.choice(["Fin", "TMT", "Ind"], size=(len(SectionIDs),)), index=SectionIDs, dtype=pd.StringDtype(storage="python")), args={"Name": "Industry", "DataType": "string"})    
+    #Rtn = DataFactor(data=pd.DataFrame(np.random.randn(len(DTRuler), len(SectionIDs)), index=DTRuler, columns=SectionIDs), args={"Name": "Return"})
+    Price = DataFactor(data=pd.DataFrame(np.random.rand(len(DTRuler), len(SectionIDs)) * 10, index=DTRuler, columns=SectionIDs), args={"Name": "Price"})
+    Factor1 = DataFactor(data=pd.DataFrame(np.random.randn(len(DTRuler), len(SectionIDs)), index=DTRuler, columns=SectionIDs), args={"Name": "Factor1"})
+    Factor2 = DataFactor(data=pd.DataFrame(np.random.randn(len(DTRuler), len(SectionIDs)), index=DTRuler, columns=SectionIDs), args={"Name": "Factor2"})
+    Weight = DataFactor(data=pd.DataFrame(np.random.rand(len(DTRuler), len(SectionIDs)), index=DTRuler, columns=SectionIDs), args={"Name": "Weight"})
+
+    FactorIC = CalcIC(lookback=1, descriptor_ids=SectionIDs)(Factor1, price=Price)
+    ICModule = IC(FactorIC, args={"RollingAvgPeriod": 2})
+
+    Mask = (Factor1 > 0)
+    QuantilePortfolioList = makeQuantilePortfolio(Factor1, mask=Mask, cat_data=Industry, weight=Weight, descriptor_ids=SectionIDs, rebalance_dts=MonthDTRuler, group_num=3)
+    calcPortfolioNV = CalcPortfolioNV(descriptor_ids=SectionIDs)
+    PortfolioNVList = [calcPortfolioNV(iPortfolio, price=Price, init_nv=1) for iPortfolio in QuantilePortfolioList]
+    QuantilePortfolioModule = MultiPortfolio(PortfolioNVList, portfolio_list=QuantilePortfolioList, args={"RebalanceDTs": MonthDTRuler})
     
     ExecEngine = Engine()
-    Cache = FeatherCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "CacheDir": Path(r"C:\Users\hst\Project\Data\FactorCache"), "PIDs": ["0"]})
+    Cache = FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "PIDs": ["0"]})
     Cache.start()
     Context = FactorContext(
         PID="0",
@@ -35,9 +49,9 @@ if __name__ == "__main__":
         IDSplit="连续切分",
         FactorDataCache=Cache
     )
-    NodeList = [Factor2, BTModule]
-    FwdDataList = [FactorLocalContext(DTs=DTs, IDs=IDs), BTLocalContext(DTs=DTs)]
-    InitDataList = [FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=SectionIDs), BTInitData(DTRange=(DTs[0], DTs[-1]))]
+    NodeList = [ICModule, QuantilePortfolioModule]
+    FwdDataList = [BTLocalContext(DTs=DTs)] * len(NodeList)
+    InitDataList = [BTInitData(DTRange=(DTs[0], DTs[-1]))] * len(NodeList)
     Rslt = ExecEngine.run(NodeList, Context, fwd_data_list=FwdDataList, init_data_list=InitDataList)
     
     print(Rslt)
