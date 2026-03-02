@@ -3,6 +3,7 @@ dist/
 .idea/
 QuantStudio.egg-info/
 QuantStudio/Backup/
+example/data/
 QuantStudio/Tools/QtGUI/.eric6project/
 __*/
 _eric*/
@@ -19,3 +20,4 @@ TestCoverage.bat
 *.wpr
 *.wpu
 *.code-workspace
+*.env

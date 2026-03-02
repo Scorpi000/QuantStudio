@@ -106,6 +106,7 @@ def strB2Q(ustring):
         rstring += chr(inside_code)
     return rstring
 
+
 # 将 dict 类型的数据转成 html 字符串
 def dict2html(dict_like, tag="ul", list_class=(list, np.ndarray), list_limit=5, dict_class=(dict, pd.Series), dict_limit=5):
     if len(dict_like)>0:
@@ -146,6 +147,41 @@ def dict2html(dict_like, tag="ul", list_class=(list, np.ndarray), list_limit=5, 
     else:
         HTML = "<br/>"
     return HTML
+
+# 将 dict 类型的数据转成 markdown 字符串
+def dict2markdown(dict_like, symbol_list=["*", "+", "-"], list_class=(list, np.ndarray), list_limit=5, dict_class=(dict, pd.Series), dict_limit=5, **kwargs):
+    symbol_idx = kwargs.get("symbol_idx", 0)
+    if len(dict_like) > 0:
+        MD = ""
+        for iKey, iVal in dict_like.items():
+            iVal = dict_like[iKey]
+            if isinstance(iVal, list_class):
+                iNum = len(iVal)
+                if iNum > list_limit:
+                    iLastNum = int(list_limit / 2)
+                    iFirstNum = list_limit - iLastNum
+                    iVal = str(list(iVal[:iFirstNum]) + ["..."] + list(iVal[-iLastNum:]))
+                MD += f"\n{'\t' * (symbol_idx)}{symbol_list[symbol_idx % len(symbol_list)]} {iKey}{f'(共 {iNum} 个元素)' if iNum > list_limit else ''}: {iVal}"
+            elif isinstance(iVal, dict_class):
+                iKeys = list(iVal.keys())
+                iNum = len(iVal)
+                if iNum > dict_limit:
+                    iLastNum = int(dict_limit / 2)
+                    iFirstNum = dict_limit - iLastNum
+                    iKeys = list(iKeys[:iFirstNum]) + ["..."] + list(iKeys[-iLastNum:])
+                iMD = ''
+                for ijKey in iKeys:
+                    ijVal = iVal.get(ijKey, "...")
+                    if isinstance(ijVal, dict_class):
+                        iMD += f"\n{'\t' * (symbol_idx + 1)}{symbol_list[symbol_idx % len(symbol_list)]} {str(ijKey)}: {dict2markdown(ijVal, symbol_list=symbol_list, list_class=list_class, list_limit=list_limit, dict_class=dict_class, dict_limit=dict_limit, symbol_idx=symbol_idx+2)}"
+                    else:
+                        iMD += f"\n{'\t' * (symbol_idx + 1)}{symbol_list[symbol_idx % len(symbol_list)]} {str(ijKey)}: {str(ijVal)}"
+                MD += f"\n{'\t' * symbol_idx}{symbol_list[symbol_idx % len(symbol_list)]} {str(iKey)}: {f'(共 {iNum} 个元素)' if iNum > dict_limit else ''}: {iMD}"
+            else:
+                MD += f"\n{'\t' * symbol_idx}{symbol_list[symbol_idx % len(symbol_list)]} {str(iKey)}: {iVal}"
+    else:
+        MD = ""
+    return MD
 
 if __name__=="__main__":
     df = np.full(shape=(3, 2), fill_value=None, dtype="O")

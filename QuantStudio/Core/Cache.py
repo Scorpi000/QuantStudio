@@ -1,21 +1,14 @@
 # -*- coding: utf-8 -*-
-import os
-import stat
-import time
-import shutil
-import pickle
-import tempfile
 import datetime as dt
-from typing import Optional, List, Literal, Dict
-from multiprocessing import Lock
+from typing import Optional, List, Literal
 
 import numpy as np
 import pandas as pd
-from pydantic import Field, DirectoryPath, FilePath
+from pydantic import Field
 
 from QuantStudio import __QS_ConfigPath__
 from QuantStudio.Core import __QS_Object__, __QS_Error__
-from QuantStudio.Core.QSObject import QSFileLock
+
 
 # 缓存的数据类型: DataFrame
 class Cache(__QS_Object__):

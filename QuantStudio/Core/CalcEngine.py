@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 import concurrent.futures
 from multiprocessing import Process, Queue
-from concurrent.futures import ProcessPoolExecutor
-from typing import Any, List, Optional, Callable, Union
+from typing import Any, List, Optional
 
 from pydantic import Field
 from progressbar import ProgressBar
@@ -35,6 +34,12 @@ class Engine(__QS_Object__):
         self.prepare(node_list=node_list, context=context)
         return self.compute(node_list=node_list, context=context, fwd_data_list=fwd_data_list)
 
+    def __enter__(self):
+        __QS_Engine__.append(self)
+        return self
+    
+    def __exit__(self, exc_type, exc_value, traceback):
+        if __QS_Engine__: __QS_Engine__.pop()
 
 def _execute_task(task):
     print(task["PID"], "start")

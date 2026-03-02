@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import QuantStudio.FactorDataBase.api as FactorDB
+import QuantStudio.Factor.api as Factor
 import QuantStudio.BackTest.api as BackTest
 import QuantStudio.RiskDataBase.api as RiskDB
 import QuantStudio.RiskModel.api as RiskModel

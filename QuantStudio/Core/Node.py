@@ -31,7 +31,14 @@ class Context(QSArgs):
     
     # 并发运行时切分自身成 n 份
     def split(self, n: int, **kwargs):
-        return [self] * n    
+        return [self] * n
+    
+    def __enter__(self):
+        __QS_Context__.append(self)
+        return self
+    
+    def __exit__(self, exc_type, exc_value, traceback):
+        if __QS_Context__: __QS_Context__.pop()
 
 
 class LocalContext(QSArgs):
@@ -49,6 +56,7 @@ class Node(__QS_Object__):
 
     def __init__(self, deps:List["Node"]=[], args:dict={}, config_file:Optional[str]=None, **kwargs):
         self.Deps = deps
+        if "Name" not in args: args = args | {"Name": self.__class__.__name__}
         return super().__init__(args=args, config_file=config_file, **kwargs)
     
     @property
@@ -69,7 +77,7 @@ class Node(__QS_Object__):
         self._Dumped = False
         return d
 
-    def init(self, path: List[str], init_data: Any, context: Context):
+    def init(self, path: List[str], init_data: Any, context: Context) -> None:
         context.NodeDict[self.QSID] = self
         InitDataList = self.init_compute(path, init_data, context)
         if not InitDataList: return

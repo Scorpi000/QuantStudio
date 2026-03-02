@@ -3,15 +3,15 @@ import os
 import html
 import json
 import logging
-from typing import Any, Optional
+from typing import Any, Optional, Literal, Union
 
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 
-from QuantStudio.Tools.DataTypeConversionFun import dict2html
-from QuantStudio.Tools.DataTypeFun import dict2id
 from QuantStudio import __QS_ConfigPath__
+from QuantStudio.Tools.DataTypeConversionFun import dict2html, dict2markdown
+from QuantStudio.Tools.DataTypeFun import dict2id
 
 
 __QS_Logger__ = logging.getLogger('QS')
@@ -44,9 +44,9 @@ class QSArgs(BaseModel):
     
     def model_post_init(self, context: Any, /) -> None:
         self._QS_ID = None
-
+    
     @property
-    def QSID(self):
+    def QSID(self) -> str:
         if not getattr(self, "_QS_ID", None):
             self._QS_ID = dict2id(self.model_dump())
         return self._QS_ID
@@ -58,11 +58,28 @@ class QSArgs(BaseModel):
         return super().__setattr__(name, value)
 
     # 以 dict 形式返回所有参数和参数值, repr=True: 仅返回可见参数
-    def to_dict(self, repr=True):
+    def to_dict(self, repr=True) -> dict:
         if repr:
             return {field: getattr(self, field) for field, info in self.__pydantic_fields__.items() if info.repr}
         else:
-            return {field: getattr(self, field) for field, info in self.__pydantic_fields__.items()}
+            return {field: getattr(self, field) for field in self.__pydantic_fields__.keys()}
+    
+    # 给定 key，返回参数集中参数的元信息
+    def meta(self, key: Optional[Literal["title", "description", "frozen", "exclude", "repr"]]=None, repr=True) -> Union[pd.Series, pd.DataFrame]:
+        if key is not None:
+            return pd.Series({field: getattr(info, key) for field, info in self.__pydantic_fields__.items() if (not repr) or info.repr})
+        else:
+            return pd.DataFrame({key: self.meta(key=key, repr=repr) for key in ["title", "description", "frozen", "exclude", "repr"]})
+
+    # 返回参数的说明信息
+    def info(self, repr=True, html=False) -> str:
+        title = self.meta(key="title", repr=repr)
+        description = self.meta(key="description", repr=repr)
+        formatted_info = {f"{key}{f'({title[key]})'if title[key] else ''}": (description[key] if description[key] else "") for key in title.index}
+        if html:
+            return dict2html(formatted_info)
+        else:
+            return dict2markdown(formatted_info)
 
     def __getitem__(self, key):
         if not hasattr(self, key):
@@ -71,7 +88,7 @@ class QSArgs(BaseModel):
 
     def __setitem__(self, key, value):
         if not hasattr(self, key):
-            self._QS_Logger.warning(f"参数 '{key}' 不存在, 全体参数为: {list(self.__pydantic_fields__.keys())}")
+            self.Logger.warning(f"参数 '{key}' 不存在, 全体参数为: {list(self.__pydantic_fields__.keys())}")
             return
         setattr(self, key, value)
 
@@ -188,5 +205,7 @@ if __name__ == "__main__":
     print(args.to_dict())
     print(args.to_dict(repr=False))
     # print(args._repr_html_())
+
+    print(args.info(repr=False, html=False))
 
     print("===")
