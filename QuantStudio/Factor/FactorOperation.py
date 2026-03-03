@@ -984,7 +984,7 @@ class PointOperation(DerivativeFactor):
             if DTRange is None: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs)
         CalcDTs = context.getDateTime(DTRange)
         if not CalcDTs: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs)
-        return [FactorLocalContext(IDs=context.getID(self.QSID, ([context.PID] if Cached else None)), DTs=CalcDTs, PIDs=fwd_data.PIDs)] * len(self.Deps), FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, ExtraData={"CalcDTs": CalcDTs})
+        return [FactorLocalContext(IDs=context.getID(self.QSID, ([context.PID] if Cached else (fwd_data.PIDs or [context.PID]))), DTs=CalcDTs, PIDs=fwd_data.PIDs)] * len(self.Deps), FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, ExtraData={"CalcDTs": CalcDTs})
 
 
 class TimeOperation(DerivativeFactor):
@@ -1023,7 +1023,7 @@ class TimeOperation(DerivativeFactor):
         if not CalcDTs: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs)
         DTRuler = context.DTRuler
         StartIdx, EndIdx = DTRuler.index(CalcDTs[0]), DTRuler.index(CalcDTs[-1])
-        iSectionIDs = context.getID(self.QSID, ([context.PID] if Cached else None))
+        iSectionIDs = context.getID(self.QSID, ([context.PID] if Cached else (fwd_data.PIDs or [context.PID])))
         FwdData = []
         for i in range(len(self.Deps)):
             if (self._Operator._QSArgs.LookBackMode[i]=="滚动窗口") or (self._Operator._QSArgs.StartDT[i] is None):
@@ -1089,8 +1089,9 @@ class SectionOperation(DerivativeFactor):
             Sub2MainQueue, PIDEvent = context.Event[self.QSID]
             Sub2MainQueue.put(1)
             PIDEvent.wait()
-            TotalCalcDTs = local_context.ExtraData["TotalCalcDTs"]
-            context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(TotalCalcDTs[0], TotalCalcDTs[-1]))
+            if "TotalCalcDTs" in local_context.ExtraData:
+                TotalCalcDTs = local_context.ExtraData["TotalCalcDTs"]
+                context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(TotalCalcDTs[0], TotalCalcDTs[-1]))
         if context.FactorDataCache and self._QSArgs.CacheEnabled:
             StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs, data_type=self._Operator._QSArgs.DataType)
         elif not bwd_data_list:
@@ -1187,8 +1188,9 @@ class PanelOperation(DerivativeFactor):
             Sub2MainQueue, PIDEvent = context.Event[self.QSID]
             Sub2MainQueue.put(1)
             PIDEvent.wait()
-            TotalCalcDTs = local_context.ExtraData["TotalCalcDTs"]
-            context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(TotalCalcDTs[0], TotalCalcDTs[-1]))
+            if "TotalCalcDTs" in local_context.ExtraData:
+                TotalCalcDTs = local_context.ExtraData["TotalCalcDTs"]
+                context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(TotalCalcDTs[0], TotalCalcDTs[-1]))
         if context.FactorDataCache and self._QSArgs.CacheEnabled:
             StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs, data_type=self._Operator._QSArgs.DataType)
         elif not bwd_data_list:
