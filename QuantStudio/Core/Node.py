@@ -11,11 +11,11 @@ __QS_Context__ = []
 
 
 class Context(QSArgs):
-    NodeDict: Dict[str, "Node"] = Field(default={}, title="节点集", description="{节点ID: Node}, 本次运算的所有 Node，由计算引擎生成")
+    NodeDict: Dict[str, "Node"] = Field(default={}, title="节点集", description="{节点ID: Node}, 本次运算的所有 Node, 由计算引擎生成")
     NodeState: Dict[str, Any] = Field(default={}, title="节点状态", description="{节点ID: Any}, 运算中用于存储节点的临时数据，由节点生成和维护")
     PrepareNodeDict: Dict[str, Tuple[str, Any]] = Field(default={}, title="准备节点列表", description="{准备ID: (节点ID, Any)}, 需要执行准备操作的节点列表")
-    PID: str = Field(default="0", title="运行ID", description="当前的运行 ID, 默认为 '0'")
-    PIDList: List[str] = Field(default=["0"], title="所有运行ID")
+    PID: str = Field(default="0", title="当前进程ID", description="当前的运行进程 ID, 默认为 '0'")
+    PIDList: List[str] = Field(default=["0"], title="全部进程ID", description="所有运行进程 ID 列表")
     SplitType: Literal["连续切分", "间隔切分"] = Field(default="连续切分", title="切分方式", frozen=True)
     Event: dict = Field(default={}, title="", description="{节点ID: (Sub2MainQueue, Event)}, 用于多进程同步的 Event 数据")
     
