@@ -77,6 +77,12 @@ class FactorLocalContext(LocalContext):
     IDs: List[str]
     PIDs: Optional[List[str]] = Field(default=None)
 
+    # 并发运行时切分自身成 n 份
+    def split(self, n: int, context: FactorContext, **kwargs):
+        PIDIDs = context.splitID(self.IDs)
+        Args = self.model_dump()
+        return [self.__class__(**(Args | {"IDs": PIDIDs[iPID]})) for iPID in context.PIDList]
+
 
 class FactorInitData(QSArgs):
     DTRange: Tuple[dt.datetime, dt.datetime] = Field(title="时点区间")
@@ -91,6 +97,7 @@ class Factor(Node):
     """因子"""
     class __QS_ArgClass__(Node.__QS_ArgClass__):
         Name: str = Field(default="Factor", frozen=True, title="名称")
+        Meta: dict = Field(default={}, title="元信息", frozen=False, exclude=True)
         SectionIDs: Optional[List[str]] = Field(default=None, title="截面ID", frozen=True)
         CalcDTRuler: Optional[List[dt.datetime]] = Field(default=None, title="计算时点标尺", frozen=True)
         CacheEnabled: bool = Field(default=True, frozen=True, title="启用缓存")
@@ -121,10 +128,15 @@ class Factor(Node):
             return self.Deps
 
     def getMetaData(self, key=None):
-        if self._FactorTable:
-            return self._FactorTable.getFactorMetaData(factor_names=[self._QSArgs.Name], key=key).loc[self._QSArgs.Name]
-        if not key: return pd.Series
-        else: return None
+        if key:
+            if key in self._QSArgs.Meta: return self._QSArgs.Meta[key]
+            elif self._FactorTable: return self._FactorTable.getFactorMetaData(factor_names=[self._QSArgs.Name], key=key).loc[self._QSArgs.Name]
+            else: return None
+        else:
+            Meta = pd.Series(self._QSArgs.Meta)
+            if self._FactorTable:
+                Meta = Meta.combine_first(self._FactorTable.getFactorMetaData(factor_names=[self._QSArgs.Name], key=None).loc[self._QSArgs.Name])
+            return Meta
 
     # 获取 ID 序列
     def getID(self, idt=None, **kwargs):
@@ -262,124 +274,125 @@ class Factor(Node):
     
     # -----------------------------重载运算符-------------------------------------
     def __add__(self, other):
-        from QuantStudio.Core.BasicOperator import add
+        from QuantStudio.Factor.BasicOperator import add
         return add(self, other)
     
     def __radd__(self, other):
-        from QuantStudio.Core.BasicOperator import add
+        from QuantStudio.Factor.BasicOperator import add
         return add(other, self)
     
     def __sub__(self, other):
-        from QuantStudio.Core.BasicOperator import sub
+        from QuantStudio.Factor.BasicOperator import sub
         return sub(self, other)
     
     def __rsub__(self, other):
-        from QuantStudio.Core.BasicOperator import sub
+        from QuantStudio.Factor.BasicOperator import sub
         return sub(other, self)
     
     def __mul__(self, other):
-        from QuantStudio.Core.BasicOperator import mul
+        from QuantStudio.Factor.BasicOperator import mul
         return mul(self, other)
     
     def __rmul__(self, other):
-        from QuantStudio.Core.BasicOperator import mul
+        from QuantStudio.Factor.BasicOperator import mul
         return mul(other, self)
     
     def __pow__(self, other):
-        from QuantStudio.Core.BasicOperator import qs_pow
+        from QuantStudio.Factor.BasicOperator import qs_pow
         return qs_pow(self, other)
     
     def __rpow__(self, other):
-        from QuantStudio.Core.BasicOperator import qs_pow
+        from QuantStudio.Factor.BasicOperator import qs_pow
         return qs_pow(other, self)
     
     def __truediv__(self, other):
-        from QuantStudio.Core.BasicOperator import div
+        from QuantStudio.Factor.BasicOperator import div
         return div(self, other)
     
     def __rtruediv__(self, other):
-        from QuantStudio.Core.BasicOperator import div
+        from QuantStudio.Factor.BasicOperator import div
         return div(other, self)
     
     def __floordiv__(self, other):
-        from QuantStudio.Core.BasicOperator import floordiv
+        from QuantStudio.Factor.BasicOperator import floordiv
         return floordiv(self, other)
     
     def __rfloordiv__(self, other):
-        from QuantStudio.Core.BasicOperator import floordiv
+        from QuantStudio.Factor.BasicOperator import floordiv
         return floordiv(other, self)
     
     def __mod__(self, other):
-        from QuantStudio.Core.BasicOperator import mod
+        from QuantStudio.Factor.BasicOperator import mod
         return mod(self, other)
         
     def __rmod__(self, other):
-        from QuantStudio.Core.BasicOperator import mod
+        from QuantStudio.Factor.BasicOperator import mod
         return mod(other, self)
     
     def __and__(self, other):
-        from QuantStudio.Core.BasicOperator import qs_and
+        from QuantStudio.Factor.BasicOperator import qs_and
         return qs_and(self, other)
         
     def __rand__(self, other):
-        from QuantStudio.Core.BasicOperator import qs_and
+        from QuantStudio.Factor.BasicOperator import qs_and
         return qs_and(other, self)
     
     def __or__(self, other):
-        from QuantStudio.Core.BasicOperator import qs_or
+        from QuantStudio.Factor.BasicOperator import qs_or
         return qs_or(self, other)        
     
     def __ror__(self, other):
-        from QuantStudio.Core.BasicOperator import qs_or
+        from QuantStudio.Factor.BasicOperator import qs_or
         return qs_or(other, self)
     
     def __xor__(self, other):
-        from QuantStudio.Core.BasicOperator import xor
+        from QuantStudio.Factor.BasicOperator import xor
         return xor(self, other)
         
     def __rxor__(self, other):
-        from QuantStudio.Core.BasicOperator import xor
+        from QuantStudio.Factor.BasicOperator import xor
         return xor(other, self)
     
     def __lt__(self, other):
-        from QuantStudio.Core.BasicOperator import lt
+        from QuantStudio.Factor.BasicOperator import lt
         return lt(self, other)
     
     def __le__(self, other):
-        from QuantStudio.Core.BasicOperator import le
+        from QuantStudio.Factor.BasicOperator import le
         return le(self, other)
     
     def __eq__(self, other):
-        from QuantStudio.Core.BasicOperator import eq
+        from QuantStudio.Factor.BasicOperator import eq
         return eq(self, other)
     
     def __ne__(self, other):
-        from QuantStudio.Core.BasicOperator import neq
+        from QuantStudio.Factor.BasicOperator import neq
         return neq(self, other)
     
     def __gt__(self, other):
-        from QuantStudio.Core.BasicOperator import gt
+        from QuantStudio.Factor.BasicOperator import gt
         return gt(self, other)
     
     def __ge__(self, other):
-        from QuantStudio.Core.BasicOperator import ge
+        from QuantStudio.Factor.BasicOperator import ge
         return ge(self, other)
     
     def __neg__(self):
-        from QuantStudio.Core.BasicOperator import neg
+        from QuantStudio.Factor.BasicOperator import neg
         return neg(self)
     
     def __pos__(self):
         return self
     
     def __abs__(self):
-        from QuantStudio.Core.BasicOperator import qs_abs
+        from QuantStudio.Factor.BasicOperator import qs_abs
         return qs_abs(self)
     
     def __invert__(self):
-        from QuantStudio.Core.BasicOperator import qs_not
+        from QuantStudio.Factor.BasicOperator import qs_not
         return qs_not(self)
-    
+
+
 # 直接赋予数据产生的因子
 # data: DataFrame(index=[时点], columns=[ID])
 class DataFactor(Factor):

@@ -319,8 +319,8 @@ class _FinancialIndicatorTable(_FinancialTable):
         # RawData = pd.read_sql_query(SQLStr, self._FactorDB.Connection)
         # RawData.columns = ["ID", "AnnDate", "ReportDate"]+factor_names
         RawData = self._FactorDB.fetchall(SQLStr)
-        if not RawData: return pd.DataFrame(columns=["ID", "AnnDate", "ReportDate"] + factor_names)
-        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "AnnDate", "ReportDate"] + factor_names)
+        if not RawData: return pd.DataFrame(columns=["QS_ID", "AnnDate", "ReportDate"] + factor_names)
+        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["QS_ID", "AnnDate", "ReportDate"] + factor_names)
         RawData["AdjustType"] = 0
         RawData["AnnDate"] = self.__QS_adjustDT__(RawData["AnnDate"])
         RawData["ReportDate"] = self.__QS_adjustDT__(RawData["ReportDate"])

@@ -265,7 +265,7 @@ class RegressChangeRate(PointOperator):
         return super().__init__(args=Args, config_file=config_file, **kwargs)
     
     def calculate(self, f, idt, iid, x, args):
-        Y = np.array(x)
+        Y = np.array(x).astype(float)
         X = np.arange(Y.shape[0]).astype("float").reshape((Y.shape[0], 1, 1)).repeat(Y.shape[1], axis=1).repeat(Y.shape[2], axis=2)
         Denominator = np.abs(np.nanmean(Y, axis=0))
         X[pd.isnull(Y)] = np.nan

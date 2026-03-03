@@ -426,7 +426,7 @@ class HDF5DB(WritableFactorDB):
                     elif value is not None:
                         File.attrs[key] = value
         if meta_data is not None:
-            for iKey in meta_data:
+            for iKey in meta_data.keys():
                 self.setFactorMetaData(table_name, ifactor_name=ifactor_name, key=iKey, value=meta_data[iKey], meta_data=None)
         return 0
 

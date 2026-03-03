@@ -14,6 +14,7 @@ class FactorStorer(Node):
         TargetFDB: FactorDB = Field(frozen=True, title="目标因子库")
         TargetTable: str = Field(frozen=True, tiltle="目标因子表")
         IfExists: Literal["update", "replace", "append"] = Field(default="update", frozen=True, title="写入方式")
+        UpdateMeta: bool = Field(default=False, frozen=True, title="更新元信息")
     
     @property
     def FactorDB(self):
@@ -29,6 +30,12 @@ class FactorStorer(Node):
             DataType = {iFactor._QSArgs.Name: iFactor.getMetaData(key="DataType") for iFactor in self.Deps}
             Data = Panel({self.Deps[i]._QSArgs.Name: iData for i, iData in enumerate(bwd_data_list)})
             self._QSArgs.TargetFDB.writeData(data=Data, table_name=self._QSArgs.TargetTable, if_exists=self._QSArgs.IfExists, data_type=DataType)
+        
+        if self._QSArgs.UpdateMeta:
+            for iFactor in self.Deps:
+                iMeta = iFactor.getMetaData(key=None)
+                iMeta["SourceFactorID"] = iFactor.QSID
+                self._QSArgs.TargetFDB.setFactorMetaData(self._QSArgs.TargetTable, iFactor.Name, key=None, value=None, meta_data=iMeta)
 
 
 if __name__ == "__main__":

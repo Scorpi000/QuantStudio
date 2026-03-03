@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import time
 import concurrent.futures
 from multiprocessing import Process, Queue
 from typing import Any, List, Optional
@@ -38,9 +39,19 @@ class Engine(__QS_Object__):
         :param fwd_data_list: 前向计算输入数据列表
         :return: 节点计算结果列表
         """
+        self._QS_Logger.info("开始初始化计算...")
+        StartT = time.perf_counter()
         self.init(node_list=node_list, context=context, init_data_list=init_data_list)
+        self._QS_Logger.info(f"初始化计算完成, 耗时 {time.perf_counter() - StartT} 秒")
+        self._QS_Logger.info("开始准备计算...")
+        StartT = time.perf_counter()
         self.prepare(node_list=node_list, context=context)
-        return self.compute(node_list=node_list, context=context, fwd_data_list=fwd_data_list)
+        self._QS_Logger.info(f"准备计算完成, 耗时 {time.perf_counter() - StartT} 秒")
+        self._QS_Logger.info("开始正式计算...")
+        StartT = time.perf_counter()
+        Rslt = self.compute(node_list=node_list, context=context, fwd_data_list=fwd_data_list)
+        self._QS_Logger.info(f"正式计算完成, 耗时 {time.perf_counter() - StartT} 秒")
+        return Rslt
 
     def __enter__(self):
         __QS_Engine__.append(self)
@@ -126,7 +137,7 @@ class ParallelEngine(Engine):
             iPID, iSubProg, iMsg = Sub2MainQueue.get()
             FinishedNum += (iSubProg < 0)
         for iPID, iPrcs in Procs.items(): iPrcs.join()
-        return [iNode.merge_result(Data[iNode.QSID]) for i, iNode in enumerate(node_list)]
+        return [iNode.merge_result(result_list=Data[iNode.QSID], context=context) for i, iNode in enumerate(node_list)]
 
 class StackEngine(Engine):
     def run(self, node_list: List[Node], context: Context, init_data_list: Optional[List[Any]]=None, fwd_data_list: Optional[List[Any]]=None) -> List[Any]:

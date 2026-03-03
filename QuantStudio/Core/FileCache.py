@@ -10,6 +10,7 @@ from multiprocessing import Lock
 
 import numpy as np
 import pandas as pd
+from pyarrow import ArrowInvalid
 from pydantic import Field, DirectoryPath, FilePath
 
 from QuantStudio import __QS_ConfigPath__
@@ -63,7 +64,7 @@ class FileDTCache(DTCache):
         if os.path.isfile(self._QSArgs.StateFile):
             StateFilePath = self._QSArgs.StateFile
         else:
-            StateFilePath = os.path.join(self._QSArgs.CacheDir, self._QSArgs.StateFile)
+            StateFilePath = os.path.join(self._CacheDir, self._QSArgs.StateFile)
         with open(StateFilePath, mode="wb") as StateFile:
             pickle.dump(State, StateFile)
 
@@ -193,7 +194,11 @@ class FeatherDTCache(FileDTCache):
     def readDataFrame(self, path: str, data_type: Optional[str]=None):
         if data_type=="object": return self.readDataFramePickle(path=path[:len(path)-len(self._QSArgs.Suffix)]+".pkl")
         if not os.path.isfile(path): return None
-        return pd.read_feather(path)
+        try:
+            return pd.read_feather(path)
+        except ArrowInvalid:
+            return None
+
 
 
 if __name__ == "__main__":

@@ -6,8 +6,8 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 
-from QuantStudio.Core.Factor import Factor
-from QuantStudio.Core.FactorOperation import DerivativeFactor, PointOperator
+from QuantStudio.Factor.Factor import Factor
+from QuantStudio.Factor.FactorOperation import PointOperator
 
 # ----------------------单点运算--------------------------------
 class Rename(PointOperator):
