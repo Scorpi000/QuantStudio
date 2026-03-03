@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """因子运算"""
-import gc
 import datetime as dt
 from functools import partial
 from typing import Optional, Literal, List, Any, Tuple
@@ -948,29 +947,28 @@ class DerivativeFactor(Factor):
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
         Cached = (context.FactorDataCache and self._QSArgs.CacheEnabled)
-        iSectionIDs = context.getID(self.QSID, [context.PID] if Cached else (local_context.PIDs or [context.PID]))
         if bwd_data_list:
+            iSectionIDs = context.getID(self.QSID, [context.PID] if Cached else (local_context.PIDs or [context.PID]))
             CalcDTs = local_context.ExtraData["CalcDTs"]
             if (not iSectionIDs) or (not CalcDTs):
                 StdData = pd.DataFrame(index=CalcDTs, columns=iSectionIDs, dtype=("float" if self._Operator._QSArgs.DataType == "double" else "O"))
             else:
                 if self._Operator._QSArgs.InputFormat == "numpy":
+                    StdData = self._Operator.calcData(factor=self, ids=iSectionIDs, dts=CalcDTs, descriptor_data=[iBwdData.values for iBwdData in bwd_data_list], dt_ruler=context.DTRuler, section_ids=iSectionIDs)
                     try:
-                        StdData = self._Operator.calcData(factor=self, ids=iSectionIDs, dts=CalcDTs, descriptor_data=[iBwdData.values for iBwdData in bwd_data_list], dt_ruler=context.DTRuler, section_ids=iSectionIDs)
+                        StdData = pd.DataFrame(StdData, index=CalcDTs, columns=iSectionIDs)
                     except:
                         print("DEBUG")
-                    StdData = pd.DataFrame(StdData, index=CalcDTs, columns=iSectionIDs)
                 else:
                     StdData = self._Operator.calcData(factor=self, ids=iSectionIDs, dts=CalcDTs, descriptor_data=bwd_data_list, dt_ruler=context.DTRuler, section_ids=iSectionIDs)
             if Cached and (not StdData.empty):
                 context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids={context.PID: iSectionIDs}, pid=context.PID, if_exists="append", data_type=self._Operator._QSArgs.DataType)
                 context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(CalcDTs[0], CalcDTs[-1]))
-        DTs, IDs = local_context.DTs, local_context.IDs
         if Cached:
             StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs, data_type=self._Operator._QSArgs.DataType)
         elif not bwd_data_list:
             raise __QS_Error__("走到了不该走到的地方!")
-        return StdData.reindex(index=DTs, columns=StdData.columns.intersection(IDs)).sort_index(axis=1)
+        return StdData.reindex(index=local_context.DTs, columns=local_context.IDs)
     
 class PointOperation(DerivativeFactor):
     """单点运算"""
@@ -1035,7 +1033,7 @@ class TimeOperation(DerivativeFactor):
             if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
                 iEndIdx = StartIdx - 1
             iDTs = DTRuler[max(iStartIdx, 0):iEndIdx+1]
-            FwdData.append(FactorLocalContext(IDs=iSectionIDs, DTs=iDTs))
+            FwdData.append(FactorLocalContext(IDs=iSectionIDs, DTs=iDTs, PIDs=fwd_data.PIDs))
         return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, ExtraData={"CalcDTs": CalcDTs})
 
 
@@ -1070,8 +1068,8 @@ class SectionOperation(DerivativeFactor):
         return [FactorLocalContext(IDs=self._QS_getDescriptorSectionIDs(i, context), DTs=CalcDTs, PIDs=context.PIDList) for i, iDescriptor in enumerate(self.Descriptors)], FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, ExtraData={"CalcDTs": iCalcDTs, "TotalCalcDTs": CalcDTs})
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
-        iSectionIDs = context.getID(self.QSID, pids=None)
         if bwd_data_list:
+            iSectionIDs = context.getID(self.QSID, pids=None)
             CalcDTs = local_context.ExtraData["CalcDTs"]
             if (not iSectionIDs) or (not CalcDTs):
                 StdData = pd.DataFrame(index=CalcDTs, columns=iSectionIDs, dtype=("float" if self._Operator._QSArgs.DataType == "double" else "O"))
@@ -1093,12 +1091,11 @@ class SectionOperation(DerivativeFactor):
             PIDEvent.wait()
             TotalCalcDTs = local_context.ExtraData["TotalCalcDTs"]
             context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(TotalCalcDTs[0], TotalCalcDTs[-1]))
-        DTs, IDs = local_context.DTs, local_context.IDs
         if context.FactorDataCache and self._QSArgs.CacheEnabled:
             StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs, data_type=self._Operator._QSArgs.DataType)
         elif not bwd_data_list:
             raise __QS_Error__("走到了不该走到的地方!")
-        return StdData.reindex(index=DTs, columns=StdData.columns.intersection(IDs)).sort_index(axis=1)
+        return StdData.reindex(index=local_context.DTs, columns=local_context.IDs)
 
 
 class PanelOperation(DerivativeFactor):
@@ -1168,8 +1165,8 @@ class PanelOperation(DerivativeFactor):
         return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, ExtraData={"CalcDTs": ResponsibleCalcDTs, "TotalCalcDTs": CalcDTs, "DescriptorDTs": DescriptorDTs})
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
-        iSectionIDs = context.getID(self.QSID, pids=None)
         if bwd_data_list:
+            iSectionIDs = context.getID(self.QSID, pids=None)
             CalcDTs = local_context.ExtraData["CalcDTs"]
             if (not iSectionIDs) or (not CalcDTs):
                 StdData = pd.DataFrame(index=CalcDTs, columns=iSectionIDs, dtype=("float" if self._Operator._QSArgs.DataType == "double" else "O"))
@@ -1192,73 +1189,8 @@ class PanelOperation(DerivativeFactor):
             PIDEvent.wait()
             TotalCalcDTs = local_context.ExtraData["TotalCalcDTs"]
             context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=(TotalCalcDTs[0], TotalCalcDTs[-1]))
-        DTs, IDs = local_context.DTs, local_context.IDs
         if context.FactorDataCache and self._QSArgs.CacheEnabled:
             StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs, data_type=self._Operator._QSArgs.DataType)
         elif not bwd_data_list:
             raise __QS_Error__("走到了不该走到的地方!")
-        return StdData.reindex(index=DTs, columns=StdData.columns.intersection(IDs)).sort_index(axis=1)
-    
-    
-    
-if __name__ == "__main__":
-    import datetime as dt
-
-    from QuantStudio.Factor.Factor import DataFactor
-    from QuantStudio.Factor.BasicOperator import rename
-
-    IDs = [f"00000{i}.SZ" for i in range(1, 6)]
-    DTs = [dt.datetime(2020, 1, 1) + dt.timedelta(i) for i in range(4)]
-    Factor1 = DataFactor(name="Factor1", data=1)
-    Factor2 = DataFactor(name="Factor2", data=pd.DataFrame(np.random.randn(len(DTs), len(IDs)), index=DTs, columns=IDs))
-
-    # 表达式方式
-    Factor3 = rename(Factor1 + Factor2, factor_name="Factor3")
-
-
-    # 工厂函数方式
-    def test_point(f, idt, iid, x, args):
-        return x[0] + x[1]
-
-
-    test_point = makeFactorOperator(test_point, "Point", sys_args={"入参数": 2, "运算时点": "多时点", "运算ID": "多ID"})
-    Factor4 = test_point(Factor1, Factor2, factor_name="Factor4")
-
-
-    # 装饰器方式
-    @FactorOperatorized(operator_type="Time", sys_args={"入参数": 1, "运算ID": "多ID", "回溯期数": [3 - 1]})
-    def test_time(f, idt, iid, x, args):
-        return np.nansum(x[0], axis=0)
-
-
-    Factor5 = test_time(Factor1, args={"回溯期数": [2 - 1]}, factor_name="Factor5",
-                        factor_args={"描述信息": "我是 Factor5!"})
-    print(Factor5.getMetaData(key="Description"))
-
-
-    # 直接实例化方式, 不推荐
-    def test_section(f, idt, iid, x, args):
-        return np.argsort(np.argsort(x[0]))
-
-
-    Factor6 = SectionOperation(name="Factor6", descriptors=[Factor2],
-                               sys_args={"算子": test_section, "描述子截面": [IDs], "运算时点": "单时点"})
-
-
-    def test_panel(f, idt, iid, x, args):
-        return np.argsort(np.argsort(x[0][0]))
-
-
-    Factor7 = PanelOperation(name="Factor7", descriptors=[Factor2], sys_args={
-        "算子": makeFactorOperator(test_panel, "Panel", sys_args={"运算时点": "单时点", "回溯期数": [1 - 1]}),
-        "描述子截面": [IDs]})
-
-    print(Factor1.readData(ids=IDs, dts=DTs))
-    print(Factor2.readData(ids=IDs, dts=DTs))
-    print(Factor3.readData(ids=IDs, dts=DTs))
-    print(Factor4.readData(ids=IDs, dts=DTs))
-    print(Factor5.readData(ids=IDs, dts=DTs))
-    print(Factor6.readData(ids=IDs, dts=DTs))
-    print(Factor7.readData(ids=IDs, dts=DTs))
-
-    print("===")
+        return StdData.reindex(index=local_context.DTs, columns=local_context.IDs)

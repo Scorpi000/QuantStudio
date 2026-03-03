@@ -52,6 +52,14 @@ Factor7 = PanelOperation(descriptors=[Factor2], args={"Name": "Factor7", "Operat
 
 
 if __name__ == "__main__":
+    # print(Factor1.readData(ids=IDs, dts=DTs))
+    # print(Factor2.readData(ids=IDs, dts=DTs))
+    # print(Factor3.readData(ids=IDs, dts=DTs))
+    # print(Factor4.readData(ids=IDs, dts=DTs))
+    # print(Factor5.readData(ids=IDs, dts=DTs))
+    # print(Factor6.readData(ids=IDs, dts=DTs))
+    # print(Factor7.readData(ids=IDs, dts=DTs))
+
     ExecEngine = Engine()
     Cache = FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "CacheDir": r"C:\Users\hst\Desktop\Cache", "PIDs": ["0"], "ClearStart": True})
     Cache.start()

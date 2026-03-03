@@ -261,7 +261,7 @@ class Factor(Node):
         if context.FactorDataCache and self._QSArgs.CacheEnabled:
             self._prepareCacheData(context=context)
             StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs, data_type=self.getMetaData(key="DataType"))
-            return StdData.reindex(index=local_context.DTs, columns=StdData.columns.intersection(local_context.IDs)).sort_index(axis=1)
+            return StdData.reindex(index=local_context.DTs, columns=local_context.IDs)
         elif self._FactorTable:
             RawData = self._FactorTable.__QS_prepareRawData__(factor_names=[self._QSArgs.Name], ids=local_context.IDs, dts=local_context.DTs)
             return self._FactorTable.__QS_calcData__(raw_data=RawData, factor_names=[self._QSArgs.Name], ids=local_context.IDs, dts=local_context.DTs).iloc[0]
