@@ -7,14 +7,14 @@ from pydantic import Field
 
 from QuantStudio.Core.Node import Node
 from QuantStudio.Core.CalcEngine import Engine, ParallelEngine, StackEngine
-from QuantStudio.Core.Factor import Factor, DataFactor, FactorContext, FactorLocalContext
-from QuantStudio.Core.BasicOperator import rename
-from QuantStudio.Core.FactorOperator import SectionRank
-from QuantStudio.Core.BaoStockDB import BaoStockDB
-from QuantStudio.Core.HDF5DB import HDF5DB
-from QuantStudio.Core.FactorCache import HDF5Cache, FeatherCache
-from QuantStudio.Core.FactorOperation import PointOperation, makeFactorOperator
-from QuantStudio.Core.FactorStorer import FactorStorer
+from QuantStudio.Factor.Factor import Factor, DataFactor, FactorContext, FactorLocalContext
+from QuantStudio.Factor.BasicOperator import rename
+from QuantStudio.Factor.FactorOperator import SectionRank
+from QuantStudio.Factor.BaoStockDB import BaoStockDB
+from QuantStudio.Factor.HDF5DB import HDF5DB
+from QuantStudio.Factor.FactorCache import HDF5Cache, FeatherCache
+from QuantStudio.Factor.FactorOperation import PointOperation, makeFactorOperator
+from QuantStudio.Factor.FactorStorer import FactorStorer
 
 
 if __name__ == "__main__":
