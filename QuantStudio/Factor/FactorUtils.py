@@ -2328,8 +2328,6 @@ class SQL_FinancialTable(SQL_Table):
         for iFactorName in factor_names:
             if self.__QS_identifyDataType__(self._FactorInfo.loc[iFactorName, "DataType"])=="double":
                 RawData[iFactorName] = RawData[iFactorName].astype(float)
-        if (self._FactorDB._QSArgs.DBType not in ("MySQL", "Oracle", "SQL Server")) and (args.get("IgnoreNonQuarter", self._QSArgs.IgnoreNonQuarter) or (not ((args.get("ReportDate", self._QSArgs.ReportDate)=="所有") and (args.get("CalcType", self._QSArgs.CalcType)=="最新") and (args.get("YearLookBack", self._QSArgs.YearLookBack)==0) and (args.get("PeriodLookBack", self._QSArgs.PeriodLookBack)==0)))):
-            RawData = RawData[RawData["ReportDate"].dt.strftime("%m%d").isin(('0331','0630','0930','1231'))]
         return RawData
     
     def _calcData(self, raw_data, periods, factor_name, ids, dts, calc_type, report_date, ignore_missing, args={}):
@@ -2387,8 +2385,10 @@ class SQL_FinancialTable(SQL_Table):
         return Rslt
     
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
-        if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         CalcType, YearLookBack, PeriodLookBack, ReportDate, IgnoreMissing = args.get("CalcType", self._QSArgs.CalcType), args.get("YearLookBack", self._QSArgs.YearLookBack), args.get("PeriodLookBack", self._QSArgs.PeriodLookBack), args.get("ReportDate", self._QSArgs.ReportDate), args.get("IgnoreMissing", self._QSArgs.IgnoreMissing)
+        if (args.get("IgnoreNonQuarter", self._QSArgs.IgnoreNonQuarter) or (not ((ReportDate=="所有") and (CalcType=="最新") and (YearLookBack==0) and (PeriodLookBack==0)))):
+            raw_data = raw_data[raw_data["ReportDate"].dt.strftime("%m%d").isin(('0331', '0630', '0930', '1231'))]
+        if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         if CalcType=="最新": Periods = np.array([0], dtype=int)
         elif CalcType=="单季度": Periods = np.array([0, 1], dtype=int)
         elif CalcType=="TTM": Periods = np.array([0, 1, 2, 3, 4], dtype=int)
