@@ -7,6 +7,7 @@ from typing import Any, Optional, Literal, Union
 
 import numpy as np
 import pandas as pd
+from pydantic_core import PydanticUndefinedType
 from pydantic import BaseModel, ConfigDict, Field
 
 from QuantStudio import __QS_ConfigPath__
@@ -38,7 +39,7 @@ class __QS_Error__(Exception):
 class QSArgs(BaseModel):
     """参数对象"""
     Owner: Any = Field(default=None, exclude=True, repr=False, frozen=True, title="所有者")
-    Logger: Optional[logging.Logger] = Field(default=__QS_Logger__, exclude=True, repr=False, title="日志对象")
+    Logger: logging.Logger = Field(default=__QS_Logger__, exclude=True, repr=False, title="日志对象")
 
     model_config = ConfigDict(extra='ignore', arbitrary_types_allowed=True)
     
@@ -65,17 +66,21 @@ class QSArgs(BaseModel):
             return {field: getattr(self, field) for field in self.__pydantic_fields__.keys()}
     
     # 给定 key，返回参数集中参数的元信息
-    def meta(self, key: Optional[Literal["title", "description", "frozen", "exclude", "repr"]]=None, repr=True) -> Union[pd.Series, pd.DataFrame]:
+    def meta(self, key: Optional[Literal["annotation", "title", "description", "default", "required", "frozen", "exclude", "repr"]]=None, repr=True) -> Union[pd.Series, pd.DataFrame]:
         if key is not None:
-            return pd.Series({field: getattr(info, key) for field, info in self.__pydantic_fields__.items() if (not repr) or info.repr})
+            return pd.Series({field: getattr(info, key) for field, info in self.__pydantic_fields__.items() if (not repr) or info.repr}, dtype="O")
         else:
-            return pd.DataFrame({key: self.meta(key=key, repr=repr) for key in ["title", "description", "frozen", "exclude", "repr"]})
+            return pd.DataFrame({key: self.meta(key=key, repr=repr) for key in ["annotation", "title", "description", "default", "required", "frozen", "exclude", "repr"]})
 
     # 返回参数的说明信息
     def info(self, repr=True, html=False) -> str:
+        annotation = self.meta(key="annotation", repr=repr)
         title = self.meta(key="title", repr=repr)
+        default = self.meta(key="default", repr=repr)
         description = self.meta(key="description", repr=repr)
-        formatted_info = {f"{key}{f'({title[key]})'if title[key] else ''}": (description[key] if description[key] else "") for key in title.index}
+        key_fmt = "{key}{title}"
+        val_fmt = "{annotation}, {default}{description}"
+        formatted_info = {key_fmt.format(key=key, title=f"({title[key]})" if title[key] else ""): val_fmt.format(annotation=str(annotation[key]), default="无默认值" if isinstance(default[key], PydanticUndefinedType) else "默认值 "+str(default[key]), description=(", "+description[key] if description[key] else "")) for key in annotation.index}
         if html:
             return dict2html(formatted_info)
         else:
@@ -188,9 +193,9 @@ class __QS_Object__:
 
 if __name__ == "__main__":
     class TestArgs(QSArgs):
-        name: str = Field(default=None)# exclude=False, repr=True
-        name1: str = Field(default=None, exclude=True)
-        name2: str = Field(default=None, repr=False)
+        name: str = Field()# exclude=False, repr=True
+        name1: Optional[str] = Field(default=None, exclude=True)
+        name2: Optional[str] = Field(default=None, repr=False)
 
     args = TestArgs(name="aha", name1="aha1", name2="aha2")
     print(args)

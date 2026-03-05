@@ -59,11 +59,11 @@ class _FactorTable(FactorTable):
     """HDF5DB 因子表"""
 
     class __QS_ArgClass__(FactorTable.__QS_ArgClass__):
-        LookBack: IntOrInf = Field(default=0, title="回溯天数", ge=0, frozen=True)
-        OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True)
-        OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True)
-        OnlyLookBackDT: bool = Field(default=False, title="只回溯时点", frozen=True)
-        TargetDT: Optional[dt.datetime] = Field(default=None, title="目标时点", frozen=True)
+        LookBack: IntOrInf = Field(default=0, title="回溯天数", ge=0, frozen=True, description="缺失填充回溯的天数")
+        OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True, description="如果为 True, 表示只对提取数据的第一个时点进行缺失填充, 之后的时点不填充")
+        OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True, description="如果为 True, 表示只用不在提取时点序列中的数据进行缺失填充")
+        OnlyLookBackDT: bool = Field(default=False, title="只回溯时点", frozen=True, description="如果为 True, 表示所有 ID 统一沿着时点字段进行回溯填充, 不单独填充")
+        TargetDT: Optional[dt.datetime] = Field(default=None, title="目标时点", frozen=True, description="非 None 表示只取该时点的值返回")
 
     def __init__(self, fdb, args={}, **kwargs):
         self._Suffix = fdb._Suffix  # 文件后缀名
@@ -269,10 +269,10 @@ class HDF5DB(WritableFactorDB):
 
     class __QS_ArgClass__(WritableFactorDB.__QS_ArgClass__):
         Name: str = Field(default="HDF5DB", title="名称", frozen=True)
-        MainDir: DirectoryPath = Field(title="主目录", frozen=True)
-        LockDir: Optional[DirectoryPath] = Field(default=None, title="锁目录", frozen=True)
-        FileOpenRetryNum: IntOrInf = Field(default=np.inf, title="文件打开重试次数", frozen=False, exclude=True, ge=1)
-        ProcessLock: bool = Field(default=True, title="进程锁", frozen=True)
+        MainDir: DirectoryPath = Field(title="主目录", frozen=True, description="存放数据的主目录")
+        LockDir: Optional[DirectoryPath] = Field(default=None, title="锁目录", frozen=True, description="存放锁文件的目录, 默认 None 表示和主目录相同")
+        FileOpenRetryNum: IntOrInf = Field(default=np.inf, title="文件打开重试次数", frozen=False, exclude=True, ge=1, description="打开数据文件错误时的重试次数")
+        ProcessLock: bool = Field(default=True, title="进程锁", frozen=True, description="是否添加进程锁用于防止多进程间读写冲突")
 
     def __init__(self, args={}, config_file=None, **kwargs):
         self._LockFile = None  # 文件锁的目标文件

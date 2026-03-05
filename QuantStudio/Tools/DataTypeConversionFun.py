@@ -152,7 +152,7 @@ def dict2html(dict_like, tag="ul", list_class=(list, np.ndarray), list_limit=5, 
 def dict2markdown(dict_like, symbol_list=["*", "+", "-"], list_class=(list, np.ndarray), list_limit=5, dict_class=(dict, pd.Series), dict_limit=5, **kwargs):
     symbol_idx = kwargs.get("symbol_idx", 0)
     if len(dict_like) > 0:
-        MD = ""
+        MD = []
         for iKey, iVal in dict_like.items():
             iVal = dict_like[iKey]
             if isinstance(iVal, list_class):
@@ -161,7 +161,7 @@ def dict2markdown(dict_like, symbol_list=["*", "+", "-"], list_class=(list, np.n
                     iLastNum = int(list_limit / 2)
                     iFirstNum = list_limit - iLastNum
                     iVal = str(list(iVal[:iFirstNum]) + ["..."] + list(iVal[-iLastNum:]))
-                MD += f"\n{'\t' * (symbol_idx)}{symbol_list[symbol_idx % len(symbol_list)]} {iKey}{f'(共 {iNum} 个元素)' if iNum > list_limit else ''}: {iVal}"
+                MD.append(f"{'\t' * (symbol_idx)}{symbol_list[symbol_idx % len(symbol_list)]} {iKey}{f'(共 {iNum} 个元素)' if iNum > list_limit else ''}: {iVal}")
             elif isinstance(iVal, dict_class):
                 iKeys = list(iVal.keys())
                 iNum = len(iVal)
@@ -176,9 +176,10 @@ def dict2markdown(dict_like, symbol_list=["*", "+", "-"], list_class=(list, np.n
                         iMD += f"\n{'\t' * (symbol_idx + 1)}{symbol_list[symbol_idx % len(symbol_list)]} {str(ijKey)}: {dict2markdown(ijVal, symbol_list=symbol_list, list_class=list_class, list_limit=list_limit, dict_class=dict_class, dict_limit=dict_limit, symbol_idx=symbol_idx+2)}"
                     else:
                         iMD += f"\n{'\t' * (symbol_idx + 1)}{symbol_list[symbol_idx % len(symbol_list)]} {str(ijKey)}: {str(ijVal)}"
-                MD += f"\n{'\t' * symbol_idx}{symbol_list[symbol_idx % len(symbol_list)]} {str(iKey)}: {f'(共 {iNum} 个元素)' if iNum > dict_limit else ''}: {iMD}"
+                MD.append(f"{'\t' * symbol_idx}{symbol_list[symbol_idx % len(symbol_list)]} {str(iKey)}: {f'(共 {iNum} 个元素)' if iNum > dict_limit else ''}: {iMD}")
             else:
-                MD += f"\n{'\t' * symbol_idx}{symbol_list[symbol_idx % len(symbol_list)]} {str(iKey)}: {iVal}"
+                MD.append(f"{'\t' * symbol_idx}{symbol_list[symbol_idx % len(symbol_list)]} {str(iKey)}: {iVal}")
+        MD = "\n".join(MD)
     else:
         MD = ""
     return MD

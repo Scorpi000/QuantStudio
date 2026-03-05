@@ -52,7 +52,7 @@ class FactorCache(DTCache):
 
     # 写入原始数据
     # raw_data: {field: DataFrame}
-    def writeRawData(self, key, raw_data, id_col="ID", if_exists="append", pid_ids=None):
+    def writeRawData(self, key, raw_data, id_col="ID", if_exists="append", pid_ids=None, meta:dict={}):
         raise NotImplementedError
 
     # 读取原始数据
@@ -68,7 +68,7 @@ class FactorCache(DTCache):
         raise NotImplementedError
 
     # 写入因子数据
-    def writeFactorData(self, key, factor_data, pid_ids, pid=None, target_field="StdData", if_exists="append", data_type=None):
+    def writeFactorData(self, key, factor_data, pid_ids, pid=None, target_field="StdData", if_exists="append", data_type=None, meta:dict={}):
         raise NotImplementedError
 
     # 读取因子数据
@@ -154,7 +154,7 @@ class FileFactorCache(FileDTCache, FactorCache):
                     self.createPath(iPath)
         return IfExist
 
-    def writeRawData(self, key, raw_data, pid_ids, id_col="QS_ID", if_exists="append"):
+    def writeRawData(self, key, raw_data, pid_ids, id_col="QS_ID", if_exists="append", meta:dict={}):
         if raw_data is None: return 0
         for iField, iRawData in raw_data.items():
             if isinstance(iRawData, pd.DataFrame) and (id_col in iRawData):  # 如果原始数据有 ID 列，按照 ID 列划分后存入子进程的原始文件中
@@ -166,11 +166,13 @@ class FileFactorCache(FileDTCache, FactorCache):
                     jPath = self._RawDataDir + os.sep + jPID + os.sep + key + os.sep + iField + self._QSArgs.Suffix
                     with self._DataLock:
                         self.writeDataFrame(path=jPath, data=ijRawData.reset_index(), if_exists=if_exists, ignore_index=True)
+                        if meta: self.writeMeta(path=self._RawDataDir + os.sep + jPID + os.sep + key + os.sep + "meta.json", meta=meta)
             else:  # 如果原始数据没有 ID 列，则将所有数据分别存入子进程的原始文件中
                 for jPID, jIDs in pid_ids.items():
                     jPath = self._RawDataDir + os.sep + jPID + os.sep + key + os.sep + "RawData" + self._QSArgs.Suffix
                     with self._DataLock:
                         self.writeDataFrame(path=jPath, data=iRawData, if_exists=if_exists, ignore_index=True)
+                        if meta: self.writeMeta(path=self._RawDataDir + os.sep + jPID + os.sep + key + os.sep + "meta.json", meta=meta)
 
     def readRawData(self, key, target_fields=None, pids=None):
         if pids is None: pids = self._QSArgs.PIDs
@@ -214,7 +216,7 @@ class FileFactorCache(FileDTCache, FactorCache):
                 IfExist = os.path.exists(iPath) or IfExist
         return IfExist
 
-    def writeFactorData(self, key, factor_data, pid_ids, pid=None, target_field="StdData", if_exists="append", data_type=None):
+    def writeFactorData(self, key, factor_data, pid_ids, pid=None, target_field="StdData", if_exists="append", data_type=None, meta:dict={}):
         PIDs = (self._QSArgs.PIDs if pid is None else [pid])
         for iPID in PIDs:
             with self._PIDLock[iPID]:
@@ -224,6 +226,7 @@ class FileFactorCache(FileDTCache, FactorCache):
                     self.writeDataFrame(path=iPath, data=factor_data.reindex(columns=iIDs), if_exists=if_exists, ignore_index=False, data_type=data_type)
                 else:
                     self.writeDataFrame(path=iPath, data=factor_data, if_exists=if_exists, ignore_index=False, data_type=data_type)
+                if meta: self.writeMeta(path=self._FactorDataDir + os.sep + iPID + os.sep + key + os.sep + "meta.json", meta=meta)
 
     def readFactorData(self, key, ipid, target_field="StdData", pids=None, wait=True, wait_seconds=0.1, data_type=None):
         if isinstance(pids, str):

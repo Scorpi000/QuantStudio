@@ -59,7 +59,7 @@ class Cache(__QS_Object__):
         raise NotImplementedError
 
     # 写入数据
-    def writeData(self, key: str, data: pd.DataFrame, if_exists: Literal["append", "replace"]="append", data_type: Optional[str]=None):
+    def writeData(self, key: str, data: pd.DataFrame, if_exists: Literal["append", "replace"]="append", data_type: Optional[str]=None, meta:dict={}):
         raise NotImplementedError
 
     # 读取数据
@@ -212,7 +212,7 @@ class DTCache(Cache):
         raise NotImplementedError
 
     # 写入时点数据
-    def writeDTData(self, key: str, data: pd.DataFrame, if_exists: Literal["append", "replace"]="append", data_type: Optional[str]=None):
+    def writeDTData(self, key: str, data: pd.DataFrame, if_exists: Literal["append", "replace"]="append", data_type: Optional[str]=None, meta:dict={}):
         raise NotImplementedError
 
     # 读取时点数据

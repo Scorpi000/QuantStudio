@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 import h5py
 from pydantic import BeforeValidator
-from pydantic.types import AllowInfNan
 
 
 # ---------------------特殊类型--------------------------

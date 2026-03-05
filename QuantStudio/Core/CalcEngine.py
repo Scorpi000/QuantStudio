@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import time
+import queue
 import concurrent.futures
 from multiprocessing import Process, Queue
 from typing import Any, List, Optional
@@ -61,14 +62,15 @@ class Engine(__QS_Object__):
         if __QS_Engine__: __QS_Engine__.pop()
 
 def _execute_task(task):
-    print(task["PID"], "start")
     NodeList, Context, FwdDataList = task["NodeList"], task["Context"], task["FwdDataList"]
+    Context.Logger.info(f'子任务进程 {task["PID"]} start')
     Context.PID = task["PID"]
     for i, iNode in enumerate(NodeList):
         iRslt = iNode.compute([], FwdDataList[i], Context)
         task["Sub2MainQueue"].put((task["PID"], 1, (iNode.QSID, iRslt)))
     task["Sub2MainQueue"].put((task["PID"], -1, Context.getUpdateData()))
-    print(task["PID"], "finish")
+    Context.Logger.info(f'子任务进程 {task["PID"]} finish')
+
 
 class ParallelEngine(Engine):
 
@@ -88,6 +90,17 @@ class ParallelEngine(Engine):
                 for iFuture in concurrent.futures.as_completed(Futures):
                     iFuture.result()
                     ProgBar.update(ProgBar.value + 1)
+
+    def _safe_queue_empty(self, q):
+        """跨平台安全的队列空检查"""
+        try:
+            # Windows: 尝试非阻塞获取再放回
+            item = q.get_nowait()
+        except queue.Empty:
+            return True
+        else:
+            q.put(item)# 放回去
+            return False
 
     def compute(self, node_list: List[Node], context: Context, fwd_data_list: Optional[List[Any]]=None):
         if len(node_list) != len(fwd_data_list): raise __QS_Error__("node_list 和 fwd_data_list 长度不一致!")
@@ -113,15 +126,17 @@ class ParallelEngine(Engine):
                     NodeIDs = tuple(EventState.keys())
                     for iNodeID in NodeIDs:
                         iQueue = context.Event[iNodeID][0]
-                        while not iQueue.empty():
+                        # while not iQueue.empty():
+                        while not self._safe_queue_empty(iQueue):
                             jInc = iQueue.get()
                             EventState[iNodeID] += jInc
                         if EventState[iNodeID] >= nTask:
                             context.Event[iNodeID][1].set()
                             EventState.pop(iNodeID)
-                while ((not Sub2MainQueue.empty()) or (nEvent == 0)) and ((iProg < nProg) or (not ContextUpdated)):
+                # while ((not Sub2MainQueue.empty()) or (nEvent == 0)) and ((iProg < nProg) or (not ContextUpdated)):
+                while ((not self._safe_queue_empty(Sub2MainQueue)) or (nEvent == 0)) and ((iProg < nProg) or (not ContextUpdated)):
                     iPID, iSubProg, iMsg = Sub2MainQueue.get()
-                    if iSubProg >= 0:  # 接收到因子数据
+                    if iSubProg >= 0:# 接收到因子数据
                         iProg += iSubProg
                         ProgBar.update(iProg)
                         Data.setdefault(iMsg[0], []).append(iMsg[1])

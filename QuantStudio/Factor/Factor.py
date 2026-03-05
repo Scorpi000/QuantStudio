@@ -218,7 +218,9 @@ class Factor(Node):
                 return 0
             if CalcDTs: StdData = StdData.reindex(index=DTs)
         DataType = self.getMetaData(key="DataType")
-        context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=context.PID, if_exists="append", data_type=DataType)
+        if context.Mode == "DEBUG": Meta = {"FactorName": self.Name, "DepName": [iDep.Name for iDep in self.Deps], "DepQSID": [iDep.QSID for iDep in self.Deps], "FactorTable": None if not self._FactorTable else self._FactorTable.Name}
+        else: Meta = {}
+        context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=context.PID, if_exists="append", data_type=DataType, meta=Meta)
         context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=DTRange)
         return 0
 

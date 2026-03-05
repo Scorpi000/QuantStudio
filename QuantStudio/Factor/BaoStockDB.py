@@ -2,7 +2,7 @@
 """基于 BaoStock 的因子库(http://baostock.com/baostock/)(TODO)"""
 import os
 import datetime as dt
-from typing import Optional, Literal
+from typing import Optional, Literal, Union, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -305,8 +305,17 @@ class BaoStockDB(FactorDB):
         Rslt = pd.DataFrame(Rslt, columns=rs.fields)
         return Rslt
 
-    # 给定起始日期和结束日期, 获取交易所交易日期
-    def getTradeDay(self, start_date=None, end_date=None, exchange="SSE", **kwargs):
+    def getTradeDay(self, start_date:Optional[dt.datetime]=None, end_date:Optional[dt.datetime]=None, exchange:Literal["SSE"]="SSE", **kwargs) -> List[dt.datetime]:
+        """给定交易所、起始日和结束日, 获取交易日序列
+
+        Args:
+            start_date: 起始日, None 表示从可取的最早日期开始
+            end_date: 结束日, None 表示当前日期
+            exchange: 交易所, 默认 SSE(上交所)
+
+        Returns:
+            交易日序列
+        """
         if exchange != "SSE":
             self._QS_Logger.warning(f"BaoStockDB.getTradeDay 的参数 exchange 暂不支持除了 'SSE' 外的其他选项: '{exchange}', 该参数将被忽略!")
         self.connect()
@@ -340,11 +349,18 @@ class BaoStockDB(FactorDB):
         Rslt = Rslt[((Rslt[0]=="SH") & (Initial=="6")) | ((Rslt[0]=="SZ") & (Initial.isin(("0", "3"))))]
         return sorted(Rslt[1] + "." + Rslt[0])
     
-    # 获取指定日 date 的股票 ID
-    # exchange: 交易所(str)或者交易所列表(list(str))
-    # date: 指定日, 默认值 None 表示今天
     # is_current: False 表示上市日期在指定日之前的股票, True 表示上市日期在指定日之前且尚未退市的股票
-    def getStockID(self, exchange=("SSE", "SZSE"), date=None, is_current=True, **kwargs):
+    def getStockID(self, exchange:Optional[Union[str, Tuple[str]]]=("SSE", "SZSE"), date:Optional[dt.datetime]=None, is_current:bool=True, **kwargs) -> List[str]:
+        """给定交易所和日期, 获取股票证券 ID 序列
+
+        Args:
+            exchange: 交易所(str)或者交易所列表(tuple), 默认 ("SSE", "SZSE") 表示上交所、深交所
+            date: 指定日, 默认值 None 表示当前日期
+            is_current: False 表示上市日期在指定日之前的股票, True 表示上市日期在指定日之前且尚未退市的股票
+            
+        Returns:
+            股票证券 ID 序列
+        """
         if date is None: date = dt.date.today()
         if isinstance(exchange, str):
             exchange = {exchange}
@@ -362,8 +378,7 @@ class BaoStockDB(FactorDB):
             raise __QS_Error__(Msg)
         return IDs
     
-    
-    
+
 if __name__ == "__main__":
     BSDB = BaoStockDB().connect()
     print(BSDB.TableNames)

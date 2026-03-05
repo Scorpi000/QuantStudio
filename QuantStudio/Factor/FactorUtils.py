@@ -2138,7 +2138,7 @@ class SQL_ConstituentTable(SQL_Table):
                 jIDRawData = iRawData.loc[[jID]]
                 for k in range(jIDRawData.shape[0]):
                     kStartDate = jIDRawData["InDate"].iloc[k].date()
-                    kEndDate = (jIDRawData["OutDate"].iloc[k].date()-DeltaDT if jIDRawData["OutDate"].iloc[k] is not None else dt.date.today())
+                    kEndDate = (jIDRawData["OutDate"].iloc[k].date() - DeltaDT if pd.notnull(jIDRawData["OutDate"].iloc[k]) else dt.date.today())
                     iData.loc[kStartDate:kEndDate, jID] = 1
             Data[iGroup] = iData
         Data = Panel(Data, major_axis=DateSeries)

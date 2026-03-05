@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import stat
+import json
 import shutil
 import pickle
 import tempfile
@@ -40,7 +41,7 @@ class FileDTCache(DTCache):
     
     def writeDataFramePickle(self, path: str, data: pd.DataFrame, if_exists: Literal["append", "replace"]="replace", ignore_index=True):
         Dir = os.path.split(path)[0]
-        if not os.path.isdir(Dir): os.makedirs(Dir, exist_ok=True)        
+        if not os.path.isdir(Dir): os.makedirs(Dir, exist_ok=True)
         if (if_exists=="append") and os.path.isfile(path):
             OldData = pd.read_pickle(path)
             Data = pd.concat([OldData, data], ignore_index=ignore_index)
@@ -59,6 +60,12 @@ class FileDTCache(DTCache):
     def readDataFrame(self, path: str, data_type: Optional[str]=None):
         raise NotImplementedError
     
+    def writeMeta(self, path: str, meta:dict):
+        Dir = os.path.split(path)[0]
+        if not os.path.isdir(Dir): os.makedirs(Dir, exist_ok=True)
+        with open(path, mode="w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False, indent=2)
+
     def dump(self):
         State = {"_CachedDTRange": self._CachedDTRange}
         if os.path.isfile(self._QSArgs.StateFile):
@@ -112,10 +119,11 @@ class FileDTCache(DTCache):
                     pass
         return ifExist
 
-    def writeData(self, key: str, data: pd.DataFrame, if_exists: Literal["append", "replace"]="append", data_type: Optional[str]=None):
+    def writeData(self, key: str, data: pd.DataFrame, if_exists: Literal["append", "replace"]="append", data_type: Optional[str]=None, meta:dict={}):
         Path = self._DataDir + os.sep + key + self._QSArgs.Suffix
         with self._DataLock:
             self.writeDataFrame(path=Path, data=data, if_exists=if_exists, ignore_index=False, data_type=data_type)
+            if meta: self.writeMeta(path=self._DataDir + os.sep + key + "_meta.json", meta=meta)
 
     def readData(self, key: str, data_type: Optional[str]=None):
         Path = self._DataDir + os.sep + key + self._QSArgs.Suffix
@@ -146,10 +154,11 @@ class FileDTCache(DTCache):
                     pass
         return ifExist
 
-    def writeDTData(self, key: str, data: pd.DataFrame, if_exists: Literal["append", "replace"]="append", data_type: Optional[str]=None):
+    def writeDTData(self, key: str, data: pd.DataFrame, if_exists: Literal["append", "replace"]="append", data_type: Optional[str]=None, meta:dict={}):
         Path = self._DTDataDir + os.sep + key + self._QSArgs.Suffix
         with self._DataLock:
             self.writeDataFrame(path=Path, data=data, if_exists=if_exists, ignore_index=False, data_type=data_type)
+            if meta: self.writeMeta(path=self._DTDataDir + os.sep + key + "_meta.json", meta=meta)
 
     def readDTData(self, key: str, data_type: Optional[str]=None):
         Path = self._DTDataDir + os.sep + key + self._QSArgs.Suffix

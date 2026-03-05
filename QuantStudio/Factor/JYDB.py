@@ -4,7 +4,7 @@ import re
 import os
 import json
 import datetime as dt
-from typing import Optional, Literal, Callable, List
+from typing import Optional, Literal, Callable, List, Union, Tuple
 
 import numpy as np
 import pandas as pd
@@ -953,8 +953,17 @@ class JYDB(QSSQLObject, FactorDB):
         raise __QS_Error__(Msg)
     
     # -----------------------------------------数据提取---------------------------------
-    # 给定起始日期和结束日期, 获取交易所交易日期, 目前支持: "SSE", "SZSE", "SHFE", "DCE", "CZCE", "INE", "CFFEX"
-    def getTradeDay(self, start_date=None, end_date=None, exchange="SSE", **kwargs):
+    def getTradeDay(self, start_date:Optional[dt.datetime]=None, end_date:Optional[dt.datetime]=None, exchange:Literal["SSE", "SZSE", "SHFE", "DCE", "CZCE", "INE", "CFFEX"]="SSE", **kwargs) -> List[dt.datetime]:
+        """给定交易所、起始日和结束日, 获取交易日序列
+
+        Args:
+            start_date: 起始日, None 表示从 1900-01-01 开始
+            end_date: 结束日, None 表示当前日期
+            exchange: 交易所, 默认 SSE(上交所)
+
+        Returns:
+            交易日序列
+        """
         if start_date is None: start_date = dt.datetime(1900, 1, 1)
         if end_date is None: end_date = dt.datetime.today()
         ExchangeCode = self._ExchangeInfo[self._ExchangeInfo["Exchange"] == exchange].index
@@ -969,10 +978,7 @@ class JYDB(QSSQLObject, FactorDB):
         SQLStr += "ORDER BY {Prefix}QT_TradingDayNew.TradingDate"
         SQLStr = SQLStr.format(Prefix=self._QSArgs.TablePrefix, ExchangeCode=ExchangeCode, StartDate=start_date.strftime("%Y-%m-%d %H:%M:%S"), EndDate=end_date.strftime("%Y-%m-%d %H:%M:%S"))
         Rslt = self.fetchall(SQLStr)
-        if kwargs.get("output_type", "datetime") == "date":
-            return [iRslt[0].date() for iRslt in Rslt]
-        else:
-            return [iRslt[0] for iRslt in Rslt]
+        return [iRslt[0] for iRslt in Rslt]
 
     # 获取指定日 date 的全体 A 股 ID
     # date: 指定日, datetime.date
@@ -1079,12 +1085,18 @@ class JYDB(QSSQLObject, FactorDB):
             SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"),
                           StartDate=start_date))]
 
-    # 获取指定日 date 的股票 ID
-    # exchange: 交易所(str)或者交易所列表(list(str))
-    # date: 指定日, 默认值 None 表示今天
-    # is_current: False 表示上市日期在指定日之前的股票, True 表示上市日期在指定日之前且尚未退市的股票
-    # start_date: 起始日, 如果非 None, is_current=False 表示提取在 start_date 至 date 之间上市过的股票 ID, is_current=True 表示提取在 start_date 至 date 之间均保持上市的股票
-    def getStockID(self, exchange=("SSE", "SZSE", "BSE"), date=None, is_current=True, start_date=None, **kwargs):
+    def getStockID(self, exchange:Union[Literal["SSE", "SZSE", "BSE", "HKEX", "AMEX", "NASDAQ", "NYSE", "NEEQ"], Tuple[Literal["SSE", "SZSE", "BSE", "HKEX", "AMEX", "NASDAQ", "NYSE", "NEEQ"]]]=("SSE", "SZSE", "BSE"), date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> List[str]:
+        """给定交易所和日期, 获取股票证券 ID 序列
+
+        Args:
+            exchange: 交易所(str)或者交易所列表(tuple), 默认 ("SSE", "SZSE", "BSE") 表示上交所、深交所、北交所
+            date: 指定日, 默认值 None 表示当前日期
+            is_current: False 表示上市日期在指定日之前的股票, True 表示上市日期在指定日之前且尚未退市的股票
+            start_date: 起始日, 如果非 None 并且 is_current=False 表示提取在 start_date 至 date 之间上市过的股票, 如果 is_current=True 表示提取在 start_date 至 date 之间均保持上市的股票
+        
+        Returns:
+            股票证券 ID 序列
+        """
         if date is None: date = dt.date.today()
         if isinstance(exchange, str):
             exchange = {exchange}
@@ -1117,12 +1129,18 @@ class JYDB(QSSQLObject, FactorDB):
             raise __QS_Error__(Msg)
         return IDs
 
-    # 获取指定日 date 的债券 ID
-    # exchange: 交易所(str)或者交易所列表(list(str))
-    # date: 指定日, 默认值 None 表示今天
-    # is_current: False 表示存续起始日在指定日之前的债券, True 表示存续起始日在指定日之前且尚未到期的债券
-    # start_date: 起始日, 如果非 None, is_current=False 表示提取在 start_date 至 date 之间存续过的债券 ID, is_current=True 表示提取在 start_date 至 date 之间均保持存续的债券
-    def getBondID(self, exchange=None, date=None, is_current=True, start_date=None, **kwargs):
+    def getBondID(self, exchange:Optional[Union[str, Tuple[str]]]=None, date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> List[str]:
+        """给定交易所和日期, 获取债券证券 ID 序列
+
+        Args:
+            exchange: 交易所(str)或者交易所列表(tuple), 默认 None 表示所有交易所
+            date: 指定日, 默认值 None 表示当前日期
+            is_current: False 表示存续起始日在指定日之前的债券, True 表示存续起始日在指定日之前且尚未到期的债券
+            start_date: 起始日, 如果非 None 并且 is_current=False 表示提取在 start_date 至 date 之间存续过的债券, 如果 is_current=True 表示提取在 start_date 至 date 之间均保持存续的债券
+        
+        Returns:
+            债券证券 ID 序列
+        """
         if date is None: date = dt.date.today()
         if start_date is not None: start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
         Exchange = self._TableInfo.loc["债券证券主表", "Exchange"]
@@ -1183,15 +1201,22 @@ class JYDB(QSSQLObject, FactorDB):
         SQLStr += "ORDER BY ID"
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix))]
 
-    # 给定期货代码 future_code, 获取指定日 date 的期货 ID
-    # exchange: 交易所(str)或者交易所列表(list(str))
-    # future_code: 期货代码(str)或者期货代码列表(list(str)), None 表示所有期货代码
-    # date: 指定日, 默认值 None 表示今天
-    # is_current: False 表示上市日在指定日之前的期货, True 表示上市日在指定日之前且尚未退市的期货
-    # kwargs:
-    # contract_type: 合约类型, 可选 "月合约", "连续合约", "所有", 默认值 "月合约"
-    # continue_contract_type: 连续合约类型, list(str), 可选 "主力合约", "期货指数", "次主力合约", "连续合约", "连一合约", "连二合约", "连三合约", "连四合约", "当月连续合约", "次月连续合约", "当季连续合约", "下季连续合约", "隔季连续合约"
-    def getFutureID(self, exchange=None, future_code=None, date=None, is_current=True, start_date=None, **kwargs):
+    def getFutureID(self, exchange:Optional[Union[str, Tuple[str]]]=None, future_code:Optional[Union[str, Tuple[str]]]=None, date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> List[str]:
+        """给定交易所、期货品种代码和日期, 获取期货证券 ID 序列
+
+        Args:
+            exchange: 交易所(str)或者交易所列表(tuple), 默认 None 表示所有交易所
+            future_code: 期货品种代码(str)或者期货品种代码列表(tuple), None 表示所有期货品种代码
+            date: 指定日, 默认值 None 表示当前日期
+            is_current: False 表示上市日在指定日之前的期货, True 表示上市日在指定日之前且尚未退市的期货
+            start_date: 起始日, 如果非 None 并且 is_current=False 表示提取在 start_date 至 date 之间上市过的期货, 如果 is_current=True 表示提取在 start_date 至 date 之间均保持上市的期货
+            kwargs:
+                contract_type: 合约类型, 可选 "月合约", "连续合约", "所有", 默认值 "月合约"
+                continue_contract_type: 连续合约类型, list[str], 可选 "主力合约", "期货指数", "次主力合约", "连续合约", "连一合约", "连二合约", "连三合约", "连四合约", "当月连续合约", "次月连续合约", "当季连续合约", "下季连续合约", "隔季连续合约", 默认值 None 表示所有
+        
+        Returns:
+            期货证券 ID 序列
+        """
         if date is None: date = dt.date.today()
         if start_date is not None: start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
         ExchangeInfo = self._ExchangeInfo
@@ -1255,12 +1280,17 @@ class JYDB(QSSQLObject, FactorDB):
                 SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"),
                               StartDate=start_date))]
 
-    # 获取指定交易所 exchange 的期货代码
-    # exchange: 交易所(str)或者交易所列表(list(str))
-    # date: 指定日, 默认值 None 表示今天
-    # is_current: True 表示只返回当前上市的期货代码
-    # kwargs:
-    def getFutureCode(self, exchange=("SHFE", "INE", "DCE", "CZCE", "CFFEX"), date=None, is_current=True, **kwargs):
+    def getFutureCode(self, exchange:Optional[Union[str, Tuple[str]]]=None, date:Optional[dt.datetime]=None, is_current:bool=True, **kwargs) -> List[str]:
+        """给定交易所和日期, 获取期货品种代码序列
+
+        Args:
+            exchange: 交易所(str)或者交易所列表(tuple), 默认 None 表示所有交易所
+            date: 指定日, 默认值 None 表示当前日期
+            is_current: False 表示上市日在指定日之前的期货品种, True 表示上市日在指定日之前且尚未退市的期货品种
+        
+        Returns:
+            期货品种代码序列
+        """
         if date is not None:
             raise __QS_Error__("尚不支持获取指定日期上市的期货品种!")
         SQLStr = "SELECT DISTINCT TradingCode FROM {Prefix}Fut_FuturesContract "
@@ -1278,11 +1308,17 @@ class JYDB(QSSQLObject, FactorDB):
         SQLStr += "ORDER BY TradingCode"
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix))]
 
-    # 给定期权代码 option_code, 获取指定日 date 的期权代码
-    # option_code: 期权代码(str)
-    # date: 指定日, 默认值 None 表示今天
-    # is_current: False 表示上市日在指定日之前的期权, True 表示上市日在指定日之前且尚未退市的期权
-    def getOptionID(self, option_code="510050", date=None, is_current=True, start_date=None, **kwargs):
+    def getOptionID(self, option_code:str="510050", date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> List[str]:
+        """给定期权品种代码和日期, 获取期权证券 ID 序列
+
+        Args:
+            option_code: 期权品种代码
+            date: 指定日, 默认值 None 表示当前日期
+            is_current: False 表示上市日在指定日之前的期权, True 表示上市日在指定日之前且尚未退市的期权
+        
+        Returns:
+            期权证券 ID 序列
+        """
         if date is None: date = dt.date.today()
         if start_date is not None: start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
         SQLStr = "SELECT DISTINCT TradingCode FROM {Prefix}Opt_OptionContract "
@@ -1302,10 +1338,17 @@ class JYDB(QSSQLObject, FactorDB):
             SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"),
                           StartDate=start_date, OptionCode=option_code))]
 
-    # 获取指定日 date 基金 ID
-    # date: 指定日, 默认值 None 表示今天
-    # is_current: False 表示成立日在指定日之前的基金, True 表示成立日在指定日之前且尚未清盘的基金
-    def getMutualFundID(self, exchange=None, date=None, is_current=True, start_date=None, **kwargs):
+    def getMutualFundID(self, exchange:Optional[Union[str, Tuple[str]]]=None, date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> List[str]:
+        """给定日期, 获取公募基金 ID 序列
+
+        Args:
+            exchange: 交易所(str)或者交易所列表(tuple), 如果非 None 表示只考虑在这些指定的交易所上市的基金, None 表示包括非上市基金
+            date: 指定日, 默认值 None 表示当前日期
+            is_current: False 表示成立日在指定日之前的基金, True 表示成立日在指定日之前且尚未清盘的基金
+        
+        Returns:
+            公募基金证券 ID 序列
+        """
         if date is None: date = dt.date.today()
         if start_date is not None: start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
         SQLStr = "SELECT CONCAT({Prefix}SecuMain.SecuCode, '.OF') AS ID FROM {Prefix}mf_fundarchives "
@@ -1336,8 +1379,19 @@ class JYDB(QSSQLObject, FactorDB):
         else:
             return []
 
-    # 获取行业 ID
-    def getIndustryID(self, standard="中信行业分类", level=1, date=None, is_current=True, start_date=None, **kwargs):
+    def getIndustryID(self, standard:str="中信行业分类", level:int=1, date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> List[str]:
+        """给定行业分类和日期, 获取行业 ID 序列
+
+        Args:
+            standard: 行业分类
+            level: 分类层级
+            date: 指定日, 默认值 None 表示当前日期
+            is_current: False 表示指定日之前曾经存续过的行业, True 表示指定日仍然保持存续的行业
+            start_date: 起始日, 如果非 None 并且 is_current=False 表示提取在 start_date 至 date 之间存续过的行业, 如果 is_current=True 表示提取在 start_date 至 date 之间均保持存续的行业
+        
+        Returns:
+            行业 ID 序列
+        """
         SQLStr = ("SELECT DM FROM {Prefix}CT_SystemConst WHERE LB=1081 AND MS='%s'" % (standard,))
         Standard = self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix))
         if len(Standard) != 1:
@@ -1363,10 +1417,6 @@ class JYDB(QSSQLObject, FactorDB):
         return [str(iRslt[0]) for iRslt in self.fetchall(
             SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"),
                           StartDate=start_date))]
-
-    # 获取宏观指标名称对应的指标 ID, TODO
-    def getMacroIndicatorID(self, indicators, table_name=None):
-        pass
 
 
 if __name__=="__main__":
