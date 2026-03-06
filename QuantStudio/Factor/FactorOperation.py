@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """因子运算"""
+import os
 import datetime as dt
 from functools import partial
 from typing import Optional, Literal, List, Any, Tuple
@@ -1050,7 +1051,10 @@ class SectionOperation(DerivativeFactor):
             if self._Operator._QSArgs.DescriptorSection[i] is not None:
                 InitData[i] = InitData[i].__class__(**(InitData[i].model_dump() | {"SectionIDs": self._Operator._QSArgs.DescriptorSection[i]}))
         if (len(context.PIDList) > 1) and (self.QSID not in context.Event):
-            context.Event[self.QSID] = (Queue(), Event())
+            if os.name == "nt":
+                context.Event[self.QSID] = (context.ExtraData["mp_manager"].Queue(), context.ExtraData["mp_manager"].Event())
+            else:
+                context.Event[self.QSID] = (Queue(), Event())
         return InitData
     
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
@@ -1132,7 +1136,10 @@ class PanelOperation(DerivativeFactor):
                 iInitData["SectionIDs"] = init_data.SectionIDs
             InitData[i] = InitData[i].__class__(**iInitData)
         if (len(context.PIDList) > 1) and (self.QSID not in context.Event):
-            context.Event[self.QSID] = (Queue(), Event())
+            if os.name == "nt":
+                context.Event[self.QSID] = (context.ExtraData["mp_manager"].Queue(), context.ExtraData["mp_manager"].Event())
+            else:
+                context.Event[self.QSID] = (Queue(), Event())
         return InitData
     
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:

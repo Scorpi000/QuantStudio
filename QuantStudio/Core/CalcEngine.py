@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
+import os
 import time
 import queue
 import concurrent.futures
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, Manager
 from typing import Any, List, Optional
 
 from pydantic import Field
@@ -63,7 +64,7 @@ class Engine(__QS_Object__):
 
 def _execute_task(task):
     NodeList, Context, FwdDataList = task["NodeList"], task["Context"], task["FwdDataList"]
-    Context.Logger.info(f'子任务进程 {task["PID"]} start')
+    Context.Logger.info(f'子任务进程 {task["PID"]} start, PID: {os.getpid()}')
     Context.PID = task["PID"]
     for i, iNode in enumerate(NodeList):
         iRslt = iNode.compute([], FwdDataList[i], Context)
@@ -76,6 +77,13 @@ class ParallelEngine(Engine):
 
     class __QS_ArgClass__(Engine.__QS_ArgClass__):
         IOConcurrentNum: Optional[int] = Field(default=None, title="IO并发数", frozen=True, ge=1)
+
+    # 初始化
+    def init(self, node_list: List[Node], context: Context, init_data_list: Optional[List[Any]]=None):
+        if os.name=="nt": self._MP_Manager = context.ExtraData["mp_manager"] = Manager()
+        Rslt = super().init(node_list=node_list, context=context, init_data_list=init_data_list)
+        if os.name=="nt": context.ExtraData.pop("mp_manager")
+        return Rslt
 
     def prepare(self, node_list: List[Node], context: Context):
         if not context.PrepareNodeDict: return
@@ -107,7 +115,10 @@ class ParallelEngine(Engine):
         nTask = len(context.PIDList)
         SplitedContext = context.split(nTask)
         SplitedFwdDataList = zip(*[(FwdData.split(nTask, context) if hasattr(FwdData, "split") else [FwdData] * nTask) for FwdData in fwd_data_list])
-        Sub2MainQueue = Queue()
+        if os.name=="nt":
+            Sub2MainQueue = self._MP_Manager.Queue()
+        else:
+            Sub2MainQueue = Queue()
         Procs = {}
         for i, iFwdDataList in enumerate(SplitedFwdDataList):
             iPID = context.PIDList[i]
@@ -126,15 +137,15 @@ class ParallelEngine(Engine):
                     NodeIDs = tuple(EventState.keys())
                     for iNodeID in NodeIDs:
                         iQueue = context.Event[iNodeID][0]
-                        # while not iQueue.empty():
-                        while not self._safe_queue_empty(iQueue):
+                        # while not self._safe_queue_empty(iQueue):
+                        while not iQueue.empty():
                             jInc = iQueue.get()
                             EventState[iNodeID] += jInc
                         if EventState[iNodeID] >= nTask:
                             context.Event[iNodeID][1].set()
                             EventState.pop(iNodeID)
-                # while ((not Sub2MainQueue.empty()) or (nEvent == 0)) and ((iProg < nProg) or (not ContextUpdated)):
-                while ((not self._safe_queue_empty(Sub2MainQueue)) or (nEvent == 0)) and ((iProg < nProg) or (not ContextUpdated)):
+                # while ((not self._safe_queue_empty(Sub2MainQueue)) or (nEvent == 0)) and ((iProg < nProg) or (not ContextUpdated)):
+                while ((not Sub2MainQueue.empty()) or (nEvent == 0)) and ((iProg < nProg) or (not ContextUpdated)):
                     iPID, iSubProg, iMsg = Sub2MainQueue.get()
                     if iSubProg >= 0:# 接收到因子数据
                         iProg += iSubProg
@@ -152,6 +163,7 @@ class ParallelEngine(Engine):
             iPID, iSubProg, iMsg = Sub2MainQueue.get()
             FinishedNum += (iSubProg < 0)
         for iPID, iPrcs in Procs.items(): iPrcs.join()
+        if os.name == "nt": self._MP_Manager.shutdown()
         return [iNode.merge_result(result_list=Data[iNode.QSID], context=context) for i, iNode in enumerate(node_list)]
 
 class StackEngine(Engine):

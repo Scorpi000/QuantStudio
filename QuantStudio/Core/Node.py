@@ -18,7 +18,8 @@ class Context(QSArgs):
     PID: str = Field(default="0", title="当前进程ID", description="当前的运行进程 ID, 默认为 '0'")
     PIDList: List[str] = Field(default=["0"], title="全部进程ID", description="所有运行进程 ID 列表")
     SplitType: Literal["连续切分", "间隔切分"] = Field(default="连续切分", title="切分方式", frozen=True)
-    Event: dict = Field(default={}, title="", description="{节点ID: (Sub2MainQueue, Event)}, 用于多进程同步的 Event 数据")
+    Event: dict = Field(default={}, title="同步Event", description="{节点ID: (Sub2MainQueue, Event)}, 用于多进程同步的 Event 数据")
+    ExtraData: dict = Field(default={}, title="其他数据")
     
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -43,7 +44,7 @@ class Context(QSArgs):
 
 
 class LocalContext(QSArgs):
-    ExtraData: dict = Field(default={})
+    ExtraData: dict = Field(default={}, title="其他数据")
     
     # 并发运行时切分自身成 n 份
     def split(self, n: int, context: Context, **kwargs):

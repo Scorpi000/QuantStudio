@@ -7,7 +7,7 @@ import pickle
 import time
 import datetime as dt
 from multiprocessing import Lock
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -624,9 +624,12 @@ class HDF5DB(WritableFactorDB):
 
 
 if __name__ == "__main__":
-    HDB = HDF5DB(args={"MainDir": r"C:\Users\hst\Project\Data\HDF5DB"}).connect()
+    HDB = HDF5DB(args={"MainDir": "/mnt/d/HST/Project/QuantStudio/example/data/HDF5"}).connect()
     print(HDB.Args)
     print(HDB.TableNames)
+
+    FT = HDB.getTable("stock_cn_day_bar")
+    DataType = FT.getFactorMetaData(key="DataType")
 
     df = pd.DataFrame(
         [(None, "aha"), ("中文", "aaa")],
@@ -656,16 +659,5 @@ if __name__ == "__main__":
     print(Data)
 
     HDB.deleteTable("test_table")
-
-    ## 数据转移
-    # SDB = HDF5DB(sys_args={"主目录": r"D:\Data\HDF5Data_Old"})
-    # SDB.connect()
-    # Tables = ["stock_cn_quote_adj_no_nafilled"]
-    # for iTable in Tables:
-    # iFT = SDB.getTable(iTable)
-    # for jFactor in iFT.FactorNames:
-    # ijData = iFT.readFactorData(jFactor, None, None)
-    ##ijData.columns = [iID.decode("utf-8") for iID in ijData.columns]
-    # HDB.writeFactorData(ijData, iTable, jFactor)
 
     print("===")
