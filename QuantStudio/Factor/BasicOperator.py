@@ -334,7 +334,7 @@ neq = Neq()
 
 
 if __name__=="__main__":
-    from QuantStudio.Core.Factor import DataFactor
+    from QuantStudio.Factor.Factor import DataFactor
     
     np.random.seed(0)
     IDs = [f"00000{i}.SZ" for i in range(1, 6)]

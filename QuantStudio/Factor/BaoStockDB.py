@@ -2,7 +2,7 @@
 """基于 BaoStock 的因子库(http://baostock.com/baostock/)(TODO)"""
 import os
 import datetime as dt
-from typing import Optional, Literal, Union, List, Tuple
+from typing import Optional, Literal, Union, List, Tuple, Self, Any
 
 import numpy as np
 import pandas as pd
@@ -80,7 +80,7 @@ class _BSTable(FactorTable):
         return DumpedMdl
 
     @property
-    def FactorNames(self):
+    def FactorNames(self) -> List[str]:
         FactorInfo = self._FactorInfo
         return FactorInfo[FactorInfo["FieldType"] == "因子"].index.tolist()
 
@@ -129,14 +129,14 @@ class _BSTable(FactorTable):
         else:
             return [dt.datetime.strptime(iDT, DTFmt) if pd.notnull(iDT) else pd.NaT for iDT in dts]
 
-    def getMetaData(self, key=None):
+    def getMetaData(self, key:Optional[str]=None) -> Union[Any, pd.Series]:
         TableInfo = self._FactorDB._TableInfo.loc[self._QSArgs.Name]
         if key is None:
             return TableInfo
         else:
             return TableInfo.get(key, None)
 
-    def getFactorMetaData(self, factor_names=None, key=None):
+    def getFactorMetaData(self, factor_names:Optional[List[str]]=None, key:Optional[str]=None) -> Union[pd.DataFrame, pd.Series]:
         if factor_names is None: factor_names = self.FactorNames
         FactorInfo = self._FactorDB._FactorInfo.loc[self._QSArgs.Name]
         if key == "DataType":
@@ -249,7 +249,7 @@ class BaoStockDB(FactorDB):
         DBInfoFile: Optional[FilePath] = Field(default=None, title="库信息文件", frozen=True)
         FTArgs: dict = Field(default={}, title="因子表参数", frozen=True)
 
-    def __init__(self, args={}, config_file=None, **kwargs):
+    def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
         super().__init__(args=args, config_file=(__QS_ConfigPath__ + os.sep + "BaoStockDBConfig.json" if config_file is None else config_file), **kwargs)
         self._InfoFilePath = __QS_MainPath__ + os.sep + "Lib" + os.sep + "BaoStockDBInfo.hdf5"  # 数据库信息文件路径
         if (not self._QSArgs.DBInfoFile) or (not os.path.isfile(self._QSArgs.DBInfoFile)):
@@ -261,25 +261,25 @@ class BaoStockDB(FactorDB):
             self._TableInfo, self._FactorInfo, self._ArgInfo = _updateInfo(self._InfoFilePath, self._InfoResourcePath, self._QS_Logger, out_info=True)  # 数据库表信息, 数据库字段信息
 
     @property
-    def TableNames(self):
+    def TableNames(self) -> List[str]:
         if self._TableInfo is not None:
             return self._TableInfo.index.tolist()
         else:
             return []
 
-    def connect(self):
+    def connect(self) -> Self:
         LG = bs.login(user_id=self._QSArgs.UserID, password=self._QSArgs.Pwd)
         if LG.error_code != "0":
             raise __QS_Error__(f"BaoStockDB.connect 登录错误码: {LG.error_code}, 错误信息: {LG.error_msg}")
         return self
 
-    def disconnect(self):
+    def disconnect(self) -> int:
         LG = bs.logout(user_id=self._QSArgs.UserID)
         if LG.error_code != "0":
             self._QS_Logger.error(f"BaoStockDB.disconnect 登出错误码: {LG.error_code}, 错误信息: {LG.error_msg}")
         return 0
 
-    def getTable(self, table_name, args={}):
+    def getTable(self, table_name:str, args:dict={}) -> _BSTable:
         if table_name in self._TableInfo.index:
             TableClass = args.get("因子表类型", self._TableInfo.loc[table_name, "TableClass"])
             if pd.notnull(TableClass) and (TableClass != ""):
@@ -348,8 +348,7 @@ class BaoStockDB(FactorDB):
         Initial = Rslt[1].str.slice(0, 1)
         Rslt = Rslt[((Rslt[0]=="SH") & (Initial=="6")) | ((Rslt[0]=="SZ") & (Initial.isin(("0", "3"))))]
         return sorted(Rslt[1] + "." + Rslt[0])
-    
-    # is_current: False 表示上市日期在指定日之前的股票, True 表示上市日期在指定日之前且尚未退市的股票
+
     def getStockID(self, exchange:Optional[Union[str, Tuple[str]]]=("SSE", "SZSE"), date:Optional[dt.datetime]=None, is_current:bool=True, **kwargs) -> List[str]:
         """给定交易所和日期, 获取股票证券 ID 序列
 

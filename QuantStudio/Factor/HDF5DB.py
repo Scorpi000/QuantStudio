@@ -7,7 +7,7 @@ import pickle
 import time
 import datetime as dt
 from multiprocessing import Lock
-from typing import Optional
+from typing import Optional, Self, Any, Dict, Literal, List, Union
 
 import numpy as np
 import pandas as pd
@@ -55,8 +55,8 @@ def _adjustData(data, data_type, order="C"):
         raise __QS_Error__("不支持的数据类型: %s" % data_type)
 
 
-class _FactorTable(FactorTable):
-    """HDF5DB 因子表"""
+class _HDF5FactorTable(FactorTable):
+    """HDF5DB 库中因子表"""
 
     class __QS_ArgClass__(FactorTable.__QS_ArgClass__):
         LookBack: IntOrInf = Field(default=0, title="回溯天数", ge=0, frozen=True, description="缺失填充回溯的天数")
@@ -65,15 +65,15 @@ class _FactorTable(FactorTable):
         OnlyLookBackDT: bool = Field(default=False, title="只回溯时点", frozen=True, description="如果为 True, 表示所有 ID 统一沿着时点字段进行回溯填充, 不单独填充")
         TargetDT: Optional[dt.datetime] = Field(default=None, title="目标时点", frozen=True, description="非 None 表示只取该时点的值返回")
 
-    def __init__(self, fdb, args={}, **kwargs):
+    def __init__(self, fdb: "HDF5DB", args:dict={}, **kwargs):
         self._Suffix = fdb._Suffix  # 文件后缀名
-        return super().__init__(fdb=fdb, args=args, **kwargs)
+        return super().__init__(fdb=fdb, args=args, config_file=None, **kwargs)
 
     @property
     def FactorNames(self):
         return sorted(listDirFile(str(self._FactorDB._QSArgs.MainDir) + os.sep + self.Name, suffix=self._Suffix))
 
-    def getMetaData(self, key=None):
+    def getMetaData(self, key:Optional[str]=None) -> Union[Any, pd.Series]:
         with self._FactorDB._getLock(self._QSArgs.Name) as DataLock:
             if not os.path.isfile(self._FactorDB._QSArgs.MainDir / self._QSArgs.Name / "_TableInfo.h5"):
                 return (pd.Series() if key is None else None)
@@ -82,7 +82,7 @@ class _FactorTable(FactorTable):
             else:
                 return readNestedDictFromHDF5(self._FactorDB._QSArgs.MainDir / self._QSArgs.Name / "_TableInfo.h5", f"/{key}")
 
-    def getFactorMetaData(self, factor_names=None, key=None):
+    def getFactorMetaData(self, factor_names:Optional[List[str]]=None, key:Optional[str]=None) -> Union[pd.DataFrame, pd.Series]:
         AllFactorNames = self.FactorNames
         if factor_names is None:
             factor_names = AllFactorNames
@@ -103,7 +103,7 @@ class _FactorTable(FactorTable):
         else:
             return pd.Series(MetaData).reindex(index=factor_names)
 
-    def getID(self, ifactor_name=None, idt=None):
+    def getID(self, ifactor_name:Optional[str]=None, idt:Optional[dt.datetime]=None) -> List[str]:
         if ifactor_name is None: ifactor_name = self.FactorNames[0]
         with self._FactorDB._getLock(self._QSArgs.Name) as DataLock:
             with self._FactorDB._openHDF5File(self._FactorDB._QSArgs.MainDir / self._QSArgs.Name / (ifactor_name + "." + self._Suffix), mode="r") as ijFile:
@@ -118,7 +118,7 @@ class _FactorTable(FactorTable):
         else:
             return IDs
 
-    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None):
+    def getDateTime(self, ifactor_name:Optional[str]=None, iid:Optional[str]=None, start_dt:Optional[dt.datetime]=None, end_dt:Optional[dt.datetime]=None) -> List[dt.datetime]:
         if ifactor_name is None: ifactor_name = self.FactorNames[0]
         with self._FactorDB._getLock(self._QSArgs.Name) as DataLock:
             with self._FactorDB._openHDF5File(self._FactorDB._QSArgs.MainDir / self._QSArgs.Name / (ifactor_name + "." + self._Suffix), mode="r") as ijFile:
@@ -220,7 +220,7 @@ class _FactorTable(FactorTable):
             Rslt = Rslt.map(lambda x: pickle.loads(bytes(x)) if isinstance(x, np.ndarray) and (x.shape[0] > 0) else None)
         return Rslt.sort_index(axis=0)
 
-    def readFactorData(self, ifactor_name, ids, dts):
+    def readFactorData(self, ifactor_name:str, ids:List[str], dts:List[dt.datetime]) -> pd.DataFrame:
         TargetDT = self._QSArgs.TargetDT
         if TargetDT:
             Data = self.new(args={"TargetDT": None}).readFactorData(ifactor_name=ifactor_name, ids=ids, dts=[TargetDT])
@@ -259,13 +259,14 @@ class _FactorTable(FactorTable):
         return pd.DataFrame(RawData, index=dts, columns=RawIDs).reindex(columns=ids)
 
 
-# 基于 HDF5 文件的因子数据库
-# 每一张表是一个文件夹, 每个因子是一个 HDF5 文件
-# 每个 HDF5 文件有三个 Dataset: DateTime, ID, Data;
-# 表的元数据存储在表文件夹下特殊文件: _TableInfo.h5 中
-# 因子的元数据存储在 HDF5 文件的 attrs 中
 class HDF5DB(WritableFactorDB):
-    """HDF5DB"""
+    """
+    基于 HDF5 文件的因子库
+    每一张因子表对应一个文件夹, 其中的每个因子是文件夹下的一个 HDF5 文件
+    每个 HDF5 文件有三个 Dataset: DateTime, ID, Data, 分别存储因子的时点序列, ID 序列, 因子值
+    因子表的元数据存储在表文件夹下的特殊文件 _TableInfo.h5 中
+    因子的元数据存储在 HDF5 文件的 attrs 中
+    """
 
     class __QS_ArgClass__(WritableFactorDB.__QS_ArgClass__):
         Name: str = Field(default="HDF5DB", title="名称", frozen=True)
@@ -295,7 +296,7 @@ class HDF5DB(WritableFactorDB):
         else:
             self._DataLock = None
 
-    def connect(self):
+    def connect(self) -> Self:
         if not os.path.isdir(self._QSArgs.MainDir):
             raise __QS_Error__("HDF5DB.connect: 不存在主目录 '%s'!" % self._QSArgs.MainDir)
         if not self._QSArgs.LockDir:
@@ -352,18 +353,17 @@ class HDF5DB(WritableFactorDB):
         self._QS_Logger.error(Msg)
         raise __QS_Error__(Msg)
 
-    # -------------------------------表的操作---------------------------------
     @property
-    def TableNames(self):
+    def TableNames(self) -> List[str]:
         MainDir = self._QSArgs.MainDir
         return sorted(iDir for iDir in os.listdir(MainDir) if os.path.isdir(MainDir / iDir))
 
-    def getTable(self, table_name, args={}):
+    def getTable(self, table_name:str, args:dict={}) -> _HDF5FactorTable:
         if not os.path.isdir(self._QSArgs.MainDir / table_name):
             raise __QS_Error__("HDF5DB.getTable: 表 '%s' 不存在!" % table_name)
-        return _FactorTable(fdb=self, args=args | {"Name": table_name}, logger=self._QS_Logger)
+        return _HDF5FactorTable(fdb=self, args=args | {"Name": table_name}, logger=self._QS_Logger)
 
-    def renameTable(self, old_table_name, new_table_name):
+    def renameTable(self, old_table_name:str, new_table_name:str):
         if old_table_name == new_table_name: return 0
         OldPath = self._QSArgs.MainDir / old_table_name
         NewPath = self._QSArgs.MainDir / new_table_name
@@ -373,14 +373,14 @@ class HDF5DB(WritableFactorDB):
             os.rename(OldPath, NewPath)
         return 0
 
-    def deleteTable(self, table_name):
+    def deleteTable(self, table_name:str):
         TablePath = self._QSArgs.MainDir / table_name
         with self._DataLock:
             if os.path.isdir(TablePath):
                 shutil.rmtree(TablePath, ignore_errors=True)
         return 0
 
-    def setTableMetaData(self, table_name, key=None, value=None, meta_data=None):
+    def setTableMetaData(self, table_name:str, key:Optional[str]=None, value:Any=None, meta_data:Optional[dict]=None):
         if meta_data is not None:
             meta_data = dict(meta_data)
         else:
@@ -391,8 +391,7 @@ class HDF5DB(WritableFactorDB):
             writeNestedDict2HDF5(meta_data, self._QSArgs.MainDir / table_name / "_TableInfo.h5", "/")
         return 0
 
-    # ----------------------------因子操作---------------------------------
-    def renameFactor(self, table_name, old_factor_name, new_factor_name):
+    def renameFactor(self, table_name:str, old_factor_name:str, new_factor_name:str):
         if old_factor_name == new_factor_name: return 0
         OldPath = self._QSArgs.MainDir / table_name / (old_factor_name + "." + self._Suffix)
         NewPath = self._QSArgs.MainDir / table_name / (new_factor_name + "." + self._Suffix)
@@ -402,7 +401,7 @@ class HDF5DB(WritableFactorDB):
             os.rename(OldPath, NewPath)
         return 0
 
-    def deleteFactor(self, table_name, factor_names):
+    def deleteFactor(self, table_name:str, factor_names:List[str]):
         TablePath = self._QSArgs.MainDir / table_name
         FactorNames = set(listDirFile(str(TablePath), suffix=self._Suffix))
         with self._DataLock:
@@ -415,7 +414,7 @@ class HDF5DB(WritableFactorDB):
                         os.remove(iFilePath)
         return 0
 
-    def setFactorMetaData(self, table_name, ifactor_name, key=None, value=None, meta_data=None):
+    def setFactorMetaData(self, table_name:str, ifactor_name:str, key:Optional[str]=None, value:Any=None, meta_data:Optional[dict]=None):
         with self._getLock(table_name=table_name) as DataLock:
             with self._openHDF5File(self._QSArgs.MainDir / table_name / (ifactor_name + "." + self._Suffix), mode="a") as File:
                 if key is not None:
@@ -497,7 +496,7 @@ class HDF5DB(WritableFactorDB):
                 DataFile.flush()
         return 0
 
-    def writeFactorData(self, factor_data, table_name, ifactor_name, if_exists="update", data_type=None, **kwargs):
+    def writeFactorData(self, factor_data:pd.DataFrame, table_name:str, ifactor_name:str, if_exists:Literal["update", "replace", "append"]="update", data_type:Optional[Literal["double", "string", "object"]]=None, **kwargs):
         DTs = factor_data.index
         if pd.__version__ >= "0.20.0":
             factor_data.index = [idt.to_pydatetime().timestamp() for idt in factor_data.index]
@@ -545,7 +544,7 @@ class HDF5DB(WritableFactorDB):
         factor_data.index = DTs
         return 0
 
-    def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
+    def writeData(self, data:Panel, table_name:str, if_exists:Literal["update", "replace", "append"]="update", data_type:Dict[str, Literal["double", "string", "object"]]={}, **kwargs):
         for i, iFactor in enumerate(data.items):
             self.writeFactorData(data.iloc[i], table_name, iFactor, if_exists=if_exists, data_type=data_type.get(iFactor, None), **kwargs)
         return 0
@@ -624,10 +623,10 @@ class HDF5DB(WritableFactorDB):
 
 
 if __name__ == "__main__":
-    HDB = HDF5DB(args={"MainDir": "/mnt/d/HST/Project/QuantStudio/example/data/HDF5"}).connect()
+    HDB = HDF5DB().connect()
     print(HDB.Args)
     print(HDB.TableNames)
-
+    
     FT = HDB.getTable("stock_cn_day_bar")
     DataType = FT.getFactorMetaData(key="DataType")
 

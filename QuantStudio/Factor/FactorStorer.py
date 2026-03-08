@@ -9,6 +9,8 @@ from QuantStudio.Factor.FactorDB import WritableFactorDB
 
 
 class FactorStorer(Node):
+    """因子数据存储器"""
+
     class __QS_ArgClass__(Node.__QS_ArgClass__):
         Name: str = Field(default="FactorStorer", frozen=True, title="名称")
         TargetFDB: WritableFactorDB = Field(frozen=True, title="目标因子库")
@@ -18,7 +20,8 @@ class FactorStorer(Node):
         UpdateMeta: bool = Field(default=False, frozen=True, title="更新元信息")
     
     @property
-    def FactorDB(self):
+    def FactorDB(self) -> WritableFactorDB:
+        """目标因子库"""
         return self._QSArgs._TargetFDB
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: Context, local_context: Any=None) -> Any:

@@ -3,7 +3,7 @@
 import os
 import datetime as dt
 from functools import partial
-from typing import Optional, Literal, List, Any, Tuple
+from typing import Optional, Literal, List, Any, Tuple, Callable, Union
 from multiprocessing import Queue, Event
 
 import dill
@@ -19,10 +19,12 @@ from QuantStudio.Tools.AuxiliaryFun import partitionList
 
 
 class FactorOperator(__QS_Object__):
+    """因子算子"""
+
     class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
         OperatorType: Literal["Point", "Time", "Section", "Panel"] = Field(title="算子类型", frozen=True)
         Name: str = Field(default="FactorOperator", title="名称", frozen=True)
-        ModelArgs: dict = Field(default={}, title="参数", frozen=True)
+        ModelArgs: dict = Field(default={}, title="模型参数", frozen=True)
         Arity: Optional[int] = Field(default=None, ge=1, title="入参数", frozen=True)
         DataType: Literal["double", "string", "object"] = Field(default="double",title="数据类型", frozen=True)
         Description: str = Field(default="", title="描述信息", frozen=False, exclude=True)
@@ -52,7 +54,8 @@ class FactorOperator(__QS_Object__):
         self.__dict__.update(state)
 
     @property
-    def Name(self):
+    def Name(self) -> str:
+        """算子名称"""
         return self._QSArgs.Name
     
     def model_dump(self):
@@ -128,37 +131,51 @@ class FactorOperator(__QS_Object__):
                 Data.append(iData)
         return pd.concat(Data, axis=1, keys=descriptor_data.columns.tolist())
 
-    def calculate(self, f: Factor, idt: dt.datetime | list[dt.datetime], iid: str | list[str], x: list, args: dict):
-        """
-        算子的运算逻辑实现
-        :param f: 该算子所属的因子, 因子对象
-        :param idt: 当前待计算的时点, 如果运算时点为多时点，则该值为 [时点]
-        :param iid: 当前待计算的 ID, 如果运算ID为多ID，则该值为 [ID]
-        :param x: 描述子当期的数据
-        :param args: 计算需要的附加参数, {参数名: 参数值}
-        :return: 在时点 idt, ID 为 iid 的因子值
+    def calculate(self, f: Factor, idt: dt.datetime | List[dt.datetime], iid: str | List[str], x: list, args: dict):
+        """算子的运算逻辑实现
+
+        Args:
+            f: 该算子所属的因子对象
+            idt: 当前待计算的时点, 如果运算时点为多时点，则该值为 list[datetime]
+            iid: 当前待计算的 ID, 如果运算ID为多ID, 则该值为 list[str]
+            x: 描述子当期的数据
+            args: 计算需要的附加参数, {参数名: 参数值}
+        
+        Returns:
+            在时点 idt, ID 为 iid 的因子值
         """
         raise NotImplementedError
 
     def calcData(self, factor, ids, dts, descriptor_data, dt_ruler=None, section_ids=None):
         raise NotImplementedError
 
-    def __call__(self, *x, factor_args: dict = {}, **kwargs):
+    def __call__(self, *x: Factor, factor_args: dict = {}, **kwargs) -> Factor:
+        """将算子作用在若干个因子对象上以产生新的因子
+
+        Args:
+            x: 作用于的因子对象
+            factor_args: 创建新因子时传递个它的参数集
+            kwargs: 创建新因子时传递给它的其他入参
+        
+        Returns:
+            算子作用后产生的新因子对象
+        """
         raise NotImplementedError
 
 
-# 单点算子
-# f: 该算子所属的因子, 因子对象
-# idt: 当前待计算的时点, 如果运算时点为多时点，则该值为[时点]
-# iid: 当前待计算的ID, 如果运算ID为多ID，则该值为 [ID]
-# x: 描述子当期的数据, [单个描述子值 or array]
-# args: 参数, {参数名:参数值}
-# 如果运算时点参数为单时点, 运算ID参数为单ID, 那么 x 元素为单个描述子值, 返回单个元素
-# 如果运算时点参数为单时点, 运算ID参数为多ID, 那么 x 元素为 array(shape=(nID, )), 注意并发时 ID 并不是全截面, 返回 array(shape=(nID,))
-# 如果运算时点参数为多时点, 运算ID参数为单ID, 那么 x 元素为 array(shape=(nDT, )), 返回 array(shape=(nID, ))
-# 如果运算时点参数为多时点, 运算ID参数为多ID, 那么 x 元素为 array(shape=(nDT, nID)), 注意并发时 ID 并不是全截面, 返回 array(shape=(nDT, nID))
 class PointOperator(FactorOperator):
-    """单点算子"""
+    """单点算子
+    calculate 方法入参说明
+    f: 该算子所属的因子, 因子对象
+    idt: 当前待计算的时点, 如果 DTMode 为多时点, 则该值为时点序列 list[datetime]
+    iid: 当前待计算的 ID, 如果 IDMode 为多ID, 则该值为 ID 序列 list[str], 注意并发时 iid 并不一定是全截面
+    x: 描述子当期的数据, [单个描述子值 or array]
+        * 如果 DTMode 为单时点, IDMode 为单ID, 那么 x 元素为单个描述子值, 同时方法需返回单个元素
+        * 如果 DTMode 为单时点, IDMode 为多ID, 那么 x 元素为 array(shape=(len(iid), )), 同时方法需返回 array(shape=(len(iid), ))
+        * 如果 DTMode 为多时点, IDMode 为单ID, 那么 x 元素为 array(shape=(len(idt), )), 同时方法需返回 array(shape=(len(idt), ))
+        * 如果 DTMode 为多时点, IDMode 为多ID, 那么 x 元素为 array(shape=(len(idt), len(iid))), 同时方法需返回 array(shape=(len(idt), len(iid)))
+    args: 模型参数, {参数名: 参数值}
+    """
     
     class __QS_ArgClass__(FactorOperator.__QS_ArgClass__):
         OperatorType: Literal["Point"] = Field(default="Point", title="算子类型", frozen=True)
@@ -166,7 +183,7 @@ class PointOperator(FactorOperator):
         DTMode: Literal["单时点", "多时点"] = Field(default="单时点", title="运算时点", frozen=True)
         IDMode: Literal["单ID", "多ID"] = Field(default="单ID", title="运算ID", frozen=True)
 
-    def __call__(self, *x, factor_args: dict = {}, **kwargs):
+    def __call__(self, *x: Factor, factor_args: dict = {}, **kwargs) -> Factor:
         Operator = self._QS_validate(*x, **kwargs.pop("operator_kwargs", {}))
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for i, iFactor in enumerate(x)]
         return PointOperation(descriptors=Descriptors, args={"Operator": Operator, **factor_args}, **kwargs)
@@ -302,18 +319,19 @@ class PointOperator(FactorOperator):
             return self._calcDataPandas(factor, ids, dts, descriptor_data, ModelArgs)
 
 
-# 时序算子
-# f: 该算子所属的因子, 因子对象
-# idt: 当前待计算的时点, 如果运算日期为多时点，则该值为 [时点]
-# iid: 当前待计算的ID, 如果运算ID为多ID，则该值为 [ID]
-# x: 描述子当期的数据, [array]
-# args: 参数, {参数名:参数值}
-# 如果运算时点参数为单时点, 运算ID参数为单ID, 那么x元素为array(shape=(回溯期数, )), 返回单个元素
-# 如果运算时点参数为单时点, 运算ID参数为多ID, 那么x元素为array(shape=(回溯期数, nID)), 注意并发时 ID 并不是全截面, 返回 array(shape=(nID, ))
-# 如果运算时点参数为多时点, 运算ID参数为单ID, 那么x元素为array(shape=(回溯期数+nDT, )), 返回 array(shape=(nDate,))
-# 如果运算时点参数为多时点, 运算ID参数为多ID, 那么x元素为array(shape=(回溯期数+nDT, nID)), 注意并发时 ID 并不是全截面, 返回 array(shape=(nDT, nID))
 class TimeOperator(FactorOperator):
-    """时序算子"""
+    """时序算子
+    calculate 方法入参说明
+    f: 该算子所属的因子, 因子对象
+    idt: 当前待计算的时点, 如果 DTMode 为多时点，则该值为时点序列 list[datetime]
+    iid: 当前待计算的 ID, 如果 IDMode 为多ID, 则该值为 ID 序列 list[str], 注意并发时 iid 并不一定是全截面
+    x: 描述子当期的数据, [array]
+        * 如果 DTMode 为单时点, IDMode 为单ID, 那么 x 的第 i 个元素为 array(shape=(LookBack[i]+1, )), 同时方法需返回单个元素
+        * 如果 DTMode 为单时点, IDMode 为多ID, 那么 x 的第 i 个元素为 array(shape=(LookBack[i]+1, len(iid))), 同时方法需返回 array(shape=(len(iid), ))
+        * 如果 DTMode 为多时点, IDMode 为单ID, 那么 x 的第 i 个元素为 array(shape=(LookBack[i]+len(idt), )), 同时方法需返回返回 array(shape=(nDate,))
+        * 如果 DTMode 为多时点, IDMode 为多ID, 那么 x 的第 i 个元素为 array(shape=(LookBack[i]+len(idt), len(iid))), 同时方法需返回 array(shape=(len(idt), len(iid)))
+    args: 模型参数, {参数名: 参数值}
+    """
     
     class __QS_ArgClass__(FactorOperator.__QS_ArgClass__):
         OperatorType: Literal["Time"] = Field(default="Time", title="算子类型", frozen=True)
@@ -504,16 +522,18 @@ class TimeOperator(FactorOperator):
             return self._calcDataPandas(factor, ids, dts, descriptor_data, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, ModelArgs, StdData)
 
 
-# 截面算子
-# f: 该算子所属的因子, 因子对象
-# idt: 当前待计算的时点, 如果运算日期为多时点，则该值为 [时点]
-# iid: 当前待计算的ID, 如果输出形式为全截面, 则该值为 [ID], 该序列在并发时也是全体截面 ID
-# x: 描述子当期的数据, [array]
-# args: 参数, {参数名:参数值}
-# 如果运算时点参数为单时点, 那么 x 元素为 array(shape=(nID, )), 如果输出形式为全截面返回 array(shape=(nID, )), 否则返回单个值
-# 如果运算时点参数为多时点, 那么 x 元素为 array(shape=(nDT, nID)), 如果输出形式为全截面返回 array(shape=(nDT, nID)), 否则返回 array(shape=(nDT, ))
 class SectionOperator(FactorOperator):
-    """截面算子"""
+    """截面算子
+    calculate 方法入参说明
+    f: 该算子所属的因子, 因子对象
+    idt: 当前待计算的时点, 如果 DTMode 为多时点， 则该值为时点序列 list[datetime]
+    iid: 当前待计算的 ID, 如果 OutputMode 为全截面, 则该值为 ID 序列 list[str], 该序列在并发时也是全体截面 ID
+    x: 描述子当期的数据, [array]
+        * 如果 DTMode 为单时点, 那么 x 元素为 array(shape=(len(iid), )), 如果输出形式为全截面返回 array(shape=(len(iid), )), 否则返回单个值
+        * 如果 DTMode 为多时点, 那么 x 元素为 array(shape=(len(idt), len(iid))), 如果输出形式为全截面返回 array(shape=(len(idt), len(iid))), 否则返回 array(shape=(len(idt), ))
+    args: 模型参数, {参数名: 参数值}
+    """
+
     class __QS_ArgClass__(FactorOperator.__QS_ArgClass__):
         OperatorType: Literal["Section"] = Field(default="Section", title="算子类型", frozen=True)
         Name: str = Field(default="SectionOperator", title="名称", frozen=True)
@@ -666,16 +686,18 @@ class SectionOperator(FactorOperator):
             return self._calcDataPandas(factor, ids, dts, descriptor_data, section_ids, ModelArgs)
 
 
-# 面板算子
-# f: 该算子所属的因子, 因子对象
-# idt: 当前待计算的时点, 如果运算日期为多日期，则该值为 [回溯期数]+[时点]
-# iid: 当前待计算的 ID, 如果输出形式为全截面, 则该值为 [ID], 该序列在并发时也是全体截面 ID
-# x: 描述子当期的数据, [array]
-# args: 参数, {参数名:参数值}
-# 如果运算时点参数为单时点, 那么 x 元素为 array(shape=(回溯期数, nID)), 如果输出形式为全截面返回 array(shape=(nID, )), 否则返回单个值
-# 如果运算时点参数为多时点, 那么 x 元素为 array(shape=(回溯期数+nDT, nID)), 如果输出形式为全截面返回 array(shape=(nDT, nID)), 否则返回 array(shape=(nDT, ))
 class PanelOperator(FactorOperator):
-    """面板算子"""
+    """面板算子
+    calculate 方法入参说明
+    f: 该算子所属的因子, 因子对象
+    idt: 当前待计算的时点, 如果 DTMode 为多时点， 则该值为时点序列 list[datetime]
+    iid: 当前待计算的 ID, 如果 OutputMode 为全截面, 则该值为 ID 序列 list[str], 该序列在并发时也是全体截面 ID
+    x: 描述子当期的数据, [array]
+        * 如果 DTMode 为单时点, 那么 x 的第 i 个元素为 array(shape=(LookBack[i]+1, len(iid))), 如果输出形式为全截面返回 array(shape=(len(iid), )), 否则返回单个值
+        * 如果 DTMode 为多时点, 那么 x 的第 i 个元素为 array(shape=(LookBack[i]+len(idt), len(iid))), 如果输出形式为全截面返回 array(shape=(len(idt), len(iid))), 否则返回 array(shape=(len(idt), ))
+    args: 模型参数, {参数名: 参数值}
+    """
+
     class __QS_ArgClass__(FactorOperator.__QS_ArgClass__):
         OperatorType: Literal["Panel"] = Field(default="Panel", title="算子类型", frozen=True)
         Name: str = Field(default="PanelOperator", title="名称", frozen=True)
@@ -878,10 +900,18 @@ class PanelOperator(FactorOperator):
             return self._calcDataPandas(factor, ids, dts, descriptor_data, DTRuler, section_ids, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, self._QSArgs.ModelArgs, StdData)
 
 
-# 算子工厂函数
-# operator_type: 算子类型, 可选: 'Point', 'Time', 'Section', 'Panel'
-# sys_args: 算子参数
-def makeFactorOperator(func, operator_type, args={}, **kwargs):
+def makeFactorOperator(func: Callable, operator_type: Literal['Point', 'Time', 'Section', 'Panel'], args:dict={}, **kwargs) -> FactorOperator:
+    """算子工厂函数, 给定一个函数创建一个因子算子对象
+    
+    Args:
+        func: 定义了算子运算逻辑的函数
+        operator_type: 算子类型
+        args: 创建算子对象时传递给它的参数集
+        kwargs: 创建算子对象时传递给它的其他入参
+    
+    Returns:
+        创建的因子算子对象
+    """
     if not callable(func): raise __QS_Error__("func 必须是可调用对象!")
     if "Name" not in args: args = args | {"Name": func.__qualname__}
     if operator_type == "Point":
@@ -897,9 +927,20 @@ def makeFactorOperator(func, operator_type, args={}, **kwargs):
     FactorOperator.calculate = func
     return FactorOperator
 
-# 将函数转换成因子定义的装饰器
-def FactorOperatorized(operator_type, args={}, **kwargs):
+
+def FactorOperatorized(operator_type: Literal['Point', 'Time', 'Section', 'Panel'], args:dict={}, **kwargs) -> Callable:
+    """将函数转换成因子算子对象的装饰器
+    
+    Args:
+        operator_type: 算子类型
+        args: 创建算子对象时传递给它的参数集
+        kwargs: 创建算子对象时传递给它的其他入参
+    
+    Returns:
+        算子装饰器
+    """
     return partial(makeFactorOperator, operator_type=operator_type, args=args, **kwargs)
+
 
 class DerivativeFactor(Factor):
     """衍生因子"""
@@ -910,7 +951,7 @@ class DerivativeFactor(Factor):
         Meta: dict = Field(default={}, title="元信息", frozen=False, exclude=True)
         CalcDTRuler: list[dt.datetime] = Field(default=[], title="计算时点标尺", frozen=True)
 
-    def __init__(self, descriptors, args={}, config_file=None, **kwargs):
+    def __init__(self, descriptors: List[Factor], args: dict={}, config_file: Optional[str]=None, **kwargs):
         self.UserData = {}
         if descriptors: kwargs.setdefault("logger", descriptors[0]._QS_Logger)
         Operator = args["Operator"]._QS_validate(*descriptors, **kwargs.pop("operator_kwargs", {}))
@@ -934,10 +975,11 @@ class DerivativeFactor(Factor):
             return context.DefaultSectionIDs
 
     @property
-    def Operator(self):
+    def Operator(self) -> FactorOperator:
+        """因子算子"""
         return self._Operator
 
-    def getMetaData(self, key=None):
+    def getMetaData(self, key:Optional[str]=None) -> Union[Any, pd.Series]:
         DataType = self._Operator._QSArgs.DataType
         if key is None:
             return pd.Series({"DataType": DataType, **self._QSArgs.Meta})
@@ -972,9 +1014,11 @@ class DerivativeFactor(Factor):
         elif not bwd_data_list:
             raise __QS_Error__("走到了不该走到的地方!")
         return StdData.reindex(index=local_context.DTs, columns=local_context.IDs)
-    
+
+
 class PointOperation(DerivativeFactor):
-    """单点运算"""
+    """基于单点算子的衍生因子"""
+
     class __QS_ArgClass__(DerivativeFactor.__QS_ArgClass__):
         Operator: PointOperator = Field(title="算子", frozen=True)
 
@@ -991,7 +1035,8 @@ class PointOperation(DerivativeFactor):
 
 
 class TimeOperation(DerivativeFactor):
-    """时序运算"""
+    """基于时序算子的衍生因子"""
+
     class __QS_ArgClass__(DerivativeFactor.__QS_ArgClass__):
         Operator: TimeOperator = Field(title="算子", frozen=True)
     
@@ -1041,7 +1086,8 @@ class TimeOperation(DerivativeFactor):
 
 
 class SectionOperation(DerivativeFactor):
-    """截面运算"""
+    """基于截面算子的衍生因子"""
+
     class __QS_ArgClass__(DerivativeFactor.__QS_ArgClass__):
         Operator: SectionOperator = Field(title="算子", frozen=True)
     
@@ -1108,7 +1154,8 @@ class SectionOperation(DerivativeFactor):
 
 
 class PanelOperation(DerivativeFactor):
-    """面板运算"""
+    """基于面板算子的衍生因子"""
+
     class __QS_ArgClass__(DerivativeFactor.__QS_ArgClass__):
         Operator: PanelOperator = Field(title="算子", frozen=True)
     

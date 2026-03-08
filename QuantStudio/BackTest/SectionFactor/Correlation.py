@@ -1,274 +1,218 @@
 # coding=utf-8
-import datetime as dt
 import base64
 from io import BytesIO
+from itertools import combinations
+from typing import Literal, Optional, List, Any
 
 import numpy as np
 import pandas as pd
-from traits.api import ListStr, Enum, List, Str, Instance, Dict, on_trait_change
+from pydantic import Field
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 import matplotlib.dates as mdate
 
-from QuantStudio import __QS_Error__
-from QuantStudio.Tools.AuxiliaryFun import getFactorList
-from QuantStudio.Tools.MatplotlibFun import plotHeatMap
-from QuantStudio.BackTest.BackTestModel import BaseModule
-from QuantStudio.RiskDataBase.RiskDB import RiskTable
-from QuantStudio.RiskModel.RiskModelFun import dropRiskMatrixNA
+from QuantStudio.Core import __QS_Error__
+from QuantStudio.Factor.Factor import Factor, FactorContext, FactorInitData
+from QuantStudio.Factor.FactorOperation import PanelOperator, SectionOperator, PanelOperation, SectionOperation
+from QuantStudio.BackTest.BackTestModel import BTLocalContext, BTNode, BTInitData
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 
-class SectionCorrelation(BaseModule):
-    """因子截面相关性"""
-    class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
-        # TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
-        FactorOrder = Dict(key_trait=Str(), value_trait=Enum("降序", "升序"), arg_type="Dict", label="排序方向", order=1)
-        CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="计算时点", order=2)
-        CorrMethod = ListStr(["spearman"], arg_type="MultiOption", label="相关性算法", order=3, option_range=("spearman", "pearson", "kendall"))
-        RiskTable = Instance(RiskTable, arg_type="RiskTable", label="风险表", order=4)
-        IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=5)
-        
-        def __QS_initArgs__(self, args={}):
-            DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
-            self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
-            self.TestFactors = [DefaultNumFactorList[0], DefaultNumFactorList[-1]]
-        
-        @property
-        def ObservedArgs(self):
-            return super().ObservedArgs + ("测试因子", "风险表")
 
-        @on_trait_change("TestFactors[]")
-        def _on_TestFactors_changed(self, obj, name, old, new):
-            self.FactorOrder = {iFactorName:self.FactorOrder.get(iFactorName, "降序") for iFactorName in self.TestFactors}
-            if len(self.TestFactors)<=1:
-                raise __QS_Error__(f"{self.Name} 模块参数 '测试因子' 的取值长度必须大于等于 2!")
-        
-        @on_trait_change("RiskTable")
-        def _on_RiskDS_changed(self, obj, name, old, new):
-            self._QS_Frozen = False
-            if new is None:
-                self.add_trait("CorrMethod", ListStr(arg_type="MultiOption", label="相关性算法", order=3, option_range=("spearman", "pearson", "kendall")))
-            else:
-                self.add_trait("CorrMethod", ListStr(arg_type="MultiOption", label="相关性算法", order=3, option_range=("spearman", "pearson", "kendall", "factor-score correlation", "factor-portfolio correlation")))
-            self.CorrMethod = list(set(self.CorrMethod).intersection(set(self.CorrMethod.option_range)))
-            self._QS_Frozen = True
+class CalcSectionCorrelation(SectionOperator):
+    """因子截面相关性算子"""
+    def __init__(self, corr_method:Literal["spearman", "pearson", "kendall"]="spearman", descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        Arity = args.get("Arity", None) or 1
+        Args = {"Name": "calcSectionCorrelation"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "double"}
+        Args["ModelArgs"] = {"corr_method": corr_method} | Args.get("ModelArgs", {})
+        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
+        return super().__init__(args=Args, config_file=config_file, **kwargs)
     
-    def __init__(self, factor_table, name="因子截面相关性", sys_args={}, **kwargs):
-        self._FactorTable = factor_table
-        return super().__init__(name=name, sys_args=sys_args, **kwargs)
-    def __QS_start__(self, mdl, dts, **kwargs):
-        if self._isStarted: return ()
-        super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
-        self._Output = {"FactorPair":[]}
-        for i, iFactor in enumerate(self._QSArgs.TestFactors):
-            for j, jFactor in enumerate(self._QSArgs.TestFactors):
-                if j>i: self._Output["FactorPair"].append(iFactor+"-"+jFactor)
-        nPair = len(self._Output["FactorPair"])
-        self._Output.update({iMethod:[[] for i in range(nPair)] for iMethod in self._QSArgs.CorrMethod})
-        self._CorrMatrixNeeded = (("factor-score correlation" in self._QSArgs.CorrMethod) or ("factor-portfolio correlation" in self._QSArgs.CorrMethod))
-        if self._CorrMatrixNeeded and (self._QSArgs.RiskTable is not None): self._QSArgs.RiskTable.start(dts=dts)
-        self._Output["时点"] = []
-        self._CurCalcInd = 0
-        return (self._FactorTable, )
-    def __QS_move__(self, idt, **kwargs):
-        if self._iDT==idt: return 0
-        self._iDT = idt
-        if self._QSArgs.CalcDTs:
-            if idt not in self._QSArgs.CalcDTs[self._CurCalcInd:]: return 0
-            self._CurCalcInd = self._QSArgs.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
+    def calculate(self, f, idt, iid, x, args):
+        SectionIDs = (f._QSArgs.DescriptorSection[0] if f._QSArgs.DescriptorSection[0] else iid)
+        if f.UserData["mask"]: 
+            Mask, x = pd.DataFrame(x[0].T==1, columns=idt, index=SectionIDs), x[1:]
         else:
-            self._CurCalcInd = self._Model.DateTimeIndex
-        IDs = self._FactorTable.getFilteredID(idt=idt, id_filter_str=self._QSArgs.IDFilter)
-        FactorExpose = self._FactorTable.readData(dts=[idt], ids=IDs, factor_names=list(set(self._QSArgs.TestFactors))).iloc[:, 0, :].astype("float")
-        if self._CorrMatrixNeeded and (self._QSArgs.RiskTable is not None):
-            self._QSArgs.RiskTable.move(idt)
-            CovMatrix = dropRiskMatrixNA(self._QSArgs.RiskTable.readCov(dts=[idt], ids=IDs).iloc[0])
-            FactorIDs = {}
+            Mask = pd.DataFrame(True, columns=idt, index=SectionIDs)
+        if f._QSArgs.CalcDTRuler:
+            DTs = sorted(set(idt).intersection(f._QSArgs.CalcDTRuler))
+            Mask = Mask.reindex(columns=DTs).fillna(False)
         else:
-            CovMatrix = None
-        PairInd = 0
-        for i,iFactor in enumerate(self._QSArgs.TestFactors):
-            iFactorExpose = FactorExpose[iFactor]
-            if self._CorrMatrixNeeded:
-                iIDs = FactorIDs.get(iFactor)
-                if iIDs is None:
-                    if CovMatrix is not None:
-                        FactorIDs[iFactor] = list(set(CovMatrix.index).intersection(set(iFactorExpose[pd.notnull(iFactorExpose)].index)))
-                    else:
-                        FactorIDs[iFactor] = list(iFactorExpose[pd.notnull(iFactorExpose)].index)
-                    iIDs = FactorIDs[iFactor]
-            for j,jFactor in enumerate(self._QSArgs.TestFactors):
-                if j>i:
-                    jFactorExpose = FactorExpose[jFactor]
-                    if self._CorrMatrixNeeded:
-                        jIDs = FactorIDs.get(jFactor)
-                        if jIDs is None:
-                            if CovMatrix is not None:
-                                FactorIDs[jFactor] = list(set(CovMatrix.index).intersection(set(jFactorExpose[pd.notnull(jFactorExpose)].index)))
-                            else:
-                                FactorIDs[jFactor] = list(jFactorExpose[pd.notnull(jFactorExpose)].index)
-                            jIDs = FactorIDs[jFactor]
-                        IDs = list(set(iIDs).intersection(set(jIDs)))
-                        iTempExpose = iFactorExpose.loc[IDs].values
-                        jTempExpose = jFactorExpose.loc[IDs].values
-                        if CovMatrix is not None:
-                            TempCovMatrix = CovMatrix.loc[IDs,IDs].values
-                        else:
-                            nID = len(IDs)
-                            TempCovMatrix = np.eye(nID,nID)
-                    for kMethod in self._QSArgs.CorrMethod:
-                        if kMethod=="factor-score correlation":
-                            ijCov = np.dot(iTempExpose.T,np.dot(TempCovMatrix,jTempExpose))
-                            iStd = np.sqrt(np.dot(iTempExpose.T,np.dot(TempCovMatrix,iTempExpose)))
-                            jStd = np.sqrt(np.dot(jTempExpose.T,np.dot(TempCovMatrix,jTempExpose)))
-                            self._Output[kMethod][PairInd].append(ijCov/iStd/jStd)
-                        elif kMethod=="factor-portfolio correlation":
-                            TempCovMatrixInv = np.linalg.inv(TempCovMatrix)
-                            ijCov = np.dot(iTempExpose.T,np.dot(TempCovMatrixInv,jTempExpose))
-                            iStd = np.sqrt(np.dot(iTempExpose.T,np.dot(TempCovMatrixInv,iTempExpose)))
-                            jStd = np.sqrt(np.dot(jTempExpose.T,np.dot(TempCovMatrixInv,jTempExpose)))
-                            self._Output[kMethod][PairInd].append(ijCov/iStd/jStd)
-                        else:
-                            self._Output[kMethod][PairInd].append(FactorExpose[iFactor].corr(FactorExpose[jFactor], method=kMethod))
-                    PairInd += 1
-        self._Output["时点"].append(idt)
-        return 0
-    def __QS_end__(self):
-        if not self._isStarted: return 0
-        super().__QS_end__()
-        for iMethod in self._QSArgs.CorrMethod:
-            self._Output[iMethod] = pd.DataFrame(np.array(self._Output[iMethod]).T, columns=self._Output["FactorPair"], index=self._Output["时点"])
-            iAvgName = iMethod+"均值"
-            self._Output[iAvgName] = pd.DataFrame(index=list(self._QSArgs.TestFactors), columns=list(self._QSArgs.TestFactors), dtype="float")
-            for i, iFactor in enumerate(self._QSArgs.TestFactors):
-                for j, jFactor in enumerate(self._QSArgs.TestFactors):
-                    if j>i:
-                        if self._QSArgs.FactorOrder[iFactor]!=self._QSArgs.FactorOrder[jFactor]:
-                            self._Output[iMethod][iFactor+"-"+jFactor] = -self._Output[iMethod][iFactor+"-"+jFactor]
-                        self._Output[iAvgName].loc[iFactor, jFactor] = self._Output[iMethod][iFactor+"-"+jFactor].mean()
-                    elif j<i:
-                        self._Output[iAvgName].loc[iFactor, jFactor] = self._Output[iAvgName].loc[jFactor,iFactor]
-                    else:
-                        self._Output[iAvgName].loc[iFactor, jFactor] = 1
-        self._Output.pop("FactorPair")
-        self._Output.pop("时点")
-        if (self._QSArgs.RiskTable is not None) and self._CorrMatrixNeeded: self._QSArgs.RiskTable.end()
-        return 0
-    def genMatplotlibFig(self, file_path=None):
-        nMethod = len(self._QSArgs.CorrMethod)
-        nRow, nCol = nMethod//3+(nMethod%3!=0), min(3, nMethod)
-        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
-        for i, iMethod in enumerate(self._QSArgs.CorrMethod):
-            iAvgName = iMethod+"均值"
-            iAxes = Fig.add_subplot(nRow, nCol, i+1)
-            iAxes = plotHeatMap(self._Output[iAvgName], iAxes)
-            iAxes.set_title(iAvgName)
-        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
-        return Fig
-    def _repr_html_(self):
-        if len(self._QSArgs.ArgNames)>0:
-            HTML = "参数设置: "
-            HTML += '<ul align="left">'
-            for iArgName in self._QSArgs.ArgNames:
-                if iArgName=="风险表":
-                    if self._QSArgs.RiskTable is None: HTML += "<li>"+iArgName+": None</li>"
-                    else: HTML += "<li>"+iArgName+": "+self._QSArgs.RiskTable.Name+"</li>"
-                elif iArgName!="计算时点":
-                    HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
-                elif self.Args[iArgName]:
-                    HTML += "<li>"+iArgName+": 自定义时点</li>"
-                else:
-                    HTML += "<li>"+iArgName+": 所有时点</li>"
-            HTML += "</ul>"
+            DTs = Mask.columns
+        Corr = pd.DataFrame(index=DTs, columns=iid)
+        FactorNames = f._QSArgs.SectionIDs
+        for ijFactorName in iid:
+            if ijFactorName not in FactorNames: continue
+            iIdx, jIdx = f.UserData["section_id_mapping"][ijFactorName].split("-")
+            iIdx, jIdx = int(iIdx), int(jIdx)
+            if isinstance(x[iIdx], pd.DataFrame): iFactorData = x[iIdx]
+            else:
+                iFactorData = pd.DataFrame(x[iIdx].T, columns=idt, index=SectionIDs).reindex(columns=DTs)
+                x[iIdx] = iFactorData
+            if isinstance(x[jIdx], pd.DataFrame): jFactorData = x[jIdx]
+            else:
+                jFactorData = pd.DataFrame(x[jIdx].T, columns=idt, index=SectionIDs).reindex(columns=DTs)
+                x[jIdx] = jFactorData
+            ijMask = (Mask & iFactorData.notnull() & jFactorData.notnull())
+            Corr[ijFactorName] = iFactorData.where(ijMask, np.nan).corrwith(jFactorData.where(ijMask, np.nan), method=args["corr_method"])
+        return Corr.reindex(index=idt).values
+        
+    def __call__(self, *x:Factor, mask:Optional[Factor]=None, factor_args:dict={}, **kwargs) -> SectionOperation:
+        if len(x) < 2: raise __QS_Error__(f"算子 {self.__class__}: 必须至少指定两个因子!")
+        Factors = []
+        if mask is not None: Factors.append(mask)
+        Factors += x
+        PosNum = int(np.log10(len(x)))
+        DefaultSectionIDs = [f"{str(i).zfill(PosNum)}-{str(j).zfill(PosNum)}" for i, j in combinations(range(len(x)), r=2)]
+        if "SectionIDs" not in factor_args:
+            factor_args["SectionIDs"] = DefaultSectionIDs
+        elif len(set(factor_args["SectionIDs"]))!=len(DefaultSectionIDs) or (sorted(factor_args["SectionIDs"])!=factor_args["SectionIDs"]):
+            raise __QS_Error__(f"截面ID : {factor_args['SectionIDs']} 长度不等于因子列表 x 两两组合的长度, 或者有重复, 或者非升序排列!")
+        f = super().__call__(*Factors, factor_args=factor_args, **kwargs)
+        f.UserData = {"mask": (mask is not None), "factor_name_list": [f.Name for f in x], "section_id_mapping": dict(zip(factor_args["SectionIDs"], DefaultSectionIDs))}
+        return f
+
+class SectionCorrelation(BTNode):
+    """因子截面相关性"""
+    class __QS_ArgClass__(BTNode.__QS_ArgClass__):
+        Name: str = Field(default="SectionCorrelation", frozen=True, title="名称")
+        FactorNameList: Optional[List[str]] = Field(default=None, frozen=True, title="因子列表")
+        
+    def __init__(self, section_corr: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        return super().__init__(deps=[section_corr], args=args, config_file=config_file, **kwargs)
+    
+    def genReport(self, output:dict) -> str:
+        HTML = "参数设置: "
+        HTML += '<ul align="left">'
+        if isinstance(getattr(self.Deps[0], "Operator", None), CalcSectionCorrelation):
+            ModelArgs = self.Deps[0].Operator._QSArgs.ModelArgs
+            HTML += f"<li>相关性方法: {ModelArgs['corr_method']}</li>"
+        if self.Deps[0]._QSArgs.CalcDTRuler:
+            HTML += "<li>计算时点: 自定义时点</li>"
         else:
-            HTML = ""
-        for i, iMethod in enumerate(self._QSArgs.CorrMethod):
-            iAvgName = iMethod+"均值"
-            iHTML = self._Output[iAvgName].style.background_gradient(cmap="Reds").set_precision(2).render()
-            HTML += '<div align="left" style="font-size:1em"><strong>'+iAvgName+'</strong></div>'+iHTML
+            HTML += "<li>计算时点: 所有时点</li>"
+        HTML += "</ul>"
+        iHTML = output["平均值"].style.background_gradient(cmap="Reds").set_precision(2).render()
+        HTML += '<div align="left" style="font-size:1em"><strong>平均相关性</strong></div>' + iHTML
         return HTML
 
-class FactorTurnover(BaseModule):
-    """因子换手率"""
-    class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
-        # TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
-        CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="计算时点", order=1)
-        IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=2)
-        def __QS_initArgs__(self, args={}):
-            DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
-            self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
-            self.TestFactors.append(DefaultNumFactorList[0])
+    def init_compute(self, path: List[str], init_data: BTInitData, context: FactorContext) -> List[FactorInitData]:
+        InitData = super().init_compute(path=path, init_data=init_data, context=context)
+        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self.Deps[i].getID()) for i, iInitData in enumerate(InitData)]
     
-    def __init__(self, factor_table, name="因子换手率", sys_args={}, **kwargs):
-        self._FactorTable = factor_table
-        return super().__init__(name=name, sys_args=sys_args, **kwargs)
-    def __QS_start__(self, mdl, dts=None, dates=None, times=None):
-        if self._isStarted: return ()
-        super().__QS_start__(mdl=mdl, dts=dts, dates=dates, times=times)
-        self._Output = {iFactorName:[] for iFactorName in self._QSArgs.TestFactors}
-        self._Output["时点"] = []
-        self._CurCalcInd = 0
-        return (self._FactorTable, )
-    def __QS_move__(self, idt):
-        if self._iDT==idt: return 0
-        self._iDT = idt
-        if self._QSArgs.CalcDTs:
-            if idt not in self._QSArgs.CalcDTs[self._CurCalcInd:]: return 0
-            self._CurCalcInd = self._QSArgs.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
-            LastInd = self._CurCalcInd - 1
-            LastDateTime = self._QSArgs.CalcDTs[LastInd]
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[BTLocalContext]=None) -> dict:
+        Corr = bwd_data_list[0]
+        SectionIDs = self.Deps[0].getID()
+        if not SectionIDs: SectionIDs = Corr.columns.tolist()
+        nFactor = int(round(((1 + 8*len(SectionIDs)) ** 0.5 + 1) / 2, 0))
+        if nFactor * (nFactor - 1) / 2 != len(SectionIDs):
+            raise __QS_Error__("截面长度不是 n * (n - 1) / 2!")
+        if self._QSArgs.FactorNameList:
+            FactorNameList = self._QSArgs.FactorNameList
         else:
-            self._CurCalcInd = self._Model.DateTimeIndex
-            LastInd = self._CurCalcInd - 1
-            LastDateTime = self._Model.DateTimeSeries[LastInd]
-        if LastInd<0:
-            for iFactorName in self._QSArgs.TestFactors:
-                self._Output[iFactorName].append(0.0)
-            self._Output["时点"].append(idt)
-            return 0
-        LastIDs = self._FactorTable.getFilteredID(idt=LastDateTime, id_filter_str=self._QSArgs.IDFilter)
-        PreFactorExpose = self._FactorTable.readData(dts=[LastDateTime], ids=LastIDs, factor_names=list(self._QSArgs.TestFactors)).iloc[:,0,:].astype("float")
-        CurFactorExpose = self._FactorTable.readData(dts=[idt], ids=LastIDs, factor_names=list(self._QSArgs.TestFactors)).iloc[:,0,:].astype("float")
-        for iFactorName in self._QSArgs.TestFactors: self._Output[iFactorName].append(CurFactorExpose[iFactorName].corr(PreFactorExpose[iFactorName]))
-        self._Output["时点"].append(idt)
-        return 0
-    def __QS_end__(self):
-        if not self._isStarted: return 0
-        self._Output = {"因子换手率":pd.DataFrame(self._Output, index=self._Output.pop("时点"))}
-        self._Output["统计数据"] = pd.DataFrame(self._Output["因子换手率"].mean(), columns=["平均值"])
-        self._Output["统计数据"]["标准差"] = self._Output["因子换手率"].std()
-        self._Output["统计数据"]["最小值"] = self._Output["因子换手率"].min()
-        self._Output["统计数据"]["最大值"] = self._Output["因子换手率"].max()
-        self._Output["统计数据"]["中位数"] = self._Output["因子换手率"].median()
-        return 0
-    def genMatplotlibFig(self, file_path=None):
-        nRow, nCol = self._Output["因子换手率"].shape[1]//3+(self._Output["因子换手率"].shape[1]%3!=0), min(3, self._Output["因子换手率"].shape[1])
+            FactorNameList = self.Deps[0].UserData.get("factor_name_list", [str(i) for i in range(nFactor)])
+        if len(FactorNameList) != nFactor:
+            raise __QS_Error__("因子数量和数据推断出的因子数量不相等!")
+        Corr.columns = [f"{FactorNameList[i]}-{FactorNameList[j]}" for i, j in combinations(range(nFactor), r=2)]
+        Corr = Corr.dropna(how="all", axis=0)
+        Output = {"截面相关性": Corr}
+        Avg = Corr.mean()
+        Avg.index = [f"{i}-{j}" for i, j in combinations(range(nFactor), r=2)]
+        Output["平均值"] = pd.DataFrame(index=FactorNameList, columns=FactorNameList, dtype=float)
+        for i, iFactor in enumerate(FactorNameList):
+            for j, jFactor in enumerate(FactorNameList):
+                if j > i:
+                    Output["平均值"].loc[iFactor, jFactor] = Avg.loc[f"{i}-{j}"]
+                elif j < i:
+                    Output["平均值"].loc[iFactor, jFactor] = Output["平均值"].loc[jFactor, iFactor]
+                else:
+                    Output["平均值"].loc[iFactor, jFactor] = 1
+        if self._QSArgs.GenReport: Output["Report"] = self.genReport(Output)
+        return Output
+
+class CalcFactorTurnover(PanelOperator):
+    """因子换手率算子"""
+    def __init__(self, lookback:int=31, period_lookback:int=1, corr_method:Literal["spearman", "pearson", "kendall"]="spearman", descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        Arity = args.get("Arity", None) or 1
+        Args = {"Name": "calcIC"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "double"}
+        Args["ModelArgs"] = {"corr_method": corr_method, "period_lookback": period_lookback, "corr_method": corr_method} | Args.get("ModelArgs", {})
+        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
+        Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * Arity
+        return super().__init__(args=Args, config_file=config_file, **kwargs)
+    
+    def calculate(self, f, idt, iid, x, args):
+        SectionIDs = (self._QSArgs.DescriptorSection[0] if self._QSArgs.DescriptorSection[0] else iid)
+        if f.UserData["mask"]: 
+            Mask, x = pd.DataFrame(x[0].T==1, columns=idt, index=SectionIDs), x[1:]
+        else:
+            Mask = pd.DataFrame(True, columns=idt, index=SectionIDs)
+        if f._QSArgs.CalcDTRuler:
+            DTs = sorted(set(idt).intersection(f._QSArgs.CalcDTRuler))
+            Mask = Mask.reindex(columns=DTs).fillna(False)
+        else:
+            DTs = Mask.columns
+        FactorTurnover = pd.DataFrame(index=DTs, columns=iid)
+        FactorNames = f._QSArgs.SectionIDs
+        Mask = Mask.shift(args["period_lookback"], axis=1).fillna(False)
+        for iFactorName in iid:
+            if iFactorName not in FactorNames: continue
+            iIdx = FactorNames.index(iFactorName)
+            iData = pd.DataFrame(x[iIdx].T, columns=idt, index=SectionIDs).reindex(columns=DTs)
+            iPreData = iData.shift(args["period_lookback"], axis=1)
+            iMask = (Mask & iPreData.notnull())
+            FactorTurnover[iFactorName] = iData.where(iMask, np.nan).corrwith(iPreData, method=args["corr_method"])
+        return FactorTurnover.reindex(index=idt).values[self._QSArgs.LookBack[0]:]
+    
+    def __call__(self, *x:Factor, mask: Optional[Factor]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
+        Factors = []
+        if mask is not None: Factors.append(mask)
+        if not x: raise __QS_Error__("因子列表 x 不可为空!")
+        else: Factors += x
+        if "SectionIDs" not in factor_args:
+            PosNum = int(np.log10(len(x))) + 1
+            SectionIDs = [f"x-{str(i).zfill(PosNum)}" for i in range(len(x))]
+            factor_args["SectionIDs"] = SectionIDs
+        elif len(set(factor_args["SectionIDs"]))!=len(x) or (sorted(factor_args["SectionIDs"])!=factor_args["SectionIDs"]):
+            raise __QS_Error__(f"截面ID : {factor_args['SectionIDs']} 长度不等于测试因子列表 x 的长度, 或者有重复, 或者非升序排列!")
+        f = super().__call__(*Factors, factor_args=factor_args, **kwargs)
+        f.UserData = {"mask": (mask is not None), "factor_name_list": [f.Name for f in x]}
+        return f
+
+class FactorTurnover(BTNode):
+    """因子换手率"""
+    class __QS_ArgClass__(BTNode.__QS_ArgClass__):
+        Name: str = Field(default="SectionCorrelation", frozen=True, title="名称")
+        FactorNameList: Optional[List[str]] = Field(default=None, frozen=True, title="因子列表")
+        
+    def __init__(self, factor_turnover: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        return super().__init__(deps=[factor_turnover], args=args, config_file=config_file, **kwargs)
+    
+    def genMatplotlibFig(self, output, file_path=None):
+        nRow, nCol = output["因子换手率"].shape[1]//3+(output["因子换手率"].shape[1]%3!=0), min(3, output["因子换手率"].shape[1])
         Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
-        for i in range(self._Output["因子换手率"].shape[1]):
+        for i in range(output["因子换手率"].shape[1]):
             iAxes = Fig.add_subplot(nRow, nCol, i+1)
             iAxes.yaxis.set_major_formatter(yMajorFormatter)
             iAxes.xaxis_date()
             iAxes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
-            iAxes.stackplot(self._Output["因子换手率"].index, self._Output["因子换手率"].iloc[:, i].values, color="steelblue")
-            iAxes.set_title(self._Output["因子换手率"].columns[i])
+            iAxes.stackplot(output["因子换手率"].index, output["因子换手率"].iloc[:, i].values, color="steelblue")
+            iAxes.set_title(output["因子换手率"].columns[i])
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
-    def _repr_html_(self):
-        if len(self._QSArgs.ArgNames)>0:
-            HTML = "参数设置: "
-            HTML += '<ul align="left">'
-            for iArgName in self._QSArgs.ArgNames:
-                if iArgName!="计算时点":
-                    HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
-                elif self.Args[iArgName]:
-                    HTML += "<li>"+iArgName+": 自定义时点</li>"
-                else:
-                    HTML += "<li>"+iArgName+": 所有时点</li>"
-            HTML += "</ul>"
+
+    def genReport(self, output:dict) -> str:
+        HTML = "参数设置: "
+        HTML += '<ul align="left">'
+        if isinstance(getattr(self.Deps[0], "Operator", None), CalcFactorTurnover):
+            ModelArgs = self.Deps[0].Operator._QSArgs.ModelArgs
+            HTML += f"<li>相关性方法: {ModelArgs['corr_method']}</li>"
+            HTML += f"<li>回溯期数: {ModelArgs['period_lookback']}</li>"
+        if self.Deps[0]._QSArgs.CalcDTRuler:
+            HTML += "<li>计算时点: 自定义时点</li>"
         else:
-            HTML = ""
-        iHTML = self._Output["统计数据"].to_html(formatters=[_QS_formatPandasPercentage]*5)
+            HTML += "<li>计算时点: 所有时点</li>"
+        HTML += "</ul>"
+        iHTML = output["统计数据"].to_html(formatters=[_QS_formatPandasPercentage]*5)
         Pos = iHTML.find(">")
         HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         Fig = self.genMatplotlibFig()
@@ -280,3 +224,24 @@ class FactorTurnover(BaseModule):
         ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
         HTML += ('<img src="%s">' % ImgStr)
         return HTML
+
+    def init_compute(self, path: List[str], init_data: BTInitData, context: FactorContext) -> List[FactorInitData]:
+        InitData = super().init_compute(path=path, init_data=init_data, context=context)
+        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self.Deps[i].getID()) for i, iInitData in enumerate(InitData)]
+    
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[BTLocalContext]=None) -> dict:
+        FactorTurnover = bwd_data_list[0]
+        if self._QSArgs.FactorNameList:
+            FactorNameList = self._QSArgs.FactorNameList
+        else:
+            FactorNameList = self.Deps[0].UserData.get("factor_name_list", FactorTurnover.columns)
+        FactorTurnover.columns = FactorNameList
+        FactorTurnover = FactorTurnover.dropna(how="all", axis=0)
+        Output = {"因子换手率": FactorTurnover}
+        Output["统计数据"] = pd.DataFrame(FactorTurnover.mean(), columns=["平均值"])
+        Output["统计数据"]["标准差"] = FactorTurnover.std()
+        Output["统计数据"]["最小值"] = FactorTurnover.min()
+        Output["统计数据"]["最大值"] = FactorTurnover.max()
+        Output["统计数据"]["中位数"] = FactorTurnover.median()
+        if self._QSArgs.GenReport: Output["Report"] = self.genReport(Output)
+        return Output

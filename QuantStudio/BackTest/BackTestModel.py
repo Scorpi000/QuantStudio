@@ -8,7 +8,7 @@ from pydantic import Field
 
 from QuantStudio.Core import QSArgs
 from QuantStudio.Core.Node import Node, LocalContext
-from QuantStudio.Core.Factor import Factor, FactorContext, FactorLocalContext, FactorInitData
+from QuantStudio.Factor.Factor import FactorContext, FactorLocalContext, FactorInitData
 
 
 class BTLocalContext(LocalContext):
@@ -20,7 +20,8 @@ class BTInitData(QSArgs):
 
 
 class BTNode(Node):
-    """BTNode"""
+    """回测计算节点"""
+
     class __QS_ArgClass__(Node.__QS_ArgClass__):
         Name: str = Field(default="BTNode", frozen=True, title="名称")
         GenReport: bool = Field(default=False, frozen=True, title="生成报告")

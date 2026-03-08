@@ -1,6 +1,6 @@
 import html
 import datetime as dt
-from typing import List, Any, Optional
+from typing import List, Any, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -15,16 +15,16 @@ from QuantStudio.Tools.IDFun import testIDFilterStr
 from QuantStudio.Tools.DataTypeConversionFun import dict2html
 from QuantStudio.Tools.DataTypeFun import dict2id
 
-# 因子表, 接口类
-# 因子表可看做一个独立的数据集或命名空间, 可看做 Panel(items=[因子], major_axis=[时间点], minor_axis=[ID])
-# 因子表的数据有三个维度: 时间点, ID, 因子
-# 时间点数据类型是 datetime.datetime, ID 和因子名称的数据类型是 str
-# 不支持某个操作时, 方法产生错误
-# 没有相关数据时, 方法返回 None
-class FactorTable(Node):
-    """因子表"""
 
-    def __init__(self, fdb: FactorDB, args: dict={}, config_file=None, **kwargs):
+class FactorTable(Node):
+    """
+    因子表
+    因子表可看做一个独立的数据集, 其代表的数据是 Panel(items=[因子], major_axis=[时点], minor_axis=[ID])
+    因子表的数据有三个维度: 时点, ID, 因子
+    时点数据类型是 datetime, ID 和因子名称的数据类型是 str
+    """
+
+    def __init__(self, fdb: FactorDB, args: dict={}, config_file:Optional[str]=None, **kwargs):
         self._FactorDB = fdb # 因子表所属的因子库
         self._QS_PrepareIgnoredArgs: tuple = tuple()  # 决定 PrepareID 不需要的参数集，如果为空，表示所有参数都需要
         self._QS_LookbackArgs: tuple = ("LookBack",)
@@ -32,15 +32,12 @@ class FactorTable(Node):
         return super().__init__(args=args, config_file=config_file, **kwargs)
 
     @property
-    def Name(self):
-        return self._QSArgs.Name
-
-    @property
     def FactorDB(self) -> FactorDB:
+        """因子表所属的因子库, None 表示因子表不属于任何因子库"""
         return self._FactorDB
 
     @property
-    def PrepareID(self):
+    def PrepareID(self) -> str:
         if not self._QS_PrepareIgnoredArgs: return self.QSID
         if (not getattr(self, "_QS_ID", None)) or (not getattr(self, "_QS_PrepareID", None)):
             DumpedMdl = self.model_dump()
@@ -48,36 +45,76 @@ class FactorTable(Node):
             self._QS_PrepareID = dict2id(DumpedMdl)
         return self._QS_PrepareID
 
-    # -------------------------------表的信息---------------------------------
-    # 获取表的元数据
-    def getMetaData(self, key=None):
+    def getMetaData(self, key:Optional[str]=None) -> Union[Any, pd.Series]:
+        """获取因子表的元信息, 元信息由若干个键值对组成
+
+        Args:
+            key: 元信息键, None 表示获取所有的元信息
+
+        Returns:
+            如果 key 非 None 则返回该 key 对应的元信息
+            如果 key=None, 则返回 Series(index=[所有的 key])
+        """
         if key is None: return pd.Series()
         return None
 
-    # -------------------------------维度信息-----------------------------------
-    # 返回所有因子名
     @property
-    def FactorNames(self):
+    def FactorNames(self) -> List[str]:
+        """表中的所有因子的名称列表"""
         return []
 
-    # 获取因子对象
-    def getFactor(self, ifactor_name:str, args={}):
+    def getFactor(self, ifactor_name:str, args:dict={}) -> Factor:
+        """获取表中的因子对象
+
+        Args:
+            ifactor_name: 因子名称
+            args: 传递给因子创建时初始化的参数集
+
+        Returns:
+            因子对象
+        """
         return Factor(ft=self, args=args | {"Name": ifactor_name}, logger=self._QS_Logger)
 
-    # 获取因子的元数据
-    def getFactorMetaData(self, factor_names=None, key=None):
+    def getFactorMetaData(self, factor_names:Optional[List[str]]=None, key:Optional[str]=None) -> Union[pd.DataFrame, pd.Series]:
+        """获取因子的元信息, 元信息由若干个键值对组成
+
+        Args:
+            factor_names: 给定的因子名称列表, None 表示表中所有的因子
+            key: 给定的元信息键, None 表示获取所有的元信息
+
+        Returns:
+            如果 key=None, 则返回 DataFrame(index=factor_names, columns=[所有的 key])
+            如果 key 非 None 则返回该 key 对应的元信息, Series(index=factor_names)
+        """
         if factor_names is None: factor_names = self.FactorNames
         if key is None:
             return pd.DataFrame(index=factor_names, dtype=np.dtype("O"))
         else:
             return pd.Series([None] * len(factor_names), index=factor_names, dtype=np.dtype("O"))
 
-    # 获取 ID 序列
-    def getID(self, ifactor_name=None, idt=None):
+    def getID(self, ifactor_name:Optional[str]=None, idt:Optional[dt.datetime]=None) -> List[str]:
+        """获取 ID 序列
+
+        Args:
+            ifactor_name: 给定的因子名称, 非 None 表示获取该因子的 ID 序列, None 表示获取表的 ID 序列
+            idt: 给定的时点, 非 None 表示获取该时点的 ID 序列, None 表示获取所有的 ID 序列
+
+        Returns:
+            ID 序列, 若为空 list, 表示该因子表没有固定的 ID 序列或者无法获取
+        """
         return []
 
-    # 获取 ID 的 Mask, 返回: Series(True or False, index=[ID])
-    def getIDMask(self, idt, ids=None, id_filter_str=None):
+    def getIDMask(self, idt:dt.datetime, ids:Optional[List[str]]=None, id_filter_str:Optional[str]=None) -> pd.Series:
+        """根据给定的时点和条件字符串，对每个 ID 判定是否满足条件，返回 True or False 的 Series
+
+        Args:
+            idt: 给定的时点, 表示对该时点的因子数据施加条件
+            ids: 给定的 ID 序列, 非 None 表示只考虑这个范围内的 ID
+            id_filter_str: 条件字符串, 比如："(@Close > 0) & (@Open <= 3)", 其中 @ 后面跟的是因子表中的因子名称
+
+        Returns:
+            Series(True or False, index=[ID])
+        """
         if ids is None: ids = self.getID(idt=idt)
         if not id_filter_str: return pd.Series(True, index=ids)
         CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(id_filter_str, self.FactorNames)
@@ -85,8 +122,17 @@ class FactorTable(Node):
         temp = self.readData(factor_names=IDFilterFactors, ids=ids, dts=[idt]).loc[:, idt, :]
         return eval(CompiledIDFilterStr)
 
-    # 获取过滤后的 ID
-    def getFilteredID(self, idt, ids=None, id_filter_str=None):
+    def getFilteredID(self, idt:dt.datetime, ids:Optional[List[str]]=None, id_filter_str:Optional[str]=None) -> List[str]:
+        """根据给定的时点和条件字符串，返回满足条件的 ID 序列
+
+        Args:
+            idt: 给定的时点, 表示对该时点的因子数据施加条件
+            ids: 给定的 ID 序列, 非 None 表示只考虑这个范围内的 ID
+            id_filter_str: 条件字符串, 比如："(@Close > 0) & (@Open <= 3)", 其中 @ 后面跟的是因子表中的因子名称
+
+        Returns:
+            根据条件筛选后的 ID 序列
+        """
         if not id_filter_str: return self.getID(idt=idt)
         if ids is None: ids = self.getID(idt=idt)
         CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(id_filter_str, self.FactorNames)
@@ -94,8 +140,18 @@ class FactorTable(Node):
         temp = self.readData(factor_names=IDFilterFactors, ids=ids, dts=[idt]).loc[:, idt, :]
         return eval("temp[" + CompiledIDFilterStr + "].index.tolist()")
 
-    # 获取时间点序列
-    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, **kwargs):
+    def getDateTime(self, ifactor_name:Optional[str]=None, iid:Optional[str]=None, start_dt:Optional[dt.datetime]=None, end_dt:Optional[dt.datetime]=None, **kwargs) -> List[dt.datetime]:
+        """获取时点序列
+
+        Args:
+            ifactor_name: 给定的因子名称, 非 None 表示获取该因子的时点序列, None 表示获取表的时点序列
+            iid: 给定的 ID, 非 None 表示获取该 ID 的时点序列, None 表示获取所有的时点序列
+            start_dt: 起始日, 非 None 表示截取 start_dt 之后的时点
+            end_dt: 结束日, 非 None 表示截取 end_dt 之前的时点
+
+        Returns:
+            时点序列, 若为空 list, 表示该因子表没有固定的时点序列或者无法获取
+        """
         return []
 
     # 准备原始数据的接口
@@ -105,9 +161,18 @@ class FactorTable(Node):
     # 计算数据的接口, 返回: Panel(item=[因子], major_axis=[时间点], minor_axis=[ID])
     def __QS_calcData__(self, raw_data, factor_names, ids, dts):
         return None
+    
+    def readData(self, factor_names:List[str], ids:List[str], dts:List[dt.datetime], **kwargs) -> Panel:
+        """读取因子表数据
 
-    # 读取数据, 返回: Panel(item=[因子], major_axis=[时间点], minor_axis=[ID])
-    def readData(self, factor_names, ids, dts, **kwargs):
+        Args:
+            factor_names: 因子名称列表
+            ids: ID 序列
+            dts: 时点序列
+
+        Returns:
+            Panel(item=factor_names, major_axis=dts, minor_axis=ids)
+        """
         if not __QS_Context__:
             return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts), factor_names=factor_names, ids=ids, dts=dts)
         else: Context = __QS_Context__[-1]

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import datetime as dt
-from typing import List, Optional, Any, Literal, Tuple
+from typing import List, Optional, Any, Literal, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -90,11 +90,12 @@ class FactorInitData(QSArgs):
     SubFactorName: Optional[str] = Field(default=None, title="因子名称", description="传递给因子表用于准备原始数据的因子名称")
 
 
-# 因子
-# 因子可看做一个 DataFrame(index=[时间点], columns=[ID])
-# 时间点数据类型是 datetime.datetime, ID 的数据类型是 str
 class Factor(Node):
-    """因子"""
+    """
+    因子
+    因子可看做 DataFrame(index=[时点], columns=[ID])
+    时点数据类型是 datetime, ID 的数据类型是 str
+    """
     class __QS_ArgClass__(Node.__QS_ArgClass__):
         Name: str = Field(default="Factor", frozen=True, title="名称")
         Meta: dict = Field(default={}, title="元信息", frozen=False, exclude=True)
@@ -102,7 +103,7 @@ class Factor(Node):
         CalcDTRuler: Optional[List[dt.datetime]] = Field(default=None, title="计算时点标尺", frozen=True)
         CacheEnabled: bool = Field(default=True, frozen=True, title="启用缓存")
 
-    def __init__(self, ft=None, descriptors: List["Factor"] = [], args: dict = {}, config_file: Optional[str] = None, **kwargs):
+    def __init__(self, ft: Optional["FactorTable"]=None, descriptors: List["Factor"] = [], args: dict = {}, config_file: Optional[str] = None, **kwargs):
         self._FactorTable = ft
         if ft and descriptors:
             raise __QS_Error__("因子表和描述子列表不能都存在!")
@@ -112,22 +113,33 @@ class Factor(Node):
         else:
             return super().__init__(deps=descriptors, args=args, config_file=config_file, **kwargs)
     
-    def new(self, args={}, **kwargs):
+    def new(self, args:dict={}, **kwargs) -> "Factor":
         kwargs = {"ft": self._FactorTable, "descriptors": self.Descriptors} | kwargs
         return super().new(args=args, **kwargs)
     
     @property
-    def FactorTable(self):
+    def FactorTable(self) -> "FactorTable":
+        """因子所属的因子表, None 表示因子不属于任何因子表"""
         return self._FactorTable
 
     @property
-    def Descriptors(self):
+    def Descriptors(self) -> List["Factor"]:
+        """因子所依赖的因子列表, 返回 [] 表示因子不依赖任何因子"""
         if self._FactorTable:
             return []
         else:
             return self.Deps
 
-    def getMetaData(self, key=None):
+    def getMetaData(self, key:Optional[str]=None) -> Union[Any, pd.Series]:
+        """获取因子的元信息, 元信息由若干个键值对组成
+
+        Args:
+            key: 元信息键, None 表示获取所有的元信息
+
+        Returns:
+            如果 key 非 None 则返回该 key 对应的元信息
+            如果 key=None, 则返回 Series(index=[所有的 key])
+        """
         if key:
             if key in self._QSArgs.Meta: return self._QSArgs.Meta[key]
             elif self._FactorTable: return self._FactorTable.getFactorMetaData(factor_names=[self._QSArgs.Name], key=key).loc[self._QSArgs.Name]
@@ -138,26 +150,57 @@ class Factor(Node):
                 Meta = Meta.combine_first(self._FactorTable.getFactorMetaData(factor_names=[self._QSArgs.Name], key=None).loc[self._QSArgs.Name])
             return Meta
 
-    # 获取 ID 序列
-    def getID(self, idt=None, **kwargs):
+    def getID(self, idt:Optional[dt.datetime]=None, **kwargs) -> List[str]:
+        """获取 ID 序列
+
+        Args:
+            idt: 给定的时点, 非 None 表示获取该时点的 ID 序列, None 表示获取所有的 ID 序列
+
+        Returns:
+            ID 序列, 若为空 list, 表示该因子没有固定的 ID 序列或者无法获取
+        """
         if self._FactorTable is not None:
             return self._FactorTable.getID(ifactor_name=self._QSArgs.Name, idt=idt, **kwargs)
         return self._QSArgs.SectionIDs
 
-    # 获取时间点序列
-    def getDateTime(self, iid=None, start_dt=None, end_dt=None, **kwargs):
+    def getDateTime(self, iid:Optional[str]=None, start_dt:Optional[dt.datetime]=None, end_dt:Optional[dt.datetime]=None, **kwargs) -> List[dt.datetime]:
+        """获取时点序列
+
+        Args:
+            iid: 给定的 ID, 非 None 表示获取该 ID 的时点序列, None 表示获取所有的时点序列
+            start_dt: 起始日, 非 None 表示截取 start_dt 之后的时点
+            end_dt: 结束日, 非 None 表示截取 end_dt 之前的时点
+
+        Returns:
+            时点序列, 若为空 list, 表示该因子没有固定的时点序列或者无法获取
+        """
         if self._FactorTable is not None:
             return self._FactorTable.getDateTime(ifactor_name=self._QSArgs.Name, iid=iid, start_dt=start_dt, end_dt=end_dt, **kwargs)
         return []
     
-    def readData(self, ids, dts, **kwargs):
-        SectionIDs = kwargs.get("section_ids", ids)
+    def readData(self, ids:List[str], dts:List[dt.datetime], **kwargs) -> pd.DataFrame:
+        """读取因子数据
+
+        Args:
+            ids: ID 序列
+            dts: 时点序列
+            kwargs: 可传入的参数有
+                dt_ruler: 时点标尺序列, 如果没有传入则为 dts
+                section_ids: 截面 ID 序列，如果没有传入则为因子参数集中指定的 SectionIDs, 如果参数集中未指定则为 ids
+
+        Returns:
+            DataFrame(index=dts, columns=ids)
+        """
+        if (not __QS_Context__) and (self._FactorTable is not None): return self._FactorTable.readData(factor_names=[self._QSArgs.Name], ids=ids, dts=dts, **kwargs).iloc[0]
+        SectionIDs = kwargs.get("section_ids", self._QSArgs.SectionIDs)
+        if not SectionIDs: SectionIDs = ids
         if not __QS_Context__: Context = FactorContext(DTRuler=kwargs.get("dt_ruler", dts), DefaultSectionIDs=SectionIDs)
         else: Context = __QS_Context__[-1]
         if not __QS_Engine__: ExecEngine = Engine()
         else: ExecEngine = __QS_Engine__[-1]
         LocalContext = FactorLocalContext(DTs=dts, IDs=ids)
-        Rslt = ExecEngine.run([self], Context, fwd_data_list=[LocalContext], init_data_list=[{"dt_range": (dts[0], dts[-1]), "section_ids": SectionIDs}])
+        InitData = FactorInitData(DTRange=(dts[0], dts[-1]), SectionIDs=SectionIDs)
+        Rslt = ExecEngine.run([self], Context, fwd_data_list=[LocalContext], init_data_list=[InitData])
         return Rslt[0]
 
     def __getitem__(self, key):
@@ -395,15 +438,16 @@ class Factor(Node):
         return qs_not(self)
 
 
-# 直接赋予数据产生的因子
-# data: DataFrame(index=[时点], columns=[ID])
 class DataFactor(Factor):
+    """
+    直接赋予数据产生的因子
+    """
     class __QS_ArgClass__(Factor.__QS_ArgClass__):
         Name: str = Field(default="DataFactor", frozen=True, title="名称")
         DataType: Literal["double", "string", "object"] = Field(default="double", frozen=True, title="数据类型")
         LookBack: int = Field(default=0, title="回溯天数", frozen=True)
 
-    def __init__(self, data, args: dict={}, config_file: Optional[str] = None, **kwargs):
+    def __init__(self, data:Union[Any, pd.DataFrame, pd.Series], args: dict={}, config_file: Optional[str] = None, **kwargs):
         args = args.copy()
         if "DataType" not in args:
             if isinstance(data, (pd.Series, pd.DataFrame)):
@@ -474,11 +518,11 @@ class DataFactor(Factor):
                 self._DataContent = "Value"
         self._Data = data        
     
-    def new(self, args={}, **kwargs):
+    def new(self, args:dict={}, **kwargs) -> "DataFactor":
         kwargs = {"data": self._Data} | kwargs
         return super().new(args=args, **kwargs)
     
-    def getMetaData(self, key=None):
+    def getMetaData(self, key:Optional[str]=None) -> Union[Any, pd.Series]:
         DataType = self._QSArgs.DataType
         if key is None:
             return {"DataType": DataType}
@@ -486,7 +530,7 @@ class DataFactor(Factor):
             return DataType
         return None
 
-    def getID(self, idt=None):
+    def getID(self, idt:Optional[dt.datetime]=None) -> List[str]:
         if self._DataContent == "Factor":
             return self._Data.columns.tolist()
         elif self._DataContent == "ID":
@@ -494,13 +538,13 @@ class DataFactor(Factor):
         else:
             return []
 
-    def getDateTime(self, iid=None, start_dt=None, end_dt=None):
+    def getDateTime(self, iid:Optional[str]=None, start_dt:Optional[dt.datetime]=None, end_dt:Optional[dt.datetime]=None) -> List[dt.datetime]:
         if self._DataContent in ("DateTime", "Factor"):
             return self._Data.index.tolist()
         else:
             return []
 
-    def readData(self, ids, dts, **kwargs):
+    def readData(self, ids:List[str], dts:List[dt.datetime], **kwargs) -> pd.DataFrame:
         if self._DataContent == "Value":
             return pd.DataFrame([(self._Data,) * len(ids)] * len(dts), index=dts, columns=ids)
         elif self._DataContent == "ID":
@@ -515,8 +559,7 @@ class DataFactor(Factor):
             return Data.reindex(index=dts, columns=ids)
         else:
             return fillNaByLookback(Data.reindex(index=sorted(Data.index.union(dts)), columns=ids), lookback=self._QSArgs.LookBack * 24.0 * 3600).loc[dts, :]
-
-    # NodeState: {"dt_range", "section_ids", "pid_ids"}
+    
     def init_compute(self, path: List[str], init_data: FactorInitData, context: FactorContext) -> List[FactorInitData]:
         return []
 

@@ -150,7 +150,6 @@ class Max(PointOperator):
         Mask = (np.sum(pd.notnull(Data), axis=0)==0)
         Rslt[Mask] = args["all_nan"]
         return Rslt
-    
 
 class Min(PointOperator):
     def __init__(self, all_nan=np.nan, dtype:str="double", args={}, config_file=None, **kwargs):
@@ -164,7 +163,6 @@ class Min(PointOperator):
         Mask = (np.sum(pd.notnull(Data), axis=0)==0)
         Rslt[Mask] = args["all_nan"]
         return Rslt
-    
 
 class Rank(PointOperator):
     def __init__(self, ascending:bool=True, uniformization:bool=True, args={}, config_file=None, **kwargs):
@@ -180,7 +178,6 @@ class Rank(PointOperator):
             TotalNum = np.sum(pd.notnull(Data), axis=0)
             Rslt = Rslt / TotalNum
         return Rslt
-    
 
 class Mean(PointOperator):
     def __init__(self, weights=None, ignore_nan_weight=True, args={}, config_file=None, **kwargs):
@@ -208,7 +205,6 @@ class Mean(PointOperator):
         else:
             Rslt[WeightArray==0.0] = np.nan
             return Rslt / Data.shape[0]
-    
 
 class Std(PointOperator):
     def __init__(self, ddof=1, all_nan:float=np.nan, args={}, config_file=None, **kwargs):
@@ -222,7 +218,6 @@ class Std(PointOperator):
         Mask = (np.sum(pd.notnull(Data), axis=0)==0)
         Rslt[Mask] = args["all_nan"]
         return Rslt
-    
 
 class Regress(PointOperator):
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
@@ -254,7 +249,6 @@ class Regress(PointOperator):
             Alpha = np.zeros(shape=YBar.shape)
         if args["output"]=="alpha": return Alpha
         return rfn.unstructured_to_structured(np.array([Alpha, Beta]).swapaxes(0, -1)).T
-    
 
 class RegressChangeRate(PointOperator):
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
@@ -367,7 +361,6 @@ class RollingRank(TimeOperator):
         if Uniformization:
             Rslt = Rslt / Data.rolling(**args).count().values[self.Args["LookBack"][0]:]
         return Rslt
-    
 
 class RollingMean(TimeOperator):
     def __init__(self, window:int=1, min_periods:int=1, win_type:Optional[str]=None, weights=None, args={}, config_file=None, **kwargs):
@@ -385,8 +378,7 @@ class RollingMean(TimeOperator):
         else:
             weights = np.array(weights)
             return Data.rolling(**Args).apply(lambda x: np.nansum(x * weights) / np.nansum(pd.notnull(x) * weights), raw=True).values[self.Args["LookBack"][0]:]
-    
-        
+
 class RollingApply(TimeOperator):
     def __init__(self, func=np.nansum, dtype:str="double", window:int=1, min_periods:int=1, win_type:Optional[str]=None, args={}, config_file=None, **kwargs):
         Args = {"Name": "rollingApply", "LookBack": [window - 1], "DataType": dtype} | args | {"Arity": 1, "DTMode": "多时点", "IDMode": "多ID"}
@@ -416,7 +408,6 @@ class RollingChangeRate(TimeOperator):
         Rslt[Mask & (Numerator<0)] = -1.0
         Rslt[Mask & (Numerator==0)] = 0.0
         return Rslt[self.Args["LookBack"][0]-args["window"]+1:]
-        
 
 class RollingRegress(TimeOperator):
     def __init__(self, window:int=1, min_periods:int=1, intercept=True, output:Optional[str]=None, args={}, config_file=None, **kwargs):
@@ -561,7 +552,6 @@ class ConcatSection(SectionOperator):
         
     def calculate(self, f, idt, iid, x, args):
         return pd.DataFrame(np.concatenate(x, axis=1), columns=sum(((iid if iIDs is None else iIDs) for iIDs in self.Args.DescriptorSection), [])).reindex(columns=iid).values
-    
 
 class ChgSection(SectionOperator):
     # id_map: {新ID: 旧ID}

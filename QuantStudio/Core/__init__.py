@@ -23,24 +23,16 @@ _QSLogHandler.setFormatter(logging.Formatter('%(asctime)s | %(name)s | %(levelna
 __QS_Logger__.addHandler(_QSLogHandler)
 
 
-# Quant Studio 系统错误
 class __QS_Error__(Exception):
-    """Quant Studio 错误"""
+    """Quant Studio 系统错误"""
     pass
 
 
-# 参数对象
-# 参数属性
-#   frozen: 初始化后是否可修改, 默认 None 可修改
-#   exclude: 参数是否不用于生成 ID，默认 False 用于生成
-#   repr: 参数是否可见, 默认 True 可见
-#   title: 参数名称(对外展示用)
-#   description: 描述信息
 class QSArgs(BaseModel):
-    """参数对象"""
+    """QuantStudio 参数对象"""
+
     Owner: Any = Field(default=None, exclude=True, repr=False, frozen=True, title="所有者")
     Logger: logging.Logger = Field(default=__QS_Logger__, exclude=True, repr=False, title="日志对象")
-
     model_config = ConfigDict(extra='ignore', arbitrary_types_allowed=True)
     
     def model_post_init(self, context: Any, /) -> None:
@@ -48,6 +40,7 @@ class QSArgs(BaseModel):
     
     @property
     def QSID(self) -> str:
+        """表示对象的全局唯一 id, 且每次运行程序时该 id 不变"""
         if not getattr(self, "_QS_ID", None):
             self._QS_ID = dict2id(self.model_dump())
         return self._QS_ID
@@ -58,22 +51,53 @@ class QSArgs(BaseModel):
             if self.Owner: self.Owner._QS_ID = None
         return super().__setattr__(name, value)
 
-    # 以 dict 形式返回所有参数和参数值, repr=True: 仅返回可见参数
-    def to_dict(self, repr=True) -> dict:
+    
+    def to_dict(self, repr:bool=True) -> dict:
+        """以 dict 形式返回所有参数和参数值
+
+        Args:
+            repr: 是否仅返回可见参数
+        
+        Returns:
+            {参数名: 参数值}
+        """
         if repr:
             return {field: getattr(self, field) for field, info in self.__pydantic_fields__.items() if info.repr}
         else:
             return {field: getattr(self, field) for field in self.__pydantic_fields__.keys()}
     
-    # 给定 key，返回参数集中参数的元信息
-    def meta(self, key: Optional[Literal["annotation", "title", "description", "default", "required", "frozen", "exclude", "repr"]]=None, repr=True) -> Union[pd.Series, pd.DataFrame]:
+    def meta(self, key: Optional[Literal["annotation", "title", "description", "default", "required", "frozen", "exclude", "repr"]]=None, repr:bool=True) -> Union[pd.Series, pd.DataFrame]:
+        """返回参数集中参数的元信息, 元信息由若干个键值对组成
+
+        Args:
+            key: 元信息键, None 表示获取所有的元信息, key 可选下列值
+                - annotation: str, 参数值的数据类型
+                - title: str, 参数的说明性名称
+                - description: str, 参数的描述信息
+                - frozen: bool, 参数值初始化后是否不能再修改, 默认值 False
+                - exclude: bool, False 表示用于生成参数集的 QSID, 即该参数会影响对象的行为, 默认值 False
+                - repr: bool, 该参数是否可见, 默认值 True
+            repr: 是否仅返回可见参数
+        
+        Returns:
+            如果 key=None, 则返回 DataFrame(index=[参数名], columns=[所有的 key])
+            如果 key 非 None 则返回该 key 对应的元信息, Series(index=[参数名])
+        """
         if key is not None:
             return pd.Series({field: getattr(info, key) for field, info in self.__pydantic_fields__.items() if (not repr) or info.repr}, dtype="O")
         else:
             return pd.DataFrame({key: self.meta(key=key, repr=repr) for key in ["annotation", "title", "description", "default", "required", "frozen", "exclude", "repr"]})
 
-    # 返回参数的说明信息
-    def info(self, repr=True, html=False) -> str:
+    def info(self, repr:bool=True, html:bool=False) -> str:
+        """返回参数集中参数的说明信息
+
+        Args:
+            repr: 是否仅返回可见参数
+            html: 是否返回 HTML 格式的说明, False 返回 Markdown 格式的说明
+        
+        Returns:
+            `参数: 数据类型, 默认值, 描述信息` 格式的列表
+        """
         annotation = self.meta(key="annotation", repr=repr)
         title = self.meta(key="title", repr=repr)
         default = self.meta(key="default", repr=repr)
@@ -101,7 +125,7 @@ class QSArgs(BaseModel):
         if not isinstance(other, QSArgs): return False
         return self.QSID == other.QSID
 
-    def get(self, key:str, value=None):
+    def get(self, key:str, value:Any=None) -> Any:
         if hasattr(self, key):
             return getattr(self, key)
         else:
@@ -116,7 +140,12 @@ class QSArgs(BaseModel):
     def items(self):
         return ((key, getattr(self, key)) for key in self.__pydantic_fields__.keys())
 
-    def update(self, args:dict={}) -> None:
+    def update(self, args:dict={}):
+        """更新参数集
+
+        Args:
+            args: 新的参数和值
+        """
         for ifield, ivalue in args.items():
             if ifield in self.__pydantic_fields__:
                 setattr(self, ifield, ivalue)
@@ -134,12 +163,20 @@ class QSArgs(BaseModel):
         return dict2html(self.to_dict(), dict_class=(dict, pd.Series), dict_limit=np.inf)
 
 
-# Quant Studio 系统对象
 class __QS_Object__:
     """Quant Studio 系统对象"""
+
     __QS_ArgClass__ = QSArgs
 
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """实例化 QuantStudio 系统对象
+
+        Args:
+            args: 指定的对象参数集
+            config_file: 配置文件路径, 配置文件用于设置对象参数。配置文件是一个 json 格式的文件(字符编码为 utf-8, 扩展名为 json), 以键值对的形式给出各个参数的取值
+            kwargs:
+                logger: 日志对象, 用于内部打印日志, 如果没有指定则使用默认的 __QS_Logger__ 对象
+        """
         self._QS_Logger = kwargs.pop("logger", None)
         if self._QS_Logger is None: self._QS_Logger = __QS_Logger__
         Config = {}
@@ -166,20 +203,32 @@ class __QS_Object__:
         }
 
     @property
-    def QSID(self):
+    def QSID(self) -> str:
+        """表示对象行为的全局唯一 id, 且每次运行程序时该 id 不变。相同 QSID 的对象行为一致，但不同的 QuantStudio 对象有可能 QSID 相同"""
         if not getattr(self, "_QS_ID", None):
             self._QS_ID = dict2id(self.model_dump())
         return self._QS_ID
 
     @property
-    def Args(self):
+    def Args(self) -> QSArgs:
+        """参数集对象"""
         return self._QSArgs
 
     @property
     def Logger(self):
+        """日志对象"""
         return self._QS_Logger
     
-    def new(self, args={}, **kwargs):
+    def new(self, args:dict={}, **kwargs) -> "__QS_Object__":
+        """给定新的参数集 args 创建一个新的 QuantStudio 对象, args 中未指定的参数则使用原对象的参数
+
+        Args:
+            args: 指定的新参数集
+            kwargs: 创建 QuantStudio 对象需要的其他入参
+        
+        Returns:
+            QuantStudio 对象
+        """
         args = self._QSArgs.model_dump() | args
         kwargs = {"logger": self._QS_Logger, "config_file": self._ConfigFile} | kwargs
         return self.__class__(args=args, **kwargs)

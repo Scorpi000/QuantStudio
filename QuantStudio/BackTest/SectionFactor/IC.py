@@ -12,8 +12,8 @@ from matplotlib.ticker import FuncFormatter
 from pydantic import Field
 
 from QuantStudio.Core import __QS_Error__
-from QuantStudio.Core.Factor import Factor, FactorContext, FactorInitData
-from QuantStudio.Core.FactorOperation import PanelOperator, SectionOperator
+from QuantStudio.Factor.Factor import Factor, FactorContext, FactorInitData
+from QuantStudio.Factor.FactorOperation import PanelOperator, SectionOperator, PanelOperation, SectionOperation
 from QuantStudio.BackTest.BackTestModel import BTLocalContext, BTNode, BTInitData
 
 
@@ -23,52 +23,9 @@ def _QS_formatMatplotlibPercentage(x, pos):
 def _QS_formatPandasPercentage(x):
     return '{0:.2f}%'.format(x*100)
 
-class CalcBreadth(SectionOperator):
-    def __init__(self, descriptor_ids=None, args={}, config_file=None, **kwargs):
-        Arity = args.get("Arity", None) or 1
-        Args = {"Name": "calcBreadth"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "double"}
-        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
-        return super().__init__(args=Args, config_file=config_file, **kwargs)
-    
-    def calculate(self, f, idt, iid, x, args):
-        SectionIDs = (self._QSArgs.DescriptorSection[0] if self._QSArgs.DescriptorSection[0] else iid)
-        if f._QSArgs.CalcDTRuler:
-            DTs = sorted(set(idt).intersection(f._QSArgs.CalcDTRuler))
-        else:
-            DTs = idt
-        if f.UserData["mask"]: 
-            Mask, x = pd.DataFrame(x[0]==1, index=idt, columns=SectionIDs), x[1:]
-            Mask = Mask.reindex(columns=DTs).fillna(False)
-        else:
-            Mask = pd.DataFrame(True, index=DTs, columns=SectionIDs)
-        Breadth = pd.DataFrame(index=DTs, columns=iid)
-        FactorNames = f._QSArgs.SectionIDs
-        for iFactorName in iid:
-            if iFactorName not in FactorNames: continue
-            iIdx = FactorNames.index(iFactorName)
-            iFactorData = pd.DataFrame(x[iIdx], index=idt, columns=SectionIDs)
-            iFactorData = iFactorData.reindex(index=DTs)
-            iMask = (Mask & iFactorData.notnull())
-            Breadth[iFactorName] = iMask.sum(axis=1)
-        return Breadth.reindex(index=idt).values[self._QSArgs.LookBack[0]:]    
-    
-    def __call__(self, *x, mask: Optional[Factor]=None, factor_args:Dict={}, **kwargs):
-        Factors = []
-        if mask is not None: Factors.append(mask)
-        if not x: raise __QS_Error__("测试因子列表 x 不可为空!")
-        else: Factors += x
-        if "SectionIDs" not in factor_args:
-            PosNum = int(np.log10(len(x))) + 1
-            SectionIDs = [f"x-{str(i).zfill(PosNum)}" for i in range(len(x))]
-            factor_args["SectionIDs"] = SectionIDs
-        elif len(set(factor_args["SectionIDs"]))!=len(x) or (sorted(factor_args["SectionIDs"])!=factor_args["SectionIDs"]):
-            raise __QS_Error__(f"截面ID : {factor_args['SectionIDs']} 长度不等于测试因子列表 x 的长度, 或者有重复, 或者非升序排列!")
-        f = super().__call__(*Factors, factor_args=factor_args, **kwargs)
-        f.UserData = {"mask": (mask is not None), "factor_name_list": [f.Name for f in x]}
-        return f    
-
 class CalcIC(PanelOperator):
-    def __init__(self, lookback:int = 31, period_lookback:int=1, corr_method:Literal["spearman", "pearson", "kendall"]="spearman", descriptor_ids=None, args={}, config_file=None, **kwargs):
+    """IC 算子"""
+    def __init__(self, lookback:int = 31, period_lookback:int=1, corr_method:Literal["spearman", "pearson", "kendall"]="spearman", descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Arity = args.get("Arity", None) or 1
         Args = {"Name": "calcIC"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "object"}
         Args["ModelArgs"] = {"corr_method": corr_method, "period_lookback": period_lookback} | Args.get("ModelArgs", {})
@@ -122,7 +79,7 @@ class CalcIC(PanelOperator):
         Rslt = np.array([IC.reindex(index=idt).values[self._QSArgs.LookBack[0]:], Breadth.reindex(index=idt).values[self._QSArgs.LookBack[0]:]])
         return unstructured_to_structured(Rslt.swapaxes(0, -1), dtype=np.dtype([("IC", float), ("Breadth", float)])).T.astype("O")
         
-    def __call__(self, *x, price:Factor, mask: Optional[Factor]=None, cat_data: Optional[Factor]=None, weight: Optional[Factor]=None, factor_args:Dict={}, **kwargs):
+    def __call__(self, *x:Factor, price:Factor, mask: Optional[Factor]=None, cat_data: Optional[Factor]=None, weight: Optional[Factor]=None, factor_args:Dict={}, **kwargs) -> PanelOperation:
         Factors = [price]
         if mask is not None: Factors.append(mask)
         if cat_data is not None: Factors.append(cat_data)
@@ -143,6 +100,7 @@ class IC(BTNode):
     """IC"""
     class __QS_ArgClass__(BTNode.__QS_ArgClass__):
         Name: str = Field(default="IC", frozen=True, title="名称")
+        FactorNameList: Optional[List[str]] = Field(default=None, frozen=True, title="因子列表")
         RollingAvgPeriod: int = Field(default=12, frozen=True, title="移动平均期数")
         
     def __init__(self, ic: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
@@ -170,7 +128,7 @@ class IC(BTNode):
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     
-    def genReport(self, output):
+    def genReport(self, output:dict) -> str:
         HTML = "参数设置: "
         HTML += '<ul align="left">'
         if isinstance(getattr(self.Deps[0], "Operator", None), CalcIC):
@@ -203,13 +161,13 @@ class IC(BTNode):
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[BTLocalContext]=None) -> dict:
         IC, Breadth = bwd_data_list[0].map(lambda x: x[0]), bwd_data_list[0].map(lambda x: x[1])
-        SectionIDs = self.Deps[0].getID()
-        if SectionIDs:
-            FactorNameList = self.Deps[0].UserData.get("factor_name_list", SectionIDs)
-            FactorNameList = [FactorNameList[SectionIDs.index(iID)] for iID in IC.columns]
-            IC.columns = Breadth.columns = FactorNameList
-            IC = IC.dropna(how="all", axis=0)
-            Breadth = Breadth.reindex(index=IC.index)
+        if self._QSArgs.FactorNameList:
+            FactorNameList = self._QSArgs.FactorNameList
+        else:
+            FactorNameList = self.Deps[0].UserData.get("factor_name_list", IC.columns)
+        IC.columns = Breadth.columns = FactorNameList
+        IC = IC.dropna(how="all", axis=0)
+        Breadth = Breadth.reindex(index=IC.index)
         Output = {"截面宽度": Breadth, "IC": IC}
         Output["IC的移动平均"] = Output["IC"].copy()
         for i in range(Output["IC"].shape[0]):
@@ -223,7 +181,7 @@ class IC(BTNode):
         Output["统计数据"]["IC_IR"] = Output["统计数据"]["平均值"] / Output["统计数据"]["标准差"]
         Output["统计数据"]["t统计量"] = np.nan
         Output["统计数据"]["平均截面宽度"] = Output["截面宽度"].mean()
-        Output["统计数据"]["IC×Sqrt(N)"] = Output["统计数据"]["平均值"]*np.sqrt(Output["统计数据"]["平均截面宽度"])
+        Output["统计数据"]["IC×Sqrt(N)"] = Output["统计数据"]["平均值"] * np.sqrt(Output["统计数据"]["平均截面宽度"])
         Output["统计数据"]["有效期数"] = 0.0
         for iFactor in Output["IC"]: Output["统计数据"].loc[iFactor, "有效期数"] = pd.notnull(Output["IC"][iFactor]).sum()
         Output["统计数据"]["t统计量"] = Output["统计数据"]["有效期数"]**0.5 * Output["统计数据"]["IC_IR"]

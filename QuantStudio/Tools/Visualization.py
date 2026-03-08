@@ -1,12 +1,173 @@
 # -*- coding: utf-8 -*-
+import inspect
 from collections import OrderedDict
-from typing import Optional, Literal, List
-
-import numpy as np
-import pandas as pd
+from typing import Optional, Literal, List, Any
 
 from QuantStudio.Core.Node import Node
 
+
+# ===================== 获取对象说明信息 =====================
+def qs_help(obj: Any) -> str:
+    """
+    智能帮助函数，当对象的 __doc__ 为 None 时，自动查找父类方法的文档。
+    
+    支持：函数、方法、类、模块、内置类型等
+    
+    Returns:
+        格式化的帮助文档字符串
+    """
+    # 获取对象的文档（会尝试从父类继承）
+    doc = _get_doc_with_inheritance(obj)
+    
+    if doc is None:
+        # 如果还是没有文档，生成提示信息
+        return _generate_no_doc_message(obj)
+    
+    # 返回格式化的文档字符串
+    return _format_help(obj, doc)
+
+def _get_doc_with_inheritance(obj: Any) -> Optional[str]:
+    """
+    获取对象的文档字符串，支持从父类继承。
+    """
+    # 直接获取文档
+    doc = inspect.getdoc(obj)
+    if doc is not None:
+        return doc
+    
+    # 如果是 bound method（实例方法），尝试从父类查找
+    if inspect.ismethod(obj):
+        return _get_method_doc_from_parents(obj)
+    
+    # 如果是 function（未绑定），尝试在类中查找对应方法
+    if inspect.isfunction(obj):
+        # 尝试获取定义该函数的类
+        qualname = getattr(obj, '__qualname__', '')
+        if '.' in qualname:
+            class_name, method_name = qualname.rsplit('.', 1)
+            try:
+                # 尝试获取模块并找到类
+                module = inspect.getmodule(obj)
+                if module and hasattr(module, class_name):
+                    cls = getattr(module, class_name)
+                    if inspect.isclass(cls):
+                        return _get_method_doc_from_class(cls, method_name)
+            except (AttributeError, ImportError):
+                pass
+    
+    # 如果是类，尝试合并父类文档
+    if inspect.isclass(obj):
+        return _get_class_doc_from_parents(obj)
+    
+    return None
+
+def _get_method_doc_from_parents(method) -> Optional[str]:
+    """
+    从实例方法的父类中查找文档。
+    """
+    # 获取 self 实例和类
+    self_obj = method.__self__
+    cls = type(self_obj)
+    method_name = method.__name__
+    
+    return _get_method_doc_from_class(cls, method_name)
+
+def _get_method_doc_from_class(cls: type, method_name: str) -> Optional[str]:
+    """
+    从类的 MRO（方法解析顺序）中查找方法文档。
+    """
+    # 遍历 MRO（父类链）
+    for parent in cls.__mro__[1:]:  # 跳过自身，从父类开始
+        if hasattr(parent, method_name):
+            parent_method = getattr(parent, method_name)
+            # 获取父类方法的文档
+            parent_doc = inspect.getdoc(parent_method)
+            if parent_doc:
+                return f"[继承自 {parent.__name__}.{method_name}]\n\n{parent_doc}"
+    
+    return None
+
+def _get_class_doc_from_parents(cls: type) -> Optional[str]:
+    """
+    尝试从父类获取类的文档（用于 __init__ 方法）。
+    """
+    # 如果类本身没有 doc，但 __init__ 可能有
+    for parent in cls.__mro__[1:]:
+        parent_doc = inspect.getdoc(parent)
+        if parent_doc:
+            return f"[类文档继承自 {parent.__name__}]\n\n{parent_doc}"
+    
+    return None
+
+def _generate_no_doc_message(obj: Any) -> str:
+    """
+    生成无文档时的提示信息。
+    """
+    lines = []
+    
+    try:
+        # 尝试获取类型信息
+        obj_type = type(obj) if not inspect.isclass(obj) else obj
+        type_name = obj_type.__name__ if hasattr(obj_type, '__name__') else str(obj_type)
+        
+        lines.append(f"\n对象: {obj}")
+        lines.append(f"类型: {type_name}")
+        lines.append("\n⚠️  未找到文档字符串（包括父类）")
+        lines.append("该对象可能：")
+        lines.append("  - 是内置函数/方法（C 实现，无 __doc__）")
+        lines.append("  - 确实没有文档")
+        lines.append("  - 需要查看源代码了解详情")
+    except Exception:
+        lines.append(f"\n无法获取 {obj} 的帮助信息")
+    
+    return "\n".join(lines)
+
+def _format_help(obj: Any, doc: str) -> str:
+    """
+    格式化帮助信息为字符串。
+    """
+    lines = []
+    
+    # 获取对象信息
+    try:
+        name = getattr(obj, '__qualname__', getattr(obj, '__name__', str(obj)))
+        module = getattr(obj, '__module__', 'built-in')
+        obj_type_name = type(obj).__name__
+    except Exception:
+        name = str(obj)
+        module = 'unknown'
+        obj_type_name = 'unknown'
+    
+    # 类型信息
+    if inspect.isclass(obj):
+        lines.append(f"类型: class")
+        # 显示继承链
+        parents = [p.__name__ for p in obj.__mro__[1:-1]]  # 排除自身和 object
+        if parents: lines.append(f"继承自: {', '.join(parents)}")
+    elif inspect.isfunction(obj):
+        lines.append(f"类型: function")
+    elif inspect.ismethod(obj):
+        lines.append(f"类型: method (bound to {type(obj.__self__).__name__})")
+    elif inspect.ismodule(obj):
+        lines.append(f"类型: module")
+    else:
+        lines.append(f"类型: {obj_type_name}")
+    
+    if module != 'built-in':
+        lines.append(f"模块: {module}")
+    
+    # 显示签名（如果是可调用的）
+    try:
+        if callable(obj) and not inspect.isclass(obj):
+            sig = inspect.signature(obj)
+            lines.append(f"签名: {name}{sig}")
+    except (ValueError, TypeError):
+        pass
+    lines.append("文档:")
+    lines.append("    " + doc.replace("\n", "\n    "))
+    
+    return "\n".join(lines)
+# =============================================================
 
 def node2dict(node_list: List[Node]) -> dict:
     """
@@ -35,8 +196,7 @@ def node2dict(node_list: List[Node]) -> dict:
         return target_dict
     return traverse(node_list, OrderedDict())
 
-
-def dict2mermaid(nested_dict: dict, direction: Literal["TD", "LR", "BT", "RL"]="TD", node_style: Optional[dict]=None):
+def dict2mermaid(nested_dict: dict, direction: Literal["TD", "LR", "BT", "RL"]="TD", node_style: Optional[dict]=None) -> str:
     """
     将嵌套字典转换为 Mermaid 语法的图
     
@@ -101,7 +261,80 @@ def dict2mermaid(nested_dict: dict, direction: Literal["TD", "LR", "BT", "RL"]="
     return '\n'.join(lines)
 
 
-if __name__=="__main__":
+# 测试 qs_help
+if __name__ == "__main__":
+    class Parent:
+        """父类说明"""
+        
+        def greet(self, name: str) -> str:
+            """
+            打招呼方法。
+            
+            Args:
+                name: 对方的名字
+                
+            Returns:
+                问候语字符串
+                
+            Examples:
+                >>> p = Parent()
+                >>> p.greet("Alice")
+                'Hello, Alice!'
+            """
+            return f"Hello, {name}!"
+        
+        def farewell(self):
+            """说再见"""
+            pass
+    
+    class Child(Parent):
+        """子类说明"""
+        
+        def greet(self, name: str) -> str:
+            # 重写了方法，但没有写文档
+            return f"Hi, {name}!"
+        
+        def farewell(self):
+            # 也没有文档
+            return "Bye!"
+
+    class GrandChild(Child):
+        # 完全没有文档
+        def greet(self, name: str) -> str:
+            return f"Hey, {name}!"
+
+    print("=" * 70)
+    print("测试 qs_help 函数")
+    print("=" * 70)
+    
+    # 测试1：子类方法（无文档，应从父类继承）
+    print("\n>>> qs_help(Child.greet)")
+    print(qs_help(Child.greet))
+    
+    # 测试2：实例方法（bound method）
+    child = Child()
+    print("\n>>> qs_help(child.greet)")
+    qs_help(child.greet)
+    
+    # 测试3：孙子类（应从 Parent 继承文档）
+    print("\n>>> qs_help(GrandChild.greet)")
+    gc = GrandChild()
+    qs_help(gc.greet)
+    
+    # 测试4：有文档的方法（正常使用）
+    print("\n>>> qs_help(Parent.greet)")
+    qs_help(Parent.greet)
+    
+    # 测试5：类本身
+    print("\n>>> qs_help(Child)")
+    qs_help(Child)
+    
+    # 测试6：内置函数（无文档的情况）
+    print("\n>>> qs_help(len)")
+    qs_help(len)
+
+# 测试 dict2mermaid
+if __name__ == "__main__":
     data = {
         "ID1:Node1": {
             "ID1-1:Node1-1": {"ID1-1-1:Node1-1-1": None, "ID1-1-2:Node1-1-2": None},

@@ -13,10 +13,10 @@ from matplotlib.ticker import FuncFormatter
 import matplotlib.dates as mdate
 
 from QuantStudio.Core import __QS_Error__
-import QuantStudio.Core.FactorOperator as fo
-from QuantStudio.Core.FactorOperation import PanelOperator, SectionOperator
 from QuantStudio.Core.QSObject import Panel
-from QuantStudio.Core.Factor import Factor, FactorInitData, FactorContext
+import QuantStudio.Factor.FactorOperator as fo
+from QuantStudio.Factor.FactorOperation import PanelOperator, SectionOperator
+from QuantStudio.Factor.Factor import Factor, FactorInitData, FactorContext
 from QuantStudio.BackTest.BackTestModel import BTNode, BTLocalContext, BTInitData
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 from QuantStudio.Tools.StrategyTestFun import calcMaxDrawdownRate, calcLSYield, testPortfolioStrategy_pd

@@ -33,13 +33,16 @@ class Engine(__QS_Object__):
         return [iNode.compute([], fwd_data_list[i], context) for i, iNode in enumerate(node_list)]
 
     def run(self, node_list: List[Node], context: Context, init_data_list: Optional[List[Any]]=None, fwd_data_list: Optional[List[Any]]=None) -> List[Any]:
-        """
-        给定节点列表, 执行所有节点的计算, 返回每个节点的计算结果
-        :param node_list: 节点列表
-        :param context: 全局上下文对象
-        :param init_data_list: 初始化数据列表
-        :param fwd_data_list: 前向计算输入数据列表
-        :return: 节点计算结果列表
+        """给定节点列表, 执行所有节点的计算, 返回每个节点的计算结果
+
+        Args:
+            node_list: 待计算的节点列表
+            context: 全局上下文对象
+            init_data_list: 初始化数据列表
+            fwd_data_list: 前向计算输入数据列表
+        
+        Returns:
+            节点计算的结果列表
         """
         self._QS_Logger.info("开始初始化计算...")
         StartT = time.perf_counter()
