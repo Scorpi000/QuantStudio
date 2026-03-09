@@ -2,17 +2,19 @@
 import datetime as dt
 import base64
 from io import BytesIO
-from typing import Optional, Literal, List, Dict, Any
+from typing import Optional, Literal, List, Any
 
 import numpy as np
 import pandas as pd
 from numpy.lib.recfunctions import unstructured_to_structured
+import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 import statsmodels.api as sm
 from pydantic import Field
 
 from QuantStudio.Core import __QS_Error__
+from QuantStudio.Core.QSObject import Panel
 from QuantStudio.Factor.Factor import Factor, FactorContext, FactorInitData
 from QuantStudio.Factor.FactorOperation import PanelOperator, PanelOperation
 from QuantStudio.BackTest.BackTestModel import BTLocalContext, BTNode, BTInitData
@@ -26,7 +28,9 @@ def _QS_formatPandasPercentage(x):
     return '{0:.2f}%'.format(x*100)
 
 class CalcIC(PanelOperator):
-    """IC 算子"""
+    """IC 算子
+    IC: 往期因子值和当期收益率的截面秩相关性。通常采用的相关系数为 Spearman 相关系数。
+    """
 
     def __init__(self, lookback:int = 31, period_lookback:int=1, corr_method:Literal["spearman", "pearson", "kendall"]="spearman", descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Arity = args.get("Arity", None) or 1
@@ -193,7 +197,7 @@ class CalcRiskAdjustedIC(PanelOperator):
 
 
 class IC(BTNode):
-    """IC"""
+    """IC: 往期因子值和当期收益率的秩相关性。通常采用的相关系数为 Spearman 相关系数。"""
     class __QS_ArgClass__(BTNode.__QS_ArgClass__):
         Name: str = Field(default="IC", frozen=True, title="名称")
         FactorNameList: Optional[List[str]] = Field(default=None, frozen=True, title="因子列表")
@@ -288,64 +292,57 @@ class IC(BTNode):
 
 
 class ICDecay(BTNode):
-    """IC 衰减"""
+    """IC 衰减: 因子值和收益率关于日期间隔的 IC 衰减情况"""
     class __QS_ArgClass__(BTNode.__QS_ArgClass__):
         Name: str = Field(default="IC 衰减", frozen=True, title="名称")
+        PeriodList: Optional[List[str]] = Field(default=None, frozen=True, title="回溯期列表")
         FactorNameList: Optional[List[str]] = Field(default=None, frozen=True, title="因子列表")
-        RollingAvgPeriod: int = Field(default=12, frozen=True, title="移动平均期数")
         
     def __init__(self, ic_list: List[Factor], args:dict={}, config_file:Optional[str]=None, **kwargs):
         super().__init__(deps=ic_list, args=args, config_file=config_file, **kwargs)
+        if self._QSArgs.PeriodList:
+            if len(self._QSArgs.PeriodList) != ic_list:
+                raise __QS_Error__(f"指定的 PeriodList 的长度 {len(self._QSArgs.PeriodList)} 不等于 IC 因子的数量 {len(ic_list)}")
     
     def genMatplotlibFig(self, output, file_path=None):
-        nRow, nCol = output["IC"].shape[1]//3+(output["IC"].shape[1]%3!=0), min(3, output["IC"].shape[1])
-        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
-        xData = np.arange(0, output["IC"].shape[0])
-        xTicks = np.arange(0, output["IC"].shape[0], max(1, int(output["IC"].shape[0]/10)))
-        xTickLabels = [output["IC"].index[i].strftime("%Y-%m-%d") for i in xTicks]
+        Fig = Figure(figsize=(16, 8))
+        xData = np.arange(0, output["统计数据"].shape[0])
+        xTickLabels = [str(i) for i in output["统计数据"].index]
         yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
-        for i in range(output["IC"].shape[1]):
-            iAxes = Fig.add_subplot(nRow, nCol, i+1)
-            iAxes.yaxis.set_major_formatter(yMajorFormatter)
-            iAxes.plot(xData, output["IC的移动平均"].iloc[:, i].values, label="IC的移动平均", color="indianred", lw=2.5)
-            iAxes.bar(xData, output["IC"].iloc[:, i].values, label="IC", color="steelblue")
-            iRightAxes = iAxes.twinx()
-            iRightAxes.plot(xData, output["截面宽度"].iloc[:, i].values, label="截面宽度", color="k", lw=1.5)
-            iAxes.set_xticks(xTicks)
-            iAxes.set_xticklabels(xTickLabels)
-            iAxes.legend(loc="upper left")
-            iRightAxes.legend(loc="upper right")
-            iAxes.set_title(output["IC"].columns[i])
+        Axes = Fig.add_subplot(1, 1, 1)
+        Axes.yaxis.set_major_formatter(yMajorFormatter)
+        Axes.bar(xData, output["统计数据"]["IC平均值"].values, label="IC", color="steelblue")
+        Axes.set_xticks(xData)
+        Axes.set_xticklabels(xTickLabels)
+        Axes.legend(loc='upper left')
+        RAxes = Axes.twinx()
+        RAxes.yaxis.set_major_formatter(yMajorFormatter)
+        RAxes.plot(xData, output["统计数据"]["胜率"].values, label="胜率", color="indianred", lw=2.5)
+        RAxes.legend(loc="upper right")
+        plt.setp(Axes.get_xticklabels(), visible=True, rotation=0, ha='center')
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     
     def genReport(self, output:dict) -> str:
         HTML = "参数设置: "
         HTML += '<ul align="left">'
-        if isinstance(getattr(self.Deps[0], "Operator", None), (CalcIC, CalcRiskAdjustedIC)):
-            ModelArgs = self.Deps[0].Operator._QSArgs.ModelArgs
-            HTML += f"<li>相关性方法: {ModelArgs['corr_method']}</li>"
-            HTML += f"<li>回溯期数: {ModelArgs['period_lookback']}</li>"
-        if isinstance(getattr(self.Deps[0], "Operator", None), CalcRiskAdjustedIC):
-            HTML += f"<li>风险因子: {self.Deps[0]._QSArgs.ModelArgs['risk_factor_list']}</li>"
-        if self.Deps[0]._QSArgs.CalcDTRuler:
-            HTML += "<li>计算时点: 自定义时点</li>"
-        else:
-            HTML += "<li>计算时点: 所有时点</li>"
-        HTML += f"<li>移动平均期数: {self._QSArgs.RollingAvgPeriod}</li>"
+        HTML += f"<li>回溯期列表: {self._QSArgs.PeriodList}</li>"
+        if self._QSArgs.FactorNameList: HTML += f"<li>因子列表: {self._QSArgs.FactorNameList}</li>"
         HTML += "</ul>"
-        Formatters = [_QS_formatPandasPercentage]*4+[lambda x:'{0:.4f}'.format(x)]+[lambda x:'{0:.2f}'.format(x)]*3+[lambda x:'{0:.0f}'.format(x)]
-        iHTML = output["统计数据"].to_html(formatters=Formatters)
-        Pos = iHTML.find(">")
-        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-        Fig = self.genMatplotlibFig(output)
-        # figure 保存为二进制文件
-        Buffer = BytesIO()
-        Fig.savefig(Buffer, bbox_inches='tight')
-        PlotData = Buffer.getvalue()
-        # 图像数据转化为 HTML 格式
-        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
-        HTML += ('<img src="%s">' % ImgStr)
+        Formatters = [_QS_formatPandasPercentage]*2+[lambda x:'{0:.4f}'.format(x), lambda x:'{0:.2f}'.format(x), _QS_formatPandasPercentage]
+        for iFactorName in output.keys():
+            iHTML = f"因子: {iFactorName}\n"
+            iHTML += output[iFactorName]["统计数据"].to_html(formatters=Formatters)
+            Pos = iHTML.find(">")
+            HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+            Fig = self.genMatplotlibFig(output=output[iFactorName])
+            # figure 保存为二进制文件
+            Buffer = BytesIO()
+            Fig.savefig(Buffer, bbox_inches='tight')
+            PlotData = Buffer.getvalue()
+            # 图像数据转化为 HTML 格式
+            ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+            HTML += ('<img src="%s">' % ImgStr)
         return HTML
 
     def init_compute(self, path: List[str], init_data: BTInitData, context: FactorContext) -> List[FactorInitData]:
@@ -353,14 +350,55 @@ class ICDecay(BTNode):
         return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self.Deps[i].getID()) for i, iInitData in enumerate(InitData)]
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[BTLocalContext]=None) -> dict:
-        IC, Breadth = bwd_data_list[0].map(lambda x: x[0]), bwd_data_list[0].map(lambda x: x[1])
-        if self._QSArgs.FactorNameList:
-            FactorNameList = self._QSArgs.FactorNameList
+        if self._QSArgs.PeriodList:
+            PeriodList = self._QSArgs.PeriodList
         else:
-            FactorNameList = self.Deps[0].Args.ModelArgs.get("factor_name_list", IC.columns)
-        IC.columns = Breadth.columns = FactorNameList
-        IC = IC.dropna(how="all", axis=0)
-        Breadth = Breadth.reindex(index=IC.index)
+            PeriodList = list(range(len(bwd_data_list)))
+        IC, Breadth = {}, {}
+        FactorNameList, PrefixFactorNameList = None, None
+        for i, BwdData in enumerate(bwd_data_list):
+            iIC, iBreadth = BwdData.map(lambda x: x[0]), BwdData.map(lambda x: x[1])
+            if self._QSArgs.FactorNameList:
+                FactorNameList = self._QSArgs.FactorNameList
+            else:
+                iFactorNameList = self.Deps[i].Args.ModelArgs.get("factor_name_list", iIC.columns.tolist())
+                if not FactorNameList:
+                    FactorNameList = iFactorNameList
+                    if len(set(FactorNameList)) < len(FactorNameList):
+                        PrefixFactorNameList = [f"{i}-{iName}" for i, iName in enumerate(FactorNameList)]
+                    else:
+                        PrefixFactorNameList = FactorNameList
+                elif iFactorNameList != FactorNameList: raise __QS_Error__(f"第 {i} 个 IC 因子名列表 '{iFactorNameList}' 和之前的 '{FactorNameList}' 不一致")
+            iIC.columns = iBreadth.columns = PrefixFactorNameList
+            IC[PeriodList[i]] = iIC
+            Breadth[PeriodList[i]] = iBreadth
+        IC, Breadth = Panel(IC), Panel(Breadth)
+        Output = {}
+        for i, iFactorName in enumerate(FactorNameList):
+            iIC, iBreadth = IC.iloc[:, :, i], Breadth.iloc[:, :, i]
+            iOutput = {"IC": iIC, "Breadth": iBreadth, "统计数据": pd.DataFrame(index=PeriodList)}
+            iOutput["统计数据"]["IC平均值"] = iIC.mean()
+            nDT = pd.notnull(iIC).sum()
+            iOutput["统计数据"]["标准差"] = iIC.std()
+            iOutput["统计数据"]["IC_IR"] = iOutput["统计数据"]["IC平均值"] / iOutput["统计数据"]["标准差"]
+            iOutput["统计数据"]["t统计量"] = iOutput["统计数据"]["IC_IR"] * nDT ** 0.5
+            iOutput["统计数据"]["胜率"] = (iIC > 0).sum() / nDT
+            Output[iFactorName] = iOutput
+        if self._QSArgs.GenReport: Output["Report"] = self.genReport(Output)
+        return Output
+
+
+
+
+
+
+
+
+
+
+
+
+
         Output = {"截面宽度": Breadth, "IC": IC}
         Output["IC的移动平均"] = Output["IC"].copy()
         for i in range(Output["IC"].shape[0]):

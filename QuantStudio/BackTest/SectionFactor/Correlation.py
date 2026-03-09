@@ -91,7 +91,7 @@ class SectionCorrelation(BTNode):
         else:
             HTML += "<li>计算时点: 所有时点</li>"
         HTML += "</ul>"
-        iHTML = output["平均值"].style.background_gradient(cmap="Reds").set_precision(2).render()
+        iHTML = output["平均值"].style.background_gradient(cmap="Reds").set_properties(precision=2).to_html()
         HTML += '<div align="left" style="font-size:1em"><strong>平均相关性</strong></div>' + iHTML
         return HTML
 
@@ -177,7 +177,7 @@ class CalcFactorTurnover(PanelOperator):
         return super().__call__(*Factors, factor_args=factor_args, **kwargs)
 
 class FactorTurnover(BTNode):
-    """因子换手率"""
+    """因子换手率: 当期因子值和往期因子值横截面上的线性相关系数"""
     class __QS_ArgClass__(BTNode.__QS_ArgClass__):
         Name: str = Field(default="SectionCorrelation", frozen=True, title="名称")
         FactorNameList: Optional[List[str]] = Field(default=None, frozen=True, title="因子列表")
@@ -214,7 +214,7 @@ class FactorTurnover(BTNode):
         iHTML = output["统计数据"].to_html(formatters=[_QS_formatPandasPercentage]*5)
         Pos = iHTML.find(">")
         HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-        Fig = self.genMatplotlibFig()
+        Fig = self.genMatplotlibFig(output=output)
         # figure 保存为二进制文件
         Buffer = BytesIO()
         Fig.savefig(Buffer, bbox_inches='tight')

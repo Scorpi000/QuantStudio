@@ -1,4 +1,5 @@
 # coding=utf-8
+import datetime as dt
 import base64
 from io import BytesIO
 from typing import Optional, List, Any
@@ -33,7 +34,7 @@ class CalcFamaMacBethRegression(PanelOperator):
         ]
         return super().__init__(args=Args, config_file=config_file, **kwargs)
     
-    def calculate(self, f, idt, iid, x, args):
+    def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
         SectionIDs = (self._QSArgs.DescriptorSection[0] if self._QSArgs.DescriptorSection[0] else iid)
         Price, x = pd.DataFrame(x[0], index=idt, columns=SectionIDs), x[1:]
         if f._QSArgs.CalcDTRuler:
@@ -115,7 +116,7 @@ class FamaMacBethRegression(BTNode):
     def __init__(self, fmr: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
         super().__init__(deps=[fmr], args=args, config_file=config_file, **kwargs)
     
-    def genMatplotlibFig(self, output, file_path=None):
+    def genMatplotlibFig(self, output:dict, file_path:Optional[str]=None) -> Figure:
         nRow, nCol = 1, 3
         Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         PercentageFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
@@ -191,10 +192,10 @@ class FamaMacBethRegression(BTNode):
         Pos = iHTML.find(">")
         HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         HTML += '<div align="left" style="font-size:1em"><strong>回归统计量</strong></div>'
-        iHTML = output["回归统计量均值"].to_html(formatters=[FloatFormatFun]*5)
+        iHTML = output["回归统计量均值"].to_html(formatters=[FloatFormatFun] * 8)
         Pos = iHTML.find(">")
         HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-        Fig = self.genMatplotlibFig()
+        Fig = self.genMatplotlibFig(output=output)
         # figure 保存为二进制文件
         Buffer = BytesIO()
         Fig.savefig(Buffer, bbox_inches='tight')
@@ -263,4 +264,5 @@ class FamaMacBethRegression(BTNode):
         Output["回归统计量均值"]["R平方(Pure)"] = Output["回归R平方(Pure)"].mean()
         Output["回归统计量均值"]["调整R平方(Raw)"] = Output["回归调整R平方(Raw)"].mean()
         Output["回归统计量均值"]["调整R平方(Pure)"] = Output["回归调整R平方(Pure)"].mean()
+        if self._QSArgs.GenReport: Output["Report"] = self.genReport(Output)
         return Output

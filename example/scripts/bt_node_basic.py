@@ -1,13 +1,15 @@
+import webbrowser
 import datetime as dt
 
 import numpy as np
 import pandas as pd
+from lxml import etree
 
 from QuantStudio.Core.CalcEngine import Engine, ParallelEngine
 from QuantStudio.Factor.Factor import DataFactor, FactorContext
 from QuantStudio.Factor.FactorCache import FeatherFactorCache
-from QuantStudio.BackTest.BackTestModel import BTInitData, BTLocalContext
-from QuantStudio.BackTest.SectionFactor.IC import CalcIC, IC
+from QuantStudio.BackTest.BackTestModel import BTInitData, BTLocalContext, BTReport
+from QuantStudio.BackTest.SectionFactor.IC import CalcIC, IC, ICDecay
 from QuantStudio.BackTest.SectionFactor.Portfolio import makeQuantilePortfolio, MultiPortfolio, CalcPortfolioNV
 from QuantStudio.BackTest.SectionFactor.Correlation import CalcFactorTurnover, FactorTurnover, CalcSectionCorrelation, SectionCorrelation
 from QuantStudio.BackTest.SectionFactor.ReturnDecomposition import CalcFamaMacBethRegression, FamaMacBethRegression
@@ -32,22 +34,24 @@ if __name__ == "__main__":
     Weight = DataFactor(data=pd.DataFrame(np.random.rand(len(DTRuler), len(SectionIDs)), index=DTRuler, columns=SectionIDs), args={"Name": "Weight"})
 
     FactorIC = CalcIC(lookback=1, period_lookback=1, descriptor_ids=SectionIDs)(Factor1, price=Price)
-    ICModule = IC(FactorIC, args={"RollingAvgPeriod": 2})
+    ICModule = IC(FactorIC, args={"RollingAvgPeriod": 2, "GenReport": True})
+
+    ICDecayModule = ICDecay(ic_list=[CalcIC(lookback=i, period_lookback=i, descriptor_ids=SectionIDs)(Factor1, price=Price) for i in range(1, 4)], args={"GenReport": True})
 
     Mask = (Factor1 > 0)
     QuantilePortfolioList = makeQuantilePortfolio(Factor1, mask=Mask, cat_data=Industry, weight=Weight, descriptor_ids=SectionIDs, rebalance_dts=MonthDTRuler, group_num=3)
     calcPortfolioNV = CalcPortfolioNV(descriptor_ids=SectionIDs)
     PortfolioNVList = [calcPortfolioNV(iPortfolio, price=Price, init_nv=1) for iPortfolio in QuantilePortfolioList]
-    QuantilePortfolioModule = MultiPortfolio(PortfolioNVList, portfolio_list=QuantilePortfolioList, args={"RebalanceDTs": MonthDTRuler})
+    QuantilePortfolioModule = MultiPortfolio(PortfolioNVList, portfolio_list=QuantilePortfolioList, args={"RebalanceDTs": MonthDTRuler, "GenReport": True})
 
     TurnoverFactor = CalcFactorTurnover(lookback=1, period_lookback=1, descriptor_ids=SectionIDs)(Factor1)
-    FactorTurnoverModule = FactorTurnover(TurnoverFactor, args={})
+    FactorTurnoverModule = FactorTurnover(TurnoverFactor, args={"GenReport": True})
 
     SectionCorrelationFactor = CalcSectionCorrelation(descriptor_ids=SectionIDs)(Factor1, Factor2)
-    SectionCorrelationModule = SectionCorrelation(SectionCorrelationFactor, args={})
+    SectionCorrelationModule = SectionCorrelation(SectionCorrelationFactor, args={"GenReport": True})
 
     FamaMacBethFactor = CalcFamaMacBethRegression(descriptor_ids=SectionIDs)(Factor1, Factor2, price=Price)
-    FamaMacBethModule = FamaMacBethRegression(FamaMacBethFactor, args={})
+    FamaMacBethModule = FamaMacBethRegression(FamaMacBethFactor, args={"GenReport": True})
     
     ExecEngine = Engine()
     Cache = FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "PIDs": ["0"], "CacheDir": r"D:\Data\DevCache", "ClearStart": True})
@@ -60,11 +64,18 @@ if __name__ == "__main__":
         IDSplit="连续切分",
         FactorDataCache=Cache
     )
-    NodeList = [ICModule, QuantilePortfolioModule, FactorTurnoverModule, SectionCorrelationModule, FamaMacBethModule]
-    FwdDataList = [BTLocalContext(DTs=DTs)] * len(NodeList)
-    InitDataList = [BTInitData(DTRange=(DTs[0], DTs[-1]))] * len(NodeList)
-    Rslt = ExecEngine.run(NodeList, Context, fwd_data_list=FwdDataList, init_data_list=InitDataList)
+    NodeList = [ICModule, ICDecayModule, QuantilePortfolioModule, FactorTurnoverModule, SectionCorrelationModule, FamaMacBethModule]
+    Report = BTReport(bt_node_list=NodeList)
+    FwdDataList = [BTLocalContext(DTs=DTs)]
+    InitDataList = [BTInitData(DTRange=(DTs[0], DTs[-1]))]
+    Rslt = ExecEngine.run([Report], Context, fwd_data_list=FwdDataList, init_data_list=InitDataList)
     
-    print(Rslt)
+    Output = Rslt[0]
+    print(Output)
+
+    # 生成 HTML 报告
+    Tree = etree.ElementTree(etree.HTML(Output["Report"]))
+    Tree.write("BTReport.html")
+    webbrowser.open("BTReport.html")
     
     print("===")
