@@ -1,6 +1,7 @@
 # coding=utf-8
 import base64
 from io import BytesIO
+import datetime as dt
 from itertools import combinations
 from typing import Literal, Optional, List, Any
 
@@ -27,9 +28,9 @@ class CalcSectionCorrelation(SectionOperator):
         Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
         return super().__init__(args=Args, config_file=config_file, **kwargs)
     
-    def calculate(self, f, idt, iid, x, args):
-        SectionIDs = (f._QSArgs.DescriptorSection[0] if f._QSArgs.DescriptorSection[0] else iid)
-        if f.UserData["mask"]: 
+    def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
+        SectionIDs = (self._QSArgs.DescriptorSection[0] if self._QSArgs.DescriptorSection[0] else iid)
+        if f._QSArgs.ModelArgs["mask"]: 
             Mask, x = pd.DataFrame(x[0].T==1, columns=idt, index=SectionIDs), x[1:]
         else:
             Mask = pd.DataFrame(True, columns=idt, index=SectionIDs)
@@ -42,7 +43,7 @@ class CalcSectionCorrelation(SectionOperator):
         FactorNames = f._QSArgs.SectionIDs
         for ijFactorName in iid:
             if ijFactorName not in FactorNames: continue
-            iIdx, jIdx = f.UserData["section_id_mapping"][ijFactorName].split("-")
+            iIdx, jIdx = f._QSArgs.ModelArgs["section_id_mapping"][ijFactorName].split("-")
             iIdx, jIdx = int(iIdx), int(jIdx)
             if isinstance(x[iIdx], pd.DataFrame): iFactorData = x[iIdx]
             else:
@@ -67,9 +68,8 @@ class CalcSectionCorrelation(SectionOperator):
             factor_args["SectionIDs"] = DefaultSectionIDs
         elif len(set(factor_args["SectionIDs"]))!=len(DefaultSectionIDs) or (sorted(factor_args["SectionIDs"])!=factor_args["SectionIDs"]):
             raise __QS_Error__(f"截面ID : {factor_args['SectionIDs']} 长度不等于因子列表 x 两两组合的长度, 或者有重复, 或者非升序排列!")
-        f = super().__call__(*Factors, factor_args=factor_args, **kwargs)
-        f.UserData = {"mask": (mask is not None), "factor_name_list": [f.Name for f in x], "section_id_mapping": dict(zip(factor_args["SectionIDs"], DefaultSectionIDs))}
-        return f
+        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"mask": (mask is not None), "section_id_mapping": dict(zip(factor_args["SectionIDs"], DefaultSectionIDs)), "factor_name_list": [f.Name for f in x]}
+        return super().__call__(*Factors, factor_args=factor_args, **kwargs)
 
 class SectionCorrelation(BTNode):
     """因子截面相关性"""
@@ -109,7 +109,7 @@ class SectionCorrelation(BTNode):
         if self._QSArgs.FactorNameList:
             FactorNameList = self._QSArgs.FactorNameList
         else:
-            FactorNameList = self.Deps[0].UserData.get("factor_name_list", [str(i) for i in range(nFactor)])
+            FactorNameList = self.Deps[0].Args.ModelArgs.get("factor_name_list", [str(i) for i in range(nFactor)])
         if len(FactorNameList) != nFactor:
             raise __QS_Error__("因子数量和数据推断出的因子数量不相等!")
         Corr.columns = [f"{FactorNameList[i]}-{FactorNameList[j]}" for i, j in combinations(range(nFactor), r=2)]
@@ -139,9 +139,9 @@ class CalcFactorTurnover(PanelOperator):
         Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * Arity
         return super().__init__(args=Args, config_file=config_file, **kwargs)
     
-    def calculate(self, f, idt, iid, x, args):
+    def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
         SectionIDs = (self._QSArgs.DescriptorSection[0] if self._QSArgs.DescriptorSection[0] else iid)
-        if f.UserData["mask"]: 
+        if f._QSArgs.ModelArgs["mask"]: 
             Mask, x = pd.DataFrame(x[0].T==1, columns=idt, index=SectionIDs), x[1:]
         else:
             Mask = pd.DataFrame(True, columns=idt, index=SectionIDs)
@@ -173,9 +173,8 @@ class CalcFactorTurnover(PanelOperator):
             factor_args["SectionIDs"] = SectionIDs
         elif len(set(factor_args["SectionIDs"]))!=len(x) or (sorted(factor_args["SectionIDs"])!=factor_args["SectionIDs"]):
             raise __QS_Error__(f"截面ID : {factor_args['SectionIDs']} 长度不等于测试因子列表 x 的长度, 或者有重复, 或者非升序排列!")
-        f = super().__call__(*Factors, factor_args=factor_args, **kwargs)
-        f.UserData = {"mask": (mask is not None), "factor_name_list": [f.Name for f in x]}
-        return f
+        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"mask": (mask is not None), "factor_name_list": [f.Name for f in x]}
+        return super().__call__(*Factors, factor_args=factor_args, **kwargs)
 
 class FactorTurnover(BTNode):
     """因子换手率"""
@@ -234,7 +233,7 @@ class FactorTurnover(BTNode):
         if self._QSArgs.FactorNameList:
             FactorNameList = self._QSArgs.FactorNameList
         else:
-            FactorNameList = self.Deps[0].UserData.get("factor_name_list", FactorTurnover.columns)
+            FactorNameList = self.Deps[0].Args.ModelArgs.get("factor_name_list", FactorTurnover.columns)
         FactorTurnover.columns = FactorNameList
         FactorTurnover = FactorTurnover.dropna(how="all", axis=0)
         Output = {"因子换手率": FactorTurnover}

@@ -92,7 +92,7 @@ class FactorInitData(QSArgs):
 
 class Factor(Node):
     """
-    因子
+    因子对象
     因子可看做 DataFrame(index=[时点], columns=[ID])
     时点数据类型是 datetime, ID 的数据类型是 str
     """
@@ -104,10 +104,11 @@ class Factor(Node):
         CacheEnabled: bool = Field(default=True, frozen=True, title="启用缓存")
 
     def __init__(self, ft: Optional["FactorTable"]=None, descriptors: List["Factor"] = [], args: dict = {}, config_file: Optional[str] = None, **kwargs):
-        self._FactorTable = ft
         if ft and descriptors:
             raise __QS_Error__("因子表和描述子列表不能都存在!")
-        kwargs.pop("deps", None)
+        self._FactorTable = ft
+        self._Descriptors = descriptors
+        kwargs.pop("deps", [])
         if ft:
             return super().__init__(deps=[ft], args=args, config_file=config_file, **kwargs)
         else:
@@ -128,7 +129,7 @@ class Factor(Node):
         if self._FactorTable:
             return []
         else:
-            return self.Deps
+            return self._Descriptors.copy()
 
     def getMetaData(self, key:Optional[str]=None) -> Union[Any, pd.Series]:
         """获取因子的元信息, 元信息由若干个键值对组成
@@ -292,9 +293,9 @@ class Factor(Node):
         # 默认
         if self.QSID in path: return []
         if self._FactorTable:
-            return [FactorInitData(DTRange=FactorState["dt_range"], SectionIDs=SectionIDs, SubFactorName=self._QSArgs.Name)] * len(self.Deps)
+            return [FactorInitData(DTRange=FactorState["dt_range"], SectionIDs=SectionIDs, SubFactorName=self._QSArgs.Name)]
         else:
-            return [FactorInitData(DTRange=FactorState["dt_range"], SectionIDs=SectionIDs)] * len(self.Deps)
+            return [FactorInitData(DTRange=FactorState["dt_range"], SectionIDs=SectionIDs)] * len(self._Descriptors)
 
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
         if self._FactorTable:
@@ -439,9 +440,8 @@ class Factor(Node):
 
 
 class DataFactor(Factor):
-    """
-    直接赋予数据产生的因子
-    """
+    """直接赋予数据产生的因子"""
+    
     class __QS_ArgClass__(Factor.__QS_ArgClass__):
         Name: str = Field(default="DataFactor", frozen=True, title="名称")
         DataType: Literal["double", "string", "object"] = Field(default="double", frozen=True, title="数据类型")

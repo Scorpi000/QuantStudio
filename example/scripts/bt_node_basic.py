@@ -4,12 +4,13 @@ import numpy as np
 import pandas as pd
 
 from QuantStudio.Core.CalcEngine import Engine, ParallelEngine
-from QuantStudio.Factor.Factor import DataFactor, FactorContext, FactorLocalContext, FactorInitData
+from QuantStudio.Factor.Factor import DataFactor, FactorContext
 from QuantStudio.Factor.FactorCache import FeatherFactorCache
 from QuantStudio.BackTest.BackTestModel import BTInitData, BTLocalContext
 from QuantStudio.BackTest.SectionFactor.IC import CalcIC, IC
 from QuantStudio.BackTest.SectionFactor.Portfolio import makeQuantilePortfolio, MultiPortfolio, CalcPortfolioNV
 from QuantStudio.BackTest.SectionFactor.Correlation import CalcFactorTurnover, FactorTurnover, CalcSectionCorrelation, SectionCorrelation
+from QuantStudio.BackTest.SectionFactor.ReturnDecomposition import CalcFamaMacBethRegression, FamaMacBethRegression
 from QuantStudio.Tools.DateTimeFun import getNaturalDay, getMonthLastDateTime
 
 
@@ -44,9 +45,12 @@ if __name__ == "__main__":
 
     SectionCorrelationFactor = CalcSectionCorrelation(descriptor_ids=SectionIDs)(Factor1, Factor2)
     SectionCorrelationModule = SectionCorrelation(SectionCorrelationFactor, args={})
+
+    FamaMacBethFactor = CalcFamaMacBethRegression(descriptor_ids=SectionIDs)(Factor1, Factor2, price=Price)
+    FamaMacBethModule = FamaMacBethRegression(FamaMacBethFactor, args={})
     
     ExecEngine = Engine()
-    Cache = FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "PIDs": ["0"]})
+    Cache = FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "PIDs": ["0"], "CacheDir": r"D:\Data\DevCache", "ClearStart": True})
     Cache.start()
     Context = FactorContext(
         PID="0",
@@ -56,7 +60,7 @@ if __name__ == "__main__":
         IDSplit="连续切分",
         FactorDataCache=Cache
     )
-    NodeList = [ICModule, QuantilePortfolioModule, FactorTurnoverModule, SectionCorrelationModule]
+    NodeList = [ICModule, QuantilePortfolioModule, FactorTurnoverModule, SectionCorrelationModule, FamaMacBethModule]
     FwdDataList = [BTLocalContext(DTs=DTs)] * len(NodeList)
     InitDataList = [BTInitData(DTRange=(DTs[0], DTs[-1]))] * len(NodeList)
     Rslt = ExecEngine.run(NodeList, Context, fwd_data_list=FwdDataList, init_data_list=InitDataList)

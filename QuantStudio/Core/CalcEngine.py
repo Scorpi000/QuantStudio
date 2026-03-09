@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
 import time
-import queue
 import concurrent.futures
 from multiprocessing import Process, Queue, Manager
 from typing import Any, List, Optional
@@ -101,17 +100,6 @@ class ParallelEngine(Engine):
                 for iFuture in concurrent.futures.as_completed(Futures):
                     iFuture.result()
                     ProgBar.update(ProgBar.value + 1)
-
-    def _safe_queue_empty(self, q):
-        """跨平台安全的队列空检查"""
-        try:
-            # Windows: 尝试非阻塞获取再放回
-            item = q.get_nowait()
-        except queue.Empty:
-            return True
-        else:
-            q.put(item)# 放回去
-            return False
 
     def compute(self, node_list: List[Node], context: Context, fwd_data_list: Optional[List[Any]]=None):
         if len(node_list) != len(fwd_data_list): raise __QS_Error__("node_list 和 fwd_data_list 长度不一致!")

@@ -56,14 +56,14 @@ class CalcMaskPortfolio(SectionOperator):
     def calculate(self, f, idt, iid, x, args):
         SectionIDs = (self._QSArgs.DescriptorSection[0] if self._QSArgs.DescriptorSection[0] else iid)
         Mask, x = pd.DataFrame(x[0]==1, index=idt, columns=SectionIDs), x[1:]
-        if f.UserData["weight"]:
+        if f._QSArgs.ModelArgs["weight"]:
             Weight, x = pd.DataFrame(x[0], index=idt, columns=SectionIDs), x[1:]
         else:
             Weight = pd.DataFrame(1, index=idt, columns=SectionIDs)
-        if f.UserData["cat_data"]:
+        if f._QSArgs.ModelArgs["cat_data"]:
             CatData, x = pd.DataFrame(x[0], index=idt, columns=SectionIDs), x[1:]
             CatData = CatData.where(CatData.notnull(), "None")
-            if f.UserData["cat_weight"]:
+            if f._QSArgs.ModelArgs["cat_weight"]:
                 CatWeight = pd.DataFrame(x[-1], index=idt, columns=SectionIDs)
             else:
                 CatWeight = pd.DataFrame(1, index=idt, columns=SectionIDs)
@@ -71,10 +71,10 @@ class CalcMaskPortfolio(SectionOperator):
             RebalanceDTs = sorted(set(idt).intersection(f._QSArgs.CalcDTRuler))
             Mask = Mask.reindex(index=RebalanceDTs).fillna(False)
             Weight = Weight.reindex(index=RebalanceDTs)
-            if f.UserData["cat_data"]:
+            if f._QSArgs.ModelArgs["cat_data"]:
                 CatData = CatData.reindex(index=RebalanceDTs)
                 CatWeight = CatWeight.reindex(index=RebalanceDTs)
-        if not f.UserData["cat_data"]:
+        if not f._QSArgs.ModelArgs["cat_data"]:
             Porftolio = Weight.where(Mask, np.nan)
             Porftolio = (Porftolio.T / Porftolio.sum(axis=1)).T
             return Porftolio.reindex(index=idt, columns=iid).values
@@ -84,7 +84,7 @@ class CalcMaskPortfolio(SectionOperator):
             Rslt.columns = ["dt", "id"] + Rslt.columns[2:].tolist()
             if not Rslt["mask"].any(): return np.full(shape=(len(idt), len(iid)), fill_value=np.nan, dtype=float)
             Tmp = Rslt.groupby(["dt", "cat_data"])[["cat_weight"]].sum().reset_index()
-            if not f.UserData["cat_weight"]: Tmp["cat_weight"] = 1
+            if not f._QSArgs.ModelArgs["cat_weight"]: Tmp["cat_weight"] = 1
             Tmp = pd.merge(Tmp, Tmp.groupby(["dt"])["cat_weight"].sum().to_frame("total_cat_weight"), how="left", left_on=["dt"], right_index=True)
             Tmp["cat_weight"] = Tmp["cat_weight"] / Tmp["total_cat_weight"]
             Rslt = Rslt[Rslt["mask"]]
@@ -100,9 +100,8 @@ class CalcMaskPortfolio(SectionOperator):
             Factors.append(cat_data)
             if cat_weight is not None:
                 Factors.append(cat_weight)
-        f = super().__call__(*Factors, factor_args=factor_args, **kwargs)
-        f.UserData = {"weight": (weight is not None), "cat_data": (cat_data is not None), "cat_weight": (cat_weight is not None)}
-        return f
+        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"weight": (weight is not None), "cat_data": (cat_data is not None), "cat_weight": (cat_weight is not None)}
+        return super().__call__(*Factors, factor_args=factor_args, **kwargs)
 
 
 # 分位数组合

@@ -1,153 +1,157 @@
 # coding=utf-8
-import datetime as dt
 import base64
 from io import BytesIO
+from typing import Optional, List, Any
 
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-from traits.api import ListStr, Enum, List, Int, Str
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
+from pydantic import Field
+from numpy.lib.recfunctions import unstructured_to_structured
 
-from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
-from QuantStudio.Tools.DataTypeConversionFun import DummyVarTo01Var
-from QuantStudio.BackTest.BackTestModel import BaseModule
+from QuantStudio.Core import __QS_Error__
+from QuantStudio.Factor.Factor import Factor, FactorContext, FactorInitData
+from QuantStudio.Factor.FactorOperation import PanelOperator, PanelOperation
+from QuantStudio.BackTest.BackTestModel import BTLocalContext, BTNode, BTInitData
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
+from QuantStudio.Tools.DataTypeConversionFun import DummyVarTo01Var
 
-class FamaMacBethRegression(BaseModule):
-    """Fama-MacBeth 回归"""
-    class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
-        # TestFactors = ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=())
-        #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=1)
-        #ClassFactor = Enum("无", arg_type="SingleOption", label="类别因子", order=2)
-        CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="计算时点", order=3)
-        IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=4)
-        RollAvgPeriod = Int(12, arg_type="Integer", label="滚动平均期数", order=5)
-        def __QS_initArgs__(self, args={}):
-            DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
-            self.add_trait("TestFactors", ListStr(arg_type="MultiOption", label="测试因子", order=0, option_range=tuple(DefaultNumFactorList)))
-            self.TestFactors.append(DefaultNumFactorList[0])
-            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=1, option_range=DefaultNumFactorList))
-            self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
-            self.add_trait("ClassFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="类别因子", order=2, option_range=["无"]+DefaultStrFactorList))
-            
-    def __init__(self, factor_table, name="Fama-MacBeth 回归", sys_args={}, **kwargs):
-        self._FactorTable = factor_table
-        return super().__init__(name=name, sys_args=sys_args, **kwargs)
-    def __QS_start__(self, mdl, dts, **kwargs):
-        if self._isStarted: return ()
-        super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
-        self._Output = {"Pure Return":[], "Raw Return":[], "时点":[], "回归R平方":[], "回归调整R平方":[], "回归F统计量":[], "回归t统计量(Raw Return)":[], "回归t统计量(Pure Return)":[]}
-        self._CurCalcInd = 0
-        return (self._FactorTable, )
-    def __QS_move__(self, idt, **kwargs):
-        if self._iDT==idt: return 0
-        self._iDT = idt
-        if self._QSArgs.CalcDTs:
-            if idt not in self._QSArgs.CalcDTs[self._CurCalcInd:]: return 0
-            self._CurCalcInd = self._QSArgs.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
-            LastInd = self._CurCalcInd - 1
-            LastDateTime = self._QSArgs.CalcDTs[LastInd]
+
+class CalcFamaMacBethRegression(PanelOperator):
+    """Fama-MacBeth 回归算子"""
+    def __init__(self, lookback:int = 31, period_lookback:int=1, descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        Arity = args.get("Arity", None) or 1
+        Args = {"Name": "calcFamaMacBethRegression"} | args | {"DTMode": "单时点", "OutputMode": "全截面", "DataType": "object"}
+        Args["ModelArgs"] = {"period_lookback": period_lookback} | Args.get("ModelArgs", {})
+        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
+        Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * Arity
+        Args["CompoundType"] = [
+            ("PureReturn", float), ("PureT", float), ("PureF", float), ("PureR", float), ("PureRAdj", float),
+            ("RawReturn", float), ("RawT", float), ("RawF", float), ("RawR", float), ("RawRAdj", float)
+        ]
+        return super().__init__(args=Args, config_file=config_file, **kwargs)
+    
+    def calculate(self, f, idt, iid, x, args):
+        SectionIDs = (self._QSArgs.DescriptorSection[0] if self._QSArgs.DescriptorSection[0] else iid)
+        Price, x = pd.DataFrame(x[0], index=idt, columns=SectionIDs), x[1:]
+        if f._QSArgs.CalcDTRuler:
+            DTs = sorted(set(idt).intersection(f._QSArgs.CalcDTRuler))
+            Price = Price.reindex(index=DTs)
         else:
-            self._CurCalcInd = self._Model.DateTimeIndex
-            LastInd = self._CurCalcInd - 1
-            LastDateTime = self._Model.DateTimeSeries[LastInd]
-        nFactor = len(self._QSArgs.TestFactors)
-        self._Output["Pure Return"].append(np.full(shape=(nFactor,), fill_value=np.nan))
-        self._Output["Raw Return"].append(np.full(shape=(nFactor,), fill_value=np.nan))
-        self._Output["回归t统计量(Pure Return)"].append(np.full(shape=(nFactor,), fill_value=np.nan))
-        self._Output["回归t统计量(Raw Return)"].append(np.full(shape=(nFactor,), fill_value=np.nan))
-        self._Output["回归F统计量"].append(np.full(shape=(nFactor+1,), fill_value=np.nan))
-        self._Output["回归R平方"].append(np.full(shape=(nFactor+1,), fill_value=np.nan))
-        self._Output["回归调整R平方"].append(np.full(shape=(nFactor+1,), fill_value=np.nan))
-        self._Output["时点"].append(idt)
-        if LastInd<0: return 0
-        LastIDs = self._FactorTable.getFilteredID(idt=LastDateTime, id_filter_str=self._QSArgs.IDFilter)
-        FactorData = self._FactorTable.readData(dts=[LastDateTime], ids=LastIDs, factor_names=list(self._QSArgs.TestFactors)).iloc[:,0,:]
-        Price = self._FactorTable.readData(dts=[LastDateTime, idt], ids=LastIDs, factor_names=[self._QSArgs.PriceFactor]).iloc[0]
-        Ret = Price.iloc[1] / Price.iloc[0] - 1
-        # 展开Dummy因子
-        if self._QSArgs.ClassFactor!="无":
-            DummyFactorData = self._FactorTable.readData(dts=[LastDateTime], ids=LastIDs, factor_names=[self._QSArgs.ClassFactor]).iloc[0,0,:]
-            Mask = pd.notnull(DummyFactorData)
-            DummyFactorData = DummyVarTo01Var(DummyFactorData[Mask], ignore_na=True)
-            FactorData = pd.merge(FactorData.loc[Mask], DummyFactorData, left_index=True, right_index=True)
+            DTs = Price.index
+        Return = Price.pct_change().iloc[-1]
+        if f._QSArgs.ModelArgs["mask"]: 
+            Mask, x = pd.DataFrame(x[0]==1, index=idt, columns=SectionIDs), x[1:]
+            Mask = (Mask.reindex(index=DTs).fillna(False) & Price.notnull())
+        else:
+            Mask = Price.notnull()
+        Mask = Mask.shift(args["period_lookback"], axis=1).iloc[-1].fillna(False)
+        if f._QSArgs.ModelArgs["cat_data"]:
+            CatData, x = pd.DataFrame(x[0], index=idt, columns=SectionIDs), x[1:]
+            CatData = CatData.reindex(index=DTs)
+            CatData = CatData.shift(args["period_lookback"], axis=1).iloc[-1]
+            CatMask = pd.notnull(CatData)
+            DummyFactorData = DummyVarTo01Var(CatData[CatMask], ignore_na=True)
+        FactorData = {i: pd.DataFrame(ix, index=idt, columns=SectionIDs).reindex(index=DTs).shift(args["period_lookback"], axis=1).iloc[-1] for i, ix in enumerate(x)}
+        FactorData = pd.DataFrame(FactorData).sort_index(axis=1)
+        nFactor = FactorData.shape[1]
+        if f._QSArgs.ModelArgs["cat_data"]:
+            FactorData = pd.merge(FactorData, DummyFactorData, left_index=True, right_index=True)
         # 回归
-        yData = Ret[FactorData.index].values
+        yData = Return[FactorData.index].values
         xData = FactorData.values
-        if self._QSArgs.ClassFactor=="无":
+        if f._QSArgs.ModelArgs["cat_data"]:
             xData = sm.add_constant(xData, prepend=False)
             LastInds = [nFactor]
         else:
-            LastInds = [nFactor+i for i in range(xData.shape[1]-nFactor)]
+            LastInds = [nFactor + i for i in range(xData.shape[1] - nFactor)]
+        Rslt = np.full(shape=(10, nFactor), fill_value=np.nan, dtype=float)
         try:
             Result = sm.OLS(yData, xData, missing="drop").fit()
-            self._Output["Pure Return"][-1] = Result.params[0:nFactor]
-            self._Output["回归t统计量(Pure Return)"][-1] = Result.tvalues[0:nFactor]
-            self._Output["回归F统计量"][-1][-1] = Result.fvalue
-            self._Output["回归R平方"][-1][-1] = Result.rsquared
-            self._Output["回归调整R平方"][-1][-1] = Result.rsquared_adj
+            Rslt[0] = Result.params[:nFactor]
+            Rslt[1] = Result.tvalues[:nFactor]
+            Rslt[2] = Result.fvalue
+            Rslt[3] = Result.rsquared
+            Rslt[4] = Result.rsquared_adj
         except:
             pass
-        for i, iFactorName in enumerate(self._QSArgs.TestFactors):
-            iXData = xData[:,[i]+LastInds]
+        for i in range(nFactor):
+            iXData = xData[:, [i] + LastInds]
             try:
                 Result = sm.OLS(yData, iXData, missing="drop").fit()
-                self._Output["Raw Return"][-1][i] = Result.params[0]
-                self._Output["回归t统计量(Raw Return)"][-1][i] = Result.tvalues[0]
-                self._Output["回归F统计量"][-1][i] = Result.fvalue
-                self._Output["回归R平方"][-1][i] = Result.rsquared
-                self._Output["回归调整R平方"][-1][i] = Result.rsquared_adj
+                Rslt[5, i] = Result.params[0]
+                Rslt[6, i] = Result.tvalues[0]
+                Rslt[7, i] = Result.fvalue
+                Rslt[8, i] = Result.rsquared
+                Rslt[9, i] = Result.rsquared_adj
             except:
                 pass
-        return 0
-    def __QS_end__(self):
-        if not self._isStarted: return 0
-        super().__QS_end__()
-        FactorNames = list(self._QSArgs.TestFactors)
-        self._Output["Pure Return"] = pd.DataFrame(self._Output["Pure Return"], index=self._Output["时点"], columns=FactorNames)
-        self._Output["Raw Return"] = pd.DataFrame(self._Output["Raw Return"], index=self._Output["时点"], columns=FactorNames)
-        self._Output["滚动t统计量_Pure"] = pd.DataFrame(np.nan, index=self._Output["时点"], columns=FactorNames)
-        self._Output["滚动t统计量_Raw"] = pd.DataFrame(np.nan, index=self._Output["时点"], columns=FactorNames)
-        self._Output["回归t统计量(Raw Return)"] = pd.DataFrame(self._Output["回归t统计量(Raw Return)"], index=self._Output["时点"], columns=FactorNames)
-        self._Output["回归t统计量(Pure Return)"] = pd.DataFrame(self._Output["回归t统计量(Pure Return)"], index=self._Output["时点"], columns=FactorNames)
-        self._Output["回归F统计量"] = pd.DataFrame(self._Output["回归F统计量"], index=self._Output["时点"], columns=FactorNames+["所有因子"])
-        self._Output["回归R平方"] = pd.DataFrame(self._Output["回归R平方"], index=self._Output["时点"], columns=FactorNames+["所有因子"])
-        self._Output["回归调整R平方"] = pd.DataFrame(self._Output["回归调整R平方"], index=self._Output["时点"], columns=FactorNames+["所有因子"])
-        nDT = self._Output["Raw Return"].shape[0]
-        # 计算滚动t统计量
-        for i in range(nDT):
-            if i<self._QSArgs.RollAvgPeriod-1: continue
-            iReturn = self._Output["Pure Return"].iloc[i-self._QSArgs.RollAvgPeriod+1:i+1, :]
-            self._Output["滚动t统计量_Pure"].iloc[i] = iReturn.mean(axis=0) / iReturn.std(axis=0) * pd.notnull(iReturn).sum(axis=0)**0.5
-            iReturn = self._Output["Raw Return"].iloc[i-self._QSArgs.RollAvgPeriod+1:i+1, :]
-            self._Output["滚动t统计量_Raw"].iloc[i] = iReturn.mean(axis=0) / iReturn.std(axis=0) * pd.notnull(iReturn).sum(axis=0)**0.5
-        nYear = (self._Output["时点"][-1] - self._Output["时点"][0]).days / 365
-        self._Output["统计数据"] = pd.DataFrame(index=self._Output["Pure Return"].columns)
-        self._Output["统计数据"]["年化收益率(Pure)"] = ((1 + self._Output["Pure Return"]).prod())**(1/nYear) - 1
-        self._Output["统计数据"]["跟踪误差(Pure)"] = self._Output["Pure Return"].std() * np.sqrt(nDT/nYear)
-        self._Output["统计数据"]["信息比率(Pure)"] = self._Output["统计数据"]["年化收益率(Pure)"] / self._Output["统计数据"]["跟踪误差(Pure)"]
-        self._Output["统计数据"]["胜率(Pure)"] = (self._Output["Pure Return"]>0).sum() / nDT
-        self._Output["统计数据"]["t统计量(Pure)"] = self._Output["Pure Return"].mean() / self._Output["Pure Return"].std() * np.sqrt(nDT)
-        self._Output["统计数据"]["年化收益率(Raw)"] = (1 + self._Output["Raw Return"]).prod()**(1/nYear) - 1
-        self._Output["统计数据"]["跟踪误差(Raw)"] = self._Output["Raw Return"].std() * np.sqrt(nDT/nYear)
-        self._Output["统计数据"]["信息比率(Raw)"] = self._Output["统计数据"]["年化收益率(Raw)"] / self._Output["统计数据"]["跟踪误差(Raw)"]
-        self._Output["统计数据"]["胜率(Raw)"] = (self._Output["Raw Return"]>0).sum() / nDT
-        self._Output["统计数据"]["t统计量(Raw)"] = self._Output["Raw Return"].mean() / self._Output["Raw Return"].std() * np.sqrt(nDT)
-        self._Output["统计数据"]["年化收益率(Pure-Naive)"] = (1 + self._Output["Pure Return"] - self._Output["Raw Return"]).prod()**(1/nYear) - 1
-        self._Output["统计数据"]["跟踪误差(Pure-Naive)"] = (self._Output["Pure Return"] - self._Output["Raw Return"]).std() * np.sqrt(nDT/nYear)
-        self._Output["统计数据"]["信息比率(Pure-Naive)"] = self._Output["统计数据"]["年化收益率(Pure-Naive)"] / self._Output["统计数据"]["跟踪误差(Pure-Naive)"]
-        self._Output["统计数据"]["胜率(Pure-Naive)"] = (self._Output["Pure Return"] - self._Output["Raw Return"]>0).sum() / nDT
-        self._Output["统计数据"]["t统计量(Pure-Naive)"] = (self._Output["Pure Return"] - self._Output["Raw Return"]).mean() / (self._Output["Pure Return"] - self._Output["Raw Return"]).std() * np.sqrt(nDT)
-        self._Output["回归统计量均值"] = pd.DataFrame(index=FactorNames+["所有因子"])
-        self._Output["回归统计量均值"]["t统计量(Raw Return)"] = self._Output["回归t统计量(Raw Return)"].mean()
-        self._Output["回归统计量均值"]["t统计量(Pure Return)"] = self._Output["回归t统计量(Pure Return)"].mean()
-        self._Output["回归统计量均值"]["F统计量"] = self._Output["回归F统计量"].mean()
-        self._Output["回归统计量均值"]["R平方"] = self._Output["回归R平方"].mean()
-        self._Output["回归统计量均值"]["调整R平方"] = self._Output["回归调整R平方"].mean()
-        self._Output.pop("时点")
-        return 0
+        return unstructured_to_structured(Rslt.T).tolist()
+        
+    def __call__(self, *x:Factor, price:Factor, mask: Optional[Factor]=None, cat_data: Optional[Factor]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
+        Factors = [price]
+        if mask is not None: Factors.append(mask)
+        if cat_data is not None: Factors.append(cat_data)
+        if not x: raise __QS_Error__("测试因子列表 x 不可为空!")
+        else: Factors += x
+        if "SectionIDs" not in factor_args:
+            PosNum = int(np.log10(len(x))) + 1
+            SectionIDs = [f"x-{str(i).zfill(PosNum)}" for i in range(len(x))]
+            factor_args["SectionIDs"] = SectionIDs
+        elif len(set(factor_args["SectionIDs"]))!=len(x) or (sorted(factor_args["SectionIDs"])!=factor_args["SectionIDs"]):
+            raise __QS_Error__(f"截面ID : {factor_args['SectionIDs']} 长度不等于测试因子列表 x 的长度, 或者有重复, 或者非升序排列!")
+        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"mask": (mask is not None), "cat_data": (cat_data is not None), "factor_name_list": [f.Name for f in x]}
+        return super().__call__(*Factors, factor_args=factor_args, **kwargs)
+
+class FamaMacBethRegression(BTNode):
+    """Fama-MacBeth 回归"""
+    class __QS_ArgClass__(BTNode.__QS_ArgClass__):
+        Name: str = Field(default="Fama-MacBeth 回归", frozen=True, title="名称")
+        FactorNameList: Optional[List[str]] = Field(default=None, frozen=True, title="因子列表")
+        RollingAvgPeriod: int = Field(default=12, frozen=True, title="移动平均期数")
+        
+    def __init__(self, fmr: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        super().__init__(deps=[fmr], args=args, config_file=config_file, **kwargs)
+    
+    def genMatplotlibFig(self, output, file_path=None):
+        nRow, nCol = 1, 3
+        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
+        PercentageFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
+        FloatFormatter = FuncFormatter(lambda x, pos: '%.2f' % (x, ))
+        xData = np.arange(0, output["统计数据"].shape[0])
+        xTickLabels = [str(iInd) for iInd in output["统计数据"].index]
+        iAxes = Fig.add_subplot(nRow, nCol, 1)
+        iAxes.yaxis.set_major_formatter(PercentageFormatter)
+        iAxes.bar(xData, output["统计数据"]["年化收益率(Raw)"].values, width=-0.25, align="edge", color="indianred", label="年化收益率(Raw)")
+        iAxes.bar(xData, output["统计数据"]["年化收益率(Pure)"].values, width=0.25, align="edge", color="steelblue", label="年化收益率(Pure)")
+        iAxes.set_xticks(xData)
+        iAxes.set_xticklabels(xTickLabels)
+        iAxes.legend(loc='best')
+        iAxes.set_title("年化收益率")
+        iAxes = Fig.add_subplot(nRow, nCol, 2)
+        iAxes.yaxis.set_major_formatter(FloatFormatter)
+        iAxes.bar(xData, output["统计数据"]["t统计量(Raw)"].values, width=-0.25, align="edge", color="indianred", label="t统计量(Raw)")
+        iAxes.bar(xData, output["统计数据"]["t统计量(Pure)"].values, width=0.25, align="edge", color="steelblue", label="t统计量(Pure)")
+        iAxes.set_xticks(xData)
+        iAxes.set_xticklabels(xTickLabels)
+        iAxes.legend(loc='best')
+        iAxes.set_title("t统计量")
+        iAxes = Fig.add_subplot(nRow, nCol, 3)
+        iAxes.yaxis.set_major_formatter(PercentageFormatter)
+        iAxes.bar(xData, output["统计数据"]["年化收益率(Pure-Raw)"].values, color="steelblue", label="年化收益率(Pure-Raw)")
+        iAxes.set_xticks(xData)
+        iAxes.set_xticklabels(xTickLabels)
+        iAxes.legend(loc='upper left')
+        iAxes.set_title("Pure-Raw")
+        RAxes = iAxes.twinx()
+        RAxes.yaxis.set_major_formatter(FloatFormatter)
+        RAxes.plot(xData, output["统计数据"]["t统计量(Pure-Raw)"].values, color="indianred", lw=2.5, label="t统计量(Pure-Raw)")
+        RAxes.legend(loc='upper right')
+        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
+        return Fig
+    
     def _plotStatistics(self, axes, x_data, x_ticklabels, left_data, left_formatter, right_data=None, right_formatter=None, right_axes=True):
         axes.yaxis.set_major_formatter(left_formatter)
         axes.bar(x_data, left_data.values, label=left_data.name, color="steelblue")
@@ -166,65 +170,28 @@ class FamaMacBethRegression(BaseModule):
         axes.set_xticks(x_data)
         axes.set_xticklabels(x_ticklabels)
         return axes
-    def genMatplotlibFig(self, file_path=None):
-        nRow, nCol = 1, 3
-        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
-        PercentageFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
-        FloatFormatter = FuncFormatter(lambda x, pos: '%.2f' % (x, ))
-        xData = np.arange(0, self._Output["统计数据"].shape[0])
-        xTickLabels = [str(iInd) for iInd in self._Output["统计数据"].index]
-        iAxes = Fig.add_subplot(nRow, nCol, 1)
-        iAxes.yaxis.set_major_formatter(PercentageFormatter)
-        iAxes.bar(xData, self._Output["统计数据"]["年化收益率(Raw)"].values, width=-0.25, align="edge", color="indianred", label="年化收益率(Raw)")
-        iAxes.bar(xData, self._Output["统计数据"]["年化收益率(Pure)"].values, width=0.25, align="edge", color="steelblue", label="年化收益率(Pure)")
-        iAxes.set_xticks(xData)
-        iAxes.set_xticklabels(xTickLabels)
-        iAxes.legend(loc='best')
-        iAxes.set_title("年化收益率")
-        iAxes = Fig.add_subplot(nRow, nCol, 2)
-        iAxes.yaxis.set_major_formatter(FloatFormatter)
-        iAxes.bar(xData, self._Output["统计数据"]["t统计量(Raw)"].values, width=-0.25, align="edge", color="indianred", label="t统计量(Raw)")
-        iAxes.bar(xData, self._Output["统计数据"]["t统计量(Pure)"].values, width=0.25, align="edge", color="steelblue", label="t统计量(Pure)")
-        iAxes.set_xticks(xData)
-        iAxes.set_xticklabels(xTickLabels)
-        iAxes.legend(loc='best')
-        iAxes.set_title("t统计量")
-        iAxes = Fig.add_subplot(nRow, nCol, 3)
-        iAxes.yaxis.set_major_formatter(PercentageFormatter)
-        iAxes.bar(xData, self._Output["统计数据"]["年化收益率(Pure-Naive)"].values, color="steelblue", label="年化收益率(Pure-Naive)")
-        iAxes.set_xticks(xData)
-        iAxes.set_xticklabels(xTickLabels)
-        iAxes.legend(loc='upper left')
-        iAxes.set_title("Pure-Naive")
-        RAxes = iAxes.twinx()
-        RAxes.yaxis.set_major_formatter(FloatFormatter)
-        RAxes.plot(xData, self._Output["统计数据"]["t统计量(Pure-Naive)"].values, color="indianred", lw=2.5, label="t统计量(Pure-Naive)")
-        RAxes.legend(loc='upper right')
-        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
-        return Fig
-    def _repr_html_(self):
-        if len(self._QSArgs.ArgNames)>0:
-            HTML = "参数设置: "
-            HTML += '<ul align="left">'
-            for iArgName in self._QSArgs.ArgNames:
-                if iArgName!="计算时点":
-                    HTML += "<li>"+iArgName+": "+str(self.Args[iArgName])+"</li>"
-                elif self.Args[iArgName]:
-                    HTML += "<li>"+iArgName+": 自定义时点</li>"
-                else:
-                    HTML += "<li>"+iArgName+": 所有时点</li>"
-            HTML += "</ul>"
+
+    def genReport(self, output:dict) -> str:
+        HTML = "参数设置: "
+        HTML += '<ul align="left">'
+        if isinstance(getattr(self.Deps[0], "Operator", None), CalcFamaMacBethRegression):
+            ModelArgs = self.Deps[0].Operator._QSArgs.ModelArgs
+            HTML += f"<li>回溯期数: {ModelArgs['period_lookback']}</li>"
+        if self.Deps[0]._QSArgs.CalcDTRuler:
+            HTML += "<li>计算时点: 自定义时点</li>"
         else:
-            HTML = ""
+            HTML += "<li>计算时点: 所有时点</li>"
+        HTML += f"<li>移动平均期数: {self._QSArgs.RollingAvgPeriod}</li>"
+        HTML += "</ul>"
         FloatFormatFun = lambda x:'{0:.2f}'.format(x)
         Formatters = [_QS_formatPandasPercentage]*2+[FloatFormatFun, _QS_formatPandasPercentage, FloatFormatFun]
         Formatters += [_QS_formatPandasPercentage]*2+[FloatFormatFun, _QS_formatPandasPercentage, FloatFormatFun]
         Formatters += [_QS_formatPandasPercentage]*2+[FloatFormatFun, _QS_formatPandasPercentage, FloatFormatFun]
-        iHTML = self._Output["统计数据"].to_html(formatters=Formatters)
+        iHTML = output["统计数据"].to_html(formatters=Formatters)
         Pos = iHTML.find(">")
         HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         HTML += '<div align="left" style="font-size:1em"><strong>回归统计量</strong></div>'
-        iHTML = self._Output["回归统计量均值"].to_html(formatters=[FloatFormatFun]*5)
+        iHTML = output["回归统计量均值"].to_html(formatters=[FloatFormatFun]*5)
         Pos = iHTML.find(">")
         HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
         Fig = self.genMatplotlibFig()
@@ -236,3 +203,64 @@ class FamaMacBethRegression(BaseModule):
         ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
         HTML += ('<img src="%s">' % ImgStr)
         return HTML
+
+    def init_compute(self, path: List[str], init_data: BTInitData, context: FactorContext) -> List[FactorInitData]:
+        InitData = super().init_compute(path=path, init_data=init_data, context=context)
+        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self.Deps[i].getID()) for i, iInitData in enumerate(InitData)]
+    
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[BTLocalContext]=None) -> dict:
+        PureReturn, RawReturn = bwd_data_list[0].map(lambda x: x[0]), bwd_data_list[0].map(lambda x: x[5])
+        if self._QSArgs.FactorNameList:
+            FactorNameList = self._QSArgs.FactorNameList
+        else:
+            FactorNameList = self.Deps[0].Args.ModelArgs.get("factor_name_list", PureReturn.columns)
+        PureReturn.columns = RawReturn.columns = FactorNameList
+        PureReturn = PureReturn.dropna(how="all", axis=0)
+        RawReturn = RawReturn.reindex(index=PureReturn.index)
+        ColMapping = {Col: FactorNameList[i] for i, Col in enumerate(bwd_data_list[0].columns)}
+        Output = {"Pure Return": PureReturn, "Raw Return": RawReturn}
+        Output["回归t统计量(Pure)"] = bwd_data_list[0].map(lambda x: x[1]).reindex(index=PureReturn.index).rename(columns=ColMapping)
+        Output["回归t统计量(Raw)"] = bwd_data_list[0].map(lambda x: x[6]).reindex(index=PureReturn.index).rename(columns=ColMapping)
+        Output["回归F统计量(Pure)"] = bwd_data_list[0].map(lambda x: x[2]).reindex(index=PureReturn.index).rename(columns=ColMapping)
+        Output["回归F统计量(Raw)"] = bwd_data_list[0].map(lambda x: x[7]).reindex(index=PureReturn.index).rename(columns=ColMapping)
+        Output["回归R平方(Pure)"] = bwd_data_list[0].map(lambda x: x[3]).reindex(index=PureReturn.index).rename(columns=ColMapping)
+        Output["回归R平方(Raw)"] = bwd_data_list[0].map(lambda x: x[8]).reindex(index=PureReturn.index).rename(columns=ColMapping)
+        Output["回归调整R平方(Pure)"] = bwd_data_list[0].map(lambda x: x[5]).reindex(index=PureReturn.index).rename(columns=ColMapping)
+        Output["回归调整R平方(Raw)"] = bwd_data_list[0].map(lambda x: x[9]).reindex(index=PureReturn.index).rename(columns=ColMapping)
+        # 计算滚动t统计量
+        nDT = PureReturn.shape[0]
+        Output["滚动t统计量(Pure)"] = pd.DataFrame(np.nan, index=PureReturn.index, columns=FactorNameList)
+        Output["滚动t统计量(Raw)"] = pd.DataFrame(np.nan, index=PureReturn.index, columns=FactorNameList)
+        for i in range(nDT):
+            if i < self._QSArgs.RollingAvgPeriod-1: continue
+            iReturn = PureReturn.iloc[i-self._QSArgs.RollingAvgPeriod+1:i+1, :]
+            Output["滚动t统计量(Pure)"].iloc[i] = iReturn.mean(axis=0) / iReturn.std(axis=0) * pd.notnull(iReturn).sum(axis=0)**0.5
+            iReturn = RawReturn.iloc[i-self._QSArgs.RollingAvgPeriod+1:i+1, :]
+            Output["滚动t统计量(Raw)"].iloc[i] = iReturn.mean(axis=0) / iReturn.std(axis=0) * pd.notnull(iReturn).sum(axis=0)**0.5
+        nYear = (PureReturn.index[-1] - PureReturn.index[0]).days / 365
+        Output["统计数据"] = pd.DataFrame(index=PureReturn.columns)
+        Output["统计数据"]["年化收益率(Pure)"] = ((1 + PureReturn).prod())**(1/nYear) - 1
+        Output["统计数据"]["跟踪误差(Pure)"] = PureReturn.std() * np.sqrt(nDT/nYear)
+        Output["统计数据"]["信息比率(Pure)"] = Output["统计数据"]["年化收益率(Pure)"] / Output["统计数据"]["跟踪误差(Pure)"]
+        Output["统计数据"]["胜率(Pure)"] = (PureReturn > 0).sum() / nDT
+        Output["统计数据"]["t统计量(Pure)"] = PureReturn.mean() / PureReturn.std() * np.sqrt(nDT)
+        Output["统计数据"]["年化收益率(Raw)"] = (1 + RawReturn).prod()**(1/nYear) - 1
+        Output["统计数据"]["跟踪误差(Raw)"] = RawReturn.std() * np.sqrt(nDT/nYear)
+        Output["统计数据"]["信息比率(Raw)"] = Output["统计数据"]["年化收益率(Raw)"] / Output["统计数据"]["跟踪误差(Raw)"]
+        Output["统计数据"]["胜率(Raw)"] = (RawReturn > 0).sum() / nDT
+        Output["统计数据"]["t统计量(Raw)"] = RawReturn.mean() / RawReturn.std() * np.sqrt(nDT)
+        Output["统计数据"]["年化收益率(Pure-Raw)"] = (1 + PureReturn - RawReturn).prod()**(1/nYear) - 1
+        Output["统计数据"]["跟踪误差(Pure-Raw)"] = (PureReturn - RawReturn).std() * np.sqrt(nDT/nYear)
+        Output["统计数据"]["信息比率(Pure-Raw)"] = Output["统计数据"]["年化收益率(Pure-Raw)"] / Output["统计数据"]["跟踪误差(Pure-Raw)"]
+        Output["统计数据"]["胜率(Pure-Raw)"] = (PureReturn - RawReturn > 0).sum() / nDT
+        Output["统计数据"]["t统计量(Pure-Raw)"] = (PureReturn - RawReturn).mean() / (PureReturn - RawReturn).std() * np.sqrt(nDT)
+        Output["回归统计量均值"] = pd.DataFrame(index=FactorNameList)
+        Output["回归统计量均值"]["t统计量(Raw)"] = Output["回归t统计量(Raw)"].mean()
+        Output["回归统计量均值"]["t统计量(Pure)"] = Output["回归t统计量(Pure)"].mean()
+        Output["回归统计量均值"]["F统计量(Raw)"] = Output["回归F统计量(Raw)"].mean()
+        Output["回归统计量均值"]["F统计量(Pure)"] = Output["回归F统计量(Pure)"].mean()
+        Output["回归统计量均值"]["R平方(Raw)"] = Output["回归R平方(Raw)"].mean()
+        Output["回归统计量均值"]["R平方(Pure)"] = Output["回归R平方(Pure)"].mean()
+        Output["回归统计量均值"]["调整R平方(Raw)"] = Output["回归调整R平方(Raw)"].mean()
+        Output["回归统计量均值"]["调整R平方(Pure)"] = Output["回归调整R平方(Pure)"].mean()
+        return Output
