@@ -516,7 +516,7 @@ class TimeOperator(FactorOperator):
                 StartIndAndLen.append((iLookBack, iLookBack+1))
                 MaxLen = max(MaxLen, iLookBack+1)
             else:
-                iLookBack = max(0, StartIdx - np.searchsorted(dt_ruler, self._QSArgs.StartDT[i], side="left"))
+                iLookBack = max(0, StartIdx - np.searchsorted(dt_ruler, self._QSArgs.StartDT[i], side="left") - iLookBack)
                 StartIndAndLen.append((iLookBack, np.inf))
                 MaxLen = np.inf
             MaxLookBack = max(MaxLookBack, iLookBack)
@@ -911,7 +911,7 @@ class PanelOperator(FactorOperator):
                 StartIndAndLen.append((iLookBack, iLookBack+1))
                 MaxLen = max(MaxLen, iLookBack+1)
             else:
-                iLookBack = max(0, StartIdx - np.searchsorted(dt_ruler, self._QSArgs.StartDT[i], side="left"))
+                iLookBack = max(0, StartIdx - np.searchsorted(dt_ruler, self._QSArgs.StartDT[i], side="left") - iLookBack)
                 StartIndAndLen.append((iLookBack, np.inf))
                 MaxLen = np.inf
             MaxLookBack = max(MaxLookBack, iLookBack)
@@ -1079,10 +1079,10 @@ class TimeOperation(DerivativeFactor):
         DTRuler = context.DTRuler
         StartIdx = np.searchsorted(DTRuler, StartDT, side="left")
         for i, iDescriptor in enumerate(self._Descriptors):
-            if self._Operator._QSArgs.StartDT[i] is None:# 未指定起始时点, 从当前位置回溯 LookBack[i] 期
+            if (self._Operator._QSArgs.LookBackMode[i]=="滚动窗口") or (self._Operator._QSArgs.StartDT[i] is None):# 滚动窗口模式或者未指定起始时点, 从当前位置回溯 LookBack[i] 期
                 iStartIdx = StartIdx - self._Operator._QSArgs.LookBack[i]
             else:# 指定了起始时点, 以起始时点 StartDT[i] 的位置为准
-                iStartIdx = np.searchsorted(DTRuler, self._Operator._QSArgs.StartDT[i], side="left")
+                iStartIdx = np.searchsorted(DTRuler, self._Operator._QSArgs.StartDT[i], side="left") - self._Operator._QSArgs.LookBack[i]
             if iStartIdx < 0: self._QS_Logger.warning("注意: 对于因子 '%s'(QSID: %s) 的描述子 '%s'(QSID: %s), 时点标尺长度不足, 不足的部分将填充 nan!" % (self.Name, self.QSID, iDescriptor.Name, iDescriptor.QSID))
             iStartIdx = max(0, iStartIdx)
             if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
@@ -1199,10 +1199,10 @@ class PanelOperation(DerivativeFactor):
         DTRuler = context.DTRuler
         StartIdx = np.searchsorted(DTRuler, StartDT, side="left")
         for i, iDescriptor in enumerate(self._Descriptors):
-            if self._Operator._QSArgs.StartDT[i] is None:# 未指定起始时点, 从当前位置回溯 LookBack[i] 期
+            if (self._Operator._QSArgs.LookBackMode[i]=="滚动窗口") or (self._Operator._QSArgs.StartDT[i] is None):# 未指定起始时点, 从当前位置回溯 LookBack[i] 期
                 iStartIdx = StartIdx - self._Operator._QSArgs.LookBack[i]
             else:# 指定了起始时点, 以起始时点 StartDT[i] 的位置为准
-                iStartIdx = np.searchsorted(DTRuler, self._Operator._QSArgs.StartDT[i], side="left")
+                iStartIdx = np.searchsorted(DTRuler, self._Operator._QSArgs.StartDT[i], side="left") - self._Operator._QSArgs.LookBack[i]
             if iStartIdx < 0: self._QS_Logger.warning("注意: 对于因子 '%s'(QSID: %s) 的描述子 '%s'(QSID: %s), 时点标尺长度不足, 不足的部分将填充 nan!" % (self.Name, self.QSID, iDescriptor.Name, iDescriptor.QSID))
             iStartIdx = max(0, iStartIdx)
             if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
