@@ -542,7 +542,7 @@ class SectionOperator(FactorOperator):
         Name: str = Field(default="SectionOperator", title="名称", frozen=True)
         DTMode: Literal["单时点", "多时点"] = Field(default="单时点", title="运算时点", frozen=True)
         OutputMode: Literal["全截面", "单ID"] = Field(default="全截面", title="输出形式", frozen=True)
-        DescriptorSection: List[Optional[List[str]]] = Field(default=[], title="描述子截面", frozen=True)
+        DescriptorSection: List[Optional[List[str]]] = Field(default=[], title="描述子截面", frozen=True, description="None 表示该描述子和当前因子的截面一致")
         
         def __init__(self, /, **data):
             Arity = data.get("Arity", 0)
@@ -714,7 +714,7 @@ class PanelOperator(FactorOperator):
         Name: str = Field(default="PanelOperator", title="名称", frozen=True)
         DTMode: Literal["单时点", "多时点"] = Field(default="单时点", title="运算时点", frozen=True)
         OutputMode: Literal["全截面", "单ID"] = Field(default="全截面", title="输出形式", frozen=True)
-        DescriptorSection: List[Optional[List[str]]] = Field(default=[], title="描述子截面", frozen=True)
+        DescriptorSection: List[Optional[List[str]]] = Field(default=[], title="描述子截面", frozen=True, description="None 表示该描述子和当前因子的截面一致")
         LookBack: List[int] = Field(default=[], title="回溯期数", frozen=True, description="描述子向前回溯的时点数(不包括当前时点)")
         LookBackMode: List[Literal["滚动窗口", "扩张窗口"]] = Field(default=[], title="回溯模式", description="描述子的回溯模式", frozen=True)
         StartDT: List[Optional[dt.datetime]] = Field(default=[], title="起始时点", frozen=True, description="扩张窗口模式下描述子的起始时点, 如果为 None, 则使用回溯期数参数")
@@ -994,14 +994,17 @@ class DerivativeFactor(Factor):
         pass
     
     # 获取描述子的截面ID
-    def _QS_getDescriptorSectionIDs(self, i, context):
-        iDescriptor = self.Descriptors[i]
-        if hasattr(self._Operator, "DescriptorSection") and (self._Operator._QSArgs.DescriptorSection[i] is not None):
+    def _QS_getDescriptorSectionIDs(self, i:int, context:FactorContext) -> List[str]:
+        SectionIDs = context.NodeState[self.QSID]["section_ids"]
+        # iDescriptor = self.Descriptors[i]
+        if hasattr(self._Operator._QSArgs, "DescriptorSection") and (self._Operator._QSArgs.DescriptorSection[i] is not None):
             return self._Operator._QSArgs.DescriptorSection[i]
-        elif iDescriptor._QSArgs.SectionIDs:
-            return iDescriptor._QSArgs.SectionIDs
         else:
-            return context.DefaultSectionIDs
+            return SectionIDs
+        # elif iDescriptor._QSArgs.SectionIDs:
+        #     return iDescriptor._QSArgs.SectionIDs
+        # else:
+        #     return context.DefaultSectionIDs
 
     @property
     def Operator(self) -> FactorOperator:
@@ -1224,8 +1227,12 @@ class PanelOperation(DerivativeFactor):
         if not CalcDTs: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs)
         if context.FactorDataCache and self._QSArgs.CacheEnabled and (len(context.PIDList) > 1):
             PID = context.PID
-            DTPartition = partitionList(CalcDTs, len(context.PIDList))
-            ResponsibleCalcDTs = DTPartition[context.PIDList.index(PID)]
+            i = self._Operator._QSArgs.iInitFactor
+            if (i >= 0) and (self._Operator._QSArgs.LookBackMode[i]=="扩张窗口") and (self._Operator._QSArgs.StartDT[i] is not None):
+                ResponsibleCalcDTs = (CalcDTs if context.PIDList.index(PID)==0 else [])
+            else:
+                DTPartition = partitionList(CalcDTs, len(context.PIDList))
+                ResponsibleCalcDTs = DTPartition[context.PIDList.index(PID)]
         else:
             ResponsibleCalcDTs = CalcDTs
         DTRuler = context.DTRuler

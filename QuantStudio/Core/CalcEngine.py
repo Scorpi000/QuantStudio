@@ -74,7 +74,6 @@ def _execute_task(task):
     task["Sub2MainQueue"].put((task["PID"], -1, Context.getUpdateData()))
     Context.Logger.info(f'子任务进程 {task["PID"]} finish')
 
-
 class ParallelEngine(Engine):
 
     class __QS_ArgClass__(Engine.__QS_ArgClass__):

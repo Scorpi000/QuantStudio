@@ -31,7 +31,7 @@ def DummyVarTo01Var(dummy_var,ignore_na=False,ignores=[],ignore_nonstring=False)
         dummy_var[NAMask] = np.nan
         AllClasses = dummy_var.unique()
     AllClasses = [iClass for iClass in AllClasses if (iClass not in ignores) and ((not ignore_nonstring) or isinstance(iClass,str) or pd.isnull(iClass))]
-    OZVar = pd.DataFrame(0.0,index=dummy_var.index,columns=AllClasses,dtype='float')
+    OZVar = pd.DataFrame(0.0, index=dummy_var.index, columns=AllClasses, dtype='float')
     for iClass in AllClasses:
         if pd.notnull(iClass):
             iMask = (dummy_var==iClass)

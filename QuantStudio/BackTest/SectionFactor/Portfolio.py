@@ -68,7 +68,7 @@ class CalcMaskPortfolio(SectionOperator):
                 CatWeight = pd.DataFrame(1, index=idt, columns=SectionIDs)
         if f._QSArgs.CalcDTRuler:
             RebalanceDTs = sorted(set(idt).intersection(f._QSArgs.CalcDTRuler))
-            Mask = Mask.reindex(index=RebalanceDTs).fillna(False)
+            Mask = Mask.reindex(index=RebalanceDTs).fillna(False).astype(bool)
             Weight = Weight.reindex(index=RebalanceDTs)
             if f._QSArgs.ModelArgs["cat_data"]:
                 CatData = CatData.reindex(index=RebalanceDTs)
@@ -136,8 +136,8 @@ def makeQuantilePortfolio(factor:Factor, mask:Optional[Factor]=None, cat_data:Op
 class CalcPortfolioNV(PanelOperator):
     """计算投资组合净值"""
 
-    def __init__(self, if_price_missing:Literal["沿用前值", "填充为0"]="沿用前值", descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        Args = {"Name": "calcPortfolioNV"} | args | {"Arity": 4, "DTMode": "多时点", "OutputMode": "全截面", "DataType": "double", "LookBack": [1, 0, 0, 0], "iInitFactor": 0, "LookBackMode": ["扩张窗口"] * 4, "StartDT": [None] * 4}
+    def __init__(self, if_price_missing:Literal["沿用前值", "填充为0"]="沿用前值", start_dt:Optional[dt.datetime]=None, descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        Args = {"Name": "calcPortfolioNV"} | args | {"Arity": 4, "DTMode": "多时点", "OutputMode": "全截面", "DataType": "double", "LookBack": [1, 0, 0, 0], "iInitFactor": 0, "LookBackMode": ["扩张窗口"] * 4, "StartDT": [start_dt] * 4}
         Args["ModelArgs"] = {"if_price_missing": if_price_missing} | Args.get("ModelArgs", {})
         Args["DescriptorSection"] = [None] + [descriptor_ids] * 3
         return super().__init__(args=Args, config_file=config_file, **kwargs)

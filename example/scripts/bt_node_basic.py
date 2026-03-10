@@ -4,6 +4,9 @@ import datetime as dt
 import numpy as np
 import pandas as pd
 from lxml import etree
+import matplotlib.pyplot as plt
+plt.rcParams['font.sans-serif'] = ['Microsoft YaHei']# 指定默认字体为微软雅黑
+plt.rcParams['axes.unicode_minus'] = False# 正确显示负号
 
 from QuantStudio.Core.CalcEngine import Engine, ParallelEngine
 from QuantStudio.Factor.Factor import DataFactor, FactorContext
@@ -16,7 +19,7 @@ from QuantStudio.BackTest.SectionFactor.ReturnDecomposition import CalcFamaMacBe
 from QuantStudio.Tools.DateTimeFun import getNaturalDay, getMonthLastDateTime
 
 
-if __name__ == "__main__":
+if __name__ == "__main__1":
     np.random.seed(0)
     SectionIDs = [f"{str(i).zfill(6)}.SZ" for i in range(1, 21)]
     IDs = SectionIDs
@@ -79,3 +82,83 @@ if __name__ == "__main__":
     webbrowser.open("BTReport.html")
     
     print("===")
+
+
+if __name__=="__main__":
+    # 参数设置
+    from QuantStudio.Factor.HDF5DB import HDF5DB
+    HDB = HDF5DB(args={"MainDir": r"D:\Data\TestHDF5DB"}).connect()
+
+    StartDT, EndDT = dt.datetime(2014, 1, 1), dt.datetime(2026, 2, 28)# 数据起止时间
+    TestStartDT, TestEndDT = dt.datetime(2019, 1, 1), EndDT# 测试起止时间
+
+    FT = HDB.getTable("stock_cn_day_bar_adj_backward_nafilled")
+    DTRuler = FT.getDateTime(start_dt=StartDT, end_dt=EndDT)
+    TestDTs = FT.getDateTime(start_dt=TestStartDT, end_dt=TestEndDT)
+    SectionIDs = IDs = FT.getID()
+
+    # 再平衡时点序列
+    from QuantStudio.Tools.DateTimeFun import getMonthLastDateTime
+    BalanceDTs = getMonthLastDateTime(DTRuler)# 月末
+
+    FT = HDB.getTable("stock_cn_status")
+    Mask = (FT.getFactor("if_trading")==1)
+
+    FT = HDB.getTable("stock_cn_day_bar_adj_backward_nafilled")
+    Price = FT.getFactor("close")
+
+    FT = HDB.getTable("stock_cn_industry")
+    Industry = FT.getFactor("citic2019_level1")
+
+    FT = HDB.getTable("stock_cn_factor_value")
+    FactorList = [FT.getFactor(iFactorName) for iFactorName in ["bp_lr", "ep_ttm"]]
+
+    # 回测节点列表
+    NodeList = []
+
+    # Rank IC
+    FactorIC = CalcIC(lookback=31, period_lookback=1, corr_method="spearman", descriptor_ids=SectionIDs)(*FactorList, price=Price, mask=Mask, cat_data=Industry, factor_args={"CalcDTRuler": BalanceDTs})
+    ICNode = IC(FactorIC, args={"RollingAvgPeriod": 2, "GenReport": True})
+    NodeList.append(ICNode)
+
+    # IC 衰减
+    ICDecayNode = ICDecay(ic_list=[CalcIC(lookback=31*i, period_lookback=i, descriptor_ids=SectionIDs)(*FactorList, price=Price, mask=Mask, cat_data=Industry, factor_args={"CalcDTRuler": BalanceDTs}) for i in range(1, 13)], args={"GenReport": True})
+    NodeList.append(ICDecayNode)
+
+    # 分位数组合
+    calcPortfolioNV = CalcPortfolioNV(descriptor_ids=SectionIDs)
+    for iFactor in FactorList:
+        iQuantilePortfolioList = makeQuantilePortfolio(iFactor, mask=Mask, cat_data=Industry, weight=None, descriptor_ids=SectionIDs, rebalance_dts=BalanceDTs, group_num=5)
+        iPortfolioNVList = [calcPortfolioNV(iPortfolio, price=Price, init_nv=1, factor_args={"Name": f"P{i}"}) for i, iPortfolio in enumerate(iQuantilePortfolioList)]
+        iQuantilePortfolioNode = MultiPortfolio(nv_list=iPortfolioNVList, portfolio_list=iQuantilePortfolioList, args={"RebalanceDTs": BalanceDTs, "GenReport": True, "Name": f"{iFactor.Name}-分位数组合"})
+        NodeList.append(iQuantilePortfolioNode)
+
+    # 因子换手率
+    TurnoverFactor = CalcFactorTurnover(lookback=31, period_lookback=1, descriptor_ids=SectionIDs)(*FactorList, mask=Mask)
+    FactorTurnoverNode = FactorTurnover(TurnoverFactor, args={"GenReport": True})
+    NodeList.append(FactorTurnoverNode)
+
+    # 截面相关性
+    SectionCorrelationFactor = CalcSectionCorrelation(descriptor_ids=SectionIDs)(*FactorList, mask=Mask)
+    SectionCorrelationNode = SectionCorrelation(SectionCorrelationFactor, args={"GenReport": True})
+    NodeList.append(SectionCorrelationNode)
+
+    # Fama-MacBeth 回归
+    FamaMacBethFactor = CalcFamaMacBethRegression(descriptor_ids=SectionIDs)(*FactorList, price=Price, mask=Mask, cat_data=Industry)
+    FamaMacBethModule = FamaMacBethRegression(FamaMacBethFactor, args={"GenReport": True})
+    NodeList.append(FamaMacBethModule)
+
+    Report = BTReport(bt_node_list=NodeList)
+
+    with FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "PIDs": ["0"], "CacheDir": r"D:\Data\DevCache", "ClearStart": True}) as Cache:
+        with FactorContext(
+            PID="0",
+            PIDList=["0"],
+            DTRuler=DTRuler,
+            DefaultSectionIDs=SectionIDs,
+            FactorDataCache=Cache
+        ) as Context:
+            with Engine() as ExecEngine:
+                Output, = ExecEngine.run([Report], Context, fwd_data_list=[BTLocalContext(DTs=TestDTs)], init_data_list=[BTInitData(DTRange=(TestDTs[0], TestDTs[-1]))])
+
+    print(Output["Report"])

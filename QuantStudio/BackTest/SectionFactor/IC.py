@@ -51,31 +51,30 @@ class CalcIC(PanelOperator):
             DTs = Price.columns
         Return = Price.T.pct_change().T
         if f._QSArgs.ModelArgs["mask"]: 
-            Mask, x = pd.DataFrame(x[0].T==1, columns=idt, index=SectionIDs), x[1:]
-            Mask = (Mask.reindex(columns=DTs).fillna(False) & Price.notnull())
+            Mask, x = pd.DataFrame(x[0].T==1, columns=idt, index=SectionIDs).reindex(columns=DTs).fillna(False).astype(bool), x[1:]
+            Mask = (Mask & Price.notnull())
         else:
             Mask = Price.notnull()
         if f._QSArgs.ModelArgs["cat_data"]: 
-            CatData, x = pd.DataFrame(x[0].T, columns=idt, index=SectionIDs), x[1:]
-            CatData = CatData.reindex(columns=DTs)
+            CatData, x = pd.DataFrame(x[0].T, columns=idt, index=SectionIDs).reindex(columns=DTs), x[1:]
         else:
             CatData = None
         if f._QSArgs.ModelArgs["weight"]: 
-            Weight, x = pd.DataFrame(x[0].T, columns=idt, index=SectionIDs), x[1:]
-            Weight = Weight.reindex(columns=DTs)
+            Weight, x = pd.DataFrame(x[0].T, columns=idt, index=SectionIDs).reindex(columns=DTs), x[1:]
         else:
             Weight = pd.DataFrame(1, columns=DTs, index=SectionIDs)
         if CatData is not None:# 进行收益率的类别调整
-            Price = Price.where(CatData.notnull(), np.nan)
-            AllCates = np.unique(CatData)
+            Return = Return.where(CatData.notnull(), np.nan)
+            AllCates = CatData.values.flatten()
+            AllCates = np.unique(AllCates[pd.notnull(AllCates)])
             for iCate in AllCates:
                 iMask = ((CatData==iCate) & Mask)
-                iWeight = Weight.where(iMask, np.nan)
-                iReturn = (Return * iWeight.shift(1, axis=1)).sum(axis=0) / iWeight.shift(1, axis=1).sum(axis=0)
-                Return = Return.where(~iMask.shift(1, axis=1).fillna(False), Return - iReturn)
+                iWeight = Weight.where(iMask, np.nan).shift(1, axis=1).copy()
+                iReturn = (Return * iWeight).sum(axis=0) / iWeight.sum(axis=0)
+                Return = Return.where(~iMask.shift(1, axis=1).fillna(False).astype(bool), Return - iReturn)
         IC, Breadth = pd.DataFrame(index=DTs, columns=iid), pd.DataFrame(index=DTs, columns=iid)
         FactorNames = f._QSArgs.SectionIDs
-        Mask = Mask.shift(args["period_lookback"], axis=1).fillna(False)
+        Mask = Mask.shift(args["period_lookback"], axis=1).fillna(False).astype(bool)
         for iFactorName in iid:
             if iFactorName not in FactorNames: continue
             iIdx = FactorNames.index(iFactorName)
@@ -262,13 +261,13 @@ class IC(BTNode):
         return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self.Deps[i].getID()) for i, iInitData in enumerate(InitData)]
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[BTLocalContext]=None) -> dict:
-        IC, Breadth = bwd_data_list[0].map(lambda x: x[0]), bwd_data_list[0].map(lambda x: x[1])
+        IC = bwd_data_list[0].dropna(how="all", axis=0)
+        IC, Breadth = IC.map(lambda x: x[0] if pd.notnull(x) else np.nan), IC.map(lambda x: x[1] if pd.notnull(x) else np.nan)
         if self._QSArgs.FactorNameList:
             FactorNameList = self._QSArgs.FactorNameList
         else:
             FactorNameList = self.Deps[0].Args.ModelArgs.get("factor_name_list", IC.columns)
         IC.columns = Breadth.columns = FactorNameList
-        IC = IC.dropna(how="all", axis=0)
         Breadth = Breadth.reindex(index=IC.index)
         Output = {"截面宽度": Breadth, "IC": IC}
         Output["IC的移动平均"] = Output["IC"].copy()
@@ -357,7 +356,8 @@ class ICDecay(BTNode):
         IC, Breadth = {}, {}
         FactorNameList, PrefixFactorNameList = None, None
         for i, BwdData in enumerate(bwd_data_list):
-            iIC, iBreadth = BwdData.map(lambda x: x[0]), BwdData.map(lambda x: x[1])
+            BwdData = BwdData.dropna(how="all", axis=0)
+            iIC, iBreadth = BwdData.map(lambda x: x[0] if pd.notnull(x) else np.nan), BwdData.map(lambda x: x[1] if pd.notnull(x) else np.nan)
             if self._QSArgs.FactorNameList:
                 FactorNameList = self._QSArgs.FactorNameList
             else:
@@ -384,37 +384,5 @@ class ICDecay(BTNode):
             iOutput["统计数据"]["t统计量"] = iOutput["统计数据"]["IC_IR"] * nDT ** 0.5
             iOutput["统计数据"]["胜率"] = (iIC > 0).sum() / nDT
             Output[iFactorName] = iOutput
-        if self._QSArgs.GenReport: Output["Report"] = self.genReport(Output)
-        return Output
-
-
-
-
-
-
-
-
-
-
-
-
-
-        Output = {"截面宽度": Breadth, "IC": IC}
-        Output["IC的移动平均"] = Output["IC"].copy()
-        for i in range(Output["IC"].shape[0]):
-            if i<self._QSArgs.RollingAvgPeriod-1: Output["IC的移动平均"].iloc[i, :] = np.nan
-            else: Output["IC的移动平均"].iloc[i, :] = Output["IC"].iloc[i-self._QSArgs.RollingAvgPeriod+1:i+1, :].mean()
-        Output["统计数据"] = pd.DataFrame(index=Output["IC"].columns)
-        Output["统计数据"]["平均值"] = Output["IC"].mean()
-        Output["统计数据"]["标准差"] = Output["IC"].std()
-        Output["统计数据"]["最小值"] = Output["IC"].min()
-        Output["统计数据"]["最大值"] = Output["IC"].max()
-        Output["统计数据"]["IC_IR"] = Output["统计数据"]["平均值"] / Output["统计数据"]["标准差"]
-        Output["统计数据"]["t统计量"] = np.nan
-        Output["统计数据"]["平均截面宽度"] = Output["截面宽度"].mean()
-        Output["统计数据"]["IC×Sqrt(N)"] = Output["统计数据"]["平均值"] * np.sqrt(Output["统计数据"]["平均截面宽度"])
-        Output["统计数据"]["有效期数"] = 0.0
-        for iFactor in Output["IC"]: Output["统计数据"].loc[iFactor, "有效期数"] = pd.notnull(Output["IC"][iFactor]).sum()
-        Output["统计数据"]["t统计量"] = Output["统计数据"]["有效期数"]**0.5 * Output["统计数据"]["IC_IR"]
         if self._QSArgs.GenReport: Output["Report"] = self.genReport(Output)
         return Output

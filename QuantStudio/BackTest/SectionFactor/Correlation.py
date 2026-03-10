@@ -36,7 +36,7 @@ class CalcSectionCorrelation(SectionOperator):
             Mask = pd.DataFrame(True, columns=idt, index=SectionIDs)
         if f._QSArgs.CalcDTRuler:
             DTs = sorted(set(idt).intersection(f._QSArgs.CalcDTRuler))
-            Mask = Mask.reindex(columns=DTs).fillna(False)
+            Mask = Mask.reindex(columns=DTs).fillna(False).astype(bool)
         else:
             DTs = Mask.columns
         Corr = pd.DataFrame(index=DTs, columns=iid)
@@ -74,7 +74,7 @@ class CalcSectionCorrelation(SectionOperator):
 class SectionCorrelation(BTNode):
     """因子截面相关性"""
     class __QS_ArgClass__(BTNode.__QS_ArgClass__):
-        Name: str = Field(default="SectionCorrelation", frozen=True, title="名称")
+        Name: str = Field(default="因子截面相关性", frozen=True, title="名称")
         FactorNameList: Optional[List[str]] = Field(default=None, frozen=True, title="因子列表")
         
     def __init__(self, section_corr: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
@@ -147,12 +147,12 @@ class CalcFactorTurnover(PanelOperator):
             Mask = pd.DataFrame(True, columns=idt, index=SectionIDs)
         if f._QSArgs.CalcDTRuler:
             DTs = sorted(set(idt).intersection(f._QSArgs.CalcDTRuler))
-            Mask = Mask.reindex(columns=DTs).fillna(False)
+            Mask = Mask.reindex(columns=DTs).fillna(False).astype(bool)
         else:
             DTs = Mask.columns
         FactorTurnover = pd.DataFrame(index=DTs, columns=iid)
         FactorNames = f._QSArgs.SectionIDs
-        Mask = Mask.shift(args["period_lookback"], axis=1).fillna(False)
+        Mask = Mask.shift(args["period_lookback"], axis=1).fillna(False).astype(bool)
         for iFactorName in iid:
             if iFactorName not in FactorNames: continue
             iIdx = FactorNames.index(iFactorName)
@@ -179,7 +179,7 @@ class CalcFactorTurnover(PanelOperator):
 class FactorTurnover(BTNode):
     """因子换手率: 当期因子值和往期因子值横截面上的线性相关系数"""
     class __QS_ArgClass__(BTNode.__QS_ArgClass__):
-        Name: str = Field(default="SectionCorrelation", frozen=True, title="名称")
+        Name: str = Field(default="因子换手率", frozen=True, title="名称")
         FactorNameList: Optional[List[str]] = Field(default=None, frozen=True, title="因子列表")
         
     def __init__(self, factor_turnover: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):

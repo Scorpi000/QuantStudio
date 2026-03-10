@@ -45,10 +45,10 @@ class CalcFamaMacBethRegression(PanelOperator):
         Return = Price.pct_change().iloc[-1]
         if f._QSArgs.ModelArgs["mask"]: 
             Mask, x = pd.DataFrame(x[0]==1, index=idt, columns=SectionIDs), x[1:]
-            Mask = (Mask.reindex(index=DTs).fillna(False) & Price.notnull())
+            Mask = (Mask.reindex(index=DTs).fillna(False).astype(bool) & Price.notnull())
         else:
             Mask = Price.notnull()
-        Mask = Mask.shift(args["period_lookback"], axis=1).iloc[-1].fillna(False)
+        Mask = Mask.shift(args["period_lookback"], axis=1).iloc[-1].fillna(False).astype(bool)
         if f._QSArgs.ModelArgs["cat_data"]:
             CatData, x = pd.DataFrame(x[0], index=idt, columns=SectionIDs), x[1:]
             CatData = CatData.reindex(index=DTs)
@@ -210,7 +210,8 @@ class FamaMacBethRegression(BTNode):
         return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self.Deps[i].getID()) for i, iInitData in enumerate(InitData)]
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[BTLocalContext]=None) -> dict:
-        PureReturn, RawReturn = bwd_data_list[0].map(lambda x: x[0]), bwd_data_list[0].map(lambda x: x[5])
+        BwdData = bwd_data_list[0].dropna(how="all", axis=0)
+        PureReturn, RawReturn = BwdData.map(lambda x: x[0] if pd.notnull(x) else np.nan), BwdData.map(lambda x: x[5] if pd.notnull(x) else np.nan)
         if self._QSArgs.FactorNameList:
             FactorNameList = self._QSArgs.FactorNameList
         else:
@@ -220,14 +221,14 @@ class FamaMacBethRegression(BTNode):
         RawReturn = RawReturn.reindex(index=PureReturn.index)
         ColMapping = {Col: FactorNameList[i] for i, Col in enumerate(bwd_data_list[0].columns)}
         Output = {"Pure Return": PureReturn, "Raw Return": RawReturn}
-        Output["回归t统计量(Pure)"] = bwd_data_list[0].map(lambda x: x[1]).reindex(index=PureReturn.index).rename(columns=ColMapping)
-        Output["回归t统计量(Raw)"] = bwd_data_list[0].map(lambda x: x[6]).reindex(index=PureReturn.index).rename(columns=ColMapping)
-        Output["回归F统计量(Pure)"] = bwd_data_list[0].map(lambda x: x[2]).reindex(index=PureReturn.index).rename(columns=ColMapping)
-        Output["回归F统计量(Raw)"] = bwd_data_list[0].map(lambda x: x[7]).reindex(index=PureReturn.index).rename(columns=ColMapping)
-        Output["回归R平方(Pure)"] = bwd_data_list[0].map(lambda x: x[3]).reindex(index=PureReturn.index).rename(columns=ColMapping)
-        Output["回归R平方(Raw)"] = bwd_data_list[0].map(lambda x: x[8]).reindex(index=PureReturn.index).rename(columns=ColMapping)
-        Output["回归调整R平方(Pure)"] = bwd_data_list[0].map(lambda x: x[5]).reindex(index=PureReturn.index).rename(columns=ColMapping)
-        Output["回归调整R平方(Raw)"] = bwd_data_list[0].map(lambda x: x[9]).reindex(index=PureReturn.index).rename(columns=ColMapping)
+        Output["回归t统计量(Pure)"] = BwdData.map(lambda x: x[1] if pd.notnull(x) else np.nan).reindex(index=PureReturn.index).rename(columns=ColMapping)
+        Output["回归t统计量(Raw)"] = BwdData.map(lambda x: x[6] if pd.notnull(x) else np.nan).reindex(index=PureReturn.index).rename(columns=ColMapping)
+        Output["回归F统计量(Pure)"] = BwdData.map(lambda x: x[2] if pd.notnull(x) else np.nan).reindex(index=PureReturn.index).rename(columns=ColMapping)
+        Output["回归F统计量(Raw)"] = BwdData.map(lambda x: x[7] if pd.notnull(x) else np.nan).reindex(index=PureReturn.index).rename(columns=ColMapping)
+        Output["回归R平方(Pure)"] = bwd_data_list[0].map(lambda x: x[3] if pd.notnull(x) else np.nan).reindex(index=PureReturn.index).rename(columns=ColMapping)
+        Output["回归R平方(Raw)"] = bwd_data_list[0].map(lambda x: x[8] if pd.notnull(x) else np.nan).reindex(index=PureReturn.index).rename(columns=ColMapping)
+        Output["回归调整R平方(Pure)"] = bwd_data_list[0].map(lambda x: x[4] if pd.notnull(x) else np.nan).reindex(index=PureReturn.index).rename(columns=ColMapping)
+        Output["回归调整R平方(Raw)"] = bwd_data_list[0].map(lambda x: x[9] if pd.notnull(x) else np.nan).reindex(index=PureReturn.index).rename(columns=ColMapping)
         # 计算滚动t统计量
         nDT = PureReturn.shape[0]
         Output["滚动t统计量(Pure)"] = pd.DataFrame(np.nan, index=PureReturn.index, columns=FactorNameList)

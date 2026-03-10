@@ -6,6 +6,7 @@ import shutil
 import tempfile
 import datetime as dt
 from multiprocessing import Lock
+from typing import Optional, List, Literal, Dict
 
 import numpy as np
 import pandas as pd
@@ -19,6 +20,8 @@ from QuantStudio.Core.FileCache import FileDTCache, FeatherDTCache
 
 
 class FactorCache(DTCache):
+    """因子数据缓存"""
+
     class __QS_ArgClass__(DTCache.__QS_ArgClass__):
         PIDs: list[str] = Field(default=["0"], title="进程ID", frozen=True)
 
@@ -33,7 +36,7 @@ class FactorCache(DTCache):
             self.load()
         self._isStarted = True
 
-    def end(self, clear=False):
+    def end(self, clear:bool=False):
         if not self._isStarted: return
         if clear:
             self.clearData()
@@ -44,37 +47,103 @@ class FactorCache(DTCache):
             self.dump()
         self._isStarted = False
 
-    # 原始数据缓存是否存在
-    def checkRawDataExistence(self, key, pids=None, if_not_exists="create"):
+    def checkRawDataExistence(self, key:str, pids:Optional[List[str]]=None, create_if_not_exists: bool=True) -> bool:
+        """检查原始数据缓存是否存在
+
+        Args:
+            key: 数据项的键
+            pids: 进程 ID 列表, None 表示所有进程
+            create_if_not_exists: 如果不存在是否要创建该数据项
+        
+        Returns:
+            是否存在该项数据
+        """
         raise NotImplementedError
 
-    # 写入原始数据
-    # raw_data: {field: DataFrame}
-    def writeRawData(self, key, raw_data, id_col="ID", if_exists="append", pid_ids=None, meta:dict={}):
+    def writeRawData(self, key:str, raw_data:Dict[str, pd.DataFrame], id_col:str="ID", if_exists:Literal["append", "replace"]="append", pid_ids:Optional[Dict[str, List[str]]]=None, meta:dict={}):
+        """写入原始数据
+        
+        Args:
+            key: 数据项的键
+            raw_data: 待写入的原始数据, {field: DataFrame}
+            id_col: ID 所在的列名, 如果 ID 列存在则按照 ID 切分后存入各个进程空间, 否则则将所有数据分别都存入各个进程空间
+            if_exists: 如果该数据已经存在的更新方式, append 表示只添加新增的数据, replace 表示替换已有数据
+            pid_ids: 进程及其分配的 ID 序列, {进程ID: [ID]}
+            meta: 数据项的元信息
+        """
         raise NotImplementedError
 
-    # 读取原始数据
-    def readRawData(self, key, target_fields=None, pids=None):
+    def readRawData(self, key:str, target_fields:Optional[List[str]]=None, pids:Optional[List[str]]=None) -> Dict[str, pd.DataFrame]:
+        """读取原始数据
+        
+        Args:
+            key: 数据项的键
+            target_fields: 待读取的字段列表, None 表示所有的字段
+            pids: 待读取的进程 ID 列表
+        
+        Returns:
+            数据项的值, {field: DataFrame}
+        """
         raise NotImplementedError
 
-    # 清空原始数据
-    def clearRawData(self, key=None):
-        return
+    def clearRawData(self, key:Optional[str]=None):
+        """清空原始数据
 
-    # 因子缓存是否存在
-    def checkFactorDataExistence(self, key, pids=None, if_not_exists="create"):
+        Args:
+            key: 数据项的键, None 表示清空所有缓存
+        """
+        pass
+
+    def checkFactorDataExistence(self, key:str, pids:Optional[List[str]]=None) -> bool:
+        """检查因子数据缓存是否存在
+
+        Args:
+            key: 数据项的键
+            pids: 进程 ID 列表, None 表示所有进程
+        
+        Returns:
+            是否存在该项数据
+        """
         raise NotImplementedError
 
-    # 写入因子数据
-    def writeFactorData(self, key, factor_data, pid_ids, pid=None, target_field="StdData", if_exists="append", data_type=None, meta:dict={}):
+    def writeFactorData(self, key:str, factor_data:pd.DataFrame, pid_ids:Dict[str, List[str]], pid:Optional[str]=None, target_field:str="StdData", if_exists:Literal["append", "replace"]="append", data_type:Optional[Literal["double", "string", "object"]]=None, meta:dict={}):
+        """写入因子数据
+        
+        Args:
+            key: 数据项的键
+            factor_data: 待写入的因子数据
+            pid_ids: 进程及其分配的 ID 序列, {进程ID: [ID]}
+            pid: 待写入的进程, None 表示所有进程
+            target_field: 数据项所属的字段
+            if_exists: 如果该数据已经存在的更新方式, append 表示只添加新增的数据, replace 表示替换已有数据
+            data_type: 写入数据的数据类型, None 表示让系统自己判断
+            meta: 数据项的元信息
+        """
         raise NotImplementedError
 
-    # 读取因子数据
-    def readFactorData(self, key, ipid, target_field="StdData", pids=None, wait=True, wait_seconds=0.1, data_type=None):
+    def readFactorData(self, key:str, ipid:str, target_field:str="StdData", pids:Optional[List[str]]=None, wait:bool=True, wait_seconds:float=0.1, data_type:Optional[Literal["double", "string", "object"]]=None) -> None | pd.DataFrame:
+        """读取因子数据
+        
+        Args:
+            key: 数据项的键
+            ipid: 当前进程 ID
+            target_field: 数据项所属的字段
+            pids: 待读取的进程 ID 序列, None 表示只读取当前进程的数据
+            wait: 如果某个进程的数据尚未就绪, 是否等待
+            wait_seconds: 如果某个进程的数据尚未就绪, 反复检查的间隔秒数
+            data_type: 数据的数据类型, None 表示让系统自己判断
+        
+        Returns:
+            数据项的值, None 表示该项不存在
+        """
         raise NotImplementedError
 
-    # 清空缓存
-    def clearFactorData(self, key=None):
+    def clearFactorData(self, key:Optional[str]=None):
+        """清空因子缓存
+        
+        Args:
+            key: 数据项的键, None 表示清空所有缓存
+        """
         if key:
             self._CachedDTRange.pop(key)
         else:
@@ -82,10 +151,12 @@ class FactorCache(DTCache):
 
 
 class FileFactorCache(FileDTCache, FactorCache):
+    """基于文件的因子缓存"""
+
     class __QS_ArgClass__(FileDTCache.__QS_ArgClass__, FactorCache.__QS_ArgClass__):
         pass
     
-    def __init__(self, args={}, config_file=None, **kwargs):
+    def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
         super().__init__(args=args, config_file=config_file, **kwargs)
         self._RawDataDir = None  # 原始数据存放根目录
         self._FactorDataDir = None  # 因子数据存放根目录
@@ -138,7 +209,7 @@ class FileFactorCache(FileDTCache, FactorCache):
                 self._PIDLock[iPID] = QSFileLock(iLockFile, proc_lock=Lock())
         self._isStarted = True
 
-    def checkRawDataExistence(self, key, pids=None, if_not_exists="create"):
+    def checkRawDataExistence(self, key, pids=None, create_if_not_exists: bool=True) -> bool:
         if pids is None: pids = self._QSArgs.PIDs
         IfExist = False
         with self._DataLock:
@@ -146,9 +217,9 @@ class FileFactorCache(FileDTCache, FactorCache):
                 iPath = self._RawDataDir + os.sep + iPID + os.sep + key + self._QSArgs.Suffix
                 if os.path.exists(iPath):
                     IfExist = True
-                    if if_not_exists != "create":
+                    if not create_if_not_exists:
                         break
-                elif if_not_exists == "create":
+                elif create_if_not_exists:
                     self.createPath(iPath)
         return IfExist
 
@@ -188,7 +259,7 @@ class FileFactorCache(FileDTCache, FactorCache):
         RawData = {iKey: pd.concat(iVal, ignore_index=True) for iKey, iVal in RawData.items()}
         return RawData
 
-    def clearRawData(self, key=None):
+    def clearRawData(self, key:Optional[str]=None):
         with self._DataLock:
             if key is None:
                 try:
@@ -205,7 +276,7 @@ class FileFactorCache(FileDTCache, FactorCache):
                         self._QS_Logger.error(f"原始数据缓存: {iRawDataPath} 清理失败: {e}")
         return super().clearRawData(key=key)
 
-    def checkFactorDataExistence(self, key, pids=None):
+    def checkFactorDataExistence(self, key:str, pids:Optional[List[str]]=None) -> bool:
         if pids is None: pids = self._QSArgs.PIDs
         IfExist = False
         with self._DataLock:
@@ -214,7 +285,7 @@ class FileFactorCache(FileDTCache, FactorCache):
                 IfExist = os.path.exists(iPath) or IfExist
         return IfExist
 
-    def writeFactorData(self, key, factor_data, pid_ids, pid=None, target_field="StdData", if_exists="append", data_type=None, meta:dict={}):
+    def writeFactorData(self, key:str, factor_data:pd.DataFrame, pid_ids:Dict[str, List[str]], pid:Optional[str]=None, target_field:str="StdData", if_exists:Literal["append", "replace"]="append", data_type:Optional[Literal["double", "string", "object"]]=None, meta:dict={}):
         PIDs = (self._QSArgs.PIDs if pid is None else [pid])
         for iPID in PIDs:
             with self._PIDLock[iPID]:
@@ -226,7 +297,7 @@ class FileFactorCache(FileDTCache, FactorCache):
                     self.writeDataFrame(path=iPath, data=factor_data, if_exists=if_exists, ignore_index=False, data_type=data_type)
                 if meta: self.writeMeta(path=self._FactorDataDir + os.sep + iPID + os.sep + key + os.sep + "meta.json", meta=meta)
 
-    def readFactorData(self, key, ipid, target_field="StdData", pids=None, wait=True, wait_seconds=0.1, data_type=None):
+    def readFactorData(self, key:str, ipid:str, target_field:str="StdData", pids:Optional[List[str]]=None, wait:bool=True, wait_seconds:float=0.1, data_type:Optional[Literal["double", "string", "object"]]=None) -> None | pd.DataFrame:
         if isinstance(pids, str):
             Path = self._FactorDataDir + os.sep + pids + os.sep + key
             if not os.path.exists(Path):
@@ -274,7 +345,7 @@ class FileFactorCache(FileDTCache, FactorCache):
         else:
             return None
 
-    def clearFactorData(self, key=None):
+    def clearFactorData(self, key:Optional[str]=None):
         with self._DataLock:
             if key is None:
                 try:
@@ -293,11 +364,14 @@ class FileFactorCache(FileDTCache, FactorCache):
 
 
 class FeatherFactorCache(FileFactorCache, FeatherDTCache):
+    """基于 Feather 格式文件的因子缓存"""
+
     class __QS_ArgClass__(FileFactorCache.__QS_ArgClass__, FeatherDTCache.__QS_ArgClass__):
         Suffix: str = Field(default=".feather", title="后缀", frozen=True)
     
-    def __init__(self, args={}, config_file=None, **kwargs):
+    def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
         super().__init__(args=args, config_file=(__QS_ConfigPath__ + os.sep + "FeatherFactorCacheConfig.json" if config_file is None else config_file), **kwargs)
+
 
 if __name__ == "__main__":
     IDs = [str(i).zfill(6) for i in range(3)]
