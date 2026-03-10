@@ -516,7 +516,7 @@ class TimeOperator(FactorOperator):
                 StartIndAndLen.append((iLookBack, iLookBack+1))
                 MaxLen = max(MaxLen, iLookBack+1)
             else:
-                iLookBack = max(0, StartIdx - np.searchsorted(dt_ruler, self._QSArgs.StartDT[i], side="left") - iLookBack)
+                iLookBack = max(0, StartIdx - np.searchsorted(dt_ruler, self._QSArgs.StartDT[i], side="left") + iLookBack)
                 StartIndAndLen.append((iLookBack, np.inf))
                 MaxLen = np.inf
             MaxLookBack = max(MaxLookBack, iLookBack)
@@ -911,7 +911,7 @@ class PanelOperator(FactorOperator):
                 StartIndAndLen.append((iLookBack, iLookBack+1))
                 MaxLen = max(MaxLen, iLookBack+1)
             else:
-                iLookBack = max(0, StartIdx - np.searchsorted(dt_ruler, self._QSArgs.StartDT[i], side="left") - iLookBack)
+                iLookBack = max(0, StartIdx - np.searchsorted(dt_ruler, self._QSArgs.StartDT[i], side="left") + iLookBack)
                 StartIndAndLen.append((iLookBack, np.inf))
                 MaxLen = np.inf
             MaxLookBack = max(MaxLookBack, iLookBack)
@@ -1109,7 +1109,7 @@ class TimeOperation(DerivativeFactor):
             if (self._Operator._QSArgs.LookBackMode[i]=="滚动窗口") or (self._Operator._QSArgs.StartDT[i] is None):
                 iStartIdx, iEndIdx = StartIdx - self._Operator._QSArgs.LookBack[i], EndIdx
             else:
-                iStartIdx, iEndIdx = np.searchsorted(DTRuler, max(self._Operator._QSArgs.StartDT[i], DTRuler[0]), side="left"), EndIdx
+                iStartIdx, iEndIdx = np.searchsorted(DTRuler, max(self._Operator._QSArgs.StartDT[i], DTRuler[0]), side="left") - self._Operator._QSArgs.LookBack[i], EndIdx
             if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
                 iEndIdx = StartIdx - 1
             iDTs = DTRuler[max(iStartIdx, 0):iEndIdx+1]
@@ -1245,7 +1245,7 @@ class PanelOperation(DerivativeFactor):
                 iStartIdx, iEndIdx = StartIdx - self._Operator._QSArgs.LookBack[i], EndIdx
                 iResponsibleStartIdx, iResponsibleEndIdx = ResponsibleStartIdx - self._Operator._QSArgs.LookBack[i], ResponsibleEndIdx
             else:
-                iStartIdx, iEndIdx = np.searchsorted(DTRuler, max(self._Operator._QSArgs.StartDT[i], DTRuler[0]), side="left"), EndIdx
+                iStartIdx, iEndIdx = np.searchsorted(DTRuler, max(self._Operator._QSArgs.StartDT[i], DTRuler[0]), side="left") - self._Operator._QSArgs.LookBack[i], EndIdx
                 iResponsibleStartIdx, iResponsibleEndIdx = iStartIdx, iEndIdx
             if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
                 iEndIdx = StartIdx - 1
