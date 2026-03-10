@@ -5,11 +5,11 @@ import numpy as np
 import pandas as pd
 from lxml import etree
 import matplotlib.pyplot as plt
-plt.rcParams['font.sans-serif'] = ['Microsoft YaHei']# 指定默认字体为微软雅黑
+plt.rcParams['font.sans-serif'] = ['SimHei']# 指定默认字体为微软雅黑
 plt.rcParams['axes.unicode_minus'] = False# 正确显示负号
 
 from QuantStudio.Core.CalcEngine import Engine, ParallelEngine
-from QuantStudio.Factor.Factor import DataFactor, FactorContext
+from QuantStudio.Factor.Factor import DataFactor, FactorContext, FactorLocalContext, FactorInitData
 from QuantStudio.Factor.FactorCache import FeatherFactorCache
 from QuantStudio.BackTest.BackTestModel import BTInitData, BTLocalContext, BTReport
 from QuantStudio.BackTest.SectionFactor.IC import CalcIC, IC, ICDecay
@@ -17,6 +17,49 @@ from QuantStudio.BackTest.SectionFactor.Portfolio import makeQuantilePortfolio, 
 from QuantStudio.BackTest.SectionFactor.Correlation import CalcFactorTurnover, FactorTurnover, CalcSectionCorrelation, SectionCorrelation
 from QuantStudio.BackTest.SectionFactor.ReturnDecomposition import CalcFamaMacBethRegression, FamaMacBethRegression
 from QuantStudio.Tools.DateTimeFun import getNaturalDay, getMonthLastDateTime
+
+
+if __name__=="__main__":
+    np.random.seed(0)
+    SectionIDs = [f"{str(i).zfill(6)}.SZ" for i in range(1, 21)]
+    IDs = SectionIDs
+    DTRuler = getNaturalDay(dt.datetime(2019, 1, 1), dt.datetime(2020, 12, 31))
+    DTs = getNaturalDay(dt.datetime(2020, 1, 1), dt.datetime(2020, 12, 31))
+    MonthDTRuler = getMonthLastDateTime(DTRuler)
+    MonthDTs = getMonthLastDateTime(DTs)
+
+    Mask = DataFactor(data=pd.DataFrame(np.random.randint(0, 2, size=(len(DTRuler), len(SectionIDs))).astype(bool), index=DTRuler, columns=SectionIDs), args={"Name": "Mask"})
+    Industry = DataFactor(data=pd.Series(np.random.choice(["Fin", "TMT", "Ind"], size=(len(SectionIDs),)), index=SectionIDs, dtype=pd.StringDtype(storage="python")), args={"Name": "Industry", "DataType": "string"})    
+    #Rtn = DataFactor(data=pd.DataFrame(np.random.randn(len(DTRuler), len(SectionIDs)), index=DTRuler, columns=SectionIDs), args={"Name": "Return"})
+    Price = DataFactor(data=pd.DataFrame(np.random.rand(len(DTRuler), len(SectionIDs)) * 10, index=DTRuler, columns=SectionIDs), args={"Name": "Price"})
+    Factor1 = DataFactor(data=pd.DataFrame(np.random.randn(len(DTRuler), len(SectionIDs)), index=DTRuler, columns=SectionIDs), args={"Name": "Factor1"})
+    Factor2 = DataFactor(data=pd.DataFrame(np.random.randn(len(DTRuler), len(SectionIDs)), index=DTRuler, columns=SectionIDs), args={"Name": "Factor2"})
+    Weight = DataFactor(data=pd.DataFrame(np.random.rand(len(DTRuler), len(SectionIDs)), index=DTRuler, columns=SectionIDs), args={"Name": "Weight"})
+
+    QuantilePortfolioList = makeQuantilePortfolio(Factor1, descriptor_ids=SectionIDs, rebalance_dts=MonthDTRuler, group_num=3)
+    calcPortfolioNV = CalcPortfolioNV(descriptor_ids=SectionIDs, start_dt=DTs[0])
+    PortfolioNV = calcPortfolioNV(QuantilePortfolioList[0], price=Price, init_nv=1)
+
+    PIDList = ["0-0", "0-1"]
+    # ExecEngine = Engine()
+    ExecEngine = ParallelEngine()
+    Cache = FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "PIDs": PIDList, "CacheDir": r"C:\Users\hst\Project\Data\DevCache", "ClearStart": True})
+    Cache.start()
+    Context = FactorContext(
+        PID="0",
+        PIDList=PIDList,
+        DTRuler=DTRuler,
+        DefaultSectionIDs=SectionIDs,
+        IDSplit="连续切分",
+        FactorDataCache=Cache
+    )
+    NodeList = [PortfolioNV]
+    FwdDataList = [FactorLocalContext(DTs=DTs, IDs=["P0"])]
+    InitDataList = [FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=["P0"])]
+    Rslt = ExecEngine.run([PortfolioNV], Context, fwd_data_list=FwdDataList, init_data_list=InitDataList)
+
+    print(Rslt[0])
+    print("===")
 
 
 if __name__ == "__main__1":
@@ -84,7 +127,7 @@ if __name__ == "__main__1":
     print("===")
 
 
-if __name__=="__main__":
+if __name__=="__main__1":
     # 参数设置
     from QuantStudio.Factor.HDF5DB import HDF5DB
     HDB = HDF5DB(args={"MainDir": r"D:\Data\TestHDF5DB"}).connect()
