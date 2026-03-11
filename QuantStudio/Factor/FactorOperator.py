@@ -127,7 +127,8 @@ class Sum(PointOperator):
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
         Data = np.array(x)
         Rslt = np.nansum(Data, axis=0)
-        Mask = (np.sum(pd.notnull(Data), axis=0)==0)
+        if args["dtype"]=="double": Rslt = Rslt.astype(float)
+        Mask = (np.sum(pd.notnull(Data), axis=0) == 0)
         Rslt[Mask] = args["all_nan"]
         return Rslt
 
@@ -142,7 +143,8 @@ class Max(PointOperator):
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
         Data = np.array(x)
         Rslt = np.nanmax(Data, axis=0)
-        Mask = (np.sum(pd.notnull(Data), axis=0)==0)
+        if args["dtype"]=="double": Rslt = Rslt.astype(float)
+        Mask = (np.sum(pd.notnull(Data), axis=0) == 0)
         Rslt[Mask] = args["all_nan"]
         return Rslt
 
@@ -151,12 +153,13 @@ class Min(PointOperator):
 
     def __init__(self, all_nan:Any=np.nan, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
         Args = {"Name": "min", "DataType": dtype} | args | {"DTMode": "多时点", "IDMode": "多ID"}
-        Args["ModelArgs"] = {"all_nan": np.nan, "dtype": dtype} | Args.get("ModelArgs", {})
+        Args["ModelArgs"] = {"all_nan": all_nan, "dtype": dtype} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
     
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
         Data = np.array(x)
         Rslt = np.nanmin(Data, axis=0)
+        if args["dtype"]=="double": Rslt = Rslt.astype(float)
         Mask = (np.sum(pd.notnull(Data), axis=0)==0)
         Rslt[Mask] = args["all_nan"]
         return Rslt

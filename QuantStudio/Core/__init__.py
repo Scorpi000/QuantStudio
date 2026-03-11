@@ -33,7 +33,7 @@ class QSArgs(BaseModel):
 
     Owner: Any = Field(default=None, exclude=True, repr=False, frozen=True, title="所有者")
     Logger: logging.Logger = Field(default=__QS_Logger__, exclude=True, repr=False, title="日志对象")
-    model_config = ConfigDict(extra='ignore', arbitrary_types_allowed=True)
+    model_config = ConfigDict(extra='forbid', arbitrary_types_allowed=True)
     
     def model_post_init(self, context: Any, /) -> None:
         self._QS_ID = None

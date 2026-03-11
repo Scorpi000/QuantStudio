@@ -2,7 +2,7 @@
 import datetime as dt
 import base64
 from io import BytesIO
-from typing import Optional, Literal, List, Any, Union
+from typing import Optional, Literal, List, Any, Union, Tuple
 
 import numpy as np
 import pandas as pd
@@ -45,8 +45,16 @@ def _QS_plotStatistics(axes, x_data, x_ticklabels, left_data, left_formatter, ri
 
 
 class CalcMaskPortfolio(SectionOperator):
-    """筛选投资组合"""
-    def __init__(self, descriptor_ids=None, args={}, config_file=None, **kwargs):
+    """基于筛选条件构造投资组合的计算算子"""
+
+    def __init__(self, descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化基于筛选条件构造投资组合的计算算子
+
+        Args:
+            descriptor_ids: 算子作用因子的截面 ID 序列
+            args: 参数集
+            config_file: 配置文件地址
+        """
         Arity = args.get("Arity", None) or 1
         Args = {"Name": "calcMaskPortfolio"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "double"}
         Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
@@ -103,7 +111,6 @@ class CalcMaskPortfolio(SectionOperator):
         return super().__call__(*Factors, factor_args=factor_args, **kwargs)
 
 
-# 创建分位数组合
 def makeQuantilePortfolio(factor:Factor, mask:Optional[Factor]=None, cat_data:Optional[Factor]=None, weight:Optional[Factor]=None, descriptor_ids:Optional[List[str]]=None, rebalance_dts:Optional[List[dt.datetime]]=None, ascending:bool=False, group_num:int=5, **kwargs) -> List[SectionOperation]:
     """创建分位数组合
 
@@ -119,7 +126,6 @@ def makeQuantilePortfolio(factor:Factor, mask:Optional[Factor]=None, cat_data:Op
     
     Returns:
         创建的分位数组合因子对象列表
-    
     """
     rank = fo.SectionRank(ascending=ascending, uniformization=True)
     Rank = rank(factor, mask=mask, cat_data=cat_data, factor_args={"CalcDTRuler": rebalance_dts})
@@ -134,9 +140,18 @@ def makeQuantilePortfolio(factor:Factor, mask:Optional[Factor]=None, cat_data:Op
 
 
 class CalcPortfolioNV(PanelOperator):
-    """计算投资组合净值"""
+    """投资组合净值计算算子"""
 
     def __init__(self, if_price_missing:Literal["沿用前值", "填充为0"]="沿用前值", start_dt:Optional[dt.datetime]=None, descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化投资组合净值计算算子
+
+        Args:
+            if_price_missing: 价格缺失时的处理方式, 沿用前值表示用之前的价格填充, 相当于持仓价值维持不变; 填充为0表示将价格置为0, 相当于持仓价值归零
+            start_dt: 净值开始日, 如果为 None, 表示从计算的第一个时点开始
+            descriptor_ids: 投资组合因子的截面 ID 序列
+            args: 参数集
+            config_file: 配置文件地址
+        """
         Args = {"Name": "calcPortfolioNV"} | args | {"Arity": 4, "DTMode": "多时点", "OutputMode": "全截面", "DataType": "double", "LookBack": [1, 0, 0, 0], "iInitFactor": 0, "LookBackMode": ["扩张窗口"] * 4, "StartDT": [start_dt] * 4}
         Args["ModelArgs"] = {"if_price_missing": if_price_missing} | Args.get("ModelArgs", {})
         Args["DescriptorSection"] = [None] + [descriptor_ids] * 3
@@ -163,9 +178,10 @@ class MultiPortfolio(BTNode):
 
     class __QS_ArgClass__(BTNode.__QS_ArgClass__):
         Name: str = Field(default="多组合对比", frozen=True, title="名称")
+        LSPairs: List[Tuple[int, int]] = Field(default=[], title="多空组合对", frozen=True, description="构造多空组合的投资组合对, 比如 [(0, -1)] 表示第 0 个组合和最后一个组合构成一个多空组合, 将考察它的表现")
         RebalanceDTs: Optional[List[dt.datetime]] = Field(default=None, title="再平衡时点", frozen=True)
 
-    def __init__(self, nv_list:list, bmk_nv=None, portfolio_list:Optional[list]=None, bmk_portfolio=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, nv_list:List[Factor], bmk_nv:Optional[Factor]=None, portfolio_list:Optional[List[Factor]]=None, bmk_portfolio:Optional[Factor]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         self._NVList = nv_list
         self._BmkNV = bmk_nv
         self._PortfolioList = portfolio_list
@@ -186,11 +202,12 @@ class MultiPortfolio(BTNode):
             PortfolioNameList = [f"{str(i).zfill(nPos)}-{iName}" for i, iName in enumerate(PortfolioNameList)]
         if self._BmkPortfolio is not None: PortfolioNameList.append("基准")
         self._PortfolioNameList = PortfolioNameList
-
-    def genMatplotlibFig(self, output:dict, file_path=None):
-        nRow, nCol = 3, 3
-        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
+    
+    def genMatplotlibFig(self, output:dict, file_path:Optional[str]=None) -> Figure:
         GroupNum = output["超额净值"].shape[1]
+        nLS = output["净值"].shape[1] - 1 - GroupNum
+        nRow, nCol = 3 + int(0 if nLS <= 0 else (nLS - 1) // 3 + 1), 3
+        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         xData = np.arange(1, GroupNum + 1)
         xTickLabels = [str(iInd) for iInd in output["统计数据"].index[:GroupNum]]
         PercentageFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
@@ -209,34 +226,46 @@ class MultiPortfolio(BTNode):
         Axes.legend(loc='best')
         Axes.set_title("超额净值")
         Axes = Fig.add_subplot(nRow, nCol, 8)
-        xData = np.arange(0, output["净值"].shape[0])
-        xTicks = np.arange(0, output["净值"].shape[0], max(1, int(output["净值"].shape[0]/8)))
-        xTickLabels = [output["净值"].index[i].strftime("%Y-%m-%d") for i in xTicks]
-        Axes.plot(xData, output["净值"]["Top-Bottom"].values, label="Top-Bottom 净值", color="indianred", lw=2.5)
-        Axes.legend(loc='upper left')
-        Axes.set_title("Top-Bottom 多空组合")
-        RAxes = Axes.twinx()
-        RAxes.yaxis.set_major_formatter(PercentageFormatter)
-        RAxes.bar(xData, output["收益率"]["Top-Bottom"].values, label="Top-Bottom 收益率", color="steelblue")
-        RAxes.legend(loc="upper right")
-        Axes.set_xticks(xTicks)
-        Axes.set_xticklabels(xTickLabels)
-        Axes = Fig.add_subplot(nRow, nCol, 9)
         Axes.xaxis_date()
         Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
         for i in range(GroupNum+1):
             Axes.plot(output["净值"].index, output["净值"].iloc[:, i].values, label=str(output["净值"].columns[i]), lw=2.5)
         Axes.legend(loc='best')
         Axes.set_title("多头净值")
+        Axes = Fig.add_subplot(nRow, nCol, 9)
+        Axes.xaxis_date()
+        Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
+        for i in range(GroupNum):
+            iName = str(output["净值"].columns[i])
+            iNum = (output["投资组合"][iName]>0).sum(axis=1)
+            Axes.plot(iNum.index, iNum.values, label=f"{iName}: {round(iNum.mean(),2)}", lw=2.5)
+        Axes.legend(loc='best')
+        Axes.set_title("持仓数量")
+        for i in range(nLS):
+            Axes = Fig.add_subplot(nRow, nCol, 10+i)
+            xData = np.arange(0, output["净值"].shape[0])
+            xTicks = np.arange(0, output["净值"].shape[0], max(1, int(output["净值"].shape[0]/8)))
+            xTickLabels = [output["净值"].index[i].strftime("%Y-%m-%d") for i in xTicks]
+            iLSName = output["净值"].columns[GroupNum+1+i]
+            Axes.plot(xData, output["净值"][iLSName].values, label="多空净值", color="indianred", lw=2.5)
+            Axes.legend(loc='upper left')
+            RAxes = Axes.twinx()
+            RAxes.yaxis.set_major_formatter(PercentageFormatter)
+            RAxes.bar(xData, output["收益率"][iLSName].values, label="多空收益率", color="steelblue")
+            RAxes.legend(loc="upper right")
+            Axes.set_xticks(xTicks)
+            Axes.set_xticklabels(xTickLabels)
+            Axes.set_title(iLSName)
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
-    
+
     def genReport(self, output:dict) -> str:
         HTML = "参数设置: "
         HTML += '<ul align="left">'
         if isinstance(getattr(self.Deps[0], "Operator", None), CalcPortfolioNV):
             ModelArgs = self.Deps[0].Operator._QSArgs.ModelArgs
             HTML += f"<li>价格缺失: {ModelArgs['if_price_missing']}</li>"
+        HTML += f"<li>多空组合对: {self._QSArgs.LSPairs}</li>"
         if self._QSArgs.RebalanceDTs is not None:
             HTML += "<li>再平衡时点: 自定义时点</li>"
         else:
@@ -332,7 +361,12 @@ class MultiPortfolio(BTNode):
         for iCol in Output["超额收益率"].columns:
             Output["超额收益率"][iCol] = calcLSYield(Output["超额收益率"][iCol].values, Output["收益率"]["基准"].values, rebalance_index=RebalanceIdx)
             Output["超额净值"][iCol] = (1 + Output["超额收益率"][iCol]).cumprod()
-        Output["收益率"]["Top-Bottom"] = calcLSYield(Output["收益率"].iloc[:, 0].values, Output["收益率"].iloc[:, -1].values, rebalance_index=RebalanceIdx)
-        Output["净值"]["Top-Bottom"] = (1 + Output["收益率"]["Top-Bottom"]).cumprod()
+        for iLIdx, iSIdx in self._QSArgs.LSPairs:
+            if iLIdx < 0: iLIdx = nPortfolio + iLIdx
+            if iSIdx < 0: iSIdx = nPortfolio + iSIdx
+            iLName, iSName = self._PortfolioNameList[:nPortfolio][iLIdx], self._PortfolioNameList[:nPortfolio][iSIdx]
+            Output["收益率"][f"{iLName}-{iSName}"] = calcLSYield(Output["收益率"].iloc[:, iLIdx].values, Output["收益率"].iloc[:, iSIdx].values, rebalance_index=RebalanceIdx)
+            Output["净值"][f"{iLName}-{iSName}"] = (1 + Output["收益率"][f"{iLName}-{iSName}"]).cumprod()
         Output = self._QS_calcStats(Output)
+        if self._QSArgs.GenReport: Output["Report"] = self.genReport(Output)
         return Output

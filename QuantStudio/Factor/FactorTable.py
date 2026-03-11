@@ -73,6 +73,8 @@ class FactorTable(Node):
         Returns:
             因子对象
         """
+        if ifactor_name not in self.FactorNames:
+            raise __QS_Error__(f"因子表中不存在因子: {ifactor_name}")
         return Factor(ft=self, args=args | {"Name": ifactor_name}, logger=self._QS_Logger)
 
     def getFactorMetaData(self, factor_names:Optional[List[str]]=None, key:Optional[str]=None) -> Union[pd.DataFrame, pd.Series]:
