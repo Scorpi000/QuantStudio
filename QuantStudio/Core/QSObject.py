@@ -2,8 +2,13 @@
 import os
 import re
 import time
+import uuid
+import mmap
+import pickle
+import struct
 from pathlib import Path
 from collections import OrderedDict
+from multiprocessing import Lock
 from typing import Literal
 
 import numpy as np
@@ -446,6 +451,142 @@ class QSFileLock(object):
         return self
     def __exit__(self, exc_type, exc_value, traceback):
         self.release()
+
+
+class QSQueue(object):
+    """进程间 Queue, 无数据大小的限制"""
+
+    def __init__(self, cache_size:int=100, batch_size:int=64, put_lock=None, get_lock=None, global_lock=None):
+        """进程间 Queue 初始化
+        
+        Args:
+            cache_size: 整个队列的大小，单位 MB
+            batch_size: 一个单元的大小，单位 KB
+            put_lock: put 操作的锁
+            get_lock: get 操作的锁
+            global_lock: 全局操作锁
+        """
+        self._HeadSize = 4 * 2# 数据起始位置, 已存入的单元个数
+        self._BatchHeadSize = 4 * 3# 总分片数, 当前序号, 数据长度
+        self._CacheSize = int(cache_size * 2**20)# 单位：字节
+        self._BatchSize = int(batch_size * 2**10)# 单位：字节
+        self._MaxBatchNum = (self._CacheSize - self._HeadSize) // self._BatchSize# 最大单元个数
+        self._BatchDataSize = self._BatchSize - self._BatchHeadSize
+
+        self._PutLock = Lock() if not put_lock else put_lock
+        self._GetLock = Lock() if not get_lock else get_lock
+        self._GlobalLock = Lock() if not global_lock else global_lock
+        if os.name=="nt":
+            self._TagName = str(uuid.uuid1())# 共享内存的 tag
+            self._MMAPCacheData = mmap.mmap(-1, self._CacheSize, tagname=self._TagName)# 当前共享内存缓冲区
+        else:
+            self._TagName = None# 共享内存的 tag
+            self._MMAPCacheData = mmap.mmap(-1, self._CacheSize)# 当前共享内存缓冲区
+        self._MMAPCacheData.seek(0)
+        self._MMAPCacheData.write(struct.pack("II", 0, 0))
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        if os.name=="nt": state["_MMAPCacheData"] = None
+        return state
+    
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        if os.name=="nt": self._MMAPCacheData = mmap.mmap(-1, self._CacheSize, tagname=self._TagName)
+
+    @property
+    def size(self):
+        return self._CacheSize / 2**20
+    
+    @property
+    def empty(self):
+        with self._GlobalLock:
+            self._MMAPCacheData.seek(4)
+            return (struct.unpack("I", self._MMAPCacheData.read(4))[0] == 0)
+    
+    def _get_available_batch(self):
+        return self._MaxBatchNum - self._get_batch_num()
+    
+    def _get_batch_num(self):
+        self._MMAPCacheData.seek(4)
+        return struct.unpack("I",  self._MMAPCacheData.read(4))[0]
+    
+    def _get_read_idx(self):
+        self._MMAPCacheData.seek(0)
+        StartIdx, BatchNum = struct.unpack("II", self._MMAPCacheData.read(8))
+        if BatchNum == 0: return -1
+        else: return StartIdx
+    
+    def _get_write_idx(self):
+        self._MMAPCacheData.seek(0)
+        StartIdx, BatchNum = struct.unpack("II", self._MMAPCacheData.read(8))
+        if BatchNum >= self._MaxBatchNum: return -1
+        else: return (StartIdx + BatchNum) % self._MaxBatchNum
+    
+    def put(self, obj):
+        """阻塞的方式写入对象"""
+        DataByte = pickle.dumps(obj)
+        DataLen = len(DataByte)
+        TotalBatchNum = RemainderBatchNum = DataLen // self._BatchDataSize + int(DataLen % self._BatchDataSize > 0)
+        StartByteIdx = 0
+        with self._PutLock:
+            while RemainderBatchNum > 0:
+                time.sleep(0.01)
+                with self._GlobalLock:
+                    StartWriteIdx = self._get_write_idx()
+                    if StartWriteIdx < 0:# 当前没有剩余空间
+                        continue
+                    AvailableBatchNum = self._get_available_batch()
+                    for i in range(min(AvailableBatchNum, RemainderBatchNum)):
+                        iBytes = DataByte[StartByteIdx:StartByteIdx+self._BatchDataSize]
+                        iIdx = self._HeadSize + ((StartWriteIdx + i) % self._MaxBatchNum) * self._BatchSize
+                        self._MMAPCacheData.seek(iIdx)
+                        iBytes = struct.pack("III", TotalBatchNum, TotalBatchNum - RemainderBatchNum, len(iBytes)) + iBytes
+                        self._MMAPCacheData.write(iBytes)
+                        StartByteIdx += self._BatchDataSize
+                        RemainderBatchNum -= 1
+                    self._MMAPCacheData.seek(4)
+                    BatchNum, = struct.unpack("I", self._MMAPCacheData.read(4))
+                    self._MMAPCacheData.seek(4)
+                    self._MMAPCacheData.write(struct.pack("I", BatchNum + i + 1))
+        return 0
+    
+    def get(self):
+        """阻塞的方式获取对象"""
+        DataByte = b""
+        TotalBatchNum, CurrentBatchNum = None, 0
+        with self._GetLock:
+            while (TotalBatchNum is None) or (CurrentBatchNum < TotalBatchNum):
+                time.sleep(0.01)
+                with self._GlobalLock:
+                    StartReadIdx = self._get_read_idx()
+                    if StartReadIdx < 0:# 当前没有数据
+                        continue
+                    for i in range(self._get_batch_num()):
+                        iIdx = self._HeadSize + ((StartReadIdx + i) % self._MaxBatchNum) * self._BatchSize
+                        self._MMAPCacheData.seek(iIdx)
+                        iBytes = self._MMAPCacheData.read(self._BatchSize)
+                        TotalBatchNum, iOrder, iLen = struct.unpack("III", iBytes[:12])
+                        DataByte += iBytes[self._BatchHeadSize:self._BatchHeadSize+iLen]
+                        CurrentBatchNum += 1
+                        self._MMAPCacheData.seek(4)
+                        BatchNum, = struct.unpack("I", self._MMAPCacheData.read(4))
+                        self._MMAPCacheData.seek(0)
+                        self._MMAPCacheData.write(struct.pack("II", StartReadIdx + i + 1, BatchNum - 1))
+                        if CurrentBatchNum >= TotalBatchNum:
+                            break
+        return pickle.loads(DataByte)
+
+    def close(self):
+        """关闭共享内存"""
+        if hasattr(self, '_MMAPCacheData') and self._MMAPCacheData:
+            self._MMAPCacheData.close()
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
 
 
 # pandas Panel 的 QS 实现
