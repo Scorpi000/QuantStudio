@@ -21,6 +21,11 @@ class AsType(PointOperator):
     """数据类型转换"""
 
     def __init__(self, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化数据类型转换算子
+        
+        Args:
+            dtype: 新的数据类型
+        """
         Args = {"Name": "astype", "DataType": dtype} | args | {"Arity": 1, "DTMode": "多时点", "IDMode": "多ID"}
         Args["ModelArgs"] = {"dtype": dtype} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
@@ -39,6 +44,11 @@ class Log(PointOperator):
     """对数"""
 
     def __init__(self, base:float=np.e, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化对数算子
+        
+        Args:
+            base: 底数
+        """
         Args = {"Name": "log"} | args | {"Arity": 1, "DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
         Args["ModelArgs"] = {"base": base} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
@@ -48,9 +58,10 @@ class Log(PointOperator):
         return np.log(np.where(Data>0, Data, np.nan)) / np.log(args["base"])
 
 class NotNull(PointOperator):
-    """非NULL"""
+    """非NULL检测算子"""
 
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化非NULL检测算子"""
         Args = {"Name": "notnull"} | args | {"Arity": 1, "DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
         return super().__init__(args=Args, config_file=config_file, **kwargs)
     
@@ -58,9 +69,14 @@ class NotNull(PointOperator):
         return pd.notnull(x[0])
 
 class IsIn(PointOperator):
-    """是否属于"""
+    """是否属于给定集合的检测算子"""
 
     def __init__(self, test_elements:List[Any]=[], args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化检测因子值是否属于给定集合的算子
+
+        Args:
+            test_elements: 给定的检测集合
+        """
         Args = {"Name": "isin"} | args | {"Arity": 1, "DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
         Args["ModelArgs"] = {"test_elements": test_elements} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
@@ -70,7 +86,14 @@ class IsIn(PointOperator):
 
 class Applymap(PointOperator):
     """map 操作"""
+
     def __init__(self, func:Callable[[Any], Any]=id, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化 map 操作算子
+
+        Args:
+            func: 施加到每个因子值的函数
+            dtype: func 函数返回值的数据类型
+        """
         Args = {"Name": "applymap", "DataType": dtype} | args | {"Arity": 1, "DTMode": "多时点", "IDMode": "多ID"}
         Args["ModelArgs"] = {"func": func, "dtype": dtype} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
@@ -80,7 +103,13 @@ class Applymap(PointOperator):
 
 class Where(PointOperator):
     """where 操作"""
+
     def __init__(self, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化 where 操作算子
+
+        Args:
+            dtype: where 操作返回值的数据类型
+        """
         Args = {"Name": "where", "DataType": dtype} | args | {"Arity": 3, "DTMode": "多时点", "IDMode": "多ID"}
         Args["ModelArgs"] = {"dtype": dtype} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
@@ -92,7 +121,7 @@ class Where(PointOperator):
         return super().__call__(f, mask, other, factor_args=factor_args, **kwargs)
 
 class Fetch(PointOperator):
-    """从复合因子中取出简单因子"""
+    """从复合因子中取出简单因子的操作算子"""
 
     def __init__(self, pos:Union[int, str]=0, dtype:Literal["double", "string", "object"]="double", compound_type:List[Tuple[str, Literal["double", "string", "object"]]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Args = {"Name": "fetch", "DataType": dtype} | args | {"Arity": 1, "DTMode": "多时点", "IDMode": "多ID"}

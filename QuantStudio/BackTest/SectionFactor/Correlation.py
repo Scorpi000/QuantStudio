@@ -21,7 +21,14 @@ from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage
 
 class CalcSectionCorrelation(SectionOperator):
     """因子截面相关性算子"""
+
     def __init__(self, corr_method:Literal["spearman", "pearson", "kendall"]="spearman", descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化截面相关性计算算子
+
+        Args:
+            corr_method: 相关性的计算方法
+            descriptor_ids: 因子的截面 ID 序列
+        """
         Arity = args.get("Arity", None) or 1
         Args = {"Name": "calcSectionCorrelation"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "double"}
         Args["ModelArgs"] = {"corr_method": corr_method} | Args.get("ModelArgs", {})
@@ -58,6 +65,17 @@ class CalcSectionCorrelation(SectionOperator):
         return Corr.reindex(index=idt).values
         
     def __call__(self, *x:Factor, mask:Optional[Factor]=None, factor_args:dict={}, **kwargs) -> SectionOperation:
+        """将算子作用在若干个因子对象上以产生截面相关性因子
+
+        Args:
+            x: 待计算 IC 的因子
+            mask: 筛选条件因子, 每一期的 x 因子值会按照该因子是否等于 1 来筛选后再计算相关性, None 表示不做任何筛选
+            factor_args: 创建 IC 因子时传递个它的参数集
+            kwargs: 创建 IC 因子时传递给它的其他入参
+        
+        Returns:
+            截面相关性因子
+        """
         if len(x) < 2: raise __QS_Error__(f"算子 {self.__class__}: 必须至少指定两个因子!")
         Factors = []
         if mask is not None: Factors.append(mask)
@@ -130,8 +148,19 @@ class SectionCorrelation(BTNode):
         return Output
 
 class CalcFactorTurnover(PanelOperator):
-    """因子换手率算子"""
+    """因子换手率算子
+    因子换手率: 前后两期因子值的截面秩相关性。通常采用的相关系数为 Spearman 相关系数。
+    """
+
     def __init__(self, lookback:int=31, period_lookback:int=1, corr_method:Literal["spearman", "pearson", "kendall"]="spearman", descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化因子换手率计算算子
+
+        Args:
+            lookback: 在时间标尺上的回溯期数, 即回溯多久的数据来完成计算
+            period_lookback: 在计算标尺上的回溯期数, 数据的时间序列是日度的，但相关性的计算时间序列是月度的，该参数表示用回溯多少个月的因子值来和当前因子值计算相关性
+            corr_method: 相关性的计算方法
+            descriptor_ids: 因子的截面 ID 序列
+        """
         Arity = args.get("Arity", None) or 1
         Args = {"Name": "calcIC"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "double"}
         Args["ModelArgs"] = {"corr_method": corr_method, "period_lookback": period_lookback, "corr_method": corr_method} | Args.get("ModelArgs", {})
@@ -163,6 +192,17 @@ class CalcFactorTurnover(PanelOperator):
         return FactorTurnover.reindex(index=idt).values[self._QSArgs.LookBack[0]:]
     
     def __call__(self, *x:Factor, mask: Optional[Factor]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
+        """将算子作用在若干个因子对象上以产生因子换手率因子
+
+        Args:
+            x: 待计算 IC 的因子
+            mask: 筛选条件因子, 每一期的 x 因子值会按照该因子是否等于 1 来筛选后再计算相关性, None 表示不做任何筛选
+            factor_args: 创建 IC 因子时传递个它的参数集
+            kwargs: 创建 IC 因子时传递给它的其他入参
+        
+        Returns:
+            因子换手率因子
+        """
         Factors = []
         if mask is not None: Factors.append(mask)
         if not x: raise __QS_Error__("因子列表 x 不可为空!")

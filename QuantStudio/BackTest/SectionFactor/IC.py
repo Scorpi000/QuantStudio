@@ -33,6 +33,14 @@ class CalcIC(PanelOperator):
     """
 
     def __init__(self, lookback:int = 31, period_lookback:int=1, corr_method:Literal["spearman", "pearson", "kendall"]="spearman", descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化 IC 计算算子
+
+        Args:
+            lookback: 在时间标尺上的回溯期数, 即回溯多久的数据来完成计算
+            period_lookback: 在计算标尺上的回溯期数, 数据的时间序列是日度的，但 IC 的计算时间序列是月度的，该参数表示用回溯多少个月的因子值来和当前收益率计算相关性
+            corr_method: 相关性的计算方法
+            descriptor_ids: 因子的截面 ID 序列
+        """
         Arity = args.get("Arity", None) or 1
         Args = {"Name": "calcIC"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "object"}
         Args["ModelArgs"] = {"corr_method": corr_method, "period_lookback": period_lookback} | Args.get("ModelArgs", {})
@@ -85,8 +93,22 @@ class CalcIC(PanelOperator):
             Breadth[iFactorName] = iMask.sum(axis=0)
         Rslt = np.array([IC.reindex(index=idt).values[self._QSArgs.LookBack[0]:], Breadth.reindex(index=idt).values[self._QSArgs.LookBack[0]:]])
         return unstructured_to_structured(Rslt.swapaxes(0, -1), dtype=np.dtype([("IC", float), ("Breadth", float)])).T.astype("O")
-        
+    
     def __call__(self, *x:Factor, price:Factor, mask: Optional[Factor]=None, cat_data: Optional[Factor]=None, weight: Optional[Factor]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
+        """将算子作用在若干个因子对象上以产生 IC 因子
+
+        Args:
+            x: 待计算 IC 的因子
+            price: 证券价格或者净值因子
+            mask: 筛选条件因子, 每一期的因子值和收益率会按照该因子是否等于 1 来筛选后再计算 IC, None 表示不做任何筛选
+            cat_data: 类别因子, 比如行业等，如果非 None 表示会对收益率进行行业调整，即个券的收益率减去行业平均收益率后再计算 IC
+            weight: 权重因子, 计算类别收益率时的权重
+            factor_args: 创建 IC 因子时传递个它的参数集
+            kwargs: 创建 IC 因子时传递给它的其他入参
+
+        Returns:
+            IC 因子
+        """
         Factors = [price]
         if mask is not None: Factors.append(mask)
         if cat_data is not None: Factors.append(cat_data)
@@ -104,9 +126,19 @@ class CalcIC(PanelOperator):
 
 
 class CalcRiskAdjustedIC(PanelOperator):
-    """风险调整的 IC 算子"""
+    """风险调整的 IC 算子
+    风险调整的 IC: 因子值和收益率均对给定的风险因子进行正交化后计算的 IC
+    """
 
     def __init__(self, lookback:int = 31, period_lookback:int=1, corr_method:Literal["spearman", "pearson", "kendall"]="spearman", descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化风险调整的 IC 计算算子
+
+        Args:
+            lookback: 在时间标尺上的回溯期数, 即回溯多久的数据来完成计算
+            period_lookback: 在计算标尺上的回溯期数, 数据的时间序列是日度的，但 IC 的计算时间序列是月度的，该参数表示用回溯多少个月的因子值来和当前收益率计算相关性
+            corr_method: 相关性的计算方法
+            descriptor_ids: 因子的截面 ID 序列
+        """
         Arity = args.get("Arity", None) or 1
         Args = {"Name": "calcRiskAdjustedIC"} | args | {"DTMode": "单时点", "OutputMode": "全截面", "DataType": "object"}
         Args["ModelArgs"] = {"corr_method": corr_method, "period_lookback": period_lookback} | Args.get("ModelArgs", {})
@@ -179,6 +211,20 @@ class CalcRiskAdjustedIC(PanelOperator):
         return unstructured_to_structured(Rslt).tolist()
         
     def __call__(self, *x:Factor, price:Factor, risk_factors:List[Factor], mask: Optional[Factor]=None, cat_data: Optional[Factor]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
+        """将算子作用在若干个因子对象上以产生风险调整的 IC 因子
+
+        Args:
+            x: 待计算 IC 的因子
+            price: 证券价格或者净值因子
+            risk_factors: 风险因子列表, 这些因子将用于对 x 和收益率进行正交化
+            mask: 筛选条件因子, 每一期的因子值和收益率会按照该因子是否等于 1 来筛选后再计算 IC, None 表示不做任何筛选
+            cat_data: 类别因子, 比如行业等，如果非 None 也将参与正交化
+            factor_args: 创建 IC 因子时传递个它的参数集
+            kwargs: 创建 IC 因子时传递给它的其他入参
+        
+        Returns:
+            风险调整的 IC 因子
+        """
         Factors = [price]
         if mask is not None: Factors.append(mask)
         if cat_data is not None: Factors.append(cat_data)
