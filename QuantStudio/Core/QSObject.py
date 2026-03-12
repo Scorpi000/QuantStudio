@@ -562,19 +562,19 @@ class QSQueue(object):
                     StartReadIdx = self._get_read_idx()
                     if StartReadIdx < 0:# 当前没有数据
                         continue
-                    for i in range(self._get_batch_num()):
+                    BatchNum = self._get_batch_num()
+                    for i in range(BatchNum):
                         iIdx = self._HeadSize + ((StartReadIdx + i) % self._MaxBatchNum) * self._BatchSize
                         self._MMAPCacheData.seek(iIdx)
                         iBytes = self._MMAPCacheData.read(self._BatchSize)
                         TotalBatchNum, iOrder, iLen = struct.unpack("III", iBytes[:12])
                         DataByte += iBytes[self._BatchHeadSize:self._BatchHeadSize+iLen]
                         CurrentBatchNum += 1
-                        self._MMAPCacheData.seek(4)
-                        BatchNum, = struct.unpack("I", self._MMAPCacheData.read(4))
-                        self._MMAPCacheData.seek(0)
-                        self._MMAPCacheData.write(struct.pack("II", StartReadIdx + i + 1, BatchNum - 1))
                         if CurrentBatchNum >= TotalBatchNum:
                             break
+                    if BatchNum > 0:
+                        self._MMAPCacheData.seek(0)
+                        self._MMAPCacheData.write(struct.pack("II", StartReadIdx + i + 1, BatchNum - i - 1))
         return pickle.loads(DataByte)
 
     def close(self):
@@ -993,5 +993,3 @@ class Panel(object):
         p = Panel(data=Data, items=self._Items.index.tolist()+other._Items.index.tolist(), major_axis=self._MajorAxis.index, minor_axis=self._MinorAxis.index)
         p._DTypes = self._DTypes.append(other._DTypes)
         return p
-
-

@@ -977,8 +977,6 @@ class DerivativeFactor(Factor):
     class __QS_ArgClass__(Factor.__QS_ArgClass__):
         Operator: FactorOperator = Field(title="算子", frozen=True)
         ModelArgs: dict = Field(default={}, title="参数", frozen=True)
-        Meta: dict = Field(default={}, title="元信息", frozen=False, exclude=True)
-        CalcDTRuler: list[dt.datetime] = Field(default=[], title="计算时点标尺", frozen=True)
 
     def __init__(self, descriptors: List[Factor], args: dict={}, config_file: Optional[str]=None, **kwargs):
         self.UserData = {}

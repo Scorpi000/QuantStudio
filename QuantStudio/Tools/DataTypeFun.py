@@ -213,7 +213,7 @@ def serialize_pandas(df: pd.DataFrame | pd.Series, visited: Set[int]):
 def serialize_numpy(a: np.ndarray, visited: Set[int]):
     return {
         "__type__": "numpy.ndarray",
-        "value": serialize_value(a.flatten(order="C"), visited)
+        "value": serialize_value(a.flatten(order="C").tolist(), visited)
     }
 
 def  serialize_qs_object(q: "__QS_Object__", visited: Set[int]):

@@ -4,34 +4,34 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 import statsmodels.api as sm
+from itertools import product
 
-from .MathFun import CartesianProduct
-from .AuxiliaryFun import getClassMask
 
 # 给定分类数据 cat_data, 返回 {类别:类别的 Mask}, 类别:('银行', '大盘')
 # cat_data: 类别数据, array; mask: array
-def maskCategary(data_len,cat_data=None, mask=None):
+def maskCategary(data_len, cat_data=None, mask=None):
     if mask is None:
         mask = (np.zeros((data_len,))==0)
     if cat_data is not None:
-        cat_data[pd.isnull(cat_data)] = np.nan
+        cat_data = np.where(pd.isnull(cat_data), np.nan, cat_data)
         if cat_data.ndim==1:
             cat_data = cat_data.reshape((cat_data.shape[0],1))
-        AllCats = [list(pd.unique(cat_data[mask,i])) for i in range(cat_data.shape[1])]
-        AllCats = CartesianProduct(AllCats)
+        AllCats = [list(pd.unique(cat_data[mask, i])) for i in range(cat_data.shape[1])]
+        AllCats = product(*AllCats)
     else:
         AllCats = [(np.nan,)]
-        cat_data = np.empty((data_len,1),dtype='float')+np.nan
+        cat_data = np.full(shape=(data_len, 1), fill_value=np.nan, dtype=float)
     CatMask = {}
-    for i,iCat in enumerate(AllCats):
+    for i, iCat in enumerate(AllCats):
         iMask = mask
-        for j,jSubCat in enumerate(iCat):
+        for j, jSubCat in enumerate(iCat):
             if pd.notnull(jSubCat):
                 iMask = (iMask & (cat_data[:,j]==jSubCat))
             else:
                 iMask = (iMask & pd.isnull(cat_data[:,j]))
         CatMask[tuple(iCat)] = iMask
     return CatMask
+
 # 准备回归的数据
 def prepareRegressData(Y, X=None, x_varnames=None, has_constant=False, dummy_data=None, drop_dummy_na=False):
     NotNAMask = pd.notnull(Y)
@@ -89,6 +89,7 @@ def prepareRegressData(Y, X=None, x_varnames=None, has_constant=False, dummy_dat
             X = X.reshape((0,X.shape[1]+1))
         x_varnames = ["constant"]+x_varnames
     return (NotNAMask, x_varnames, Y, X)
+
 # Z-Score 标准化
 # data: 待标准化的数据, array; cat_data: 分类数据, array
 # avg_statistics: 平均统计量, 可选: 平均值, 中位数; dispersion_statistics: 离散统计量, 可选: 标准差, MAD
@@ -237,6 +238,7 @@ def fillNaByLookback(data, lookback, dts=None):
     data.where(((Ind.values-Ind1.values)/10**9<=lookback), np.nan, inplace=True)
     if isDF: return data
     else: return data.values
+
 # 以固定值进行缺失值填充
 # data: 待填充的数据, array; mask: True-False mask, 标记需要填充的范围, array; value: 缺失填充值, double or string
 def fillNaNByVal(data, mask=None, value=0.0):
@@ -246,6 +248,7 @@ def fillNaNByVal(data, mask=None, value=0.0):
     else:
         StdData[mask & pd.isnull(StdData)] = value
     return StdData
+
 # 某个运算结果进行缺失值填充
 def fillNaNByFun(data, mask=None, cat_data=None, val_fun=(lambda x,n:np.zeros(n)+np.nanmean(x))):
     StdData = np.copy(data)
@@ -255,6 +258,7 @@ def fillNaNByFun(data, mask=None, cat_data=None, val_fun=(lambda x,n:np.zeros(n)
         iMask = (iCatMask & NAMask)
         StdData[iMask] = val_fun(data[iCatMask],np.sum(iMask))
     return StdData
+
 # 回归方式进行缺失值填充
 # Y: 待处理的数据, 因变量, array; X: 自变量, array; mask: True-False mask, 标记需要处理的范围, array;
 # cat_data: 分类数据, array; constant: 是否有常数项, True or False; dummy_data: 哑变量, array; drop_dummy_na: 是否舍弃哑变量中的缺失值
@@ -284,6 +288,7 @@ def fillNaNByRegress(Y, X, mask=None, cat_data=None, constant=False, dummy_data=
         iY[iNAMask] = iY_hat[iNAMask]
         StdData[iCatMask] = iY
     return StdData
+
 # 异常值处理; 超过给定标准差倍数的值用相应标准差倍数填充
 # data: 待处理的数据, array; std_multiplier: 标准差倍数, double
 # method: 处理方式, 可选: 截断, 丢弃, 变换; std_tmultiplier: method为变换时所用到的标准差倍数, double
@@ -324,6 +329,7 @@ def winsorize(data, mask=None, cat_data=None, method='截断', avg_statistics="�
             iData[Mask] = LeftExtreme*(1-sMinus)+sMinus*iData[Mask]
         StdData[iCatMask] = iData
     return StdData
+
 # 正交化; 线性回归取残差作为新值
 # Y: 待处理的数据, 因变量, array; X: 自变量, array; mask: True-False mask, 标记需要处理的范围, array;
 # constant: 是否有常数项, True or False; dummy_data: 哑变量, array; drop_dummy_na: 是否舍弃哑变量中的缺失值; other_handle: 不在计算范围内的位置如何处理
@@ -340,6 +346,7 @@ def orthogonalize(Y, X, mask=None, constant=False, dummy_data=None, drop_dummy_n
     if other_handle=="保持不变":
         StdData[~mask] = Y[~mask]
     return StdData
+
 # 中性化;
 # Y: 待处理的数据, 因变量, array; X: 自变量, array; mask: True-False mask, 标记需要处理的范围, array;
 # constant: 是否有常数项, True or False; dummy_data: 哑变量, array; drop_dummy_na: 是否舍弃哑变量中的缺失值; other_handle: 不在计算范围内的位置如何处理
@@ -362,6 +369,7 @@ def neutralize(Y, X, cov_matrix, mask=None, constant=False, dummy_data=None, dro
     if other_handle=="保持不变":
         StdData[~mask] = Y[~mask]
     return StdData
+
 # 合并因子数据
 # data: 待处理的数据, [array,...] or array; method: 合成方式, 可选: 直接合成, 归一合成; nan_handle: 缺失处理, 可选: 剩余合成, 填充None
 def merge(data, mask=None, weight=None, method='直接合成', nan_handle='剩余合成'):

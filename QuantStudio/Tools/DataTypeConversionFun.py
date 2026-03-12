@@ -11,6 +11,7 @@ def DictKeyValueTurn(old_dict):
     for key in old_dict:
         NewDict[old_dict[key]]=key
     return NewDict
+
 # 将字典的Key和Value转换,新的dict为{Value:[Key]}
 def DictKeyValueTurn_List(old_dict):
     NewDict = {}
@@ -20,6 +21,7 @@ def DictKeyValueTurn_List(old_dict):
         else:
             NewDict[old_dict[key]] = [key]
     return NewDict
+
 # 将Dummy变量转化成0-1变量, dummy_var:Series(类别数据), 返回DataFrame(index=dummy_var.index,columns=所有类别), deprecated, 使用 pandas.get_dummies
 def DummyVarTo01Var(dummy_var,ignore_na=False,ignores=[],ignore_nonstring=False):
     if dummy_var.shape[0]==0:
@@ -37,7 +39,7 @@ def DummyVarTo01Var(dummy_var,ignore_na=False,ignores=[],ignore_nonstring=False)
             iMask = (dummy_var==iClass)
         else:
             iMask = NAMask
-        OZVar[iClass][iMask] = 1.0
+        OZVar[iClass] = OZVar[iClass].where(~iMask, 1.0)
     return OZVar
 
 # 将元素为 list 的 DataFrame 扩展成元素为标量的 DataFrame, index 将被 reset

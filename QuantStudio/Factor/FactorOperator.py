@@ -337,7 +337,7 @@ class Lag(TimeOperator):
         if f._QSArgs.CalcDTRuler is None: return Data[self.Args["LookBack"][0]-args['lag_period']:Data.shape[0]-args['lag_period']]
         TargetDTs = sorted(set(idt).intersection(f._QSArgs.CalcDTRuler))
         Data = pd.DataFrame(Data, index=idt)
-        TargetData = Data.reindex(index=TargetDTs).values
+        TargetData = Data.reindex(index=TargetDTs).values.copy()
         TargetData[args['lag_period']:] = TargetData[:-args['lag_period']]
         if self._QSArgs.DataType!="double":
             Data = pd.DataFrame(np.empty(Data.shape, dtype="O"), index=Data.index, columns=iid)
