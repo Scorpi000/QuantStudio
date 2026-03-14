@@ -61,7 +61,7 @@ if __name__ == "__main__":
     # print(Factor7.readData(ids=IDs, dts=DTs))
 
     ExecEngine = Engine()
-    Cache = FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "CacheDir": r"C:\Users\hst\Desktop\Cache", "PIDs": ["0"], "ClearStart": True})
+    Cache = FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "CacheDir": r"C:\Users\hst\Desktop\Cache", "PIDs": ["0"], "StartMode": "new"})
     Cache.start()
     Context = FactorContext(
         PID="0",

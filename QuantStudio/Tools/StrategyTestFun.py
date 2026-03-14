@@ -1,11 +1,9 @@
 # coding=utf-8
 """策略相关函数"""
 import os
-import sys
-import shutil
 import datetime as dt
 from collections import OrderedDict
-import time
+from typing import Tuple
 
 import numpy as np
 import pandas as pd
@@ -13,9 +11,11 @@ from scipy.stats import skew, kurtosis, norm
 from scipy.integrate import quad
 import statsmodels.api as sm
 
-from QuantStudio.Tools.DateTimeFun import getDateSeries
-from QuantStudio.Tools.FileFun import listDirFile, readCSV2Pandas
 from QuantStudio.Core import __QS_Error__
+from QuantStudio.Tools.DateTimeFun import getDateSeries
+from QuantStudio.Tools.FileFun import readCSV2Pandas
+from QuantStudio.Tools.DataPreprocessingFun import numpy_ffill
+
 
 # 迭代法求解在考虑交易费且无交易限制假设下执行交易后的财富值
 # p_holding: 当前持有的投资组合, Series(权重,index=[ID])
@@ -740,15 +740,25 @@ def genContinuousContractPrice(id_map, price, adj_direction="前复权", adj_typ
     elif adj_type!="价格不变": raise __QS_Error__("不支持的调整方式: '%s'" % adj_type)
     return pd.Series(AdjPrice, index=id_map.index)
 
-# 给定持仓数量的策略向量化回测(非自融资策略)
-# num_units: 每期的持仓数量, array(shape=(nDT, nID)), nDT: 时点数, nID: ID 数
-# price: 价格序列, array(shape=(nDT, nID))
-# fee: 手续费率, scalar, array(shape=(nID,)), array(shape=(nDT, nID))
-# long_margin: 多头保证金率, scalar, array(shape=(nID,)), array(shape=(nDT, nID))
-# short_margin: 空头保证金率, scalar, array(shape=(nID,)), array(shape=(nDT, nID))
-# 返回: (Return, PNL, Margin, Amount), (array(shape=(nDT, )), array(shape=(nDT, nID)), array(shape=(nDT, nID)), array(shape=(nDT, nID)))
-def testNumStrategy(num_units, price, fee=0.0, long_margin=1.0, short_margin=1.0):
-    Amount = (num_units * price)# shape=(nDT, nID)
+
+def backtestNumStrategy(num_units:np.ndarray, price:np.ndarray, fee:float | np.ndarray=0.0, long_margin=1.0, short_margin=1.0) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """给定目标持仓数量的策略向量化回测, 非自融资策略
+
+    Args:
+        num_units: 每个时点每个证券的目标持仓数量, array(shape=(nDT, nID), dtype=float), nDT: 时点数, nID: 证券数
+        price: 每个时点的每个证券的价格, array(shape=(nDT, nID), dtype=float), shape 和 num_units 的 shape 保持相等
+        fee: 手续费率, scalar 或者 array(shape=(nID,)) 或者 array(shape=(nDT, nID))
+        long_margin: 多头保证金率, scalar 或者 array(shape=(nID,)) 或者 array(shape=(nDT, nID))
+        short_margin: 空头保证金率, scalar 或者 array(shape=(nID,)) 或者 array(shape=(nDT, nID))
+    
+    Returns:
+        (Return, PNL, Margin, Amount), 其中:
+            * Return: 组合每期的收益率, array(shape=(nDT, ))
+            * PNL: 每个证券每期的盈亏, array(shape=(nDT, nID))
+            * Margin: 每个证券每个时点的保证金, array(shape=(nDT, nID))
+            * Amount: 每个证券每个时点的持仓金额, array(shape=(nDT, nID)))
+    """
+    Amount = num_units * price
     Margin = np.clip(Amount, 0, np.inf) * long_margin - np.clip(Amount, -np.inf, 0) * short_margin# shape=(nDT, nID)
     MoneyIn = np.r_[0, np.nansum(np.clip(Margin, 0, np.inf), axis=1)]# shape=(nDT+1, )
     Mask = (MoneyIn[:-1]==0)
@@ -761,16 +771,22 @@ def testNumStrategy(num_units, price, fee=0.0, long_margin=1.0, short_margin=1.0
     Return[np.isnan(Return)] = 0.0
     return (Return, PNL, Margin, Amount)
 
-# 给定投资组合(持仓金额比例)的策略向量化回测(自融资策略), 数据类型 numpy
-# portfolio: 每期的目标投资组合, array(shape=(nDT, nID)), nDT: 时点数, nID: ID 数
-# price: 价格序列, array(shape=(nDT, nID))
-# fee: 手续费率, scalar, array(shape=(nID,)), array(shape=(nDT, nID))
-# long_margin: 多头保证金率, scalar, array(shape=(nID,)), array(shape=(nDT, nID))
-# short_margin: 空头保证金率, scalar, array(shape=(nID,)), array(shape=(nDT, nID))
-# borrowing_rate: 借款利率, scalar, array(shape=(nDT, ))
-# lending_rate: 贷款利率, scalar, array(shape=(nDT, ))
-# 返回: (Return, Turnover), (array(shape=(nDT, )), array(shape=(nDT, )))
-def testPortfolioStrategy(portfolio, price, fee=0.0, long_margin=1.0, short_margin=-1.0, borrowing_rate=0.0, lending_rate=0.0):
+
+def backtestPortfolioStrategyWithMargin(portfolio: np.ndarray, price: np.ndarray, fee:float | np.ndarray=0.0, long_margin:float | np.ndarray=1.0, short_margin:float | np.ndarray=-1.0, borrowing_rate:float | np.ndarray=0.0, lending_rate:float | np.ndarray=0.0) -> Tuple[np.ndarray, np.ndarray]:
+    """给定投资组合(持仓金额比例, 自融资策略)的策略向量化回测
+
+    Args:
+        portfolio: 每期的目标投资组合, array(shape=(nDT, nID)), nDT 为时点数, nID 为证券 ID 数
+        price: 价格序列, array(shape=(nDT, nID))
+        fee: 手续费率, scalar 或者 array(shape=(nID,)) 或者 array(shape=(nDT, nID))
+        long_margin: 多头保证金率, scalar, array(shape=(nID,)), array(shape=(nDT, nID))
+        short_margin: 空头保证金率, scalar, array(shape=(nID,)), array(shape=(nDT, nID))
+        borrowing_rate: 借款利率, scalar, array(shape=(nDT, ))
+        lending_rate: 贷款利率, scalar, array(shape=(nDT, ))
+    
+    Returns
+        (Return, Turnover), Return 是投资组合的收益率, array(shape=(nDT, )); Turnover 是组合每期的换手率, array(shape=(nDT, )))
+    """
     Return = np.zeros_like(price)
     Return[1:] = price[1:] / price[:-1] - 1
     Mask = np.isinf(Return)
@@ -784,12 +800,52 @@ def testPortfolioStrategy(portfolio, price, fee=0.0, long_margin=1.0, short_marg
     Return -=  np.nansum(Turnover * fee, axis=1)
     return (Return, np.nansum(Turnover, axis=1))
 
-# 给定投资组合(持仓金额比例)的策略向量化回测(自融资策略), 数据类型 pandas
-# portfolio: 每期的目标投资组合, DataFrame(index=DTs, columns=IDs), DTs: 时间序列, IDs: 证券代码
-# price: 价格序列, DataFrame(index=DTs, columns=IDs), DTs: 时间序列, IDs: 证券代码
-# 说明: price 的 DTs 和 portfolio 的 DTs 可能不一致，price 的 IDs 包含 portfolio 的 IDs
-# 返回: Series(index=DTs), DTs 和 price 的 DTs 保持一致
-def testPortfolioStrategy_pd(portfolio, price):
+
+def backtestPortfolioStrategy(portfolio: np.ndarray, price: np.ndarray, fee:float | np.ndarray=0.0, **kwargs) -> Tuple[np.ndarray, np.ndarray]:
+    """给定投资组合(持仓金额比例, 自融资策略)的策略向量化回测
+
+    Args:
+        portfolio: 每期的目标投资组合, array(shape=(nDT, nID)), nDT 为时点数, nID 为证券 ID 数
+        price: 价格序列, array(shape=(nDT, nID))
+        fee: 手续费率, scalar 或者 array(shape=(nID,)) 或者 array(shape=(nDT, nID))
+    
+    Returns
+        (NV, Turnover), NV 是投资组合的净值, array(shape=(nDT, )); Turnover 是组合每期的换手率, array(shape=(nDT, )))
+    """
+    Mask = (~ np.all(np.isnan(portfolio), axis=1))
+    if np.all(Mask):
+        Return, Turnover = backtestPortfolioStrategyWithMargin(portfolio[Mask], price[Mask], fee=fee)
+        return np.cumprod(1 + Return), Turnover
+    if not Mask[0]: portfolio[0], Mask[0] = 0, True
+    if kwargs.get("ffill_price", True):
+        price = numpy_ffill(price, axis=0, limit=None)# 处理价格数据的缺失
+    FilledIdx = np.maximum.accumulate(np.where(Mask, np.arange(portfolio.shape[0]), 0))
+    FilledPortfolio = np.r_[np.zeros((1, portfolio.shape[1])), portfolio[FilledIdx]]
+    FilledCash = 1 - np.nansum(FilledPortfolio, axis=1)
+    FilledNV = np.ones_like(price)
+    FilledNV[1:] = price[1:] / price[FilledIdx][:-1]
+    FilledNV[np.isnan(FilledNV)] = 1
+    FilledNV = FilledNV * FilledPortfolio[:-1]
+    FilledPortfolioNV = np.nansum(FilledNV, axis=1) + FilledCash[:-1]
+    Turnover = np.abs(FilledNV / FilledPortfolioNV.reshape([-1, 1]) - portfolio)
+    FilledPortfolioNV = FilledPortfolioNV * (1 - np.nansum(Turnover * fee, axis=1))# 扣除费用
+    Turnover = np.nansum(Turnover, axis=1)
+    AdjustedPortfolioNV = np.ones_like(FilledPortfolioNV)
+    AdjustedPortfolioNV[Mask] = np.cumprod(FilledPortfolioNV[Mask])
+    PortfolioNV = AdjustedPortfolioNV[FilledIdx] * FilledPortfolioNV
+    return PortfolioNV, Turnover
+
+
+def backtestPortfolioStrategy_pd(portfolio: pd.DataFrame, price: pd.DataFrame) -> pd.Series:
+    """给定投资组合(持仓金额比例, 自融资策略)的策略向量化回测
+
+    Args:
+        portfolio: 每期的目标投资组合, DataFrame(index=[datetime], columns=[str]), 其中 index 是时点序列, columns 是证券代码序列
+        price: 价格序列, DataFrame(index=[datetime], columns=[str]), 其中 index 是时点序列, columns 是证券代码序列, 注意 price 的 index 和 portfolio 的 index 可以不相等, 但 price 的 columns 必须包含 portfolio 的 columns
+    
+    Returns
+        返回: 投资组合净值序列, Series(index=[dt.datetime]), 其中 index 和 price 的 index 保持一致
+    """
     portfolio = portfolio.fillna(0.0)
     AllDTs = sorted(price.index.union(portfolio.index))
     AllPrice = price.reindex(index=AllDTs, columns=portfolio.columns).ffill().bfill()
@@ -803,11 +859,17 @@ def testPortfolioStrategy_pd(portfolio, price):
     NV = NV * RebalanceNV.reindex(index=AllDTs).ffill()
     return NV.loc[price.index]
 
-# 给定仓位水平的择时策略向量化回测, 数据类型 numpy
-# position: 每期的目标仓位水平, array((-inf, inf) 的仓位水平或者 nan 表示维持目前仓位, shape=(nDT, nID), dtype=float), nDT: 时点数, nID: ID 数
-# price: 价格序列, array(shape=(nDT, nID))
-# 返回: (NV, Position, Turnover) NV: array(shape=(nDT, nID))
-def testTimingStrategy(position, price):
+
+def backtestTimingStrategy(position: np.ndarray, price: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """给定目标仓位水平的择时策略回测
+
+    Args:
+        position: 每个时点的每个证券的目标仓位水平, 比如 1 表示多头满仓, -0.5 表示空头半仓, array(shape=(nDT, nID), dtype=float), nDT: 时点数, nID: 证券数, 其中的元素为 nan 表示维持仓位不动
+        price: 每个时点的每个证券的价格, array(shape=(nDT, nID), dtype=float), shape 和 position 的 shape 保持相等
+
+    Returns:
+        (Amount, Portfolio, Turnover), 其中 Amount 是持仓金额, array(shape=(nDT, nID)); Portfolio 是持仓权重, array(shape=(nDT, nID)); Turnover 是换手率, array(shape=(nDT, ))
+    """
     nDT, nID = price.shape
     position[0, np.isnan(position[0])] = 0
     TotalAmount = np.ones(shape=price.shape)
@@ -825,6 +887,7 @@ def testTimingStrategy(position, price):
         CashAmount[i] = TotalAmount[i] - iAmount
         Amount[i] = iAmount
     return TotalAmount, (TotalAmount - CashAmount) / np.abs(TotalAmount), np.r_[np.zeros((1, nID)), np.abs(np.diff(CashAmount, axis=0))] / np.abs(TotalAmount)
+
 
 # 以更高的频率扩充净值序列
 def _densifyWealthSeq(wealth_seq, dts, dt_ruler=None):
@@ -1026,16 +1089,22 @@ def formatTimingStrategySummary(summary):
     FormattedStats.iloc[15:17] = FloatFormatFun(summary.iloc[15:17, :].values)
     return FormattedStats
 
-# 给定每期定投金额的定投策略向量化回测, 数据类型 numpy
-# aip_amount: 每期的定投金额, array( >0 的定投金额或者 nan 表示无定投, shape=(nDT, nID), dtype=float), nDT: 时点数, nID: ID 数
-# price: 价格序列, array(shape=(nDT, nID))
-# 返回: (CumReturn, Amount, Capital, PositionNum, AvgUnitCost) : array(shape=(nDT, nID))
-# CumReturn: 累积收益率
-# Amount: 持仓金额
-# Capital: 累计投入
-# PositionNum: 持仓数量
-# AvgUnitCost: 平均单位成本
-def testAIPStrategy(aip_amount, price):
+
+def backtestAIPStrategy(aip_amount:np.array, price:np.array) -> Tuple[np.array, np.array, np.array, np.array, np.array]:
+    """给定每期定投金额的定投策略向量化回测
+
+    Args:
+        aip_amount: 每期每个证券的定投金额, 大于 0 或者为 nan, nan 表示无定投, array(shape=(nDT, nID), dtype=float), nDT: 时点数, nID: 证券数
+        price: 每个时点每个证券的价格, array(shape=(nDT, nID))
+    
+    Returns: 
+        (CumReturn, Amount, Capital, PositionNum, AvgUnitCost), 其中:
+            * CumReturn: 累积收益率, array(shape=(nDT, nID))
+            * Amount: 持仓金额, array(shape=(nDT, nID))
+            * Capital: 累计投入, array(shape=(nDT, nID))
+            * PositionNum: 持仓数量, array(shape=(nDT, nID))
+            * AvgUnitCost: 平均单位成本, array(shape=(nDT, nID))
+    """
     Mask = pd.isnull(aip_amount)
     Capital = np.nancumsum(aip_amount, axis=0)
     PositionNum = np.nancumsum(aip_amount / price, axis=0)

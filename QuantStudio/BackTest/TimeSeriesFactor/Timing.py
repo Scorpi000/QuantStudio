@@ -11,7 +11,7 @@ from matplotlib import cm
 from scipy import stats
   
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
-from QuantStudio.Tools.StrategyTestFun import testTimingStrategy, summaryStrategy, formatStrategySummary, summaryTimingStrategy, formatTimingStrategySummary, summaryTrade, formatTradeSummary
+from QuantStudio.Tools.StrategyTestFun import backtestTimingStrategy, summaryStrategy, formatStrategySummary, summaryTimingStrategy, formatTimingStrategySummary, summaryTrade, formatTradeSummary
 from QuantStudio.Tools import CashFlowCalculator
 from QuantStudio.BackTest.BackTestModel import BaseModule
 
@@ -528,7 +528,7 @@ class QuantileTiming(BaseModule):
                 for k in self._QSArgs.LSClearGroups:
                     ijLSSignal = (ijSignal.iloc[:, k] * 0).where(pd.notnull(ijSignal.iloc[:, k]), ijLSSignal)
                 if ijDTs.shape[0]>0:
-                    ijLSNV, _, _ = testTimingStrategy(ijSignal.loc[ijDTs[0]:].values.reshape((-1, 1)), self._Output["标的净值"].loc[ijDTs[0]:].iloc[:, j].values.reshape((-1, 1)))
+                    ijLSNV, _, _ = backtestTimingStrategy(ijSignal.loc[ijDTs[0]:].values.reshape((-1, 1)), self._Output["标的净值"].loc[ijDTs[0]:].iloc[:, j].values.reshape((-1, 1)))
                     ijLSReturn = ijLSNV[:, 0] / np.r_[ijLSNV[:1, 0], ijLSNV[:-1, 0]] - 1
                     ijLSReturn[np.isinf(ijLSReturn)] = 0
                     ijSignalReturn["L-S"] = ijLSReturn

@@ -10,7 +10,7 @@ import statsmodels.api as sm
 from matplotlib.figure import Figure
 
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
-from QuantStudio.Tools.StrategyTestFun import testTimingStrategy, summaryStrategy, formatStrategySummary, summaryTimingStrategy, formatTimingStrategySummary
+from QuantStudio.Tools.StrategyTestFun import backtestTimingStrategy, summaryStrategy, formatStrategySummary, summaryTimingStrategy, formatTimingStrategySummary
 from QuantStudio.Tools.api import Panel
 from QuantStudio.BackTest.BackTestModel import BaseModule
 from QuantStudio.BackTest.TimeSeriesFactor.Correlation import _calcReturn
@@ -174,14 +174,14 @@ class ReturnForecast(BaseModule):
         Signal = np.sign(self._Output["滚动预测"]["预测收益率"]).reindex(index=DTs).values
         Price = Price.fillna(method="ffill").fillna(method="bfill").values[StartIdx:]
         nYear = (DTs[-1] - DTs[0]).days / 365
-        NV, _, _ = testTimingStrategy(Signal, Price)
+        NV, _, _ = backtestTimingStrategy(Signal, Price)
         self._Output["择时策略"] = {"多空净值": pd.DataFrame(NV, index=DTs, columns=IDs)}
         self._Output["择时策略"]["多空统计"], self._Output["择时策略"]["多头统计"], self._Output["择时策略"]["空头统计"], _, _ = summaryTimingStrategy(Signal, Price, n_per_year=len(DTs)/nYear)
         self._Output["择时策略"]["多空统计"].columns = self._Output["择时策略"]["多头统计"].columns = self._Output["择时策略"]["空头统计"].columns = IDs
         self._Output["择时策略"]["统计数据"] = summaryStrategy(NV, DTs, risk_free_rate=0.0)
         self._Output["择时策略"]["统计数据"].columns = IDs
         Signal[Signal<0] = 0
-        NV, _, _ = testTimingStrategy(Signal, Price)
+        NV, _, _ = backtestTimingStrategy(Signal, Price)
         self._Output["择时策略"]["纯多头策略净值"] = pd.DataFrame(NV, index=DTs, columns=IDs)
         self._Output["择时策略"]["纯多头策略统计数据"] = summaryStrategy(NV, DTs, risk_free_rate=0.0)
         self._Output["择时策略"]["纯多头策略统计数据"].columns = IDs

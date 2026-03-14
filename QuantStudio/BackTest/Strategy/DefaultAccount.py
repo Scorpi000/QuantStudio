@@ -7,7 +7,7 @@ import numpy as np
 from traits.api import Enum, ListStr, Float, Str, Instance
 
 from QuantStudio import QSArgs
-from QuantStudio.BackTest.Strategy.StrategyModule import Account, cutDateTime
+from QuantStudio.BackTest.Strategy.Strategy import Account, cutDateTime
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 
 class _TradeLimit(QSArgs):

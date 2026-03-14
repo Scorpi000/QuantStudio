@@ -7,7 +7,7 @@ import pandas as pd
 from traits.api import Enum, List, Int, Instance, on_trait_change
 
 from QuantStudio import __QS_Error__
-from QuantStudio.BackTest.Strategy.StrategyModule import Strategy, Account
+from QuantStudio.BackTest.Strategy.Strategy import Strategy, Account
 
 # 信号数据格式: Series(float, -inf~inf 的仓位水平或者 nan 表示维持目前仓位, index=[ID]) 或者 None(表示无信号, 默认值)
 

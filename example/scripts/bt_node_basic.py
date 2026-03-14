@@ -37,26 +37,28 @@ if __name__=="__main__":
     Weight = DataFactor(data=pd.DataFrame(np.random.rand(len(DTRuler), len(SectionIDs)), index=DTRuler, columns=SectionIDs), args={"Name": "Weight"})
 
     QuantilePortfolioList = makeQuantilePortfolio(Factor1, descriptor_ids=SectionIDs, rebalance_dts=MonthDTRuler, group_num=3)
-    calcPortfolioNV = CalcPortfolioNV(descriptor_ids=SectionIDs, start_dt=DTs[0])
-    PortfolioNV = calcPortfolioNV(QuantilePortfolioList[0], price=Price, init_nv=1)
+    calcPortfolioNV = CalcPortfolioNV(start_dt=DTs[0], descriptor_ids=SectionIDs)
+    PNameList = [f"P{i}" for i in range(3)]
+    PortfolioNVList = [calcPortfolioNV(iPortfolio, price=Price, init_nv=1, factor_args={"Name": f"P{i}"}) for i, iPortfolio in enumerate(QuantilePortfolioList)]
+    QuantilePortfolioNode = MultiPortfolio(nv_list=PortfolioNVList, portfolio_list=QuantilePortfolioList, args={"LSPairs": [(0, -1)], "RebalanceDTs": DTRuler, "GenReport": True, "Name": "分位数组合"})
 
-    PIDList = ["0-0", "0-1"]
-    # ExecEngine = Engine()
-    ExecEngine = ParallelEngine()
-    Cache = FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "PIDs": PIDList, "CacheDir": r"C:\Users\hst\Project\Data\DevCache", "ClearStart": True})
+    PIDList = ["0"]
+    ExecEngine = Engine()
+    # PIDList = ["0-0", "0-1"]
+    # ExecEngine = ParallelEngine()
+    Cache = FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "PIDs": PIDList, "CacheDir": r"C:\Users\hst\Project\Data\DevCache", "StartMode": "new"})
     Cache.start()
     Context = FactorContext(
         PID="0",
         PIDList=PIDList,
         DTRuler=DTRuler,
         DefaultSectionIDs=SectionIDs,
-        IDSplit="连续切分",
         FactorDataCache=Cache
     )
-    NodeList = [PortfolioNV]
-    FwdDataList = [FactorLocalContext(DTs=DTs, IDs=["P0"])]
-    InitDataList = [FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=["P0"])]
-    Rslt = ExecEngine.run([PortfolioNV], Context, fwd_data_list=FwdDataList, init_data_list=InitDataList)
+    NodeList = [QuantilePortfolioNode]
+    FwdDataList = [BTLocalContext(DTs=DTs)]
+    InitDataList = [BTInitData(DTRange=(DTs[0], DTs[-1]))]
+    Rslt = ExecEngine.run(NodeList, Context, fwd_data_list=FwdDataList, init_data_list=InitDataList)
 
     print(Rslt[0])
     print("===")
@@ -100,7 +102,7 @@ if __name__ == "__main__1":
     FamaMacBethModule = FamaMacBethRegression(FamaMacBethFactor, args={"GenReport": True})
     
     ExecEngine = Engine()
-    Cache = FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "PIDs": ["0"], "CacheDir": r"D:\Data\DevCache", "ClearStart": True})
+    Cache = FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "PIDs": ["0"], "CacheDir": r"D:\Data\DevCache", "StartMode": "new"})
     Cache.start()
     Context = FactorContext(
         PID="0",
@@ -193,7 +195,7 @@ if __name__=="__main__1":
 
     Report = BTReport(bt_node_list=NodeList)
 
-    with FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "PIDs": ["0"], "CacheDir": r"D:\Data\DevCache", "ClearStart": True}) as Cache:
+    with FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "PIDs": ["0"], "CacheDir": r"D:\Data\DevCache", "StartMode": "new"}) as Cache:
         with FactorContext(
             PID="0",
             PIDList=["0"],

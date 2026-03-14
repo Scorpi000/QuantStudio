@@ -7,7 +7,7 @@ from traits.api import Enum, List, Int, Float, Str, Instance, on_trait_change
 from QuantStudio.Tools.AuxiliaryFun import getFactorList
 from QuantStudio.Tools.MathFun import CartesianProduct
 from QuantStudio import __QS_Error__, QSArgs
-from QuantStudio.BackTest.Strategy.StrategyModule import Strategy, Account
+from QuantStudio.BackTest.Strategy.Strategy import Strategy, Account
 from QuantStudio.RiskDataBase.RiskDB import RiskTable, FactorRT
 from QuantStudio.RiskModel.RiskModelFun import dropRiskMatrixNA
 

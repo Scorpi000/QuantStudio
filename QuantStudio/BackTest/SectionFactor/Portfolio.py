@@ -19,7 +19,8 @@ from QuantStudio.Factor.FactorOperation import PanelOperator, SectionOperator, P
 from QuantStudio.Factor.Factor import Factor, FactorInitData, FactorContext
 from QuantStudio.BackTest.BackTestModel import BTNode, BTLocalContext, BTInitData
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
-from QuantStudio.Tools.StrategyTestFun import calcMaxDrawdownRate, calcLSYield, testPortfolioStrategy_pd
+from QuantStudio.Tools.StrategyTestFun import calcMaxDrawdownRate, calcLSYield, backtestPortfolioStrategy
+from QuantStudio.Tools.DataPreprocessingFun import numpy_ffill
 
 
 def _QS_plotStatistics(axes, x_data, x_ticklabels, left_data, left_formatter, right_data=None, right_formatter=None, right_axes=True, title=None):
@@ -142,35 +143,35 @@ def makeQuantilePortfolio(factor:Factor, mask:Optional[Factor]=None, cat_data:Op
 class CalcPortfolioNV(PanelOperator):
     """投资组合净值计算算子"""
 
-    def __init__(self, if_price_missing:Literal["沿用前值", "填充为0"]="沿用前值", start_dt:Optional[dt.datetime]=None, descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, start_dt:Optional[dt.datetime]=None, descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         """初始化投资组合净值计算算子
 
         Args:
-            if_price_missing: 价格缺失时的处理方式, 沿用前值表示用之前的价格填充, 相当于持仓价值维持不变; 填充为0表示将价格置为0, 相当于持仓价值归零
             start_dt: 净值开始日, 如果为 None, 表示从计算的第一个时点开始
             descriptor_ids: 投资组合因子的截面 ID 序列
             args: 参数集
             config_file: 配置文件地址
         """
-        Args = {"Name": "calcPortfolioNV"} | args | {"Arity": 4, "DTMode": "多时点", "OutputMode": "全截面", "DataType": "double", "LookBack": [1, 0, 0, 0], "iInitFactor": 0, "LookBackMode": ["扩张窗口"] * 4, "StartDT": [start_dt] * 4}
-        Args["ModelArgs"] = {"if_price_missing": if_price_missing} | Args.get("ModelArgs", {})
-        Args["DescriptorSection"] = [None] + [descriptor_ids] * 3
+        Arity = args.get("Arity", None) or 4
+        Args = {"Name": "calcPortfolioNV"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "double", "iInitFactor": 0}
+        Args["DescriptorSection"] = [None] + [descriptor_ids] * (Arity - 1)
+        Args["StartDT"] = [start_dt] * Arity
+        Args["LookBack"] = [1] + [0] * (Arity - 1)
+        Args["LookBackMode"] = ["扩张窗口"] * Arity
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
-        SectionIDs = (self._QSArgs.DescriptorSection[1] if self._QSArgs.DescriptorSection[1] else iid)
-        Portfolio = pd.DataFrame(x[1], index=idt[1:], columns=SectionIDs).dropna(how="all")
-        Price = pd.DataFrame(x[2], index=idt[1:], columns=SectionIDs)
-        FeeRate = pd.DataFrame(x[3], index=idt[1:], columns=SectionIDs).reindex(index=Portfolio.index)# TODO
-        if args["if_price_missing"]=="沿用前值": Price = Price.ffill()
-        NV = testPortfolioStrategy_pd(Portfolio.dropna(how="all"), Price)
-        if pd.isnull(NV.iloc[0]):
-            NV.iloc[0] = 1
-            NV = NV.ffill()
-        return np.reshape(NV.values, (-1, 1)).repeat(len(iid), axis=1) * x[0][0]
+        PortfolioList, Price, FeeRate = x[1:-2], x[-2], x[-1]
+        Price = numpy_ffill(Price, axis=0, limit=None)
+        NV = np.ones(shape=(Price.shape[0], len(PortfolioList)))
+        for i, iPortfolio in enumerate(PortfolioList):
+            NV[:, i], _ = backtestPortfolioStrategy(portfolio=iPortfolio, price=Price, fee=FeeRate, ffill_price=False)
+        return NV * x[0][0]
 
-    def __call__(self, portfolio:Factor, price:Factor, init_nv:Union[float, Factor]=1, fee_rate:Union[float, Factor]=0, factor_args:dict={}, **kwargs) -> PanelOperation:
-        return super().__call__(init_nv, portfolio, price, fee_rate, factor_args=factor_args, **kwargs)
+    def __call__(self, *portfolio:Factor, price:Factor, init_nv:Union[float, Factor]=1, fee_rate:Union[float, Factor]=0, factor_args:dict={}, **kwargs) -> PanelOperation:
+        if not portfolio: raise __QS_Error__("投资组合因子不能为空!")
+        kwargs["operator_kwargs"] =  {"descriptor_ids": self._QSArgs.DescriptorSection[1], "start_dt": self._QSArgs.StartDT[0]} | kwargs.get("operator_kwargs", {})
+        return super().__call__(init_nv, *portfolio, price, fee_rate, factor_args=factor_args, **kwargs)
 
 
 class MultiPortfolio(BTNode):
@@ -262,9 +263,6 @@ class MultiPortfolio(BTNode):
     def genReport(self, output:dict) -> str:
         HTML = "参数设置: "
         HTML += '<ul align="left">'
-        if isinstance(getattr(self.Deps[0], "Operator", None), CalcPortfolioNV):
-            ModelArgs = self.Deps[0].Operator._QSArgs.ModelArgs
-            HTML += f"<li>价格缺失: {ModelArgs['if_price_missing']}</li>"
         HTML += f"<li>多空组合对: {self._QSArgs.LSPairs}</li>"
         if self._QSArgs.RebalanceDTs is not None:
             HTML += "<li>再平衡时点: 自定义时点</li>"

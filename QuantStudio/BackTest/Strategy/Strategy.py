@@ -3,22 +3,136 @@ import base64
 from io import BytesIO
 from copy import deepcopy
 import datetime as dt
+from typing import Optional
 
 import numpy as np
 import pandas as pd
+from pydantic import Field
 from traits.api import Enum, List, Float, ListInt, Instance, on_trait_change
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 
-from QuantStudio import QSArgs
-from QuantStudio.BackTest.BackTestModel import BaseModule
-from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
+from QuantStudio.Core import QSArgs
+from QuantStudio.Factor.Factor import Factor
+from QuantStudio.Factor.FactorOperation import SectionOperation, SectionOperator, PanelOperation, PanelOperator
+from QuantStudio.BackTest.BackTestModel import BTInitData, BTLocalContext, BTNode
 from QuantStudio.Tools.StrategyTestFun import summaryStrategy, calcYieldSeq, calcLSYield, formatStrategySummary
-from QuantStudio.FactorDataBase.FactorDB import FactorTable
-from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage
+
+
+def _QS_formatMatplotlibPercentage(x, pos):
+    return '%.2f%%' % (x * 100, )
 
 _QS_MinPositionNum = 1e-8# 会被忽略掉的最小持仓数量
 _QS_MinCash = 1e-8# 会被忽略掉的最小现金量
+
+# LastPrice: 最新价因子
+# BuyPrice: 买入成交价因子
+# BuyLimit: 禁止买入条件因子
+# BuyFee: 买入交易费率因子
+# BuyAmtLimit: 买入成交额限制因子
+# SellPrice: 卖出成交价因子
+# SellLimit: 禁止卖出条件因子
+# SellFee: 卖出交易费率因子
+# SellAmtLimit: 卖出成交额限制因子
+# Order: 订单因子, 复合因子, [("num", "double"), ("target_price", "double")], num: 数量, target_price: 目标价
+# Account: 账户因子, 复合因子, [("cash", "double"), ("position", "double"), ("amount", "double")], cash: 现金, position: 持仓数量, amount: 持仓金额
+# Signal: 信号因子
+
+class CalcSimpleAccount(PanelOperator):
+    """简单账户计算算子"""
+    class __QS_ArgClass__(PanelOperator.__QS_ArgClass__):
+        Arity: Optional[int] = Field(default=None, ge=3, title="入参数", frozen=True)
+
+    def __init__(self, delay:bool=True, price_fillna:bool=False, start_dt:Optional[dt.datetime]=None, args:dict = {}, config_file:Optional[str] = None, **kwargs):
+        """初始化简单账户计算算子
+
+        Args:
+            delay: 交易是否延迟
+            price_fillna: 是否填充缺失的价格
+            start_dt: 净值开始日, 如果为 None, 表示从计算的第一个时点开始
+        """
+        Arity = args.get("Arity", None) or 3
+        Args = {"Name": "calcSimpleAccount"} | args | {"DTMode": "单时点", "OutputMode": "全截面", "DataType": "object", "iInitFactor": 0}
+        Args["ModelArgs"] = {"delay": delay, "price_fillna": price_fillna} | Args.get("ModelArgs", {})
+        Args["DescriptorSection"] = [Args.get("DescriptorSection", [None])[0]] * Arity
+        Args["LookBack"] = [1, 0, 0] + [0] * max(0, Arity - 3)
+        Args["LookBackMode"] = ["扩张窗口"] + ["滚动窗口"] * max(0, Arity - 1)
+        Args["StartDT"] = [start_dt] + [None] * max(0, Arity - 1)
+        Args["CompoundType"] = [("Cash", float), ("Position", float), ("Amount", float)]
+        return super().__init__(args=Args, config_file=config_file, **kwargs)
+
+    def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
+        last_account = x[0].astype(self._QSArgs)
+        Price, x = pd.DataFrame(x[0].T, columns=idt, index=SectionIDs), x[1:]
+        if f._QSArgs.CalcDTRuler:
+            DTs = sorted(set(idt).intersection(f._QSArgs.CalcDTRuler))
+            Price = Price.reindex(columns=DTs)
+        else:
+            DTs = Price.columns
+        Return = Price.T.pct_change().T
+        if f._QSArgs.ModelArgs["mask"]: 
+            Mask, x = pd.DataFrame(x[0].T==1, columns=idt, index=SectionIDs).reindex(columns=DTs).fillna(False).astype(bool), x[1:]
+            Mask = (Mask & Price.notnull())
+        else:
+            Mask = Price.notnull()
+        
+    
+    def __call__(self, init_account: Factor,
+        last_price: Factor, order_num: Factor, order_price: Optional[Factor]=None, 
+        buy_price: Optional[Factor]=None, buy_limit: Optional[Factor]=None, buy_fee: float | Factor=0, buy_amt_limit: Optional[Factor]=None,
+        sell_price: Optional[Factor]=None, sell_limit: Optional[Factor]=None, sell_fee: float | Factor=0, sell_amt_limit: Optional[Factor]=None,
+        factor_args:dict={}, **kwargs
+    ) -> PanelOperation:
+        """将算子作用在若干个因子对象上以产生简单账户因子
+
+        Args:
+            init_account: 初始账户因子, 复合因子, [("Cash", float), ("Position", float), ("Amount", float)]
+            last_price: 最新价因子
+            order_num: 订单数量因子
+            order_price: 订单目标价因子
+            buy_price: 买入成交价因子
+            buy_limit: 禁止买入条件因子, 该因子值等于 1 的 ID 禁止买入
+            buy_fee: 买入交易费率因子
+            buy_amt_limit: 买入成交额限制因子, 该期买入额不能超过该因子值
+            sell_price: 卖出成交价因子
+            sell_limit: 禁止卖出条件因子, 该因子值等于 1 的 ID 禁止卖出
+            sell_fee: 卖出交易费率因子
+            sell_amt_limit: 卖出成交额限制因子, 该期卖出额不能超过该因子值
+            factor_args: 创建 IC 因子时传递个它的参数集
+            kwargs: 创建 IC 因子时传递给它的其他入参
+
+        Returns:
+            简单账户因子
+        """
+        Factors = [init_account, last_price, order_num]
+        if order_price is not None: Factors.append(order_price)
+        if buy_price is not None: Factors.append(buy_price)
+        if buy_limit is not None: Factors.append(buy_limit)
+        if buy_fee is not None: Factors.append(buy_fee)
+        if buy_amt_limit is not None: Factors.append(buy_amt_limit)
+        if sell_price is not None: Factors.append(sell_price)
+        if sell_limit is not None: Factors.append(sell_limit)
+        if sell_fee is not None: Factors.append(sell_fee)
+        if sell_amt_limit is not None: Factors.append(sell_amt_limit)
+        ModelArgs = {
+            "order_price": (order_price is not None), 
+            "buy_price": (buy_price is not None), 
+            "buy_limit": (buy_limit is not None),
+            "buy_fee": (buy_fee is not None),
+            "buy_amt_limit": (buy_amt_limit is not None),
+            "sell_price": (sell_price is not None),
+            "sell_limit": (sell_limit is not None),
+            "sell_fee": (sell_fee is not None),
+            "sell_amt_limit": (sell_amt_limit is not None)
+        }
+        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | ModelArgs
+        return super().__call__(*Factors, factor_args=factor_args, **kwargs)
+
+
+
+
+
+
 
 def cutDateTime(df, dts=None, start_dt=None, end_dt=None):
     if dts is not None: df = df.reindex(index=dts)

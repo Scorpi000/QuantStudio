@@ -1,11 +1,70 @@
 # coding=utf-8
-"""截面运算相关函数"""
+"""数据预处理函数"""
+from typing import Literal, Optional
+
 import numpy as np
 import pandas as pd
 from scipy.stats import norm
 import statsmodels.api as sm
 from itertools import product
 
+
+def numpy_ffill(arr:np.ndarray, axis:Literal[0, 1]=0, limit:Optional[int]=None) -> np.ndarray:
+    """NumPy 实现的前向填充 (ffill) 方法，模拟 pandas 的 ffill 行为。
+    
+    Args:
+        arr: 输入数组 (numpy array)，支持 1D 和 2D
+        axis: 沿哪个轴进行填充, 默认为0 (0=向下填充, 1=向右填充)
+        limit: 最大连续填充数量, None表示无限制
+    
+    Returns:
+        填充后的 numpy array
+    
+    Examples:
+        >>> arr = np.array([1.0, np.nan, np.nan, 4.0])
+        >>> numpy_ffill(arr)
+        array([1., 1., 1., 4.])
+    """
+    arr = np.asarray(arr)
+    
+    if arr.size == 0:
+        return arr.copy()
+    
+    # 将 axis=1 的情况转置为 axis=0 的情况
+    if axis == 1:
+        arr = arr.T
+    # 处理 1D 数组
+    if was_1d := (arr.ndim == 1):
+        arr = arr.reshape(-1, 1)
+    
+    # 获取掩码
+    valid_mask = ~ np.isnan(arr)
+    
+    # 核心填充算法
+    idx = np.where(valid_mask, np.arange(arr.shape[0]).reshape(-1, 1), 0)
+    idx = np.maximum.accumulate(idx, axis=0)
+    result = arr[idx, np.arange(arr.shape[1])]
+    
+    # limit 处理
+    if limit is not None:
+        nan_mask = np.isnan(arr)
+        # NaN 转为 1，计算累计和
+        nan_int = nan_mask.astype(np.int32)
+        cumsum = np.cumsum(nan_int, axis=0)
+        # 在有效位置记录 cumsum 值，其他位置为 0
+        valid_cumsum = np.where(valid_mask, cumsum, 0)
+        # 向前传播最后一个有效位置的 cumsum
+        last_valid_cumsum = np.maximum.accumulate(valid_cumsum, axis=0)
+        # 连续 NaN 数量 = 当前 cumsum - 上一个有效位置的 cumsum
+        consecutive_nan = cumsum - last_valid_cumsum
+        # 超过 limit 的位置还原为 NaN
+        result[(consecutive_nan > limit) & nan_mask] = np.nan
+    
+    if axis == 1:
+        result = result.T
+    if was_1d:
+        result = result.flatten()
+    return result
 
 # 给定分类数据 cat_data, 返回 {类别:类别的 Mask}, 类别:('银行', '大盘')
 # cat_data: 类别数据, array; mask: array

@@ -19,7 +19,7 @@ if __name__ == "__main__":
     DTRuler = [dt.datetime(2025, 1, 1) + dt.timedelta(i) for i in range(nDT)]
     IDs, DTs = SectionIDs[:3], DTRuler[-5:]
 
-    Cache = FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "CacheDir": r"C:\Users\hst\Project\Data\FactorCache", "PIDs": ["0"], "ClearStart": True})
+    Cache = FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "CacheDir": r"C:\Users\hst\Project\Data\FactorCache", "PIDs": ["0"], "StartMode": "new"})
     Cache.start()
     Context = FactorContext(
         PID="0",
