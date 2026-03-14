@@ -76,7 +76,7 @@ class FactorLocalContext(LocalContext):
     DTs: List[dt.datetime]
     IDs: List[str]
     PIDs: Optional[List[str]] = Field(default=None)
-
+    
     # 并发运行时切分自身成 n 份
     def split(self, n: int, context: FactorContext, **kwargs):
         PIDIDs = context.splitID(self.IDs)

@@ -251,7 +251,7 @@ class BaoStockDB(FactorDB):
 
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
         super().__init__(args=args, config_file=(__QS_ConfigPath__ + os.sep + "BaoStockDBConfig.json" if config_file is None else config_file), **kwargs)
-        self._InfoFilePath = __QS_MainPath__ + os.sep + "Lib" + os.sep + "BaoStockDBInfo.hdf5"  # 数据库信息文件路径
+        self._InfoFilePath = __QS_MainPath__ + os.sep + "Resource" + os.sep + "BaoStockDBInfo.hdf5"  # 数据库信息文件路径
         if (not self._QSArgs.DBInfoFile) or (not os.path.isfile(self._QSArgs.DBInfoFile)):
             if self._QSArgs.DBInfoFile: self._QS_Logger.warning("找不到指定的库信息文件 : '%s'" % self._QSArgs.DBInfoFile)
             self._InfoResourcePath = __QS_MainPath__ + os.sep + "Resource" + os.sep + "BaoStockDBInfo.xlsx"  # 默认数据库信息源文件路径

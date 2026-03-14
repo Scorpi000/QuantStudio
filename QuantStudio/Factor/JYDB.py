@@ -903,7 +903,7 @@ class JYDB(QSSQLObject, FactorDB):
 
     def __init__(self, args={}, config_file=None, **kwargs):
         super().__init__(args=args, config_file=(__QS_ConfigPath__ + os.sep + "JYDBConfig.json" if config_file is None else config_file), **kwargs)
-        self._InfoFilePath = __QS_MainPath__ + os.sep + "Resource" + os.sep + "JYDBInfo.hdf5"  # 数据库信息文件路径
+        self._InfoFilePath = __QS_MainPath__ + os.sep + "Resource" + os.sep + "JYDBInfo.hdf5"# 数据库信息文件路径
         self._initInfo()
 
     def _initInfo(self):

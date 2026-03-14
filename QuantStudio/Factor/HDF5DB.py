@@ -55,7 +55,7 @@ def _adjustData(data, data_type, order="C"):
         raise __QS_Error__("不支持的数据类型: %s" % data_type)
 
 
-class _HDF5FactorTable(FactorTable):
+class HDF5FactorTable(FactorTable):
     """HDF5DB 库中因子表"""
 
     class __QS_ArgClass__(FactorTable.__QS_ArgClass__):
@@ -358,10 +358,10 @@ class HDF5DB(WritableFactorDB):
         MainDir = self._QSArgs.MainDir
         return sorted(iDir for iDir in os.listdir(MainDir) if os.path.isdir(MainDir / iDir))
 
-    def getTable(self, table_name:str, args:dict={}) -> _HDF5FactorTable:
+    def getTable(self, table_name:str, args:dict={}) -> HDF5FactorTable:
         if not os.path.isdir(self._QSArgs.MainDir / table_name):
             raise __QS_Error__("HDF5DB.getTable: 表 '%s' 不存在!" % table_name)
-        return _HDF5FactorTable(fdb=self, args=args | {"Name": table_name}, logger=self._QS_Logger)
+        return HDF5FactorTable(fdb=self, args=args | {"Name": table_name}, logger=self._QS_Logger)
 
     def renameTable(self, old_table_name:str, new_table_name:str):
         if old_table_name == new_table_name: return 0

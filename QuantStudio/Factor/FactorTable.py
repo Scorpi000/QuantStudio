@@ -25,8 +25,14 @@ class FactorTable(Node):
     """
 
     def __init__(self, fdb: FactorDB, args: dict={}, config_file:Optional[str]=None, **kwargs):
-        self._FactorDB = fdb # 因子表所属的因子库
-        self._QS_PrepareIgnoredArgs: tuple = tuple()  # 决定 PrepareID 不需要的参数集，如果为空，表示所有参数都需要
+        """初始化因子表
+
+        Args:
+            fdb: 因子表所属的因子库
+        
+        """
+        self._FactorDB = fdb
+        self._QS_PrepareIgnoredArgs: tuple = tuple()# 决定 PrepareID 不需要的参数集，如果为空，表示所有参数都需要
         self._QS_LookbackArgs: tuple = ("LookBack",)
         self._QS_RawDataMaskCols: list = ["QS_ID", "QS_DT"]
         return super().__init__(args=args, config_file=config_file, **kwargs)

@@ -12,7 +12,7 @@ import numpy as np
 from pydantic import Field
 
 from QuantStudio.Core import __QS_Error__, __QS_Object__
-from QuantStudio.Core.QSObject import Panel
+from QuantStudio.Core.QSObject import Panel, QSQueue
 from QuantStudio.Factor.Factor import Factor, DataFactor, FactorContext, FactorLocalContext, FactorInitData
 from QuantStudio.Tools.DataTypeConversionFun import expandListElementDataFrame
 from QuantStudio.Tools.AuxiliaryFun import partitionList
@@ -1129,7 +1129,8 @@ class SectionOperation(DerivativeFactor):
                 InitData[i] = InitData[i].__class__(**(InitData[i].model_dump() | {"SectionIDs": iSectionIDs}))
         if (len(context.PIDList) > 1) and (self.QSID not in context.Event):
             if os.name == "nt":
-                context.Event[self.QSID] = (context.ExtraData["mp_manager"].Queue(), context.ExtraData["mp_manager"].Event())
+                # context.Event[self.QSID] = (context.ExtraData["mp_manager"].Queue(), context.ExtraData["mp_manager"].Event())
+                context.Event[self.QSID] = (QSQueue(), Event())
             else:
                 context.Event[self.QSID] = (Queue(), Event())
         return InitData
@@ -1210,7 +1211,8 @@ class PanelOperation(DerivativeFactor):
             InitData[i] = InitData[i].__class__(**(InitData[i].model_dump() | {"DTRange": (DTRuler[iStartIdx], iEndDT), "SectionIDs": self._QS_getDescriptorSectionIDs(i, context=context)}))
         if (len(context.PIDList) > 1) and (self.QSID not in context.Event):
             if os.name == "nt":
-                context.Event[self.QSID] = (context.ExtraData["mp_manager"].Queue(), context.ExtraData["mp_manager"].Event())
+                # context.Event[self.QSID] = (context.ExtraData["mp_manager"].Queue(), context.ExtraData["mp_manager"].Event())
+                context.Event[self.QSID] = (QSQueue(), Event())
             else:
                 context.Event[self.QSID] = (Queue(), Event())
         return InitData

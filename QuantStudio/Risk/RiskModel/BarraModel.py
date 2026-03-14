@@ -1,14 +1,15 @@
 # coding=utf-8
 import os
-import imp
 import time
+import importlib
 
 import pandas as pd
 import numpy as np
 from progressbar import ProgressBar
 
 from . import RiskModelFun
-from QuantStudio import __QS_LibPath__, __QS_Error__, __QS_Logger__
+from QuantStudio.Core import __QS_Error__, __QS_Logger__
+from QuantStudio import __QS_MainPath__
 from QuantStudio.Tools.AuxiliaryFun import startMultiProcess
 
 # 截面回归生成因子收益率和特异性收益率
@@ -150,10 +151,12 @@ class BarraModel(object):
         else: self._QS_Logger = __QS_Logger__
         self.ModelType = "多因子风险模型"
         self.Name = name
-        if config_file is None: config_file = __QS_LibPath__+os.sep+"BarraModelConfig.py"
+        if config_file is None: config_file = f"{__QS_MainPath__}{os.sep}Risk{os.sep}RiskModel{os.sep}BarraModelConfig.py"
         ModulePath, ConfigModule = os.path.split(config_file)
         ConfigModule = ".".join(ConfigModule.split(".")[:-1])
-        self.Config = imp.load_module(config_file, *imp.find_module(ConfigModule, [ModulePath]))
+        ModuleSpec = importlib.util.spec_from_file_location(ConfigModule, ModulePath)
+        self.Config = importlib.util.module_from_spec(ModuleSpec)
+        ModuleSpec.loader.exec_module(self.Config)
         self.RiskESTDTs = []# 估计风险的时点序列
         self.RegressDTs = None# 进行截面回归的时点序列
         self.RiskDB = risk_db# 风险数据库

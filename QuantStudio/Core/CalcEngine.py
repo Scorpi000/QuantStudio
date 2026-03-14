@@ -10,6 +10,7 @@ from progressbar import ProgressBar
 
 from QuantStudio.Core import __QS_Object__, __QS_Error__
 from QuantStudio.Core.Node import Node, Context
+from QuantStudio.Core.QSObject import QSQueue
 
 
 class Engine(__QS_Object__):
@@ -106,7 +107,8 @@ class ParallelEngine(Engine):
         SplitedContext = context.split(nTask)
         SplitedFwdDataList = zip(*[(FwdData.split(nTask, context) if hasattr(FwdData, "split") else [FwdData] * nTask) for FwdData in fwd_data_list])
         if os.name=="nt":
-            Sub2MainQueue = self._MP_Manager.Queue()
+            # Sub2MainQueue = self._MP_Manager.Queue()
+            Sub2MainQueue = QSQueue()
         else:
             Sub2MainQueue = Queue()
         Procs = {}
