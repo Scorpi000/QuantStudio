@@ -8,8 +8,8 @@ from QuantStudio.Tools.AuxiliaryFun import getFactorList
 from QuantStudio.Tools.MathFun import CartesianProduct
 from QuantStudio import __QS_Error__, QSArgs
 from QuantStudio.BackTest.Strategy.Strategy import Strategy, Account
-from QuantStudio.RiskDataBase.RiskDB import RiskTable, FactorRT
-from QuantStudio.RiskModel.RiskModelFun import dropRiskMatrixNA
+from QuantStudio.Risk.RiskTable import RiskTable, FactorRT
+from QuantStudio.Risk.RiskModel.RiskModelFun import dropRiskMatrixNA
 
 # 信号数据格式: Series(权重, index=[ID]) 或者 None(表示无信号, 默认值)
 
