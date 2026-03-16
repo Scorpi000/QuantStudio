@@ -2,7 +2,7 @@
 import datetime as dt
 import base64
 from io import BytesIO
-from typing import Optional, Literal, List, Any
+from typing import Optional, Literal, List, Any, Tuple
 
 import numpy as np
 import pandas as pd
@@ -14,10 +14,11 @@ import statsmodels.api as sm
 from pydantic import Field
 
 from QuantStudio.Core import __QS_Error__
+from QuantStudio.Core.Node import DTInitData, DTLocalContext
 from QuantStudio.Core.QSObject import Panel
-from QuantStudio.Factor.Factor import Factor, FactorContext, FactorInitData
+from QuantStudio.Factor.Factor import Factor, FactorContext, FactorInitData, FactorLocalContext
 from QuantStudio.Factor.FactorOperation import PanelOperator, PanelOperation
-from QuantStudio.BackTest.BackTestModel import BTLocalContext, BTNode, BTInitData
+from QuantStudio.BackTest.BackTestModel import BTNode
 from QuantStudio.Tools.DataPreprocessingFun import prepareRegressData
 
 
@@ -251,7 +252,7 @@ class IC(BTNode):
     def __init__(self, ic: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
         super().__init__(deps=[ic], args=args, config_file=config_file, **kwargs)
     
-    def genMatplotlibFig(self, output, file_path=None):
+    def genMatplotlibFig(self, output:dict, file_path: Optional[str]=None) -> Figure:
         nRow, nCol = output["IC"].shape[1]//3+(output["IC"].shape[1]%3!=0), min(3, output["IC"].shape[1])
         Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         xData = np.arange(0, output["IC"].shape[0])
@@ -302,11 +303,14 @@ class IC(BTNode):
         HTML += ('<img src="%s">' % ImgStr)
         return HTML
 
-    def init_compute(self, path: List[str], init_data: BTInitData, context: FactorContext) -> List[FactorInitData]:
+    def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
-        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self.Deps[i].getID()) for i, iInitData in enumerate(InitData)]
+        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=None) for i, iInitData in enumerate(InitData)]
     
-    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[BTLocalContext]=None) -> dict:
+    def forward_compute(self, path: List[str], fwd_data: DTLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], DTLocalContext]:
+        return [FactorLocalContext(DTs=fwd_data.DTs, IDs=context.NodeState[iDep.QSID]["section_ids"], PIDs=context.PIDList) for iDep in self.Deps], DTLocalContext(DTs=fwd_data.DTs)
+    
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
         IC = bwd_data_list[0].dropna(how="all", axis=0)
         IC, Breadth = IC.map(lambda x: x[0] if pd.notnull(x) else np.nan), IC.map(lambda x: x[1] if pd.notnull(x) else np.nan)
         if self._QSArgs.FactorNameList:
@@ -349,7 +353,7 @@ class ICDecay(BTNode):
             if len(self._QSArgs.PeriodList) != ic_list:
                 raise __QS_Error__(f"指定的 PeriodList 的长度 {len(self._QSArgs.PeriodList)} 不等于 IC 因子的数量 {len(ic_list)}")
     
-    def genMatplotlibFig(self, output, file_path=None):
+    def genMatplotlibFig(self, output:dict, file_path: Optional[str]=None) -> Figure:
         Fig = Figure(figsize=(16, 8))
         xData = np.arange(0, output["统计数据"].shape[0])
         xTickLabels = [str(i) for i in output["统计数据"].index]
@@ -390,11 +394,14 @@ class ICDecay(BTNode):
             HTML += ('<img src="%s">' % ImgStr)
         return HTML
 
-    def init_compute(self, path: List[str], init_data: BTInitData, context: FactorContext) -> List[FactorInitData]:
+    def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
-        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self.Deps[i].getID()) for i, iInitData in enumerate(InitData)]
+        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=None) for i, iInitData in enumerate(InitData)]
     
-    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[BTLocalContext]=None) -> dict:
+    def forward_compute(self, path: List[str], fwd_data: DTLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], DTLocalContext]:
+        return [FactorLocalContext(DTs=fwd_data.DTs, IDs=context.NodeState[iDep.QSID]["section_ids"], PIDs=context.PIDList) for iDep in self.Deps], DTLocalContext(DTs=fwd_data.DTs)
+    
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
         if self._QSArgs.PeriodList:
             PeriodList = self._QSArgs.PeriodList
         else:

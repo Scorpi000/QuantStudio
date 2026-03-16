@@ -516,7 +516,7 @@ class Aggregate(SectionOperator):
 
     def __init__(self, aggr_func:Callable[[np.ndarray], Any]=np.nansum, descriptor_ids:Optional[List[str]]=None, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
         Arity = args.get("Arity", None) or 1
-        Args = {"Name": "aggregate"} | args | {"DataType": dtype, "DTMode": "单时点", "OuptutMode": "全截面"}
+        Args = {"Name": "aggregate"} | args | {"DataType": dtype, "DTMode": "单时点", "OutputMode": "全截面"}
         Args["ModelArgs"] = {"aggr_func": aggr_func, "dtype": dtype} | Args.get("ModelArgs", {})
         descriptor_ids = Args.get("DescriptorSection", [descriptor_ids])[0]
         Args["DescriptorSection"] = [descriptor_ids] * Arity
@@ -525,15 +525,15 @@ class Aggregate(SectionOperator):
     def calculate(self, f: Factor, idt: dt.datetime, iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
         nID = len(iid)
         FactorData = x[0]
-        if args["mask"]:
+        if f._QSArgs.ModelArgs["mask"]:
             Mask = (x[1]==1)
         else:
             Mask = np.full(FactorData.shape, fill_value=True)
         AggrFunc = args["aggr_func"]
-        if args["cat_data"]:
+        if f._QSArgs.ModelArgs["cat_data"]:
             CatData = x[-1]
             Rslt = np.full(shape=(nID, ), fill_value=np.nan)
-            if args["section_chged"]:
+            if f._QSArgs.ModelArgs["section_chged"]:
                 for i, iID in enumerate(iid):
                     iMask = ((CatData==iID) & Mask)
                     Rslt[i] = AggrFunc(FactorData[iMask])

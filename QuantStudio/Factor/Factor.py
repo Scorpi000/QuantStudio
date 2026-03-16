@@ -7,7 +7,7 @@ import pandas as pd
 from pydantic import Field
 
 from QuantStudio.Core import __QS_Error__, QSArgs
-from QuantStudio.Core.Node import Node, Context, LocalContext, __QS_Context__
+from QuantStudio.Core.Node import Node, Context, DTLocalContext, DTInitData, __QS_Context__
 from QuantStudio.Core.CalcEngine import __QS_Engine__, Engine
 from QuantStudio.Factor.FactorCache import FactorCache
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
@@ -15,6 +15,8 @@ from QuantStudio.Tools.AuxiliaryFun import partitionListMovingSampling, partitio
 
 
 class FactorContext(Context):
+    """因子节点运算时全局上下文对象"""
+
     # NodeDict: {节点ID: Factor}
     # NodeState: {节点ID: {"start_dt", "section_ids"}}
     # PID: str = Field(default="0", title="运行ID", description="当前的运行 ID, 默认为 '0'")
@@ -72,9 +74,10 @@ class FactorContext(Context):
             return self.NodeState[factor_id]["section_ids"]
 
 
-class FactorLocalContext(LocalContext):
-    DTs: List[dt.datetime]
-    IDs: List[str]
+class FactorLocalContext(DTLocalContext):
+    """因子节点运算时局部上下文对象"""
+
+    IDs: List[str] = Field(title="ID 序列")
     PIDs: Optional[List[str]] = Field(default=None)
     
     # 并发运行时切分自身成 n 份
@@ -84,8 +87,9 @@ class FactorLocalContext(LocalContext):
         return [self.__class__(**(Args | {"IDs": PIDIDs[iPID]})) for iPID in context.PIDList]
 
 
-class FactorInitData(QSArgs):
-    DTRange: Tuple[dt.datetime, dt.datetime] = Field(title="时点区间")
+class FactorInitData(DTInitData):
+    """因子节点初始化数据对象"""
+    
     SectionIDs: Optional[List[str]] = Field(default=None, title="截面ID")
     SubFactorName: Optional[str] = Field(default=None, title="因子名称", description="传递给因子表用于准备原始数据的因子名称")
 
@@ -160,9 +164,12 @@ class Factor(Node):
         Returns:
             ID 序列, 若为空 list, 表示该因子没有固定的 ID 序列或者无法获取
         """
+        if self._QSArgs.SectionIDs is not None: return self._QSArgs.SectionIDs
+        for iContext in reversed(__QS_Context__):
+            if hasattr(iContext, "SectionIDs") and (iContext.SectionIDs is not None): return iContext.SectionIDs
         if self._FactorTable is not None:
             return self._FactorTable.getID(ifactor_name=self._QSArgs.Name, idt=idt, **kwargs)
-        return self._QSArgs.SectionIDs
+        return []
 
     def getDateTime(self, iid:Optional[str]=None, start_dt:Optional[dt.datetime]=None, end_dt:Optional[dt.datetime]=None, **kwargs) -> List[dt.datetime]:
         """获取时点序列
@@ -278,7 +285,12 @@ class Factor(Node):
         else:
             FactorState["dt_range"] = (min(DTRange[0], init_data.DTRange[0]), max(DTRange[1], init_data.DTRange[1]))
         # 处理截面ID
-        InitSectionIDs = (init_data.SectionIDs if init_data.SectionIDs else context.DefaultSectionIDs)
+        if init_data.SectionIDs is not None:
+            InitSectionIDs = init_data.SectionIDs
+        elif self._QSArgs.SectionIDs is not None:
+            InitSectionIDs = self._QSArgs.SectionIDs
+        else:
+            InitSectionIDs = context.DefaultSectionIDs
         if "section_ids" in FactorState: SectionIDs = FactorState["section_ids"]
         elif self._QSArgs.SectionIDs: SectionIDs = self._QSArgs.SectionIDs
         else: SectionIDs = InitSectionIDs

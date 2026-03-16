@@ -2,7 +2,7 @@
 import datetime as dt
 import base64
 from io import BytesIO
-from typing import Optional, Literal, List, Any, Union, Tuple
+from typing import Optional, List, Any, Union, Tuple
 
 import numpy as np
 import pandas as pd
@@ -14,10 +14,11 @@ import matplotlib.dates as mdate
 
 from QuantStudio.Core import __QS_Error__
 from QuantStudio.Core.QSObject import Panel
+from QuantStudio.Core.Node import DTLocalContext, DTInitData
 import QuantStudio.Factor.FactorOperator as fo
 from QuantStudio.Factor.FactorOperation import PanelOperator, SectionOperator, PanelOperation, SectionOperation
-from QuantStudio.Factor.Factor import Factor, FactorInitData, FactorContext
-from QuantStudio.BackTest.BackTestModel import BTNode, BTLocalContext, BTInitData
+from QuantStudio.Factor.Factor import Factor, FactorInitData, FactorContext, FactorLocalContext
+from QuantStudio.BackTest.BackTestModel import BTNode
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 from QuantStudio.Tools.StrategyTestFun import calcMaxDrawdownRate, calcLSYield, backtestPortfolioStrategy
 from QuantStudio.Tools.DataPreprocessingFun import numpy_ffill
@@ -332,11 +333,14 @@ class MultiPortfolio(BTNode):
                 output["统计数据"].loc[iCol, "CAPM Alpha"] = np.nan
         return output
 
-    def init_compute(self, path: List[str], init_data: BTInitData, context: FactorContext) -> List[FactorInitData]:
+    def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
-        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self.Deps[i].getID()) for i, iInitData in enumerate(InitData)]
+        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=None) for i, iInitData in enumerate(InitData)]
     
-    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[BTLocalContext]=None) -> dict:
+    def forward_compute(self, path: List[str], fwd_data: DTLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], DTLocalContext]:
+        return [FactorLocalContext(DTs=fwd_data.DTs, IDs=context.NodeState[iDep.QSID]["section_ids"], PIDs=context.PIDList) for iDep in self.Deps], DTLocalContext(DTs=fwd_data.DTs)
+    
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
         nPortfolio = len(self._NVList)
         PortfolioNV = pd.DataFrame({i: BwdData.iloc[:, 0] for i, BwdData in enumerate(bwd_data_list[:nPortfolio])}).sort_index(axis=1)
         PortfolioNV.columns = self._PortfolioNameList[:nPortfolio]

@@ -9,9 +9,10 @@ plt.rcParams['font.sans-serif'] = ['SimHei']# 指定默认字体为微软雅黑
 plt.rcParams['axes.unicode_minus'] = False# 正确显示负号
 
 from QuantStudio.Core.CalcEngine import Engine, ParallelEngine
+from QuantStudio.Core.Node import DTInitData, DTLocalContext
 from QuantStudio.Factor.Factor import DataFactor, FactorContext, FactorLocalContext, FactorInitData
 from QuantStudio.Factor.FactorCache import FeatherFactorCache
-from QuantStudio.BackTest.BackTestModel import BTInitData, BTLocalContext, BTReport
+from QuantStudio.BackTest.BackTestModel import BTReport
 from QuantStudio.BackTest.SectionFactor.IC import CalcIC, IC, ICDecay
 from QuantStudio.BackTest.SectionFactor.Portfolio import makeQuantilePortfolio, MultiPortfolio, CalcPortfolioNV
 from QuantStudio.BackTest.SectionFactor.Correlation import CalcFactorTurnover, FactorTurnover, CalcSectionCorrelation, SectionCorrelation
@@ -56,8 +57,8 @@ if __name__=="__main__":
         FactorDataCache=Cache
     )
     NodeList = [QuantilePortfolioNode]
-    FwdDataList = [BTLocalContext(DTs=DTs)]
-    InitDataList = [BTInitData(DTRange=(DTs[0], DTs[-1]))]
+    FwdDataList = [DTLocalContext(DTs=DTs)]
+    InitDataList = [DTInitData(DTRange=(DTs[0], DTs[-1]))]
     Rslt = ExecEngine.run(NodeList, Context, fwd_data_list=FwdDataList, init_data_list=InitDataList)
 
     print(Rslt[0])
@@ -114,8 +115,8 @@ if __name__ == "__main__1":
     )
     NodeList = [ICModule, ICDecayModule, QuantilePortfolioModule, FactorTurnoverModule, SectionCorrelationModule, FamaMacBethModule]
     Report = BTReport(bt_node_list=NodeList)
-    FwdDataList = [BTLocalContext(DTs=DTs)]
-    InitDataList = [BTInitData(DTRange=(DTs[0], DTs[-1]))]
+    FwdDataList = [DTLocalContext(DTs=DTs)]
+    InitDataList = [DTInitData(DTRange=(DTs[0], DTs[-1]))]
     Rslt = ExecEngine.run([Report], Context, fwd_data_list=FwdDataList, init_data_list=InitDataList)
     
     Output = Rslt[0]
@@ -204,6 +205,6 @@ if __name__=="__main__1":
             FactorDataCache=Cache
         ) as Context:
             with Engine() as ExecEngine:
-                Output, = ExecEngine.run([Report], Context, fwd_data_list=[BTLocalContext(DTs=TestDTs)], init_data_list=[BTInitData(DTRange=(TestDTs[0], TestDTs[-1]))])
+                Output, = ExecEngine.run([Report], Context, fwd_data_list=[DTLocalContext(DTs=TestDTs)], init_data_list=[DTInitData(DTRange=(TestDTs[0], TestDTs[-1]))])
 
     print(Output["Report"])

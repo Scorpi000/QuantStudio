@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import datetime as dt
 from typing import Any, List, Optional, Dict, Tuple, Literal
 
 from pydantic import Field, ConfigDict
@@ -11,6 +12,8 @@ __QS_Context__ = []
 
 
 class Context(QSArgs):
+    """节点运算时全局上下文对象"""
+
     Mode: Literal["PRD", "DEBUG"] = Field(default="PRD", title="运行模式")
     NodeDict: Dict[str, "Node"] = Field(default={}, title="节点集", description="{节点ID: Node}, 本次运算的所有 Node, 由计算引擎生成")
     NodeState: Dict[str, Any] = Field(default={}, title="节点状态", description="{节点ID: Any}, 运算中用于存储节点的临时数据，由节点生成和维护")
@@ -44,11 +47,25 @@ class Context(QSArgs):
 
 
 class LocalContext(QSArgs):
+    """节点运算时局部上下文对象"""
+
     ExtraData: dict = Field(default={}, title="其他数据")
     
     # 并发运行时切分自身成 n 份
     def split(self, n: int, context: Context, **kwargs):
         return [self] * n
+
+
+class DTLocalContext(LocalContext):
+    """时序运算类节点运算时局部上下文对象"""
+
+    DTs: List[dt.datetime] = Field(title="时点序列")
+
+
+class DTInitData(QSArgs):
+    """时序运算类节点初始化数据对象"""
+    
+    DTRange: Tuple[dt.datetime, dt.datetime] = Field(title="时点区间")
 
 
 class Node(__QS_Object__):

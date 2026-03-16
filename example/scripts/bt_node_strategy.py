@@ -1,19 +1,18 @@
-import webbrowser
 import datetime as dt
 
 import numpy as np
 import pandas as pd
-from lxml import etree
 import matplotlib.pyplot as plt
 plt.rcParams['font.sans-serif'] = ['SimHei']# 指定默认字体为微软雅黑
 plt.rcParams['axes.unicode_minus'] = False# 正确显示负号
 
 from QuantStudio.Core.CalcEngine import Engine, ParallelEngine
+from QuantStudio.Core.Node import DTLocalContext, DTInitData
 from QuantStudio.Factor.Factor import DataFactor, FactorContext, FactorLocalContext, FactorInitData
 from QuantStudio.Factor.FactorCache import FeatherFactorCache
 import QuantStudio.Factor.FactorOperator as fo
-from QuantStudio.BackTest.BackTestModel import BTInitData, BTLocalContext, BTReport
-from QuantStudio.BackTest.Strategy.Strategy import CalcSimpleAccount, PortfolioSignal2Order
+from QuantStudio.BackTest.BackTestModel import BTReport
+from QuantStudio.BackTest.Strategy.Strategy import CalcSimpleAccount, AccountReport
 from QuantStudio.BackTest.SectionFactor.Portfolio import CalcPortfolioNV
 from QuantStudio.Tools.DateTimeFun import getNaturalDay, getMonthLastDateTime
 
@@ -35,20 +34,22 @@ if __name__=="__main__":
     Factor2 = DataFactor(data=pd.DataFrame(np.random.randn(len(DTRuler), len(SectionIDs)), index=DTRuler, columns=SectionIDs), args={"Name": "Factor2"})
     Weight = DataFactor(data=pd.DataFrame(np.random.rand(len(DTRuler), len(SectionIDs)), index=DTRuler, columns=SectionIDs), args={"Name": "Weight"})
 
-    InitAccount = DataFactor(data=(1e6, 0, 0, 0), args={"Name": "InitAccount"})
+    InitCash = 1e6
+    InitAccount = DataFactor(data=(InitCash, 0, 0, 0), args={"Name": "InitAccount"})
     PortfolioSignal = (np.random.randn(len(DTRuler), len(SectionIDs)) > 0).astype(float)
     PortfolioSignal = DataFactor(data=pd.DataFrame(PortfolioSignal / np.sum(PortfolioSignal, axis=1, keepdims=True), index=DTRuler, columns=SectionIDs), args={"Name": "Signal"})
     Account = CalcSimpleAccount(signal_type="目标权重", start_dt=DTs[0])(init_account=InitAccount, last_price=Price, signal=PortfolioSignal)
     StrategyAmt = fo.Fetch(pos=2, dtype="double")(Account)
 
-    StrategyNV = CalcPortfolioNV(start_dt=DTs[0], descriptor_ids=SectionIDs)(PortfolioSignal, price=Price, init_nv=1e6)
+    StrategyNV = CalcPortfolioNV(start_dt=DTs[0], descriptor_ids=SectionIDs)(PortfolioSignal, price=Price, init_nv=InitCash)
 
+    StrategyReport = AccountReport(account=Account, bmk_nv=StrategyNV, args={"InitCash": InitCash, "GenReport": True})
 
     PIDList = ["0"]
     ExecEngine = Engine()
     # PIDList = ["0-0", "0-1"]
     # ExecEngine = ParallelEngine()
-    Cache = FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "PIDs": PIDList, "CacheDir": r"C:\Users\hst\Project\Data\DevCache", "StartMode": "new"})
+    Cache = FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "PIDs": PIDList, "CacheDir": "/mnt/d/Data/Cache/DevCache", "StartMode": "new"})
     Cache.start()
     Context = FactorContext(
         PID="0",
@@ -57,7 +58,7 @@ if __name__=="__main__":
         DefaultSectionIDs=SectionIDs,
         FactorDataCache=Cache
     )
-    NodeList = [PortfolioSignal, Account, StrategyAmt, StrategyNV]
+    NodeList = [PortfolioSignal, Account, StrategyAmt, StrategyNV, StrategyReport]
     FwdDataList = [FactorLocalContext(DTs=DTs, IDs=IDs)] * len(NodeList)
     InitDataList = [FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=SectionIDs)] * len(NodeList)
     Rslt = ExecEngine.run(NodeList, Context, fwd_data_list=FwdDataList, init_data_list=InitDataList)

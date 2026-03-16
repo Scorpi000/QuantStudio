@@ -3,7 +3,7 @@ import base64
 from io import BytesIO
 import datetime as dt
 from itertools import combinations
-from typing import Literal, Optional, List, Any
+from typing import Literal, Optional, List, Any, Tuple
 
 import numpy as np
 import pandas as pd
@@ -13,9 +13,10 @@ from matplotlib.ticker import FuncFormatter
 import matplotlib.dates as mdate
 
 from QuantStudio.Core import __QS_Error__
-from QuantStudio.Factor.Factor import Factor, FactorContext, FactorInitData
+from QuantStudio.Core.Node import DTLocalContext, DTInitData
+from QuantStudio.Factor.Factor import Factor, FactorContext, FactorInitData, FactorLocalContext
 from QuantStudio.Factor.FactorOperation import PanelOperator, SectionOperator, PanelOperation, SectionOperation
-from QuantStudio.BackTest.BackTestModel import BTLocalContext, BTNode, BTInitData
+from QuantStudio.BackTest.BackTestModel import BTNode
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 
 
@@ -113,11 +114,14 @@ class SectionCorrelation(BTNode):
         HTML += '<div align="left" style="font-size:1em"><strong>平均相关性</strong></div>' + iHTML
         return HTML
 
-    def init_compute(self, path: List[str], init_data: BTInitData, context: FactorContext) -> List[FactorInitData]:
+    def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
-        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self.Deps[i].getID()) for i, iInitData in enumerate(InitData)]
+        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=None) for i, iInitData in enumerate(InitData)]
     
-    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[BTLocalContext]=None) -> dict:
+    def forward_compute(self, path: List[str], fwd_data: DTLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], DTLocalContext]:
+        return [FactorLocalContext(DTs=fwd_data.DTs, IDs=context.NodeState[iDep.QSID]["section_ids"], PIDs=context.PIDList) for iDep in self.Deps], DTLocalContext(DTs=fwd_data.DTs)
+    
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
         Corr = bwd_data_list[0]
         SectionIDs = self.Deps[0].getID()
         if not SectionIDs: SectionIDs = Corr.columns.tolist()
@@ -264,11 +268,14 @@ class FactorTurnover(BTNode):
         HTML += ('<img src="%s">' % ImgStr)
         return HTML
 
-    def init_compute(self, path: List[str], init_data: BTInitData, context: FactorContext) -> List[FactorInitData]:
+    def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
-        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self.Deps[i].getID()) for i, iInitData in enumerate(InitData)]
+        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=None) for i, iInitData in enumerate(InitData)]
     
-    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[BTLocalContext]=None) -> dict:
+    def forward_compute(self, path: List[str], fwd_data: DTLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], DTLocalContext]:
+        return [FactorLocalContext(DTs=fwd_data.DTs, IDs=context.NodeState[iDep.QSID]["section_ids"], PIDs=context.PIDList) for iDep in self.Deps], DTLocalContext(DTs=fwd_data.DTs)
+    
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
         FactorTurnover = bwd_data_list[0]
         if self._QSArgs.FactorNameList:
             FactorNameList = self._QSArgs.FactorNameList
