@@ -25,14 +25,14 @@ def _QS_formatMatplotlibPercentage(x, pos):
 _QS_MinPositionNum = 1e-8# 会被忽略掉的最小持仓数量
 _QS_MinCash = 1e-8# 会被忽略掉的最小现金量
 
-class CalcSimpleAccount(PanelOperator):
-    """简单账户计算算子"""
+class MakeAccount(PanelOperator):
+    """账户创建算子"""
 
     class __QS_ArgClass__(PanelOperator.__QS_ArgClass__):
         Arity: Optional[int] = Field(default=None, ge=3, title="入参数", frozen=True)
 
     def __init__(self, init_cash:float=1e6, signal_type:Literal["买卖数量", "目标权重"]="买卖数量", short_allowed:bool=False, start_dt:Optional[dt.datetime]=None, args:dict = {}, config_file:Optional[str] = None, **kwargs):
-        """初始化简单账户计算算子
+        """初始化账户创建算子
 
         Args:
             init_cash: 初始资金
@@ -41,7 +41,7 @@ class CalcSimpleAccount(PanelOperator):
             start_dt: 净值开始日, 如果为 None, 表示从计算的第一个时点开始
         """
         Arity = args.get("Arity", None) or 3
-        Args = {"Name": "calcSimpleAccount"} | args | {"DTMode": "单时点", "OutputMode": "全截面", "DataType": "object", "iInitFactor": 0}
+        Args = {"Name": "makeAccount"} | args | {"DTMode": "单时点", "OutputMode": "全截面", "DataType": "object", "iInitFactor": 0}
         Args["ModelArgs"] = {"init_cash": init_cash, "short_allowed": short_allowed, "signal_type": signal_type} | Args.get("ModelArgs", {})
         Args["DescriptorSection"] = [Args.get("DescriptorSection", [None])[0]] * Arity
         Args["LookBack"] = [1, 0, 0] + [0] * max(0, Arity - 3)
@@ -328,7 +328,7 @@ class AccountReport(BTNode):
     def genReport(self, output:dict) -> str:
         HTML = "参数设置: "
         HTML += '<ul align="left">'
-        if isinstance(getattr(self.Deps[0], "Operator", None), CalcSimpleAccount):
+        if isinstance(getattr(self.Deps[0], "Operator", None), MakeAccount):
             ModelArgs = self.Deps[0].Operator._QSArgs.ModelArgs
             HTML += f"<li>信号类型: {ModelArgs['signal_type']}</li>"
             HTML += f"<li>允许卖空: {ModelArgs['short_allowed']}</li>"
@@ -393,3 +393,94 @@ class AccountReport(BTNode):
             Output["统计数据"] = pd.merge(Output["统计数据"], BenchmarkStatistics, left_index=True, right_index=True)
         if self._QSArgs.GenReport: Output["Report"] = self.genReport(Output)
         return Output
+
+
+class MakeStrategy(MakeAccount):
+    """策略创建算子"""
+
+    class __QS_ArgClass__(MakeAccount.__QS_ArgClass__):
+        Arity: Optional[int] = Field(default=None, ge=2, title="入参数", frozen=True)
+
+    def __init__(self, init_cash:float=1e6, signal_type:Literal["买卖数量", "目标权重"]="买卖数量", short_allowed:bool=False, start_dt:Optional[dt.datetime]=None, args:dict = {}, config_file:Optional[str] = None, **kwargs):
+        """初始化策略创建算子
+
+        Args:
+            init_cash: 初始资金
+            signal_type: 信号类型
+            short_allowed: 是否允许卖空
+            start_dt: 净值开始日, 如果为 None, 表示从计算的第一个时点开始
+        """
+        Arity = args.get("Arity", None) or 2
+        Args = {"Name": "makeStrategy"} | args | {"DTMode": "单时点", "OutputMode": "全截面", "DataType": "object", "iInitFactor": 0}
+        Args["ModelArgs"] = {"init_cash": init_cash, "short_allowed": short_allowed, "signal_type": signal_type} | Args.get("ModelArgs", {})
+        Args["DescriptorSection"] = [Args.get("DescriptorSection", [None])[0]] * Arity
+        Args["LookBack"] = [1, 0] + [0] * max(0, Arity - 2)
+        Args["LookBackMode"] = ["扩张窗口"] + ["滚动窗口"] * max(0, Arity - 1)
+        Args["StartDT"] = [start_dt] + [None] * max(0, Arity - 1)
+        Args["CompoundType"] = [("Cash", float), ("Position", float), ("Amount", float), ("Turnover", float)]
+        return super(MakeAccount, self).__init__(args=Args, config_file=config_file, **kwargs)
+
+    # 可选实现
+    def genSignal(self, f, idt, ids, x, last_price, cash, position_num):
+        return None
+
+    def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
+        LastAccount = x[0].astype(self._QSArgs.CompoundType)[0]
+        Cash, PositionNum = LastAccount["Cash"][0], LastAccount["Position"]
+        LastPrice = x[1][0].copy()
+        nX = f._QSArgs.ModelArgs["x_len"]
+        Signal = self.genSignal(f, idt[-1], np.array(iid), LastPrice, x[2:2+nX], Cash, PositionNum)
+        if (Signal is None) or (not np.any(np.abs(Signal) > 0)):# 没有交易信号
+            Rslt = np.array([np.full(shape=PositionNum.shape, fill_value=Cash), PositionNum, PositionNum * LastPrice, np.zeros_like(PositionNum)]).T
+            return unstructured_to_structured(Rslt, dtype=np.dtype(self._QSArgs.CompoundType)).astype("O")
+        return MakeAccount.calculate(self, f=f, idt=idt, iid=iid, x=[x[0], x[1], np.array([Signal])] + x[2+nX:], args=args)
+
+    def __call__(self, *x:Factor, last_price: Factor, init_account: Optional[Factor]=None, 
+        buy_price: Optional[Factor]=None, buy_limit: Optional[Factor]=None, buy_fee: float | Factor=0, buy_amt_limit: Optional[Factor]=None,
+        sell_price: Optional[Factor]=None, sell_limit: Optional[Factor]=None, sell_fee: float | Factor=0, sell_amt_limit: Optional[Factor]=None,
+        factor_args:dict={}, **kwargs
+    ) -> PanelOperation:
+        """将算子作用在若干个因子对象上以产生策略因子
+
+        Args:
+            last_price: 最新价因子
+            x: 策略依赖的因子
+            init_account: 初始账户因子, 复合因子, [("Cash", float), ("Position", float), ("Amount", float), ("Turnover", float)], None 表示使用算子创建时提供的初始资金创建该因子
+            buy_price: 买入成交价因子
+            buy_limit: 禁止买入条件因子, 该因子值等于 1 的 ID 禁止买入
+            buy_fee: 买入交易费率因子
+            buy_amt_limit: 买入成交额限制因子, 该期买入额不能超过该因子值
+            sell_price: 卖出成交价因子
+            sell_limit: 禁止卖出条件因子, 该因子值等于 1 的 ID 禁止卖出
+            sell_fee: 卖出交易费率因子
+            sell_amt_limit: 卖出成交额限制因子, 该期卖出额不能超过该因子值
+            factor_args: 创建 IC 因子时传递个它的参数集
+            kwargs: 创建 IC 因子时传递给它的其他入参
+
+        Returns:
+            策略因子
+        """
+        if init_account is None: init_account = DataFactor(data=(self._QSArgs.ModelArgs["init_cash"], 0, 0, 0), args={"Name": "InitAccount"})
+        Factors = [init_account, last_price, *x]
+        if buy_price is not None: Factors.append(buy_price)
+        if buy_limit is not None: Factors.append(buy_limit)
+        if buy_fee is not None: Factors.append(buy_fee)
+        if buy_amt_limit is not None: Factors.append(buy_amt_limit)
+        if sell_price is not None: Factors.append(sell_price)
+        if sell_limit is not None: Factors.append(sell_limit)
+        if sell_fee is not None: Factors.append(sell_fee)
+        if sell_amt_limit is not None: Factors.append(sell_amt_limit)
+        ModelArgs = {
+            "x_len": len(x),
+            "target_price": False,
+            "buy_price": (buy_price is not None), 
+            "buy_limit": (buy_limit is not None),
+            "buy_fee": (buy_fee is not None),
+            "buy_amt_limit": (buy_amt_limit is not None),
+            "sell_price": (sell_price is not None),
+            "sell_limit": (sell_limit is not None),
+            "sell_fee": (sell_fee is not None),
+            "sell_amt_limit": (sell_amt_limit is not None)
+        }
+        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | ModelArgs
+        return super(MakeAccount, self).__call__(*Factors, factor_args=factor_args, **kwargs)
