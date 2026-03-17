@@ -70,8 +70,9 @@ class DTInitData(QSArgs):
 
 class Node(__QS_Object__):
     """计算图中的节点, 独立的计算单元"""
+
     class __QS_ArgClass__(QSArgs):
-        Name: str = Field(frozen=True, title="名称")
+        Name: str = Field(default="Node", frozen=True, title="名称")
 
     def __init__(self, deps:List["Node"]=[], args:dict={}, config_file:Optional[str]=None, **kwargs):
         """实例化计算节点
@@ -84,7 +85,7 @@ class Node(__QS_Object__):
                 logger: 日志对象, 用于内部打印日志, 如果没有指定则使用默认的 __QS_Logger__ 对象
         """
         self.Deps = deps
-        if "Name" not in args: args = args | {"Name": self.__class__.__name__}
+        if deps: kwargs.setdefault("logger", deps[0]._QS_Logger)
         return super().__init__(args=args, config_file=config_file, **kwargs)
     
     @property

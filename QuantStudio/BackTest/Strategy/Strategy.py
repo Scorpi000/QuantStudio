@@ -26,17 +26,26 @@ _QS_MinPositionNum = 1e-8# 会被忽略掉的最小持仓数量
 _QS_MinCash = 1e-8# 会被忽略掉的最小现金量
 
 class MakeAccount(PanelOperator):
-    """账户创建算子"""
+    """账户创建算子
+    账户因子为复合因子, 由以下子因子组成：
+        * Cash: 剩余现金
+        * Position: 持仓数量
+        * Amount: 持仓金额
+        * Signal: 交易信号
+        * TradeNum: 交易数量, 正值表示买入, 负值表示卖出
+        * TradePrice: 平均成交价
+        * Fee: 交易费用
+    """
 
     class __QS_ArgClass__(PanelOperator.__QS_ArgClass__):
         Arity: Optional[int] = Field(default=None, ge=3, title="入参数", frozen=True)
 
-    def __init__(self, init_cash:float=1e6, signal_type:Literal["买卖数量", "目标权重"]="买卖数量", short_allowed:bool=False, start_dt:Optional[dt.datetime]=None, args:dict = {}, config_file:Optional[str] = None, **kwargs):
+    def __init__(self, signal_type:Literal["买卖数量", "目标权重"]="目标权重", init_cash:float=1e6, short_allowed:bool=False, start_dt:Optional[dt.datetime]=None, args:dict = {}, config_file:Optional[str] = None, **kwargs):
         """初始化账户创建算子
 
         Args:
-            init_cash: 初始资金
             signal_type: 信号类型
+            init_cash: 初始资金
             short_allowed: 是否允许卖空
             start_dt: 净值开始日, 如果为 None, 表示从计算的第一个时点开始
         """
@@ -47,7 +56,7 @@ class MakeAccount(PanelOperator):
         Args["LookBack"] = [1, 0, 0] + [0] * max(0, Arity - 3)
         Args["LookBackMode"] = ["扩张窗口"] + ["滚动窗口"] * max(0, Arity - 1)
         Args["StartDT"] = [start_dt] + [None] * max(0, Arity - 1)
-        Args["CompoundType"] = [("Cash", float), ("Position", float), ("Amount", float), ("Turnover", float)]
+        Args["CompoundType"] = [("Cash", "double"), ("Position", "double"), ("Amount", "double"), ("Signal", "double"), ("TradeNum", "double"), ("TradePrice", "double"), ("Fee", "double")]
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
     # 更新交易限制条件
@@ -70,22 +79,15 @@ class MakeAccount(PanelOperator):
     # 撮合成交市价单
     # 以成交价完成成交, 满足交易限制要求
     # 未成交的市价单自动撤销
-    def _matchMarketOrder(self, available_cash, position_num, ids, order_num, buy_price, buy_vol_limit, buy_fee, sell_price, sell_vol_limit, sell_fee):
+    def _matchMarketOrder(self, available_cash, position_num, order_num, buy_price, buy_vol_limit, buy_fee, sell_price, sell_vol_limit, sell_fee):
         order_num = np.clip(order_num, a_max=buy_vol_limit, a_min=-sell_vol_limit)# 过滤限制条件
         # 先执行卖出交易
         SellAmounts = np.abs(np.clip(sell_price * order_num, a_min=None, a_max=0))
-        Fees = SellAmounts * sell_fee# 卖出交易费
-        CashChanged = SellAmounts - Fees
+        SellFees = SellAmounts * sell_fee# 卖出交易费
+        CashChanged = SellAmounts - SellFees
         Mask = (SellAmounts > 0)
         SellNums = np.clip(order_num, a_min=None, a_max=0)
-        SellTradingRecord = {
-            "ID": ids[Mask],
-            "Num": SellNums[Mask],
-            "Price": sell_price[Mask],
-            "Fee": Fees[Mask],
-            "CashChanged": CashChanged[Mask],
-            "Direction": ["sell"] * np.sum(Mask)
-        }
+        TradeNum, TradePrice, Fee = np.where(Mask, SellNums, 0), np.where(Mask, sell_price, np.nan), np.where(Mask, SellFees, 0)
         # 再执行买入交易
         BuyAmounts = np.clip(buy_price * order_num, a_min=0, a_max=None)
         CashAcquired = BuyAmounts * (1 + buy_fee)
@@ -94,41 +96,34 @@ class MakeAccount(PanelOperator):
             AvailableCash = available_cash + np.nansum(CashChanged)
             CashAllocated = min(AvailableCash, TotalCashAcquired) * CashAcquired / TotalCashAcquired
             BuyAmounts = CashAllocated / (1 + buy_fee)
-            Fees = BuyAmounts * buy_fee
+            BuyFees = BuyAmounts * buy_fee
             BuyNums = BuyAmounts / buy_price
             Mask = (BuyAmounts > 0)
-            BuyTradingRecord = {
-                "ID": ids[Mask],
-                "Num": BuyNums[Mask],
-                "Price": buy_price[Mask],
-                "Fee": Fees[Mask],
-                "CashChanged": - CashAllocated[Mask],
-                "Direction": ["buy"] * np.sum(Mask)
-            }
+            TradeNum, TradePrice, Fee = np.where(Mask, BuyNums, TradeNum), np.where(Mask, buy_price, TradePrice), np.where(Mask, BuyFees, Fee)
         else:
             CashAllocated = BuyNums = np.zeros(shape=BuyAmounts.shape)
         # 更新持仓数量和现金
         PositionNum = position_num.copy()
-        TotalAmount = np.nansum(buy_price * np.clip(PositionNum, a_min=None, a_max=0) + sell_price * np.clip(PositionNum, a_min=0, a_max=None))
-        Turnover = (np.nansum(SellAmounts) + np.nansum(BuyAmounts)) / (TotalAmount + available_cash)
+        # TotalAmount = np.nansum(buy_price * np.clip(PositionNum, a_min=None, a_max=0) + sell_price * np.clip(PositionNum, a_min=0, a_max=None))
+        # Turnover = (np.nansum(SellAmounts) + np.nansum(BuyAmounts)) / (TotalAmount + available_cash)
         PositionNum = PositionNum + BuyNums + SellNums
         Cash = available_cash + np.nansum(CashChanged) - np.nansum(CashAllocated)
-        return Cash, PositionNum, Turnover, BuyTradingRecord, SellTradingRecord
+        return Cash, PositionNum, TradeNum, TradePrice, Fee
 
     # 目标权重信号转买卖数量
     def _TargetWeightSignal2OrderNum(self, signal:np.ndarray, price:np.ndarray, cash:float, position_amt:np.ndarray) -> np.ndarray:
         AccountValue = abs(cash + np.nansum(position_amt))
         NaMask = pd.isnull(signal)
         if np.all(NaMask): return np.full_like(signal, np.nan)
-        return (signal * AccountValue - position_amt) / price
+        return (np.where(NaMask, 0, signal) * AccountValue - np.where(pd.isnull(position_amt), 0, position_amt)) / price
 
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
         ModelArgs = f._QSArgs.ModelArgs
-        LastAccount = x[0].astype(self._QSArgs.CompoundType)[0]
+        LastAccount = x[0].astype(self._QSArgs.CompoundType)[-2]
         Cash, PositionNum = LastAccount["Cash"][0], LastAccount["Position"]
         LastPrice, Signal = x[1][0], x[2][0]
-        if not np.any(np.abs(Signal) > 0):# 没有交易信号
-            Rslt = np.array([np.full(shape=PositionNum.shape, fill_value=Cash), PositionNum, PositionNum * LastPrice, np.zeros_like(PositionNum)]).T
+        if np.all(pd.isnull(Signal)):# 没有交易信号
+            Rslt = np.array([np.full_like(PositionNum, Cash), PositionNum, PositionNum * LastPrice, Signal, np.zeros_like(PositionNum), np.full_like(PositionNum, np.nan), np.zeros_like(PositionNum)]).T
             return unstructured_to_structured(Rslt, dtype=np.dtype(self._QSArgs.CompoundType)).astype("O")
         if self._QSArgs.ModelArgs["signal_type"]=="买卖数量":
             OrderNum = Signal
@@ -147,13 +142,10 @@ class MakeAccount(PanelOperator):
         SellAmtLimit, x = (x[0][0], x[1:]) if ModelArgs["sell_amt_limit"] else (None, x)
         # 撮合成交
         BuyVolLimit, SellVolLimit = self._getTradeLimit(PositionNum, LastPrice, BuyPrice, BuyLimit, BuyAmtLimit, SellPrice, SellLimit, SellAmtLimit)
-        Cash, PositionNum, Turnover, BuyTradingRecord, SellTradingRecord = self._matchMarketOrder(Cash, PositionNum, np.array(iid), OrderNum, BuyPrice, BuyVolLimit, BuyFee, SellPrice, SellVolLimit, SellFee)
+        Cash, PositionNum, TradeNum, TradePrice, Fee = self._matchMarketOrder(Cash, PositionNum, OrderNum, BuyPrice, BuyVolLimit, BuyFee, SellPrice, SellVolLimit, SellFee)
         PositionNum[np.abs(PositionNum) < _QS_MinPositionNum] = 0
         if abs(Cash) < _QS_MinCash: Cash = 0
-        BuyTradingRecord, SellTradingRecord = pd.DataFrame(BuyTradingRecord), pd.DataFrame(SellTradingRecord)
-        SellTradingRecord["trading_dt"] = BuyTradingRecord["trading_dt"] = idt[-1]
-        f.UserData["TradingRecord"] = pd.concat([f.UserData.get("TradingRecord", pd.DataFrame()), SellTradingRecord, BuyTradingRecord])
-        Rslt = np.array([np.full_like(PositionNum, Cash), PositionNum, PositionNum * LastPrice, np.full_like(PositionNum, Turnover)]).T
+        Rslt = np.array([np.full_like(PositionNum, Cash), PositionNum, PositionNum * LastPrice, Signal, TradeNum, TradePrice, Fee]).T
         return unstructured_to_structured(Rslt, dtype=np.dtype(self._QSArgs.CompoundType)).astype("O")
 
     def __call__(self, last_price: Factor, signal: Factor, target_price: Optional[Factor]=None, init_account: Optional[Factor]=None, 
@@ -182,7 +174,7 @@ class MakeAccount(PanelOperator):
         Returns:
             简单账户因子
         """
-        if init_account is None: init_account = DataFactor(data=(self._QSArgs.ModelArgs["init_cash"], 0, 0, 0), args={"Name": "InitAccount"})
+        if init_account is None: init_account = DataFactor(data=(self._QSArgs.ModelArgs["init_cash"], 0, 0, np.nan, 0, np.nan, 0), args={"Name": "InitAccount"})
         Factors = [init_account, last_price, signal]
         if target_price is not None: Factors.append(target_price)
         if buy_price is not None: Factors.append(buy_price)
@@ -205,6 +197,7 @@ class MakeAccount(PanelOperator):
             "sell_amt_limit": (sell_amt_limit is not None)
         }
         factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | ModelArgs
+        kwargs["operator_kwargs"] =  {"start_dt": self._QSArgs.StartDT[0]} | kwargs.get("operator_kwargs", {})
         return super().__call__(*Factors, factor_args=factor_args, **kwargs)
 
 
@@ -260,7 +253,6 @@ class AccountReport(BTNode):
     
     class __QS_ArgClass__(BTNode.__QS_ArgClass__):
         Name: str = Field(default="账户报告", frozen=True, title="名称")
-        InitCash: Optional[float] = Field(default=None, frozen=True, title="初始资金")
         RiskFreeRate: float = Field(default=0, frozen=True, title="无风险利率")
         RebalanceDTs: Optional[List[dt.datetime]] = Field(default=None, title="再平衡时点", frozen=True)
     
@@ -328,12 +320,11 @@ class AccountReport(BTNode):
     def genReport(self, output:dict) -> str:
         HTML = "参数设置: "
         HTML += '<ul align="left">'
+        HTML += f"<li>初始资金: {output['初始资金']}</li>"
         if isinstance(getattr(self.Deps[0], "Operator", None), MakeAccount):
             ModelArgs = self.Deps[0].Operator._QSArgs.ModelArgs
             HTML += f"<li>信号类型: {ModelArgs['signal_type']}</li>"
             HTML += f"<li>允许卖空: {ModelArgs['short_allowed']}</li>"
-        if self._QSArgs.InitCash is not None:
-            HTML += f"<li>初始资金: {self._QSArgs.InitCash}</li>"
         HTML += f"<li>无风险利率: {self._QSArgs.RiskFreeRate}</li>"
         HTML += "</ul>"
         HTML = formatStrategySummary(output["统计数据"]).to_html()
@@ -351,22 +342,37 @@ class AccountReport(BTNode):
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
-        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=None) for i, iInitData in enumerate(InitData)]
+        DTRuler = context.DTRuler
+        NodeState = context.NodeState.setdefault(self.QSID, {})
+        StartDT, EndDT = NodeState["dt_range"]
+        StartIdx = np.searchsorted(DTRuler, StartDT, side="left") - 1
+        return [FactorInitData(DTRange=(DTRuler[StartIdx], EndDT), SectionIDs=None)] + [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=None) for iInitData in InitData[1:]]
     
     def forward_compute(self, path: List[str], fwd_data: DTLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], DTLocalContext]:
-        return [FactorLocalContext(DTs=fwd_data.DTs, IDs=context.NodeState[iDep.QSID]["section_ids"], PIDs=context.PIDList) for iDep in self.Deps], DTLocalContext(DTs=fwd_data.DTs)
+        DTRuler = context.DTRuler
+        StartIdx, EndIdx = max(0, DTRuler.index(fwd_data.DTs[0]) - 1), DTRuler.index(fwd_data.DTs[-1])
+        FwdData =  [FactorLocalContext(DTs=DTRuler[StartIdx: EndIdx + 1], IDs=context.NodeState[self.Deps[0].QSID]["section_ids"], PIDs=context.PIDList)]
+        FwdData += [FactorLocalContext(DTs=fwd_data.DTs, IDs=context.NodeState[iDep.QSID]["section_ids"], PIDs=context.PIDList) for iDep in self.Deps[1:]]
+        return FwdData, DTLocalContext(DTs=fwd_data.DTs)
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
-        Account = bwd_data_list[0].dropna(how="all", axis=0)
-        CashSeries, PositionNum, PositionAmt, Turnover = Account.map(lambda x: x[0] if pd.notnull(x) else np.nan), Account.map(lambda x: x[1] if pd.notnull(x) else np.nan), Account.map(lambda x: x[2] if pd.notnull(x) else np.nan), Account.map(lambda x: x[3] if pd.notnull(x) else np.nan)
-        CashSeries = CashSeries.iloc[:, 0]
+        InitCash = bwd_data_list[0].iloc[0, 0][0] + bwd_data_list[0].iloc[0].apply(lambda x: x[2] if pd.notnull(x) else 0).sum()
+        Account = bwd_data_list[0].reindex(index=local_context.DTs)
+        Index, Columns = Account.index, Account.columns
+        Account = Account.values.astype(np.dtype([("Cash", float), ("Position", float), ("Amount", float), ("Signal", float), ("TradeNum", float), ("TradePrice", float), ("Fee", float)]))
+        CashSeries, PositionNum, PositionAmt, Signal, TradeNum, TradePrice, Fee = pd.Series(Account["Cash"][:, 0], index=Index), pd.DataFrame(Account["Position"], index=Index, columns=Columns), pd.DataFrame(Account["Amount"], index=Index, columns=Columns), pd.DataFrame(Account["Signal"], index=Index, columns=Columns), pd.DataFrame(Account["TradeNum"], index=Index, columns=Columns), pd.DataFrame(Account["TradePrice"], index=Index, columns=Columns), pd.DataFrame(Account["Fee"], index=Index, columns=Columns)
+        del Account
+        Signal = Signal.dropna(how="all", axis=0)
+        TradeRecord, TradeNum = TradeNum.where(TradeNum != 0, np.nan).stack().dropna().to_frame("交易量"), None
+        TradeRecord, TradePrice = pd.merge(TradeRecord, TradePrice.stack().to_frame("成交价"), how="left", left_index=True, right_index=True), None
+        TradeRecord, Fee = pd.merge(TradeRecord, Fee.stack().to_frame("交易费"), how="left", left_index=True, right_index=True), None
+        TradeRecord = TradeRecord.reset_index()
+        TradeRecord.columns = ["交易时点", "ID"] + TradeRecord.columns[2:].tolist()
+        Output = {"初始资金": InitCash, "交易信号": Signal, "交易记录": TradeRecord, "持仓数量": PositionNum}
         AccountValueSeries = CashSeries + PositionAmt.sum(axis=1)
-        InitCash = (self._QSArgs.InitCash if self._QSArgs.InitCash is not None else AccountValueSeries.iloc[0])
         DebtSeries = pd.Series(0, index=CashSeries.index)
         CashRecord, DebtRecord = pd.DataFrame(columns=["时间点", "现金流", "备注"]), pd.DataFrame(columns=["时间点", "融资", "备注"])
-        Output = genAccountOutput(InitCash, CashSeries, DebtSeries, AccountValueSeries, CashRecord, DebtRecord, risk_free_rate=self._QSArgs.RiskFreeRate)
-        Output["换手率"] = Turnover
-        Output["持仓数量"] = PositionNum
+        Output.update(genAccountOutput(InitCash, CashSeries, DebtSeries, AccountValueSeries, CashRecord, DebtRecord, risk_free_rate=self._QSArgs.RiskFreeRate))
         if len(bwd_data_list) > 1:# 设置了基准
             BmkNV = bwd_data_list[1].iloc[:, 0]
             BenchmarkOutput = pd.DataFrame(calcYieldSeq(wealth_seq=BmkNV.values), index=BmkNV.index, columns=["基准收益率"])
@@ -396,44 +402,70 @@ class AccountReport(BTNode):
 
 
 class MakeStrategy(MakeAccount):
-    """策略创建算子"""
+    """策略创建算子
+    策略因子为复合因子, 由以下子因子组成：
+        * Cash: 剩余现金
+        * Position: 持仓数量
+        * Amount: 持仓金额
+        * Signal: 策略信号
+        * TradeNum: 交易数量, 正值表示买入, 负值表示卖出
+        * TradePrice: 平均成交价
+        * Fee: 交易费用
+    """
 
     class __QS_ArgClass__(MakeAccount.__QS_ArgClass__):
         Arity: Optional[int] = Field(default=None, ge=2, title="入参数", frozen=True)
 
-    def __init__(self, init_cash:float=1e6, signal_type:Literal["买卖数量", "目标权重"]="买卖数量", short_allowed:bool=False, start_dt:Optional[dt.datetime]=None, args:dict = {}, config_file:Optional[str] = None, **kwargs):
+    def __init__(self, signal_type:Literal["买卖数量", "目标权重"]="目标权重", init_cash:float=1e6, short_allowed:bool=False, start_dt:Optional[dt.datetime]=None, x_lookback:List[int]=[], x_section_ids:List[Optional[List[str]]]=[], args:dict = {}, config_file:Optional[str] = None, **kwargs):
         """初始化策略创建算子
 
         Args:
-            init_cash: 初始资金
             signal_type: 信号类型
+            init_cash: 初始资金
             short_allowed: 是否允许卖空
             start_dt: 净值开始日, 如果为 None, 表示从计算的第一个时点开始
+            x_lookback: 策略所依赖因子的回溯期数
+            x_section_ids: 策略所依赖因子的截面ID序列
         """
-        Arity = args.get("Arity", None) or 2
+        if len(x_lookback) != len(x_section_ids):
+            raise __QS_Error__("x_lookback 的长度不等于 x_section_ids")
+        Arity = args.get("Arity", None) or (2 + len(x_lookback))
         Args = {"Name": "makeStrategy"} | args | {"DTMode": "单时点", "OutputMode": "全截面", "DataType": "object", "iInitFactor": 0}
         Args["ModelArgs"] = {"init_cash": init_cash, "short_allowed": short_allowed, "signal_type": signal_type} | Args.get("ModelArgs", {})
-        Args["DescriptorSection"] = [Args.get("DescriptorSection", [None])[0]] * Arity
-        Args["LookBack"] = [1, 0] + [0] * max(0, Arity - 2)
-        Args["LookBackMode"] = ["扩张窗口"] + ["滚动窗口"] * max(0, Arity - 1)
-        Args["StartDT"] = [start_dt] + [None] * max(0, Arity - 1)
-        Args["CompoundType"] = [("Cash", float), ("Position", float), ("Amount", float), ("Turnover", float)]
+        Args["DescriptorSection"] = [Args.get("DescriptorSection", [None])[0]] * 2 + x_section_ids + [Args.get("DescriptorSection", [None])[0]] * (Arity - 2 - len(x_section_ids))
+        Args["LookBack"] = [1, 0] + x_lookback + [0] * (Arity - 2 - len(x_lookback))
+        Args["LookBackMode"] = ["扩张窗口"] + ["滚动窗口"] * (Arity - 1)
+        Args["StartDT"] = [start_dt] + [None] * (Arity - 1)
+        Args["CompoundType"] = [("Cash", "double"), ("Position", "double"), ("Amount", "double"), ("Signal", "double"), ("TradeNum", "double"), ("TradePrice", "double"), ("Fee", "double")]
         return super(MakeAccount, self).__init__(args=Args, config_file=config_file, **kwargs)
 
-    # 可选实现
-    def genSignal(self, f, idt, ids, x, last_price, cash, position_num):
+    def genSignal(self, f: PanelOperation, idt:dt.datetime, x:List[pd.DataFrame], last_price:pd.Series, cash:float, position_num:pd.Series) -> None | pd.Series:
+        """策略信号生成函数
+
+        Args:
+            f: 策略因子对象
+            idt: 当前时点
+            x: 策略依赖的因子数据, 每个元素为 DataFrame(index=[datetime], columns=[证券 ID])
+            last_price: 当前证券最新价, Series(index=[证券 ID])
+            cash: 当前账户剩余现金
+            position_num: 当前账户中持有的证券数量, Series(index=[证券 ID])
+        
+        Returns:
+            生成的策略信号, Series(index=[证券 ID]), None 表示无信号
+        """
         return None
 
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
         LastAccount = x[0].astype(self._QSArgs.CompoundType)[0]
-        Cash, PositionNum = LastAccount["Cash"][0], LastAccount["Position"]
-        LastPrice = x[1][0].copy()
+        Cash, PositionNum = LastAccount["Cash"][0], pd.Series(LastAccount["Position"], index=iid).fillna(0)
+        LastPrice = pd.Series(x[1][0], index=iid)
         nX = f._QSArgs.ModelArgs["x_len"]
-        Signal = self.genSignal(f, idt[-1], np.array(iid), LastPrice, x[2:2+nX], Cash, PositionNum)
-        if (Signal is None) or (not np.any(np.abs(Signal) > 0)):# 没有交易信号
-            Rslt = np.array([np.full(shape=PositionNum.shape, fill_value=Cash), PositionNum, PositionNum * LastPrice, np.zeros_like(PositionNum)]).T
+        xData = [pd.DataFrame(ix, index=idt[-ix.shape[0]:], columns=(self._QSArgs.DescriptorSection[i+2] if self._QSArgs.DescriptorSection[i+2] else iid)) for i, ix in enumerate(x[2:2+nX])]
+        Signal = self.genSignal(f, idt[-1], xData, LastPrice, Cash, PositionNum)
+        if (Signal is None) or Signal.empty:# 没有交易信号
+            Rslt = np.array([np.full_like(PositionNum, Cash), PositionNum.values, (PositionNum * LastPrice).values, np.full_like(PositionNum, np.nan), np.zeros_like(PositionNum), np.full_like(PositionNum, np.nan), np.zeros_like(PositionNum)]).T
             return unstructured_to_structured(Rslt, dtype=np.dtype(self._QSArgs.CompoundType)).astype("O")
-        return MakeAccount.calculate(self, f=f, idt=idt, iid=iid, x=[x[0], x[1], np.array([Signal])] + x[2+nX:], args=args)
+        return MakeAccount.calculate(self, f=f, idt=idt, iid=iid, x=[x[0], x[1], Signal.reindex(index=iid).values.reshape((1, -1))] + x[2+nX:], args=args)
 
     def __call__(self, *x:Factor, last_price: Factor, init_account: Optional[Factor]=None, 
         buy_price: Optional[Factor]=None, buy_limit: Optional[Factor]=None, buy_fee: float | Factor=0, buy_amt_limit: Optional[Factor]=None,
@@ -460,7 +492,7 @@ class MakeStrategy(MakeAccount):
         Returns:
             策略因子
         """
-        if init_account is None: init_account = DataFactor(data=(self._QSArgs.ModelArgs["init_cash"], 0, 0, 0), args={"Name": "InitAccount"})
+        if init_account is None: init_account = DataFactor(data=(self._QSArgs.ModelArgs["init_cash"], 0, 0, np.nan, 0, np.nan, 0), args={"Name": "InitAccount"})
         Factors = [init_account, last_price, *x]
         if buy_price is not None: Factors.append(buy_price)
         if buy_limit is not None: Factors.append(buy_limit)

@@ -107,19 +107,20 @@ class Factor(Node):
         CalcDTRuler: Optional[List[dt.datetime]] = Field(default=None, title="计算时点标尺", frozen=True)
         CacheEnabled: bool = Field(default=True, frozen=True, title="启用缓存")
 
-    def __init__(self, ft: Optional["FactorTable"]=None, descriptors: List["Factor"] = [], args: dict = {}, config_file: Optional[str] = None, **kwargs):
+    def __init__(self, ft: Optional["FactorTable"]=None, descriptors: List["Factor"] = [], extra_deps: List[Node] = [], args: dict = {}, config_file: Optional[str] = None, **kwargs):
         if ft and descriptors:
             raise __QS_Error__("因子表和描述子列表不能都存在!")
         self._FactorTable = ft
         self._Descriptors = descriptors
+        self._ExtraDeps = extra_deps
         kwargs.pop("deps", [])
         if ft:
-            return super().__init__(deps=[ft], args=args, config_file=config_file, **kwargs)
+            return super().__init__(deps=[ft] + extra_deps, args=args, config_file=config_file, **kwargs)
         else:
-            return super().__init__(deps=descriptors, args=args, config_file=config_file, **kwargs)
+            return super().__init__(deps=descriptors + extra_deps, args=args, config_file=config_file, **kwargs)
     
     def new(self, args:dict={}, **kwargs) -> "Factor":
-        kwargs = {"ft": self._FactorTable, "descriptors": self.Descriptors} | kwargs
+        kwargs = {"ft": self._FactorTable, "descriptors": self._Descriptors, "extra_deps": self._ExtraDeps} | kwargs
         return super().new(args=args, **kwargs)
     
     @property
@@ -303,11 +304,12 @@ class Factor(Node):
             else:
                 FactorState["pid_ids"] = context.splitID(SectionIDs)
         # 默认
+        DefaultInitData = super().init_compute(path=path, init_data=init_data, context=context)
         if self.QSID in path: return []
         if self._FactorTable:
-            return [FactorInitData(DTRange=FactorState["dt_range"], SectionIDs=SectionIDs, SubFactorName=self._QSArgs.Name)]
+            return [FactorInitData(DTRange=FactorState["dt_range"], SectionIDs=SectionIDs, SubFactorName=self._QSArgs.Name)] + DefaultInitData[1:]
         else:
-            return [FactorInitData(DTRange=FactorState["dt_range"], SectionIDs=SectionIDs)] * len(self._Descriptors)
+            return [FactorInitData(DTRange=FactorState["dt_range"], SectionIDs=SectionIDs)] * len(self._Descriptors) + DefaultInitData[len(self._Descriptors):]
 
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
         if self._FactorTable:

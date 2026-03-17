@@ -3,7 +3,7 @@
 import os
 import datetime as dt
 from functools import partial
-from typing import Optional, Literal, List, Any, Tuple, Callable, Union
+from typing import Optional, Literal, List, Any, Tuple, Callable, Union, Dict, Type
 from multiprocessing import Queue, Event
 
 import dill
@@ -12,6 +12,7 @@ import numpy as np
 from pydantic import Field
 
 from QuantStudio.Core import __QS_Error__, __QS_Object__
+from QuantStudio.Core.Node import Node
 from QuantStudio.Core.QSObject import Panel, QSQueue
 from QuantStudio.Factor.Factor import Factor, DataFactor, FactorContext, FactorLocalContext, FactorInitData
 from QuantStudio.Tools.DataTypeConversionFun import expandListElementDataFrame
@@ -24,16 +25,16 @@ class FactorOperator(__QS_Object__):
     class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
         OperatorType: Literal["Point", "Time", "Section", "Panel"] = Field(title="算子类型", frozen=True)
         Name: str = Field(default="FactorOperator", title="名称", frozen=True)
-        ModelArgs: dict = Field(default={}, title="模型参数", frozen=True)
+        ModelArgs: Dict[str, Any] = Field(default={}, title="模型参数", frozen=True)
         Arity: Optional[int] = Field(default=None, ge=1, title="入参数", frozen=True)
         DataType: Literal["double", "string", "object"] = Field(default="double",title="数据类型", frozen=True)
         Description: str = Field(default="", title="描述信息", frozen=False, exclude=True)
-        Meta: dict = Field(default={}, title="元信息", frozen=False, exclude=True)
+        Meta: Dict[str, Any] = Field(default={}, title="元信息", frozen=False, exclude=True)
         InputFormat: Literal["numpy", "pandas"] = Field(default="numpy", title="输入格式", frozen=True)
-        ExpandDescriptors: list[int] = Field(default=[], title="展开描述子", frozen=True)
-        DescriptorCompoundType: list = Field(default=[], title="描述子复合类型", frozen=True)
+        ExpandDescriptors: List[int] = Field(default=[], title="展开描述子", frozen=True)
+        DescriptorCompoundType: List[List[Tuple[str, Literal["double", "string", "object"]]]] = Field(default=[], title="描述子复合类型", frozen=True)
         MultiMapping: bool = Field(default=False, title="多重映射", frozen=True)
-        CompoundType: list = Field(default=[], title="复合类型", frozen=True)
+        CompoundType: List[Tuple[str, Literal["double", "string", "object"]]] = Field(default=[], title="复合类型", frozen=True)
         
         def __init__(self, /, **data: Any) -> None:
             if ("DataType" not in data) and (data.get("CompoundType", []) or data.get("MultiMapping", False)):
@@ -380,7 +381,7 @@ class TimeOperator(FactorOperator):
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for i, iFactor in enumerate(x)]
         return TimeOperation(descriptors=Descriptors, args={"Operator": Operator, **factor_args}, **kwargs)
     
-    def _calcDataNumpy(self, factor, ids, dts, descriptor_data, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, ModelArgs, StdData):
+    def _calcDataNumpy(self, factor, ids, dts, descriptor_data, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, iDTStartIdx, ModelArgs, StdData):
         if (self._QSArgs.DTMode=='单时点') and (self._QSArgs.IDMode=='单ID'):
             CalcDTs = factor._QS_getCalcDTs(dts, mask=False)
             if CalcDTs: CalcDTs = set(CalcDTs)
@@ -420,7 +421,7 @@ class TimeOperator(FactorOperator):
             return StdData
         return StdData[iStartIdx:, :]
     
-    def _calcDataPandas(self, factor, ids, dts, descriptor_data, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, ModelArgs, StdData):
+    def _calcDataPandas(self, factor, ids, dts, descriptor_data, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, iDTStartIdx, ModelArgs, StdData):
         StdData = pd.DataFrame(StdData, columns=ids, index=DTRuler[-StdData.shape[0]:])
         descriptor_data = Panel({f"d{i}": descriptor_data[i] for i in range(len(descriptor_data))}).loc[:, DTRuler].to_frame(filter_observations=False).sort_index(axis=1, key=lambda x: x.str.replace("d", "").astype(int))
         descriptor_data = self._QS_Compound2Frame(descriptor_data, self._QSArgs.DescriptorCompoundType)
@@ -520,18 +521,29 @@ class TimeOperator(FactorOperator):
                 StartIndAndLen.append((iLookBack, np.inf))
                 MaxLen = np.inf
             MaxLookBack = max(MaxLookBack, iLookBack)
-        iStartIdx = 0
+        iStartIdx, iDTStartIdx = 0, 0
         if self._QSArgs.iInitFactor>=0:# 自身回溯
-            StdData = np.r_[descriptor_data[self._QSArgs.iInitFactor], StdData]
-            iStartIdx = descriptor_data[self._QSArgs.iInitFactor].shape[0]
-            descriptor_data[self._QSArgs.iInitFactor] = StdData
+            i = self._QSArgs.iInitFactor
+            if (self._QSArgs.LookBackMode[i]=="扩张窗口") and (self._QSArgs.StartDT[i] is not None):
+                iStartDTIdx = np.searchsorted(dt_ruler, self._QSArgs.StartDT[i], side="left")
+                if StartIdx < iStartDTIdx:
+                    iDTStartIdx = iStartDTIdx - StartIdx
+                    StdData = StdData[iDTStartIdx:]
+                    if StdData.shape[0]==0:# 所需数据完全被 descriptor_data[i] 覆盖
+                        if self._QSArgs.InputFormat == "numpy":
+                            return descriptor_data[i]
+                        else:
+                            return pd.DataFrame(descriptor_data[i], index=dts, columns=ids)
+            StdData = np.r_[descriptor_data[i], StdData]
+            iStartIdx = descriptor_data[i].shape[0] - iDTStartIdx
+            descriptor_data[i] = StdData
         if StartIdx >= MaxLookBack: DTRuler = dt_ruler[StartIdx-MaxLookBack:EndIdx]
         else: DTRuler = [None] * (MaxLookBack - StartIdx) + dt_ruler[:EndIdx]
         ModelArgs = self._QSArgs.ModelArgs
         if self._QSArgs.InputFormat == "numpy":
-            return self._calcDataNumpy(factor, ids, dts, descriptor_data, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, ModelArgs, StdData)
+            return self._calcDataNumpy(factor, ids, dts, descriptor_data, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, iDTStartIdx, ModelArgs, StdData)
         else:
-            return self._calcDataPandas(factor, ids, dts, descriptor_data, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, ModelArgs, StdData)
+            return self._calcDataPandas(factor, ids, dts, descriptor_data, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, iDTStartIdx, ModelArgs, StdData)
 
 
 class SectionOperator(FactorOperator):
@@ -765,12 +777,13 @@ class PanelOperator(FactorOperator):
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for i, iFactor in enumerate(x)]
         return PanelOperation(descriptors=Descriptors, args={"Operator": Operator, **factor_args}, **kwargs)
     
-    def _calcDataNumpy(self, factor, ids, dts, descriptor_data, DTRuler, SectionIDs, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, ModelArgs, StdData):
+    def _calcDataNumpy(self, factor, ids, dts, descriptor_data, DTRuler, SectionIDs, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, iDTStartIdx, ModelArgs, StdData):
         if self._QSArgs.OutputMode=='全截面':
             if self._QSArgs.DTMode=='单时点':
                 CalcDTs = factor._QS_getCalcDTs(dts, mask=False)
                 if CalcDTs: CalcDTs = set(CalcDTs)
                 for i, iDT in enumerate(dts):
+                    if i < iDTStartIdx: continue
                     if (CalcDTs is not None) and (iDT not in CalcDTs): continue
                     iDTs = DTRuler[max(0, MaxLookBack+i+1-MaxLen):i+1+MaxLookBack]
                     x = []
@@ -789,6 +802,7 @@ class PanelOperator(FactorOperator):
                 CalcDTs = factor._QS_getCalcDTs(dts, mask=False)
                 if CalcDTs: CalcDTs = set(CalcDTs)
                 for i, iDT in enumerate(dts):
+                    if i < iDTStartIdx: continue
                     if (CalcDTs is not None) and (iDT not in CalcDTs): continue
                     iDTs = DTRuler[max(0, MaxLookBack+i+1-MaxLen):i+1+MaxLookBack]
                     x = []
@@ -807,7 +821,7 @@ class PanelOperator(FactorOperator):
                 return pd.DataFrame(StdData, columns=SectionIDs).reindex(columns=ids).values
         return pd.DataFrame(StdData[iStartIdx:, :], columns=SectionIDs).reindex(columns=ids).values
     
-    def _calcDataPandas(self, factor, ids, dts, descriptor_data, DTRuler, SectionIDs, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, ModelArgs, StdData):
+    def _calcDataPandas(self, factor, ids, dts, descriptor_data, DTRuler, SectionIDs, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, iDTStartIdx, ModelArgs, StdData):
         StdData = pd.DataFrame(StdData, columns=SectionIDs, index=DTRuler[-StdData.shape[0]:])
         SectionIdx = self._QS_partitionSectionIDs(factor._QSArgs.DescriptorSection)
         DescriptorData = []
@@ -915,17 +929,28 @@ class PanelOperator(FactorOperator):
                 StartIndAndLen.append((iLookBack, np.inf))
                 MaxLen = np.inf
             MaxLookBack = max(MaxLookBack, iLookBack)
-        iStartIdx = 0
+        iStartIdx, iDTStartIdx = 0, 0
         if self._QSArgs.iInitFactor>=0:# 自身回溯
-            StdData = np.r_[descriptor_data[self._QSArgs.iInitFactor], StdData]
-            iStartIdx = descriptor_data[self._QSArgs.iInitFactor].shape[0]
-            descriptor_data[self._QSArgs.iInitFactor] = StdData
+            i = self._QSArgs.iInitFactor
+            if (self._QSArgs.LookBackMode[i]=="扩张窗口") and (self._QSArgs.StartDT[i] is not None):
+                iStartDTIdx = np.searchsorted(dt_ruler, self._QSArgs.StartDT[i], side="left")
+                if StartIdx < iStartDTIdx:
+                    iDTStartIdx = iStartDTIdx - StartIdx
+                    StdData = StdData[iDTStartIdx:]
+                    if StdData.shape[0]==0:# 所需数据完全被 descriptor_data[i] 覆盖
+                        if self._QSArgs.InputFormat == "numpy":
+                            return pd.DataFrame(descriptor_data[i], index=dts, columns=section_ids).reindex(columns=ids).values
+                        else:
+                            return pd.DataFrame(descriptor_data[i], index=dts, columns=section_ids).reindex(columns=ids)
+            StdData = np.r_[descriptor_data[i], StdData]
+            iStartIdx = descriptor_data[i].shape[0] - iDTStartIdx
+            descriptor_data[i] = StdData
         if StartIdx >= MaxLookBack: DTRuler = dt_ruler[StartIdx-MaxLookBack:EndIdx]
         else: DTRuler = [None] * (MaxLookBack - StartIdx) + dt_ruler[:EndIdx]
         if self._QSArgs.InputFormat == "numpy":
-            return self._calcDataNumpy(factor, ids, dts, descriptor_data, DTRuler, section_ids, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, self._QSArgs.ModelArgs, StdData)
+            return self._calcDataNumpy(factor, ids, dts, descriptor_data, DTRuler, section_ids, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, iDTStartIdx, self._QSArgs.ModelArgs, StdData)
         else:
-            return self._calcDataPandas(factor, ids, dts, descriptor_data, DTRuler, section_ids, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, self._QSArgs.ModelArgs, StdData)
+            return self._calcDataPandas(factor, ids, dts, descriptor_data, DTRuler, section_ids, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, iDTStartIdx, self._QSArgs.ModelArgs, StdData)
 
 
 FactorOperatorFunc = Callable[[Factor, dt.datetime | List[dt.datetime], str | List[str], list, dict], Any]
@@ -978,14 +1003,13 @@ class DerivativeFactor(Factor):
         Operator: FactorOperator = Field(title="算子", frozen=True)
         ModelArgs: dict = Field(default={}, title="参数", frozen=True)
 
-    def __init__(self, descriptors: List[Factor], args: dict={}, config_file: Optional[str]=None, **kwargs):
-        self.UserData = {}
-        if descriptors: kwargs.setdefault("logger", descriptors[0]._QS_Logger)
+    def __init__(self, descriptors: List[Factor], extra_deps: List[Node] = [], args: dict={}, config_file: Optional[str]=None, **kwargs):
         Operator = args["Operator"]._QS_validate(*descriptors, **kwargs.pop("operator_kwargs", {}))
         args = {"Name": Operator._QSArgs.Name} | args | {"Operator": Operator}
-        super().__init__(descriptors=descriptors, args=args, config_file=config_file, **kwargs)
+        super().__init__(descriptors=descriptors, extra_deps=extra_deps, args=args, config_file=config_file, **kwargs)
         self._Operator = self._QSArgs.Operator
         self._QS_checkConsistency()
+        self.UserData = {}
 
     # 检查因子定义的相容性
     def _QS_checkConsistency(self):
@@ -1061,7 +1085,12 @@ class PointOperation(DerivativeFactor):
             if DTRange is None: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs)
         CalcDTs = context.getDateTime(DTRange)
         if not CalcDTs: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs)
-        return [FactorLocalContext(IDs=context.getID(self.QSID, ([context.PID] if Cached else (fwd_data.PIDs or [context.PID]))), DTs=CalcDTs, PIDs=fwd_data.PIDs)] * len(self._Descriptors), FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, ExtraData={"CalcDTs": CalcDTs})
+        FwdData = [FactorLocalContext(IDs=context.getID(self.QSID, ([context.PID] if Cached else (fwd_data.PIDs or [context.PID]))), DTs=CalcDTs, PIDs=fwd_data.PIDs)] * len(self._Descriptors)
+        if self._ExtraDeps:
+            DefaultFwdData = super().forward_compute(path=path, fwd_data=fwd_data, context=context)
+            return FwdData + DefaultFwdData[len(self._Descriptors):], FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, ExtraData={"CalcDTs": CalcDTs})
+        else:
+            return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, ExtraData={"CalcDTs": CalcDTs})
 
 
 class TimeOperation(DerivativeFactor):
@@ -1079,14 +1108,19 @@ class TimeOperation(DerivativeFactor):
         for i, iDescriptor in enumerate(self._Descriptors):
             if (self._Operator._QSArgs.LookBackMode[i]=="滚动窗口") or (self._Operator._QSArgs.StartDT[i] is None):# 滚动窗口模式或者未指定起始时点, 从当前位置回溯 LookBack[i] 期
                 iStartIdx = StartIdx - self._Operator._QSArgs.LookBack[i]
+                if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
+                    iEndDT = DTRuler[max(StartIdx - 1, iStartIdx)]
+                else:
+                    iEndDT = EndDT
             else:# 指定了起始时点, 以起始时点 StartDT[i] 的位置为准
-                iStartIdx = np.searchsorted(DTRuler, self._Operator._QSArgs.StartDT[i], side="left") - self._Operator._QSArgs.LookBack[i]
-            if iStartIdx < 0: self._QS_Logger.warning("注意: 对于因子 '%s'(QSID: %s) 的描述子 '%s'(QSID: %s), 时点标尺长度不足, 不足的部分将填充 nan!" % (self.Name, self.QSID, iDescriptor.Name, iDescriptor.QSID))
-            iStartIdx = max(0, iStartIdx)
-            if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
-                iEndDT = DTRuler[max(StartIdx - 1, iStartIdx)]
-            else:
-                iEndDT = EndDT
+                iStartDTIdx = np.searchsorted(DTRuler, self._Operator._QSArgs.StartDT[i], side="left")
+                iStartIdx = min(StartIdx, iStartDTIdx - self._Operator._QSArgs.LookBack[i])
+                if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
+                    iEndDT = min(DTRuler[max(0, iStartDTIdx - 1)], EndDT)
+                else:
+                    iEndDT = EndDT
+            if iStartIdx < 0:
+                raise __QS_Error__("对于因子 '%s'(QSID: %s) 的描述子 '%s'(QSID: %s), 时点标尺长度不足!" % (self.Name, self.QSID, iDescriptor.Name, iDescriptor.QSID))
             InitData[i] = InitData[i].__class__(**(InitData[i].model_dump() | {"DTRange": (DTRuler[iStartIdx], iEndDT)}))
         return InitData
     
@@ -1106,13 +1140,20 @@ class TimeOperation(DerivativeFactor):
         for i in range(len(self._Descriptors)):
             if (self._Operator._QSArgs.LookBackMode[i]=="滚动窗口") or (self._Operator._QSArgs.StartDT[i] is None):
                 iStartIdx, iEndIdx = StartIdx - self._Operator._QSArgs.LookBack[i], EndIdx
+                if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
+                    iEndIdx = StartIdx - 1
             else:
-                iStartIdx, iEndIdx = np.searchsorted(DTRuler, max(self._Operator._QSArgs.StartDT[i], DTRuler[0]), side="left") - self._Operator._QSArgs.LookBack[i], EndIdx
-            if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
-                iEndIdx = StartIdx - 1
+                iStartDTIdx = np.searchsorted(DTRuler, self._Operator._QSArgs.StartDT[i], side="left")
+                iStartIdx, iEndIdx = min(StartIdx, iStartDTIdx - self._Operator._QSArgs.LookBack[i]), EndIdx
+                if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以 StartDT 的上一个时点为结束时点
+                    iEndIdx = min(iEndIdx, iStartDTIdx - 1)
             iDTs = DTRuler[max(iStartIdx, 0):iEndIdx+1]
             FwdData.append(FactorLocalContext(IDs=iSectionIDs, DTs=iDTs, PIDs=fwd_data.PIDs))
-        return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, ExtraData={"CalcDTs": CalcDTs})
+        if self._ExtraDeps:
+            DefaultFwdData = super().forward_compute(path=path, fwd_data=fwd_data, context=context)
+            return FwdData + DefaultFwdData[len(self._Descriptors):], FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, ExtraData={"CalcDTs": CalcDTs})
+        else:
+            return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, ExtraData={"CalcDTs": CalcDTs})
 
 
 class SectionOperation(DerivativeFactor):
@@ -1149,7 +1190,12 @@ class SectionOperation(DerivativeFactor):
             iCalcDTs = DTPartition[context.PIDList.index(PID)]
         else:
             iCalcDTs = CalcDTs
-        return [FactorLocalContext(IDs=self._QS_getDescriptorSectionIDs(i, context), DTs=CalcDTs, PIDs=context.PIDList) for i, iDescriptor in enumerate(self.Descriptors)], FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, ExtraData={"CalcDTs": iCalcDTs, "TotalCalcDTs": CalcDTs})
+        FwdData = [FactorLocalContext(IDs=self._QS_getDescriptorSectionIDs(i, context), DTs=CalcDTs, PIDs=context.PIDList) for i, iDescriptor in enumerate(self.Descriptors)]
+        if self._ExtraDeps:
+            DefaultFwdData = super().forward_compute(path=path, fwd_data=fwd_data, context=context)
+            return FwdData + DefaultFwdData[len(self._Descriptors):], FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, ExtraData={"CalcDTs": iCalcDTs, "TotalCalcDTs": CalcDTs})
+        else:
+            return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, ExtraData={"CalcDTs": iCalcDTs, "TotalCalcDTs": CalcDTs})
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
         if bwd_data_list:
@@ -1200,14 +1246,19 @@ class PanelOperation(DerivativeFactor):
         for i, iDescriptor in enumerate(self._Descriptors):
             if (self._Operator._QSArgs.LookBackMode[i]=="滚动窗口") or (self._Operator._QSArgs.StartDT[i] is None):# 未指定起始时点, 从当前位置回溯 LookBack[i] 期
                 iStartIdx = StartIdx - self._Operator._QSArgs.LookBack[i]
+                if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
+                    iEndDT = DTRuler[max(StartIdx - 1, iStartIdx)]
+                else:
+                    iEndDT = EndDT
             else:# 指定了起始时点, 以起始时点 StartDT[i] 的位置为准
-                iStartIdx = np.searchsorted(DTRuler, self._Operator._QSArgs.StartDT[i], side="left") - self._Operator._QSArgs.LookBack[i]
-            if iStartIdx < 0: self._QS_Logger.warning("注意: 对于因子 '%s'(QSID: %s) 的描述子 '%s'(QSID: %s), 时点标尺长度不足, 不足的部分将填充 nan!" % (self.Name, self.QSID, iDescriptor.Name, iDescriptor.QSID))
-            iStartIdx = max(0, iStartIdx)
-            if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
-                iEndDT = DTRuler[max(StartIdx - 1, iStartIdx)]
-            else:
-                iEndDT = EndDT
+                iStartDTIdx = np.searchsorted(DTRuler, self._Operator._QSArgs.StartDT[i], side="left")
+                iStartIdx = min(StartIdx, iStartDTIdx - self._Operator._QSArgs.LookBack[i])
+                if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
+                    iEndDT = min(DTRuler[max(0, iStartDTIdx - 1)], EndDT)
+                else:
+                    iEndDT = EndDT
+            if iStartIdx < 0:
+                raise __QS_Error__("对于因子 '%s'(QSID: %s) 的描述子 '%s'(QSID: %s), 时点标尺长度不足!" % (self.Name, self.QSID, iDescriptor.Name, iDescriptor.QSID))
             InitData[i] = InitData[i].__class__(**(InitData[i].model_dump() | {"DTRange": (DTRuler[iStartIdx], iEndDT), "SectionIDs": self._QS_getDescriptorSectionIDs(i, context=context)}))
         if (len(context.PIDList) > 1) and (self.QSID not in context.Event):
             if os.name == "nt":
@@ -1244,16 +1295,24 @@ class PanelOperation(DerivativeFactor):
             if (self._Operator._QSArgs.LookBackMode[i]=="滚动窗口") or (self._Operator._QSArgs.StartDT[i] is None):
                 iStartIdx, iEndIdx = StartIdx - self._Operator._QSArgs.LookBack[i], EndIdx
                 iResponsibleStartIdx, iResponsibleEndIdx = ResponsibleStartIdx - self._Operator._QSArgs.LookBack[i], ResponsibleEndIdx
+                if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
+                    iEndIdx = StartIdx - 1
+                    iResponsibleEndIdx = ResponsibleStartIdx - 1
             else:
-                iStartIdx, iEndIdx = np.searchsorted(DTRuler, max(self._Operator._QSArgs.StartDT[i], DTRuler[0]), side="left") - self._Operator._QSArgs.LookBack[i], EndIdx
+                iStartDTIdx = np.searchsorted(DTRuler, self._Operator._QSArgs.StartDT[i], side="left")
+                iStartIdx, iEndIdx = min(StartIdx, iStartDTIdx - self._Operator._QSArgs.LookBack[i]), EndIdx
                 iResponsibleStartIdx, iResponsibleEndIdx = iStartIdx, iEndIdx
-            if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
-                iEndIdx = StartIdx - 1
-                iResponsibleEndIdx = ResponsibleStartIdx - 1
+                if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以 StartDT 的上一个时点为结束时点
+                    iEndIdx = min(iEndIdx, iStartDTIdx - 1)
+                    iResponsibleEndIdx = min(iResponsibleEndIdx, iStartDTIdx - 1)
             iDTs = DTRuler[max(iStartIdx, 0):iEndIdx+1]
             FwdData.append(FactorLocalContext(IDs=self._QS_getDescriptorSectionIDs(i, context), DTs=iDTs, PIDs=context.PIDList))
             DescriptorDTs.append(DTRuler[max(iResponsibleStartIdx, 0):iResponsibleEndIdx+1])
-        return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, ExtraData={"CalcDTs": ResponsibleCalcDTs, "TotalCalcDTs": CalcDTs, "DescriptorDTs": DescriptorDTs})
+        if self._ExtraDeps:
+            DefaultFwdData = super().forward_compute(path=path, fwd_data=fwd_data, context=context)
+            return FwdData + DefaultFwdData[len(self._Descriptors):], FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, ExtraData={"CalcDTs": ResponsibleCalcDTs, "TotalCalcDTs": CalcDTs, "DescriptorDTs": DescriptorDTs})
+        else:
+            return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, ExtraData={"CalcDTs": ResponsibleCalcDTs, "TotalCalcDTs": CalcDTs, "DescriptorDTs": DescriptorDTs})
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
         if bwd_data_list:

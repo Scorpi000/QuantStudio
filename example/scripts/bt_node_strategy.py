@@ -12,7 +12,7 @@ from QuantStudio.Factor.Factor import DataFactor, FactorContext, FactorLocalCont
 from QuantStudio.Factor.FactorCache import FeatherFactorCache
 import QuantStudio.Factor.FactorOperator as fo
 from QuantStudio.BackTest.BackTestModel import BTReport
-from QuantStudio.BackTest.Strategy.Strategy import CalcSimpleAccount, AccountReport
+from QuantStudio.BackTest.Strategy.Strategy import MakeAccount, AccountReport
 from QuantStudio.BackTest.SectionFactor.Portfolio import CalcPortfolioNV
 from QuantStudio.Tools.DateTimeFun import getNaturalDay, getMonthLastDateTime
 
@@ -35,15 +35,15 @@ if __name__=="__main__":
     Weight = DataFactor(data=pd.DataFrame(np.random.rand(len(DTRuler), len(SectionIDs)), index=DTRuler, columns=SectionIDs), args={"Name": "Weight"})
 
     InitCash = 1e6
-    InitAccount = DataFactor(data=(InitCash, 0, 0, 0), args={"Name": "InitAccount"})
     PortfolioSignal = (np.random.randn(len(DTRuler), len(SectionIDs)) > 0).astype(float)
     PortfolioSignal = DataFactor(data=pd.DataFrame(PortfolioSignal / np.sum(PortfolioSignal, axis=1, keepdims=True), index=DTRuler, columns=SectionIDs), args={"Name": "Signal"})
-    Account = CalcSimpleAccount(signal_type="目标权重", start_dt=DTs[0])(init_account=InitAccount, last_price=Price, signal=PortfolioSignal)
+    
+    Account = MakeAccount(signal_type="目标权重", start_dt=DTs[0], init_cash=InitCash)(last_price=Price, signal=PortfolioSignal)
     StrategyAmt = fo.Fetch(pos=2, dtype="double")(Account)
 
     StrategyNV = CalcPortfolioNV(start_dt=DTs[0], descriptor_ids=SectionIDs)(PortfolioSignal, price=Price, init_nv=InitCash)
 
-    StrategyReport = AccountReport(account=Account, bmk_nv=StrategyNV, args={"InitCash": InitCash, "GenReport": True})
+    StrategyReport = AccountReport(account=Account, bmk_nv=StrategyNV, args={"GenReport": True})
 
     PIDList = ["0"]
     ExecEngine = Engine()
