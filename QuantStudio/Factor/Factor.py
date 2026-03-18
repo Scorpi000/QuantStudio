@@ -285,6 +285,11 @@ class Factor(Node):
             FactorState["dt_range"] = init_data.DTRange
         else:
             FactorState["dt_range"] = (min(DTRange[0], init_data.DTRange[0]), max(DTRange[1], init_data.DTRange[1]))
+        DTRuler = context.DTRuler
+        if FactorState["dt_range"][0] < DTRuler[0]:
+            raise __QS_Error__(f"对于因子 {self.Name}(QSID: {self.QSID}), 起始时点为 {FactorState["dt_range"][0]}, 时点标尺长度不足, 起始时点为 {DTRuler[0]}")
+        if FactorState["dt_range"][1] > DTRuler[-1]:
+            raise __QS_Error__(f"对于因子 {self.Name}(QSID: {self.QSID}), 结束时点为 {FactorState["dt_range"][1]}, 时点标尺长度不足, 结束时点为 {DTRuler[-1]}")
         # 处理截面ID
         if init_data.SectionIDs is not None:
             InitSectionIDs = init_data.SectionIDs

@@ -54,7 +54,6 @@ class MakeAccount(PanelOperator):
         Args["ModelArgs"] = {"init_cash": init_cash, "short_allowed": short_allowed, "signal_type": signal_type} | Args.get("ModelArgs", {})
         Args["DescriptorSection"] = [Args.get("DescriptorSection", [None])[0]] * Arity
         Args["LookBack"] = [1, 0, 0] + [0] * max(0, Arity - 3)
-        Args["LookBackMode"] = ["扩张窗口"] + ["滚动窗口"] * max(0, Arity - 1)
         Args["StartDT"] = [start_dt] + [None] * max(0, Arity - 1)
         Args["CompoundType"] = [("Cash", "double"), ("Position", "double"), ("Amount", "double"), ("Signal", "double"), ("TradeNum", "double"), ("TradePrice", "double"), ("Fee", "double")]
         return super().__init__(args=Args, config_file=config_file, **kwargs)
@@ -434,7 +433,6 @@ class MakeStrategy(MakeAccount):
         Args["ModelArgs"] = {"init_cash": init_cash, "short_allowed": short_allowed, "signal_type": signal_type} | Args.get("ModelArgs", {})
         Args["DescriptorSection"] = [Args.get("DescriptorSection", [None])[0]] * 2 + x_section_ids + [Args.get("DescriptorSection", [None])[0]] * (Arity - 2 - len(x_section_ids))
         Args["LookBack"] = [1, 0] + x_lookback + [0] * (Arity - 2 - len(x_lookback))
-        Args["LookBackMode"] = ["扩张窗口"] + ["滚动窗口"] * (Arity - 1)
         Args["StartDT"] = [start_dt] + [None] * (Arity - 1)
         Args["CompoundType"] = [("Cash", "double"), ("Position", "double"), ("Amount", "double"), ("Signal", "double"), ("TradeNum", "double"), ("TradePrice", "double"), ("Fee", "double")]
         return super(MakeAccount, self).__init__(args=Args, config_file=config_file, **kwargs)

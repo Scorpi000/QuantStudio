@@ -281,7 +281,7 @@ class FileFactorCache(FileDTCache, FactorCache):
         IfExist = False
         with self._DataLock:
             for iPID in pids:
-                iPath = self._FactorDataDir + os.sep + iPID + os.sep + key + self._QSArgs.Suffix
+                iPath = self._FactorDataDir + os.sep + iPID + os.sep + key
                 IfExist = os.path.exists(iPath) or IfExist
         return IfExist
 
@@ -318,7 +318,7 @@ class FileFactorCache(FileDTCache, FactorCache):
         while len(pids) > 0:
             iPID = pids.pop()
             iPath = self._FactorDataDir + os.sep + iPID + os.sep + key
-            if not os.path.exists(iPath):  # 该进程的数据没有准备好
+            if not os.path.exists(iPath):# 该进程的数据没有准备好
                 if wait:
                     pids.add(iPID)
                     if wait_seconds > 0: time.sleep(wait_seconds)
@@ -330,7 +330,7 @@ class FileFactorCache(FileDTCache, FactorCache):
                     iDTNum = self.readDataFrame(path=os.path.join(iPath, target_field + self._QSArgs.Suffix), data_type=data_type)
                     if iDTNum is None: iDTNum = 0
                     else: iDTNum = iDTNum.shape[0]
-                    if iDTNum != DTNum:
+                    if iDTNum < DTNum:
                         pids.add(iPID)
                         if wait_seconds > 0: time.sleep(wait_seconds)
                         continue
