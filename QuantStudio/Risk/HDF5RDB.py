@@ -26,7 +26,7 @@ class HDF5RiskTable(RiskTable):
         with self._RiskDB._DataLock:
             with h5py.File(self._RiskDB._QSArgs.MainDir / (self._QSArgs.Name+"."+self._RiskDB._Suffix), mode="r") as File:
                 if key is None: return pd.Series(dict(File.attrs))
-                elif key in File.attrs: return pd.Series(File.attrs[key])
+                elif key in File.attrs: return File.attrs[key]
                 else: return None
     
     def getDateTime(self, start_dt:Optional[dt.datetime]=None, end_dt:Optional[dt.datetime]=None) -> List[dt.datetime]:

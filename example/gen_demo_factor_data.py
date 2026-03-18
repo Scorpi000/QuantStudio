@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""生成 Demo 数据"""
+"""生成 Demo 因子数据"""
 import os
 import datetime as dt
 
