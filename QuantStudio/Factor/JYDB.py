@@ -936,7 +936,7 @@ class JYDB(QSSQLObject, FactorDB):
         else:
             return []
 
-    def getTable(self, table_name, args={}):
+    def getTable(self, table_name:str, args:dict={}) -> _JY_SQL_Table:
         if table_name in self._TableInfo.index:
             TableClass = args.get("因子表类型", self._TableInfo.loc[table_name, "TableClass"])
             if pd.notnull(TableClass) and (TableClass!=""):

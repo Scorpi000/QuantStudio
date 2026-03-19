@@ -7,18 +7,13 @@ if __name__=='__main__':
     from QuantStudio.Risk.RiskModel.BarraModel import BarraModel
     from QuantStudio.Tools.DateTimeFun import getMonthLastDateTime
 
-    StartDT, EndDT = dt.datetime(2017, 1, 23), dt.datetime(2017, 9, 29)
-    FDB = HDF5DB(args={"MainDir": "../data/HDF5"}).connect()
+    StartDT, EndDT = dt.datetime(2020, 9, 30), dt.datetime(2020, 12, 31)
+    FDB = HDF5DB(args={"MainDir": "/mnt/d/Data/HDF5DB"}).connect()
     DTs = getMonthLastDateTime(FDB.getTable("stock_cn_day_bar_nafilled").getDateTime("close", start_dt=StartDT, end_dt=EndDT))
 
-    FT = QS.FactorDB.CustomFT("MainFT")
-    FT.addFactors(factor_table=FDB.getTable("ElementaryFactor"), factor_names=["日收益率", "总市值"])
-    FT.addFactors(factor_table=FDB.getTable("BarraDescriptor"), factor_names=["ESTU", "Industry"])
-    FT.addFactors(factor_table=FDB.getTable("BarraFactor"), factor_names=None)
-    FT.setDateTime(FDB.getTable("BarraDescriptor").getDateTime(ifactor_name="ESTU"))
-    FT.setID(FDB.getTable("BarraDescriptor").getID(ifactor_name="ESTU"))
+    FT = FDB.getTable("stock_cn_factor_barra")
 
-    RDB = HDF5FRDB(args={"MainDir": "../data/Risk"}).connect()
+    RDB = HDF5FRDB(args={"MainDir": "/mnt/d/Data/HDF5RDB"}).connect()
     
     Model = BarraModel(name="MainModel", factor_table=FT, risk_db=RDB, table_name="stock_cn_barra_risk_model", config_file=None)
     Model.setRiskESTDateTime(DTs)

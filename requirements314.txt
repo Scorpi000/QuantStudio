@@ -1,6 +1,8 @@
 pydantic
 numpy
 pandas
+scipy
+statsmodels
 pyarrow
 chardet
 progressbar2
@@ -9,3 +11,4 @@ dill
 h5py
 baostock
 openpyxl
+requests

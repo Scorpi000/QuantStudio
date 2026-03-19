@@ -15,14 +15,14 @@ from QuantStudio.Tools.AuxiliaryFun import startMultiProcess
 # 截面回归生成因子收益率和特异性收益率
 def _FactorAndSpecificReturnGeneration(args):
     FT = args["FT"]
-    FT.start(dts=args["RegressDTs"])
+    # FT.start(dts=args["RegressDTs"])
     DSDTs = FT.getDateTime()
     if args["ModelArgs"]['运行模式']=='串行':# 运行模式为串行
         nTask = len(args["RegressDTs"])
         with ProgressBar(max_value=nTask) as ProgBar:
             IDs = FT.getID(ifactor_name=args["ModelArgs"]['ESTU因子'])
             for i, iDT in enumerate(args["RegressDTs"]):
-                FT.move(iDT)
+                # FT.move(iDT)
                 iInd = DSDTs.index(iDT)
                 if iInd==0: continue
                 iPreDT = DSDTs[iInd-1]
@@ -38,7 +38,7 @@ def _FactorAndSpecificReturnGeneration(args):
     else:
         IDs = FT.getID(ifactor_name=args["ModelArgs"]['ESTU因子'])
         for i, iDT in enumerate(args["RegressDTs"]):
-            FT.move(iDT)
+            # FT.move(iDT)
             iInd = DSDTs.index(iDT)
             if iInd==0: continue
             iPreDT = DSDTs[iInd-1]
@@ -58,7 +58,7 @@ def _FactorAndSpecificReturnGeneration(args):
         iFactorData = FT.readData(dts=[iDT], ids=IDs, factor_names=args["ModelArgs"]['风格因子']).iloc[:,0,:]
         iFactorReturn, iSpecificReturn, iFactorData, iStatistics = RiskModelFun.estimateFactorAndSpecificReturn_EUE3(iRet, iFactorData, iIndustry, iCap, iESTU, iCap, args["ModelArgs"]['所有行业'])
         args["RiskDB"].writeData(args["TargetTable"], iDT, factor_data=iFactorData, Cap=iCap)
-    FT.end()
+    # FT.end()
     return 0
 
 # 估计因子协方差矩阵
@@ -85,10 +85,14 @@ def _FactorCovarianceGeneration(args):
             iFactorReturn = pd.concat([iFactorReturn, RT.readFactorReturn(dts=iNewDTs)]).reindex(index=iFactorReturnDTs)
         else:
             iFactorReturn = RT.readFactorReturn(dts=iNewDTs).reindex(index=iFactorReturnDTs)
-        iFactorCov = RiskModelFun.estimateFactorCov_CHE2(iFactorReturn, forcast_num=args["FactorCovESTArgs"]["预测期数"],
-                                                         auto_corr_num=args["FactorCovESTArgs"]["自相关滞后期"],
-                                                         half_life_corr=args["FactorCovESTArgs"]["相关系数半衰期"],
-                                                         half_life_vol=args["FactorCovESTArgs"]["波动率半衰期"])
+        try:
+            iFactorCov = RiskModelFun.estimateFactorCov_CHE2(iFactorReturn, forcast_num=args["FactorCovESTArgs"]["预测期数"],
+                                                            auto_corr_num=args["FactorCovESTArgs"]["自相关滞后期"],
+                                                            half_life_corr=args["FactorCovESTArgs"]["相关系数半衰期"],
+                                                            half_life_vol=args["FactorCovESTArgs"]["波动率半衰期"])
+        except Exception as e:
+            print(f"估计因子协方差阵失败: {iDT}")
+            raise e
         if args["ModelArgs"]["EigenfactorRiskAdjustment"]:
             iFactorCov = RiskModelFun.EigenfactorRiskAdjustment(iFactorCov,
                                                                 monte_carlo_num=args["EigenfactorRiskAdjustmentArgs"]["MonteCarlo次数"],
@@ -152,9 +156,10 @@ class BarraModel(object):
         self.ModelType = "多因子风险模型"
         self.Name = name
         if config_file is None: config_file = f"{__QS_MainPath__}{os.sep}Risk{os.sep}RiskModel{os.sep}BarraModelConfig.py"
-        ModulePath, ConfigModule = os.path.split(config_file)
-        ConfigModule = ".".join(ConfigModule.split(".")[:-1])
-        ModuleSpec = importlib.util.spec_from_file_location(ConfigModule, ModulePath)
+        # ModulePath, ConfigModule = os.path.split(config_file)
+        # ConfigModule = ".".join(ConfigModule.split(".")[:-1])
+        ConfigModule = ".".join(os.path.split(config_file)[-1].split(".")[:-1])
+        ModuleSpec = importlib.util.spec_from_file_location(ConfigModule, config_file)
         self.Config = importlib.util.module_from_spec(ModuleSpec)
         ModuleSpec.loader.exec_module(self.Config)
         self.RiskESTDTs = []# 估计风险的时点序列

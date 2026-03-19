@@ -12,39 +12,42 @@ from QuantStudio.Tools.DataTypeConversionFun import DummyVarTo01Var
 # 使用 EWMA 方法估计样本协方差矩阵
 # ret: 收益率, array, 行是日期, 列是 ID; forcast_num: 向前预测的期数; half_life: 时间指数权重半衰期
 def estimateSampleCovMatrix_EWMA(ret, forcast_num=1, half_life=np.inf):
-    Weight = np.flipud(np.array(getExpWeight(ret.shape[0],half_life)))
-    Weight = np.repeat(np.reshape(Weight,(ret.shape[0],1)),ret.shape[1],axis=1)
-    Mask = (~np.isnan(ret))
-    Weight = Weight*Mask
-    WeightSqrt = Weight**0.5
+    Weight = np.flipud(np.array(getExpWeight(ret.shape[0], half_life)))
+    Weight = np.repeat(np.reshape(Weight, (ret.shape[0], 1)), ret.shape[1], axis=1)
+    Mask = (~ np.isnan(ret))
+    Weight = Weight * Mask
+    WeightSqrt = Weight ** 0.5
     ret = np.copy(ret)
-    ret[~Mask] = 0.0
-    ret = ret*WeightSqrt
+    ret[~ Mask] = 0.0
+    ret = ret * WeightSqrt
     TotalWeight = np.dot(WeightSqrt.T, WeightSqrt)
     TotalWeight[TotalWeight==0] = np.nan
-    BiasAdjust = (TotalWeight**2-np.dot(Weight.T,Weight))
+    BiasAdjust = (TotalWeight ** 2 - np.dot(Weight.T, Weight))
     BiasAdjust[BiasAdjust==0] = np.nan
-    BiasAdjust = TotalWeight**2/BiasAdjust
-    AvgRet1 = np.dot(ret.T,WeightSqrt)/TotalWeight
-    AvgRet2 = np.dot(WeightSqrt.T,ret)/TotalWeight
-    CovMatrix = (np.dot(ret.T,ret)/TotalWeight-AvgRet1*AvgRet2)*BiasAdjust
-    Vol = np.diag(CovMatrix)**0.5
-    Temp = ((np.dot((ret**2).T,Mask)/TotalWeight-AvgRet1**2)*(np.dot(Mask.T,ret**2)/TotalWeight-AvgRet2**2))**0.5*BiasAdjust
+    BiasAdjust = TotalWeight ** 2 / BiasAdjust
+    AvgRet1 = np.dot(ret.T, WeightSqrt) / TotalWeight
+    AvgRet2 = np.dot(WeightSqrt.T, ret) / TotalWeight
+    CovMatrix = (np.dot(ret.T, ret) / TotalWeight - AvgRet1 * AvgRet2) * BiasAdjust
+    Vol = np.diag(CovMatrix) ** 0.5
+    Temp = ((np.dot((ret ** 2).T, Mask) / TotalWeight - AvgRet1 ** 2) * (np.dot(Mask.T, ret ** 2) / TotalWeight - AvgRet2 ** 2)) ** 0.5 * BiasAdjust
     Temp[Temp==0] = np.nan
-    CovMatrix = (CovMatrix/Temp*Vol).T*Vol
-    return (CovMatrix.T+CovMatrix)/2*forcast_num
+    CovMatrix = (CovMatrix / Temp * Vol).T * Vol
+    return (CovMatrix.T + CovMatrix) / 2 * forcast_num
+
 # 将协方差阵分解为: 波动率*相关系数矩阵*波动率, cov_matrix: 协方差矩阵, array
 def decomposeCov2Corr(cov_matrix):
-    Vol = np.diag(cov_matrix)**0.5
+    Vol = np.diag(cov_matrix) ** 0.5
     Corr = (1/Vol) * (cov_matrix / Vol).T
     Corr = np.clip((Corr + Corr.T) / 2, -1.0, 1.0)
     Corr = Corr - np.diag(np.diag(Corr)) + np.eye(Corr.shape[0])
     return (Corr, Vol)
+
 # 给定协方差阵, 计算平均相关系数, cov_matrix: 协方差矩阵, array
 def calcAvgCorr(cov_matrix):
     CorrMatrix,_ = decomposeCov2Corr(cov_matrix)
     CorrMatrix = dropRiskMatrixNA(pd.DataFrame(CorrMatrix)).values
-    return (np.nansum(CorrMatrix)-np.nansum(np.diag(CorrMatrix)))/CorrMatrix.shape[0]/(CorrMatrix.shape[0]-1)
+    return (np.nansum(CorrMatrix) - np.nansum(np.diag(CorrMatrix))) / CorrMatrix.shape[0] / (CorrMatrix.shape[0] - 1)
+
 # 带一个线性约束的加权多元线性回归, x: array((N,K)), y: array((N,)), weight: None 或者 array((N,)), 返回回归系数
 def regressWithOneLinearEqConstraint(y, x, weight=None, Aeq=None, beq=None, statistics=False):
     Mask = ((np.sum(np.isnan(x), axis=1)==0) & (pd.notnull(y)))
@@ -52,24 +55,24 @@ def regressWithOneLinearEqConstraint(y, x, weight=None, Aeq=None, beq=None, stat
         Mask = (Mask & pd.notnull(weight))
     else:
         weight = np.ones(y.shape)
-    x = x[Mask,:]
-    if x.shape[0]<=1: return None
+    x = x[Mask, :]
+    if x.shape[0] <= 1: return None
     y = y[Mask]
     weight = weight[Mask]
     if (Aeq is not None) and (beq is not None):
-        NonZeroInd = np.arange(0,Aeq.shape[0])[Aeq!=0]
-        if NonZeroInd.shape[0]==0: return None
+        NonZeroInd = np.arange(0, Aeq.shape[0])[Aeq != 0]
+        if NonZeroInd.shape[0] == 0: return None
         NonZeroInd = NonZeroInd[0]
-        yy = y-x[:,NonZeroInd]*beq/Aeq[NonZeroInd]
-        if NonZeroInd==0:
-            xx = -np.dot(x[:,NonZeroInd:NonZeroInd+1],Aeq[NonZeroInd+1:].reshape((1,Aeq.shape[0]-1-NonZeroInd))/Aeq[NonZeroInd])+x[:,1+NonZeroInd:]
-        elif NonZeroInd==x.shape[1]-1:
-            xx = x[:,:NonZeroInd]-np.dot(x[:,NonZeroInd:NonZeroInd+1],Aeq[:NonZeroInd].reshape((1,NonZeroInd))/Aeq[NonZeroInd])
+        yy = y-x[:, NonZeroInd] * beq / Aeq[NonZeroInd]
+        if NonZeroInd == 0:
+            xx = -np.dot(x[:, NonZeroInd:NonZeroInd + 1], Aeq[NonZeroInd + 1:].reshape((1, Aeq.shape[0] - 1 - NonZeroInd)) / Aeq[NonZeroInd]) + x[:, 1 + NonZeroInd:]
+        elif NonZeroInd == x.shape[1]-1:
+            xx = x[:, :NonZeroInd] - np.dot(x[:, NonZeroInd:NonZeroInd + 1], Aeq[:NonZeroInd].reshape((1, NonZeroInd)) / Aeq[NonZeroInd])
         else:
             xx = np.hstack((x[:,:NonZeroInd]-np.dot(x[:,NonZeroInd:NonZeroInd+1],Aeq[:NonZeroInd].reshape((1,NonZeroInd))/Aeq[NonZeroInd]),-np.dot(x[:,NonZeroInd:NonZeroInd+1],Aeq[NonZeroInd+1:].reshape((1,Aeq.shape[0]-1-NonZeroInd))/Aeq[NonZeroInd])+x[:,1+NonZeroInd:]))
-        Result = sm.WLS(yy,xx,weights=weight).fit()
+        Result = sm.WLS(yy, xx, weights=weight).fit()
         beta = np.zeros(x.shape[1])
-        beta[NonZeroInd] = (beq-np.sum(Result.params*np.append(Aeq[:NonZeroInd],Aeq[NonZeroInd+1:])))/Aeq[NonZeroInd]
+        beta[NonZeroInd] = (beq - np.sum(Result.params * np.append(Aeq[:NonZeroInd], Aeq[NonZeroInd+1:]))) / Aeq[NonZeroInd]
         beta[:NonZeroInd] = Result.params[:NonZeroInd]
         beta[NonZeroInd+1:] = Result.params[NonZeroInd:]
     else:
@@ -139,16 +142,16 @@ def addProxySample(ret, factor_data, industry_data, weight, market_ret):
 # 使用 EWMA 方法和 Newey-West 方法估计协方差, jret, kret: np.array(收益率), weight: np.array(权重), delta: kret相对于jret的滞后期
 # 假设 jret、kret 以及 weight 均没有nan
 def calcCovariance(jret, kret, weight, delta=0):
-    nLen = jret.shape[0]-np.abs(delta)
+    nLen = jret.shape[0] - np.abs(delta)
     weight = weight[:nLen]
-    weight = weight/np.nansum(weight)
-    if delta>=0:
+    weight = weight / np.nansum(weight)
+    if delta >= 0:
         jret = jret[:nLen]
-        kret = kret[kret.shape[0]-nLen:]
+        kret = kret[kret.shape[0] - nLen:]
     else:
         kret = kret[:nLen]
-        jret = jret[jret.shape[0]-nLen]
-    return np.nansum(weight*(jret-np.nansum(jret*weight))*(kret-np.nanmean(kret*weight)))
+        jret = jret[jret.shape[0] - nLen:]
+    return np.nansum(weight * (jret - np.nansum(jret * weight)) * (kret - np.nansum(kret * weight)))
 
 # 使用 EWMA 方法和 Newey-West 方法估计协方差矩阵, ret: 收益率, DataFrame(收益率, index=[日期], columns=[ID])
 # forcast_num: 向前预测的期数; auto_corr_num: 考虑有自相关性的最大期数; half_life: 时间指数权重半衰期; calc_cov: 是否计算协方差, False的话只返回方差(Series)
@@ -157,40 +160,41 @@ def estimateCovMatrix(ret, forcast_num=21, auto_corr_num=10, half_life=480, calc
         N = auto_corr_num
     else:
         N = forcast_num - 1
-    Weight = np.flipud(np.array(getExpWeight(ret.shape[0],half_life)))
+    Weight = np.flipud(np.array(getExpWeight(ret.shape[0], half_life)))
     if calc_cov:
         CovMatrix = pd.DataFrame(np.nan, index=ret.columns, columns=ret.columns)
-        for j,jCol in enumerate(ret.columns):
+        for j, jCol in enumerate(ret.columns):
             for kCol in ret.columns[j:]:
                 jRet = ret[jCol].values
                 kRet = ret[kCol].values
-                Covs = np.zeros(N*2+1)
-                Coefs = np.zeros(N*2+1)
-                for Delta in range(-N,N+1):
-                    Coefs[Delta+N] = N+1-np.abs(Delta)
-                    Covs[Delta+N] = calcCovariance(jRet, kRet, Weight, Delta)
-                CovMatrix[jCol][kCol] = np.nansum(Coefs*Covs)
-                CovMatrix[kCol][jCol] = CovMatrix[jCol][kCol]
+                Covs = np.zeros(N * 2 + 1)
+                Coefs = np.zeros(N * 2 + 1)
+                for Delta in range(-N, N + 1):
+                    Coefs[Delta + N] = N + 1 - np.abs(Delta)
+                    Covs[Delta + N] = calcCovariance(jRet, kRet, Weight, Delta)
+                CovMatrix.loc[kCol, jCol] = CovMatrix.loc[jCol, kCol] = np.nansum(Coefs * Covs)
     else:
         Columns = ret.columns
-        CovMatrix = np.zeros(ret.shape[1])+np.nan
+        CovMatrix = np.zeros(ret.shape[1]) + np.nan
         ret = ret.values
         for j in range(ret.shape[1]):
             jRet = ret[:, j]
-            Covs = np.zeros(N*2+1)
-            Coefs = np.zeros(N*2+1)
-            for Delta in range(-N, N+1):
-                Coefs[Delta+N] = N+1-np.abs(Delta)
-                Covs[Delta+N] = calcCovariance(jRet, jRet, Weight, Delta)
-            CovMatrix[j] = np.nansum(Coefs*Covs)
+            Covs = np.zeros(N * 2 + 1)
+            Coefs = np.zeros(N * 2 + 1)
+            for Delta in range(-N, N + 1):
+                Coefs[Delta + N] = N + 1 - np.abs(Delta)
+                Covs[Delta + N] = calcCovariance(jRet, jRet, Weight, Delta)
+            CovMatrix[j] = np.nansum(Coefs * Covs)
         CovMatrix = pd.Series(CovMatrix, index=Columns)
-    CovMatrix = CovMatrix * forcast_num / (N+1)
+    CovMatrix = CovMatrix * forcast_num / (N + 1)
     return CovMatrix
+
 # 使对称矩阵正定, 对于非正特征值以小正数替换
 def makeMatrixPositiveDefinite(target_matrix, epsilon=1e-6):
     D,Q = np.linalg.eig(target_matrix)
-    D[D<=0] = epsilon
-    return np.dot(np.dot(Q,np.diag(D)),Q.T)
+    D[D <= 0] = epsilon
+    return np.dot(np.dot(Q, np.diag(D)), Q.T)
+
 # 估计因子收益率和特异性收益率, 使用Barra EUE3的方法, 参见EUE3
 # ret: Series(股票收益率,index=[ID]); factor_data: DataFrame(因子暴露,index=[ID],columns=[因子名]);
 # industry_data: Series(行业名称,index=[ID]); weight: Series(回归权重,index=[ID]);
@@ -199,80 +203,82 @@ def makeMatrixPositiveDefinite(target_matrix, epsilon=1e-6):
 def estimateFactorAndSpecificReturn_EUE3(ret, factor_data, industry_data, weight, estu, cap, all_industries):
     # 准备用于回归的数据
     ESTUMask = ((estu==1) & pd.notnull(weight))
-    ESTUFactorData = factor_data.loc[ESTUMask,:]
+    ESTUFactorData = factor_data.loc[ESTUMask, :]
     ESTURet = ret.loc[ESTUMask]
     ESTUWeight = weight.loc[ESTUMask]
-    ESTUWeight = calcRegressWeight(ESTUWeight,percentile=0.95)
+    ESTUWeight = calcRegressWeight(ESTUWeight, percentile=0.95)
     ESTUIndustry = industry_data.loc[ESTUMask]
-    ESTUMarketRet = calcMarketReturn(ESTURet,ESTUWeight)
+    ESTUMarketRet = calcMarketReturn(ESTURet, ESTUWeight)
     # 添加Proxy Asset
-    ESTURet,ESTUFactorData,ESTUIndustry,ESTUWeight = addProxySample(ESTURet,ESTUFactorData,ESTUIndustry,ESTUWeight,ESTUMarketRet)
+    ESTURet, ESTUFactorData, ESTUIndustry, ESTUWeight = addProxySample(ESTURet, ESTUFactorData, ESTUIndustry, ESTUWeight, ESTUMarketRet)
     # 展开行业因子成0-1变量
-    ESTUIndustryDummy = DummyVarTo01Var(ESTUIndustry,ignore_na=True)
+    ESTUIndustryDummy = DummyVarTo01Var(ESTUIndustry, ignore_na=True)
     # 计算回归的限制条件
-    ESTUIndustryCap = [(ESTUIndustryDummy.iloc[:,i]*ESTUWeight).sum() for i in range(ESTUIndustryDummy.shape[1])]
-    Aeq = np.array([0]*(1+ESTUFactorData.shape[1])+ESTUIndustryCap)
+    ESTUIndustryCap = [(ESTUIndustryDummy.iloc[:, i] * ESTUWeight).sum() for i in range(ESTUIndustryDummy.shape[1])]
+    Aeq = np.array([0] * (1 + ESTUFactorData.shape[1]) + ESTUIndustryCap)
     beq = 0.0
     Y = ESTURet.values
-    X = np.hstack((np.ones((ESTURet.shape[0],1)),ESTUFactorData.values,ESTUIndustryDummy.values))
+    X = np.hstack((np.ones((ESTURet.shape[0], 1)), ESTUFactorData.values, ESTUIndustryDummy.values))
     # 第一次回归
-    FactorReturn = regressWithOneLinearEqConstraint(Y,X,ESTUWeight.values,Aeq,beq)
-    SpecificReturn = Y-np.dot(X,FactorReturn)
+    FactorReturn = regressWithOneLinearEqConstraint(Y, X, ESTUWeight.values, Aeq, beq)
+    SpecificReturn = Y - np.dot(X, FactorReturn)
     # 计算残差收益的异常部分
-    ResidOutlier = pd.Series(calcRetOutlier(SpecificReturn),index=ESTURet.index)
+    ResidOutlier = pd.Series(calcRetOutlier(SpecificReturn), index=ESTURet.index)
     # 第二次回归
     Y = Y-ResidOutlier.values
-    FactorReturn,Statistics = regressWithOneLinearEqConstraint(Y,X,ESTUWeight.values,Aeq,beq,True)
-    _,iStatistics = regressWithOneLinearEqConstraint(Y,X[:,0:1],ESTUWeight.values,None,None,True)
+    FactorReturn, Statistics = regressWithOneLinearEqConstraint(Y, X, ESTUWeight.values, Aeq, beq, True)
+    _, iStatistics = regressWithOneLinearEqConstraint(Y, X[:, 0:1], ESTUWeight.values, None, None, True)
     Statistics["R2_市场因子"] = iStatistics["R2"]
     Statistics["R2_adj_市场因子"] = iStatistics["R2_adj"]
-    _,iStatistics = regressWithOneLinearEqConstraint(Y,X[:,0:ESTUFactorData.shape[1]+1],ESTUWeight.values,None,None,True)
+    _, iStatistics = regressWithOneLinearEqConstraint(Y, X[:, 0:ESTUFactorData.shape[1] + 1], ESTUWeight.values, None, None, True)
     Statistics["R2_风险因子"] = iStatistics["R2"]
     Statistics["R2_adj_风险因子"] = iStatistics["R2_adj"]
-    _,iStatistics = regressWithOneLinearEqConstraint(Y,X[:,ESTUFactorData.shape[1]+1:],ESTUWeight.values,None,None,True)
+    _, iStatistics = regressWithOneLinearEqConstraint(Y, X[:, ESTUFactorData.shape[1] + 1:], ESTUWeight.values, None, None, True)
     Statistics["R2_行业因子"] = iStatistics["R2"]
     Statistics["R2_adj_行业因子"] = iStatistics["R2_adj"]
     # 生成因子收益率
-    FactorReturn = pd.Series(FactorReturn,["Market"]+list(factor_data.columns)+list(ESTUIndustryDummy.columns))
-    FactorReturn = FactorReturn[["Market"]+list(factor_data.columns)+all_industries]
+    FactorReturn = pd.Series(FactorReturn, ["Market"] + factor_data.columns.tolist() + ESTUIndustryDummy.columns.tolist())
+    FactorReturn = FactorReturn.reindex(index=["Market"] + factor_data.columns.tolist() + all_industries)
     FactorReturn[pd.isnull(FactorReturn)] = ESTUMarketRet
     # 生成特异性收益率
-    ESTUIndustryDummy = DummyVarTo01Var(industry_data,ignore_na=True)
+    ESTUIndustryDummy = DummyVarTo01Var(industry_data, ignore_na=True)
     ESTUIndustryDummy = ESTUIndustryDummy.reindex(columns=all_industries)
     ESTUIndustryDummy = ESTUIndustryDummy.where(pd.notnull(ESTUIndustryDummy), 0.0)
-    X = np.hstack((np.ones((ret.shape[0],1)),factor_data.values,ESTUIndustryDummy.values))
-    SpecificReturn = pd.Series(ret.values-np.dot(X,FactorReturn.values),index=ret.index)
-    return (FactorReturn,SpecificReturn,pd.DataFrame(X,index=factor_data.index,columns=["Market"]+list(factor_data.columns)+all_industries),Statistics)
+    X = np.hstack((np.ones((ret.shape[0], 1)), factor_data.values,ESTUIndustryDummy.values))
+    SpecificReturn = pd.Series(ret.values - np.dot(X, FactorReturn.values), index=ret.index)
+    return (FactorReturn, SpecificReturn, pd.DataFrame(X, index=factor_data.index, columns=["Market"] + factor_data.columns.tolist() + all_industries), Statistics)
+
 # 估计因子协方差矩阵, 使用Barra CHE2的方法, 参见CHE2附录A
 # factor_ret: DataFrame(因子收益率,index=[日期],columns=[ID]); forcast_num: 向前预测的期数;
 # auto_corr_num: 考虑有自相关性的最大期数; half_life_corr: 估计相关系数的时间指数权重半衰期;
 # half_life_vol: 估计波动率的时间指数权重半衰期;
 def estimateFactorCov_CHE2(factor_ret,forcast_num=21,auto_corr_num=10,half_life_corr=480,half_life_vol=90):
     FactorCov = estimateCovMatrix(factor_ret,forcast_num=forcast_num,auto_corr_num=auto_corr_num,half_life=half_life_corr)
-    VolatilityReciprocal = np.diag(1/np.diag(FactorCov)**0.5)
-    CorrMatrix = np.dot(np.dot(VolatilityReciprocal,FactorCov),VolatilityReciprocal)
-    VolatilityDiag = estimateCovMatrix(factor_ret,forcast_num=forcast_num,half_life=half_life_vol,calc_cov=False)
-    VolatilityDiag = np.diag(VolatilityDiag**0.5)
-    FactorCov = np.dot(np.dot(VolatilityDiag,CorrMatrix),VolatilityDiag)
-    return pd.DataFrame(makeMatrixPositiveDefinite(FactorCov),index=factor_ret.columns,columns=factor_ret.columns)
+    VolatilityReciprocal = np.diag(1 / np.diag(FactorCov) ** 0.5)
+    CorrMatrix = np.dot(np.dot(VolatilityReciprocal, FactorCov), VolatilityReciprocal)
+    VolatilityDiag = estimateCovMatrix(factor_ret, forcast_num=forcast_num, half_life=half_life_vol, calc_cov=False)
+    VolatilityDiag = np.diag(VolatilityDiag ** 0.5)
+    FactorCov = np.dot(np.dot(VolatilityDiag, CorrMatrix), VolatilityDiag)
+    return pd.DataFrame(makeMatrixPositiveDefinite(FactorCov), index=factor_ret.columns, columns=factor_ret.columns)
+
 # 计算blending coefficient
 # specific_ret: DataFrame(收益率,index=[日期],columns=[ID]);
 def calcBlendingCoefficient(specific_ret):
     Gamma = {}
     for iID in specific_ret.columns:
         iSpecificRet = specific_ret[iID]
-        iSpecificRet = iSpecificRet[pd.notnull(iSpecificRet)].values
+        iSpecificRet = iSpecificRet[pd.notnull(iSpecificRet)].values.copy()
         ih = iSpecificRet.shape[0]
         if ih==0:
             Gamma[iID]=0
             continue
-        iRobustStd = 1/1.35*(np.percentile(iSpecificRet,75)-np.percentile(iSpecificRet,25))
-        iSpecificRet[iSpecificRet>10*iRobustStd] = 10*iRobustStd
-        iSpecificRet[iSpecificRet<-10*iRobustStd] = -10*iRobustStd
+        iRobustStd = 1 / 1.35 * (np.percentile(iSpecificRet, 75) - np.percentile(iSpecificRet, 25))
+        iSpecificRet[iSpecificRet > 10 * iRobustStd] = 10 * iRobustStd
+        iSpecificRet[iSpecificRet < -10 * iRobustStd] = -10 * iRobustStd
         iStd = np.std(iSpecificRet)
-        iZVal = np.abs((iStd-iRobustStd)/iRobustStd)
-        Gamma[iID] = min((1,max((0,(ih-60)/120))))*min((1,max((0,np.exp(1-iZVal)))))
-    Gamma = pd.Series(Gamma,name='Gamma')
+        iZVal = np.abs((iStd - iRobustStd) / iRobustStd)
+        Gamma[iID] = min((1, max((0, (ih - 60) / 120)))) * min((1, max((0, np.exp(1 - iZVal)))))
+    Gamma = pd.Series(Gamma, name='Gamma')
     Gamma[pd.isnull(Gamma)] = 0
     return Gamma
     
@@ -326,6 +332,7 @@ def EigenfactorRiskAdjustment(factor_cov, monte_carlo_num=1000, date_num=480, ig
     vs = a*(vp-1)+1
     D0 = D0*vs**2
     return pd.DataFrame(np.dot(U0,np.dot(D0,U0.T)),index=factor_cov.index,columns=factor_cov.columns)
+
 # Bayesian Shrinkage
 # specific_risk: Series(特异性风险,index=[ID]); factor_data: DataFrame(因子暴露,index=[ID],columns=[因子名]);
 # 返回修正后的特异性风险: Series(特异性风险,index=[ID])
@@ -380,7 +387,7 @@ def VolatilityRegimeAdjustment(ret, forcast_volitility, half_life=90, forcast_nu
 
 # 去掉风险矩阵的缺失值
 def dropRiskMatrixNA(risk_matrix):
-    risk_matrix = risk_matrix.dropna(how='all',axis=0)
-    risk_matrix = risk_matrix.loc[:,risk_matrix.index]
-    risk_matrix = risk_matrix.dropna(how='any',axis=0)
-    return risk_matrix.loc[:,risk_matrix.index]
+    risk_matrix = risk_matrix.dropna(how='all', axis=0)
+    risk_matrix = risk_matrix.loc[:, risk_matrix.index]
+    risk_matrix = risk_matrix.dropna(how='any', axis=0)
+    return risk_matrix.loc[:, risk_matrix.index]
