@@ -33,21 +33,21 @@ class CalcIC(PanelOperator):
     IC: 往期因子值和当期收益率的截面秩相关性。通常采用的相关系数为 Spearman 相关系数。
     """
 
-    def __init__(self, lookback:int = 31, period_lookback:int=1, corr_method:Literal["spearman", "pearson", "kendall"]="spearman", descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, descriptor_ids:List[str], lookback:int = 31, period_lookback:int=1, corr_method:Literal["spearman", "pearson", "kendall"]="spearman", args:dict={}, config_file:Optional[str]=None, **kwargs):
         """初始化 IC 计算算子
 
         Args:
+            descriptor_ids: 依赖因子的截面 ID 序列
             lookback: 在时间标尺上的回溯期数, 即回溯多久的数据来完成计算
             period_lookback: 在计算标尺上的回溯期数, 数据的时间序列是日度的，但 IC 的计算时间序列是月度的，该参数表示用回溯多少个月的因子值来和当前收益率计算相关性
             corr_method: 相关性的计算方法
-            descriptor_ids: 因子的截面 ID 序列
         """
         Arity = args.get("Arity", None) or 1
         Args = {"Name": "calcIC"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "object"}
         Args["ModelArgs"] = {"corr_method": corr_method, "period_lookback": period_lookback} | Args.get("ModelArgs", {})
         Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
         Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * Arity
-        Args["CompoundType"] = [("IC", float), ("Breadth", float)]
+        Args["CompoundType"] = [("IC", "double"), ("Breadth", "double")]
         return super().__init__(args=Args, config_file=config_file, **kwargs)
     
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
@@ -95,15 +95,16 @@ class CalcIC(PanelOperator):
         Rslt = np.array([IC.reindex(index=idt).values[self._QSArgs.LookBack[0]:], Breadth.reindex(index=idt).values[self._QSArgs.LookBack[0]:]])
         return unstructured_to_structured(Rslt.swapaxes(0, -1), dtype=np.dtype([("IC", float), ("Breadth", float)])).T.astype("O")
     
-    def __call__(self, *x:Factor, price:Factor, mask: Optional[Factor]=None, cat_data: Optional[Factor]=None, weight: Optional[Factor]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
+    def __call__(self, *x:Factor, price:Factor, mask: Optional[Factor]=None, cat_data: Optional[Factor]=None, weight: Optional[Factor]=None, factor_name_list: Optional[List[str]]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
         """将算子作用在若干个因子对象上以产生 IC 因子
 
         Args:
-            x: 待计算 IC 的因子
+            x: 待计算 IC 的测试因子
             price: 证券价格或者净值因子
             mask: 筛选条件因子, 每一期的因子值和收益率会按照该因子是否等于 1 来筛选后再计算 IC, None 表示不做任何筛选
             cat_data: 类别因子, 比如行业等，如果非 None 表示会对收益率进行行业调整，即个券的收益率减去行业平均收益率后再计算 IC
             weight: 权重因子, 计算类别收益率时的权重
+            factor_name_list: 测试因子名称列表
             factor_args: 创建 IC 因子时传递个它的参数集
             kwargs: 创建 IC 因子时传递给它的其他入参
 
@@ -116,13 +117,28 @@ class CalcIC(PanelOperator):
         if weight is not None: Factors.append(weight)
         if not x: raise __QS_Error__("测试因子列表 x 不可为空!")
         else: Factors += x
-        if "SectionIDs" not in factor_args:
-            PosNum = int(np.log10(len(x))) + 1
-            SectionIDs = [f"x-{str(i).zfill(PosNum)}" for i in range(len(x))]
-            factor_args["SectionIDs"] = SectionIDs
-        elif len(set(factor_args["SectionIDs"]))!=len(x) or (sorted(factor_args["SectionIDs"])!=factor_args["SectionIDs"]):
-            raise __QS_Error__(f"截面ID : {factor_args['SectionIDs']} 长度不等于测试因子列表 x 的长度, 或者有重复, 或者非升序排列!")
-        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"mask": (mask is not None), "cat_data": (cat_data is not None), "weight": (weight is not None), "factor_name_list": [f.Name for f in x]}
+        if factor_name_list is not None:
+            if factor_args.get("SectionIDs", None) is not None:
+                self.Logger.warning(f"{self.__class__.__name__}.__call__: 同时指定了测试因子名称列表 factor_name_list({factor_name_list})以及因子截面ID参数 SectionIDs({factor_args['SectionIDs']}), 将使用后者作为因子的截面ID, 忽略 factor_name_list")
+                factor_name_list = factor_args["SectionIDs"]
+        elif factor_args.get("SectionIDs", None) is not None:
+            factor_name_list = factor_args["SectionIDs"]
+        else:
+            factor_name_list = [iFactor.Name for iFactor in x]
+            if len(set(factor_name_list)) != len(x):
+                PosNum = int(np.log10(max(1, len(x) - 1))) + 1
+                factor_name_list = [f"F{str(i).zfill(PosNum)}" for i in range(len(x))]
+                self.Logger.info(f"测试因子的名称中有重复, 使用系统自动生成的测试因子名称列表: {factor_name_list}")
+        if len(set(factor_name_list)) != len(x):
+            raise __QS_Error__(f"测试因子的名称列表 : {factor_name_list} 长度不等于测试因子列表 x 的长度或者有重复!")
+        else:
+            SortedIdx = np.argsort(factor_name_list)
+            if not np.all(SortedIdx == np.arange(len(factor_name_list))):
+                self.Logger.warning(f"{self.__class__.__name__}.__call__: 测试因子的名称列表({factor_name_list})不是升序排列，将按照升序重新排列测试因子")
+                x, factor_name_list = [x[i] for i in SortedIdx], [factor_name_list[i] for i in SortedIdx]
+        factor_args["SectionIDs"] = factor_name_list
+        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"mask": (mask is not None), "cat_data": (cat_data is not None), "weight": (weight is not None)}
+        kwargs["operator_kwargs"] =  {"descriptor_ids": self._QSArgs.DescriptorSection[0], "lookback": self._QSArgs.LookBack[0]} | kwargs.get("operator_kwargs", {})
         return super().__call__(*Factors, factor_args=factor_args, **kwargs)
 
 
@@ -131,21 +147,21 @@ class CalcRiskAdjustedIC(PanelOperator):
     风险调整的 IC: 因子值和收益率均对给定的风险因子进行正交化后计算的 IC
     """
 
-    def __init__(self, lookback:int = 31, period_lookback:int=1, corr_method:Literal["spearman", "pearson", "kendall"]="spearman", descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, descriptor_ids:List[str], lookback:int = 31, period_lookback:int=1, corr_method:Literal["spearman", "pearson", "kendall"]="spearman", args:dict={}, config_file:Optional[str]=None, **kwargs):
         """初始化风险调整的 IC 计算算子
 
         Args:
+            descriptor_ids: 依赖因子的截面 ID 序列
             lookback: 在时间标尺上的回溯期数, 即回溯多久的数据来完成计算
             period_lookback: 在计算标尺上的回溯期数, 数据的时间序列是日度的，但 IC 的计算时间序列是月度的，该参数表示用回溯多少个月的因子值来和当前收益率计算相关性
             corr_method: 相关性的计算方法
-            descriptor_ids: 因子的截面 ID 序列
         """
         Arity = args.get("Arity", None) or 1
         Args = {"Name": "calcRiskAdjustedIC"} | args | {"DTMode": "单时点", "OutputMode": "全截面", "DataType": "object"}
         Args["ModelArgs"] = {"corr_method": corr_method, "period_lookback": period_lookback} | Args.get("ModelArgs", {})
         Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
         Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * Arity
-        Args["CompoundType"] = [("IC", float), ("Breadth", float)]
+        Args["CompoundType"] = [("IC", "double"), ("Breadth", "double")]
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
@@ -211,7 +227,7 @@ class CalcRiskAdjustedIC(PanelOperator):
             Rslt[i, 1] = pd.notnull(iFactorExpose).sum()
         return unstructured_to_structured(Rslt).tolist()
         
-    def __call__(self, *x:Factor, price:Factor, risk_factors:List[Factor], mask: Optional[Factor]=None, cat_data: Optional[Factor]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
+    def __call__(self, *x:Factor, price:Factor, risk_factors:List[Factor], mask: Optional[Factor]=None, cat_data: Optional[Factor]=None, factor_name_list: Optional[List[str]]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
         """将算子作用在若干个因子对象上以产生风险调整的 IC 因子
 
         Args:
@@ -220,6 +236,7 @@ class CalcRiskAdjustedIC(PanelOperator):
             risk_factors: 风险因子列表, 这些因子将用于对 x 和收益率进行正交化
             mask: 筛选条件因子, 每一期的因子值和收益率会按照该因子是否等于 1 来筛选后再计算 IC, None 表示不做任何筛选
             cat_data: 类别因子, 比如行业等，如果非 None 也将参与正交化
+            factor_name_list: 测试因子名称列表
             factor_args: 创建 IC 因子时传递个它的参数集
             kwargs: 创建 IC 因子时传递给它的其他入参
         
@@ -232,13 +249,28 @@ class CalcRiskAdjustedIC(PanelOperator):
         Factors += risk_factors
         if not x: raise __QS_Error__("测试因子列表 x 不可为空!")
         else: Factors += x
-        if "SectionIDs" not in factor_args:
-            PosNum = int(np.log10(len(x))) + 1
-            SectionIDs = [f"x-{str(i).zfill(PosNum)}" for i in range(len(x))]
-            factor_args["SectionIDs"] = SectionIDs
-        elif len(set(factor_args["SectionIDs"]))!=len(x) or (sorted(factor_args["SectionIDs"])!=factor_args["SectionIDs"]):
-            raise __QS_Error__(f"截面ID : {factor_args['SectionIDs']} 长度不等于测试因子列表 x 的长度, 或者有重复, 或者非升序排列!")
+        if factor_name_list is not None:
+            if factor_args.get("SectionIDs", None) is not None:
+                self.Logger.warning(f"{self.__class__.__name__}.__call__: 同时指定了测试因子名称列表 factor_name_list({factor_name_list})以及因子截面ID参数 SectionIDs({factor_args['SectionIDs']}), 将使用后者作为因子的截面ID, 忽略 factor_name_list")
+                factor_name_list = factor_args["SectionIDs"]
+        elif factor_args.get("SectionIDs", None) is not None:
+            factor_name_list = factor_args["SectionIDs"]
+        else:
+            factor_name_list = [iFactor.Name for iFactor in x]
+            if len(set(factor_name_list)) != len(x):
+                PosNum = int(np.log10(max(1, len(x) - 1))) + 1
+                factor_name_list = [f"F{str(i).zfill(PosNum)}" for i in range(len(x))]
+                self.Logger.info(f"测试因子的名称中有重复, 使用系统自动生成的测试因子名称列表: {factor_name_list}")
+        if len(set(factor_name_list)) != len(x):
+            raise __QS_Error__(f"测试因子的名称列表 : {factor_name_list} 长度不等于测试因子列表 x 的长度或者有重复!")
+        else:
+            SortedIdx = np.argsort(factor_name_list)
+            if not np.all(SortedIdx == np.arange(len(factor_name_list))):
+                self.Logger.warning(f"{self.__class__.__name__}.__call__: 测试因子的名称列表({factor_name_list})不是升序排列，将按照升序重新排列测试因子")
+                x, factor_name_list = [x[i] for i in SortedIdx], [factor_name_list[i] for i in SortedIdx]
+        factor_args["SectionIDs"] = factor_name_list
         factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"mask": (mask is not None), "cat_data": (cat_data is not None), "factor_name_list": [f.Name for f in x], "risk_factor_list": [f.Name for f in risk_factors]}
+        kwargs["operator_kwargs"] =  {"descriptor_ids": self._QSArgs.DescriptorSection[0], "lookback": self._QSArgs.LookBack[0]} | kwargs.get("operator_kwargs", {})
         return super().__call__(*Factors, factor_args=factor_args, **kwargs)
 
 
@@ -316,7 +348,7 @@ class IC(BTNode):
         if self._QSArgs.FactorNameList:
             FactorNameList = self._QSArgs.FactorNameList
         else:
-            FactorNameList = self.Deps[0].Args.ModelArgs.get("factor_name_list", IC.columns)
+            FactorNameList = IC.columns.tolist()
         IC.columns = Breadth.columns = FactorNameList
         Breadth = Breadth.reindex(index=IC.index)
         Output = {"截面宽度": Breadth, "IC": IC}
@@ -342,6 +374,7 @@ class IC(BTNode):
 
 class ICDecay(BTNode):
     """IC 衰减: 因子值和收益率关于日期间隔的 IC 衰减情况"""
+
     class __QS_ArgClass__(BTNode.__QS_ArgClass__):
         Name: str = Field(default="IC 衰减", frozen=True, title="名称")
         PeriodList: Optional[List[str]] = Field(default=None, frozen=True, title="回溯期列表")
@@ -380,7 +413,7 @@ class ICDecay(BTNode):
         HTML += "</ul>"
         Formatters = [_QS_formatPandasPercentage]*2+[lambda x:'{0:.4f}'.format(x), lambda x:'{0:.2f}'.format(x), _QS_formatPandasPercentage]
         for iFactorName in output.keys():
-            iHTML = f"因子: {iFactorName}\n"
+            iHTML = f"<br>因子: {iFactorName}<br>"
             iHTML += output[iFactorName]["统计数据"].to_html(formatters=Formatters)
             Pos = iHTML.find(">")
             HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]

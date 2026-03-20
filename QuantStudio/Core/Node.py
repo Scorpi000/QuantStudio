@@ -4,14 +4,14 @@ from typing import Any, List, Optional, Dict, Tuple, Literal
 
 from pydantic import Field, ConfigDict
 
-from QuantStudio.Core import __QS_Object__, QSArgs
+from QuantStudio.Core import __QS_Object__, __QS_Args__
 
 
 # 全局运行时环境
 __QS_Context__ = []
 
 
-class Context(QSArgs):
+class Context(__QS_Args__):
     """节点运算时全局上下文对象"""
 
     Mode: Literal["PRD", "DEBUG"] = Field(default="PRD", title="运行模式")
@@ -46,7 +46,7 @@ class Context(QSArgs):
         if __QS_Context__: __QS_Context__.pop()
 
 
-class LocalContext(QSArgs):
+class LocalContext(__QS_Args__):
     """节点运算时局部上下文对象"""
 
     ExtraData: dict = Field(default={}, title="其他数据")
@@ -62,7 +62,7 @@ class DTLocalContext(LocalContext):
     DTs: List[dt.datetime] = Field(title="时点序列")
 
 
-class DTInitData(QSArgs):
+class DTInitData(__QS_Args__):
     """时序运算类节点初始化数据对象"""
     
     DTRange: Tuple[dt.datetime, dt.datetime] = Field(title="时点区间")
@@ -71,7 +71,7 @@ class DTInitData(QSArgs):
 class Node(__QS_Object__):
     """计算图中的节点, 独立的计算单元"""
 
-    class __QS_ArgClass__(QSArgs):
+    class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
         Name: str = Field(default="Node", frozen=True, title="名称")
 
     def __init__(self, deps:List["Node"]=[], args:dict={}, config_file:Optional[str]=None, **kwargs):

@@ -15,20 +15,28 @@ from QuantStudio.Tools.DataTypeConversionFun import dict2html, dict2markdown
 from QuantStudio.Tools.DataTypeFun import dict2id
 
 
-__QS_Logger__ = logging.getLogger('QS')
-__QS_Logger__.setLevel(logging.INFO)
-_QSLogHandler = logging.StreamHandler()
-_QSLogHandler.setLevel(logging.INFO)
-_QSLogHandler.setFormatter(logging.Formatter('%(asctime)s | %(name)s | %(levelname)s : %(message)s'))
-__QS_Logger__.addHandler(_QSLogHandler)
+def setDefaultLogLevel(level=logging.INFO):
+    global __QS_Logger__
+    __QS_Logger__ = logging.getLogger('QS')
+    __QS_Logger__.setLevel(level)
+    _QSLogHandler = logging.StreamHandler()
+    _QSLogHandler.setLevel(level)
+    _QSLogHandler.setFormatter(logging.Formatter('%(asctime)s | %(name)s | %(levelname)s : %(message)s'))
+    __QS_Logger__.addHandler(_QSLogHandler)
 
+def setDefaultLogger(logger):
+    global __QS_Logger__
+    __QS_Logger__ = logger
+
+__QS_Logger__ = None
+setDefaultLogLevel()
 
 class __QS_Error__(Exception):
     """Quant Studio 系统错误"""
     pass
 
 
-class QSArgs(BaseModel):
+class __QS_Args__(BaseModel):
     """QuantStudio 参数对象"""
 
     Owner: Any = Field(default=None, exclude=True, repr=False, frozen=True, title="所有者")
@@ -122,7 +130,7 @@ class QSArgs(BaseModel):
         setattr(self, key, value)
 
     def __eq__(self, other):
-        if not isinstance(other, QSArgs): return False
+        if not isinstance(other, __QS_Args__): return False
         return self.QSID == other.QSID
 
     def get(self, key:str, value:Any=None) -> Any:
@@ -152,7 +160,7 @@ class QSArgs(BaseModel):
 
     def __repr__(self):
         if self.Owner:
-            return f'{self.Owner.__class__.__name__ if isinstance(self.Owner, __QS_Object__) else str(self.Owner)}.QSArgs({self.__repr_str__(", ")})'
+            return f'{self.Owner.__class__.__name__ if isinstance(self.Owner, __QS_Object__) else str(self.Owner)}.Args({self.__repr_str__(", ")})'
         else:
             return super().__repr__()
 
@@ -166,7 +174,7 @@ class QSArgs(BaseModel):
 class __QS_Object__:
     """Quant Studio 系统对象"""
 
-    __QS_ArgClass__ = QSArgs
+    __QS_ArgClass__ = __QS_Args__
 
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
         """实例化 QuantStudio 系统对象
@@ -210,7 +218,7 @@ class __QS_Object__:
         return self._QS_ID
 
     @property
-    def Args(self) -> QSArgs:
+    def Args(self) -> __QS_Args__:
         """参数集对象"""
         return self._QSArgs
 
@@ -241,7 +249,7 @@ class __QS_Object__:
 
 
 if __name__ == "__main__":
-    class TestArgs(QSArgs):
+    class TestArgs(__QS_Args__):
         name: str = Field()# exclude=False, repr=True
         name1: Optional[str] = Field(default=None, exclude=True)
         name2: Optional[str] = Field(default=None, repr=False)

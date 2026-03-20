@@ -224,7 +224,7 @@ def  serialize_qs_object(q: "__QS_Object__", visited: Set[int]):
         'qs_id': q.QSID
     }
 
-def  serialize_qs_args(q: "QSArgs", visited: Set[int]):
+def  serialize_qs_args(q: "__QS_Args__", visited: Set[int]):
     return {
         '__type__': 'qs_args',
         '__class__': q.__class__.__name__,
@@ -246,7 +246,7 @@ def serialize_value(value: Any, visited: Set[int] = None) -> Any:
         return {'__ref__': obj_id}
     visited.add(obj_id)
     
-    from QuantStudio.Core import __QS_Object__, QSArgs
+    from QuantStudio.Core import __QS_Object__, __QS_Args__
     try:
         # 基本不可变类型直接返回
         if isinstance(value, (int, float, str, bool, type(None))):
@@ -267,11 +267,11 @@ def serialize_value(value: Any, visited: Set[int] = None) -> Any:
         # numpy 对象
         elif isinstance(value, np.ndarray):
             return serialize_numpy(value, visited)
-        # QS 对象
+        # __QS_Object__ 对象
         elif isinstance(value, __QS_Object__):
             return serialize_qs_object(value, visited)
-        # QSArgs 对象
-        elif isinstance(value, QSArgs):
+        # __QS_Args__ 对象
+        elif isinstance(value, __QS_Args__):
             return serialize_qs_args(value, visited)
         # 普通对象
         elif hasattr(value, '__dict__'):

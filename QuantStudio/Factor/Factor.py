@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from pydantic import Field
 
-from QuantStudio.Core import __QS_Error__, QSArgs
+from QuantStudio.Core import __QS_Error__
 from QuantStudio.Core.Node import Node, Context, DTLocalContext, DTInitData, __QS_Context__
 from QuantStudio.Core.CalcEngine import __QS_Engine__, Engine
 from QuantStudio.Factor.FactorCache import FactorCache

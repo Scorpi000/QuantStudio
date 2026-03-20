@@ -1,14 +1,124 @@
 # coding=utf-8
 """Brinson 绩效分析模型"""
 import datetime as dt
+from typing import List, Literal, Optional
 
 import pandas as pd
 import numpy as np
-from traits.api import Enum, List
+from pydantic import Field
 
-from QuantStudio.BackTest.BackTestModel import BaseModule
+from QuantStudio.Core import __QS_Error__
+from QuantStudio.Core.Node import DTInitData, DTLocalContext
+from QuantStudio.Core.QSObject import Panel
+from QuantStudio.Factor.Factor import Factor, FactorContext, FactorInitData, FactorLocalContext
+from QuantStudio.Factor.FactorOperation import PanelOperator, PanelOperation
+from QuantStudio.BackTest.BackTestModel import BTNode
 from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatPandasPercentage
+
+
+
+class CalcBrinsonModel(PanelOperator):
+    """Brinson 绩效分析算子
+    前提条件:
+    1. 投资组合的权重之和为 1, 与 1 的差值部分归为现金
+    2. 两个计算时点之间没有调整策略持仓
+    """
+
+    def __init__(self, section_ids:List[str], lookback:int = 31, descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化 Brinson 绩效分析算子
+
+        Args:
+            section_ids: 绩效分析因子的截面 ID 序列, 如果使用行业作为资产分类, 该截面应该为所有行业的列表
+            lookback: 在时间标尺上的回溯期数, 即回溯多久的数据来完成计算
+            descriptor_ids: 依赖因子的截面 ID 序列
+        """
+        Arity = args.get("Arity", None) or 1
+        Args = {"Name": "calcBrinsonModel"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "object"}
+        Args["ModelArgs"] = {"section_ids": section_ids} | Args.get("ModelArgs", {})
+        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
+        Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * Arity
+        Args["CompoundType"] = [("BMK", "double"), ("AAP", "double"), ("SSP", "double"), ("TP", "double"), ("AA", "double"), ("SS", "double"), ("IN", "double"), ("AAA", "double")]
+        return super().__init__(args=Args, config_file=config_file, **kwargs)
+    
+    def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
+        SectionIDs = (self._QSArgs.DescriptorSection[0] if self._QSArgs.DescriptorSection[0] else iid)
+        Portfolio, Price, CatData, x = pd.DataFrame(x[0], index=idt, columns=SectionIDs), pd.DataFrame(x[0], index=idt, columns=SectionIDs), pd.DataFrame(x[0], index=idt, columns=SectionIDs), x[1:]
+
+        if f._QSArgs.CalcDTRuler:
+            DTs = sorted(set(idt).intersection(f._QSArgs.CalcDTRuler))
+            Price = Price.reindex(columns=DTs)
+        else:
+            DTs = Price.columns
+        Return = Price.T.pct_change().T
+        if f._QSArgs.ModelArgs["mask"]: 
+            Mask, x = pd.DataFrame(x[0].T==1, columns=idt, index=SectionIDs).reindex(columns=DTs).fillna(False).astype(bool), x[1:]
+            Mask = (Mask & Price.notnull())
+        else:
+            Mask = Price.notnull()
+        if f._QSArgs.ModelArgs["cat_data"]: 
+            CatData, x = pd.DataFrame(x[0].T, columns=idt, index=SectionIDs).reindex(columns=DTs), x[1:]
+        else:
+            CatData = None
+        if f._QSArgs.ModelArgs["weight"]: 
+            Weight, x = pd.DataFrame(x[0].T, columns=idt, index=SectionIDs).reindex(columns=DTs), x[1:]
+        else:
+            Weight = pd.DataFrame(1, columns=DTs, index=SectionIDs)
+        if CatData is not None:# 进行收益率的类别调整
+            Return = Return.where(CatData.notnull(), np.nan)
+            AllCates = CatData.values.flatten()
+            AllCates = np.unique(AllCates[pd.notnull(AllCates)])
+            for iCate in AllCates:
+                iMask = ((CatData==iCate) & Mask)
+                iWeight = Weight.where(iMask, np.nan).shift(1, axis=1).copy()
+                iReturn = (Return * iWeight).sum(axis=0) / iWeight.sum(axis=0)
+                Return = Return.where(~iMask.shift(1, axis=1).fillna(False).astype(bool), Return - iReturn)
+        IC, Breadth = pd.DataFrame(index=DTs, columns=iid), pd.DataFrame(index=DTs, columns=iid)
+        FactorNames = f._QSArgs.SectionIDs
+        Mask = Mask.shift(args["period_lookback"], axis=1).fillna(False).astype(bool)
+        for iFactorName in iid:
+            if iFactorName not in FactorNames: continue
+            iIdx = FactorNames.index(iFactorName)
+            iFactorData = pd.DataFrame(x[iIdx].T, columns=idt, index=SectionIDs)
+            iFactorData = iFactorData.reindex(columns=DTs).shift(args["period_lookback"], axis=1)
+            iMask = (Mask & iFactorData.notnull())
+            IC[iFactorName] = Return.where(iMask, np.nan).corrwith(iFactorData, method=args["corr_method"])
+            Breadth[iFactorName] = iMask.sum(axis=0)
+        Rslt = np.array([IC.reindex(index=idt).values[self._QSArgs.LookBack[0]:], Breadth.reindex(index=idt).values[self._QSArgs.LookBack[0]:]])
+        return unstructured_to_structured(Rslt.swapaxes(0, -1), dtype=np.dtype([("IC", float), ("Breadth", float)])).T.astype("O")
+    
+    def __call__(self, p:Factor, price: Factor, cat_data: Factor, bmk:Optional[Factor]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
+        """将算子作用在若干个因子对象上以产生 Brinson 绩效分析因子
+
+        Args:
+            p: 待分析的投资组合因子
+            price: 证券价格或者净值因子
+            cat_data: 类别因子, 比如行业等
+            bmk: 基准投资组合因子，如果为 None 表示没有基准，考察绝对收益
+            factor_args: 创建 IC 因子时传递个它的参数集
+            kwargs: 创建 IC 因子时传递给它的其他入参
+
+        Returns:
+            Brinson 绩效分析因子，该因子为复合因子，包含的子因子有:
+            * BMK: 业绩基准组合收益
+            * AAP: 主动资产配置组合收益
+            * SSP: 主动个券选择组合收益
+            * TP: 实际投资组合收益
+            * AA: 资产配置收益(Return of Asset Allocation)
+            * SS: 个券选择收益(Return of Stock Selection)
+            * IN: 交互作用(Interaction)
+            * AAA: 调整的资产配置收益
+        """
+        Factors = [p, price, cat_data]
+        if bmk is not None: Factors.append(bmk)
+        if "SectionIDs" not in factor_args:
+            factor_args["SectionIDs"] = self._QSArgs.ModelArgs["section_ids"]
+        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"bmk": (bmk is not None)}
+        return super().__call__(*Factors, factor_args=factor_args, **kwargs)
+
+
+
+
 
 # 前提条件:
 # 1. 投资组合的权重之和为 1, 与 1 的差值部分归为现金

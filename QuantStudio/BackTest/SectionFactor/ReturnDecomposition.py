@@ -24,13 +24,13 @@ from QuantStudio.Tools.DataTypeConversionFun import DummyVarTo01Var
 class CalcFamaMacBethRegression(PanelOperator):
     """Fama-MacBeth 回归算子"""
 
-    def __init__(self, lookback:int = 31, period_lookback:int=1, descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, descriptor_ids:List[str], lookback:int = 31, period_lookback:int=1, args:dict={}, config_file:Optional[str]=None, **kwargs):
         """初始化 Fama-MacBeth 回归算子
 
         Args:
+            descriptor_ids: 依赖因子的截面 ID 序列
             lookback: 在时间标尺上的回溯期数, 即回溯多久的数据来完成计算
             period_lookback: 在计算标尺上的回溯期数, 数据的时间序列是日度的，但回归的计算时间序列是月度的，该参数表示用回溯多少个月的因子值来和当前收益率来回归
-            descriptor_ids: 因子的截面 ID 序列
         """
         Arity = args.get("Arity", None) or 1
         Args = {"Name": "calcFamaMacBethRegression"} | args | {"DTMode": "单时点", "OutputMode": "全截面", "DataType": "object"}
@@ -38,8 +38,8 @@ class CalcFamaMacBethRegression(PanelOperator):
         Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
         Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * Arity
         Args["CompoundType"] = [
-            ("PureReturn", float), ("PureT", float), ("PureF", float), ("PureR", float), ("PureRAdj", float),
-            ("RawReturn", float), ("RawT", float), ("RawF", float), ("RawR", float), ("RawRAdj", float)
+            ("PureReturn", "double"), ("PureT", "double"), ("PureF", "double"), ("PureR", "double"), ("PureRAdj", "double"),
+            ("RawReturn", "double"), ("RawT", "double"), ("RawF", "double"), ("RawR", "double"), ("RawRAdj", "double")
         ]
         return super().__init__(args=Args, config_file=config_file, **kwargs)
     
@@ -100,16 +100,17 @@ class CalcFamaMacBethRegression(PanelOperator):
                 pass
         return unstructured_to_structured(Rslt.T).tolist()
         
-    def __call__(self, *x:Factor, price:Factor, mask: Optional[Factor]=None, cat_data: Optional[Factor]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
+    def __call__(self, *x:Factor, price:Factor, mask: Optional[Factor]=None, cat_data: Optional[Factor]=None, factor_name_list:Optional[List[str]]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
         """将算子作用在若干个因子对象上以产生 Fama-MacBeth 回归因子
 
         Args:
-            x: 待计算 IC 的因子
+            x: 待回归的测试因子
             price: 证券价格或者净值因子
             mask: 筛选条件因子, 每一期的 x 因子值会按照该因子是否等于 1 来筛选后再回归, None 表示不做任何筛选
             cat_data: 类别因子, 比如行业等，如果非 None 表示该因子作为哑变量参与回归
-            factor_args: 创建 IC 因子时传递个它的参数集
-            kwargs: 创建 IC 因子时传递给它的其他入参
+            factor_name_list: 测试因子名称列表
+            factor_args: 创建回归因子时传递个它的参数集
+            kwargs: 创建回归因子时传递给它的其他入参
         
         Returns:
             Fama-MacBeth 回归因子
@@ -119,13 +120,28 @@ class CalcFamaMacBethRegression(PanelOperator):
         if cat_data is not None: Factors.append(cat_data)
         if not x: raise __QS_Error__("测试因子列表 x 不可为空!")
         else: Factors += x
-        if "SectionIDs" not in factor_args:
-            PosNum = int(np.log10(len(x))) + 1
-            SectionIDs = [f"x-{str(i).zfill(PosNum)}" for i in range(len(x))]
-            factor_args["SectionIDs"] = SectionIDs
-        elif len(set(factor_args["SectionIDs"]))!=len(x) or (sorted(factor_args["SectionIDs"])!=factor_args["SectionIDs"]):
-            raise __QS_Error__(f"截面ID : {factor_args['SectionIDs']} 长度不等于测试因子列表 x 的长度, 或者有重复, 或者非升序排列!")
-        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"mask": (mask is not None), "cat_data": (cat_data is not None), "factor_name_list": [f.Name for f in x]}
+        if factor_name_list is not None:
+            if factor_args.get("SectionIDs", None) is not None:
+                self.Logger.warning(f"{self.__class__.__name__}.__call__: 同时指定了测试因子名称列表 factor_name_list({factor_name_list})以及因子截面ID参数 SectionIDs({factor_args['SectionIDs']}), 将使用后者作为因子的截面ID, 忽略 factor_name_list")
+                factor_name_list = factor_args["SectionIDs"]
+        elif factor_args.get("SectionIDs", None) is not None:
+            factor_name_list = factor_args["SectionIDs"]
+        else:
+            factor_name_list = [iFactor.Name for iFactor in x]
+            if len(set(factor_name_list)) != len(x):
+                PosNum = int(np.log10(max(1, len(x) - 1))) + 1
+                factor_name_list = [f"F{str(i).zfill(PosNum)}" for i in range(len(x))]
+                self.Logger.info(f"测试因子的名称中有重复, 使用系统自动生成的测试因子名称列表: {factor_name_list}")
+        if len(set(factor_name_list)) != len(x):
+            raise __QS_Error__(f"测试因子的名称列表 : {factor_name_list} 长度不等于测试因子列表 x 的长度或者有重复!")
+        else:
+            SortedIdx = np.argsort(factor_name_list)
+            if not np.all(SortedIdx == np.arange(len(factor_name_list))):
+                self.Logger.warning(f"{self.__class__.__name__}.__call__: 测试因子的名称列表({factor_name_list})不是升序排列，将按照升序重新排列测试因子")
+                x, factor_name_list = [x[i] for i in SortedIdx], [factor_name_list[i] for i in SortedIdx]
+        factor_args["SectionIDs"] = factor_name_list
+        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"mask": (mask is not None), "cat_data": (cat_data is not None)}
+        kwargs["operator_kwargs"] =  {"descriptor_ids": self._QSArgs.DescriptorSection[0], "lookback": self._QSArgs.LookBack[0]} | kwargs.get("operator_kwargs", {})
         return super().__call__(*Factors, factor_args=factor_args, **kwargs)
 
 class FamaMacBethRegression(BTNode):
@@ -240,7 +256,7 @@ class FamaMacBethRegression(BTNode):
         if self._QSArgs.FactorNameList:
             FactorNameList = self._QSArgs.FactorNameList
         else:
-            FactorNameList = self.Deps[0].Args.ModelArgs.get("factor_name_list", PureReturn.columns)
+            FactorNameList = PureReturn.columns.tolist()
         PureReturn.columns = RawReturn.columns = FactorNameList
         PureReturn = PureReturn.dropna(how="all", axis=0)
         RawReturn = RawReturn.reindex(index=PureReturn.index)

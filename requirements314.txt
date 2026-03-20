@@ -2,7 +2,9 @@ pydantic
 numpy
 pandas
 scipy
+cvxpy
 statsmodels
+matplotlib
 pyarrow
 chardet
 progressbar2

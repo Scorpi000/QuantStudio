@@ -53,7 +53,7 @@ class CalcMaskPortfolio(SectionOperator):
         """初始化基于筛选条件构造投资组合的计算算子
 
         Args:
-            descriptor_ids: 算子作用因子的截面 ID 序列
+            descriptor_ids: 依赖因子的截面 ID 序列
             args: 参数集
             config_file: 配置文件地址
         """
@@ -144,12 +144,12 @@ def makeQuantilePortfolio(factor:Factor, mask:Optional[Factor]=None, cat_data:Op
 class CalcPortfolioNV(PanelOperator):
     """投资组合净值计算算子"""
 
-    def __init__(self, start_dt:Optional[dt.datetime]=None, descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, descriptor_ids:List[str], start_dt:Optional[dt.datetime]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         """初始化投资组合净值计算算子
 
         Args:
+            descriptor_ids: 依赖因子的截面 ID 序列
             start_dt: 净值开始日, 如果为 None, 表示从计算的第一个时点开始
-            descriptor_ids: 投资组合因子的截面 ID 序列
             args: 参数集
             config_file: 配置文件地址
         """
@@ -158,7 +158,6 @@ class CalcPortfolioNV(PanelOperator):
         Args["DescriptorSection"] = [None] + [descriptor_ids] * (Arity - 1)
         Args["StartDT"] = [start_dt] * Arity
         Args["LookBack"] = [1] + [0] * (Arity - 1)
-        Args["LookBackMode"] = ["扩张窗口"] * Arity
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
@@ -169,8 +168,45 @@ class CalcPortfolioNV(PanelOperator):
             NV[:, i], _ = backtestPortfolioStrategy(portfolio=iPortfolio, price=Price, fee=FeeRate, ffill_price=False)
         return NV * x[0][0]
 
-    def __call__(self, *portfolio:Factor, price:Factor, init_nv:Union[float, Factor]=1, fee_rate:Union[float, Factor]=0, factor_args:dict={}, **kwargs) -> PanelOperation:
+    def __call__(self, *portfolio:Factor, price:Factor, init_nv:Union[float, Factor]=1, fee_rate:Union[float, Factor]=0, portfolio_name_list:Optional[List[str]]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
+        """将算子作用在若干个投资组合因子对象上以产生净值因子
+
+        Args:
+            portfolio: 待计算净值的投资组合因子, 因子值是每个时点投资于某个证券的资金权重，如果某个时点的因子值全部为 NaN 表示改时点没有信号，不进行调仓
+            price: 证券价格或者净值因子
+            init_nv: 初始组合净值因子, 用于指定净值因子的初始值
+            fee_rate: 交易费率因子
+            portfolio_name_list: 投资组合的名称列表, None 表示由系统自动生成, 非 None 时将作为净值因子的截面 ID 序列，所以不能有重复
+            factor_args: 创建净值因子时传递个它的参数集
+            kwargs: 创建 IC 因子时传递给它的其他入参
+
+        Returns:
+            投资组合净值因子
+        """
         if not portfolio: raise __QS_Error__("投资组合因子不能为空!")
+        if portfolio_name_list is not None:
+            if factor_args.get("SectionIDs", None) is not None:
+                self.Logger.warning(f"CalcPortfolioNV.__call__: 同时指定了投资组合名称列表 portfolio_name_list({portfolio_name_list})以及因子截面ID参数 SectionIDs({factor_args['SectionIDs']})，将使用后者作为因子的截面ID，忽略 portfolio_name_list")
+                portfolio_name_list = factor_args["SectionIDs"]
+        elif factor_args.get("SectionIDs", None) is not None:
+            portfolio_name_list = factor_args["SectionIDs"]
+        else:
+            portfolio_name_list = [iFactor.Name for iFactor in portfolio]
+            if len(set(portfolio_name_list)) != len(portfolio):
+                PosNum = int(np.log10(max(1, len(portfolio) - 1))) + 1
+                portfolio_name_list = [f"P{str(i).zfill(PosNum)}" for i in range(len(portfolio))]
+                self.Logger.info(f"投资组合因子的名称中有重复, 使用系统自动生成的投资组合名称列表: {portfolio_name_list}")
+        if len(set(portfolio_name_list)) != len(portfolio):
+            raise __QS_Error__(f"投资组合的名称列表 : {portfolio_name_list} 长度不等于投资组合因子列表 portfolio 的长度或者有重复!")
+        else:
+            SortedIdx = np.argsort(portfolio_name_list)
+            if not np.all(SortedIdx == np.arange(len(portfolio_name_list))):
+                self.Logger.warning(f"CalcPortfolioNV.__call__: 投资组合的名称列表({portfolio_name_list})不是升序排列，将按照升序重新排列投资组合")
+                portfolio, SortedPortfolioNameList = [portfolio[i] for i in SortedIdx], [portfolio_name_list[i] for i in SortedIdx]
+            else:
+                SortedPortfolioNameList = portfolio_name_list
+        factor_args["SectionIDs"] = SortedPortfolioNameList
+        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"portfolio_name_list": portfolio_name_list}
         kwargs["operator_kwargs"] =  {"descriptor_ids": self._QSArgs.DescriptorSection[1], "start_dt": self._QSArgs.StartDT[0]} | kwargs.get("operator_kwargs", {})
         return super().__call__(init_nv, *portfolio, price, fee_rate, factor_args=factor_args, **kwargs)
 
@@ -180,30 +216,22 @@ class MultiPortfolio(BTNode):
 
     class __QS_ArgClass__(BTNode.__QS_ArgClass__):
         Name: str = Field(default="多组合对比", frozen=True, title="名称")
-        LSPairs: List[Tuple[int, int]] = Field(default=[], title="多空组合对", frozen=True, description="构造多空组合的投资组合对, 比如 [(0, -1)] 表示第 0 个组合和最后一个组合构成一个多空组合, 将考察它的表现")
+        LSPairs: List[Tuple[str, str]] = Field(default=[], title="多空组合对", frozen=True, description="构造多空组合的投资组合对, 比如 [('P0', 'P1')] 表示 P0 组合和 P1 组合构成一个多空组合, 将考察它的表现")
         RebalanceDTs: Optional[List[dt.datetime]] = Field(default=None, title="再平衡时点", frozen=True)
 
-    def __init__(self, nv_list:List[Factor], bmk_nv:Optional[Factor]=None, portfolio_list:Optional[List[Factor]]=None, bmk_portfolio:Optional[Factor]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        self._NVList = nv_list
+    def __init__(self, nv:Factor, bmk_nv:Optional[Factor]=None, portfolio_list:Optional[List[Factor]]=None, bmk_portfolio:Optional[Factor]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        self._NV = nv
         self._BmkNV = bmk_nv
         self._PortfolioList = portfolio_list
         self._BmkPortfolio = bmk_portfolio
-        Deps = nv_list.copy()
+        Deps = [nv]
         if bmk_nv is not None: Deps.append(bmk_nv)
         if portfolio_list:
-            if len(nv_list)!=len(portfolio_list):
-                raise __QS_Error__(f"净值列表的长度({len(nv_list)})不等于投资组合列表的长度({len(portfolio_list)})")
+            if (nv._QSArgs.SectionIDs is not None) and len(nv._QSArgs.SectionIDs) != len(portfolio_list):
+                raise __QS_Error__("净值因子的截面 ID 长度与传入的投资组合列表(portfolio_list)长度不一致!")
             Deps += portfolio_list
         if (bmk_nv is not None) and (bmk_portfolio is not None): Deps.append(bmk_portfolio)
         super().__init__(deps=Deps, args=args, config_file=config_file, **kwargs)
-        PortfolioNameList = [iF.Name for iF in self._NVList]
-        nPortfolio = len(PortfolioNameList)
-        if len(set(PortfolioNameList)) < nPortfolio:
-            self._QS_Logger.warning(f"输入的投资组合净值列表的名称有重复: {PortfolioNameList}, 将附加序号前缀")
-            nPos = 1 if nPortfolio<=1 else int(np.log10(nPortfolio - 1)) + 1
-            PortfolioNameList = [f"{str(i).zfill(nPos)}-{iName}" for i, iName in enumerate(PortfolioNameList)]
-        if self._BmkPortfolio is not None: PortfolioNameList.append("基准")
-        self._PortfolioNameList = PortfolioNameList
     
     def genMatplotlibFig(self, output:dict, file_path:Optional[str]=None) -> Figure:
         GroupNum = output["超额净值"].shape[1]
@@ -335,17 +363,18 @@ class MultiPortfolio(BTNode):
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
-        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=None) for i, iInitData in enumerate(InitData)]
+        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=None) for iInitData in InitData]
     
     def forward_compute(self, path: List[str], fwd_data: DTLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], DTLocalContext]:
         return [FactorLocalContext(DTs=fwd_data.DTs, IDs=context.NodeState[iDep.QSID]["section_ids"], PIDs=context.PIDList) for iDep in self.Deps], DTLocalContext(DTs=fwd_data.DTs)
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
-        nPortfolio = len(self._NVList)
-        PortfolioNV = pd.DataFrame({i: BwdData.iloc[:, 0] for i, BwdData in enumerate(bwd_data_list[:nPortfolio])}).sort_index(axis=1)
-        PortfolioNV.columns = self._PortfolioNameList[:nPortfolio]
-        BmkNV = (bwd_data_list[nPortfolio].iloc[:, 0] if self._BmkNV is not None else pd.Series(1, index=PortfolioNV.index))
-        Portfolio = {self._PortfolioNameList[i]: iBwdData for i, iBwdData in enumerate(bwd_data_list[nPortfolio + int(self._BmkNV is not None):])}
+        PortfolioNV = bwd_data_list[0]
+        BmkNV = (bwd_data_list[1].iloc[:, 0] if self._BmkNV is not None else pd.Series(1, index=PortfolioNV.index))
+        StartIdx = 1 + int(self._BmkNV is not None)
+        Portfolio = {PortfolioNV.columns[i]: iBwdData for i, iBwdData in enumerate(bwd_data_list[StartIdx:StartIdx+PortfolioNV.shape[1]])}
+        if "portfolio_name_list" in self._NV._QSArgs.ModelArgs:
+            PortfolioNV = PortfolioNV.reindex(columns=self._NV._QSArgs.ModelArgs["portfolio_name_list"])
         if self._QSArgs.RebalanceDTs is None:
             RebalanceIdx = None
         else:
@@ -354,7 +383,7 @@ class MultiPortfolio(BTNode):
             RebalanceIdx = pd.Series(np.arange(PortfolioNV.shape[0]), index=PortfolioNV.index)
             RebalanceIdx = sorted(RebalanceIdx[RebalanceDTs])
         Output = {"投资组合": Portfolio}
-        Output["换手率"] = pd.DataFrame({iName: iPortfolio.diff().abs().sum(axis=1) for iName, iPortfolio in Portfolio.items()}).reindex(columns=self._PortfolioNameList)
+        Output["换手率"] = pd.DataFrame({iName: iPortfolio.diff().abs().sum(axis=1) for iName, iPortfolio in Portfolio.items()}, columns=PortfolioNV.columns)
         Output["净值"] = PortfolioNV
         Output["净值"]["基准"] = BmkNV
         Output["收益率"] = Output["净值"].pct_change()
@@ -363,11 +392,8 @@ class MultiPortfolio(BTNode):
         for iCol in Output["超额收益率"].columns:
             Output["超额收益率"][iCol] = calcLSYield(Output["超额收益率"][iCol].values, Output["收益率"]["基准"].values, rebalance_index=RebalanceIdx)
             Output["超额净值"][iCol] = (1 + Output["超额收益率"][iCol]).cumprod()
-        for iLIdx, iSIdx in self._QSArgs.LSPairs:
-            if iLIdx < 0: iLIdx = nPortfolio + iLIdx
-            if iSIdx < 0: iSIdx = nPortfolio + iSIdx
-            iLName, iSName = self._PortfolioNameList[:nPortfolio][iLIdx], self._PortfolioNameList[:nPortfolio][iSIdx]
-            Output["收益率"][f"{iLName}-{iSName}"] = calcLSYield(Output["收益率"].iloc[:, iLIdx].values, Output["收益率"].iloc[:, iSIdx].values, rebalance_index=RebalanceIdx)
+        for iLName, iSName in self._QSArgs.LSPairs:
+            Output["收益率"][f"{iLName}-{iSName}"] = calcLSYield(Output["收益率"].loc[:, iLName].values, Output["收益率"].loc[:, iSName].values, rebalance_index=RebalanceIdx)
             Output["净值"][f"{iLName}-{iSName}"] = (1 + Output["收益率"][f"{iLName}-{iSName}"]).cumprod()
         Output = self._QS_calcStats(Output)
         if self._QSArgs.GenReport: Output["Report"] = self.genReport(Output)

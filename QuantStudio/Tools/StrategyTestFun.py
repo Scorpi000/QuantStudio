@@ -816,7 +816,9 @@ def backtestPortfolioStrategy(portfolio: np.ndarray, price: np.ndarray, fee:floa
     if np.all(Mask):
         Return, Turnover = backtestPortfolioStrategyWithMargin(portfolio[Mask], price[Mask], fee=fee)
         return np.cumprod(1 + Return), Turnover
-    if not Mask[0]: portfolio[0], Mask[0] = 0, True
+    if not Mask[0]:
+        portfolio = portfolio.copy()
+        portfolio[0], Mask[0] = 0, True
     if kwargs.get("ffill_price", True):
         price = numpy_ffill(price, axis=0, limit=None)# 处理价格数据的缺失
     FilledIdx = np.maximum.accumulate(np.where(Mask, np.arange(portfolio.shape[0]), 0))

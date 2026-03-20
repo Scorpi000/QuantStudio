@@ -23,12 +23,12 @@ from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage
 class CalcSectionCorrelation(SectionOperator):
     """因子截面相关性算子"""
 
-    def __init__(self, corr_method:Literal["spearman", "pearson", "kendall"]="spearman", descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, descriptor_ids:List[str], corr_method:Literal["spearman", "pearson", "kendall"]="spearman", args:dict={}, config_file:Optional[str]=None, **kwargs):
         """初始化截面相关性计算算子
 
         Args:
+            descriptor_ids: 依赖因子的截面 ID 序列
             corr_method: 相关性的计算方法
-            descriptor_ids: 因子的截面 ID 序列
         """
         Arity = args.get("Arity", None) or 1
         Args = {"Name": "calcSectionCorrelation"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "double"}
@@ -65,14 +65,15 @@ class CalcSectionCorrelation(SectionOperator):
             Corr[ijFactorName] = iFactorData.where(ijMask, np.nan).corrwith(jFactorData.where(ijMask, np.nan), method=args["corr_method"])
         return Corr.reindex(index=idt).values
         
-    def __call__(self, *x:Factor, mask:Optional[Factor]=None, factor_args:dict={}, **kwargs) -> SectionOperation:
-        """将算子作用在若干个因子对象上以产生截面相关性因子
+    def __call__(self, *x:Factor, mask:Optional[Factor]=None, factor_name_list: Optional[List[str]]=None, factor_args:dict={}, **kwargs) -> SectionOperation:
+        """将算子作用在若干个测试因子对象上以产生截面相关性因子
 
         Args:
-            x: 待计算 IC 的因子
+            x: 待计算截面相关性的测试因子
             mask: 筛选条件因子, 每一期的 x 因子值会按照该因子是否等于 1 来筛选后再计算相关性, None 表示不做任何筛选
-            factor_args: 创建 IC 因子时传递个它的参数集
-            kwargs: 创建 IC 因子时传递给它的其他入参
+            factor_name_list: 测试因子名称列表
+            factor_args: 创建截面相关性因子时传递个它的参数集
+            kwargs: 创建截面相关性因子时传递给它的其他入参
         
         Returns:
             截面相关性因子
@@ -81,13 +82,26 @@ class CalcSectionCorrelation(SectionOperator):
         Factors = []
         if mask is not None: Factors.append(mask)
         Factors += x
-        PosNum = int(np.log10(len(x)))
-        DefaultSectionIDs = [f"{str(i).zfill(PosNum)}-{str(j).zfill(PosNum)}" for i, j in combinations(range(len(x)), r=2)]
+        if factor_name_list is None:
+            factor_name_list = [iFactor.Name for iFactor in x]
+            if len(set(factor_name_list)) != len(x):
+                PosNum = int(np.log10(max(1, len(x) - 1))) + 1
+                factor_name_list = [f"F{str(i).zfill(PosNum)}" for i in range(len(x))]
+                self.Logger.info(f"测试因子的名称中有重复, 使用系统自动生成的测试因子名称列表: {factor_name_list}")
         if "SectionIDs" not in factor_args:
+            if len(set(factor_name_list)) != len(x):
+                raise __QS_Error__(f"测试因子的名称列表 : {factor_name_list} 长度不等于测试因子列表 x 的长度或者有重复!")
+            else:
+                SortedIdx = np.argsort(factor_name_list)
+                if not np.all(SortedIdx == np.arange(len(factor_name_list))):
+                    self.Logger.warning(f"{self.__class__.__name__}.__call__: 测试因子的名称列表({factor_name_list})不是升序排列，将按照升序重新排列测试因子")
+                    x, factor_name_list = [x[i] for i in SortedIdx], [factor_name_list[i] for i in SortedIdx]
+            DefaultSectionIDs = [f"{iName}-{jName}" for iName, jName in combinations(factor_name_list, r=2)]
             factor_args["SectionIDs"] = DefaultSectionIDs
-        elif len(set(factor_args["SectionIDs"]))!=len(DefaultSectionIDs) or (sorted(factor_args["SectionIDs"])!=factor_args["SectionIDs"]):
+        elif (len(set(factor_args["SectionIDs"])) != len(x) * (len(x) - 1) / 2) or (sorted(factor_args["SectionIDs"])!=factor_args["SectionIDs"]):
             raise __QS_Error__(f"截面ID : {factor_args['SectionIDs']} 长度不等于因子列表 x 两两组合的长度, 或者有重复, 或者非升序排列!")
-        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"mask": (mask is not None), "section_id_mapping": dict(zip(factor_args["SectionIDs"], DefaultSectionIDs)), "factor_name_list": [f.Name for f in x]}
+        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"mask": (mask is not None), "section_id_mapping": dict(zip(factor_args["SectionIDs"], [f"{i}-{j}" for i, j in combinations(range(len(x)), r=2)])), "factor_name_list": factor_name_list}
+        kwargs["operator_kwargs"] =  {"descriptor_ids": self._QSArgs.DescriptorSection[0]} | kwargs.get("operator_kwargs", {})
         return super().__call__(*Factors, factor_args=factor_args, **kwargs)
 
 class SectionCorrelation(BTNode):
@@ -156,14 +170,14 @@ class CalcFactorTurnover(PanelOperator):
     因子换手率: 前后两期因子值的截面秩相关性。通常采用的相关系数为 Spearman 相关系数。
     """
 
-    def __init__(self, lookback:int=31, period_lookback:int=1, corr_method:Literal["spearman", "pearson", "kendall"]="spearman", descriptor_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, descriptor_ids:List[str], lookback:int=31, period_lookback:int=1, corr_method:Literal["spearman", "pearson", "kendall"]="spearman", args:dict={}, config_file:Optional[str]=None, **kwargs):
         """初始化因子换手率计算算子
 
         Args:
+            descriptor_ids: 依赖因子的截面 ID 序列
             lookback: 在时间标尺上的回溯期数, 即回溯多久的数据来完成计算
             period_lookback: 在计算标尺上的回溯期数, 数据的时间序列是日度的，但相关性的计算时间序列是月度的，该参数表示用回溯多少个月的因子值来和当前因子值计算相关性
             corr_method: 相关性的计算方法
-            descriptor_ids: 因子的截面 ID 序列
         """
         Arity = args.get("Arity", None) or 1
         Args = {"Name": "calcIC"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "double"}
@@ -195,14 +209,14 @@ class CalcFactorTurnover(PanelOperator):
             FactorTurnover[iFactorName] = iData.where(iMask, np.nan).corrwith(iPreData, method=args["corr_method"])
         return FactorTurnover.reindex(index=idt).values[self._QSArgs.LookBack[0]:]
     
-    def __call__(self, *x:Factor, mask: Optional[Factor]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
+    def __call__(self, *x:Factor, mask: Optional[Factor]=None, factor_name_list:Optional[List[str]]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
         """将算子作用在若干个因子对象上以产生因子换手率因子
 
         Args:
-            x: 待计算 IC 的因子
+            x: 待计算因子换手率的测试因子
             mask: 筛选条件因子, 每一期的 x 因子值会按照该因子是否等于 1 来筛选后再计算相关性, None 表示不做任何筛选
-            factor_args: 创建 IC 因子时传递个它的参数集
-            kwargs: 创建 IC 因子时传递给它的其他入参
+            factor_args: 创建因子换手率因子时传递个它的参数集
+            kwargs: 创建因子换手率因子时传递给它的其他入参
         
         Returns:
             因子换手率因子
@@ -211,13 +225,28 @@ class CalcFactorTurnover(PanelOperator):
         if mask is not None: Factors.append(mask)
         if not x: raise __QS_Error__("因子列表 x 不可为空!")
         else: Factors += x
-        if "SectionIDs" not in factor_args:
-            PosNum = int(np.log10(len(x))) + 1
-            SectionIDs = [f"x-{str(i).zfill(PosNum)}" for i in range(len(x))]
-            factor_args["SectionIDs"] = SectionIDs
-        elif len(set(factor_args["SectionIDs"]))!=len(x) or (sorted(factor_args["SectionIDs"])!=factor_args["SectionIDs"]):
-            raise __QS_Error__(f"截面ID : {factor_args['SectionIDs']} 长度不等于测试因子列表 x 的长度, 或者有重复, 或者非升序排列!")
-        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"mask": (mask is not None), "factor_name_list": [f.Name for f in x]}
+        if factor_name_list is not None:
+            if factor_args.get("SectionIDs", None) is not None:
+                self.Logger.warning(f"{self.__class__.__name__}.__call__: 同时指定了测试因子名称列表 factor_name_list({factor_name_list})以及因子截面ID参数 SectionIDs({factor_args['SectionIDs']}), 将使用后者作为因子的截面ID, 忽略 factor_name_list")
+                factor_name_list = factor_args["SectionIDs"]
+        elif factor_args.get("SectionIDs", None) is not None:
+            factor_name_list = factor_args["SectionIDs"]
+        else:
+            factor_name_list = [iFactor.Name for iFactor in x]
+            if len(set(factor_name_list)) != len(x):
+                PosNum = int(np.log10(max(1, len(x) - 1))) + 1
+                factor_name_list = [f"F{str(i).zfill(PosNum)}" for i in range(len(x))]
+                self.Logger.info(f"测试因子的名称中有重复, 使用系统自动生成的测试因子名称列表: {factor_name_list}")
+        if len(set(factor_name_list)) != len(x):
+            raise __QS_Error__(f"测试因子的名称列表 : {factor_name_list} 长度不等于测试因子列表 x 的长度或者有重复!")
+        else:
+            SortedIdx = np.argsort(factor_name_list)
+            if not np.all(SortedIdx == np.arange(len(factor_name_list))):
+                self.Logger.warning(f"{self.__class__.__name__}.__call__: 测试因子的名称列表({factor_name_list})不是升序排列，将按照升序重新排列测试因子")
+                x, factor_name_list = [x[i] for i in SortedIdx], [factor_name_list[i] for i in SortedIdx]
+        factor_args["SectionIDs"] = factor_name_list
+        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"mask": (mask is not None)}
+        kwargs["operator_kwargs"] =  {"descriptor_ids": self._QSArgs.DescriptorSection[0], "lookback": self._QSArgs.LookBack[0]} | kwargs.get("operator_kwargs", {})
         return super().__call__(*Factors, factor_args=factor_args, **kwargs)
 
 class FactorTurnover(BTNode):
@@ -280,7 +309,7 @@ class FactorTurnover(BTNode):
         if self._QSArgs.FactorNameList:
             FactorNameList = self._QSArgs.FactorNameList
         else:
-            FactorNameList = self.Deps[0].Args.ModelArgs.get("factor_name_list", FactorTurnover.columns)
+            FactorNameList = FactorTurnover.columns.tolist()
         FactorTurnover.columns = FactorNameList
         FactorTurnover = FactorTurnover.dropna(how="all", axis=0)
         Output = {"因子换手率": FactorTurnover}
