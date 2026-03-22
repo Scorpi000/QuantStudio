@@ -178,7 +178,7 @@ class CalcPortfolioNV(PanelOperator):
             fee_rate: 交易费率因子
             portfolio_name_list: 投资组合的名称列表, None 表示由系统自动生成, 非 None 时将作为净值因子的截面 ID 序列，所以不能有重复
             factor_args: 创建净值因子时传递个它的参数集
-            kwargs: 创建 IC 因子时传递给它的其他入参
+            kwargs: 创建净值因子时传递给它的其他入参
 
         Returns:
             投资组合净值因子
@@ -209,6 +209,81 @@ class CalcPortfolioNV(PanelOperator):
         factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"portfolio_name_list": portfolio_name_list}
         kwargs["operator_kwargs"] =  {"descriptor_ids": self._QSArgs.DescriptorSection[1], "start_dt": self._QSArgs.StartDT[0]} | kwargs.get("operator_kwargs", {})
         return super().__call__(init_nv, *portfolio, price, fee_rate, factor_args=factor_args, **kwargs)
+
+
+class CalcPortfolioReturn(PanelOperator):
+    """投资组合收益率计算算子"""
+    def __init__(self, descriptor_ids:List[str], lookback:int=31, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化投资组合收益率计算算子
+
+        Args:
+            descriptor_ids: 依赖因子的截面 ID 序列
+            lookback: 在时间标尺上的回溯期数, 即回溯多久的数据来完成计算
+            args: 参数集
+            config_file: 配置文件地址
+        """
+        Arity = args.get("Arity", None) or 2
+        Args = {"Name": "calcPortfolioReturn"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "double"}
+        Args["ModelArgs"] = {} | Args.get("ModelArgs", {})
+        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
+        Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * Arity
+        return super().__init__(args=Args, config_file=config_file, **kwargs)
+
+    def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
+        SectionIDs = (self._QSArgs.DescriptorSection[0] if self._QSArgs.DescriptorSection[0] else iid)
+        Price, PortfolioList = pd.DataFrame(x[0], index=idt, columns=SectionIDs), [pd.DataFrame(ix, index=idt, columns=SectionIDs) for ix in x[1:]]
+        if f._QSArgs.CalcDTRuler:
+            DTs = sorted(set(idt).intersection(f._QSArgs.CalcDTRuler))
+            Price = Price.reindex(index=DTs)
+            PortfolioList = [Portfolio.reindex(index=DTs).shift(1) for Portfolio in PortfolioList]
+        else:
+            DTs = Price.index
+            PortfolioList = [Portfolio.shift(1) for Portfolio in PortfolioList]
+        Return = Price.pct_change()
+        PortfolioReturn = pd.DataFrame(np.nan, index=DTs, columns=iid)
+        for i, iPortfolioName in enumerate(iid):
+            PortfolioReturn[iPortfolioName] = (PortfolioList[i] * Return).sum(axis=1)
+        return PortfolioReturn.reindex(index=idt).values[self._QSArgs.LookBack[0]:]
+
+    def __call__(self, *portfolio:Factor, price:Factor, portfolio_name_list:Optional[List[str]]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
+        """将算子作用在若干个投资组合因子对象上以产生收益率因子
+
+        Args:
+            portfolio: 待计算收益率的投资组合因子, 因子值是每个时点投资于某个证券的资金权重，如果某个时点的因子值全部为 NaN 表示改时点没有信号，不进行调仓
+            price: 证券价格或者净值因子
+            portfolio_name_list: 投资组合的名称列表, None 表示由系统自动生成, 非 None 时将作为收益率因子的截面 ID 序列，所以不能有重复
+            factor_args: 创建收益率因子时传递个它的参数集
+            kwargs: 创建收益率因子时传递给它的其他入参
+
+        Returns:
+            投资组合收益率因子
+        """
+        if not portfolio: raise __QS_Error__("投资组合因子不能为空!")
+        if portfolio_name_list is not None:
+            if factor_args.get("SectionIDs", None) is not None:
+                self.Logger.warning(f"CalcPortfolioNV.__call__: 同时指定了投资组合名称列表 portfolio_name_list({portfolio_name_list})以及因子截面ID参数 SectionIDs({factor_args['SectionIDs']}), 将使用后者作为因子的截面ID, 忽略 portfolio_name_list")
+                portfolio_name_list = factor_args["SectionIDs"]
+        elif factor_args.get("SectionIDs", None) is not None:
+            portfolio_name_list = factor_args["SectionIDs"]
+        else:
+            portfolio_name_list = [iFactor.Name for iFactor in portfolio]
+            if len(set(portfolio_name_list)) != len(portfolio):
+                PosNum = int(np.log10(max(1, len(portfolio) - 1))) + 1
+                portfolio_name_list = [f"P{str(i).zfill(PosNum)}" for i in range(len(portfolio))]
+                self.Logger.info(f"投资组合因子的名称中有重复, 使用系统自动生成的投资组合名称列表: {portfolio_name_list}")
+        if len(set(portfolio_name_list)) != len(portfolio):
+            raise __QS_Error__(f"投资组合的名称列表 : {portfolio_name_list} 长度不等于投资组合因子列表 portfolio 的长度或者有重复!")
+        else:
+            SortedIdx = np.argsort(portfolio_name_list)
+            if not np.all(SortedIdx == np.arange(len(portfolio_name_list))):
+                self.Logger.warning(f"CalcPortfolioNV.__call__: 投资组合的名称列表({portfolio_name_list})不是升序排列，将按照升序重新排列投资组合")
+                portfolio, SortedPortfolioNameList = [portfolio[i] for i in SortedIdx], [portfolio_name_list[i] for i in SortedIdx]
+            else:
+                SortedPortfolioNameList = portfolio_name_list
+        factor_args["SectionIDs"] = SortedPortfolioNameList
+        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"portfolio_name_list": portfolio_name_list}
+        kwargs["operator_kwargs"] =  {"descriptor_ids": self._QSArgs.DescriptorSection[0], "lookback": self._QSArgs.LookBack[0]} | kwargs.get("operator_kwargs", {})
+        return super().__call__(price, *portfolio, factor_args=factor_args, **kwargs)
 
 
 class MultiPortfolio(BTNode):

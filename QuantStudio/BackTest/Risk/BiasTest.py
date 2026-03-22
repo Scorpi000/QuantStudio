@@ -1,167 +1,280 @@
 # coding=utf-8
+"""Bias Test"""
 import datetime as dt
-from collections import OrderedDict
+import base64
+from io import BytesIO
+from typing import Optional, List, Any, Tuple
 
-import numpy as np
 import pandas as pd
-from traits.api import ListStr, Enum, List, ListInt, Int, Str, Instance
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+from matplotlib.ticker import FuncFormatter
+from pydantic import Field
 
-from QuantStudio.Tools.AuxiliaryFun import getFactorList, searchNameInStrList
-from QuantStudio.BackTest.BackTestModel import BaseModule
-from QuantStudio.RiskDataBase.RiskDB import RiskTable
-from QuantStudio.Tools.StrategyTestFun import genRandomPortfolio
-from QuantStudio.RiskModel.RiskModelFun import dropRiskMatrixNA
+from QuantStudio.Core import __QS_Error__
+from QuantStudio.Core.Node import DTInitData, DTLocalContext
+from QuantStudio.Factor.Factor import Factor, FactorContext, FactorInitData, FactorLocalContext, DataFactor
+from QuantStudio.Factor.BasicOperator import rename
+import QuantStudio.Factor.FactorOperator as fo
+from QuantStudio.Factor.FactorOperation import SectionOperation, SectionOperator
+from QuantStudio.BackTest.BackTestModel import BTNode
+from QuantStudio.BackTest.SectionFactor.IC import _QS_formatPandasPercentage
+from QuantStudio.Risk.RiskTable import RiskTable
+from QuantStudio.BackTest.SectionFactor.Portfolio import CalcPortfolioReturn
 
-class BiasTest(BaseModule):
-    """BiasTest"""
-    class __QS_ArgClass__(BaseModule.__QS_ArgClass__):
-        RiskTable = Instance(RiskTable, arg_type="RiskTable", label="风险表", order=0)
-        CalcDTs = List(dt.datetime, arg_type="DateTimeList", label="计算时点", order=1)
-        IDFilter = Str(arg_type="IDFilter", label="筛选条件", order=2)
-        #PriceFactor = Enum(None, arg_type="SingleOption", label="价格因子", order=3)
-        #WeightFactors = ListStr(arg_type="MultiOption", label="权重因子", order=4 option_range=())
-        #StyleFactors = ListStr(arg_type="MultiOption", label="风格因子", order=5, option_range=())
-        #IndustryFactor = Enum("无", arg_type="SingleOption", label="行业因子", order=6)
-        #IndustryNeutralFactors = ListStr(arg_type="MultiOption", label="行业中性因子", order=7, option_range=())
-        RandomNums = ListInt([20,50,100,200], arg_type="NultiOpotion", label="随机组合", order=8)
-        LookBack = Int(12, arg_type="Integer", label="回溯期数", order=9)
-        def __QS_initArgs__(self, args={}):
-            DefaultNumFactorList, DefaultStrFactorList = getFactorList(dict(self._Owner._FactorTable.getFactorMetaData(key="DataType")))
-            self.add_trait("PriceFactor", Enum(*DefaultNumFactorList, arg_type="SingleOption", label="价格因子", order=3, option_range=DefaultNumFactorList))
-            self.PriceFactor = searchNameInStrList(DefaultNumFactorList, ['价','Price','price'])
-            self.add_trait("WeightFactors", ListStr(["等权"], arg_type="MultiOption", label="权重因子", order=4, option_range=tuple(["等权"]+DefaultNumFactorList)))
-            self.add_trait("StyleFactors", ListStr(arg_type="MultiOption", label="风格因子", order=5, option_range=tuple(DefaultNumFactorList)))
-            self.add_trait("IndustryFactor", Enum(*(["无"]+DefaultStrFactorList), arg_type="SingleOption", label="行业因子", order=6, option_range=["无"]+DefaultStrFactorList))
-            self.add_trait("IndustryNeutralFactors", ListStr(arg_type="MultiOption", label="行业中性因子", order=7, option_range=tuple(DefaultNumFactorList)))
-    def __init__(self, factor_table, name="BiasTest", sys_args={}, **kwargs):
-        self._FactorTable = factor_table
-        super().__init__(name=name, sys_args=sys_args, **kwargs)
-    def __QS_start__(self, mdl, dts, **kwargs):
-        if self._isStarted: return ()
-        super().__QS_start__(mdl=mdl, dts=dts, **kwargs)
-        self._WeightFactors = list(self._QSArgs.WeightFactors)
-        self._HasEW = ("等权" in self._WeightFactors)
-        if self._HasEW: self._WeightFactors.remove("等权")
-        self._Output = {}
-        self._CurCalcInd = 0
-        self._Portfolios = OrderedDict()
-        self._CovMatrix = None
-        return (self._FactorTable, )
-    def _genPortfolio(self, idt, ids):
-        PortfolioDict = OrderedDict()
-        if self._WeightFactors:
-            WeightData = self._FactorTable.readData(factor_names=self._WeightFactors, dts=[idt], ids=ids).iloc[:, 0]
+
+class PortfolioVolatility(SectionOperation):
+    def init_compute(self, path, init_data, context):
+        InitData = super().init_compute(path, init_data, context)
+        return InitData[:-1] + [FactorInitData(DTRange=InitData[-1].DTRange, SectionIDs=self._Operator._QSArgs.DescriptorSection[0])]
+    
+    def forward_compute(self, path, fwd_data, context):
+        FwdData, LocalContext = super().forward_compute(path, fwd_data, context)
+        return FwdData[:-1] + [FactorLocalContext(IDs=self._QS_getDescriptorSectionIDs(0, context), DTs=FwdData[-1].DTs, PIDs=context.PIDList)], LocalContext
+
+class CalcPortfolioVolatility(SectionOperator):
+    """投资组合波动率计算算子"""
+
+    def __init__(self, descriptor_ids:List[str], args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化投资组合波动率计算算子
+
+        Args:
+            descriptor_ids: 依赖因子的截面 ID 序列
+            args: 参数集
+            config_file: 配置文件地址
+        """
+        Arity = args.get("Arity", None) or 1
+        Args = {"Name": "calcPortfolioVolatility"} | args | {"DTMode": "单时点", "OutputMode": "全截面", "DataType": "double"}
+        Args["ModelArgs"] = {} | Args.get("ModelArgs", {})
+        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
+        return super().__init__(args=Args, config_file=config_file, **kwargs)
+
+    def calculate(self, f: Factor, idt: dt.datetime, iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
+        SectionIDs = (self._QSArgs.DescriptorSection[0] if self._QSArgs.DescriptorSection[0] else iid)
+        CovMatrix = x[-1].loc[idt].reindex(index=SectionIDs, columns=SectionIDs)
+        Rslt = np.full(shape=(len(iid), ), fill_value=np.nan, dtype=float)
+        if CovMatrix.isnull().all().all(): return Rslt
+        CovMatrix = CovMatrix.fillna(0.0)
+        for i, ix in enumerate(x[:-1]):
+            iPortfolio = np.where(pd.notnull(ix), ix, 0.0)
+            Rslt[i] = np.dot(np.dot(iPortfolio, CovMatrix), iPortfolio) ** 0.5
+        return Rslt
+
+    def __call__(self, *portfolio:Factor, risk_table:RiskTable, portfolio_name_list:Optional[List[str]]=None, factor_args:dict={}, **kwargs) -> PortfolioVolatility:
+        """将算子作用在若干个投资组合因子对象上以产生波动率因子
+
+        Args:
+            portfolio: 待计算收益率的投资组合因子, 因子值是每个时点投资于某个证券的资金权重，如果某个时点的因子值全部为 NaN 表示改时点没有信号，不进行调仓
+            risk_table: 风险表, 用于提供证券的协方差矩阵
+            portfolio_name_list: 投资组合的名称列表, None 表示由系统自动生成, 非 None 时将作为收益率因子的截面 ID 序列，所以不能有重复
+            factor_args: 创建波动率因子时传递个它的参数集
+            kwargs: 创建波动率因子时传递给它的其他入参
+
+        Returns:
+            投资组合波动率因子
+        """
+        if not portfolio: raise __QS_Error__("投资组合因子不能为空!")
+        if portfolio_name_list is not None:
+            if factor_args.get("SectionIDs", None) is not None:
+                self.Logger.warning(f"CalcPortfolioNV.__call__: 同时指定了投资组合名称列表 portfolio_name_list({portfolio_name_list})以及因子截面ID参数 SectionIDs({factor_args['SectionIDs']}), 将使用后者作为因子的截面ID, 忽略 portfolio_name_list")
+                portfolio_name_list = factor_args["SectionIDs"]
+        elif factor_args.get("SectionIDs", None) is not None:
+            portfolio_name_list = factor_args["SectionIDs"]
         else:
-            WeightData = pd.DataFrame()
-        if self._HasEW:
-            WeightData["等权"] = pd.Series(1, index=ids) / len(ids)
-        if self._QSArgs.IndustryFactor!="无":
-            Industry = self._FactorTable.readData(factor_names=[self._QSArgs.IndustryFactor], dts=[idt], ids=ids).iloc[0, 0]
-            AllIndustries = Industry[pd.notnull(Industry)].unique()
-            AllIndustries.sort()
-        if self._QSArgs.StyleFactors:
-            StyleFactorData = self._FactorTable.readData(factor_names=list(self._QSArgs.StyleFactors), dts=[idt], ids=ids).iloc[:, 0]
-        if self._QSArgs.IndustryNeutralFactors:
-            IndNeutralData = self._FactorTable.readData(factor_names=list(self._QSArgs.IndustryNeutralFactors), dts=[idt], ids=ids).iloc[:, 0]
-        for iWeightFactor in WeightData:
-            iWeightData = WeightData[iWeightFactor]
-            iMask = (pd.notnull(iWeightData) & (iWeightData!=0))
-            iWeightData = iWeightData[iMask]
+            portfolio_name_list = [iFactor.Name for iFactor in portfolio]
+            if len(set(portfolio_name_list)) != len(portfolio):
+                PosNum = int(np.log10(max(1, len(portfolio) - 1))) + 1
+                portfolio_name_list = [f"P{str(i).zfill(PosNum)}" for i in range(len(portfolio))]
+                self.Logger.info(f"投资组合因子的名称中有重复, 使用系统自动生成的投资组合名称列表: {portfolio_name_list}")
+        if len(set(portfolio_name_list)) != len(portfolio):
+            raise __QS_Error__(f"投资组合的名称列表 : {portfolio_name_list} 长度不等于投资组合因子列表 portfolio 的长度或者有重复!")
+        else:
+            SortedIdx = np.argsort(portfolio_name_list)
+            if not np.all(SortedIdx == np.arange(len(portfolio_name_list))):
+                self.Logger.warning(f"CalcPortfolioNV.__call__: 投资组合的名称列表({portfolio_name_list})不是升序排列，将按照升序重新排列投资组合")
+                portfolio, SortedPortfolioNameList = [portfolio[i] for i in SortedIdx], [portfolio_name_list[i] for i in SortedIdx]
+            else:
+                SortedPortfolioNameList = portfolio_name_list
+        factor_args["SectionIDs"] = SortedPortfolioNameList
+        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"portfolio_name_list": portfolio_name_list}
+        Operator = self._QS_validate(*portfolio, descriptor_ids=self._QSArgs.DescriptorSection[0])
+        Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for iFactor in portfolio]
+        return PortfolioVolatility(descriptors=Descriptors, extra_deps=[risk_table], args={"Operator": Operator, **factor_args}, **kwargs)
+
+
+class CalcRandomPortfolio(SectionOperator):
+    """随机投资组合生成算子"""
+
+    def __init__(self, target_num:int=20, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化随机投资组合生成算子
+
+        Args:
+            target_num: 每一期的目标持仓数量
+        """
+        Arity = args.get("Arity", None) or 1
+        Args = {"Name": "calcRandomPortfolio"} | args | {"DTMode": "单时点", "OutputMode": "全截面", "DataType": "double"}
+        Args["ModelArgs"] = {"target_num": target_num} | Args.get("ModelArgs", {})
+        Args["DescriptorSection"] = [Args.get("DescriptorSection", [None])[0]] * Arity
+        return super().__init__(args=Args, config_file=config_file, **kwargs)
+    
+    def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
+        Weight = x[0]
+        Mask = pd.notnull(Weight)
+        if f._QSArgs.ModelArgs["mask"]: Mask = ((x[1] == 1) & Mask)
+        nPos = np.sum(Mask)
+        KeepPos = np.random.choice(nPos, size=min(args["target_num"], nPos), replace=False)
+        Portfolio = np.zeros((nPos, ))
+        Portfolio[KeepPos] = Weight[Mask][KeepPos]
+        Portfolio = Portfolio / np.nansum(Portfolio)
+        Rslt = np.full_like(Weight, fill_value=np.nan)
+        Rslt[Mask] = Portfolio
+        return Rslt
+
+    def __call__(self, weight: Factor, mask: Optional[Factor]=None, factor_args:dict={}, **kwargs) -> SectionOperation:
+        Factors = [weight]
+        if mask is not None: Factors.append(mask)
+        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"mask": (mask is not None)}
+        return super().__call__(*Factors, factor_args=factor_args, **kwargs)
+
+
+class BiasTest(BTNode):
+    """Bias Test"""
+
+    class __QS_ArgClass__(BTNode.__QS_ArgClass__):
+        Name: str = Field(default="Bias Test", frozen=True, title="名称")
+        IndustryList: List[str] = Field(default=[], frozen=True, title="行业列表")
+        RandomNums: List[int] = Field(default=[20, 50, 100, 200], frozen=True, title="随机组合持仓数量")
+        RebalanceDTs: Optional[List[dt.datetime]] = Field(default=None, title="再平衡时点", frozen=True)
+        RollingAvgPeriod: int = Field(default=12, frozen=True, title="移动平均期数")
+    
+    def _genPortfolio(self, descriptor_ids, industry_list, random_nums, mask, weight_dict, style_dict, industry, industry_neutral_factor_dict, extra_portfolio_dict):
+        if industry is not None:
+            AllIndustries = sorted(industry_list)
+        notnull, where, aggr_sum, section_rank = fo.NotNull(), fo.Where(), fo.Aggregate(aggr_func=np.nansum, descriptor_ids=descriptor_ids), fo.SectionRank()
+        PortfolioDict = {}
+        for iWeightName, iWeightFactor in weight_dict.items():
+            if mask is not None:
+                iMask = (notnull(iWeightFactor) & (iWeightFactor != 0) & mask)
+            else:
+                iMask = (notnull(iWeightFactor) & (iWeightFactor != 0))
             # 全部 ID 组合
-            PortfolioDict["全体%s加权组合" % (iWeightFactor,)] = iWeightData / iWeightData.abs().sum()
-            # 行业组合
-            if self._QSArgs.IndustryFactor!="无":
+            PortfolioDict[f"全体{iWeightName}加权组合"] = rename(iWeightFactor / aggr_sum(abs(iWeightFactor), mask=iMask), factor_name=f"全体{iWeightName}加权组合")
+            if industry is not None:
+                # 行业组合
                 for jIndustry in AllIndustries:
-                    ijMask = (Industry[iMask]==jIndustry)
-                    ijWeightData = iWeightData[ijMask]
-                    PortfolioDict["%s行业%s加权组合" % (jIndustry, iWeightFactor)] = ijWeightData / ijWeightData.abs().sum()
-                    # 行业中性组合
-                    for kFactor in self._QSArgs.IndustryNeutralFactors:
-                        kTopPortfolio = ("%sTop%s加权组合" % (kFactor, iWeightFactor))
-                        kBottomPortfolio = ("%sBottom%s加权组合" % (kFactor, iWeightFactor))
-                        ijkIndNeutralData= IndNeutralData[kFactor][iMask][ijMask]
-                        ijkThreshold = ijkIndNeutralData.median()
-                        PortfolioDict[kTopPortfolio] = PortfolioDict.get(kTopPortfolio, []) + ijkIndNeutralData[ijkIndNeutralData>ijkThreshold].index.tolist()
-                        PortfolioDict[kBottomPortfolio] = PortfolioDict.get(kBottomPortfolio, []) + ijkIndNeutralData[ijkIndNeutralData<=ijkThreshold].index.tolist()
-                for kFactor in self._QSArgs.IndustryNeutralFactors:
-                    kTopPortfolio = ("%sTop%s加权组合" % (kFactor, iWeightFactor))
-                    kPortfolio = iWeightData.reindex(index=PortfolioDict.pop(kTopPortfolio))
-                    PortfolioDict[kTopPortfolio] = kPortfolio / kPortfolio.abs().sum()
-                    kBottomPortfolio = ("%sBottom%s加权组合" % (kFactor, iWeightFactor))
-                    kPortfolio = iWeightData.reindex(index=PortfolioDict.pop(kBottomPortfolio))
-                    PortfolioDict[kBottomPortfolio] = kPortfolio / kPortfolio.abs().sum()
+                    ijMask = ((industry == jIndustry) & iMask)
+                    ijWeightFactor = where(iWeightFactor, mask=ijMask, other=np.nan)
+                    PortfolioDict[f"{jIndustry}行业{iWeightName}加权组合"] = rename(ijWeightFactor / aggr_sum(abs(ijWeightFactor)), factor_name=f"{jIndustry}行业{iWeightName}加权组合")
+                # 行业中性组合
+                for jFactorName, jFactor in industry_neutral_factor_dict.items():
+                    jRank = section_rank(jFactor, mask=iMask, cat_data=industry)
+                    ijWeightFactor = where(iWeightFactor, mask=(jRank > 0.5), other=np.nan)
+                    PortfolioDict[f"{jFactorName}行业中性Top{iWeightName}加权组合"] = rename(ijWeightFactor / aggr_sum(abs(ijWeightFactor)), factor_name=f"{jFactorName}行业中性Top{iWeightName}加权组合")
+                    ijWeightFactor = where(iWeightFactor, mask=(jRank <= 0.5), other=np.nan)
+                    PortfolioDict[f"{jFactorName}行业中性Bottom{iWeightName}加权组合"] = rename(ijWeightFactor / aggr_sum(abs(ijWeightFactor)), factor_name=f"{jFactorName}行业中性Bottom{iWeightName}加权组合")
             # 风格因子组合
-            for jFactor in self._QSArgs.StyleFactors:
-                jFactorData = StyleFactorData[jFactor][iMask]
-                ijWeightData = iWeightData[jFactorData>=jFactorData.quantile(0.8)]
-                PortfolioDict["%s风格Top%s加权组合" % (jFactor, iWeightFactor)] = ijWeightData / ijWeightData.abs().sum()
-                ijWeightData = iWeightData[jFactorData<=jFactorData.quantile(0.2)]
-                PortfolioDict["%s风格Bottom%s加权组合" % (jFactor, iWeightFactor)] = ijWeightData / ijWeightData.abs().sum()
+            for jStyleName, jStyle in style_dict.items():
+                jRank = section_rank(jStyle, mask=iMask)
+                ijWeightFactor = where(iWeightFactor, mask=(jRank >= 0.8), other=np.nan)
+                PortfolioDict[f"{jStyleName}风格Top{iWeightName}加权组合"] = rename(ijWeightFactor / aggr_sum(abs(ijWeightFactor)), factor_name=f"{jStyleName}风格Top{iWeightName}加权组合")
+                ijWeightFactor = where(iWeightFactor, mask=(jRank <= 0.2), other=np.nan)
+                PortfolioDict[f"{jStyleName}风格Bottom{iWeightName}加权组合"] = rename(ijWeightFactor / aggr_sum(abs(ijWeightFactor)), factor_name=f"{jStyleName}风格Bottom{iWeightName}加权组合")
             # 随机组合
-            for jNum in self._QSArgs.RandomNums:
-                PortfolioDict["随机%d%s加权组合" % (jNum, iWeightFactor)] = genRandomPortfolio(ids, target_num=20, weight=iWeightData)
-        return PortfolioDict
-    def __QS_move__(self, idt, **kwargs):
-        if self._iDT==idt: return 0
-        self._iDT = idt
-        if self._QSArgs.CalcDTs:
-            if idt not in self._QSArgs.CalcDTs[self._CurCalcInd:]: return 0
-            self._CurCalcInd = self._QSArgs.CalcDTs[self._CurCalcInd:].index(idt) + self._CurCalcInd
-            LastInd = self._CurCalcInd - 1
-            LastDateTime = self._QSArgs.CalcDTs[LastInd]
+            for jNum in random_nums:
+                PortfolioDict[f"随机{jNum}{iWeightName}加权组合"] = CalcRandomPortfolio(target_num=jNum)(iWeightFactor, mask=iMask, factor_args={"Name": f"随机{jNum}{iWeightName}加权组合"})
+        PortfolioDict.update(extra_portfolio_dict)
+        return [PortfolioDict[key] for key in sorted(PortfolioDict.keys())]
+
+    def __init__(self, descriptor_ids:List[str], price: Factor, risk_table: RiskTable, mask:Optional[Factor]=None, weight_list: List[Factor]=[DataFactor(1, args={"Name": "等权"})], style_list: List[Factor]=[], industry:Optional[Factor]=None, industry_neutral_factor_list:List[Factor]=[], extra_portfolio_list:List[Factor]=[], args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化 Bias Test 回测节点
+
+        Args:
+            descriptor_ids: 依赖因子的截面 ID
+            price: 证券价格或者净值因子
+            weight_list: 权重因子列表, 默认元素为等权因子
+            style_list: 风格因子列表
+            industry: 行业因子
+            industry_neutral_factor_list: 行业中性因子列表
+            extra_portfolio_list: 其他投资组合因子列表
+            args: 参数集
+            config_file: 配置文件
+        """
+        if (industry is not None) and (not args.get("IndustryList", [])): raise __QS_Error__(f"指定了行业因子 {industry} 则行业列表参数不能为空")
+        WeightDict = {iFactor.Name: iFactor for iFactor in weight_list}
+        if len(WeightDict) != len(weight_list): raise __QS_Error__(f"指定的权重因子列表有重名: {[iFactor.Name for iFactor in weight_list]}")
+        StyleDict = {iFactor.Name: iFactor for iFactor in style_list}
+        if len(StyleDict) != len(style_list): raise __QS_Error__(f"指定的风格因子列表有重名: {[iFactor.Name for iFactor in style_list]}")
+        IndustryNeutralFactorDict = {iFactor.Name: iFactor for iFactor in industry_neutral_factor_list}
+        if len(IndustryNeutralFactorDict) != len(industry_neutral_factor_list): raise __QS_Error__(f"指定的行业中性因子列表有重名: {[iFactor.Name for iFactor in industry_neutral_factor_list]}")
+        ExtraPortfolioDict = {iFactor.Name: iFactor for iFactor in extra_portfolio_list}
+        if len(set(ExtraPortfolioDict)) != len(extra_portfolio_list): raise __QS_Error__(f"额外指定的投资组合因子列表有重名: {[iFactor.Name for iFactor in extra_portfolio_list]}")
+        PortfolioList = self._genPortfolio(descriptor_ids, args.get("IndustryList", []), args.get("RandomNums", [20, 50, 100, 200]), mask, WeightDict, StyleDict, industry, IndustryNeutralFactorDict, ExtraPortfolioDict)
+        if not PortfolioList: raise __QS_Error__("在给定的因子条件下生成的投资组合为空!")
+        self._PortfolioNameList = [iFactor.Name for iFactor in PortfolioList]
+
+        CalcDTRuler = args.get("RebalanceDTs", None)
+        if not CalcDTRuler: LookBack = 1
+        else: LookBack = max(d.days for d in np.diff(CalcDTRuler))
+        PortfolioReturn = CalcPortfolioReturn(descriptor_ids=descriptor_ids, lookback=LookBack)(*PortfolioList, price=price, factor_args={"CalcDTRuler": CalcDTRuler})
+        PortfolioVolatility = CalcPortfolioVolatility(descriptor_ids=descriptor_ids)(*PortfolioList, risk_table=risk_table, factor_args={"CalcDTRuler": CalcDTRuler})
+        ZScore = PortfolioReturn / fo.Lag(lag_period=1, window=LookBack)(PortfolioVolatility, factor_args={"CalcDTRuler": CalcDTRuler})
+        super().__init__(deps=[ZScore], args=args, config_file=config_file, **kwargs)
+
+    def genReport(self, output:dict) -> str:
+        HTML = "参数设置: "
+        HTML += '<ul align="left">'
+        HTML += f"<li>行业列表: {self._QSArgs.IndustryList}</li>"
+        HTML += f"<li>随机组合持仓数量: {self._QSArgs.RandomNums}</li>"
+        if self._QSArgs.RebalanceDTs:
+            HTML += "<li>再平衡时点: 自定义时点</li>"
         else:
-            self._CurCalcInd = self._Model.DateTimeIndex
-            LastInd = self._CurCalcInd - 1
-            LastDateTime = self._Model.DateTimeSeries[LastInd]
-        if (LastInd<0): return 0
-        IDs = self._FactorTable.getFilteredID(idt=idt, id_filter_str=self._QSArgs.IDFilter)
-        LastCovMatrix, self._CovMatrix = self._CovMatrix, dropRiskMatrixNA(self._QSArgs.RiskTable.readCov(dts=[idt], ids=IDs).iloc[0])
-        IDs = self._CovMatrix.index.tolist()
-        LastPortfolios, self._Portfolios = self._Portfolios, self._genPortfolio(idt, IDs)
-        if not LastPortfolios:
-            AllPortfolioNames = list(self._Portfolios)
-            self._Output["Z-Score"] = pd.DataFrame(columns=AllPortfolioNames)
-            self._Output["Robust Z-Score"] = pd.DataFrame(columns=AllPortfolioNames)
-            self._Output["Bias 统计量"] = pd.DataFrame(columns=AllPortfolioNames)
-            self._Output["Robust Bias 统计量"] = pd.DataFrame(columns=AllPortfolioNames)
-            return 0
-        else:
-            self._Output["Robust Bias 统计量"].loc[idt] = self._Output["Bias 统计量"].loc[idt] = self._Output["Robust Z-Score"].loc[idt] = self._Output["Z-Score"].loc[idt] = np.nan
-        Price = self._FactorTable.readData(dts=[LastDateTime, idt], ids=self._FactorTable.getID(ifactor_name=self._QSArgs.PriceFactor), factor_names=[self._QSArgs.PriceFactor]).iloc[0]
-        Return = Price.iloc[1] / Price.iloc[0] - 1
-        for jPortfolioName, jPortfolio in LastPortfolios.items():
-            jCovMatrix = LastCovMatrix.loc[jPortfolio.index, jPortfolio.index]
-            jStd = np.dot(np.dot(jPortfolio.values, jCovMatrix.values), jPortfolio.values)**0.5
-            jReturn = (Return[jPortfolio.index] * jPortfolio).sum()
-            self._Output["Z-Score"].loc[idt, jPortfolioName] = jReturn / jStd
-            self._Output["Robust Z-Score"].loc[idt, jPortfolioName] = max((-3, min((3, jReturn / jStd))))
-            if self._Output["Z-Score"].shape[0]>=self._QSArgs.LookBack:
-                self._Output["Bias 统计量"].loc[idt, jPortfolioName] = self._Output["Z-Score"][jPortfolioName].iloc[-self._QSArgs.LookBack:].std()
-                self._Output["Robust Bias 统计量"].loc[idt, jPortfolioName] = self._Output["Robust Z-Score"][jPortfolioName].iloc[-self._QSArgs.LookBack:].std()
-        AllPortfolioNames = list(LastPortfolios)
-        self._Output["Z-Score"] = self._Output["Z-Score"].loc[:, AllPortfolioNames]
-        self._Output["Robust Z-Score"] = self._Output["Robust Z-Score"].loc[:, AllPortfolioNames]
-        self._Output["Bias 统计量"] = self._Output["Bias 统计量"].reindex(columns=AllPortfolioNames)
-        self._Output["Robust Bias 统计量"] = self._Output["Robust Bias 统计量"].reindex(columns=AllPortfolioNames)
-        return 0
-    def __QS_end__(self):
-        if not self._isStarted: return 0
-        super().__QS_end__()
-        self._Output["汇总统计量"] = pd.DataFrame(index=self._Output["Bias 统计量"].columns) 
-        self._Output["汇总统计量"]["RAD 统计量"] = (self._Output["Bias 统计量"] - 1).abs().mean()
-        self._Output["汇总统计量"]["Robust RAD 统计量"] = (self._Output["Robust Bias 统计量"] - 1).abs().mean()
-        self._Output["Bias 统计量"].insert(0, "95%置信下界", 1-(2/self._QSArgs.LookBack)**0.5)
-        self._Output["Bias 统计量"].insert(0, "95%置信上界", 1+(2/self._QSArgs.LookBack)**0.5)
-        self._Output["Robust Bias 统计量"].insert(0, "95%置信下界", 1-(2/self._QSArgs.LookBack)**0.5)
-        self._Output["Robust Bias 统计量"].insert(0, "95%置信上界", 1+(2/self._QSArgs.LookBack)**0.5)
-        Stats = self._Output["Bias 统计量"].iloc[:, 2:]
+            HTML += "<li>再平衡时点: 所有时点</li>"
+        HTML += f"<li>移动平均期数: {self._QSArgs.RollingAvgPeriod}</li>"
+        HTML += "</ul>"
+        Formatters = [lambda x:'{0:.4f}'.format(x)]*2+[_QS_formatPandasPercentage]*6
+        iHTML = output["汇总统计量"].to_html(formatters=Formatters)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        # Fig = self.genMatplotlibFig(output)
+        # # figure 保存为二进制文件
+        # Buffer = BytesIO()
+        # Fig.savefig(Buffer, bbox_inches='tight')
+        # PlotData = Buffer.getvalue()
+        # # 图像数据转化为 HTML 格式
+        # ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+        # HTML += ('<img src="%s">' % ImgStr)
+        return HTML
+
+    def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
+        InitData = super().init_compute(path=path, init_data=init_data, context=context)
+        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self._PortfolioNameList) for iInitData in InitData]
+    
+    def forward_compute(self, path: List[str], fwd_data: DTLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], DTLocalContext]:
+        return [FactorLocalContext(DTs=fwd_data.DTs, IDs=self._PortfolioNameList, PIDs=context.PIDList)] * len(self.Deps), DTLocalContext(DTs=fwd_data.DTs)
+    
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
+        ZScore = bwd_data_list[0].dropna(how="all", axis=0)
+        Output = {"Z-Score": ZScore}
+        Output["Robust Z-Score"] = ZScore.clip(upper=3, lower=-3)
+        Output["Bias 统计量"] = ZScore.rolling(window=self._QSArgs.RollingAvgPeriod).std()
+        Output["Robust Bias 统计量"] = Output["Robust Z-Score"].rolling(window=self._QSArgs.RollingAvgPeriod).std()
+        Output["汇总统计量"] = pd.DataFrame(index=Output["Bias 统计量"].columns)
+        Output["汇总统计量"]["RAD 统计量"] = (Output["Bias 统计量"] - 1).abs().mean()
+        Output["汇总统计量"]["Robust RAD 统计量"] = (Output["Robust Bias 统计量"] - 1).abs().mean()
+        Output["Bias 统计量"].insert(0, "95%置信下界", 1 - (2 / self._QSArgs.RollingAvgPeriod) ** 0.5)
+        Output["Bias 统计量"].insert(0, "95%置信上界", 1 + (2 / self._QSArgs.RollingAvgPeriod) ** 0.5)
+        Output["Robust Bias 统计量"].insert(0, "95%置信下界", 1 - (2 / self._QSArgs.RollingAvgPeriod) ** 0.5)
+        Output["Robust Bias 统计量"].insert(0, "95%置信上界", 1 + (2 / self._QSArgs.RollingAvgPeriod) ** 0.5)
+        Stats = Output["Bias 统计量"].iloc[:, 2:]
         SampleNum = pd.notnull(Stats).sum(axis=0)
-        self._Output["汇总统计量"]["Bias 统计量高估比例"] = (Stats.T<self._Output["Bias 统计量"]["95%置信下界"]).sum(axis=1) / SampleNum
-        self._Output["汇总统计量"]["Bias 统计量低估比例"] = (Stats.T>self._Output["Bias 统计量"]["95%置信上界"]).sum(axis=1) / SampleNum
-        self._Output["汇总统计量"]["Bias 统计量准确度"] = 1 - self._Output["汇总统计量"]["Bias 统计量高估比例"]  - self._Output["汇总统计量"]["Bias 统计量低估比例"]
-        Stats = self._Output["Robust Bias 统计量"].iloc[:, 2:]
+        Output["汇总统计量"]["Bias 统计量高估比例"] = (Stats.T < Output["Bias 统计量"]["95%置信下界"]).sum(axis=1) / SampleNum
+        Output["汇总统计量"]["Bias 统计量低估比例"] = (Stats.T > Output["Bias 统计量"]["95%置信上界"]).sum(axis=1) / SampleNum
+        Output["汇总统计量"]["Bias 统计量准确度"] = 1 - Output["汇总统计量"]["Bias 统计量高估比例"]  - Output["汇总统计量"]["Bias 统计量低估比例"]
+        Stats = Output["Robust Bias 统计量"].iloc[:, 2:]
         SampleNum = pd.notnull(Stats).sum(axis=0)
-        self._Output["汇总统计量"]["Robust Bias 统计量高估比例"] = (Stats.T<self._Output["Robust Bias 统计量"]["95%置信下界"]).sum(axis=1) / SampleNum
-        self._Output["汇总统计量"]["Robust Bias 统计量低估比例"] = (Stats.T>self._Output["Robust Bias 统计量"]["95%置信上界"]).sum(axis=1) / SampleNum
-        self._Output["汇总统计量"]["Robust Bias 统计量准确度"] = 1 - self._Output["汇总统计量"]["Robust Bias 统计量高估比例"]  - self._Output["汇总统计量"]["Robust Bias 统计量低估比例"]
-        return 0
+        Output["汇总统计量"]["Robust Bias 统计量高估比例"] = (Stats.T<Output["Robust Bias 统计量"]["95%置信下界"]).sum(axis=1) / SampleNum
+        Output["汇总统计量"]["Robust Bias 统计量低估比例"] = (Stats.T>Output["Robust Bias 统计量"]["95%置信上界"]).sum(axis=1) / SampleNum
+        Output["汇总统计量"]["Robust Bias 统计量准确度"] = 1 - Output["汇总统计量"]["Robust Bias 统计量高估比例"]  - Output["汇总统计量"]["Robust Bias 统计量低估比例"]
+        if self._QSArgs.GenReport: Output["Report"] = self.genReport(Output)
+        return Output

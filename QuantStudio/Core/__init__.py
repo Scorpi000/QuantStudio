@@ -11,7 +11,7 @@ from pydantic_core import PydanticUndefinedType
 from pydantic import BaseModel, ConfigDict, Field
 
 from QuantStudio import __QS_ConfigPath__
-from QuantStudio.Tools.DataTypeConversionFun import dict2html, dict2markdown
+from QuantStudio.Tools.DataTypeConversionFun import dict2html, dict2markdown, formatValue2MD
 from QuantStudio.Tools.DataTypeFun import dict2id
 
 
@@ -111,8 +111,17 @@ class __QS_Args__(BaseModel):
         default = self.meta(key="default", repr=repr)
         description = self.meta(key="description", repr=repr)
         key_fmt = "{key}{title}"
-        val_fmt = "{annotation}, {default}{description}"
-        formatted_info = {key_fmt.format(key=key, title=f"({title[key]})" if title[key] else ""): val_fmt.format(annotation=str(annotation[key]), default="无默认值" if isinstance(default[key], PydanticUndefinedType) else "默认值 "+str(default[key]), description=(", "+description[key] if description[key] else "")) for key in annotation.index}
+        val_fmt = "{annotation}, {default}{description}, 当前取值: {value}"
+        formatted_info = {}
+        for key in annotation.index:
+            iFormattedKey = key_fmt.format(key=key, title=f"({title[key]})" if title[key] else "")
+            iVal = getattr(self, key)
+            if isinstance(iVal, __QS_Args__):
+                iFormattedVal = "\n"+iVal.info(repr=repr, html=html).replace("\n", "\n    ")
+            else:
+                iFormattedVal = formatValue2MD(iVal)
+            iFormattedVal = val_fmt.format(annotation=str(annotation[key]), default="无默认值" if isinstance(default[key], PydanticUndefinedType) else "默认值 "+str(default[key]), description=(", "+description[key] if description[key] else ""), value=iFormattedVal)
+            formatted_info[iFormattedKey] = iFormattedVal
         if html:
             return dict2html(formatted_info)
         else:
@@ -177,13 +186,13 @@ class __QS_Object__:
     __QS_ArgClass__ = __QS_Args__
 
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        """实例化 QuantStudio 系统对象
+        """实例化 QuantStudio 系统对象, 参数设置的优先级: args > config_file > 内部默认值
 
         Args:
             args: 指定的对象参数集
             config_file: 配置文件路径, 配置文件用于设置对象参数。配置文件是一个 json 格式的文件(字符编码为 utf-8, 扩展名为 json), 以键值对的形式给出各个参数的取值
             kwargs:
-                logger: 日志对象, 用于内部打印日志, 如果没有指定则使用默认的 __QS_Logger__ 对象
+                logger: 日志对象, 用于打印内部日志, 如果没有指定则使用默认的 QuantStudio.Core.__QS_Logger__ 对象
         """
         self._QS_Logger = kwargs.pop("logger", None)
         if self._QS_Logger is None: self._QS_Logger = __QS_Logger__

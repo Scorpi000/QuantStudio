@@ -290,11 +290,12 @@ def fillNaByLookback(data, lookback, dts=None):
     else: isDF = True
     if dts is None: dts = data.index.values
     else: dts = np.array(dts)
-    Ind = pd.DataFrame(np.r_[0, np.diff(dts).astype("float")].reshape((data.shape[0], 1)).repeat(data.shape[1], axis=1).cumsum(axis=0))
+    Ind = pd.DataFrame(np.r_[0, np.diff(dts).astype(np.timedelta64()).astype(float) / 1e6].reshape((data.shape[0], 1)).repeat(data.shape[1], axis=1).cumsum(axis=0))
     Ind1 = Ind.where(pd.notnull(data.values), other=np.nan)
     Ind1.ffill(inplace=True)
     data = data.ffill()
-    data.where(((Ind.values-Ind1.values)/10**9<=lookback), np.nan, inplace=True)
+    # data.where(((Ind.values-Ind1.values)/10**9<=lookback), np.nan, inplace=True)
+    data.where(Ind.values - Ind1.values <= lookback, np.nan, inplace=True)
     if isDF: return data
     else: return data.values
 

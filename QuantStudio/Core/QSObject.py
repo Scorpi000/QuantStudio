@@ -19,8 +19,6 @@ from pydantic import Field
 from QuantStudio.Core import __QS_Error__, __QS_Object__
 
 
-os.environ["NLS_LANG"] = "SIMPLIFIED CHINESE_CHINA.UTF8"
-
 class QSSQLObject(__QS_Object__):
     """基于关系数据库的对象"""
     class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
@@ -432,8 +430,9 @@ class QSSQLObject(__QS_Object__):
         return 0
 
 
-# 文件锁
 class QSFileLock(object):
+    """文件锁"""
+
     def __init__(self, path_or_lock, proc_lock=None):
         if isinstance(path_or_lock, (str, Path)):
             self._FileLock = fasteners.InterProcessLock(path_or_lock)

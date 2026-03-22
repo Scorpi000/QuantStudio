@@ -3,7 +3,17 @@ import inspect
 from collections import OrderedDict
 from typing import Optional, Literal, List, Any
 
-from QuantStudio.Core.Node import Node
+from QuantStudio.Core import __QS_Object__, __QS_Args__
+from QuantStudio.Core.Node import Node, Context, LocalContext
+from QuantStudio.Core.CalcEngine import Engine
+from QuantStudio.Core.Cache import Cache
+from QuantStudio.Factor.Factor import Factor
+from QuantStudio.Factor.FactorTable import FactorTable
+from QuantStudio.Factor.FactorDB import FactorDB
+from QuantStudio.Factor.FactorOperation import FactorOperator
+from QuantStudio.Risk.RiskDB import RiskDB
+from QuantStudio.Risk.RiskTable import RiskTable
+from QuantStudio.BackTest.BackTestModel import BTNode
 
 
 # ===================== 获取对象说明信息 =====================
@@ -74,7 +84,7 @@ def _get_method_doc_from_parents(method) -> Optional[str]:
 
 def _get_method_doc_from_class(cls: type, method_name: str) -> Optional[str]:
     """
-    从类的 MRO（方法解析顺序）中查找方法文档。
+    从类的 MRO(方法解析顺序)中查找方法文档。
     """
     # 遍历 MRO（父类链）
     for parent in cls.__mro__[1:]:  # 跳过自身，从父类开始
@@ -130,14 +140,14 @@ def _format_help(obj: Any, doc: str) -> str:
     
     # 获取对象信息
     try:
-        name = getattr(obj, '__qualname__', getattr(obj, '__name__', str(obj)))
         module = getattr(obj, '__module__', 'built-in')
         obj_type_name = type(obj).__name__
+        name = getattr(obj, '__qualname__', getattr(obj, '__name__', str(obj)))
     except Exception:
         name = str(obj)
         module = 'unknown'
         obj_type_name = 'unknown'
-    
+
     # 类型信息
     if inspect.isclass(obj):
         lines.append(f"类型: class")
@@ -156,14 +166,55 @@ def _format_help(obj: Any, doc: str) -> str:
     if module != 'built-in':
         lines.append(f"模块: {module}")
     
+    # QS 对象处理
+    if isinstance(obj, FactorOperator):
+        name = f"{module}.{obj_type_name}.__call__"
+        lines.append("QS 对象类型: 因子算子")
+    elif isinstance(obj, Factor):
+        lines.append("QS 对象类型: 计算节点-因子")
+    elif isinstance(obj, FactorTable):
+        lines.append("QS 对象类型: 计算节点-因子表")
+    elif isinstance(obj, FactorDB):
+        lines.append("QS 对象类型: 因子库")
+    elif isinstance(obj, RiskTable):
+        lines.append("QS 对象类型: 计算节点-风险表")
+    elif isinstance(obj, RiskDB):
+        lines.append("QS 对象类型: 风险库")
+    elif isinstance(obj, BTNode):
+        lines.append("QS 对象类型: 计算节点-回测节点")
+    elif isinstance(obj, Context):
+        lines.append("QS 对象类型: 全局上下文")
+    elif isinstance(obj, LocalContext):
+        lines.append("QS 对象类型: 局部上下文")
+    elif isinstance(obj, Node):
+        lines.append("QS 对象类型: 计算节点")
+    elif isinstance(obj, Engine):
+        lines.append("QS 对象类型: 计算引擎")
+    elif isinstance(obj, Cache):
+        lines.append("QS 对象类型: 缓存")
+    elif isinstance(obj, __QS_Args__):
+        lines.append("QS 对象类型: 参数集")
+    if isinstance(obj, (__QS_Args__, __QS_Object__)):
+        if hasattr(obj, "Name"):
+            lines.append(f"QS 对象名称: {obj.Name}")
+        lines.append(f"QSID: {obj.QSID}")
+    if isinstance(obj, __QS_Object__): lines.append(f"参数集:\n    {obj.Args.info(html=False).replace('\n', '\n    ')}")
+    elif isinstance(obj, __QS_Args__): lines.append(f"所含参数:\n    {obj.info(html=False).replace('\n', '\n    ')}")
+    
     # 显示签名（如果是可调用的）
     try:
+        if inspect.isclass(obj):
+            sig = inspect.signature(obj.__init__)
+            lines.append(f"构造函数签名: {name}.__init__{sig}")
+            init_doc = _get_doc_with_inheritance(obj.__init__)
+            lines.append("构造函数文档:")
+            lines.append("    " + init_doc.replace("\n", "\n    "))
         if callable(obj) and not inspect.isclass(obj):
             sig = inspect.signature(obj)
             lines.append(f"签名: {name}{sig}")
     except (ValueError, TypeError):
         pass
-    lines.append("文档:")
+    lines.append("说明文档:")
     lines.append("    " + doc.replace("\n", "\n    "))
     
     return "\n".join(lines)
@@ -263,75 +314,8 @@ def dict2mermaid(nested_dict: dict, direction: Literal["TD", "LR", "BT", "RL"]="
 
 # 测试 qs_help
 if __name__ == "__main__":
-    class Parent:
-        """父类说明"""
-        
-        def greet(self, name: str) -> str:
-            """
-            打招呼方法。
-            
-            Args:
-                name: 对方的名字
-                
-            Returns:
-                问候语字符串
-                
-            Examples:
-                >>> p = Parent()
-                >>> p.greet("Alice")
-                'Hello, Alice!'
-            """
-            return f"Hello, {name}!"
-        
-        def farewell(self):
-            """说再见"""
-            pass
-    
-    class Child(Parent):
-        """子类说明"""
-        
-        def greet(self, name: str) -> str:
-            # 重写了方法，但没有写文档
-            return f"Hi, {name}!"
-        
-        def farewell(self):
-            # 也没有文档
-            return "Bye!"
-
-    class GrandChild(Child):
-        # 完全没有文档
-        def greet(self, name: str) -> str:
-            return f"Hey, {name}!"
-
-    print("=" * 70)
-    print("测试 qs_help 函数")
-    print("=" * 70)
-    
-    # 测试1：子类方法（无文档，应从父类继承）
-    print("\n>>> qs_help(Child.greet)")
-    print(qs_help(Child.greet))
-    
-    # 测试2：实例方法（bound method）
-    child = Child()
-    print("\n>>> qs_help(child.greet)")
-    qs_help(child.greet)
-    
-    # 测试3：孙子类（应从 Parent 继承文档）
-    print("\n>>> qs_help(GrandChild.greet)")
-    gc = GrandChild()
-    qs_help(gc.greet)
-    
-    # 测试4：有文档的方法（正常使用）
-    print("\n>>> qs_help(Parent.greet)")
-    qs_help(Parent.greet)
-    
-    # 测试5：类本身
-    print("\n>>> qs_help(Child)")
-    qs_help(Child)
-    
-    # 测试6：内置函数（无文档的情况）
-    print("\n>>> qs_help(len)")
-    qs_help(len)
+    from QuantStudio.Factor.BasicOperator import add
+    print(qs_help(add))
 
 # 测试 dict2mermaid
 if __name__ == "__main__":
