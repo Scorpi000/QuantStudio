@@ -120,7 +120,12 @@ class __QS_Args__(BaseModel):
                 iFormattedVal = "\n"+iVal.info(repr=repr, html=html).replace("\n", "\n    ")
             else:
                 iFormattedVal = formatValue2MD(iVal)
-            iFormattedVal = val_fmt.format(annotation=str(annotation[key]), default="无默认值" if isinstance(default[key], PydanticUndefinedType) else "默认值 "+str(default[key]), description=(", "+description[key] if description[key] else ""), value=iFormattedVal)
+            iFormattedVal = val_fmt.format(
+                annotation=str(annotation[key]), 
+                default="无默认值" if isinstance(default[key], PydanticUndefinedType) else ("默认值 " + (default[key].__repr__() if isinstance(default[key], str) else str(default[key]))), 
+                description=(", "+description[key] if description[key] else ""), 
+                value=iFormattedVal
+            )
             formatted_info[iFormattedKey] = iFormattedVal
         if html:
             return dict2html(formatted_info)
@@ -186,7 +191,7 @@ class __QS_Object__:
     __QS_ArgClass__ = __QS_Args__
 
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        """实例化 QuantStudio 系统对象, 参数设置的优先级: args > config_file > 内部默认值
+        """初始化 QuantStudio 系统对象, 参数设置的优先级: args > config_file > 内部默认值
 
         Args:
             args: 指定的对象参数集

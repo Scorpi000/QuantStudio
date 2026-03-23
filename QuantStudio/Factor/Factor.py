@@ -108,6 +108,15 @@ class Factor(Node):
         CacheEnabled: bool = Field(default=True, frozen=True, title="启用缓存")
 
     def __init__(self, ft: Optional["FactorTable"]=None, descriptors: List["Factor"] = [], extra_deps: List[Node] = [], args: dict = {}, config_file: Optional[str] = None, **kwargs):
+        """初始化因子对象
+
+        Args:
+            ft: 因子所属的因子表对象, 如果为 None 表示因子不属于任何因子表
+            descriptors: 因子依赖的因子(描述子)列表
+            extra_deps: 因子依赖的其他计算节点列表
+            args: 指定的对象参数集
+            config_file: 配置文件路径
+        """
         if ft and descriptors:
             raise __QS_Error__("因子表和描述子列表不能都存在!")
         self._FactorTable = ft
@@ -459,7 +468,7 @@ class Factor(Node):
 
 
 class DataFactor(Factor):
-    """直接赋予数据产生的因子"""
+    """数据因子: 直接赋予数据产生的因子"""
     
     class __QS_ArgClass__(Factor.__QS_ArgClass__):
         Name: str = Field(default="DataFactor", frozen=True, title="名称")
@@ -467,6 +476,13 @@ class DataFactor(Factor):
         LookBack: int = Field(default=0, title="回溯天数", frozen=True)
 
     def __init__(self, data:Union[Any, pd.DataFrame, pd.Series], args: dict={}, config_file: Optional[str] = None, **kwargs):
+        """初始化数据因子对象
+
+        Args:
+            data: 构造因子的数据
+            args: 指定的对象参数集
+            config_file: 配置文件路径
+        """
         args = args.copy()
         if "DataType" not in args:
             if isinstance(data, (pd.Series, pd.DataFrame)):

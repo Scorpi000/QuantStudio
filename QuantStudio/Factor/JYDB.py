@@ -213,7 +213,7 @@ class _JY_SQL_Table(SQL_Table):
 
 
 class _WideTable(_JY_SQL_Table, SQL_WideTable):
-    """聚源宽因子表"""
+    __doc__ = SQL_WideTable.__doc__
 
     def __init__(self, fdb, args={}, **kwargs):
         Name = args["Name"]
@@ -221,7 +221,7 @@ class _WideTable(_JY_SQL_Table, SQL_WideTable):
 
 
 class _NarrowTable(_JY_SQL_Table, SQL_NarrowTable):
-    """聚源窄因子表"""
+    __doc__ = SQL_NarrowTable.__doc__
 
     def __init__(self, fdb, args={}, **kwargs):
         Name = args["Name"]
@@ -229,7 +229,7 @@ class _NarrowTable(_JY_SQL_Table, SQL_NarrowTable):
 
 
 class _FeatureTable(_JY_SQL_Table, SQL_FeatureTable):
-    """聚源特征因子表"""
+    __doc__ = SQL_FeatureTable.__doc__
 
     def __init__(self, fdb, args={}, **kwargs):
         Name = args["Name"]
@@ -237,7 +237,7 @@ class _FeatureTable(_JY_SQL_Table, SQL_FeatureTable):
 
 
 class _TimeSeriesTable(_JY_SQL_Table, SQL_TimeSeriesTable):
-    """聚源时序因子表"""
+    __doc__ = SQL_TimeSeriesTable.__doc__
 
     def __init__(self, fdb, args={}, **kwargs):
         Name = args["Name"]
@@ -245,7 +245,7 @@ class _TimeSeriesTable(_JY_SQL_Table, SQL_TimeSeriesTable):
 
 
 class _MappingTable(_JY_SQL_Table, SQL_MappingTable):
-    """聚源映射因子表"""
+    __doc__ = SQL_MappingTable.__doc__
 
     def __init__(self, fdb, args={}, **kwargs):
         Name = args["Name"]
@@ -253,7 +253,7 @@ class _MappingTable(_JY_SQL_Table, SQL_MappingTable):
 
 
 class _ConstituentTable(_JY_SQL_Table, SQL_ConstituentTable):
-    """聚源成份因子表"""
+    __doc__ = SQL_ConstituentTable.__doc__
 
     def __init__(self, fdb, args={}, **kwargs):
         Name = args["Name"]
@@ -262,7 +262,7 @@ class _ConstituentTable(_JY_SQL_Table, SQL_ConstituentTable):
 
 
 class _FinancialTable(_JY_SQL_Table, SQL_FinancialTable):
-    """聚源财务因子表"""
+    __doc__ = SQL_FinancialTable.__doc__
 
     def __init__(self, fdb, args={}, **kwargs):
         Name = args["Name"]
@@ -273,7 +273,6 @@ class _FinancialTable(_JY_SQL_Table, SQL_FinancialTable):
 # 报告期字段, 表示财报的报告期
 # 无公告日期字段, 需另外补充完整
 class _FinancialIndicatorTable(_FinancialTable):
-    """财务指标因子表"""
 
     def __init__(self, fdb, args={}, **kwargs):
         super().__init__(fdb=fdb, args=args, **kwargs)
@@ -938,11 +937,14 @@ class JYDB(QSSQLObject, FactorDB):
 
     def getTable(self, table_name:str, args:dict={}) -> _JY_SQL_Table:
         if table_name in self._TableInfo.index:
-            TableClass = args.get("因子表类型", self._TableInfo.loc[table_name, "TableClass"])
+            TableClass = args.get("TableType", self._TableInfo.loc[table_name, "TableClass"])
             if pd.notnull(TableClass) and (TableClass!=""):
-                DefaultArgs = self._TableInfo.loc[table_name, "DefaultArgs"]
-                if pd.isnull(DefaultArgs): DefaultArgs = {}
-                else: DefaultArgs = eval(DefaultArgs)
+                if TableClass == self._TableInfo.loc[table_name, "TableClass"]:
+                    DefaultArgs = self._TableInfo.loc[table_name, "DefaultArgs"]
+                    if pd.isnull(DefaultArgs): DefaultArgs = {}
+                    else: DefaultArgs = eval(DefaultArgs)
+                else:
+                    DefaultArgs = {}
                 Args = self._QSArgs.FTArgs.copy()
                 Args.update(DefaultArgs)
                 Args.update(args)

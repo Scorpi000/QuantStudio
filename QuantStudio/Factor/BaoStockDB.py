@@ -59,12 +59,14 @@ def _updateInfo(info_file, info_resource, logger, out_info=False):
 
 
 class _BSTable(FactorTable):
+    """BaoStockDB 库中因子表"""
+
     class __QS_ArgClass__(FactorTable.__QS_ArgClass__):
         IDAdj: Literal["无", "前缀"] = Field(default="无", title="ID调整", frozen=True)
         DTFmt: str = Field(default="", title="时点格式", frozen=True)
         APIArgs: dict = Field(default={}, title="API参数", frozen=True)
 
-    def __init__(self, fdb, args={}, **kwargs):
+    def __init__(self, fdb:"BaoStockDB", args:dict={}, **kwargs):
         super().__init__(fdb=fdb, args=args, **kwargs)
         self._TableInfo = fdb._TableInfo.loc[self._QSArgs.Name]
         self._FactorInfo = fdb._FactorInfo.loc[self._QSArgs.Name]
@@ -152,10 +154,12 @@ class _BSTable(FactorTable):
 
 
 class _DTTable(_BSTable):
+    """BaoStockDB 库中基于取单个时点数据 API 的因子表"""
+
     class __QS_ArgClass__(_BSTable.__QS_ArgClass__):
         LookBack: int = Field(default=0, title="回溯天数", frozen=True, ge=0)
 
-    def __init__(self, fdb, args={}, **kwargs):
+    def __init__(self, fdb:"BaoStockDB", args:dict={}, **kwargs):
         super().__init__(fdb=fdb, args=args, **kwargs)
         self._QS_PrepareIgnoredArgs += ("LookBack",)
 
@@ -193,10 +197,12 @@ class _DTTable(_BSTable):
 
 
 class _DTRangeTable(_BSTable):
+    """BaoStockDB 库中基于取时间区间数据 API 的因子表"""
+
     class __QS_ArgClass__(_BSTable.__QS_ArgClass__):
         LookBack: int = Field(default=0, title="回溯天数", frozen=True, ge=0)
 
-    def __init__(self, fdb, args={}, **kwargs):
+    def __init__(self, fdb: "BaoStockDB", args:dict={}, **kwargs):
         super().__init__(fdb=fdb, args=args, **kwargs)
         self._QS_PrepareIgnoredArgs += ("LookBack",)
 
@@ -242,6 +248,11 @@ class _DTRangeTable(_BSTable):
 
 
 class BaoStockDB(FactorDB):
+    """基于 BaoStock 的因子库
+    API: http://baostock.com/baostock/
+    库配置信息文件在 QuantStudio 包目录下 Resource 目录下的 BaoStockDBInfo.xlsx, 记录了相关配置信息
+    """
+
     class __QS_ArgClass__(FactorDB.__QS_ArgClass__):
         Name: str = Field(default="BaoStockDB", title="名称", frozen=True)
         UserID: str = Field(default="anonymous", title="用户ID", frozen=True)
@@ -250,6 +261,12 @@ class BaoStockDB(FactorDB):
         FTArgs: dict = Field(default={}, title="因子表参数", frozen=True)
 
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化 BaoStockDB
+
+        Args:
+            args: 指定的对象参数集
+            config_file: 配置文件路径, 默认配置文件为 "~/QuantStudioConfig/BaoStockDBConfig.json"
+        """
         super().__init__(args=args, config_file=(__QS_ConfigPath__ + os.sep + "BaoStockDBConfig.json" if config_file is None else config_file), **kwargs)
         self._InfoFilePath = __QS_MainPath__ + os.sep + "Resource" + os.sep + "BaoStockDBInfo.hdf5"  # 数据库信息文件路径
         if (not self._QSArgs.DBInfoFile) or (not os.path.isfile(self._QSArgs.DBInfoFile)):

@@ -4,6 +4,7 @@ dist/
 QuantStudio.egg-info/
 QuantStudio/Backup/
 example/data/
+doc/data/
 QuantStudio/Tools/QtGUI/.eric6project/
 __*/
 _eric*/

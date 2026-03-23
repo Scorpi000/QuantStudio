@@ -75,7 +75,7 @@ class Node(__QS_Object__):
         Name: str = Field(default="Node", frozen=True, title="名称")
 
     def __init__(self, deps:List["Node"]=[], args:dict={}, config_file:Optional[str]=None, **kwargs):
-        """实例化计算节点
+        """初始化计算节点
 
         Args:
             deps: 该节点所依赖的节点列表

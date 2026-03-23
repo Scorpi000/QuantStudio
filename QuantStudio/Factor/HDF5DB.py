@@ -70,9 +70,9 @@ class HDF5FactorTable(FactorTable):
         return super().__init__(fdb=fdb, args=args, config_file=None, **kwargs)
 
     @property
-    def FactorNames(self):
+    def FactorNames(self) -> List[str]:
         return sorted(listDirFile(str(self._FactorDB._QSArgs.MainDir) + os.sep + self.Name, suffix=self._Suffix))
-
+    
     def getMetaData(self, key:Optional[str]=None) -> Union[Any, pd.Series]:
         with self._FactorDB._getLock(self._QSArgs.Name) as DataLock:
             if not os.path.isfile(self._FactorDB._QSArgs.MainDir / self._QSArgs.Name / "_TableInfo.h5"):
@@ -268,7 +268,6 @@ class HDF5DB(WritableFactorDB):
         * Data: 存储因子数据, shape=(None, None), 行数等于 DateTime 的长度, 列数等于 ID 的长度。double 类型的因子数据存储为 float64 类型, string 类型的因子数据存储为 String 类型(编码为 utf-8), object 类型的因子数据存储为 vlen_dtype(np.uint8) 类型。
     因子表的元信息存储在表文件夹下的特殊文件 _TableInfo.h5 中, 没有该文件说明还未写入过元信息
     因子的元数据存储在 HDF5 文件 root group 的 attrs 中
-    默认配置文件(config_file)为 "~/QuantStudioConfig/HDF5DBConfig.json"
     锁目录下的 LockFile 文件为库锁，修改因子库、因子表以及因子相关信息（比如创建、重命名、删除等操作）时需要获取库锁。锁目录下每个文件夹代表一张因子表，每个文件夹里的 LockFile 文件为表锁，读写因子数据时需要获取表锁。
     """
 
@@ -280,6 +279,12 @@ class HDF5DB(WritableFactorDB):
         ProcessLock: bool = Field(default=True, title="进程锁", frozen=True, description="是否添加进程锁用于防止多进程间读写冲突")
 
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化 HDF5DB
+
+        Args:
+            args: 指定的对象参数集
+            config_file: 配置文件路径, 默认配置文件为 "~/QuantStudioConfig/HDF5DBConfig.json"
+        """
         self._LockFile = None  # 文件锁的目标文件
         self._DataLock = None  # 访问该因子库资源的文件锁, 防止并发访问冲突
         self._TableLock = None  # 访问该因子表资源的临时文件锁, 防止并发访问冲突

@@ -31,8 +31,11 @@ def qs_help(obj: Any) -> str:
     
     if doc is None:
         # 如果还是没有文档，生成提示信息
-        return _generate_no_doc_message(obj)
-    
+        doc = """⚠️  未找到文档字符串（包括父类）
+该对象可能：
+- 是内置函数/方法（C 实现，无 __doc__）
+- 确实没有文档"""
+
     # 返回格式化的文档字符串
     return _format_help(obj, doc)
 
@@ -68,8 +71,9 @@ def _get_doc_with_inheritance(obj: Any) -> Optional[str]:
     # 如果是类，尝试合并父类文档
     if inspect.isclass(obj):
         return _get_class_doc_from_parents(obj)
-    
-    return None
+    else:
+        return _get_class_doc_from_parents(obj.__class__)
+
 
 def _get_method_doc_from_parents(method) -> Optional[str]:
     """
@@ -108,29 +112,6 @@ def _get_class_doc_from_parents(cls: type) -> Optional[str]:
             return f"[类文档继承自 {parent.__name__}]\n\n{parent_doc}"
     
     return None
-
-def _generate_no_doc_message(obj: Any) -> str:
-    """
-    生成无文档时的提示信息。
-    """
-    lines = []
-    
-    try:
-        # 尝试获取类型信息
-        obj_type = type(obj) if not inspect.isclass(obj) else obj
-        type_name = obj_type.__name__ if hasattr(obj_type, '__name__') else str(obj_type)
-        
-        lines.append(f"\n对象: {obj}")
-        lines.append(f"类型: {type_name}")
-        lines.append("\n⚠️  未找到文档字符串（包括父类）")
-        lines.append("该对象可能：")
-        lines.append("  - 是内置函数/方法（C 实现，无 __doc__）")
-        lines.append("  - 确实没有文档")
-        lines.append("  - 需要查看源代码了解详情")
-    except Exception:
-        lines.append(f"\n无法获取 {obj} 的帮助信息")
-    
-    return "\n".join(lines)
 
 def _format_help(obj: Any, doc: str) -> str:
     """
