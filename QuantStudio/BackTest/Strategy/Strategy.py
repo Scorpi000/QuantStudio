@@ -12,7 +12,7 @@ from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 
 from QuantStudio.Core import __QS_Error__
-from QuantStudio.Core.Node import DTLocalContext, DTInitData
+from QuantStudio.Core.Node import DTLocalContext, DTInitData, Node
 from QuantStudio.Factor.Factor import Factor, FactorInitData, FactorContext, DataFactor, FactorLocalContext
 from QuantStudio.Factor.FactorOperation import PanelOperation, PanelOperator
 from QuantStudio.BackTest.BackTestModel import BTNode
@@ -158,7 +158,7 @@ class MakeAccount(PanelOperator):
             last_price: 最新价因子
             signal: 信号因子, 默认是买卖数量
             target_price: 目标价因子, None 表示信号将转换成市价单
-            init_account: 初始账户因子, 复合因子, [("Cash", float), ("Position", float), ("Amount", float), ("Turnover", float)], None 表示使用算子创建时提供的初始资金创建该因子
+            init_account: 初始账户因子, 复合因子, [("Cash", "double"), ("Position", "double"), ("Amount", "double"), ("Signal", "double"), ("TradeNum", "double"), ("TradePrice", "double"), ("Fee", "double")], None 表示使用算子创建时提供的初始资金创建该因子
             buy_price: 买入成交价因子
             buy_limit: 禁止买入条件因子, 该因子值等于 1 的 ID 禁止买入
             buy_fee: 买入交易费率因子
@@ -400,6 +400,37 @@ class AccountReport(BTNode):
         return Output
 
 
+class Strategy(PanelOperation):
+    def init_compute(self, path: List[str], init_data: FactorInitData, context: FactorContext) -> List[FactorInitData]:
+        InitData = super().init_compute(path, init_data, context)
+        SectioinIDs = context.NodeState[self.QSID]["section_ids"]
+        ExtraSectionIDs = self._QSArgs.ModelArgs["extra_section_ids"]
+        ExtraLookBack = self._QSArgs.ModelArgs["extra_lookback"]
+        nDescriptor = len(InitData) - len(self._ExtraDeps)
+        ExtraInitData = []
+        for i in range(len(self._ExtraDeps)):
+            iSectionIDs = (ExtraSectionIDs[i] if ExtraSectionIDs[i] is not None else SectioinIDs)
+            iStartDT, iEndDT = InitData[nDescriptor + i].DTRange
+            iStartIdx = context.DTRuler.index(iStartDT) - ExtraLookBack[i]
+            if iStartIdx < 0: raise __QS_Error__(f"对于策略 {self.Name}(QSID: {self.QSID}) 的依赖节点 '{self._ExtraDeps[i].Name}'(QSID: {self._ExtraDeps[i].QSID}), 参数 LookBack 为 {ExtraLookBack[i]}, 时点标尺长度不足, 超出了 {abs(iStartIdx)} 个时点")
+            ExtraInitData.append(FactorInitData(DTRange=(context.DTRuler[iStartIdx], iEndDT), SectionIDs=iSectionIDs))
+        return InitData[:len(InitData)-len(self._ExtraDeps)] + ExtraInitData
+    
+    def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
+        FwdData, LocalContext = super().forward_compute(path, fwd_data, context)
+        SectioinIDs = context.NodeState[self.QSID]["section_ids"]
+        ExtraSectionIDs = self._QSArgs.ModelArgs["extra_section_ids"]
+        ExtraLookBack = self._QSArgs.ModelArgs["extra_lookback"]
+        nDescriptor = len(FwdData) - len(self._ExtraDeps)
+        ExtraFwdData = []
+        for i in range(len(self._ExtraDeps)):
+            iSectionIDs = (ExtraSectionIDs[i] if ExtraSectionIDs[i] is not None else SectioinIDs)
+            iDTs = FwdData[nDescriptor + i].DTs
+            iStartIdx, iEndIdx = context.DTRuler.index(iDTs[0]) - ExtraLookBack[i], context.DTRuler.index(iDTs[-1])
+            ExtraFwdData.append(FactorLocalContext(DTs=context.DTRuler[iStartIdx:iEndIdx], IDs=iSectionIDs, PIDs=context.PIDList))
+        return FwdData[:nDescriptor] + ExtraFwdData, LocalContext
+
+
 class MakeStrategy(MakeAccount):
     """策略创建算子
     策略因子为复合因子, 由以下子因子组成：
@@ -430,14 +461,14 @@ class MakeStrategy(MakeAccount):
             raise __QS_Error__("x_lookback 的长度不等于 x_section_ids")
         Arity = args.get("Arity", None) or (2 + len(x_lookback))
         Args = {"Name": "makeStrategy"} | args | {"DTMode": "单时点", "OutputMode": "全截面", "DataType": "object", "iInitFactor": 0}
-        Args["ModelArgs"] = {"init_cash": init_cash, "short_allowed": short_allowed, "signal_type": signal_type} | Args.get("ModelArgs", {})
+        Args["ModelArgs"] = {"x_len": len(x_lookback), "init_cash": init_cash, "short_allowed": short_allowed, "signal_type": signal_type} | Args.get("ModelArgs", {})
         Args["DescriptorSection"] = [Args.get("DescriptorSection", [None])[0]] * 2 + x_section_ids + [Args.get("DescriptorSection", [None])[0]] * (Arity - 2 - len(x_section_ids))
         Args["LookBack"] = [1, 0] + x_lookback + [0] * (Arity - 2 - len(x_lookback))
         Args["StartDT"] = [start_dt] + [None] * (Arity - 1)
         Args["CompoundType"] = [("Cash", "double"), ("Position", "double"), ("Amount", "double"), ("Signal", "double"), ("TradeNum", "double"), ("TradePrice", "double"), ("Fee", "double")]
         return super(MakeAccount, self).__init__(args=Args, config_file=config_file, **kwargs)
 
-    def genSignal(self, f: PanelOperation, idt:dt.datetime, x:List[pd.DataFrame], last_price:pd.Series, cash:float, position_num:pd.Series) -> None | pd.Series:
+    def genSignal(self, f: PanelOperation, idt:dt.datetime, x:List[pd.DataFrame], last_price:pd.Series, cash:float, position_num:pd.Series, args:dict) -> None | pd.Series:
         """策略信号生成函数
 
         Args:
@@ -459,7 +490,7 @@ class MakeStrategy(MakeAccount):
         LastPrice = pd.Series(x[1][0], index=iid)
         nX = f._QSArgs.ModelArgs["x_len"]
         xData = [pd.DataFrame(ix, index=idt[-ix.shape[0]:], columns=(self._QSArgs.DescriptorSection[i+2] if self._QSArgs.DescriptorSection[i+2] else iid)) for i, ix in enumerate(x[2:2+nX])]
-        Signal = self.genSignal(f, idt[-1], xData, LastPrice, Cash, PositionNum)
+        Signal = self.genSignal(f, idt[-1], xData, LastPrice, Cash, PositionNum, args=args)
         if (Signal is None) or Signal.empty:# 没有交易信号
             Rslt = np.array([np.full_like(PositionNum, Cash), PositionNum.values, (PositionNum * LastPrice).values, np.full_like(PositionNum, np.nan), np.zeros_like(PositionNum), np.full_like(PositionNum, np.nan), np.zeros_like(PositionNum)]).T
             return unstructured_to_structured(Rslt, dtype=np.dtype(self._QSArgs.CompoundType)).astype("O")
@@ -468,14 +499,14 @@ class MakeStrategy(MakeAccount):
     def __call__(self, *x:Factor, last_price: Factor, init_account: Optional[Factor]=None, 
         buy_price: Optional[Factor]=None, buy_limit: Optional[Factor]=None, buy_fee: float | Factor=0, buy_amt_limit: Optional[Factor]=None,
         sell_price: Optional[Factor]=None, sell_limit: Optional[Factor]=None, sell_fee: float | Factor=0, sell_amt_limit: Optional[Factor]=None,
-        factor_args:dict={}, **kwargs
-    ) -> PanelOperation:
+        extra_deps: List[Node]=[], extra_section_ids: List[Optional[List[str]]]=[], extra_lookback: List[int]=[], factor_args:dict={}, **kwargs
+    ) -> Strategy:
         """将算子作用在若干个因子对象上以产生策略因子
 
         Args:
             last_price: 最新价因子
             x: 策略依赖的因子
-            init_account: 初始账户因子, 复合因子, [("Cash", float), ("Position", float), ("Amount", float), ("Turnover", float)], None 表示使用算子创建时提供的初始资金创建该因子
+            init_account: 初始账户因子, 复合因子, [("Cash", "double"), ("Position", "double"), ("Amount", "double"), ("Signal", "double"), ("TradeNum", "double"), ("TradePrice", "double"), ("Fee", "double")], None 表示使用算子创建时提供的初始资金创建该因子
             buy_price: 买入成交价因子
             buy_limit: 禁止买入条件因子, 该因子值等于 1 的 ID 禁止买入
             buy_fee: 买入交易费率因子
@@ -484,12 +515,17 @@ class MakeStrategy(MakeAccount):
             sell_limit: 禁止卖出条件因子, 该因子值等于 1 的 ID 禁止卖出
             sell_fee: 卖出交易费率因子
             sell_amt_limit: 卖出成交额限制因子, 该期卖出额不能超过该因子值
+            extra_deps: 额外依赖的计算节点
+            extra_dep_ids: 额外依赖的计算节点的截面 ID
             factor_args: 创建 IC 因子时传递个它的参数集
             kwargs: 创建 IC 因子时传递给它的其他入参
 
         Returns:
             策略因子
         """
+        if self._QSArgs.ModelArgs["x_len"] != len(x): raise __QS_Error__(f"该算子支持的依赖因子数量 {self._QSArgs.ModelArgs['x_len']} 不等于传入的依赖因子个数 {len(x)}, 可重新创建该算子")
+        if len(extra_deps) != len(extra_section_ids): raise __QS_Error__(f"出入的额外依赖节点数量 {len(extra_deps)} 不等于传入的额外依赖节点的截面 ID 数量 {len(extra_section_ids)}")
+        if len(extra_deps) != len(extra_lookback): raise __QS_Error__(f"出入的额外依赖节点数量 {len(extra_deps)} 不等于传入的额外依赖节点的回溯期数量 {len(extra_lookback)}")
         if init_account is None: init_account = DataFactor(data=(self._QSArgs.ModelArgs["init_cash"], 0, 0, np.nan, 0, np.nan, 0), args={"Name": "InitAccount"})
         Factors = [init_account, last_price, *x]
         if buy_price is not None: Factors.append(buy_price)
@@ -510,7 +546,11 @@ class MakeStrategy(MakeAccount):
             "sell_price": (sell_price is not None),
             "sell_limit": (sell_limit is not None),
             "sell_fee": (sell_fee is not None),
-            "sell_amt_limit": (sell_amt_limit is not None)
+            "sell_amt_limit": (sell_amt_limit is not None),
+            "extra_section_ids": extra_section_ids,
+            "extra_lookback": extra_lookback
         }
         factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | ModelArgs
-        return super(MakeAccount, self).__call__(*Factors, factor_args=factor_args, **kwargs)
+        Operator = self._QS_validate(*Factors, start_dt=self._QSArgs.StartDT[0], x_lookback=self._QSArgs.LookBack[2:len(x)+2], x_section_ids=self._QSArgs.DescriptorSection[2:len(x)+2])
+        Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for iFactor in Factors]
+        return Strategy(descriptors=Descriptors, extra_deps=extra_deps, args={"Operator": Operator, **factor_args}, **kwargs)
