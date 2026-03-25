@@ -11,6 +11,6 @@ progressbar2
 fasteners
 dill
 h5py
-baostock
 openpyxl
 requests
+baostock

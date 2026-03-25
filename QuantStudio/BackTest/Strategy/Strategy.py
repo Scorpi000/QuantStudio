@@ -427,7 +427,10 @@ class Strategy(PanelOperation):
             iSectionIDs = (ExtraSectionIDs[i] if ExtraSectionIDs[i] is not None else SectioinIDs)
             iDTs = FwdData[nDescriptor + i].DTs
             iStartIdx, iEndIdx = context.DTRuler.index(iDTs[0]) - ExtraLookBack[i], context.DTRuler.index(iDTs[-1])
-            ExtraFwdData.append(FactorLocalContext(DTs=context.DTRuler[iStartIdx:iEndIdx], IDs=iSectionIDs, PIDs=context.PIDList))
+            iDTs = context.DTRuler[iStartIdx:iEndIdx]
+            if self._QSArgs.CalcDTRuler:
+                iDTs = sorted(set(iDTs).intersection(self._QSArgs.CalcDTRuler))
+            ExtraFwdData.append(FactorLocalContext(DTs=iDTs, IDs=iSectionIDs, PIDs=context.PIDList))
         return FwdData[:nDescriptor] + ExtraFwdData, LocalContext
 
 
@@ -446,7 +449,7 @@ class MakeStrategy(MakeAccount):
     class __QS_ArgClass__(MakeAccount.__QS_ArgClass__):
         Arity: Optional[int] = Field(default=None, ge=2, title="入参数", frozen=True)
 
-    def __init__(self, signal_type:Literal["买卖数量", "目标权重"]="目标权重", init_cash:float=1e6, short_allowed:bool=False, start_dt:Optional[dt.datetime]=None, x_lookback:List[int]=[], x_section_ids:List[Optional[List[str]]]=[], args:dict = {}, config_file:Optional[str] = None, **kwargs):
+    def __init__(self, signal_type:Literal["买卖数量", "目标权重"]="目标权重", init_cash:float=1e6, short_allowed:bool=False, start_dt:Optional[dt.datetime]=None, x_lookback:List[int]=[], x_section_ids:List[Optional[List[str]]]=[], signal_dts:Optional[List[dt.datetime]]=None, args:dict = {}, config_file:Optional[str] = None, **kwargs):
         """初始化策略创建算子
 
         Args:
@@ -461,7 +464,7 @@ class MakeStrategy(MakeAccount):
             raise __QS_Error__("x_lookback 的长度不等于 x_section_ids")
         Arity = args.get("Arity", None) or (2 + len(x_lookback))
         Args = {"Name": "makeStrategy"} | args | {"DTMode": "单时点", "OutputMode": "全截面", "DataType": "object", "iInitFactor": 0}
-        Args["ModelArgs"] = {"x_len": len(x_lookback), "init_cash": init_cash, "short_allowed": short_allowed, "signal_type": signal_type} | Args.get("ModelArgs", {})
+        Args["ModelArgs"] = {"x_len": len(x_lookback), "init_cash": init_cash, "short_allowed": short_allowed, "signal_type": signal_type, "signal_dts": signal_dts} | Args.get("ModelArgs", {})
         Args["DescriptorSection"] = [Args.get("DescriptorSection", [None])[0]] * 2 + x_section_ids + [Args.get("DescriptorSection", [None])[0]] * (Arity - 2 - len(x_section_ids))
         Args["LookBack"] = [1, 0] + x_lookback + [0] * (Arity - 2 - len(x_lookback))
         Args["StartDT"] = [start_dt] + [None] * (Arity - 1)
@@ -485,12 +488,16 @@ class MakeStrategy(MakeAccount):
         return None
 
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
-        LastAccount = x[0].astype(self._QSArgs.CompoundType)[0]
+        LastAccount = x[0].astype(self._QSArgs.CompoundType)[-2]
         Cash, PositionNum = LastAccount["Cash"][0], pd.Series(LastAccount["Position"], index=iid).fillna(0)
         LastPrice = pd.Series(x[1][0], index=iid)
         nX = f._QSArgs.ModelArgs["x_len"]
         xData = [pd.DataFrame(ix, index=idt[-ix.shape[0]:], columns=(self._QSArgs.DescriptorSection[i+2] if self._QSArgs.DescriptorSection[i+2] else iid)) for i, ix in enumerate(x[2:2+nX])]
-        Signal = self.genSignal(f, idt[-1], xData, LastPrice, Cash, PositionNum, args=args)
+        if f._ExtraDeps: xData += x[-len(f._ExtraDeps):]
+        if (args["signal_dts"] is None) or (idt[-1] in args["signal_dts"]):
+            Signal = self.genSignal(f, idt[-1], xData, LastPrice, Cash, PositionNum, args=args)
+        else:
+            Signal = None
         if (Signal is None) or Signal.empty:# 没有交易信号
             Rslt = np.array([np.full_like(PositionNum, Cash), PositionNum.values, (PositionNum * LastPrice).values, np.full_like(PositionNum, np.nan), np.zeros_like(PositionNum), np.full_like(PositionNum, np.nan), np.zeros_like(PositionNum)]).T
             return unstructured_to_structured(Rslt, dtype=np.dtype(self._QSArgs.CompoundType)).astype("O")
@@ -524,8 +531,8 @@ class MakeStrategy(MakeAccount):
             策略因子
         """
         if self._QSArgs.ModelArgs["x_len"] != len(x): raise __QS_Error__(f"该算子支持的依赖因子数量 {self._QSArgs.ModelArgs['x_len']} 不等于传入的依赖因子个数 {len(x)}, 可重新创建该算子")
-        if len(extra_deps) != len(extra_section_ids): raise __QS_Error__(f"出入的额外依赖节点数量 {len(extra_deps)} 不等于传入的额外依赖节点的截面 ID 数量 {len(extra_section_ids)}")
-        if len(extra_deps) != len(extra_lookback): raise __QS_Error__(f"出入的额外依赖节点数量 {len(extra_deps)} 不等于传入的额外依赖节点的回溯期数量 {len(extra_lookback)}")
+        if len(extra_deps) != len(extra_section_ids): raise __QS_Error__(f"传入的额外依赖节点数量 {len(extra_deps)} 不等于传入的额外依赖节点的截面 ID 数量 {len(extra_section_ids)}")
+        if len(extra_deps) != len(extra_lookback): raise __QS_Error__(f"传入的额外依赖节点数量 {len(extra_deps)} 不等于传入的额外依赖节点的回溯期数量 {len(extra_lookback)}")
         if init_account is None: init_account = DataFactor(data=(self._QSArgs.ModelArgs["init_cash"], 0, 0, np.nan, 0, np.nan, 0), args={"Name": "InitAccount"})
         Factors = [init_account, last_price, *x]
         if buy_price is not None: Factors.append(buy_price)

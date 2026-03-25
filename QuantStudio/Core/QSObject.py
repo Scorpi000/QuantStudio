@@ -497,7 +497,6 @@ class QSQueue(object):
     def size(self):
         return self._CacheSize / 2**20
     
-    @property
     def empty(self):
         with self._GlobalLock:
             self._MMAPCacheData.seek(4)

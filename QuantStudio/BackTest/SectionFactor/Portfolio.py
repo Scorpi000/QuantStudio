@@ -20,7 +20,7 @@ from QuantStudio.Factor.FactorOperation import PanelOperator, SectionOperator, P
 from QuantStudio.Factor.Factor import Factor, FactorInitData, FactorContext, FactorLocalContext
 from QuantStudio.BackTest.BackTestModel import BTNode
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
-from QuantStudio.Tools.StrategyTestFun import calcMaxDrawdownRate, calcLSYield, backtestPortfolioStrategy
+from QuantStudio.Tools.StrategyTestFun import calcMaxDrawdownRate, calcLSYield, backtestPortfolioStrategy, backtestPortfolioStrategy_pd
 from QuantStudio.Tools.DataPreprocessingFun import numpy_ffill
 
 
@@ -165,7 +165,8 @@ class CalcPortfolioNV(PanelOperator):
         Price = numpy_ffill(Price, axis=0, limit=None)
         NV = np.ones(shape=(Price.shape[0], len(PortfolioList)))
         for i, iPortfolio in enumerate(PortfolioList):
-            NV[:, i], _ = backtestPortfolioStrategy(portfolio=iPortfolio, price=Price, fee=FeeRate, ffill_price=False)
+            # NV[:, i], _ = backtestPortfolioStrategy(portfolio=iPortfolio, price=Price, fee=FeeRate, ffill_price=False)
+            NV[:, i] = backtestPortfolioStrategy_pd(portfolio=pd.DataFrame(iPortfolio, index=idt[1:]), price=pd.DataFrame(Price, index=idt[1:])).values
         return NV * x[0][0]
 
     def __call__(self, *portfolio:Factor, price:Factor, init_nv:Union[float, Factor]=1, fee_rate:Union[float, Factor]=0, portfolio_name_list:Optional[List[str]]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
@@ -393,7 +394,7 @@ class MultiPortfolio(BTNode):
         nDT = output["净值"].shape[0] - 1
         nDays = (output["净值"].index[-1] - output["净值"].index[0]).days
         nYear = nDays / 365
-        TotalReturn = output["净值"].iloc[-1, :] - 1
+        TotalReturn = output["净值"].iloc[-1, :] / output["净值"].iloc[0, :] - 1
         output["统计数据"] = pd.DataFrame(index=TotalReturn.index)
         output["统计数据"]["总收益率"] = TotalReturn
         output["统计数据"]["年化收益率"] = (1 + TotalReturn) ** (1 / nYear) - 1
@@ -446,6 +447,7 @@ class MultiPortfolio(BTNode):
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
         PortfolioNV = bwd_data_list[0]
         BmkNV = (bwd_data_list[1].iloc[:, 0] if self._BmkNV is not None else pd.Series(1, index=PortfolioNV.index))
+        BmkNV = BmkNV.ffill().bfill()
         StartIdx = 1 + int(self._BmkNV is not None)
         Portfolio = {PortfolioNV.columns[i]: iBwdData for i, iBwdData in enumerate(bwd_data_list[StartIdx:StartIdx+PortfolioNV.shape[1]])}
         if "portfolio_name_list" in self._NV._QSArgs.ModelArgs:
@@ -460,7 +462,7 @@ class MultiPortfolio(BTNode):
         Output = {"投资组合": Portfolio}
         Output["换手率"] = pd.DataFrame({iName: iPortfolio.diff().abs().sum(axis=1) for iName, iPortfolio in Portfolio.items()}, columns=PortfolioNV.columns)
         Output["净值"] = PortfolioNV
-        Output["净值"]["基准"] = BmkNV
+        Output["净值"]["基准"] = BmkNV / BmkNV.iloc[0]
         Output["收益率"] = Output["净值"].pct_change()
         Output["超额收益率"] = Output["收益率"].iloc[:, :-1].copy()
         Output["超额净值"] = Output["超额收益率"].copy()
