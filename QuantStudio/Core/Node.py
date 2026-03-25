@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import datetime as dt
+from concurrent.futures import Executor
 from typing import Any, List, Optional, Dict, Tuple, Literal
 
 from pydantic import Field, ConfigDict
@@ -22,10 +23,11 @@ class Context(__QS_Args__):
     PIDList: List[str] = Field(default=["0"], title="全部进程ID", description="所有运行进程 ID 列表")
     SplitType: Literal["连续切分", "间隔切分"] = Field(default="连续切分", title="切分方式", frozen=True)
     Event: dict = Field(default={}, title="同步Event", description="{节点ID: (Sub2MainQueue, Event)}, 用于多进程同步的 Event 数据")
+    TaskExecutor: Optional[Executor] = Field(default=None, title="并行执行器", description="给到节点用于并行计算")
     ExtraData: dict = Field(default={}, title="其他数据")
     
     model_config = ConfigDict(arbitrary_types_allowed=True)
-
+    
     # 并发运行后返回需要同步的内容
     def getUpdateData(self) -> dict:
         return {}

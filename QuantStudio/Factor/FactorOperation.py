@@ -311,12 +311,10 @@ class PointOperator(FactorOperator):
             return self._QS_adjOutputPandas(StdData, CompoundCols, CalcDTs, ids).reindex(index=dts)
 
     def calcData(self, factor, ids, dts, descriptor_data, dt_ruler=None, section_ids=None, extra_dep_data=[]):
-        ModelArgs = dict(self._QSArgs.ModelArgs)
-        ModelArgs.update(factor._QSArgs.ModelArgs)
         if self._QSArgs.InputFormat == "numpy":
-            return self._calcDataNumpy(factor, ids, dts, descriptor_data, ModelArgs, extra_dep_data)
+            return self._calcDataNumpy(factor, ids, dts, descriptor_data, self._QSArgs.ModelArgs, extra_dep_data)
         else:
-            return self._calcDataPandas(factor, ids, dts, descriptor_data, ModelArgs, extra_dep_data)
+            return self._calcDataPandas(factor, ids, dts, descriptor_data, self._QSArgs.ModelArgs, extra_dep_data)
 
 
 class TimeOperator(FactorOperator):

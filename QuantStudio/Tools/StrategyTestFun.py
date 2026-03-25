@@ -835,6 +835,7 @@ def backtestPortfolioStrategy(portfolio: np.ndarray, price: np.ndarray, fee:floa
     AdjustedPortfolioNV = np.ones_like(FilledPortfolioNV)
     AdjustedPortfolioNV[Mask] = np.cumprod(FilledPortfolioNV[Mask])
     PortfolioNV = AdjustedPortfolioNV[FilledIdx] * FilledPortfolioNV
+    PortfolioNV[Mask] = AdjustedPortfolioNV[Mask]
     return PortfolioNV, Turnover
 
 
