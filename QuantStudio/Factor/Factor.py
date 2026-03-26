@@ -54,18 +54,18 @@ class FactorContext(Context):
         return self._DefaultPIDIDs
 
     # 划分 ID
-    def splitID(self, ids):
+    def splitID(self, ids, return_idx=False):
         nPrcs = len(self.PIDList)
         if nPrcs == 0: return {}
-        elif nPrcs == 1: return {self.PIDList[0]: ids}
+        elif nPrcs == 1: return {self.PIDList[0]: ids if not return_idx else np.arange(len(ids))}
         if self.SplitType == "连续切分":
-            SubIDs = partitionList(ids, nPrcs)
+            SubIDs = partitionList(ids if not return_idx else np.arange(len(ids)), nPrcs)
         elif self.SplitType == "间隔切分":
-            SubIDs = partitionListMovingSampling(ids, nPrcs)
+            SubIDs = partitionListMovingSampling(ids if not return_idx else np.arange(len(ids)), nPrcs)
         else:
             raise __QS_Error__(f"不支持的 ID 切分方式: {self.SplitType}")
         return {iPID: SubIDs[i] for i, iPID in enumerate(self.PIDList)}
-
+    
     def getID(self, factor_id, pids=None):
         if pids is not None:
             PIDIDs = self.NodeState[factor_id]["pid_ids"]
