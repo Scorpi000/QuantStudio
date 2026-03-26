@@ -197,7 +197,20 @@ class PointOperator(FactorOperator):
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for i, iFactor in enumerate(x)]
         return PointOperation(descriptors=Descriptors, args={"Operator": Operator, **factor_args}, **kwargs)
 
-    def _calcDataNumpy(self, factor, ids, dts, descriptor_data, ModelArgs, extra_dep_data):
+    def _calcDataNumpySingleIDSingleDT(self, factor, ids, dts, descriptor_data, ModelArgs, extra_dep_data):
+        if self._QSArgs.DataType == 'double':
+            StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
+        else:
+            StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')
+        CalcDTs = factor._QS_getCalcDTs(dts, mask=False)
+        if CalcDTs: CalcDTs = set(CalcDTs)
+        for i, iDT in enumerate(dts):
+            if (CalcDTs is not None) and (iDT not in CalcDTs): continue
+            for j, jID in enumerate(ids):
+                StdData[i, j] = self.calculate(factor, iDT, jID, [iData[i, j] for iData in descriptor_data] + extra_dep_data, ModelArgs)
+        return StdData
+
+    def _calcDataNumpy(self, context: FactorContext, factor, ids, dts, descriptor_data, ModelArgs, extra_dep_data):
         if self._QSArgs.DataType == 'double':
             StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
         else:
@@ -212,12 +225,15 @@ class PointOperator(FactorOperator):
             else:
                 return self.calculate(factor, dts, ids, descriptor_data + extra_dep_data, ModelArgs)
         elif (self._QSArgs.DTMode == '单时点') and (self._QSArgs.IDMode == '单ID'):
-            CalcDTs = factor._QS_getCalcDTs(dts, mask=False)
-            if CalcDTs: CalcDTs = set(CalcDTs)
-            for i, iDT in enumerate(dts):
-                if (CalcDTs is not None) and (iDT not in CalcDTs): continue
-                for j, jID in enumerate(ids):
-                    StdData[i, j] = self.calculate(factor, iDT, jID, [iData[i, j] for iData in descriptor_data] + extra_dep_data, ModelArgs)
+            if context.TaskExecutor is None: return self._calcDataNumpySingleIDSingleDT(factor=factor, ids=ids, dts=dts, descriptor_data=descriptor_data, ModelArgs=ModelArgs, extra_dep_data=extra_dep_data)
+            IdxList = context.splitID(ids=ids, n=context.TaskExecutor._max_workers, return_idx=True)
+            IDs = np.array(ids)
+            StdData = []
+            for iIdx in IdxList:
+                if iIdx.shape[0]==0: continue
+                iIDs = IDs[iIdx]
+                StdData.append(context.TaskExecutor.submit(self._calcDataNumpySingleIDSingleDT, factor, iIDs, dts, [iData[:, iIdx] for iData in descriptor_data], ModelArgs, extra_dep_data))
+            StdData = np.hstack([iFuture.result() for iFuture in StdData])
         elif (self._QSArgs.DTMode == '多时点') and (self._QSArgs.IDMode == '单ID'):
             CalcMask = factor._QS_getCalcDTs(dts, mask=True)
             if CalcMask is None:
@@ -310,9 +326,9 @@ class PointOperator(FactorOperator):
             if StdData.shape[1] == 1: StdData = StdData.iloc[:, 0]
             return self._QS_adjOutputPandas(StdData, CompoundCols, CalcDTs, ids).reindex(index=dts)
 
-    def calcData(self, factor, ids, dts, descriptor_data, dt_ruler=None, section_ids=None, extra_dep_data=[]):
+    def calcData(self, context, factor, ids, dts, descriptor_data, dt_ruler=None, section_ids=None, extra_dep_data=[]):
         if self._QSArgs.InputFormat == "numpy":
-            return self._calcDataNumpy(factor, ids, dts, descriptor_data, self._QSArgs.ModelArgs, extra_dep_data)
+            return self._calcDataNumpy(context, factor, ids, dts, descriptor_data, self._QSArgs.ModelArgs, extra_dep_data)
         else:
             return self._calcDataPandas(factor, ids, dts, descriptor_data, self._QSArgs.ModelArgs, extra_dep_data)
 
@@ -1054,7 +1070,7 @@ class PointOperation(DerivativeFactor):
                 StdData = pd.DataFrame(index=CalcDTs, columns=SectionIDs, dtype=("float" if self._Operator._QSArgs.DataType == "double" else "O"))
             else:
                 if self._Operator._QSArgs.InputFormat == "numpy":
-                    StdData = self._Operator.calcData(factor=self, ids=SectionIDs, dts=CalcDTs, descriptor_data=[iBwdData.values for iBwdData in bwd_data_list[:len(self._Descriptors)]], dt_ruler=context.DTRuler, section_ids=SectionIDs, extra_dep_data=bwd_data_list[len(self._Descriptors):])
+                    StdData = self._Operator.calcData(context=context, factor=self, ids=SectionIDs, dts=CalcDTs, descriptor_data=[iBwdData.values for iBwdData in bwd_data_list[:len(self._Descriptors)]], dt_ruler=context.DTRuler, section_ids=SectionIDs, extra_dep_data=bwd_data_list[len(self._Descriptors):])
                     StdData = pd.DataFrame(StdData, index=CalcDTs, columns=SectionIDs)
                 else:
                     StdData = self._Operator.calcData(factor=self, ids=SectionIDs, dts=CalcDTs, descriptor_data=bwd_data_list[:len(self._Descriptors)], dt_ruler=context.DTRuler, section_ids=SectionIDs, extra_dep_data=bwd_data_list[len(self._Descriptors):])
