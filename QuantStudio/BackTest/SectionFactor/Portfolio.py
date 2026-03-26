@@ -2,7 +2,7 @@
 import datetime as dt
 import base64
 from io import BytesIO
-from typing import Optional, List, Any, Union, Tuple
+from typing import Optional, List, Any, Union, Tuple, Literal
 
 import numpy as np
 import pandas as pd
@@ -144,7 +144,7 @@ def makeQuantilePortfolio(factor:Factor, mask:Optional[Factor]=None, cat_data:Op
 class CalcPortfolioNV(PanelOperator):
     """投资组合净值计算算子"""
 
-    def __init__(self, descriptor_ids:List[str], start_dt:Optional[dt.datetime]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, descriptor_ids:List[str], start_dt:Optional[dt.datetime]=None, calc_type:Literal["numpy", "pandas"]="numpy", args:dict={}, config_file:Optional[str]=None, **kwargs):
         """初始化投资组合净值计算算子
 
         Args:
@@ -155,6 +155,7 @@ class CalcPortfolioNV(PanelOperator):
         """
         Arity = args.get("Arity", None) or 4
         Args = {"Name": "calcPortfolioNV"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "double", "iInitFactor": 0}
+        Args["ModelArgs"] = {"calc_type": calc_type} | Args.get("ModelArgs", {})
         Args["DescriptorSection"] = [None] + [descriptor_ids] * (Arity - 1)
         Args["StartDT"] = [start_dt] * Arity
         Args["LookBack"] = [1] + [0] * (Arity - 1)
@@ -165,8 +166,10 @@ class CalcPortfolioNV(PanelOperator):
         Price = numpy_ffill(Price, axis=0, limit=None)
         NV = np.ones(shape=(Price.shape[0], len(PortfolioList)))
         for i, iPortfolio in enumerate(PortfolioList):
-            # NV[:, i], _ = backtestPortfolioStrategy(portfolio=iPortfolio, price=Price, fee=FeeRate, ffill_price=False)
-            NV[:, i] = backtestPortfolioStrategy_pd(portfolio=pd.DataFrame(iPortfolio, index=idt[1:]), price=pd.DataFrame(Price, index=idt[1:])).values
+            if args["calc_type"] == "numpy":
+                NV[:, i], _ = backtestPortfolioStrategy(portfolio=iPortfolio, price=Price, fee=FeeRate, ffill_price=False)
+            else:
+                NV[:, i] = backtestPortfolioStrategy_pd(portfolio=pd.DataFrame(iPortfolio, index=idt[1:]).dropna(how="all", axis=0), price=pd.DataFrame(Price, index=idt[1:])).values
         return NV * x[0][0]
 
     def __call__(self, *portfolio:Factor, price:Factor, init_nv:Union[float, Factor]=1, fee_rate:Union[float, Factor]=0, portfolio_name_list:Optional[List[str]]=None, factor_args:dict={}, **kwargs) -> PanelOperation:

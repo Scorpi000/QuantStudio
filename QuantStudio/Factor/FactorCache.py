@@ -172,7 +172,7 @@ class FileFactorCache(FileDTCache, FactorCache):
         if self._isStarted: return
         CacheDir = self._QSArgs.CacheDir
         if (not CacheDir) or (not os.path.isdir(CacheDir)):
-            if CacheDir: self._QS_Logger.warning(f"缓存目录 '{CacheDir}' 不存在, 将使用系统的临时文件夹")
+            self._QS_Logger.warning(f"缓存目录 {CacheDir} 没有指定或者不存在, 将使用系统的临时文件夹")
             self._CacheDirObj = tempfile.TemporaryDirectory()
             self._CacheDir = self._CacheDirObj.name
         else:
