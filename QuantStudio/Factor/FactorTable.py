@@ -225,7 +225,7 @@ class FactorTable(Node):
 
     def __QS_saveRawData__(self, raw_data, key, target_fields, pid_ids, context: FactorContext, **kwargs):
         if raw_data is None: return 0
-        Cache = context.FactorDataCache
+        Cache = context.DataCache
         MaskCols = raw_data.columns.intersection(self._QS_RawDataMaskCols).tolist()
         CommonCols = raw_data.columns.difference(target_fields).tolist()
         for iFactorName in target_fields:
@@ -260,7 +260,7 @@ class FactorTable(Node):
         FactorNames = sorted(prepare_data["FactorNames"])
         RawData = self.__QS_prepareRawData__(factor_names=FactorNames, ids=prepare_data["SectionIDs"], dts=prepare_data["DTRange"], args=prepare_data["Args"])
         SectionIDs = prepare_data["SectionIDs"]
-        if SectionIDs==context.DefaultSectionIDs:
+        if SectionIDs==context.SectionIDs:
             PIDIDs = context.DefaultPIDIDs
         else:
             PIDIDs = context.splitID(SectionIDs)

@@ -30,7 +30,7 @@ Close = DataFactor(data=3, args={"Name": "close"})
 # ------------------------------ PanelOperation -------------------------------------
 # # 无自身迭代
 # @FactorOperatorized(operator_type="Panel", args={
-#     "Arity": 3, "DTMode": "单时点", "OutputMode": "全截面",
+#     "Arity": 3, "DTMode": "单时点"
 #     "LookBack": [0, 2, 2], 
 #     "StartDT": [dt.datetime(2025, 1, 5), dt.datetime(2025, 1, 4), None], 
 #     "iInitFactor": -1
@@ -43,7 +43,7 @@ Close = DataFactor(data=3, args={"Name": "close"})
 
 # 自身迭代且为扩展窗口
 @FactorOperatorized(operator_type="Panel", args={
-    "Arity": 3, "DTMode": "单时点", "OutputMode": "全截面",
+    "Arity": 3, "DTMode": "单时点",
     "LookBack": [1, 2, 2], 
     "StartDT": [dt.datetime(2025, 1, 5), dt.datetime(2025, 1, 4), None], 
     "iInitFactor": 0
@@ -56,7 +56,7 @@ def PanelFunc(f, idt, iid, x, args):
 
 # # 自身迭代且为滚动窗口
 # @FactorOperatorized(operator_type="Panel", args={
-#     "Arity": 3, "DTMode": "单时点", "OutputMode": "全截面",
+#     "Arity": 3, "DTMode": "单时点",
 #     "LookBack": [1, 2, 3], 
 #     "StartDT": [None, dt.datetime(2025, 1, 4), None], 
 #     "iInitFactor": 0
@@ -115,7 +115,7 @@ NodeList = [PanelFactor]
 
 
 with FeatherFactorCache(args={"DTRuler": DTRuler, "CacheDir": "/mnt/d/Data/Cache/DevCache", "StartMode": "new"}) as Cache:
-    with FactorContext(DTRuler=DTRuler, DefaultSectionIDs=IDs, FactorDataCache=Cache) as Context:
+    with FactorContext(DTRuler=DTRuler, SectionIDs=IDs, DataCache=Cache) as Context:
         with Engine() as ExecEngine:
             DTs = DTRuler[2:-3]
             Rslt = ExecEngine.run(

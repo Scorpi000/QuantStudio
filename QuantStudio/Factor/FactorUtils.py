@@ -1362,7 +1362,7 @@ class SQL_NarrowTable(SQL_Table):
     
     def __QS_saveRawData__(self, raw_data, key, target_fields, pid_ids, context, **kwargs):
         if (raw_data is None) or raw_data.empty: return 0
-        Cache = context.FactorDataCache
+        Cache = context.DataCache
         MaskCols = ["QS_ID"] + (["QS_DT"] if "QS_DT" in raw_data.columns else [])
         for iFactorName in target_fields:
             iRawData = raw_data[raw_data["FactorName"]==iFactorName]
@@ -2119,7 +2119,7 @@ class SQL_ConstituentTable(SQL_Table):
     
     def __QS_saveRawData__(self, raw_data, key, target_fields, pid_ids, context, **kwargs):
         if raw_data is None: return 0
-        Cache = context.FactorDataCache
+        Cache = context.DataCache
         MaskCols = raw_data.columns.intersection(self._QS_RawDataMaskCols).tolist()
         for iFactorName in target_fields:
             iRawData = raw_data[raw_data["Group"]==iFactorName]

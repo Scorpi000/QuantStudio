@@ -31,7 +31,7 @@ class CalcSectionCorrelation(SectionOperator):
             corr_method: 相关性的计算方法
         """
         Arity = args.get("Arity", None) or 1
-        Args = {"Name": "calcSectionCorrelation"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "double"}
+        Args = {"Name": "calcSectionCorrelation"} | args | {"DTMode": "多时点", "DataType": "double"}
         Args["ModelArgs"] = {"corr_method": corr_method} | Args.get("ModelArgs", {})
         Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
         return super().__init__(args=Args, config_file=config_file, **kwargs)
@@ -96,8 +96,8 @@ class CalcSectionCorrelation(SectionOperator):
                 if not np.all(SortedIdx == np.arange(len(factor_name_list))):
                     self.Logger.warning(f"{self.__class__.__name__}.__call__: 测试因子的名称列表({factor_name_list})不是升序排列，将按照升序重新排列测试因子")
                     x, factor_name_list = [x[i] for i in SortedIdx], [factor_name_list[i] for i in SortedIdx]
-            DefaultSectionIDs = [f"{iName}-{jName}" for iName, jName in combinations(factor_name_list, r=2)]
-            factor_args["SectionIDs"] = DefaultSectionIDs
+            SectionIDs = [f"{iName}-{jName}" for iName, jName in combinations(factor_name_list, r=2)]
+            factor_args["SectionIDs"] = SectionIDs
         elif (len(set(factor_args["SectionIDs"])) != len(x) * (len(x) - 1) / 2) or (sorted(factor_args["SectionIDs"])!=factor_args["SectionIDs"]):
             raise __QS_Error__(f"截面ID : {factor_args['SectionIDs']} 长度不等于因子列表 x 两两组合的长度, 或者有重复, 或者非升序排列!")
         factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"mask": (mask is not None), "section_id_mapping": dict(zip(factor_args["SectionIDs"], [f"{i}-{j}" for i, j in combinations(range(len(x)), r=2)])), "factor_name_list": factor_name_list}
@@ -180,7 +180,7 @@ class CalcFactorTurnover(PanelOperator):
             corr_method: 相关性的计算方法
         """
         Arity = args.get("Arity", None) or 1
-        Args = {"Name": "calcIC"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "double"}
+        Args = {"Name": "calcIC"} | args | {"DTMode": "多时点", "DataType": "double"}
         Args["ModelArgs"] = {"corr_method": corr_method, "period_lookback": period_lookback, "corr_method": corr_method} | Args.get("ModelArgs", {})
         Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
         Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * Arity

@@ -50,7 +50,7 @@ class MakeAccount(PanelOperator):
             start_dt: 净值开始日, 如果为 None, 表示从计算的第一个时点开始
         """
         Arity = args.get("Arity", None) or 3
-        Args = {"Name": "makeAccount"} | args | {"DTMode": "单时点", "OutputMode": "全截面", "DataType": "object", "iInitFactor": 0}
+        Args = {"Name": "makeAccount"} | args | {"DTMode": "单时点", "DataType": "object", "iInitFactor": 0}
         Args["ModelArgs"] = {"init_cash": init_cash, "short_allowed": short_allowed, "signal_type": signal_type} | Args.get("ModelArgs", {})
         Args["DescriptorSection"] = [Args.get("DescriptorSection", [None])[0]] * Arity
         Args["LookBack"] = [1, 0, 0] + [0] * max(0, Arity - 3)
@@ -463,7 +463,7 @@ class MakeStrategy(MakeAccount):
         if len(x_lookback) != len(x_section_ids):
             raise __QS_Error__("x_lookback 的长度不等于 x_section_ids")
         Arity = args.get("Arity", None) or (2 + len(x_lookback))
-        Args = {"Name": "makeStrategy"} | args | {"DTMode": "单时点", "OutputMode": "全截面", "DataType": "object", "iInitFactor": 0}
+        Args = {"Name": "makeStrategy"} | args | {"DTMode": "单时点", "DataType": "object", "iInitFactor": 0}
         Args["ModelArgs"] = {"x_len": len(x_lookback), "init_cash": init_cash, "short_allowed": short_allowed, "signal_type": signal_type, "signal_dts": signal_dts} | Args.get("ModelArgs", {})
         Args["DescriptorSection"] = [Args.get("DescriptorSection", [None])[0]] * 2 + x_section_ids + [Args.get("DescriptorSection", [None])[0]] * (Arity - 2 - len(x_section_ids))
         Args["LookBack"] = [1, 0] + x_lookback + [0] * (Arity - 2 - len(x_lookback))

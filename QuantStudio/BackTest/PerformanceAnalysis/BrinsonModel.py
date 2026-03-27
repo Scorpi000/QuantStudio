@@ -38,7 +38,7 @@ class CalcBrinsonModel(PanelOperator):
             lookback: 在时间标尺上的回溯期数, 即回溯多久的数据来完成计算
         """
         Arity = args.get("Arity", None) or 1
-        Args = {"Name": "calcBrinsonModel"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "object"}
+        Args = {"Name": "calcBrinsonModel"} | args | {"DTMode": "多时点", "DataType": "object"}
         Args["ModelArgs"] = {"section_ids": section_ids} | Args.get("ModelArgs", {})
         Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
         Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * Arity

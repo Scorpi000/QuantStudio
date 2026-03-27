@@ -6,6 +6,7 @@ from typing import Any, List, Optional, Dict, Tuple, Literal
 from pydantic import Field, ConfigDict
 
 from QuantStudio.Core import __QS_Object__, __QS_Args__
+from QuantStudio.Core.Cache import Cache
 
 
 # 全局运行时环境
@@ -24,6 +25,8 @@ class Context(__QS_Args__):
     SplitType: Literal["连续切分", "间隔切分"] = Field(default="连续切分", title="切分方式", frozen=True)
     Event: dict = Field(default={}, title="同步Event", description="{节点ID: (Sub2MainQueue, Event)}, 用于多进程同步的 Event 数据")
     TaskExecutor: Optional[Executor] = Field(default=None, title="并行执行器", description="给到节点用于并行计算")
+    MaxWorkers: int = Field(default=1, title="最大并行数量", description="节点执行并行计算的最大并发量")
+    DataCache: Optional[Cache] = Field(default=None, title="数据缓存", frozen=True)
     ExtraData: dict = Field(default={}, title="其他数据")
     
     model_config = ConfigDict(arbitrary_types_allowed=True)

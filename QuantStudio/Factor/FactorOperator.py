@@ -489,7 +489,7 @@ class SectionRank(SectionOperator):
 
     def __init__(self, ascending:bool=True, uniformization:bool=True, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Arity = args.get("Arity", None) or 1
-        Args = {"Name": "rankSection"} | args | {"DataType": "double", "DTMode": "多时点", "OutputMode": "全截面"}
+        Args = {"Name": "rankSection"} | args | {"DataType": "double", "DTMode": "多时点"}
         Args["ModelArgs"] = {"uniformization": uniformization, "ascending": ascending} | Args.get("ModelArgs", {})
         descriptor_ids = Args.get("DescriptorSection", [None])[0]
         Args["DescriptorSection"] = [descriptor_ids] * Arity
@@ -516,7 +516,7 @@ class Aggregate(SectionOperator):
 
     def __init__(self, aggr_func:Callable[[np.ndarray], Any]=np.nansum, descriptor_ids:Optional[List[str]]=None, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
         Arity = args.get("Arity", None) or 1
-        Args = {"Name": "aggregate"} | args | {"DataType": dtype, "DTMode": "单时点", "OutputMode": "全截面"}
+        Args = {"Name": "aggregate"} | args | {"DataType": dtype, "DTMode": "单时点"}
         Args["ModelArgs"] = {"aggr_func": aggr_func, "dtype": dtype} | Args.get("ModelArgs", {})
         descriptor_ids = Args.get("DescriptorSection", [descriptor_ids])[0]
         Args["DescriptorSection"] = [descriptor_ids] * Arity
@@ -564,7 +564,7 @@ class Disaggregate(SectionOperator):
     
     def __init__(self, aggr_ids:List[str], disaggr_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Arity = args.get("Arity", None) or 1
-        Args = {"Name": "disaggregate"} | args | {"DataType": "double", "DTMode": "多时点", "OutputMode": "全截面"}
+        Args = {"Name": "disaggregate"} | args | {"DataType": "double", "DTMode": "多时点"}
         DescriptorSection = Args.get("DescriptorSection", [aggr_ids, disaggr_ids])
         if len(DescriptorSection) < Arity: DescriptorSection.append(disaggr_ids)
         elif len(DescriptorSection) > Arity: DescriptorSection = DescriptorSection[:Arity]
@@ -596,7 +596,7 @@ class ConcatSection(SectionOperator):
 
     def __init__(self, descriptor_sections:List[List[str]]=[], dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
         Arity = args.get("Arity", None) or 1
-        Args = {"Name": "concatSection", "DataType": dtype} | args | {"DTMode": "多时点", "OutputMode": "全截面"}
+        Args = {"Name": "concatSection", "DataType": dtype} | args | {"DTMode": "多时点"}
         Args["ModelArgs"] = {"dtype": dtype} | Args.get("ModelArgs", {})
         DescriptorSection = Args.get("DescriptorSection", descriptor_sections)
         Args["DescriptorSection"] = DescriptorSection[:Arity] + [None] * max(0, Arity - len(DescriptorSection))
@@ -610,7 +610,7 @@ class ChgSection(SectionOperator):
 
     # id_map: {新ID: 旧ID}
     def __init__(self, old_ids:List[str], id_map:Dict[str, str]={}, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        Args = {"Name": "chgSection", "DataType": "double"} | args | {"Arity": 1, "DTMode": "多时点", "OutputMode": "全截面"}
+        Args = {"Name": "chgSection", "DataType": "double"} | args | {"Arity": 1, "DTMode": "多时点"}
         Args["ModelArgs"] = {"id_map": id_map} | Args.get("ModelArgs", {})
         if "DescriptorSection" not in Args: Args["DescriptorSection"] = [old_ids]
         return super().__init__(args=Args, config_file=config_file, **kwargs)
@@ -640,7 +640,7 @@ class SectionRegress(SectionOperator):
     # output: alpha, beta{i}, resid
     def __init__(self, intercept:bool=True, output:Optional[str]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Arity = args.get("Arity", None) or 1
-        Args = {"Name": "regressSection"} | args | {"DTMode": "单时点", "OutputMode": "全截面"}
+        Args = {"Name": "regressSection"} | args | {"DTMode": "单时点"}
         Args["ModelArgs"] = {"intercept": intercept, "output": output} | Args.get("ModelArgs", {})
         descriptor_ids = Args.get("DescriptorSection", [descriptor_ids])[0]
         Args["DescriptorSection"] = [descriptor_ids] * Arity
@@ -676,7 +676,7 @@ class PanelRegress(PanelOperator):
     # output: alpha, beta{i}, resid
     def __init__(self, window:int=1, intercept:bool=True, output:Optional[str]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Arity = args.get("Arity", None) or 1
-        Args = {"Name": "regressPanel"} | args | {"DTMode": "单时点", "OutputMode": "全截面"}
+        Args = {"Name": "regressPanel"} | args | {"DTMode": "单时点"}
         Args["ModelArgs"] = {"window": window, "intercept": intercept, "output": output} | Args.get("ModelArgs", {})
         descriptor_ids = Args.get("DescriptorSection", [descriptor_ids])[0]
         Args["DescriptorSection"] = [descriptor_ids] * Arity

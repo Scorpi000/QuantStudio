@@ -53,12 +53,9 @@ if __name__ == "__main__":
     Cache = FeatherCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "CacheDir": r"C:\Users\hst\Project\Data\FactorCache", "PIDs": ["0"]})
     Cache.start()
     Context = FactorContext(
-        PID="0",
-        PIDList=["0"],
         DTRuler=DTRuler,
-        DefaultSectionIDs=SectionIDs,
-        IDSplit="连续切分",
-        FactorDataCache=Cache
+        SectionIDs=SectionIDs,
+        DataCache=Cache
     )
     LocalContext = FactorLocalContext(DTs=DTs, IDs=IDs)
     FactorList = [Factor2, Factor3, Factor4, Factor6]
@@ -88,12 +85,9 @@ if __name__=="__main__1":
     Cache = HDF5Cache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "CacheDir": r"C:\Users\hst\Desktop\Cache", "PIDs": ["0"]})
     Cache.start()
     Context = FactorContext(
-        PID="0",
-        PIDList=["0"],
         DTRuler=DTRuler,
-        DefaultSectionIDs=SectionIDs,
-        IDSplit="连续切分",
-        FactorDataCache=Cache
+        SectionIDs=SectionIDs,
+        DataCache=Cache
     )
     LocalContext = FactorLocalContext(DTs=DTs, IDs=IDs)
     FactorList = [Open, Close]
@@ -105,12 +99,10 @@ if __name__=="__main__1":
     # Cache = HDF5Cache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "CacheDir": r"C:\Users\hst\Desktop\Cache", "PIDs": PIDList})
     # Cache.start()
     # Context = FactorContext(
-    #     PID="0",
     #     PIDList=PIDList,
     #     DTRuler=DTRuler,
-    #     DefaultSectionIDs=SectionIDs,
-    #     IDSplit="连续切分",
-    #     FactorDataCache=Cache
+    #     SectionIDs=SectionIDs,
+    #     DataCache=Cache
     # )
     # LocalContext = FactorLocalContext(dts=DTs, ids=IDs)
     # FactorList = [Open, Close]

@@ -53,8 +53,8 @@ if __name__=="__main__":
         PID="0",
         PIDList=PIDList,
         DTRuler=DTRuler,
-        DefaultSectionIDs=SectionIDs,
-        FactorDataCache=Cache
+        SectionIDs=SectionIDs,
+        DataCache=Cache
     )
     NodeList = [QuantilePortfolioNode]
     FwdDataList = [DTLocalContext(DTs=DTs)]
@@ -109,9 +109,9 @@ if __name__ == "__main__1":
         PID="0",
         PIDList=["0"],
         DTRuler=DTRuler,
-        DefaultSectionIDs=SectionIDs,
+        SectionIDs=SectionIDs,
         IDSplit="连续切分",
-        FactorDataCache=Cache
+        DataCache=Cache
     )
     NodeList = [ICModule, ICDecayModule, QuantilePortfolioModule, FactorTurnoverModule, SectionCorrelationModule, FamaMacBethModule]
     Report = BTReport(bt_node_list=NodeList)
@@ -198,11 +198,9 @@ if __name__=="__main__1":
 
     with FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "PIDs": ["0"], "CacheDir": r"D:\Data\DevCache", "StartMode": "new"}) as Cache:
         with FactorContext(
-            PID="0",
-            PIDList=["0"],
             DTRuler=DTRuler,
-            DefaultSectionIDs=SectionIDs,
-            FactorDataCache=Cache
+            SectionIDs=SectionIDs,
+            DataCache=Cache
         ) as Context:
             with Engine() as ExecEngine:
                 Output, = ExecEngine.run([Report], Context, fwd_data_list=[DTLocalContext(DTs=TestDTs)], init_data_list=[DTInitData(DTRange=(TestDTs[0], TestDTs[-1]))])

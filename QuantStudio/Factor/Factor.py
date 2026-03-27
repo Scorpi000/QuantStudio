@@ -21,23 +21,24 @@ class FactorContext(Context):
     # NodeState: {节点ID: {"start_dt", "section_ids"}}
     # PID: str = Field(default="0", title="运行ID", description="当前的运行 ID, 默认为 '0'")
     # PIDList: List[str] = Field(default=["0"], title="所有运行ID")
+    # SplitType: Literal["连续切分", "间隔切分"] = Field(default="连续切分", title="切分方式", frozen=True)
     # Event: dict = Field(default={}, title="", description="{节点ID: (Sub2MainQueue, Event)}, 用于多进程同步的 Event 数据")
     DTRuler: List[dt.datetime] = Field(title="时点标尺", description="当前运行计算时点标尺", frozen=True)
-    DefaultSectionIDs: List[str] = Field(title="默认截面", description="当前运行需要计算的默认截面 ID", frozen=True)
-    FactorDataCache: Optional[FactorCache] = Field(default=None, title="因子缓存", frozen=True)
+    SectionIDs: List[str] = Field(title="默认截面", description="当前运行需要计算的默认截面 ID", frozen=True)
+    DataCache: Optional[FactorCache] = Field(default=None, title="数据缓存", frozen=True)
 
     def model_post_init(self, context: Any, /) -> None:
-        self._DefaultPIDIDs = self.splitID(self.DefaultSectionIDs)
+        self._DefaultPIDIDs = self.splitID(self.SectionIDs)
 
     # 并发运行后返回需要同步的内容
     def getUpdateData(self) -> dict:
         UpdateData = super().getUpdateData()
-        if self.FactorDataCache: UpdateData["cache"] = self.FactorDataCache.getUpdateData()
+        if self.DataCache: UpdateData["cache"] = self.DataCache.getUpdateData()
         return UpdateData
 
     # 并发运行后更新同步内容
     def updateContext(self, update_data: dict):
-        if self.FactorDataCache: self.FactorDataCache.updateCache(update_data.pop("cache", {}))
+        if self.DataCache: self.DataCache.updateCache(update_data.pop("cache", {}))
         return super().updateContext(update_data)
 
     def getDateTime(self, dt_range):
@@ -46,7 +47,7 @@ class FactorContext(Context):
 
     def __setattr__(self, name, value):
         if name == "PIDList":
-            self._DefaultPIDIDs = self.splitID(self.DefaultSectionIDs)
+            self._DefaultPIDIDs = self.splitID(self.SectionIDs)
         return super().__setattr__(name, value)
 
     @property
@@ -215,7 +216,7 @@ class Factor(Node):
         if (not __QS_Context__) and (self._FactorTable is not None): return self._FactorTable.readData(factor_names=[self._QSArgs.Name], ids=ids, dts=dts, **kwargs).iloc[0]
         SectionIDs = kwargs.get("section_ids", self._QSArgs.SectionIDs)
         if not SectionIDs: SectionIDs = ids
-        if not __QS_Context__: Context = FactorContext(DTRuler=kwargs.get("dt_ruler", dts), DefaultSectionIDs=SectionIDs)
+        if not __QS_Context__: Context = FactorContext(DTRuler=kwargs.get("dt_ruler", dts), SectionIDs=SectionIDs)
         else: Context = __QS_Context__[-1]
         if not __QS_Engine__: ExecEngine = Engine()
         else: ExecEngine = __QS_Engine__[-1]
@@ -252,7 +253,7 @@ class Factor(Node):
     def _prepareCacheData(self, context: FactorContext):
         DTRange = context.NodeState.get(self.QSID, {}).get("dt_range", None)
         if DTRange is None: return 0
-        DTRange = context.FactorDataCache.getDTRange(key=self.QSID, dt_range=DTRange)
+        DTRange = context.DataCache.getDTRange(key=self.QSID, dt_range=DTRange)
         if DTRange is None: return 0
         DTs = context.getDateTime(DTRange)
         if not DTs: return 0
@@ -269,7 +270,7 @@ class Factor(Node):
             if RawKey is None:
                 RawData = None
             else:
-                RawData = context.FactorDataCache.readRawData(key=RawKey + "-" + self._QSArgs.Name, target_fields=None, pids=[context.PID])
+                RawData = context.DataCache.readRawData(key=RawKey + "-" + self._QSArgs.Name, target_fields=None, pids=[context.PID])
             if RawData:
                 if len(RawData) == 1: RawData = RawData["RawData"]
                 StdData = self._FactorTable.__QS_calcData__(RawData, factor_names=[self._QSArgs.Name], ids=iSectionIDs, dts=CalcDTs or DTs).iloc[0]
@@ -284,8 +285,8 @@ class Factor(Node):
         DataType = self.getMetaData(key="DataType")
         if context.Mode == "DEBUG": Meta = {"FactorName": self.Name, "DepName": [iDep.Name for iDep in self.Deps], "DepQSID": [iDep.QSID for iDep in self.Deps], "FactorTable": None if not self._FactorTable else self._FactorTable.Name}
         else: Meta = {}
-        context.FactorDataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=context.PID, if_exists="append", data_type=DataType, meta=Meta)
-        context.FactorDataCache.updateDTRange(key=self.QSID, dt_range=DTRange)
+        context.DataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=context.PID, if_exists="append", data_type=DataType, meta=Meta)
+        context.DataCache.updateDTRange(key=self.QSID, dt_range=DTRange)
         return 0
 
     # NodeState: {"dt_range", "section_ids", "pid_ids"}
@@ -308,7 +309,7 @@ class Factor(Node):
         elif self._QSArgs.SectionIDs is not None:
             InitSectionIDs = self._QSArgs.SectionIDs
         else:
-            InitSectionIDs = context.DefaultSectionIDs
+            InitSectionIDs = context.SectionIDs
         if "section_ids" in FactorState: SectionIDs = FactorState["section_ids"]
         elif self._QSArgs.SectionIDs: SectionIDs = self._QSArgs.SectionIDs
         else: SectionIDs = InitSectionIDs
@@ -316,7 +317,7 @@ class Factor(Node):
             raise __QS_Error__(f"因子 {self._QSArgs.Name}({self.QSID}) 指定了不同的截面!")
         if "section_ids" not in FactorState:
             FactorState["section_ids"] = SectionIDs
-            if SectionIDs == context.DefaultSectionIDs:
+            if SectionIDs == context.SectionIDs:
                 FactorState["pid_ids"] = context.DefaultPIDIDs
             else:
                 FactorState["pid_ids"] = context.splitID(SectionIDs)
@@ -335,9 +336,9 @@ class Factor(Node):
             return super().forward_compute(path=path, fwd_data=fwd_data, context=context)
 
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
-        if context.FactorDataCache and self._QSArgs.CacheEnabled:
+        if context.DataCache and self._QSArgs.CacheEnabled:
             self._prepareCacheData(context=context)
-            StdData = context.FactorDataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs, data_type=self.getMetaData(key="DataType"))
+            StdData = context.DataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs, data_type=self.getMetaData(key="DataType"))
             return StdData.reindex(index=local_context.DTs, columns=local_context.IDs)
         elif self._FactorTable:
             RawData = self._FactorTable.__QS_prepareRawData__(factor_names=[self._QSArgs.Name], ids=local_context.IDs, dts=local_context.DTs)
