@@ -166,7 +166,7 @@ class QSSQLObject(__QS_Object__):
                             Driver = DBType
                         else:
                             Driver = f"{DBType} Unicode"
-                        self._Connection = pyodbc.connect("DRIVER={%s};DATABASE=%s;SERVER=%s;UID=%s;PWD=%s" % (Driver, DBName, IPAddr+","+str(Port), User, Pwd), **self._QSArgs.AdditionalConnArgs)
+                        self._Connection = pyodbc.connect("DRIVER={%s};DATABASE=%s;SERVER=%s;PORT=%s;UID=%s;PWD=%s" % (Driver, DBName, IPAddr, str(Port), User, Pwd), **self._QSArgs.AdditionalConnArgs)
                     except Exception as e:
                         Msg = ("'%s' 第 %d 次尝试使用 pyodbc 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, i+1, User, IPAddr, Port, DBName, str(e)))
                         self._QS_Logger.error(Msg)
