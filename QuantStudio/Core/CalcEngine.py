@@ -95,9 +95,9 @@ class ParallelEngine(Engine):
 
     # 初始化
     def init(self, node_list: List[Node], context: Context, init_data_list: Optional[List[Any]]=None):
-        if os.name=="nt": self._MP_Manager = context.ExtraData["mp_manager"] = Manager()
+        # if os.name=="nt": self._MP_Manager = context.ExtraData["mp_manager"] = Manager()
         Rslt = super().init(node_list=node_list, context=context, init_data_list=init_data_list)
-        if os.name=="nt": context.ExtraData.pop("mp_manager")
+        # if os.name=="nt": context.ExtraData.pop("mp_manager")
         return Rslt
 
     def compute(self, node_list: List[Node], context: Context, fwd_data_list: Optional[List[Any]]=None):
@@ -154,7 +154,7 @@ class ParallelEngine(Engine):
             iPID, iSubProg, iMsg = Sub2MainQueue.get()
             FinishedNum += (iSubProg < 0)
         for iPID, iPrcs in Procs.items(): iPrcs.join()
-        if os.name == "nt": self._MP_Manager.shutdown()
+        # if os.name == "nt": self._MP_Manager.shutdown()
         return [iNode.merge_result(result_list=Data[iNode.QSID], context=context) for i, iNode in enumerate(node_list)]
 
 class StackEngine(Engine):

@@ -274,10 +274,12 @@ class Factor(Node):
             else:
                 RawData = self._FactorTable.__QS_prepareRawData__(factor_names=[self._QSArgs.Name], ids=SectionIDs, dts=CalcDTs or DTs)
                 if RawData is not None: self._QS_Logger.warning(f"因子 {self._QSArgs.Name} (QSID: {self.QSID}) 的原始数据缓存丢失!")
-            TaskExecutor = self._QSArgs.TaskExecutor if self._QSArgs.TaskExecutor is None else context.TaskExecutor
+            TaskExecutor = self._QSArgs.TaskExecutor if self._QSArgs.TaskExecutor is not None else context.TaskExecutor
             if (not self._QSArgs.Parallel) or (TaskExecutor is None) or (context.MaxWorkers <= 1):
+                self.Logger.debug(f"{self.Name}(QSID: {self.QSID}): 串行 _prepareCacheData, {self._QSArgs.Parallel}, {TaskExecutor}, {context.MaxWorkers}")
                 StdData = self._FactorTable.__QS_calcData__(raw_data=RawData, factor_names=[self._QSArgs.Name], ids=SectionIDs, dts=CalcDTs or DTs).iloc[0]
             else:
+                self.Logger.debug(f"{self.Name}(QSID: {self.QSID}): 并行 _prepareCacheData")
                 Futures = []
                 BatchSize = len(SectionIDs) // context.MaxWorkers + (len(SectionIDs) % context.MaxWorkers > 0)
                 for i in range(context.MaxWorkers):
@@ -289,7 +291,7 @@ class Factor(Node):
                     else:
                         iRawData = (RawData[RawData["QS_ID"].isin(iIDs)] if "QS_ID" in RawData else RawData)
                     Futures.append(TaskExecutor.submit(self._FactorTable.__QS_calcData__, iRawData, [self._QSArgs.Name], iIDs, CalcDTs or DTs))
-                StdData = pd.concat([iFuture.result() for iFuture in Futures], axis=1, join="outer")
+                StdData = pd.concat([iFuture.result().iloc[0] for iFuture in Futures], axis=1, join="outer")
             if CalcDTs: StdData = StdData.reindex(index=DTs)
         DataType = self.getMetaData(key="DataType")
         if context.Mode == "DEBUG": Meta = {"FactorName": self.Name, "DepName": [iDep.Name for iDep in self.Deps], "DepQSID": [iDep.QSID for iDep in self.Deps], "FactorTable": None if not self._FactorTable else self._FactorTable.Name}

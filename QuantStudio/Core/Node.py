@@ -78,6 +78,8 @@ class Node(__QS_Object__):
 
     class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
         Name: str = Field(default="Node", frozen=True, title="名称")
+        Parallel: bool = Field(default=True, title="并行计算", frozen=True, exclude=True)
+        TaskExecutor: Optional[Executor] = Field(default=None, title="并行执行器", description="给到节点用于并行计算", frozen=True, exclude=True)
 
     def __init__(self, deps:List["Node"]=[], args:dict={}, config_file:Optional[str]=None, **kwargs):
         """初始化计算节点

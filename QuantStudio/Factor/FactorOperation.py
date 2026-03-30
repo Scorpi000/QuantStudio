@@ -31,8 +31,6 @@ class FactorOperator(__QS_Object__):
         DataType: Literal["double", "string", "object"] = Field(default="double",title="数据类型", frozen=True)
         Description: str = Field(default="", title="描述信息", frozen=False, exclude=True)
         Meta: Dict[str, Any] = Field(default={}, title="元信息", frozen=False, exclude=True)
-        Parallel: bool = Field(default=True, title="并行计算", frozen=True, exclude=True)
-        TaskExecutor: Optional[Executor] = Field(default=None, title="任务执行器", frozen=True, exclude=True)
         InputFormat: Literal["numpy", "pandas"] = Field(default="numpy", title="输入格式", frozen=True)
         ExpandDescriptors: List[int] = Field(default=[], title="展开描述子", frozen=True)
         DescriptorCompoundType: List[List[Tuple[str, Literal["double", "string", "object"]]]] = Field(default=[], title="描述子复合类型", frozen=True)
@@ -264,15 +262,15 @@ class PointOperator(FactorOperator):
             TargetFunc = self._calcDataNumpySingleIDMultiDT
         elif (self._QSArgs.DTMode == '单时点') and (self._QSArgs.IDMode == '多ID'):
             TargetFunc = self._calcDataNumpyMultiIDSingleDT
-        TaskExecutor = self._QSArgs.TaskExecutor if self._QSArgs.TaskExecutor is None else context.TaskExecutor
-        if (not self._QSArgs.Parallel) or (TaskExecutor is None) or (context.MaxWorkers <= 1): return TargetFunc(factor=factor, ids=ids, dts=dts, descriptor_data=descriptor_data, ModelArgs=ModelArgs, extra_dep_data=extra_dep_data)
+        TaskExecutor = factor._QSArgs.TaskExecutor if factor._QSArgs.TaskExecutor is not None else context.TaskExecutor
+        if (not factor._QSArgs.Parallel) or (TaskExecutor is None) or (context.MaxWorkers <= 1): return TargetFunc(factor=factor, ids=ids, dts=dts, descriptor_data=descriptor_data, ModelArgs=ModelArgs, extra_dep_data=extra_dep_data)
         Futures = []
         BatchSize = len(ids) // context.MaxWorkers + (len(ids) % context.MaxWorkers > 0)
         for i in range(context.MaxWorkers):
-            iStartIdx, iEndIdx = i * BatchSize, (i + 1) * BatchSize
-            iIDs = ids[iStartIdx:iEndIdx]
+            iIDStartIdx, iIDEndIdx = i * BatchSize, (i + 1) * BatchSize
+            iIDs = ids[iIDStartIdx:iIDEndIdx]
             if not iIDs: continue
-            Futures.append(TaskExecutor.submit(TargetFunc, factor, iIDs, dts, [iData[:, iStartIdx:iEndIdx] for iData in descriptor_data], ModelArgs, extra_dep_data))
+            Futures.append(TaskExecutor.submit(TargetFunc, factor, iIDs, dts, [iData[:, iIDStartIdx:iIDEndIdx] for iData in descriptor_data], ModelArgs, extra_dep_data))
         return np.hstack([iFuture.result() for iFuture in Futures])
 
     def _calcDataPandas(self, factor, ids, dts, descriptor_data, ModelArgs, extra_dep_data):
@@ -466,17 +464,17 @@ class TimeOperator(FactorOperator):
             TargetFunc = self._calcDataNumpySingleIDMultiDT
         elif (self._QSArgs.DTMode == '单时点') and (self._QSArgs.IDMode == '多ID'):
             TargetFunc = self._calcDataNumpyMultiIDSingleDT
-        TaskExecutor = self._QSArgs.TaskExecutor if self._QSArgs.TaskExecutor is None else context.TaskExecutor
-        if (not self._QSArgs.Parallel) or (TaskExecutor is None) or (context.MaxWorkers <= 1):
+        TaskExecutor = factor._QSArgs.TaskExecutor if factor._QSArgs.TaskExecutor is not None else context.TaskExecutor
+        if (not factor._QSArgs.Parallel) or (TaskExecutor is None) or (context.MaxWorkers <= 1):
             return TargetFunc(factor=factor, ids=ids, dts=dts, descriptor_data=descriptor_data, DTRuler=DTRuler, StartIndAndLen=StartIndAndLen, MaxLookBack=MaxLookBack, MaxLen=MaxLen, iStartIdx=iStartIdx, ModelArgs=ModelArgs, StdData=StdData, extra_dep_data=extra_dep_data)
         Futures = []
         BatchSize = len(ids) // context.MaxWorkers + (len(ids) % context.MaxWorkers > 0)
         for i in range(context.MaxWorkers):
-            iStartIdx, iEndIdx = i * BatchSize, (i + 1) * BatchSize
-            iIDs = ids[iStartIdx:iEndIdx]
+            iIDStartIdx, iIDEndIdx = i * BatchSize, (i + 1) * BatchSize
+            iIDs = ids[iIDStartIdx:iIDEndIdx]
             if not iIDs: continue
-            iStdData = StdData[:, iStartIdx:iEndIdx].copy()
-            Futures.append(TaskExecutor.submit(TargetFunc, factor, iIDs, dts, [iData[:, iStartIdx:iEndIdx] for iData in descriptor_data], DTRuler, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, ModelArgs, iStdData, extra_dep_data))
+            iStdData = StdData[:, iIDStartIdx:iIDEndIdx].copy()
+            Futures.append(TaskExecutor.submit(TargetFunc, factor, iIDs, dts, [iData[:, iIDStartIdx:iIDEndIdx] for iData in descriptor_data], DTRuler, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, ModelArgs, iStdData, extra_dep_data))
         return np.hstack([iFuture.result() for iFuture in Futures])
     
     def _calcDataPandas(self, factor, ids, dts, descriptor_data, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, ModelArgs, StdData, extra_dep_data):
@@ -667,8 +665,8 @@ class SectionOperator(FactorOperator):
             TargetFunc = self._calcDataNumpyMultiDT
         elif self._QSArgs.DTMode == '单时点':
             TargetFunc = self._calcDataNumpySingleDT
-        TaskExecutor = self._QSArgs.TaskExecutor if self._QSArgs.TaskExecutor is None else context.TaskExecutor
-        if (not self._QSArgs.Parallel) or (TaskExecutor is None) or (context.MaxWorkers <= 1): 
+        TaskExecutor = factor._QSArgs.TaskExecutor if factor._QSArgs.TaskExecutor is not None else context.TaskExecutor
+        if (not factor._QSArgs.Parallel) or (TaskExecutor is None) or (context.MaxWorkers <= 1): 
             return TargetFunc(factor=factor, ids=ids, dts=dts, descriptor_data=descriptor_data, SectionIDs=SectionIDs, ModelArgs=ModelArgs, extra_dep_data=extra_dep_data)
         Futures = []
         BatchSize = len(dts) // context.MaxWorkers + (len(dts) % context.MaxWorkers > 0)
@@ -676,7 +674,7 @@ class SectionOperator(FactorOperator):
             iStartIdx, iEndIdx = i * BatchSize, (i + 1) * BatchSize
             iDTs = dts[iStartIdx:iEndIdx]
             if not iDTs: continue
-            Futures.append(TaskExecutor.submit(TargetFunc, factor, ids, iDTs, [iData[:, iStartIdx:iEndIdx] for iData in descriptor_data], SectionIDs, ModelArgs, extra_dep_data))
+            Futures.append(TaskExecutor.submit(TargetFunc, factor, ids, iDTs, [iData[iStartIdx:iEndIdx] for iData in descriptor_data], SectionIDs, ModelArgs, extra_dep_data))
         return np.vstack([iFuture.result() for iFuture in Futures])
     
     def _calcDataPandas(self, factor, ids, dts, descriptor_data, SectionIDs, ModelArgs, extra_dep_data):
@@ -819,8 +817,8 @@ class PanelOperator(FactorOperator):
             TargetFunc = self._calcDataNumpyMultiDT
         elif self._QSArgs.DTMode == '单时点':
             TargetFunc = self._calcDataNumpySingleDT
-        TaskExecutor = self._QSArgs.TaskExecutor if self._QSArgs.TaskExecutor is None else context.TaskExecutor
-        if (not self._QSArgs.Parallel) or (self._QSArgs.iInitFactor >= 0) or (TaskExecutor is None) or (context.MaxWorkers <= 1): 
+        TaskExecutor = factor._QSArgs.TaskExecutor if factor._QSArgs.TaskExecutor is not None else context.TaskExecutor
+        if (not factor._QSArgs.Parallel) or (self._QSArgs.iInitFactor >= 0) or (TaskExecutor is None) or (context.MaxWorkers <= 1): 
             return TargetFunc(factor=factor, ids=ids, dts=dts, descriptor_data=descriptor_data, jStartIdx=0, jEndIdx=len(dts), DTRuler=DTRuler, SectionIDs=SectionIDs, StartIndAndLen=StartIndAndLen, MaxLookBack=MaxLookBack, MaxLen=MaxLen, iStartIdx=iStartIdx, ModelArgs=ModelArgs, StdData=StdData, extra_dep_data=extra_dep_data)
         Futures = []
         BatchSize = len(dts) // context.MaxWorkers + (len(dts) % context.MaxWorkers > 0)

@@ -1,54 +1,55 @@
 # -*- coding: utf-8 -*-
 """基于 CVXPY 的投资组合构造器"""
+import traceback
+
 import numpy as np
 import cvxpy as cvx
 
-from .BasePC import PortfolioConstructor
-from QuantStudio import __QS_Error__
+from QuantStudio.Core import __QS_Error__
+from .BasePC import PortfolioConstructor, MeanVarianceObjective, RiskBudgetObjective, MaxDiversificationObjective
+
 
 class CVXPC(PortfolioConstructor):
     """基于 CVXPY 模块的投资组合构造器"""
-    def __init__(self, sys_args={}, config_file=None, **kwargs):
-        self._Model = None# 优化模型
-        self._x = None# 决策变量
-        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
+    
     def _genModelConstraints(self, x, prepared_constraints, prepared_option):
         CVXConstraints = []
         for iType, iConstraint in prepared_constraints.items():
             if iType=="Box":
-                CVXConstraints.extend([x<=iConstraint["ub"].flatten(), x>=iConstraint["lb"].flatten()])
+                CVXConstraints.extend([x<=iConstraint["ub"], x>=iConstraint["lb"]])
             elif iType=="LinearIn":
-                CVXConstraints.append(iConstraint["A"] @ x <= iConstraint["b"].flatten())
+                CVXConstraints.append(iConstraint["A"] @ x <= iConstraint["b"])
             elif iType=="LinearEq":
-                CVXConstraints.append(iConstraint["Aeq"] @ x == iConstraint["beq"].flatten())
+                CVXConstraints.append(iConstraint["Aeq"] @ x == iConstraint["beq"])
             elif iType=="Quadratic":
                 for jSubConstraint in iConstraint:
                     if "X" in jSubConstraint:
-                        jSigma = np.dot(np.dot(jSubConstraint["X"], jSubConstraint["F"]), jSubConstraint["X"].T) + np.diag(jSubConstraint["Delta"].flatten())
+                        jSigma = np.dot(np.dot(jSubConstraint["X"], jSubConstraint["F"]), jSubConstraint["X"].T) + np.diag(jSubConstraint["Delta"])
                         jSigma = (jSigma + jSigma.T) / 2
                     elif "Sigma" in jSubConstraint:
                         jSigma = jSubConstraint["Sigma"]
-                    CVXConstraints.append(cvx.quad_form(x, jSigma) + jSubConstraint["Mu"].T @ x <= jSubConstraint["q"])
+                    CVXConstraints.append(cvx.quad_form(x, jSigma) + jSubConstraint["Mu"] @ x <= jSubConstraint["q"])
             elif iType=="L1":
                 for jSubConstraint in iConstraint:
-                    CVXConstraints.append(cvx.norm(x - jSubConstraint["c"].flatten(), p=1) <= jSubConstraint["l"])
+                    CVXConstraints.append(cvx.norm(x - jSubConstraint["c"], p=1) <= jSubConstraint["l"])
             elif iType=="Pos":
                 for jSubConstraint in iConstraint:
-                    CVXConstraints.append(cvx.sum(cvx.pos(x - jSubConstraint["c_pos"].flatten())) <= jSubConstraint["l_pos"])
+                    CVXConstraints.append(cvx.sum(cvx.pos(x - jSubConstraint["c_pos"])) <= jSubConstraint["l_pos"])
             elif iType=="Neg":
                 for jSubConstraint in iConstraint:
-                    CVXConstraints.append(cvx.sum(cvx.neg(x - jSubConstraint["c_neg"].flatten())) <= jSubConstraint["l_neg"])
+                    CVXConstraints.append(cvx.sum(cvx.neg(x - jSubConstraint["c_neg"])) <= jSubConstraint["l_neg"])
             elif iType=="NonZeroNum":
                 for jSubConstraint in iConstraint:
                     jz = cvx.Variable(x.shape[0], boolean=True)
-                    CVXConstraints.append(cvx.abs((x - jSubConstraint["b"].flatten())) <= jz)
+                    CVXConstraints.append(cvx.abs((x - jSubConstraint["b"])) <= jz)
                     CVXConstraints.append(cvx.sum(jz) <= jSubConstraint["N"])
         return CVXConstraints
+    
     # 均值方差模型
     def _solveMeanVarianceModel(self, nvar, prepared_objective, prepared_constraints, prepared_option):
         x = cvx.Variable(nvar)
         Obj = 0
-        if "f" in prepared_objective: Obj += prepared_objective["f"].T @ x
+        if "f" in prepared_objective: Obj += prepared_objective["f"] @ x
         if "X" in prepared_objective:
             Sigma = np.dot(np.dot(prepared_objective["X"], prepared_objective["F"]), prepared_objective["X"].T) + np.diag(prepared_objective["Delta"].flatten())
             Sigma = (Sigma + Sigma.T) / 2
@@ -63,37 +64,56 @@ class CVXPC(PortfolioConstructor):
         if "lambda3" in prepared_objective:
             Obj += prepared_objective["lambda3"] * cvx.sum(cvx.neg(x - prepared_objective["c_neg"].flatten()))
         CVXConstraints = self._genModelConstraints(x, prepared_constraints, prepared_option)
-        self._Model = cvx.Problem(cvx.Minimize(Obj), CVXConstraints)
-        self._x = x
-        self._Model.solve(**prepared_option)
-        Status = (1 if self._Model.status not in ("infeasible", "unbounded") else 0)
-        return (self._x.value, {"Status":Status, "Msg":self._Model.status, "solver_name":self._Model.solver_stats.solver_name,
-                                "solve_time":self._Model.solver_stats.solve_time, "setup_time":self._Model.solver_stats.setup_time, 
-                                "num_iters":self._Model.solver_stats.num_iters})
+        if prepared_objective["minmax"]=="min":
+            Model = cvx.Problem(cvx.Minimize(Obj), CVXConstraints)
+        else:
+            Model = cvx.Problem(cvx.Maximize(Obj), CVXConstraints)
+        try:
+            Model.solve(**prepared_option)
+        except:
+            return (None, {"status": 0, "msg": traceback.format_exc()})
+        else:
+            return (x.value, {
+                "status": (1 if Model.status not in ("infeasible", "unbounded") else 0), 
+                "msg": Model.status, 
+                "solver_name": Model.solver_stats.solver_name,
+                "solve_time": Model.solver_stats.solve_time, 
+                "setup_time": Model.solver_stats.setup_time, 
+                "num_iters": Model.solver_stats.num_iters
+            })
+    
     # 风险预算模型
     def _solveRiskBudgetModel(self, nvar, prepared_objective, prepared_constraints, prepared_option):
         x = cvx.Variable(nvar)
         Obj = 0
         if "X" in prepared_objective:
-            Sigma = np.dot(np.dot(prepared_objective["X"], prepared_objective["F"]), prepared_objective["X"].T) + np.diag(prepared_objective["Delta"].flatten())
+            Sigma = np.dot(np.dot(prepared_objective["X"], prepared_objective["F"]), prepared_objective["X"].T) + np.diag(prepared_objective["Delta"])
             Sigma = (Sigma + Sigma.T) / 2
             Obj += cvx.quad_form(x, Sigma)
         elif "Sigma" in prepared_objective:
             Obj += cvx.quad_form(x, prepared_objective["Sigma"])
-        c = np.dot(prepared_objective["b"].T, np.log(prepared_objective["b"])) - min(1e-4, 1/nvar)
-        CVXConstraints = [x >= np.zeros(nvar), prepared_objective["b"].T @ cvx.log(x) >= c]
-        self._Model = cvx.Problem(cvx.Minimize(Obj), CVXConstraints)
-        self._x = x
-        self._Model.solve(**prepared_option)
-        Status = (1 if self._Model.status not in ("infeasible", "unbounded") else 0)
-        return (x.value / np.sum(x.value), {"Status":Status, "Msg":self._Model.status, "solver_name":self._Model.solver_stats.solver_name,
-                                            "solve_time":self._Model.solver_stats.solve_time, "setup_time":self._Model.solver_stats.setup_time, 
-                                            "num_iters":self._Model.solver_stats.num_iters})
+        c = np.dot(prepared_objective["b"], np.log(prepared_objective["b"])) - min(1e-4, 1/nvar)
+        CVXConstraints = [x >= np.zeros(nvar), prepared_objective["b"] @ cvx.log(x) >= c]
+        Model = cvx.Problem(cvx.Minimize(Obj), CVXConstraints)
+        try:
+            Model.solve(**prepared_option)
+        except:
+            return (None, {"status": 0, "msg": traceback.format_exc()})
+        else:
+            return (x.value / np.sum(x.value), {
+                "status": (1 if Model.status not in ("infeasible", "unbounded") else 0), 
+                "msg": Model.status, 
+                "solver_name": Model.solver_stats.solver_name,
+                "solve_time": Model.solver_stats.solve_time, 
+                "setup_time": Model.solver_stats.setup_time, 
+                "num_iters": Model.solver_stats.num_iters
+            })
+    
     # 最大分散化模型
     def _solveMaxDiversificationModel(self, nvar, prepared_objective, prepared_constraints, prepared_option):
         x = cvx.Variable(nvar)
         if "X" in prepared_objective:
-            Sigma = np.dot(np.dot(prepared_objective["X"], prepared_objective["F"]), prepared_objective["X"].T) + np.diag(prepared_objective["Delta"].flatten())
+            Sigma = np.dot(np.dot(prepared_objective["X"], prepared_objective["F"]), prepared_objective["X"].T) + np.diag(prepared_objective["Delta"])
             Sigma = (Sigma + Sigma.T) / 2
         elif "Sigma" in prepared_objective:
             Sigma = prepared_objective["Sigma"]
@@ -101,21 +121,27 @@ class CVXPC(PortfolioConstructor):
         P = np.dot(np.dot(D, Sigma), D)
         Obj = cvx.quad_form(x, P)
         CVXConstraints = [x >= np.zeros(nvar), cvx.sum(x) == 1]
-        self._Model = cvx.Problem(cvx.Minimize(Obj), CVXConstraints)
-        self._x = x
-        self._Model.solve(**prepared_option)
-        Status = (1 if self._Model.status not in ("infeasible", "unbounded") else 0)
-        x = np.dot(D, x.value)
-        return (x / np.sum(x), {"Status":Status, "Msg":self._Model.status, "solver_name":self._Model.solver_stats.solver_name,
-                                "solve_time":self._Model.solver_stats.solve_time, "setup_time":self._Model.solver_stats.setup_time, 
-                                "num_iters":self._Model.solver_stats.num_iters})
+        Model = cvx.Problem(cvx.Minimize(Obj), CVXConstraints)
+        try:
+            Model.solve(**prepared_option)
+        except:
+            return (None, {"status": 0, "msg": traceback.format_exc()})
+        else:
+            x = np.dot(D, x.value)
+            return (x / np.sum(x), {
+                "status": (1 if Model.status not in ("infeasible", "unbounded") else 0), 
+                "msg": Model.status, 
+                "solver_name": Model.solver_stats.solver_name,
+                "solve_time": Model.solver_stats.solve_time, 
+                "setup_time": Model.solver_stats.setup_time, 
+                "num_iters": Model.solver_stats.num_iters
+            })
+    
     def _genOption(self):
-        Options = {"verbose":False}
-        Options.update(self._QSArgs.OptimOption)
-        return Options
+        return {"verbose": False} | self._QSArgs.OptimOption
+    
     def _solve(self, nvar, prepared_objective, prepared_constraints, prepared_option):
-        if self._QSArgs.OptimObjective.Type=="均值方差目标": return self._solveMeanVarianceModel(nvar, prepared_objective, prepared_constraints, prepared_option)
-        elif self._QSArgs.OptimObjective.Type=="风险预算目标": return self._solveRiskBudgetModel(nvar, prepared_objective, prepared_constraints, prepared_option)
-        elif self._QSArgs.OptimObjective.Type=="最大分散化目标": return self._solveMaxDiversificationModel(nvar, prepared_objective, prepared_constraints, prepared_option)
-        else: raise __QS_Error__("不支持的优化目标: '%s'" % self._QSArgs.OptimObjective.Type)
-        
+        if isinstance(self._Objective, MeanVarianceObjective): return self._solveMeanVarianceModel(nvar, prepared_objective, prepared_constraints, prepared_option)
+        elif isinstance(self._Objective, RiskBudgetObjective): return self._solveRiskBudgetModel(nvar, prepared_objective, prepared_constraints, prepared_option)
+        elif isinstance(self._Objective, MaxDiversificationObjective): return self._solveMaxDiversificationModel(nvar, prepared_objective, prepared_constraints, prepared_option)
+        else: raise __QS_Error__("不支持的优化目标: '%s'" % self._Objective)
