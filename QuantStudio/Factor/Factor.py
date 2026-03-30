@@ -251,36 +251,45 @@ class Factor(Node):
     
     # 准备缓存数据
     def _prepareCacheData(self, context: FactorContext):
+        if not self._FactorTable: return 0
         DTRange = context.NodeState.get(self.QSID, {}).get("dt_range", None)
         if DTRange is None: return 0
         DTRange = context.DataCache.getDTRange(key=self.QSID, dt_range=DTRange)
         if DTRange is None: return 0
         DTs = context.getDateTime(DTRange)
         if not DTs: return 0
-        if self._FactorTable:
-            RawKey = self._FactorTable.PrepareID
-        else:
-            RawKey = None
         PIDIDs = context.NodeState[self.QSID]["pid_ids"]
-        iSectionIDs = PIDIDs[context.PID]
+        SectionIDs = PIDIDs[context.PID]
         CalcDTs = self._QS_getCalcDTs(DTs, mask=False)
         if (CalcDTs is not None) and (not CalcDTs): 
-            StdData = pd.DataFrame(index=DTs, columns=iSectionIDs)
+            StdData = pd.DataFrame(index=DTs, columns=SectionIDs)
         else:
+            RawKey = self._FactorTable.PrepareID
             if RawKey is None:
                 RawData = None
             else:
                 RawData = context.DataCache.readRawData(key=RawKey + "-" + self._QSArgs.Name, target_fields=None, pids=[context.PID])
             if RawData:
                 if len(RawData) == 1: RawData = RawData["RawData"]
-                StdData = self._FactorTable.__QS_calcData__(RawData, factor_names=[self._QSArgs.Name], ids=iSectionIDs, dts=CalcDTs or DTs).iloc[0]
-            elif self._FactorTable:
-                RawData = self._FactorTable.__QS_prepareRawData__(factor_names=[self._QSArgs.Name], ids=iSectionIDs, dts=CalcDTs or DTs)
-                if RawData is not None:
-                    self._QS_Logger.warning(f"因子 {self._QSArgs.Name} (QSID: {self.QSID}) 的原始数据缓存丢失!")
-                StdData = self._FactorTable.__QS_calcData__(raw_data=RawData, factor_names=[self._QSArgs.Name], ids=iSectionIDs, dts=CalcDTs or DTs).iloc[0]
             else:
-                return 0
+                RawData = self._FactorTable.__QS_prepareRawData__(factor_names=[self._QSArgs.Name], ids=SectionIDs, dts=CalcDTs or DTs)
+                if RawData is not None: self._QS_Logger.warning(f"因子 {self._QSArgs.Name} (QSID: {self.QSID}) 的原始数据缓存丢失!")
+            TaskExecutor = self._QSArgs.TaskExecutor if self._QSArgs.TaskExecutor is None else context.TaskExecutor
+            if (not self._QSArgs.Parallel) or (TaskExecutor is None) or (context.MaxWorkers <= 1):
+                StdData = self._FactorTable.__QS_calcData__(raw_data=RawData, factor_names=[self._QSArgs.Name], ids=SectionIDs, dts=CalcDTs or DTs).iloc[0]
+            else:
+                Futures = []
+                BatchSize = len(SectionIDs) // context.MaxWorkers + (len(SectionIDs) % context.MaxWorkers > 0)
+                for i in range(context.MaxWorkers):
+                    iStartIdx, iEndIdx = i * BatchSize, (i + 1) * BatchSize
+                    iIDs = SectionIDs[iStartIdx:iEndIdx]
+                    if not iIDs: continue
+                    if isinstance(RawData, dict):
+                        iRawData = {jKey: (jData[jData["QS_ID"].isin(iIDs)] if "QS_ID" in jData else jData) for jKey, jData in RawData.items()}
+                    else:
+                        iRawData = (RawData[RawData["QS_ID"].isin(iIDs)] if "QS_ID" in RawData else RawData)
+                    Futures.append(TaskExecutor.submit(self._FactorTable.__QS_calcData__, iRawData, [self._QSArgs.Name], iIDs, CalcDTs or DTs))
+                StdData = pd.concat([iFuture.result() for iFuture in Futures], axis=1, join="outer")
             if CalcDTs: StdData = StdData.reindex(index=DTs)
         DataType = self.getMetaData(key="DataType")
         if context.Mode == "DEBUG": Meta = {"FactorName": self.Name, "DepName": [iDep.Name for iDep in self.Deps], "DepQSID": [iDep.QSID for iDep in self.Deps], "FactorTable": None if not self._FactorTable else self._FactorTable.Name}
