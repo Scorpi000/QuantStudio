@@ -45,7 +45,7 @@ class CalcPortfolioVolatility(SectionOperator):
             config_file: 配置文件地址
         """
         Arity = args.get("Arity", None) or 1
-        Args = {"Name": "calcPortfolioVolatility"} | args | {"DTMode": "单时点", "OutputMode": "全截面", "DataType": "double"}
+        Args = {"Name": "calcPortfolioVolatility"} | args | {"DTMode": "单时点", "DataType": "double"}
         Args["ModelArgs"] = {} | Args.get("ModelArgs", {})
         Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
         return super().__init__(args=Args, config_file=config_file, **kwargs)
@@ -113,7 +113,7 @@ class CalcRandomPortfolio(SectionOperator):
             target_num: 每一期的目标持仓数量
         """
         Arity = args.get("Arity", None) or 1
-        Args = {"Name": "calcRandomPortfolio"} | args | {"DTMode": "单时点", "OutputMode": "全截面", "DataType": "double"}
+        Args = {"Name": "calcRandomPortfolio"} | args | {"DTMode": "单时点", "DataType": "double"}
         Args["ModelArgs"] = {"target_num": target_num} | Args.get("ModelArgs", {})
         Args["DescriptorSection"] = [Args.get("DescriptorSection", [None])[0]] * Arity
         return super().__init__(args=Args, config_file=config_file, **kwargs)

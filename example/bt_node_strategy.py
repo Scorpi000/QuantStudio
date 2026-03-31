@@ -55,8 +55,8 @@ if __name__=="__main__":
         PID="0",
         PIDList=PIDList,
         DTRuler=DTRuler,
-        DefaultSectionIDs=SectionIDs,
-        FactorDataCache=Cache
+        SectionIDs=SectionIDs,
+        DataCache=Cache
     )
     NodeList = [PortfolioSignal, Account, StrategyAmt, StrategyNV, StrategyReport]
     FwdDataList = [FactorLocalContext(DTs=DTs, IDs=IDs)] * len(NodeList)

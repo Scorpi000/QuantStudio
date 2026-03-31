@@ -9,7 +9,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from QuantStudio.FactorDataBase.JYDB import JYDB
+from QuantStudio.Factor.JYDB import JYDB
 
 __TestDirPath__ = os.path.split(os.path.realpath(__file__))[0]
 

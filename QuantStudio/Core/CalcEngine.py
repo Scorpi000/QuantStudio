@@ -14,6 +14,8 @@ from QuantStudio.Core.QSObject import QSQueue
 
 
 class Engine(__QS_Object__):
+    class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
+        IOConcurrentNum: Optional[int] = Field(default=None, title="IO并发数", frozen=True, ge=1)
 
     # 初始化
     def init(self, node_list: List[Node], context: Context, init_data_list: Optional[List[Any]]=None):
@@ -23,9 +25,23 @@ class Engine(__QS_Object__):
 
     # 准备数据
     def prepare(self, node_list: List[Node], context: Context):
-        for _, iPrepareData in context.PrepareNodeDict.items():
-            iNodeID, iPrepareData = iPrepareData
-            context.NodeDict[iNodeID].prepare_compute(iPrepareData, context)
+        if not context.PrepareNodeDict: return
+        IOConcurrentNum = (self._QSArgs.IOConcurrentNum if self._QSArgs.IOConcurrentNum is not None else len(context.PrepareNodeDict))
+        if IOConcurrentNum <= 1:
+            for _, iPrepareData in context.PrepareNodeDict.items():
+                iNodeID, iPrepareData = iPrepareData
+                context.NodeDict[iNodeID].prepare_compute(iPrepareData, context)
+        else:
+            Futures = []
+            with concurrent.futures.ThreadPoolExecutor(max_workers=IOConcurrentNum) as Executor:
+                for _, iPrepareData in context.PrepareNodeDict.items():
+                    iNodeID, iPrepareData = iPrepareData
+                    iFuture = Executor.submit(context.NodeDict[iNodeID].prepare_compute, iPrepareData, context)
+                    Futures.append(iFuture)
+                with ProgressBar(max_value=len(Futures)) as ProgBar:
+                    for iFuture in concurrent.futures.as_completed(Futures):
+                        iFuture.result()
+                        ProgBar.update(ProgBar.value + 1)
 
     # 主计算
     def compute(self, node_list: List[Node], context: Context, fwd_data_list: Optional[List[Any]]=None):
@@ -77,29 +93,12 @@ def _execute_task(task):
 
 class ParallelEngine(Engine):
 
-    class __QS_ArgClass__(Engine.__QS_ArgClass__):
-        IOConcurrentNum: Optional[int] = Field(default=None, title="IO并发数", frozen=True, ge=1)
-
     # 初始化
     def init(self, node_list: List[Node], context: Context, init_data_list: Optional[List[Any]]=None):
-        if os.name=="nt": self._MP_Manager = context.ExtraData["mp_manager"] = Manager()
+        # if os.name=="nt": self._MP_Manager = context.ExtraData["mp_manager"] = Manager()
         Rslt = super().init(node_list=node_list, context=context, init_data_list=init_data_list)
-        if os.name=="nt": context.ExtraData.pop("mp_manager")
+        # if os.name=="nt": context.ExtraData.pop("mp_manager")
         return Rslt
-
-    def prepare(self, node_list: List[Node], context: Context):
-        if not context.PrepareNodeDict: return
-        Futures = []
-        IOConcurrentNum = (self._QSArgs.IOConcurrentNum if self._QSArgs.IOConcurrentNum is not None else len(context.PrepareNodeDict))
-        with concurrent.futures.ThreadPoolExecutor(max_workers=IOConcurrentNum) as Executor:
-            for _, iPrepareData in context.PrepareNodeDict.items():
-                iNodeID, iPrepareData = iPrepareData
-                iFuture = Executor.submit(context.NodeDict[iNodeID].prepare_compute, iPrepareData, context)
-                Futures.append(iFuture)
-            with ProgressBar(max_value=len(Futures)) as ProgBar:
-                for iFuture in concurrent.futures.as_completed(Futures):
-                    iFuture.result()
-                    ProgBar.update(ProgBar.value + 1)
 
     def compute(self, node_list: List[Node], context: Context, fwd_data_list: Optional[List[Any]]=None):
         if len(node_list) != len(fwd_data_list): raise __QS_Error__("node_list 和 fwd_data_list 长度不一致!")
@@ -155,7 +154,7 @@ class ParallelEngine(Engine):
             iPID, iSubProg, iMsg = Sub2MainQueue.get()
             FinishedNum += (iSubProg < 0)
         for iPID, iPrcs in Procs.items(): iPrcs.join()
-        if os.name == "nt": self._MP_Manager.shutdown()
+        # if os.name == "nt": self._MP_Manager.shutdown()
         return [iNode.merge_result(result_list=Data[iNode.QSID], context=context) for i, iNode in enumerate(node_list)]
 
 class StackEngine(Engine):

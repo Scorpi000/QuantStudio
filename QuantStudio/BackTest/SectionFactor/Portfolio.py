@@ -58,7 +58,7 @@ class CalcMaskPortfolio(SectionOperator):
             config_file: 配置文件地址
         """
         Arity = args.get("Arity", None) or 1
-        Args = {"Name": "calcMaskPortfolio"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "double"}
+        Args = {"Name": "calcMaskPortfolio"} | args | {"DTMode": "多时点", "DataType": "double"}
         Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
@@ -227,7 +227,7 @@ class CalcPortfolioReturn(PanelOperator):
             config_file: 配置文件地址
         """
         Arity = args.get("Arity", None) or 2
-        Args = {"Name": "calcPortfolioReturn"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "double"}
+        Args = {"Name": "calcPortfolioReturn"} | args | {"DTMode": "多时点", "DataType": "double"}
         Args["ModelArgs"] = {} | Args.get("ModelArgs", {})
         Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
         Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * Arity

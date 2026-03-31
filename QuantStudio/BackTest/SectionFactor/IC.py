@@ -43,7 +43,7 @@ class CalcIC(PanelOperator):
             corr_method: 相关性的计算方法
         """
         Arity = args.get("Arity", None) or 1
-        Args = {"Name": "calcIC"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "object"}
+        Args = {"Name": "calcIC"} | args | {"DTMode": "多时点", "DataType": "object"}
         Args["ModelArgs"] = {"corr_method": corr_method, "period_lookback": period_lookback} | Args.get("ModelArgs", {})
         Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
         Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * Arity
@@ -157,7 +157,7 @@ class CalcRiskAdjustedIC(PanelOperator):
             corr_method: 相关性的计算方法
         """
         Arity = args.get("Arity", None) or 1
-        Args = {"Name": "calcRiskAdjustedIC"} | args | {"DTMode": "单时点", "OutputMode": "全截面", "DataType": "object"}
+        Args = {"Name": "calcRiskAdjustedIC"} | args | {"DTMode": "单时点", "DataType": "object"}
         Args["ModelArgs"] = {"corr_method": corr_method, "period_lookback": period_lookback} | Args.get("ModelArgs", {})
         Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
         Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * Arity

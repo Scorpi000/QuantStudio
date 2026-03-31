@@ -19,6 +19,8 @@ def setDefaultLogLevel(level=logging.INFO):
     global __QS_Logger__
     __QS_Logger__ = logging.getLogger('QS')
     __QS_Logger__.setLevel(level)
+    for iHandler in __QS_Logger__.handlers:
+        __QS_Logger__.removeHandler(iHandler)
     _QSLogHandler = logging.StreamHandler()
     _QSLogHandler.setLevel(level)
     _QSLogHandler.setFormatter(logging.Formatter('%(asctime)s | %(name)s | %(levelname)s : %(message)s'))

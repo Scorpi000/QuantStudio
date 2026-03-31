@@ -25,9 +25,9 @@ if __name__ == "__main__":
         PID="0",
         PIDList=["0"],
         DTRuler=DTRuler,
-        DefaultSectionIDs=SectionIDs,
+        SectionIDs=SectionIDs,
         IDSplit="连续切分",
-        FactorDataCache=Cache
+        DataCache=Cache
     )
     LocalContext = FactorLocalContext(DTs=DTs, IDs=IDs)
     FactorList = [Factor1, Factor2, Factor3, Factor4, Factor5, Factor6, Factor7]
