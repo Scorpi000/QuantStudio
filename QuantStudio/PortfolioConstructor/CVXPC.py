@@ -46,8 +46,8 @@ class CVXPC(PortfolioConstructor):
         return CVXConstraints
     
     # 均值方差模型
-    def _solveMeanVarianceModel(self, nvar, prepared_objective, prepared_constraints, prepared_option):
-        x = cvx.Variable(nvar)
+    def _solveMeanVarianceModel(self, prepared_objective, prepared_constraints, prepared_option):
+        x = cvx.Variable(np.sum(self._Mask))
         Obj = 0
         if "f" in prepared_objective: Obj += prepared_objective["f"] @ x
         if "X" in prepared_objective:
@@ -74,7 +74,7 @@ class CVXPC(PortfolioConstructor):
             return (None, {"status": 0, "msg": traceback.format_exc()})
         else:
             return (x.value, {
-                "status": (1 if Model.status not in ("infeasible", "unbounded") else 0), 
+                "status": (1 if Model.status not in (cvx.INFEASIBLE, cvx.UNBOUNDED) else 0), 
                 "msg": Model.status, 
                 "solver_name": Model.solver_stats.solver_name,
                 "solve_time": Model.solver_stats.solve_time, 
@@ -83,8 +83,9 @@ class CVXPC(PortfolioConstructor):
             })
     
     # 风险预算模型
-    def _solveRiskBudgetModel(self, nvar, prepared_objective, prepared_constraints, prepared_option):
-        x = cvx.Variable(nvar)
+    def _solveRiskBudgetModel(self, prepared_objective, prepared_constraints, prepared_option):
+        nVar = np.sum(self._Mask)
+        x = cvx.Variable(nVar)
         Obj = 0
         if "X" in prepared_objective:
             Sigma = np.dot(np.dot(prepared_objective["X"], prepared_objective["F"]), prepared_objective["X"].T) + np.diag(prepared_objective["Delta"])
@@ -92,8 +93,8 @@ class CVXPC(PortfolioConstructor):
             Obj += cvx.quad_form(x, Sigma)
         elif "Sigma" in prepared_objective:
             Obj += cvx.quad_form(x, prepared_objective["Sigma"])
-        c = np.dot(prepared_objective["b"], np.log(prepared_objective["b"])) - min(1e-4, 1/nvar)
-        CVXConstraints = [x >= np.zeros(nvar), prepared_objective["b"] @ cvx.log(x) >= c]
+        c = np.dot(prepared_objective["b"], np.log(prepared_objective["b"])) - min(1e-4, 1/nVar)
+        CVXConstraints = [x >= np.zeros((nVar,)), prepared_objective["b"] @ cvx.log(x) >= c]
         Model = cvx.Problem(cvx.Minimize(Obj), CVXConstraints)
         try:
             Model.solve(**prepared_option)
@@ -101,7 +102,7 @@ class CVXPC(PortfolioConstructor):
             return (None, {"status": 0, "msg": traceback.format_exc()})
         else:
             return (x.value / np.sum(x.value), {
-                "status": (1 if Model.status not in ("infeasible", "unbounded") else 0), 
+                "status": (1 if Model.status not in (cvx.INFEASIBLE, cvx.UNBOUNDED) else 0), 
                 "msg": Model.status, 
                 "solver_name": Model.solver_stats.solver_name,
                 "solve_time": Model.solver_stats.solve_time, 
@@ -110,8 +111,9 @@ class CVXPC(PortfolioConstructor):
             })
     
     # 最大分散化模型
-    def _solveMaxDiversificationModel(self, nvar, prepared_objective, prepared_constraints, prepared_option):
-        x = cvx.Variable(nvar)
+    def _solveMaxDiversificationModel(self, prepared_objective, prepared_constraints, prepared_option):
+        nVar = np.sum(self._Mask)
+        x = cvx.Variable(nVar)
         if "X" in prepared_objective:
             Sigma = np.dot(np.dot(prepared_objective["X"], prepared_objective["F"]), prepared_objective["X"].T) + np.diag(prepared_objective["Delta"])
             Sigma = (Sigma + Sigma.T) / 2
@@ -120,7 +122,7 @@ class CVXPC(PortfolioConstructor):
         D = np.diag(1 / np.diag(Sigma)**0.5)
         P = np.dot(np.dot(D, Sigma), D)
         Obj = cvx.quad_form(x, P)
-        CVXConstraints = [x >= np.zeros(nvar), cvx.sum(x) == 1]
+        CVXConstraints = [x >= np.zeros((nVar,)), cvx.sum(x) == 1]
         Model = cvx.Problem(cvx.Minimize(Obj), CVXConstraints)
         try:
             Model.solve(**prepared_option)
@@ -129,7 +131,7 @@ class CVXPC(PortfolioConstructor):
         else:
             x = np.dot(D, x.value)
             return (x / np.sum(x), {
-                "status": (1 if Model.status not in ("infeasible", "unbounded") else 0), 
+                "status": (1 if Model.status not in (cvx.INFEASIBLE, cvx.UNBOUNDED) else 0), 
                 "msg": Model.status, 
                 "solver_name": Model.solver_stats.solver_name,
                 "solve_time": Model.solver_stats.solve_time, 
@@ -140,8 +142,8 @@ class CVXPC(PortfolioConstructor):
     def _genOption(self):
         return {"verbose": False} | self._QSArgs.OptimOption
     
-    def _solve(self, nvar, prepared_objective, prepared_constraints, prepared_option):
-        if isinstance(self._Objective, MeanVarianceObjective): return self._solveMeanVarianceModel(nvar, prepared_objective, prepared_constraints, prepared_option)
-        elif isinstance(self._Objective, RiskBudgetObjective): return self._solveRiskBudgetModel(nvar, prepared_objective, prepared_constraints, prepared_option)
-        elif isinstance(self._Objective, MaxDiversificationObjective): return self._solveMaxDiversificationModel(nvar, prepared_objective, prepared_constraints, prepared_option)
+    def _solve(self, prepared_objective, prepared_constraints, prepared_option):
+        if isinstance(self._Objective, MeanVarianceObjective): return self._solveMeanVarianceModel(prepared_objective, prepared_constraints, prepared_option)
+        elif isinstance(self._Objective, RiskBudgetObjective): return self._solveRiskBudgetModel(prepared_objective, prepared_constraints, prepared_option)
+        elif isinstance(self._Objective, MaxDiversificationObjective): return self._solveMaxDiversificationModel(prepared_objective, prepared_constraints, prepared_option)
         else: raise __QS_Error__("不支持的优化目标: '%s'" % self._Objective)

@@ -805,7 +805,7 @@ class PanelOperator(FactorOperator):
             StdData[iStartIdx+i, :] = self.calculate(factor, iDTs, SectionIDs, x + extra_dep_data, ModelArgs)
         return pd.DataFrame(StdData[iStartIdx+jStartIdx:iStartIdx+jEndIdx, :], columns=SectionIDs).reindex(columns=ids).values
     
-    def _calcDataNumpyMultiDT(self, factor, ids, dts, descriptor_data, DTRuler, SectionIDs, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, ModelArgs, StdData, extra_dep_data):
+    def _calcDataNumpyMultiDT(self, factor, ids, dts, descriptor_data, jStartIdx, jEndIdx, DTRuler, SectionIDs, StartIndAndLen, MaxLookBack, MaxLen, iStartIdx, ModelArgs, StdData, extra_dep_data):
         StdData = self.calculate(factor, DTRuler, SectionIDs, descriptor_data + extra_dep_data, ModelArgs)
         CalcMask = factor._QS_getCalcDTs(dts, mask=True)
         if CalcMask is not None:

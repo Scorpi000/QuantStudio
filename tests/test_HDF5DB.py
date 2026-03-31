@@ -7,7 +7,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from QuantStudio.FactorDataBase.HDF5DB import HDF5DB
+from QuantStudio.Factor.HDF5DB import HDF5DB
 
 def compareDataFrame(df1, df2, dtype="double"):
     m1, m2 = pd.isnull(df1), pd.isnull(df2)
@@ -24,7 +24,7 @@ class TestHDF5DB(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         TestHDF5DB.TempDir = tempfile.TemporaryDirectory()
-        TestHDF5DB.FDB = HDF5DB(sys_args={"主目录":TestHDF5DB.TempDir.name})
+        TestHDF5DB.FDB = HDF5DB(sys_args={"MainDir": TestHDF5DB.TempDir.name})
     # 测试数据读写
     def test_DataIO(self):
         self.FDB.connect()

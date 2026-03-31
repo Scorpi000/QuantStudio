@@ -24,12 +24,11 @@ class FactorTable(Node):
     时点数据类型是 datetime, ID 和因子名称的数据类型是 str
     """
 
-    def __init__(self, fdb: FactorDB, args: dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, fdb: Optional[FactorDB], args: dict={}, config_file: Optional[str]=None, **kwargs):
         """初始化因子表
 
         Args:
             fdb: 因子表所属的因子库
-        
         """
         self._FactorDB = fdb
         self._QS_PrepareIgnoredArgs: tuple = tuple()# 决定 PrepareID 不需要的参数集，如果为空，表示所有参数都需要
@@ -38,7 +37,7 @@ class FactorTable(Node):
         return super().__init__(args=args, config_file=config_file, **kwargs)
 
     @property
-    def FactorDB(self) -> FactorDB:
+    def FactorDB(self) -> FactorDB | None:
         """因子表所属的因子库, None 表示因子表不属于任何因子库"""
         return self._FactorDB
 
@@ -265,7 +264,6 @@ class FactorTable(Node):
         else:
             PIDIDs = context.splitID(SectionIDs)
         self.__QS_saveRawData__(raw_data=RawData, key=self.PrepareID, target_fields=FactorNames, pid_ids=PIDIDs, context=context)
-        return 0
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
         return None

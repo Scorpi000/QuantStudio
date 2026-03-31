@@ -9,10 +9,6 @@ from QuantStudio.Core import __QS_Object__, __QS_Args__
 from QuantStudio.Core.Cache import Cache
 
 
-# 全局运行时环境
-__QS_Context__ = []
-
-
 class Context(__QS_Args__):
     """节点运算时全局上下文对象"""
 
@@ -190,3 +186,7 @@ class Node(__QS_Object__):
             合并后的结果
         """        
         return result_list
+
+
+# 全局运行时环境
+__QS_Context__: List[Context] = []

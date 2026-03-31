@@ -3,6 +3,7 @@ from typing import List, Optional, Literal, Tuple
 
 import pandas as pd
 import numpy as np
+from numpy.typing import NDArray
 from pydantic import Field
 
 from QuantStudio.Core import __QS_Object__, __QS_Error__
@@ -13,6 +14,13 @@ class OptimizationObjective(__QS_Object__):
     """优化目标"""
     
     def genObjective(self) -> dict:
+        """生成优化目标对应的数学形式
+        
+        Returns:
+            根据不同的优化目标类型，返回不同的形式。以下是两个可能的形式：
+            * 线性目标: f' * x + c, 则返回: {'f': array(n, 1), 'constant': c, 'type': 'Linear'}
+            * 二次目标: x' * Sigma * x + Mu' * x, 则返回: {'Sigma': array(n, n), 'Mu': array(n,), 'constant': c, 'type': 'Quadratic'}
+        """
         raise NotImplementedError
 
 
@@ -20,9 +28,9 @@ class MeanVarianceObjective(OptimizationObjective):
     """均值方差优化目标
     数学形式: 
     线性目标: f'*x, {'f': array(n, 1), 'type': 'Linear'}
-    二次目标: x'Sigma*x + Mu'*x, {'Sigma': array(n, n), 'X': array(n, k), 'F': array(k, k), 'Delta': array(n,1 ), 'Mu': array(n, 1), 'type': 'Quadratic'}, 其中 Sigma = X*F*X'+Delta
+    二次目标: x'*Sigma*x + Mu'*x, {'Sigma': array(n, n), 'X': array(n, k), 'F': array(k, k), 'Delta': array(n,), 'Mu': array(n,), 'type': 'Quadratic'}, 其中 Sigma = X*F*X'+Delta
     L1 惩罚线性目标: f'*x + lambda1*sum(abs(x-c)) + lambda2*sum((x-c_pos)^+) + lambda3*sum((x-c_neg)^-),{'f':array(n,1),'lambda1':double,'c':array(n,1),'lambda2':double,'c_pos':array(n,1),'lambda3':double,'c_neg':array(n,1),'type':'L1_Linear'}
-    L1 惩罚二次目标: x'Sigma*x + Mu'*x + lambda1*sum(abs(x-c)) + lambda2*sum((x-c_pos)^+) + lambda3*sum((x-c_neg)^-),{'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Delta':array(n,1),'Mu':array(n,1),'lambda1':double,'c':array(n,1),'lambda2':double,'c_pos':array(n,1),'lambda3':double,'c_neg':array(n,1),'type':'L1_Quadratic'}, 其中, Sigma = X*F*X'+Delta
+    L1 惩罚二次目标: x'*Sigma*x + Mu'*x + lambda1*sum(abs(x-c)) + lambda2*sum((x-c_pos)^+) + lambda3*sum((x-c_neg)^-),{'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Delta':array(n,1),'Mu':array(n,1),'lambda1':double,'c':array(n,1),'lambda2':double,'c_pos':array(n,1),'lambda3':double,'c_neg':array(n,1),'type':'L1_Quadratic'}, 其中, Sigma = X*F*X'+Delta
     """
 
     class __QS_ArgClass__(OptimizationObjective.__QS_ArgClass__):
@@ -33,7 +41,23 @@ class MeanVarianceObjective(OptimizationObjective):
         BuyPenaltyCoef: float = Field(default=0.0, title="买入惩罚系数", frozen=True)
         SellPenaltyCoef: float = Field(default=0.0, title="卖出惩罚系数", frozen=True)
     
-    def __init__(self, mask: np.ndarray, expected_return: Optional[np.ndarray]=None, p0:Optional[np.ndarray]=None, bmk: Optional[np.ndarray]=None, factor_cov: Optional[np.ndarray]=None, factor_data: Optional[np.ndarray]=None, specific_risk: Optional[np.ndarray]=None, cov: Optional[np.ndarray]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, mask: NDArray[np.bool], expected_return: Optional[NDArray[np.float64]]=None, p0:Optional[NDArray[np.float64]]=None, bmk: Optional[NDArray[np.float64]]=None, factor_cov: Optional[NDArray[np.float64]]=None, factor_data: Optional[NDArray[np.float64]]=None, specific_risk: Optional[NDArray[np.float64]]=None, cov: Optional[NDArray[np.float64]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化均值方差优化目标对象
+
+        Args:
+            mask: array(shape=(n,)), 其中 n 为证券数量, True 表示组合可以选择的目标证券, False 表示组合中不可包含的证券
+            expected_return: 预期收益, array(shape=(n,)), 缺失值会被填充为 0
+            p0: 初始投资组合, array(shape=(n,)), 缺失值会被填充为 0
+            bmk: 基准投资组合, array(shape=(n,)), 缺失值会被填充为 0
+            factor_cov: 因子协方差阵, array(shape=(k, k)), 其中 k 是因子数量
+            factor_data: 因子暴露矩阵, array(shape=(n, k))
+            specific_risk: 特异性风险, array(shape=(n,))
+            cov: 证券协方差阵, array(shape=(n, n)), 如果 factor_cov, factor_data, specific_risk 均非 None, 则使用这三者计算出来的协方差阵；否则使用 cov
+            args: 指定的对象参数集
+            config_file: 配置文件路径, 配置文件用于设置对象参数。配置文件是一个 json 格式的文件(字符编码为 utf-8, 扩展名为 json), 以键值对的形式给出各个参数的取值
+            kwargs:
+                logger: 日志对象, 用于内部打印日志, 如果没有指定则使用默认的 __QS_Logger__ 对象
+        """
         super().__init__(args, config_file, **kwargs)
         if self._QSArgs.Benchmark and (bmk is None): raise __QS_Error__("优化目标需要基准投资组合，但入参 bmk 为 None!")
         if bmk is None: bmk = np.zeros(mask.shape)
@@ -57,9 +81,10 @@ class MeanVarianceObjective(OptimizationObjective):
 
     def genObjective(self) -> dict:
         ObjectiveConstant = 0.0
-        Mu = self._QSArgs.ExpectedReturnCoef * self.ExpectedReturn[self._Mask]
-        ObjectiveConstant += - self._QSArgs.ExpectedReturnCoef * np.dot(self.ExpectedReturn, self._Bmk)
-        ObjectiveConstant += self._QSArgs.ExpectedReturnCoef * np.dot(self.ExpectedReturn[~self._Mask], (0 - self._Bmk[~self._Mask]))
+        Mu = self._QSArgs.ExpectedReturnCoef * self._ExpectedReturn[self._Mask]
+        ObjectiveConstant += - self._QSArgs.ExpectedReturnCoef * np.dot(self._ExpectedReturn, self._Bmk)
+        if not np.all(self._Mask):
+            ObjectiveConstant += self._QSArgs.ExpectedReturnCoef * np.dot(self._ExpectedReturn[~self._Mask], (0 - self._Bmk[~self._Mask]))
 
         if self._QSArgs.RiskAversionCoef != 0.0:
             if (self._FactorCov is not None) and (self._FactorData is not None) and (self._SpecificRisk is not None):
@@ -68,14 +93,16 @@ class MeanVarianceObjective(OptimizationObjective):
                 Sigma = self._Cov
             Sigma = np.where(pd.notnull(Sigma), Sigma, 0)
             RiskCoef = - self._QSArgs.RiskAversionCoef / 2
-            Mu += -2 * RiskCoef * np.dot(self._Bmk[self._Mask], Sigma[self._Mask, self._Mask])
-            Mu += 2 * RiskCoef * np.dot((0 - self._Bmk[~self._Mask]), Sigma[~self._Mask, self._Mask])
-            ObjectiveConstant += RiskCoef * np.dot(np.dot(self._Bmk[self._Mask], Sigma[self._Mask, self._Mask]), self._Bmk[self._Mask])
-            ObjectiveConstant += -2 * RiskCoef * np.dot(np.dot((0 - self._Bmk[~self._Mask]), Sigma[~self._Mask, self._Mask]), self._Bmk[self._Mask])
-            ObjectiveConstant += RiskCoef * np.dot(np.dot((0 - self._Bmk[~self._Mask]), Sigma[~self._Mask, ~self._Mask]), (0 - self._Bmk[~self._Mask]))
+            Mu += -2 * RiskCoef * np.dot(self._Bmk[self._Mask], Sigma[self._Mask][:, self._Mask])
+            if not np.all(self._Mask):
+                Mu += 2 * RiskCoef * np.dot((0 - self._Bmk[~self._Mask]), Sigma[~self._Mask][:, self._Mask])
+            ObjectiveConstant += RiskCoef * np.dot(np.dot(self._Bmk[self._Mask], Sigma[self._Mask][:, self._Mask]), self._Bmk[self._Mask])
+            if not np.all(self._Mask):
+                ObjectiveConstant += -2 * RiskCoef * np.dot(np.dot((0 - self._Bmk[~self._Mask]), Sigma[~self._Mask][:, self._Mask]), self._Bmk[self._Mask])
+                ObjectiveConstant += RiskCoef * np.dot(np.dot((0 - self._Bmk[~self._Mask]), Sigma[~self._Mask][:, ~self._Mask]), (0 - self._Bmk[~self._Mask]))
             if (self._FactorCov is not None) and (self._FactorData is not None) and (self._SpecificRisk is not None):
                 Objective = {
-                    "type":"Quadratic",
+                    "type": "Quadratic",
                     "minmax": "max",
                     "X": self._FactorData[self._Mask],
                     "F": RiskCoef * self._FactorCov,
@@ -84,27 +111,30 @@ class MeanVarianceObjective(OptimizationObjective):
                 }
             else:
                 Objective = {
-                    "type":"Quadratic",
+                    "type": "Quadratic",
                     "minmax": "max",
-                    "Sigma": RiskCoef * Sigma[self._Mask, self._Mask],
+                    "Sigma": RiskCoef * Sigma[self._Mask][:, self._Mask],
                     "Mu": Mu
                 }
         else:
-            Objective = {"type": "Linear", "f": Mu}
+            Objective = {"type": "Linear", "f": Mu, "minmax": "max"}
         
         if self._P0 is not None: p0 = np.where(pd.notnull(self._P0), self._P0, 0)
         if self._QSArgs.TurnoverPenaltyCoef != 0.0:
             Objective['type'] = "L1_" + Objective['type'].split("_")[-1]
             Objective.update({'lambda1': self._QSArgs.TurnoverPenaltyCoef, "c": p0[self._Mask]})
-            ObjectiveConstant += self._QSArgs.TurnoverPenaltyCoef * np.sum(np.abs(0 - p0[~self._Mask]))
+            if not np.all(self._Mask):
+                ObjectiveConstant += self._QSArgs.TurnoverPenaltyCoef * np.sum(np.abs(0 - p0[~self._Mask]))
         if self._QSArgs.BuyPenaltyCoef != 0.0:
             Objective['type'] = "L1_" + Objective['type'].split("_")[-1]
             Objective.update({'lambda2': self._QSArgs.BuyPenaltyCoef, "c_pos": p0[self._Mask]})
-            ObjectiveConstant += self._QSArgs.BuyPenaltyCoef * np.sum(np.clip(0 - p0[~self._Mask], 0, np.inf))
+            if not np.all(self._Mask):
+                ObjectiveConstant += self._QSArgs.BuyPenaltyCoef * np.sum(np.clip(0 - p0[~self._Mask], 0, np.inf))
         if self._QSArgs.SellPenaltyCoef != 0.0:
             Objective['type'] = "L1_" + Objective['type'].split("_")[-1]
             Objective.update({'lambda3': self._QSArgs.SellPenaltyCoef, "c_neg": p0[self._Mask]})
-            ObjectiveConstant += self._QSArgs.SellPenaltyCoef * np.sum(- np.clip(0 - p0[~self._Mask], -np.inf, 0))
+            if not np.all(self._Mask):
+                ObjectiveConstant += self._QSArgs.SellPenaltyCoef * np.sum(- np.clip(0 - p0[~self._Mask], -np.inf, 0))
         
         Objective["constant"] = ObjectiveConstant
         return Objective
@@ -118,7 +148,22 @@ class MaxSharpeObjective(OptimizationObjective):
     class __QS_ArgClass__(OptimizationObjective.__QS_ArgClass__):
         Benchmark: bool = Field(default=False, title="相对基准", frozen=True)
     
-    def __init__(self, mask: np.ndarray, expected_return: np.ndarray, bmk: Optional[np.ndarray]=None, factor_cov: Optional[np.ndarray]=None, factor_data: Optional[np.ndarray]=None, specific_risk: Optional[np.ndarray]=None, cov: Optional[np.ndarray]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, mask: NDArray[np.bool], expected_return: NDArray[np.float64], bmk: Optional[NDArray[np.float64]]=None, factor_cov: Optional[NDArray[np.float64]]=None, factor_data: Optional[NDArray[np.float64]]=None, specific_risk: Optional[NDArray[np.float64]]=None, cov: Optional[NDArray[np.float64]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化最大夏普率优化目标对象
+
+        Args:
+            mask: array(shape=(n,)), 其中 n 为证券数量, True 表示组合可以选择的目标证券, False 表示组合中不可包含的证券
+            expected_return: 预期收益, array(shape=(n,)), 缺失值会被填充为 0
+            bmk: 基准投资组合, array(shape=(n,)), 缺失值会被填充为 0
+            factor_cov: 因子协方差阵, array(shape=(k, k)), 其中 k 是因子数量
+            factor_data: 因子暴露矩阵, array(shape=(n, k))
+            specific_risk: 特异性风险, array(shape=(n,))
+            cov: 证券协方差阵, array(shape=(n, n)), 如果 factor_cov, factor_data, specific_risk 均非 None, 则使用这三者计算出来的协方差阵；否则使用 cov
+            args: 指定的对象参数集
+            config_file: 配置文件路径, 配置文件用于设置对象参数。配置文件是一个 json 格式的文件(字符编码为 utf-8, 扩展名为 json), 以键值对的形式给出各个参数的取值
+            kwargs:
+                logger: 日志对象, 用于内部打印日志, 如果没有指定则使用默认的 __QS_Logger__ 对象
+        """
         super().__init__(args, config_file, **kwargs)
         if self._QSArgs.Benchmark and (bmk is None): raise __QS_Error__("优化目标需要基准投资组合，但入参 bmk 为 None!")
         if bmk is None: bmk = np.zeros(mask.shape)
@@ -157,7 +202,7 @@ class MaxSharpeObjective(OptimizationObjective):
                     "minmax": "max",
                     "f": self._ExpectedReturn[self._Mask],
                     "f0": 0.0,
-                    "Sigma": self._Cov[self._Mask, self._Mask],
+                    "Sigma": self._Cov[self._Mask][:, self._Mask],
                     "Mu": np.zeros((np.sum(self._Mask), )),
                     "q": 0.0
                 }
@@ -170,14 +215,16 @@ class MaxSharpeObjective(OptimizationObjective):
         Objective = {
             "type": "Sharpe",
             "f": self._ExpectedReturn[self._Mask],
-            "f0": - np.dot(self._ExpectedReturn[self._Mask], self._Bmk[self._Mask]) + np.dot(self._ExpectedReturn[~self._Mask], (0 - self._Bmk[~self._Mask]))
+            "f0": - np.dot(self._ExpectedReturn[self._Mask], self._Bmk[self._Mask]) + (np.dot(self._ExpectedReturn[~self._Mask], (0 - self._Bmk[~self._Mask])) if not np.all(self._Mask) else 0)
         }
         Sigma = np.where(pd.notnull(Sigma), Sigma, 0)
-        Mu = -2 * np.dot(self._Bmk[self._Mask], Sigma[self._Mask, self._Mask])
-        Mu += 2 * np.dot((0 - self._Bmk[~self._Mask]), Sigma[~self._Mask, self._Mask])
-        q = np.dot(np.dot(self._Bmk[self._Mask], Sigma[self._Mask, self._Mask]), self._Bmk[self._Mask])
-        q += -2 * np.dot(np.dot((0 - self._Bmk[~self._Mask]), Sigma[~self._Mask, self._Mask]), self._Bmk[self._Mask])
-        q += np.dot(np.dot((0 - self._Bmk[~self._Mask]), Sigma[~self._Mask, ~self._Mask]), (0 - self._Bmk[~self._Mask]))
+        Mu = -2 * np.dot(self._Bmk[self._Mask], Sigma[self._Mask][:, self._Mask])
+        if not np.all(self._Mask):
+            Mu += 2 * np.dot((0 - self._Bmk[~self._Mask]), Sigma[~self._Mask][:, self._Mask])
+        q = np.dot(np.dot(self._Bmk[self._Mask], Sigma[self._Mask][:, self._Mask]), self._Bmk[self._Mask])
+        if not np.all(self._Mask):
+            q += -2 * np.dot(np.dot((0 - self._Bmk[~self._Mask]), Sigma[~self._Mask][:, self._Mask]), self._Bmk[self._Mask])
+            q += np.dot(np.dot((0 - self._Bmk[~self._Mask]), Sigma[~self._Mask][:, ~self._Mask]), (0 - self._Bmk[~self._Mask]))
         Objective["Mu"] = Mu
         Objective["q"] = q
         if (self._FactorCov is not None) and (self._FactorData is not None) and (self._SpecificRisk is not None):
@@ -185,7 +232,7 @@ class MaxSharpeObjective(OptimizationObjective):
             Objective["F"] = self._FactorCov
             Objective["Delta"] = self._SpecificRisk[self._Mask] ** 2
         else:
-            Objective["Sigma"] = Sigma[self._Mask, self._Mask]
+            Objective["Sigma"] = Sigma[self._Mask][:, self._Mask]
         return Objective
 
 
@@ -194,12 +241,23 @@ class RiskBudgetObjective(OptimizationObjective):
     数学形式: {'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Delta':array(n,1),'b':array(n,1),type':'Risk_Budget'}
     """
 
-    class __QS_ArgClass__(OptimizationObjective.__QS_ArgClass__):
-        RiskParity: bool = Field(default=True, title="风险平价", frozen=True)
+    def __init__(self, mask: NDArray[np.bool], budget: Optional[NDArray[np.float64]]=None, factor_cov: Optional[NDArray[np.float64]]=None, factor_data: Optional[NDArray[np.float64]]=None, specific_risk: Optional[NDArray[np.float64]]=None, cov: Optional[NDArray[np.float64]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化风险预算优化目标对象
 
-    def __init__(self, mask: np.ndarray, budget: Optional[np.ndarray]=None, factor_cov: Optional[np.ndarray]=None, factor_data: Optional[np.ndarray]=None, specific_risk: Optional[np.ndarray]=None, cov: Optional[np.ndarray]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        Args:
+            mask: array(shape=(n,)), 其中 n 为证券数量, True 表示组合可以选择的目标证券, False 表示组合中不可包含的证券
+            budget: 风险预算, array(shape=(n,)), 缺失值会被填充为 0, None 表示风险平价
+            bmk: 基准投资组合, array(shape=(n,)), 缺失值会被填充为 0
+            factor_cov: 因子协方差阵, array(shape=(k, k)), 其中 k 是因子数量
+            factor_data: 因子暴露矩阵, array(shape=(n, k))
+            specific_risk: 特异性风险, array(shape=(n,))
+            cov: 证券协方差阵, array(shape=(n, n)), 如果 factor_cov, factor_data, specific_risk 均非 None, 则使用这三者计算出来的协方差阵；否则使用 cov
+            args: 指定的对象参数集
+            config_file: 配置文件路径, 配置文件用于设置对象参数。配置文件是一个 json 格式的文件(字符编码为 utf-8, 扩展名为 json), 以键值对的形式给出各个参数的取值
+            kwargs:
+                logger: 日志对象, 用于内部打印日志, 如果没有指定则使用默认的 __QS_Logger__ 对象
+        """
         super().__init__(args, config_file, **kwargs)
-        if (not self._QSArgs.RiskParity) and (budget is None): raise __QS_Error__("优化目标需要风险预算，但入参 budget 为 None!")
         if budget is None: budget = np.ones(mask.shape) / np.sum(mask)
         else: budget = np.where(pd.notnull(budget), budget, 0)
 
@@ -223,7 +281,7 @@ class RiskBudgetObjective(OptimizationObjective):
                 "Delta": self._SpecificRisk[self._Mask] ** 2
             }
         else:
-            Objective = {"type": "Risk_Budget", "Sigma": self._Cov[self._Mask, self._Mask]}
+            Objective = {"type": "Risk_Budget", "Sigma": self._Cov[self._Mask][:, self._Mask]}
         
         Objective["b"] = self._Budget[self._Mask]
         return Objective
@@ -234,7 +292,20 @@ class MaxDiversificationObjective(OptimizationObjective):
     数学形式: {'Sigma':array(n,n),'X':array(n,k),'F':array(k,k),'Delta':array(n,1),type':'Max_Diversification'}
     """
 
-    def __init__(self, mask: np.ndarray, factor_cov: Optional[np.ndarray]=None, factor_data: Optional[np.ndarray]=None, specific_risk: Optional[np.ndarray]=None, cov: Optional[np.ndarray]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, mask: NDArray[np.bool], factor_cov: Optional[NDArray[np.float64]]=None, factor_data: Optional[NDArray[np.float64]]=None, specific_risk: Optional[NDArray[np.float64]]=None, cov: Optional[NDArray[np.float64]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化最大分散化优化目标对象
+
+        Args:
+            mask: array(shape=(n,)), 其中 n 为证券数量, True 表示组合可以选择的目标证券, False 表示组合中不可包含的证券
+            factor_cov: 因子协方差阵, array(shape=(k, k)), 其中 k 是因子数量
+            factor_data: 因子暴露矩阵, array(shape=(n, k))
+            specific_risk: 特异性风险, array(shape=(n,))
+            cov: 证券协方差阵, array(shape=(n, n)), 如果 factor_cov, factor_data, specific_risk 均非 None, 则使用这三者计算出来的协方差阵；否则使用 cov
+            args: 指定的对象参数集
+            config_file: 配置文件路径, 配置文件用于设置对象参数。配置文件是一个 json 格式的文件(字符编码为 utf-8, 扩展名为 json), 以键值对的形式给出各个参数的取值
+            kwargs:
+                logger: 日志对象, 用于内部打印日志, 如果没有指定则使用默认的 __QS_Logger__ 对象
+        """
         super().__init__(args, config_file, **kwargs)
         if (not (((factor_cov is not None) and (factor_data is not None) and (specific_risk is not None)) or (cov is not None))):
             raise __QS_Error__("优化目标需要风险矩阵，但入参 factor_cov, factor_data, specific_risk, cov 为 None!")
@@ -255,7 +326,7 @@ class MaxDiversificationObjective(OptimizationObjective):
                 "Delta": self._SpecificRisk[self._Mask] ** 2
             }
         else:
-            Objective = {"type": "Max_Diversification", "Sigma": self._Cov[self._Mask, self._Mask]}
+            Objective = {"type": "Max_Diversification", "Sigma": self._Cov[self._Mask][:, self._Mask]}
         return Objective
 
 
@@ -286,7 +357,17 @@ class BudgetConstraint(Constraint):
         DownLimit: float = Field(default=1.0, title="限制下限", frozen=True)
         Benchmark: bool = Field(default=False, title="相对基准", frozen=True)
 
-    def __init__(self, mask:np.ndarray, bmk: Optional[np.ndarray]=None, args:dict = {}, config_file:Optional[str] = None, **kwargs):
+    def __init__(self, mask:NDArray[np.bool], bmk: Optional[NDArray[np.float64]]=None, args:dict = {}, config_file:Optional[str] = None, **kwargs):
+        """初始化预算约束条件对象
+
+        Args:
+            mask: array(shape=(n,)), 其中 n 为证券数量, True 表示组合可以选择的目标证券, False 表示组合中不可包含的证券
+            bmk: 基准投资组合, array(shape=(n,)), 缺失值会被填充为 0
+            args: 指定的对象参数集
+            config_file: 配置文件路径, 配置文件用于设置对象参数。配置文件是一个 json 格式的文件(字符编码为 utf-8, 扩展名为 json), 以键值对的形式给出各个参数的取值
+            kwargs:
+                logger: 日志对象, 用于内部打印日志, 如果没有指定则使用默认的 __QS_Logger__ 对象
+        """
         super().__init__(args, config_file, **kwargs)
         if self._QSArgs.UpLimit < self._QSArgs.DownLimit: raise __QS_Error__("限制上限必须大于等于限制下限!")
         if self._QSArgs.Benchmark and (bmk is None): raise __QS_Error__("优化目标需要基准投资组合，但入参 bmk 为 None!")
@@ -330,7 +411,18 @@ class FactorExposeConstraint(Constraint):
         DownLimit: float = Field(default=1.0, title="限制下限", frozen=True)
         Benchmark: bool = Field(default=False, title="相对基准", frozen=True)
     
-    def __init__(self, mask:np.ndarray, factor_data:np.ndarray, bmk: Optional[np.ndarray]=None, args:dict = {}, config_file:Optional[str] = None, **kwargs):
+    def __init__(self, mask:NDArray[np.bool], factor_data:NDArray, bmk: Optional[NDArray[np.float64]]=None, args:dict = {}, config_file:Optional[str] = None, **kwargs):
+        """初始化因子暴露约束条件对象
+
+        Args:
+            mask: array(shape=(n,)), 其中 n 为证券数量, True 表示组合可以选择的目标证券, False 表示组合中不可包含的证券
+            factor_data: 因子暴露数据, array(shape=(n, k)), 其中 k 是因子数量, 缺失值会被填充为 0
+            bmk: 基准投资组合, array(shape=(n,)), 缺失值会被填充为 0
+            args: 指定的对象参数集
+            config_file: 配置文件路径, 配置文件用于设置对象参数。配置文件是一个 json 格式的文件(字符编码为 utf-8, 扩展名为 json), 以键值对的形式给出各个参数的取值
+            kwargs:
+                logger: 日志对象, 用于内部打印日志, 如果没有指定则使用默认的 __QS_Logger__ 对象
+        """
         super().__init__(args, config_file, **kwargs)
         if self._QSArgs.UpLimit < self._QSArgs.DownLimit: raise __QS_Error__("限制上限必须大于等于限制下限!")
         if self._QSArgs.Benchmark and (bmk is None): raise __QS_Error__("优化目标需要基准投资组合，但入参 bmk 为 None!")
@@ -342,7 +434,7 @@ class FactorExposeConstraint(Constraint):
         self._Bmk = bmk
     
     # 生成数值型因子暴露约束条件的优化器条件形式
-    def _genNumFactorExposeConstraint(self, mask:np.ndarray, factor_data:np.ndarray, bmk: np.ndarray):
+    def _genNumFactorExposeConstraint(self, mask:NDArray[np.bool], factor_data:NDArray[np.float64], bmk: NDArray[np.float64]):
         Constraints = []
         factor_data = np.where(pd.notnull(factor_data), factor_data, 0)
         aAdj = np.dot(bmk, factor_data)
@@ -370,14 +462,10 @@ class FactorExposeConstraint(Constraint):
         return Constraints
     
     # 生成类别型因子暴露约束条件的优化器条件形式
-    def _genClassFactorExposeConstraint(self, mask:np.ndarray, factor_data:np.ndarray, bmk: np.ndarray):
+    def _genClassFactorExposeConstraint(self, mask:NDArray[np.bool], factor_data:NDArray[np.float64], bmk: NDArray[np.float64]):
         Constraints = []
-        if self._PC._Dependency.get("基准投资组合", False):
-            AllFactorData = self._PC._QSArgs.FactorData.append(self._PC._BenchmarkExtraFactorData)
-        else:
-            AllFactorData = self._PC._QSArgs.FactorData
         for i in range(factor_data.shape[1]):
-            iFactorData = AllFactorData[:, i]
+            iFactorData = factor_data[:, i]
             iFactorData = DummyVarTo01Var(pd.Series(iFactorData), ignore_na=True, ignore_nonstring=True).values
             aAdj = np.dot(bmk, iFactorData)
             A = iFactorData[mask].T
@@ -403,7 +491,7 @@ class FactorExposeConstraint(Constraint):
                     })
         return Constraints
     
-    def genConstraint(self):
+    def genConstraint(self) -> List[dict]:
         if self._QSArgs.FactorType=="数值型":
             return self._genNumFactorExposeConstraint(self._Mask, self._FactorData, self._Bmk)
         else:
@@ -414,13 +502,22 @@ class WeightConstraint(Constraint):
     """权重约束: (w-benchmark) <=(>=) a, 转换成 Box 约束"""
 
     class __QS_ArgClass__(Constraint.__QS_ArgClass__):
-        UpLimit: float | None = Field(default=1.0, title="限制上限", frozen=True)
-        DownLimit: float | None = Field(default=0.0, title="限制下限", frozen=True)
         Benchmark: bool = Field(default=False, title="相对基准", frozen=True)
     
-    def __init__(self, mask:np.ndarray, bmk: Optional[np.ndarray]=None, up_limit: Optional[np.ndarray]=None, down_limit: Optional[np.ndarray]=None, args:dict = {}, config_file:Optional[str] = None, **kwargs):
+    def __init__(self, mask:NDArray[np.bool], bmk: Optional[NDArray[np.float64]]=None, up_limit: Optional[NDArray[np.float64] | float]=None, down_limit: Optional[NDArray[np.float64] | float]=None, args:dict = {}, config_file:Optional[str] = None, **kwargs):
+        """初始化权重约束条件对象
+
+        Args:
+            mask: array(shape=(n,)), 其中 n 为证券数量, True 表示组合可以选择的目标证券, False 表示组合中不可包含的证券
+            bmk: 基准投资组合, array(shape=(n,)), 缺失值会被填充为 0
+            up_limit: 约束上限, array(shape=(n,)) 或者 float, 缺失值会被填充为 inf
+            down_limit: 约束下限, array(shape=(n,)) 或者 float, 缺失值会被填充为 -inf
+            args: 指定的对象参数集
+            config_file: 配置文件路径, 配置文件用于设置对象参数。配置文件是一个 json 格式的文件(字符编码为 utf-8, 扩展名为 json), 以键值对的形式给出各个参数的取值
+            kwargs:
+                logger: 日志对象, 用于内部打印日志, 如果没有指定则使用默认的 __QS_Logger__ 对象
+        """
         super().__init__(args, config_file, **kwargs)
-        if self._QSArgs.UpLimit < self._QSArgs.DownLimit: raise __QS_Error__("限制上限必须大于等于限制下限!")
         if self._QSArgs.Benchmark and (bmk is None): raise __QS_Error__("优化目标需要基准投资组合，但入参 bmk 为 None!")
         if bmk is None: bmk = np.zeros(mask.shape)
         else: bmk = np.where(pd.notnull(bmk), bmk, 0)
@@ -430,25 +527,23 @@ class WeightConstraint(Constraint):
         self._UpLimit = up_limit
         self._DownLimit = down_limit
 
-    def genConstraint(self, mask:np.ndarray, ):
-        if not self._QSArgs.TargetIDs:
-            if isinstance(self._QSArgs.UpLimit, str): UpConstraint = self._PC._QSArgs.FactorData.loc[:, self._QSArgs.UpLimit]
-            else: UpConstraint = pd.Series(self._QSArgs.UpLimit, index=self._PC._TargetIDs)
-            if isinstance(self._QSArgs.DownLimit, str): DownConstraint = self._PC._QSArgs.FactorData.loc[:, self._QSArgs.DownLimit]
-            else: DownConstraint = pd.Series(self._QSArgs.DownLimit, index=self._PC._TargetIDs)
+    def genConstraint(self) -> List[dict]:
+        if self._UpLimit is None:
+            UpConstraint = np.full(shape=(np.sum(self._Mask),), fill_value=np.inf, dtype=float)
+        elif not isinstance(self._UpLimit, np.ndarray):
+            UpConstraint = np.full(shape=(np.sum(self._Mask),), fill_value=self._UpLimit, dtype=float)
         else:
-            UpConstraint = pd.Series(np.inf, index=self._PC._TargetIDs)
-            DownConstraint = pd.Series(-np.inf, index=self._PC._TargetIDs)
-            TargetIDs = filterID(self._PC._QSArgs.FactorData, self._QSArgs.TargetIDs)
-            TargetIDs = list(set(TargetIDs).intersection(self._PC._TargetIDs))
-            if isinstance(self._QSArgs.UpLimit, str): UpConstraint[TargetIDs] = self._PC._QSArgs.FactorData.loc[TargetIDs, self._QSArgs.UpLimit]
-            else: UpConstraint[TargetIDs] = self._QSArgs.UpLimit
-            if isinstance(self._QSArgs.DownLimit, str): DownConstraint[TargetIDs] = self._PC._QSArgs.FactorData.loc[TargetIDs, self._QSArgs.DownLimit]
-            else: DownConstraint[TargetIDs] = self._QSArgs.DownLimit
+            UpConstraint = np.where(pd.isnull(self._UpLimit[self._Mask]), np.inf, self._UpLimit[self._Mask])
+        if self._DownLimit is None:
+            DownConstraint = np.full(shape=(np.sum(self._Mask),), fill_value=-np.inf, dtype=float)
+        elif not isinstance(self._DownLimit, np.ndarray):
+            DownConstraint = np.full(shape=(np.sum(self._Mask),), fill_value=self._DownLimit, dtype=float)
+        else:
+            DownConstraint = np.where(pd.isnull(self._DownLimit[self._Mask]), -np.inf, self._DownLimit[self._Mask])
         if self._QSArgs.Benchmark:
-            UpConstraint += self._PC._QSArgs.BenchmarkHolding
-            DownConstraint += self._PC._QSArgs.BenchmarkHolding
-        return [{"type":"Box", "lb":DownConstraint.values.reshape((self._PC._nID, 1)), "ub":UpConstraint.values.reshape((self._PC._nID, 1))}]
+            UpConstraint += self._Bmk[self._Mask]
+            DownConstraint += self._Bmk[self._Mask]
+        return [{"type": "Box", "lb": DownConstraint, "ub": UpConstraint}]
 
 
 class TurnoverConstraint(Constraint):
@@ -459,7 +554,19 @@ class TurnoverConstraint(Constraint):
         AmtMultiple: float = Field(default=1.0, title="成交额倍数", frozen=True)
         UpLimit: float = Field(default=0.7, title="限制上限", frozen=True)
     
-    def __init__(self, mask: np.ndarray, p0:np.ndarray, wealth:Optional[float]=None, amt: Optional[np.ndarray]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, mask: NDArray[np.bool], p0:NDArray[np.float64], wealth:Optional[float]=None, amt: Optional[NDArray[np.float64]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化换手约束条件对象
+
+        Args:
+            mask: array(shape=(n,)), 其中 n 为证券数量, True 表示组合可以选择的目标证券, False 表示组合中不可包含的证券
+            p0: 初始投资组合, array(shape=(n,)), 缺失值会被填充为 0
+            wealth: 账户总金额
+            amt: 证券成交金额, array(shape=(n,)), 缺失值会被填充为 0
+            args: 指定的对象参数集
+            config_file: 配置文件路径, 配置文件用于设置对象参数。配置文件是一个 json 格式的文件(字符编码为 utf-8, 扩展名为 json), 以键值对的形式给出各个参数的取值
+            kwargs:
+                logger: 日志对象, 用于内部打印日志, 如果没有指定则使用默认的 __QS_Logger__ 对象
+        """
         super().__init__(args, config_file, **kwargs)
         if (self._QSArgs.AmtMultiple != 0):
             if (amt is None): raise __QS_Error__("优化目标需要成交额，但入参 amt 为 None!")
@@ -471,7 +578,7 @@ class TurnoverConstraint(Constraint):
 
     def genConstraint(self) -> List[dict]:
         if self._QSArgs.ConstraintType=="总换手限制":
-            aAdj = self._QSArgs.UpLimit - self._P0[~self._Mask].sum()
+            aAdj = self._QSArgs.UpLimit - np.sum(self._P0[~self._Mask])
             return [{"type": "L1", "c": self._P0[self._Mask], "l": aAdj}]
         elif self._QSArgs.ConstraintType=="总买入限制":
             aAdj = self._QSArgs.UpLimit + np.sum(np.clip(self._P0[~self._Mask], -np.inf, 0))
@@ -480,7 +587,7 @@ class TurnoverConstraint(Constraint):
             aAdj = self._QSArgs.UpLimit - np.sum(np.clip(self._P0[~self._Mask], 0, np.inf))
             return [{"type": "Neg", "c_neg": self._P0[self._Mask], "l": aAdj}]
         if self._QSArgs.AmtMultiple == 0.0:
-            aAdj = np.zeros((self._PC._nID, 1)) + self._QSArgs.UpLimit
+            aAdj = np.zeros((np.sum(self._Mask), )) + self._QSArgs.UpLimit
         else:
             aAdj = self._Amt[self._Mask] * self._QSArgs.AmtMultiple / self._Wealth
         if self._QSArgs.ConstraintType=="买卖限制":
@@ -499,7 +606,21 @@ class VolatilityConstraint(Constraint):
         UpLimit: float = Field(default=0.06, title="限制上限", frozen=True)
         Benchmark: bool = Field(default=False, title="相对基准", frozen=True)
     
-    def __init__(self, mask: np.ndarray, bmk: Optional[np.ndarray]=None, factor_cov: Optional[np.ndarray]=None, factor_data: Optional[np.ndarray]=None, specific_risk: Optional[np.ndarray]=None, cov: Optional[np.ndarray]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, mask: NDArray[np.bool], bmk: Optional[NDArray[np.float64]]=None, factor_cov: Optional[NDArray[np.float64]]=None, factor_data: Optional[NDArray[np.float64]]=None, specific_risk: Optional[NDArray[np.float64]]=None, cov: Optional[NDArray[np.float64]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化波动率约束条件对象
+
+        Args:
+            mask: array(shape=(n,)), 其中 n 为证券数量, True 表示组合可以选择的目标证券, False 表示组合中不可包含的证券
+            bmk: 基准投资组合, array(shape=(n,)), 缺失值会被填充为 0
+            factor_cov: 因子协方差阵, array(shape=(k, k)), 其中 k 是因子数量
+            factor_data: 因子暴露矩阵, array(shape=(n, k))
+            specific_risk: 特异性风险, array(shape=(n,))
+            cov: 证券协方差阵, array(shape=(n, n)), 如果 factor_cov, factor_data, specific_risk 均非 None, 则使用这三者计算出来的协方差阵；否则使用 cov
+            args: 指定的对象参数集
+            config_file: 配置文件路径, 配置文件用于设置对象参数。配置文件是一个 json 格式的文件(字符编码为 utf-8, 扩展名为 json), 以键值对的形式给出各个参数的取值
+            kwargs:
+                logger: 日志对象, 用于内部打印日志, 如果没有指定则使用默认的 __QS_Logger__ 对象
+        """
         super().__init__(args, config_file, **kwargs)
         if self._QSArgs.Benchmark and (bmk is None): raise __QS_Error__("优化目标需要基准投资组合，但入参 bmk 为 None!")
         if bmk is None: bmk = np.zeros(mask.shape)
@@ -521,12 +642,15 @@ class VolatilityConstraint(Constraint):
             elif self._Cov is not None:
                 Sigma = self._Cov
             Sigma = np.where(pd.notnull(Sigma), Sigma, 0)
-            Mu = -2 * np.dot(self._Bmk[self._Mask], Sigma[self._Mask, self._Mask]) + 2 * np.dot((0 - self._Bmk[~self._Mask]), Sigma[~self._Mask, self._Mask])
-            q = self._QSArgs.UpLimit ** 2 - np.dot(np.dot(self._Bmk[self._Mask], Sigma[self._Mask, self._Mask]), self._Bmk[self._Mask])
-            q -= 2 * np.dot(np.dot(self._Bmk[~self._Mask], Sigma[~self._Mask, self._Mask]), self._Bmk[self._Mask])
-            q -= np.dot(np.dot(self._Bmk[~self._Mask], Sigma[~self._Mask, ~self._Mask]), self._Bmk[~self._Mask])
+            Mu = -2 * np.dot(self._Bmk[self._Mask], Sigma[self._Mask][:, self._Mask])
+            if not np.all(self._Mask):
+                Mu += 2 * np.dot((0 - self._Bmk[~self._Mask]), Sigma[~self._Mask][:, self._Mask])
+            q = self._QSArgs.UpLimit ** 2 - np.dot(np.dot(self._Bmk[self._Mask], Sigma[self._Mask][:, self._Mask]), self._Bmk[self._Mask])
+            if not np.all(self._Mask):
+                q -= 2 * np.dot(np.dot(self._Bmk[~self._Mask], Sigma[~self._Mask][:, self._Mask]), self._Bmk[self._Mask])
+                q -= np.dot(np.dot(self._Bmk[~self._Mask], Sigma[~self._Mask][:, ~self._Mask]), self._Bmk[~self._Mask])
         else:
-            Mu = np.zeros((self._PC._nID, 1))
+            Mu = np.zeros((np.sum(self._Mask), ))
             q = self._QSArgs.UpLimit ** 2
         Constraint = {"type": "Quadratic", "Mu": Mu, "q": q}
         if self.FactorCov is not None:
@@ -534,7 +658,7 @@ class VolatilityConstraint(Constraint):
             Constraint["F"] = self._FactorCov
             Constraint["Delta"] = self._SpecificRisk[self._Mask] ** 2
         else:
-            Constraint['Sigma'] = self._Cov[self._Mask, self._Mask]
+            Constraint['Sigma'] = self._Cov[self._Mask][:, self._Mask]
         return [Constraint]
 
 
@@ -544,7 +668,18 @@ class ExpectedReturnConstraint(Constraint):
         DownLimit: float = Field(default=0.0, title="限制下限", frozen=True)
         Benchmark: bool = Field(default=False, title="相对基准", frozen=True)
     
-    def __init__(self, mask: np.ndarray, expected_return: np.ndarray, bmk: Optional[np.ndarray]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, mask: NDArray[np.bool], expected_return: NDArray[np.float64], bmk: Optional[NDArray[np.float64]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化预期收益约束条件对象
+
+        Args:
+            mask: array(shape=(n,)), 其中 n 为证券数量, True 表示组合可以选择的目标证券, False 表示组合中不可包含的证券
+            expected_return: 预期收益, array(shape=(n,)), 缺失值会被填充为 0
+            bmk: 基准投资组合, array(shape=(n,)), 缺失值会被填充为 0
+            args: 指定的对象参数集
+            config_file: 配置文件路径, 配置文件用于设置对象参数。配置文件是一个 json 格式的文件(字符编码为 utf-8, 扩展名为 json), 以键值对的形式给出各个参数的取值
+            kwargs:
+                logger: 日志对象, 用于内部打印日志, 如果没有指定则使用默认的 __QS_Logger__ 对象
+        """
         super().__init__(args, config_file, **kwargs)
         if self._QSArgs.Benchmark and (bmk is None): raise __QS_Error__("优化目标需要基准投资组合，但入参 bmk 为 None!")
         if bmk is None: bmk = np.zeros(mask.shape)
@@ -567,10 +702,20 @@ class NonZeroNumConstraint(Constraint):
     """非零数目约束: sum((w-benchmark!=0)<=N, 转换成非零数目约束"""
 
     class __QS_ArgClass__(Constraint.__QS_ArgClass__):
-        UpLimit: float = Field(default=150, title="限制上限", frozen=True)
+        UpLimit: int = Field(default=150, title="限制上限", frozen=True)
         Benchmark: bool = Field(default=False, title="相对基准", frozen=True)
     
-    def __init__(self, mask: np.ndarray, bmk: Optional[np.ndarray]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, mask: NDArray[np.bool], bmk: Optional[NDArray[np.float64]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化均值方差优化目标对象
+
+        Args:
+            mask: array(shape=(n,)), 其中 n 为证券数量, True 表示组合可以选择的目标证券, False 表示组合中不可包含的证券
+            bmk: 基准投资组合, array(shape=(n,)), 缺失值会被填充为 0
+            args: 指定的对象参数集
+            config_file: 配置文件路径, 配置文件用于设置对象参数。配置文件是一个 json 格式的文件(字符编码为 utf-8, 扩展名为 json), 以键值对的形式给出各个参数的取值
+            kwargs:
+                logger: 日志对象, 用于内部打印日志, 如果没有指定则使用默认的 __QS_Logger__ 对象
+        """
         super().__init__(args, config_file, **kwargs)
         if self._QSArgs.Benchmark and (bmk is None): raise __QS_Error__("优化目标需要基准投资组合，但入参 bmk 为 None!")
         if bmk is None: bmk = np.zeros(mask.shape)
@@ -579,9 +724,9 @@ class NonZeroNumConstraint(Constraint):
         self._Mask = mask
         self._Bmk = bmk
     
-    def genConstraint(self):
+    def genConstraint(self) -> List[dict]:
         if self._QSArgs.Benchmark:
-            N = (int(self._QSArgs.UpLimit - np.sum(self._Bmk[~self._Mask] !=0)) if not np.isinf(self._QSArgs.UpLimit) else np.inf)
+            N = (int(self._QSArgs.UpLimit - np.sum(self._Bmk[~self._Mask] != 0)) if not np.isinf(self._QSArgs.UpLimit) else np.inf)
             return [{"type": "NonZeroNum", "N": N, "b": self._Bmk[~self._Mask]}]
         else:
             return [{"type": "NonZeroNum", "N": (int(self._QSArgs.UpLimit) if not np.isinf(self._QSArgs.UpLimit) else np.inf), "b": np.zeros((np.sum(self._Mask), ))}]
@@ -593,16 +738,14 @@ class PortfolioConstructor(__QS_Object__):
     class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
         OptimOption: dict = Field(default={}, title="优化选项", frozen=True)
 
-    def __init__(self, objective: OptimizationObjective, constraints:List[Constraint]=[], args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, mask:NDArray[np.bool], objective: OptimizationObjective, constraints:List[Constraint]=[], args:dict={}, config_file:Optional[str]=None, **kwargs):
         super().__init__(args=args, config_file=config_file, **kwargs)
+        self._Mask = mask
         self._Objective = objective
         self._Constrants = constraints
     
     # 求解优化问题, 返回: (Series(权重, index=[ID]) 或 None, 其他信息: {})
-    def solve(self, mask: np.ndarray, expected_return: Optional[np.ndarray]=None, p0:Optional[np.ndarray]=None, bmk: Optional[np.ndarray]=None, factor_cov: Optional[np.ndarray]=None, factor_data: Optional[np.ndarray]=None, specific_risk: Optional[np.ndarray]=None, cov: Optional[np.ndarray]=None) -> Tuple[Optional[np.ndarray], dict]:
-        self._isStarted = True
-        self._Dependency = self.init()
-        if self._DataChanged: self._preprocessData()
+    def solve(self) -> Tuple[Optional[NDArray[np.float64]], dict]:
         Objective = self._Objective.genObjective()
         MathConstraints = []
         DropedConstraintInds = {-1: []}
@@ -623,18 +766,17 @@ class PortfolioConstructor(__QS_Object__):
         while (ResultInfo.get("Status", 0) != 1) and (Priority != []):
             iPriority = Priority.pop(0)
             for j in DropedConstraintInds[iPriority]: MathConstraints[j] = None
-            PreparedConstraints = self._prepareConstrants(Objective, MathConstraints)
+            PreparedConstraints = self._prepareConstrants(MathConstraints)
             PreparedOption = self._genOption()
             TargetWeight, ResultInfo = self._solve(Objective, PreparedConstraints, PreparedOption)
             ReleasedConstraint += DropedConstraints[iPriority]
         ResultInfo['ReleasedConstraint'] = ReleasedConstraint
-        self._isStarted = False
         if TargetWeight is not None: return (TargetWeight, ResultInfo)
         else: return (None, ResultInfo)
 
     # 整理约束条件
-    def _prepareConstrants(self, mask:np.ndarray, contraints):
-        nVar = np.sum(mask)
+    def _prepareConstrants(self, contraints):
+        nVar = np.sum(self._Mask)
         PreparedConstraints = {}
         for iConstraint in contraints:
             if iConstraint is None: continue
@@ -660,5 +802,5 @@ class PortfolioConstructor(__QS_Object__):
         return self._QSArgs.OptimOption
     
     # 求解一次优化问题, 返回: (array(nvar) 或 None, 其他信息: {})
-    def _solve(self, nvar, prepared_objective, prepared_constraints, prepared_option):
+    def _solve(self, prepared_objective, prepared_constraints, prepared_option):
         return (None, {})

@@ -48,7 +48,7 @@ class RiskTable(Node):
             DumpedMdl["__qsargs__"] = {iArg: iVal for iArg, iVal in DumpedMdl["__qsargs__"].items() if iArg not in self._QS_PrepareIgnoredArgs}
             self._QS_PrepareID = dict2id(DumpedMdl)
         return self._QS_PrepareID
-    
+
     def getMetaData(self, key:Optional[str]=None) -> Union[Any, pd.Series]:
         """获取风险表的元信息, 元信息由若干个键值对组成
 
