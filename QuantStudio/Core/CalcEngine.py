@@ -2,11 +2,12 @@
 import os
 import time
 import concurrent.futures
-from multiprocessing import Process, Queue, Manager
+# from multiprocessing import Process, Queue, Manager
 from typing import Any, List, Optional
 
 from pydantic import Field
 from progressbar import ProgressBar
+from multiprocess import Process, Queue
 
 from QuantStudio.Core import __QS_Object__, __QS_Error__
 from QuantStudio.Core.Node import Node, Context

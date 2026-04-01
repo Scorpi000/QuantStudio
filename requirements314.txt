@@ -9,6 +9,7 @@ pyarrow
 chardet
 progressbar2
 fasteners
+multiprocess
 dill
 h5py
 openpyxl

@@ -5,12 +5,13 @@ import datetime as dt
 from functools import partial
 from concurrent.futures import Executor
 from typing import Optional, Literal, List, Any, Tuple, Callable, Union, Dict
-from multiprocessing import Queue, Event
+# from multiprocessing import Queue, Event
 
 import dill
 import pandas as pd
 import numpy as np
 from pydantic import Field
+from multiprocess import Queue, Event
 
 from QuantStudio.Core import __QS_Error__, __QS_Object__
 from QuantStudio.Core.Node import Node

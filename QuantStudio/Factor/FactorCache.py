@@ -5,12 +5,13 @@ import time
 import shutil
 import tempfile
 import datetime as dt
-from multiprocessing import Lock
+# from multiprocessing import Lock
 from typing import Optional, List, Literal, Dict
 
 import numpy as np
 import pandas as pd
 from pydantic import Field
+from multiprocess import Lock
 
 from QuantStudio import __QS_ConfigPath__
 from QuantStudio.Core import __QS_Object__, __QS_Error__

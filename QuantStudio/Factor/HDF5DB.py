@@ -6,13 +6,14 @@ import shutil
 import pickle
 import time
 import datetime as dt
-from multiprocessing import Lock
+# from multiprocessing import Lock
 from typing import Optional, Self, Any, Dict, Literal, List, Union
 
 import numpy as np
 import pandas as pd
 import fasteners
 import h5py
+from multiprocess import Lock
 from pydantic import Field, DirectoryPath
 
 from QuantStudio import __QS_ConfigPath__

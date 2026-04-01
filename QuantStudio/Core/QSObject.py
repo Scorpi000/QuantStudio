@@ -8,12 +8,13 @@ import pickle
 import struct
 from pathlib import Path
 from collections import OrderedDict
-from multiprocessing import Lock
+# from multiprocessing import Lock
 from typing import Literal
 
 import numpy as np
 import pandas as pd
 import fasteners
+from multiprocess import Lock
 from pydantic import Field
 
 from QuantStudio.Core import __QS_Error__, __QS_Object__

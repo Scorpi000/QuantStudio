@@ -7,11 +7,12 @@ import pickle
 import tempfile
 import datetime as dt
 from typing import Optional, Literal
-from multiprocessing import Lock
+# from multiprocessing import Lock
 
 import numpy as np
 import pandas as pd
 from pyarrow import ArrowInvalid
+from multiprocess import Lock
 from pydantic import Field, DirectoryPath, FilePath
 
 from QuantStudio import __QS_ConfigPath__

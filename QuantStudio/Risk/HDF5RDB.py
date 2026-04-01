@@ -2,12 +2,13 @@
 """基于 HDF5 文件的风险数据库"""
 import os
 import datetime as dt
-from multiprocessing import Lock
+# from multiprocessing import Lock
 from typing import Optional, Self, List, Any, Union
 
 import numpy as np
 import pandas as pd
 import h5py
+from multiprocess import Lock
 from pydantic import Field, DirectoryPath
 
 from QuantStudio import __QS_ConfigPath__
