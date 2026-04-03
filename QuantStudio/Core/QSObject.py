@@ -996,3 +996,6 @@ class Panel(object):
         p = Panel(data=Data, items=self._Items.index.tolist()+other._Items.index.tolist(), major_axis=self._MajorAxis.index, minor_axis=self._MinorAxis.index)
         p._DTypes = self._DTypes.append(other._DTypes)
         return p
+    
+    def astype(self, dtype) -> "Panel":
+        return Panel(data=self._Data.astype(dtype=dtype), items=self.items, major_axis=self.major_axis, minor_axis=self.minor_axis)
