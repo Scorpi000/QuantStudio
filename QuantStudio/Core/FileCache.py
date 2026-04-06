@@ -7,12 +7,10 @@ import pickle
 import tempfile
 import datetime as dt
 from typing import Optional, Literal
-# from multiprocessing import Lock
 
 import numpy as np
 import pandas as pd
 from pyarrow import ArrowInvalid
-from multiprocess import Lock
 from pydantic import Field, DirectoryPath, FilePath
 
 from QuantStudio import __QS_ConfigPath__
@@ -28,18 +26,19 @@ class FileDTCache(DTCache):
         StateFile: FilePath = Field(default="state.pkl", title="状态文件", frozen=True, description="用于存储缓存的状态")
         Suffix: str = Field(default="", title="后缀", frozen=True)
 
-    def __init__(self, args={}, config_file=None, **kwargs):
+    def __init__(self, proc_lock=None, args={}, config_file=None, **kwargs):
         super().__init__(args=args, config_file=config_file, **kwargs)
         self._CacheDir = None# 缓存主目录
         self._DataDir = None# 通用数据存放根目录
         self._DTDataDir = None# 时点数据存放根目录
         self._DataLock = None# 访问该缓存的锁, 防止并发访问冲突
+        self._ProcLock = proc_lock
 
     def __getstate__(self):
         state = self.__dict__.copy()
         # Remove the unpicklable entries.
-        if (self._CacheDir is not None) and (not isinstance(self._CacheDir, str)):
-            state["_CacheDir"] = self._CacheDir.name
+        if hasattr(self, "_CacheDirObj"):
+            state["_CacheDirObj"] = self._CacheDirObj.name
         return state
     
     def writeDataFramePickle(self, path: str, data: pd.DataFrame, if_exists: Literal["append", "replace"]="replace", ignore_index:bool=True):
@@ -102,7 +101,7 @@ class FileDTCache(DTCache):
         if not os.path.isfile(LockFile):
             open(LockFile, mode="a").close()
             os.chmod(LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
-        self._DataLock = QSFileLock(LockFile, proc_lock=Lock())
+        self._DataLock = QSFileLock(LockFile, proc_lock=self._ProcLock)
         if self._QSArgs.StartMode == "new":
             self.clearData()
             self.clearDTData()

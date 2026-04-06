@@ -7,7 +7,8 @@ import datetime as dt
 import numpy as np
 import pandas as pd
 
-from QuantStudio.Core.CalcEngine import Engine, ParallelEngine
+from QuantStudio.Core.CalcEngine import Engine
+from QuantStudio.Core.ParallelEngine import ParallelEngine
 from QuantStudio.Factor.Factor import DataFactor, FactorContext, FactorLocalContext, FactorInitData
 from QuantStudio.Factor.BasicOperator import rename
 from QuantStudio.Factor.FactorCache import FeatherFactorCache

@@ -6,7 +6,8 @@ import pandas as pd
 from pydantic import Field
 
 from QuantStudio.Core.Node import Node
-from QuantStudio.Core.CalcEngine import Engine, ParallelEngine, StackEngine
+from QuantStudio.Core.CalcEngine import Engine
+from QuantStudio.Core.ParallelEngine import ParallelEngine
 from QuantStudio.Factor.Factor import Factor, DataFactor, FactorContext, FactorLocalContext
 from QuantStudio.Factor.BasicOperator import rename
 from QuantStudio.Factor.FactorOperator import SectionRank

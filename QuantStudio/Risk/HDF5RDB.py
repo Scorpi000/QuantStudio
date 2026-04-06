@@ -1,19 +1,18 @@
 # coding=utf-8
 """基于 HDF5 文件的风险数据库"""
 import os
+import stat
 import datetime as dt
-# from multiprocessing import Lock
 from typing import Optional, Self, List, Any, Union
 
 import numpy as np
 import pandas as pd
 import h5py
-from multiprocess import Lock
 from pydantic import Field, DirectoryPath
 
 from QuantStudio import __QS_ConfigPath__
 from QuantStudio.Core import __QS_Error__
-from QuantStudio.Core.QSObject import Panel
+from QuantStudio.Core.QSObject import Panel, QSFileLock
 from QuantStudio.Risk.RiskDB import RiskDB, FactorRDB
 from QuantStudio.Risk.RiskTable import RiskTable, FactorRT
 from QuantStudio.Tools.FileFun import listDirFile
@@ -60,14 +59,33 @@ class HDF5RDB(RiskDB):
         Name: str = Field(default="HDF5RDB", title="名称", frozen=True)
         MainDir: DirectoryPath = Field(title="主目录", frozen=True, description="存放数据的主目录")
     
-    def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, proc_lock=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         self._TableDT = {}# {表名：[时点]}
-        self._DataLock = Lock()
+        self._DataLock = None
+        self._ProcLock = proc_lock
         self._Suffix = "hdf5"
         return super().__init__(args=args, config_file=(__QS_ConfigPath__+os.sep+"HDF5RDBConfig.json" if config_file is None else config_file), **kwargs)
     
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Remove the unpicklable entries.
+        state["_DataLock"] = (True if self._DataLock is not None else False)
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        if self._DataLock:
+            self._DataLock = QSFileLock(self._LockFile, proc_lock=self._ProcLock)
+        else:
+            self._DataLock = None
+
     def connect(self) -> Self:
         if not os.path.isdir(self._QSArgs.MainDir): raise __QS_Error__("不存在 HDF5RDB 的主目录: %s!" % self._QSArgs.MainDir)
+        self._LockFile = self._QSArgs.MainDir / "LockFile"
+        if not os.path.isfile(self._LockFile):
+            open(self._LockFile, mode="a").close()
+            os.chmod(self._LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
+        self._DataLock = QSFileLock(self._LockFile, proc_lock=self._ProcLock)
         AllTables = listDirFile(str(self._QSArgs.MainDir), suffix=self._Suffix)
         TableDT = {}#{表名：[时点]}
         with self._DataLock:
@@ -320,14 +338,33 @@ class HDF5FRDB(FactorRDB):
         Name: str = Field(default="HDF5FRDB", title="名称", frozen=True)
         MainDir: DirectoryPath = Field(title="主目录", frozen=True, description="存放数据的主目录")
 
-    def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, proc_lock=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         self._TableDT = {}#{表名：[时点]}
-        self._DataLock = Lock()
+        self._DataLock = None
+        self._ProcLock = proc_lock
         self._Suffix = "h5"
         super().__init__(args=args, config_file=(__QS_ConfigPath__+os.sep+"HDF5FRDBConfig.json" if config_file is None else config_file), **kwargs)
     
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Remove the unpicklable entries.
+        state["_DataLock"] = (True if self._DataLock is not None else False)
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        if self._DataLock:
+            self._DataLock = QSFileLock(self._LockFile, proc_lock=self._ProcLock)
+        else:
+            self._DataLock = None
+
     def connect(self) -> Self:
         if not os.path.isdir(self._QSArgs.MainDir): raise __QS_Error__("不存在 HDF5FRDB 的主目录: %s!" % self._QSArgs.MainDir)
+        self._LockFile = self._QSArgs.MainDir / "LockFile"
+        if not os.path.isfile(self._LockFile):
+            open(self._LockFile, mode="a").close()
+            os.chmod(self._LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
+        self._DataLock = QSFileLock(self._LockFile, proc_lock=self._ProcLock)
         AllTables = listDirFile(str(self._QSArgs.MainDir), suffix=self._Suffix)
         TableDT = {}
         with self._DataLock:

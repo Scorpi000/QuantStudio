@@ -8,7 +8,8 @@ import numpy as np
 import pandas as pd
 pd.set_option("future.infer_string", False)# 禁用 PyArrow 字符串后端
 
-from QuantStudio.Core.CalcEngine import Engine, ParallelEngine
+from QuantStudio.Core.CalcEngine import Engine
+from QuantStudio.Core.ParallelEngine import ParallelEngine
 from QuantStudio.Factor.Factor import DataFactor, FactorContext, FactorLocalContext, FactorInitData
 from QuantStudio.Factor.FactorCache import FeatherFactorCache
 import QuantStudio.Factor.FactorOperator as fo

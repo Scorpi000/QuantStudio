@@ -6,14 +6,11 @@ import shutil
 import pickle
 import time
 import datetime as dt
-# from multiprocessing import Lock
 from typing import Optional, Self, Any, Dict, Literal, List, Union
 
 import numpy as np
 import pandas as pd
-import fasteners
 import h5py
-from multiprocess import Lock
 from pydantic import Field, DirectoryPath
 
 from QuantStudio import __QS_ConfigPath__
@@ -277,19 +274,18 @@ class HDF5DB(WritableFactorDB):
         MainDir: DirectoryPath = Field(title="主目录", frozen=True, description="存放数据的主目录")
         LockDir: Optional[DirectoryPath] = Field(default=None, title="锁目录", frozen=True, description="存放锁文件的目录, 默认 None 表示和主目录相同")
         FileOpenRetryNum: IntOrInf = Field(default=np.inf, title="文件打开重试次数", frozen=False, exclude=True, ge=1, description="打开数据文件错误时的重试次数")
-        ProcessLock: bool = Field(default=True, title="进程锁", frozen=True, description="是否添加进程锁用于防止多进程间读写冲突")
 
-    def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, proc_lock=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         """初始化 HDF5DB
 
         Args:
+            proc_lock: 访问该因子库资源的进程锁, 防止并发访问冲突, None 表示不创建进程锁
             args: 指定的对象参数集
             config_file: 配置文件路径, 默认配置文件为 "~/QuantStudioConfig/HDF5DBConfig.json"
         """
         self._LockFile = None  # 文件锁的目标文件
         self._DataLock = None  # 访问该因子库资源的文件锁, 防止并发访问冲突
-        self._TableLock = None  # 访问该因子表资源的临时文件锁, 防止并发访问冲突
-        self._ProcLock = None  # 访问该因子库资源的进程锁, 防止并发访问冲突
+        self._ProcLock = proc_lock  # 访问该因子库资源的进程锁, 防止并发访问冲突
         self._Suffix = "hdf5"  # 文件的后缀名
         return super().__init__(args=args, config_file=(__QS_ConfigPath__ + os.sep + "HDF5DBConfig.json" if config_file is None else config_file), **kwargs)
 
@@ -302,7 +298,7 @@ class HDF5DB(WritableFactorDB):
     def __setstate__(self, state):
         self.__dict__.update(state)
         if self._DataLock:
-            self._DataLock = fasteners.InterProcessLock(self._LockFile)
+            self._DataLock = QSFileLock(self._LockFile, proc_lock=self._ProcLock)
         else:
             self._DataLock = None
 
@@ -319,8 +315,7 @@ class HDF5DB(WritableFactorDB):
         if not os.path.isfile(self._LockFile):
             open(self._LockFile, mode="a").close()
             os.chmod(self._LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
-        self._DataLock = fasteners.InterProcessLock(self._LockFile)
-        if self._QSArgs.ProcessLock: self._ProcLock = Lock()
+        self._DataLock = QSFileLock(self._LockFile, proc_lock=self._ProcLock)
         return self
 
     def disconnect(self):
@@ -330,7 +325,7 @@ class HDF5DB(WritableFactorDB):
 
     def _getLock(self, table_name=None):
         if table_name is None:
-            return QSFileLock(self._DataLock, proc_lock=self._ProcLock)
+            return self._DataLock
         TablePath = self._QSArgs.MainDir / table_name
         if not os.path.isdir(TablePath):
             Msg = ("因子库 '%s' 调用 _getLock 时错误, 不存在因子表: '%s'" % (self.Name, table_name))
@@ -338,7 +333,7 @@ class HDF5DB(WritableFactorDB):
             raise __QS_Error__(Msg)
         LockFile = self._LockDir / table_name / "LockFile"
         if not os.path.isfile(LockFile):
-            with QSFileLock(self._DataLock, proc_lock=self._ProcLock) as FileLock:
+            with self._DataLock:
                 if not os.path.isdir(self._LockDir / table_name):
                     os.mkdir(self._LockDir / table_name)
                 if not os.path.isfile(LockFile):

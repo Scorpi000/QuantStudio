@@ -3,7 +3,7 @@ import os
 import html
 import json
 import logging
-from typing import Any, Optional, Literal, Union
+from typing import Any, Optional, Literal, Union, Dict
 
 import numpy as np
 import pandas as pd
@@ -218,8 +218,9 @@ class __QS_Object__:
             self._ConfigFile = None
         args = Config | args | {"Owner": self, "Logger": self._QS_Logger}
         self._QSArgs = self.__QS_ArgClass__(**args)
+        self._QS_ID = kwargs.get("qs_id", None)
 
-    def model_dump(self):
+    def model_dump(self) -> Dict[str, Any]:
         return {
             "__type__": "__QS_Object__",
             "__class__": self.__class__.__name__,
@@ -229,7 +230,7 @@ class __QS_Object__:
     @property
     def QSID(self) -> str:
         """表示对象行为的全局唯一 id, 且每次运行程序时该 id 不变。相同 QSID 的对象行为一致，但不同的 QuantStudio 对象有可能 QSID 相同"""
-        if not getattr(self, "_QS_ID", None):
+        if getattr(self, "_QS_ID", None) is None:
             self._QS_ID = dict2id(self.model_dump())
         return self._QS_ID
 
@@ -257,7 +258,7 @@ class __QS_Object__:
         kwargs = {"logger": self._QS_Logger, "config_file": self._ConfigFile} | kwargs
         return self.__class__(args=args, **kwargs)
     
-    def _repr_html_(self):
+    def _repr_html_(self) -> str:
         HTML = f"<b>类</b>: {html.escape(str(self.__class__.__name__))}<br/>"
         HTML += f"<b>文档</b>: {html.escape(self.__doc__ if self.__doc__ else '')}<br/>"
         HTML += f"<b>参数</b>: " + self._QSArgs._repr_html_()

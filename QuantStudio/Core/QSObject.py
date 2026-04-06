@@ -6,15 +6,14 @@ import uuid
 import mmap
 import pickle
 import struct
+import tempfile
 from pathlib import Path
 from collections import OrderedDict
-# from multiprocessing import Lock
 from typing import Literal
 
 import numpy as np
 import pandas as pd
 import fasteners
-from multiprocess import Lock
 from pydantic import Field
 
 from QuantStudio.Core import __QS_Error__, __QS_Object__
@@ -438,21 +437,40 @@ class QSSQLObject(__QS_Object__):
 class QSFileLock(object):
     """文件锁"""
 
-    def __init__(self, path_or_lock, proc_lock=None):
-        if isinstance(path_or_lock, (str, Path)):
+    def __init__(self, path_or_lock=None, proc_lock=None):
+        if path_or_lock is None:
+            self._LockFile = tempfile.NamedTemporaryFile(delete_on_close=False)
+            self._FileLock = fasteners.InterProcessLock(self._LockFile.name)
+        elif isinstance(path_or_lock, (str, Path)):
             self._FileLock = fasteners.InterProcessLock(path_or_lock)
         else:
             self._FileLock = path_or_lock
         self._ProcLock = proc_lock
+    
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Remove the unpicklable entries.
+        if getattr(self, "_LockFile", None) is not None:
+            state["_LockFile"] = self._LockFile.name
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        if getattr(self, "_LockFile", None) is not None:
+            self._FileLock = fasteners.InterProcessLock(self._LockFile)
+    
     def acquire(self):
         if self._ProcLock is not None: self._ProcLock.acquire()
         return self._FileLock.acquire()
+    
     def release(self):
         self._FileLock.release()
         if self._ProcLock is not None: self._ProcLock.release()
+    
     def __enter__(self):
         self.acquire()
         return self
+    
     def __exit__(self, exc_type, exc_value, traceback):
         self.release()
 
@@ -460,7 +478,7 @@ class QSFileLock(object):
 class QSQueue(object):
     """进程间 Queue, 无数据大小的限制"""
 
-    def __init__(self, cache_size:int=100, batch_size:int=64, put_lock=None, get_lock=None, global_lock=None):
+    def __init__(self, cache_size:int=100, batch_size:int=64, put_lock=None, get_lock=None, global_lock=None, mp=None):
         """进程间 Queue 初始化
         
         Args:
@@ -477,9 +495,27 @@ class QSQueue(object):
         self._MaxBatchNum = (self._CacheSize - self._HeadSize) // self._BatchSize# 最大单元个数
         self._BatchDataSize = self._BatchSize - self._BatchHeadSize
 
-        self._PutLock = Lock() if not put_lock else put_lock
-        self._GetLock = Lock() if not get_lock else get_lock
-        self._GlobalLock = Lock() if not global_lock else global_lock
+        if (put_lock is None) and (mp is None):
+            self._PutLock = QSFileLock()
+        elif put_lock is not None:
+            self._PutLock = put_lock
+        else:
+            self._PutLock = mp.Lock()
+        
+        if (get_lock is None) and (mp is None):
+            self._GetLock = QSFileLock()
+        elif get_lock is not None:
+            self._GetLock = get_lock
+        else:
+            self._GetLock = mp.Lock()
+        
+        if (global_lock is None) and (mp is None):
+            self._GlobalLock = QSFileLock()
+        elif global_lock is not None:
+            self._GlobalLock = global_lock
+        else:
+            self._GlobalLock = mp.Lock()
+        
         if os.name=="nt":
             self._TagName = str(uuid.uuid1())# 共享内存的 tag
             self._MMAPCacheData = mmap.mmap(-1, self._CacheSize, tagname=self._TagName)# 当前共享内存缓冲区

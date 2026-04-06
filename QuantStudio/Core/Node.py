@@ -92,15 +92,15 @@ class Node(__QS_Object__):
         return super().__init__(args=args, config_file=config_file, **kwargs)
     
     @property
-    def Name(self):
+    def Name(self) -> str:
         """节点名称"""
         return self._QSArgs.Name
     
-    def new(self, args={}, **kwargs):
+    def new(self, args={}, **kwargs) -> "Node":
         kwargs = {"deps": self.Deps} | kwargs
         return super().new(args=args, **kwargs)
 
-    def model_dump(self):
+    def model_dump(self) -> Dict[str, Any]:
         if getattr(self, "_Dumped", False):
             self._Dumped = False
             return super().model_dump()
@@ -110,17 +110,10 @@ class Node(__QS_Object__):
         self._Dumped = False
         return d
 
-    def init(self, path: List[str], init_data: Any, context: Context) -> None:
-        context.NodeDict[self.QSID] = self
-        InitDataList = self.init_compute(path, init_data, context)
-        if not InitDataList: return
-        for i, Node in enumerate(self.Deps):
-            Node.init(path+[self.QSID], InitDataList[i], context)
-
     def compute(self, path: List[str], fwd_data: Any, context: Context) -> Any:
         FwdDataList, LocalContext = self.forward_compute(path, fwd_data, context)
         if FwdDataList:
-            BwdDataList = [Node.compute(path+[self.QSID], FwdDataList[i], context) for i, Node in enumerate(self.Deps)]
+            BwdDataList = [iNode.compute(path + [iNode.QSID], FwdDataList[i], context) for i, iNode in enumerate(self.Deps)]
         else:
             BwdDataList = []
         return self.backward_compute(path, BwdDataList, context=context, local_context=LocalContext)
@@ -129,14 +122,14 @@ class Node(__QS_Object__):
         """按照边的方向传递数据执行初始化，可以修改 context 中的全局变量，最好不要有耗时的计算
 
         Args:
-            path: 运行至当前节点的路径, 所有上游节点 ID 的 list
+            path: 运行至当前节点的路径, 由路径上所有节点 ID 组成的 list
             init_data: 上游传递的数据
             context: 全局上下文对象
 
         Returns:
             产生的向下游传递的数据列表, 如果返回空 list 表示终止继续向下的初始化
         """
-        if self.QSID in path: return []
+        if self.QSID in path[:-1]: return []
         return [init_data] * len(self.Deps)
 
     def prepare_compute(self, prepare_data: Any, context: Context):
@@ -149,10 +142,10 @@ class Node(__QS_Object__):
         pass
 
     def forward_compute(self, path: List[str], fwd_data: Any, context: Context) -> Tuple[List[Any], Any]:
-        """按照边的方向传递数据执行运算, 即从依赖节点向被依赖节点传递
+        """按照边的方向传递数据执行运算, 即从父节点向子节点传递
 
         Args:
-            path: 运行至当前节点的路径, 所有上游节点 ID 的 list
+            path: 运行至当前节点的路径, 由路径上所有节点 ID 组成的 list
             fwd_data: 上游传递的数据
             context: 运算时全局上下文对象
         
@@ -162,10 +155,10 @@ class Node(__QS_Object__):
         return [fwd_data] * len(self.Deps), fwd_data
 
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: Context, local_context: Any=None) -> Any:
-        """按照边的反方向传递数据执行运算, 即从被依赖节点向依赖节点传递
+        """按照边的反方向传递数据执行运算, 即从子节点向父节点传递
 
         Args:
-            path: 运行至当前节点的路径, 所有上游节点 ID 的 list
+            path: 运行至当前节点的路径, 由路径上所有节点 ID 组成的 list
             bwd_data_list: 下游传递的数据列表, 如果为空列表表示在 forward_compute 方法中选择了终止向下的运算
             context: 运算时全局上下文对象
             local_context: 运算时局部上下文对象

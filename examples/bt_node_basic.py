@@ -8,7 +8,8 @@ import matplotlib.pyplot as plt
 plt.rcParams['font.sans-serif'] = ['SimHei']# 指定默认字体为微软雅黑
 plt.rcParams['axes.unicode_minus'] = False# 正确显示负号
 
-from QuantStudio.Core.CalcEngine import Engine, ParallelEngine
+from QuantStudio.Core.CalcEngine import Engine
+from QuantStudio.Core.ParallelEngine import ParallelEngine
 from QuantStudio.Core.Node import DTInitData, DTLocalContext
 from QuantStudio.Factor.Factor import DataFactor, FactorContext, FactorLocalContext, FactorInitData
 from QuantStudio.Factor.FactorCache import FeatherFactorCache

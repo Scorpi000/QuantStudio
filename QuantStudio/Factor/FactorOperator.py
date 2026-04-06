@@ -356,7 +356,8 @@ class ToCompound(PointOperator):
 class Lag(TimeOperator):
     """按照时间回溯数据"""
 
-    def __init__(self, lag_period:int=1, window:int=1, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, lag_period:int=1, window:Optional[int]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        if window is None: window = lag_period
         Args = {"Name": "lag", "LookBack": [window], "DataType": "double"} | args | {"Arity": 1, "DTMode": "多时点", "IDMode": "多ID"}
         Args["ModelArgs"] = {"window": window, "lag_period": lag_period} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
@@ -457,14 +458,14 @@ class RollingChangeRate(TimeOperator):
 class RollingRegress(TimeOperator):
     """滚动回归"""
 
-    def __init__(self, window:int=1, min_periods:int=1, intercept:bool=True, output:Optional[Literal["alpha", "beta"]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, window:int=1, min_periods:int=1, intercept:bool=True, output:Optional[Literal["alpha", "beta", "r2"]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Arity = args.get("Arity", None) or 1
         Args = {"Name": "rollingRegress"} | args | {"DataType": "double", "DTMode": "单时点", "IDMode": "单ID"}
         Args["ModelArgs"] = {"window": window, "min_periods": min_periods, "intercept": intercept, "output": output} | Args.get("ModelArgs", {})
         Args["LookBack"] = [Args["ModelArgs"]["window"] - 1] * Arity
         if Args["ModelArgs"]["output"] is None:
             Args["DataType"] = "object"
-            Args["CompoundType"] = [("alpha", "double"), ("beta", "double")]
+            Args["CompoundType"] = [("alpha", "double")] + [(f"beta{i}", "double") for i in range(Arity)] + [("r2", "double")]
         else:
             Args["DataType"] = "double"
         return super().__init__(args=Args, config_file=config_file, **kwargs)
@@ -472,12 +473,13 @@ class RollingRegress(TimeOperator):
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: str, x: List[np.ndarray], args: dict) -> Union[float, Tuple[float]]:
         Y, X = x[0].astype(float), (np.array(x[1:], dtype=float).T if len(x)>1 else np.arange(0, x[0].shape[0]).reshape((-1, 1)))
         Mask = (~ (np.isnan(Y) | np.any(np.isnan(X), axis=1)))
-        if np.sum(Mask) < args["min_periods"]: return (np.nan if args["output"] is not None else (np.nan,) * (1 + X.shape[1]))
+        if np.sum(Mask) < args["min_periods"]: return (np.nan if args["output"] is not None else (np.nan,) * (2 + X.shape[1]))
         Y, X = Y[Mask], X[Mask]
         if args["intercept"]: X = sm.add_constant(X, prepend=True)
         Rslt = sm.OLS(Y, X).fit()
-        if args["output"] is None: return tuple(Rslt.params) if args["intercept"] else (0, ) + tuple(Rslt.params)
+        if args["output"] is None: return (tuple(Rslt.params) if args["intercept"] else ((0, ) + tuple(Rslt.params))) + (Rslt.rsquared,)
         elif args["output"]=="alpha": return Rslt.params[0] if args["intercept"] else 0
+        elif args["output"]=="r2": return Rslt.rsquared
         else: return Rslt.params[int(args["output"][4:]) + int(args["intercept"])]
         
     def __call__(self, endog:Factor, *exog:Factor, factor_args:dict={}, **kwargs) -> TimeOperation:
