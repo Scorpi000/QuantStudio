@@ -39,9 +39,9 @@ if __name__ == "__main__":
         #"CacheEnabled": False
     }, qs_id="Factor3")
 
-    Factor4 = rename(Factor3 + 1, factor_name="Factor4", qs_id="Factor4")
+    Factor4 = (Factor3 + 1).new(args={"Name": "Factor4"}, qs_id="Factor4")
 
-    NodeList = [Factor1, Factor2, Factor3]
+    NodeList = [Factor1, Factor2, Factor4, Factor3]
     LocalContext = FactorLocalContext(DTs=DTs, IDs=IDs)
     InitData = FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=SectionIDs)
 
