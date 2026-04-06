@@ -7,6 +7,7 @@ import mmap
 import pickle
 import struct
 import tempfile
+import threading
 from pathlib import Path
 from collections import OrderedDict
 from typing import Literal
@@ -438,6 +439,8 @@ class QSFileLock(object):
     """文件锁"""
 
     def __init__(self, path_or_lock=None, proc_lock=None):
+        self._PID = os.getpid()
+        self._ThreadingLock = threading.Lock()
         if path_or_lock is None:
             self._LockFile = tempfile.NamedTemporaryFile(delete_on_close=False)
             self._FileLock = fasteners.InterProcessLock(self._LockFile.name)
@@ -461,10 +464,16 @@ class QSFileLock(object):
     
     def acquire(self):
         if self._ProcLock is not None: self._ProcLock.acquire()
-        return self._FileLock.acquire()
+        if os.getpid() != self._PID:
+            return self._FileLock.acquire()
+        else:
+            return self._ThreadingLock.acquire()
     
     def release(self):
-        self._FileLock.release()
+        if os.getpid() != self._PID:
+            self._FileLock.release()
+        else:
+            self._ThreadingLock.release()
         if self._ProcLock is not None: self._ProcLock.release()
     
     def __enter__(self):
