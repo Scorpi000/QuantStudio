@@ -25,7 +25,7 @@ class BTNode(Node):
         else:
             NodeState["dt_range"] = (min(DTRange[0], init_data.DTRange[0]), max(DTRange[1], init_data.DTRange[1]))
         # 默认
-        if self.QSID in path: return []
+        if self.QSID in path[:-1]: return []
         InitData = [DTInitData(DTRange=NodeState["dt_range"])] * len(self.Deps)
         return InitData
     
@@ -57,7 +57,7 @@ class BTReport(Node):
         else:
             NodeState["dt_range"] = (min(DTRange[0], init_data.DTRange[0]), max(DTRange[1], init_data.DTRange[1]))
         # 默认
-        if self.QSID in path: return []
+        if self.QSID in path[:-1]: return []
         return [DTInitData(DTRange=NodeState["dt_range"])] * len(self.Deps)
     
     def forward_compute(self, path: List[str], fwd_data: DTLocalContext, context: Context) -> Tuple[List[DTLocalContext], DTLocalContext]:

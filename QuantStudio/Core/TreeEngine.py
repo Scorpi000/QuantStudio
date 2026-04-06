@@ -296,7 +296,7 @@ class TreeEngine(Engine):
                     try:
                         iPath, iRslt = iFuture.result()
                     except Exception as e:
-                        self._QS_Logger.error(f"节点 {iPath} backward_compute 计算失败: {e}")
+                        self._QS_Logger.error(f"backward_compute 计算失败: {e}")
                         raise e
                     iNode = Path2Node[iPath]
                     if QSIDPendingTask.get(iNode.QSID, []):

@@ -336,7 +336,7 @@ class Factor(Node):
                 FactorState["pid_ids"] = context.splitID(SectionIDs)
         # 默认
         DefaultInitData = super().init_compute(path=path, init_data=init_data, context=context)
-        if self.QSID in path: return []
+        if self.QSID in path[:-1]: return []
         if self._FactorTable:
             return [FactorInitData(DTRange=FactorState["dt_range"], SectionIDs=SectionIDs, SubFactorName=self._QSArgs.Name)] + DefaultInitData[1:]
         else:
