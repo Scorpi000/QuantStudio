@@ -275,7 +275,7 @@ class HDF5DB(WritableFactorDB):
         LockDir: Optional[DirectoryPath] = Field(default=None, title="锁目录", frozen=True, description="存放锁文件的目录, 默认 None 表示和主目录相同")
         FileOpenRetryNum: IntOrInf = Field(default=np.inf, title="文件打开重试次数", frozen=False, exclude=True, ge=1, description="打开数据文件错误时的重试次数")
 
-    def __init__(self, proc_lock=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
         """初始化 HDF5DB
 
         Args:
@@ -285,22 +285,8 @@ class HDF5DB(WritableFactorDB):
         """
         self._LockFile = None  # 文件锁的目标文件
         self._DataLock = None  # 访问该因子库资源的文件锁, 防止并发访问冲突
-        self._ProcLock = proc_lock  # 访问该因子库资源的进程锁, 防止并发访问冲突
         self._Suffix = "hdf5"  # 文件的后缀名
         return super().__init__(args=args, config_file=(__QS_ConfigPath__ + os.sep + "HDF5DBConfig.json" if config_file is None else config_file), **kwargs)
-
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        # Remove the unpicklable entries.
-        state["_DataLock"] = (True if self._DataLock is not None else False)
-        return state
-
-    def __setstate__(self, state):
-        self.__dict__.update(state)
-        if self._DataLock:
-            self._DataLock = QSFileLock(self._LockFile, proc_lock=self._ProcLock)
-        else:
-            self._DataLock = None
 
     def connect(self) -> Self:
         if not os.path.isdir(self._QSArgs.MainDir):
@@ -315,13 +301,12 @@ class HDF5DB(WritableFactorDB):
         if not os.path.isfile(self._LockFile):
             open(self._LockFile, mode="a").close()
             os.chmod(self._LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
-        self._DataLock = QSFileLock(self._LockFile, proc_lock=self._ProcLock)
+        self._DataLock = QSFileLock(self._LockFile)
         return self
 
     def disconnect(self):
         self._LockFile = None
         self._DataLock = None
-        self._ProcLock = None
 
     def _getLock(self, table_name=None):
         if table_name is None:
@@ -339,7 +324,7 @@ class HDF5DB(WritableFactorDB):
                 if not os.path.isfile(LockFile):
                     open(LockFile, mode="a").close()
                     os.chmod(LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
-        return QSFileLock(LockFile, self._ProcLock)
+        return QSFileLock(LockFile, thread_lock=self._DataLock.ThreadLock)
 
     def _openHDF5File(self, filename, *args, **kwargs):
         i = 0

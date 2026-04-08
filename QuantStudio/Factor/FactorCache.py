@@ -155,8 +155,8 @@ class FileFactorCache(FileDTCache, FactorCache):
     class __QS_ArgClass__(FileDTCache.__QS_ArgClass__, FactorCache.__QS_ArgClass__):
         pass
     
-    def __init__(self, proc_lock=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        super().__init__(proc_lock=proc_lock, args=args, config_file=config_file, **kwargs)
+    def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        super().__init__(args=args, config_file=config_file, **kwargs)
         self._RawDataDir = None  # 原始数据存放根目录
         self._FactorDataDir = None  # 因子数据存放根目录
         self._PIDLock = {}  # 访问该缓存的锁, 防止并发访问冲突
@@ -184,7 +184,7 @@ class FileFactorCache(FileDTCache, FactorCache):
         if not os.path.isfile(LockFile):
             open(LockFile, mode="a").close()
             os.chmod(LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
-        self._DataLock = QSFileLock(LockFile, proc_lock=self._ProcLock)
+        self._DataLock = QSFileLock(LockFile)
         if self._QSArgs.StartMode == "new":
             self.clearData()
             self.clearDTData()
@@ -205,7 +205,7 @@ class FileFactorCache(FileDTCache, FactorCache):
                 if not os.path.isfile(iLockFile):
                     open(iLockFile, mode="a").close()
                     os.chmod(iLockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
-                self._PIDLock[iPID] = QSFileLock(iLockFile, proc_lock=self._ProcLock)
+                self._PIDLock[iPID] = QSFileLock(iLockFile)
         self._isStarted = True
 
     def checkRawDataExistence(self, key, pids=None, create_if_not_exists: bool=True) -> bool:

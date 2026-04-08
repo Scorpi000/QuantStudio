@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import fasteners
 from pydantic import Field
+from multiprocess import Lock
 
 from QuantStudio.Core import __QS_Error__, __QS_Object__
 
@@ -436,44 +437,76 @@ class QSSQLObject(__QS_Object__):
 
 
 class QSFileLock(object):
-    """文件锁"""
+    """文件锁
+    多线程时使用线程锁
+    多进程时使用文件锁
+    """
 
-    def __init__(self, path_or_lock=None, proc_lock=None):
+    def __init__(self, path_or_lock=None, thread_lock=None, proc_lock=None):
         self._PID = os.getpid()
-        self._ThreadingLock = threading.Lock()
+        if thread_lock is None:
+            self._ThreadLock = threading.Lock()
+        else:
+            self._ThreadLock = thread_lock
         if path_or_lock is None:
-            self._LockFile = tempfile.NamedTemporaryFile(delete_on_close=False)
-            self._FileLock = fasteners.InterProcessLock(self._LockFile.name)
+            self._TmpFile = tempfile.NamedTemporaryFile(delete_on_close=False)
+            # self._TmpFile.close()
+            self._LockFile = self._TmpFile.name
+            self._FileLock = fasteners.InterProcessLock(self._LockFile)
         elif isinstance(path_or_lock, (str, Path)):
+            self._LockFile = path_or_lock
             self._FileLock = fasteners.InterProcessLock(path_or_lock)
         else:
+            self._LockFile = getattr(path_or_lock, "path", None)
             self._FileLock = path_or_lock
         self._ProcLock = proc_lock
     
     def __getstate__(self):
         state = self.__dict__.copy()
         # Remove the unpicklable entries.
-        if getattr(self, "_LockFile", None) is not None:
-            state["_LockFile"] = self._LockFile.name
+        state.pop("_TmpFile", None)
+        if self._LockFile is not None:
+            state["_LockFile"] = str(self._LockFile)
+        state["_ProcLock"] = (self._ProcLock is not None)
+        # print("DEBUG: QSFileLock.__getstate__")
         return state
 
     def __setstate__(self, state):
         self.__dict__.update(state)
         if getattr(self, "_LockFile", None) is not None:
             self._FileLock = fasteners.InterProcessLock(self._LockFile)
+        if state["_ProcLock"]:
+            self._ProcLock = Lock()
+        else:
+            self._ProcLock = None
+        # print("DEBUG: QSFileLock.__setstate__")
     
+    @property
+    def FileLock(self):
+        return self._FileLock
+    
+    @property
+    def ThreadLock(self):
+        return self._ThreadLock
+
+    @property
+    def ProcLock(self):
+        return self._ProcLock
+
     def acquire(self):
         if self._ProcLock is not None: self._ProcLock.acquire()
         if os.getpid() != self._PID:
+            # print("DEBUG: 获取文件锁")
             return self._FileLock.acquire()
         else:
-            return self._ThreadingLock.acquire()
+            # print("DEBUG: 获取线程锁")
+            return self._ThreadLock.acquire()
     
     def release(self):
         if os.getpid() != self._PID:
             self._FileLock.release()
         else:
-            self._ThreadingLock.release()
+            self._ThreadLock.release()
         if self._ProcLock is not None: self._ProcLock.release()
     
     def __enter__(self):

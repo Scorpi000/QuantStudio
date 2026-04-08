@@ -26,13 +26,12 @@ class FileDTCache(DTCache):
         StateFile: FilePath = Field(default="state.pkl", title="状态文件", frozen=True, description="用于存储缓存的状态")
         Suffix: str = Field(default="", title="后缀", frozen=True)
 
-    def __init__(self, proc_lock=None, args={}, config_file=None, **kwargs):
+    def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
         super().__init__(args=args, config_file=config_file, **kwargs)
         self._CacheDir = None# 缓存主目录
         self._DataDir = None# 通用数据存放根目录
         self._DTDataDir = None# 时点数据存放根目录
         self._DataLock = None# 访问该缓存的锁, 防止并发访问冲突
-        self._ProcLock = proc_lock
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -101,7 +100,7 @@ class FileDTCache(DTCache):
         if not os.path.isfile(LockFile):
             open(LockFile, mode="a").close()
             os.chmod(LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
-        self._DataLock = QSFileLock(LockFile, proc_lock=self._ProcLock)
+        self._DataLock = QSFileLock(LockFile)
         if self._QSArgs.StartMode == "new":
             self.clearData()
             self.clearDTData()

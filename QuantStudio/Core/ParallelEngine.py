@@ -15,13 +15,13 @@ from QuantStudio.Core.CalcEngine import Engine
 
 def _execute_task(task):
     NodeList, Context, FwdDataList = task["NodeList"], task["Context"], task["FwdDataList"]
-    Context.Logger.info(f'子任务进程 {task["PID"]} start, PID: {os.getpid()}')
+    Context.Logger.debug(f'子任务进程 {task["PID"]} start, PID: {os.getpid()}')
     Context.PID = task["PID"]
     for i, iNode in enumerate(NodeList):
         iRslt = iNode.compute([iNode.QSID], FwdDataList[i], Context)
         task["Sub2MainQueue"].put((task["PID"], 1, (iNode.QSID, iRslt)))
     task["Sub2MainQueue"].put((task["PID"], -1, Context.getUpdateData()))
-    Context.Logger.info(f'子任务进程 {task["PID"]} finish')
+    Context.Logger.debug(f'子任务进程 {task["PID"]} finish')
 
 class ParallelEngine(Engine):
 
@@ -57,14 +57,12 @@ class ParallelEngine(Engine):
                     NodeIDs = tuple(EventState.keys())
                     for iNodeID in NodeIDs:
                         iQueue = context.Event[iNodeID][0]
-                        # while not self._safe_queue_empty(iQueue):
                         while not iQueue.empty():
                             jInc = iQueue.get()
                             EventState[iNodeID] += jInc
                         if EventState[iNodeID] >= nTask:
                             context.Event[iNodeID][1].set()
                             EventState.pop(iNodeID)
-                # while ((not self._safe_queue_empty(Sub2MainQueue)) or (nEvent == 0)) and ((iProg < nProg) or (not ContextUpdated)):
                 while ((not Sub2MainQueue.empty()) or (nEvent == 0)) and ((iProg < nProg) or (not ContextUpdated)):
                     iPID, iSubProg, iMsg = Sub2MainQueue.get()
                     if iSubProg >= 0:# 接收到因子数据

@@ -115,18 +115,21 @@ class DTCache(Cache):
 
     def __init__(self, args: dict={}, config_file:Optional[str]=None, **kwargs):
         super().__init__(args=args, config_file=config_file, **kwargs)
-        self._CachedDTRange = {}# 已经缓存的数据时点范围, {因子 QSID: DataFrame(columns=["StartDT", "EndDT"])}
+        self._CachedDTRange = {}# 已经缓存的数据时点范围, {key: DataFrame(columns=["StartDT", "EndDT"])}
 
-    def getUpdateData(self) -> dict:
-        return {"_CachedDTRange": self._CachedDTRange}
+    def getUpdateData(self, key_list:Optional[List[str]]=None) -> dict:
+        if key_list is None:
+            return {"_CachedDTRange": self._CachedDTRange}
+        else:
+            return {"_CachedDTRange": {iKey: self._CachedDTRange[iKey] for iKey in key_list if iKey in self._CachedDTRange}}
 
     def updateCache(self, update_data: dict):
-        for iFactorID, iDTRange in update_data.get("_CachedDTRange", {}).items():
-            if iFactorID not in self._CachedDTRange:
-                self._CachedDTRange[iFactorID] = iDTRange
+        for iKey, iDTRange in update_data.get("_CachedDTRange", {}).items():
+            if iKey not in self._CachedDTRange:
+                self._CachedDTRange[iKey] = iDTRange
             else:
                 for iDTRange in iDTRange.astype("O").to_records(index=False):
-                    self.updateDTRange(iFactorID, iDTRange)
+                    self.updateDTRange(iKey, iDTRange)
 
     # 更新缓存的时点范围
     def _mergeDTRange(self, cached_dt_range, i):

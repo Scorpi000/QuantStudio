@@ -1,5 +1,6 @@
 # coding=utf-8
 """日期和时间的操作函数"""
+import re
 import datetime as dt
 
 import numpy as np
@@ -33,6 +34,54 @@ def getNaturalDay(start_date,end_date):
         iDate += dt.timedelta(days=1)
     return Dates
 # -------------------------------新的基于 DateTime 的日期时间函数---------------------
+def lookbackDateTime(idt: dt.datetime, period:str) -> dt.datetime:
+    """回溯时点
+
+    Args:
+        idt: 回溯的起始时点
+        period: 回溯期, 比如 '1m' 近一月, 将返回上个月的同日; '2w' 近2周, 将返回上两周的周末; 'monthsince' 表示本月以来, 将返回上个月月底
+    
+    Returns:
+        回溯到的时点
+    """
+    Period = period.lower()
+    if Period.endswith("since"):
+        if Period == "weeksince":# 本周以来
+            return idt - dt.timedelta(idt.weekday() + 1)
+        elif Period == "monthsince":# 本月以来
+            return dt.datetime(idt.year, idt.month, 1) - dt.timedelta(1)
+        elif Period == "quartersince":# 本季以来
+            return dt.datetime(idt.year, (1, 4, 7, 10)[idt.month // 3], 1) - dt.timedelta(1)
+        elif Period == "yearsince":# 本年以来
+            return dt.datetime(idt.year, 1, 1) - dt.timedelta(1)
+        else:
+            raise Exception(f"无法识别的 period: {period}")
+    else:
+        n, freq = int(Period[:-1]), Period[-1]
+        if freq == "w":
+            return idt - dt.timedelta(7 * n)
+        elif freq == "m":
+            try:
+                return dt.datetime(idt.year - n // 12 - int(idt.month < n % 12), idt.month + int(idt.month < n % 12) * 12 - n % 12, idt.day)
+            except:
+                n = n - 1
+                return dt.datetime(idt.year - n // 12 - int(idt.month < n % 12), idt.month + int(idt.month < n % 12) * 12 - n % 12, 1) - dt.timedelta(1)
+        elif freq == "q":
+            n = n * 3
+            try:
+                return dt.datetime(idt.year - n // 12 - int(idt.month < n % 12), idt.month + int(idt.month < n % 12) * 12 - n % 12, idt.day)
+            except:
+                n = n - 1
+                return dt.datetime(idt.year - n // 12 - int(idt.month < n % 12), idt.month + int(idt.month < n % 12) * 12 - n % 12, 1) - dt.timedelta(1)
+        elif freq == "y":
+            try:
+                return dt.datetime(idt.year - n, idt.month, idt.day)
+            except:
+                return dt.datetime(idt.year - n, 2, 28)
+        else:
+            raise Exception(f"无法识别的 period: {period}")
+
+
 # 合并日期序列和时间序列, 形成 DateTime 序列, 生成器函数
 def combineDateTime(dates, times):
     for iDate in dates:
@@ -288,8 +337,11 @@ if __name__=="__main__":
     #DateTimes = getDateTimeSeries(dt.datetime(2018,1,1,9,30), dt.datetime(2018,12,31,15), dt.timedelta(seconds=1))
     #print(time.perf_counter()-StartT)
     # 测试 groupbyYear
-    DTs = pd.date_range(dt.datetime(2018,1,1), dt.datetime(2019,12,30), freq="D")
-    s = pd.Series(np.random.randn(DTs.shape[0]), index=DTs)
-    df = groupbyYear(s)
-    print(df.head())
+    # DTs = pd.date_range(dt.datetime(2018,1,1), dt.datetime(2019,12,30), freq="D")
+    # s = pd.Series(np.random.randn(DTs.shape[0]), index=DTs)
+    # df = groupbyYear(s)
+    # print(df.head())
+    # 测试 lookbackDateTime
+    print(lookbackDateTime(dt.datetime(2025, 3, 31), period="13m"))
+
     print("===")

@@ -154,7 +154,7 @@ class CalcPortfolioNV(PanelOperator):
             config_file: 配置文件地址
         """
         Arity = args.get("Arity", None) or 4
-        Args = {"Name": "calcPortfolioNV"} | args | {"DTMode": "多时点", "OutputMode": "全截面", "DataType": "double", "iInitFactor": 0}
+        Args = {"Name": "calcPortfolioNV"} | args | {"DTMode": "多时点", "DataType": "double", "iInitFactor": 0}
         Args["ModelArgs"] = {"calc_type": calc_type} | Args.get("ModelArgs", {})
         Args["DescriptorSection"] = [None] + [descriptor_ids] * (Arity - 1)
         Args["StartDT"] = [start_dt] * Arity

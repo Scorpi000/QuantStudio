@@ -31,9 +31,9 @@ class FactorContext(Context):
         self._DefaultPIDIDs = self.splitID(self.SectionIDs)
 
     # 并发运行后返回需要同步的内容
-    def getUpdateData(self) -> dict:
-        UpdateData = super().getUpdateData()
-        if self.DataCache: UpdateData["cache"] = self.DataCache.getUpdateData()
+    def getUpdateData(self, node_id_list:Optional[List[str]]=None, **kwargs) -> dict:
+        UpdateData = super().getUpdateData(**kwargs)
+        if self.DataCache: UpdateData["cache"] = self.DataCache.getUpdateData(key_list=node_id_list)
         return UpdateData
 
     # 并发运行后更新同步内容

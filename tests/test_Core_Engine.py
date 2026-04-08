@@ -12,6 +12,7 @@ from QuantStudio.Factor.FactorCache import FeatherFactorCache
 from QuantStudio.Factor.FactorOperation import PointOperation, makeFactorOperator
 
 
+# 测试数据
 if __name__ == "__main__":
     np.random.seed(0)
     nDT, nID = 10, 5
@@ -42,21 +43,45 @@ if __name__ == "__main__":
     Factor4 = (Factor3 + 1).new(args={"Name": "Factor4"}, qs_id="Factor4")
 
     NodeList = [Factor1, Factor2, Factor4, Factor3]
-    LocalContext = FactorLocalContext(DTs=DTs, IDs=IDs)
-    InitData = FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=SectionIDs)
+    FwdDataList = [FactorLocalContext(DTs=DTs, IDs=IDs)] * len(NodeList)
+    InitDataList = [FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=SectionIDs)] * len(NodeList)
 
+
+# Engine
+if __name__ == "__main__1":
     with FeatherFactorCache(args={"DTRuler": DTRuler, "CacheDir": "./data/Cache", "StartMode": "new"}) as Cache:
         with FactorContext(DTRuler=DTRuler, SectionIDs=SectionIDs, DataCache=Cache) as Context:
-            # with Engine() as ExecEngine:
-            with TreeEngine(args={"CalcConcurrentNum": 4, "CalcConcurrentMode": "Thread"}) as ExecEngine:
-                Rslt = ExecEngine.run(NodeList, Context, fwd_data_list=[LocalContext]*len(NodeList), init_data_list=[InitData]*len(NodeList))
-    
-    # PIDList = [f"0-{i}" for i in range(4)]
-    # with FeatherFactorCache(args={"PIDs": PIDList, "DTRuler": DTRuler, "CacheDir": "./data/Cache", "StartMode": "new"}) as Cache:
-    #     with FactorContext(PIDList=PIDList, DTRuler=DTRuler, SectionIDs=SectionIDs, DataCache=Cache) as Context:
-    #         with ParallelEngine() as ExecEngine:
-    #             Rslt = ExecEngine.run(NodeList, Context, fwd_data_list=[LocalContext]*len(NodeList), init_data_list=[InitData]*len(NodeList))
+            with Engine() as ExecEngine:
+                Rslt = ExecEngine.run(NodeList, Context, fwd_data_list=FwdDataList, init_data_list=InitDataList)
     
     for iRslt in Rslt:
         print(iRslt)
+    
+    print("===")
+
+
+# ParallelEngine
+if __name__ == "__main__1":
+    PIDList = [f"0-{i}" for i in range(4)]
+    with FeatherFactorCache(args={"PIDs": PIDList, "DTRuler": DTRuler, "CacheDir": "./data/Cache", "StartMode": "new"}) as Cache:
+        with FactorContext(PIDList=PIDList, DTRuler=DTRuler, SectionIDs=SectionIDs, DataCache=Cache) as Context:
+            with ParallelEngine() as ExecEngine:
+                Rslt = ExecEngine.run(NodeList, Context, fwd_data_list=FwdDataList, init_data_list=InitDataList)
+    
+    for iRslt in Rslt:
+        print(iRslt)
+    
+    print("===")
+
+
+# TreeEngine
+if __name__ == "__main__":
+    with FeatherFactorCache(args={"DTRuler": DTRuler, "CacheDir": "./data/Cache", "StartMode": "new"}) as Cache:
+        with FactorContext(DTRuler=DTRuler, SectionIDs=SectionIDs, DataCache=Cache) as Context:
+            with TreeEngine(args={"CalcConcurrentNum": 4, "CalcConcurrentMode": "Process"}) as ExecEngine:
+                Rslt = ExecEngine.run(NodeList, Context, fwd_data_list=FwdDataList, init_data_list=InitDataList)
+    
+    for iRslt in Rslt:
+        print(iRslt)
+    
     print("===")

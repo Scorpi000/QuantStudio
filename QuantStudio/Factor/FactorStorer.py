@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-from typing import List, Any, Literal
+from typing import List, Any, Literal, Optional
 
 from pydantic import Field
 
 from QuantStudio.Core.Node import Node, Context
 from QuantStudio.Core.QSObject import Panel
+from QuantStudio.Factor.Factor import Factor
 from QuantStudio.Factor.FactorDB import WritableFactorDB
 
 
@@ -19,12 +20,22 @@ class FactorStorer(Node):
         TableMeta: dict = Field(default={}, title="因子表元信息", frozen=True)
         UpdateMeta: bool = Field(default=False, frozen=True, title="更新元信息")
     
+    def __init__(self, deps:List[Factor]=[], args:dict={}, config_file:Optional[str]=None, **kwargs):
+        if kwargs.get("split", True) and hasattr(args["TargetFDB"], "writeFactorData"):
+            Deps = [FactorStorer(deps=[iFactor], args=args, config_file=config_file, **(kwargs | {"split": False})) for iFactor in deps]
+            self._Splited = True
+        else:
+            Deps = deps
+            self._Splited = False
+        super().__init__(Deps, args, config_file, **kwargs)
+
     @property
     def FactorDB(self) -> WritableFactorDB:
         """目标因子库"""
         return self._QSArgs._TargetFDB
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: Context, local_context: Any=None) -> Any:
+        if self._Splited: return
         if hasattr(self._QSArgs.TargetFDB, "writeFactorData"):
             for i, iData in enumerate(bwd_data_list):
                 iDataType = self.Deps[i].getMetaData(key="DataType")

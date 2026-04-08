@@ -28,7 +28,7 @@ class Context(__QS_Args__):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     
     # 并发运行后返回需要同步的内容
-    def getUpdateData(self) -> dict:
+    def getUpdateData(self, **kwargs) -> dict:
         return {}
 
     # 并发运行后更新同步内容
