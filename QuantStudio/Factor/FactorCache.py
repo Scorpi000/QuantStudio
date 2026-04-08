@@ -323,17 +323,20 @@ class FileFactorCache(FileDTCache, FactorCache):
                     if wait_seconds > 0: time.sleep(wait_seconds)
                 continue
             elif wait:
+                self._PIDLock[iPID].acquire()
                 iMTime = self.getPathMTime(iPath)
                 if (iPID not in MTime) or (iMTime > MTime[iPID]):
                     MTime[iPID] = iMTime
                     iDTNum = self.readDataFrame(path=os.path.join(iPath, target_field + self._QSArgs.Suffix), data_type=data_type)
                     if iDTNum is None: iDTNum = 0
                     else: iDTNum = iDTNum.shape[0]
+                    self._PIDLock[iPID].release()
                     if iDTNum < DTNum:
                         pids.add(iPID)
                         if wait_seconds > 0: time.sleep(wait_seconds)
                         continue
                 else:
+                    self._PIDLock[iPID].release()
                     pids.add(iPID)
                     if wait_seconds > 0: time.sleep(wait_seconds)
                     continue
