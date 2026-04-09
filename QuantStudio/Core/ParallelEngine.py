@@ -7,11 +7,7 @@ from multiprocess import Process
 
 from QuantStudio.Core import __QS_Object__, __QS_Error__
 from QuantStudio.Core.Node import Node, Context
-if os.name=="nt":
-    # from QuantStudio.Core.QSObject import QSQueue as Queue
-    from multiprocess import SimpleQueue as Queue
-else:
-    from multiprocess import SimpleQueue as Queue
+from multiprocess import SimpleQueue as Queue
 from QuantStudio.Core.CalcEngine import Engine
 
 def _execute_task(task):

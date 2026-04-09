@@ -16,6 +16,7 @@ class Engine(__QS_Object__):
 
     # 初始化
     def init(self, node_list: List[Node], context: Context, init_data_list: Optional[List[Any]]=None):
+        if init_data_list is None: init_data_list = [None] * len(node_list)
         NodeQ, InitDataQ, PathQ = node_list.copy(), init_data_list, [[iNode.QSID] for iNode in node_list]
         while NodeQ:
             iNode, iPath = NodeQ.pop(0), PathQ.pop(0)
