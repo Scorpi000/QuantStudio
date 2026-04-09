@@ -136,6 +136,7 @@ class CalcIC(PanelOperator):
             if not np.all(SortedIdx == np.arange(len(factor_name_list))):
                 self.Logger.warning(f"{self.__class__.__name__}.__call__: 测试因子的名称列表({factor_name_list})不是升序排列，将按照升序重新排列测试因子")
                 x, factor_name_list = [x[i] for i in SortedIdx], [factor_name_list[i] for i in SortedIdx]
+        factor_args = factor_args.copy()
         factor_args["SectionIDs"] = factor_name_list
         factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"mask": (mask is not None), "cat_data": (cat_data is not None), "weight": (weight is not None)}
         kwargs["operator_kwargs"] =  {"descriptor_ids": self._QSArgs.DescriptorSection[0], "lookback": self._QSArgs.LookBack[0]} | kwargs.get("operator_kwargs", {})
@@ -268,6 +269,7 @@ class CalcRiskAdjustedIC(PanelOperator):
             if not np.all(SortedIdx == np.arange(len(factor_name_list))):
                 self.Logger.warning(f"{self.__class__.__name__}.__call__: 测试因子的名称列表({factor_name_list})不是升序排列，将按照升序重新排列测试因子")
                 x, factor_name_list = [x[i] for i in SortedIdx], [factor_name_list[i] for i in SortedIdx]
+        factor_args = factor_args.copy()
         factor_args["SectionIDs"] = factor_name_list
         factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"mask": (mask is not None), "cat_data": (cat_data is not None), "factor_name_list": [f.Name for f in x], "risk_factor_list": [f.Name for f in risk_factors]}
         kwargs["operator_kwargs"] =  {"descriptor_ids": self._QSArgs.DescriptorSection[0], "lookback": self._QSArgs.LookBack[0]} | kwargs.get("operator_kwargs", {})
@@ -284,7 +286,8 @@ class IC(BTNode):
     def __init__(self, ic: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
         super().__init__(deps=[ic], args=args, config_file=config_file, **kwargs)
     
-    def genMatplotlibFig(self, output:dict, file_path: Optional[str]=None) -> Figure:
+    @staticmethod
+    def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:
         nRow, nCol = output["IC"].shape[1]//3+(output["IC"].shape[1]%3!=0), min(3, output["IC"].shape[1])
         Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         xData = np.arange(0, output["IC"].shape[0])
@@ -306,6 +309,23 @@ class IC(BTNode):
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     
+    @staticmethod
+    def genOutputReport(output:dict) -> str:
+        HTML = ""
+        Formatters = [_QS_formatPandasPercentage] * 4 + [lambda x:'{0:.4f}'.format(x)] + [lambda x:'{0:.2f}'.format(x)] * 3 + [lambda x:'{0:.0f}'.format(x)]
+        iHTML = output["统计数据"].to_html(formatters=Formatters)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos] + ' align="center"' + iHTML[Pos:]
+        Fig = IC.genMatplotlibFig(output)
+        # figure 保存为二进制文件
+        Buffer = BytesIO()
+        Fig.savefig(Buffer, bbox_inches='tight')
+        PlotData = Buffer.getvalue()
+        # 图像数据转化为 HTML 格式
+        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+        HTML += ('<img src="%s">' % ImgStr)
+        return HTML
+    
     def genReport(self, output:dict) -> str:
         HTML = "参数设置: "
         HTML += '<ul align="left">'
@@ -321,18 +341,7 @@ class IC(BTNode):
             HTML += "<li>计算时点: 所有时点</li>"
         HTML += f"<li>移动平均期数: {self._QSArgs.RollingAvgPeriod}</li>"
         HTML += "</ul>"
-        Formatters = [_QS_formatPandasPercentage]*4+[lambda x:'{0:.4f}'.format(x)]+[lambda x:'{0:.2f}'.format(x)]*3+[lambda x:'{0:.0f}'.format(x)]
-        iHTML = output["统计数据"].to_html(formatters=Formatters)
-        Pos = iHTML.find(">")
-        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-        Fig = self.genMatplotlibFig(output)
-        # figure 保存为二进制文件
-        Buffer = BytesIO()
-        Fig.savefig(Buffer, bbox_inches='tight')
-        PlotData = Buffer.getvalue()
-        # 图像数据转化为 HTML 格式
-        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
-        HTML += ('<img src="%s">' % ImgStr)
+        HTML += "\n" + IC.genOutputReport(output=output)
         return HTML
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
@@ -386,7 +395,8 @@ class ICDecay(BTNode):
             if len(self._QSArgs.PeriodList) != ic_list:
                 raise __QS_Error__(f"指定的 PeriodList 的长度 {len(self._QSArgs.PeriodList)} 不等于 IC 因子的数量 {len(ic_list)}")
     
-    def genMatplotlibFig(self, output:dict, file_path: Optional[str]=None) -> Figure:
+    @staticmethod
+    def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:
         Fig = Figure(figsize=(16, 8))
         xData = np.arange(0, output["统计数据"].shape[0])
         xTickLabels = [str(i) for i in output["统计数据"].index]
@@ -405,19 +415,16 @@ class ICDecay(BTNode):
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     
-    def genReport(self, output:dict) -> str:
-        HTML = "参数设置: "
-        HTML += '<ul align="left">'
-        HTML += f"<li>回溯期列表: {self._QSArgs.PeriodList}</li>"
-        if self._QSArgs.FactorNameList: HTML += f"<li>因子列表: {self._QSArgs.FactorNameList}</li>"
-        HTML += "</ul>"
-        Formatters = [_QS_formatPandasPercentage]*2+[lambda x:'{0:.4f}'.format(x), lambda x:'{0:.2f}'.format(x), _QS_formatPandasPercentage]
+    @staticmethod
+    def genOutputReport(output:dict) -> str:
+        HTML = ""
+        Formatters = [_QS_formatPandasPercentage] * 2 + [lambda x:'{0:.4f}'.format(x), lambda x:'{0:.2f}'.format(x), _QS_formatPandasPercentage]
         for iFactorName in output.keys():
             iHTML = f"<br>因子: {iFactorName}<br>"
             iHTML += output[iFactorName]["统计数据"].to_html(formatters=Formatters)
             Pos = iHTML.find(">")
             HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-            Fig = self.genMatplotlibFig(output=output[iFactorName])
+            Fig = ICDecay.genMatplotlibFig(output=output[iFactorName])
             # figure 保存为二进制文件
             Buffer = BytesIO()
             Fig.savefig(Buffer, bbox_inches='tight')
@@ -425,6 +432,15 @@ class ICDecay(BTNode):
             # 图像数据转化为 HTML 格式
             ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
             HTML += ('<img src="%s">' % ImgStr)
+        return HTML
+
+    def genReport(self, output:dict) -> str:
+        HTML = "参数设置: "
+        HTML += '<ul align="left">'
+        HTML += f"<li>回溯期列表: {self._QSArgs.PeriodList}</li>"
+        if self._QSArgs.FactorNameList: HTML += f"<li>因子列表: {self._QSArgs.FactorNameList}</li>"
+        HTML += "</ul>"
+        HTML += "\n" + ICDecay.genOutputReport(output=output)
         return HTML
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:

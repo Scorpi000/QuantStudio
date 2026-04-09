@@ -102,6 +102,7 @@ class CalcBrinsonModel(PanelOperator):
             * IN: 交互作用(Interaction)
             * AAA: 调整的资产配置收益
         """
+        factor_args = factor_args.copy()
         Factors = [p, price, cat_data]
         if bmk is not None: Factors.append(bmk)
         if "SectionIDs" not in factor_args:
@@ -120,6 +121,15 @@ class BrinsonModel(BTNode):
     def __init__(self, brinson: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
         super().__init__(deps=[brinson], args=args, config_file=config_file, **kwargs)
     
+    @staticmethod
+    def genOutputReport(output:dict) -> str:
+        HTML = ""
+        Formatters = [_QS_formatPandasPercentage] * 8
+        iHTML = output["多期综合"].to_html(formatters=Formatters)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        return HTML
+    
     def genReport(self, output:dict) -> str:
         HTML = "参数设置: "
         HTML += '<ul align="left">'
@@ -128,18 +138,7 @@ class BrinsonModel(BTNode):
         else:
             HTML += "<li>计算时点: 所有时点</li>"
         HTML += "</ul>"
-        Formatters = [_QS_formatPandasPercentage] * 8
-        iHTML = output["多期综合"].to_html(formatters=Formatters)
-        Pos = iHTML.find(">")
-        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-        # Fig = self.genMatplotlibFig(output)
-        # # figure 保存为二进制文件
-        # Buffer = BytesIO()
-        # Fig.savefig(Buffer, bbox_inches='tight')
-        # PlotData = Buffer.getvalue()
-        # # 图像数据转化为 HTML 格式
-        # ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
-        # HTML += ('<img src="%s">' % ImgStr)
+        HTML += "\n" + BrinsonModel.genOutputReport(output=output)
         return HTML
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:

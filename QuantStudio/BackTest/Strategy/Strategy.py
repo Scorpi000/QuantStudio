@@ -173,6 +173,7 @@ class MakeAccount(PanelOperator):
         Returns:
             简单账户因子
         """
+        factor_args = factor_args.copy()
         if init_account is None: init_account = DataFactor(data=(self._QSArgs.ModelArgs["init_cash"], 0, 0, np.nan, 0, np.nan, 0), args={"Name": "InitAccount"})
         Factors = [init_account, last_price, signal]
         if target_price is not None: Factors.append(target_price)
@@ -258,7 +259,8 @@ class AccountReport(BTNode):
     def __init__(self, account: Factor, bmk_nv:Optional[Factor]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         super().__init__(deps=[account] + ([bmk_nv] if bmk_nv else []), args=args, config_file=config_file, **kwargs)
     
-    def genMatplotlibFig(self, output:dict, file_path: Optional[str]=None) -> Figure:
+    @staticmethod
+    def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:
         hasCapitalInvest = ("考虑资金投入的表现" in output["统计数据"])
         hasBenchmark = ("相对表现" in output["统计数据"])
         nRow, nCol = 1, 2+hasCapitalInvest+hasBenchmark
@@ -316,6 +318,21 @@ class AccountReport(BTNode):
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
     
+    @staticmethod
+    def genOutputReport(output:dict) -> str:
+        HTML = formatStrategySummary(output["统计数据"]).to_html()
+        Pos = HTML.find(">")
+        HTML = HTML[:Pos]+' align="center"'+HTML[Pos:]
+        Fig = AccountReport.genMatplotlibFig(output)
+        # figure 保存为二进制文件
+        Buffer = BytesIO()
+        Fig.savefig(Buffer)
+        PlotData = Buffer.getvalue()
+        # 图像数据转化为 HTML 格式
+        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+        HTML += ('<img src="%s">' % ImgStr)
+        return HTML
+
     def genReport(self, output:dict) -> str:
         HTML = "参数设置: "
         HTML += '<ul align="left">'
@@ -326,17 +343,7 @@ class AccountReport(BTNode):
             HTML += f"<li>允许卖空: {ModelArgs['short_allowed']}</li>"
         HTML += f"<li>无风险利率: {self._QSArgs.RiskFreeRate}</li>"
         HTML += "</ul>"
-        HTML = formatStrategySummary(output["统计数据"]).to_html()
-        Pos = HTML.find(">")
-        HTML = HTML[:Pos]+' align="center"'+HTML[Pos:]
-        Fig = self.genMatplotlibFig(output)
-        # figure 保存为二进制文件
-        Buffer = BytesIO()
-        Fig.savefig(Buffer)
-        PlotData = Buffer.getvalue()
-        # 图像数据转化为 HTML 格式
-        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
-        HTML += ('<img src="%s">' % ImgStr)
+        HTML += "\n" + AccountReport.genOutputReport(output=output)
         return HTML
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
@@ -530,6 +537,7 @@ class MakeStrategy(MakeAccount):
         Returns:
             策略因子
         """
+        factor_args = factor_args.copy()
         if self._QSArgs.ModelArgs["x_len"] != len(x): raise __QS_Error__(f"该算子支持的依赖因子数量 {self._QSArgs.ModelArgs['x_len']} 不等于传入的依赖因子个数 {len(x)}, 可重新创建该算子")
         if len(extra_deps) != len(extra_section_ids): raise __QS_Error__(f"传入的额外依赖节点数量 {len(extra_deps)} 不等于传入的额外依赖节点的截面 ID 数量 {len(extra_section_ids)}")
         if len(extra_deps) != len(extra_lookback): raise __QS_Error__(f"传入的额外依赖节点数量 {len(extra_deps)} 不等于传入的额外依赖节点的回溯期数量 {len(extra_lookback)}")

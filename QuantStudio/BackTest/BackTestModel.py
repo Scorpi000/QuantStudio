@@ -77,5 +77,18 @@ class BTReport(Node):
         Output["Report"] = HTML
         return Output
     
+    @staticmethod
+    def genOutputReport(output_list:List[dict], name_list:Optional[List[str]]=None) -> str:
+        if not name_list: name_list = [""] * len(output_list)
+        HTML = ""
+        SepStr = '<HR style="FILTER: alpha(opacity=100,finishopacity=0,style=3)" width="90%" color=#987cb9 SIZE=5><div align="center" style="font-size:1.17em"><strong>{Module}</strong></div>'
+        for i, iOutput in enumerate(output_list):
+            if "Report" in iOutput:
+                iHTML = iOutput["Report"]
+            else:
+                iHTML = "暂无报告"
+            HTML += SepStr.format(Module=str(i)+". "+name_list[i]) + "\n" + iHTML + "\n"
+        return HTML
+
     def merge_result(self, result_list: List[dict], context: Context):
         return result_list[0]

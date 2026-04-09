@@ -15,7 +15,8 @@ from QuantStudio.Core import __QS_Error__, __QS_Object__
 from QuantStudio.Core.Node import Node
 from QuantStudio.Core.QSObject import Panel
 if os.name == "nt":
-    from QuantStudio.Core.QSObject import QSQueue as Queue
+    # from QuantStudio.Core.QSObject import QSQueue as Queue
+    from multiprocess import Queue
 else:
     from multiprocess import Queue
 from QuantStudio.Factor.Factor import Factor, DataFactor, FactorContext, FactorLocalContext, FactorInitData
@@ -1207,8 +1208,8 @@ class SectionOperation(DerivativeFactor):
             if iSectionIDs != InitData[i].SectionIDs:
                 InitData[i] = InitData[i].__class__(**(InitData[i].model_dump() | {"SectionIDs": iSectionIDs}))
         if (len(context.PIDList) > 1) and (self.QSID not in context.Event):
-            # context.Event[self.QSID] = (context.ExtraData["mp_manager"].Queue(), context.ExtraData["mp_manager"].Event())
-            context.Event[self.QSID] = (Queue(), Event())
+            # context.Event[self.QSID] = context.ExtraData["mp_manager"].Event()
+            context.Event[self.QSID] = Event()
         return InitData
     
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
@@ -1253,9 +1254,8 @@ class SectionOperation(DerivativeFactor):
                 context.DataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=None, if_exists="append", data_type=self._Operator._QSArgs.DataType, meta=Meta)
                 context.DataCache.updateDTRange(key=self.QSID, dt_range=(CalcDTs[0], CalcDTs[-1]))
         if len(context.PIDList) > 1:
-            Sub2MainQueue, PIDEvent = context.Event[self.QSID]
-            Sub2MainQueue.put(1)
-            PIDEvent.wait()
+            context.Sub2MainQueue.put(("Event", context.PID, (self.QSID, 1)))
+            context.Event[self.QSID].wait()
             if "TotalCalcDTs" in local_context.ExtraData:
                 TotalCalcDTs = local_context.ExtraData["TotalCalcDTs"]
                 context.DataCache.updateDTRange(key=self.QSID, dt_range=(TotalCalcDTs[0], TotalCalcDTs[-1]))
@@ -1309,8 +1309,8 @@ class PanelOperation(DerivativeFactor):
                 raise __QS_Error__(f"对于因子 {self.Name}(QSID: {self.QSID}) 的描述子 '{iDescriptor.Name}'(QSID: {iDescriptor.QSID}), 参数 StartDT 为 {self._Operator._QSArgs.StartDT[i]}, 参数 LookBack 为 {self._Operator._QSArgs.LookBack[i]}, 时点标尺长度不足, 超出了 {abs(iStartIdx)} 个时点")
             InitData[i] = InitData[i].__class__(**(InitData[i].model_dump() | {"DTRange": (DTRuler[iStartIdx], iEndDT), "SectionIDs": self._QS_getDescriptorSectionIDs(i, context=context)}))
         if (len(context.PIDList) > 1) and (self.QSID not in context.Event):
-            # context.Event[self.QSID] = (context.ExtraData["mp_manager"].Queue(), context.ExtraData["mp_manager"].Event())
-            context.Event[self.QSID] = (Queue(), Event())
+            # context.Event[self.QSID] = context.ExtraData["mp_manager"].Event()
+            context.Event[self.QSID] = Event()
         return InitData
     
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
@@ -1414,9 +1414,8 @@ class PanelOperation(DerivativeFactor):
                 context.DataCache.writeFactorData(key=self.QSID, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=None, if_exists="append", data_type=self._Operator._QSArgs.DataType, meta=Meta)
                 context.DataCache.updateDTRange(key=self.QSID, dt_range=(StdData.index[0], StdData.index[-1]))
         if len(context.PIDList) > 1:
-            Sub2MainQueue, PIDEvent = context.Event[self.QSID]
-            Sub2MainQueue.put(1)
-            PIDEvent.wait()
+            context.Sub2MainQueue.put(("Event", context.PID, (self.QSID, 1)))
+            context.Event[self.QSID].wait()
             if "TotalCalcDTs" in local_context.ExtraData:
                 TotalCalcDTs = local_context.ExtraData["TotalCalcDTs"]
                 context.DataCache.updateDTRange(key=self.QSID, dt_range=(TotalCalcDTs[0], TotalCalcDTs[-1]))

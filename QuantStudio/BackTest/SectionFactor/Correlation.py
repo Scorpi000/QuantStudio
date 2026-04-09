@@ -78,6 +78,7 @@ class CalcSectionCorrelation(SectionOperator):
         Returns:
             截面相关性因子
         """
+        factor_args = factor_args.copy()
         if len(x) < 2: raise __QS_Error__(f"算子 {self.__class__}: 必须至少指定两个因子!")
         Factors = []
         if mask is not None: Factors.append(mask)
@@ -113,6 +114,11 @@ class SectionCorrelation(BTNode):
     def __init__(self, section_corr: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
         return super().__init__(deps=[section_corr], args=args, config_file=config_file, **kwargs)
     
+    @staticmethod
+    def genOutputReport(output:dict) -> str:
+        iHTML = output["平均值"].style.background_gradient(cmap="Reds").set_properties(precision=2).to_html()
+        return '<div align="left" style="font-size:1em"><strong>平均相关性</strong></div>' + iHTML
+
     def genReport(self, output:dict) -> str:
         HTML = "参数设置: "
         HTML += '<ul align="left">'
@@ -124,8 +130,7 @@ class SectionCorrelation(BTNode):
         else:
             HTML += "<li>计算时点: 所有时点</li>"
         HTML += "</ul>"
-        iHTML = output["平均值"].style.background_gradient(cmap="Reds").set_properties(precision=2).to_html()
-        HTML += '<div align="left" style="font-size:1em"><strong>平均相关性</strong></div>' + iHTML
+        HTML += "\n" + SectionCorrelation.genOutputReport(output=output)
         return HTML
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
@@ -221,6 +226,7 @@ class CalcFactorTurnover(PanelOperator):
         Returns:
             因子换手率因子
         """
+        factor_args = factor_args.copy()
         Factors = []
         if mask is not None: Factors.append(mask)
         if not x: raise __QS_Error__("因子列表 x 不可为空!")
@@ -258,8 +264,9 @@ class FactorTurnover(BTNode):
     def __init__(self, factor_turnover: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
         return super().__init__(deps=[factor_turnover], args=args, config_file=config_file, **kwargs)
     
-    def genMatplotlibFig(self, output, file_path=None):
-        nRow, nCol = output["因子换手率"].shape[1]//3+(output["因子换手率"].shape[1]%3!=0), min(3, output["因子换手率"].shape[1])
+    @staticmethod
+    def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:
+        nRow, nCol = output["因子换手率"].shape[1] // 3 + (output["因子换手率"].shape[1]%3 != 0), min(3, output["因子换手率"].shape[1])
         Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
         for i in range(output["因子换手率"].shape[1]):
@@ -271,6 +278,22 @@ class FactorTurnover(BTNode):
             iAxes.set_title(output["因子换手率"].columns[i])
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
+    
+    @staticmethod
+    def genOutputReport(output:dict) -> str:
+        HTML = ""
+        iHTML = output["统计数据"].to_html(formatters=[_QS_formatPandasPercentage]*5)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        Fig = FactorTurnover.genMatplotlibFig(output=output)
+        # figure 保存为二进制文件
+        Buffer = BytesIO()
+        Fig.savefig(Buffer, bbox_inches='tight')
+        PlotData = Buffer.getvalue()
+        # 图像数据转化为 HTML 格式
+        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+        HTML += ('<img src="%s">' % ImgStr)
+        return HTML
 
     def genReport(self, output:dict) -> str:
         HTML = "参数设置: "
@@ -284,17 +307,7 @@ class FactorTurnover(BTNode):
         else:
             HTML += "<li>计算时点: 所有时点</li>"
         HTML += "</ul>"
-        iHTML = output["统计数据"].to_html(formatters=[_QS_formatPandasPercentage]*5)
-        Pos = iHTML.find(">")
-        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-        Fig = self.genMatplotlibFig(output=output)
-        # figure 保存为二进制文件
-        Buffer = BytesIO()
-        Fig.savefig(Buffer, bbox_inches='tight')
-        PlotData = Buffer.getvalue()
-        # 图像数据转化为 HTML 格式
-        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
-        HTML += ('<img src="%s">' % ImgStr)
+        HTML += "\n" + FactorTurnover.genOutputReport(output=output)
         return HTML
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:

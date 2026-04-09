@@ -16,10 +16,13 @@ class Context(__QS_Args__):
     NodeDict: Dict[str, "Node"] = Field(default={}, title="节点集", description="{节点ID: Node}, 本次运算的所有 Node, 由计算引擎生成")
     NodeState: Dict[str, Any] = Field(default={}, title="节点状态", description="{节点ID: Any}, 运算中用于存储节点的临时数据，由节点生成和维护")
     PrepareNodeDict: Dict[str, Tuple[str, Any]] = Field(default={}, title="准备节点列表", description="{准备ID: (节点ID, Any)}, 需要执行准备操作的节点列表")
+    # ----- 多进程相关 -----
     PID: str = Field(default="0", title="当前进程ID", description="当前的运行进程 ID, 默认为 '0'")
     PIDList: List[str] = Field(default=["0"], title="全部进程ID", description="所有运行进程 ID 列表")
     SplitType: Literal["连续切分", "间隔切分"] = Field(default="连续切分", title="切分方式", frozen=True)
-    Event: dict = Field(default={}, title="同步Event", description="{节点ID: (Sub2MainQueue, Event)}, 用于多进程同步的 Event 数据")
+    Event: dict = Field(default={}, title="同步Event", description="{节点ID: Event}, 用于多进程同步的 Event 数据")
+    Sub2MainQueue: Optional[Any] = Field(default=None, description="用于子进程向主进程发送消息")
+    # ----------
     TaskExecutor: Optional[Executor] = Field(default=None, title="并行执行器", description="给到节点用于并行计算")
     MaxWorkers: int = Field(default=1, title="最大并行数量", description="节点执行并行计算的最大并发量")
     DataCache: Optional[Cache] = Field(default=None, title="数据缓存", frozen=True)

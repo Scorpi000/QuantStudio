@@ -74,6 +74,7 @@ class CalcPortfolioVolatility(SectionOperator):
         Returns:
             投资组合波动率因子
         """
+        factor_args = factor_args.copy()
         if not portfolio: raise __QS_Error__("投资组合因子不能为空!")
         if portfolio_name_list is not None:
             if factor_args.get("SectionIDs", None) is not None:
@@ -134,6 +135,7 @@ class CalcRandomPortfolio(SectionOperator):
     def __call__(self, weight: Factor, mask: Optional[Factor]=None, factor_args:dict={}, **kwargs) -> SectionOperation:
         Factors = [weight]
         if mask is not None: Factors.append(mask)
+        factor_args = factor_args.copy()
         factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"mask": (mask is not None)}
         return super().__call__(*Factors, factor_args=factor_args, **kwargs)
 
@@ -221,6 +223,15 @@ class BiasTest(BTNode):
         ZScore = PortfolioReturn / fo.Lag(lag_period=1, window=LookBack)(PortfolioVolatility, factor_args={"CalcDTRuler": CalcDTRuler})
         super().__init__(deps=[ZScore], args=args, config_file=config_file, **kwargs)
 
+    @staticmethod
+    def genOutputReport(output:dict) -> str:
+        HTML = ""
+        Formatters = [lambda x:'{0:.4f}'.format(x)] * 2 + [_QS_formatPandasPercentage] * 6
+        iHTML = output["汇总统计量"].to_html(formatters=Formatters)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        return HTML
+
     def genReport(self, output:dict) -> str:
         HTML = "参数设置: "
         HTML += '<ul align="left">'
@@ -232,18 +243,7 @@ class BiasTest(BTNode):
             HTML += "<li>再平衡时点: 所有时点</li>"
         HTML += f"<li>移动平均期数: {self._QSArgs.RollingAvgPeriod}</li>"
         HTML += "</ul>"
-        Formatters = [lambda x:'{0:.4f}'.format(x)]*2+[_QS_formatPandasPercentage]*6
-        iHTML = output["汇总统计量"].to_html(formatters=Formatters)
-        Pos = iHTML.find(">")
-        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-        # Fig = self.genMatplotlibFig(output)
-        # # figure 保存为二进制文件
-        # Buffer = BytesIO()
-        # Fig.savefig(Buffer, bbox_inches='tight')
-        # PlotData = Buffer.getvalue()
-        # # 图像数据转化为 HTML 格式
-        # ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
-        # HTML += ('<img src="%s">' % ImgStr)
+        HTML += "\n" + BiasTest.genOutputReport(output=output)
         return HTML
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:

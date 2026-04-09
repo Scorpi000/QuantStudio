@@ -103,6 +103,7 @@ class CalcMaskPortfolio(SectionOperator):
             return Rslt.set_index(["dt", "id"])["weight"].unstack().reindex(index=idt, columns=iid).values
     
     def __call__(self, mask:Factor, weight:Optional[Factor]=None, cat_data:Optional[Factor]=None, cat_weight:Optional[Factor]=None, factor_args:dict={}, **kwargs) -> SectionOperation:
+        factor_args = factor_args.copy()
         Factors = [mask]
         if weight is not None: Factors.append(weight)
         if cat_data is not None:
@@ -187,6 +188,7 @@ class CalcPortfolioNV(PanelOperator):
         Returns:
             投资组合净值因子
         """
+        factor_args = factor_args.copy()
         if not portfolio: raise __QS_Error__("投资组合因子不能为空!")
         if portfolio_name_list is not None:
             if factor_args.get("SectionIDs", None) is not None:
@@ -209,6 +211,7 @@ class CalcPortfolioNV(PanelOperator):
                 portfolio, SortedPortfolioNameList = [portfolio[i] for i in SortedIdx], [portfolio_name_list[i] for i in SortedIdx]
             else:
                 SortedPortfolioNameList = portfolio_name_list
+        factor_args = factor_args.copy()
         factor_args["SectionIDs"] = SortedPortfolioNameList
         factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"portfolio_name_list": portfolio_name_list}
         kwargs["operator_kwargs"] =  {"descriptor_ids": self._QSArgs.DescriptorSection[1], "start_dt": self._QSArgs.StartDT[0]} | kwargs.get("operator_kwargs", {})
@@ -262,6 +265,7 @@ class CalcPortfolioReturn(PanelOperator):
         Returns:
             投资组合收益率因子
         """
+        factor_args = factor_args.copy()
         if not portfolio: raise __QS_Error__("投资组合因子不能为空!")
         if portfolio_name_list is not None:
             if factor_args.get("SectionIDs", None) is not None:
@@ -312,7 +316,8 @@ class MultiPortfolio(BTNode):
         if (bmk_nv is not None) and (bmk_portfolio is not None): Deps.append(bmk_portfolio)
         super().__init__(deps=Deps, args=args, config_file=config_file, **kwargs)
     
-    def genMatplotlibFig(self, output:dict, file_path:Optional[str]=None) -> Figure:
+    @staticmethod
+    def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:
         GroupNum = output["超额净值"].shape[1]
         nLS = output["净值"].shape[1] - 1 - GroupNum
         nRow, nCol = 3 + int(0 if nLS <= 0 else (nLS - 1) // 3 + 1), 3
@@ -368,6 +373,25 @@ class MultiPortfolio(BTNode):
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
 
+    @staticmethod
+    def genOutputReport(output:dict) -> str:
+        HTML = ""
+        Formatters = [_QS_formatPandasPercentage] * 3 + [lambda x:'{0:.2f}'.format(x)] * 2 + [_QS_formatPandasPercentage] * 2 + [lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else "NaT"] * 2
+        Formatters += [_QS_formatPandasPercentage] * 3 + [lambda x:'{0:.2f}'.format(x)] * 2 + [_QS_formatPandasPercentage] * 2 + [lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else "NaT"]*2
+        Formatters += [lambda x:'{0:.2f}'.format(x)] * 2
+        iHTML = output["统计数据"].to_html(formatters=Formatters)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        Fig = MultiPortfolio.genMatplotlibFig(output)
+        # figure 保存为二进制文件
+        Buffer = BytesIO()
+        Fig.savefig(Buffer, bbox_inches='tight')
+        PlotData = Buffer.getvalue()
+        # 图像数据转化为 HTML 格式
+        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+        HTML += ('<img src="%s">' % ImgStr)
+        return HTML
+
     def genReport(self, output:dict) -> str:
         HTML = "参数设置: "
         HTML += '<ul align="left">'
@@ -377,20 +401,7 @@ class MultiPortfolio(BTNode):
         else:
             HTML += "<li>再平衡时点: 所有时点</li>"
         HTML += "</ul>"
-        Formatters = [_QS_formatPandasPercentage]*3+[lambda x:'{0:.2f}'.format(x)]*2+[_QS_formatPandasPercentage]*2+[lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else "NaT"]*2
-        Formatters += [_QS_formatPandasPercentage]*3+[lambda x:'{0:.2f}'.format(x)]*2+[_QS_formatPandasPercentage]*2+[lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else "NaT"]*2
-        Formatters += [lambda x:'{0:.2f}'.format(x)]*2
-        iHTML = output["统计数据"].to_html(formatters=Formatters)
-        Pos = iHTML.find(">")
-        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-        Fig = self.genMatplotlibFig(output)
-        # figure 保存为二进制文件
-        Buffer = BytesIO()
-        Fig.savefig(Buffer, bbox_inches='tight')
-        PlotData = Buffer.getvalue()
-        # 图像数据转化为 HTML 格式
-        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
-        HTML += ('<img src="%s">' % ImgStr)
+        HTML += "\n" + MultiPortfolio.genOutputReport(output=output)
         return HTML
 
     def _QS_calcStats(self, output):

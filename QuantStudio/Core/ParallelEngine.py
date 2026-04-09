@@ -8,9 +8,10 @@ from multiprocess import Process
 from QuantStudio.Core import __QS_Object__, __QS_Error__
 from QuantStudio.Core.Node import Node, Context
 if os.name=="nt":
-    from QuantStudio.Core.QSObject import QSQueue as Queue
+    # from QuantStudio.Core.QSObject import QSQueue as Queue
+    from multiprocess import SimpleQueue as Queue
 else:
-    from multiprocess import Queue
+    from multiprocess import SimpleQueue as Queue
 from QuantStudio.Core.CalcEngine import Engine
 
 def _execute_task(task):
@@ -19,67 +20,61 @@ def _execute_task(task):
     Context.PID = task["PID"]
     for i, iNode in enumerate(NodeList):
         iRslt = iNode.compute([iNode.QSID], FwdDataList[i], Context)
-        task["Sub2MainQueue"].put((task["PID"], 1, (iNode.QSID, iRslt)))
-    task["Sub2MainQueue"].put((task["PID"], -1, Context.getUpdateData()))
+        Context.Sub2MainQueue.put(("Calc", task["PID"], (1, iNode.QSID, iRslt)))
+    Context.Sub2MainQueue.put(("Done", task["PID"], Context.getUpdateData()))
     Context.Logger.debug(f'子任务进程 {task["PID"]} finish')
 
 class ParallelEngine(Engine):
 
-    # 初始化
-    def init(self, node_list: List[Node], context: Context, init_data_list: Optional[List[Any]]=None):
+    def run(self, node_list: List[Node], context: Context, init_data_list: Optional[List[Any]]=None, fwd_data_list: Optional[List[Any]]=None) -> List[Any]:
         # self._MP_Manager = context.ExtraData["mp_manager"] = Manager()
-        Rslt = super().init(node_list=node_list, context=context, init_data_list=init_data_list)
-        # context.ExtraData.pop("mp_manager")
+        if context.Sub2MainQueue is None: context.Sub2MainQueue = Queue()
+        Rslt = super().run(node_list, context, init_data_list, fwd_data_list)
+        # self._MP_Manager.shutdown()
         return Rslt
 
     def compute(self, node_list: List[Node], context: Context, fwd_data_list: Optional[List[Any]]=None):
         if len(node_list) != len(fwd_data_list): raise __QS_Error__("node_list 和 fwd_data_list 长度不一致!")
+        # context.ExtraData.pop("mp_manager")
         nTask = len(context.PIDList)
         SplitedContext = context.split(nTask)
         SplitedFwdDataList = zip(*[(FwdData.split(nTask, context) if hasattr(FwdData, "split") else [FwdData] * nTask) for FwdData in fwd_data_list])
-        # Sub2MainQueue = self._MP_Manager.Queue()
-        Sub2MainQueue = Queue()
         Procs = {}
         for i, iFwdDataList in enumerate(SplitedFwdDataList):
             iPID = context.PIDList[i]
-            iTask = {"PID": iPID, "NodeList": node_list, "Context": SplitedContext[i], "FwdDataList": iFwdDataList, "Sub2MainQueue": Sub2MainQueue}
+            iTask = {"PID": iPID, "NodeList": node_list, "Context": SplitedContext[i], "FwdDataList": iFwdDataList}
             Procs[iPID] = Process(target=_execute_task, args=(iTask,))
             Procs[iPID].start()
         
+        Sub2MainQueue = context.Sub2MainQueue
         nProg = len(node_list) * nTask
         EventState = {iNodeID: 0 for iNodeID in context.Event}
         iProg, ContextUpdated, FinishedNum = 0, False, 0
         Data = {}
         with ProgressBar(max_value=nProg) as ProgBar:
-            while True:
-                nEvent = len(EventState)
-                if nEvent > 0:
-                    NodeIDs = tuple(EventState.keys())
-                    for iNodeID in NodeIDs:
-                        iQueue = context.Event[iNodeID][0]
-                        while not iQueue.empty():
-                            jInc = iQueue.get()
-                            EventState[iNodeID] += jInc
-                        if EventState[iNodeID] >= nTask:
-                            context.Event[iNodeID][1].set()
-                            EventState.pop(iNodeID)
-                while ((not Sub2MainQueue.empty()) or (nEvent == 0)) and ((iProg < nProg) or (not ContextUpdated)):
-                    iPID, iSubProg, iMsg = Sub2MainQueue.get()
-                    if iSubProg >= 0:# 接收到因子数据
-                        iProg += iSubProg
-                        ProgBar.update(iProg)
-                        Data.setdefault(iMsg[0], []).append(iMsg[1])
-                    elif not ContextUpdated:# 接收到进程结束信号
+            while (iProg < nProg) or (not ContextUpdated):
+                iMsgType, iPID, iMsg = Sub2MainQueue.get()
+                if iMsgType == "Event":# 同步事件
+                    iNodeID, iInc = iMsg
+                    EventState[iNodeID] += iInc
+                    if EventState[iNodeID] >= nTask:
+                        context.Event[iNodeID].set()
+                elif iMsgType == "Calc":# 单个节点计算完成
+                    iSubProg, iNodeID, iRslt = iMsg
+                    iProg += iSubProg
+                    ProgBar.update(iProg)
+                    Data.setdefault(iNodeID, []).append(iRslt)
+                elif iMsgType == "Done":# 子进程结束
+                    if not ContextUpdated:
                         context.updateContext(iMsg)
                         ContextUpdated = True
-                        FinishedNum += 1
-                    else:
-                        FinishedNum += 1
-                if (iProg >= nProg) and ContextUpdated: break
+                    FinishedNum += 1
+                else:
+                    raise __QS_Error__(f"无法识别的消息类型: {iMsgType}")
+        
         # 清空 Queue，否则子进程有可能不退出
         while FinishedNum < nTask:
-            iPID, iSubProg, iMsg = Sub2MainQueue.get()
-            FinishedNum += (iSubProg < 0)
+            iMsgType, iPID, iMsg = Sub2MainQueue.get()
+            FinishedNum += (iMsgType == "Done")
         for iPID, iPrcs in Procs.items(): iPrcs.join()
-        # self._MP_Manager.shutdown()
         return [iNode.merge_result(result_list=Data[iNode.QSID], context=context) for i, iNode in enumerate(node_list)]

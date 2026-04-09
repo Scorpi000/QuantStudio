@@ -1,5 +1,6 @@
 # coding=utf-8
 """数据结构"""
+import os
 import json
 import pickle
 import hashlib
@@ -85,8 +86,10 @@ def removeNestedDictItem(nested_dict, key_tuple):
         key_tuple = key_tuple[:-1]
     return nested_dict
 # 将嵌套字典存入 HDF5 文件
-def writeNestedDict2HDF5(nested_dict_or_value, file_path, ref):
-    with h5py.File(file_path, mode="a") as File:
+def writeNestedDict2HDF5(nested_dict_or_value, file_path, ref, mode="a"):
+    if not os.path.isfile(file_path):
+        open(file_path, mode="a").close()# h5py 直接创建文件名包含中文的文件会报错.
+    with h5py.File(file_path, mode=mode) as File:
         if (ref in File) and (ref!="/"):
             del File[ref]
         if isinstance(nested_dict_or_value, dict):

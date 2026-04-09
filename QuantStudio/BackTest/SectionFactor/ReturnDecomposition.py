@@ -115,6 +115,7 @@ class CalcFamaMacBethRegression(PanelOperator):
         Returns:
             Fama-MacBeth 回归因子
         """
+        factor_args = factor_args.copy()
         Factors = [price]
         if mask is not None: Factors.append(mask)
         if cat_data is not None: Factors.append(cat_data)
@@ -154,7 +155,8 @@ class FamaMacBethRegression(BTNode):
     def __init__(self, fmr: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
         super().__init__(deps=[fmr], args=args, config_file=config_file, **kwargs)
     
-    def genMatplotlibFig(self, output:dict, file_path:Optional[str]=None) -> Figure:
+    @staticmethod
+    def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:
         nRow, nCol = 1, 3
         Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
         PercentageFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
@@ -190,25 +192,30 @@ class FamaMacBethRegression(BTNode):
         RAxes.legend(loc='upper right')
         if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
         return Fig
-    
-    def _plotStatistics(self, axes, x_data, x_ticklabels, left_data, left_formatter, right_data=None, right_formatter=None, right_axes=True):
-        axes.yaxis.set_major_formatter(left_formatter)
-        axes.bar(x_data, left_data.values, label=left_data.name, color="steelblue")
-        if right_data is not None:
-            if right_axes:
-                axes.legend(loc='upper left')
-                right_axes = axes.twinx()
-                right_axes.yaxis.set_major_formatter(right_formatter)
-                right_axes.plot(x_data, right_data.values, label=right_data.name, color="indianred", lw=2.5)
-                right_axes.legend(loc="upper right")
-            else:
-                axes.plot(x_data, right_data.values, label=right_data.name, color="indianred", lw=2.5)
-                axes.legend(loc='best')
-        else:
-            axes.legend(loc='best')
-        axes.set_xticks(x_data)
-        axes.set_xticklabels(x_ticklabels)
-        return axes
+
+    @staticmethod
+    def genOutputReport(output:dict) -> str:
+        HTML = ""
+        FloatFormatFun = lambda x:'{0:.2f}'.format(x)
+        Formatters = [_QS_formatPandasPercentage] * 2 + [FloatFormatFun, _QS_formatPandasPercentage, FloatFormatFun]
+        Formatters += [_QS_formatPandasPercentage] * 2 + [FloatFormatFun, _QS_formatPandasPercentage, FloatFormatFun]
+        Formatters += [_QS_formatPandasPercentage] * 2 + [FloatFormatFun, _QS_formatPandasPercentage, FloatFormatFun]
+        iHTML = output["统计数据"].to_html(formatters=Formatters)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        HTML += '<div align="left" style="font-size:1em"><strong>回归统计量</strong></div>'
+        iHTML = output["回归统计量均值"].to_html(formatters=[FloatFormatFun] * 8)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        Fig = FamaMacBethRegression.genMatplotlibFig(output=output)
+        # figure 保存为二进制文件
+        Buffer = BytesIO()
+        Fig.savefig(Buffer, bbox_inches='tight')
+        PlotData = Buffer.getvalue()
+        # 图像数据转化为 HTML 格式
+        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+        HTML += ('<img src="%s">' % ImgStr)
+        return HTML
 
     def genReport(self, output:dict) -> str:
         HTML = "参数设置: "
@@ -222,25 +229,7 @@ class FamaMacBethRegression(BTNode):
             HTML += "<li>计算时点: 所有时点</li>"
         HTML += f"<li>移动平均期数: {self._QSArgs.RollingAvgPeriod}</li>"
         HTML += "</ul>"
-        FloatFormatFun = lambda x:'{0:.2f}'.format(x)
-        Formatters = [_QS_formatPandasPercentage]*2+[FloatFormatFun, _QS_formatPandasPercentage, FloatFormatFun]
-        Formatters += [_QS_formatPandasPercentage]*2+[FloatFormatFun, _QS_formatPandasPercentage, FloatFormatFun]
-        Formatters += [_QS_formatPandasPercentage]*2+[FloatFormatFun, _QS_formatPandasPercentage, FloatFormatFun]
-        iHTML = output["统计数据"].to_html(formatters=Formatters)
-        Pos = iHTML.find(">")
-        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-        HTML += '<div align="left" style="font-size:1em"><strong>回归统计量</strong></div>'
-        iHTML = output["回归统计量均值"].to_html(formatters=[FloatFormatFun] * 8)
-        Pos = iHTML.find(">")
-        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-        Fig = self.genMatplotlibFig(output=output)
-        # figure 保存为二进制文件
-        Buffer = BytesIO()
-        Fig.savefig(Buffer, bbox_inches='tight')
-        PlotData = Buffer.getvalue()
-        # 图像数据转化为 HTML 格式
-        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
-        HTML += ('<img src="%s">' % ImgStr)
+        HTML += "\n" + FamaMacBethRegression.genOutputReport(output=output)
         return HTML
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
