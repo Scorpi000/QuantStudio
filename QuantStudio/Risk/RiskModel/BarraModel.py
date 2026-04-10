@@ -167,13 +167,17 @@ class BarraModel(object):
         self.RiskDB = risk_db# 风险数据库
         self.TargetTable = table_name# 风险数据存储的目标表
         self.FT = factor_table# 提供因子数据的因子表
-        return
+    
     # 设置计算风险估计的时点序列
     def setRiskESTDateTime(self, dts):
         self.RiskESTDTs = sorted(dts)
-        return 0
+    
+    def setRegressDateTime(self, dts):
+        self.RegressDTs = sorted(dts)
+    
     # 生成回归时点序列
     def _genRegressDateTime(self):
+        if self.RegressDTs is not None: return
         DSDTs = pd.Series(self.FT.getDateTime())
         RiskESTStartInd = max(((DSDTs<=self.RiskESTDTs[0]).sum()-1,0))
         if self.Config.FactorCovESTArgs["样本长度"]==-1:
@@ -189,7 +193,7 @@ class BarraModel(object):
         if self.TargetTable in self.RiskDB.TableNames:
             OldDTs = self.RiskDB.getTable(self.TargetTable).getFactorReturnDateTime()
             self.RegressDTs = sorted(set(self.RegressDTs).difference(OldDTs))
-        return 0
+    
     # 调整风险数据的计算时点序列
     def _adjustRiskESTDateTime(self):
         AllReturnDTs = self.RegressDTs
