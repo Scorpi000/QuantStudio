@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
-from concurrent.futures import Executor, Future
-from threading import Lock, Thread
+import os
+import time
 import queue
 import atexit
 from collections import namedtuple
-import time
-import os
+from threading import Lock, Thread
+from concurrent.futures import Executor, Future
 
 import multiprocess as mp
+
 
 # 用于存储任务结果的数据结构
 _TaskResult = namedtuple('_TaskResult', ['task_id', 'result', 'exception'])

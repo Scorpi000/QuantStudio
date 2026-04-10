@@ -14,11 +14,6 @@ from multiprocess import Event
 from QuantStudio.Core import __QS_Error__, __QS_Object__
 from QuantStudio.Core.Node import Node
 from QuantStudio.Core.QSObject import Panel
-if os.name == "nt":
-    # from QuantStudio.Core.QSObject import QSQueue as Queue
-    from multiprocess import Queue
-else:
-    from multiprocess import Queue
 from QuantStudio.Factor.Factor import Factor, DataFactor, FactorContext, FactorLocalContext, FactorInitData
 from QuantStudio.Tools.DataTypeConversionFun import expandListElementDataFrame
 from QuantStudio.Tools.AuxiliaryFun import partitionList
