@@ -14,6 +14,7 @@ from typing import Literal
 
 import numpy as np
 import pandas as pd
+from pandas._typing import Axes
 import fasteners
 from pydantic import Field
 from multiprocess import Lock
@@ -670,7 +671,6 @@ class QSQueue(object):
         self.close()
 
 
-# pandas Panel 的 QS 实现
 def _initArray(shape, dtype):
     if dtype in (np.dtype("datetime64[ns]"), np.dtype("datetime64"), np.dtype("timedelta64[ns]"), np.dtype("timedelta64")):
         return np.full(shape=shape, fill_value=np.nan, dtype=dtype), dtype
@@ -866,10 +866,21 @@ class _iLocIndexer(object):
             return self._p._Data[key]
     def __setitem__(self, key, value):
         self._p._Data[key] = value
-        
+
 class Panel(object):
-    """Panel"""
-    def __init__(self, data=None, items=None, major_axis=None, minor_axis=None):
+    """Panel: pandas 早期版本中的 Panel 复刻, 只保留基本的数据索引功能
+    一种三维、大小可变且可能包含异构数据的数据结构。该数据结构包含带标签的 axis（即 items, major_axis, minor_axis）。可将其视为一种用于存放 DataFrame 对象的、类似字典的容器。
+    """
+    def __init__(self, data=None, items:Axes | None=None, major_axis:Axes | None=None, minor_axis:Axes | None=None):
+        """
+        Args:
+            data: 输入数据, 可接受的类型:
+                * Dict of 2D numpy.ndarrays, Iterable, or DataFrame
+                * 3-D numpy.ndarray, Iterable
+            items: Index or array-like, 用于第一个维度的索引。如果输入数据 data 中不包含索引信息，且未显式提供索引，则默认为 RangeIndex。
+            major_axis: Index or array-like, 用于第二个维度的索引。如果输入数据 data 中不包含索引信息，且未显式提供索引，则默认为 RangeIndex。
+            minor_axis: Index or array-like, 用于第三个维度的索引。如果输入数据 data 中不包含索引信息，且未显式提供索引，则默认为 RangeIndex。
+        """
         # _Data: array, ndim=3
         # _Items: Series(range(len(items)), index=items)
         # _MajorAxis: Series(range(len(major_axis)), index=major_axis)
@@ -877,7 +888,7 @@ class Panel(object):
         # _DTypes: Series(dtype, index=items)
         # _UniDType: dtype
         # _Loc: _LocIndexer
-        #_iLoc: -iLocIndexer
+        # _iLoc: -iLocIndexer
         DataShape = ((0 if items is None else len(items)), (0 if major_axis is None else len(major_axis)), (0 if minor_axis is None else len(minor_axis)))
         if data is None:
             data = np.full(shape=DataShape, fill_value=np.nan, dtype=np.float64)
@@ -956,7 +967,7 @@ class Panel(object):
         self._iLoc = _iLocIndexer(self)
     def __repr__(self):
         Shape = self.shape
-        return f"""<class 'QuantStudio.Tools.QSObjects.Panel'>\nDimensions: {Shape[0]} (items) x {Shape[1]} (major_axis) x {Shape[2]} (minor_axis)\nItems axis: {None if Shape[0]==0 else f"{self._Items.index[0]} to {self._Items.index[-1]}"}\nMajor_axis axis: {None if Shape[1]==0 else f"{self._MajorAxis.index[0]} to {self._MajorAxis.index[-1]}"}\nMinor_axis axis: {None if Shape[2]==0 else f"{self._MinorAxis.index[0]} to {self._MinorAxis.index[-1]}"}"""
+        return f"""<class 'QuantStudio.Core.QSObject.Panel'>\nDimensions: {Shape[0]} (items) x {Shape[1]} (major_axis) x {Shape[2]} (minor_axis)\nItems axis: {None if Shape[0]==0 else f"{self._Items.index[0]} to {self._Items.index[-1]}"}\nMajor_axis axis: {None if Shape[1]==0 else f"{self._MajorAxis.index[0]} to {self._MajorAxis.index[-1]}"}\nMinor_axis axis: {None if Shape[2]==0 else f"{self._MinorAxis.index[0]} to {self._MinorAxis.index[-1]}"}"""
     def __hash__(self):
         raise TypeError('{0!r} objects are mutable, thus they cannot be hashed'.format(self.__class__.__name__))
     def __len__(self):

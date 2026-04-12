@@ -10,6 +10,7 @@ from QuantStudio.Core.QSObject import Panel
 from QuantStudio.Factor.HDF5DB import HDF5DB
 
 
+# 导入 HDF5DB 数据
 TargetDir = "./data/HDF5"
 if not os.path.isdir(TargetDir): os.makedirs(TargetDir, exist_ok=True)
 CacheDir = "./data/Cache"
@@ -79,3 +80,6 @@ HDB.setTableMetaData(table_name="index_cn_day_bar", meta_data={"Description": "�
 for iTableName in HDB.TableNames:
     if iTableName not in ['stock_cn_day_bar', 'stock_cn_industry', "stock_cn_status", "stock_cn_factor_value", "index_cn_day_bar"]:
         HDB.deleteTable(iTableName)
+
+
+# 导入 JYDB 数据

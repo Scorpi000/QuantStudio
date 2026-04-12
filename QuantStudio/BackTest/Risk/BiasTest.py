@@ -21,7 +21,7 @@ from QuantStudio.Factor.FactorOperation import SectionOperation, SectionOperator
 from QuantStudio.BackTest.BackTestModel import BTNode
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatPandasPercentage
 from QuantStudio.Risk.RiskTable import RiskTable
-from QuantStudio.BackTest.SectionFactor.Portfolio import CalcPortfolioReturn
+from QuantStudio.BackTest.Strategy.AllocationStrategy import CalcPortfolioReturn
 
 
 class PortfolioVolatility(SectionOperation):
