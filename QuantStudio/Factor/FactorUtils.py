@@ -443,15 +443,15 @@ class SQL_Table(FactorTable):
         PreFilterID: bool = Field(default=True, title="预筛选ID", frozen=True, description="""是否在 SQL 查询中筛选 ID, 如果为 True, 则在形成的 SQL 查询中的 WHERE 子句中会有 {Table}.ID字段 IN (...) 条件, 否则为 {Table}.ID字段 IS NOT NULL. 如果提取数据的 ID 不多，建议为 True""")
         DTField: Optional[str] = Field(default=None, title="时点字段", frozen=True, description="默认 None 表示由内部自动判断. 因子表用于表示时点维度的字段名")
         IDField: Optional[str] = Field(default=None, title="ID字段", frozen=True, description="默认 None 表示由内部自动判断. 因子表用于表示 ID 维度的字段名")
-        DTFmt: str = Field(default="", title="时点格式", frozen=True)
-        DateFmt: str = Field(default="", title="日期格式", frozen=True)
-        IgnoreTime: bool = Field(default=False, title="忽略时间", frozen=True)
-        UseIndex: list[str] = Field(default=[], title="使用索引", frozen=True, description="如果非空, 则在 SQL 查询中附加子句 USE INDEX (索引1, 索引2, ...)")
-        ForceIndex: list[str] = Field(default=[], title="强制索引", frozen=True, description="如果非空, 则在 SQL 查询中附加子句 FORCE INDEX (索引1, 索引2, ...)")
-        IgnoreIndex: list[str] = Field(default=[], title="忽略索引", frozen=True, description="如果非空, 则在 SQL 查询中附加子句 IGNORE INDEX (索引1, 索引2, ...)")
-        TransformSQL: dict = Field(default={}, title="转义SQL", frozen=True)# {因子: sql}
-        TablePrefix: str = Field(default="", title="表名前缀", frozen=True)
-        AdditionalCondition: dict = Field(default={}, title="附加条件", frozen=True)
+        DTFmt: str = Field(default="", title="时点格式", repr=False, frozen=True)
+        DateFmt: str = Field(default="", title="日期格式", repr=False, frozen=True)
+        IgnoreTime: bool = Field(default=False, title="忽略时间", repr=False, frozen=True)
+        UseIndex: list[str] = Field(default=[], title="使用索引", frozen=True, repr=False, description="如果非空, 则在 SQL 查询中附加子句 USE INDEX (索引1, 索引2, ...)")
+        ForceIndex: list[str] = Field(default=[], title="强制索引", frozen=True, repr=False, description="如果非空, 则在 SQL 查询中附加子句 FORCE INDEX (索引1, 索引2, ...)")
+        IgnoreIndex: list[str] = Field(default=[], title="忽略索引", frozen=True, repr=False, description="如果非空, 则在 SQL 查询中附加子句 IGNORE INDEX (索引1, 索引2, ...)")
+        TransformSQL: dict = Field(default={}, title="转义SQL", repr=False, frozen=True, description="{因子: sql}")
+        TablePrefix: str = Field(default="", title="表名前缀", repr=False, frozen=True)
+        AdditionalCondition: dict = Field(default={}, title="附加条件", repr=False, frozen=True)
 
         def __init__(self, /, **data: Any) -> None:
             Owner = data["Owner"]
@@ -800,14 +800,14 @@ class SQL_WideTable(SQL_Table):
         OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True, description="如果为 True, 表示只用不在提取时点序列中的数据进行缺失填充")
         OnlyLookBackDT: bool = Field(default=False, title="只回溯时点", frozen=True, description="如果为 True, 表示所有因子统一沿着时点字段进行回溯填充, 不单独填充")
         PublDTField: Optional[str] = Field(default=None, title="公告时点字段", frozen=True, description="用作公告时点的字段名, 默认值 None 表示内部自动判断, 如果非 None, 表示考虑数据的公布时点, 即某个时点所能获取的数据必须保证其在公告时点和截止时点之后")
-        EndDateASC: bool = Field(default=False, title="截止日期递增", frozen=True)
-        OrderFields: List[Tuple[str, Literal["ASC", "DESC"]]] = Field(default=[], title="排序字段", frozen=True, description="""对提取出的数据进行排序的设置, 比如 [("factor1", "ASC"), ("factor2", "DESC")] 表示提取出的数据根据时点和 ID 分组后先按照 factor1 升序排列再按照 factor2 降序排列""")
+        EndDateASC: bool = Field(default=False, title="截止日期递增", repr=False, frozen=True)
+        OrderFields: List[Tuple[str, Literal["ASC", "DESC"]]] = Field(default=[], title="排序字段", frozen=True, repr=False, description="""对提取出的数据进行排序的设置, 比如 [("factor1", "ASC"), ("factor2", "DESC")] 表示提取出的数据根据时点和 ID 分组后先按照 factor1 升序排列再按照 factor2 降序排列""")
         MultiMapping: bool = Field(default=False, title="多重映射", frozen=True, description="是否为高维数据, 即时点和 ID 两个维度无法唯一索引单个数据, 默认形成的数据在单个时点单个 ID 处以 list 形式表达")
         Operator: Optional[Callable] = Field(default=None, title="算子", frozen=True, description="对于单个时点单个 ID 处的数据 apply 的函数 f(x), 其中 x 为 Series, 默认值 None 表示使用 lambda x: x.tolist()")
         OperatorDataType: Literal["object", "double", "string"] = Field(default="object", title="算子数据类型", frozen=True, description="Operator 参数指定的函数输出值的数据类型")
-        AdditionalFields: list[str] = Field(default=[], title="附加字段", frozen=True, description="传递个 Operator 指定的函数的额外字段数据, 如果非空, 则上述算子为 f(x), 其中 x 为 DataFrame, 其中第一个 column 为目标因子, 其余 column 为附加字段")
-        PeriodLookBack: Optional[int] = Field(default=None, title="回溯期数", frozen=True)
-        RawLookBack: float = Field(default=0, title="原始值回溯天数", frozen=True)
+        AdditionalFields: list[str] = Field(default=[], title="附加字段", frozen=True, repr=False, description="传递个 Operator 指定的函数的额外字段数据, 如果非空, 则上述算子为 f(x), 其中 x 为 DataFrame, 其中第一个 column 为目标因子, 其余 column 为附加字段")
+        PeriodLookBack: Optional[int] = Field(default=None, title="回溯期数", repr=False, frozen=True)
+        RawLookBack: float = Field(default=0, title="原始值回溯天数", repr=False, frozen=True)
     
     def __init__(self, fdb, args={}, table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(fdb=fdb, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, args=args, **kwargs)
@@ -1478,8 +1478,8 @@ class SQL_TimeSeriesTable(SQL_Table):
         OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True, description="如果为 True, 表示只用不在提取时点序列中的数据进行缺失填充")
         OnlyLookBackDT: bool = Field(default=False, title="只回溯时点", frozen=True, description="如果为 True, 表示所有因子统一沿着时点字段进行回溯填充, 不单独填充")
         PublDTField: Optional[str] = Field(default=None, title="公告时点字段", frozen=True, description="用作公告时点的字段名, 默认值 None 表示内部自动判断, 如果非 None, 表示考虑数据的公布时点, 即某个时点所能获取的数据必须保证其在公告时点和截止时点之后")
-        EndDateASC: bool = Field(default=False, title="截止日期递增", frozen=True)
-        OrderFields: List[Tuple[str, Literal["ASC", "DESC"]]] = Field(default=[], title="排序字段", frozen=True, description="""对提取出的数据进行排序的设置, 比如 [("factor1", "ASC"), ("factor2", "DESC")] 表示提取出的数据根据时点和 ID 分组后先按照 factor1 升序排列再按照 factor2 降序排列""")
+        EndDateASC: bool = Field(default=False, repr=False, title="截止日期递增", frozen=True)
+        OrderFields: List[Tuple[str, Literal["ASC", "DESC"]]] = Field(default=[], title="排序字段", repr=False, frozen=True, description="""对提取出的数据进行排序的设置, 比如 [("factor1", "ASC"), ("factor2", "DESC")] 表示提取出的数据根据时点和 ID 分组后先按照 factor1 升序排列再按照 factor2 降序排列""")
         MultiMapping: bool = Field(default=False, title="多重映射", frozen=True, description="是否为高维数据, 即时点和 ID 两个维度无法唯一索引单个数据, 默认形成的数据在单个时点单个 ID 处以 list 形式表达")
         Operator: Optional[Callable] = Field(default=None, title="算子", frozen=True, description="对于单个时点单个 ID 处的数据 apply 的函数 f(x), 其中 x 为 Series, 默认值 None 表示使用 lambda x: x.tolist()")
         OperatorDataType: Literal["object", "double", "string"] = Field(default="object", title="算子数据类型", frozen=True, description="Operator 参数指定的函数输出值的数据类型")
@@ -2176,15 +2176,15 @@ class SQL_FinancialTable(SQL_Table):
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
         ReportDate: Literal["所有", "定期报告", "年报", "中报", "一季报", "三季报"] = Field(default="所有", title="报告期", frozen=True, description="指定原始数据中保留的报告期报告")
         CalcType: Literal["最新", "单季度", "TTM"] = Field(default="最新", title="计算方法", frozen=True, description="""财务数据转换成因子数据的方式
-* 最新: 以当前时点能得到的(公告时点在当前时点之前)指定报告期的财务报告的数据值作为当前时点的因子值.
-* 单季度: 以当前时点能得到的(公告时点在当前时点之前)指定报告期的财务报告的数据值计算出的单季度数据作为当前时点的因子值. 比如, 当前时点是 2010 年 8 月 20 日, 指定的报告期是所有, 要计算最新单季度的净利润, 如果某公司在这天以前已经披露了 2010 年中报, 则用 2010 年中报的净利润减去 2010 年一季报的净利润得到二季度净利润作为当前最新单季度净利润因子值, 否则以 2010 年一季报的净利润值直接作为因子值.
-* TTM: 以当前时点能得到的(公告时点在当前时点之前)指定报告期的财务报告的数据值计算出的滚动四季度数据作为当前时点的因子值. 比如, 当前时点是 2010 年 8 月 20 日, 指定的报告期是所有, 要计算最新 TTM 的净利润, 如果某公司在这天以前已经披露了 2010 年中报, 则用 2010 年中报的净利润加上 2009 年年报的净利润再减去 2009 年中报的净利润值得到过去滚动四季度的净利润作为当前最新 TTM 净利润因子值, 否则以 2010 年一季报的净利润加上 2009 年年报的净利润再减去 2009 年一季报的净利润的值直接作为因子值.""")
+    * 最新: 以当前时点能得到的(公告时点在当前时点之前)指定报告期的财务报告的数据值作为当前时点的因子值.
+    * 单季度: 以当前时点能得到的(公告时点在当前时点之前)指定报告期的财务报告的数据值计算出的单季度数据作为当前时点的因子值. 比如, 当前时点是 2010 年 8 月 20 日, 指定的报告期是所有, 要计算最新单季度的净利润, 如果某公司在这天以前已经披露了 2010 年中报, 则用 2010 年中报的净利润减去 2010 年一季报的净利润得到二季度净利润作为当前最新单季度净利润因子值, 否则以 2010 年一季报的净利润值直接作为因子值.
+    * TTM: 以当前时点能得到的(公告时点在当前时点之前)指定报告期的财务报告的数据值计算出的滚动四季度数据作为当前时点的因子值. 比如, 当前时点是 2010 年 8 月 20 日, 指定的报告期是所有, 要计算最新 TTM 的净利润, 如果某公司在这天以前已经披露了 2010 年中报, 则用 2010 年中报的净利润加上 2009 年年报的净利润再减去 2009 年中报的净利润值得到过去滚动四季度的净利润作为当前最新 TTM 净利润因子值, 否则以 2010 年一季报的净利润加上 2009 年年报的净利润再减去 2009 年一季报的净利润的值直接作为因子值.""")
         YearLookBack: int = Field(default=0, title="回溯年数", frozen=True, ge=0, description="""给定回溯年数 n, 搜索当前时点能得到的(公告时点在当前时点之前)指定报告期的最新财务报表的报告期, 将该报告期减去 n年后得到的报告期对应的财务报表数据值作为当前时点的因子值. 比如, 给定回溯年数为 1, 当前时点是 2010 年 8 月 20 日, 如果某公司在这天以前已经披露了中报, 则以 2009 年的中报值作为当前因子值, 否则以 2009 年一季报的值作为因子值. 回溯 n 年最新年报、回溯 n 年最新单季度以及回溯 n 年 TTM 的变换方式可以类推.""")
         PeriodLookBack: int = Field(default=0, title="回溯期数", frozen=True, ge=0, description="""给定回溯期数 n, 搜索当前时点能得到的(公告时点在当前时点之前)指定报告期的最新财务报表的报告期, 将该报告期减去 n期后得到的报告期对应的财务报表数据值作为当前时点的因子值. 比如, 给定回溯期数为 1, 当前时点是 2010 年 8 月 20 日, 如果某公司在这天以前已经披露了中报, 则以 2010 年的一季报的值作为当前因子值, 否则以 2009 年年报的值作为因子值. 回溯 n 期最新年报、回溯 n 期最新单季度以及回溯 n 期 TTM 的变换方式可以类推.""")
-        IgnoreMissing: bool = Field(default=True, title="忽略缺失", frozen=True)
-        IgnoreNonQuarter: bool = Field(default=False, title="忽略非季末报告", frozen=True)
-        AdjustTypeField: Optional[str] = Field(default=None, title="调整类型字段", frozen=True)
-        AdjustType: str = Field(title="调整类型", frozen=True)
+        IgnoreMissing: bool = Field(default=True, repr=False, title="忽略缺失", frozen=True)
+        IgnoreNonQuarter: bool = Field(default=False, repr=False, title="忽略非季末报告", frozen=True)
+        AdjustTypeField: Optional[str] = Field(default=None, repr=False, title="调整类型字段", frozen=True)
+        AdjustType: str = Field(title="调整类型", repr=False, frozen=True)
         PublDTField: Optional[str] = Field(default=None, title="公告时点字段", frozen=True)
     
         def __init__(self, /, **data: Any) -> None:

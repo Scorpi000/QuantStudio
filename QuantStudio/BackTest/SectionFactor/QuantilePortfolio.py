@@ -18,6 +18,7 @@ import QuantStudio.Factor.FactorOperator as fo
 from QuantStudio.Factor.FactorOperation import SectionOperation
 from QuantStudio.Factor.Factor import Factor, FactorInitData, FactorContext, FactorLocalContext
 from QuantStudio.BackTest.BackTestModel import BTNode
+from QuantStudio.BackTest.Strategy.AllocationStrategy import CalcMaskPortfolio
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 from QuantStudio.Tools.StrategyTestFun import calcMaxDrawdownRate, calcLSYield
 

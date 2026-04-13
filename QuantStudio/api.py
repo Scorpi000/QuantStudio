@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import QuantStudio.Core.api as Core
 import QuantStudio.Factor.api as Factor
 import QuantStudio.BackTest.api as BackTest
 import QuantStudio.Risk.api as Risk

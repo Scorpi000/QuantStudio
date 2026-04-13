@@ -931,7 +931,9 @@ class JYDB(QSSQLObject, FactorDB):
     @property
     def TableNames(self):
         if self._TableInfo is not None:
-            return self._TableInfo[pd.notnull(self._TableInfo["TableClass"])].index.tolist()
+            if not getattr(self, "_AllTables", None): self._AllTables = self.getDBTable()
+            AllTables = [iTableName.lower() for iTableName in self._AllTables]
+            return self._TableInfo[pd.notnull(self._TableInfo["TableClass"]) & self._TableInfo["DBTableName"].str.lower().isin(AllTables)].index.tolist()
         else:
             return []
 
