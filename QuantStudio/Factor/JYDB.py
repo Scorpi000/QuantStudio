@@ -1010,9 +1010,7 @@ class JYDB(QSSQLObject, FactorDB):
                     SQLStr += "AND {Prefix}SecuMain.ListedDate <= '{StartDate}' "
             SQLStr += "AND {Prefix}SecuMain.InnerCode NOT IN (" + SubSQLStr + ") "
         SQLStr += "ORDER BY {Prefix}SecuMain.SecuCode"
-        return [iRslt[0] for iRslt in self.fetchall(
-            SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"),
-                          StartDate=start_date))]
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date))]
 
     # 获取指定日 date 的全体港股 ID
     # date: 指定日, datetime.date
