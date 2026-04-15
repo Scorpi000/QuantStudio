@@ -3,7 +3,7 @@ import os
 import html
 import json
 import logging
-from typing import Any, Optional, Literal, Union, Dict
+from typing import Any, Optional, Literal, Union, Dict, List
 
 import numpy as np
 import pandas as pd
@@ -98,12 +98,14 @@ class __QS_Args__(BaseModel):
         else:
             return pd.DataFrame({key: self.meta(key=key, repr=repr) for key in ["annotation", "title", "description", "default", "required", "frozen", "exclude", "repr"]})
 
-    def info(self, repr:bool=True, html:bool=False) -> str:
+    def info(self, arg_names:Optional[List[str]]=None, repr:bool=True, html:bool=False, current_value:bool=True) -> str:
         """返回参数集中参数的说明信息
 
         Args:
+            arg_names: 返回说明信息的参数列表, None 表示返回所有参数
             repr: 是否仅返回可见参数
             html: 是否返回 HTML 格式的说明, False 返回 Markdown 格式的说明
+            current_value: 是否返回参数当前取值信息
         
         Returns:
             `参数: 数据类型, 默认值, 描述信息` 格式的列表
@@ -113,9 +115,12 @@ class __QS_Args__(BaseModel):
         default = self.meta(key="default", repr=repr)
         description = self.meta(key="description", repr=repr)
         key_fmt = "{key}{title}"
-        val_fmt = "{annotation}, {default}{description}, 当前取值: {value}"
+        val_fmt = "{annotation}, {default}{description}"
+        if current_value: val_fmt += ", 当前取值: {value}"
+        if arg_names is None: arg_names = annotation.index
+        else: arg_names = annotation.index.intersection(arg_names)
         formatted_info = {}
-        for key in annotation.index:
+        for key in arg_names:
             iFormattedKey = key_fmt.format(key=key, title=f"({title[key]})" if title[key] else "")
             iVal = getattr(self, key)
             if isinstance(iVal, __QS_Args__):

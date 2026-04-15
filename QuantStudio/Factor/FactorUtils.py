@@ -1393,8 +1393,8 @@ class SQL_FeatureTable(SQL_WideTable):
     class __QS_ArgClass__(SQL_WideTable.__QS_ArgClass__):
         LookBack: IntOrInf = Field(default=np.inf, title="回溯天数", frozen=True, ge=0)
         TargetDT: Optional[dt.datetime] = Field(default=None, title="目标时点", frozen=True, description="""截面所属的时点：
-+ 时点字段为 None: 将库表中原始截面数据按照真实的时点序列进行填充得到最终数据
-+ 时点字段不为 None: 目标时点如果为 None 则自动转换为时点字段的最大值，以目标时点形成的单时点序列调用 WideTable 提取原始数据的方法得到原始数据，最后以目标时点形成的单时点序列调用 WideTable 的转换方法得到因子数据并按照真实的时点序列进行填充得到最终数据""")
+    + 时点字段为 None: 将库表中原始截面数据按照真实的时点序列进行填充得到最终数据
+    + 时点字段不为 None: 目标时点如果为 None 则自动转换为时点字段的最大值，以目标时点形成的单时点序列调用 WideTable 提取原始数据的方法得到原始数据，最后以目标时点形成的单时点序列调用 WideTable 的转换方法得到因子数据并按照真实的时点序列进行填充得到最终数据""")
     
     def __init__(self, fdb, args={}, table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(fdb=fdb, args=args, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
