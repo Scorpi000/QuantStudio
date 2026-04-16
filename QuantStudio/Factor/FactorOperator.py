@@ -144,6 +144,14 @@ class Fetch(PointOperator):
             SampleData = SampleData[0]
             DataType = np.dtype([(str(i),(float if isinstance(SampleData[i], float) else "O")) for i in range(len(SampleData))])
         return Data.astype(DataType)[str(args["pos"])]
+    
+    def __call__(self, x:Factor, factor_args:dict={}, **kwargs) -> PointOperation:
+        Operator = getattr(x, "Operator", None)
+        if (Operator is not None) and (Operator._QSArgs.CompoundType != self._QSArgs.ModelArgs["compound_type"]):
+            ModelArgs = self._QSArgs.ModelArgs | {"compound_type": Operator._QSArgs.CompoundType}
+            return super(Fetch, self.new(args={"ModelArgs": ModelArgs})).__call__(x, factor_args=factor_args, **kwargs)
+        else:
+            return super().__call__(x, factor_args=factor_args, **kwargs)
 
 class Sum(PointOperator):
     """求和"""
