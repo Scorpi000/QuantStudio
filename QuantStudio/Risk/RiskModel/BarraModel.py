@@ -1,6 +1,7 @@
 # coding=utf-8
 import os
 import time
+import traceback
 import importlib
 
 import pandas as pd
@@ -15,14 +16,12 @@ from QuantStudio.Tools.AuxiliaryFun import startMultiProcess
 # 截面回归生成因子收益率和特异性收益率
 def _FactorAndSpecificReturnGeneration(args):
     FT = args["FT"]
-    # FT.start(dts=args["RegressDTs"])
     DSDTs = FT.getDateTime()
     if args["ModelArgs"]['运行模式']=='串行':# 运行模式为串行
         nTask = len(args["RegressDTs"])
         with ProgressBar(max_value=nTask) as ProgBar:
             IDs = FT.getID(ifactor_name=args["ModelArgs"]['ESTU因子'])
             for i, iDT in enumerate(args["RegressDTs"]):
-                # FT.move(iDT)
                 iInd = DSDTs.index(iDT)
                 if iInd==0: continue
                 iPreDT = DSDTs[iInd-1]
@@ -31,14 +30,17 @@ def _FactorAndSpecificReturnGeneration(args):
                 iCap = FT.readData(dts=[iPreDT], ids=IDs, factor_names=[args["ModelArgs"]['市值因子']]).iloc[0,0,:]
                 iIndustry = FT.readData(dts=[iPreDT], ids=IDs, factor_names=[args["ModelArgs"]['行业因子']]).iloc[0,0,:]
                 iFactorData = FT.readData(dts=[iPreDT], ids=IDs, factor_names=args["ModelArgs"]['风格因子']).iloc[:,0,:]
-                iFactorReturn, iSpecificReturn, iFactorData, iStatistics = RiskModelFun.estimateFactorAndSpecificReturn_EUE3(iRet, iFactorData, iIndustry, iCap, iESTU, iCap, args["ModelArgs"]['所有行业'])
-                args["RiskDB"].writeData(args["TargetTable"], iDT, factor_ret=iFactorReturn, specific_ret=iSpecificReturn, Statistics=pd.Series(iStatistics).sort_index())
-                args["RiskDB"].writeData(args["TargetTable"], iPreDT, factor_data=iFactorData, Cap=iCap)
+                try:
+                    iFactorReturn, iSpecificReturn, iFactorData, iStatistics = RiskModelFun.estimateFactorAndSpecificReturn_EUE3(iRet, iFactorData, iIndustry, iCap, iESTU, iCap, args["ModelArgs"]['所有行业'])
+                except:
+                    print(f"{iDT} 截面回归失败: {traceback.format_exc()}")
+                else:
+                    args["RiskDB"].writeData(args["TargetTable"], iDT, factor_ret=iFactorReturn, specific_ret=iSpecificReturn, Statistics=pd.Series(iStatistics).sort_index())
+                    args["RiskDB"].writeData(args["TargetTable"], iPreDT, factor_data=iFactorData, Cap=iCap)
                 ProgBar.update(i+1)
     else:
         IDs = FT.getID(ifactor_name=args["ModelArgs"]['ESTU因子'])
         for i, iDT in enumerate(args["RegressDTs"]):
-            # FT.move(iDT)
             iInd = DSDTs.index(iDT)
             if iInd==0: continue
             iPreDT = DSDTs[iInd-1]
@@ -47,18 +49,25 @@ def _FactorAndSpecificReturnGeneration(args):
             iCap = FT.readData(dts=[iPreDT], ids=IDs, factor_names=[args["ModelArgs"]['市值因子']]).iloc[0,0,:]
             iIndustry = FT.readData(dts=[iPreDT], ids=IDs, factor_names=[args["ModelArgs"]['行业因子']]).iloc[0,0,:]
             iFactorData = FT.readData(dts=[iPreDT], ids=IDs, factor_names=args["ModelArgs"]['风格因子']).iloc[:,0,:]
-            iFactorReturn, iSpecificReturn, iFactorData, iStatistics = RiskModelFun.estimateFactorAndSpecificReturn_EUE3(iRet, iFactorData, iIndustry, iCap, iESTU, iCap, args["ModelArgs"]['所有行业'])
-            args["RiskDB"].writeData(args["TargetTable"], iDT, factor_ret=iFactorReturn, specific_ret=iSpecificReturn, Statistics=pd.Series(iStatistics).sort_index())
-            args["RiskDB"].writeData(args["TargetTable"], iPreDT, factor_data=iFactorData, Cap=iCap)
+            try:
+                iFactorReturn, iSpecificReturn, iFactorData, iStatistics = RiskModelFun.estimateFactorAndSpecificReturn_EUE3(iRet, iFactorData, iIndustry, iCap, iESTU, iCap, args["ModelArgs"]['所有行业'])
+            except:
+                print(f"{iDT} 截面回归失败: {traceback.format_exc()}")
+            else:
+                args["RiskDB"].writeData(args["TargetTable"], iDT, factor_ret=iFactorReturn, specific_ret=iSpecificReturn, Statistics=pd.Series(iStatistics).sort_index())
+                args["RiskDB"].writeData(args["TargetTable"], iPreDT, factor_data=iFactorData, Cap=iCap)
             args['Sub2MainQueue'].put((args["PID"], 1, None))
-    if args["RegressDTs"]!=[]:
+    if args["RegressDTs"] != []:
         iESTU = FT.readData(dts=[iDT], ids=IDs, factor_names=[args["ModelArgs"]['ESTU因子']]).iloc[0,0,:]
         iCap = FT.readData(dts=[iDT], ids=IDs, factor_names=[args["ModelArgs"]['市值因子']]).iloc[0,0,:]
         iIndustry = FT.readData(dts=[iDT], ids=IDs, factor_names=[args["ModelArgs"]['行业因子']]).iloc[0,0,:]
         iFactorData = FT.readData(dts=[iDT], ids=IDs, factor_names=args["ModelArgs"]['风格因子']).iloc[:,0,:]
-        iFactorReturn, iSpecificReturn, iFactorData, iStatistics = RiskModelFun.estimateFactorAndSpecificReturn_EUE3(iRet, iFactorData, iIndustry, iCap, iESTU, iCap, args["ModelArgs"]['所有行业'])
-        args["RiskDB"].writeData(args["TargetTable"], iDT, factor_data=iFactorData, Cap=iCap)
-    # FT.end()
+        try:
+            iFactorReturn, iSpecificReturn, iFactorData, iStatistics = RiskModelFun.estimateFactorAndSpecificReturn_EUE3(iRet, iFactorData, iIndustry, iCap, iESTU, iCap, args["ModelArgs"]['所有行业'])
+        except:
+            print(f"{iDT} 截面回归失败: {traceback.format_exc()}")
+        else:
+            args["RiskDB"].writeData(args["TargetTable"], iDT, factor_data=iFactorData, Cap=iCap)
     return 0
 
 # 估计因子协方差矩阵
