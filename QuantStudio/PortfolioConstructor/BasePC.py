@@ -771,7 +771,10 @@ class PortfolioConstructor(__QS_Object__):
             TargetWeight, ResultInfo = self._solve(Objective, PreparedConstraints, PreparedOption)
             ReleasedConstraint += DropedConstraints[iPriority]
         ResultInfo['ReleasedConstraint'] = ReleasedConstraint
-        if TargetWeight is not None: return (TargetWeight, ResultInfo)
+        if TargetWeight is not None:
+            Rslt = np.full(shape=self._Mask.shape, fill_value=np.nan, dtype=float)
+            Rslt[self._Mask] = TargetWeight
+            return (Rslt, ResultInfo)
         else: return (None, ResultInfo)
 
     # 整理约束条件
