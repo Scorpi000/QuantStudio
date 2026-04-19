@@ -2,7 +2,7 @@
 """基于 BaoStock 的因子库(http://baostock.com/baostock/)(TODO)"""
 import os
 import datetime as dt
-from typing import Optional, Literal, Union, List, Tuple, Self, Any
+from typing import Optional, Literal, Union, List, Tuple, Any
 
 import numpy as np
 import pandas as pd
@@ -284,7 +284,7 @@ class BaoStockDB(FactorDB):
         else:
             return []
 
-    def connect(self) -> Self:
+    def connect(self):
         LG = bs.login(user_id=self._QSArgs.UserID, password=self._QSArgs.Pwd)
         if LG.error_code != "0":
             raise __QS_Error__(f"BaoStockDB.connect 登录错误码: {LG.error_code}, 错误信息: {LG.error_msg}")

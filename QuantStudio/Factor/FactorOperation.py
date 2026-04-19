@@ -42,13 +42,10 @@ class FactorOperator(__QS_Object__):
             return super().__init__(**data)
 
     def __getstate__(self):
+        state = self.__dict__.copy()
         if "calculate" in self.__dict__:
-            state = self.__dict__.copy()
-            # Remove the unpicklable entries.
             state["calculate"] = dill.dumps(self.calculate)
-            return state
-        else:
-            return super().__getstate__()
+        return state
     
     def __setstate__(self, state):
         if "calculate" in state: state["calculate"] = dill.loads(state["calculate"])

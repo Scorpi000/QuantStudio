@@ -3,7 +3,7 @@
 import os
 import stat
 import datetime as dt
-from typing import Optional, Self, List, Any, Union
+from typing import Optional, List, Any, Union
 
 import numpy as np
 import pandas as pd
@@ -65,7 +65,7 @@ class HDF5RDB(RiskDB):
         self._Suffix = "hdf5"
         return super().__init__(args=args, config_file=(__QS_ConfigPath__+os.sep+"HDF5RDBConfig.json" if config_file is None else config_file), **kwargs)
 
-    def connect(self) -> Self:
+    def connect(self):
         if not os.path.isdir(self._QSArgs.MainDir): raise __QS_Error__("不存在 HDF5RDB 的主目录: %s!" % self._QSArgs.MainDir)
         self._LockFile = self._QSArgs.MainDir / "LockFile"
         if not os.path.isfile(self._LockFile):
@@ -330,7 +330,7 @@ class HDF5FRDB(FactorRDB):
         self._Suffix = "h5"
         super().__init__(args=args, config_file=(__QS_ConfigPath__+os.sep+"HDF5FRDBConfig.json" if config_file is None else config_file), **kwargs)
 
-    def connect(self) -> Self:
+    def connect(self):
         if not os.path.isdir(self._QSArgs.MainDir): raise __QS_Error__("不存在 HDF5FRDB 的主目录: %s!" % self._QSArgs.MainDir)
         self._LockFile = self._QSArgs.MainDir / "LockFile"
         if not os.path.isfile(self._LockFile):

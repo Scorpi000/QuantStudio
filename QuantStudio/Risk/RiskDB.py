@@ -1,6 +1,6 @@
 # coding=utf-8
 import datetime as dt
-from typing import List, Optional, Any, Self
+from typing import List, Optional, Any
 
 import pandas as pd
 from pydantic import Field
@@ -22,7 +22,7 @@ class RiskDB(__QS_Object__):
         """风险库名称"""
         return self._QSArgs.Name
     
-    def connect(self) -> Self:
+    def connect(self):
         """连接风险数据库"""
         return self
     

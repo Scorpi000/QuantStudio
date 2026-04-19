@@ -1,5 +1,5 @@
 import html
-from typing import Self, List, Optional, Any, Literal, Dict
+from typing import List, Optional, Any, Literal, Dict
 
 from pydantic import Field
 
@@ -18,7 +18,7 @@ class FactorDB(__QS_Object__):
         """因子库名称"""
         return self._QSArgs.Name
 
-    def connect(self) -> Self:
+    def connect(self):
         """连接到数据源"""
         return self
 

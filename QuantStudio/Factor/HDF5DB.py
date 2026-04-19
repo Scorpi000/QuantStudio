@@ -6,7 +6,7 @@ import shutil
 import pickle
 import time
 import datetime as dt
-from typing import Optional, Self, Any, Dict, Literal, List, Union
+from typing import Optional, Any, Dict, Literal, List, Union
 
 import numpy as np
 import pandas as pd
@@ -288,7 +288,7 @@ class HDF5DB(WritableFactorDB):
         self._Suffix = "hdf5"  # 文件的后缀名
         return super().__init__(args=args, config_file=(__QS_ConfigPath__ + os.sep + "HDF5DBConfig.json" if config_file is None else config_file), **kwargs)
 
-    def connect(self) -> Self:
+    def connect(self):
         if not os.path.isdir(self._QSArgs.MainDir):
             raise __QS_Error__("HDF5DB.connect: 不存在主目录 '%s'!" % self._QSArgs.MainDir)
         if not self._QSArgs.LockDir:
