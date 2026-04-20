@@ -84,6 +84,23 @@ class IsIn(PointOperator):
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
         return np.isin(x[0], args["test_elements"]).astype(float)
 
+class ApplyArrayFunc(PointOperator):
+    """施加对 array 整体运算的函数, 比如 numpy.floor"""
+
+    def __init__(self, func:Callable, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化 array 整体运算算子
+
+        Args:
+            func: 施加到每个因子值的函数
+            dtype: func 函数返回值的数据类型
+        """
+        Args = {"Name": "applyArrayFunc", "DataType": dtype} | args | {"Arity": 1, "DTMode": "多时点", "IDMode": "多ID"}
+        Args["ModelArgs"] = {"func": func, "dtype": dtype} | Args.get("ModelArgs", {})
+        return super().__init__(args=Args, config_file=config_file, **kwargs)
+    
+    def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
+        return args["func"](*x)
+
 class Applymap(PointOperator):
     """map 操作"""
 
