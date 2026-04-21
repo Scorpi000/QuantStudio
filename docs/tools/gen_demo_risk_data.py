@@ -10,9 +10,9 @@ from QuantStudio.Core.QSObject import Panel
 from QuantStudio.Risk.HDF5RDB import HDF5FRDB
 
 
-TargetDir = "./data/Risk"
+TargetDir = "../data/Risk"
 if not os.path.isdir(TargetDir): os.makedirs(TargetDir, exist_ok=True)
-CacheDir = "./data/Cache"
+CacheDir = "../data/Cache"
 if not os.path.isdir(CacheDir): os.makedirs(CacheDir, exist_ok=True)
 
 HFRDB = HDF5FRDB(args={"MainDir": TargetDir}).connect()

@@ -121,6 +121,9 @@ class RiskTable(Node):
         PrepareData["DTRange"] = (min(init_data.DTRange[0], PrepareData["DTRange"][0]), max(init_data.DTRange[1], PrepareData["DTRange"][1]))
         return super().init_compute(path=path, init_data=init_data, context=context)
     
+    def forward_compute(self, path, fwd_data, context):
+        return super().forward_compute(path, fwd_data, context)
+
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Panel:
         return self.readCov(dts=local_context.DTs, ids=local_context.IDs)
 

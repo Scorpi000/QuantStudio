@@ -11,9 +11,9 @@ from QuantStudio.Factor.HDF5DB import HDF5DB
 
 
 # 导入 HDF5DB 数据
-TargetDir = "./data/HDF5"
+TargetDir = "../data/HDF5"
 if not os.path.isdir(TargetDir): os.makedirs(TargetDir, exist_ok=True)
-CacheDir = "./data/Cache"
+CacheDir = "../data/Cache"
 if not os.path.isdir(CacheDir): os.makedirs(CacheDir, exist_ok=True)
 
 HDB = HDF5DB(args={"MainDir": TargetDir}).connect()

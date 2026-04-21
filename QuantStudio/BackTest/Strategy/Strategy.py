@@ -15,6 +15,7 @@ from QuantStudio.Core import __QS_Error__
 from QuantStudio.Core.Node import DTLocalContext, DTInitData, Node
 from QuantStudio.Factor.Factor import Factor, FactorInitData, FactorContext, DataFactor, FactorLocalContext
 from QuantStudio.Factor.FactorOperation import PanelOperation, PanelOperator
+from QuantStudio.Risk.RiskTable import RiskTable
 from QuantStudio.BackTest.BackTestModel import BTNode
 from QuantStudio.Tools.StrategyTestFun import summaryStrategy, calcYieldSeq, calcLSYield, formatStrategySummary
 
@@ -434,7 +435,7 @@ class Strategy(PanelOperation):
             iSectionIDs = (ExtraSectionIDs[i] if ExtraSectionIDs[i] is not None else SectioinIDs)
             iDTs = FwdData[nDescriptor + i].DTs
             iStartIdx, iEndIdx = context.DTRuler.index(iDTs[0]) - ExtraLookBack[i], context.DTRuler.index(iDTs[-1])
-            iDTs = context.DTRuler[iStartIdx:iEndIdx]
+            iDTs = context.DTRuler[iStartIdx:iEndIdx+1]
             if self._QSArgs.CalcDTRuler:
                 iDTs = sorted(set(iDTs).intersection(self._QSArgs.CalcDTRuler))
             ExtraFwdData.append(FactorLocalContext(DTs=iDTs, IDs=iSectionIDs, PIDs=context.PIDList))
@@ -500,7 +501,9 @@ class MakeStrategy(MakeAccount):
         LastPrice = pd.Series(x[1][0], index=iid)
         nX = f._QSArgs.ModelArgs["x_len"]
         xData = [pd.DataFrame(ix, index=idt[-ix.shape[0]:], columns=(self._QSArgs.DescriptorSection[i+2] if self._QSArgs.DescriptorSection[i+2] else iid)) for i, ix in enumerate(x[2:2+nX])]
-        if f._ExtraDeps: xData += x[-len(f._ExtraDeps):]
+        if f._ExtraDeps:
+            ExtraIfDTIndex, ExtraLookback = f._QSArgs.ModelArgs["extra_if_dt_index"], f._QSArgs.ModelArgs["extra_lookback"]
+            xData += [(ix.loc[:idt[-1]].iloc[- ExtraLookback[i] - 1:] if ExtraIfDTIndex[i] else ix) for i, ix in enumerate(x[-len(f._ExtraDeps):])]
         if (args["signal_dts"] is None) or (idt[-1] in args["signal_dts"]):
             Signal = self.genSignal(f, idt[-1], xData, LastPrice, Cash, PositionNum, args=args)
         else:
@@ -563,7 +566,8 @@ class MakeStrategy(MakeAccount):
             "sell_fee": (sell_fee is not None),
             "sell_amt_limit": (sell_amt_limit is not None),
             "extra_section_ids": extra_section_ids,
-            "extra_lookback": extra_lookback
+            "extra_lookback": extra_lookback,
+            "extra_if_dt_index": [isinstance(idep, (Factor, RiskTable)) for idep in extra_deps]
         }
         factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | ModelArgs
         Operator = self._QS_validate(*Factors, start_dt=self._QSArgs.StartDT[0], x_lookback=self._QSArgs.LookBack[2:len(x)+2], x_section_ids=self._QSArgs.DescriptorSection[2:len(x)+2])

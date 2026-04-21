@@ -6,4 +6,4 @@ from .BaoStockDB import BaoStockDB
 from .FactorOperation import makeFactorOperator, FactorOperatorized, PointOperation, SectionOperation, TimeOperation, PanelOperation
 from .BasicOperator import rename
 from . import FactorOperator as fo
-from .FactorCache import FeatherDTCache
+from .FactorCache import FeatherDTCache, FeatherFactorCache
