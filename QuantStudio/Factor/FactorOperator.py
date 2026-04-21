@@ -413,10 +413,10 @@ class RollingRank(TimeOperator):
 class RollingMean(TimeOperator):
     """滚动平均"""
 
-    def __init__(self, window:int=1, min_periods:int=1, win_type:Optional[str]=None, weights:Optional[List[float]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, window:int=1, min_periods:int=1, weights:Optional[List[float]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         if weights is not None: window = len(weights)
         Args = {"Name": "rollingMean", "LookBack": [window - 1]} | args | {"Arity": 1, "DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
-        Args["ModelArgs"] =  {"window": window, "min_periods": min_periods, "win_type": win_type, "weights": weights} | Args.get("ModelArgs", {})
+        Args["ModelArgs"] =  {"window": window, "min_periods": min_periods, "weights": weights} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
     
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
@@ -432,16 +432,22 @@ class RollingMean(TimeOperator):
 class RollingApply(TimeOperator):
     """滚动操作"""
 
-    def __init__(self, func:Callable[[np.ndarray], Any]=np.nansum, dtype:Literal["double", "string", "object"]="double", window:int=1, min_periods:int=1, win_type:Optional[str]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, func:Callable[[np.ndarray], Any]=np.nansum, dtype:Literal["double", "string", "object"]="double", window:int=1, min_periods:int=1, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Args = {"Name": "rollingApply", "LookBack": [window - 1], "DataType": dtype} | args | {"Arity": 1, "DTMode": "多时点", "IDMode": "多ID"}
-        Args["ModelArgs"] = {"func": func, "dtype": dtype, "window": window, "min_periods": min_periods, "win_type": win_type} | Args.get("ModelArgs", {})
+        Args["ModelArgs"] = {"func": func, "dtype": dtype, "window": window, "min_periods": min_periods} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
     
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
-        Data = pd.DataFrame(x[0])
         args = args.copy()
         func, dtype = args.pop("func"), args.pop("dtype")
-        return Data.rolling(**args).apply(func, raw=True).values[self.Args["LookBack"][0]:]
+        # Data = pd.DataFrame(x[0])
+        # return Data.rolling(**args).apply(func, raw=True).values[self.Args["LookBack"][0]:]
+        Data = np.lib.stride_tricks.sliding_window_view(x[0], window_shape=args["window"], axis=0)
+        Mask = (np.sum(~ np.isnan(Data), axis=-1) < args["min_periods"])
+        Data = np.apply_along_axis(func, axis=-1, arr=Data)
+        Data[Mask] = np.nan
+        return Data
+
 
 class RollingChangeRate(TimeOperator):
     """滚动增长率"""
