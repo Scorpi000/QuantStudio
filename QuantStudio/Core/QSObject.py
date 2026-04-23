@@ -15,7 +15,8 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 from pandas._typing import Axes
-import fasteners
+# from fasteners import InterProcessLock as FileLock
+from filelock import FileLock
 from pydantic import Field
 from multiprocess import Lock
 
@@ -453,10 +454,10 @@ class QSFileLock(object):
             self._TmpFile = tempfile.NamedTemporaryFile(delete_on_close=False)
             # self._TmpFile.close()
             self._LockFile = self._TmpFile.name
-            self._FileLock = fasteners.InterProcessLock(self._LockFile)
+            self._FileLock = FileLock(self._LockFile)
         elif isinstance(path_or_lock, (str, Path)):
             self._LockFile = path_or_lock
-            self._FileLock = fasteners.InterProcessLock(path_or_lock)
+            self._FileLock = FileLock(path_or_lock)
         else:
             self._LockFile = getattr(path_or_lock, "path", None)
             self._FileLock = path_or_lock
@@ -468,6 +469,7 @@ class QSFileLock(object):
         state.pop("_TmpFile", None)
         if self._LockFile is not None:
             state["_LockFile"] = str(self._LockFile)
+            state.pop("_FileLock")
         state["_ProcLock"] = (self._ProcLock is not None)
         # print("DEBUG: QSFileLock.__getstate__")
         return state
@@ -475,7 +477,7 @@ class QSFileLock(object):
     def __setstate__(self, state):
         self.__dict__.update(state)
         if getattr(self, "_LockFile", None) is not None:
-            self._FileLock = fasteners.InterProcessLock(self._LockFile)
+            self._FileLock = FileLock(self._LockFile)
         if state["_ProcLock"]:
             self._ProcLock = Lock()
         else:
