@@ -465,7 +465,6 @@ class RollingApply(TimeOperator):
         Data[Mask] = np.nan
         return Data
 
-
 class RollingChangeRate(TimeOperator):
     """滚动增长率"""
 

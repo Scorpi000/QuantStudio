@@ -1340,10 +1340,11 @@ class JYDB(QSSQLObject, FactorDB):
             SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"),
                           StartDate=start_date, OptionCode=option_code))]
 
-    def getMutualFundID(self, exchange:Optional[Union[str, Tuple[str]]]=None, date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> List[str]:
+    def getMutualFundID(self, type:Optional[Literal["ETF", "LOF", "FOF", "QDII", "封闭基金", "ETF联接基金", "指数基金", "指数增强基金"]]=None, exchange:Optional[Union[str, Tuple[str]]]=None, date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> List[str]:
         """给定日期, 获取公募基金 ID 序列
 
         Args:
+            type: 基金类型, None 表示取所有的基金
             exchange: 交易所(str)或者交易所列表(tuple), 如果非 None 表示只考虑在这些指定的交易所上市的基金, None 表示包括非上市基金
             date: 指定日, 默认值 None 表示当前日期
             is_current: False 表示成立日在指定日之前的基金, True 表示成立日在指定日之前且尚未清盘的基金
@@ -1353,17 +1354,36 @@ class JYDB(QSSQLObject, FactorDB):
         """
         if date is None: date = dt.date.today()
         if start_date is not None: start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
-        SQLStr = "SELECT CONCAT({Prefix}SecuMain.SecuCode, '.OF') AS ID FROM {Prefix}mf_fundarchives "
-        SQLStr += "INNER JOIN {Prefix}SecuMain ON {Prefix}SecuMain.InnerCode={Prefix}mf_fundarchives.InnerCode "
-        SQLStr += "WHERE {Prefix}mf_fundarchives.EstablishmentDate <= '{Date}' "
+        SQLStr = "SELECT CONCAT({Prefix}SecuMain.SecuCode, '.OF') AS ID FROM {Prefix}MF_FundArchives "
+        SQLStr += "INNER JOIN {Prefix}SecuMain ON {Prefix}SecuMain.InnerCode={Prefix}MF_FundArchives.InnerCode "
+        SQLStr += "WHERE {Prefix}MF_FundArchives.EstablishmentDate <= '{Date}' "
         if start_date is not None:
-            SQLStr += "AND (({Prefix}mf_fundarchives.ExpireDate IS NULL) OR ({Prefix}mf_fundarchives.ExpireDate >= '{StartDate}')) "
+            SQLStr += "AND (({Prefix}MF_FundArchives.ExpireDate IS NULL) OR ({Prefix}MF_FundArchives.ExpireDate >= '{StartDate}')) "
         if is_current:
             if start_date is None:
-                SQLStr += "AND (({Prefix}mf_fundarchives.ExpireDate IS NULL) OR ({Prefix}mf_fundarchives.ExpireDate >= '{Date}')) "
+                SQLStr += "AND (({Prefix}MF_FundArchives.ExpireDate IS NULL) OR ({Prefix}MF_FundArchives.ExpireDate >= '{Date}')) "
             else:
-                SQLStr += "AND {Prefix}mf_fundarchives.EstablishmentDate <= '{StartDate}' "
-                SQLStr += "AND (({Prefix}mf_fundarchives.ExpireDate IS NULL) OR ({Prefix}mf_fundarchives.ExpireDate >= '{Date}')) "
+                SQLStr += "AND {Prefix}MF_FundArchives.EstablishmentDate <= '{StartDate}' "
+                SQLStr += "AND (({Prefix}MF_FundArchives.ExpireDate IS NULL) OR ({Prefix}MF_FundArchives.ExpireDate >= '{Date}')) "
+        if type:
+            if type == "ETF":
+                SQLStr += "AND {Prefix}MF_FundArchives.Type = 4 "
+            elif type == "LOF":
+                SQLStr += "AND {Prefix}MF_FundArchives.Type = 3 "
+            elif type == "ETF联接基金":
+                SQLStr += "AND {Prefix}MF_FundArchives.Type = 8 "
+            elif type == "封闭基金":
+                SQLStr += "AND {Prefix}MF_FundArchives.Type IN (1, 6) "
+            elif type == "QDII":
+                SQLStr += "AND {Prefix}MF_FundArchives.FundNature = 2 "
+            elif type == "FOF":
+                SQLStr += "AND {Prefix}MF_FundArchives.IfFOF = 1 "
+            elif type == "指数基金":
+                SQLStr += "AND {Prefix}MF_FundArchives.Type = 7 "
+            elif type == "指数增强基金":
+                SQLStr += "AND {Prefix}MF_FundArchives.Type = 8 "
+            else:
+                raise __QS_Error__(f"不支持的入参 type={type}")
         if exchange:
             if isinstance(exchange, str): exchange = [exchange]
             ExchgCodes = set()
@@ -1373,17 +1393,42 @@ class JYDB(QSSQLObject, FactorDB):
                 ExchgCodes.add(str(iExchgCode[0]))
             SQLStr += "AND {Prefix}SecuMain.SecuMarket IN (" + ", ".join(ExchgCodes) + ") "
         SQLStr += "ORDER BY ID"
-        Rslt = np.array(self.fetchall(
-            SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"),
-                          StartDate=start_date)))
+        Rslt = np.array(self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date)))
         if Rslt.shape[0] > 0:
             return Rslt[:, 0].tolist()
         else:
             return []
 
-    def getETFID(self):
-        sql = "SELECT CONCAT(SecuCode, '.OF') AS ID FROM secumain WHERE InnerCode IN (SELECT DISTINCT InnerCode FROM mf_etfprlist) ORDER BY ID"
-        raise NotImplementedError
+    def _getSWIndustryIndexID(self, level:int=1) -> List[str]:
+        Prefix = self._QSArgs.TablePrefix
+        SQLStr = f"""
+            SELECT {Prefix}SecuMain.SecuCode AS ID FROM {Prefix}SecuMain
+            INNER JOIN {Prefix}LC_IndexBasicInfo ON {Prefix}SecuMain.InnerCode={Prefix}LC_IndexBasicInfo.IndexCode
+            INNER JOIN {Prefix}CT_IndustryType ON ({Prefix}LC_IndexBasicInfo.IndustryStandard={Prefix}CT_IndustryType.Standard AND CAST({Prefix}LC_IndexBasicInfo.IndustryType AS VARCHAR(20))={Prefix}CT_IndustryType.IndustryCode)
+            WHERE {Prefix}LC_IndexBasicInfo.IndustryStandard = 38
+            AND {Prefix}CT_IndustryType.Classification = {level}
+            ORDER BY ID
+        """
+        Rslt = np.array(self.fetchall(SQLStr))
+        if Rslt.shape[0] > 0:
+            return Rslt[:, 0].tolist()
+        else:
+            return []
+
+    def getIndexID(self, type:Literal["申万一级行业指数"], exchange:Optional[Union[str, Tuple[str]]]=None, **kwargs) -> List[str]:
+        """获取指数 ID 序列
+
+        Args:
+            type: 基金类型, None 表示取所有的基金
+            exchange: 交易所(str)或者交易所列表(tuple), 如果非 None 表示只考虑在这些指定的交易所上市的指数
+        
+        Returns:
+            指数 ID 序列
+        """
+        if type=="申万一级行业指数":
+            return self._getSWIndustryIndexID(level=1)
+        else:
+            raise __QS_Error__(f"不支持的入参 type={type}")
 
     def getIndustryID(self, standard:str="中信行业分类", level:int=1, date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> List[str]:
         """给定行业分类和日期, 获取行业 ID 序列
@@ -1420,9 +1465,7 @@ class JYDB(QSSQLObject, FactorDB):
                 SQLStr += "AND ((EffectiveDate IS NULL) OR (EffectiveDate <= '{StartDate}')) "
                 SQLStr += "AND ((CancelDate IS NULL) OR (CancelDate > '{Date}')) "
         SQLStr += "ORDER BY IndustryNum"
-        return [str(iRslt[0]) for iRslt in self.fetchall(
-            SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"),
-                          StartDate=start_date))]
+        return [str(iRslt[0]) for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date))]
 
 
 if __name__=="__main__":
