@@ -1381,6 +1381,10 @@ class JYDB(QSSQLObject, FactorDB):
         else:
             return []
 
+    def getETFID(self):
+        sql = "SELECT CONCAT(SecuCode, '.OF') AS ID FROM secumain WHERE InnerCode IN (SELECT DISTINCT InnerCode FROM mf_etfprlist) ORDER BY ID"
+        raise NotImplementedError
+
     def getIndustryID(self, standard:str="中信行业分类", level:int=1, date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> List[str]:
         """给定行业分类和日期, 获取行业 ID 序列
 
