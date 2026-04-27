@@ -2355,7 +2355,7 @@ class SQL_FinancialTable(SQL_Table):
         Data = {}
         for i, iPeriod in enumerate(periods):
             # TargetReportDate: 每个 ID 每个公告日对应的目标报告期
-            if iPeriod>0: TargetReportDate["ReportDate"] = MaxReportDate.apply(RollBackNPeriod, args=(iPeriod,))
+            if iPeriod>0: TargetReportDate.loc[:, "ReportDate"] = MaxReportDate.apply(RollBackNPeriod, args=(iPeriod,))
             # iData: 每个 ID 每个公告日对应的目标报告期及其因子值
             iData = TargetReportDate.merge(raw_data, how="left", on=["QS_ID", "ReportDate"], suffixes=("", "_y"))
             #iData = iData[(iData["AnnDate"]>=iData["AnnDate_y"]) | pd.isnull(iData["AnnDate_y"])].sort_values(by=["QS_ID", "AnnDate", "AnnDate_y", "AdjustType"])

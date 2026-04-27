@@ -4,7 +4,7 @@ import re
 import os
 import json
 import datetime as dt
-from typing import Optional, Literal, Callable, List, Union, Tuple
+from typing import Optional, Literal, Callable, List, Union, Tuple, Set
 
 import numpy as np
 import pandas as pd
@@ -995,8 +995,7 @@ class JYDB(QSSQLObject, FactorDB):
         SQLStr += "WHEN 18 THEN CONCAT({Prefix}SecuMain.SecuCode, '.BJ') "
         SQLStr += "ELSE {Prefix}SecuMain.SecuCode END FROM {Prefix}SecuMain "
         SQLStr += "WHERE {Prefix}SecuMain.SecuCategory IN (1,41) "
-        SecuMarket = ", ".join(
-            str(self._ExchangeInfo[self._ExchangeInfo["Exchange"] == iExchange].index[0]) for iExchange in exchange)
+        SecuMarket = ", ".join(str(self._ExchangeInfo[self._ExchangeInfo["Exchange"] == iExchange].index[0]) for iExchange in exchange)
         SQLStr += "AND {Prefix}SecuMain.SecuMarket IN " + f"({SecuMarket}) "
         SQLStr += "AND {Prefix}SecuMain.ListedDate <= '{Date}' "
         if is_current or (start_date is not None):
@@ -1379,9 +1378,9 @@ class JYDB(QSSQLObject, FactorDB):
             elif type == "FOF":
                 SQLStr += "AND {Prefix}MF_FundArchives.IfFOF = 1 "
             elif type == "指数基金":
-                SQLStr += "AND {Prefix}MF_FundArchives.Type = 7 "
+                SQLStr += "AND {Prefix}MF_FundArchives.InvestmentType = 7 "
             elif type == "指数增强基金":
-                SQLStr += "AND {Prefix}MF_FundArchives.Type = 8 "
+                SQLStr += "AND {Prefix}MF_FundArchives.InvestmentType = 8 "
             else:
                 raise __QS_Error__(f"不支持的入参 type={type}")
         if exchange:
@@ -1399,34 +1398,49 @@ class JYDB(QSSQLObject, FactorDB):
         else:
             return []
 
-    def _getSWIndustryIndexID(self, level:int=1) -> List[str]:
+    def _getSWIndustryIndexID(self, level:int=1, exchange:Optional[Set[str]]=None, date:Optional[dt.datetime]=None, is_current:bool=True) -> List[str]:
         Prefix = self._QSArgs.TablePrefix
+        IDField = f"CASE {Prefix}SecuMain.SecuMarket "
+        for iCode in self._ExchangeInfo[pd.notnull(self._ExchangeInfo["Suffix"])].index:
+            IDField += "WHEN " + iCode + f" THEN CONCAT({Prefix}SecuMain.SecuCode, '" + self._ExchangeInfo.loc[iCode, "Suffix"] + "') "
+        IDField += f"ELSE {Prefix}SecuMain.SecuCode END"
         SQLStr = f"""
-            SELECT {Prefix}SecuMain.SecuCode AS ID FROM {Prefix}SecuMain
+            SELECT DISTINCT({IDField}) AS ID 
+            FROM {Prefix}SecuMain
             INNER JOIN {Prefix}LC_IndexBasicInfo ON {Prefix}SecuMain.InnerCode={Prefix}LC_IndexBasicInfo.IndexCode
             INNER JOIN {Prefix}CT_IndustryType ON ({Prefix}LC_IndexBasicInfo.IndustryStandard={Prefix}CT_IndustryType.Standard AND CAST({Prefix}LC_IndexBasicInfo.IndustryType AS VARCHAR(20))={Prefix}CT_IndustryType.IndustryCode)
             WHERE {Prefix}LC_IndexBasicInfo.IndustryStandard = 38
-            AND {Prefix}CT_IndustryType.Classification = {level}
-            ORDER BY ID
+            AND {Prefix}CT_IndustryType.Classification = {level} 
+            AND {Prefix}CT_IndustryType.EffectiveDate <= '{date.strftime("%Y-%m-%d %H:%M:%S")}'
         """
+        if exchange is not None:
+            SecuMarket = ", ".join(str(self._ExchangeInfo[self._ExchangeInfo["Exchange"] == iExchange].index[0]) for iExchange in exchange)
+            SQLStr += f"AND {Prefix}SecuMain.SecuMarket IN " + f"({SecuMarket}) "
+        if is_current:
+            SQLStr += f"""AND (CT_IndustryType.CancelDate IS NULL OR CT_IndustryType.CancelDate > '{date.strftime("%Y-%m-%d %H:%M:%S")}') """
+        SQLStr += "ORDER BY ID"
         Rslt = np.array(self.fetchall(SQLStr))
         if Rslt.shape[0] > 0:
             return Rslt[:, 0].tolist()
         else:
             return []
 
-    def getIndexID(self, type:Literal["申万一级行业指数"], exchange:Optional[Union[str, Tuple[str]]]=None, **kwargs) -> List[str]:
+    def getIndexID(self, type:Literal["申万一级行业指数"], exchange:Optional[Union[str, Tuple[str]]]=None, date:Optional[dt.datetime]=None, is_current:bool=True, **kwargs) -> List[str]:
         """获取指数 ID 序列
 
         Args:
             type: 基金类型, None 表示取所有的基金
             exchange: 交易所(str)或者交易所列表(tuple), 如果非 None 表示只考虑在这些指定的交易所上市的指数
+            date: 指定日, 默认值 None 表示当前日期
+            is_current: False 表示在指定日之前有效的指数, True 表示在指定日之前有效且尚未失效或者失效日在指定日之后的指数
         
         Returns:
             指数 ID 序列
         """
+        if date is None: date = dt.date.today()
+        if exchange is not None: exchange = ({exchange} if isinstance(exchange, str) else set(exchange))
         if type=="申万一级行业指数":
-            return self._getSWIndustryIndexID(level=1)
+            return self._getSWIndustryIndexID(level=1, exchange=exchange, date=date, is_current=is_current)
         else:
             raise __QS_Error__(f"不支持的入参 type={type}")
 

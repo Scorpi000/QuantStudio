@@ -6,9 +6,20 @@ from QuantStudio.Factor.JYDB import JYDB
 # FDB = JYDB(args={"Connector": "pyodbc", "DBType": "PostgreSQL"}).connect()
 FDB = JYDB(args={}).connect()
 
+# 测试时点方法
+# DTs = FDB.getTradeDay(start_date=dt.datetime(2025, 1, 1), end_date=dt.datetime(2025, 12, 31))
+# print(len(DTs), DTs[:10])
+
 # 测试 ID 方法
-IDs = FDB.getMutualFundID(type="ETF")
-print(IDs)
+# IDs = FDB.getMutualFundID(type="ETF")
+# print(len(IDs), IDs[:10])
+
+# IDs = FDB.getMutualFundID(type="指数基金")
+# print(len(IDs), IDs[:10])
+
+IDs = FDB.getIndexID(type="申万一级行业指数")
+print(len(IDs), IDs[:10])
+
 
 # # 测试 FeatureTable
 # IDs = ["000001.SZ", "000003.SZ", "603297.SH"]

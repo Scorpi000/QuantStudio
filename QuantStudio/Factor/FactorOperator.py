@@ -462,7 +462,12 @@ class RollingApply(TimeOperator):
         Data = np.lib.stride_tricks.sliding_window_view(x[0], window_shape=args["window"], axis=0)
         Mask = (np.sum(~ np.isnan(Data), axis=-1) < args["min_periods"])
         Data = np.apply_along_axis(func, axis=-1, arr=Data)
-        Data[Mask] = np.nan
+        if dtype=="double":
+            Data = Data.astype(float)
+            Data[Mask] = np.nan
+        else:
+            Data = Data.astype("O")
+            Data[Mask] = None
         return Data
 
 class RollingChangeRate(TimeOperator):
