@@ -24,3 +24,4 @@ TestCoverage.bat
 *.wpu
 *.code-workspace
 *.env
+~$*.xlsx
