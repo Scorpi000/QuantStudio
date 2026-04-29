@@ -324,7 +324,7 @@ class HDF5DB(WritableFactorDB):
                 if not os.path.isfile(LockFile):
                     open(LockFile, mode="a").close()
                     os.chmod(LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
-        return QSFileLock(LockFile, thread_lock=self._DataLock.ThreadLock)
+        return QSFileLock(LockFile, thread_lock=self._DataLock.ThreadLock, pid=self._DataLock.PID)
 
     def _openHDF5File(self, filename, *args, **kwargs):
         i = 0
@@ -505,18 +505,21 @@ class HDF5DB(WritableFactorDB):
                 # StrDataType = h5py.special_dtype(vlen=str)
                 StrDataType = h5py.string_dtype(encoding="utf-8")
                 with self._openHDF5File(FilePath, mode="a") as DataFile:
-                    DataFile.attrs["DataType"] = data_type
-                    DataFile.create_dataset("ID", shape=(factor_data.shape[1],), maxshape=(None,), dtype=StrDataType, data=factor_data.columns)
-                    DataFile.create_dataset("DateTime", shape=(factor_data.shape[0],), maxshape=(None,), data=factor_data.index)
-                    if data_type == "double":
-                        DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=float, fillvalue=np.nan, data=NewData)
-                    elif data_type == "string":
-                        DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=StrDataType, fillvalue=None, data=NewData)
-                    elif data_type == "object":
-                        DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=h5py.vlen_dtype(np.uint8), data=NewData)
-                    DataFile.flush()
-                factor_data.index = DTs
-                return 0
+                    if ("ID" in DataFile) or ("DateTime" in DataFile) or ("Data" in DataFile):
+                        self._QS_Logger.error(f"开始时确定文件 {FilePath} 不存在，但现在发现已经存在且有数据!")
+                    else:
+                        DataFile.attrs["DataType"] = data_type
+                        DataFile.create_dataset("ID", shape=(factor_data.shape[1],), maxshape=(None,), dtype=StrDataType, data=factor_data.columns)
+                        DataFile.create_dataset("DateTime", shape=(factor_data.shape[0],), maxshape=(None,), data=factor_data.index)
+                        if data_type == "double":
+                            DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=float, fillvalue=np.nan, data=NewData)
+                        elif data_type == "string":
+                            DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=StrDataType, fillvalue=None, data=NewData)
+                        elif data_type == "object":
+                            DataFile.create_dataset("Data", shape=factor_data.shape, maxshape=(None, None), dtype=h5py.vlen_dtype(np.uint8), data=NewData)
+                        DataFile.flush()
+                        factor_data.index = DTs
+                        return 0
         if if_exists == "update":
             self._updateFactorData(factor_data, table_name, ifactor_name, data_type)
         else:

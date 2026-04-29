@@ -444,8 +444,9 @@ class QSFileLock(object):
     多进程时使用文件锁
     """
 
-    def __init__(self, path_or_lock=None, thread_lock=None, proc_lock=None):
-        self._PID = os.getpid()
+    def __init__(self, path_or_lock=None, thread_lock=None, proc_lock=None, pid=None):
+        if not pid: self._PID = os.getpid()
+        else: self._PID = pid
         if thread_lock is None:
             self._ThreadLock = threading.Lock()
         else:
@@ -484,6 +485,10 @@ class QSFileLock(object):
             self._ProcLock = None
         # print("DEBUG: QSFileLock.__setstate__")
     
+    @property
+    def PID(self):
+        return self._PID
+
     @property
     def FileLock(self):
         return self._FileLock
