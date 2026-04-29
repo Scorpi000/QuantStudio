@@ -326,6 +326,9 @@ class _FinancialIndicatorTable(_FinancialTable):
         if (self._FactorDB._QSArgs.DBType not in ("MySQL", "Oracle", "SQL Server")) and (args.get("IgnoreNonQuarter", self._QSArgs.IgnoreNonQuarter) or (not ((args.get("ReportDate", self._QSArgs.ReportDate) == "所有") and (args.get("CalcType", self._QSArgs.CalcType) == "最新") and (args.get("YearLookBack", self._QSArgs.YearLookBack) == 0) and (args.get("PeriodLookBack", self._QSArgs.PeriodLookBack) == 0)))):
             RawData = RawData[RawData["ReportDate"].dt.strftime("%m%d").isin(('0331', '0630', '0930', '1231'))]
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
+        for iFactorName in factor_names:
+            if self.__QS_identifyDataType__(self._FactorInfo.loc[iFactorName, "DataType"])=="double":
+                RawData[iFactorName] = RawData[iFactorName].astype(float)
         return RawData
 
     def _prepareRawDataMF(self, factor_names, ids, dts, args={}):
@@ -358,6 +361,9 @@ class _FinancialIndicatorTable(_FinancialTable):
         if (self._FactorDB._QSArgs.DBType not in ("MySQL", "Oracle", "SQL Server")) and (args.get("IgnoreNonQuarter", self._QSArgs.IgnoreNonQuarter) or (not ((args.get("ReportDate", self._QSArgs.ReportDate) == "所有") and (args.get("CalcType", self._QSArgs.CalcType) == "最新") and (args.get("YearLookBack", self._QSArgs.YearLookBack) == 0) and (args.get("PeriodLookBack", self._QSArgs.PeriodLookBack) == 0)))):
             RawData = RawData[RawData["ReportDate"].dt.strftime("%m%d").isin(('0331', '0630', '0930', '1231'))]
         RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
+        for iFactorName in factor_names:
+            if self.__QS_identifyDataType__(self._FactorInfo.loc[iFactorName, "DataType"])=="double":
+                RawData[iFactorName] = RawData[iFactorName].astype(float)
         return RawData
 
 
