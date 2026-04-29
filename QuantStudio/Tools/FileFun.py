@@ -11,7 +11,7 @@ from functools import lru_cache
 
 import numpy as np
 import pandas as pd
-import fasteners
+from filelock import FileLock
 import openpyxl
 
 from QuantStudio.Core import __QS_Error__
@@ -19,7 +19,7 @@ from QuantStudio.Core import __QS_Error__
 # 产生一个有效的文件
 def genAvailableFile(header, target_dir, suffix="csv", name_num=1, check_header=True, ignore_case=True, lock_file=".LockFile"):
     CompleteSuffix = ("."+suffix if suffix else "")
-    with fasteners.InterProcessLock(target_dir+os.sep+lock_file) as Lock:
+    with FileLock(target_dir+os.sep+lock_file) as Lock:
         all_names = listDirFile(target_dir, suffix=suffix)
         if ignore_case:
             all_names = [iName.lower() for iName in all_names]

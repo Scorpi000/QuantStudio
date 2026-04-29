@@ -11,11 +11,12 @@ from typing import Optional, Any, Dict, Literal, List, Union
 import numpy as np
 import pandas as pd
 import h5py
+from filelock import FileLock
 from pydantic import Field, DirectoryPath
 
 from QuantStudio import __QS_ConfigPath__
 from QuantStudio.Core import __QS_Error__
-from QuantStudio.Core.QSObject import Panel, QSFileLock
+from QuantStudio.Core.QSObject import Panel
 from QuantStudio.Factor.FactorDB import WritableFactorDB
 from QuantStudio.Factor.FactorTable import FactorTable
 from QuantStudio.Factor.FactorUtils import adjustDataDTID
@@ -72,7 +73,7 @@ class HDF5FactorTable(FactorTable):
         return sorted(listDirFile(str(self._FactorDB._QSArgs.MainDir) + os.sep + self.Name, suffix=self._Suffix))
     
     def getMetaData(self, key:Optional[str]=None) -> Union[Any, pd.Series]:
-        with self._FactorDB._getLock(self._QSArgs.Name) as DataLock:
+        with self._FactorDB._getLock(table_name=self._QSArgs.Name) as DataLock:
             if not os.path.isfile(self._FactorDB._QSArgs.MainDir / self._QSArgs.Name / "_TableInfo.h5"):
                 return (pd.Series() if key is None else None)
             if key is None:
@@ -86,7 +87,7 @@ class HDF5FactorTable(FactorTable):
             factor_names = AllFactorNames
         elif set(factor_names).isdisjoint(AllFactorNames):
             return super().getFactorMetaData(factor_names=factor_names, key=key)
-        with self._FactorDB._getLock(self._QSArgs.Name) as DataLock:
+        with self._FactorDB._getLock(table_name=self._QSArgs.Name) as DataLock:
             MetaData = {}
             for iFactorName in factor_names:
                 if iFactorName in AllFactorNames:
@@ -103,7 +104,7 @@ class HDF5FactorTable(FactorTable):
 
     def getID(self, ifactor_name:Optional[str]=None, idt:Optional[dt.datetime]=None) -> List[str]:
         if ifactor_name is None: ifactor_name = self.FactorNames[0]
-        with self._FactorDB._getLock(self._QSArgs.Name) as DataLock:
+        with self._FactorDB._getLock(table_name=self._QSArgs.Name, factor_name=ifactor_name) as DataLock:
             with self._FactorDB._openHDF5File(self._FactorDB._QSArgs.MainDir / self._QSArgs.Name / (ifactor_name + "." + self._Suffix), mode="r") as ijFile:
                 if h5py.version.version >= "3.0.0":
                     IDs = ijFile["ID"].asstr(encoding="utf-8")[...]
@@ -118,7 +119,7 @@ class HDF5FactorTable(FactorTable):
 
     def getDateTime(self, ifactor_name:Optional[str]=None, iid:Optional[str]=None, start_dt:Optional[dt.datetime]=None, end_dt:Optional[dt.datetime]=None) -> List[dt.datetime]:
         if ifactor_name is None: ifactor_name = self.FactorNames[0]
-        with self._FactorDB._getLock(self._QSArgs.Name) as DataLock:
+        with self._FactorDB._getLock(table_name=self._QSArgs.Name, factor_name=ifactor_name) as DataLock:
             with self._FactorDB._openHDF5File(self._FactorDB._QSArgs.MainDir / self._QSArgs.Name / (ifactor_name + "." + self._Suffix), mode="r") as ijFile:
                 Timestamps = ijFile["DateTime"][...]
         if start_dt is not None:
@@ -147,7 +148,7 @@ class HDF5FactorTable(FactorTable):
     def _readFactorData(self, ifactor_name, ids, dts):
         FilePath = self._FactorDB._QSArgs.MainDir / self._QSArgs.Name / (ifactor_name + "." + self._Suffix)
         if not os.path.isfile(FilePath): raise __QS_Error__("因子库 '%s' 的因子表 '%s' 中不存在因子 '%s'!" % (self._FactorDB.Name, self._QSArgs.Name, ifactor_name))
-        with self._FactorDB._getLock(self._QSArgs.Name) as DataLock:
+        with self._FactorDB._getLock(table_name=self._QSArgs.Name, factor_name=ifactor_name) as DataLock:
             with self._FactorDB._openHDF5File(FilePath, mode="r") as DataFile:
                 DataType = DataFile.attrs["DataType"]
                 DateTimes = DataFile["DateTime"][...]
@@ -272,7 +273,6 @@ class HDF5DB(WritableFactorDB):
     class __QS_ArgClass__(WritableFactorDB.__QS_ArgClass__):
         Name: str = Field(default="HDF5DB", title="名称", frozen=True)
         MainDir: DirectoryPath = Field(title="主目录", frozen=True, description="存放数据的主目录")
-        LockDir: Optional[DirectoryPath] = Field(default=None, title="锁目录", frozen=True, description="存放锁文件的目录, 默认 None 表示和主目录相同")
         FileOpenRetryNum: IntOrInf = Field(default=np.inf, title="文件打开重试次数", frozen=False, exclude=True, ge=1, description="打开数据文件错误时的重试次数")
 
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
@@ -283,48 +283,23 @@ class HDF5DB(WritableFactorDB):
             args: 指定的对象参数集
             config_file: 配置文件路径, 默认配置文件为 "~/QuantStudioConfig/HDF5DBConfig.json"
         """
-        self._LockFile = None  # 文件锁的目标文件
-        self._DataLock = None  # 访问该因子库资源的文件锁, 防止并发访问冲突
         self._Suffix = "hdf5"  # 文件的后缀名
         return super().__init__(args=args, config_file=(__QS_ConfigPath__ + os.sep + "HDF5DBConfig.json" if config_file is None else config_file), **kwargs)
 
     def connect(self):
         if not os.path.isdir(self._QSArgs.MainDir):
             raise __QS_Error__("HDF5DB.connect: 不存在主目录 '%s'!" % self._QSArgs.MainDir)
-        if not self._QSArgs.LockDir:
-            self._LockDir = self._QSArgs.MainDir
-        elif not os.path.isdir(self._QSArgs.LockDir):
-            raise __QS_Error__("HDF5DB.connect: 不存在锁目录 '%s'!" % self._QSArgs.LockDir)
-        else:
-            self._LockDir = self._QSArgs.LockDir
-        self._LockFile = self._LockDir / "LockFile"
-        if not os.path.isfile(self._LockFile):
-            open(self._LockFile, mode="a").close()
-            os.chmod(self._LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
-        self._DataLock = QSFileLock(self._LockFile)
         return self
 
-    def disconnect(self):
-        self._LockFile = None
-        self._DataLock = None
-
-    def _getLock(self, table_name=None):
-        if table_name is None:
-            return self._DataLock
+    def _getLock(self, table_name=None, factor_name=None):
+        if table_name is None: return FileLock(self._QSArgs.MainDir / "_FDB.lock")
         TablePath = self._QSArgs.MainDir / table_name
         if not os.path.isdir(TablePath):
             Msg = ("因子库 '%s' 调用 _getLock 时错误, 不存在因子表: '%s'" % (self.Name, table_name))
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
-        LockFile = self._LockDir / table_name / "LockFile"
-        if not os.path.isfile(LockFile):
-            with self._DataLock:
-                if not os.path.isdir(self._LockDir / table_name):
-                    os.mkdir(self._LockDir / table_name)
-                if not os.path.isfile(LockFile):
-                    open(LockFile, mode="a").close()
-                    os.chmod(LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
-        return QSFileLock(LockFile, thread_lock=self._DataLock.ThreadLock, pid=self._DataLock.PID)
+        if factor_name is None: return FileLock(TablePath / "_Table.lock")
+        return FileLock(TablePath / f"{factor_name}.lock")
 
     def _openHDF5File(self, filename, *args, **kwargs):
         i = 0
@@ -357,7 +332,7 @@ class HDF5DB(WritableFactorDB):
         if old_table_name == new_table_name: return 0
         OldPath = self._QSArgs.MainDir / old_table_name
         NewPath = self._QSArgs.MainDir / new_table_name
-        with self._DataLock:
+        with self._getLock() as DataLock:
             if not os.path.isdir(OldPath): raise __QS_Error__("HDF5DB.renameTable: 表: '%s' 不存在!" % old_table_name)
             if os.path.isdir(NewPath): raise __QS_Error__("HDF5DB.renameTable: 表 '" + new_table_name + "' 已存在!")
             os.rename(OldPath, NewPath)
@@ -365,7 +340,7 @@ class HDF5DB(WritableFactorDB):
 
     def deleteTable(self, table_name:str):
         TablePath = self._QSArgs.MainDir / table_name
-        with self._DataLock:
+        with self._getLock() as DataLock:
             if os.path.isdir(TablePath):
                 shutil.rmtree(TablePath, ignore_errors=True)
         return 0
@@ -377,7 +352,7 @@ class HDF5DB(WritableFactorDB):
             meta_data = {}
         if key is not None:
             meta_data[key] = value
-        with self._DataLock:
+        with self._getLock(table_name=table_name) as DataLock:
             writeNestedDict2HDF5(meta_data, self._QSArgs.MainDir / table_name / "_TableInfo.h5", "/")
         return 0
 
@@ -385,7 +360,7 @@ class HDF5DB(WritableFactorDB):
         if old_factor_name == new_factor_name: return 0
         OldPath = self._QSArgs.MainDir / table_name / (old_factor_name + "." + self._Suffix)
         NewPath = self._QSArgs.MainDir / table_name / (new_factor_name + "." + self._Suffix)
-        with self._DataLock:
+        with self._getLock() as DataLock:
             if not os.path.isfile(OldPath): raise __QS_Error__("HDF5DB.renameFactor: 表 '%s' 中不存在因子 '%s'!" % (table_name, old_factor_name))
             if os.path.isfile(NewPath): raise __QS_Error__("HDF5DB.renameFactor: 表 '%s' 中的因子 '%s' 已存在!" % (table_name, new_factor_name))
             os.rename(OldPath, NewPath)
@@ -394,7 +369,7 @@ class HDF5DB(WritableFactorDB):
     def deleteFactor(self, table_name:str, factor_names:List[str]):
         TablePath = self._QSArgs.MainDir / table_name
         FactorNames = set(listDirFile(str(TablePath), suffix=self._Suffix))
-        with self._DataLock:
+        with self._getLock() as DataLock:
             if FactorNames.issubset(set(factor_names)):
                 shutil.rmtree(TablePath, ignore_errors=True)
             else:
@@ -405,7 +380,7 @@ class HDF5DB(WritableFactorDB):
         return 0
 
     def setFactorMetaData(self, table_name:str, ifactor_name:str, key:Optional[str]=None, value:Any=None, meta_data:Optional[dict]=None):
-        with self._getLock(table_name=table_name) as DataLock:
+        with self._getLock(table_name=table_name, factor_name=ifactor_name) as DataLock:
             with self._openHDF5File(self._QSArgs.MainDir / table_name / (ifactor_name + "." + self._Suffix), mode="a") as File:
                 if key is not None:
                     if key in File.attrs:
@@ -421,7 +396,7 @@ class HDF5DB(WritableFactorDB):
 
     def _updateFactorData(self, factor_data, table_name, ifactor_name, data_type):
         FilePath = self._QSArgs.MainDir / table_name / (ifactor_name + "." + self._Suffix)
-        with self._getLock(table_name=table_name) as DataLock:
+        with self._getLock(table_name=table_name, factor_name=ifactor_name) as DataLock:
             with self._openHDF5File(FilePath, mode="a") as DataFile:
                 OldDataType = DataFile.attrs["DataType"]
                 if data_type is None: data_type = OldDataType
@@ -495,9 +470,9 @@ class HDF5DB(WritableFactorDB):
         TablePath = self._QSArgs.MainDir / table_name
         FilePath = TablePath / (ifactor_name + "." + self._Suffix)
         if not os.path.isdir(TablePath):
-            with self._DataLock:
+            with self._getLock() as DataLock:
                 if not os.path.isdir(TablePath): os.mkdir(TablePath)
-        with self._getLock(table_name=table_name) as DataLock:
+        with self._getLock(table_name=table_name, factor_name=ifactor_name) as DataLock:
             if not os.path.isfile(FilePath):
                 factor_data, data_type = _identifyDataType(factor_data, data_type)
                 NewData = _adjustData(factor_data, data_type)
@@ -545,7 +520,7 @@ class HDF5DB(WritableFactorDB):
     def optimizeData(self, table_name, factor_names):
         for iFactorName in factor_names:
             iFilePath = self._QSArgs.MainDir / table_name / (iFactorName + "." + self._Suffix)
-            with self._DataLock:
+            with self._getLock(table_name=table_name, factor_name=iFactorName) as DataLock:
                 with self._openHDF5File(iFilePath, mode="a") as DataFile:
                     DTs = DataFile["DateTime"][...]
                     if np.any(np.diff(DTs) < 0):
@@ -561,7 +536,7 @@ class HDF5DB(WritableFactorDB):
         for iFactorName in factor_names:
             iFilePath = self._QSArgs.MainDir / table_name / (iFactorName + "." + self._Suffix)
             FixMask = np.full(shape=(4,), fill_value=True, dtype=bool)
-            with self._DataLock:
+            with self._getLock(table_name=table_name, factor_name=iFactorName) as DataLock:
                 with self._openHDF5File(iFilePath, mode="a") as DataFile:
                     # 修复 ID 长度和数据长度不符
                     if DataFile["ID"].shape[0] > DataFile["Data"].shape[1]:

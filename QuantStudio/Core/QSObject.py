@@ -15,7 +15,6 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 from pandas._typing import Axes
-# from fasteners import InterProcessLock as FileLock
 from filelock import FileLock
 from pydantic import Field
 from multiprocess import Lock
