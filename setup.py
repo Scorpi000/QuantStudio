@@ -27,19 +27,23 @@ setuptools.setup(
         'Topic :: Office/Business :: Financial :: Investment'
     ],
     install_requires=[
+        "pydantic",
         "numpy",# 矩阵运算
         "pandas",# 数据分析
+        "pyarrow",
         "scipy",# 科学计算
         "cvxpy",# 凸规划
         "matplotlib",# 绘图
         "statsmodels",# 概率统计
         "chardet>=3.0.4",# 解析字符编码
         "progressbar2>=3.10.1",# 进度条
-        "fasteners>=0.14.0",# 进程文件锁
+        "filelock",# 进程文件锁
         "baostock",# baostock 数据源
         "h5py",# HDF5 文件
         "openpyxl",# 读写 Excel 文件
         "dill",# 序列化
+        "multiprocess",# 多进程
+        "requests"
     ],
     package_data={"QuantStudio": ["Matlab/*", "Resource/*"]}
 )
