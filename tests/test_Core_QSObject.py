@@ -11,16 +11,10 @@ from multiprocess import Process, Pool
 
 # ---------------------- FileLock ----------------------
 from filelock import FileLock
-# from QuantStudio.Core.QSObject import QSFileLock as FileLock
 
 
 def testFileLockFunc(file_path, i):
     lock = FileLock(file_path)
-    with lock:
-        print(i, "lock acquired!")
-        for j in range(1, -1, -1):
-            time.sleep(1)
-            print(i, f"倒计时 {j}")
     with lock:
         print(i, "lock acquired!")
         for j in range(1, -1, -1):
@@ -59,53 +53,6 @@ if __name__=="__main__":
             Futures.append(Executor.submit(testFileLockFunc, FilePath, i))
         for iFuture in Futures:
             iFuture.result()
-
-    print("===")
-
-
-# ---------------------- QSFileLock ---------------------
-def testQSFileLockFunc(lock, i):
-    # print(f"子进程 {i}: ", os.getpid())
-    with lock:
-        print(i, "lock acquired!")
-        for j in range(3, -1, -1):
-            # time.sleep(1)
-            print(i, f"倒计时 {j}")
-
-if __name__=="__main__1":
-    from QuantStudio.Core.QSObject import QSFileLock
-    print("主进程: ", os.getpid())
-
-    lock = QSFileLock(proc_lock=None)
-    nTask = 4
-
-    Procs = []
-    for i in range(nTask):
-        Procs.append(Process(target=testQSFileLockFunc, args=(lock, i)))
-        Procs[-1].start()
-    for iProc in Procs: iProc.join()
-
-    # with Pool(processes=nTask) as Executor:
-    #     Futures = []
-    #     for i in range(nTask):
-    #         Futures.append(Executor.apply_async(testQSFileLockFunc, (lock, i)))
-    #     for iFuture in Futures:
-    #         iFuture.get()
-
-    # 不能用
-    # with ProcessPoolExecutor(max_workers=nTask) as Executor:
-    #     Futures = []
-    #     for i in range(nTask):
-    #         Futures.append(Executor.submit(testQSFileLockFunc, lock, i))
-    #     for iFuture in Futures:
-    #         iFuture.result()
-
-    # with ThreadPoolExecutor(max_workers=nTask) as Executor:
-    #     Futures = []
-    #     for i in range(nTask):
-    #         Futures.append(Executor.submit(testQSFileLockFunc, lock, i))
-    #     for iFuture in Futures:
-    #         iFuture.result()
 
     print("===")
 

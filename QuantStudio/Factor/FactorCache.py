@@ -9,11 +9,11 @@ from typing import Optional, List, Literal, Dict
 
 import numpy as np
 import pandas as pd
+from filelock import FileLock
 from pydantic import Field
 
 from QuantStudio import __QS_ConfigPath__
 from QuantStudio.Core import __QS_Object__, __QS_Error__
-from QuantStudio.Core.QSObject import QSFileLock
 from QuantStudio.Core.Cache import DTCache
 from QuantStudio.Core.FileCache import FileDTCache, FeatherDTCache
 
@@ -159,7 +159,6 @@ class FileFactorCache(FileDTCache, FactorCache):
         super().__init__(args=args, config_file=config_file, **kwargs)
         self._RawDataDir = None  # 原始数据存放根目录
         self._FactorDataDir = None  # 因子数据存放根目录
-        self._PIDLock = {}  # 访问该缓存的锁, 防止并发访问冲突
     
     def createPath(self, path: str):
         os.makedirs(path, exist_ok=True)
@@ -184,7 +183,6 @@ class FileFactorCache(FileDTCache, FactorCache):
         if not os.path.isfile(LockFile):
             open(LockFile, mode="a").close()
             os.chmod(LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
-        self._DataLock = QSFileLock(LockFile)
         if self._QSArgs.StartMode == "new":
             self.clearData()
             self.clearDTData()
@@ -192,26 +190,20 @@ class FileFactorCache(FileDTCache, FactorCache):
             self.clearFactorData()
         elif self._QSArgs.StartMode == "continue":
             self.load()
-        with self._DataLock:
-            if not os.path.isdir(self._DataDir): os.mkdir(self._DataDir)
-            if not os.path.isdir(self._DTDataDir): os.mkdir(self._DTDataDir)
-            if not os.path.isdir(self._RawDataDir): os.mkdir(self._RawDataDir)
-            if not os.path.isdir(self._FactorDataDir): os.mkdir(self._FactorDataDir)
-            # 根据进程创建缓存子目录
-            for iPID in self._QSArgs.PIDs:
-                if not os.path.isdir(self._RawDataDir + os.sep + iPID): os.mkdir(self._RawDataDir + os.sep + iPID)
-                if not os.path.isdir(self._FactorDataDir + os.sep + iPID): os.mkdir(self._FactorDataDir + os.sep + iPID)
-                iLockFile = self._FactorDataDir + os.sep + iPID + os.sep + "LockFile"
-                if not os.path.isfile(iLockFile):
-                    open(iLockFile, mode="a").close()
-                    os.chmod(iLockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
-                self._PIDLock[iPID] = QSFileLock(iLockFile)
+        if not os.path.isdir(self._DataDir): os.mkdir(self._DataDir)
+        if not os.path.isdir(self._DTDataDir): os.mkdir(self._DTDataDir)
+        if not os.path.isdir(self._RawDataDir): os.mkdir(self._RawDataDir)
+        if not os.path.isdir(self._FactorDataDir): os.mkdir(self._FactorDataDir)
+        # 根据进程创建缓存子目录
+        for iPID in self._QSArgs.PIDs:
+            if not os.path.isdir(self._RawDataDir + os.sep + iPID): os.mkdir(self._RawDataDir + os.sep + iPID)
+            if not os.path.isdir(self._FactorDataDir + os.sep + iPID): os.mkdir(self._FactorDataDir + os.sep + iPID)
         self._isStarted = True
 
     def checkRawDataExistence(self, key, pids=None, create_if_not_exists: bool=True) -> bool:
         if pids is None: pids = self._QSArgs.PIDs
         IfExist = False
-        with self._DataLock:
+        with FileLock(self._RawDataDir + os.sep + key + ".lock") as DataLock:
             for iPID in pids:
                 iPath = self._RawDataDir + os.sep + iPID + os.sep + key + self._QSArgs.Suffix
                 if os.path.exists(iPath):
@@ -232,13 +224,13 @@ class FileFactorCache(FileDTCache, FactorCache):
                     jInterIDs = sorted(AllIDs.intersection(jIDs))
                     ijRawData = iRawData.loc[jInterIDs]
                     jPath = self._RawDataDir + os.sep + jPID + os.sep + key + os.sep + iField + self._QSArgs.Suffix
-                    with self._DataLock:
+                    with FileLock(self._RawDataDir + os.sep + jPID + os.sep + key + ".lock") as DataLock:
                         self.writeDataFrame(path=jPath, data=ijRawData.reset_index(), if_exists=if_exists, ignore_index=True)
                         if meta: self.writeMeta(path=self._RawDataDir + os.sep + jPID + os.sep + key + os.sep + "meta.json", meta=meta)
             else:  # 如果原始数据没有 ID 列，则将所有数据分别存入子进程的原始文件中
                 for jPID, jIDs in pid_ids.items():
                     jPath = self._RawDataDir + os.sep + jPID + os.sep + key + os.sep + "RawData" + self._QSArgs.Suffix
-                    with self._DataLock:
+                    with FileLock(self._RawDataDir + os.sep + jPID + os.sep + key + ".lock") as DataLock:
                         self.writeDataFrame(path=jPath, data=iRawData, if_exists=if_exists, ignore_index=True)
                         if meta: self.writeMeta(path=self._RawDataDir + os.sep + jPID + os.sep + key + os.sep + "meta.json", meta=meta)
 
@@ -247,7 +239,7 @@ class FileFactorCache(FileDTCache, FactorCache):
         RawData = {}
         for iPID in pids:
             iRawDataPath = self._RawDataDir + os.sep + iPID + os.sep + key
-            with self._PIDLock[iPID]:
+            with FileLock(self._RawDataDir + os.sep + iPID + os.sep + key + ".lock") as DataLock:
                 if not os.path.isdir(iRawDataPath): continue
                 if target_fields is None: target_fields = [iFile[:-len(self._QSArgs.Suffix)] for iFile in os.listdir(iRawDataPath)]
                 for jField in target_fields:
@@ -259,15 +251,16 @@ class FileFactorCache(FileDTCache, FactorCache):
         return RawData
 
     def clearRawData(self, key:Optional[str]=None):
-        with self._DataLock:
-            if key is None:
+        if key is None:
+            with FileLock(self._CacheDir + os.sep + "_Cache.lock") as DataLock:
                 try:
                     if os.path.isdir(self._RawDataDir): shutil.rmtree(self._RawDataDir)
                 except Exception as e:
                     self._QS_Logger.error(f"原始数据缓存目录: {self._RawDataDir} 清理失败: {e}")
-            else:
-                for iPID in self._QSArgs.PIDs:
-                    iRawDataPath = self._RawDataDir + os.sep + iPID + os.sep + key + self._QSArgs.Suffix
+        else:
+            for iPID in self._QSArgs.PIDs:
+                iRawDataPath = self._RawDataDir + os.sep + iPID + os.sep + key + self._QSArgs.Suffix
+                with FileLock(self._RawDataDir + os.sep + iPID + os.sep + key + ".lock") as DataLock:
                     try:
                         if os.path.isfile(iRawDataPath): os.remove(iRawDataPath)
                         elif os.path.isdir(iRawDataPath): shutil.rmtree(iRawDataPath)
@@ -278,7 +271,7 @@ class FileFactorCache(FileDTCache, FactorCache):
     def checkFactorDataExistence(self, key:str, pids:Optional[List[str]]=None) -> bool:
         if pids is None: pids = self._QSArgs.PIDs
         IfExist = False
-        with self._DataLock:
+        with FileLock(self._FactorDataDir + os.sep + key + ".lock") as DataLock:
             for iPID in pids:
                 iPath = self._FactorDataDir + os.sep + iPID + os.sep + key
                 IfExist = os.path.exists(iPath) or IfExist
@@ -287,7 +280,7 @@ class FileFactorCache(FileDTCache, FactorCache):
     def writeFactorData(self, key:str, factor_data:pd.DataFrame, pid_ids:Dict[str, List[str]], pid:Optional[str]=None, target_field:str="StdData", if_exists:Literal["append", "replace"]="append", data_type:Optional[Literal["double", "string", "object"]]=None, meta:dict={}):
         PIDs = (self._QSArgs.PIDs if pid is None else [pid])
         for iPID in PIDs:
-            with self._PIDLock[iPID]:
+            with FileLock(self._FactorDataDir + os.sep + iPID + os.sep + key + ".lock") as DataLock:
                 iPath = self._FactorDataDir + os.sep + iPID + os.sep + key + os.sep + target_field + self._QSArgs.Suffix
                 if pid_ids is not None:
                     iIDs = pid_ids.get(iPID)
@@ -301,10 +294,10 @@ class FileFactorCache(FileDTCache, FactorCache):
             Path = self._FactorDataDir + os.sep + pids + os.sep + key
             if not os.path.exists(Path):
                 return None
-            with self._PIDLock[pids]:
+            with FileLock(self._FactorDataDir + os.sep + pids + os.sep + key + ".lock") as DataLock:
                 return self.readDataFrame(path=os.path.join(Path, target_field+self._QSArgs.Suffix), data_type=data_type)
         iPath = self._FactorDataDir + os.sep + ipid + os.sep + key
-        with self._PIDLock[ipid]:
+        with FileLock(self._FactorDataDir + os.sep + ipid + os.sep + key + ".lock") as DataLock:
             DTNum = self.readDataFrame(path=os.path.join(iPath, target_field + self._QSArgs.Suffix), data_type=data_type)
             if DTNum is None: DTNum = 0
             else: DTNum = DTNum.shape[0]
@@ -323,20 +316,21 @@ class FileFactorCache(FileDTCache, FactorCache):
                     if wait_seconds > 0: time.sleep(wait_seconds)
                 continue
             elif wait:
-                self._PIDLock[iPID].acquire()
+                DataLock = FileLock(self._FactorDataDir + os.sep + iPID + os.sep + key + ".lock")
+                DataLock.acquire()
                 iMTime = self.getPathMTime(iPath)
                 if (iPID not in MTime) or (iMTime > MTime[iPID]):
                     MTime[iPID] = iMTime
                     iDTNum = self.readDataFrame(path=os.path.join(iPath, target_field + self._QSArgs.Suffix), data_type=data_type)
                     if iDTNum is None: iDTNum = 0
                     else: iDTNum = iDTNum.shape[0]
-                    self._PIDLock[iPID].release()
+                    DataLock.release()
                     if iDTNum < DTNum:
                         pids.add(iPID)
                         if wait_seconds > 0: time.sleep(wait_seconds)
                         continue
                 else:
-                    self._PIDLock[iPID].release()
+                    DataLock.release()
                     pids.add(iPID)
                     if wait_seconds > 0: time.sleep(wait_seconds)
                     continue
@@ -348,15 +342,16 @@ class FileFactorCache(FileDTCache, FactorCache):
             return None
 
     def clearFactorData(self, key:Optional[str]=None):
-        with self._DataLock:
-            if key is None:
+        if key is None:
+            with FileLock(self._CacheDir + os.sep + "_Cache.lock") as DataLock:
                 try:
                     if os.path.isdir(self._FactorDataDir): shutil.rmtree(self._FactorDataDir)
                 except Exception as e:
                     self._QS_Logger.error(f"因子数据缓存目录: {self._FactorDataDir} 清理失败: {e}")
-            else:
-                for iPID in self._QSArgs.PIDs:
-                    iPath = self._FactorDataDir + os.sep + iPID + os.sep + key + self._QSArgs.Suffix
+        else:
+            for iPID in self._QSArgs.PIDs:
+                iPath = self._FactorDataDir + os.sep + iPID + os.sep + key + self._QSArgs.Suffix
+                with FileLock(self._FactorDataDir + os.sep + iPID + os.sep + key + ".lock") as DataLock:
                     try:
                         if os.path.isfile(iPath): os.remove(iPath)
                         elif os.path.isdir(iPath): shutil.rmtree(iPath)

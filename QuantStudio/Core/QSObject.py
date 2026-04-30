@@ -7,8 +7,6 @@ import mmap
 import pickle
 import struct
 import tempfile
-import threading
-from pathlib import Path
 from collections import OrderedDict
 from typing import Literal
 
@@ -17,7 +15,6 @@ import pandas as pd
 from pandas._typing import Axes
 from filelock import FileLock
 from pydantic import Field
-from multiprocess import Lock
 
 from QuantStudio.Core import __QS_Error__, __QS_Object__
 
@@ -437,93 +434,6 @@ class QSSQLObject(__QS_Object__):
         return 0
 
 
-class QSFileLock(object):
-    """文件锁
-    多线程时使用线程锁
-    多进程时使用文件锁
-    """
-
-    def __init__(self, path_or_lock=None, thread_lock=None, proc_lock=None, pid=None):
-        if not pid: self._PID = os.getpid()
-        else: self._PID = pid
-        if thread_lock is None:
-            self._ThreadLock = threading.Lock()
-        else:
-            self._ThreadLock = thread_lock
-        if path_or_lock is None:
-            self._TmpFile = tempfile.NamedTemporaryFile(delete_on_close=False)
-            # self._TmpFile.close()
-            self._LockFile = self._TmpFile.name
-            self._FileLock = FileLock(self._LockFile)
-        elif isinstance(path_or_lock, (str, Path)):
-            self._LockFile = path_or_lock
-            self._FileLock = FileLock(path_or_lock)
-        else:
-            self._LockFile = getattr(path_or_lock, "path", None)
-            self._FileLock = path_or_lock
-        self._ProcLock = proc_lock
-    
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        # Remove the unpicklable entries.
-        state.pop("_TmpFile", None)
-        if self._LockFile is not None:
-            state["_LockFile"] = str(self._LockFile)
-            state.pop("_FileLock")
-        state["_ProcLock"] = (self._ProcLock is not None)
-        # print("DEBUG: QSFileLock.__getstate__")
-        return state
-
-    def __setstate__(self, state):
-        self.__dict__.update(state)
-        if getattr(self, "_LockFile", None) is not None:
-            self._FileLock = FileLock(self._LockFile)
-        if state["_ProcLock"]:
-            self._ProcLock = Lock()
-        else:
-            self._ProcLock = None
-        # print("DEBUG: QSFileLock.__setstate__")
-    
-    @property
-    def PID(self):
-        return self._PID
-
-    @property
-    def FileLock(self):
-        return self._FileLock
-    
-    @property
-    def ThreadLock(self):
-        return self._ThreadLock
-
-    @property
-    def ProcLock(self):
-        return self._ProcLock
-
-    def acquire(self):
-        if self._ProcLock is not None: self._ProcLock.acquire()
-        if os.getpid() != self._PID:
-            # print("DEBUG: 获取文件锁")
-            return self._FileLock.acquire()
-        else:
-            # print("DEBUG: 获取线程锁")
-            return self._ThreadLock.acquire()
-    
-    def release(self):
-        if os.getpid() != self._PID:
-            self._FileLock.release()
-        else:
-            self._ThreadLock.release()
-        if self._ProcLock is not None: self._ProcLock.release()
-    
-    def __enter__(self):
-        self.acquire()
-        return self
-    
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.release()
-
-
 class QSQueue(object):
     """进程间 Queue, 无数据大小的限制"""
 
@@ -544,22 +454,24 @@ class QSQueue(object):
         self._MaxBatchNum = (self._CacheSize - self._HeadSize) // self._BatchSize# 最大单元个数
         self._BatchDataSize = self._BatchSize - self._BatchHeadSize
 
+        self._TmpDir = tempfile.TemporaryDirectory()
+
         if (put_lock is None) and (mp is None):
-            self._PutLock = QSFileLock()
+            self._PutLock = FileLock(self._TmpDir.name + os.sep + "Put.lock")
         elif put_lock is not None:
             self._PutLock = put_lock
         else:
             self._PutLock = mp.Lock()
         
         if (get_lock is None) and (mp is None):
-            self._GetLock = QSFileLock()
+            self._GetLock = FileLock(self._TmpDir.name + os.sep + "Get.lock")
         elif get_lock is not None:
             self._GetLock = get_lock
         else:
             self._GetLock = mp.Lock()
         
         if (global_lock is None) and (mp is None):
-            self._GlobalLock = QSFileLock()
+            self._GlobalLock = FileLock(self._TmpDir.name + os.sep + "Global.lock")
         elif global_lock is not None:
             self._GlobalLock = global_lock
         else:
@@ -577,11 +489,24 @@ class QSQueue(object):
     def __getstate__(self):
         state = self.__dict__.copy()
         if os.name=="nt": state["_MMAPCacheData"] = None
+        state["_TmpDir"] = state["_TmpDir"].name
+        if isinstance(self._PutLock, FileLock):
+            state["_PutLock"] = None
+        if isinstance(self._GetLock, FileLock):
+            state["_GetLock"] = None
+        if isinstance(self._GlobalLock, FileLock):
+            state["_GlobalLock"] = None
         return state
     
     def __setstate__(self, state):
         self.__dict__.update(state)
         if os.name=="nt": self._MMAPCacheData = mmap.mmap(-1, self._CacheSize, tagname=self._TagName)
+        if self._PutLock is None:
+            self._PutLock = FileLock(self._TmpDir + os.sep + "Put.lock")
+        if self._GetLock is None:
+            self._GetLock = FileLock(self._TmpDir + os.sep + "Get.lock")
+        if self._GlobalLock is None:
+            self._GlobalLock = FileLock(self._TmpDir + os.sep + "Global.lock")
 
     @property
     def size(self):

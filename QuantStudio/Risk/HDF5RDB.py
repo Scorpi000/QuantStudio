@@ -8,11 +8,12 @@ from typing import Optional, List, Any, Union
 import numpy as np
 import pandas as pd
 import h5py
+from filelock import FileLock
 from pydantic import Field, DirectoryPath
 
 from QuantStudio import __QS_ConfigPath__
 from QuantStudio.Core import __QS_Error__
-from QuantStudio.Core.QSObject import Panel, QSFileLock
+from QuantStudio.Core.QSObject import Panel
 from QuantStudio.Risk.RiskDB import RiskDB, FactorRDB
 from QuantStudio.Risk.RiskTable import RiskTable, FactorRT
 from QuantStudio.Tools.FileFun import listDirFile
@@ -23,7 +24,7 @@ class HDF5RiskTable(RiskTable):
     """基于 HDF5 文件的风险表"""
 
     def getMetaData(self, key:Optional[str]=None) -> Union[Any, pd.Series]:
-        with self._RiskDB._DataLock:
+        with FileLock(self._RiskDB._QSArgs.MainDir / f"{self._QSArgs.Name}.lock") as DataLock:
             with h5py.File(self._RiskDB._QSArgs.MainDir / (self._QSArgs.Name+"."+self._RiskDB._Suffix), mode="r") as File:
                 if key is None: return pd.Series(dict(File.attrs))
                 elif key in File.attrs: return File.attrs[key]
@@ -34,7 +35,7 @@ class HDF5RiskTable(RiskTable):
     
     def readCov(self, dts:List[dt.datetime], ids:Optional[str]=None) -> Panel:
         Data = {}
-        with self._RiskDB._DataLock:
+        with FileLock(self._RiskDB._QSArgs.MainDir / f"{self._QSArgs.Name}.lock") as DataLock:
             with h5py.File(self._RiskDB._QSArgs.MainDir / (self._QSArgs.Name+"."+self._RiskDB._Suffix), mode="r") as File:
                 CovGroup = File["Cov"]
                 for iDT in dts:
@@ -61,7 +62,6 @@ class HDF5RDB(RiskDB):
     
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
         self._TableDT = {}# {表名：[时点]}
-        self._DataLock = None
         self._Suffix = "hdf5"
         return super().__init__(args=args, config_file=(__QS_ConfigPath__+os.sep+"HDF5RDBConfig.json" if config_file is None else config_file), **kwargs)
 
@@ -71,10 +71,9 @@ class HDF5RDB(RiskDB):
         if not os.path.isfile(self._LockFile):
             open(self._LockFile, mode="a").close()
             os.chmod(self._LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
-        self._DataLock = QSFileLock(self._LockFile)
         AllTables = listDirFile(str(self._QSArgs.MainDir), suffix=self._Suffix)
         TableDT = {}#{表名：[时点]}
-        with self._DataLock:
+        with FileLock(self._QSArgs.MainDir / "_RDB.lock") as DataLock:
             for iTable in AllTables:
                 with h5py.File(self._QSArgs.MainDir / (iTable+"."+self._Suffix), mode="r") as iFile:
                     if "Cov" in iFile:
@@ -95,8 +94,8 @@ class HDF5RDB(RiskDB):
         return HDF5RiskTable(self, args=args | {"Name": table_name})
     
     def setTableMetaData(self, table_name:str, key:Optional[str]=None, value:Any=None, meta_data:Optional[dict]=None):
-        with self._DataLock:
-            with h5py.File(self._QSArgs.MainDir / (table_name+"."+self._Suffix), mode="a") as File:
+        with FileLock(self._QSArgs.MainDir / f"{table_name}.lock") as DataLock:
+            with h5py.File(self._QSArgs.MainDir / (table_name + "." + self._Suffix), mode="a") as File:
                 if meta_data is None: meta_data = {}
                 if key is not None: meta_data[key] = value
                 for iKey, iValue in meta_data.items():
@@ -110,18 +109,18 @@ class HDF5RDB(RiskDB):
     def renameTable(self, old_table_name:str, new_table_name:str):
         if old_table_name not in self._TableDT: raise __QS_Error__("表: '%s' 不存在!" % old_table_name)
         if (new_table_name!=old_table_name) and (new_table_name in self._TableDT): raise __QS_Error__("表: '%s' 已存在!" % new_table_name)
-        with self._DataLock:
+        with FileLock(self._QSArgs.MainDir / "_RDB.lock") as DataLock:
             os.rename(self._QSArgs.MainDir / (old_table_name+"."+self._Suffix), self._QSArgs.MainDir / (new_table_name+"."+self._Suffix))
         self._TableDT[new_table_name] = self._TableDT.pop(old_table_name)
     
     def deleteTable(self, table_name:str):
-        with self._DataLock:
+        with FileLock(self._QSArgs.MainDir / "_RDB.lock") as DataLock:
             iFilePath = self._QSArgs.MainDir / (table_name+"."+self._Suffix)
             if os.path.isfile(iFilePath): os.remove(iFilePath)
         self._TableDT.pop(table_name, None)
     
     def deleteDateTime(self, table_name:str, dts:List[dt.datetime]):
-        with self._DataLock:
+        with FileLock(self._QSArgs.MainDir / "_RDB.lock") as DataLock:
             with h5py.File(self._QSArgs.MainDir / (table_name+"."+self._Suffix), mode="a") as File:
                 CovGroup = File["Cov"]
                 for iDT in dts:
@@ -133,7 +132,7 @@ class HDF5RDB(RiskDB):
     
     def writeData(self, table_name:str, idt:dt.datetime, icov:pd.DataFrame, **kwargs):
         FilePath = self._QSArgs.MainDir / (table_name+"."+self._Suffix)
-        with self._DataLock:
+        with FileLock(self._QSArgs.MainDir / "_RDB.lock") as DataLock:
             if not os.path.isfile(FilePath): open(FilePath, mode="a").close()# h5py 直接创建文件名包含中文的文件会报错.
             with h5py.File(FilePath, mode="a") as File:
                 iDTStr = idt.strftime("%Y-%m-%d %H:%M:%S.%f")
@@ -159,8 +158,8 @@ class HDF5FactorRiskTable(FactorRT):
         if not DTs: self._FactorNames = []
         else:
             DTStr = DTs[-1].strftime("%Y-%m-%d %H:%M:%S.%f")
-            with self._RiskDB._DataLock:
-                with h5py.File(self._RiskDB._QSArgs.MainDir / (self._QSArgs.Name+"."+self._RiskDB._Suffix), mode="r") as File:
+            with FileLock(self._RiskDB._QSArgs.MainDir / f"{self._QSArgs.Name}.lock") as DataLock:
+                with h5py.File(self._RiskDB._QSArgs.MainDir / (self._QSArgs.Name + "." + self._RiskDB._Suffix), mode="r") as File:
                     if "FactorCov" in File:
                         Group = File["FactorCov"]
                         if DTStr in Group:
@@ -184,8 +183,8 @@ class HDF5FactorRiskTable(FactorRT):
     def getID(self, idt:Optional[dt.datetime]=None) -> List[str]:
         if idt is None: idt = self._RiskDB._TableDT[self._QSArgs.Name][-1]
         DTStr = idt.strftime("%Y-%m-%d %H:%M:%S.%f")
-        with self._RiskDB._DataLock:
-            with h5py.File(self._RiskDB._QSArgs.MainDir / (self._QSArgs.Name+"."+self._RiskDB._Suffix), mode="r") as File:
+        with FileLock(self._RiskDB._QSArgs.MainDir / f"{self._QSArgs.Name}.lock") as DataLock:
+            with h5py.File(self._RiskDB._QSArgs.MainDir / (self._QSArgs.Name + "." + self._RiskDB._Suffix), mode="r") as File:
                 Group = File["SpecificRisk"]
                 if DTStr in Group:
                     if h5py.version.version >= "3.0.0":
@@ -196,7 +195,7 @@ class HDF5FactorRiskTable(FactorRT):
     
     def getFactorReturnDateTime(self, start_dt:Optional[dt.datetime]=None, end_dt:Optional[dt.datetime]=None) -> List[dt.datetime]:
         FilePath = self._RiskDB._QSArgs.MainDir / (self._QSArgs.Name+"."+self._RiskDB._Suffix)
-        with self._RiskDB._DataLock:
+        with FileLock(self._RiskDB._QSArgs.MainDir / f"{self._QSArgs.Name}.lock") as DataLock:
             if not os.path.isfile(FilePath): return []
             with h5py.File(FilePath, mode="r") as File:
                 if "FactorReturn" not in File: return []
@@ -206,7 +205,7 @@ class HDF5FactorRiskTable(FactorRT):
     
     def getSpecificReturnDateTime(self, start_dt:Optional[dt.datetime]=None, end_dt:Optional[dt.datetime]=None) -> List[dt.datetime]:
         FilePath = self._RiskDB._QSArgs.MainDir / (self._QSArgs.Name+"."+self._RiskDB._Suffix)
-        with self._RiskDB._DataLock:
+        with FileLock(self._RiskDB._QSArgs.MainDir / f"{self._QSArgs.Name}.lock") as DataLock:
             if not os.path.isfile(FilePath): return []
             with h5py.File(FilePath, mode="r") as File:
                 if "SpecificReturn" not in File: return []
@@ -216,7 +215,7 @@ class HDF5FactorRiskTable(FactorRT):
     
     def readFactorCov(self, dts:List[dt.datetime]) -> Panel:
         Data = {}
-        with self._RiskDB._DataLock:
+        with FileLock(self._RiskDB._QSArgs.MainDir / f"{self._QSArgs.Name}.lock") as DataLock:
             with h5py.File(self._RiskDB._QSArgs.MainDir / (self._QSArgs.Name+"."+self._RiskDB._Suffix), mode="r") as File:
                 Group = File["FactorCov"]
                 for iDT in dts:
@@ -230,7 +229,7 @@ class HDF5FactorRiskTable(FactorRT):
     
     def readSpecificRisk(self, dts:List[dt.datetime], ids:Optional[List[str]]=None) -> pd.DataFrame:
         Data = {}
-        with self._RiskDB._DataLock:
+        with FileLock(self._RiskDB._QSArgs.MainDir / f"{self._QSArgs.Name}.lock") as DataLock:
             with h5py.File(self._RiskDB._QSArgs.MainDir / (self._QSArgs.Name+"."+self._RiskDB._Suffix), mode="r") as File:
                 Group = File["SpecificRisk"]
                 for iDT in dts:
@@ -246,7 +245,7 @@ class HDF5FactorRiskTable(FactorRT):
     
     def readFactorData(self, dts:List[dt.datetime], ids:Optional[List[str]]=None) -> Panel:
         Data = {}
-        with self._RiskDB._DataLock:
+        with FileLock(self._RiskDB._QSArgs.MainDir / f"{self._QSArgs.Name}.lock") as DataLock:
             with h5py.File(self._RiskDB._QSArgs.MainDir / (self._QSArgs.Name+"."+self._RiskDB._Suffix), mode="r") as File:
                 Group = File["FactorData"]
                 for iDT in dts:
@@ -265,7 +264,7 @@ class HDF5FactorRiskTable(FactorRT):
     
     def readFactorReturn(self, dts:List[dt.datetime]) -> pd.DataFrame:
         Data = {}
-        with self._RiskDB._DataLock:
+        with FileLock(self._RiskDB._QSArgs.MainDir / f"{self._QSArgs.Name}.lock") as DataLock:
             with h5py.File(self._RiskDB._QSArgs.MainDir / (self._QSArgs.Name+"."+self._RiskDB._Suffix), mode="r") as File:
                 Group = File["FactorReturn"]
                 for iDT in dts:
@@ -279,7 +278,7 @@ class HDF5FactorRiskTable(FactorRT):
     
     def readSpecificReturn(self, dts:List[dt.datetime], ids:Optional[List[str]]=None) -> pd.DataFrame:
         Data = {}
-        with self._RiskDB._DataLock:
+        with FileLock(self._RiskDB._QSArgs.MainDir / f"{self._QSArgs.Name}.lock") as DataLock:
             with h5py.File(self._RiskDB._QSArgs.MainDir / (self._QSArgs.Name+"."+self._RiskDB._Suffix), mode="r") as File:
                 Group = File["SpecificReturn"]
                 for iDT in dts:
@@ -295,7 +294,7 @@ class HDF5FactorRiskTable(FactorRT):
     
     def readData(self, data_item:str, dts:List[dt.datetime]) -> Union[pd.DataFrame, Panel]:
         Data = {}
-        with self._RiskDB._DataLock:
+        with FileLock(self._RiskDB._QSArgs.MainDir / f"{self._QSArgs.Name}.lock") as DataLock:
             with h5py.File(self._RiskDB._QSArgs.MainDir / (self._QSArgs.Name+"."+self._RiskDB._Suffix), mode="r") as File:
                 if data_item not in File: return None
                 Group = File[data_item]
@@ -326,20 +325,14 @@ class HDF5FRDB(FactorRDB):
 
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
         self._TableDT = {}#{表名：[时点]}
-        self._DataLock = None
         self._Suffix = "h5"
         super().__init__(args=args, config_file=(__QS_ConfigPath__+os.sep+"HDF5FRDBConfig.json" if config_file is None else config_file), **kwargs)
 
     def connect(self):
         if not os.path.isdir(self._QSArgs.MainDir): raise __QS_Error__("不存在 HDF5FRDB 的主目录: %s!" % self._QSArgs.MainDir)
-        self._LockFile = self._QSArgs.MainDir / "LockFile"
-        if not os.path.isfile(self._LockFile):
-            open(self._LockFile, mode="a").close()
-            os.chmod(self._LockFile, stat.S_IRWXO | stat.S_IRWXG | stat.S_IRWXU)
-        self._DataLock = QSFileLock(self._LockFile)
         AllTables = listDirFile(str(self._QSArgs.MainDir), suffix=self._Suffix)
         TableDT = {}
-        with self._DataLock:
+        with FileLock(self._QSArgs.MainDir / "_FRDB.lock") as DataLock:
             for iTable in AllTables:
                 with h5py.File(self._QSArgs.MainDir / (iTable+"."+self._Suffix), mode="r") as iFile:
                     if ("SpecificRisk" in iFile) or ("FactorReturn" in iFile) or ("FactorCov" in iFile) or ("SpecificReturn" in iFile) or ("FactorData" in iFile):
@@ -371,8 +364,8 @@ class HDF5FRDB(FactorRDB):
     def writeData(self, table_name:str, idt:dt.datetime, factor_data:Optional[pd.DataFrame]=None, factor_cov:Optional[pd.DataFrame]=None, specific_risk:Optional[pd.Series]=None, factor_ret:Optional[pd.Series]=None, specific_ret:Optional[pd.Series]=None, **kwargs):
         iDTStr = idt.strftime("%Y-%m-%d %H:%M:%S.%f")
         StrType = h5py.string_dtype(encoding="utf-8")
-        FilePath = self._QSArgs.MainDir / (table_name+"."+self._Suffix)
-        with self._DataLock:
+        FilePath = self._QSArgs.MainDir / (table_name + "." + self._Suffix)
+        with FileLock(self._QSArgs.MainDir / f"{table_name}.lock") as DataLock:
             if not os.path.isfile(FilePath): open(FilePath, mode="a").close()# h5py 直接创建文件名包含中文的文件会报错.
             with h5py.File(FilePath, mode="a") as File:
                 if factor_data is not None:
