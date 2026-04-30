@@ -107,7 +107,7 @@ class FileDTCache(DTCache):
 
     def checkDataExistence(self, key: str, create_if_not_exists: bool=False) -> bool:
         Path = self._DataDir + os.sep + key + self._QSArgs.Suffix
-        with FileLock(Path = self._DataDir + os.sep + key + ".lock") as DataLock:
+        with FileLock(self._DataDir + os.sep + key + ".lock") as DataLock:
             ifExist = os.path.exists(Path)
             if (not ifExist) and create_if_not_exists:
                 with open(Path, mode="w") as File:
@@ -116,25 +116,25 @@ class FileDTCache(DTCache):
 
     def writeData(self, key: str, data: pd.DataFrame, if_exists: Literal["append", "replace"]="append", data_type: Optional[Literal["double", "string", "object"]]=None, meta:dict={}):
         Path = self._DataDir + os.sep + key + self._QSArgs.Suffix
-        with FileLock(Path = self._DataDir + os.sep + key + ".lock") as DataLock:
+        with FileLock(self._DataDir + os.sep + key + ".lock") as DataLock:
             self.writeDataFrame(path=Path, data=data, if_exists=if_exists, ignore_index=False, data_type=data_type)
             if meta: self.writeMeta(path=self._DataDir + os.sep + key + "_meta.json", meta=meta)
 
     def readData(self, key: str, data_type: Optional[Literal["double", "string", "object"]]=None) -> None | pd.DataFrame:
         Path = self._DataDir + os.sep + key + self._QSArgs.Suffix
-        with FileLock(Path = self._DataDir + os.sep + key + ".lock") as DataLock:
+        with FileLock(self._DataDir + os.sep + key + ".lock") as DataLock:
             return self.readDataFrame(path=Path, data_type=data_type)
 
     def clearData(self, key: Optional[str]=None):
         if key is None:
-            with FileLock(Path = self._CacheDir + os.sep + "_Cache.lock") as DataLock:
+            with FileLock(self._CacheDir + os.sep + "_Cache.lock") as DataLock:
                 try:
                     if os.path.isdir(self._DataDir): shutil.rmtree(self._DataDir)
                 except Exception as e:
                     self._QS_Logger.error(f"通用数据缓存目录: {self._DataDir} 清理失败: {e}")
         else:
             iPath = self._DataDir + os.sep + key + self._QSArgs.Suffix
-            with FileLock(Path = self._DataDir + os.sep + key + ".lock") as DataLock:
+            with FileLock(self._DataDir + os.sep + key + ".lock") as DataLock:
                 try:
                     if os.path.isfile(iPath): os.remove(iPath)
                     elif os.path.isdir(iPath): shutil.rmtree(iPath)
@@ -143,7 +143,7 @@ class FileDTCache(DTCache):
     
     def checkDTDataExistence(self, key: str, create_if_not_exists: bool=False) -> bool:
         Path = self._DTDataDir + os.sep + key + self._QSArgs.Suffix
-        with FileLock(Path = self._DTDataDir + os.sep + key + ".lock") as DataLock:
+        with FileLock(self._DTDataDir + os.sep + key + ".lock") as DataLock:
             ifExist = os.path.exists(Path)
             if (not ifExist) and create_if_not_exists:
                 with open(Path, mode="w") as File:
@@ -152,25 +152,25 @@ class FileDTCache(DTCache):
 
     def writeDTData(self, key: str, data: pd.DataFrame, if_exists: Literal["append", "replace"]="append", data_type: Optional[Literal["double", "string", "object"]]=None, meta:dict={}):
         Path = self._DTDataDir + os.sep + key + self._QSArgs.Suffix
-        with FileLock(Path = self._DTDataDir + os.sep + key + ".lock") as DataLock:
+        with FileLock(self._DTDataDir + os.sep + key + ".lock") as DataLock:
             self.writeDataFrame(path=Path, data=data, if_exists=if_exists, ignore_index=False, data_type=data_type)
             if meta: self.writeMeta(path=self._DTDataDir + os.sep + key + "_meta.json", meta=meta)
 
     def readDTData(self, key: str, data_type: Optional[Literal["double", "string", "object"]]=None) -> None | pd.DataFrame:
         Path = self._DTDataDir + os.sep + key + self._QSArgs.Suffix
-        with FileLock(Path = self._DTDataDir + os.sep + key + ".lock") as DataLock:
+        with FileLock(self._DTDataDir + os.sep + key + ".lock") as DataLock:
             return self.readDataFrame(path=Path, data_type=data_type)
     
     def clearDTData(self, key: Optional[str] = None):
         if key is None:
-            with FileLock(Path = self._CacheDir + os.sep + "_Cache.lock") as DataLock:
+            with FileLock(self._CacheDir + os.sep + "_Cache.lock") as DataLock:
                 try:
                     if os.path.isdir(self._DTDataDir): shutil.rmtree(self._DTDataDir)
                 except Exception as e:
                     self._QS_Logger.error(f"时点数据缓存目录: {self._DTDataDir} 清理失败: {e}")
         else:
             iPath = self._DTDataDir + os.sep + key + self._QSArgs.Suffix
-            with FileLock(Path = self._DTDataDir + os.sep + key + ".lock") as DataLock:
+            with FileLock(self._DTDataDir + os.sep + key + ".lock") as DataLock:
                 try:
                     if os.path.isfile(iPath): os.remove(iPath)
                     elif os.path.isdir(iPath): shutil.rmtree(iPath)
