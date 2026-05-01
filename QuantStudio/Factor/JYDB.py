@@ -1036,9 +1036,7 @@ class JYDB(QSSQLObject, FactorDB):
                 SQLStr += "AND {Prefix}HK_SecuMain.ListedDate <= '{StartDate}' "
                 SQLStr += "AND (({Prefix}HK_SecuMain.DelistingDate IS NULL) OR ({Prefix}HK_SecuMain.DelistingDate > '{Date}')) "
         SQLStr += "ORDER BY {Prefix}HK_SecuMain.SecuCode"
-        return [iRslt[0] for iRslt in self.fetchall(
-            SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"),
-                          StartDate=start_date))]
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date))]
 
     # 获取指定日 date 的全体美股 ID
     # date: 指定日, datetime.date
@@ -1063,9 +1061,7 @@ class JYDB(QSSQLObject, FactorDB):
                 SQLStr += "AND {Prefix}US_SecuMain.ListedDate <= '{StartDate}' "
                 SQLStr += "AND (({Prefix}US_SecuMain.DelistingDate IS NULL) OR ({Prefix}US_SecuMain.DelistingDate > '{Date}')) "
         SQLStr += "ORDER BY {Prefix}US_SecuMain.SecuCode"
-        return [iRslt[0] for iRslt in self.fetchall(
-            SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"),
-                          StartDate=start_date))]
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date))]
 
     # 获取指定日 date 的全体三板股票 ID
     # date: 指定日, datetime.date
@@ -1088,9 +1084,7 @@ class JYDB(QSSQLObject, FactorDB):
                     SQLStr += "AND {Prefix}NQ_SecuMain.ListedDate <= '{StartDate}' "
             SQLStr += "AND {Prefix}NQ_SecuMain.InnerCode NOT IN (" + SubSQLStr + ") "
         SQLStr += "ORDER BY {Prefix}NQ_SecuMain.SecuCode"
-        return [iRslt[0] for iRslt in self.fetchall(
-            SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"),
-                          StartDate=start_date))]
+        return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date))]
 
     def getStockID(self, exchange:Union[Literal["SSE", "SZSE", "BSE", "HKEX", "AMEX", "NASDAQ", "NYSE", "NEEQ"], Tuple[Literal["SSE", "SZSE", "BSE", "HKEX", "AMEX", "NASDAQ", "NYSE", "NEEQ"]]]=("SSE", "SZSE", "BSE"), date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> List[str]:
         """给定交易所和日期, 获取股票证券 ID 序列

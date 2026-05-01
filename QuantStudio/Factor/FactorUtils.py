@@ -295,10 +295,10 @@ def _QS_calcData_NarrowTable(raw_data, factor_names, ids, dts, data_type, args={
 class SQLQueryTable(FactorTable):
     """基于 SQL 查询的因子表"""
     class __QS_ArgClass__(FactorTable.__QS_ArgClass__):
-        QuerySQL: str = Field(title="查询SQL", frozen=True, description="查询 SQL 可有的占位符: TablePrefix, StartDT, EndDT, IDs, 默认以 QS_ID 标识 ID 字段, 以 QS_DT 标识时点字段")
+        QuerySQL: str = Field(title="查询SQL", frozen=True, description="查询 SQL 可有的占位符: TablePrefix, StartDT, EndDT, StartID, EndID, IDs, 默认以 QS_ID 标识 ID 字段, 以 QS_DT 标识时点字段")
         FieldDataTypes: dict = Field(default={}, title="字段数据类型", frozen=True)
         TablePrefix: str = Field(default="", title="表名前缀", repr=False, frozen=True)
-        DTFmt: str = Field(default="", title="时点格式", repr=False, frozen=True)
+        DTFmt: str = Field(default="'%Y-%m-%d %H:%M:%S'", title="时点格式", repr=False, frozen=True)
         IDField: str = Field(default="QS_ID", title="ID字段", frozen=True)
         DTField: str = Field(default="QS_DT", title="时点字段", frozen=True)
         PreFilterID: bool = Field(default=True, title="预筛选ID", frozen=True, description="""是否在 SQL 查询中筛选 ID, 如果为 True, 则在形成的 SQL 查询中的 WHERE 子句中会有 {Table}.ID字段 IN (...) 条件, 否则为 {Table}.ID字段 IS NOT NULL. 如果提取数据的 ID 不多，建议为 True""")
@@ -349,37 +349,22 @@ class SQLQueryTable(FactorTable):
         SQLStr = self._QSArgs.IDSQL.format(TablePrefix=self._QSArgs.TablePrefix, ifactor_name=ifactor_name, idt=idt.strftime(DTFormat))
         return sorted(str(iRslt[0]) for iRslt in self._FactorDB.fetchall(SQLStr))
     
-    def _genIDSQLStr(self, ids, init_keyword="AND"):
-        QuerySQL = self._QSArgs.QuerySQL
-        IDFieldIdx = QuerySQL.find(self._QSArgs.IDField)
-        if QuerySQL[:IDFieldIdx].upper().strip().endswith("AS"):
-            StartIdx = QuerySQL[:IDFieldIdx].rfind(",")
-            if StartIdx == -1:
-                StartIdx = QuerySQL[:IDFieldIdx].upper().find("SELECT")
-                if StartIdx == -1: raise __QS_Error__(f"无法定位原始 ID 字段, 对于 SQL 语句：{QuerySQL}")
-                StartIdx = StartIdx + 6
-            else: StartIdx += 1
-            IDField = re.split("AS", QuerySQL[StartIdx:IDFieldIdx], flags=re.IGNORECASE)[0].strip()
-        else:
-            IDField = self._QSArgs.IDField
-        if ids is not None:
-            if self._QSArgs.PreFilterID:
-                SQLStr = init_keyword + " (" + genSQLInCondition(IDField, ids, is_str=True, max_num=1000) + ")"
-            else:
-                SQLStr = f"{init_keyword} ({IDField} >= '{min(ids)}' AND {IDField} <= '{max(ids)}')"
-        else:
-            SQLStr = init_keyword + " " + IDField + " IS NOT NULL"
-        return SQLStr
-    
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         DTFmt = self._QSArgs.DTFmt
-        if not dts:
-            SQLStr = self._QSArgs.QuerySQL.format(TablePrefix=self._QSArgs.TablePrefix, IDs=self._genIDSQLStr(ids, init_keyword=""))
+        StartDT, EndDT = (dts[0].strftime(DTFmt), dts[-1].strftime(DTFmt)) if dts else ("", "")
+        if ids:
+            IDs = f"""('{"', '".join(ids)}')"""
+            StartID, EndID = min(ids), max(ids)
         else:
-            SQLStr = self._QSArgs.QuerySQL.format(TablePrefix=self._QSArgs.TablePrefix, StartDT=dts[0].strftime(DTFmt), EndDT=dts[-1].strftime(DTFmt), IDs=self._genIDSQLStr(ids, init_keyword=""))
+            IDs, StartID, EndID = "", "", ""
+        SQLStr = self._QSArgs.QuerySQL.format(TablePrefix=self._QSArgs.TablePrefix, StartDT=StartDT, EndDT=EndDT, IDs=IDs, StartID=StartID, EndID=EndID)
         RawData, Header = self._FactorDB.fetchall(SQLStr, header=True)
+        if "qs_id" in Header: Header[Header.index("qs_id")] = "QS_ID"
+        if "qs_dt" in Header: Header[Header.index("qs_dt")] = "QS_DT"
         RawData = pd.DataFrame(RawData, columns=Header)
         if RawData.empty: return RawData
+        if ("{IDs}" not in SQLStr) and ("QS_ID" in Header) and ids:
+            RawData = RawData[RawData["QS_ID"].isin(ids)]
         return RawData
     
     def __QS_calcData__(self, raw_data, factor_names, ids, dts):
