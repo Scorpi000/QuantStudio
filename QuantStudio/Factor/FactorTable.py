@@ -1,6 +1,6 @@
 import html
 import datetime as dt
-from typing import List, Any, Optional, Union
+from typing import List, Any, Optional, Union, Tuple
 
 import numpy as np
 import pandas as pd
@@ -31,9 +31,9 @@ class FactorTable(Node):
             fdb: 因子表所属的因子库
         """
         self._FactorDB = fdb
-        self._QS_PrepareIgnoredArgs: tuple = tuple()# 决定 PrepareID 不需要的参数集，如果为空，表示所有参数都需要
-        self._QS_LookbackArgs: tuple = ("LookBack",)
-        self._QS_RawDataMaskCols: list = ["QS_ID", "QS_DT"]
+        self._QS_PrepareIgnoredArgs: Tuple[str] = tuple()# 决定 PrepareID 不需要的参数集，如果为空，表示所有参数都需要
+        self._QS_LookbackArgs: Tuple[str] = ("LookBack",)
+        self._QS_RawDataMaskCols: List[str] = ["QS_ID", "QS_DT"]
         return super().__init__(args=args, config_file=config_file, **kwargs)
 
     @property

@@ -1,9 +1,10 @@
 # coding=utf-8
 import os
+import re
 import datetime as dt
 import requests
 import tempfile
-from typing import Literal, Optional, Callable, Union, Any, List, Tuple
+from typing import Literal, Optional, Callable, Any, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -162,7 +163,7 @@ def adjustDataDTID(data, look_back, factor_names, ids, dts, only_start_lookback=
 
 
 # ===================== 因子数据计算 =====================
-# raw_data: DataFrame(columns=["QS_DT", "QS_ID"]+factor_names)
+# raw_data: DataFrame(index=("QS_DT", "QS_ID"), columns=factor_names)
 def _QS_calcListData_WideTable(raw_data, factor_names, ids, dts, args={}, **kwargs):
     Operator = args.get("Operator", lambda x: x.tolist())
     if Operator is None: Operator = lambda x: x.tolist()
@@ -204,6 +205,7 @@ def _QS_calcListData_WideTable(raw_data, factor_names, ids, dts, args={}, **kwar
         Data = Panel(Data, items=factor_names)
         return adjustDataDTID(Data, args.get("LookBack", 0), factor_names, ids, dts, args.get("OnlyStartLookBack", False), args.get("OnlyLookBackNontarget", False), logger=kwargs.get("logger", None))
 
+# raw_data: DataFrame(columns=["QS_DT", "QS_ID"]+factor_names)
 def _QS_calcData_WideTable(raw_data, factor_names, ids, dts, data_type, args={}, **kwargs):
     if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
     if ids is None: ids = sorted(raw_data["QS_ID"].unique())
@@ -251,7 +253,7 @@ def _QS_calcData_WideTable(raw_data, factor_names, ids, dts, data_type, args={},
         Data = Panel(Data).loc[factor_names]
         return adjustDataDTID(Data, args.get("LookBack", 0), factor_names, ids, dts, args.get("OnlyStartLookBack", False), args.get("OnlyLookBackNontarget", False), logger=kwargs.get("logger", None))
 
-# raw_data: DataFrame(columns=["QS_DT", "ID", 因子名字段, 因子值字段])
+# raw_data: Series(index=("QS_DT", "QS_ID", "因子名字段"))
 def _QS_calcListData_NarrowTable(raw_data, factor_names, ids, dts, args={}, **kwargs):
     raw_data.index = raw_data.index.swaplevel(i=0, j=-1)
     Operator = args.get("Operator", lambda x: x.tolist())
@@ -264,11 +266,12 @@ def _QS_calcListData_NarrowTable(raw_data, factor_names, ids, dts, args={}, **kw
     Data = Panel(Data, items=factor_names).swapaxes(1, 2)
     return adjustDataDTID(Data, args.get("LookBack", 0), factor_names, ids, dts, args.get("OnlyStartLookBack", False), args.get("OnlyLookBackNontarget", False), args.get("OnlyLookBackDT", False), logger=kwargs.get("logger", None))
 
+# raw_data: DataFrame(columns=["QS_DT", "QS_ID", 因子名字段, 因子值字段])
 def _QS_calcData_NarrowTable(raw_data, factor_names, ids, dts, data_type, args={}, **kwargs):
     if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
-    if ids is None: ids = sorted(raw_data["ID"].unique())
+    if ids is None: ids = sorted(raw_data["QS_ID"].unique())
     FactorNameField = args.get("FactorNameField", "FactorName")
-    raw_data = raw_data.set_index(["QS_DT", "ID", FactorNameField]).iloc[:, 0]
+    raw_data = raw_data.set_index(["QS_DT", "QS_ID", FactorNameField]).iloc[:, 0]
     MultiMapping = args.get("MultiMapping", False)
     if MultiMapping:
         return _QS_calcListData_NarrowTable(raw_data, factor_names, ids, dts, args=args, **kwargs)
@@ -289,30 +292,24 @@ def _QS_calcData_NarrowTable(raw_data, factor_names, ids, dts, data_type, args={
     return adjustDataDTID(Data, args.get("LookBack", 0), factor_names, ids, dts, args.get("OnlyStartLookBack", False), args.get("OnlyLookBackNontarget", False), args.get("OnlyLookBackDT", False), logger=kwargs.get("logger", None))
 
 
-# ===================== 基于 SQL 数据库表的复合因子 =====================
-# 查询 SQL 可有的占位符: TablePrefix, StartDT, EndDT, IDs, 
 class SQLQueryTable(FactorTable):
     """基于 SQL 查询的因子表"""
     class __QS_ArgClass__(FactorTable.__QS_ArgClass__):
-        QuerySQL: str = Field(title="查询SQL", frozen=True)
-        DTSQL: str = Field(default="", title="时点SQL", frozen=True)
-        IDSQL: str = Field(default="", title="IDSQL", frozen=True)
-        SQLDataTypes: dict = Field(default={}, title="SQL数据类型", frozen=True)
-        DTFmt: str = Field(default="", title="时点格式", frozen=True)
+        QuerySQL: str = Field(title="查询SQL", frozen=True, description="查询 SQL 可有的占位符: TablePrefix, StartDT, EndDT, IDs, 默认以 QS_ID 标识 ID 字段, 以 QS_DT 标识时点字段")
+        FieldDataTypes: dict = Field(default={}, title="字段数据类型", frozen=True)
+        TablePrefix: str = Field(default="", title="表名前缀", repr=False, frozen=True)
+        DTFmt: str = Field(default="", title="时点格式", repr=False, frozen=True)
+        IDField: str = Field(default="QS_ID", title="ID字段", frozen=True)
+        DTField: str = Field(default="QS_DT", title="时点字段", frozen=True)
+        PreFilterID: bool = Field(default=True, title="预筛选ID", frozen=True, description="""是否在 SQL 查询中筛选 ID, 如果为 True, 则在形成的 SQL 查询中的 WHERE 子句中会有 {Table}.ID字段 IN (...) 条件, 否则为 {Table}.ID字段 IS NOT NULL. 如果提取数据的 ID 不多，建议为 True""")
         TableType: Literal["WideTable", "NarrowTable", "FeatureTable", "TimeSeriesTable", "MappingTable", "ConstituentTable", "FinancialTable"] = Field(default="WideTable", title="因子表类型", frozen=True)
         CalcArgs: dict = Field(default={}, title="计算参数", frozen=True)
-        TablePrefix: str = Field(default="", title="表名前缀", frozen=True)
-    
-    def __init__(self, fdb, args={}, config_file=None, **kwargs):
-        super().__init__(descriptors=[], args=args, config_file=config_file, **kwargs)
-        self._FactorDB = fdb
-        self._QS_IgnoredGroupArgs = ("遍历模式", "批量模式", "时点SQL", "IDSQL", "计算参数")
-    
-    def __QS_adjustID__(self, ids):
-        return ids
-    
-    def __QS_restoreID__(self, ids):
-        return ids
+        DTSQL: str = Field(default="", title="时点SQL", frozen=True)
+        IDSQL: str = Field(default="", title="IDSQL", frozen=True)
+
+    def __init__(self, fdb, args: dict={}, config_file: Optional[str]=None, **kwargs):
+        super().__init__(fdb=fdb, args=args, config_file=config_file, **kwargs)
+        self._QS_PrepareIgnoredArgs += ("DTSQL", "IDSQL", "TableType", "CalcArgs")
     
     def __QS_adjustDT__(self, dts):
         DTFmt = self._QSArgs.DTFmt
@@ -320,38 +317,14 @@ class SQLQueryTable(FactorTable):
             return dts.apply(lambda d: dt.datetime.strptime(str(d), DTFmt) if d else pd.NaT)
         return dts    
     
-    def __QS_genGroupInfo__(self, factors, operation_mode):
-        ConditionGroup = {}
-        for iFactor in factors:
-            iConditions = ";".join([iArgName+":"+str(iFactor._QSArgs[iArgName]) for iArgName in iFactor._QSArgs.ArgNames if iArgName not in self._QS_IgnoredGroupArgs])
-            if iConditions not in ConditionGroup:
-                ConditionGroup[iConditions] = {
-                    "FactorNames":[iFactor.Name],
-                    "RawFactorNames":{iFactor._NameInFT},
-                    "StartDT":operation_mode._FactorStartDT[iFactor.Name],
-                    "args":iFactor.Args.to_dict()
-                }
-            else:
-                ConditionGroup[iConditions]["FactorNames"].append(iFactor.Name)
-                ConditionGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
-                ConditionGroup[iConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], ConditionGroup[iConditions]["StartDT"])
-                if "回溯天数" in ConditionGroup[iConditions]["args"]:
-                    ConditionGroup[iConditions]["args"]["回溯天数"] = max(ConditionGroup[iConditions]["args"]["回溯天数"], iFactor._QSArgs.LookBack)
-        EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
-        Groups = []
-        for iConditions in ConditionGroup:
-            StartInd = operation_mode.DTRuler.index(ConditionGroup[iConditions]["StartDT"])
-            Groups.append((self, ConditionGroup[iConditions]["FactorNames"], list(ConditionGroup[iConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], ConditionGroup[iConditions]["args"]))
-        return Groups
-    
     @property
     def FactorNames(self):
-        return sorted(self._QSArgs.SQLDataTypes)
+        return sorted(set(self._QSArgs.FieldDataTypes).difference((self._QSArgs.IDField, self._QSArgs.DTField)))
     
     def getFactorMetaData(self, factor_names=None, key=None):
         if factor_names is None: factor_names = self.FactorNames
         if key=="DataType":
-            return pd.Series(self._QSArgs.SQLDataTypes).loc[factor_names]
+            return pd.Series(self._QSArgs.FieldDataTypes).loc[factor_names]
         elif key is None:
             return pd.DataFrame({"DataType":self.getFactorMetaData(factor_names, key="DataType")})
         else:
@@ -370,33 +343,30 @@ class SQLQueryTable(FactorTable):
             return self.__QS_adjustDT__(Rslt.iloc[:, 0].sort_values()).tolist()
     
     def getID(self, ifactor_name=None, idt=None):
-        QuerySQL = self._QSArgs.QuerySQL
-        if (not QuerySQL) or (not QuerySQL.IDSQL): return super().getID(ifactor_name=ifactor_name, idt=idt)
+        if not self._QSArgs.IDSQL: return super().getID(ifactor_name=ifactor_name, idt=idt)
         DTFormat = self._QSArgs.DTFmt
         if idt is None: idt = dt.datetime.combine(dt.date.today(), dt.time(0))
-        SQLStr = QuerySQL.IDSQL.format(TablePrefix=self._QSArgs.TablePrefix, ifactor_name=ifactor_name, idt=idt.strftime(DTFormat))
-        return self.__QS_restoreID__(sorted(str(iRslt[0]) for iRslt in self._FactorDB.fetchall(SQLStr)))
+        SQLStr = self._QSArgs.IDSQL.format(TablePrefix=self._QSArgs.TablePrefix, ifactor_name=ifactor_name, idt=idt.strftime(DTFormat))
+        return sorted(str(iRslt[0]) for iRslt in self._FactorDB.fetchall(SQLStr))
     
     def _genIDSQLStr(self, ids, init_keyword="AND"):
-        IDField = self._QSArgs.IDField
-        if IDField is not None:
-            IDFieldIsStr = (self.__QS_identifyDataType__(self._FactorInfo["DataType"].loc[IDField])!="double")
-            IDField = self._DBTableName+"."+self._FactorInfo.loc[IDField, "DBFieldName"]
+        QuerySQL = self._QSArgs.QuerySQL
+        IDFieldIdx = QuerySQL.find(self._QSArgs.IDField)
+        if QuerySQL[:IDFieldIdx].upper().strip().endswith("AS"):
+            StartIdx = QuerySQL[:IDFieldIdx].rfind(",")
+            if StartIdx == -1:
+                StartIdx = QuerySQL[:IDFieldIdx].upper().find("SELECT")
+                if StartIdx == -1: raise __QS_Error__(f"无法定位原始 ID 字段, 对于 SQL 语句：{QuerySQL}")
+                StartIdx = StartIdx + 6
+            else: StartIdx += 1
+            IDField = re.split("AS", QuerySQL[StartIdx:IDFieldIdx], flags=re.IGNORECASE)[0].strip()
         else:
-            if (self._MainTableName is None) or (self._MainTableName==self._DBTableName):
-                IDField = self._DBTableName+"."+self._FactorInfo.loc[self._IDField, "DBFieldName"]
-            else:
-                IDField = self._MainTableName+"."+self._MainTableID
-            IDFieldIsStr = self._IDFieldIsStr
+            IDField = self._QSArgs.IDField
         if ids is not None:
-            ids = self.__QS_adjustID__(ids)
             if self._QSArgs.PreFilterID:
-                SQLStr = init_keyword + " (" + genSQLInCondition(IDField, ids, is_str=IDFieldIsStr, max_num=1000) + ")"
-            elif IDFieldIsStr:
-                SQLStr = f"{init_keyword} ({IDField} >= '{min(ids)}' AND {IDField} <= '{max(ids)}')"
+                SQLStr = init_keyword + " (" + genSQLInCondition(IDField, ids, is_str=True, max_num=1000) + ")"
             else:
-                ids = np.array(ids).astype(int)
-                SQLStr = f"{init_keyword} ({IDField} >= {np.min(ids)} AND {IDField} <= {np.max(ids)})"
+                SQLStr = f"{init_keyword} ({IDField} >= '{min(ids)}' AND {IDField} <= '{max(ids)}')"
         else:
             SQLStr = init_keyword + " " + IDField + " IS NOT NULL"
         return SQLStr
@@ -526,29 +496,6 @@ class SQL_Table(FactorTable):
             if pd.notnull(self._MainTableCondition):
                 self._MainTableCondition = self._MainTableCondition.format(MainTable=self._MainTableName)
     
-    def __QS_genGroupInfo__(self, factors, operation_mode):
-        ConditionGroup = {}
-        for iFactor in factors:
-            iConditions = ";".join([iArgName+":"+str(iFactor._QSArgs[iArgName]) for iArgName in iFactor._QSArgs.ArgNames if iArgName not in self._QS_IgnoredGroupArgs])
-            if iConditions not in ConditionGroup:
-                ConditionGroup[iConditions] = {
-                    "FactorNames":[iFactor.Name],
-                    "RawFactorNames":{iFactor._NameInFT},
-                    "StartDT":operation_mode._FactorStartDT[iFactor.Name],
-                    "args":iFactor.Args.to_dict()
-                }
-            else:
-                ConditionGroup[iConditions]["FactorNames"].append(iFactor.Name)
-                ConditionGroup[iConditions]["RawFactorNames"].add(iFactor._NameInFT)
-                ConditionGroup[iConditions]["StartDT"] = min(operation_mode._FactorStartDT[iFactor.Name], ConditionGroup[iConditions]["StartDT"])
-                if "回溯天数" in ConditionGroup[iConditions]["args"]:
-                    ConditionGroup[iConditions]["args"]["回溯天数"] = max(ConditionGroup[iConditions]["args"]["回溯天数"], iFactor._QSArgs.LookBack)
-        EndInd = operation_mode.DTRuler.index(operation_mode.DateTimes[-1])
-        Groups = []
-        for iConditions in ConditionGroup:
-            StartInd = operation_mode.DTRuler.index(ConditionGroup[iConditions]["StartDT"])
-            Groups.append((self, ConditionGroup[iConditions]["FactorNames"], list(ConditionGroup[iConditions]["RawFactorNames"]), operation_mode.DTRuler[StartInd:EndInd+1], ConditionGroup[iConditions]["args"]))
-        return Groups
     def __QS_identifyDataType__(self, field_data_type):
         field_data_type = field_data_type.lower()
         if (field_data_type.find("num")!=-1) or (field_data_type.find("int")!=-1) or (field_data_type.find("decimal")!=-1) or (field_data_type.find("double")!=-1) or (field_data_type.find("float")!=-1) or (field_data_type.find("real")!=-1) or (field_data_type.find("money")!=-1):
