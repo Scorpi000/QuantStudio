@@ -632,7 +632,7 @@ class ConcatSection(SectionOperator):
     """截面拼接"""
 
     def __init__(self, descriptor_sections:List[List[str]]=[], dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
-        Arity = args.get("Arity", None) or 1
+        Arity = args.get("Arity", None) or max(1, len(descriptor_sections))
         Args = {"Name": "concatSection", "DataType": dtype} | args | {"DTMode": "多时点"}
         Args["ModelArgs"] = {"dtype": dtype} | Args.get("ModelArgs", {})
         DescriptorSection = Args.get("DescriptorSection", descriptor_sections)
