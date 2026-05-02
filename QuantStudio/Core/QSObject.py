@@ -192,13 +192,13 @@ class QSSQLObject(__QS_Object__):
             self._PlaceHolder = "%s"
         # 设置 SQL 相关特异性函数
         if self._QSArgs.DBType=="MySQL":
-            self._SQLFun = {"toDate": "DATE(%s)"}
+            self._SQLFun = {"toDate": "DATE(%s)", "toString": "CAST(%s AS CHAR)"}
         elif self._QSArgs.DBType=="PostgreSQL":
-            self._SQLFun = {"toDate": "CAST(%s AS DATE)"}
+            self._SQLFun = {"toDate": "CAST(%s AS DATE)", "toString": "CAST(%s AS VARCHAR)"}
         elif self._QSArgs.DBType=="Oracle":
-            self._SQLFun = {"toDate": "CAST(%s AS DATE)"}# TOTEST
+            self._SQLFun = {"toDate": "CAST(%s AS DATE)", "toString": "CAST(%s AS CHAR)"}# TOTEST
         elif self._QSArgs.DBType=="SQL Server":
-            self._SQLFun = {"toDate": "CAST(%s AS DATE)"}# TOTEST
+            self._SQLFun = {"toDate": "CAST(%s AS DATE)", "toString": "CAST(%s AS CHAR)"}# TOTEST
         else:
             #raise NotImplementedError("'%s' 调用方法 connect 时错误: 尚不支持的数据库类型" % (self.Name, self._QSArgs.DBType))
             self._SQLFun = {}

@@ -552,10 +552,10 @@ class SQL_Table(FactorTable):
             if self.__QS_identifyDataType__(self._FactorInfo["DataType"].loc[IDField])=="string":
                 return RawIDField
             else:
-                return "CAST("+RawIDField+" AS CHAR)"
+                return self._FactorDB._SQLFun.get("toString", "CAST(%s AS CHAR)") % RawIDField
         if (self._MainTableName is None) or (self._MainTableName==self._DBTableName):
             RawIDField = self._DBTableName+"."+self._FactorInfo.loc[self._IDField, "DBFieldName"]
-            if not self._IDFieldIsStr: RawIDField = "CAST("+RawIDField+" AS CHAR)"
+            if not self._IDFieldIsStr: RawIDField = self._FactorDB._SQLFun.get("toString", "CAST(%s AS CHAR)") % RawIDField
         else:
             RawIDField = self._MainTableName+"."+self._MainTableID
         DefaultSuffix = self._TableInfo.get("DefaultSuffix", None)
@@ -1881,6 +1881,7 @@ class SQL_ConstituentTable(SQL_Table):
     """
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
         GroupField: str = Field(title="类别字段", frozen=True, description="作为因子名称的字段")
+        GroupTransformSQL: Optional[str] = Field(default=None, title="类别转义SQL", frozen=True, description="因子名称转义(TODO)")
         EndDTField: str = Field(title="结束时点字段", frozen=True, description="用以指示调出成份的时点字段")
         CurSignField: Optional[str] = Field(default=None, title="当前状态字段", frozen=True)
         EndDTIncluded: bool = Field(default=False, title="包含结束时点", frozen=True, description="结束时点处是否包含在成份中")
