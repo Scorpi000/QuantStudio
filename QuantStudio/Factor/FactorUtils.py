@@ -1900,7 +1900,7 @@ class SQL_ConstituentTable(SQL_Table):
                 else: data["GroupField"] = GroupField.index[0]
             # 解析类别转义 SQL
             if "GroupTransformSQL" not in data:
-                GroupTransformSQL = FactorInfo["RelatedSQL"][FactorInfo.index==data["GroupField"]].iloc[0]
+                GroupTransformSQL = FactorInfo["Supplementary"][FactorInfo.index==data["GroupField"]].iloc[0]
                 if pd.notnull(GroupTransformSQL):
                     data["GroupTransformSQL"] = GroupTransformSQL
             # 解析当前状态字段
