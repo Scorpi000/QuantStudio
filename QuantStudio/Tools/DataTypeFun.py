@@ -1,6 +1,7 @@
 # coding=utf-8
 """数据结构"""
 import os
+import re
 import json
 import pickle
 import hashlib
@@ -330,6 +331,39 @@ def dict2id(d):
         separators=(',', ':')
     )
     return hashlib.sha256(json_str.encode('utf-8')).hexdigest()
+
+# ------------ 字符串处理 ------------------
+def formatPartial(text: str, values: dict) -> str:
+    """
+    部分格式化, 只替换 text 中 values key 指定的占位符，其他占位符保持原样。
+
+    Args:
+        text: 待格式化的字符串
+        values: dict, 如 {'name': 'Alice', 'score': 100}
+    
+    Returns:
+        格式化后的字符串
+    """
+    def replacer(match):
+        key = match.group(1)          # 占位符里的变量名
+        spec = match.group(2) or ''   # 格式说明部分（含冒号）
+        if key in values:
+            # 要替换的：用 format 规范处理（支持格式说明符）
+            # 这里简单调用 str.format 对单个字段处理
+            # 注意：需要按格式说明符格式化 values[key]
+            if spec:
+                # 构造临时格式字符串 ':{spec}'
+                fmt_str = f'{{:{spec}}}'
+                return fmt_str.format(values[key])
+            else:
+                return str(values[key])
+        else:
+            # 保留原占位符（包括格式说明）
+            return f'{{{key}{spec}}}'
+    
+    # 正则匹配 {name} 或 {name:格式}
+    pattern = r'\{([a-zA-Z_][a-zA-Z0-9_]*)(:[^\}]+)?\}'
+    return re.sub(pattern, replacer, text)
 
 if __name__ == "__main__1":
     Bar2 = pd.DataFrame(np.random.randn(3,2), index=["中文", "b2", "b3"], columns=["中文", "我是个例子"])

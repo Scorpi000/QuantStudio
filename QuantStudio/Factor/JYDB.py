@@ -130,11 +130,10 @@ class _JY_SQL_Table(SQL_Table):
         return IDField
 
     def _adjustRawDataByRelatedField(self, raw_data, fields, args={}):
-        TransformSQL = args.get("转义SQL", self._QSArgs.TransformSQL)
+        TransformSQL = args.get("TransformSQL", self._QSArgs.TransformSQL)
         if (not TransformSQL) and ("RelatedSQL" not in self._FactorInfo): return raw_data
         RelatedFields = pd.Series(TransformSQL).reindex(index=fields)
-        RelatedFields = RelatedFields.where(RelatedFields.notnull(),
-                                            self._FactorInfo["RelatedSQL"].reindex(index=fields))
+        RelatedFields = RelatedFields.where(RelatedFields.notnull(), self._FactorInfo["RelatedSQL"].reindex(index=fields))
         RelatedFields = RelatedFields[pd.notnull(RelatedFields)]
         if (not TransformSQL) and (RelatedFields.shape[0] == 0): return raw_data
         for iField in RelatedFields.index:
@@ -174,15 +173,12 @@ class _JY_SQL_Table(SQL_Table):
                     SecuCode = self._getSecuMainIDField()
                 else:
                     SecuCode = ""
-                iMapInfo = self._FactorDB.fetchall(
-                    iSQLStr.format(TablePrefix=self._FactorDB._QSArgs.TablePrefix, Keys=Keys, KeyCondition=KeyCondition,
-                                   SecuCode=SecuCode))
+                iMapInfo = self._FactorDB.fetchall(iSQLStr.format(TablePrefix=self._FactorDB._QSArgs.TablePrefix, Keys=Keys, KeyCondition=KeyCondition, SecuCode=SecuCode))
             iDataType = _identifyDataType(self._FactorInfo.loc[iField, "DataType"])
             if iDataType == "double":
                 iNewData = pd.Series(np.nan, index=raw_data.index, dtype="float")
             else:
-                iNewData = pd.Series(np.full(shape=(raw_data.shape[0],), fill_value=None, dtype="O"),
-                                     index=raw_data.index, dtype="O")
+                iNewData = pd.Series(np.full(shape=(raw_data.shape[0],), fill_value=None, dtype="O"), index=raw_data.index, dtype="O")
             # for jVal, jRelatedVal in iMapInfo:
             # if pd.notnull(jVal):
             # if iOldDataType!="double":
@@ -259,7 +255,22 @@ class _ConstituentTable(_JY_SQL_Table, SQL_ConstituentTable):
         Name = args["Name"]
         return super().__init__(fdb=fdb, args=args, table_info=fdb._TableInfo.loc[Name], factor_info=fdb._FactorInfo.loc[Name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
 
-
+    def _QS_getGroupMapping(self) -> dict:
+        if hasattr(self, "_GroupMapping"): return self._GroupMapping
+        GroupTransformSQL = self._QSArgs.GroupTransformSQL
+        if isinstance(GroupTransformSQL, dict): self._GroupMapping = GroupTransformSQL
+        elif GroupTransformSQL:
+            if GroupTransformSQL.find("{SecuCode}") != -1:
+                SecuCode = self._getSecuMainIDField()
+            else:
+                SecuCode = ""
+            GroupTransformSQL = GroupTransformSQL.format(Table=self._DBTableName, TablePrefix=self._QSArgs.TablePrefix, SecuCode=SecuCode)
+            self._GroupMapping = {str(iRslt[0]): iRslt[1] for iRslt in self._FactorDB.fetchall(GroupTransformSQL)}
+        else:
+            GroupField = self._DBTableName+"."+self._FactorInfo.loc[self._QSArgs.GroupField, "DBFieldName"]
+            SQLStr = f"SELECT DISTINCT {GroupField} {self._genFromSQLStr(use_main_table=False)} ORDER BY {GroupField}"
+            self._GroupMapping = {str(iRslt[0]): iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)}
+        return self._GroupMapping
 
 class _FinancialTable(_JY_SQL_Table, SQL_FinancialTable):
     __doc__ = SQL_FinancialTable.__doc__

@@ -664,6 +664,7 @@ class SQL_Table(FactorTable):
             else:
                 SQLStr += self._DBTableName+"."+self._FactorInfo.loc[iField, "DBFieldName"]+", "
         return (SQLStr[:-2], JoinStr)
+    
     def _genConditionSQLStr(self, use_main_table=True, init_keyword="AND"):
         FilterStr = self._QSArgs.FilterCondition
         if FilterStr:
@@ -1881,19 +1882,27 @@ class SQL_ConstituentTable(SQL_Table):
     """
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
         GroupField: str = Field(title="类别字段", frozen=True, description="作为因子名称的字段")
-        GroupTransformSQL: Optional[str] = Field(default=None, title="类别转义SQL", frozen=True, description="因子名称转义(TODO)")
+        GroupTransformSQL: Optional[str | dict] = Field(default=None, title="类别转义SQL", frozen=True, description="因子名称转义(TODO)")
         EndDTField: str = Field(title="结束时点字段", frozen=True, description="用以指示调出成份的时点字段")
         CurSignField: Optional[str] = Field(default=None, title="当前状态字段", frozen=True)
         EndDTIncluded: bool = Field(default=False, title="包含结束时点", frozen=True, description="结束时点处是否包含在成份中")
 
         def __init__(self, /, **data: Any) -> None:
-            Owner = data["Owner"]
+            Owner, Logger = data["Owner"], data["Logger"]
             FactorInfo = Owner._FactorInfo
             # 解析类别字段
-            Fields = FactorInfo[pd.notnull(FactorInfo["FieldType"])].index.tolist()# 所有字段列表
-            GroupField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="Group"]
-            if GroupField.shape[0]==0: data["GroupField"] = Fields[0]
-            else: data["GroupField"] = GroupField.index[0]
+            if "GroupField" not in data:
+                Fields = FactorInfo[pd.notnull(FactorInfo["FieldType"])].index.tolist()# 所有字段列表
+                GroupField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="Group"]
+                if GroupField.shape[0]==0:
+                    Logger.warning(f"没有指定类别字段, 且配置中无默认值, 将使用 {Fields[0]} 作为类别字段")
+                    data["GroupField"] = Fields[0]
+                else: data["GroupField"] = GroupField.index[0]
+            # 解析类别转义 SQL
+            if "GroupTransformSQL" not in data:
+                GroupTransformSQL = FactorInfo["RelatedSQL"][FactorInfo.index==data["GroupField"]].iloc[0]
+                if pd.notnull(GroupTransformSQL):
+                    data["GroupTransformSQL"] = GroupTransformSQL
             # 解析当前状态字段
             CurSignField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="CurSign"]
             if CurSignField.shape[0]==0: data["CurSignField"] = None
@@ -1911,15 +1920,22 @@ class SQL_ConstituentTable(SQL_Table):
         super().__init__(fdb=fdb, args=args, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
         self._QS_PrepareIgnoredArgs += ("EndDTIncluded", )
         self._QS_RawDataMaskCols = ["QS_ID", "Group", "InDate", "OutDate", "CurSign"]
-        self._AllGroups = None
     
-    @property
-    def FactorNames(self):
-        if self._AllGroups is None:
+    def _QS_getGroupMapping(self) -> dict:
+        if hasattr(self, "_GroupMapping"): return self._GroupMapping
+        GroupTransformSQL = self._QSArgs.GroupTransformSQL
+        if isinstance(GroupTransformSQL, dict): self._GroupMapping = GroupTransformSQL
+        elif GroupTransformSQL:
+            self._GroupMapping = {str(iRslt[0]): iRslt[1] for iRslt in self._FactorDB.fetchall(GroupTransformSQL.format(Table=self._DBTableName, TablePrefix=self._QSArgs.TablePrefix))}
+        else:
             GroupField = self._DBTableName+"."+self._FactorInfo.loc[self._QSArgs.GroupField, "DBFieldName"]
             SQLStr = f"SELECT DISTINCT {GroupField} {self._genFromSQLStr(use_main_table=False)} ORDER BY {GroupField}"
-            self._AllGroups = [str(iRslt[0]) for iRslt in self._FactorDB.fetchall(SQLStr)]
-        return self._AllGroups
+            self._GroupMapping = {str(iRslt[0]): iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)}
+        return self._GroupMapping
+
+    @property
+    def FactorNames(self):
+        return sorted(self._QS_getGroupMapping())
     
     def getFactorMetaData(self, factor_names=None, key=None):
         if factor_names is None: factor_names = self.FactorNames
@@ -2032,7 +2048,12 @@ class SQL_ConstituentTable(SQL_Table):
         if CurSignField is not None: SQLStr += self._DBTableName+"."+self._FactorInfo.loc[CurSignField, "DBFieldName"]+" AS CurSign "# 最新标志
         else: SQLStr += "NULL AS CurSign "# 最新标志
         SQLStr += self._genFromSQLStr()+" "
-        SQLStr += "WHERE ("+genSQLInCondition(GroupField, factor_names, is_str=(self.__QS_identifyDataType__(self._FactorInfo["DataType"].loc[args.get("GroupField", self._QSArgs.GroupField)])!="double"), max_num=1000)+") "
+        if self._QSArgs.GroupTransformSQL:
+            GroupMapping = self._QS_getGroupMapping()
+            FieldValueList = [GroupMapping[iFactorName] for iFactorName in factor_names]
+        else:
+            FieldValueList = factor_names
+        SQLStr += "WHERE ("+genSQLInCondition(GroupField, FieldValueList, is_str=(self.__QS_identifyDataType__(self._FactorInfo["DataType"].loc[args.get("GroupField", self._QSArgs.GroupField)])!="double"), max_num=1000)+") "
         SQLStr += self._genIDSQLStr(ids)+" "
         if StartDT is not None:
             SQLStr += "AND (("+OutDTField+">"+StartDT.strftime(self._DTFormat)+") "
@@ -2046,7 +2067,11 @@ class SQL_ConstituentTable(SQL_Table):
         RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["Group", "QS_ID", "InDate", "OutDate", "CurSign"])
         RawData["InDate"] = self.__QS_adjustDT__(RawData["InDate"])
         RawData["OutDate"] = self.__QS_adjustDT__(RawData["OutDate"])
-        RawData["Group"] = RawData["Group"].astype(str)
+        if self._QSArgs.GroupTransformSQL:
+            RGroupMapping = {v: k for k, v in GroupMapping.items()}
+            RawData["Group"] = RawData["Group"].map(lambda s: RGroupMapping[s])
+        else:
+            RawData["Group"] = RawData["Group"].astype(str)
         RawData["QS_ID"] = self.__QS_restoreID__(RawData["QS_ID"])
         return RawData
     
