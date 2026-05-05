@@ -140,18 +140,19 @@ class _JY_SQL_Table(SQL_Table):
                 if reversed: return {jRelatedVal: jVal for jVal, jRelatedVal in ValueMapping.items()}
                 else: return ValueMapping
         iOldDataType = self.__QS_identifyDataType__(self._FactorInfo.loc[field[:-2] if field.endswith("_R") else field, "DataType"])
-        if transform_sql[0]=="{":
-            ValueMapping = eval(transform_sql)
+        iSQLStr = transform_sql
+        if iSQLStr[0]=="{":
+            ValueMapping = eval(iSQLStr)
             self._ValueMapping[(transform_sql, field)] = ValueMapping
             if reversed: ValueMapping = {jRelatedVal: jVal for jVal, jRelatedVal in ValueMapping.items()}
         else:
-            iStartIdx = transform_sql.find("{KeyCondition}")
+            iStartIdx = iSQLStr.find("{KeyCondition}")
             if iStartIdx!=-1:
-                iEndIdx = transform_sql[iStartIdx:].find(" ")
-                if iEndIdx==-1: iEndIdx = len(transform_sql)
+                iEndIdx = iSQLStr[iStartIdx:].find(" ")
+                if iEndIdx==-1: iEndIdx = len(iSQLStr)
                 else: iEndIdx += iStartIdx
                 iStartIdx += 14
-                KeyField = transform_sql[iStartIdx:iEndIdx]
+                KeyField = iSQLStr[iStartIdx:iEndIdx]
                 if values is not None:
                     KeyCondition = genSQLInCondition(KeyField, values, is_str=(iOldDataType!="double"))
                 else:
