@@ -267,15 +267,15 @@ class _ConstituentTable(_JY_SQL_Table, SQL_ConstituentTable):
 
     def _QS_getGroupMapping(self) -> dict:
         if hasattr(self, "_GroupMapping"): return self._GroupMapping
-        GroupTransformSQL = self._QSArgs.GroupTransformSQL
-        if isinstance(GroupTransformSQL, dict): self._GroupMapping = GroupTransformSQL
-        elif GroupTransformSQL:
-            if GroupTransformSQL.find("{SecuCode}") != -1:
+        GroupMapping = self._QSArgs.GroupMapping
+        if isinstance(GroupMapping, dict): self._GroupMapping = GroupMapping
+        elif GroupMapping:
+            if GroupMapping.find("{SecuCode}") != -1:
                 SecuCode = self._getSecuMainIDField()
             else:
                 SecuCode = ""
-            GroupTransformSQL = GroupTransformSQL.format(Table=self._DBTableName, TablePrefix=self._QSArgs.TablePrefix, SecuCode=SecuCode)
-            self._GroupMapping = {str(iRslt[0]): iRslt[1] for iRslt in self._FactorDB.fetchall(GroupTransformSQL)}
+            GroupMapping = GroupMapping.format(Table=self._DBTableName, TablePrefix=self._QSArgs.TablePrefix, SecuCode=SecuCode)
+            self._GroupMapping = {str(iRslt[0]): iRslt[1] for iRslt in self._FactorDB.fetchall(GroupMapping)}
         else:
             GroupField = self._DBTableName+"."+self._FactorInfo.loc[self._QSArgs.GroupField, "DBFieldName"]
             SQLStr = f"SELECT DISTINCT {GroupField} {self._genFromSQLStr(use_main_table=False)} ORDER BY {GroupField}"

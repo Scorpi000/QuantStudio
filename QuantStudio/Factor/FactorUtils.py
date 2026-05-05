@@ -661,34 +661,6 @@ class SQL_Table(FactorTable):
                 iNewData = pd.Series(np.nan, index=raw_data.index, dtype="float")
             else:
                 iNewData = pd.Series(np.full(shape=(raw_data.shape[0], ), fill_value=None, dtype="O"), index=raw_data.index, dtype="O")
-            # iSQLStr = RelatedFields.loc[iField]
-            # if iSQLStr[0]=="{":
-            #     iMapInfo = eval(iSQLStr).items()
-            # else:
-            #     iStartIdx = iSQLStr.find("{KeyCondition}")
-            #     if iStartIdx!=-1:
-            #         iEndIdx = iSQLStr[iStartIdx:].find(" ")
-            #         if iEndIdx==-1: iEndIdx = len(iSQLStr)
-            #         else: iEndIdx += iStartIdx
-            #         iStartIdx += 14
-            #         KeyField = iSQLStr[iStartIdx:iEndIdx]
-            #         iKeys = iOldData[pd.notnull(iOldData)].unique().tolist()
-            #         if iKeys:
-            #             KeyCondition = genSQLInCondition(KeyField, iKeys, is_str=(iOldDataType!="double"))
-            #         else:
-            #             KeyCondition = KeyField+" IN (NULL)"
-            #         iSQLStr = iSQLStr.replace("{KeyCondition}"+KeyField, "{KeyCondition}")
-            #     else:
-            #         KeyCondition = ""
-            #     if iSQLStr.find("{Keys}")!=-1:
-            #         if iOldDataType!="double":
-            #             Keys = "'"+"', '".join([str(iKey) for iKey in iOldData[pd.notnull(iOldData)].unique()])+"'"
-            #         else:
-            #             Keys = ", ".join([str(iKey) for iKey in iOldData[pd.notnull(iOldData)].unique()])
-            #         if not Keys: Keys = "NULL"
-            #     else:
-            #         Keys = ""
-            #     iMapInfo = self._FactorDB.fetchall(iSQLStr.format(TablePrefix=self._QSArgs.TablePrefix, Keys=Keys, KeyCondition=KeyCondition))
             iMapInfo = self._QS_getValueMapping(RelatedFields.loc[iField], field=iField, values=iOldData[pd.notnull(iOldData)].unique().tolist(), reversed=False)
             for jVal, jRelatedVal in iMapInfo.items():
                 if pd.notnull(jVal):
@@ -1942,7 +1914,7 @@ class SQL_ConstituentTable(SQL_Table):
     """
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
         GroupField: str = Field(title="类别字段", frozen=True, description="作为因子名称的字段")
-        GroupTransformSQL: Optional[str | dict] = Field(default=None, title="类别转义SQL", frozen=True, description="因子名称转义(TODO)")
+        GroupMapping: Optional[str | dict] = Field(default=None, title="类别映射", frozen=True, description="如果是 str 则作为 SQL 查询得到映射 dict, 如果是 dict 则直接使用")
         EndDTField: str = Field(title="结束时点字段", frozen=True, description="用以指示调出成份的时点字段")
         CurSignField: Optional[str] = Field(default=None, title="当前状态字段", frozen=True)
         EndDTIncluded: bool = Field(default=False, title="包含结束时点", frozen=True, description="结束时点处是否包含在成份中")
@@ -1958,11 +1930,15 @@ class SQL_ConstituentTable(SQL_Table):
                     Logger.warning(f"没有指定类别字段, 且配置中无默认值, 将使用 {Fields[0]} 作为类别字段")
                     data["GroupField"] = Fields[0]
                 else: data["GroupField"] = GroupField.index[0]
-            # 解析类别转义 SQL
-            if "GroupTransformSQL" not in data:
-                GroupTransformSQL = FactorInfo["Supplementary"][FactorInfo.index==data["GroupField"]].iloc[0]
-                if pd.notnull(GroupTransformSQL):
-                    data["GroupTransformSQL"] = GroupTransformSQL
+            # 解析类别映射
+            if "GroupMapping" not in data:
+                GroupMapping = FactorInfo["Supplementary"][FactorInfo.index==data["GroupField"]].iloc[0]
+                if pd.notnull(GroupMapping):
+                    GroupMapping = GroupMapping.strip()
+                    if GroupMapping.startswith("{") and GroupMapping.endswith("}"):
+                        data["GroupMapping"] = eval(GroupMapping)
+                    else:
+                        data["GroupMapping"] = GroupMapping
             # 解析当前状态字段
             CurSignField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="CurSign"]
             if CurSignField.shape[0]==0: data["CurSignField"] = None
@@ -1983,10 +1959,10 @@ class SQL_ConstituentTable(SQL_Table):
     
     def _QS_getGroupMapping(self) -> dict:
         if hasattr(self, "_GroupMapping"): return self._GroupMapping
-        GroupTransformSQL = self._QSArgs.GroupTransformSQL
-        if isinstance(GroupTransformSQL, dict): self._GroupMapping = GroupTransformSQL
-        elif GroupTransformSQL:
-            self._GroupMapping = {str(iRslt[0]): iRslt[1] for iRslt in self._FactorDB.fetchall(GroupTransformSQL.format(Table=self._DBTableName, TablePrefix=self._QSArgs.TablePrefix))}
+        GroupMapping = self._QSArgs.GroupMapping
+        if isinstance(GroupMapping, dict): self._GroupMapping = GroupMapping
+        elif GroupMapping:
+            self._GroupMapping = {str(iRslt[0]): iRslt[1] for iRslt in self._FactorDB.fetchall(GroupMapping.format(Table=self._DBTableName, TablePrefix=self._QSArgs.TablePrefix))}
         else:
             GroupField = self._DBTableName+"."+self._FactorInfo.loc[self._QSArgs.GroupField, "DBFieldName"]
             SQLStr = f"SELECT DISTINCT {GroupField} {self._genFromSQLStr(use_main_table=False)} ORDER BY {GroupField}"
@@ -2108,7 +2084,7 @@ class SQL_ConstituentTable(SQL_Table):
         if CurSignField is not None: SQLStr += self._DBTableName+"."+self._FactorInfo.loc[CurSignField, "DBFieldName"]+" AS CurSign "# 最新标志
         else: SQLStr += "NULL AS CurSign "# 最新标志
         SQLStr += self._genFromSQLStr()+" "
-        if self._QSArgs.GroupTransformSQL:
+        if self._QSArgs.GroupMapping:
             GroupMapping = self._QS_getGroupMapping()
             FieldValueList = [GroupMapping[iFactorName] for iFactorName in factor_names]
         else:
@@ -2127,7 +2103,7 @@ class SQL_ConstituentTable(SQL_Table):
         RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["Group", "QS_ID", "InDate", "OutDate", "CurSign"])
         RawData["InDate"] = self.__QS_adjustDT__(RawData["InDate"])
         RawData["OutDate"] = self.__QS_adjustDT__(RawData["OutDate"])
-        if self._QSArgs.GroupTransformSQL:
+        if self._QSArgs.GroupMapping:
             RGroupMapping = {v: k for k, v in GroupMapping.items()}
             RawData["Group"] = RawData["Group"].map(lambda s: RGroupMapping[s])
         else:
@@ -2176,6 +2152,7 @@ class SQL_ConstituentTable(SQL_Table):
     # 返回 DataFrame(columns=["Group", "QS_ID", "InDate", "OutDate", "CurSign"])
     def readSQLData(self, factor_names, ids=None, start_dt=None, end_dt=None):
         return super().readSQLData(factor_names, ids, start_dt, end_dt, args=args)
+
 
 def RollBackNPeriod(report_date, n_period):
     nYear, nPeriod = n_period // 4, n_period % 4
