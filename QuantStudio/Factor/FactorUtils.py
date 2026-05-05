@@ -623,10 +623,12 @@ class SQL_Table(FactorTable):
                 else: iEndIdx += iStartIdx
                 iStartIdx += 14
                 KeyField = iSQLStr[iStartIdx:iEndIdx]
-                if values is not None:
+                if values is None:
+                    KeyCondition = KeyField + " IS NOT NULL"
+                elif values:
                     KeyCondition = genSQLInCondition(KeyField, values, is_str=(iOldDataType!="double"))
                 else:
-                    KeyCondition = KeyField + " IS NOT NULL"
+                    KeyCondition = KeyField + " IN (NULL)"
                 iSQLStr = iSQLStr.replace("{KeyCondition}" + KeyField, "{KeyCondition}")
             else:
                 KeyCondition = ""
