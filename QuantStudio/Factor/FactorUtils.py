@@ -592,13 +592,67 @@ class SQL_Table(FactorTable):
         if Suffix=="''": return RawIDField
         else: return "CONCAT("+RawIDField+", "+Suffix+")"
     
+    def _getTransformSQL(self, field: str) -> str | None:
+        TransformSQL = self._QSArgs.TransformSQL
+        if "RelatedSQL" not in self._FactorInfo: return TransformSQL.get(field, None)
+        else:
+            RelatedSQL = self._FactorInfo["RelatedSQL"].loc[field]
+            return TransformSQL.get(field, (RelatedSQL if pd.notnull(RelatedSQL) else None))
+
+    def _QS_getValueMapping(self, transform_sql: str, field: str, values: Optional[list]=None, reversed:bool=False) -> dict:
+        if not hasattr(self, "_ValueMapping"): self._ValueMapping = {}
+        if (transform_sql, field) in self._ValueMapping:
+            ValueMapping = self._ValueMapping[(transform_sql, field)]
+            if values is not None:
+                if reversed: return {jRelatedVal: jVal for jVal, jRelatedVal in ValueMapping.items() if jVal in values}
+                else: return {jVal: jRelatedVal for jVal, jRelatedVal in ValueMapping.items() if jVal in values}
+            else:
+                if reversed: return {jRelatedVal: jVal for jVal, jRelatedVal in ValueMapping.items()}
+                else: return ValueMapping
+        iOldDataType = self.__QS_identifyDataType__(self._FactorInfo.loc[field[:-2] if field.endswith("_R") else field, "DataType"])
+        if transform_sql[0]=="{":
+            ValueMapping = eval(transform_sql)
+            self._ValueMapping[(transform_sql, field)] = ValueMapping
+            if reversed: ValueMapping = {jRelatedVal: jVal for jVal, jRelatedVal in ValueMapping.items()}
+        else:
+            iStartIdx = transform_sql.find("{KeyCondition}")
+            if iStartIdx!=-1:
+                iEndIdx = transform_sql[iStartIdx:].find(" ")
+                if iEndIdx==-1: iEndIdx = len(transform_sql)
+                else: iEndIdx += iStartIdx
+                iStartIdx += 14
+                KeyField = transform_sql[iStartIdx:iEndIdx]
+                if values is not None:
+                    KeyCondition = genSQLInCondition(KeyField, values, is_str=(iOldDataType!="double"))
+                else:
+                    KeyCondition = KeyField + " IS NOT NULL"
+                iSQLStr = iSQLStr.replace("{KeyCondition}" + KeyField, "{KeyCondition}")
+            else:
+                KeyCondition = ""
+            if iSQLStr.find("{Keys}") != -1:
+                if values is None:
+                    DBField = self._FactorInfo.loc[field, "DBFieldName"]
+                    Keys = f"""SELECT DISTINCT {DBField} FROM {self._QSArgs.TablePrefix}{self._DBTableName} WHERE {DBField} IS NOT NULL"""
+                elif iOldDataType != "double":
+                    Keys = "'"+"', '".join([str(iKey) for iKey in values])+"'"
+                else:
+                    Keys = ", ".join([str(iKey) for iKey in values])
+                if not Keys: Keys = "NULL"
+            else:
+                Keys = ""
+            ValueMapping = self._FactorDB.fetchall(iSQLStr.format(TablePrefix=self._QSArgs.TablePrefix, Keys=Keys, KeyCondition=KeyCondition))
+            ValueMapping = {jVal: jRelatedVal for jVal, jRelatedVal in ValueMapping}
+            if values is None: self._ValueMapping[(transform_sql, field)] = ValueMapping
+            if reversed: ValueMapping = {jRelatedVal: jVal for jVal, jRelatedVal in ValueMapping.items()}
+        return ValueMapping
+
     def _adjustRawDataByRelatedField(self, raw_data, fields):
         TransformSQL = self._QSArgs.TransformSQL
         if (not TransformSQL) and ("RelatedSQL" not in self._FactorInfo): return raw_data
         RelatedFields = pd.Series(TransformSQL).reindex(index=fields)
         RelatedFields = RelatedFields.where(RelatedFields.notnull(), self._FactorInfo["RelatedSQL"].reindex(index=fields))
         RelatedFields = RelatedFields[pd.notnull(RelatedFields)]
-        if (not TransformSQL) and (RelatedFields.shape[0]==0): return raw_data
+        if RelatedFields.shape[0]==0: return raw_data
         for iField in RelatedFields.index:
             iOldData = raw_data.pop(iField)
             iOldDataType = self.__QS_identifyDataType__(self._FactorInfo.loc[iField[:-2], "DataType"])
@@ -607,35 +661,36 @@ class SQL_Table(FactorTable):
                 iNewData = pd.Series(np.nan, index=raw_data.index, dtype="float")
             else:
                 iNewData = pd.Series(np.full(shape=(raw_data.shape[0], ), fill_value=None, dtype="O"), index=raw_data.index, dtype="O")
-            iSQLStr = RelatedFields.loc[iField]
-            if iSQLStr[0]=="{":
-                iMapInfo = eval(iSQLStr).items()
-            else:
-                iStartIdx = iSQLStr.find("{KeyCondition}")
-                if iStartIdx!=-1:
-                    iEndIdx = iSQLStr[iStartIdx:].find(" ")
-                    if iEndIdx==-1: iEndIdx = len(iSQLStr)
-                    else: iEndIdx += iStartIdx
-                    iStartIdx += 14
-                    KeyField = iSQLStr[iStartIdx:iEndIdx]
-                    iKeys = iOldData[pd.notnull(iOldData)].unique().tolist()
-                    if iKeys:
-                        KeyCondition = genSQLInCondition(KeyField, iKeys, is_str=(iOldDataType!="double"))
-                    else:
-                        KeyCondition = KeyField+" IN (NULL)"
-                    iSQLStr = iSQLStr.replace("{KeyCondition}"+KeyField, "{KeyCondition}")
-                else:
-                    KeyCondition = ""
-                if iSQLStr.find("{Keys}")!=-1:
-                    if iOldDataType!="double":
-                        Keys = "'"+"', '".join([str(iKey) for iKey in iOldData[pd.notnull(iOldData)].unique()])+"'"
-                    else:
-                        Keys = ", ".join([str(iKey) for iKey in iOldData[pd.notnull(iOldData)].unique()])
-                    if not Keys: Keys = "NULL"
-                else:
-                    Keys = ""
-                iMapInfo = self._FactorDB.fetchall(iSQLStr.format(TablePrefix=self._QSArgs.TablePrefix, Keys=Keys, KeyCondition=KeyCondition))
-            for jVal, jRelatedVal in iMapInfo:
+            # iSQLStr = RelatedFields.loc[iField]
+            # if iSQLStr[0]=="{":
+            #     iMapInfo = eval(iSQLStr).items()
+            # else:
+            #     iStartIdx = iSQLStr.find("{KeyCondition}")
+            #     if iStartIdx!=-1:
+            #         iEndIdx = iSQLStr[iStartIdx:].find(" ")
+            #         if iEndIdx==-1: iEndIdx = len(iSQLStr)
+            #         else: iEndIdx += iStartIdx
+            #         iStartIdx += 14
+            #         KeyField = iSQLStr[iStartIdx:iEndIdx]
+            #         iKeys = iOldData[pd.notnull(iOldData)].unique().tolist()
+            #         if iKeys:
+            #             KeyCondition = genSQLInCondition(KeyField, iKeys, is_str=(iOldDataType!="double"))
+            #         else:
+            #             KeyCondition = KeyField+" IN (NULL)"
+            #         iSQLStr = iSQLStr.replace("{KeyCondition}"+KeyField, "{KeyCondition}")
+            #     else:
+            #         KeyCondition = ""
+            #     if iSQLStr.find("{Keys}")!=-1:
+            #         if iOldDataType!="double":
+            #             Keys = "'"+"', '".join([str(iKey) for iKey in iOldData[pd.notnull(iOldData)].unique()])+"'"
+            #         else:
+            #             Keys = ", ".join([str(iKey) for iKey in iOldData[pd.notnull(iOldData)].unique()])
+            #         if not Keys: Keys = "NULL"
+            #     else:
+            #         Keys = ""
+            #     iMapInfo = self._FactorDB.fetchall(iSQLStr.format(TablePrefix=self._QSArgs.TablePrefix, Keys=Keys, KeyCondition=KeyCondition))
+            iMapInfo = self._QS_getValueMapping(RelatedFields.loc[iField], field=iField, values=iOldData[pd.notnull(iOldData)].unique().tolist(), reversed=False)
+            for jVal, jRelatedVal in iMapInfo.items():
                 if pd.notnull(jVal):
                     if iOldDataType!="double":
                         iNewData[iOldData==str(jVal)] = jRelatedVal
@@ -672,12 +727,17 @@ class SQL_Table(FactorTable):
             init_keyword = "AND"
         else: SQLStr = ""
         for iConditionField, iConditionVal in self._QSArgs.AdditionalCondition.items():
-            if iConditionVal:
-                if self.__QS_identifyDataType__(self._FactorInfo.loc[iConditionField, "DataType"])!="double":
-                    SQLStr += init_keyword+" "+self._DBTableName+"."+self._FactorInfo.loc[iConditionField, "DBFieldName"]+" IN ('"+"','".join(iConditionVal.split(","))+"') "
-                else:
-                    SQLStr += init_keyword+" "+self._DBTableName+"."+self._FactorInfo.loc[iConditionField, "DBFieldName"]+" IN ("+iConditionVal+") "
-                init_keyword = "AND"
+            if not iConditionVal: continue
+            iTransformSQL = self._getTransformSQL(iConditionField)
+            if iTransformSQL:
+                iValueMapping = self._QS_getValueMapping(iTransformSQL, iConditionField, reversed=True)
+                iConditionVal = ",".join(str(iValueMapping[iVal]) for iVal in iConditionVal.split(","))
+            if iConditionField.endswith("_R"): iConditionField = iConditionField[:-2]
+            if self.__QS_identifyDataType__(self._FactorInfo.loc[iConditionField, "DataType"])!="double":
+                SQLStr += init_keyword+" "+self._DBTableName+"."+self._FactorInfo.loc[iConditionField, "DBFieldName"]+" IN ('"+"','".join(iConditionVal.split(","))+"') "
+            else:
+                SQLStr += init_keyword+" "+self._DBTableName+"."+self._FactorInfo.loc[iConditionField, "DBFieldName"]+" IN ("+iConditionVal+") "
+            init_keyword = "AND"
         if use_main_table and pd.notnull(self._MainTableCondition) and (self._QSArgs.IDField is None): SQLStr += init_keyword+" "+self._MainTableCondition+" "
         return SQLStr[:-1]
     
