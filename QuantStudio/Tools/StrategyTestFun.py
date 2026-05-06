@@ -912,7 +912,7 @@ def _densifyWealthSeq(wealth_seq, dts, dt_ruler=None):
     return (DenseWealthSeq, dt_ruler)
 
 # 生成策略的统计指标
-def summaryStrategy(wealth_seq, dts, dt_ruler=None, init_wealth=None, risk_free_rate=0.0):
+def summaryStrategy(wealth_seq, dts, dt_ruler=None, init_wealth=None, risk_free_rate=0.0, balance_idx=None):
     nCol = (wealth_seq.shape[1] if wealth_seq.ndim>1 else 1)
     if nCol==1: wealth_seq = wealth_seq.reshape((wealth_seq.shape[0], 1))
     wealth_seq, dts = _densifyWealthSeq(wealth_seq, dts, dt_ruler)
@@ -934,7 +934,12 @@ def summaryStrategy(wealth_seq, dts, dt_ruler=None, init_wealth=None, risk_free_
     SummaryIndex.append('收益风险比')
     SummaryData.append(SummaryData[4] / SummaryData[5])
     SummaryIndex.append('胜率')
-    SummaryData.append(np.sum(YieldSeq>=0, axis=0) / np.sum(pd.notnull(YieldSeq), axis=0))
+    if balance_idx is None:
+        SummaryData.append(np.sum(YieldSeq>=0, axis=0) / np.sum(pd.notnull(YieldSeq), axis=0))
+    else:
+        if balance_idx[0]>0: balance_idx = [0] + list(balance_idx)
+        iYieldSeq = wealth_seq[balance_idx][1:] / wealth_seq[balance_idx][:-1] - 1
+        SummaryData.append(np.sum(iYieldSeq>=0, axis=0) / np.sum(pd.notnull(iYieldSeq), axis=0))
     SummaryIndex.extend(("最大回撤率", "最大回撤开始时点", "最大回撤结束时点"))
     MaxDrawdownRate, MaxDrawdownStartDT, MaxDrawdownEndDT = [], [], []
     for i in range(nCol):

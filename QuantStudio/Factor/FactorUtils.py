@@ -658,7 +658,7 @@ class SQL_Table(FactorTable):
         if RelatedFields.shape[0]==0: return raw_data
         for iField in RelatedFields.index:
             iOldData = raw_data.pop(iField)
-            iOldDataType = self.__QS_identifyDataType__(self._FactorInfo.loc[iField[:-2], "DataType"])
+            iOldDataType = self.__QS_identifyDataType__(self._FactorInfo.loc[iField[:-2] if iField.endswith("_R") else iField, "DataType"])
             iDataType = self.__QS_identifyDataType__(self._FactorInfo.loc[iField, "DataType"])
             if iDataType=="double":
                 iNewData = pd.Series(np.nan, index=raw_data.index, dtype="float")

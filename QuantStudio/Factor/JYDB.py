@@ -193,7 +193,7 @@ class _JY_SQL_Table(SQL_Table):
         for iField in RelatedFields.index:
             iOldData = raw_data.pop(iField)
             iDataMask = pd.notnull(iOldData)
-            iOldDataType = _identifyDataType(self._FactorInfo.loc[iField[:-2], "DataType"])
+            iOldDataType = _identifyDataType(self._FactorInfo.loc[iField[:-2] if iField.endswith("_R") else iField, "DataType"])
             iMapInfo = self._QS_getValueMapping(RelatedFields.loc[iField], field=iField, values=iOldData[iDataMask].unique().tolist(), reversed=False)
             iDataType = _identifyDataType(self._FactorInfo.loc[iField, "DataType"])
             if iDataType == "double":
