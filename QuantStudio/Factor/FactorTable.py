@@ -68,19 +68,19 @@ class FactorTable(Node):
         """表中的所有因子的名称列表"""
         return []
 
-    def getFactor(self, ifactor_name:str, args:dict={}) -> Factor:
+    def getFactor(self, factor_name:str, args:dict={}) -> Factor:
         """获取表中的因子对象
 
         Args:
-            ifactor_name: 因子名称
+            factor_name: 因子名称
             args: 传递给因子创建时初始化的参数集
 
         Returns:
             因子对象
         """
-        if ifactor_name not in self.FactorNames:
-            raise __QS_Error__(f"因子表中不存在因子: {ifactor_name}")
-        return Factor(ft=self, args=args | {"Name": ifactor_name}, logger=self._QS_Logger)
+        if factor_name not in self.FactorNames:
+            raise __QS_Error__(f"因子表中不存在因子: {factor_name}")
+        return Factor(ft=self, args=args | {"Name": factor_name}, logger=self._QS_Logger)
 
     def getFactorMetaData(self, factor_names:Optional[List[str]]=None, key:Optional[str]=None) -> Union[pd.DataFrame, pd.Series]:
         """获取因子的元信息, 元信息由若干个键值对组成
@@ -186,8 +186,8 @@ class FactorTable(Node):
         if not __QS_Engine__: ExecEngine = Engine()
         else: ExecEngine = __QS_Engine__[-1]
         LocalContext = FactorLocalContext(DTs=dts, IDs=ids)
-        Rslt = ExecEngine.run([self.getFactor(ifactor_name=iFactorName) for iFactorName in factor_names], Context, fwd_data_list=[LocalContext], init_data_list=[{"dt_range": (dts[0], dts[-1]), "section_ids": kwargs.get("section_ids", ids)}])
-        return Panel({Rslt[i] for i, iFactorName in enumerate(factor_names)})
+        Rslt = ExecEngine.run([self.getFactor(iFactorName) for iFactorName in factor_names], Context, fwd_data_list=[LocalContext], init_data_list=[{"dt_range": (dts[0], dts[-1]), "section_ids": kwargs.get("section_ids", ids)}])
+        return Panel({iFactorName: Rslt[i] for i, iFactorName in enumerate(factor_names)})
     
     def __getitem__(self, key):
         if isinstance(key, str):
