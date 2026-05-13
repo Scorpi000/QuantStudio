@@ -62,24 +62,3 @@ def setDateTimeAxis(ax, dts, max_display=10, fmt="%Y-%m-%d"):
     ax.set_xticks(xTicks)
     ax.set_xticklabels(xTickLabels)
     return ax
-
-if __name__=="__main__":
-    import datetime as dt
-    import matplotlib.pyplot as plt
-    import QuantStudio.api as QS
-    
-    HDB = QS.FactorDB.HDF5DB()
-    HDB.connect()
-    FT = HDB.getTable("ElementaryFactor")
-    DTs = FT.getDateTime(start_dt=dt.datetime(2017,1,1), end_dt=dt.datetime(2017,12,31))
-    Price = FT.readData(factor_names=["开盘价", "最高价", "最低价", "收盘价"], ids=["000001.SZ"], dts=DTs).iloc[:, :, 0]
-    
-    xTicks = np.arange(0, Price.shape[0], max(1, int(Price.shape[0]/10)))
-    xTickLabels = [Price.index[i].strftime("%Y-%m-%d") for i in xTicks]
-
-    Fig, Axes = plt.subplots(1, 1, figsize=(16, 8))
-    plotCandleStick(Axes, Price.values)
-    Axes.set_xticks(xTicks)
-    Axes.set_xticklabels(xTickLabels)
-    plt.show()
-    print("===")

@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import psycopg2
 
-import QuantStudio.api as QS
+from QuantStudio.Factor.JYDB import JYDB
 
 csv.field_size_limit(2048 * 2048)
 
@@ -659,14 +659,14 @@ def main(url:str="https://gitee.com/scorpi000/QSImage/raw/master/DemoData/JYDB.z
     print("下载 JYDB Demo 数据...")
     ExtractedPath = download_and_extract(url)
 
-    JYDB = QS.Factor.JYDB().connect()
+    FDB = JYDB().connect()
 
     config = {
-        'host': JYDB.Args.IPAddr,
-        'port': str(JYDB.Args.Port),
-        'database': JYDB.Args.DBName,
-        'username': JYDB.Args.User,
-        'password': JYDB.Args.Pwd,
+        'host': FDB.Args.IPAddr,
+        'port': str(FDB.Args.Port),
+        'database': FDB.Args.DBName,
+        'username': FDB.Args.User,
+        'password': FDB.Args.Pwd,
         'import_dir': ExtractedPath
     }
     importer = PostgresImporter(**config)

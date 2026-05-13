@@ -62,9 +62,9 @@ class _BSTable(FactorTable):
     """BaoStockDB 库中因子表"""
 
     class __QS_ArgClass__(FactorTable.__QS_ArgClass__):
-        IDAdj: Literal["无", "前缀"] = Field(default="无", title="ID调整", frozen=True)
-        DTFmt: str = Field(default="", title="时点格式", frozen=True)
-        APIArgs: dict = Field(default={}, title="API参数", frozen=True)
+        IDAdj: Literal["无", "前缀"] = Field(default="无", title="ID调整", frozen=True, repr=False)
+        DTFmt: str = Field(default="", title="时点格式", frozen=True, repr=False)
+        APIArgs: dict = Field(default={}, title="API参数", frozen=True, repr=False)
 
     def __init__(self, fdb:"BaoStockDB", args:dict={}, **kwargs):
         super().__init__(fdb=fdb, args=args, **kwargs)
@@ -255,10 +255,10 @@ class BaoStockDB(FactorDB):
 
     class __QS_ArgClass__(FactorDB.__QS_ArgClass__):
         Name: str = Field(default="BaoStockDB", title="名称", frozen=True)
-        UserID: str = Field(default="anonymous", title="用户ID", frozen=True)
-        Pwd: str = Field(default="123456", title="密码", frozen=True)
-        DBInfoFile: Optional[FilePath] = Field(default=None, title="库信息文件", frozen=True)
-        FTArgs: dict = Field(default={}, title="因子表参数", frozen=True)
+        UserID: str = Field(default="anonymous", title="用户ID", frozen=True, repr=False)
+        Pwd: str = Field(default="123456", title="密码", frozen=True, repr=False)
+        DBInfoFile: Optional[FilePath] = Field(default=None, title="库信息文件", frozen=True, repr=False)
+        FTArgs: dict = Field(default={}, title="因子表参数", frozen=True, repr=False)
 
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
         """初始化 BaoStockDB

@@ -393,11 +393,11 @@ class SQLQueryTable(FactorTable):
 class SQL_Table(FactorTable):
     
     class __QS_ArgClass__(FactorTable.__QS_ArgClass__):
-        FilterCondition: str = Field(default="", title="筛选条件", frozen=True, description="""形成 SQL 查询时附加到 WHERE 子句上的条件. 比如 "({Table}.field1>10) AND ({Table}.field2 IN ('a','b')", 其中 {Table} 会自动替换为相应的数据库表名""")
+        FilterCondition: str = Field(default="", title="筛选条件", frozen=True, repr=False, description="""形成 SQL 查询时附加到 WHERE 子句上的条件. 比如 "({Table}.field1>10) AND ({Table}.field2 IN ('a','b')", 其中 {Table} 会自动替换为相应的数据库表名""")
         TableType: str = Field(default="WideTable", title="因子表类型", frozen=True, description="""只能在 getTable 时传入，因子表创建后不可改变, 用于指明形成的因子表的类型""")
-        PreFilterID: bool = Field(default=True, title="预筛选ID", frozen=True, description="""是否在 SQL 查询中筛选 ID, 如果为 True, 则在形成的 SQL 查询中的 WHERE 子句中会有 {Table}.ID字段 IN (...) 条件, 否则为 {Table}.ID字段 IS NOT NULL. 如果提取数据的 ID 不多，建议为 True""")
+        PreFilterID: bool = Field(default=True, title="预筛选ID", frozen=True, repr=False, description="""是否在 SQL 查询中筛选 ID, 如果为 True, 则在形成的 SQL 查询中的 WHERE 子句中会有 {Table}.ID字段 IN (...) 条件, 否则为 {Table}.ID字段 IS NOT NULL. 如果提取数据的 ID 不多，建议为 True""")
         DTField: Optional[str] = Field(default=None, title="时点字段", frozen=True, description="默认 None 表示由内部自动判断. 因子表用于表示时点维度的字段名")
-        IDField: Optional[str] = Field(default=None, title="ID字段", frozen=True, description="默认 None 表示由内部自动判断. 因子表用于表示 ID 维度的字段名")
+        IDField: Optional[str] = Field(default=None, title="ID字段", frozen=True, repr=False, description="默认 None 表示由内部自动判断. 因子表用于表示 ID 维度的字段名")
         DTFmt: str = Field(default="", title="时点格式", repr=False, frozen=True)
         DateFmt: str = Field(default="", title="日期格式", repr=False, frozen=True)
         IgnoreTime: bool = Field(default=False, title="忽略时间", repr=False, frozen=True)
@@ -406,7 +406,7 @@ class SQL_Table(FactorTable):
         IgnoreIndex: list[str] = Field(default=[], title="忽略索引", frozen=True, repr=False, description="如果非空, 则在 SQL 查询中附加子句 IGNORE INDEX (索引1, 索引2, ...)")
         TransformSQL: dict = Field(default={}, title="转义SQL", repr=False, frozen=True, description="{因子: sql}")
         TablePrefix: str = Field(default="", title="表名前缀", repr=False, frozen=True)
-        AdditionalCondition: dict = Field(default={}, title="附加条件", repr=False, frozen=True)
+        AdditionalCondition: dict = Field(default={}, title="附加条件", repr=True, frozen=True)
 
         def __init__(self, /, **data: Any) -> None:
             Owner = data["Owner"]
@@ -764,9 +764,9 @@ class SQL_WideTable(SQL_Table):
 
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
         LookBack: IntOrInf = Field(default=0, title="回溯天数", frozen=True, ge=0, description="缺失填充回溯的天数, 0 表示不回溯填充")
-        OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True, description="如果为 True, 表示只对提取数据的第一个时点进行缺失填充, 之后的时点不填充")
-        OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True, description="如果为 True, 表示只用不在提取时点序列中的数据进行缺失填充")
-        OnlyLookBackDT: bool = Field(default=False, title="只回溯时点", frozen=True, description="如果为 True, 表示所有因子统一沿着时点字段进行回溯填充, 不单独填充")
+        OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True, repr=False, description="如果为 True, 表示只对提取数据的第一个时点进行缺失填充, 之后的时点不填充")
+        OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True, repr=False, description="如果为 True, 表示只用不在提取时点序列中的数据进行缺失填充")
+        OnlyLookBackDT: bool = Field(default=False, title="只回溯时点", frozen=True, repr=False, description="如果为 True, 表示所有因子统一沿着时点字段进行回溯填充, 不单独填充")
         PublDTField: Optional[str] = Field(default=None, title="公告时点字段", frozen=True, description="用作公告时点的字段名, 默认值 None 表示内部自动判断, 如果非 None, 表示考虑数据的公布时点, 即某个时点所能获取的数据必须保证其在公告时点和截止时点之后")
         EndDateASC: bool = Field(default=False, title="截止日期递增", repr=False, frozen=True)
         OrderFields: List[Tuple[str, Literal["ASC", "DESC"]]] = Field(default=[], title="排序字段", frozen=True, repr=False, description="""对提取出的数据进行排序的设置, 比如 [("factor1", "ASC"), ("factor2", "DESC")] 表示提取出的数据根据时点和 ID 分组后先按照 factor1 升序排列再按照 factor2 降序排列""")
@@ -1124,9 +1124,9 @@ class SQL_NarrowTable(SQL_Table):
     """
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
         LookBack: IntOrInf = Field(default=0, title="回溯天数", frozen=True, ge=0, description="缺失填充回溯的天数, 0 表示不回溯填充")
-        OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True, description="如果为 True, 表示只对提取数据的第一个时点进行缺失填充, 之后的时点不填充")
-        OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True, description="如果为 True, 表示只用不在提取时点序列中的数据进行缺失填充")
-        OnlyLookBackDT: bool = Field(default=False, title="只回溯时点", frozen=True, description="如果为 True, 表示所有因子统一沿着时点字段进行回溯填充, 不单独填充")
+        OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True, repr=False, description="如果为 True, 表示只对提取数据的第一个时点进行缺失填充, 之后的时点不填充")
+        OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True, repr=False, description="如果为 True, 表示只用不在提取时点序列中的数据进行缺失填充")
+        OnlyLookBackDT: bool = Field(default=False, title="只回溯时点", frozen=True, repr=False, description="如果为 True, 表示所有因子统一沿着时点字段进行回溯填充, 不单独填充")
         FactorNameField: str = Field(title="因子名字段", frozen=True, description="指示因子名称的字段, 默认值内部自动判断")
         FactorValueField: str = Field(title="因子值字段", frozen=True, description="指示因子取值的字段, 默认值内部自动判断")
         MultiMapping: bool = Field(default=True, title="多重映射", frozen=True, description="是否为高维数据, 即时点和 ID 两个维度无法唯一索引单个数据, 默认形成的数据在单个时点单个 ID 处以 list 形式表达")
@@ -1360,7 +1360,7 @@ class SQL_FeatureTable(SQL_WideTable):
     """
     class __QS_ArgClass__(SQL_WideTable.__QS_ArgClass__):
         LookBack: IntOrInf = Field(default=np.inf, title="回溯天数", frozen=True, ge=0)
-        TargetDT: Optional[dt.datetime] = Field(default=None, title="目标时点", frozen=True, description="""截面所属的时点：
+        TargetDT: Optional[dt.datetime] = Field(default=None, title="目标时点", frozen=True, repr=False, description="""截面所属的时点：
     + 时点字段为 None: 将库表中原始截面数据按照真实的时点序列进行填充得到最终数据
     + 时点字段不为 None: 目标时点如果为 None 则自动转换为时点字段的最大值，以目标时点形成的单时点序列调用 WideTable 提取原始数据的方法得到原始数据，最后以目标时点形成的单时点序列调用 WideTable 的转换方法得到因子数据并按照真实的时点序列进行填充得到最终数据""")
     
@@ -1442,10 +1442,10 @@ class SQL_TimeSeriesTable(SQL_Table):
     """
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
         LookBack: IntOrInf = Field(default=np.inf, title="回溯天数", frozen=True, ge=0, description="缺失填充回溯的天数, 0 表示不回溯填充")
-        OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True, description="如果为 True, 表示只对提取数据的第一个时点进行缺失填充, 之后的时点不填充")
-        OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True, description="如果为 True, 表示只用不在提取时点序列中的数据进行缺失填充")
-        OnlyLookBackDT: bool = Field(default=False, title="只回溯时点", frozen=True, description="如果为 True, 表示所有因子统一沿着时点字段进行回溯填充, 不单独填充")
-        PublDTField: Optional[str] = Field(default=None, title="公告时点字段", frozen=True, description="用作公告时点的字段名, 默认值 None 表示内部自动判断, 如果非 None, 表示考虑数据的公布时点, 即某个时点所能获取的数据必须保证其在公告时点和截止时点之后")
+        OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True, repr=False, description="如果为 True, 表示只对提取数据的第一个时点进行缺失填充, 之后的时点不填充")
+        OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True, repr=False, description="如果为 True, 表示只用不在提取时点序列中的数据进行缺失填充")
+        OnlyLookBackDT: bool = Field(default=False, title="只回溯时点", frozen=True, repr=False, description="如果为 True, 表示所有因子统一沿着时点字段进行回溯填充, 不单独填充")
+        PublDTField: Optional[str] = Field(default=None, title="公告时点字段", frozen=True, repr=False, description="用作公告时点的字段名, 默认值 None 表示内部自动判断, 如果非 None, 表示考虑数据的公布时点, 即某个时点所能获取的数据必须保证其在公告时点和截止时点之后")
         EndDateASC: bool = Field(default=False, repr=False, title="截止日期递增", frozen=True)
         OrderFields: List[Tuple[str, Literal["ASC", "DESC"]]] = Field(default=[], title="排序字段", repr=False, frozen=True, description="""对提取出的数据进行排序的设置, 比如 [("factor1", "ASC"), ("factor2", "DESC")] 表示提取出的数据根据时点和 ID 分组后先按照 factor1 升序排列再按照 factor2 降序排列""")
         MultiMapping: bool = Field(default=False, title="多重映射", frozen=True, description="是否为高维数据, 即时点和 ID 两个维度无法唯一索引单个数据, 默认形成的数据在单个时点单个 ID 处以 list 形式表达")
@@ -1681,7 +1681,7 @@ class SQL_MappingTable(SQL_Table):
     一个字段（参数IDField指定）标识 ID, 一个字段（参数DTField指定）标识起始时点, 一个字段（参数EndDTField指定）标识截止时点, 其余字段为因子
     """
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
-        OnlyStartFilled: bool = Field(default=False, title="只填起始日", frozen=True, description="是否将数据只填充在起始时点")
+        OnlyStartFilled: bool = Field(default=False, title="只填起始日", frozen=True, repr=False, description="是否将数据只填充在起始时点")
         MultiMapping: bool = Field(default=False, title="多重映射", frozen=True, description="是否为高维数据, 即起始时点和 ID 两个维度无法唯一索引单个数据, 默认形成的数据在单个时点单个 ID 处以 list 形式表达")
         EndDTField: str = Field(title="结束时点字段", frozen=True, description="用以指示结束填充的时点字段, 默认值 None 表示内部自动判断")
         EndDTIncluded: bool = Field(default=True, title="包含结束时点", frozen=True, description="结束时点处是否填充数据")
@@ -1917,9 +1917,9 @@ class SQL_ConstituentTable(SQL_Table):
     """
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
         GroupField: str = Field(title="类别字段", frozen=True, description="作为因子名称的字段")
-        GroupMapping: Optional[str | dict] = Field(default=None, title="类别映射", frozen=True, description="如果是 str 则作为 SQL 查询得到映射 dict, 如果是 dict 则直接使用")
+        GroupMapping: Optional[str | dict] = Field(default=None, title="类别映射", repr=False, frozen=True, description="如果是 str 则作为 SQL 查询得到映射 dict, 如果是 dict 则直接使用")
         EndDTField: str = Field(title="结束时点字段", frozen=True, description="用以指示调出成份的时点字段")
-        CurSignField: Optional[str] = Field(default=None, title="当前状态字段", frozen=True)
+        CurSignField: Optional[str] = Field(default=None, title="当前状态字段", repr=False, frozen=True)
         EndDTIncluded: bool = Field(default=False, title="包含结束时点", frozen=True, description="结束时点处是否包含在成份中")
 
         def __init__(self, /, **data: Any) -> None:

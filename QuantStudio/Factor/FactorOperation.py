@@ -26,15 +26,15 @@ class FactorOperator(__QS_Object__):
         OperatorType: Literal["Point", "Time", "Section", "Panel"] = Field(title="算子类型", frozen=True)
         Name: str = Field(default="FactorOperator", title="名称", frozen=True, exclude=True)
         ModelArgs: Dict[str, Any] = Field(default={}, title="模型参数", frozen=True)
-        Arity: Optional[int] = Field(default=None, ge=1, title="入参数", frozen=True)
+        Arity: Optional[int] = Field(default=None, ge=1, title="入参数量", frozen=True)
         DataType: Literal["double", "string", "object"] = Field(default="double",title="数据类型", frozen=True)
         Description: str = Field(default="", title="描述信息", frozen=False, exclude=True)
         Meta: Dict[str, Any] = Field(default={}, title="元信息", frozen=False, exclude=True)
-        InputFormat: Literal["numpy", "pandas"] = Field(default="numpy", title="输入格式", frozen=True)
-        ExpandDescriptors: List[int] = Field(default=[], title="展开描述子", frozen=True)
-        DescriptorCompoundType: List[List[Tuple[str, Literal["double", "string", "object"]]]] = Field(default=[], title="描述子复合类型", frozen=True)
-        MultiMapping: bool = Field(default=False, title="多重映射", frozen=True)
-        CompoundType: List[Tuple[str, Literal["double", "string", "object"]]] = Field(default=[], title="复合类型", frozen=True)
+        InputFormat: Literal["numpy", "pandas"] = Field(default="numpy", title="输入格式", repr=False, frozen=True)
+        ExpandDescriptors: List[int] = Field(default=[], title="展开描述子", repr=False, frozen=True)
+        DescriptorCompoundType: List[List[Tuple[str, Literal["double", "string", "object"]]]] = Field(default=[], title="描述子复合类型", repr=False, frozen=True)
+        MultiMapping: bool = Field(default=False, title="多重映射", repr=False, frozen=True)
+        CompoundType: List[Tuple[str, Literal["double", "string", "object"]]] = Field(default=[], title="复合类型", repr=False, frozen=True)
         
         def __init__(self, /, **data: Any) -> None:
             if ("DataType" not in data) and (data.get("CompoundType", []) or data.get("MultiMapping", False)):

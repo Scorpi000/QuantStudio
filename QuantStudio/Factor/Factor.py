@@ -109,7 +109,7 @@ class Factor(Node):
         Meta: dict = Field(default={}, title="元信息", frozen=False, exclude=True)
         SectionIDs: Optional[List[str]] = Field(default=None, title="截面ID", frozen=True)
         CalcDTRuler: Optional[List[dt.datetime]] = Field(default=None, title="计算时点标尺", frozen=True)
-        CacheEnabled: bool = Field(default=True, frozen=True, title="启用缓存")
+        CacheEnabled: bool = Field(default=True, frozen=True, title="启用缓存", repr=False)
 
     def __init__(self, ft: Optional["FactorTable"]=None, descriptors: List["Factor"] = [], extra_deps: List[Node] = [], args: dict = {}, config_file: Optional[str] = None, **kwargs):
         """初始化因子对象

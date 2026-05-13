@@ -927,7 +927,7 @@ class JYDB(QSSQLObject, FactorDB):
 
     class __QS_ArgClass__(QSSQLObject.__QS_ArgClass__, FactorDB.__QS_ArgClass__):
         Name: str = Field(default="JYDB", title="名称", frozen=True)
-        DBInfoFile: Optional[FilePath] = Field(default=None, title="库信息文件", frozen=True)
+        DBInfoFile: Optional[FilePath] = Field(default=None, title="库信息文件", frozen=True, repr=False)
         FTArgs: dict = Field(default={}, title="因子表参数", frozen=True)
 
     def __init__(self, args={}, config_file=None, **kwargs):
@@ -1318,7 +1318,7 @@ class JYDB(QSSQLObject, FactorDB):
         """
         if date is not None:
             raise __QS_Error__("尚不支持获取指定日期上市的期货品种!")
-        SQLStr = "SELECT DISTINCT TradingCode FROM {Prefix}Fut_FuturesContract "
+        SQLStr = "SELECT DISTINCT TradingCode FROM {Prefix}Fut_FuturesContract WHERE TradingCode IS NOT NULL "
         if exchange:
             if isinstance(exchange, str): exchange = [exchange]
             ExchgCodes = set()
@@ -1326,9 +1326,9 @@ class JYDB(QSSQLObject, FactorDB):
                 iExchgCode = self._ExchangeInfo[self._ExchangeInfo["Exchange"] == iExchg].index
                 if iExchgCode.shape[0] == 0: raise __QS_Error__("不支持的交易所: %s" % iExchg)
                 ExchgCodes.add(str(iExchgCode[0]))
-            SQLStr += "WHERE Exchange IN (" + ", ".join(ExchgCodes) + ") "
+            SQLStr += "AND Exchange IN (" + ", ".join(ExchgCodes) + ") "
         else:
-            SQLStr += "WHERE Exchange IS NOT NULL "
+            SQLStr += "AND Exchange IS NOT NULL "
         if is_current: SQLStr += "AND ContractState<>5 "
         SQLStr += "ORDER BY TradingCode"
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix))]

@@ -108,6 +108,7 @@ class QSSQLObject(__QS_Object__):
                     time.sleep(self._QSArgs.ConnIntervalSeconds)
                 else:
                     self._Connector = "mysql.connector"
+                    break
             else:
                 if Connector != "default": raise e
         elif (Connector=="psycopg2") or ((Connector=="default") and (DBType=="PostgreSQL")):

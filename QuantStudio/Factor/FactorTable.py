@@ -256,6 +256,7 @@ class FactorTable(Node):
         return super().init_compute(path=path, init_data=init_data, context=context)
 
     def prepare_compute(self, prepare_data: Any, context: FactorContext) -> None:
+        if context.DataCache is None: return
         FactorNames = sorted(prepare_data["FactorNames"])
         RawData = self.__QS_prepareRawData__(factor_names=FactorNames, ids=prepare_data["SectionIDs"], dts=prepare_data["DTRange"], args=prepare_data["Args"])
         SectionIDs = prepare_data["SectionIDs"]
