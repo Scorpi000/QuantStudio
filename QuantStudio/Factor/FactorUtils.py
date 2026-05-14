@@ -394,7 +394,7 @@ class SQL_Table(FactorTable):
     
     class __QS_ArgClass__(FactorTable.__QS_ArgClass__):
         FilterCondition: str = Field(default="", title="筛选条件", frozen=True, repr=False, description="""形成 SQL 查询时附加到 WHERE 子句上的条件. 比如 "({Table}.field1>10) AND ({Table}.field2 IN ('a','b')", 其中 {Table} 会自动替换为相应的数据库表名""")
-        TableType: str = Field(default="WideTable", title="因子表类型", frozen=True, description="""只能在 getTable 时传入，因子表创建后不可改变, 用于指明形成的因子表的类型""")
+        TableType: str = Field(default="SQL_Table", title="因子表类型", frozen=True, description="""只能在 getTable 时传入，因子表创建后不可改变, 用于指明形成的因子表的类型""")
         PreFilterID: bool = Field(default=True, title="预筛选ID", frozen=True, repr=False, description="""是否在 SQL 查询中筛选 ID, 如果为 True, 则在形成的 SQL 查询中的 WHERE 子句中会有 {Table}.ID字段 IN (...) 条件, 否则为 {Table}.ID字段 IS NOT NULL. 如果提取数据的 ID 不多，建议为 True""")
         DTField: Optional[str] = Field(default=None, title="时点字段", frozen=True, description="默认 None 表示由内部自动判断. 因子表用于表示时点维度的字段名")
         IDField: Optional[str] = Field(default=None, title="ID字段", frozen=True, repr=False, description="默认 None 表示由内部自动判断. 因子表用于表示 ID 维度的字段名")
@@ -410,8 +410,6 @@ class SQL_Table(FactorTable):
 
         def __init__(self, /, **data: Any) -> None:
             Owner = data["Owner"]
-            # 设置因子表类型
-            data["TableType"] = Owner._TableInfo["TableClass"]
             # 解析 ID 字段, 至多一个 ID 字段
             Fields = [None] + Owner._FactorInfo[pd.notnull(Owner._FactorInfo["FieldType"])].index.tolist()# ID 字段
             if "IDField" not in data:
@@ -763,6 +761,7 @@ class SQL_WideTable(SQL_Table):
     """
 
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
+        TableType: Literal["WideTable"] = Field(default="WideTable", title="因子表类型", frozen=True, description="""只能在 getTable 时传入，因子表创建后不可改变, 用于指明形成的因子表的类型""")
         LookBack: IntOrInf = Field(default=0, title="回溯天数", frozen=True, ge=0, description="缺失填充回溯的天数, 0 表示不回溯填充")
         OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True, repr=False, description="如果为 True, 表示只对提取数据的第一个时点进行缺失填充, 之后的时点不填充")
         OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True, repr=False, description="如果为 True, 表示只用不在提取时点序列中的数据进行缺失填充")
@@ -1123,6 +1122,7 @@ class SQL_NarrowTable(SQL_Table):
     一个字段（参数IDField指定）标识 ID, 一个字段（由参数IDField指定）标识时点, 一个字段（参数FactorNameField指定）标识因子名(不存在则固定取标识因子值字段的名称作为因子名), 一个字段（参数FactorValueField指定）标识为因子值
     """
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
+        TableType: Literal["NarrowTable"] = Field(default="NarrowTable", title="因子表类型", frozen=True, description="""只能在 getTable 时传入，因子表创建后不可改变, 用于指明形成的因子表的类型""")
         LookBack: IntOrInf = Field(default=0, title="回溯天数", frozen=True, ge=0, description="缺失填充回溯的天数, 0 表示不回溯填充")
         OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True, repr=False, description="如果为 True, 表示只对提取数据的第一个时点进行缺失填充, 之后的时点不填充")
         OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True, repr=False, description="如果为 True, 表示只用不在提取时点序列中的数据进行缺失填充")
@@ -1359,6 +1359,7 @@ class SQL_FeatureTable(SQL_WideTable):
     如果时点字段为 None, 则忽略目标时点参数; 否则如果目标时点为 None, 则默认以时点字段的最大值作为目标时点
     """
     class __QS_ArgClass__(SQL_WideTable.__QS_ArgClass__):
+        TableType: Literal["FeatureTable"] = Field(default="FeatureTable", title="因子表类型", frozen=True, description="""只能在 getTable 时传入，因子表创建后不可改变, 用于指明形成的因子表的类型""")
         LookBack: IntOrInf = Field(default=np.inf, title="回溯天数", frozen=True, ge=0)
         TargetDT: Optional[dt.datetime] = Field(default=None, title="目标时点", frozen=True, repr=False, description="""截面所属的时点：
     + 时点字段为 None: 将库表中原始截面数据按照真实的时点序列进行填充得到最终数据
@@ -1441,6 +1442,7 @@ class SQL_TimeSeriesTable(SQL_Table):
     可当做 ID 字段为单一值的 WideTable 处理，每个时点所有 ID 填充同一个值
     """
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
+        TableType: Literal["TimeSeriesTable"] = Field(default="TimeSeriesTable", title="因子表类型", frozen=True, description="""只能在 getTable 时传入，因子表创建后不可改变, 用于指明形成的因子表的类型""")
         LookBack: IntOrInf = Field(default=np.inf, title="回溯天数", frozen=True, ge=0, description="缺失填充回溯的天数, 0 表示不回溯填充")
         OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True, repr=False, description="如果为 True, 表示只对提取数据的第一个时点进行缺失填充, 之后的时点不填充")
         OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True, repr=False, description="如果为 True, 表示只用不在提取时点序列中的数据进行缺失填充")
@@ -1681,6 +1683,7 @@ class SQL_MappingTable(SQL_Table):
     一个字段（参数IDField指定）标识 ID, 一个字段（参数DTField指定）标识起始时点, 一个字段（参数EndDTField指定）标识截止时点, 其余字段为因子
     """
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
+        TableType: Literal["MappingTable"] = Field(default="MappingTable", title="因子表类型", frozen=True, description="""只能在 getTable 时传入，因子表创建后不可改变, 用于指明形成的因子表的类型""")
         OnlyStartFilled: bool = Field(default=False, title="只填起始日", frozen=True, repr=False, description="是否将数据只填充在起始时点")
         MultiMapping: bool = Field(default=False, title="多重映射", frozen=True, description="是否为高维数据, 即起始时点和 ID 两个维度无法唯一索引单个数据, 默认形成的数据在单个时点单个 ID 处以 list 形式表达")
         EndDTField: str = Field(title="结束时点字段", frozen=True, description="用以指示结束填充的时点字段, 默认值 None 表示内部自动判断")
@@ -1916,6 +1919,7 @@ class SQL_ConstituentTable(SQL_Table):
     因子值是 0-1 变量，1 表示属于 GroupField 指定的类别
     """
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
+        TableType: Literal["ConstituentTable"] = Field(default="ConstituentTable", title="因子表类型", frozen=True, description="""只能在 getTable 时传入，因子表创建后不可改变, 用于指明形成的因子表的类型""")
         GroupField: str = Field(title="类别字段", frozen=True, description="作为因子名称的字段")
         GroupMapping: Optional[str | dict] = Field(default=None, title="类别映射", repr=False, frozen=True, description="如果是 str 则作为 SQL 查询得到映射 dict, 如果是 dict 则直接使用")
         EndDTField: str = Field(title="结束时点字段", frozen=True, description="用以指示调出成份的时点字段")
@@ -2172,6 +2176,7 @@ class SQL_FinancialTable(SQL_Table):
     一个字段标识 ID, 一个字段标识报告期字段, 表示财报的报告期, 一个字段标识公告日期字段, 表示财报公布的日期, 其余字段为因子
     """
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
+        TableType: Literal["FinancialTable"] = Field(default="FinancialTable", title="因子表类型", frozen=True, description="""只能在 getTable 时传入，因子表创建后不可改变, 用于指明形成的因子表的类型""")
         ReportDate: Literal["所有", "定期报告", "年报", "中报", "一季报", "三季报"] = Field(default="所有", title="报告期", frozen=True, description="指定原始数据中保留的报告期报告")
         CalcType: Literal["最新", "单季度", "TTM"] = Field(default="最新", title="计算方法", frozen=True, description="""财务数据转换成因子数据的方式
     * 最新: 以当前时点能得到的(公告时点在当前时点之前)指定报告期的财务报告的数据值作为当前时点的因子值.

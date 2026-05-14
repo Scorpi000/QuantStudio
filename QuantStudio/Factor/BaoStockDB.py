@@ -62,6 +62,7 @@ class _BSTable(FactorTable):
     """BaoStockDB 库中因子表"""
 
     class __QS_ArgClass__(FactorTable.__QS_ArgClass__):
+        TableType: str = Field(default="BSTable", title="因子表类型", frozen=True, description="""只能在 getTable 时传入，因子表创建后不可改变, 用于指明形成的因子表的类型""")
         IDAdj: Literal["无", "前缀"] = Field(default="无", title="ID调整", frozen=True, repr=False)
         DTFmt: str = Field(default="", title="时点格式", frozen=True, repr=False)
         APIArgs: dict = Field(default={}, title="API参数", frozen=True, repr=False)
@@ -132,23 +133,21 @@ class _BSTable(FactorTable):
             return [dt.datetime.strptime(iDT, DTFmt) if pd.notnull(iDT) else pd.NaT for iDT in dts]
 
     def getMetaData(self, key:Optional[str]=None) -> Union[Any, pd.Series]:
-        TableInfo = self._FactorDB._TableInfo.loc[self._QSArgs.Name]
         if key is None:
-            return TableInfo
+            return self._TableInfo
         else:
-            return TableInfo.get(key, None)
+            return self._TableInfo.get(key, None)
 
     def getFactorMetaData(self, factor_names:Optional[List[str]]=None, key:Optional[str]=None) -> Union[pd.DataFrame, pd.Series]:
         if factor_names is None: factor_names = self.FactorNames
-        FactorInfo = self._FactorDB._FactorInfo.loc[self._QSArgs.Name]
         if key == "DataType":
-            iDataType = FactorInfo.loc[factor_names, "DataType"].str.lower()
+            iDataType = self._FactorInfo.loc[factor_names, "DataType"].str.lower()
             iDataType = pd.Series(np.where(iDataType.str.find("str")!=-1, "string", "double"), index=iDataType.index)
             return iDataType
         elif key == "Description":
-            return FactorInfo.loc[factor_names, "Description"]
+            return self._FactorInfo.loc[factor_names, "Description"]
         elif key is None:
-            return FactorInfo.loc[factor_names, ["DataType", "Description"]]
+            return self._FactorInfo.loc[factor_names, ["DataType", "Description"]]
         else:
             return None
 
@@ -157,6 +156,7 @@ class _DTTable(_BSTable):
     """BaoStockDB 库中基于取单个时点数据 API 的因子表"""
 
     class __QS_ArgClass__(_BSTable.__QS_ArgClass__):
+        TableType: Literal["DTTable"] = Field(default="DTTable", title="因子表类型", frozen=True)
         LookBack: int = Field(default=0, title="回溯天数", frozen=True, ge=0)
 
     def __init__(self, fdb:"BaoStockDB", args:dict={}, **kwargs):
@@ -200,6 +200,7 @@ class _DTRangeTable(_BSTable):
     """BaoStockDB 库中基于取时间区间数据 API 的因子表"""
 
     class __QS_ArgClass__(_BSTable.__QS_ArgClass__):
+        TableType: Literal["DTRangeTable"] = Field(default="DTRangeTable", title="因子表类型", frozen=True)
         LookBack: int = Field(default=0, title="回溯天数", frozen=True, ge=0)
 
     def __init__(self, fdb: "BaoStockDB", args:dict={}, **kwargs):
@@ -298,7 +299,7 @@ class BaoStockDB(FactorDB):
 
     def getTable(self, table_name:str, args:dict={}) -> _BSTable:
         if table_name in self._TableInfo.index:
-            TableClass = args.get("因子表类型", self._TableInfo.loc[table_name, "TableClass"])
+            TableClass = args.get("TableType", self._TableInfo.loc[table_name, "TableClass"])
             if pd.notnull(TableClass) and (TableClass != ""):
                 DefaultArgs = self._TableInfo.loc[table_name, "DefaultArgs"]
                 if pd.isnull(DefaultArgs):
