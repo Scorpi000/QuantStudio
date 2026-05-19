@@ -679,7 +679,7 @@ class SectionRegress(SectionOperator):
         Arity = args.get("Arity", None) or 1
         Args = {"Name": "regressSection"} | args | {"DTMode": "单时点"}
         Args["ModelArgs"] = {"intercept": intercept, "output": output} | Args.get("ModelArgs", {})
-        descriptor_ids = Args.get("DescriptorSection", [descriptor_ids])[0]
+        descriptor_ids = Args.get("DescriptorSection", [None])[0]
         Args["DescriptorSection"] = [descriptor_ids] * Arity
         if Args["ModelArgs"]["output"] is None:
             Args["DataType"] = "object"
