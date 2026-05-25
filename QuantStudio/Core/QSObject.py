@@ -158,7 +158,7 @@ class QSSQLObject(__QS_Object__):
                         self._Connector = "pyodbc"
                         break
                 else:
-                    raise e
+                    raise __QS_Error__("'%s' 使用 pyodbc 连接数据库 'DSN: %s' 失败" % (self.Name, self._QSArgs.DSN))
             else:
                 for i in range(self._QSArgs.ConnRetryNum):
                     try:
@@ -176,7 +176,7 @@ class QSSQLObject(__QS_Object__):
                         self._Connector = "pyodbc"
                         break
                 else:
-                    raise e
+                    raise __QS_Error__("'%s' 使用 pyodbc 连接(%s@%s:%d)数据库 '%s' 失败" % (self.Name, User, IPAddr, Port, DBName))
         self._PID = os.getpid()
         return 0
 
