@@ -18,7 +18,6 @@ TestCoverage.bat
 *.bak
 *.dat
 *.dir
-*.json
 *.hdf5
 *.wpr
 *.wpu
