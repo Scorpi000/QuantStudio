@@ -108,3 +108,24 @@ python -m unittest discover -s tests -p "test_*.py"
 ## 文档
 
 `docs/` 目录下的 16 个 Jupyter Notebook 涵盖了完整的 API 接口（均为中文）。建议从 `docs/通则和约定.ipynb` 开始了解约定规范。Notebook 按模块组织：Core（计算图）、Factor、BackTest、Risk、Portfolio。
+
+## Skill 维护
+
+项目 Skill 位于 `.claude/skills/quantstudio/`，为 Claude Code 提供 QuantStudio 框架的上下文知识。维护 Skill 时遵循以下规则：
+
+### 内容边界
+
+- **Skill 只包含框架级知识**：QS API 用法、参数说明、算子类型、代码模板等——这些跨环境稳定不变
+- **不硬编码环境相关细节**：数据库连接默认值、表名、字段名、目录路径等一律不写入 Skill。这些通过 MCP 工具动态查询，或由用户在当前任务中指定
+- **代码存放位置遵循用户指示**：不同任务的输出目录约定可能不同，Skill 不预设固定路径
+
+### 文件组织
+
+- **SKILL.md 保持精简**（~400 行）：包含核心约定 + 最高频使用的模块（因子框架），作为每次 Skill 加载时直接注入上下文的内容
+- **低频模块拆分为独立文件**：如回测、风险、组合优化等，仅在 SKILL.md 末尾以链接形式引用（`[回测框架](backtest.md)`）。Claude 在用户请求相关功能时按需读取
+- 拆分粒度：一个独立文件覆盖一个功能领域，100 行以内为宜
+
+### 优化时机
+
+- 每次完成一个实际的开发任务后，复盘 Skill 是否缺失了关键信息导致多轮搜索或猜测
+- 将发现的知识空白补充到 Skill，将发现的环境硬编码从 Skill 中移除
