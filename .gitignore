@@ -1,6 +1,7 @@
 build/
 dist/
 .idea/
+.vscode/
 QuantStudio.egg-info/
 Backup/
 backup/
