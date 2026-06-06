@@ -25,3 +25,4 @@ TestCoverage.bat
 *.code-workspace
 *.env
 ~$*.xlsx
+CLAUDE.local.md
