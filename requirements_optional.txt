@@ -5,3 +5,4 @@ mysql-connector-python
 pyodbc>=4.0.14
 scikit-learn
 ipykernel
+neo4j

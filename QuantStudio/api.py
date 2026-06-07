@@ -5,3 +5,4 @@ import QuantStudio.BackTest.api as BackTest
 import QuantStudio.Risk.api as Risk
 import QuantStudio.PortfolioConstructor.api as PortfolioConstructor
 import QuantStudio.Tools.api as Tools
+import QuantStudio.FactorRegistry.api as FactorRegistry
