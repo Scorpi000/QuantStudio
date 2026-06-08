@@ -19,17 +19,34 @@ def _sanitizeForJSON(value: Any) -> Any:
     if value is None:
         return value
     if isinstance(value, np.integer):
-        return int(value)
+        return {"__numpy_scalar__": True, "dtype": f"int{value.dtype.itemsize*8}", "value": int(value)}
     if isinstance(value, np.floating):
         v = float(value)
+        meta = {"__numpy_scalar__": True, "dtype": f"float{value.dtype.itemsize*8}"}
         if np.isnan(v):
-            return {"__nan__": True}
+            meta["__nan__"] = True
+            return meta
         if np.isinf(v):
-            return {"__inf__": True, "sign": 1 if v > 0 else -1}
-        return v
+            meta["__inf__"] = True
+            meta["sign"] = 1 if v > 0 else -1
+            return meta
+        meta["value"] = v
+        return meta
     if isinstance(value, np.bool_):
-        return bool(value)
-    if isinstance(value, (int, float, str, bool)):
+        return {"__numpy_scalar__": True, "dtype": "bool", "value": bool(value)}
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return {"__number__": "int", "value": value}
+    if isinstance(value, float):
+        if value != value:  # NaN
+            return {"__nan__": True}
+        if value == float("inf"):
+            return {"__inf__": True, "sign": 1}
+        if value == float("-inf"):
+            return {"__inf__": True, "sign": -1}
+        return {"__number__": "float", "value": value}
+    if isinstance(value, str):
         return value
     if isinstance(value, np.ndarray):
         return {"__numpy__": True, "data": value.tolist(), "dtype": str(value.dtype)}
@@ -56,12 +73,37 @@ def _desanitizeFromJSON(value: Any) -> Any:
     Returns:
         恢复后的值
     """
-    if value is None or isinstance(value, (int, float, str, bool)):
+    if value is None or isinstance(value, str):
+        return value
+    if isinstance(value, bool):
         return value
     if not isinstance(value, dict):
         if isinstance(value, list):
             return [_desanitizeFromJSON(v) for v in value]
+        # 纯数字（旧格式兼容）
+        if isinstance(value, (int, float)):
+            return value
         return value
+    # __number__ 标签：恢复精确的 int/float 类型
+    if "__number__" in value:
+        if value["__number__"] == "int":
+            return int(value["value"])
+        elif value["__number__"] == "float":
+            return float(value["value"])
+    # numpy 标量类型标记
+    if "__numpy_scalar__" in value:
+        dtype_str = value.get("dtype", "int64")
+        if dtype_str.startswith("int"):
+            return getattr(np, dtype_str)(value.get("value", 0))
+        elif dtype_str.startswith("float"):
+            if value.get("__nan__"):
+                return getattr(np, dtype_str)(np.nan)
+            if value.get("__inf__"):
+                v = np.inf if value.get("sign", 1) > 0 else -np.inf
+                return getattr(np, dtype_str)(v)
+            return getattr(np, dtype_str)(value.get("value", 0.0))
+        elif dtype_str == "bool":
+            return np.bool_(value.get("value", False))
     # 特殊类型标记
     if "__nan__" in value:
         return np.nan

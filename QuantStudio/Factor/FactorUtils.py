@@ -435,7 +435,10 @@ class SQL_Table(FactorTable):
                     AdditionalCondition[iCondition] = ""
                 else:
                     AdditionalCondition[iCondition] = str(iConditionVal).strip()
-            data["AdditionalCondition"] = AdditionalCondition | data.get("AdditionalCondition", {})
+            if "AdditionalCondition" not in data:
+                data["AdditionalCondition"] = AdditionalCondition
+            else:
+                data["AdditionalCondition"] = AdditionalCondition | data["AdditionalCondition"]
             return super().__init__(**data)
 
     def __init__(self, fdb, table_info=None, factor_info=None, security_info=None, exchange_info=None, args={}, **kwargs):

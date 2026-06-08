@@ -195,6 +195,8 @@ class FactorGraphDB(__QS_Object__):
             "Description": op._QSArgs.Description,
             "ModelArgsJSON": serializeOperatorArgs(op),
             "LookBackJSON": json.dumps(_sanitizeForJSON(look_back), ensure_ascii=False),
+            "DTMode": getattr(op._QSArgs, "DTMode", None),
+            "IDMode": getattr(op._QSArgs, "IDMode", None),
             "CalculateRef": calc_ref_json,
             "IsCustom": is_custom,
             "UpdatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
@@ -708,7 +710,11 @@ class FactorGraphDB(__QS_Object__):
         args["Name"] = factor_data["Name"]
         args["Operator"] = operator
         # 调用算子生成因子
-        return operator(*descriptors, factor_args=args)
+        operator_name = factor_data.get("OperatorName", "")
+        if operator_name == "rename":
+            return operator(*descriptors, factor_name=factor_data["Name"], factor_args=args)
+        else:
+            return operator(*descriptors, factor_args=args)
 
     def _reconstructOperatorFromData(self, factor_data: dict) -> FactorOperator:
         """从因子数据重建其算子"""
@@ -748,8 +754,28 @@ class FactorGraphDB(__QS_Object__):
         ft_stored_args["Name"] = ft_name
         TableClass = ft_stored_args.get("TableType") or fdb._TableInfo.loc[ft_name, "TableClass"]
         try:
-            ft = eval(f"_{TableClass}(fdb=fdb, args=ft_stored_args, table_info=fdb._TableInfo.loc[ft_name], factor_info=fdb._FactorInfo.loc[ft_name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, logger=fdb._QS_Logger)")
-        except NameError:
+            import sys
+            jy_module = sys.modules[fdb.__class__.__module__]
+            TableCls = getattr(jy_module, f"_{TableClass}")
+            # 移除传入 args 中与 pydantic 默认值相同的字段，避免 pydantic 对传入值做类型强制
+            # （默认值不会被 pydantic 验证/强制，但传入值会），导致 model_dump() 差异
+            for base_cls in TableCls.__mro__:
+                arg_cls = getattr(base_cls, '__QS_ArgClass__', None)
+                if arg_cls is None:
+                    continue
+                if not hasattr(arg_cls, 'model_fields'):
+                    continue
+                for field_name, field_info in arg_cls.model_fields.items():
+                    if field_name not in ft_stored_args:
+                        continue
+                    try:
+                        default_val = field_info.get_default(call_default_factory=False)
+                        if ft_stored_args[field_name] == default_val:
+                            del ft_stored_args[field_name]
+                    except Exception:
+                        pass
+            ft = TableCls(fdb=fdb, args=ft_stored_args, logger=fdb._QS_Logger)
+        except (NameError, AttributeError):
             ft = fdb.getTable(ft_name, args=ft_stored_args)
         args = json.loads(factor_data.get("QSArgsJSON", "{}"))
         args = _desanitizeFromJSON(args)
@@ -781,6 +807,10 @@ class FactorGraphDB(__QS_Object__):
             "DataType": op_data.get("DataType", "double"),
             "Arity": op_data.get("Arity"),
         }
+        if op_data.get("DTMode") is not None:
+            args["DTMode"] = op_data["DTMode"]
+        if op_data.get("IDMode") is not None:
+            args["IDMode"] = op_data["IDMode"]
         if look_back:
             args["LookBack"] = look_back
         # 实例化算子
