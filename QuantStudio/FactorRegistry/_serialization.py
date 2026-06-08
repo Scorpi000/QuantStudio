@@ -16,7 +16,7 @@ def _sanitizeForJSON(value: Any) -> Any:
     Returns:
         JSON 可序列化的值
     """
-    if value is None or isinstance(value, (int, float, str, bool)):
+    if value is None:
         return value
     if isinstance(value, np.integer):
         return int(value)
@@ -27,8 +27,10 @@ def _sanitizeForJSON(value: Any) -> Any:
         if np.isinf(v):
             return {"__inf__": True, "sign": 1 if v > 0 else -1}
         return v
-    if isinstance(value, (np.bool_,)):
+    if isinstance(value, np.bool_):
         return bool(value)
+    if isinstance(value, (int, float, str, bool)):
+        return value
     if isinstance(value, np.ndarray):
         return {"__numpy__": True, "data": value.tolist(), "dtype": str(value.dtype)}
     if isinstance(value, (dt.datetime, dt.date)):

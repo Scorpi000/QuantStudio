@@ -224,6 +224,7 @@ class FactorGraphDB(__QS_Object__):
             "QSID": ft.QSID,
             "FactorNamesJSON": json.dumps(ft.FactorNames, ensure_ascii=False),
             "MetaDataJSON": json.dumps(_sanitizeForJSON(ft.getMetaData(key=None).to_dict()) if hasattr(ft.getMetaData(key=None), 'to_dict') else {}, ensure_ascii=False),
+            "QSArgsJSON": json.dumps(_sanitizeForJSON(ft._QSArgs.model_dump()), ensure_ascii=False),
             "UpdatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
         }
         self._runCypher(
@@ -740,8 +741,16 @@ class FactorGraphDB(__QS_Object__):
             "MATCH (t:FactorTable {QSID: $qsid}) RETURN t",
             {"qsid": ft_qsid}
         )
-        ft_name = ft_data[0]["t"]["Name"] if ft_data else factor_data["FactorTableName"]
-        ft = fdb.getTable(ft_name)
+        ft_node = ft_data[0]["t"] if ft_data else {}
+        ft_name = ft_node.get("Name", factor_data["FactorTableName"])
+        # 使用持久化的 QSArgsJSON 重建 FactorTable，绕过 getTable 的 FTArgs/DefaultArgs 合并
+        ft_stored_args = _desanitizeFromJSON(json.loads(ft_node.get("QSArgsJSON", "{}")))
+        ft_stored_args["Name"] = ft_name
+        TableClass = ft_stored_args.get("TableType") or fdb._TableInfo.loc[ft_name, "TableClass"]
+        try:
+            ft = eval(f"_{TableClass}(fdb=fdb, args=ft_stored_args, table_info=fdb._TableInfo.loc[ft_name], factor_info=fdb._FactorInfo.loc[ft_name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, logger=fdb._QS_Logger)")
+        except NameError:
+            ft = fdb.getTable(ft_name, args=ft_stored_args)
         args = json.loads(factor_data.get("QSArgsJSON", "{}"))
         args = _desanitizeFromJSON(args)
         args["Name"] = factor_data["FactorTableName"]
