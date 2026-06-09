@@ -13,6 +13,7 @@ from collections import defaultdict
 
 import numpy as np
 import pandas as pd
+import requests
 from pydantic import Field
 
 try:
@@ -74,6 +75,10 @@ class FactorGraphDB(__QS_Object__):
         Neo4jUser: str = Field(default="neo4j", frozen=True, exclude=True, title="Neo4j 用户名")
         Neo4jPwd: str = Field(default="", frozen=True, exclude=True, repr=False, title="Neo4j 密码")
         Neo4jDB: str = Field(default="neo4j", frozen=True, exclude=True, title="Neo4j 数据库名")
+        OllamaBaseURL: str = Field(default="http://127.0.0.1:11434", frozen=True, exclude=True, title="Ollama 服务地址")
+        OllamaAPIKey: str = Field(default="ollama", frozen=True, exclude=True, repr=False, title="Ollama API Key")
+        EmbeddingModel: str = Field(default="", frozen=True, exclude=True, title="嵌入模型名，空字符串表示禁用")
+        EmbeddingDim: int = Field(default=0, frozen=True, exclude=True, title="预期嵌入维度，0=自动检测")
         DataDir: Optional[str] = Field(default=None, frozen=False, exclude=True, title="数据因子内联数据存储目录")
 
     def __init__(self, args: dict = {}, config_file: Optional[str] = None, **kwargs):
@@ -118,6 +123,29 @@ class FactorGraphDB(__QS_Object__):
         with self._Driver.session() as session:
             for stmt in _SCHEMA_CONSTRAINTS + _SCHEMA_INDEXES:
                 session.run(stmt)
+        self._initVectorIndex()
+
+    def _initVectorIndex(self):
+        """初始化 Neo4j 向量索引（仅当 EmbeddingModel 已配置时）"""
+        if not self._QSArgs.EmbeddingModel or self._QSArgs.EmbeddingDim <= 0:
+            return
+        try:
+            self._runCypher(
+                """
+                CREATE VECTOR INDEX factor_embedding IF NOT EXISTS
+                FOR (f:Factor) ON (f.Embedding)
+                OPTIONS {
+                  indexConfig: {
+                    `vector.dimensions`: $dim,
+                    `vector.similarity_function`: 'cosine'
+                  }
+                }
+                """,
+                {"dim": self._QSArgs.EmbeddingDim}
+            )
+            self._QS_Logger.info(f"已创建向量索引 factor_embedding (dim={self._QSArgs.EmbeddingDim})")
+        except Exception as e:
+            self._QS_Logger.warning(f"创建向量索引失败（可能 Neo4j 版本不支持）: {e}")
 
     def _runCypher(self, query: str, parameters: Optional[Dict] = None) -> list:
         """执行 Cypher 查询并返回结果
@@ -132,6 +160,53 @@ class FactorGraphDB(__QS_Object__):
         with self._Driver.session() as session:
             result = session.run(query, parameters or {})
             return [record.data() for record in result]
+
+    # endregion
+
+    # region 嵌入（Embedding）
+
+    def _getFactorEmbeddingText(self, factor: Factor) -> Optional[str]:
+        """聚合因子描述文本用于生成嵌入向量
+
+        按优先级合并以下来源:
+        1. factor._QSArgs.Name — 因子名称
+        2. factor.getMetaData(key="Description") — 因子 Meta 中的 Description
+        3. DerivativeFactor 的 Operator Description
+        """
+        parts = [factor._QSArgs.Name]
+        desc = factor.getMetaData(key="Description")
+        if desc and isinstance(desc, str) and desc.strip():
+            parts.append(desc.strip())
+        if isinstance(factor, DerivativeFactor) and factor.Operator:
+            op_desc = factor.Operator._QSArgs.Description
+            if op_desc and op_desc.strip():
+                parts.append(op_desc.strip())
+        merged = " ".join(parts).strip()
+        return merged if merged else None
+
+    def _generateEmbedding(self, text: str) -> Optional[List[float]]:
+        """调用 Ollama API 生成文本嵌入向量
+
+        Returns:
+            嵌入向量列表，失败或未启用时返回 None
+        """
+        if not self._QSArgs.EmbeddingModel:
+            return None
+        try:
+            url = f"{self._QSArgs.OllamaBaseURL}/api/embeddings"
+            payload = {"model": self._QSArgs.EmbeddingModel, "prompt": text}
+            headers = {"Authorization": f"Bearer {self._QSArgs.OllamaAPIKey}"}
+            resp = requests.post(url, json=payload, headers=headers, timeout=30)
+            resp.raise_for_status()
+            embedding = resp.json()["embedding"]
+            if (expected := self._QSArgs.EmbeddingDim) > 0 and len(embedding) != expected:
+                self._QS_Logger.warning(
+                    f"嵌入维度不匹配：预期 {expected}，实际 {len(embedding)}"
+                )
+            return embedding
+        except Exception as e:
+            self._QS_Logger.warning(f"生成嵌入失败: {e}")
+            return None
 
     # endregion
 
@@ -340,6 +415,14 @@ class FactorGraphDB(__QS_Object__):
     def _storeFactorNode(self, factor: Factor, now: str):
         """存储单个因子节点及其关系"""
         props = self._serializeFactor(factor)
+        # 生成并存储因子描述嵌入向量
+        text = self._getFactorEmbeddingText(factor)
+        if text:
+            embedding = self._generateEmbedding(text)
+            if embedding is not None:
+                props["Embedding"] = embedding
+                props["EmbeddingModel"] = self._QSArgs.EmbeddingModel
+                props["EmbeddingDim"] = len(embedding)
         # 存储因子节点
         self._runCypher(
             """
@@ -512,6 +595,44 @@ class FactorGraphDB(__QS_Object__):
             """
         results = self._runCypher(query, params)
         return [r["f"] for r in results]
+
+    def searchFactorsByDescription(self, query_text: str, limit: int = 20,
+                                    min_score: Optional[float] = None) -> List[Dict]:
+        """基于描述文本的向量语义检索
+
+        使用 Ollama 生成查询文本的嵌入向量，通过 Neo4j 向量索引做余弦相似度搜索。
+
+        Args:
+            query_text: 自然语言查询文本
+            limit: 返回数量上限
+            min_score: 最低相似度阈值 (0~1)，None 表示不过滤
+
+        Returns:
+            因子属性字典列表，每项包含 Similarity 分数
+        """
+        if not self._QSArgs.EmbeddingModel:
+            self._QS_Logger.warning("向量检索未启用：EmbeddingModel 为空")
+            return []
+        query_embedding = self._generateEmbedding(query_text)
+        if query_embedding is None:
+            return []
+        try:
+            results = self._runCypher(
+                """
+                CALL db.index.vector.queryNodes('factor_embedding', $limit, $embedding)
+                YIELD node AS f, score
+                RETURN f {.Name, .QSID, .FactorClass, .OperatorType,
+                          .OperatorName, .DataType}, score
+                ORDER BY score DESC
+                """,
+                {"limit": limit, "embedding": query_embedding}
+            )
+        except Exception as e:
+            self._QS_Logger.warning(f"向量检索失败（向量索引可能不存在）: {e}")
+            return []
+        if min_score is not None:
+            results = [r for r in results if r["score"] >= min_score]
+        return [{"Similarity": round(r["score"], 6), **r["f"]} for r in results]
 
     def getDependencyGraph(self, qsid: str, direction: str = "both") -> Dict:
         """获取因子的依赖子图
@@ -957,6 +1078,97 @@ class FactorGraphDB(__QS_Object__):
             results = self._runCypher(f"MATCH ()-[r:{rel}]->() RETURN count(r) AS cnt")
             stats[rel] = results[0]["cnt"] if results else 0
         return stats
+
+    def toMermaid(self, qsid: str | list[str], direction: str = "down") -> str:
+        """生成因子依赖图的 Mermaid flowchart 源码。
+
+        Args:
+            qsid: 目标因子 QSID，或 QSID 列表（多个因子合并显示）
+            direction: "down"（该因子依赖谁）、"up"（谁依赖该因子）或 "both"（双向）
+
+        Returns:
+            可直接渲染的 Mermaid flowchart 字符串
+        """
+        qsids = [qsid] if isinstance(qsid, str) else list(qsid)
+        if not qsids:
+            return "flowchart LR"
+
+        # 合并多个因子的依赖图
+        all_nodes: dict[str, dict] = {}
+        all_edges: list[dict] = []
+        root_ids = set(qsids)
+
+        for q in qsids:
+            graph = self.getDependencyGraph(q, direction=direction)
+            for n in (graph.get("nodes", []) or []):
+                nid = n.get("QSID", "")
+                if nid:
+                    all_nodes[nid] = n
+            for e in (graph.get("edges", []) or []):
+                key = (e.get("source"), e.get("target"))
+                if key not in {(x.get("source"), x.get("target")) for x in all_edges}:
+                    all_edges.append(e)
+
+        if not all_nodes:
+            return "flowchart LR"
+
+        # QSID → 短 ID 映射
+        qsid_to_short = {nid: nid[:8] for nid in all_nodes}
+        lines = ["flowchart LR"]
+
+        # 检测 FactorTableFactor 重名节点，批量查询所属因子表名称
+        ftf_nodes = [(nid, n) for nid, n in all_nodes.items() if n.get("FactorClass") == "FactorTableFactor"]
+        ft_name_map: dict[str, str] = {}  # FactorTableQSID → FactorTable Name
+        if ftf_nodes:
+            ft_qsids = list({n["FactorTableQSID"] for _, n in ftf_nodes if n.get("FactorTableQSID")})
+            if ft_qsids:
+                try:
+                    ft_results = self._runCypher(
+                        "MATCH (t:FactorTable) WHERE t.QSID IN $qsids RETURN t.QSID, t.Name",
+                        {"qsids": ft_qsids}
+                    )
+                    ft_name_map = {r["t.QSID"]: r["t.Name"] for r in ft_results}
+                except Exception:
+                    pass
+
+        # 仅对 FactorTableFactor 重名节点附加所属表名
+        ftf_name_counts: dict[str, int] = {}
+        for _, n in ftf_nodes:
+            ftf_name_counts[n.get("Name", "?")] = ftf_name_counts.get(n.get("Name", "?"), 0) + 1
+
+        for nid, n in all_nodes.items():
+            sid = qsid_to_short[nid]
+            raw_name = n.get("Name", "?")
+            label = self._escapeMermaid(raw_name)
+            fclass = n.get("FactorClass", "")
+
+            if fclass == "FactorTableFactor" and ftf_name_counts.get(raw_name, 0) > 1:
+                ft_name = ft_name_map.get(n.get("FactorTableQSID", ""), "")
+                if ft_name:
+                    label = f"{label} ({ft_name})"
+
+            node_def = f"    {sid}(\"{label}\")"
+            lines.append(node_def)
+            # 颜色区分类型
+            if nid in root_ids:
+                lines.append(f"    style {sid} fill:#f9f,stroke:#333,stroke-width:2px")
+            elif fclass == "DerivativeFactor":
+                lines.append(f"    style {sid} fill:#e1f5fe,stroke:#0288d1")
+            elif fclass == "FactorTableFactor":
+                lines.append(f"    style {sid} fill:#fff3e0,stroke:#f57c00")
+
+        for e in all_edges:
+            src = qsid_to_short.get(e.get("source", ""))
+            tgt = qsid_to_short.get(e.get("target", ""))
+            if src and tgt:
+                lines.append(f"    {src} --> {tgt}")
+
+        return "\n".join(lines)
+
+    @staticmethod
+    def _escapeMermaid(name: str) -> str:
+        """转义 Mermaid 标签中的特殊字符"""
+        return name.replace('"', '\\"')
 
     # endregion
 

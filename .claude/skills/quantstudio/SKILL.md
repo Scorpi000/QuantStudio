@@ -415,3 +415,104 @@ if __name__ == "__main__":
     data = factors[-1].readData(ids=IDs[:5], dts=DTs[-5:])
     print(data)
 ```
+
+### 跨 ID 空间聚合因子模式
+
+当衍生因子的输出 ID 空间与描述子（descriptor）不同时（例如从股票级因子聚合到概念板块/行业/指数级），使用 `DescriptorSection` 实现 ID 空间切换。
+
+**核心机制 `DescriptorSection`**: `SectionOperator` 的参数，类型 `List[Optional[List[str]]]`，按描述子顺序指定各描述子使用的 ID：
+- `None` → 沿用父因子的 SectionIDs
+- `[ids]` → 使用指定 ID 列表
+
+框架在 `forward_compute` 时自动为各描述子传入对应 ID，描述子数据 shape = `(len(idt), len(DescriptorSection[i]))`。
+
+**模板代码**（算子定义在 `defFactor` 外部）：
+
+```python
+from typing import List
+import numpy as np
+from QuantStudio.Factor.Factor import Factor
+from QuantStudio.Factor.JYDB import JYDB
+from QuantStudio.Factor.BasicOperator import rename
+from QuantStudio.Factor.FactorOperation import makeFactorOperator
+
+# ---- 自定义聚合算子 (定义在 defFactor 外部) ----
+def _aggregateByGroup(f, idt, iid, x, args):
+    """
+    f: 因子对象
+    idt: 输出时点序列 (len N)
+    iid: 输出截面 ID (如概念板块代码, len M)
+    x[0]: 成员值因子, shape=(N, len(DescriptorSection[0]))
+    x[1]: 分组映射因子, shape=(N, len(DescriptorSection[1]))
+    """
+    member_values = x[0]
+    group_mapping = x[1]
+    n_dates, n_groups = len(idt), len(iid)
+    group_ints = np.array([int(g) for g in iid])
+
+    result = np.full((n_dates, n_groups), np.nan)
+    for ti in range(n_dates):
+        group_vals = {}
+        for si in range(member_values.shape[1]):
+            val = group_mapping[ti, si]
+            if not isinstance(val, (list, tuple, np.ndarray)):
+                continue
+            member_val = member_values[ti, si]
+            if np.isnan(member_val):
+                continue
+            for g in val:
+                group_vals.setdefault(g, []).append(member_val)
+
+        for gi, g_int in enumerate(group_ints):
+            if g_int in group_vals:
+                result[ti, gi] = np.mean(group_vals[g_int])
+    return result
+
+
+def defFactor() -> List[Factor]:
+    SDB = JYDB().connect()
+
+    # 基础因子: 股票日收益率
+    FT_Quote = SDB.getTable("日行情表", args={"LookBack": 0})
+    StockReturn = rename(
+        FT_Quote.getFactor("收盘价(元)") / FT_Quote.getFactor("昨收盘(元)") - 1,
+        factor_name="stock_daily_return",
+    )
+
+    # 基础因子: 分组映射 (M 个成员, 每个值是一个 group id 列表)
+    FT_Group = SDB.getTable("<映射表名>", args={
+        "MultiMapping": True, "EndDTField": "<结束日期字段>", "EndDTIncluded": False,
+    })
+    GroupMembership = rename(FT_Group.getFactor("<分组字段>"), factor_name="group_membership")
+
+    all_stocks = SDB.getStockID()
+
+    # 创建算子: DescriptorSection 指定描述子使用全市场股票作为 ID
+    GroupAggOperator = makeFactorOperator(
+        _aggregateByGroup,
+        operator_type="Section",
+        args={
+            "Arity": 2,
+            "DTMode": "多时点",
+            "InputFormat": "numpy",
+            "DescriptorSection": [all_stocks, all_stocks],
+        },
+    )
+
+    # 应用算子: 衍生因子的输出 ID 由调用方 readData(ids=...) 动态传入
+    GroupFactor = GroupAggOperator(
+        StockReturn, GroupMembership,
+        factor_args={"Name": "group_daily_return"},
+    )
+
+    return [StockReturn, GroupMembership, GroupFactor]
+```
+
+**`makeFactorOperator` vs `@FactorOperatorized`**: 当 `DescriptorSection` 的值依赖运行时数据（如 `SDB.getStockID()`），必须用 `makeFactorOperator`（运行时调用）。`@FactorOperatorized` 在 import 时执行，无法获取运行时值。
+
+**关键规则**:
+- **不要**在 `factor_args` 中设置 `SectionIDs` — 衍生因子的输出 ID 应由调用方 `readData(ids=...)` 动态传入
+- `DescriptorSection` 长度必须等于 `Arity`（描述子数量）
+- 算子内部 `iid` = 输出 ID（父因子传入），`x[i]` 的列 = `DescriptorSection[i]` 指定的描述子 ID
+- 两个 ID 空间通过映射因子的查找逻辑关联（如概念板块成分映射表）
+- 每次 `readData` 会重新读取全市场描述子数据，生产环境建议配合 `FeatherFactorCache` 缓存

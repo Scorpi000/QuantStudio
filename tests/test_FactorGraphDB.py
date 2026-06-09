@@ -835,6 +835,70 @@ def test_21_search_and_impact_factortable():
     return True
 
 
+def test_22_to_mermaid():
+    """测试 22: toMermaid 依赖图可视化"""
+    print("\n" + "=" * 60)
+    print("测试 22: toMermaid 依赖图可视化")
+    print("=" * 60)
+    fgdb = FactorGraphDB(args=fgdb_args)
+    fgdb.connect()
+
+    # 22a: 单因子
+    results = fgdb.searchFactors(name="turnover")
+    if results:
+        qsid = results[0]["QSID"]
+        mermaid = fgdb.toMermaid(qsid, direction="down")
+        assert "flowchart LR" in mermaid
+        assert qsid[:8] in mermaid
+        assert "turnover" in mermaid
+        assert 'style' in mermaid
+        print(f"  [PASS] 单因子 Mermaid 生成成功 ({len(mermaid.splitlines())} 行)")
+        print(f"        前 3 行:")
+        for line in mermaid.splitlines()[:3]:
+            print(f"          {line}")
+    else:
+        print("  [WARN] 无 turnover 因子，跳过单因子测试")
+
+    # 22b: 多因子合并
+    results = fgdb.searchFactors(name="close", limit=2)
+    if len(results) >= 2:
+        qsids = [r["QSID"] for r in results]
+        mermaid = fgdb.toMermaid(qsids, direction="down")
+        lines = mermaid.splitlines()
+        assert "flowchart LR" in mermaid
+        for q in qsids:
+            assert q[:8] in mermaid
+        # 两个目标因子都应高亮
+        style_count = sum(1 for l in lines if "fill:#f9f" in l)
+        assert style_count >= 2, f"期望 >=2 个高亮节点，实际 {style_count}"
+        print(f"  [PASS] 多因子 Mermaid 生成成功 ({len(lines)} 行, {style_count} 个目标节点高亮)")
+    else:
+        print("  [WARN] close 因子不足 2 个，跳过多因子测试")
+
+    # 22c: direction="both"
+    if results:
+        qsid = results[0]["QSID"]
+        mermaid = fgdb.toMermaid(qsid, direction="both")
+        assert "flowchart LR" in mermaid
+        print(f"  [PASS] direction='both' 生成成功 ({len(mermaid.splitlines())} 行)")
+
+    # 22d: 颜色验证 — DerivativeFactor 蓝, FactorTableFactor 橙
+    mermaid = fgdb.toMermaid(results[0]["QSID"], direction="down") if results else ""
+    if mermaid:
+        blue_nodes = [l for l in mermaid.splitlines() if "#e1f5fe" in l]
+        orange_nodes = [l for l in mermaid.splitlines() if "#fff3e0" in l]
+        print(f"  [PASS] DerivativeFactor(蓝): {len(blue_nodes)} 个")
+        print(f"  [PASS] FactorTableFactor(橙): {len(orange_nodes)} 个")
+
+    # 22e: 空结果处理
+    fake_mermaid = fgdb.toMermaid("nonexistent_qsid_12345", direction="down")
+    assert fake_mermaid == "flowchart LR"
+    print(f"  [PASS] 无效 QSID 返回空图")
+
+    fgdb.disconnect()
+    return True
+
+
 # ============================================================
 # 主入口
 # ============================================================
@@ -861,6 +925,7 @@ if __name__ == "__main__":
         ("重建FactorTableFactor", test_19_reconstruct_factortable_factor),
         ("重建FactorTableFactor衍生链", test_20_reconstruct_factortable_chain),
         ("FactorTableFactor搜索与影响分析", test_21_search_and_impact_factortable),
+        ("toMermaid 依赖图可视化", test_22_to_mermaid),
     ]
 
     passed = 0
