@@ -20,7 +20,8 @@ QuantStudio/FactorRegistry/
 ├── __init__.py              # 包初始化，模块级日志
 ├── api.py                   # 对外 API 导出
 ├── FactorGraphDB.py         # Neo4j 图数据库实现（主文件）
-└── _serialization.py        # 序列化/反序列化辅助函数
+├── _serialization.py        # 序列化/反序列化辅助函数
+└── mcp_server.py            # MCP Server（3 个工具，stdio 模式）
 ```
 
 ### `api.py` 导出内容
@@ -63,6 +64,9 @@ from .FactorRegistry.api import *
 | `DataRef` | string | DataFactor 的数据引用（JSON） |
 | `FactorTableQSID` | string | 所属因子表 QSID（仅 FactorTableFactor） |
 | `FactorTableName` | string | 在因子表中的因子名称（仅 FactorTableFactor） |
+| `Embedding` | List[float] | 因子描述文本的嵌入向量（由 Ollama 生成） |
+| `EmbeddingModel` | string | 生成 Embedding 所使用的模型名称 |
+| `EmbeddingDim` | int | 嵌入向量的维度 |
 | `CreatedAt` | datetime | 创建时间 |
 | `UpdatedAt` | datetime | 最后更新时间 |
 
@@ -167,6 +171,11 @@ CREATE INDEX factor_op_type IF NOT EXISTS FOR (f:Factor) ON (f.OperatorType);
 CREATE INDEX operator_name IF NOT EXISTS FOR (o:FactorOperator) ON (o.Name);
 CREATE INDEX operator_type IF NOT EXISTS FOR (o:FactorOperator) ON (o.OperatorType);
 CREATE INDEX fdb_type IF NOT EXISTS FOR (d:FactorDB) ON (d.DBType);
+
+-- 向量索引
+CREATE VECTOR INDEX factor_embedding IF NOT EXISTS
+    FOR (f:Factor) ON (f.Embedding)
+    OPTIONS {indexConfig: {`vector.dimensions`: 1024, `vector.similarity_function`: 'cosine'}};
 ```
 
 ### 3.4 图结构示例
@@ -219,6 +228,10 @@ class FactorGraphDB(__QS_Object__):
         Neo4jUser: str = Field(default="neo4j", frozen=True, exclude=True, title="Neo4j 用户名")
         Neo4jPwd: str = Field(default="", frozen=True, exclude=True, repr=False, title="Neo4j 密码")
         Neo4jDB: str = Field(default="neo4j", frozen=True, exclude=True, title="Neo4j 数据库名")
+        OllamaBaseURL: str = Field(default="http://127.0.0.1:11434", frozen=True, exclude=True, title="Ollama 服务地址")
+        OllamaAPIKey: str = Field(default="ollama", frozen=True, exclude=True, repr=False, title="Ollama API Key")
+        EmbeddingModel: str = Field(default="", frozen=True, exclude=True, title="嵌入模型名，空字符串表示禁用")
+        EmbeddingDim: int = Field(default=0, frozen=True, exclude=True, title="预期嵌入维度，0=自动检测")
         DataDir: Optional[str] = Field(default=None, frozen=True, exclude=True, title="数据因子内联数据存储目录")
 
     def __init__(self, args={}, config_file=None, **kwargs):
@@ -235,6 +248,7 @@ class FactorGraphDB(__QS_Object__):
 - 遵循框架的配置优先级：显式参数 > JSON 配置文件 > 默认值
 - `DataDir` 用于 DataFactor 的内联数据（DataFrame/Series）持久化
 - `_FactorDBRegistry` 维护已注册的 FactorDB 实例，用于重建时查找数据源
+- `connect()` 方法会调用 `_initSchema()` → `_initVectorIndex()`，自动创建约束、索引和向量索引
 
 ### 4.2 生命周期
 
@@ -342,6 +356,28 @@ fgdb.searchFactors(name="momentum")
 fgdb.searchFactors(tag="alpha")
 ```
 
+#### `searchFactorsByDescription(query_text: str, limit: int = 20, min_score: Optional[float] = None) -> List[Dict]`
+
+基于描述文本的向量语义检索。使用 Ollama 将查询文本转为嵌入向量，通过 Neo4j 向量索引做余弦相似度搜索。
+
+**参数：**
+- `query_text`: 自然语言查询文本（如 "动量因子"、"成交量相关指标"）
+- `limit`: 返回数量上限
+- `min_score`: 最低相似度阈值 (0~1)，None 表示不过滤
+
+**返回：** 因子属性字典列表，每项包含 `Similarity` 字段（0~1，越大越相似）
+
+**前置条件：** `EmbeddingModel` 必须已配置（非空字符串）
+
+**原理：** 调用 Ollama 生成查询文本嵌入 → `db.index.vector.queryNodes('factor_embedding', ...)` 做 ANN 检索 → 按余弦相似度降序返回
+
+**示例：**
+```python
+results = fgdb.searchFactorsByDescription("动量因子", limit=10, min_score=0.5)
+for r in results:
+    print(f"[{r['Similarity']:.4f}] {r['Name']}")
+```
+
 #### `getDependencyGraph(qsid: str, direction: str = "both") -> Dict`
 
 获取因子的依赖子图。
@@ -441,11 +477,106 @@ fgdb.searchFactors(tag="alpha")
 
 返回各类节点和关系的计数统计。
 
+#### `toMermaid(qsid: str | list[str], direction: str = "down") -> str`
+
+生成因子依赖图的 **Mermaid flowchart** 源码，可直接嵌入 Markdown 渲染。
+
+**参数：**
+- `qsid`: 单个因子 QSID，或 QSID 列表（多个因子的依赖图合并显示）
+- `direction`: `"down"`（该因子依赖谁）、`"up"`（谁依赖该因子）或 `"both"`（双向）
+
+**返回：** Mermaid `flowchart LR` 源码字符串
+
+**视觉设计：**
+
+| 节点类型 | 形状 | 颜色 |
+|---------|------|------|
+| 目标因子（root） | 圆角矩形 | 粉色高亮 `#f9f` |
+| DerivativeFactor | 圆角矩形 | 浅蓝 `#e1f5fe` |
+| FactorTableFactor | 圆角矩形 | 浅橙 `#fff3e0` |
+
+**重名区分：** 当多个 FactorTableFactor 同名时，自动附加所属因子表名称（如 `换手率(%) (股票行情表现)`、`换手率(%) (科创板行情表现)`），通过批量查询 FactorTable 节点实现。
+
+**示例输出：**
+```mermaid
+flowchart LR
+    6e36e315("turnover")
+    style 6e36e315 fill:#f9f,stroke:#333,stroke-width:2px
+    84b907cd("换手率(%) (股票行情表现)")
+    style 84b907cd fill:#fff3e0,stroke:#f57c00
+    f38ccaf7("换手率(%) (科创板行情表现)")
+    style f38ccaf7 fill:#fff3e0,stroke:#f57c00
+    a89cc8f5("notnull")
+    style a89cc8f5 fill:#e1f5fe,stroke:#0288d1
+    a89cc8f5 --> 84b907cd
+    6e36e315 --> 84b907cd
+    6e36e315 --> f38ccaf7
+    6e36e315 --> a89cc8f5
+```
+
 ### 5.6 工具方法
 
 #### `executeCypher(query: str, parameters: Optional[Dict] = None) -> List[Dict]`
 
 原始 Cypher 查询接口，用于高级查询场景。
+
+### 5.7 因子向量化检索
+
+#### 概述
+
+FactorGraphDB 支持对因子描述文本生成嵌入向量并存储到 Neo4j 中，利用 Neo4j 原生向量索引实现基于语义的因子检索。当配置了 `EmbeddingModel` 后，`storeFactor` 会在存储因子时自动生成嵌入向量。
+
+**架构流程：**
+
+```
+因子描述文本（Name + Meta.Description + Operator.Description）
+    → Ollama /api/embeddings (bge-m3 / qwen3-embedding)
+    → 1024 / 4096 维向量
+    → 存储到 Neo4j Factor 节点 Embedding 属性
+    → 在 Embedding 属性上创建 VECTOR INDEX (cosine)
+    → searchFactorsByDescription 调用 db.index.vector.queryNodes
+```
+
+#### 配置
+
+通过配置文件或构造函数参数启用：
+
+```json
+{
+    "EmbeddingModel": "bge-m3",
+    "EmbeddingDim": 1024,
+    "OllamaBaseURL": "http://127.0.0.1:11434",
+    "OllamaAPIKey": "ollama"
+}
+```
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `EmbeddingModel` | `""` | 嵌入模型名，空字符串表示禁用向量检索 |
+| `EmbeddingDim` | `0` | 预期嵌入维度，0 = 自动检测 |
+| `OllamaBaseURL` | `"http://127.0.0.1:11434"` | Ollama 服务地址 |
+| `OllamaAPIKey` | `"ollama"` | Ollama API Key |
+
+#### 描述文本组装规则
+
+`_getFactorEmbeddingText` 按以下优先级聚合因子描述文本：
+
+1. `factor._QSArgs.Name` — 因子名称（必有）
+2. `factor.getMetaData(key="Description")` — 因子 Meta 中的 Description（若存在）
+3. `factor.Operator._QSArgs.Description` — 算子描述（仅 DerivativeFactor，若存在）
+
+三个来源用空格拼接去重，作为嵌入生成的输入文本。
+
+#### 向量索引管理
+
+连接时自动调用 `_initVectorIndex()`，通过 `CREATE VECTOR INDEX IF NOT EXISTS` 创建索引。若 Neo4j 版本不支持向量索引，catch 异常并 log warning，不影响其他功能。
+
+#### 可用模型
+
+| 模型 | 维度 | 适用场景 |
+|------|------|----------|
+| `bge-m3` | 1024 | 通用中文语义检索，速度快 |
+| `qwen3-embedding:8b` | 4096 | 更高精度，适合复杂语义理解 |
 
 ---
 
@@ -528,6 +659,15 @@ fgdb.searchFactors(tag="alpha")
     "FactorTableName": factor._QSArgs.Name
 }
 ```
+
+**嵌入向量生成（在 `_storeFactorNode` 中）：**
+
+在因子序列化后、Cypher MERGE 之前，`_storeFactorNode` 会：
+1. 调用 `_getFactorEmbeddingText` 组装描述文本（Name + Meta.Description + Operator.Description）
+2. 调用 `_generateEmbedding` 调用 Ollama API 生成嵌入向量
+3. 将 `Embedding`、`EmbeddingModel`、`EmbeddingDim` 加入 props 字典
+
+若 `EmbeddingModel` 为空或 Ollama 不可达，嵌入生成被静默跳过，因子仍正常存储。
 
 ### 6.3 算子序列化
 
@@ -692,6 +832,18 @@ WHERE NOT (f)<-[:DEPENDS_ON]-()
 RETURN f
 ```
 
+### 7.5 向量检索查询
+
+**基于向量索引的近似最近邻搜索：**
+```cypher
+CALL db.index.vector.queryNodes('factor_embedding', $limit, $queryEmbedding)
+YIELD node AS f, score
+RETURN f {.Name, .QSID, .FactorClass, .OperatorType, .OperatorName, .DataType}, score
+ORDER BY score DESC
+```
+
+余弦相似度得分范围 `[0, 1]`，1 表示最相似。Neo4j 5.x 原生支持，无需 APOC 插件。
+
 ---
 
 ## 8. 使用示例
@@ -745,7 +897,32 @@ impacted = fgdb.impactAnalysis(close.QSID)
 # 返回所有依赖 Close 价格的因子，按深度排序
 ```
 
-### 8.3 自定义算子
+### 8.3 向量语义检索
+
+```python
+from QuantStudio.FactorRegistry.api import FactorGraphDB
+
+# 连接时配置嵌入模型
+fgdb = FactorGraphDB(args={
+    "Neo4jURI": "bolt://localhost:7687",
+    "EmbeddingModel": "bge-m3",
+    "EmbeddingDim": 1024,
+})
+fgdb.connect()
+
+# 存储因子时自动生成嵌入向量
+fgdb.storeFactor(lag5, tags=["momentum", "price"])
+
+# 自然语言搜索
+results = fgdb.searchFactorsByDescription("动量因子", limit=10)
+for r in results:
+    print(f"[{r['Similarity']:.4f}] {r['Name']} ({r['FactorClass']})")
+
+# 带阈值过滤
+results = fgdb.searchFactorsByDescription("财务质量", min_score=0.6)
+```
+
+### 8.4 自定义算子
 
 ```python
 from QuantStudio.Factor.api import makeFactorOperator
@@ -771,6 +948,8 @@ reconstructed = fgdb.reconstructFactor(norm_factor.QSID)
 |---|------|---------|
 | `neo4j` | Neo4j Python 驱动 | `pip install neo4j`（加入 `requirements_optional.txt`） |
 | `dill`（可选） | 自定义算子序列化 | 已在框架可选依赖中 |
+| `requests` | Ollama HTTP API 调用 | Python 标准依赖，框架已包含 |
+| Ollama (外部服务) | 嵌入向量生成 | 需独立安装运行，模型: `bge-m3` 或 `qwen3-embedding:8b` |
 
 ### 9.2 与现有代码的集成
 
@@ -791,7 +970,11 @@ reconstructed = fgdb.reconstructFactor(norm_factor.QSID)
     "Neo4jUser": "neo4j",
     "Neo4jPwd": "password",
     "Neo4jDB": "neo4j",
-    "DataDir": "/path/to/data"
+    "DataDir": "/path/to/data",
+    "EmbeddingModel": "bge-m3",
+    "EmbeddingDim": 1024,
+    "OllamaBaseURL": "http://127.0.0.1:11434",
+    "OllamaAPIKey": "ollama"
 }
 ```
 
@@ -979,7 +1162,141 @@ ft = TableCls(fdb=fdb, args=ft_stored_args,
 
 ---
 
-## 12. 未来扩展方向
+## 12. MCP Server
+
+### 12.1 概述
+
+基于 FastMCP 3.x 构建的本地 stdio MCP Server，将 FactorGraphDB 的核心能力暴露给 Claude Code 等 MCP 客户端。部署为本地 stdio 模式，因为需要访问本地 Neo4j、Ollama 和文件系统。
+
+**文件位置**：`QuantStudio/FactorRegistry/mcp_server.py`
+
+### 12.2 架构
+
+```
+Claude Code (.mcp.json)           MCP Server (stdio)           FactorGraphDB
+      │                              │                            │
+      ├── search_factors ────────────┼── searchFactorsByDescription ──┤
+      │                              │   (fallback: searchFactors)    │
+      ├── get_factor_info ───────────┼── getFactorByQSID ────────────┤
+      │                              │   getDescriptors               │
+      │                              │   getDependents                │
+      │                              │   getDependencyGraph           │
+      ├── get_factor_code ───────────┼── getFactorByQSID ────────────┤
+      │                              │   标签推断 → importlib → 文件  │
+```
+
+FGDB 为懒加载单例，首次调用时初始化 Neo4j 和 Ollama 连接。
+
+### 12.3 配置加载
+
+| 配置项 | 来源 | 说明 |
+|--------|------|------|
+| Neo4j 连接 | `~/QuantStudioConfig/Neo4jDBConfig.json` | IPAddr, Port, User, Pwd, DBName |
+| Ollama 地址 | 环境变量 `OLLAMA_BASE_URL` | 默认 `http://127.0.0.1:11434` |
+| Ollama API Key | 环境变量 `OLLAMA_API_KEY` | 默认 `ollama` |
+| 嵌入模型 | 环境变量 `FACTOR_EMBEDDING_MODEL` | 默认 `bge-m3`(1024维)；也支持 `qwen3-embedding:8b`(4096维) |
+
+### 12.4 工具
+
+#### 12.4.1 `search_factors(query, limit=20)`
+
+搜索因子列表。优先使用语义向量检索（若启用），回退到关键词匹配，结果合并时向量结果优先。
+
+**参数**：
+- `query`: 查询文本，如 "动量因子"、"成交量相关"、"财务质量"
+- `limit`: 返回结果数量上限，默认 20
+
+**返回**：`[{name, qsid, factor_class, operator_type, data_type, similarity?}]`
+
+**回退策略**：向量检索抛出异常或返回空时，自动回退到关键词匹配（`searchFactors(name=query)`）。
+
+#### 12.4.2 `get_factor_info(qsid)`
+
+查询因子的详细信息，包括名称、描述、数据类型、算子信息、依赖关系等。
+
+**参数**：
+- `qsid`: 因子的 QSID（唯一标识符）
+
+**返回**：
+```json
+{
+  "name": "turnover",
+  "qsid": "6e36e315...",
+  "factor_class": "DerivativeFactor",
+  "data_type": "double",
+  "module_path": "QuantStudio.Factor.FactorOperation",
+  "description": "",
+  "operator_name": "where",
+  "operator_type": "Point",
+  "operator_qsid": "b04bd7e2...",
+  "meta": {},
+  "descriptors": [{"name": "换手率(%)", "qsid": "84b907cd..."}],
+  "dependents": [],
+  "dependency_depth": 2,
+  "tags": ["麦冬", "stock_cn_day_bar_nafilled", "A股"]
+}
+```
+
+#### 12.4.3 `get_factor_code(qsid)`
+
+返回定义该因子的 Python 源代码。查找路径：
+
+1. 通过 `BELONGS_TO` → FactorTable → `MetaDataJSON.DefScriptPath`
+2. 回退：通过因子标签 → `importlib.import_module("QSResearch.FactorDef.JY.{tag}")` → `__file__`
+
+**参数**：
+- `qsid`: 因子的 QSID（唯一标识符）
+
+**返回**：`{qsid, factor_name, script_path, source_code}`，若无法定位则返回 `{error: "..."}`
+
+### 12.5 Claude Code 配置
+
+在项目根目录创建 `.mcp.json`：
+
+```json
+{
+  "mcpServers": {
+    "factor-registry": {
+      "command": "D:/miniforge/envs/QS312/python.exe",
+      "args": ["-m", "QuantStudio.FactorRegistry.mcp_server"],
+      "env": {
+        "PYTHONPATH": "D:/HST/Project/QuantStudio;D:/HST/QSResearch",
+        "OLLAMA_BASE_URL": "http://127.0.0.1:11434",
+        "OLLAMA_API_KEY": "ollama",
+        "FACTOR_EMBEDDING_MODEL": "bge-m3"
+      }
+    }
+  }
+}
+```
+
+### 12.6 调试
+
+**Python 直接调用**：
+```python
+from QuantStudio.FactorRegistry.mcp_server import search_factors, get_factor_info, get_factor_code
+results = search_factors("动量因子", limit=5)
+info = get_factor_info(results[0]["qsid"])
+code = get_factor_code(results[0]["qsid"])
+```
+
+**MCP Inspector**（FastMCP 3.x）：
+```powershell
+$env:PYTHONPATH = "D:/HST/Project/QuantStudio;D:/HST/QSResearch"
+D:/miniforge/envs/QS312/Scripts/fastmcp.exe dev inspector -m QuantStudio.FactorRegistry.mcp_server
+```
+
+**注意**：Inspector 调试时必须使用 `-m` 模块模式运行，否则 `mcp_server.py` 中的相对导入会失败。
+
+### 12.7 依赖
+
+- `fastmcp` (≥3.0) — MCP 框架
+- `neo4j` — Neo4j 驱动（间接依赖，通过 FactorGraphDB）
+- `requests` — Ollama HTTP 调用（间接依赖）
+
+---
+
+## 13. 未来扩展方向
 
 当前实现为 FactorRegistry v1（图数据库存储层），以下为可扩展方向：
 
@@ -990,3 +1307,4 @@ ft = TableCls(fdb=fdb, args=ft_stored_args,
 - **因子自动发现** — 与 FactorStorer 联动，定期扫描数据源自动注册新因子
 - **因子评估元数据** — 在图节点中关联 IC、IR、换手率等绩效指标，支持按绩效筛选
 - **算子市场** — 独立管理自定义算子的注册、版本和共享
+- **MCP 工具扩展** — 暴露更多 FactorGraphDB 能力：`impactAnalysis`、`findSimilarFactors`、`getGraphStats`、`reconstructFactor` 等
