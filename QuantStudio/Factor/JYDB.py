@@ -930,7 +930,7 @@ class JYDB(QSSQLObject, FactorDB):
         DBInfoFile: Optional[FilePath] = Field(default=None, title="库信息文件", frozen=True, repr=False)
         FTArgs: dict = Field(default={}, title="因子表参数", frozen=True)
 
-    def __init__(self, args={}, config_file=None, **kwargs):
+    def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
         super().__init__(args=args, config_file=(__QS_ConfigPath__ + os.sep + "JYDBConfig.json" if config_file is None else config_file), **kwargs)
         self._InfoFilePath = __QS_MainPath__ + os.sep + "Resource" + os.sep + "JYDBInfo.hdf5"# 数据库信息文件路径
         self._initInfo()
@@ -959,7 +959,7 @@ class JYDB(QSSQLObject, FactorDB):
         return self._ExchangeInfo.copy()
 
     @property
-    def TableNames(self):
+    def TableNames(self) -> List[str]:
         if self._TableInfo is not None:
             if not getattr(self, "_AllTables", None): self._AllTables = self.getDBTable()
             AllTables = [iTableName.lower() for iTableName in self._AllTables]
