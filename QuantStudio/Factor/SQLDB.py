@@ -2,7 +2,7 @@
 """基于 SQL 数据库的因子库"""
 import os
 import datetime as dt
-from typing import List, Optional, Dict, Tuple, Literal
+from typing import List, Optional, Dict, Tuple, Literal, Any
 
 import numpy as np
 import pandas as pd
@@ -17,38 +17,15 @@ from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 
 
 def _identifyDataType(db_type, dtypes):
-    if db_type!="sqlite3":
+    if db_type=="PostgreSQL":
+        if np.dtype("O") in dtypes.values: return "TEXT"
+        else: return "DOUBLE PRECISION"
+    elif db_type!="sqlite3":
         if np.dtype("O") in dtypes.values: return "varchar(40)"
         else: return "double"
     else:
         if np.dtype("O") in dtypes.values: return "text"
         else: return "real"
-
-
-class _WideTable(SQL_WideTable):
-    """SQLDB 宽因子表"""
-    def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
-
-class _NarrowTable(SQL_NarrowTable):
-    """SQLDB 窄因子表"""
-    def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
-
-class _FeatureTable(SQL_FeatureTable):
-    """SQLDB 特征因子表"""
-    def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
-
-class _TimeSeriesTable(SQL_TimeSeriesTable):
-    """SQLDB 时序因子表"""
-    def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
-
-class _MappingTable(SQL_MappingTable):
-    """SQLDB 映射因子表"""
-    def __init__(self, name, fdb, sys_args={}, **kwargs):
-        return super().__init__(name=name, fdb=fdb, sys_args=sys_args, table_prefix=fdb.TablePrefix, table_info=fdb._TableInfo.loc[name], factor_info=fdb._FactorInfo.loc[name], security_info=None, exchange_info=None, **kwargs)
 
 class SQLDB(QSSQLObject, WritableFactorDB):
     """基于关系数据库的因子库"""
@@ -75,12 +52,12 @@ class SQLDB(QSSQLObject, WritableFactorDB):
     def _genFactorInfo(self, factor_info):
         factor_info["FieldName"] = factor_info["DBFieldName"]
         factor_info["FieldType"] = "因子"
-        DTMask = factor_info["DataType"].str.contains("date")
-        factor_info["FieldType"][DTMask] = "Date"
-        StrMask = (factor_info["DataType"].str.contains("char") | factor_info["DataType"].str.contains("text"))
-        factor_info["FieldType"][(factor_info["DBFieldName"].str.lower()==self._QSArgs.IDField) & StrMask] = "ID"
+        DTMask = factor_info["DataType"].str.contains("date|timestamp", case=False, regex=True)
+        factor_info.loc[DTMask, "FieldType"] = "Date"
+        StrMask = factor_info["DataType"].str.contains("char|text", case=False, regex=True)
+        factor_info.loc[(factor_info["DBFieldName"].str.lower()==self._QSArgs.IDField) & StrMask, "FieldType"] = "ID"
         factor_info["Supplementary"] = None
-        factor_info["Supplementary"][DTMask & (factor_info["DBFieldName"].str.lower()==self._QSArgs.DTField)] = "Default"
+        factor_info.loc[DTMask & (factor_info["DBFieldName"].str.lower()==self._QSArgs.DTField), "Supplementary"] = "Default"
         factor_info["Description"] = ""
         factor_info = factor_info.set_index(["TableName", "FieldName"])
         return factor_info
@@ -89,13 +66,58 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         super().connect()
         nPrefix = len(self._QSArgs.InnerPrefix)
         if self._QSArgs.DBType=="MySQL":
-            SQLStr = f"SELECT RIGHT(t.TABLE_NAME, CHAR_LENGTH(t.TABLE_NAME)-{nPrefix}) AS TableName, t.TABLE_NAME AS DBTableName, t.COLUMN_NAME AS DBFieldName, LOWER(t.DATA_TYPE) AS DataType, t.IS_NULLABLE AS Nullable, t.COLUMN_KEY AS FieldKey, t.COLUMN_COMMENT AS Description, t1.TABLE_COMMENT AS TableDescription "
-            SQLStr += f"FROM information_schema.COLUMNS t LEFT JOIN information_schema.TABLES t1 ON (t.TABLE_SCHEMA = t1.TABLE_SCHEMA AND t.TABLE_NAME = t1.TABLE_NAME) "
-            SQLStr += f"WHERE t.TABLE_SCHEMA='{self._QSArgs.DBName}' "
-            SQLStr += f"AND t.TABLE_NAME LIKE '{self._QSArgs.InnerPrefix}%%' "
+            SQLStr = f"""
+            SELECT 
+                RIGHT(t.TABLE_NAME, CHAR_LENGTH(t.TABLE_NAME)-{nPrefix}) AS TableName,
+                t.TABLE_NAME AS DBTableName, 
+                t.COLUMN_NAME AS DBFieldName, 
+                LOWER(t.DATA_TYPE) AS DataType, 
+                t.IS_NULLABLE AS Nullable, 
+                t.COLUMN_KEY AS FieldKey, 
+                t.COLUMN_COMMENT AS Description, 
+                t1.TABLE_COMMENT AS TableDescription
+            FROM information_schema.COLUMNS t 
+            LEFT JOIN information_schema.TABLES t1 
+            ON (t.TABLE_SCHEMA = t1.TABLE_SCHEMA AND t.TABLE_NAME = t1.TABLE_NAME) 
+            WHERE t.TABLE_SCHEMA='{self._QSArgs.DBName}'
+            AND t.TABLE_NAME LIKE '{self._QSArgs.InnerPrefix}%%'
+            """
             if len(self._QSArgs.IgnoreFields)>0:
                 SQLStr += "AND t.COLUMN_NAME NOT IN ('"+"','".join(self._QSArgs.IgnoreFields)+"') "
             SQLStr += "ORDER BY TableName, DBFieldName"
+        elif self._QSArgs.DBType=="PostgreSQL":
+            SQLStr = f"""
+            SELECT 
+                RIGHT(t.table_name, LENGTH(t.table_name) - {nPrefix}) AS "TableName",
+                t.table_name AS "DBTableName",
+                t.column_name AS "DBFieldName",
+                LOWER(t.data_type) AS "DataType", 
+                t.is_nullable AS "Nullable",
+                CASE WHEN pk.column_name IS NOT NULL THEN 'PRI' ELSE '' END AS "FieldKey",
+                col_description(c.oid, t.ordinal_position) AS "Description",
+                obj_description(c.oid, 'pg_class') AS "TableDescription"
+            FROM information_schema.columns t
+            JOIN pg_class c ON c.relname = t.table_name
+            JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.table_schema
+            LEFT JOIN (
+                SELECT 
+                    kcu.table_schema,
+                    kcu.table_name,
+                    kcu.column_name
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu 
+                    ON tc.constraint_name = kcu.constraint_name 
+                    AND tc.table_schema = kcu.table_schema
+                WHERE tc.constraint_type = 'PRIMARY KEY'
+            ) pk ON pk.table_schema = t.table_schema 
+                AND pk.table_name = t.table_name 
+                AND pk.column_name = t.column_name
+            WHERE t.table_schema = 'public'
+            AND t.table_name LIKE '{self._QSArgs.InnerPrefix}%'
+            """
+            if len(self._QSArgs.IgnoreFields)>0:
+                SQLStr += "AND t.column_name NOT IN ('"+"','".join(self._QSArgs.IgnoreFields)+"') "
+            SQLStr += "ORDER BY t.table_name, t.column_name"
         else:
             raise NotImplementedError("'%s' 调用方法 connect 时错误: 尚不支持的数据库类型" % (self.Name, self._QSArgs.DBType))
         self._FactorInfo = pd.read_sql_query(SQLStr, self._Connection, index_col=None)
@@ -148,8 +170,8 @@ class SQLDB(QSSQLObject, WritableFactorDB):
     
     def getTable(self, table_name:str, args:dict={}) -> SQL_Table:
         Args = self._initFTArgs(table_name=table_name, args=args)
-        return eval("_"+Args["TableType"]+"(fdb=self, args=Args, logger=self._QS_Logger)")
-    
+        return eval("SQL_"+Args["TableType"]+"(fdb=self, args=Args, table_info=self._TableInfo.loc[table_name], factor_info=self._FactorInfo.loc[table_name], logger=self._QS_Logger)")
+
     # region 表的操作
     def renameTable(self, old_table_name:str, new_table_name:str):
         if old_table_name not in self._TableInfo.index:
@@ -169,6 +191,9 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         FieldTypes = field_types.copy()
         if self._QSArgs.DBType=="MySQL":
             FieldTypes[self._QSArgs.DTField] = FieldTypes.pop(self._QSArgs.DTField, "DATETIME(6) NOT NULL")
+            FieldTypes[self._QSArgs.IDField] = FieldTypes.pop(self._QSArgs.IDField, "VARCHAR(40) NOT NULL")
+        elif self._QSArgs.DBType=="PostgreSQL":
+            FieldTypes[self._QSArgs.DTField] = FieldTypes.pop(self._QSArgs.DTField, "TIMESTAMP NOT NULL")
             FieldTypes[self._QSArgs.IDField] = FieldTypes.pop(self._QSArgs.IDField, "VARCHAR(40) NOT NULL")
         else:
             raise NotImplementedError("'%s' 调用方法 createTable 时错误: 尚不支持的数据库类型" % (self.Name, self._QSArgs.DBType))
@@ -286,6 +311,22 @@ class SQLDB(QSSQLObject, WritableFactorDB):
                 self._QS_Logger.warning("因子库 %s 中的因子表 %s 中的字段 %s 不允许 NULL, 但写入数据中出现 NULL, 删除相应行后执行写入!" % (self.Name, table_name, str(DropNaFields)))
         return data
     
+    def _genMySQLInsertSQL(self, table_name:str, fields:List[str], replace:bool=False, unique_fields:Optional[List[str]]=None) -> str:
+        SQLStr = f"""{"REPLACE" if replace else "INSERT"} INTO {self._QSArgs.TablePrefix+self._QSArgs.InnerPrefix+table_name} (`{"`, `".join(fields)}`)
+        VALUES ({", ".join([self._PlaceHolder] * len(fields))})
+        """
+        return SQLStr
+    
+    def _genPostgreSQLInsertSQL(self, table_name:str, fields:List[str], replace:bool=False, unique_fields:Optional[List[str]]=None) -> str:
+        SQLStr = f"""INSERT INTO {self._QSArgs.TablePrefix+self._QSArgs.InnerPrefix+table_name} ({", ".join(fields)})
+        VALUES ({", ".join([self._PlaceHolder] * len(fields))})
+        """
+        if replace:
+            if not unique_fields:
+                raise __QS_Error__("当 replace=True 时必须指定 unique_fields")
+            SQLStr += f"""ON CONFLICT ({", ".join(unique_fields)}) DO UPDATE SET {", ".join(f"{iField}=EXCLUDED.{iField}" for iField in fields if iField not in unique_fields)}"""
+        return SQLStr
+
     def writeData(self, data:Panel, table_name:str, if_exists:Literal["update", "replace", "append"]="update", data_type:Dict[str, Literal["double", "string", "object"]]={}, **kwargs):
         if table_name not in self._TableInfo.index:
             FieldTypes = {iFactorName:_identifyDataType(self._QSArgs.DBType, data.iloc[i].dtypes) for i, iFactorName in enumerate(data.items)}
@@ -295,7 +336,6 @@ class SQLDB(QSSQLObject, WritableFactorDB):
                 self.connect()
                 if table_name not in self._TableInfo.index:
                     raise e
-            SQLStr = f"INSERT INTO {self._QSArgs.TablePrefix+self._QSArgs.InnerPrefix+table_name} (`{self._QSArgs.DTField}`, `{self._QSArgs.IDField}`, "
         else:
             NewFactorNames = data.items.difference(self._FactorInfo.loc[table_name].index).tolist()
             if NewFactorNames:
@@ -336,7 +376,6 @@ class SQLDB(QSSQLObject, WritableFactorDB):
                     Msg = ("因子库 '%s' 调用方法 writeData 错误: 不支持的写入方式 '%s'!" % (self.Name, str(if_exists)))
                     self._QS_Logger.error(Msg)
                     raise __QS_Error__(Msg)
-            SQLStr = f"REPLACE INTO {self._QSArgs.TablePrefix+self._QSArgs.InnerPrefix+table_name} (`{self._QSArgs.DTField}`, `{self._QSArgs.IDField}`, "
         DTs = data.major_axis
         # data.major_axis = [iDT.strftime("%Y-%m-%d %H:%M:%S.%f") for iDT in DTs]
         data.major_axis = DTs.astype(str)
@@ -344,13 +383,17 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         for iFactorName in data.items:
             iData = data.loc[iFactorName].stack(dropna=False)
             NewData[iFactorName] = iData
-            SQLStr += "`"+iFactorName+"`, "
         NewData = pd.DataFrame(NewData).loc[:, data.items]
         Mask = pd.notnull(NewData).any(axis=1)
         NewData = NewData[Mask]
-        if NewData.shape[0]==0: return 0
-        SQLStr = SQLStr[:-2] + ") VALUES (" + (self._PlaceHolder+", ") * (NewData.shape[1]+2)
-        SQLStr = SQLStr[:-2]+")"
+        if NewData.shape[0]==0: return
+        DimFields = [self._QSArgs.DTField, self._QSArgs.IDField]
+        if self._QSArgs.DBType=="MySQL":
+            SQLStr = self._genMySQLInsertSQL(table_name=table_name, fields=DimFields+list(data.items), replace=(table_name in self._TableInfo.index), unique_fields=DimFields)
+        elif self._QSArgs.DBType=="PostgreSQL":
+            SQLStr = self._genPostgreSQLInsertSQL(table_name=table_name, fields=DimFields+list(data.items), replace=(table_name in self._TableInfo.index), unique_fields=DimFields)
+        else:
+            raise NotImplementedError("'%s' 调用方法 writeData 时错误: 尚不支持的数据库类型" % (self.Name, self._QSArgs.DBType))
         Cursor = self.cursor()
         if self._QSArgs.CheckWriteData:
             NewData = self._adjustWriteData(NewData.reset_index(), table_name)

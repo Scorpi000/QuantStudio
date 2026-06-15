@@ -8,7 +8,7 @@ import pickle
 import struct
 import tempfile
 from collections import OrderedDict
-from typing import Literal
+from typing import Literal, Optional, Dict, List
 
 import numpy as np
 import pandas as pd
@@ -213,9 +213,8 @@ class QSSQLObject(__QS_Object__):
                 self._QS_Logger.warning("'%s' 断开数据库错误: %s" % (self.Name, str(e)))
             finally:
                 self._Connection = None
-        return 0
 
-    def cursor(self, sql_str=None):
+    def cursor(self, sql_str:Optional[str]=None):
         if self._Connection is None:
             Msg = ("'%s' 获取 cursor 失败: 数据库尚未连接!" % (self.Name,))
             self._QS_Logger.error(Msg)
@@ -243,7 +242,7 @@ class QSSQLObject(__QS_Object__):
         Cursor.close()
         return Data, Header
 
-    def execute(self, sql_str):
+    def execute(self, sql_str:str):
         if self._Connection is None:
             Msg = ("'%s' 执行 SQL 命令失败: 数据库尚未连接!" % (self.Name,))
             self._QS_Logger.error(Msg)
@@ -257,7 +256,6 @@ class QSSQLObject(__QS_Object__):
         Cursor.execute(sql_str)
         self._Connection.commit()
         Cursor.close()
-        return 0
 
     def getDBTable(self, table_format=None):
         try:
@@ -285,7 +283,7 @@ class QSSQLObject(__QS_Object__):
         else:
             return [rslt[0] for rslt in AllTables]
 
-    def renameDBTable(self, old_table_name, new_table_name):
+    def renameDBTable(self, old_table_name:str, new_table_name:str):
         SQLStr = "ALTER TABLE "+self._QSArgs.TablePrefix+old_table_name+" RENAME TO "+self._QSArgs.TablePrefix+new_table_name
         try:
             self.execute(SQLStr)
@@ -295,10 +293,9 @@ class QSSQLObject(__QS_Object__):
             raise e
         else:
             self._QS_Logger.info("'%s' 调用方法 renameDBTable 将表 '%s' 重命名为 '%s'" % (self.Name, old_table_name, new_table_name))
-        return 0
 
     # 创建表, field_types: {字段名: 数据类型}
-    def createDBTable(self, table_name, field_types, primary_keys=[], index_fields=[]):
+    def createDBTable(self, table_name:str, field_types:Dict[str, str], primary_keys:List[str]=[], index_fields:List[str]=[]):
         if self._QSArgs.DBType=="MySQL":
             SQLStr = "CREATE TABLE IF NOT EXISTS %s (" % (self._QSArgs.TablePrefix+table_name)
             for iField, iDataType in field_types.items(): SQLStr += "`%s` %s, " % (iField, iDataType)
@@ -307,6 +304,14 @@ class QSSQLObject(__QS_Object__):
             else:
                 SQLStr = SQLStr[:-2] + ")"
             SQLStr += " ENGINE=InnoDB DEFAULT CHARSET="+self._QSArgs.CharSet
+            IndexType = "BTREE"
+        elif self._QSArgs.DBType=="PostgreSQL":
+            SQLStr = "CREATE TABLE IF NOT EXISTS %s (" % (self._QSArgs.TablePrefix+table_name)
+            for iField, iDataType in field_types.items(): SQLStr += "%s %s, " % (iField, iDataType)
+            if primary_keys:
+                SQLStr += "PRIMARY KEY ("+",".join(primary_keys)+"))"
+            else:
+                SQLStr = SQLStr[:-2] + ")"
             IndexType = "BTREE"
         else:
             raise NotImplementedError("'%s' 调用方法 createDBTable 在数据库中创建表 '%s' 时错误: 尚不支持的数据库类型" % (self.Name, table_name, self._QSArgs.DBType))
@@ -322,9 +327,8 @@ class QSSQLObject(__QS_Object__):
             self.addIndex(table_name+"_index", table_name, fields=index_fields, index_type=IndexType)
         except Exception as e:
             self._QS_Logger.warning("'%s' 调用方法 createDBTable 在数据库中创建表 '%s' 时错误: %s" % (self.Name, table_name, str(e)))
-        return 0
 
-    def deleteDBTable(self, table_name):
+    def deleteDBTable(self, table_name:str):
         SQLStr = "DROP TABLE %s" % (self._QSArgs.TablePrefix+table_name)
         try:
             self.execute(SQLStr)
@@ -334,11 +338,13 @@ class QSSQLObject(__QS_Object__):
             raise e
         else:
             self._QS_Logger.info("'%s' 调用方法 deleteDBTable 从数据库中删除表 '%s'" % (self.Name, table_name))
-        return 0
 
-    def addIndex(self, index_name, table_name, fields, index_type="BTREE"):
+    def addIndex(self, index_name:str, table_name:str, fields:List[str], index_type:Optional[str]="BTREE"):
         if index_type is not None:
-            SQLStr = "CREATE INDEX "+index_name+" USING "+index_type+" ON "+self._QSArgs.TablePrefix+table_name+"("+", ".join(fields)+")"
+            if self._QSArgs.DBType=="PostgreSQL":
+                SQLStr = "CREATE INDEX "+index_name+" ON "+self._QSArgs.TablePrefix+table_name+" USING "+index_type+" ("+", ".join(fields)+")"
+            else:
+                SQLStr = "CREATE INDEX "+index_name+" USING "+index_type+" ON "+self._QSArgs.TablePrefix+table_name+"("+", ".join(fields)+")"
         else:
             SQLStr = "CREATE INDEX "+index_name+" ON "+self._QSArgs.TablePrefix+table_name+"("+", ".join(fields)+")"
         try:
@@ -349,7 +355,6 @@ class QSSQLObject(__QS_Object__):
             raise e
         else:
             self._QS_Logger.info("'%s' 调用方法 addIndex 为表 '%s' 添加索引 '%s'" % (self.Name, table_name, index_name))
-        return 0
 
     def getFieldDataType(self, table_format=None, ignore_fields=[]):
         try:
@@ -380,7 +385,7 @@ class QSSQLObject(__QS_Object__):
         return pd.DataFrame(Rslt, columns=["Table", "Field", "DataType"])
 
     # 增加字段, field_types: {字段名: 数据类型}
-    def addField(self, table_name, field_types):
+    def addField(self, table_name:str, field_types:Dict[str, str]):
         SQLStr = "ALTER TABLE %s " % (self._QSArgs.TablePrefix+table_name)
         SQLStr += "ADD COLUMN ("
         for iField in field_types: SQLStr += "%s %s," % (iField, field_types[iField])
@@ -393,9 +398,8 @@ class QSSQLObject(__QS_Object__):
             raise e
         else:
             self._QS_Logger.info("'%s' 调用方法 addField 为表 '%s' 添加字段 ’%s'" % (self.Name, table_name, str(list(field_types.keys()))))
-        return 0
 
-    def renameField(self, table_name, old_field_name, new_field_name):
+    def renameField(self, table_name:str, old_field_name:str, new_field_name:str):
         try:
             SQLStr = "ALTER TABLE "+self._QSArgs.TablePrefix+table_name
             SQLStr += " CHANGE COLUMN `"+old_field_name+"` `"+new_field_name+"`"
@@ -406,9 +410,8 @@ class QSSQLObject(__QS_Object__):
             raise e
         else:
             self._QS_Logger.info("'%s' 调用方法 renameField 在将表 '%s' 中的字段 '%s' 重命名为 '%s'" % (self.Name, table_name, old_field_name, new_field_name))
-        return 0
 
-    def deleteField(self, table_name, field_names):
+    def deleteField(self, table_name:str, field_names:List[str]):
         if not field_names: return 0
         try:
             SQLStr = "ALTER TABLE "+self._QSArgs.TablePrefix+table_name
@@ -420,9 +423,8 @@ class QSSQLObject(__QS_Object__):
             raise e
         else:
             self._QS_Logger.info("'%s' 调用方法 deleteField 删除表 '%s' 中的字段 '%s'" % (self.Name, table_name, str(field_names)))
-        return 0
 
-    def truncateDBTable(self, table_name):
+    def truncateDBTable(self, table_name:str):
         SQLStr = "TRUNCATE TABLE %s" % (self._QSArgs.TablePrefix+table_name)
         try:
             self.execute(SQLStr)
@@ -432,7 +434,6 @@ class QSSQLObject(__QS_Object__):
             raise __QS_Error__(Msg)
         else:
             self._QS_Logger.info("'%s' 调用方法 truncateDBTable 清空数据库中的表 '%s'" % (self.Name, table_name))
-        return 0
 
 
 class QSQueue(object):
