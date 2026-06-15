@@ -1226,7 +1226,7 @@ class JYDB(QSSQLObject, FactorDB):
         SQLStr += "ORDER BY ID"
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix))]
 
-    def getFutureID(self, exchange:Optional[Union[str, Tuple[str]]]=None, future_code:Optional[Union[str, Tuple[str]]]=None, date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> List[str]:
+    def getFutureID(self, future_code:Optional[Union[str, Tuple[str]]]=None, exchange:Optional[Union[str, Tuple[str]]]=None, date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> List[str]:
         """给定交易所、期货品种代码和日期, 获取期货证券 ID 序列
 
         Args:
@@ -1333,22 +1333,33 @@ class JYDB(QSSQLObject, FactorDB):
         SQLStr += "ORDER BY TradingCode"
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix))]
 
-    def getOptionID(self, option_code:str="510050", date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> List[str]:
+    def getOptionID(self, option_code:Optional[str]="510050", exchange:Optional[Union[str, Tuple[str]]]=None, date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, contract_code:bool=False, **kwargs) -> List[str]:
         """给定期权品种代码和日期, 获取期权证券 ID 序列
 
         Args:
-            option_code: 期权品种代码
+            option_code: 期权品种代码, None 表示取全部的期权品种
             date: 指定日, 默认值 None 表示当前日期
             is_current: False 表示上市日在指定日之前的期权, True 表示上市日在指定日之前且尚未退市的期权
+            contract_code: True 表示返回合约代码，False 返回交易代码
         
         Returns:
             期权证券 ID 序列
         """
         if date is None: date = dt.date.today()
         if start_date is not None: start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
-        SQLStr = "SELECT DISTINCT TradingCode FROM {Prefix}Opt_OptionContract "
-        SQLStr += "WHERE TradingCode LIKE '{OptionCode}%%' "
-        SQLStr += "AND IfReal=1 "
+        CodeField = ("ContractCode" if contract_code else "TradingCode")
+        SQLStr = "SELECT DISTINCT {CodeField} FROM {Prefix}Opt_OptionContract "
+        SQLStr += "WHERE IfReal=1 "
+        if option_code:
+            SQLStr += "AND TradingCode LIKE '{OptionCode}%%' "
+        if exchange:
+            if isinstance(exchange, str): exchange = [exchange]
+            ExchgCodes = set()
+            for iExchg in exchange:
+                iExchgCode = self._ExchangeInfo[self._ExchangeInfo["Exchange"] == iExchg].index
+                if iExchgCode.shape[0] == 0: raise __QS_Error__("不支持的交易所: %s" % iExchg)
+                ExchgCodes.add(str(iExchgCode[0]))
+            SQLStr += "AND Exchange IN (" + ", ".join(ExchgCodes) + ") "
         SQLStr += "AND ListingDate <= '{Date}' "
         if start_date is not None:
             SQLStr += "AND ((LastTradingDate IS NULL) OR (LastTradingDate >= '{StartDate}')) "
@@ -1358,10 +1369,8 @@ class JYDB(QSSQLObject, FactorDB):
             else:
                 SQLStr += "AND ListingDate <= '{StartDate}' "
                 SQLStr += "AND ((LastTradingDate IS NULL) OR (LastTradingDate >= '{Date}')) "
-        SQLStr += "ORDER BY TradingCode"
-        return [iRslt[0] for iRslt in self.fetchall(
-            SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"),
-                          StartDate=start_date, OptionCode=option_code))]
+        SQLStr += "ORDER BY {CodeField}"
+        return [str(iRslt[0]) for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, CodeField=CodeField, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date, OptionCode=option_code))]
 
     def getMutualFundID(self, type:Optional[Literal["ETF", "LOF", "FOF", "QDII", "封闭基金", "ETF联接基金", "指数基金", "指数增强基金"]]=None, exchange:Optional[Union[str, Tuple[str]]]=None, date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> List[str]:
         """给定日期, 获取公募基金 ID 序列
