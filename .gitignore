@@ -26,3 +26,4 @@ TestCoverage.bat
 *.env
 ~$*.xlsx
 CLAUDE.local.md
+.claude/settings.local.json
