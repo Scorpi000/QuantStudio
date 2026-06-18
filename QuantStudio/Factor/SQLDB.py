@@ -198,11 +198,11 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         else:
             raise NotImplementedError("'%s' 调用方法 createTable 时错误: 尚不支持的数据库类型" % (self.Name, self._QSArgs.DBType))
         self.createDBTable(self._QSArgs.InnerPrefix+table_name, FieldTypes, primary_keys=[self._QSArgs.DTField, self._QSArgs.IDField], index_fields=[self._QSArgs.IDField])
-        self._TableInfo = self._TableInfo.append(pd.Series([self._QSArgs.InnerPrefix+table_name, "WideTable"], index=["DBTableName", "TableClass"], name=table_name))
+        self._TableInfo = pd.concat([self._TableInfo, pd.Series([self._QSArgs.InnerPrefix+table_name, "WideTable"], index=["DBTableName", "TableClass"], name=table_name).to_frame().T])
         NewFactorInfo = pd.DataFrame(FieldTypes, index=["DataType"], columns=pd.Index(sorted(FieldTypes.keys()), name="DBFieldName")).T.reset_index()
         NewFactorInfo["TableName"] = table_name
-        self._FactorInfo = self._FactorInfo.append(self._genFactorInfo(NewFactorInfo))
-    
+        self._FactorInfo = pd.concat([self._FactorInfo, self._genFactorInfo(NewFactorInfo)])
+
     def deleteTable(self, table_name:str):
         if table_name not in self._TableInfo.index: return
         self.deleteDBTable(self._QSArgs.InnerPrefix+table_name)
@@ -224,7 +224,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         self.addField(self._QSArgs.InnerPrefix+table_name, field_types)
         NewFactorInfo = pd.DataFrame(field_types, index=["DataType"], columns=pd.Index(sorted(field_types.keys()), name="DBFieldName")).T.reset_index()
         NewFactorInfo["TableName"] = table_name
-        self._FactorInfo = self._FactorInfo.append(self._genFactorInfo(NewFactorInfo)).sort_index()
+        self._FactorInfo = pd.concat([self._FactorInfo, self._genFactorInfo(NewFactorInfo)]).sort_index()
 
     def renameFactor(self, table_name:str, old_factor_name:str, new_factor_name:str):
         """重命名因子"""
@@ -239,7 +239,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         self.renameField(self._QSArgs.InnerPrefix+table_name, old_factor_name, new_factor_name)
         TableNames = self._TableInfo.index.tolist()
         TableNames.remove(table_name)
-        self._FactorInfo = self._FactorInfo.loc[TableNames].append(self._FactorInfo.loc[[table_name]].rename(index={old_factor_name: new_factor_name}, level=1))
+        self._FactorInfo = pd.concat([self._FactorInfo.loc[TableNames], self._FactorInfo.loc[[table_name]].rename(index={old_factor_name: new_factor_name}, level=1)])
     
     def deleteFactor(self, table_name:str, factor_names:List[str]):
         if (not factor_names) or (table_name not in self._TableInfo.index): return 0
@@ -248,7 +248,8 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         self.deleteField(self._QSArgs.InnerPrefix+table_name, factor_names)
         TableNames = self._TableInfo.index.tolist()
         TableNames.remove(table_name)
-        self._FactorInfo = self._FactorInfo.loc[TableNames].append(self._FactorInfo.loc[[table_name]].loc[FactorIndex])
+        idx = pd.IndexSlice
+        self._FactorInfo = pd.concat([self._FactorInfo.loc[TableNames], self._FactorInfo.loc[idx[table_name, FactorIndex], :]])
     # endregion
 
     # region 数据操作
