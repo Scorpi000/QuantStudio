@@ -288,7 +288,7 @@ class QSSQLObject(__QS_Object__):
         try:
             self.execute(SQLStr)
         except Exception as e:
-            Msg = ("'%s' 调用方法 renameDBTable 将表 '%s' 重命名为 '%s' 时错误: %s" % (self.Name, old_table_name, str(e)))
+            Msg = ("'%s' 调用方法 renameDBTable 将表 '%s' 重命名为 '%s' 时错误: %s" % (self.Name, old_table_name, new_table_name, str(e)))
             self._QS_Logger.error(Msg)
             raise e
         else:
@@ -386,10 +386,15 @@ class QSSQLObject(__QS_Object__):
 
     # 增加字段, field_types: {字段名: 数据类型}
     def addField(self, table_name:str, field_types:Dict[str, str]):
-        SQLStr = "ALTER TABLE %s " % (self._QSArgs.TablePrefix+table_name)
-        SQLStr += "ADD COLUMN ("
-        for iField in field_types: SQLStr += "%s %s," % (iField, field_types[iField])
-        SQLStr = SQLStr[:-1]+")"
+        FullTableName = self._QSArgs.TablePrefix + table_name
+        if self._QSArgs.DBType == "PostgreSQL":
+            SQLStr = "ALTER TABLE %s " % FullTableName
+            SQLStr += ", ".join("ADD COLUMN %s %s" % (iField, iDataType) for iField, iDataType in field_types.items())
+        else:
+            SQLStr = "ALTER TABLE %s " % FullTableName
+            SQLStr += "ADD COLUMN ("
+            for iField in field_types: SQLStr += "%s %s," % (iField, field_types[iField])
+            SQLStr = SQLStr[:-1] + ")"
         try:
             self.execute(SQLStr)
         except Exception as e:
@@ -400,9 +405,12 @@ class QSSQLObject(__QS_Object__):
             self._QS_Logger.info("'%s' 调用方法 addField 为表 '%s' 添加字段 ’%s'" % (self.Name, table_name, str(list(field_types.keys()))))
 
     def renameField(self, table_name:str, old_field_name:str, new_field_name:str):
+        FullTableName = self._QSArgs.TablePrefix + table_name
+        if self._QSArgs.DBType == "PostgreSQL":
+            SQLStr = f"ALTER TABLE {FullTableName} RENAME COLUMN {old_field_name} TO {new_field_name}"
+        else:
+            SQLStr = f"ALTER TABLE {FullTableName} CHANGE COLUMN `{old_field_name}` `{new_field_name}`"
         try:
-            SQLStr = "ALTER TABLE "+self._QSArgs.TablePrefix+table_name
-            SQLStr += " CHANGE COLUMN `"+old_field_name+"` `"+new_field_name+"`"
             self.execute(SQLStr)
         except Exception as e:
             Msg = ("'%s' 调用方法 renameField 将表 '%s' 中的字段 '%s' 重命名为 '%s' 时错误: %s" % (self.Name, table_name, old_field_name, new_field_name, str(e)))
@@ -413,9 +421,14 @@ class QSSQLObject(__QS_Object__):
 
     def deleteField(self, table_name:str, field_names:List[str]):
         if not field_names: return 0
+        FullTableName = self._QSArgs.TablePrefix + table_name
+        if self._QSArgs.DBType == "PostgreSQL":
+            SQLStr = "ALTER TABLE " + FullTableName
+            for iField in field_names: SQLStr += " DROP COLUMN " + iField + ","
+        else:
+            SQLStr = "ALTER TABLE " + FullTableName
+            for iField in field_names: SQLStr += " DROP COLUMN `" + iField + "`,"
         try:
-            SQLStr = "ALTER TABLE "+self._QSArgs.TablePrefix+table_name
-            for iField in field_names: SQLStr += " DROP COLUMN `"+iField+"`,"
             self.execute(SQLStr[:-1])
         except Exception as e:
             Msg = ("'%s' 调用方法 deleteField 删除表 '%s' 中的字段 '%s' 时错误: %s" % (self.Name, table_name, str(field_names), str(e)))

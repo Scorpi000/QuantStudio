@@ -17,9 +17,12 @@ FDB = JYDB(args={}).connect()
 # IDs = FDB.getMutualFundID(type="指数基金")
 # print(len(IDs), IDs[:10])
 
-IDs = FDB.getIndexID(type="申万一级行业指数")
-print(len(IDs), IDs[:10])
+# IDs = FDB.getIndexID(type="申万一级行业指数")
+# print(len(IDs), IDs[:10])
 
+# IDs = FDB.getOptionID(option_code="510050", contract_code=True)
+IDs = FDB.getOptionID(option_code="CU", contract_code=False, date=dt.datetime(2025, 11, 3))
+print(len(IDs), IDs[:10])
 
 # # 测试 FeatureTable
 # IDs = ["000001.SZ", "000003.SZ", "603297.SH"]

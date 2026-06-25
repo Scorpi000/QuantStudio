@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(D:/PythonEnv/QS312/Scripts/python.exe tests/test_SQLDB.py)"
+    ]
+  }
+}

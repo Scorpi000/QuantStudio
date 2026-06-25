@@ -1,5 +1,4 @@
 psycopg2
-cx-Oracle>=5.2.1
 pymssql>=2.1.3
 mysql-connector-python
 pyodbc>=4.0.14

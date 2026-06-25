@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "jy_base_doc": {
+      "type": "stdio",
+      "command": "D:\\PythonEnv\\QS312\\Scripts\\python.exe",
+      "args": ["D:\\Project\\QSAgent\\mcp\\jy_base_doc_pg.py"],
+      "env": {
+        "PYTHONPATH": "D:\\Project\\QSAgent;D:\\Project\\QuantStudio;D:\\HST\\QSExt;D:\\HST\\QSData"
+      }
+    }
+  }
+}

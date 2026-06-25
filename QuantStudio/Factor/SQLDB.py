@@ -39,6 +39,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         IgnoreFields: List[str] = Field(default=[], title="忽略字段", frozen=True)
         CheckWriteData: bool = Field(default=False, title="检查写入值", frozen=False)
         CheckNullable: bool = Field(default=False, title="检查缺失容许", frozen=False)
+        MetaTableName: str = Field(default="qs_meta", title="元数据表名", frozen=True, description="用于存储表级和因子级额外元数据的侧表名")
     
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
         #self._TableFactorDict = {}# {表名: pd.Series(数据类型, index=[因子名])}
@@ -58,7 +59,6 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         factor_info.loc[(factor_info["DBFieldName"].str.lower()==self._QSArgs.IDField) & StrMask, "FieldType"] = "ID"
         factor_info["Supplementary"] = None
         factor_info.loc[DTMask & (factor_info["DBFieldName"].str.lower()==self._QSArgs.DTField), "Supplementary"] = "Default"
-        factor_info["Description"] = ""
         factor_info = factor_info.set_index(["TableName", "FieldName"])
         return factor_info
     
@@ -126,8 +126,112 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         self._TableInfo["TableClass"] = "WideTable"
         self._FactorInfo.pop("DBTableName")
         self._FactorInfo = self._genFactorInfo(self._FactorInfo)
+        # 加载侧表元数据
+        self._createMetaTable()
+        self._loadMetaData()
         return self
-    
+
+    # 创建元数据侧表
+    def _createMetaTable(self):
+        DBMetaTableName = self._QSArgs.TablePrefix + self._QSArgs.InnerPrefix + self._QSArgs.MetaTableName
+        if self._QSArgs.DBType == "MySQL":
+            SQLStr = f"""
+            CREATE TABLE IF NOT EXISTS {DBMetaTableName} (
+                table_name VARCHAR(256) NOT NULL,
+                field_name VARCHAR(256) NOT NULL DEFAULT '',
+                meta_key VARCHAR(256) NOT NULL,
+                meta_value TEXT,
+                PRIMARY KEY (table_name, field_name, meta_key)
+            )
+            """
+        elif self._QSArgs.DBType == "PostgreSQL":
+            SQLStr = f"""
+            CREATE TABLE IF NOT EXISTS {DBMetaTableName} (
+                table_name VARCHAR(256) NOT NULL,
+                field_name VARCHAR(256) NOT NULL DEFAULT '',
+                meta_key VARCHAR(256) NOT NULL,
+                meta_value TEXT,
+                PRIMARY KEY (table_name, field_name, meta_key)
+            )
+            """
+        else:
+            raise NotImplementedError("'%s' 调用方法 _createMetaTable 时错误: 尚不支持的数据库类型" % (self.Name, self._QSArgs.DBType))
+        try:
+            self.execute(SQLStr)
+        except Exception as e:
+            self._QS_Logger.warning("'%s' 创建元数据侧表失败: %s" % (self.Name, str(e)))
+
+    # 从侧表加载元数据并合并到 _TableInfo 和 _FactorInfo
+    def _loadMetaData(self):
+        DBMetaTableName = self._QSArgs.TablePrefix + self._QSArgs.InnerPrefix + self._QSArgs.MetaTableName
+        try:
+            MetaData = pd.read_sql_query(f"SELECT * FROM {DBMetaTableName}", self._Connection)
+        except Exception:
+            return
+        if MetaData.empty:
+            return
+        # 表级元数据 (field_name == '')
+        TableMeta = MetaData[MetaData["field_name"] == ""].copy()
+        if not TableMeta.empty:
+            for _, row in TableMeta.iterrows():
+                self._TableInfo.loc[row["table_name"], row["meta_key"]] = row["meta_value"]
+        # 因子级元数据 (field_name != '')
+        FactorMeta = MetaData[MetaData["field_name"] != ""].copy()
+        if not FactorMeta.empty:
+            for _, row in FactorMeta.iterrows():
+                self._FactorInfo.loc[(row["table_name"], row["field_name"]), row["meta_key"]] = row["meta_value"]
+
+    # 单条元数据 UPSERT / DELETE
+    def _upsertMetaData(self, table_name:str, field_name:str, meta_key:str, meta_value):
+        DBMetaTableName = self._QSArgs.TablePrefix + self._QSArgs.InnerPrefix + self._QSArgs.MetaTableName
+        Cursor = self.cursor()
+        try:
+            if meta_value is None:
+                SQLStr = f"DELETE FROM {DBMetaTableName} WHERE table_name = {self._PlaceHolder} AND field_name = {self._PlaceHolder} AND meta_key = {self._PlaceHolder}"
+                Cursor.execute(SQLStr, (table_name, field_name, meta_key))
+            elif self._QSArgs.DBType == "MySQL":
+                SQLStr = f"REPLACE INTO {DBMetaTableName} (table_name, field_name, meta_key, meta_value) VALUES ({self._PlaceHolder}, {self._PlaceHolder}, {self._PlaceHolder}, {self._PlaceHolder})"
+                Cursor.execute(SQLStr, (table_name, field_name, meta_key, str(meta_value)))
+            elif self._QSArgs.DBType == "PostgreSQL":
+                SQLStr = f"""INSERT INTO {DBMetaTableName} (table_name, field_name, meta_key, meta_value) VALUES ({self._PlaceHolder}, {self._PlaceHolder}, {self._PlaceHolder}, {self._PlaceHolder}) ON CONFLICT (table_name, field_name, meta_key) DO UPDATE SET meta_value = EXCLUDED.meta_value"""
+                Cursor.execute(SQLStr, (table_name, field_name, meta_key, str(meta_value)))
+            else:
+                raise NotImplementedError("'%s' 调用方法 _upsertMetaData 时错误: 尚不支持的数据库类型" % (self.Name, self._QSArgs.DBType))
+            self.Connection.commit()
+        except Exception as e:
+            self._QS_Logger.warning("'%s' 写入元数据失败: %s" % (self.Name, str(e)))
+        finally:
+            Cursor.close()
+
+    # 实现 WritableFactorDB 接口
+    def setTableMetaData(self, table_name:str, key:Optional[str]=None, value:Any=None, meta_data:Optional[dict]=None):
+        if meta_data is not None:
+            meta_data = dict(meta_data)
+        else:
+            meta_data = {}
+        if key is not None:
+            meta_data[key] = value
+        if not meta_data:
+            return 0
+        for k, v in meta_data.items():
+            self._upsertMetaData(table_name, '', k, v)
+            self._TableInfo.loc[table_name, k] = v
+        return 0
+
+    def setFactorMetaData(self, table_name:str, ifactor_name:str, key:Optional[str]=None, value:Any=None, meta_data:Optional[dict]=None):
+        if meta_data is not None:
+            meta_data = dict(meta_data)
+        else:
+            meta_data = {}
+        if key is not None:
+            meta_data[key] = value
+        if not meta_data:
+            return 0
+        for k, v in meta_data.items():
+            self._upsertMetaData(table_name, ifactor_name, k, v)
+            self._FactorInfo.loc[(table_name, ifactor_name), k] = v
+        return 0
+
     @property
     def TableNames(self) -> List[str]:
         return sorted(self._TableInfo.index)
@@ -185,7 +289,21 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         self.renameDBTable(self._QSArgs.InnerPrefix+old_table_name, self._QSArgs.InnerPrefix+new_table_name)
         self._TableInfo = self._TableInfo.rename(index={old_table_name: new_table_name})
         self._FactorInfo = self._FactorInfo.rename(index={old_table_name: new_table_name}, level=0)
-    
+        # 级联更新侧表
+        self._cascadeRenameTableMeta(old_table_name, new_table_name)
+
+    # 级联更新侧表: 重命名表
+    def _cascadeRenameTableMeta(self, old_table_name:str, new_table_name:str):
+        DBMetaTableName = self._QSArgs.TablePrefix + self._QSArgs.InnerPrefix + self._QSArgs.MetaTableName
+        try:
+            Cursor = self.cursor()
+            SQLStr = f"UPDATE {DBMetaTableName} SET table_name = {self._PlaceHolder} WHERE table_name = {self._PlaceHolder}"
+            Cursor.execute(SQLStr, (new_table_name, old_table_name))
+            self.Connection.commit()
+            Cursor.close()
+        except Exception as e:
+            self._QS_Logger.warning("'%s' 级联更新元数据侧表失败: %s" % (self.Name, str(e)))
+
     # 创建表, field_types: {字段名: 数据库数据类型}
     def createTable(self, table_name:str, field_types:Dict[str, str]):
         FieldTypes = field_types.copy()
@@ -210,6 +328,20 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         TableNames.remove(table_name)
         self._TableInfo = self._TableInfo.loc[TableNames]
         self._FactorInfo = self._FactorInfo.loc[TableNames]
+        # 级联删除侧表
+        self._cascadeDeleteTableMeta(table_name)
+
+    # 级联删除侧表: 删除表
+    def _cascadeDeleteTableMeta(self, table_name:str):
+        DBMetaTableName = self._QSArgs.TablePrefix + self._QSArgs.InnerPrefix + self._QSArgs.MetaTableName
+        try:
+            Cursor = self.cursor()
+            SQLStr = f"DELETE FROM {DBMetaTableName} WHERE table_name = {self._PlaceHolder}"
+            Cursor.execute(SQLStr, (table_name,))
+            self.Connection.commit()
+            Cursor.close()
+        except Exception as e:
+            self._QS_Logger.warning("'%s' 级联删除元数据失败: %s" % (self.Name, str(e)))
     # endregion    
     
     # region 因子操作
@@ -240,6 +372,8 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         TableNames = self._TableInfo.index.tolist()
         TableNames.remove(table_name)
         self._FactorInfo = pd.concat([self._FactorInfo.loc[TableNames], self._FactorInfo.loc[[table_name]].rename(index={old_factor_name: new_factor_name}, level=1)])
+        # 级联更新侧表
+        self._cascadeRenameFactorMeta(table_name, old_factor_name, new_factor_name)
     
     def deleteFactor(self, table_name:str, factor_names:List[str]):
         if (not factor_names) or (table_name not in self._TableInfo.index): return 0
@@ -250,7 +384,33 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         TableNames.remove(table_name)
         idx = pd.IndexSlice
         self._FactorInfo = pd.concat([self._FactorInfo.loc[TableNames], self._FactorInfo.loc[idx[table_name, FactorIndex], :]])
+        # 级联删除侧表
+        self._cascadeDeleteFactorMeta(table_name, factor_names)
     # endregion
+
+    # 级联更新侧表: 重命名因子
+    def _cascadeRenameFactorMeta(self, table_name:str, old_factor_name:str, new_factor_name:str):
+        DBMetaTableName = self._QSArgs.TablePrefix + self._QSArgs.InnerPrefix + self._QSArgs.MetaTableName
+        try:
+            Cursor = self.cursor()
+            SQLStr = f"UPDATE {DBMetaTableName} SET field_name = {self._PlaceHolder} WHERE table_name = {self._PlaceHolder} AND field_name = {self._PlaceHolder}"
+            Cursor.execute(SQLStr, (new_factor_name, table_name, old_factor_name))
+            self.Connection.commit()
+            Cursor.close()
+        except Exception as e:
+            self._QS_Logger.warning("'%s' 级联更新因子元数据失败: %s" % (self.Name, str(e)))
+
+    # 级联删除侧表: 删除因子
+    def _cascadeDeleteFactorMeta(self, table_name:str, factor_names:List[str]):
+        DBMetaTableName = self._QSArgs.TablePrefix + self._QSArgs.InnerPrefix + self._QSArgs.MetaTableName
+        try:
+            Cursor = self.cursor()
+            SQLStr = f"DELETE FROM {DBMetaTableName} WHERE table_name = {self._PlaceHolder} AND field_name IN ({', '.join([self._PlaceHolder] * len(factor_names))})"
+            Cursor.execute(SQLStr, [table_name] + factor_names)
+            self.Connection.commit()
+            Cursor.close()
+        except Exception as e:
+            self._QS_Logger.warning("'%s' 级联删除因子元数据失败: %s" % (self.Name, str(e)))
 
     # region 数据操作
     def deleteData(self, table_name:str, ids:Optional[List[str]]=None, dts:Optional[List[dt.datetime]]=None, dt_ids:Optional[List[Tuple[dt.datetime, str]]]=None):

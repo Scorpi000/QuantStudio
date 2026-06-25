@@ -8,7 +8,7 @@ from typing import Literal, Optional, Callable, Any, List, Tuple
 
 import numpy as np
 import pandas as pd
-from pydantic import Field
+from pydantic import Field, PrivateAttr
 
 from QuantStudio.Core import __QS_Error__
 from QuantStudio.Core.QSObject import Panel
@@ -744,9 +744,12 @@ class SQL_Table(FactorTable):
             return self._FactorInfo["Description"].loc[factor_names]
         elif key == "DataType":
             return self._FactorInfo["DataType"].loc[factor_names].apply(self.__QS_identifyDataType__)
+        elif key is not None and key in self._FactorInfo.columns:
+            return self._FactorInfo[key].loc[factor_names]
         elif not key:
-            MetaData = self._FactorInfo.loc[factor_names, ["DataType", "Description"]]
-            MetaData["DataType"] = MetaData["DataType"].apply(self.__QS_identifyDataType__)
+            MetaData = self._FactorInfo.loc[factor_names].copy()
+            if "DataType" in MetaData.columns:
+                MetaData["DataType"] = MetaData["DataType"].apply(self.__QS_identifyDataType__)
             return MetaData
         else:
             return super().getFactorMetaData(factor_names=factor_names, key=key)
@@ -1135,6 +1138,7 @@ class SQL_NarrowTable(SQL_Table):
         MultiMapping: bool = Field(default=True, title="多重映射", frozen=True, description="是否为高维数据, 即时点和 ID 两个维度无法唯一索引单个数据, 默认形成的数据在单个时点单个 ID 处以 list 形式表达")
         Operator: Optional[Callable] = Field(default=None, title="算子", frozen=True, description="对于单个时点单个 ID 处的数据 apply 的函数 f(x), 其中 x 为 Series, 默认值 None 表示使用 lambda x: x.tolist()")
         OperatorDataType: Literal["object", "double", "string"] = Field(default="object", title="算子数据类型", frozen=True, description="Operator 参数指定的函数输出值的数据类型")
+        _FactorNames: Any = PrivateAttr(default=None)  # 惰性缓存：从数据库查询到的因子名列表
 
     def __init__(self, fdb, args={}, table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(fdb=fdb, args=args, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
