@@ -44,7 +44,7 @@ class CalcSectionCorrelation(SectionOperator):
             Mask = pd.DataFrame(True, columns=idt, index=SectionIDs)
         if f._QSArgs.CalcDTRuler:
             DTs = sorted(set(idt).intersection(f._QSArgs.CalcDTRuler))
-            Mask = Mask.reindex(columns=DTs).fillna(False).astype(bool)
+            Mask = Mask.reindex(columns=DTs).astype(float).fillna(0).astype(bool)
         else:
             DTs = Mask.columns
         Corr = pd.DataFrame(index=DTs, columns=iid)
@@ -199,12 +199,12 @@ class CalcFactorTurnover(PanelOperator):
             Mask = pd.DataFrame(True, columns=idt, index=SectionIDs)
         if f._QSArgs.CalcDTRuler:
             DTs = sorted(set(idt).intersection(f._QSArgs.CalcDTRuler))
-            Mask = Mask.reindex(columns=DTs).fillna(False).astype(bool)
+            Mask = Mask.reindex(columns=DTs).astype(float).fillna(0).astype(bool)
         else:
             DTs = Mask.columns
         FactorTurnover = pd.DataFrame(index=DTs, columns=iid)
         FactorNames = f._QSArgs.SectionIDs
-        Mask = Mask.shift(args["period_lookback"], axis=1).fillna(False).astype(bool)
+        Mask = Mask.shift(args["period_lookback"], axis=1).astype(float).fillna(0).astype(bool)
         for iFactorName in iid:
             if iFactorName not in FactorNames: continue
             iIdx = FactorNames.index(iFactorName)

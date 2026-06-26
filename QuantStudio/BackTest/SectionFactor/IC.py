@@ -60,7 +60,7 @@ class CalcIC(PanelOperator):
             DTs = Price.columns
         Return = Price.T.pct_change().T
         if f._QSArgs.ModelArgs["mask"]: 
-            Mask, x = pd.DataFrame(x[0].T==1, columns=idt, index=SectionIDs).reindex(columns=DTs).fillna(False).astype(bool), x[1:]
+            Mask, x = pd.DataFrame(x[0].T==1, columns=idt, index=SectionIDs).reindex(columns=DTs).astype(float).fillna(0).astype(bool), x[1:]
             Mask = (Mask & Price.notnull())
         else:
             Mask = Price.notnull()
@@ -80,10 +80,10 @@ class CalcIC(PanelOperator):
                 iMask = ((CatData==iCate) & Mask)
                 iWeight = Weight.where(iMask, np.nan).shift(1, axis=1).copy()
                 iReturn = (Return * iWeight).sum(axis=0) / iWeight.sum(axis=0)
-                Return = Return.where(~iMask.shift(1, axis=1).fillna(False).astype(bool), Return - iReturn)
+                Return = Return.where(~iMask.shift(1, axis=1).astype(float).fillna(0).astype(bool), Return - iReturn)
         IC, Breadth = pd.DataFrame(index=DTs, columns=iid), pd.DataFrame(index=DTs, columns=iid)
         FactorNames = f._QSArgs.SectionIDs
-        Mask = Mask.shift(args["period_lookback"], axis=1).fillna(False).astype(bool)
+        Mask = Mask.shift(args["period_lookback"], axis=1).astype(float).fillna(0).astype(bool)
         for iFactorName in iid:
             if iFactorName not in FactorNames: continue
             iIdx = FactorNames.index(iFactorName)
@@ -176,7 +176,7 @@ class CalcRiskAdjustedIC(PanelOperator):
         Return = Price.pct_change().iloc[-1]
         if f._QSArgs.ModelArgs["mask"]: 
             Mask, x = pd.DataFrame(x[0]==1, index=idt, columns=SectionIDs), x[1:]
-            Mask = (Mask.reindex(index=DTs).fillna(False) & Price.notnull())
+            Mask = (Mask.reindex(index=DTs).astype(float).fillna(0).astype(bool) & Price.notnull())
         else:
             Mask = Price.notnull()
         Mask = Mask.reindex(index=DTs).shift(args["period_lookback"]).iloc[-1]

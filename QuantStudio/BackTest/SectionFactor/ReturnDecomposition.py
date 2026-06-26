@@ -54,10 +54,10 @@ class CalcFamaMacBethRegression(PanelOperator):
         Return = Price.pct_change().iloc[-1]
         if f._QSArgs.ModelArgs["mask"]: 
             Mask, x = pd.DataFrame(x[0]==1, index=idt, columns=SectionIDs), x[1:]
-            Mask = (Mask.reindex(index=DTs).fillna(False).astype(bool) & Price.notnull())
+            Mask = (Mask.reindex(index=DTs).astype(float).fillna(0).astype(bool) & Price.notnull())
         else:
             Mask = Price.notnull()
-        Mask = Mask.shift(args["period_lookback"], axis=1).iloc[-1].fillna(False).astype(bool)
+        Mask = Mask.shift(args["period_lookback"], axis=1).iloc[-1].astype(float).fillna(0).astype(bool)
         if f._QSArgs.ModelArgs["cat_data"]:
             CatData, x = pd.DataFrame(x[0], index=idt, columns=SectionIDs), x[1:]
             CatData = CatData.reindex(index=DTs)

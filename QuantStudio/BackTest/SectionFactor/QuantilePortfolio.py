@@ -256,7 +256,7 @@ class MultiPortfolio(BTNode):
         Output["换手率"] = pd.DataFrame({iName: iPortfolio.diff().abs().sum(axis=1) for iName, iPortfolio in Portfolio.items()}, columns=PortfolioNV.columns)
         Output["净值"] = PortfolioNV
         Output["净值"]["基准"] = BmkNV / BmkNV.iloc[0]
-        Output["收益率"] = Output["净值"].pct_change()
+        Output["收益率"] = Output["净值"].pct_change(fill_method=None)
         Output["超额收益率"] = Output["收益率"].iloc[:, :-1].copy()
         Output["超额净值"] = Output["超额收益率"].copy()
         for iCol in Output["超额收益率"].columns:

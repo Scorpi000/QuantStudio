@@ -42,6 +42,7 @@ class TreeEngine(Engine):
 
     # 初始化
     def init(self, node_list: List[Node], context: Context, init_data_list: Optional[List[Any]]=None):
+        if init_data_list is None: init_data_list = [None] * len(node_list)
         Path2Node = {}# {节点路径: Node}
         NodeQ, InitDataQ, PathQ = node_list.copy(), init_data_list, [[iNode.QSID] for iNode in node_list]
         while NodeQ:
@@ -56,6 +57,7 @@ class TreeEngine(Engine):
         self._Path2Node = Path2Node
 
     def _compute_thread(self, node_list: List[Node], context: Context, fwd_data_list: Optional[List[Any]]=None):
+        if fwd_data_list is None: fwd_data_list = [None] * len(node_list)
         def handleFwdTask(iNode, iPath, iFwdData):
             nonlocal FwdTaskQ, FwdDataQ, PathQ
             if QSID2Status.get(iNode.QSID, NodeStatus.UNSTARTED) in (NodeStatus.RUNNING, NodeStatus.PENDING):# 同样 QSID 的节点正在运行, 暂停前向传播
@@ -146,6 +148,7 @@ class TreeEngine(Engine):
         return Rslt
 
     def compute(self, node_list: List[Node], context: Context, fwd_data_list: Optional[List[Any]]=None):
+        if fwd_data_list is None: fwd_data_list = [None] * len(node_list)
         if self._QSArgs.CalcConcurrentMode == "Thread": return self._compute_thread(node_list=node_list, context=context, fwd_data_list=fwd_data_list)
         def handleFwdTask(iNode, iPath, iFwdData):
             nonlocal FwdTaskQ, FwdDataQ, PathQ
