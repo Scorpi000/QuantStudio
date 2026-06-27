@@ -18,10 +18,11 @@ if not os.path.isdir(CacheDir): os.makedirs(CacheDir, exist_ok=True)
 HFRDB = HDF5FRDB(args={"MainDir": TargetDir}).connect()
 
 np.random.seed(0)
-nDT, nID = 100, 20
+nDT, nID = 120, 20
 IDs = [str(i).zfill(6) + ".SZ" for i in range(1, nID + 1)]
 DTs = [dt.datetime(2025, 1, 1) + dt.timedelta(i) for i in range(nDT)]
-FactorNames = ["Size", "Beta", "Momentum", "ResidualVolatility", "NonlinearSize"]
+FactorNames = ["Beta", "BookToPrice", "EarningsYield", "Growth", "Leverage",
+               "Liquidity", "Momentum", "NonlinearSize", "ResidualVolatility", "Size"]
 nFactor = len(FactorNames)
 
 

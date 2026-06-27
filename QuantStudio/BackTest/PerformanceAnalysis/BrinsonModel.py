@@ -55,6 +55,8 @@ class CalcBrinsonModel(PanelOperator):
         if f._QSArgs.CalcDTRuler:
             DTs = sorted(set(idt).intersection(f._QSArgs.CalcDTRuler))
             Portfolio, Price, CatData, Bmk = Portfolio.reindex(index=DTs), Price.reindex(index=DTs), CatData.reindex(index=DTs), Bmk.reindex(index=DTs)
+        else:
+            DTs = idt
         Return = Price.pct_change().values
         Portfolio, CatData, Bmk = Portfolio.shift(1).values, CatData.shift(1).values, Bmk.shift(1).values
         AllCats = CatData[1:].flatten()
@@ -181,24 +183,24 @@ class BrinsonModel(BTNode):
         Output["总计"]["交互作用超额收益"] = Output["交互作用超额收益"].sum(axis=1)
         Output["总计"]["总超额收益"] = Output["总超额收益"].sum(axis=1)
         Output["多期综合"] = pd.DataFrame(dtype=float)
-        Output["多期综合"]["策略组合资产收益"] = (Output["策略组合资产收益"] + 1).prod(axis=0) - 1
-        Output["多期综合"]["基准组合资产收益"] = (Output["基准组合资产收益"] + 1).prod(axis=0) - 1
+        Output["多期综合"]["策略组合收益"] = (Output["策略组合资产收益"] + 1).prod(axis=0) - 1
+        Output["多期综合"]["基准组合收益"] = (Output["基准组合资产收益"] + 1).prod(axis=0) - 1
         Output["多期综合"]["主动资产配置组合收益"] = (Output["主动资产配置组合收益"] + 1).prod() - 1
         Output["多期综合"]["主动个券选择组合收益"] = (Output["主动个券选择组合收益"] + 1).prod() - 1
-        Output["多期综合"]["主动资产配置超额收益"] = Output["多期综合"]["主动资产配置组合收益"] - Output["多期综合"]["基准组合资产收益"]
-        Output["多期综合"]["主动个券选择超额收益"] = Output["多期综合"]["主动个券选择组合收益"] - Output["多期综合"]["基准组合资产收益"]
-        Output["多期综合"]["交互作用超额收益"] = Output["多期综合"]["策略组合资产收益"] - Output["多期综合"]["主动资产配置组合收益"] - Output["多期综合"]["主动个券选择组合收益"] + Output["多期综合"]["基准组合资产收益"]
-        Output["多期综合"]["总超额收益"] = Output["多期综合"]["策略组合资产收益"] - Output["多期综合"]["基准组合资产收益"]
+        Output["多期综合"]["主动资产配置超额收益"] = Output["多期综合"]["主动资产配置组合收益"] - Output["多期综合"]["基准组合收益"]
+        Output["多期综合"]["主动个券选择超额收益"] = Output["多期综合"]["主动个券选择组合收益"] - Output["多期综合"]["基准组合收益"]
+        Output["多期综合"]["交互作用超额收益"] = Output["多期综合"]["策略组合收益"] - Output["多期综合"]["主动资产配置组合收益"] - Output["多期综合"]["主动个券选择组合收益"] + Output["多期综合"]["基准组合收益"]
+        Output["多期综合"]["总超额收益"] = Output["多期综合"]["策略组合收益"] - Output["多期综合"]["基准组合收益"]
         Output["多期综合"].loc["总计"] = (Output["总计"] + 1).prod(axis=0) - 1
         k_t = (np.log(1 + Output["总计"]["策略组合收益"]) - np.log(1 + Output["总计"]["基准组合收益"])) / (Output["总计"]["策略组合收益"] - Output["总计"]["基准组合收益"])
         k_t[pd.isnull(k_t)] = 1.0
-        if Output["多期综合"].loc["总计", "策略组合资产收益"] != Output["多期综合"].loc["总计", "基准组合资产收益"]:
-            k = (np.log(Output["多期综合"].loc["总计", "策略组合资产收益"] + 1) - np.log(Output["多期综合"].loc["总计", "基准组合资产收益"]+1)) / (Output["多期综合"].loc["总计", "策略组合资产收益"] - Output["多期综合"].loc["总计", "基准组合资产收益"])
+        if Output["多期综合"].loc["总计", "策略组合收益"] != Output["多期综合"].loc["总计", "基准组合收益"]:
+            k = (np.log(Output["多期综合"].loc["总计", "策略组合收益"] + 1) - np.log(Output["多期综合"].loc["总计", "基准组合收益"]+1)) / (Output["多期综合"].loc["总计", "策略组合收益"] - Output["多期综合"].loc["总计", "基准组合收益"])
         else:
             k = 1.0
         Output["多期综合"].loc["总计", "主动资产配置超额收益"] = (Output["总计"]["主动资产配置超额收益"] * k_t).sum() / k
         Output["多期综合"].loc["总计", "主动个券选择超额收益"] = (Output["总计"]["主动个券选择超额收益"] * k_t).sum() / k
         Output["多期综合"].loc["总计", "交互作用超额收益"] = (Output["总计"]["交互作用超额收益"] * k_t).sum() / k
-        Output["多期综合"].loc["总计", "总超额收益"] = Output["多期综合"].loc["总计", "策略组合资产收益"] - Output["多期综合"].loc["总计", "基准组合资产收益"]
+        Output["多期综合"].loc["总计", "总超额收益"] = Output["多期综合"].loc["总计", "策略组合收益"] - Output["多期综合"].loc["总计", "基准组合收益"]
         if self._QSArgs.GenReport: Output["Report"] = self.genReport(Output)
         return Output

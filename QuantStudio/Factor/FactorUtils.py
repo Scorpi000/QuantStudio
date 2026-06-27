@@ -2291,8 +2291,10 @@ class SQL_FinancialTable(SQL_Table):
         AnnDateField = self._DBTableName+"."+self._FactorInfo.loc[self._QSArgs.PublDTField, "DBFieldName"]
         SQLStr = "SELECT DISTINCT "+AnnDateField+" "
         SQLStr += self._genFromSQLStr()+" "
-        if iid is not None: iid = [iid]
-        SQLStr += self._genIDSQLStr([iid], init_keyword="WHERE")+" "
+        if iid is not None:
+            SQLStr += self._genIDSQLStr([iid], init_keyword="WHERE")+" "
+        else:
+            SQLStr += "WHERE "+AnnDateField+" IS NOT NULL "
         if start_dt is not None: SQLStr += "AND "+AnnDateField+">="+start_dt.strftime(self._DTFormat)+"' "
         if end_dt is not None: SQLStr += "AND "+AnnDateField+"<="+end_dt.strftime(self._DTFormat)+" "
         SQLStr += self._genConditionSQLStr(use_main_table=True)+" "
