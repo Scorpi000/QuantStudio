@@ -1382,8 +1382,7 @@ class PanelOperation(DerivativeFactor):
                         else:
                             StartDropNum, EndDropNum = max(0, DTRuler.index(iDescriptorData.index[-1]) + 1 - DTRuler.index(CalcDTs[0])), 0
                             AdjCalcDTs = CalcDTs[StartDropNum:len(CalcDTs)-EndDropNum]
-                            # StdData = pd.DataFrame(None, index=iDTs, columns=SectionIDs)
-                            StdData = pd.DataFrame(None, index=iDTs)
+                            StdData = pd.DataFrame(None, index=iDTs, columns=SectionIDs)
                         bwd_data_list[i] = pd.concat([iDescriptorData.loc[DTRuler[DTRuler.index(iDTs[0]) - self._Operator._QSArgs.LookBack[i]]:], StdData], ignore_index=False)
                 else:
                     AdjCalcDTs = CalcDTs
