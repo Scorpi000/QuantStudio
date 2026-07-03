@@ -127,7 +127,7 @@ def adjustDataDTID(data, look_back, factor_names, ids, dts, only_start_lookback=
             TimeDelta = TimeDelta.diff().fillna(value=0)
             TimeDelta.iloc[0] = FirstDelta
             NewLimits = np.minimum(TimeDelta.values*24.0*3600, Limits).reshape((TimeDelta.shape[0], 1)).repeat(AdjData.shape[2], axis=1)
-            Limits = pd.DataFrame(0, index=AdjData.major_axis, columns=AdjData.minor_axis)
+            Limits = pd.DataFrame(0, index=AdjData.major_axis, columns=AdjData.minor_axis, dtype=float)
             Limits.loc[TargetDTs, :] = NewLimits
         if only_lookback_dt:
             Mask = pd.Series(np.full(shape=(AdjData.shape[1], ), fill_value=False, dtype=bool), index=AdjData.major_axis)
@@ -146,7 +146,7 @@ def adjustDataDTID(data, look_back, factor_names, ids, dts, only_start_lookback=
                 Limits.loc[TargetDTs, :] = np.minimum(NewLimits.values.reshape((NewLimits.shape[0], 1)).repeat(AdjData.shape[2], axis=1), Limits.loc[TargetDTs].values)
             else:
                 NewLimits = np.minimum(NewLimits.values*24.0*3600, Limits).reshape((NewLimits.shape[0], 1)).repeat(AdjData.shape[2], axis=1)
-                Limits = pd.DataFrame(0, index=AdjData.major_axis, columns=AdjData.minor_axis)
+                Limits = pd.DataFrame(0, index=AdjData.major_axis, columns=AdjData.minor_axis, dtype=float)
                 Limits.loc[TargetDTs, :] = NewLimits
         MajorAxis, MinorAxis = AdjData.major_axis, AdjData.minor_axis
         AdjData = dict(AdjData)
@@ -2410,7 +2410,7 @@ class SQL_FinancialTable(SQL_Table):
     def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
         CalcType, YearLookBack, PeriodLookBack, ReportDate, IgnoreMissing = args.get("CalcType", self._QSArgs.CalcType), args.get("YearLookBack", self._QSArgs.YearLookBack), args.get("PeriodLookBack", self._QSArgs.PeriodLookBack), args.get("ReportDate", self._QSArgs.ReportDate), args.get("IgnoreMissing", self._QSArgs.IgnoreMissing)
         if (args.get("IgnoreNonQuarter", self._QSArgs.IgnoreNonQuarter) or (not ((ReportDate=="所有") and (CalcType=="最新") and (YearLookBack==0) and (PeriodLookBack==0)))):
-            raw_data = raw_data[raw_data["ReportDate"].dt.strftime("%m%d").isin(('0331', '0630', '0930', '1231'))]
+            raw_data = raw_data[raw_data["ReportDate"].dt.strftime("%m%d").isin(('0331', '0630', '0930', '1231'))].copy()
         if raw_data.shape[0]==0: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
         if CalcType=="最新": Periods = np.array([0], dtype=int)
         elif CalcType=="单季度": Periods = np.array([0, 1], dtype=int)
