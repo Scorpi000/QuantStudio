@@ -32,7 +32,7 @@ class Cache(__QS_Object__):
         """暂存缓存状态"""
         raise NotImplementedError
 
-    def load(self):
+    def load(self) -> bool:
         """恢复缓存状态"""
         raise NotImplementedError
     
@@ -49,7 +49,9 @@ class Cache(__QS_Object__):
         if self._QSArgs.StartMode == "new":
             self.clearData()
         elif self._QSArgs.StartMode == "continue":
-            self.load()
+            if not self.load():
+                # 状态恢复失败，降级为 new 模式
+                self.clearData()
         self._isStarted = True
 
     def end(self, clear=False):
@@ -243,7 +245,10 @@ class DTCache(Cache):
             self.clearData()
             self.clearDTData()
         elif self._QSArgs.StartMode == "continue":
-            self.load()
+            if not self.load():
+                # state.pkl 不存在，降级为 new 模式
+                self.clearData()
+                self.clearDTData()
         self._isStarted = True
 
     def end(self, clear=False):

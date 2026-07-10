@@ -81,9 +81,13 @@ class FileDTCache(DTCache):
             StateFilePath = self._QSArgs.StateFile
         else:
             StateFilePath = os.path.join(self._QSArgs.CacheDir, self._QSArgs.StateFile)
+        if not os.path.isfile(StateFilePath):
+            self._QS_Logger.warning(f"缓存状态文件 {StateFilePath} 不存在, 将以 new 模式运行")
+            return False
         with open(StateFilePath, mode="rb") as StateFile:
             State = pickle.load(StateFile)
         self.__dict__.update(State)
+        return True
 
     def start(self):
         if self._isStarted: return
@@ -100,7 +104,10 @@ class FileDTCache(DTCache):
             self.clearData()
             self.clearDTData()
         elif self._QSArgs.StartMode == "continue":
-            self.load()
+            if not self.load():
+                # state.pkl 不存在，降级为 new 模式
+                self.clearData()
+                self.clearDTData()
         if not os.path.isdir(self._DataDir): os.mkdir(self._DataDir)
         if not os.path.isdir(self._DTDataDir): os.mkdir(self._DTDataDir)
         self._isStarted = True

@@ -32,7 +32,12 @@ class FactorCache(DTCache):
             self.clearRawData()
             self.clearFactorData()
         elif self._QSArgs.StartMode == "continue":
-            self.load()
+            if not self.load():
+                # 状态恢复失败，降级为 new 模式
+                self.clearData()
+                self.clearDTData()
+                self.clearRawData()
+                self.clearFactorData()
         self._isStarted = True
 
     def end(self, clear:bool=False):
@@ -189,7 +194,12 @@ class FileFactorCache(FileDTCache, FactorCache):
             self.clearRawData()
             self.clearFactorData()
         elif self._QSArgs.StartMode == "continue":
-            self.load()
+            if not self.load():
+                # 状态恢复失败，降级为 new 模式
+                self.clearData()
+                self.clearDTData()
+                self.clearRawData()
+                self.clearFactorData()
         if not os.path.isdir(self._DataDir): os.mkdir(self._DataDir)
         if not os.path.isdir(self._DTDataDir): os.mkdir(self._DTDataDir)
         if not os.path.isdir(self._RawDataDir): os.mkdir(self._RawDataDir)
