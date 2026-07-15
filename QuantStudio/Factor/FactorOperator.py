@@ -611,7 +611,7 @@ class Disaggregate(SectionOperator):
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
         nDT, nID = len(idt), len(iid)
         FactorData = x[0]
-        if args["cat_data"]:
+        if f._QSArgs.ModelArgs["cat_data"]:
             CatData = x[-1]
             Rslt = np.full(shape=(nDT, nID), fill_value=np.nan)
             for i, iID in enumerate(self.Args.DescriptorSection[0]):

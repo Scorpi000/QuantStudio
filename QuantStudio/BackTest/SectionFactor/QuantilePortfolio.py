@@ -238,7 +238,7 @@ class MultiPortfolio(BTNode):
         return [FactorLocalContext(DTs=fwd_data.DTs, IDs=context.NodeState[iDep.QSID]["section_ids"], PIDs=context.PIDList) for iDep in self.Deps], DTLocalContext(DTs=fwd_data.DTs)
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
-        PortfolioNV = bwd_data_list[0]
+        PortfolioNV = bwd_data_list[0].astype(float)
         BmkNV = (bwd_data_list[1].iloc[:, 0] if self._BmkNV is not None else pd.Series(1, index=PortfolioNV.index))
         BmkNV = BmkNV.ffill().bfill()
         StartIdx = 1 + int(self._BmkNV is not None)
