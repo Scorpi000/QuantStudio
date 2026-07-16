@@ -23,6 +23,8 @@
 import datetime as dt
 import unittest
 
+import pandas as pd
+
 from QuantStudio.Factor.JYDB import JYDB
 
 
@@ -92,20 +94,29 @@ class TestJYDB(unittest.TestCase):
         # 应包含常见标的
         self.assertIn("600000.SH", IDs)
     
-    def test_getIndustry2Index(self):
-        """测试 getIndustry2Index 获取行业 ID 到指数 ID 的映射字典"""
+    def test_getIndustryID(self):
+        """测试 getIndustryID 获取行业 ID 序列"""
         TestDate = dt.datetime(2025, 12, 31)
-        Industry2Index = self.FDB.getIndustry2Index(standard="申万行业分类(新)", level=1, date=TestDate, is_current=True)
-        self.assertIsInstance(Industry2Index, dict)
-        self.assertEqual(len(Industry2Index), 31)
+        IDs = self.FDB.getIndustryID(standard="申万行业分类(新)", level=1, date=TestDate, is_current=True)
+        self.assertIsInstance(IDs, list)
+        self.assertGreater(len(IDs), 0)
+        # 应包含常见标的
+        self.assertIn("110000", IDs)
+
+    def test_getIndustryInfo(self):
+        """测试 getIndustryInfo 获取行业的基本信息"""
+        TestDate = dt.datetime(2025, 12, 31)
+        IndustryInfo = self.FDB.getIndustryInfo(standard="申万行业分类(新)", level=1, date=TestDate, is_current=True)
+        self.assertIsInstance(IndustryInfo, pd.DataFrame)
+        self.assertEqual(IndustryInfo.shape[0], 31)
         # 检查部分已知行业映射
-        self.assertIn("110000", Industry2Index)
-        self.assertIn("220000", Industry2Index)
+        self.assertIn("110000", IndustryInfo["IndustryID"].tolist())
+        self.assertIn("220000", IndustryInfo["IndustryID"].tolist())
 
 
 if __name__ == "__main__":
     # unittest.main()
     Suite = unittest.TestSuite()
-    Suite.addTest(TestJYDB("test_getIndustry2Index"))
+    Suite.addTest(TestJYDB("test_getIndustryID"))
     Runner = unittest.TextTestRunner()
     Runner.run(Suite)

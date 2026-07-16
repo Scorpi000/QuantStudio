@@ -1498,7 +1498,7 @@ class JYDB(QSSQLObject, FactorDB):
             raise __QS_Error__("无法识别的行业分类标准 : %s, 支持的行业分类标准有 : %s" % (standard, ", ".join(iStandard[0] for iStandard in AllStandards)))
         if date is None: date = dt.date.today()
         if start_date is not None: start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
-        SQLStr = "SELECT IndustryNum FROM {Prefix}CT_IndustryType WHERE Standard=" + str(Standard[0][0]) + " "
+        SQLStr = "SELECT DISTINCT IndustryCode FROM {Prefix}CT_IndustryType WHERE Standard=" + str(Standard[0][0]) + " "
         if pd.notnull(level):
             SQLStr += "AND Classification=" + str(int(level)) + " "
         SQLStr += "AND ((EffectiveDate IS NULL) OR (EffectiveDate <= '{Date}')) "
@@ -1510,11 +1510,11 @@ class JYDB(QSSQLObject, FactorDB):
             else:
                 SQLStr += "AND ((EffectiveDate IS NULL) OR (EffectiveDate <= '{StartDate}')) "
                 SQLStr += "AND ((CancelDate IS NULL) OR (CancelDate > '{Date}')) "
-        SQLStr += "ORDER BY IndustryNum"
+        SQLStr += "ORDER BY IndustryCode"
         return [str(iRslt[0]) for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date))]
 
-    def getIndustry2Index(self, standard:str="申万行业分类(新)", level:int=1, date:Optional[dt.datetime]=None, is_current:bool=True, **kwargs) -> Dict[str, str]:
-        """给定行业分类和日期, 获取行业 ID 到指数 ID 的映射字典
+    def getIndustryInfo(self, standard:str="申万行业分类(新)", level:int=1, date:Optional[dt.datetime]=None, is_current:bool=True, **kwargs) -> pd.DataFrame:
+        """给定行业分类和日期, 获取行业的基本信息
 
         Args:
             standard: 行业分类
@@ -1523,33 +1523,34 @@ class JYDB(QSSQLObject, FactorDB):
             is_current: False 表示指定日之前曾经存续过的行业, True 表示指定日仍然保持存续的行业
             
         Returns:
-            行业 ID 到指数 ID 的映射字典
+            DataFrame(columns=["IndustryID", "IndustryName", "IndexID"])
         """
-        SQLStr = ("SELECT DM FROM {Prefix}CT_SystemConst WHERE LB=1081 AND MS='%s'" % (standard,))
-        Standard = self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix))
+        Prefix = self._QSArgs.TablePrefix
+        Standard = self.fetchall(f"SELECT DM FROM {Prefix}CT_SystemConst WHERE LB=1081 AND MS='{standard}'")
         if len(Standard) != 1:
-            SQLStr = "SELECT DISTINCT MS FROM {Prefix}CT_SystemConst WHERE LB=1081"
-            AllStandards = self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix))
+            AllStandards = self.fetchall(f"SELECT DISTINCT MS FROM {Prefix}CT_SystemConst WHERE LB=1081")
             raise __QS_Error__("无法识别的行业分类标准 : %s, 支持的行业分类标准有 : %s" % (standard, ", ".join(iStandard[0] for iStandard in AllStandards)))
         if date is None: date = dt.date.today()
-        Prefix = self._QSArgs.TablePrefix
         IDField = f"CASE {Prefix}SecuMain.SecuMarket "
         for iCode in self._ExchangeInfo[pd.notnull(self._ExchangeInfo["Suffix"])].index:
             IDField += "WHEN " + iCode + f" THEN CONCAT({Prefix}SecuMain.SecuCode, '" + self._ExchangeInfo.loc[iCode, "Suffix"] + "') "
         IDField += f"ELSE {Prefix}SecuMain.SecuCode END"
         SQLStr = f"""
-            SELECT {Prefix}CT_IndustryType.IndustryCode AS IndustryID, {IDField} AS IndexID
-            FROM {Prefix}SecuMain
-            INNER JOIN {Prefix}LC_IndexBasicInfo ON {Prefix}SecuMain.InnerCode={Prefix}LC_IndexBasicInfo.IndexCode
-            INNER JOIN {Prefix}CT_IndustryType ON ({Prefix}LC_IndexBasicInfo.IndustryStandard={Prefix}CT_IndustryType.Standard AND CAST({Prefix}LC_IndexBasicInfo.IndustryType AS VARCHAR(20))={Prefix}CT_IndustryType.IndustryCode)
-            WHERE {Prefix}LC_IndexBasicInfo.IndustryStandard = {Standard[0][0]}
+            SELECT {Prefix}CT_IndustryType.IndustryCode AS IndustryID, {Prefix}CT_IndustryType.IndustryName, {IDField} AS IndexID
+            FROM {Prefix}CT_IndustryType
+            LEFT JOIN {Prefix}LC_IndexBasicInfo
+            ON ({Prefix}LC_IndexBasicInfo.IndustryStandard={Prefix}CT_IndustryType.Standard AND CAST({Prefix}LC_IndexBasicInfo.IndustryType AS VARCHAR(20))={Prefix}CT_IndustryType.IndustryCode)
+            LEFT JOIN {Prefix}SecuMain
+            ON {Prefix}SecuMain.InnerCode={Prefix}LC_IndexBasicInfo.IndexCode
+            WHERE {Prefix}CT_IndustryType.Standard = {Standard[0][0]}
             AND {Prefix}CT_IndustryType.Classification = {level} 
-            AND {Prefix}CT_IndustryType.EffectiveDate <= '{date.strftime("%Y-%m-%d %H:%M:%S")}'
+            AND ({Prefix}CT_IndustryType.EffectiveDate IS NULL OR {Prefix}CT_IndustryType.EffectiveDate <= '{date.strftime("%Y-%m-%d %H:%M:%S")}')
         """
         if is_current:
-            SQLStr += f"""AND (CT_IndustryType.CancelDate IS NULL OR CT_IndustryType.CancelDate > '{date.strftime("%Y-%m-%d %H:%M:%S")}') """
-        SQLStr += "ORDER BY IndustryID"
-        return {k: v for k, v in self.fetchall(SQLStr)}
+            SQLStr += f"""AND ({Prefix}CT_IndustryType.CancelDate IS NULL OR {Prefix}CT_IndustryType.CancelDate > '{date.strftime("%Y-%m-%d %H:%M:%S")}') """
+        SQLStr += f"ORDER BY IndustryID, {Prefix}CT_IndustryType.EffectiveDate"
+        IndustryInfo = pd.DataFrame(self.fetchall(SQLStr), columns=["IndustryID", "IndustryName", "IndexID"])
+        return IndustryInfo.groupby(["IndustryID"], as_index=False).last()
 
 if __name__=="__main__":
     TDB = JYDB().connect()
