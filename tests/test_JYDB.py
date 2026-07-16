@@ -91,11 +91,21 @@ class TestJYDB(unittest.TestCase):
         self.assertTrue(all(id_str.endswith(".SH") for id_str in IDs))
         # 应包含常见标的
         self.assertIn("600000.SH", IDs)
+    
+    def test_getIndustry2Index(self):
+        """测试 getIndustry2Index 获取行业 ID 到指数 ID 的映射字典"""
+        TestDate = dt.datetime(2025, 12, 31)
+        Industry2Index = self.FDB.getIndustry2Index(standard="申万行业分类(新)", level=1, date=TestDate, is_current=True)
+        self.assertIsInstance(Industry2Index, dict)
+        self.assertEqual(len(Industry2Index), 31)
+        # 检查部分已知行业映射
+        self.assertIn("110000", Industry2Index)
+        self.assertIn("220000", Industry2Index)
 
 
 if __name__ == "__main__":
-    unittest.main()
-    # Suite = unittest.TestSuite()
-    # Suite.addTest(TestJYDB("test_connect"))
-    # Runner = unittest.TextTestRunner()
-    # Runner.run(Suite)
+    # unittest.main()
+    Suite = unittest.TestSuite()
+    Suite.addTest(TestJYDB("test_getIndustry2Index"))
+    Runner = unittest.TextTestRunner()
+    Runner.run(Suite)

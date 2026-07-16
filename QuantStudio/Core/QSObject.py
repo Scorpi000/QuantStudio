@@ -871,8 +871,22 @@ class Panel(object):
         else:
             self._Items = pd.Series(np.arange(len(items)), index=items)
         Data, self._DTypes = {}, {}
-        MajorAxis = pd.Index([] if major_axis is None else major_axis)
-        MinorAxis = pd.Index([] if minor_axis is None else minor_axis)
+        if major_axis is None:
+            MajorAxis = pd.Index([])
+        elif isinstance(major_axis, pd.Index):
+            MajorAxis = major_axis
+        elif isinstance(major_axis, pd.Series):
+            MajorAxis = pd.Index(major_axis.to_numpy())
+        else:
+            MajorAxis = pd.Index(major_axis)
+        if minor_axis is None:
+            MinorAxis = pd.Index([])
+        elif isinstance(minor_axis, pd.Index):
+            MinorAxis = minor_axis
+        elif isinstance(minor_axis, pd.Series):
+            MinorAxis = pd.Index(minor_axis.to_numpy())
+        else:
+            MinorAxis = pd.Index(minor_axis)
         for i, iItem in enumerate(self._Items.index):
             if isinstance(data, dict):
                 Data[iItem] = pd.DataFrame(data.get(iItem, None), index=major_axis, columns=minor_axis)

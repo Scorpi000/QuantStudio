@@ -601,7 +601,7 @@ class Disaggregate(SectionOperator):
     
     def __init__(self, aggr_ids:List[str], disaggr_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Arity = args.get("Arity", None) or 1
-        Args = {"Name": "disaggregate"} | args | {"DataType": "double", "DTMode": "多时点"}
+        Args = {"Name": "disaggregate", "DataType": "double"} | args | {"DTMode": "多时点"}
         DescriptorSection = Args.get("DescriptorSection", [aggr_ids, disaggr_ids])
         if len(DescriptorSection) < Arity: DescriptorSection.append(disaggr_ids)
         elif len(DescriptorSection) > Arity: DescriptorSection = DescriptorSection[:Arity]
@@ -626,7 +626,11 @@ class Disaggregate(SectionOperator):
         if cat_data is not None: Factors.append(cat_data)
         kwargs["operator_kwargs"] =  {"aggr_ids": self._QSArgs.DescriptorSection[0]} | kwargs.get("operator_kwargs", {})
         factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"cat_data": (cat_data is not None)}
-        return super().__call__(*Factors, factor_args=factor_args, **kwargs)
+        DataType = f.getMetaData(key="DataType")
+        if DataType != self._QSArgs.DataType:
+            return super(Disaggregate, self.new(args={"DataType": DataType}, **kwargs["operator_kwargs"])).__call__(f, factor_args=factor_args, **kwargs)
+        else:
+            return super().__call__(f, factor_args=factor_args, **kwargs)
 
 class ConcatSection(SectionOperator):
     """截面拼接"""
@@ -655,7 +659,7 @@ class ChgSection(SectionOperator):
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
         Data = x[0]
         IDMap = args["id_map"]
-        OldIDs = f._QSArgs.DescriptorSection[0]
+        OldIDs = self._QSArgs.DescriptorSection[0]
         Rslt = np.full(shape=(len(idt), len(iid)), fill_value=np.nan, dtype=Data.dtype)
         for i, iID in enumerate(iid):
             iOldID = IDMap.get(iID, None)
