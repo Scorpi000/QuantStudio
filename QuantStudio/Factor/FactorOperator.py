@@ -710,6 +710,34 @@ class SectionRegress(SectionOperator):
     def __call__(self, endog:Factor, *exog:Factor, factor_args:dict={}, **kwargs) -> SectionOperation:
         return super().__call__(endog, *exog, factor_args=factor_args, **kwargs)
 
+class AggregateComponent(SectionOperator):
+    """聚合成分数据"""
+
+    def __init__(self, aggr_func:Callable[[np.ndarray], Any]=np.nanmean, descriptor_ids:Optional[List[str]]=None, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
+        Arity = args.get("Arity", None) or 2
+        Args = {"Name": "aggregateComponent"} | args | {"DataType": dtype, "DTMode": "单时点"}
+        Args["ModelArgs"] = {"aggr_func": aggr_func, "dtype": dtype} | Args.get("ModelArgs", {})
+        descriptor_ids = Args.get("DescriptorSection", [descriptor_ids])[0]
+        Args["DescriptorSection"] = [descriptor_ids, None] + [None] * max(0, Arity - 2)
+        return super().__init__(args=Args, config_file=config_file, **kwargs)
+        
+    def calculate(self, f: Factor, idt: dt.datetime, iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
+        Value, ComponentID, ComponentData = x[0], x[1], x[2:]
+        Value = pd.Series(Value, index=f.Operator.Args.DescriptorSection[0])
+        AggrFunc = args["aggr_func"]
+        Rslt = np.full_like(ComponentID, np.nan, dtype=float) if args["dtype"]=="double" else np.full_like(ComponentID, None, dtype="O")
+        for i, iIDs in enumerate(ComponentID):
+            if isinstance(iIDs, list):
+                iComponentData = [d[i] for d in ComponentData]
+                if Value.index.intersection(iIDs).shape[0] > 0:
+                    iValue = Value.reindex(index=iIDs).values
+                    Rslt[i] = AggrFunc(iValue, *iComponentData)
+        return Rslt
+
+    def __call__(self, f:Factor, component:Factor, *component_data:Factor, factor_args:dict={}, **kwargs) -> SectionOperation:
+        Factors = [f, component] + list(component_data)
+        return super().__call__(*Factors, factor_args=factor_args, **kwargs)
+
 # ----------------------面板运算--------------------------------
 class PanelRegress(PanelOperator):
     """面板回归"""
