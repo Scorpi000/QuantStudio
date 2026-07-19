@@ -16,12 +16,18 @@
 测试方法:
     test_rollingApply              — RollingApply 算子基本功能, 验证输出形状和 NaN 处理
     test_rollingApply_minPeriods   — RollingApply 窗口内有效数据不足时返回 NaN
-    test_aggregate_basic           — Aggregate 无 cat_data 时截面聚合, 广播标量到所有 ID
-    test_aggregate_with_mask       — Aggregate 带 mask 时仅对掩码为 1 的数据聚合
-    test_aggregate_with_catData    — Aggregate 带 cat_data 时按类别分组聚合
-    test_aggregateComponent_basic  — AggregateComponent 按成分 ID 列表聚合值
-    test_aggregateComponent_noMatch — AggregateComponent 成分 ID 不在 SectionIDs 中时返回 NaN
+    test_aggregate_basic              — Aggregate 无 cat_data 时截面聚合, 广播标量到所有 ID
+    test_aggregate_with_mask          — Aggregate 带 mask 时仅对掩码为 1 的数据聚合
+    test_aggregate_with_catData       — Aggregate 带 cat_data 时按类别分组聚合
+    test_aggregateComponent_basic     — AggregateComponent 按成分 ID 列表聚合值
     test_aggregateComponent_with_weight — AggregateComponent 带权重输入的加权聚合
+    test_aggregatePanel_basic         — AggregatePanel window=1 时截面聚合, 广播标量到所有 ID
+    test_aggregatePanel_window        — AggregatePanel window>1 时跨时间窗口截面聚合
+    test_aggregatePanel_with_mask     — AggregatePanel 带 mask 时仅对掩码为 1 的数据聚合
+    test_aggregatePanel_with_catData  — AggregatePanel 带 cat_data 时按类别分组聚合
+    test_aggregateComponentPanel_basic       — AggregateComponentPanel window=1 基本成分聚合
+    test_aggregateComponentPanel_window      — AggregateComponentPanel window>1 exog 跨窗口聚合
+    test_aggregateComponentPanel_weighted    — AggregateComponentPanel 带权重 component_data 的加权聚合
 """
 import datetime as dt
 import unittest
@@ -162,14 +168,13 @@ class TestFactorOperator(unittest.TestCase):
         F = DataFactor(data=pd.DataFrame(val_data, index=dtr, columns=section_ids), args={"Name": "val"})
         # Component: columns=section_ids, 每个 cell 是该 section 所属的 component 列表
         comp_data = pd.DataFrame({
-            "000001.SZ": [["000016.SH", "000300.SH"]] * 3,
-            "000002.SZ": [["000300.SH"]] * 3,
-            "000003.SZ": [["000016.SH", "000300.SH"]] * 3,
+            "000016.SH": [["000001.SZ", "000003.SZ"]] * 3,
+            "000300.SH": [["000001.SZ", "000002.SZ", "000003.SZ"]] * 3,
         }, index=dtr)
         Comp = DataFactor(data=comp_data, args={"Name": "comp"})
 
         op = fo.AggregateComponent(aggr_func=np.nanmean, descriptor_ids=section_ids)
-        TestF = op(F, Comp, factor_args={"Name": "comp_out"})
+        TestF = op(Comp, [], [F], factor_args={"Name": "comp_out"})
         TestData = TestF.readData(ids=component_ids, dts=dts, dt_ruler=dtr)
 
         self.assertEqual(TestData.shape, (1, 2))
@@ -178,8 +183,8 @@ class TestFactorOperator(unittest.TestCase):
 
     def test_aggregateComponent_with_weight(self):
         """测试 AggregateComponent: 带权重输入的加权聚合"""
-        def _weighted_mean(v, w):
-            return np.nansum(v * w) / np.nansum(w)
+        def _weighted_mean(v):
+            return np.nansum(v[:, 0] * v[:, 1]) / np.nansum(v[:, 0])
 
         section_ids = ["000001.SZ", "000002.SZ", "000003.SZ"]
         component_ids = ["000016.SH", "000300.SH"]
@@ -201,7 +206,7 @@ class TestFactorOperator(unittest.TestCase):
         Weight = DataFactor(data=weight_data, args={"Name": "ww"})
 
         op = fo.AggregateComponent(aggr_func=_weighted_mean, descriptor_ids=section_ids)
-        TestF = op(F, Comp, Weight, factor_args={"Name": "wcomp_out"})
+        TestF = op(Comp, [Weight], [F], factor_args={"Name": "wcomp_out"})
         TestData = TestF.readData(ids=component_ids, dts=dts, dt_ruler=dtr)
 
         self.assertEqual(TestData.shape, (1, 2))
@@ -210,9 +215,161 @@ class TestFactorOperator(unittest.TestCase):
         np.testing.assert_array_almost_equal(TestData.values, [[70.0 / 3, 150.0 / 8]])
 
 
+    # ==================== AggregatePanel 测试 ====================
+
+    def test_aggregatePanel_basic(self):
+        """测试 AggregatePanel window=1: 截面聚合后广播标量到所有 ID"""
+        ids = ["000001.SZ", "000002.SZ", "000003.SZ"]
+        dtr = [dt.datetime(2025, 1, 1) + dt.timedelta(i) for i in range(3)]
+        dts = dtr[-1:]
+        data = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
+        F = DataFactor(data=pd.DataFrame(data, index=dtr, columns=ids), args={"Name": "ap_in"})
+
+        TestF = fo.AggregatePanel(aggr_func=np.nansum, window=1)(F, factor_args={"Name": "ap_out"})
+        TestData = TestF.readData(ids=ids, dts=dts, dt_ruler=dtr)
+
+        self.assertEqual(TestData.shape, (1, 3))
+        # window=1 只取当期, 7+8+9=24, 广播到所有 ID
+        np.testing.assert_array_equal(TestData.values, [[24.0, 24.0, 24.0]])
+
+    def test_aggregatePanel_window(self):
+        """测试 AggregatePanel window>1: 跨时间窗口截面聚合"""
+        ids = ["000001.SZ", "000002.SZ", "000003.SZ"]
+        dtr = [dt.datetime(2025, 1, 1) + dt.timedelta(i) for i in range(3)]
+        dts = dtr[-1:]
+        data = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
+        F = DataFactor(data=pd.DataFrame(data, index=dtr, columns=ids), args={"Name": "apw_in"})
+
+        # window=3: 取全部 3 个时点的截面数据
+        TestF = fo.AggregatePanel(aggr_func=np.nansum, window=3)(F, factor_args={"Name": "apw_out"})
+        TestData = TestF.readData(ids=ids, dts=dts, dt_ruler=dtr)
+
+        self.assertEqual(TestData.shape, (1, 3))
+        # sum(1,4,7)+sum(2,5,8)+sum(3,6,9) = 12+15+18 = 45, 广播
+        np.testing.assert_array_equal(TestData.values, [[45.0, 45.0, 45.0]])
+
+    def test_aggregatePanel_with_mask(self):
+        """测试 AggregatePanel 带 mask: 仅对掩码为 1 的数据聚合"""
+        ids = ["000001.SZ", "000002.SZ", "000003.SZ"]
+        dtr = [dt.datetime(2025, 1, 1) + dt.timedelta(i) for i in range(3)]
+        dts = dtr[-1:]
+        data = np.array([[10.0, 20.0, 30.0], [10.0, 20.0, 30.0], [10.0, 20.0, 30.0]])
+        mask_data = np.array([[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 0.0, 1.0]])
+        F = DataFactor(data=pd.DataFrame(data, index=dtr, columns=ids), args={"Name": "apm_in"})
+        Mask = DataFactor(data=pd.DataFrame(mask_data, index=dtr, columns=ids), args={"Name": "apm_mask"})
+
+        TestF = fo.AggregatePanel(aggr_func=np.nansum, window=1)(F, Mask, factor_args={"Name": "apm_out"})
+        TestData = TestF.readData(ids=ids, dts=dts, dt_ruler=dtr)
+
+        self.assertEqual(TestData.shape, (1, 3))
+        # 当期 mask=[1,0,1], data=[10,20,30] → sum(10,30)=40, 广播
+        np.testing.assert_array_equal(TestData.values, [[40.0, 40.0, 40.0]])
+
+    def test_aggregatePanel_with_catData(self):
+        """测试 AggregatePanel 带 cat_data: 按类别分组聚合"""
+        ids = ["000001.SZ", "000002.SZ", "000003.SZ", "000004.SZ"]
+        dtr = [dt.datetime(2025, 1, 1) + dt.timedelta(i) for i in range(3)]
+        dts = dtr[-1:]
+        data = np.array([[1.0, 2.0, 3.0, 4.0]] * 3)
+        cat_data = np.array([["A", "B", "A", "B"]] * 3)
+        F = DataFactor(data=pd.DataFrame(data, index=dtr, columns=ids), args={"Name": "apc_in"})
+        Cat = DataFactor(data=pd.DataFrame(cat_data, index=dtr, columns=ids), args={"Name": "apc_cat"})
+
+        TestF = fo.AggregatePanel(aggr_func=np.nansum, window=1)(F, cat_data=Cat, factor_args={"Name": "apc_out"})
+        TestData = TestF.readData(ids=ids, dts=dts, dt_ruler=dtr)
+
+        self.assertEqual(TestData.shape, (1, 4))
+        # A 组: 1+3=4, B 组: 2+4=6
+        np.testing.assert_array_equal(TestData.values, [[4.0, 6.0, 4.0, 6.0]])
+
+    # ==================== AggregateComponentPanel 测试 ====================
+
+    def test_aggregateComponentPanel_basic(self):
+        """测试 AggregateComponentPanel window=1: 基本成分聚合"""
+        section_ids = ["000001.SZ", "000002.SZ", "000003.SZ"]
+        component_ids = ["000016.SH", "000300.SH"]
+        dtr = [dt.datetime(2025, 1, 1) + dt.timedelta(i) for i in range(3)]
+        dts = dtr[-1:]
+        val_data = np.array([[10.0, 20.0, 30.0]] * 3)
+        F = DataFactor(data=pd.DataFrame(val_data, index=dtr, columns=section_ids), args={"Name": "val"})
+        comp_data = pd.DataFrame({
+            "000016.SH": [["000001.SZ", "000003.SZ"]] * 3,
+            "000300.SH": [["000001.SZ", "000002.SZ", "000003.SZ"]] * 3,
+        }, index=dtr)
+        Comp = DataFactor(data=comp_data, args={"Name": "comp"})
+
+        def _mean(df):
+            return df["exog_0"].mean()
+
+        op = fo.AggregateComponentPanel(aggr_func=_mean, window=1, descriptor_ids=section_ids)
+        TestF = op(Comp, [], [F], factor_args={"Name": "acp_basic"})
+        TestData = TestF.readData(ids=component_ids, dts=dts, dt_ruler=dtr)
+
+        self.assertEqual(TestData.shape, (1, 2))
+        # 000016: mean(10, 30)=20; 000300: mean(10, 20, 30)=20
+        np.testing.assert_array_almost_equal(TestData.values, [[20.0, 20.0]])
+
+    def test_aggregateComponentPanel_window(self):
+        """测试 AggregateComponentPanel window>1: exog 跨窗口聚合"""
+        section_ids = ["000001.SZ", "000002.SZ", "000003.SZ"]
+        component_ids = ["000016.SH", "000300.SH"]
+        dtr = [dt.datetime(2025, 1, 1) + dt.timedelta(i) for i in range(3)]
+        dts = dtr[-1:]
+        val_varying = np.array([[10.0, 20.0, 30.0], [40.0, 50.0, 60.0], [70.0, 80.0, 90.0]])
+        Fv = DataFactor(data=pd.DataFrame(val_varying, index=dtr, columns=section_ids), args={"Name": "fv"})
+        comp_data = pd.DataFrame({
+            "000016.SH": [["000001.SZ", "000003.SZ"]] * 3,
+            "000300.SH": [["000001.SZ", "000002.SZ", "000003.SZ"]] * 3,
+        }, index=dtr)
+        Comp = DataFactor(data=comp_data, args={"Name": "comp"})
+
+        def _mean(df):
+            return df["exog_0"].mean()
+
+        op = fo.AggregateComponentPanel(aggr_func=_mean, window=3, descriptor_ids=section_ids)
+        TestF = op(Comp, [], [Fv], factor_args={"Name": "acp_win"})
+        TestData = TestF.readData(ids=component_ids, dts=dts, dt_ruler=dtr)
+
+        self.assertEqual(TestData.shape, (1, 2))
+        # 000016: exog=[10,30,40,60,70,90] (2条x3期) → mean=50
+        # 000300: exog=[10,20,30,40,50,60,70,80,90] (3条x3期) → mean=50
+        np.testing.assert_array_almost_equal(TestData.values, [[50.0, 50.0]])
+
+    def test_aggregateComponentPanel_weighted(self):
+        """测试 AggregateComponentPanel 带权重 component_data 的加权聚合"""
+        section_ids = ["000001.SZ", "000002.SZ", "000003.SZ"]
+        component_ids = ["000016.SH", "000300.SH"]
+        dtr = [dt.datetime(2025, 1, 1) + dt.timedelta(i) for i in range(3)]
+        dts = dtr[-1:]
+        val_data = np.array([[10.0, 20.0, 30.0]] * 3)
+        F = DataFactor(data=pd.DataFrame(val_data, index=dtr, columns=section_ids), args={"Name": "val"})
+        comp_data = pd.DataFrame({
+            "000016.SH": [["000001.SZ", "000003.SZ"]] * 3,
+            "000300.SH": [["000001.SZ", "000002.SZ", "000003.SZ"]] * 3,
+        }, index=dtr)
+        Comp = DataFactor(data=comp_data, args={"Name": "comp"})
+        weight_data = pd.DataFrame({
+            "000016.SH": [[1.0, 2.0]] * 3,
+            "000300.SH": [[3.0, 3.0, 2.0]] * 3,
+        }, index=dtr)
+        Weight = DataFactor(data=weight_data, args={"Name": "ww"})
+
+        def _weighted_mean(df):
+            return np.nansum(df["endog_0"] * df["exog_0"]) / np.nansum(df["endog_0"])
+
+        op = fo.AggregateComponentPanel(aggr_func=_weighted_mean, window=1, descriptor_ids=section_ids)
+        TestF = op(Comp, [Weight], [F], factor_args={"Name": "acp_wgt"})
+        TestData = TestF.readData(ids=component_ids, dts=dts, dt_ruler=dtr)
+
+        self.assertEqual(TestData.shape, (1, 2))
+        # 000016: w=[1,2], v=[10,30] → (10+60)/(1+2)=70/3
+        # 000300: w=[3,3,2], v=[10,20,30] → (30+60+60)/(3+3+2)=150/8
+        np.testing.assert_array_almost_equal(TestData.values, [[70.0 / 3, 150.0 / 8]])
+
+
 if __name__ == "__main__":
     # unittest.main()
     Suite = unittest.TestSuite()
-    Suite.addTest(TestFactorOperator("test_aggregateComponent_with_weight"))
+    Suite.addTest(TestFactorOperator("test_aggregateComponent_basic"))
     Runner = unittest.TextTestRunner(verbosity=2)
     Runner.run(Suite)

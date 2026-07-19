@@ -14,6 +14,7 @@ from QuantStudio.Factor.Factor import Factor
 from QuantStudio.Factor.FactorOperation import PointOperator, TimeOperator, SectionOperator, PanelOperator, PointOperation, TimeOperation, SectionOperation, PanelOperation
 from QuantStudio.Core.QSObject import Panel
 from QuantStudio.Tools import DataPreprocessingFun
+from QuantStudio.Tools.DataTypeConversionFun import expandListElementDataFrame
 
 
 # ----------------------单点运算--------------------------------
@@ -549,7 +550,17 @@ class SectionRank(SectionOperator):
         return super().__call__(*Factors, factor_args=factor_args, **kwargs)
 
 class Aggregate(SectionOperator):
-    """截面聚合"""
+    """截面聚合
+
+    对单个时点的截面数据进行聚合, 结果广播到所有 ID。
+    支持通过 mask 掩码过滤数据, 通过 cat_data 按类别分组聚合。
+
+    Args:
+        aggr_func: 聚合函数, 接收 1D ndarray (截面值), 返回标量。
+            当带 mask 时仅包含掩码为 1 的值; 当带 cat_data 时包含当前类别的截面值。
+        descriptor_ids: 聚合的截面 ID 列表, None 表示使用因子自身截面
+        dtype: 输出数据类型
+    """
 
     def __init__(self, aggr_func:Callable[[np.ndarray], Any]=np.nansum, descriptor_ids:Optional[List[str]]=None, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
         Arity = args.get("Arity", None) or 1
@@ -711,32 +722,53 @@ class SectionRegress(SectionOperator):
         return super().__call__(endog, *exog, factor_args=factor_args, **kwargs)
 
 class AggregateComponent(SectionOperator):
-    """聚合成分数据"""
+    """聚合成分数据
+
+    按成分列表聚合。component 因子的每个 ID 对应一个成分 ID 列表, 算子从
+    component_data 和 exog 中取值, 展开成分后按 code 分组聚合。
+
+    Args:
+        aggr_func: 聚合函数, 接收 2D ndarray, shape=(n_components, nEndog+nExog)。
+            列顺序为 [component_data_0, ..., exog_0, ...], 行为当前 code 下的各成分。
+        descriptor_ids: exog 数据的截面 ID 列表, None 表示无 exog
+        dtype: 输出数据类型
+    """
 
     def __init__(self, aggr_func:Callable[[np.ndarray], Any]=np.nanmean, descriptor_ids:Optional[List[str]]=None, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
-        Arity = args.get("Arity", None) or 2
-        Args = {"Name": "aggregateComponent"} | args | {"DataType": dtype, "DTMode": "单时点"}
-        Args["ModelArgs"] = {"aggr_func": aggr_func, "dtype": dtype} | Args.get("ModelArgs", {})
-        descriptor_ids = Args.get("DescriptorSection", [descriptor_ids])[0]
-        Args["DescriptorSection"] = [descriptor_ids, None] + [None] * max(0, Arity - 2)
+        ModelArgs = args.get("ModelArgs", {})
+        EndogNum, ExogNum = ModelArgs.get("endog_num", 0), ModelArgs.get("exog_num", int(descriptor_ids is not None))
+        Arity = args.get("Arity", None) or (1 + EndogNum + ExogNum)
+        if Arity != 1 + EndogNum + ExogNum:
+            raise __QS_Error__(f"算子输入的变量个数 Arity({Arity}) 不等于真实的变量个数")
+        Args = {"Name": "aggregateComponent"} | args | {"DataType": dtype, "DTMode": "单时点", "Arity": Arity}
+        Args["ModelArgs"] = {"aggr_func": aggr_func, "dtype": dtype} | ModelArgs
+        descriptor_ids = Args.get("DescriptorSection", [descriptor_ids])[-1]
+        Args["DescriptorSection"] = [None] + [None] * EndogNum + [descriptor_ids] * ExogNum
         return super().__init__(args=Args, config_file=config_file, **kwargs)
         
     def calculate(self, f: Factor, idt: dt.datetime, iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
-        Value, ComponentID, ComponentData = x[0], x[1], x[2:]
-        Value = pd.Series(Value, index=f.Operator.Args.DescriptorSection[0])
+        Data = x[0:1+args.get("endog_num", 0)]
+        Data = pd.DataFrame(Data, columns=iid).T
+        Data = expandListElementDataFrame(Data, expand_index=True, dropna=True)
+        Data.columns = ["code", "component_code"] + Data.columns[2:].tolist()
+        if Data.empty:
+            return np.full((len(iid), ), np.nan, dtype=float) if args["dtype"]=="double" else np.full_like((len(iid), ), None, dtype="O")
+        Exog = x[1+args.get("endog_num", 0):1+args.get("endog_num", 0)+args.get("exog_num", 0)]
+        if Exog:
+            Exog = pd.DataFrame(Exog, columns=f.Operator.Args.DescriptorSection[-1]).T
+            Data = pd.merge(Data, Exog, how="left", left_on=["component_code"], right_index=True)
         AggrFunc = args["aggr_func"]
-        Rslt = np.full_like(ComponentID, np.nan, dtype=float) if args["dtype"]=="double" else np.full_like(ComponentID, None, dtype="O")
-        for i, iIDs in enumerate(ComponentID):
-            if isinstance(iIDs, list):
-                iComponentData = [d[i] for d in ComponentData]
-                if Value.index.intersection(iIDs).shape[0] > 0:
-                    iValue = Value.reindex(index=iIDs).values
-                    Rslt[i] = AggrFunc(iValue, *iComponentData)
-        return Rslt
+        def _aggr_func(df):
+            return AggrFunc(df.iloc[:, 2:].values)
+        Rslt = Data.groupby(["code"]).apply(_aggr_func)
+        return Rslt.reindex(index=iid).values
 
-    def __call__(self, f:Factor, component:Factor, *component_data:Factor, factor_args:dict={}, **kwargs) -> SectionOperation:
-        Factors = [f, component] + list(component_data)
-        return super().__call__(*Factors, factor_args=factor_args, **kwargs)
+    def __call__(self, component:Factor, component_data:List[Factor]=[], exog:List[Factor]=[], factor_args:dict={}, **kwargs) -> SectionOperation:
+        operator_kwargs =  {"aggr_func": self._QSArgs["ModelArgs"]["aggr_func"], "descriptor_ids": self._QSArgs.DescriptorSection[-1], "dtype": self._QSArgs.DataType} | kwargs.get("operator_kwargs", {})
+        operator_kwargs["args"] = operator_kwargs.get("args", {})
+        operator_kwargs["args"]["ModelArgs"] = operator_kwargs["args"].get("ModelArgs", {}) | {"endog_num": len(component_data), "exog_num": len(exog)}
+        operator_kwargs["args"]["Arity"] = 1 + len(component_data) + len(exog)
+        return super(AggregateComponent, self.new(**operator_kwargs)).__call__(component, *component_data, *exog, factor_args=factor_args, **kwargs)
 
 # ----------------------面板运算--------------------------------
 class PanelRegress(PanelOperator):
@@ -776,6 +808,141 @@ class PanelRegress(PanelOperator):
     
     def __call__(self, endog:Factor, *exog:Factor, factor_args:dict={}, **kwargs) -> PanelOperation:
         return super().__call__(endog, *exog, factor_args=factor_args, **kwargs)
+
+class AggregatePanel(PanelOperator):
+    """截面聚合时序数据
+
+    对 window 期内的截面数据进行聚合, 结果广播到所有 ID。
+    与 Aggregate 的区别在于支持时间窗口回溯, aggr_func 接收整个窗口的数据。
+    支持通过 mask 掩码过滤, 通过 cat_data 按类别分组聚合。
+
+    Args:
+        aggr_func: 聚合函数, 接收 2D ndarray, shape=(window, nID_filtered)。
+            当无 mask/cat_data 时为 (window, nID); 当带 mask 时列维度为掩码为 1 的 ID;
+            当带 cat_data 时为当前类别的截面值。
+        window: 回溯窗口大小, 1 表示仅当期
+        descriptor_ids: 聚合的截面 ID 列表, None 表示使用因子自身截面
+        dtype: 输出数据类型
+    """
+
+    def __init__(self, aggr_func:Callable[[np.ndarray], Any]=np.nansum, window:int=1, descriptor_ids:Optional[List[str]]=None, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
+        Arity = args.get("Arity", None) or 1
+        Args = {"Name": "aggregatePanel"} | args | {"DataType": dtype, "DTMode": "单时点"}
+        Args["ModelArgs"] = {"aggr_func": aggr_func, "dtype": dtype, "window": window} | Args.get("ModelArgs", {})
+        descriptor_ids = Args.get("DescriptorSection", [descriptor_ids])[0]
+        Args["DescriptorSection"] = [descriptor_ids] * Arity
+        Args["LookBack"] = [Args["ModelArgs"]["window"] - 1] + [0] * (Arity - 1)
+        return super().__init__(args=Args, config_file=config_file, **kwargs)
+        
+    def calculate(self, f: Factor, idt: dt.datetime, iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
+        nID = len(iid)
+        FactorData = x[0]
+        if f._QSArgs.ModelArgs["mask"]:
+            Mask = (x[1][0]==1)
+        else:
+            Mask = np.full((FactorData.shape[1], ), fill_value=True)
+        AggrFunc = args["aggr_func"]
+        if f._QSArgs.ModelArgs["cat_data"]:
+            CatData = x[-1][0]
+            Rslt = np.full(shape=(nID, ), fill_value=np.nan)
+            if f._QSArgs.ModelArgs["section_chged"]:
+                for i, iID in enumerate(iid):
+                    iMask = ((CatData==iID) & Mask)
+                    Rslt[i] = AggrFunc(FactorData[:, iMask])
+            else:
+                AllCats = pd.unique(CatData.flatten())
+                for i, iCat in enumerate(AllCats):
+                    if pd.isnull(iCat):
+                        iMask = (pd.isnull(CatData) & Mask)
+                    else:
+                        iMask = ((CatData==iCat) & Mask)
+                    Rslt[iMask] = AggrFunc(FactorData[:, iMask])
+        else:
+            Rslt = np.full(shape=(nID, ), fill_value=AggrFunc(FactorData[:, Mask]))
+        return Rslt
+
+    def __call__(self, f:Factor, mask:Optional[Factor]=None, cat_data:Optional[Factor]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
+        Factors = [f]
+        if mask is not None: Factors.append(mask)
+        if cat_data is not None: Factors.append(cat_data)
+        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"mask": (mask is not None), "cat_data": (cat_data is not None), "section_chged": (self._QSArgs.DescriptorSection[0] is not None)}
+        return super().__call__(*Factors, factor_args=factor_args, **kwargs)
+
+class AggregateComponentPanel(PanelOperator):
+    """聚合成分时序数据
+
+    AggregateComponent 的面板版本, exog 支持时间窗口回溯。
+    component 和 component_data (endog) 只取当期数据, exog 回溯 window 期。
+    无 exog 时等价于 AggregateComponent (但 aggr_func 接收 DataFrame)。
+
+    Args:
+        aggr_func: 聚合函数, 接收 DataFrame, 按 code 分组后调用。
+            无 exog 时列: [component_code, endog_0, ...]
+            有 exog 时列: [component_code, datetime, endog_0, ..., exog_0, ...]
+            endog 数据在时间维度上重复, exog 数据按 datetime 对应不同时点的值。
+            由 aggr_func 自行决定如何处理时间维度。
+        window: exog 的回溯窗口大小, 1 表示仅当期
+        descriptor_ids: exog 数据的截面 ID 列表, None 表示无 exog
+        dtype: 输出数据类型
+    """
+
+    def __init__(self, aggr_func:Callable[[np.ndarray], Any]=np.nanmean, window:int=1, descriptor_ids:Optional[List[str]]=None, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
+        ModelArgs = args.get("ModelArgs", {})
+        EndogNum, ExogNum = ModelArgs.get("endog_num", 0), ModelArgs.get("exog_num", int(descriptor_ids is not None))
+        Arity = args.get("Arity", None) or (1 + EndogNum + ExogNum)
+        if Arity != 1 + EndogNum + ExogNum:
+            raise __QS_Error__(f"算子输入的变量个数 Arity({Arity}) 不等于真实的变量个数")
+        Args = {"Name": "aggregateComponentPanel"} | args | {"DataType": dtype, "DTMode": "单时点", "Arity": Arity}
+        Args["ModelArgs"] = {"aggr_func": aggr_func, "dtype": dtype, "window": window} | ModelArgs
+        descriptor_ids = Args.get("DescriptorSection", [descriptor_ids])[-1]
+        Args["DescriptorSection"] = [None] + [None] * EndogNum + [descriptor_ids] * ExogNum
+        Args["LookBack"] = [0] * (1 + EndogNum) + [Args["ModelArgs"]["window"] - 1] * ExogNum
+        return super().__init__(args=Args, config_file=config_file, **kwargs)
+
+    def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
+        nID = len(iid)
+        AggrFunc = args["aggr_func"]
+        EndogNum = args.get("endog_num", 0)
+        ExogNum = args.get("exog_num", 0)
+        DesIDs = f.Operator.Args.DescriptorSection[-1]
+        Exog = x[1+EndogNum:1+EndogNum+ExogNum]
+        ComponentData = x[0][0]
+        EndogData = [x[1+e][0] for e in range(EndogNum)]
+        BaseData = pd.DataFrame([ComponentData] + EndogData, columns=iid).T
+        BaseData = expandListElementDataFrame(BaseData, expand_index=True, dropna=True)
+        BaseData.columns = ["code", "component_code"] + [f"endog_{i}" for i in range(EndogNum)]
+        if BaseData.empty:
+            return np.full((nID, ), np.nan, dtype=float) if args["dtype"]=="double" else np.full((nID, ), None, dtype="O")
+        if not Exog:
+            def _aggr_func(df):
+                return AggrFunc(df[["component_code"] + [f"endog_{i}" for i in range(EndogNum)]])
+            Rslt = BaseData.groupby(["code"]).apply(_aggr_func)
+            return Rslt.reindex(index=iid).values
+        nRow = len(BaseData)
+        nWindow = Exog[0].shape[0]
+        # 展开: 每条成分 × 每个时点
+        PanelData = BaseData.iloc[np.repeat(np.arange(nRow), nWindow)].reset_index(drop=True)
+        PanelData.insert(1, "datetime", np.tile(idt, nRow))
+        # exog 长表: 每个 exog shape (nWindow, len(DesIDs)), 展平为 (nWindow*len(DesIDs), ...)
+        ExogTable = pd.DataFrame({
+            "component_code": np.tile(DesIDs, nWindow),
+            "datetime": np.repeat(idt, len(DesIDs)),
+        } | {f"exog_{i}": Exog[i].ravel() for i in range(ExogNum)})
+        PanelData = pd.merge(PanelData, ExogTable, on=["component_code", "datetime"], how="left")
+        def _aggr_func(df):
+            return AggrFunc(df[["component_code", "datetime"] + [f"endog_{i}" for i in range(EndogNum)] + [f"exog_{i}" for i in range(ExogNum)]])
+        Rslt = PanelData.groupby(["code"]).apply(_aggr_func)
+        return Rslt.reindex(index=iid).values
+
+    def __call__(self, component:Factor, component_data:List[Factor]=[], exog:List[Factor]=[], factor_args:dict={}, **kwargs) -> PanelOperation:
+        operator_kwargs = {"aggr_func": self._QSArgs["ModelArgs"]["aggr_func"], "window": self._QSArgs["ModelArgs"]["window"], "descriptor_ids": self._QSArgs.DescriptorSection[-1], "dtype": self._QSArgs.DataType} | kwargs.get("operator_kwargs", {})
+        operator_kwargs["args"] = operator_kwargs.get("args", {})
+        operator_kwargs["args"]["ModelArgs"] = operator_kwargs["args"].get("ModelArgs", {}) | {"endog_num": len(component_data), "exog_num": len(exog)}
+        nArity = 1 + len(component_data) + len(exog)
+        operator_kwargs["args"]["Arity"] = nArity
+        operator_kwargs["args"]["LookBack"] = [0] * (1 + len(component_data)) + [self._QSArgs["ModelArgs"]["window"] - 1] * len(exog)
+        operator_kwargs["args"]["StartDT"] = [None] * nArity
+        return super(AggregateComponentPanel, self.new(**operator_kwargs)).__call__(component, *component_data, *exog, factor_args=factor_args, **kwargs)
 
 
 if __name__=="__main__":
