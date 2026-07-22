@@ -195,6 +195,23 @@ def standardizeZScore(data, mask=None, cat_data=None, avg_statistics="平均值"
         StdData[~mask] = data[~mask]
     return StdData
 
+# Min-Max 标准化
+# data: 待标准化的数据, array; cat_data: 分类数据, array
+# ascending: 是否升序, 可选: True, False; uniformization: 是否归一
+def standardizeMinMax(data, mask=None, cat_data=None, other_handle:Literal["保持不变", "填充None"]='填充None'):
+    """Min-Max 标准化"""
+    if other_handle=="保持不变":
+        StdData = np.copy(data)
+    else:
+        StdData = np.empty(data.shape, dtype='float') + np.nan
+    if mask is None:
+        mask = pd.isnull(StdData)
+    CatMasks = maskCategary(data.shape[0], cat_data=cat_data, mask=mask)
+    for jCat, jCatMask in CatMasks.items():
+        jData = data[jCatMask]
+        StdData[jCatMask] = (jData - np.nanmin(jData)) / (np.nanmax(jData) - np.nanmin(jData))
+    return StdData
+
 # Rank 标准化
 # data: 待标准化的数据, array; cat_data: 分类数据, array
 # ascending: 是否升序, 可选: True, False; uniformization: 是否归一
