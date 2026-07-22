@@ -120,7 +120,7 @@ def adjustDataDTID(data, look_back, factor_names, ids, dts, only_start_lookback=
             Mask[TargetDTs] = True
             FillMask = Mask.copy()
             FillMask[Mask.astype("int").diff()!=1] = False
-            TimeDelta = pd.Series(np.r_[0, np.diff(Mask.index.values) / np.timedelta64(1, "D")], index=Mask.index)
+            TimeDelta = pd.Series(np.r_[0, np.diff(Mask.index.values) / np.timedelta64(1, "D")], index=Mask.index, dtype=float)
             TimeDelta[(Mask & (~FillMask)) | (Mask.astype("int").diff()==-1)] = 0
             TimeDelta = TimeDelta.cumsum().reindex(index=TargetDTs)
             FirstDelta = TimeDelta.iloc[0]
@@ -135,7 +135,7 @@ def adjustDataDTID(data, look_back, factor_names, ids, dts, only_start_lookback=
             FillMask = Mask.copy()
             FillMask[Mask.astype("int").diff()!=1] = False
             FillMask = FillMask.loc[TargetDTs]
-            TimeDelta = pd.Series(np.r_[0, np.diff(Mask.index.values) / np.timedelta64(1, "D")], index=Mask.index).reindex(index=TargetDTs)
+            TimeDelta = pd.Series(np.r_[0, np.diff(Mask.index.values) / np.timedelta64(1, "D")], index=Mask.index, dtype=float).reindex(index=TargetDTs)
             NewLimits = TimeDelta.cumsum()
             Temp = NewLimits.copy()
             Temp[~FillMask] = np.nan
