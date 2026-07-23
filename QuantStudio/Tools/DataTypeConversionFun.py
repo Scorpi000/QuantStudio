@@ -60,7 +60,7 @@ def expandListElementDataFrame(df, expand_index=True, dropna=False, empty_list_m
         # for i in range(data.shape[1] - nCol):
         #     data[Cols[i]] = data.pop(Cols[i]).apply(lambda x: [x]) * (ElementLen[Mask].values - 1)
         # data = data.loc[:, Cols]
-        data.iloc[:, :data.shape[1] - nCol] = (data.iloc[:, :data.shape[1] - nCol].applymap(lambda x: [x]).T * (ElementLen[Mask].values - 1)).T
+        data.iloc[:, :data.shape[1] - nCol] = (data.iloc[:, :data.shape[1] - nCol].map(lambda x: [x]).T * (ElementLen[Mask].values - 1)).T
     data = pd.DataFrame(data.sum(axis=0).tolist(), index=data.columns).T
     if dropna:
         TailRslt = df[(~Mask) & EmptyListMask].copy()

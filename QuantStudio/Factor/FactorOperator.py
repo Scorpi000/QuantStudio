@@ -158,7 +158,7 @@ class Fetch(PointOperator):
         else:
             SampleData = Data[pd.notnull(Data)]
             if SampleData.shape[0]==0:
-                return (np.full(Data.shape, fill_value=np.nan, dtype="float") if f._QSArgs.DataType=="double" else np.full(Data.shape, fill_value=None, dtype="O"))
+                return (np.full(Data.shape, fill_value=np.nan, dtype="float") if self._QSArgs.DataType=="double" else np.full(Data.shape, fill_value=None, dtype="O"))
             SampleData = SampleData[0]
             DataType = np.dtype([(str(i),(float if isinstance(SampleData[i], float) else "O")) for i in range(len(SampleData))])
         return Data.astype(DataType)[str(args["pos"])]
@@ -728,20 +728,21 @@ class AggregateComponent(SectionOperator):
     component_data 和 exog 中取值, 展开成分后按 code 分组聚合。
 
     Args:
-        aggr_func: 聚合函数, 接收 2D ndarray, shape=(n_components, nEndog+nExog)。
-            列顺序为 [component_data_0, ..., exog_0, ...], 行为当前 code 下的各成分。
+        aggr_func: 聚合函数, 接收 2D ndarray。
+            如果 include_component_code 为 False, 则 shape=(n_components, nEndog+nExog)，列顺序为 [component_data_0, ..., exog_0, ...], 行为当前 code 下的各成分。
+            如果 include_component_code 为 True, 则 shape=(n_components, 1+nEndog+nExog)，列顺序为 [component_code, component_data_0, ..., exog_0, ...], 行为当前 code 下的各成分。
         descriptor_ids: exog 数据的截面 ID 列表, None 表示无 exog
         dtype: 输出数据类型
     """
 
-    def __init__(self, aggr_func:Callable[[np.ndarray], Any]=np.nanmean, descriptor_ids:Optional[List[str]]=None, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, aggr_func:Callable[[np.ndarray], Any]=np.nanmean, include_component_code:bool=False, descriptor_ids:Optional[List[str]]=None, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
         ModelArgs = args.get("ModelArgs", {})
         EndogNum, ExogNum = ModelArgs.get("endog_num", 0), ModelArgs.get("exog_num", int(descriptor_ids is not None))
         Arity = args.get("Arity", None) or (1 + EndogNum + ExogNum)
         if Arity != 1 + EndogNum + ExogNum:
             raise __QS_Error__(f"算子输入的变量个数 Arity({Arity}) 不等于真实的变量个数")
         Args = {"Name": "aggregateComponent"} | args | {"DataType": dtype, "DTMode": "单时点", "Arity": Arity}
-        Args["ModelArgs"] = {"aggr_func": aggr_func, "dtype": dtype} | ModelArgs
+        Args["ModelArgs"] = {"aggr_func": aggr_func, "dtype": dtype, "include_component_code": include_component_code} | ModelArgs
         descriptor_ids = Args.get("DescriptorSection", [descriptor_ids])[-1]
         Args["DescriptorSection"] = [None] + [None] * EndogNum + [descriptor_ids] * ExogNum
         return super().__init__(args=Args, config_file=config_file, **kwargs)
@@ -758,9 +759,13 @@ class AggregateComponent(SectionOperator):
             Exog = pd.DataFrame(Exog, columns=f.Operator.Args.DescriptorSection[-1]).T
             Data = pd.merge(Data, Exog, how="left", left_on=["component_code"], right_index=True)
         AggrFunc = args["aggr_func"]
-        def _aggr_func(df):
-            return AggrFunc(df.iloc[:, 2:].values)
-        Rslt = Data.groupby(["code"]).apply(_aggr_func)
+        if args["include_component_code"]:
+            def _aggr_func(df):
+                return AggrFunc(df.values)
+        else:
+            def _aggr_func(df):
+                return AggrFunc(df.iloc[:, 1:].values)
+        Rslt = Data.groupby(["code"]).apply(_aggr_func, include_groups=False)
         return Rslt.reindex(index=iid).values
 
     def __call__(self, component:Factor, component_data:List[Factor]=[], exog:List[Factor]=[], factor_args:dict={}, **kwargs) -> SectionOperation:
