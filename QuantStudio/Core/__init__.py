@@ -248,7 +248,15 @@ class __QS_Object__:
     def Logger(self):
         """日志对象"""
         return self._QS_Logger
-    
+
+    @property
+    def ConfigFile(self) -> str | None:
+        """配置文件"""
+        if self._ConfigFile:
+            return self._ConfigFile
+        else:
+            return None
+
     def new(self, args:dict={}, **kwargs) -> "__QS_Object__":
         """给定新的参数集 args 创建一个新的 QuantStudio 对象, args 中未指定的参数则使用原对象的参数
 
