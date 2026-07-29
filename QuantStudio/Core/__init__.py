@@ -51,7 +51,7 @@ class __QS_Args__(BaseModel):
 
     _Owner: Any = PrivateAttr(default=None)
     _Logger: logging.Logger = PrivateAttr(default=None)
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='forbid', arbitrary_types_allowed=True)
 
     @property
     def Owner(self) -> Any:

@@ -439,7 +439,7 @@ class SQL_Table(FactorTable):
                 data["AdditionalCondition"] = AdditionalCondition
             else:
                 data["AdditionalCondition"] = AdditionalCondition | data["AdditionalCondition"]
-            return super().__init__(**data)
+            return super().__init__(_owner=_owner, _logger=_logger, **data)
 
     def __init__(self, fdb, table_info=None, factor_info=None, security_info=None, exchange_info=None, args={}, **kwargs):
         self._TableInfo = table_info
@@ -1708,7 +1708,7 @@ class SQL_MappingTable(SQL_Table):
             if "EndDTIncluded" not in data:
                 EndDTIncluded = Owner._FactorInfo.loc[data["EndDTField"], "Supplementary"]
                 data["EndDTIncluded"] = (pd.isnull(EndDTIncluded) or (EndDTIncluded=="包含"))
-            return super().__init__(**data)
+            return super().__init__(_owner=_owner, _logger=_logger, **data)
     
     def __init__(self, fdb, args={}, table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(fdb=fdb, args=args, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
@@ -1964,7 +1964,7 @@ class SQL_ConstituentTable(SQL_Table):
             else: data["EndDTField"] = EndDTField.index[0]
             EndDTIncluded = FactorInfo.loc[data["EndDTField"], "Supplementary"]
             data["EndDTIncluded"] = (pd.isnull(EndDTIncluded) or (EndDTIncluded=="包含"))
-            return super().__init__(**data)
+            return super().__init__(_owner=_owner, _logger=_logger, **data)
         
     def __init__(self, fdb, args={},  table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(fdb=fdb, args=args, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
@@ -2225,7 +2225,7 @@ class SQL_FinancialTable(SQL_Table):
                         data["AdjustType"] = str(iConditionVal).strip()
                 else:
                     data["AdjustType"] = ""
-            return super().__init__(**data)
+            return super().__init__(_owner=_owner, _logger=_logger, **data)
 
     def __init__(self, fdb, args={}, table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
         super().__init__(fdb=fdb, args=args, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, **kwargs)
