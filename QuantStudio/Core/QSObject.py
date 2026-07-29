@@ -28,7 +28,7 @@ class QSSQLObject(__QS_Object__):
         IPAddr: str = Field(default="127.0.0.1", title="IP地址", frozen=True, exclude=True)
         Port: int = Field(default=3306, ge=0, le=65535, title="端口", frozen=True, exclude=True)
         User: str = Field(default="root", title="用户名", frozen=True, exclude=True)
-        Pwd: str = Field(default="", title="密码", frozen=True, exclude=True, repr=False)
+        Pwd: str = Field(default="", title="密码", frozen=True, exclude=True, repr=False, json_schema_extra={"secret": True})
         TablePrefix: str = Field(default="", title="表名前缀", frozen=True, exclude=True)
         CharSet: Literal["utf8", "utf8mb4", "gbk", "gb2312", "gb18030", "cp936", "big5"] = Field(default="utf8", title="字符集", frozen=True, exclude=True)
         Connector: Literal["default", "cx_Oracle", "pymssql", "mysql.connector", "pymysql", "psycopg2", "pyodbc"] = Field(default="default", title="连接器", frozen=True, exclude=True)

@@ -8,11 +8,19 @@ from typing import Any, Optional, Literal, Union, Dict, List
 import numpy as np
 import pandas as pd
 from pydantic_core import PydanticUndefinedType
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+from pydantic.fields import FieldInfo
 
 from QuantStudio import __QS_ConfigPath__
 from QuantStudio.Tools.DataTypeConversionFun import dict2html, dict2markdown, formatValue2MD
 from QuantStudio.Tools.DataTypeFun import dict2id
+from QuantStudio.Core._encryption import encrypt_value, decrypt_value, is_encrypted
+
+
+def _is_secret_field(field_info: FieldInfo) -> bool:
+    """检查 Pydantic Field 是否标记为 secret。"""
+    extra = getattr(field_info, "json_schema_extra", None) or {}
+    return bool(extra.get("secret", False))
 
 
 def setDefaultLogLevel(level=logging.INFO):
@@ -41,10 +49,36 @@ class __QS_Error__(Exception):
 class __QS_Args__(BaseModel):
     """QuantStudio 参数对象"""
 
-    Owner: Any = Field(default=None, exclude=True, repr=False, frozen=True, title="所有者")
-    Logger: logging.Logger = Field(default=__QS_Logger__, exclude=True, repr=False, title="日志对象")
-    model_config = ConfigDict(extra='forbid', arbitrary_types_allowed=True)
-    
+    _Owner: Any = PrivateAttr(default=None)
+    _Logger: logging.Logger = PrivateAttr(default=None)
+    model_config = ConfigDict(extra='forbid')
+
+    @property
+    def Owner(self) -> Any:
+        """所属的 ``__QS_Object__`` 实例（只读）。"""
+        return self._Owner
+
+    @property
+    def Logger(self) -> logging.Logger:
+        """日志记录器（只读）。"""
+        return self._Logger
+
+    def __init__(self, /, _owner: Any = None, _logger: logging.Logger = None, **data: Any) -> None:
+        """重写 __init__ 是为了让子类的 ``model_post_init`` 中能通过
+        ``self._Owner`` / ``self._Logger`` 访问所属对象和日志器。
+
+        ``_owner`` / ``_logger`` 必须在这里拦截，不能透传到
+        ``BaseModel.__init__``，否则 ``extra='forbid'`` 会拒绝它们。
+
+        PrivateAttr 在 ``super().__init__()`` 之前设置，确保子类的
+        ``model_post_init`` 中即可访问 ``self._Owner``。
+        """
+        if _owner is not None:
+            object.__setattr__(self, "_Owner", _owner)
+        if _logger is not None:
+            object.__setattr__(self, "_Logger", _logger)
+        super().__init__(**data)
+
     def model_post_init(self, context: Any, /) -> None:
         self._QS_ID = None
     
@@ -60,7 +94,6 @@ class __QS_Args__(BaseModel):
             self._QS_ID = None
             if self.Owner: self.Owner._QS_ID = None
         return super().__setattr__(name, value)
-
     
     def to_dict(self, repr:bool=True) -> dict:
         """以 dict 形式返回所有参数和参数值
@@ -191,6 +224,47 @@ class __QS_Args__(BaseModel):
     def _repr_html_(self):
         return dict2html(self.to_dict(), dict_class=(dict, pd.Series), dict_limit=np.inf)
 
+    def serialize(self) -> dict:
+        """序列化参数集为 dict，敏感字段自动加密。
+
+        对 ``secret=True`` 的字段值使用 Fernet 加密后以 ``"ENC:<base64>"`` 格式输出，
+        其他字段原样输出。
+
+        Returns:
+            可 JSON 序列化的 dict
+        """
+        result = {}
+        for field_name, field_info in self.__pydantic_fields__.items():
+            value = getattr(self, field_name)
+            if _is_secret_field(field_info) and value is not None:
+                result[field_name] = encrypt_value(str(value))
+            else:
+                result[field_name] = value
+        return result
+
+    @classmethod
+    def deserialize(cls, data: dict) -> "__QS_Args__":
+        """从序列化 dict 反向构建参数集实例。
+
+        自动识别 ``"ENC:"`` 前缀并解密对应字段。
+
+        Args:
+            data: ``serialize()`` 输出的 dict
+
+        Returns:
+            重建的参数集实例
+        """
+        decrypted = {}
+        for field_name, value in data.items():
+            if field_name in ("Owner", "Logger"):
+                # 兼容旧格式（Owner/Logger 曾是 Field）
+                continue
+            if is_encrypted(value):
+                decrypted[field_name] = decrypt_value(value)
+            else:
+                decrypted[field_name] = value
+        return cls(**decrypted)
+
 
 class __QS_Object__:
     """Quant Studio 系统对象"""
@@ -221,8 +295,8 @@ class __QS_Object__:
                 self._QS_Logger.warning(f"找不到配置文件: {config_file}")
         else:
             self._ConfigFile = None
-        args = Config | args | {"Owner": self, "Logger": self._QS_Logger}
-        self._QSArgs = self.__QS_ArgClass__(**args)
+        args = Config | args
+        self._QSArgs = self.__QS_ArgClass__(**args, _owner=self, _logger=self._QS_Logger)
         self._QS_ID = kwargs.get("qs_id", None)
 
     def model_dump(self) -> Dict[str, Any]:
@@ -276,6 +350,40 @@ class __QS_Object__:
         HTML += f"<b>文档</b>: {html.escape(self.__doc__ if self.__doc__ else '')}<br/>"
         HTML += f"<b>参数</b>: " + self._QSArgs._repr_html_()
         return HTML
+
+    def serialize(self) -> Dict[str, Any]:
+        """序列化对象为 dict，敏感字段自动加密。
+
+        调用 ``self.model_dump()`` 获取基础结构（以保留子类如
+        ``FactorOperator`` 的自定义字段），然后将 ``__qsargs__``
+        替换为 ``_QSArgs.serialize()`` 的加密版本。
+
+        Returns:
+            可 JSON 序列化的 dict，至少包含 ``__type__``、``__class__``、
+            ``__qsargs__`` 字段
+        """
+        result = self.model_dump()
+        result["__qsargs__"] = self._QSArgs.serialize()
+        return result
+
+    @classmethod
+    def deserialize(cls, data: Dict[str, Any]) -> "__QS_Object__":
+        """从序列化 dict 反向构建对象实例。
+
+        解析 ``__class__`` 字段定位目标类，解密 ``__qsargs__`` 中的
+        敏感字段，然后调用 ``cls(args=...)`` 重建实例。
+
+        Args:
+            data: ``serialize()`` 输出的 dict
+
+        Returns:
+            重建的 __QS_Object__ 子类实例
+        """
+        qsargs_data = data.get("__qsargs__", {})
+        # 解密 args
+        ArgClass = cls.__QS_ArgClass__
+        decrypted_args = ArgClass.deserialize(qsargs_data)
+        return cls(args=decrypted_args.model_dump())
 
 
 if __name__ == "__main__":

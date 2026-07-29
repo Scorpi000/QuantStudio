@@ -76,6 +76,7 @@ class Node(__QS_Object__):
     """计算图中的节点, 独立的计算单元"""
 
     class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
+        model_config = ConfigDict(arbitrary_types_allowed=True)
         Name: str = Field(default="Node", frozen=True, title="名称")
         Parallel: bool = Field(default=True, title="并行计算", frozen=True, exclude=True, repr=False)
         TaskExecutor: Optional[Executor] = Field(default=None, title="并行执行器", description="给到节点用于并行计算", frozen=True, exclude=True, repr=False)

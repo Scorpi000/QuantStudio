@@ -408,8 +408,8 @@ class SQL_Table(FactorTable):
         TablePrefix: str = Field(default="", title="表名前缀", repr=False, frozen=True)
         AdditionalCondition: dict = Field(default={}, title="附加条件", repr=True, frozen=True)
 
-        def __init__(self, /, **data: Any) -> None:
-            Owner = data["Owner"]
+        def __init__(self, /, _owner=None, _logger=None, **data: Any) -> None:
+            Owner = _owner
             # 解析 ID 字段, 至多一个 ID 字段
             Fields = [None] + Owner._FactorInfo[pd.notnull(Owner._FactorInfo["FieldType"])].index.tolist()# ID 字段
             if "IDField" not in data:
@@ -1696,8 +1696,8 @@ class SQL_MappingTable(SQL_Table):
         EndDTField: str = Field(title="结束时点字段", frozen=True, description="用以指示结束填充的时点字段, 默认值 None 表示内部自动判断")
         EndDTIncluded: bool = Field(default=True, title="包含结束时点", frozen=True, description="结束时点处是否填充数据")
 
-        def __init__(self, /, **data: Any) -> None:
-            Owner = data["Owner"]
+        def __init__(self, /, _owner=None, _logger=None, **data: Any) -> None:
+            Owner = _owner
             # 解析结束时点字段
             if "EndDTField" not in data:
                 Fields = Owner._FactorInfo[Owner._FactorInfo["FieldType"].str.lower().str.contains("date")].index.tolist()# 所有的时点字段列表
@@ -1933,8 +1933,8 @@ class SQL_ConstituentTable(SQL_Table):
         CurSignField: Optional[str] = Field(default=None, title="当前状态字段", repr=False, frozen=True)
         EndDTIncluded: bool = Field(default=False, title="包含结束时点", frozen=True, description="结束时点处是否包含在成份中")
 
-        def __init__(self, /, **data: Any) -> None:
-            Owner, Logger = data["Owner"], data["Logger"]
+        def __init__(self, /, _owner=None, _logger=None, **data: Any) -> None:
+            Owner, Logger = _owner, _logger
             FactorInfo = Owner._FactorInfo
             # 解析类别字段
             if "GroupField" not in data:
@@ -2197,8 +2197,8 @@ class SQL_FinancialTable(SQL_Table):
         AdjustType: str = Field(title="调整类型", repr=False, frozen=True)
         PublDTField: Optional[str] = Field(default=None, title="公告时点字段", frozen=True)
     
-        def __init__(self, /, **data: Any) -> None:
-            Owner = data["Owner"]
+        def __init__(self, /, _owner=None, _logger=None, **data: Any) -> None:
+            Owner = _owner
             FactorInfo = Owner._FactorInfo
             # 解析公告时点字段
             Fields = [None] + FactorInfo[FactorInfo["FieldType"].str.lower().str.contains("date")].index.tolist()# 所有的时点字段列表

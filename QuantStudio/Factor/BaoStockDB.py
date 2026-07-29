@@ -257,7 +257,7 @@ class BaoStockDB(FactorDB):
     class __QS_ArgClass__(FactorDB.__QS_ArgClass__):
         Name: str = Field(default="BaoStockDB", title="名称", frozen=True)
         UserID: str = Field(default="anonymous", title="用户ID", frozen=True, repr=False)
-        Pwd: str = Field(default="123456", title="密码", frozen=True, repr=False)
+        Pwd: str = Field(default="123456", title="密码", frozen=True, repr=False, json_schema_extra={"secret": True})
         DBInfoFile: Optional[FilePath] = Field(default=None, title="库信息文件", frozen=True, repr=False)
         FTArgs: dict = Field(default={}, title="因子表参数", frozen=True, repr=False)
 
