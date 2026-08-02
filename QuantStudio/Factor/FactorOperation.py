@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """因子运算"""
+import base64
+import importlib
 import os
 import datetime as dt
 from functools import partial
@@ -60,12 +62,80 @@ class FactorOperator(__QS_Object__):
         DumpedModel = super().model_dump()
         DumpedModel["__func__"] = self.calculate
         return DumpedModel
-    
+
     def new(self, args={}, **kwargs):
         NewOperator = super().new(args=args, **kwargs)
         if getattr(self.calculate, "__self__", None) != self:
             NewOperator.calculate = self.calculate
         return NewOperator
+
+    # ─── 序列化 / 反序列化 ───────────────────────────────────
+
+    def _is_custom_calculate(self) -> bool:
+        """判断 calculate 是否在实例上被替换过（非类继承）"""
+        calculate = getattr(self, "calculate", None)
+        if calculate is None:
+            return False
+        op_class = type(self)
+        if "calculate" not in op_class.__dict__:
+            return True
+        cls_calc = op_class.__dict__["calculate"]
+        if hasattr(cls_calc, "__code__") and hasattr(calculate, "__code__"):
+            return cls_calc.__code__ is not calculate.__code__
+        return cls_calc is not calculate
+
+    def _serialize_calculate(self) -> Optional[dict]:
+        """序列化自定义 calculate，返回 None 表示无需序列化"""
+        calculate = getattr(self, "calculate", None)
+        if calculate is None or not self._is_custom_calculate():
+            return None
+        # numpy ufunc
+        if isinstance(calculate, np.ufunc):
+            return {"type": "numpy_func", "name": calculate.__name__}
+        # 可导入的函数
+        module = getattr(calculate, "__module__", None)
+        qualname = getattr(calculate, "__qualname__", None)
+        if module and qualname and module != "__main__":
+            try:
+                obj = importlib.import_module(module)
+                for part in qualname.split("."):
+                    obj = getattr(obj, part)
+                if obj is calculate:
+                    return {"type": "func_ref", "module": module, "qualname": qualname}
+            except (ImportError, AttributeError):
+                pass
+        # dill 兜底
+        return {"type": "dill", "data": base64.b64encode(dill.dumps(calculate)).decode("ascii")}
+
+    @staticmethod
+    def _deserialize_calculate(op, ref: dict):
+        if ref is None:
+            return
+        t = ref.get("type", "")
+        if t == "func_ref":
+            module = importlib.import_module(ref["module"])
+            obj = module
+            for part in ref["qualname"].split("."):
+                obj = getattr(obj, part)
+            op.calculate = obj
+        elif t == "dill":
+            op.calculate = dill.loads(base64.b64decode(ref["data"]))
+        elif t == "numpy_func":
+            op.calculate = getattr(np, ref["name"])
+
+    def serialize(self) -> Dict[str, Any]:
+        """序列化算子为 dict，包含 calculate_ref 和完整类路径"""
+        result = super().serialize()
+        result["__class__"] = type(self).__module__ + "." + type(self).__qualname__
+        result["calculate_ref"] = self._serialize_calculate()
+        return result
+
+    @classmethod
+    def deserialize(cls, data: Dict[str, Any]) -> "FactorOperator":
+        """从序列化 dict 重建算子实例，恢复 calculate"""
+        op = super().deserialize(data)
+        cls._deserialize_calculate(op, data.get("calculate_ref"))
+        return op
     
     def _QS_validate(self, *x, **kwargs):
         Arity = len(x)

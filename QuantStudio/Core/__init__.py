@@ -302,7 +302,7 @@ class __QS_Object__:
     def model_dump(self) -> Dict[str, Any]:
         return {
             "__type__": "__QS_Object__",
-            "__class__": self.__class__.__name__,
+            "__class__": type(self).__module__ + "." + type(self).__qualname__,
             "__qsargs__": self._QSArgs.model_dump()
         }
 
@@ -346,7 +346,7 @@ class __QS_Object__:
         return self.__class__(args=args, **kwargs)
     
     def _repr_html_(self) -> str:
-        HTML = f"<b>类</b>: {html.escape(str(self.__class__.__name__))}<br/>"
+        HTML = f"<b>类</b>: {html.escape(type(self).__module__ + '.' + type(self).__qualname__)}<br/>"
         HTML += f"<b>文档</b>: {html.escape(self.__doc__ if self.__doc__ else '')}<br/>"
         HTML += f"<b>参数</b>: " + self._QSArgs._repr_html_()
         return HTML
@@ -354,24 +354,28 @@ class __QS_Object__:
     def serialize(self) -> Dict[str, Any]:
         """序列化对象为 dict，敏感字段自动加密。
 
-        调用 ``self.model_dump()`` 获取基础结构（以保留子类如
-        ``FactorOperator`` 的自定义字段），然后将 ``__qsargs__``
+        调用 ``self.model_dump()`` 获取基础结构，将 ``__qsargs__``
         替换为 ``_QSArgs.serialize()`` 的加密版本。
+        将不可 JSON 序列化的子类自定义字段做标记转换。
 
         Returns:
-            可 JSON 序列化的 dict，至少包含 ``__type__``、``__class__``、
-            ``__qsargs__`` 字段
+            可 JSON 序列化的 dict
         """
         result = self.model_dump()
         result["__qsargs__"] = self._QSArgs.serialize()
+        # 子类可能覆盖 model_dump 添加额外字段（如 FactorOperator 的 __func__），
+        # 此处移除不可序列化的 callable 字段，由子类的 serialize 重新处理。
+        for key in list(result):
+            if callable(result[key]):
+                del result[key]
         return result
 
     @classmethod
     def deserialize(cls, data: Dict[str, Any]) -> "__QS_Object__":
         """从序列化 dict 反向构建对象实例。
 
-        解析 ``__class__`` 字段定位目标类，解密 ``__qsargs__`` 中的
-        敏感字段，然后调用 ``cls(args=...)`` 重建实例。
+        优先从 ``__class__`` 字段定位目标类（全路径），
+        若无法解析则使用调用时的 ``cls``。
 
         Args:
             data: ``serialize()`` 输出的 dict
@@ -379,8 +383,13 @@ class __QS_Object__:
         Returns:
             重建的 __QS_Object__ 子类实例
         """
+        class_path = data.get("__class__", "")
+        if "." in class_path:
+            import importlib
+            module_path, class_name = class_path.rsplit(".", 1)
+            module = importlib.import_module(module_path)
+            cls = getattr(module, class_name)
         qsargs_data = data.get("__qsargs__", {})
-        # 解密 args
         ArgClass = cls.__QS_ArgClass__
         decrypted_args = ArgClass.deserialize(qsargs_data)
         return cls(args=decrypted_args.model_dump())
