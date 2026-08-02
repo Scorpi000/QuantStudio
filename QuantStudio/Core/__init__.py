@@ -73,11 +73,11 @@ class __QS_Args__(BaseModel):
         PrivateAttr 在 ``super().__init__()`` 之前设置，确保子类的
         ``model_post_init`` 中即可访问 ``self._Owner``。
         """
-        if _owner is not None:
-            object.__setattr__(self, "_Owner", _owner)
-        if _logger is not None:
-            object.__setattr__(self, "_Logger", _logger)
+        object.__setattr__(self, "_Owner", _owner)
+        object.__setattr__(self, "_Logger", _logger or __QS_Logger__)
         super().__init__(**data)
+        object.__setattr__(self, "_Owner", _owner)
+        object.__setattr__(self, "_Logger", _logger or __QS_Logger__)
 
     def model_post_init(self, context: Any, /) -> None:
         self._QS_ID = None

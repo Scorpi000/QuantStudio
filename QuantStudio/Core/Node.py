@@ -28,8 +28,6 @@ class Context(__QS_Args__):
     DataCache: Optional[Cache] = Field(default=None, title="数据缓存", frozen=True)
     ExtraData: dict = Field(default={}, title="其他数据")
     
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-    
     # 并发运行后返回需要同步的内容
     def getUpdateData(self, **kwargs) -> dict:
         return {}
