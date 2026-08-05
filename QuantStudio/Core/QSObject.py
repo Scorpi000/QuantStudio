@@ -229,6 +229,7 @@ class QSSQLObject(__QS_Object__):
         if self._QSArgs.AdjustTableName:
             for iTable in self._AllTables:
                 sql_str = re.sub(iTable, iTable, sql_str, flags=re.IGNORECASE)
+        self._QS_Logger.debug(f"'{self._QSArgs.Name}' 执行 SQL 命令: {sql_str}")
         Cursor.execute(sql_str)
         return Cursor
 
