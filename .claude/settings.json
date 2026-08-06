@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(D:/PythonEnv/QS312/Scripts/python.exe tests/test_SQLDB.py)"
+      "Bash(D:/PythonEnv/QS312/Scripts/python.exe tests/test_SQLDB.py)",
+      "Bash(C:/Users/hst/Project/PythonEnv/QS/Scripts/python.exe -m unittest tests.test_Tools_DateTimeFun -v)",
+      "Bash(C:/Users/hst/Project/PythonEnv/QS/Scripts/python.exe tests/test_Tools_DateTimeFun.py)",
+      "Bash(C:/Users/hst/Project/PythonEnv/QS/Scripts/python.exe -c ' *)"
     ]
   }
 }

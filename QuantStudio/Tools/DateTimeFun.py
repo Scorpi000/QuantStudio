@@ -322,17 +322,279 @@ def groupbyYear(s):
         MonthDay.append(iDT.strftime("%m-%d"))
     return pd.DataFrame({"Year": Year, "MonthDay": MonthDay, "Data": s.values}).set_index(["MonthDay", "Year"]).unstack()
 
-def transformDateTime(dts: List[dt.datetime], freq:str="1m", target_day:Union[Literal["last", "first"], int]="last", exact:bool=False, postpone:bool=True) -> List[dt.datetime]:
+def transformDateTime(dts: List[dt.datetime], freq:str="1m", target_day:Union[Literal["last", "first"], int]="last", exact:bool=False, postpone:bool=True, over_period:bool=True) -> List[dt.datetime]:
     """从给定的时点序列根据规则转换为特定的时点序列
-    
+
     Args:
         dts: 原始时点序列
         freq: 转换频率，数字+单位的格式，单位有：d(日), w(周), m(月), q(季), y(年)
         target_day: 每个周期里取的目标时点，比如 freq=1m, target_day=15 表示取每月的15日
         exact: 是否要精确的取目标时点，True 表示 dts 中如果不存在目标时点则该周期不取时点
         postpone: 当 exact 为 False 时是否向后顺延，True 向后顺延, 取每个周期大于等于 target_day 的第一个时点，False 向前顺延, 取每个周期小于等于 target_day 的最后一个时点
+        over_period: 表示是否允许跨周期顺延
     """
-    raise NotImplementedError
+    freq = freq.lower()
+    n = int(freq[:-1])
+    unit = freq[-1]
+
+    if unit not in ("d", "w", "m", "q", "y"):
+        raise ValueError(f"不支持的频率单位: {unit}，支持的频率单位：d(日), w(周), m(月), q(季), y(年)")
+
+    dts = sorted(dts)
+    if not dts:
+        return []
+
+    if unit == "d":
+        # 日频：按 target_day（跨步 n 天）采样
+        if target_day == "last":
+            return dts[::n] if n > 1 else list(dts)
+        elif target_day == "first":
+            return [dts[i] for i in range(0, len(dts), n)]
+        else:
+            # target_day 为整数时表示每 n 天取第 target_day 个（从周期起始算起，1-based）
+            target_idx = target_day - 1
+            dts_arr = np.array(dts, dtype="O")
+            n_periods = len(dts) // n
+            indices = list(range(0, n_periods * n, n))
+            target_indices = [i + target_idx for i in indices if i + target_idx < len(dts)]
+            return dts_arr[target_indices].tolist()
+
+    if unit == "w":
+        if target_day == "last":
+            return _transform_by_period(dts, "w", n, None, exact, postpone, over_period, take_last=True)
+        elif target_day == "first":
+            return _transform_by_period(dts, "w", n, None, exact, postpone, over_period, take_first=True)
+        else:
+            # target_day 为周几（1=周一, 7=周日），转为 weekday() 体系（0=周一, 6=周日）
+            return _transform_by_period(dts, "w", n, target_day - 1, exact, postpone, over_period)
+
+    if unit == "m":
+        if target_day == "last":
+            return _transform_by_period(dts, "m", n, None, exact, postpone, over_period, take_last=True)
+        elif target_day == "first":
+            return _transform_by_period(dts, "m", n, None, exact, postpone, over_period, take_first=True)
+        else:
+            return _transform_by_period(dts, "m", n, target_day, exact, postpone, over_period)
+
+    if unit == "q":
+        if target_day == "last":
+            return _transform_by_period(dts, "q", n, None, exact, postpone, over_period, take_last=True)
+        elif target_day == "first":
+            return _transform_by_period(dts, "q", n, None, exact, postpone, over_period, take_first=True)
+        else:
+            return _transform_by_period(dts, "q", n, target_day, exact, postpone, over_period)
+
+    if unit == "y":
+        if target_day == "last":
+            return _transform_by_period(dts, "y", n, None, exact, postpone, over_period, take_last=True)
+        elif target_day == "first":
+            return _transform_by_period(dts, "y", n, None, exact, postpone, over_period, take_first=True)
+        else:
+            return _transform_by_period(dts, "y", n, target_day, exact, postpone, over_period)
+
+
+def _is_same_period(iDT: dt.datetime, refDT: dt.datetime, unit: str, n: int) -> bool:
+    """判断两个时点是否属于同一个周期"""
+    if unit == "w":
+        # 与 getWeekDateTime/getWeekLastDateTime/getWeekFirstDateTime 的周期判断逻辑一致
+        return (iDT.date() - refDT.date()).days == iDT.weekday() - refDT.weekday()
+    else:
+        return _get_period_key(iDT, unit, n) == _get_period_key(refDT, unit, n)
+
+
+def _get_period_key(iDT: dt.datetime, unit: str, n: int) -> int:
+    """计算时点所属的周期序号（从 0 开始）"""
+    if unit == "w":
+        return iDT.toordinal() // (7 * n)
+    elif unit == "m":
+        return iDT.year * 12 + (iDT.month - 1) // n
+    elif unit == "q":
+        return iDT.year * 4 + (iDT.month - 1) // (3 * n)
+    elif unit == "y":
+        return iDT.year // n
+
+
+def _get_target_value(iDT: dt.datetime, unit: str, target: int) -> int:
+    """获取时点在指定周期内的目标属性值"""
+    if unit == "w":
+        return iDT.weekday()  # 0=周一, 6=周日
+    elif unit == "m" or unit == "q":
+        return iDT.day
+    elif unit == "y":
+        return iDT.month * 100 + iDT.day
+
+
+def _transform_by_period(dts: List[dt.datetime], unit: str, n: int,
+                          target: Union[int, None], exact: bool, postpone: bool,
+                          over_period: bool, take_last: bool = False,
+                          take_first: bool = False) -> List[dt.datetime]:
+    """按周期分组转换时点序列的通用实现"""
+    dts = sorted(dts)
+
+    if target is None and take_last:
+        # 取每个周期最后一个时点
+        TargetDTs = [dts[0]]
+        for iDT in dts:
+            if _is_same_period(iDT, TargetDTs[-1], unit, n):
+                TargetDTs[-1] = iDT
+            else:
+                TargetDTs.append(iDT)
+        return TargetDTs
+
+    if target is None and take_first:
+        # 取每个周期第一个时点
+        TargetDTs = [dts[0]]
+        for iDT in dts:
+            if not _is_same_period(iDT, TargetDTs[-1], unit, n):
+                TargetDTs.append(iDT)
+        return TargetDTs
+
+    # target 为具体数值（日、星期几等）
+    if exact:
+        if unit == "y":
+            # 对于年频，target 表示月日（如 "0101" 或作为 mmdd 整数）
+            if target >= 100:
+                target_month = target // 100
+                target_day_val = target % 100
+                return [iDT for iDT in dts
+                        if iDT.month == target_month and iDT.day == target_day_val
+                        and _get_period_key(iDT, unit, n) is not None]
+            else:
+                # target 为一年中的第几天
+                return [iDT for iDT in dts
+                        if iDT.timetuple().tm_yday == target]
+        return [iDT for iDT in dts if _get_target_value(iDT, unit, target) == target]
+
+    if over_period:
+        # 构建自然周期目标时点列表，用 searchsorted 二分查找
+        dts_arr = np.array(dts, dtype="O")
+        DTStrs = [iDT.strftime("%Y%m%d") for iDT in dts_arr]
+
+        if unit == "w":
+            NaturalDTStrs = _build_natural_week_targets(dts_arr, n, target, postpone)
+        elif unit == "m":
+            NaturalDTStrs = _build_natural_month_targets(dts_arr, n, target)
+        elif unit == "q":
+            NaturalDTStrs = _build_natural_quarter_targets(dts_arr, n, target)
+        elif unit == "y":
+            NaturalDTStrs = _build_natural_year_targets(dts_arr, n, target)
+
+        if postpone:
+            return sorted(set(dts_arr[np.searchsorted(DTStrs, NaturalDTStrs, side="left")]))
+        else:
+            return sorted(set(dts_arr[np.searchsorted(DTStrs, NaturalDTStrs, side="right") - 1]))
+
+    # over_period=False: 逐周期遍历，在每个周期内找目标时点
+    TargetDTs = []
+    if postpone:
+        # 向后顺延：取每个周期内 >= target 的第一个时点
+        for iDT in dts:
+            iValue = _get_target_value(iDT, unit, target)
+            if iValue >= target:
+                if (not TargetDTs) or not _is_same_period(iDT, TargetDTs[-1], unit, n):
+                    TargetDTs.append(iDT)
+    else:
+        # 向前顺延：取每个周期内 <= target 的最后一个时点
+        for iDT in dts:
+            iValue = _get_target_value(iDT, unit, target)
+            if iValue <= target:
+                if (not TargetDTs) or not _is_same_period(iDT, TargetDTs[-1], unit, n):
+                    TargetDTs.append(iDT)
+                else:
+                    TargetDTs[-1] = iDT
+    return TargetDTs
+
+
+def _build_natural_week_targets(dts_arr, n, target_weekday, postpone):
+    """构建周频自然目标日期字符串列表（over_period=True）
+
+    与 getWeekDateTime 的逻辑保持一致：target_weekday 使用 weekday() 体系（0=周一, 6=周日）
+    """
+    StartDT = dts_arr[0]
+    EndDT = dts_arr[-1]
+    tw = target_weekday
+
+    if not postpone:
+        StartDT = StartDT + dt.timedelta(tw - StartDT.weekday() + 7 * (StartDT.weekday() > tw))
+    else:
+        StartDT = StartDT + dt.timedelta(tw - StartDT.weekday())
+
+    StartDT = StartDT + dt.timedelta(0)  # 确保是 datetime 类型
+    step = dt.timedelta(7 * n)
+    NaturalDTs = getDateTimeSeries(StartDT, EndDT, timedelta=step)
+    return [iDT.strftime("%Y%m%d") for iDT in NaturalDTs]
+
+
+def _build_natural_month_targets(dts_arr, n, target_day):
+    """构建月频自然目标日期字符串列表（over_period=True）"""
+    StartYear, StartMonth = dts_arr[0].year, dts_arr[0].month
+    EndYear, EndMonth = dts_arr[-1].year, dts_arr[-1].month
+    nMonth = (EndYear - StartYear) * 12 + EndMonth - StartMonth + 1
+    NaturalDTStrs = []
+    for i in range(0, nMonth, n):
+        iYearNum, iMonthNum = i // 12, i % 12
+        iTargetYear = StartYear + iYearNum
+        iTargetMonth = StartMonth + iMonthNum
+        if iTargetMonth > 12:
+            iTargetYear += 1
+            iTargetMonth -= 12
+        try:
+            iDate = dt.date(iTargetYear, iTargetMonth, target_day)
+        except ValueError:
+            # 目标日超出当月天数（如 2月30日），取当月最后一天
+            if iTargetMonth == 12:
+                iDate = dt.date(iTargetYear, iTargetMonth, 31)
+            else:
+                iDate = dt.date(iTargetYear, iTargetMonth + 1, 1) - dt.timedelta(1)
+        NaturalDTStrs.append(iDate.strftime("%Y%m%d"))
+    return NaturalDTStrs
+
+
+def _build_natural_quarter_targets(dts_arr, n, target_day):
+    """构建季频自然目标日期字符串列表（over_period=True）"""
+    StartYear, StartMonth = dts_arr[0].year, dts_arr[0].month
+    EndYear, EndMonth = dts_arr[-1].year, dts_arr[-1].month
+    # 季度起始月份
+    StartQM = ((StartMonth - 1) // (3 * n)) * (3 * n) + 1
+    EndQM = ((EndMonth - 1) // (3 * n)) * (3 * n) + 1
+    NaturalDTStrs = []
+    iYear, iMonth = StartYear, StartQM
+    while (iYear < EndYear) or (iYear == EndYear and iMonth <= EndQM):
+        try:
+            iDate = dt.date(iYear, iMonth, target_day)
+        except ValueError:
+            if iMonth + 3 * n > 12:
+                iDate = dt.date(iYear, 12, 31)
+            else:
+                iDate = dt.date(iYear, iMonth + 3 * n, 1) - dt.timedelta(1)
+        NaturalDTStrs.append(iDate.strftime("%Y%m%d"))
+        iMonth += 3 * n
+        if iMonth > 12:
+            iYear += 1
+            iMonth -= 12
+    return NaturalDTStrs
+
+
+def _build_natural_year_targets(dts_arr, n, target_day):
+    """构建年频自然目标日期字符串列表（over_period=True）"""
+    StartYear = dts_arr[0].year
+    EndYear = dts_arr[-1].year
+    NaturalDTStrs = []
+    for iYear in range(StartYear, EndYear + 1, n):
+        if target_day >= 100:
+            # mmdd 格式
+            target_month = target_day // 100
+            target_day_val = target_day % 100
+        else:
+            # 一年中的第几天
+            target_month = 1
+            target_day_val = target_day
+        try:
+            iDate = dt.date(iYear, target_month, target_day_val)
+        except ValueError:
+            iDate = dt.date(iYear, 12, 31)
+        NaturalDTStrs.append(iDate.strftime("%Y%m%d"))
+    return NaturalDTStrs
 
 
 if __name__=="__main__":
