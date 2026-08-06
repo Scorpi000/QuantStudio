@@ -509,9 +509,9 @@ class MakeStrategy(MakeAccount):
         else:
             Signal = None
         if (Signal is None) or Signal.empty:# 没有交易信号
-            Rslt = np.array([np.full_like(PositionNum, Cash), PositionNum.values, (PositionNum * LastPrice).values, np.full_like(PositionNum, np.nan), np.zeros_like(PositionNum), np.full_like(PositionNum, np.nan), np.zeros_like(PositionNum)]).T
+            Rslt = np.array([np.full_like(PositionNum, Cash, dtype=float), PositionNum.values.astype(float), (PositionNum * LastPrice).values.astype(float), np.full_like(PositionNum, np.nan, dtype=float), np.zeros_like(PositionNum, dtype=float), np.full_like(PositionNum, np.nan, dtype=float), np.zeros_like(PositionNum, dtype=float)]).T
             return unstructured_to_structured(Rslt, dtype=np.dtype(self._QSArgs.CompoundType)).astype("O")
-        return MakeAccount.calculate(self, f=f, idt=idt, iid=iid, x=[x[0], x[1], Signal.reindex(index=iid).values.reshape((1, -1))] + x[2+nX:], args=args)
+        return MakeAccount.calculate(self, f=f, idt=idt, iid=iid, x=[x[0], x[1], Signal.reindex(index=iid).values.astype(float).reshape((1, -1))] + x[2+nX:], args=args)
 
     def __call__(self, *x:Factor, last_price: Factor, init_account: Optional[Factor]=None, 
         buy_price: Optional[Factor]=None, buy_limit: Optional[Factor]=None, buy_fee: float | Factor=0, buy_amt_limit: Optional[Factor]=None,

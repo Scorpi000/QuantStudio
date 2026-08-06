@@ -1,7 +1,7 @@
 # coding=utf-8
 """日期和时间的操作函数"""
-import re
 import datetime as dt
+from typing import List, Literal, Union
 
 import numpy as np
 import pandas as pd
@@ -321,6 +321,19 @@ def groupbyYear(s):
         Year.append(iDT.strftime("%Y"))
         MonthDay.append(iDT.strftime("%m-%d"))
     return pd.DataFrame({"Year": Year, "MonthDay": MonthDay, "Data": s.values}).set_index(["MonthDay", "Year"]).unstack()
+
+def transformDateTime(dts: List[dt.datetime], freq:str="1m", target_day:Union[Literal["last", "first"], int]="last", exact:bool=False, postpone:bool=True) -> List[dt.datetime]:
+    """从给定的时点序列根据规则转换为特定的时点序列
+    
+    Args:
+        dts: 原始时点序列
+        freq: 转换频率，数字+单位的格式，单位有：d(日), w(周), m(月), q(季), y(年)
+        target_day: 每个周期里取的目标时点，比如 freq=1m, target_day=15 表示取每月的15日
+        exact: 是否要精确的取目标时点，True 表示 dts 中如果不存在目标时点则该周期不取时点
+        postpone: 当 exact 为 False 时是否向后顺延，True 向后顺延, 取每个周期大于等于 target_day 的第一个时点，False 向前顺延, 取每个周期小于等于 target_day 的最后一个时点
+    """
+    raise NotImplementedError
+
 
 if __name__=="__main__":
     import time

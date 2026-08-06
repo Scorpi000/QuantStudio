@@ -1320,7 +1320,8 @@ class SectionOperation(DerivativeFactor):
             context.Event[self.QSID].wait()
             if "TotalCalcDTs" in local_context.ExtraData:
                 TotalCalcDTs = local_context.ExtraData["TotalCalcDTs"]
-                context.DataCache.updateDTRange(key=self.QSID, dt_range=(TotalCalcDTs[0], TotalCalcDTs[-1]))
+                if context.DataCache:
+                    context.DataCache.updateDTRange(key=self.QSID, dt_range=(TotalCalcDTs[0], TotalCalcDTs[-1]))
         if context.DataCache and self._QSArgs.CacheEnabled:
             StdData = context.DataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs, data_type=self._Operator._QSArgs.DataType)
         elif not bwd_data_list:
@@ -1480,7 +1481,8 @@ class PanelOperation(DerivativeFactor):
             context.Event[self.QSID].wait()
             if "TotalCalcDTs" in local_context.ExtraData:
                 TotalCalcDTs = local_context.ExtraData["TotalCalcDTs"]
-                context.DataCache.updateDTRange(key=self.QSID, dt_range=(TotalCalcDTs[0], TotalCalcDTs[-1]))
+                if Cached:
+                    context.DataCache.updateDTRange(key=self.QSID, dt_range=(TotalCalcDTs[0], TotalCalcDTs[-1]))
         if Cached:
             StdData = context.DataCache.readFactorData(key=self.QSID, ipid=context.PID, target_field="StdData", pids=local_context.PIDs, data_type=self._Operator._QSArgs.DataType)
         elif not bwd_data_list:
