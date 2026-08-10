@@ -1,0 +1,42 @@
+{
+  "batchIndex": 7,
+  "files": [
+    {
+      "path": "QuantStudio/Tools/MathFun.py",
+      "language": "python",
+      "sizeLines": 233,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/PerformanceAnalysisFun.py",
+      "language": "python",
+      "sizeLines": 48,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/RiskMeasureFun.py",
+      "language": "python",
+      "sizeLines": 88,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "QuantStudio/Tools/MathFun.py": [],
+    "QuantStudio/Tools/PerformanceAnalysisFun.py": [
+      "QuantStudio/Tools/MathFun.py",
+      "QuantStudio/__init__.py"
+    ],
+    "QuantStudio/Tools/RiskMeasureFun.py": [
+      "QuantStudio/Tools/MathFun.py"
+    ]
+  },
+  "neighborMap": {
+    "QuantStudio/Tools/PerformanceAnalysisFun.py": [
+      {
+        "path": "QuantStudio/__init__.py",
+        "batchIndex": 1,
+        "symbols": []
+      }
+    ]
+  }
+}

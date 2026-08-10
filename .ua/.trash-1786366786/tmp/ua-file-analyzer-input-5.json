@@ -1,0 +1,89 @@
+{
+  "projectRoot": "C:/Users/hst/Project/QuantStudio",
+  "batchFiles": [
+    {"path": "QuantStudio/Core/CalcEngine.py", "language": "python", "sizeLines": 254, "fileCategory": "code"},
+    {"path": "QuantStudio/Core/ParallelEngine.py", "language": "python", "sizeLines": 76, "fileCategory": "code"},
+    {"path": "QuantStudio/Core/TreeEngine.py", "language": "python", "sizeLines": 241, "fileCategory": "code"},
+    {"path": "QuantStudio/Core/api.py", "language": "python", "sizeLines": 6, "fileCategory": "code"},
+    {"path": "QuantStudio/Tools/ProcessPoolExecutor.py", "language": "python", "sizeLines": 335, "fileCategory": "code"},
+    {"path": "examples/bt_node_strategy.py", "language": "python", "sizeLines": 68, "fileCategory": "code"},
+    {"path": "examples/core_node_basic.py", "language": "python", "sizeLines": 135, "fileCategory": "code"},
+    {"path": "examples/factor_operation.py", "language": "python", "sizeLines": 114, "fileCategory": "code"},
+    {"path": "tests/test_Core_Engine.py", "language": "python", "sizeLines": 563, "fileCategory": "code"},
+    {"path": "tests/test_Factor_Operation_LookBackMode.py", "language": "python", "sizeLines": 139, "fileCategory": "code"},
+    {"path": "tests/test_Strategy_Backtest.py", "language": "python", "sizeLines": 87, "fileCategory": "code"}
+  ],
+  "batchImportData": {
+    "QuantStudio/Core/CalcEngine.py": ["QuantStudio/Core/Node.py", "QuantStudio/Core/__init__.py"],
+    "QuantStudio/Core/ParallelEngine.py": ["QuantStudio/Core/CalcEngine.py", "QuantStudio/Core/Node.py", "QuantStudio/Core/__init__.py"],
+    "QuantStudio/Core/TreeEngine.py": ["QuantStudio/Core/CalcEngine.py", "QuantStudio/Core/Node.py", "QuantStudio/Core/__init__.py", "QuantStudio/Tools/ProcessPoolExecutor.py"],
+    "QuantStudio/Core/api.py": ["QuantStudio/Core/CalcEngine.py", "QuantStudio/Core/Node.py", "QuantStudio/Core/ParallelEngine.py", "QuantStudio/Core/QSObject.py", "QuantStudio/Core/TreeEngine.py", "QuantStudio/Core/__init__.py"],
+    "QuantStudio/Tools/ProcessPoolExecutor.py": [],
+    "examples/bt_node_strategy.py": ["QuantStudio/BackTest/BackTestModel.py", "QuantStudio/BackTest/Strategy/Strategy.py", "QuantStudio/Core/CalcEngine.py", "QuantStudio/Core/Node.py", "QuantStudio/Core/ParallelEngine.py", "QuantStudio/Factor/Factor.py", "QuantStudio/Factor/FactorCache.py", "QuantStudio/Factor/FactorOperator.py", "QuantStudio/Tools/DateTimeFun.py"],
+    "examples/core_node_basic.py": ["QuantStudio/Core/CalcEngine.py", "QuantStudio/Core/Node.py"],
+    "examples/factor_operation.py": ["QuantStudio/Core/CalcEngine.py", "QuantStudio/Core/ParallelEngine.py", "QuantStudio/Factor/BasicOperator.py", "QuantStudio/Factor/Factor.py", "QuantStudio/Factor/FactorCache.py", "QuantStudio/Factor/FactorOperation.py"],
+    "tests/test_Core_Engine.py": ["QuantStudio/Core/CalcEngine.py", "QuantStudio/Core/Node.py"],
+    "tests/test_Factor_Operation_LookBackMode.py": ["QuantStudio/Core/CalcEngine.py", "QuantStudio/Core/ParallelEngine.py", "QuantStudio/Factor/Factor.py", "QuantStudio/Factor/FactorCache.py", "QuantStudio/Factor/FactorOperation.py"],
+    "tests/test_Strategy_Backtest.py": ["QuantStudio/BackTest/Strategy/Strategy.py", "QuantStudio/Core/CalcEngine.py", "QuantStudio/Core/ParallelEngine.py", "QuantStudio/Factor/Factor.py", "QuantStudio/Factor/FactorCache.py", "QuantStudio/Factor/FactorOperator.py", "QuantStudio/Tools/DateTimeFun.py"]
+  },
+  "neighborMap": {
+    "QuantStudio/Core/CalcEngine.py": [
+      {"path": "QuantStudio/Core/Node.py", "batchIndex": 2, "symbols": ["Context", "LocalContext", "DTLocalContext", "DTInitData", "Node"]},
+      {"path": "QuantStudio/Core/__init__.py", "batchIndex": 1, "symbols": ["_is_secret_field", "setDefaultLogLevel", "setDefaultLogger", "__QS_Error__", "__QS_Args__", "__QS_Object__"]},
+      {"path": "QuantStudio/Factor/Factor.py", "batchIndex": 2, "symbols": ["FactorContext", "FactorLocalContext", "FactorInitData", "Factor", "DataFactor"]},
+      {"path": "QuantStudio/Factor/FactorTable.py", "batchIndex": 1, "symbols": ["FactorTable"]},
+      {"path": "QuantStudio/Tools/Visualization.py", "batchIndex": 3, "symbols": ["qs_help", "_get_doc_with_inheritance", "_get_method_doc_from_parents", "_get_method_doc_from_class", "_get_class_doc_from_parents", "_format_help", "node2dict", "dict2mermaid"]},
+      {"path": "examples/bt_node_basic.py", "batchIndex": 2, "symbols": []},
+      {"path": "examples/core_node_factor.py", "batchIndex": 2, "symbols": []}
+    ],
+    "QuantStudio/Core/ParallelEngine.py": [
+      {"path": "QuantStudio/Core/Node.py", "batchIndex": 2, "symbols": ["Context", "LocalContext", "DTLocalContext", "DTInitData", "Node"]},
+      {"path": "QuantStudio/Core/__init__.py", "batchIndex": 1, "symbols": ["_is_secret_field", "setDefaultLogLevel", "setDefaultLogger", "__QS_Error__", "__QS_Args__", "__QS_Object__"]},
+      {"path": "examples/bt_node_basic.py", "batchIndex": 2, "symbols": []},
+      {"path": "examples/core_node_factor.py", "batchIndex": 2, "symbols": []}
+    ],
+    "QuantStudio/Core/TreeEngine.py": [
+      {"path": "QuantStudio/Core/Node.py", "batchIndex": 2, "symbols": ["Context", "LocalContext", "DTLocalContext", "DTInitData", "Node"]},
+      {"path": "QuantStudio/Core/__init__.py", "batchIndex": 1, "symbols": ["_is_secret_field", "setDefaultLogLevel", "setDefaultLogger", "__QS_Error__", "__QS_Args__", "__QS_Object__"]}
+    ],
+    "QuantStudio/Core/api.py": [
+      {"path": "QuantStudio/Core/Node.py", "batchIndex": 2, "symbols": ["Context", "LocalContext", "DTLocalContext", "DTInitData", "Node"]},
+      {"path": "QuantStudio/Core/QSObject.py", "batchIndex": 1, "symbols": ["QSSQLObject", "QSQueue", "_initArray", "_LocIndexer", "_iLocIndexer", "Panel"]},
+      {"path": "QuantStudio/Core/__init__.py", "batchIndex": 1, "symbols": ["_is_secret_field", "setDefaultLogLevel", "setDefaultLogger", "__QS_Error__", "__QS_Args__", "__QS_Object__"]},
+      {"path": "QuantStudio/api.py", "batchIndex": 3, "symbols": []}
+    ],
+    "examples/bt_node_strategy.py": [
+      {"path": "QuantStudio/BackTest/BackTestModel.py", "batchIndex": 2, "symbols": ["BTNode", "BTReport"]},
+      {"path": "QuantStudio/BackTest/Strategy/Strategy.py", "batchIndex": 4, "symbols": ["_QS_formatMatplotlibPercentage", "MakeAccount", "genAccountOutput", "AccountReport", "Strategy", "MakeStrategy"]},
+      {"path": "QuantStudio/Core/Node.py", "batchIndex": 2, "symbols": ["Context", "LocalContext", "DTLocalContext", "DTInitData", "Node"]},
+      {"path": "QuantStudio/Factor/Factor.py", "batchIndex": 2, "symbols": ["FactorContext", "FactorLocalContext", "FactorInitData", "Factor", "DataFactor"]},
+      {"path": "QuantStudio/Factor/FactorCache.py", "batchIndex": 1, "symbols": ["FactorCache", "FileFactorCache", "FeatherFactorCache"]},
+      {"path": "QuantStudio/Factor/FactorOperator.py", "batchIndex": 2, "symbols": ["AsType", "Log", "NotNull", "IsIn", "ApplyArrayFunc", "Applymap", "Where", "Fetch", "Sum", "Max", "Min", "Rank", "Mean", "Std", "Regress", "RegressChangeRate", "ToList", "ToCompound", "Lag", "RollingRank", "RollingMean", "RollingApply", "RollingChangeRate", "RollingRegress", "SectionRank", "Aggregate", "Disaggregate", "ConcatSection", "ChgSection", "SectionRegress", "AggregateComponent", "PanelRegress", "AggregatePanel", "AggregateComponentPanel"]},
+      {"path": "QuantStudio/Tools/DateTimeFun.py", "batchIndex": 3, "symbols": ["cutDate", "cutDateTime", "getNaturalDay", "lookbackDateTime", "combineDateTime", "getDateStartEndIndex", "getMonthDateTime", "getMonthFirstDateTime", "getMonthMiddleDateTime", "getMonthLastDateTime", "getWeekDateTime", "getWeekFirstDateTime", "getWeekLastDateTime", "getYearFirstDateTime", "getYearLastDateTime", "getQuarterFirstDateTime", "getQuarterLastDateTime", "_getQuanterNum", "getFinancialQuarterFirstDateTime", "getFinancialQuarterLastDateTime", "getDateSeries", "getTimeSeries", "getDateTimeSeries", "groupbyYear", "transformDateTime", "_is_same_period", "_get_period_key", "_get_target_value", "_transform_by_period", "_build_natural_week_targets", "_build_natural_month_targets", "_build_natural_quarter_targets", "_build_natural_year_targets"]}
+    ],
+    "examples/core_node_basic.py": [
+      {"path": "QuantStudio/Core/Node.py", "batchIndex": 2, "symbols": ["Context", "LocalContext", "DTLocalContext", "DTInitData", "Node"]}
+    ],
+    "examples/factor_operation.py": [
+      {"path": "QuantStudio/Factor/BasicOperator.py", "batchIndex": 2, "symbols": ["Rename", "Neg", "Abs", "Not", "Add", "Sub", "Mul", "Div", "FloorDiv", "Mod", "Pow", "And", "Or", "Xor", "LT", "LE", "GT", "GE", "Eq", "Neq"]},
+      {"path": "QuantStudio/Factor/Factor.py", "batchIndex": 2, "symbols": ["FactorContext", "FactorLocalContext", "FactorInitData", "Factor", "DataFactor"]},
+      {"path": "QuantStudio/Factor/FactorCache.py", "batchIndex": 1, "symbols": ["FactorCache", "FileFactorCache", "FeatherFactorCache"]},
+      {"path": "QuantStudio/Factor/FactorOperation.py", "batchIndex": 2, "symbols": ["FactorOperator", "PointOperator", "TimeOperator", "SectionOperator", "PanelOperator", "makeFactorOperator", "FactorOperatorized", "DerivativeFactor", "PointOperation", "TimeOperation", "SectionOperation", "PanelOperation"]}
+    ],
+    "tests/test_Core_Engine.py": [
+      {"path": "QuantStudio/Core/Node.py", "batchIndex": 2, "symbols": ["Context", "LocalContext", "DTLocalContext", "DTInitData", "Node"]}
+    ],
+    "tests/test_Factor_Operation_LookBackMode.py": [
+      {"path": "QuantStudio/Factor/Factor.py", "batchIndex": 2, "symbols": ["FactorContext", "FactorLocalContext", "FactorInitData", "Factor", "DataFactor"]},
+      {"path": "QuantStudio/Factor/FactorCache.py", "batchIndex": 1, "symbols": ["FactorCache", "FileFactorCache", "FeatherFactorCache"]},
+      {"path": "QuantStudio/Factor/FactorOperation.py", "batchIndex": 2, "symbols": ["FactorOperator", "PointOperator", "TimeOperator", "SectionOperator", "PanelOperator", "makeFactorOperator", "FactorOperatorized", "DerivativeFactor", "PointOperation", "TimeOperation", "SectionOperation", "PanelOperation"]}
+    ],
+    "tests/test_Strategy_Backtest.py": [
+      {"path": "QuantStudio/BackTest/Strategy/Strategy.py", "batchIndex": 4, "symbols": ["_QS_formatMatplotlibPercentage", "MakeAccount", "genAccountOutput", "AccountReport", "Strategy", "MakeStrategy"]},
+      {"path": "QuantStudio/Factor/Factor.py", "batchIndex": 2, "symbols": ["FactorContext", "FactorLocalContext", "FactorInitData", "Factor", "DataFactor"]},
+      {"path": "QuantStudio/Factor/FactorCache.py", "batchIndex": 1, "symbols": ["FactorCache", "FileFactorCache", "FeatherFactorCache"]},
+      {"path": "QuantStudio/Factor/FactorOperator.py", "batchIndex": 2, "symbols": ["AsType", "Log", "NotNull", "IsIn", "ApplyArrayFunc", "Applymap", "Where", "Fetch", "Sum", "Max", "Min", "Rank", "Mean", "Std", "Regress", "RegressChangeRate", "ToList", "ToCompound", "Lag", "RollingRank", "RollingMean", "RollingApply", "RollingChangeRate", "RollingRegress", "SectionRank", "Aggregate", "Disaggregate", "ConcatSection", "ChgSection", "SectionRegress", "AggregateComponent", "PanelRegress", "AggregatePanel", "AggregateComponentPanel"]},
+      {"path": "QuantStudio/Tools/DateTimeFun.py", "batchIndex": 3, "symbols": ["cutDate", "cutDateTime", "getNaturalDay", "lookbackDateTime", "combineDateTime", "getDateStartEndIndex", "getMonthDateTime", "getMonthFirstDateTime", "getMonthMiddleDateTime", "getMonthLastDateTime", "getWeekDateTime", "getWeekFirstDateTime", "getWeekLastDateTime", "getYearFirstDateTime", "getYearLastDateTime", "getQuarterFirstDateTime", "getQuarterLastDateTime", "_getQuanterNum", "getFinancialQuarterFirstDateTime", "getFinancialQuarterLastDateTime", "getDateSeries", "getTimeSeries", "getDateTimeSeries", "groupbyYear", "transformDateTime", "_is_same_period", "_get_period_key", "_get_target_value", "_transform_by_period", "_build_natural_week_targets", "_build_natural_month_targets", "_build_natural_quarter_targets", "_build_natural_year_targets"]}
+    ]
+  }
+}

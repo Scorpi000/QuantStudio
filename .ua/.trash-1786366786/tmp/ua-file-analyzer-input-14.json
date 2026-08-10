@@ -1,0 +1,32 @@
+{
+  "projectRoot": "C:/Users/hst/Project/QuantStudio",
+  "batchFiles": [
+    {"path": "examples/core_pregel_engine.py", "language": "python", "sizeLines": 200, "fileCategory": "code"},
+    {"path": "examples/update_risk_data.py", "language": "python", "sizeLines": 19, "fileCategory": "code"},
+    {"path": "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/specs/qsargs-private-attrs/spec.md", "language": "markdown", "sizeLines": 54, "fileCategory": "docs"},
+    {"path": "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/specs/qsargs-secret-serialization/spec.md", "language": "markdown", "sizeLines": 107, "fileCategory": "docs"},
+    {"path": "openspec/config.yaml", "language": "yaml", "sizeLines": 20, "fileCategory": "config"},
+    {"path": "openspec/specs/qsargs-private-attrs/spec.md", "language": "markdown", "sizeLines": 54, "fileCategory": "docs"},
+    {"path": "openspec/specs/qsargs-secret-serialization/spec.md", "language": "markdown", "sizeLines": 107, "fileCategory": "docs"},
+    {"path": "setup.py", "language": "python", "sizeLines": 48, "fileCategory": "code"},
+    {"path": "skills/quantstudio/SKILL.md", "language": "markdown", "sizeLines": 238, "fileCategory": "docs"},
+    {"path": "tests/test_Core_QSObject.py", "language": "python", "sizeLines": 80, "fileCategory": "code"},
+    {"path": "tests/test_FactorOperation.py", "language": "python", "sizeLines": 247, "fileCategory": "code"},
+    {"path": "tests/test_file_io.py", "language": "python", "sizeLines": 39, "fileCategory": "code"}
+  ],
+  "batchImportData": {
+    "examples/core_pregel_engine.py": [],
+    "examples/update_risk_data.py": [],
+    "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/specs/qsargs-private-attrs/spec.md": [],
+    "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/specs/qsargs-secret-serialization/spec.md": [],
+    "openspec/config.yaml": [],
+    "openspec/specs/qsargs-private-attrs/spec.md": [],
+    "openspec/specs/qsargs-secret-serialization/spec.md": [],
+    "setup.py": [],
+    "skills/quantstudio/SKILL.md": [],
+    "tests/test_Core_QSObject.py": [],
+    "tests/test_FactorOperation.py": [],
+    "tests/test_file_io.py": []
+  },
+  "neighborMap": {}
+}

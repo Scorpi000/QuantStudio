@@ -1,0 +1,72 @@
+{
+  "nodes": [
+    {
+      "id": "document:CLAUDE.local.example.md",
+      "type": "document",
+      "name": "CLAUDE.local.example.md",
+      "filePath": "CLAUDE.local.example.md",
+      "summary": "Claude Code 用户私有项目指令的示例模板，展示本地运行环境、数据库连接信息和个人约定的配置方式。",
+      "tags": ["documentation", "template", "configuration", "development"],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:CLAUDE.md",
+      "type": "document",
+      "name": "CLAUDE.md",
+      "filePath": "CLAUDE.md",
+      "summary": "Claude Code 在此仓库中工作的核心指导文档，全面描述了 QuantStudio 的架构（计算图引擎、因子框架、回测框架、风险模型、组合优化）、构建测试命令、核心设计模式（QSID、Node 生命周期、算子体系）以及 Skill 维护规范。",
+      "tags": ["documentation", "entry-point", "architecture", "ai-guidance"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:README.md",
+      "type": "document",
+      "name": "README.md",
+      "filePath": "README.md",
+      "summary": "项目主文档入口，以链接索引形式组织了因子框架、回测框架、风险模型、组合优化等模块的 Jupyter Notebook 文档。",
+      "tags": ["documentation", "entry-point", "overview"],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:requirements.txt",
+      "type": "document",
+      "name": "requirements.txt",
+      "filePath": "requirements.txt",
+      "summary": "项目核心 Python 依赖清单，包含 17 个包：数值计算（numpy、scipy、cvxpy）、数据处理（pandas、pyarrow、h5py）、序列化（dill、pydantic）、文件 IO（openpyxl）和外部数据源（baostock、requests）等。",
+      "tags": ["documentation", "configuration", "build-system", "dependencies"],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:requirements_optional.txt",
+      "type": "document",
+      "name": "requirements_optional.txt",
+      "filePath": "requirements_optional.txt",
+      "summary": "可选依赖清单，包含数据库驱动（psycopg2、pymssql、mysql-connector-python、pyodbc、neo4j）、机器学习（scikit-learn）和 Jupyter 内核（ipykernel）。",
+      "tags": ["documentation", "configuration", "build-system", "dependencies"],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "document:README.md",
+      "target": "document:CLAUDE.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:CLAUDE.md",
+      "target": "document:requirements.txt",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:requirements.txt",
+      "target": "document:requirements_optional.txt",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    }
+  ]
+}

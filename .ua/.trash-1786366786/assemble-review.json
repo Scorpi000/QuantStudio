@@ -1,0 +1,19 @@
+{
+  "fixedSectionOk": true,
+  "nodesRecovered": 5,
+  "edgesRestored": 5,
+  "crossBatchEdgesAdded": 0,
+  "typesRemapped": 0,
+  "complexityRemapped": 0,
+  "notes": [
+    "Merge script applied only 1 mechanical fix (tested_by edge flip) and recovered 41 import edges from importMap — minimal corrections indicate good batch-level analysis quality.",
+    "5 dropped dangling edges were investigated and all 5 were recoverable:",
+    "  1. TestStrategyTestFun edge: node existed with id prefix 'function:' but edge referenced 'class:' prefix — edge restored with correct id.",
+    "  2. _densifyWealthSeq (StrategyTestFun.py:896): private helper function missed by batch analysis — node created, contains edge restored.",
+    "  3. makeMatrixPositiveDefinite (RiskModelFun.py:193): utility function missed by batch analysis — node created, calls edge restored.",
+    "  4. estimateCovMatrix (RiskModelFun.py:158): core covariance estimation function missed by batch analysis — node created, calls edge restored.",
+    "  5. getFactorList (AuxiliaryFun.py:92) and DictKeyValueTurn_List (DataTypeConversionFun.py:16): both missed by batch analysis — both nodes created, calls edge restored.",
+    "Cross-batch import edge verification: all importMap relationships between files in different batches are already represented in the graph (verified against Visualization.py, Strategy.py, FactorOperation.py, BarraModel.py, examples/bt_node_strategy.py, PerformanceAnalysisFun.py, and others). No additional cross-batch edges needed.",
+    "Final graph: 423 nodes (418 + 5 recovered), 734 edges (729 + 5 restored)."
+  ]
+}

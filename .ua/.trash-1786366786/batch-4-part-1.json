@@ -1,0 +1,554 @@
+{
+  "nodes": [
+    {
+      "id": "file:QuantStudio/BackTest/PerformanceAnalysis/__init__.py",
+      "type": "file",
+      "name": "__init__.py",
+      "filePath": "QuantStudio/BackTest/PerformanceAnalysis/__init__.py",
+      "summary": "PerformanceAnalysis 子包的初始化文件，当前为空包标记，用于标识业绩归因模块的包结构。",
+      "tags": ["barrel", "performance-analysis"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:QuantStudio/BackTest/Risk/__init__.py",
+      "type": "file",
+      "name": "__init__.py",
+      "filePath": "QuantStudio/BackTest/Risk/__init__.py",
+      "summary": "Risk 子包的初始化文件，当前为空包标记，用于标识回测偏差检验模块的包结构。",
+      "tags": ["barrel", "risk-analysis"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:QuantStudio/BackTest/SectionFactor/__init__.py",
+      "type": "file",
+      "name": "__init__.py",
+      "filePath": "QuantStudio/BackTest/SectionFactor/__init__.py",
+      "summary": "SectionFactor 子包的初始化文件，当前为空包标记，用于标识截面因子测试模块的包结构。",
+      "tags": ["barrel", "section-factor"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+      "type": "file",
+      "name": "AllocationStrategy.py",
+      "filePath": "QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+      "summary": "配置策略算子模块，提供基于筛选条件构造投资组合（CalcMaskPortfolio）、投资组合净值计算（CalcPortfolioNV）和投资组合收益率计算（CalcPortfolioReturn）三个因子算子，支持分类权重、再平衡时点和多种回测模式。",
+      "tags": ["api-handler", "factor-operator", "portfolio", "backtest"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:QuantStudio/BackTest/Strategy/Strategy.py",
+      "type": "file",
+      "name": "Strategy.py",
+      "filePath": "QuantStudio/BackTest/Strategy/Strategy.py",
+      "summary": "策略回测核心模块，实现账户创建算子（MakeAccount）、策略创建算子（MakeStrategy）、策略执行节点（Strategy）和账户报告节点（AccountReport），支持买卖数量和目标权重两种信号类型，包含完整的市价单撮合、交易限制和净值统计功能。",
+      "tags": ["api-handler", "factor-operator", "strategy", "backtest", "service"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:QuantStudio/BackTest/Strategy/__init__.py",
+      "type": "file",
+      "name": "__init__.py",
+      "filePath": "QuantStudio/BackTest/Strategy/__init__.py",
+      "summary": "Strategy 子包的初始化文件，重新导出 MakeAccount、MakeStrategy、AccountReport 和 AllocationStrategy 模块。",
+      "tags": ["barrel", "strategy"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:QuantStudio/BackTest/Strategy/api.py",
+      "type": "file",
+      "name": "api.py",
+      "filePath": "QuantStudio/BackTest/Strategy/api.py",
+      "summary": "Strategy 子包的公共 API 接口文件，重新导出 Strategy 和 AllocationStrategy 模块中的核心类。",
+      "tags": ["barrel", "entry-point", "api"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:QuantStudio/BackTest/api.py",
+      "type": "file",
+      "name": "api.py",
+      "filePath": "QuantStudio/BackTest/api.py",
+      "summary": "BackTest 包的公共 API 接口文件，重新导出 BTReport、SectionFactor、Strategy、PerformanceAnalysis 和 Risk 子模块。",
+      "tags": ["barrel", "entry-point", "api"],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:QuantStudio/BackTest/Strategy/AllocationStrategy.py:CalcMaskPortfolio",
+      "type": "class",
+      "name": "CalcMaskPortfolio",
+      "filePath": "QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+      "lineRange": [16, 81],
+      "summary": "基于筛选条件构造投资组合的 SectionOperator 子类，支持分类权重（cat_data/cat_weight）、再平衡时点和权重归一化。",
+      "tags": ["factor-operator", "portfolio-construction", "section-operation"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:QuantStudio/BackTest/Strategy/AllocationStrategy.py:CalcPortfolioNV",
+      "type": "class",
+      "name": "CalcPortfolioNV",
+      "filePath": "QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+      "lineRange": [84, 157],
+      "summary": "投资组合净值计算算子（PanelOperator 子类），支持 numpy 和 pandas 两种向量化回测方式，可同时处理多个投资组合并计算净值。",
+      "tags": ["factor-operator", "portfolio-valuation", "panel-operation", "backtest"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:QuantStudio/BackTest/Strategy/AllocationStrategy.py:CalcPortfolioReturn",
+      "type": "class",
+      "name": "CalcPortfolioReturn",
+      "filePath": "QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+      "lineRange": [160, 233],
+      "summary": "投资组合收益率计算算子（PanelOperator 子类），基于持仓权重和价格计算多组合的加权收益率，支持再平衡时点和回溯期设置。",
+      "tags": ["factor-operator", "portfolio-return", "panel-operation"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/BackTest/Strategy/Strategy.py:_QS_formatMatplotlibPercentage",
+      "type": "function",
+      "name": "_QS_formatMatplotlibPercentage",
+      "filePath": "QuantStudio/BackTest/Strategy/Strategy.py",
+      "lineRange": [23, 24],
+      "summary": "matplotlib 百分比格式化函数，用于图表纵坐标显示。",
+      "tags": ["utility", "visualization"],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:QuantStudio/BackTest/Strategy/Strategy.py:MakeAccount",
+      "type": "class",
+      "name": "MakeAccount",
+      "filePath": "QuantStudio/BackTest/Strategy/Strategy.py",
+      "lineRange": [29, 202],
+      "summary": "账户创建算子（PanelOperator 子类），支持买卖数量和目标权重两种信号类型，包含市价单撮合引擎、交易限制条件处理和完整的持仓现金管理逻辑。",
+      "tags": ["factor-operator", "account", "order-matching", "backtest"],
+      "complexity": "complex",
+      "languageNotes": "使用复合因子类型（CompoundType）存储账户状态，通过 unstructured_to_structured 实现结构化数组转换。"
+    },
+    {
+      "id": "function:QuantStudio/BackTest/Strategy/Strategy.py:genAccountOutput",
+      "type": "function",
+      "name": "genAccountOutput",
+      "filePath": "QuantStudio/BackTest/Strategy/Strategy.py",
+      "lineRange": [205, 249],
+      "summary": "生成账户回测输出，包含时间序列（净值、收益率、累计收益）和统计数据，支持现金流调整和杠杆/无杠杆收益率计算。",
+      "tags": ["utility", "backtest", "reporting"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:QuantStudio/BackTest/Strategy/Strategy.py:AccountReport",
+      "type": "class",
+      "name": "AccountReport",
+      "filePath": "QuantStudio/BackTest/Strategy/Strategy.py",
+      "lineRange": [252, 408],
+      "summary": "账户报告节点（BTNode 子类），负责回测结果的汇总和可视化，包含净值曲线、收益率分布等 matplotlib 图表生成和 HTML 报告输出，支持基准对比和再平衡时点分析。",
+      "tags": ["reporting", "visualization", "backtest", "data-model"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:QuantStudio/BackTest/Strategy/Strategy.py:MakeStrategy",
+      "type": "class",
+      "name": "MakeStrategy",
+      "filePath": "QuantStudio/BackTest/Strategy/Strategy.py",
+      "lineRange": [445, 574],
+      "summary": "策略创建算子（MakeAccount 子类），支持自定义信号生成（通过 genSignal 方法重写），可接入额外依赖因子和回溯期设置，产生包含持仓、交易和净值信息的策略因子。",
+      "tags": ["factor-operator", "strategy", "backtest", "factory"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:tests/test_Tools_StrategyTestFun.py",
+      "type": "file",
+      "name": "test_Tools_StrategyTestFun.py",
+      "filePath": "tests/test_Tools_StrategyTestFun.py",
+      "summary": "StrategyTestFun 模块的单元测试，验证 calcMD 和 calcMaxDrawdownRate 两个最大回撤计算函数的正确性。",
+      "tags": ["test", "backtest", "unit-test"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_Tools_StrategyTestFun_backtest.py",
+      "type": "file",
+      "name": "test_Tools_StrategyTestFun_backtest.py",
+      "filePath": "tests/test_Tools_StrategyTestFun_backtest.py",
+      "summary": "投资组合策略回测的性能对比测试脚本，对比 numpy 向量化版本（v0）、pandas 版本和标准 numpy 版本的回测结果和运行耗时。",
+      "tags": ["test", "backtest", "performance-test", "benchmark"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:tests/test_Tools_StrategyTestFun.py:TestStrategyTestFun",
+      "type": "class",
+      "name": "TestStrategyTestFun",
+      "filePath": "tests/test_Tools_StrategyTestFun.py",
+      "lineRange": [13, 22],
+      "summary": "StrategyTestFun 单元测试类，测试 calcMD 和 calcMaxDrawdownRate 函数在给定价格序列上的返回值是否正确。",
+      "tags": ["test", "unittest"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:tests/test_Tools_StrategyTestFun_backtest.py:backtestPortfolioStrategy_v0",
+      "type": "function",
+      "name": "backtestPortfolioStrategy_v0",
+      "filePath": "tests/test_Tools_StrategyTestFun_backtest.py",
+      "lineRange": [14, 37],
+      "summary": "投资组合回测的早期 numpy 实现版本，作为基准对比对象，处理非连续持仓场景下的净值和换手率计算。",
+      "tags": ["backtest", "benchmark", "reference-implementation"],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+      "target": "file:QuantStudio/Core/__init__.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+      "target": "file:QuantStudio/Factor/Factor.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+      "target": "file:QuantStudio/Factor/FactorOperation.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+      "target": "file:QuantStudio/Tools/DataPreprocessingFun.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+      "target": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/Strategy.py",
+      "target": "file:QuantStudio/BackTest/BackTestModel.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/Strategy.py",
+      "target": "file:QuantStudio/Core/Node.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/Strategy.py",
+      "target": "file:QuantStudio/Core/__init__.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/Strategy.py",
+      "target": "file:QuantStudio/Factor/Factor.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/Strategy.py",
+      "target": "file:QuantStudio/Factor/FactorOperation.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/Strategy.py",
+      "target": "file:QuantStudio/Risk/RiskTable.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/Strategy.py",
+      "target": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/api.py",
+      "target": "file:QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/api.py",
+      "target": "file:QuantStudio/BackTest/Strategy/Strategy.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/api.py",
+      "target": "file:QuantStudio/BackTest/BackTestModel.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/api.py",
+      "target": "file:QuantStudio/BackTest/PerformanceAnalysis/__init__.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/api.py",
+      "target": "file:QuantStudio/BackTest/Risk/__init__.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/api.py",
+      "target": "file:QuantStudio/BackTest/SectionFactor/__init__.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/api.py",
+      "target": "file:QuantStudio/BackTest/Strategy/Strategy.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/api.py",
+      "target": "file:QuantStudio/BackTest/Strategy/__init__.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:tests/test_Tools_StrategyTestFun.py",
+      "target": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:tests/test_Tools_StrategyTestFun_backtest.py",
+      "target": "file:QuantStudio/Tools/DataPreprocessingFun.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:tests/test_Tools_StrategyTestFun_backtest.py",
+      "target": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+      "target": "class:QuantStudio/BackTest/Strategy/AllocationStrategy.py:CalcMaskPortfolio",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+      "target": "class:QuantStudio/BackTest/Strategy/AllocationStrategy.py:CalcPortfolioNV",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+      "target": "class:QuantStudio/BackTest/Strategy/AllocationStrategy.py:CalcPortfolioReturn",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/Strategy.py",
+      "target": "class:QuantStudio/BackTest/Strategy/Strategy.py:MakeAccount",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/Strategy.py",
+      "target": "function:QuantStudio/BackTest/Strategy/Strategy.py:genAccountOutput",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/Strategy.py",
+      "target": "class:QuantStudio/BackTest/Strategy/Strategy.py:AccountReport",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/Strategy.py",
+      "target": "class:QuantStudio/BackTest/Strategy/Strategy.py:MakeStrategy",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/Strategy.py",
+      "target": "function:QuantStudio/BackTest/Strategy/Strategy.py:_QS_formatMatplotlibPercentage",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "class:QuantStudio/BackTest/Strategy/Strategy.py:MakeStrategy",
+      "target": "class:QuantStudio/BackTest/Strategy/Strategy.py:MakeAccount",
+      "type": "inherits",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "class:QuantStudio/BackTest/Strategy/Strategy.py:MakeAccount",
+      "target": "class:QuantStudio/BackTest/Strategy/AllocationStrategy.py:CalcPortfolioNV",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/__init__.py",
+      "target": "file:QuantStudio/BackTest/Strategy/Strategy.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/__init__.py",
+      "target": "file:QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/__init__.py",
+      "target": "class:QuantStudio/BackTest/Strategy/Strategy.py:MakeAccount",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/__init__.py",
+      "target": "class:QuantStudio/BackTest/Strategy/Strategy.py:MakeStrategy",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/__init__.py",
+      "target": "class:QuantStudio/BackTest/Strategy/Strategy.py:AccountReport",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/api.py",
+      "target": "class:QuantStudio/BackTest/Strategy/Strategy.py:MakeAccount",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/api.py",
+      "target": "class:QuantStudio/BackTest/Strategy/Strategy.py:MakeStrategy",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:QuantStudio/BackTest/Strategy/api.py",
+      "target": "class:QuantStudio/BackTest/Strategy/Strategy.py:AccountReport",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:QuantStudio/BackTest/api.py",
+      "target": "file:QuantStudio/BackTest/Strategy/Strategy.py",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:tests/test_Tools_StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:calcMD",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:tests/test_Tools_StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:calcMaxDrawdownRate",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:tests/test_Tools_StrategyTestFun.py",
+      "target": "class:tests/test_Tools_StrategyTestFun.py:TestStrategyTestFun",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:tests/test_Tools_StrategyTestFun_backtest.py",
+      "target": "function:tests/test_Tools_StrategyTestFun_backtest.py:backtestPortfolioStrategy_v0",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:tests/test_Tools_StrategyTestFun_backtest.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:backtestPortfolioStrategyWithMargin",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:tests/test_Tools_StrategyTestFun_backtest.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:backtestPortfolioStrategy_pd",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:tests/test_Tools_StrategyTestFun_backtest.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:backtestPortfolioStrategy",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "file:tests/test_Tools_StrategyTestFun.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "file:tests/test_Tools_StrategyTestFun_backtest.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    }
+  ]
+}

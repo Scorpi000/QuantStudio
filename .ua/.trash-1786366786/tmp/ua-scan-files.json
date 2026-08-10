@@ -1,0 +1,1140 @@
+{
+  "scriptCompleted": true,
+  "contentDigest": "016bb34a2fa143661c8a0fa730d990ef229f80b92434924b988a74108ee0bfdd",
+  "files": [
+    {
+      "path": ".claude/commands/opsx/apply.md",
+      "language": "markdown",
+      "sizeLines": 156,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/archive.md",
+      "language": "markdown",
+      "sizeLines": 161,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/bulk-archive.md",
+      "language": "markdown",
+      "sizeLines": 245,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/continue.md",
+      "language": "markdown",
+      "sizeLines": 118,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/explore.md",
+      "language": "markdown",
+      "sizeLines": 175,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/ff.md",
+      "language": "markdown",
+      "sizeLines": 101,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/new.md",
+      "language": "markdown",
+      "sizeLines": 72,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/onboard.md",
+      "language": "markdown",
+      "sizeLines": 551,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/propose.md",
+      "language": "markdown",
+      "sizeLines": 110,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/sync.md",
+      "language": "markdown",
+      "sizeLines": 144,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/update.md",
+      "language": "markdown",
+      "sizeLines": 82,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/verify.md",
+      "language": "markdown",
+      "sizeLines": 168,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/settings.json",
+      "language": "json",
+      "sizeLines": 10,
+      "fileCategory": "config"
+    },
+    {
+      "path": ".claude/skills/openspec-apply-change/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 160,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-archive-change/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 118,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-bulk-archive-change/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 249,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-continue-change/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 122,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-explore/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 290,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-ff-change/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 105,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-new-change/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 77,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-onboard/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 555,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-propose/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 114,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-sync-specs/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 148,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-update-change/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 86,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-verify-change/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 172,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".codegraph/daemon.pid",
+      "language": "pid",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": ".ua/.understandignore",
+      "language": "unknown",
+      "sizeLines": 94,
+      "fileCategory": "code"
+    },
+    {
+      "path": "CLAUDE.local.example.md",
+      "language": "markdown",
+      "sizeLines": 20,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "CLAUDE.md",
+      "language": "markdown",
+      "sizeLines": 131,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "QuantStudio/BackTest/BackTestModel.py",
+      "language": "python",
+      "sizeLines": 93,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/PerformanceAnalysis/BrinsonModel.py",
+      "language": "python",
+      "sizeLines": 206,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/PerformanceAnalysis/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/PerformanceAnalysis/api.py",
+      "language": "python",
+      "sizeLines": 3,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/Risk/BiasTest.py",
+      "language": "python",
+      "sizeLines": 280,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/Risk/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/Risk/api.py",
+      "language": "python",
+      "sizeLines": 3,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/SectionFactor/Correlation.py",
+      "language": "python",
+      "sizeLines": 335,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/SectionFactor/IC.py",
+      "language": "python",
+      "sizeLines": 490,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/SectionFactor/QuantilePortfolio.py",
+      "language": "python",
+      "sizeLines": 270,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/SectionFactor/ReturnDecomposition.py",
+      "language": "python",
+      "sizeLines": 299,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/SectionFactor/__init__.py",
+      "language": "python",
+      "sizeLines": 1,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/SectionFactor/api.py",
+      "language": "python",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+      "language": "python",
+      "sizeLines": 233,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/Strategy/Strategy.py",
+      "language": "python",
+      "sizeLines": 574,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/Strategy/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/Strategy/api.py",
+      "language": "python",
+      "sizeLines": 4,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/api.py",
+      "language": "python",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Core/Cache.py",
+      "language": "python",
+      "sizeLines": 304,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Core/CalcEngine.py",
+      "language": "python",
+      "sizeLines": 254,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Core/FileCache.py",
+      "language": "python",
+      "sizeLines": 231,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Core/Node.py",
+      "language": "python",
+      "sizeLines": 186,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Core/ParallelEngine.py",
+      "language": "python",
+      "sizeLines": 76,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Core/QSObject.py",
+      "language": "python",
+      "sizeLines": 1052,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Core/TreeEngine.py",
+      "language": "python",
+      "sizeLines": 241,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Core/__init__.py",
+      "language": "python",
+      "sizeLines": 419,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Core/_encryption.py",
+      "language": "python",
+      "sizeLines": 179,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Core/api.py",
+      "language": "python",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Factor/BaoStockDB.py",
+      "language": "python",
+      "sizeLines": 434,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Factor/BasicOperator.py",
+      "language": "python",
+      "sizeLines": 389,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Factor/Factor.py",
+      "language": "python",
+      "sizeLines": 634,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Factor/FactorCache.py",
+      "language": "python",
+      "sizeLines": 393,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Factor/FactorDB.py",
+      "language": "python",
+      "sizeLines": 124,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Factor/FactorOperation.py",
+      "language": "python",
+      "sizeLines": 1490,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Factor/FactorOperator.py",
+      "language": "python",
+      "sizeLines": 990,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Factor/FactorStorer.py",
+      "language": "python",
+      "sizeLines": 58,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Factor/FactorTable.py",
+      "language": "python",
+      "sizeLines": 269,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Factor/FactorUtils.py",
+      "language": "python",
+      "sizeLines": 2422,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Factor/HDF5DB.py",
+      "language": "python",
+      "sizeLines": 629,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Factor/JYDB.py",
+      "language": "python",
+      "sizeLines": 1563,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Factor/SQLDB.py",
+      "language": "python",
+      "sizeLines": 574,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Factor/api.py",
+      "language": "python",
+      "sizeLines": 9,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/PortfolioConstructor/BasePC.py",
+      "language": "python",
+      "sizeLines": 809,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/PortfolioConstructor/CVXPC.py",
+      "language": "python",
+      "sizeLines": 149,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/PortfolioConstructor/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/PortfolioConstructor/api.py",
+      "language": "python",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Resource/BaoStockDBInfo.xlsx",
+      "language": "xlsx",
+      "sizeLines": 56,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Resource/JYDBInfo.xlsx",
+      "language": "xlsx",
+      "sizeLines": 2536,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Risk/HDF5RDB.py",
+      "language": "python",
+      "sizeLines": 418,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Risk/RiskDB.py",
+      "language": "python",
+      "sizeLines": 131,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Risk/RiskModel/BarraModel.py",
+      "language": "python",
+      "sizeLines": 355,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Risk/RiskModel/BarraModelConfig.py",
+      "language": "python",
+      "sizeLines": 67,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "language": "python",
+      "sizeLines": 392,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Risk/RiskModel/__init__.py",
+      "language": "python",
+      "sizeLines": 1,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Risk/RiskModel/api.py",
+      "language": "python",
+      "sizeLines": 2,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Risk/RiskTable.py",
+      "language": "python",
+      "sizeLines": 259,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Risk/__init__.py",
+      "language": "python",
+      "sizeLines": 1,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Risk/api.py",
+      "language": "python",
+      "sizeLines": 1,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/AuxiliaryFun.py",
+      "language": "python",
+      "sizeLines": 275,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/CashFlowCalculator.py",
+      "language": "python",
+      "sizeLines": 270,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/DataPreprocessingFun.py",
+      "language": "python",
+      "sizeLines": 473,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/DataTypeConversionFun.py",
+      "language": "python",
+      "sizeLines": 225,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/DataTypeFun.py",
+      "language": "python",
+      "sizeLines": 448,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/DateTimeFun.py",
+      "language": "python",
+      "sizeLines": 624,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/FileFun.py",
+      "language": "python",
+      "sizeLines": 350,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/IDFun.py",
+      "language": "python",
+      "sizeLines": 74,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/MathFun.py",
+      "language": "python",
+      "sizeLines": 233,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/MatplotlibFun.py",
+      "language": "python",
+      "sizeLines": 64,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/PerformanceAnalysisFun.py",
+      "language": "python",
+      "sizeLines": 48,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/ProcessPoolExecutor.py",
+      "language": "python",
+      "sizeLines": 335,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/RiskMeasureFun.py",
+      "language": "python",
+      "sizeLines": 88,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/SQLDBFun.py",
+      "language": "python",
+      "sizeLines": 26,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/StrategyTestFun.py",
+      "language": "python",
+      "sizeLines": 1123,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/TradeFun.py",
+      "language": "python",
+      "sizeLines": 93,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/Visualization.py",
+      "language": "python",
+      "sizeLines": 309,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/api.py",
+      "language": "python",
+      "sizeLines": 7,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/__init__.py",
+      "language": "python",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/api.py",
+      "language": "python",
+      "sizeLines": 7,
+      "fileCategory": "code"
+    },
+    {
+      "path": "README.md",
+      "language": "markdown",
+      "sizeLines": 57,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/.ipynb_checkpoints/基本框架-checkpoint.ipynb",
+      "language": "ipynb",
+      "sizeLines": 876,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/Core/缓存.ipynb",
+      "language": "ipynb",
+      "sizeLines": 1210,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/Core/计算图框架.ipynb",
+      "language": "ipynb",
+      "sizeLines": 587,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/Core/计算引擎.ipynb",
+      "language": "ipynb",
+      "sizeLines": 802,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/tools/gen_demo_factor_data.py",
+      "language": "python",
+      "sizeLines": 85,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/tools/gen_demo_risk_data.py",
+      "language": "python",
+      "sizeLines": 57,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/tools/gen_doc.py",
+      "language": "python",
+      "sizeLines": 62,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/tools/import_postgres_jydb_demo_data.py",
+      "language": "python",
+      "sizeLines": 679,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/tools/import_postgres_sqldb_demo_data.py",
+      "language": "python",
+      "sizeLines": 200,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/回测框架/业绩归因.ipynb",
+      "language": "ipynb",
+      "sizeLines": 506,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/回测框架/基本框架.ipynb",
+      "language": "ipynb",
+      "sizeLines": 539,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/回测框架/截面因子测试.ipynb",
+      "language": "ipynb",
+      "sizeLines": 796,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/回测框架/策略回测.ipynb",
+      "language": "ipynb",
+      "sizeLines": 923,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/回测框架/风险模型测试.ipynb",
+      "language": "ipynb",
+      "sizeLines": 230,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/因子框架/BaoStockDB.ipynb",
+      "language": "ipynb",
+      "sizeLines": 194,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/因子框架/HDF5DB.ipynb",
+      "language": "ipynb",
+      "sizeLines": 578,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/因子框架/JYDB.ipynb",
+      "language": "ipynb",
+      "sizeLines": 620,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/因子框架/QuickStart.ipynb",
+      "language": "ipynb",
+      "sizeLines": 553,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/因子框架/SQLDB.ipynb",
+      "language": "ipynb",
+      "sizeLines": 1932,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/因子框架/因子开发.ipynb",
+      "language": "ipynb",
+      "sizeLines": 840,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/因子框架/基本框架.ipynb",
+      "language": "ipynb",
+      "sizeLines": 257,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/组合优化/均值方差模型.ipynb",
+      "language": "ipynb",
+      "sizeLines": 407,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/组合优化/基本框架.ipynb",
+      "language": "ipynb",
+      "sizeLines": 507,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/组合优化/组合优化策略.ipynb",
+      "language": "ipynb",
+      "sizeLines": 561,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/组合优化/风险预算模型.ipynb",
+      "language": "ipynb",
+      "sizeLines": 408,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/通则和约定.ipynb",
+      "language": "ipynb",
+      "sizeLines": 730,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/风险模型/基本框架.ipynb",
+      "language": "ipynb",
+      "sizeLines": 99,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/风险模型/数据读写.ipynb",
+      "language": "ipynb",
+      "sizeLines": 1566,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/风险模型/风险模型.ipynb",
+      "language": "ipynb",
+      "sizeLines": 710,
+      "fileCategory": "code"
+    },
+    {
+      "path": "examples/bt_node_basic.py",
+      "language": "python",
+      "sizeLines": 208,
+      "fileCategory": "code"
+    },
+    {
+      "path": "examples/bt_node_strategy.py",
+      "language": "python",
+      "sizeLines": 68,
+      "fileCategory": "code"
+    },
+    {
+      "path": "examples/convert_notebook_to_markdown.sh",
+      "language": "shell",
+      "sizeLines": 0,
+      "fileCategory": "script"
+    },
+    {
+      "path": "examples/core_node_basic.py",
+      "language": "python",
+      "sizeLines": 135,
+      "fileCategory": "code"
+    },
+    {
+      "path": "examples/core_node_factor.py",
+      "language": "python",
+      "sizeLines": 236,
+      "fileCategory": "code"
+    },
+    {
+      "path": "examples/core_pregel_engine.py",
+      "language": "python",
+      "sizeLines": 200,
+      "fileCategory": "code"
+    },
+    {
+      "path": "examples/factor_basic_api.py",
+      "language": "python",
+      "sizeLines": 36,
+      "fileCategory": "code"
+    },
+    {
+      "path": "examples/factor_operation.py",
+      "language": "python",
+      "sizeLines": 114,
+      "fileCategory": "code"
+    },
+    {
+      "path": "examples/pc_basic.py",
+      "language": "python",
+      "sizeLines": 29,
+      "fileCategory": "code"
+    },
+    {
+      "path": "examples/update_risk_data.py",
+      "language": "python",
+      "sizeLines": 19,
+      "fileCategory": "code"
+    },
+    {
+      "path": "mcp/factor_backtest.py",
+      "language": "python",
+      "sizeLines": 255,
+      "fileCategory": "code"
+    },
+    {
+      "path": "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/.openspec.yaml",
+      "language": "yaml",
+      "sizeLines": 2,
+      "fileCategory": "config"
+    },
+    {
+      "path": "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/design.md",
+      "language": "markdown",
+      "sizeLines": 113,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/proposal.md",
+      "language": "markdown",
+      "sizeLines": 31,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/specs/qsargs-private-attrs/spec.md",
+      "language": "markdown",
+      "sizeLines": 54,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/specs/qsargs-secret-serialization/spec.md",
+      "language": "markdown",
+      "sizeLines": 107,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/tasks.md",
+      "language": "markdown",
+      "sizeLines": 31,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "openspec/config.yaml",
+      "language": "yaml",
+      "sizeLines": 20,
+      "fileCategory": "config"
+    },
+    {
+      "path": "openspec/specs/qsargs-private-attrs/spec.md",
+      "language": "markdown",
+      "sizeLines": 54,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "openspec/specs/qsargs-secret-serialization/spec.md",
+      "language": "markdown",
+      "sizeLines": 107,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "requirements.txt",
+      "language": "txt",
+      "sizeLines": 17,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "requirements_optional.txt",
+      "language": "txt",
+      "sizeLines": 6,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "setup.py",
+      "language": "python",
+      "sizeLines": 48,
+      "fileCategory": "code"
+    },
+    {
+      "path": "skills/quantstudio/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 238,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "skills/quantstudio/references/backtest.md",
+      "language": "markdown",
+      "sizeLines": 131,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "skills/quantstudio/references/core-engine.md",
+      "language": "markdown",
+      "sizeLines": 107,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "skills/quantstudio/references/factor-datasources.md",
+      "language": "markdown",
+      "sizeLines": 88,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "skills/quantstudio/references/factor-development.md",
+      "language": "markdown",
+      "sizeLines": 133,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "skills/quantstudio/references/factor-framework.md",
+      "language": "markdown",
+      "sizeLines": 93,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "skills/quantstudio/references/portfolio-optimization.md",
+      "language": "markdown",
+      "sizeLines": 161,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "skills/quantstudio/references/risk-model.md",
+      "language": "markdown",
+      "sizeLines": 91,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "tests/test_Core_Engine.py",
+      "language": "python",
+      "sizeLines": 563,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_Core_QSObject.py",
+      "language": "python",
+      "sizeLines": 80,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_FactorOperation.py",
+      "language": "python",
+      "sizeLines": 247,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_Factor_FactorOperator.py",
+      "language": "python",
+      "sizeLines": 375,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_Factor_JYDB.py",
+      "language": "python",
+      "sizeLines": 33,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_Factor_Operation_LookBackMode.py",
+      "language": "python",
+      "sizeLines": 139,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_HDF5DB.py",
+      "language": "python",
+      "sizeLines": 364,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_JYDB.py",
+      "language": "python",
+      "sizeLines": 122,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_SQLDB.py",
+      "language": "python",
+      "sizeLines": 264,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_Strategy_Backtest.py",
+      "language": "python",
+      "sizeLines": 87,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_Tools_DateTimeFun.py",
+      "language": "python",
+      "sizeLines": 264,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_Tools_StrategyTestFun.py",
+      "language": "python",
+      "sizeLines": 23,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_Tools_StrategyTestFun_backtest.py",
+      "language": "python",
+      "sizeLines": 93,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_Tools_Visualization_qs_help.py",
+      "language": "python",
+      "sizeLines": 73,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_file_io.py",
+      "language": "python",
+      "sizeLines": 39,
+      "fileCategory": "code"
+    }
+  ],
+  "totalFiles": 185,
+  "filteredByIgnore": 0,
+  "estimatedComplexity": "large",
+  "stats": {
+    "filesScanned": 185,
+    "byCategory": {
+      "docs": 44,
+      "config": 3,
+      "code": 137,
+      "script": 1
+    },
+    "byLanguage": {
+      "markdown": 42,
+      "json": 1,
+      "pid": 1,
+      "unknown": 1,
+      "python": 109,
+      "xlsx": 2,
+      "ipynb": 24,
+      "shell": 1,
+      "yaml": 2,
+      "txt": 2
+    }
+  }
+}

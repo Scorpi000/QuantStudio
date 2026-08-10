@@ -1,0 +1,646 @@
+{
+  "batchIndex": 3,
+  "files": [
+    {
+      "path": "QuantStudio/PortfolioConstructor/BasePC.py",
+      "language": "python",
+      "sizeLines": 809,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/PortfolioConstructor/CVXPC.py",
+      "language": "python",
+      "sizeLines": 149,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/PortfolioConstructor/api.py",
+      "language": "python",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Risk/HDF5RDB.py",
+      "language": "python",
+      "sizeLines": 418,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Risk/RiskDB.py",
+      "language": "python",
+      "sizeLines": 131,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Risk/RiskTable.py",
+      "language": "python",
+      "sizeLines": 259,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Risk/api.py",
+      "language": "python",
+      "sizeLines": 1,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/DateTimeFun.py",
+      "language": "python",
+      "sizeLines": 624,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/Visualization.py",
+      "language": "python",
+      "sizeLines": 309,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/api.py",
+      "language": "python",
+      "sizeLines": 7,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/api.py",
+      "language": "python",
+      "sizeLines": 7,
+      "fileCategory": "code"
+    },
+    {
+      "path": "examples/pc_basic.py",
+      "language": "python",
+      "sizeLines": 29,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_Tools_DateTimeFun.py",
+      "language": "python",
+      "sizeLines": 264,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_Tools_Visualization_qs_help.py",
+      "language": "python",
+      "sizeLines": 73,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "QuantStudio/PortfolioConstructor/BasePC.py": [
+      "QuantStudio/Core/__init__.py",
+      "QuantStudio/Tools/DataTypeConversionFun.py"
+    ],
+    "QuantStudio/PortfolioConstructor/CVXPC.py": [
+      "QuantStudio/Core/__init__.py",
+      "QuantStudio/PortfolioConstructor/BasePC.py"
+    ],
+    "QuantStudio/PortfolioConstructor/api.py": [
+      "QuantStudio/PortfolioConstructor/BasePC.py"
+    ],
+    "QuantStudio/Risk/HDF5RDB.py": [
+      "QuantStudio/Core/QSObject.py",
+      "QuantStudio/Core/__init__.py",
+      "QuantStudio/Risk/RiskDB.py",
+      "QuantStudio/Risk/RiskTable.py",
+      "QuantStudio/Tools/DateTimeFun.py",
+      "QuantStudio/Tools/FileFun.py",
+      "QuantStudio/__init__.py"
+    ],
+    "QuantStudio/Risk/RiskDB.py": [
+      "QuantStudio/Core/__init__.py"
+    ],
+    "QuantStudio/Risk/RiskTable.py": [
+      "QuantStudio/Core/Node.py",
+      "QuantStudio/Core/QSObject.py",
+      "QuantStudio/Core/__init__.py",
+      "QuantStudio/Factor/Factor.py",
+      "QuantStudio/Risk/RiskDB.py",
+      "QuantStudio/Tools/DataTypeFun.py",
+      "QuantStudio/Tools/DateTimeFun.py"
+    ],
+    "QuantStudio/Risk/api.py": [
+      "QuantStudio/Risk/HDF5RDB.py"
+    ],
+    "QuantStudio/Tools/DateTimeFun.py": [],
+    "QuantStudio/Tools/Visualization.py": [
+      "QuantStudio/BackTest/BackTestModel.py",
+      "QuantStudio/Core/Cache.py",
+      "QuantStudio/Core/CalcEngine.py",
+      "QuantStudio/Core/Node.py",
+      "QuantStudio/Core/__init__.py",
+      "QuantStudio/Factor/Factor.py",
+      "QuantStudio/Factor/FactorDB.py",
+      "QuantStudio/Factor/FactorOperation.py",
+      "QuantStudio/Factor/FactorTable.py",
+      "QuantStudio/Risk/RiskDB.py",
+      "QuantStudio/Risk/RiskTable.py"
+    ],
+    "QuantStudio/Tools/api.py": [
+      "QuantStudio/Tools/AuxiliaryFun.py",
+      "QuantStudio/Tools/Visualization.py"
+    ],
+    "QuantStudio/api.py": [
+      "QuantStudio/BackTest/api.py",
+      "QuantStudio/Core/api.py",
+      "QuantStudio/Factor/api.py",
+      "QuantStudio/PortfolioConstructor/api.py",
+      "QuantStudio/Risk/api.py",
+      "QuantStudio/Tools/api.py"
+    ],
+    "examples/pc_basic.py": [
+      "QuantStudio/PortfolioConstructor/BasePC.py",
+      "QuantStudio/PortfolioConstructor/CVXPC.py"
+    ],
+    "tests/test_Tools_DateTimeFun.py": [
+      "QuantStudio/Tools/DateTimeFun.py"
+    ],
+    "tests/test_Tools_Visualization_qs_help.py": [
+      "QuantStudio/Tools/Visualization.py"
+    ]
+  },
+  "neighborMap": {
+    "QuantStudio/PortfolioConstructor/BasePC.py": [
+      {
+        "path": "QuantStudio/Core/__init__.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_is_secret_field",
+          "setDefaultLogLevel",
+          "setDefaultLogger",
+          "__QS_Error__",
+          "__QS_Args__",
+          "__QS_Object__"
+        ]
+      },
+      {
+        "path": "QuantStudio/Tools/DataTypeConversionFun.py",
+        "batchIndex": 6,
+        "symbols": [
+          "DictKeyValueTurn",
+          "DictKeyValueTurn_List",
+          "DummyVarTo01Var",
+          "expandListElementDataFrame",
+          "strQ2B",
+          "strB2Q",
+          "formatValue2MD",
+          "dict2html",
+          "dict2markdown"
+        ]
+      }
+    ],
+    "QuantStudio/PortfolioConstructor/CVXPC.py": [
+      {
+        "path": "QuantStudio/Core/__init__.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_is_secret_field",
+          "setDefaultLogLevel",
+          "setDefaultLogger",
+          "__QS_Error__",
+          "__QS_Args__",
+          "__QS_Object__"
+        ]
+      }
+    ],
+    "QuantStudio/Risk/HDF5RDB.py": [
+      {
+        "path": "QuantStudio/Core/QSObject.py",
+        "batchIndex": 1,
+        "symbols": [
+          "QSSQLObject",
+          "QSQueue",
+          "_initArray",
+          "_LocIndexer",
+          "_iLocIndexer",
+          "Panel"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/__init__.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_is_secret_field",
+          "setDefaultLogLevel",
+          "setDefaultLogger",
+          "__QS_Error__",
+          "__QS_Args__",
+          "__QS_Object__"
+        ]
+      },
+      {
+        "path": "QuantStudio/Tools/FileFun.py",
+        "batchIndex": 4,
+        "symbols": [
+          "genAvailableFile",
+          "copyDir",
+          "clearDir",
+          "listDirDir",
+          "listDirFile",
+          "traverseDir",
+          "writeDictSeries2CSV",
+          "writeFun2File",
+          "readCSV2Pandas",
+          "guessSysTextEncoding",
+          "detectFileEncoding",
+          "readCSV2StdDF",
+          "loadCSVFactorData",
+          "exportOutput2CSV",
+          "readJSONFile",
+          "getWindowsDesktopPath",
+          "getShelveFileSuffix",
+          "writeDataFrame2Excel"
+        ]
+      },
+      {
+        "path": "QuantStudio/__init__.py",
+        "batchIndex": 1,
+        "symbols": []
+      },
+      {
+        "path": "docs/tools/gen_demo_risk_data.py",
+        "batchIndex": 1,
+        "symbols": []
+      }
+    ],
+    "QuantStudio/Risk/RiskDB.py": [
+      {
+        "path": "QuantStudio/Core/__init__.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_is_secret_field",
+          "setDefaultLogLevel",
+          "setDefaultLogger",
+          "__QS_Error__",
+          "__QS_Args__",
+          "__QS_Object__"
+        ]
+      }
+    ],
+    "QuantStudio/Risk/RiskTable.py": [
+      {
+        "path": "QuantStudio/Core/Node.py",
+        "batchIndex": 2,
+        "symbols": [
+          "Context",
+          "LocalContext",
+          "DTLocalContext",
+          "DTInitData",
+          "Node"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/QSObject.py",
+        "batchIndex": 1,
+        "symbols": [
+          "QSSQLObject",
+          "QSQueue",
+          "_initArray",
+          "_LocIndexer",
+          "_iLocIndexer",
+          "Panel"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/__init__.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_is_secret_field",
+          "setDefaultLogLevel",
+          "setDefaultLogger",
+          "__QS_Error__",
+          "__QS_Args__",
+          "__QS_Object__"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/Factor.py",
+        "batchIndex": 2,
+        "symbols": [
+          "FactorContext",
+          "FactorLocalContext",
+          "FactorInitData",
+          "Factor",
+          "DataFactor"
+        ]
+      },
+      {
+        "path": "QuantStudio/Tools/DataTypeFun.py",
+        "batchIndex": 1,
+        "symbols": [
+          "validate_int_or_inf",
+          "copyNestedDict",
+          "getNestedDictValue",
+          "setNestedDictValue",
+          "getNestedDictItems",
+          "removeNestedDictItem",
+          "writeNestedDict2HDF5",
+          "_readNestedDictFromHDF5",
+          "readNestedDictFromHDF5",
+          "getNestDepth",
+          "traverseNestedDict",
+          "swapaxesNestedDictDataFrame",
+          "serialize_function",
+          "serialize_object",
+          "serialize_pandas",
+          "serialize_numpy",
+          "serialize_qs_object",
+          "serialize_qs_args",
+          "serialize_value",
+          "generate_object_id",
+          "dict2id",
+          "formatPartial"
+        ]
+      },
+      {
+        "path": "QuantStudio/BackTest/Risk/BiasTest.py",
+        "batchIndex": 2,
+        "symbols": [
+          "PortfolioVolatility",
+          "CalcPortfolioVolatility",
+          "CalcRandomPortfolio",
+          "BiasTest"
+        ]
+      },
+      {
+        "path": "QuantStudio/BackTest/Strategy/Strategy.py",
+        "batchIndex": 4,
+        "symbols": [
+          "_QS_formatMatplotlibPercentage",
+          "MakeAccount",
+          "genAccountOutput",
+          "AccountReport",
+          "Strategy",
+          "MakeStrategy"
+        ]
+      }
+    ],
+    "QuantStudio/Tools/DateTimeFun.py": [
+      {
+        "path": "QuantStudio/Factor/BaoStockDB.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_importInfo",
+          "_updateInfo",
+          "_BSTable",
+          "_DTTable",
+          "_DTRangeTable",
+          "BaoStockDB"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/FactorUtils.py",
+        "batchIndex": 1,
+        "symbols": [
+          "getInfoFile",
+          "__QS_Error_DuplicatedIndex__",
+          "importInfo",
+          "updateInfo",
+          "adjustDateTime",
+          "adjustDataDTID",
+          "_QS_calcListData_WideTable",
+          "_QS_calcData_WideTable",
+          "_QS_calcListData_NarrowTable",
+          "_QS_calcData_NarrowTable",
+          "SQLQueryTable",
+          "SQL_Table",
+          "SQL_WideTable",
+          "SQL_NarrowTable",
+          "SQL_FeatureTable",
+          "SQL_TimeSeriesTable",
+          "SQL_MappingTable",
+          "SQL_ConstituentTable",
+          "RollBackNPeriod",
+          "SQL_FinancialTable"
+        ]
+      },
+      {
+        "path": "QuantStudio/Tools/StrategyTestFun.py",
+        "batchIndex": 4,
+        "symbols": [
+          "calcWealthAfterTrade",
+          "calcTurnover",
+          "calcPortfolioReturn",
+          "calcYieldSeq",
+          "calcWealthSeq",
+          "calcLSYield",
+          "calcAnnualYield",
+          "calcAnnualVolatility",
+          "calcRollingAnnualYieldSeq",
+          "calcRollingAnnualVolatilitySeq",
+          "calcExpandingAnnualYieldSeq",
+          "calcExpandingAnnualVolatilitySeq",
+          "calcBeta",
+          "calcLPM",
+          "calcHPM",
+          "calcSharpeRatio",
+          "calcTreynorRatio",
+          "calcAdjustedSharpeRatio",
+          "calcInformationRatio",
+          "calcModiglianiRatio",
+          "calcSortinoRatio",
+          "calcOmegaRatio",
+          "calcKappaThreeRatio",
+          "calcGainLossRatio",
+          "calcUpsidePotentialRatio",
+          "calcVaR",
+          "calcUpPeriod",
+          "calcDownPeriod",
+          "calcDrawdown",
+          "calcMD",
+          "calcMaxDrawdownRate",
+          "calcMaxDrawdownDuration",
+          "calcPeriodDrawdown",
+          "calcAverageDrawdown",
+          "calcAverageDrawdownSquared",
+          "calcCalmarRatio",
+          "calcSterlingRatio",
+          "calcBurkeRatio",
+          "calcReturnPerYear",
+          "calcVolatilityPerYear",
+          "calcMaxDrawdownPerYear",
+          "calcReturnPerYearMonth",
+          "calcVolatilityPerYearMonth",
+          "calcMaxDrawdownPerYearMonth",
+          "calcAvgReturnPerMonth",
+          "calcAvgReturnPerWeekday",
+          "calcAvgReturnPerMonthday",
+          "calcAvgReturnPerYearday",
+          "calcTMModel",
+          "calcHMModel",
+          "calcCLModel",
+          "loadCSVFilePortfolioSignal",
+          "writePortfolioSignal2CSV",
+          "loadCSVFileTimingSignal",
+          "genRandomPortfolio",
+          "genPortfolioByFiltration",
+          "genContinuousContractPrice",
+          "backtestNumStrategy",
+          "backtestPortfolioStrategyWithMargin",
+          "backtestPortfolioStrategy",
+          "backtestPortfolioStrategy_pd",
+          "backtestTimingStrategy",
+          "_densifyWealthSeq",
+          "summaryStrategy",
+          "formatStrategySummary",
+          "summaryTrade",
+          "formatTradeSummary",
+          "summarySingleTiming",
+          "summaryTimingStrategy",
+          "formatTimingStrategySummary",
+          "backtestAIPStrategy"
+        ]
+      },
+      {
+        "path": "examples/bt_node_basic.py",
+        "batchIndex": 2,
+        "symbols": []
+      },
+      {
+        "path": "examples/bt_node_strategy.py",
+        "batchIndex": 5,
+        "symbols": []
+      },
+      {
+        "path": "tests/test_Strategy_Backtest.py",
+        "batchIndex": 5,
+        "symbols": []
+      }
+    ],
+    "QuantStudio/Tools/Visualization.py": [
+      {
+        "path": "QuantStudio/BackTest/BackTestModel.py",
+        "batchIndex": 2,
+        "symbols": [
+          "BTNode",
+          "BTReport"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/Cache.py",
+        "batchIndex": 1,
+        "symbols": [
+          "Cache",
+          "DTCache"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/CalcEngine.py",
+        "batchIndex": 5,
+        "symbols": [
+          "Engine",
+          "StackEngine"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/Node.py",
+        "batchIndex": 2,
+        "symbols": [
+          "Context",
+          "LocalContext",
+          "DTLocalContext",
+          "DTInitData",
+          "Node"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/__init__.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_is_secret_field",
+          "setDefaultLogLevel",
+          "setDefaultLogger",
+          "__QS_Error__",
+          "__QS_Args__",
+          "__QS_Object__"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/Factor.py",
+        "batchIndex": 2,
+        "symbols": [
+          "FactorContext",
+          "FactorLocalContext",
+          "FactorInitData",
+          "Factor",
+          "DataFactor"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/FactorDB.py",
+        "batchIndex": 1,
+        "symbols": [
+          "FactorDB",
+          "WritableFactorDB"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/FactorOperation.py",
+        "batchIndex": 2,
+        "symbols": [
+          "FactorOperator",
+          "PointOperator",
+          "TimeOperator",
+          "SectionOperator",
+          "PanelOperator",
+          "makeFactorOperator",
+          "FactorOperatorized",
+          "DerivativeFactor",
+          "PointOperation",
+          "TimeOperation",
+          "SectionOperation",
+          "PanelOperation"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/FactorTable.py",
+        "batchIndex": 1,
+        "symbols": [
+          "FactorTable"
+        ]
+      }
+    ],
+    "QuantStudio/Tools/api.py": [
+      {
+        "path": "QuantStudio/Tools/AuxiliaryFun.py",
+        "batchIndex": 6,
+        "symbols": [
+          "getLogger",
+          "genAvailableName",
+          "getExpWeight",
+          "distributeEqual",
+          "partitionList",
+          "partitionListMovingSampling",
+          "getFactorList",
+          "searchNameInStrList",
+          "changeMultiClass2SingleClass",
+          "getClassMask",
+          "match2Series",
+          "getListIndex",
+          "joinList",
+          "allocateDim",
+          "startMultiProcess",
+          "runMultiProcess",
+          "findRightPair"
+        ]
+      }
+    ],
+    "QuantStudio/api.py": [
+      {
+        "path": "QuantStudio/BackTest/api.py",
+        "batchIndex": 4,
+        "symbols": []
+      },
+      {
+        "path": "QuantStudio/Core/api.py",
+        "batchIndex": 5,
+        "symbols": []
+      },
+      {
+        "path": "QuantStudio/Factor/api.py",
+        "batchIndex": 1,
+        "symbols": []
+      }
+    ]
+  }
+}

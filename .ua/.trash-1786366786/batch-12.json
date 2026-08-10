@@ -1,0 +1,401 @@
+{
+  "nodes": [
+    {
+      "id": "config:.claude/settings.json",
+      "type": "config",
+      "name": "settings.json",
+      "filePath": ".claude/settings.json",
+      "summary": "Claude Code 权限配置文件，定义了允许执行的 Bash 命令白名单，包括特定测试脚本的运行权限。",
+      "tags": ["configuration", "permissions", "claude-code"],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:.claude/skills/openspec-apply-change/SKILL.md",
+      "type": "document",
+      "name": "openspec-apply-change/SKILL.md",
+      "filePath": ".claude/skills/openspec-apply-change/SKILL.md",
+      "summary": "OpenSpec 变更实现 Skill 文档，指导用户按照 OpenSpec 变更中的任务列表逐步实现代码变更，支持多种工作流 Schema。",
+      "tags": ["documentation", "workflow", "implementation", "openspec"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:.claude/skills/openspec-archive-change/SKILL.md",
+      "type": "document",
+      "name": "openspec-archive-change/SKILL.md",
+      "filePath": ".claude/skills/openspec-archive-change/SKILL.md",
+      "summary": "OpenSpec 变更归档 Skill 文档，指导用户在实现完成后将变更归档，包括 delta spec 同步和完成状态检查。",
+      "tags": ["documentation", "workflow", "archiving", "openspec"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:.claude/skills/openspec-bulk-archive-change/SKILL.md",
+      "type": "document",
+      "name": "openspec-bulk-archive-change/SKILL.md",
+      "filePath": ".claude/skills/openspec-bulk-archive-change/SKILL.md",
+      "summary": "OpenSpec 批量归档 Skill 文档，支持一次性归档多个已完成的变更，包含智能 spec 冲突检测和解决机制。",
+      "tags": ["documentation", "workflow", "batch-operations", "openspec"],
+      "complexity": "complex"
+    },
+    {
+      "id": "document:.claude/skills/openspec-continue-change/SKILL.md",
+      "type": "document",
+      "name": "openspec-continue-change/SKILL.md",
+      "filePath": ".claude/skills/openspec-continue-change/SKILL.md",
+      "summary": "OpenSpec 继续变更 Skill 文档，指导用户逐步创建下一个待完成的产物（proposal/specs/design/tasks），每次调用仅创建一个产物。",
+      "tags": ["documentation", "workflow", "incremental", "openspec"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:.claude/skills/openspec-explore/SKILL.md",
+      "type": "document",
+      "name": "openspec-explore/SKILL.md",
+      "filePath": ".claude/skills/openspec-explore/SKILL.md",
+      "summary": "OpenSpec 探索模式 Skill 文档，定义了作为思考伙伴与用户一起探索想法、调查问题和澄清需求的对话式交互方式。",
+      "tags": ["documentation", "workflow", "exploration", "thinking-partner", "openspec"],
+      "complexity": "complex"
+    },
+    {
+      "id": "document:.claude/skills/openspec-ff-change/SKILL.md",
+      "type": "document",
+      "name": "openspec-ff-change/SKILL.md",
+      "filePath": ".claude/skills/openspec-ff-change/SKILL.md",
+      "summary": "OpenSpec 快进变更 Skill 文档，一次性生成实现所需的所有产物（proposal/specs/design/tasks），跳过逐步创建过程。",
+      "tags": ["documentation", "workflow", "fast-forward", "openspec"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:.claude/skills/openspec-new-change/SKILL.md",
+      "type": "document",
+      "name": "openspec-new-change/SKILL.md",
+      "filePath": ".claude/skills/openspec-new-change/SKILL.md",
+      "summary": "OpenSpec 新建变更 Skill 文档，引导用户创建新的变更目录并展示第一个产物的模板，然后等待用户指示。",
+      "tags": ["documentation", "workflow", "scaffolding", "openspec"],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:.claude/skills/openspec-onboard/SKILL.md",
+      "type": "document",
+      "name": "openspec-onboard/SKILL.md",
+      "filePath": ".claude/skills/openspec-onboard/SKILL.md",
+      "summary": "OpenSpec 引导式入门 Skill 文档，带领用户完成一个完整的 OpenSpec 工作流周期（从想法到归档），兼具教学和实操功能。",
+      "tags": ["documentation", "workflow", "onboarding", "tutorial", "openspec"],
+      "complexity": "complex"
+    },
+    {
+      "id": "document:.claude/skills/openspec-propose/SKILL.md",
+      "type": "document",
+      "name": "openspec-propose/SKILL.md",
+      "filePath": ".claude/skills/openspec-propose/SKILL.md",
+      "summary": "OpenSpec 提案 Skill 文档，一步创建变更并生成所有产物（proposal/design/tasks），适合快速描述需求后直接进入实现。",
+      "tags": ["documentation", "workflow", "proposal", "openspec"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:.claude/skills/openspec-sync-specs/SKILL.md",
+      "type": "document",
+      "name": "openspec-sync-specs/SKILL.md",
+      "filePath": ".claude/skills/openspec-sync-specs/SKILL.md",
+      "summary": "OpenSpec Spec 同步 Skill 文档，将变更中的 delta spec 智能合并到主 spec 文件中，支持增删改重命名操作。",
+      "tags": ["documentation", "workflow", "spec-sync", "merging", "openspec"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:.claude/skills/openspec-update-change/SKILL.md",
+      "type": "document",
+      "name": "openspec-update-change/SKILL.md",
+      "filePath": ".claude/skills/openspec-update-change/SKILL.md",
+      "summary": "OpenSpec 更新变更 Skill 文档，修订已有变更的规划产物并保持一致性，支持定向修改和一致性审查两种模式。",
+      "tags": ["documentation", "workflow", "revision", "openspec"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:.claude/skills/openspec-verify-change/SKILL.md",
+      "type": "document",
+      "name": "openspec-verify-change/SKILL.md",
+      "filePath": ".claude/skills/openspec-verify-change/SKILL.md",
+      "summary": "OpenSpec 验证变更 Skill 文档，在归档前验证实现是否与变更产物（specs/tasks/design）一致，涵盖完整性、正确性和连贯性三个维度。",
+      "tags": ["documentation", "workflow", "verification", "validation", "openspec"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:.codegraph/daemon.pid",
+      "type": "file",
+      "name": "daemon.pid",
+      "filePath": ".codegraph/daemon.pid",
+      "summary": "CodeGraph 守护进程的运行时状态文件，记录进程 PID、版本号、命名管道路径和启动时间戳。",
+      "tags": ["runtime-state", "process-management"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:.ua/.understandignore",
+      "type": "file",
+      "name": ".understandignore",
+      "filePath": ".ua/.understandignore",
+      "summary": "Understand-Anything 分析排除配置文件，使用与 .gitignore 相同的语法定义需要从代码分析中排除的文件和目录模式。当前所有规则均为注释状态。",
+      "tags": ["configuration", "analysis-ignore", "understand-anything"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:QuantStudio/BackTest/__init__.py",
+      "type": "file",
+      "name": "__init__.py",
+      "filePath": "QuantStudio/BackTest/__init__.py",
+      "summary": "BackTest 包的空初始化文件，标记该目录为 Python 包。",
+      "tags": ["package-init", "barrel"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:QuantStudio/PortfolioConstructor/__init__.py",
+      "type": "file",
+      "name": "__init__.py",
+      "filePath": "QuantStudio/PortfolioConstructor/__init__.py",
+      "summary": "PortfolioConstructor 包的空初始化文件，标记该目录为 Python 包。",
+      "tags": ["package-init", "barrel"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:QuantStudio/Resource/BaoStockDBInfo.xlsx",
+      "type": "file",
+      "name": "BaoStockDBInfo.xlsx",
+      "filePath": "QuantStudio/Resource/BaoStockDBInfo.xlsx",
+      "summary": "BaoStock 数据库信息的 Excel 资源文件，包含 BaoStock 数据源的元数据和表结构说明。",
+      "tags": ["resource", "database-metadata", "baostock"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:QuantStudio/Resource/JYDBInfo.xlsx",
+      "type": "file",
+      "name": "JYDBInfo.xlsx",
+      "filePath": "QuantStudio/Resource/JYDBInfo.xlsx",
+      "summary": "聚源数据库（JYDB）信息的 Excel 资源文件，包含聚源数据源的大量元数据和表结构说明。",
+      "tags": ["resource", "database-metadata", "jydb"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:QuantStudio/Risk/RiskModel/BarraModelConfig.py",
+      "type": "file",
+      "name": "BarraModelConfig.py",
+      "filePath": "QuantStudio/Risk/RiskModel/BarraModelConfig.py",
+      "summary": "Barra 多因子风险模型的配置文件，定义了模型参数字典，包括行业因子、风格因子列表、因子协方差估计参数、特异性风险估计参数以及各种调整（Eigenfactor、Bayesian Shrinkage、波动率机制调整）的参数。",
+      "tags": ["configuration", "risk-model", "barra", "factor-model"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:QuantStudio/Risk/RiskModel/__init__.py",
+      "type": "file",
+      "name": "__init__.py",
+      "filePath": "QuantStudio/Risk/RiskModel/__init__.py",
+      "summary": "RiskModel 子包的初始化文件，仅包含编码声明。",
+      "tags": ["package-init"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:QuantStudio/Risk/__init__.py",
+      "type": "file",
+      "name": "__init__.py",
+      "filePath": "QuantStudio/Risk/__init__.py",
+      "summary": "Risk 包的初始化文件，仅包含编码声明。",
+      "tags": ["package-init"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:QuantStudio/Tools/CashFlowCalculator.py",
+      "type": "file",
+      "name": "CashFlowCalculator.py",
+      "filePath": "QuantStudio/Tools/CashFlowCalculator.py",
+      "summary": "现金流计算工具模块，支持不规则现金流下的动态收益率模型，提供现值（pv）、终值（fv）、每期现金流（pmt）和每期收益率（rate）计算函数，具备向量化批量计算能力。",
+      "tags": ["utility", "financial-calculation", "cash-flow", "numpy"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:QuantStudio/Tools/MatplotlibFun.py",
+      "type": "file",
+      "name": "MatplotlibFun.py",
+      "filePath": "QuantStudio/Tools/MatplotlibFun.py",
+      "summary": "matplotlib 可视化工具模块，提供热力图绘制、K 线图绘制（含成交量副图）和时点坐标轴设置三个函数。",
+      "tags": ["utility", "visualization", "matplotlib", "charting"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:QuantStudio/Tools/TradeFun.py",
+      "type": "file",
+      "name": "TradeFun.py",
+      "filePath": "QuantStudio/Tools/TradeFun.py",
+      "summary": "交易相关工具模块，提供 FIFO（先进先出）和 FILO（先进后出）两种多空交易匹配算法，用于撮合配对交易并返回匹配结果和剩余未匹配交易。",
+      "tags": ["utility", "trading", "transaction-matching", "algorithm"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/CashFlowCalculator.py:_adjust_input",
+      "type": "function",
+      "name": "_adjust_input",
+      "filePath": "QuantStudio/Tools/CashFlowCalculator.py",
+      "lineRange": [44, 81],
+      "summary": "内部辅助函数，检查并调整现金流计算的输入变量（rate、pmt、pv、fv），将不同形状的输入广播为统一的 (T, M) 矩阵格式。",
+      "tags": ["utility", "input-validation", "numpy-broadcasting"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/CashFlowCalculator.py:pv",
+      "type": "function",
+      "name": "pv",
+      "filePath": "QuantStudio/Tools/CashFlowCalculator.py",
+      "lineRange": [84, 139],
+      "summary": "计算现值（Present Value），支持不规则现金流和动态收益率，可返回单期或多期现值。包含详细的中文文档字符串和多个 doctest 示例。",
+      "tags": ["financial-calculation", "present-value", "exported"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/CashFlowCalculator.py:fv",
+      "type": "function",
+      "name": "fv",
+      "filePath": "QuantStudio/Tools/CashFlowCalculator.py",
+      "lineRange": [142, 197],
+      "summary": "计算终值（Future Value），支持不规则现金流和动态收益率，可返回单期或多期终值。",
+      "tags": ["financial-calculation", "future-value", "exported"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/CashFlowCalculator.py:pmt",
+      "type": "function",
+      "name": "pmt",
+      "filePath": "QuantStudio/Tools/CashFlowCalculator.py",
+      "lineRange": [200, 241],
+      "summary": "计算每期现金流（Payment），给定动态收益率、现值和终值，反推每期需要的固定现金流。",
+      "tags": ["financial-calculation", "payment", "exported"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/CashFlowCalculator.py:rate",
+      "type": "function",
+      "name": "rate",
+      "filePath": "QuantStudio/Tools/CashFlowCalculator.py",
+      "lineRange": [244, 271],
+      "summary": "计算每期收益率（IRR），给定现金流序列、现值和终值，通过 numpy.irr 求解内部收益率。",
+      "tags": ["financial-calculation", "irr", "exported"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/MatplotlibFun.py:plotHeatMap",
+      "type": "function",
+      "name": "plotHeatMap",
+      "filePath": "QuantStudio/Tools/MatplotlibFun.py",
+      "lineRange": [9, 17],
+      "summary": "绘制热力图，将 DataFrame 数据以红色色阶渲染到 matplotlib Axes 上，自动设置刻度标签。",
+      "tags": ["visualization", "heatmap", "exported"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Tools/MatplotlibFun.py:plotCandleStick",
+      "type": "function",
+      "name": "plotCandleStick",
+      "filePath": "QuantStudio/Tools/MatplotlibFun.py",
+      "lineRange": [22, 55],
+      "summary": "绘制 K 线图（Candlestick Chart），支持可选的成交量副图，使用 Line2D 和 Rectangle 绘制影线和实体，支持自定义涨跌颜色。",
+      "tags": ["visualization", "candlestick", "charting", "exported"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/MatplotlibFun.py:setDateTimeAxis",
+      "type": "function",
+      "name": "setDateTimeAxis",
+      "filePath": "QuantStudio/Tools/MatplotlibFun.py",
+      "lineRange": [58, 64],
+      "summary": "设置 matplotlib 图表的日期时间坐标轴，根据数据点数量自动计算刻度间隔和日期格式化。",
+      "tags": ["visualization", "axis-formatting", "datetime", "exported"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Tools/TradeFun.py:matchTransactionFIFO",
+      "type": "function",
+      "name": "matchTransactionFIFO",
+      "filePath": "QuantStudio/Tools/TradeFun.py",
+      "lineRange": [15, 30],
+      "summary": "以先进先出（FIFO）方式匹配多空交易，遍历时间序列中的交易量和多空标识，逐笔撮合配对并返回匹配结果和剩余交易。",
+      "tags": ["trading", "fifo", "transaction-matching", "exported"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/TradeFun.py:matchTransactionFILO",
+      "type": "function",
+      "name": "matchTransactionFILO",
+      "filePath": "QuantStudio/Tools/TradeFun.py",
+      "lineRange": [42, 75],
+      "summary": "以先进后出（FILO/LIFO）方式匹配多空交易，使用栈结构跟踪未匹配交易，优先撮合最近的反向交易。",
+      "tags": ["trading", "filo", "transaction-matching", "exported"],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:QuantStudio/Tools/CashFlowCalculator.py",
+      "target": "function:QuantStudio/Tools/CashFlowCalculator.py:_adjust_input",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/CashFlowCalculator.py",
+      "target": "function:QuantStudio/Tools/CashFlowCalculator.py:pv",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/CashFlowCalculator.py",
+      "target": "function:QuantStudio/Tools/CashFlowCalculator.py:fv",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/CashFlowCalculator.py",
+      "target": "function:QuantStudio/Tools/CashFlowCalculator.py:pmt",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/CashFlowCalculator.py",
+      "target": "function:QuantStudio/Tools/CashFlowCalculator.py:rate",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/MatplotlibFun.py",
+      "target": "function:QuantStudio/Tools/MatplotlibFun.py:plotHeatMap",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/MatplotlibFun.py",
+      "target": "function:QuantStudio/Tools/MatplotlibFun.py:plotCandleStick",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/MatplotlibFun.py",
+      "target": "function:QuantStudio/Tools/MatplotlibFun.py:setDateTimeAxis",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/TradeFun.py",
+      "target": "function:QuantStudio/Tools/TradeFun.py:matchTransactionFIFO",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/TradeFun.py",
+      "target": "function:QuantStudio/Tools/TradeFun.py:matchTransactionFILO",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+[
+  {
+    "order": 1,
+    "title": "项目概览",
+    "description": "README 是项目的第一张地图，以链接索引的形式组织了因子框架、回测框架、风险模型、组合优化四大模块的 Jupyter Notebook 文档。它建议从「通则和约定」开始，这也是本导览的下一步。setup.py 则声明了项目的元信息：v2.0.0 版本、GPLv3 许可证、Python 3.12+ 要求以及核心依赖清单，让你对技术栈有全面了解。",
+    "nodeIds": ["document:README.md", "file:setup.py"]
+  },
+  {
+    "order": 2,
+    "title": "通则与约定",
+    "description": "这是整个框架的「宪法」文档，定义了三大基础约定：__QS_Args__ 参数系统（带类型校验的 Pydantic BaseModel，支持 QSID 确定性哈希、配置文件优先级覆盖、JSON 序列化）、__QS_Object__ 领域对象基类（封装参数和日志器）、Panel 三维带标签数组（框架的核心数据结构）。理解这些约定后，所有后续模块的代码都遵循同样的模式。",
+    "nodeIds": ["file:docs/通则和约定.ipynb"],
+    "languageLesson": "Pydantic v2 的 BaseModel 提供了声明式数据校验——字段类型即校验规则，frozen=True 使实例不可变，model_config 控制序列化行为。QSID 利用 model_dump() 的确定性输出计算哈希，实现缓存去重。"
+  },
+  {
+    "order": 3,
+    "title": "计算图引擎",
+    "description": "QuantStudio 的一切计算都建立在有向无环图（DAG）之上。Core/__init__.py 定义了 __QS_Args__ 和 __QS_Object__ 基类；Node.py 定义了 Context（全局执行上下文）、LocalContext（节点本地上下文）和 Node（计算节点基类，实现 init_compute -> prepare_compute -> compute 生命周期）。CalcEngine.py 实现了顺序引擎 Engine（BFS 拓扑遍历）和 StackEngine（DFS 栈式遍历），ParallelEngine 和 TreeEngine 则提供多进程和异步并发能力。",
+    "nodeIds": ["file:QuantStudio/Core/__init__.py", "file:QuantStudio/Core/Node.py", "file:QuantStudio/Core/CalcEngine.py", "file:QuantStudio/Core/ParallelEngine.py", "file:QuantStudio/Core/TreeEngine.py"]
+  },
+  {
+    "order": 4,
+    "title": "数据模型与缓存",
+    "description": "Panel 是框架的核心数据结构——一个带标签轴的三维数组（因子 x 时点 x ID），定义在 QSObject.py 中。同一文件还定义了 QSSQLObject（数据库连接基类）和 QSQueue（进程间队列）。Cache.py 定义了缓存抽象接口 DTCache，FileCache.py 提供了基于文件系统的实现，包括 FeatherDTCache（Feather 格式高效读写）。_encryption.py 则基于 Fernet 实现敏感字段的加密/解密。",
+    "nodeIds": ["file:QuantStudio/Core/QSObject.py", "file:QuantStudio/Core/Cache.py", "file:QuantStudio/Core/FileCache.py", "file:QuantStudio/Core/_encryption.py"],
+    "languageLesson": "Feather（Arrow IPC）格式相比 HDF5 有显著优势：列式存储支持零拷贝读取，读取速度可达 HDF5 的 5-10 倍，且天然支持多进程并发读取（无需文件锁），非常适合时序-截面因子数据的缓存场景。"
+  },
+  {
+    "order": 5,
+    "title": "工具模块",
+    "description": "Tools 包是框架的「工具箱」，被 Core 和 Factor 模块广泛依赖。DataTypeFun.py 提供嵌套字典操作和确定性哈希（dict2id），IDFun.py 处理 A 股 ID 的前缀/后缀转换，SQLDBFun.py 生成 SQL IN 条件（自动分片处理超长列表），DataPreprocessingFun.py 提供 Z-Score、Winsorize、中性化等数据预处理函数，StrategyTestFun.py 则包含向量化回测引擎和 30+ 绩效统计指标。",
+    "nodeIds": ["file:QuantStudio/Tools/DataTypeFun.py", "file:QuantStudio/Tools/IDFun.py", "file:QuantStudio/Tools/SQLDBFun.py", "file:QuantStudio/Tools/DataPreprocessingFun.py", "file:QuantStudio/Tools/StrategyTestFun.py"]
+  },
+  {
+    "order": 6,
+    "title": "因子框架核心",
+    "description": "因子框架是项目最大的模块，采用三层数据模型：FactorDB（因子库，管理多个因子表）→ FactorTable（因子表，独立数据集）→ Factor（因子节点，计算图中的计算单元）。FactorDB.py 定义了只读和可写的因子库抽象接口；FactorTable.py 定义了因子表的读取和生命周期管理；Factor.py 则将因子集成到计算图中，定义了 Factor 基类（支持运算符重载 +、-、*、/ 等语法糖）和 DataFactor（字面量数据叶子节点）。FactorUtils.py 则实现了多种 SQL 表类型（宽表/窄表/特征表/映射表等）的底层数据处理逻辑。",
+    "nodeIds": ["file:QuantStudio/Factor/FactorDB.py", "file:QuantStudio/Factor/FactorTable.py", "file:QuantStudio/Factor/Factor.py", "file:QuantStudio/Factor/FactorUtils.py"]
+  },
+  {
+    "order": 7,
+    "title": "因子算子与运算",
+    "description": "FactorOperation.py（1490 行）是因子运算框架的核心，定义了 FactorOperator 基类和四种运算子类：PointOperator（逐点）、TimeOperator（时序）、SectionOperator（截面）、PanelOperator（全面板），以及对应的运算节点类。BasicOperator.py 提供 20 个基础算术/逻辑运算单例（Add、Sub、Mul 等）。FactorOperator.py（990 行）则内置 33 个高级算子：Lag、RollingMean、RollingRegress、SectionRank、Aggregate、PanelRegress 等。FactorStorer.py 负责将因子计算结果持久化到可写因子库。",
+    "nodeIds": ["file:QuantStudio/Factor/FactorOperation.py", "file:QuantStudio/Factor/BasicOperator.py", "file:QuantStudio/Factor/FactorOperator.py", "file:QuantStudio/Factor/FactorStorer.py"],
+    "languageLesson": "FactorOperator 的四种类型对应不同的数据切片方式：Point 对单个元素操作（跨描述符），Time 对单资产时序操作，Section 对单时点截面操作，Panel 对整面板操作。这种分类决定了并行化的粒度和回溯窗口的行为模式。"
+  },
+  {
+    "order": 8,
+    "title": "因子数据源",
+    "description": "数据源是因子框架的「燃料供给」。HDF5DB.py 实现本地 HDF5 文件因子库（读写），支持三级目录结构和文件锁并发安全。JYDB.py（1517 行）是聚源数据库连接器（只读），通过 PostgreSQL 获取 A 股行情、财务、行业分类等金融数据，是项目最主要的数据源。SQLDB.py 基于 SQLAlchemy 支持通用 SQL 数据库。BaoStockDB.py 通过在线 API 获取数据（仅测试用）。FactorCache.py 在 DTCache 之上实现了因子数据的分进程缓存层。",
+    "nodeIds": ["file:QuantStudio/Factor/HDF5DB.py", "file:QuantStudio/Factor/JYDB.py", "file:QuantStudio/Factor/SQLDB.py", "file:QuantStudio/Factor/FactorCache.py"]
+  },
+  {
+    "order": 9,
+    "title": "回测框架",
+    "description": "BackTestModel.py 定义了回测框架的两个核心类：BTNode（所有回测计算节点的父类，继承自 Node）和 BTReport（汇总多个回测节点输出，生成 HTML 报告）。所有回测模块——截面因子测试、策略回测、业绩归因、风险偏差检验——都通过 api.py 导出。回测框架通过「算子-节点分离」模式工作：FactorOperator 封装计算逻辑，BTNode 负责在计算图中的生命周期管理。",
+    "nodeIds": ["file:QuantStudio/BackTest/BackTestModel.py", "file:QuantStudio/BackTest/api.py"]
+  },
+  {
+    "order": 10,
+    "title": "截面因子测试",
+    "description": "截面因子测试是量化研究中最常用的工具，包含四个紧密耦合的模块。IC.py 计算因子信息系数（IC、ICIR、风险调整 IC、IC 衰减）。QuantilePortfolio.py 按因子值分组构建多空组合，计算各组净值、超额收益和绩效统计。Correlation.py 分析因子截面相关性和换手率。ReturnDecomposition.py 实现 Fama-MacBeth 截面回归。这些模块共享 BackTestModel 和 Node 基础设施，在计算图中可以灵活组合。",
+    "nodeIds": ["file:QuantStudio/BackTest/SectionFactor/IC.py", "file:QuantStudio/BackTest/SectionFactor/QuantilePortfolio.py", "file:QuantStudio/BackTest/SectionFactor/Correlation.py", "file:QuantStudio/BackTest/SectionFactor/ReturnDecomposition.py"]
+  },
+  {
+    "order": 11,
+    "title": "策略回测与业绩归因",
+    "description": "策略回测实现了完整的投资策略模拟流程：MakeAccount 创建账户、MakeStrategy 生成交易信号并执行市价单撮合、AccountReport 生成回测报告，支持买卖数量和目标权重两种信号类型。AllocationStrategy.py 提供基于筛选条件的组合构造算子。BrinsonModel.py 实现 BHB 风格的业绩归因，将超额收益分解为资产配置效应、选股效应和交互作用。",
+    "nodeIds": ["file:QuantStudio/BackTest/Strategy/Strategy.py", "file:QuantStudio/BackTest/Strategy/AllocationStrategy.py", "file:QuantStudio/BackTest/PerformanceAnalysis/BrinsonModel.py"],
+    "languageLesson": "Brinson 归因模型将组合超额收益分解为三项：资产配置效应（AA）衡量偏离基准的行业配置带来的收益，选股效应（SS）衡量行业内选股能力，交互效应（IN）衡量配置与选股的交叉影响。BHB 模型是业界最广泛使用的单期归因方法。"
+  },
+  {
+    "order": 12,
+    "title": "风险模型与组合优化",
+    "description": "风险模型和组合优化是量化投资流程的最后两个环节。Risk 模块定义了 RiskDB/RiskTable 抽象层和 HDF5RDB/HDF5FRDB 实现；BarraModel.py 实现 Barra CNE5 多因子风险模型，通过截面回归估计因子收益率、EWMA 估计因子协方差矩阵、Bayesian 收缩估计特异性风险。PortfolioConstructor 模块采用目标-约束分离设计：BasePC.py 定义了三大优化目标（均值方差、风险预算、最大分散化）和七类约束条件，CVXPC.py 通过 CVXPY 凸优化求解器实现。",
+    "nodeIds": ["file:QuantStudio/Risk/HDF5RDB.py", "file:QuantStudio/Risk/RiskModel/BarraModel.py", "file:QuantStudio/PortfolioConstructor/BasePC.py", "file:QuantStudio/PortfolioConstructor/CVXPC.py"]
+  }
+]

@@ -1,0 +1,43 @@
+{
+  "batchIndex": 9,
+  "files": [
+    {
+      "path": "CLAUDE.local.example.md",
+      "language": "markdown",
+      "sizeLines": 20,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "CLAUDE.md",
+      "language": "markdown",
+      "sizeLines": 131,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "README.md",
+      "language": "markdown",
+      "sizeLines": 57,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "requirements.txt",
+      "language": "txt",
+      "sizeLines": 17,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "requirements_optional.txt",
+      "language": "txt",
+      "sizeLines": 6,
+      "fileCategory": "docs"
+    }
+  ],
+  "batchImportData": {
+    "CLAUDE.local.example.md": [],
+    "CLAUDE.md": [],
+    "README.md": [],
+    "requirements.txt": [],
+    "requirements_optional.txt": []
+  },
+  "neighborMap": {}
+}

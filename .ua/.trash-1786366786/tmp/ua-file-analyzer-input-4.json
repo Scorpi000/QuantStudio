@@ -1,0 +1,70 @@
+{
+  "projectRoot": "C:/Users/hst/Project/QuantStudio",
+  "batchFiles": [
+    {"path": "QuantStudio/BackTest/PerformanceAnalysis/__init__.py", "language": "python", "sizeLines": 0, "fileCategory": "code"},
+    {"path": "QuantStudio/BackTest/Risk/__init__.py", "language": "python", "sizeLines": 0, "fileCategory": "code"},
+    {"path": "QuantStudio/BackTest/SectionFactor/__init__.py", "language": "python", "sizeLines": 1, "fileCategory": "code"},
+    {"path": "QuantStudio/BackTest/Strategy/AllocationStrategy.py", "language": "python", "sizeLines": 233, "fileCategory": "code"},
+    {"path": "QuantStudio/BackTest/Strategy/Strategy.py", "language": "python", "sizeLines": 574, "fileCategory": "code"},
+    {"path": "QuantStudio/BackTest/Strategy/__init__.py", "language": "python", "sizeLines": 0, "fileCategory": "code"},
+    {"path": "QuantStudio/BackTest/Strategy/api.py", "language": "python", "sizeLines": 4, "fileCategory": "code"},
+    {"path": "QuantStudio/BackTest/api.py", "language": "python", "sizeLines": 6, "fileCategory": "code"},
+    {"path": "QuantStudio/Tools/DataPreprocessingFun.py", "language": "python", "sizeLines": 473, "fileCategory": "code"},
+    {"path": "QuantStudio/Tools/FileFun.py", "language": "python", "sizeLines": 350, "fileCategory": "code"},
+    {"path": "QuantStudio/Tools/StrategyTestFun.py", "language": "python", "sizeLines": 1123, "fileCategory": "code"},
+    {"path": "tests/test_Tools_StrategyTestFun.py", "language": "python", "sizeLines": 23, "fileCategory": "code"},
+    {"path": "tests/test_Tools_StrategyTestFun_backtest.py", "language": "python", "sizeLines": 93, "fileCategory": "code"}
+  ],
+  "batchImportData": {
+    "QuantStudio/BackTest/PerformanceAnalysis/__init__.py": [],
+    "QuantStudio/BackTest/Risk/__init__.py": [],
+    "QuantStudio/BackTest/SectionFactor/__init__.py": [],
+    "QuantStudio/BackTest/Strategy/AllocationStrategy.py": [
+      "QuantStudio/Core/__init__.py",
+      "QuantStudio/Factor/Factor.py",
+      "QuantStudio/Factor/FactorOperation.py",
+      "QuantStudio/Tools/DataPreprocessingFun.py",
+      "QuantStudio/Tools/StrategyTestFun.py"
+    ],
+    "QuantStudio/BackTest/Strategy/Strategy.py": [
+      "QuantStudio/BackTest/BackTestModel.py",
+      "QuantStudio/Core/Node.py",
+      "QuantStudio/Core/__init__.py",
+      "QuantStudio/Factor/Factor.py",
+      "QuantStudio/Factor/FactorOperation.py",
+      "QuantStudio/Risk/RiskTable.py",
+      "QuantStudio/Tools/StrategyTestFun.py"
+    ],
+    "QuantStudio/BackTest/Strategy/__init__.py": [],
+    "QuantStudio/BackTest/Strategy/api.py": [
+      "QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+      "QuantStudio/BackTest/Strategy/Strategy.py"
+    ],
+    "QuantStudio/BackTest/api.py": [
+      "QuantStudio/BackTest/BackTestModel.py",
+      "QuantStudio/BackTest/PerformanceAnalysis/__init__.py",
+      "QuantStudio/BackTest/Risk/__init__.py",
+      "QuantStudio/BackTest/SectionFactor/__init__.py",
+      "QuantStudio/BackTest/Strategy/Strategy.py",
+      "QuantStudio/BackTest/Strategy/__init__.py"
+    ],
+    "QuantStudio/Tools/DataPreprocessingFun.py": [],
+    "QuantStudio/Tools/FileFun.py": [
+      "QuantStudio/Core/__init__.py"
+    ],
+    "QuantStudio/Tools/StrategyTestFun.py": [
+      "QuantStudio/Core/__init__.py",
+      "QuantStudio/Tools/DataPreprocessingFun.py",
+      "QuantStudio/Tools/DateTimeFun.py",
+      "QuantStudio/Tools/FileFun.py"
+    ],
+    "tests/test_Tools_StrategyTestFun.py": [
+      "QuantStudio/Tools/StrategyTestFun.py"
+    ],
+    "tests/test_Tools_StrategyTestFun_backtest.py": [
+      "QuantStudio/Tools/DataPreprocessingFun.py",
+      "QuantStudio/Tools/StrategyTestFun.py"
+    ]
+  },
+  "neighborMap": {}
+}

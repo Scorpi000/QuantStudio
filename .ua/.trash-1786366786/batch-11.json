@@ -1,0 +1,349 @@
+{
+  "nodes": [
+    {
+      "id": "document:skills/quantstudio/references/backtest.md",
+      "type": "document",
+      "name": "backtest.md",
+      "filePath": "skills/quantstudio/references/backtest.md",
+      "summary": "回测框架参考文档，涵盖 BTNode 和 BTReport 的架构设计、四层嵌套执行流程，以及截面因子测试（IC 分析、分位组合、Fama-MacBeth 回归）、策略回测、Brinson 绩效归因和风险偏差检验四个子模块的 API 用法。",
+      "tags": ["documentation", "backtest", "skill-reference", "factor-testing", "strategy"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:skills/quantstudio/references/core-engine.md",
+      "type": "document",
+      "name": "core-engine.md",
+      "filePath": "skills/quantstudio/references/core-engine.md",
+      "summary": "计算图引擎参考文档，描述 Node 生命周期方法（init/prepare/compute/forward/backward/merge）、Context 全局上下文字段与并行机制、三种引擎类型（顺序/多进程/树形）以及 HDF5 与 Feather 缓存的使用方式。",
+      "tags": ["documentation", "core-engine", "skill-reference", "computation-graph", "parallel"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:skills/quantstudio/references/factor-datasources.md",
+      "type": "document",
+      "name": "factor-datasources.md",
+      "filePath": "skills/quantstudio/references/factor-datasources.md",
+      "summary": "因子数据源参考文档，介绍四种因子库实现：HDF5DB（本地 HDF5 读写）、JYDB（聚源 PostgreSQL 只读）、SQLDB（通用 SQL）和 BaoStockDB（在线 API），以及 FeatherFactorCache/FeatherDTCache 缓存机制。",
+      "tags": ["documentation", "data-source", "skill-reference", "hdf5", "database"],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:skills/quantstudio/references/factor-development.md",
+      "type": "document",
+      "name": "factor-development.md",
+      "filePath": "skills/quantstudio/references/factor-development.md",
+      "summary": "因子开发参考文档，详解四类运算（单点/时序/截面/面板）的算子参数与 calculate 方法签名，三种创建算子的方式（工厂函数/装饰器/子类化），以及 30+ 内置算子的速查列表和运算符重载机制。",
+      "tags": ["documentation", "factor-operator", "skill-reference", "development-guide", "api-reference"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:skills/quantstudio/references/factor-framework.md",
+      "type": "document",
+      "name": "factor-framework.md",
+      "filePath": "skills/quantstudio/references/factor-framework.md",
+      "summary": "因子框架 API 参考文档，描述三层数据模型（FactorDB → FactorTable → Factor）的核心接口，包括 Factor 基类的 readData/Descriptors/getID 方法、DataFactor 字面量因子、FactorStorer 持久化节点以及因子上下文类型。",
+      "tags": ["documentation", "factor-framework", "skill-reference", "api-reference", "data-model"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:skills/quantstudio/references/portfolio-optimization.md",
+      "type": "document",
+      "name": "portfolio-optimization.md",
+      "filePath": "skills/quantstudio/references/portfolio-optimization.md",
+      "summary": "组合优化参考文档，涵盖三大优化目标（均值方差/风险预算/最大分散化）、六类约束条件（预算/权重/因子暴露/波动率/换手率/持仓数量）及其参数说明，以及 CVXPC 凸优化求解器的使用方式和约束松弛机制。",
+      "tags": ["documentation", "portfolio-optimization", "skill-reference", "cvxpy", "risk-model"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:skills/quantstudio/references/risk-model.md",
+      "type": "document",
+      "name": "risk-model.md",
+      "filePath": "skills/quantstudio/references/risk-model.md",
+      "summary": "风险模型参考文档，描述两类风险数据模型（无结构协方差矩阵和 Barra 多因子模型），涵盖 RiskDB/HDF5RDB/HDF5FRDB 数据库存取接口、FactorRT 多因子风险表读取方法，以及 BarraModel 的三步核心方法论（因子收益率估计、协方差矩阵估计、特异性风险估计）。",
+      "tags": ["documentation", "risk-model", "skill-reference", "barra", "covariance"],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "document:skills/quantstudio/references/backtest.md",
+      "target": "file:QuantStudio/BackTest/api.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/backtest.md",
+      "target": "file:QuantStudio/BackTest/SectionFactor/IC.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/backtest.md",
+      "target": "file:QuantStudio/BackTest/SectionFactor/QuantilePortfolio.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/backtest.md",
+      "target": "file:QuantStudio/BackTest/SectionFactor/ReturnDecomposition.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/backtest.md",
+      "target": "file:QuantStudio/BackTest/Strategy/__init__.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/backtest.md",
+      "target": "file:QuantStudio/BackTest/PerformanceAnalysis/__init__.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/backtest.md",
+      "target": "file:QuantStudio/BackTest/Risk/__init__.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/backtest.md",
+      "target": "file:QuantStudio/Factor/FactorCache.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/backtest.md",
+      "target": "document:skills/quantstudio/references/core-engine.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/backtest.md",
+      "target": "document:skills/quantstudio/references/factor-framework.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/core-engine.md",
+      "target": "file:QuantStudio/Core/Node.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/core-engine.md",
+      "target": "file:QuantStudio/Core/CalcEngine.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/core-engine.md",
+      "target": "file:QuantStudio/Core/ParallelEngine.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/core-engine.md",
+      "target": "file:QuantStudio/Core/TreeEngine.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/core-engine.md",
+      "target": "file:QuantStudio/Core/Cache.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/core-engine.md",
+      "target": "file:QuantStudio/Core/FileCache.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/factor-datasources.md",
+      "target": "file:QuantStudio/Factor/HDF5DB.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/factor-datasources.md",
+      "target": "file:QuantStudio/Factor/JYDB.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/factor-datasources.md",
+      "target": "file:QuantStudio/Factor/SQLDB.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/factor-datasources.md",
+      "target": "file:QuantStudio/Factor/BaoStockDB.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/factor-datasources.md",
+      "target": "file:QuantStudio/Factor/FactorCache.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/factor-development.md",
+      "target": "file:QuantStudio/Factor/FactorOperator.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/factor-development.md",
+      "target": "file:QuantStudio/Factor/FactorOperation.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/factor-development.md",
+      "target": "file:QuantStudio/Factor/BasicOperator.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/factor-framework.md",
+      "target": "file:QuantStudio/Factor/FactorDB.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/factor-framework.md",
+      "target": "file:QuantStudio/Factor/FactorTable.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/factor-framework.md",
+      "target": "file:QuantStudio/Factor/Factor.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/factor-framework.md",
+      "target": "file:QuantStudio/Factor/FactorStorer.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/factor-framework.md",
+      "target": "file:QuantStudio/Factor/api.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/factor-framework.md",
+      "target": "document:skills/quantstudio/references/factor-development.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/factor-framework.md",
+      "target": "document:skills/quantstudio/references/factor-datasources.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/portfolio-optimization.md",
+      "target": "file:QuantStudio/PortfolioConstructor/BasePC.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/portfolio-optimization.md",
+      "target": "file:QuantStudio/PortfolioConstructor/CVXPC.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/portfolio-optimization.md",
+      "target": "file:QuantStudio/PortfolioConstructor/api.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/risk-model.md",
+      "target": "file:QuantStudio/Risk/HDF5RDB.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/risk-model.md",
+      "target": "file:QuantStudio/Risk/RiskDB.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/risk-model.md",
+      "target": "file:QuantStudio/Risk/RiskTable.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/risk-model.md",
+      "target": "file:QuantStudio/Risk/RiskModel/BarraModel.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/risk-model.md",
+      "target": "file:QuantStudio/Risk/RiskModel/BarraModelConfig.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:skills/quantstudio/references/risk-model.md",
+      "target": "file:QuantStudio/Risk/api.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "nodes": [
+    {
+      "id": "config:openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/.openspec.yaml",
+      "type": "config",
+      "name": ".openspec.yaml",
+      "filePath": "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/.openspec.yaml",
+      "summary": "OpenSpec 变更元数据配置文件，声明该变更使用 spec-driven 工作流模式，创建于 2026-07-29。",
+      "tags": ["configuration", "openspec", "change-tracking"],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/design.md",
+      "type": "document",
+      "name": "design.md",
+      "filePath": "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/design.md",
+      "summary": "qs-args-serialize-encrypt 变更的详细设计文档，涵盖 __QS_Args__ 的 Owner/Logger 迁移到 PrivateAttr、secret 标志新增、Fernet 加密序列化方案、密钥管理策略及 FactorUtils.py 重构等七个核心决策。",
+      "tags": ["documentation", "design-document", "security", "encryption", "pydantic"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/proposal.md",
+      "type": "document",
+      "name": "proposal.md",
+      "filePath": "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/proposal.md",
+      "summary": "变更提案摘要，说明将 Owner/Logger 从 Pydantic Field 迁移到 PrivateAttr、新增 secret 字段加密机制的动机、能力清单及影响范围（Core、Factor、依赖、下游项目）。",
+      "tags": ["documentation", "proposal", "security", "breaking-change"],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/tasks.md",
+      "type": "document",
+      "name": "tasks.md",
+      "filePath": "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/tasks.md",
+      "summary": "变更实施任务清单，共 5 个阶段 17 项任务，涵盖 Owner/Logger 迁移、secret 标志、加密基础设施、serialize/deserialize 方法及测试验证，大部分已完成。",
+      "tags": ["documentation", "task-list", "implementation", "security"],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "config:openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/.openspec.yaml",
+      "target": "document:openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/design.md",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/.openspec.yaml",
+      "target": "document:openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/proposal.md",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/.openspec.yaml",
+      "target": "document:openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/tasks.md",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "document:openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/proposal.md",
+      "target": "document:openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/design.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/design.md",
+      "target": "document:openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/tasks.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    }
+  ]
+}

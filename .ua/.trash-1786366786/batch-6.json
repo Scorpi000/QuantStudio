@@ -1,0 +1,691 @@
+{
+  "nodes": [
+    {
+      "id": "file:QuantStudio/Risk/RiskModel/BarraModel.py",
+      "type": "file",
+      "name": "BarraModel.py",
+      "filePath": "QuantStudio/Risk/RiskModel/BarraModel.py",
+      "summary": "Barra 多因子风险模型的主入口，包含 BarraModel 类和三个多进程任务函数，负责协调截面回归、因子协方差矩阵估计和特异性风险估计的全流程计算。",
+      "tags": ["risk-model", "barra", "multi-process", "service", "factor-analysis"],
+      "complexity": "complex",
+      "languageNotes": "使用 importlib 动态加载配置模块，支持串行和多进程两种运行模式。"
+    },
+    {
+      "id": "file:QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "type": "file",
+      "name": "RiskModelFun.py",
+      "filePath": "QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "summary": "风险模型的核心数学计算函数库，实现 EWMA 协方差估计、带线性约束的加权回归、Barra EUE3 因子/特异性收益率分离、CHE2 因子协方差估计、Eigenfactor 风险调整和 Bayesian 收缩等算法。",
+      "tags": ["risk-model", "math", "statistics", "covariance-estimation", "regression"],
+      "complexity": "complex",
+      "languageNotes": "实现了多种 Barra 经典算法（EUE3、CHE2），使用 numpy 矩阵运算和 statsmodels WLS 回归。"
+    },
+    {
+      "id": "file:QuantStudio/Risk/RiskModel/api.py",
+      "type": "file",
+      "name": "api.py",
+      "filePath": "QuantStudio/Risk/RiskModel/api.py",
+      "summary": "RiskModel 子包的公共 API 入口，导出 BarraModel 类和 dropRiskMatrixNA、decomposeCov2Corr 函数。",
+      "tags": ["barrel", "entry-point", "api", "exports"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:QuantStudio/Tools/AuxiliaryFun.py",
+      "type": "file",
+      "name": "AuxiliaryFun.py",
+      "filePath": "QuantStudio/Tools/AuxiliaryFun.py",
+      "summary": "通用辅助函数库，提供日志配置、指数权重计算、数据分片、多分类转单分类、序列匹配、多进程启动/运行等工具，被框架内多个模块广泛依赖。",
+      "tags": ["utility", "multi-process", "data-processing", "logging", "helper"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:QuantStudio/Tools/DataTypeConversionFun.py",
+      "type": "file",
+      "name": "DataTypeConversionFun.py",
+      "filePath": "QuantStudio/Tools/DataTypeConversionFun.py",
+      "summary": "数据类型转换函数库，提供字典键值互转、虚拟变量转 0-1 矩阵、含列表元素 DataFrame 展开、全角/半角字符转换，以及 dict 到 HTML/Markdown 的格式化输出。",
+      "tags": ["utility", "data-conversion", "formatting", "serialization", "helper"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Risk/RiskModel/BarraModel.py:_FactorAndSpecificReturnGeneration",
+      "type": "function",
+      "name": "_FactorAndSpecificReturnGeneration",
+      "filePath": "QuantStudio/Risk/RiskModel/BarraModel.py",
+      "lineRange": [17, 71],
+      "summary": "多进程任务函数，遍历回归时点执行 EUE3 截面回归，估计因子收益率和特异性收益率并写入风险数据库。",
+      "tags": ["risk-model", "multi-process", "task-function", "regression"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:QuantStudio/Risk/RiskModel/BarraModel.py:_FactorCovarianceGeneration",
+      "type": "function",
+      "name": "_FactorCovarianceGeneration",
+      "filePath": "QuantStudio/Risk/RiskModel/BarraModel.py",
+      "lineRange": [74, 119],
+      "summary": "多进程任务函数，基于历史因子收益率使用 CHE2 方法估计因子协方差矩阵，可选 Eigenfactor 风险调整。",
+      "tags": ["risk-model", "multi-process", "task-function", "covariance-estimation"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:QuantStudio/Risk/RiskModel/BarraModel.py:_SpecificRiskGeneration",
+      "type": "function",
+      "name": "_SpecificRiskGeneration",
+      "filePath": "QuantStudio/Risk/RiskModel/BarraModel.py",
+      "lineRange": [122, 157],
+      "summary": "多进程任务函数，基于历史特异性收益率使用 EUE3 方法估计特异性风险并写入风险数据库。",
+      "tags": ["risk-model", "multi-process", "task-function", "specific-risk"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:QuantStudio/Risk/RiskModel/BarraModel.py:BarraModel",
+      "type": "class",
+      "name": "BarraModel",
+      "filePath": "QuantStudio/Risk/RiskModel/BarraModel.py",
+      "lineRange": [160, 356],
+      "summary": "Barra 多因子风险模型的主类，管理模型配置加载、时点序列设置、截面回归、因子协方差矩阵估计和特异性风险估计的完整流程，支持串行和多进程两种运行模式。",
+      "tags": ["risk-model", "barra", "multi-process", "configuration-driven"],
+      "complexity": "complex",
+      "languageNotes": "通过 importlib 动态加载 Python 配置模块（BarraModelConfig.py），配置内容包括模型参数、因子列表、估计参数等。"
+    },
+    {
+      "id": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:estimateSampleCovMatrix_EWMA",
+      "type": "function",
+      "name": "estimateSampleCovMatrix_EWMA",
+      "filePath": "QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "lineRange": [14, 35],
+      "summary": "使用 EWMA 方法估计样本协方差矩阵，支持半衰期加权和偏差调整。",
+      "tags": ["risk-model", "math", "covariance-estimation", "ewma"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:decomposeCov2Corr",
+      "type": "function",
+      "name": "decomposeCov2Corr",
+      "filePath": "QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "lineRange": [38, 43],
+      "summary": "将协方差矩阵分解为相关系数矩阵和波动率向量。",
+      "tags": ["risk-model", "math", "linear-algebra", "decomposition"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:calcAvgCorr",
+      "type": "function",
+      "name": "calcAvgCorr",
+      "filePath": "QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "lineRange": [46, 49],
+      "summary": "计算协方差矩阵对应的平均相关系数。",
+      "tags": ["risk-model", "math", "statistics"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:regressWithOneLinearEqConstraint",
+      "type": "function",
+      "name": "regressWithOneLinearEqConstraint",
+      "filePath": "QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "lineRange": [52, 84],
+      "summary": "带一个线性等式约束的加权多元线性回归，用于 Barra 模型中行业因子收益率的受限估计。",
+      "tags": ["risk-model", "math", "regression", "constraint-optimization"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:calcRegressWeight",
+      "type": "function",
+      "name": "calcRegressWeight",
+      "filePath": "QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "lineRange": [87, 92],
+      "summary": "基于市值平方根计算回归权重，对极端值进行分位数截断。",
+      "tags": ["risk-model", "math", "weighting"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:calcMarketReturn",
+      "type": "function",
+      "name": "calcMarketReturn",
+      "filePath": "QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "lineRange": [95, 103],
+      "summary": "计算加权市场收益率。",
+      "tags": ["risk-model", "math", "return-calculation"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:estimateFactorAndSpecificReturn_EUE3",
+      "type": "function",
+      "name": "estimateFactorAndSpecificReturn_EUE3",
+      "filePath": "QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "lineRange": [203, 249],
+      "summary": "使用 Barra EUE3 方法进行两轮截面回归，估计因子收益率和特异性收益率，包含 Proxy Asset 补充和残差异常值处理。",
+      "tags": ["risk-model", "barra", "regression", "eue3", "core-algorithm"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:estimateFactorCov_CHE2",
+      "type": "function",
+      "name": "estimateFactorCov_CHE2",
+      "filePath": "QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "lineRange": [255, 262],
+      "summary": "使用 Barra CHE2 方法估计因子协方差矩阵，分离相关系数和波动率分别使用不同半衰期。",
+      "tags": ["risk-model", "barra", "covariance-estimation", "che2", "core-algorithm"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:estimateSpecificRisk_EUE3",
+      "type": "function",
+      "name": "estimateSpecificRisk_EUE3",
+      "filePath": "QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "lineRange": [306, 310],
+      "summary": "使用 Barra EUE3 方法估计特异性风险，混合时间序列和结构化模型的预测结果。",
+      "tags": ["risk-model", "barra", "specific-risk", "eue3"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:EigenfactorRiskAdjustment",
+      "type": "function",
+      "name": "EigenfactorRiskAdjustment",
+      "filePath": "QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "lineRange": [315, 334],
+      "summary": "Eigenfactor 风险调整，通过 Monte Carlo 模拟校正因子协方差矩阵的估计偏差。",
+      "tags": ["risk-model", "math", "monte-carlo", "bias-correction"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:BayesianShrinkage",
+      "type": "function",
+      "name": "BayesianShrinkage",
+      "filePath": "QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "lineRange": [339, 356],
+      "summary": "Bayesian 收缩估计，按市值分组对特异性风险进行向组均值收缩的修正。",
+      "tags": ["risk-model", "math", "bayesian", "shrinkage"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:dropRiskMatrixNA",
+      "type": "function",
+      "name": "dropRiskMatrixNA",
+      "filePath": "QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "lineRange": [389, 392],
+      "summary": "清理风险矩阵中的缺失值，保持矩阵行列对称。",
+      "tags": ["risk-model", "data-cleaning", "utility"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Tools/AuxiliaryFun.py:getLogger",
+      "type": "function",
+      "name": "getLogger",
+      "filePath": "QuantStudio/Tools/AuxiliaryFun.py",
+      "lineRange": [16, 29],
+      "summary": "创建和配置日志记录器，支持文件输出和控制台输出两种模式。",
+      "tags": ["utility", "logging", "configuration"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/AuxiliaryFun.py:genAvailableName",
+      "type": "function",
+      "name": "genAvailableName",
+      "filePath": "QuantStudio/Tools/AuxiliaryFun.py",
+      "lineRange": [32, 52],
+      "summary": "生成不与现有名称冲突的可用名称，支持大小写忽略和批量生成。",
+      "tags": ["utility", "naming", "helper"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/AuxiliaryFun.py:getExpWeight",
+      "type": "function",
+      "name": "getExpWeight",
+      "filePath": "QuantStudio/Tools/AuxiliaryFun.py",
+      "lineRange": [54, 59],
+      "summary": "计算指数衰减权重序列，用于 EWMA 等时间加权计算。",
+      "tags": ["utility", "math", "weighting", "ewma"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Tools/AuxiliaryFun.py:changeMultiClass2SingleClass",
+      "type": "function",
+      "name": "changeMultiClass2SingleClass",
+      "filePath": "QuantStudio/Tools/AuxiliaryFun.py",
+      "lineRange": [123, 142],
+      "summary": "将多分类数据转换为单分类数据，通过笛卡尔积组合生成唯一类别标识。",
+      "tags": ["utility", "data-processing", "classification"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/AuxiliaryFun.py:getClassMask",
+      "type": "function",
+      "name": "getClassMask",
+      "filePath": "QuantStudio/Tools/AuxiliaryFun.py",
+      "lineRange": [146, 165],
+      "summary": "根据给定子类别条件生成布尔掩码，支持 numpy 数组和 pandas DataFrame。",
+      "tags": ["utility", "data-processing", "filtering"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/AuxiliaryFun.py:startMultiProcess",
+      "type": "function",
+      "name": "startMultiProcess",
+      "filePath": "QuantStudio/Tools/AuxiliaryFun.py",
+      "lineRange": [201, 223],
+      "summary": "多进程启动器，支持参数分区、主从进程间消息队列配置，是框架并行计算的核心基础设施。",
+      "tags": ["utility", "multi-process", "concurrency", "infrastructure"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:QuantStudio/Tools/AuxiliaryFun.py:runMultiProcess",
+      "type": "function",
+      "name": "runMultiProcess",
+      "filePath": "QuantStudio/Tools/AuxiliaryFun.py",
+      "lineRange": [226, 247],
+      "summary": "多进程运行器，在 startMultiProcess 基础上增加进度显示和任务完成等待功能。",
+      "tags": ["utility", "multi-process", "concurrency", "progress-tracking"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/DataTypeConversionFun.py:DummyVarTo01Var",
+      "type": "function",
+      "name": "DummyVarTo01Var",
+      "filePath": "QuantStudio/Tools/DataTypeConversionFun.py",
+      "lineRange": [26, 43],
+      "summary": "将虚拟变量（分类数据）转换为 0-1 矩阵，用于行业因子等分类数据的回归处理。",
+      "tags": ["utility", "data-conversion", "encoding", "dummy-variable"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/DataTypeConversionFun.py:expandListElementDataFrame",
+      "type": "function",
+      "name": "expandListElementDataFrame",
+      "filePath": "QuantStudio/Tools/DataTypeConversionFun.py",
+      "lineRange": [46, 85],
+      "summary": "将含列表元素的 DataFrame 展开为标量元素的 DataFrame，保持索引和列的对应关系。",
+      "tags": ["utility", "data-conversion", "dataframe", "expansion"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:QuantStudio/Tools/DataTypeConversionFun.py:formatValue2MD",
+      "type": "function",
+      "name": "formatValue2MD",
+      "filePath": "QuantStudio/Tools/DataTypeConversionFun.py",
+      "lineRange": [112, 140],
+      "summary": "将 Python 值格式化为 Markdown 字符串，支持列表和字典的嵌套递归格式化。",
+      "tags": ["utility", "formatting", "markdown", "serialization"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/DataTypeConversionFun.py:dict2html",
+      "type": "function",
+      "name": "dict2html",
+      "filePath": "QuantStudio/Tools/DataTypeConversionFun.py",
+      "lineRange": [144, 182],
+      "summary": "将字典数据递归转换为 HTML 列表字符串，支持嵌套结构和大集合截断显示。",
+      "tags": ["utility", "formatting", "html", "serialization"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/DataTypeConversionFun.py:dict2markdown",
+      "type": "function",
+      "name": "dict2markdown",
+      "filePath": "QuantStudio/Tools/DataTypeConversionFun.py",
+      "lineRange": [185, 218],
+      "summary": "将字典数据递归转换为 Markdown 字符串，支持嵌套结构和符号列表缩进。",
+      "tags": ["utility", "formatting", "markdown", "serialization"],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/BarraModel.py",
+      "target": "file:QuantStudio/Core/__init__.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/BarraModel.py",
+      "target": "file:QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/BarraModel.py",
+      "target": "file:QuantStudio/Tools/AuxiliaryFun.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/BarraModel.py",
+      "target": "file:QuantStudio/__init__.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "target": "file:QuantStudio/Tools/AuxiliaryFun.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "target": "file:QuantStudio/Tools/DataTypeConversionFun.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/api.py",
+      "target": "file:QuantStudio/Risk/RiskModel/BarraModel.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/api.py",
+      "target": "file:QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/Tools/AuxiliaryFun.py",
+      "target": "file:QuantStudio/Tools/DataTypeConversionFun.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/BarraModel.py",
+      "target": "function:QuantStudio/Risk/RiskModel/BarraModel.py:_FactorAndSpecificReturnGeneration",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/BarraModel.py",
+      "target": "function:QuantStudio/Risk/RiskModel/BarraModel.py:_FactorCovarianceGeneration",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/BarraModel.py",
+      "target": "function:QuantStudio/Risk/RiskModel/BarraModel.py:_SpecificRiskGeneration",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/BarraModel.py",
+      "target": "class:QuantStudio/Risk/RiskModel/BarraModel.py:BarraModel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "target": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:estimateSampleCovMatrix_EWMA",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "target": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:decomposeCov2Corr",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "target": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:calcAvgCorr",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "target": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:regressWithOneLinearEqConstraint",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "target": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:calcRegressWeight",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "target": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:calcMarketReturn",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "target": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:estimateFactorAndSpecificReturn_EUE3",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "target": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:estimateFactorCov_CHE2",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "target": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:estimateSpecificRisk_EUE3",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "target": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:EigenfactorRiskAdjustment",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "target": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:BayesianShrinkage",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "target": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:dropRiskMatrixNA",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/AuxiliaryFun.py",
+      "target": "function:QuantStudio/Tools/AuxiliaryFun.py:getLogger",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/AuxiliaryFun.py",
+      "target": "function:QuantStudio/Tools/AuxiliaryFun.py:genAvailableName",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/AuxiliaryFun.py",
+      "target": "function:QuantStudio/Tools/AuxiliaryFun.py:getExpWeight",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/AuxiliaryFun.py",
+      "target": "function:QuantStudio/Tools/AuxiliaryFun.py:changeMultiClass2SingleClass",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/AuxiliaryFun.py",
+      "target": "function:QuantStudio/Tools/AuxiliaryFun.py:getClassMask",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/AuxiliaryFun.py",
+      "target": "function:QuantStudio/Tools/AuxiliaryFun.py:startMultiProcess",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/AuxiliaryFun.py",
+      "target": "function:QuantStudio/Tools/AuxiliaryFun.py:runMultiProcess",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/DataTypeConversionFun.py",
+      "target": "function:QuantStudio/Tools/DataTypeConversionFun.py:DummyVarTo01Var",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/DataTypeConversionFun.py",
+      "target": "function:QuantStudio/Tools/DataTypeConversionFun.py:expandListElementDataFrame",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/DataTypeConversionFun.py",
+      "target": "function:QuantStudio/Tools/DataTypeConversionFun.py:formatValue2MD",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/DataTypeConversionFun.py",
+      "target": "function:QuantStudio/Tools/DataTypeConversionFun.py:dict2html",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/DataTypeConversionFun.py",
+      "target": "function:QuantStudio/Tools/DataTypeConversionFun.py:dict2markdown",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/api.py",
+      "target": "class:QuantStudio/Risk/RiskModel/BarraModel.py:BarraModel",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/api.py",
+      "target": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:dropRiskMatrixNA",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/api.py",
+      "target": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:decomposeCov2Corr",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/BarraModel.py",
+      "target": "file:QuantStudio/Risk/RiskModel/RiskModelFun.py",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:QuantStudio/Risk/RiskModel/BarraModel.py",
+      "target": "function:QuantStudio/Tools/AuxiliaryFun.py:startMultiProcess",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:QuantStudio/Risk/RiskModel/BarraModel.py:_FactorAndSpecificReturnGeneration",
+      "target": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:estimateFactorAndSpecificReturn_EUE3",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:QuantStudio/Risk/RiskModel/BarraModel.py:_FactorCovarianceGeneration",
+      "target": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:estimateFactorCov_CHE2",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:QuantStudio/Risk/RiskModel/BarraModel.py:_FactorCovarianceGeneration",
+      "target": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:EigenfactorRiskAdjustment",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:QuantStudio/Risk/RiskModel/BarraModel.py:_SpecificRiskGeneration",
+      "target": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:estimateSpecificRisk_EUE3",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:estimateFactorAndSpecificReturn_EUE3",
+      "target": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:regressWithOneLinearEqConstraint",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:estimateFactorAndSpecificReturn_EUE3",
+      "target": "function:QuantStudio/Tools/DataTypeConversionFun.py:DummyVarTo01Var",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:estimateFactorCov_CHE2",
+      "target": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:makeMatrixPositiveDefinite",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:estimateSpecificRisk_EUE3",
+      "target": "function:QuantStudio/Risk/RiskModel/RiskModelFun.py:estimateCovMatrix",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:QuantStudio/Tools/AuxiliaryFun.py:getFactorList",
+      "target": "function:QuantStudio/Tools/DataTypeConversionFun.py:DictKeyValueTurn_List",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    }
+  ]
+}

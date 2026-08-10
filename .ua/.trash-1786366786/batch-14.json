@@ -1,0 +1,235 @@
+{
+  "nodes": [
+    {
+      "id": "file:examples/core_pregel_engine.py",
+      "type": "file",
+      "name": "core_pregel_engine.py",
+      "filePath": "examples/core_pregel_engine.py",
+      "summary": "Pregel 图计算引擎示例，实现了 MaxValue、PageRank、SSSP、连通分量和 BFS 等经典图算法，演示了 Aggregator 和 Vertex 的用法。",
+      "tags": ["example", "graph-algorithm", "pregel", "entry-point"],
+      "complexity": "moderate",
+      "languageNotes": "使用了延迟导入模式（__import__('threading')），在 aggregate 方法中按需初始化线程锁。"
+    },
+    {
+      "id": "class:examples/core_pregel_engine.py:SumAggregator",
+      "type": "class",
+      "name": "SumAggregator",
+      "filePath": "examples/core_pregel_engine.py",
+      "lineRange": [19, 39],
+      "summary": "求和聚合器，继承自 Aggregator 基类，线程安全地累加数值并在 finalize 时返回总和。",
+      "tags": ["aggregator", "thread-safe", "utility"],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:examples/core_pregel_engine.py:MaxAggregator",
+      "type": "class",
+      "name": "MaxAggregator",
+      "filePath": "examples/core_pregel_engine.py",
+      "lineRange": [42, 62],
+      "summary": "最大值聚合器，继承自 Aggregator 基类，线程安全地跟踪并返回所有聚合值中的最大值。",
+      "tags": ["aggregator", "thread-safe", "utility"],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:examples/core_pregel_engine.py:CountAggregator",
+      "type": "class",
+      "name": "CountAggregator",
+      "filePath": "examples/core_pregel_engine.py",
+      "lineRange": [65, 82],
+      "summary": "计数聚合器，继承自 Aggregator 基类，线程安全地累计计数值。",
+      "tags": ["aggregator", "thread-safe", "utility"],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:examples/core_pregel_engine.py:MaxValueVertex",
+      "type": "class",
+      "name": "MaxValueVertex",
+      "filePath": "examples/core_pregel_engine.py",
+      "lineRange": [89, 137],
+      "summary": "MaxValue 算法的顶点实现，通过消息传播在图中找到所有可达顶点中的最大值，当无更新时投票停止。",
+      "tags": ["vertex", "graph-algorithm", "max-value"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:examples/update_risk_data.py",
+      "type": "file",
+      "name": "update_risk_data.py",
+      "filePath": "examples/update_risk_data.py",
+      "summary": "Barra 风险模型数据更新脚本，连接 HDF5 因子库和风险数据库，运行 BarraModel 进行风险估计。",
+      "tags": ["example", "risk-model", "script", "barra"],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/specs/qsargs-private-attrs/spec.md",
+      "type": "document",
+      "name": "spec.md",
+      "filePath": "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/specs/qsargs-private-attrs/spec.md",
+      "summary": "__QS_Args__ 私有属性规格的归档版本，定义 Owner/Logger 使用 Pydantic PrivateAttr、移除 arbitrary_types_allowed、__setattr__ 失效 QSID 等需求。",
+      "tags": ["specification", "archive", "pydantic", "qs-args"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/specs/qsargs-secret-serialization/spec.md",
+      "type": "document",
+      "name": "spec.md",
+      "filePath": "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/specs/qsargs-secret-serialization/spec.md",
+      "summary": "__QS_Args__ 密钥序列化规格的归档版本，定义 secret Field 标志、Fernet 加密序列化/反序列化、密钥管理等需求。",
+      "tags": ["specification", "archive", "encryption", "serialization"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:openspec/config.yaml",
+      "type": "config",
+      "name": "config.yaml",
+      "filePath": "openspec/config.yaml",
+      "summary": "OpenSpec 工作流配置文件，声明 schema 类型为 spec-driven，提供项目上下文和自定义规则的模板。",
+      "tags": ["configuration", "openspec", "workflow"],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:openspec/specs/qsargs-private-attrs/spec.md",
+      "type": "document",
+      "name": "spec.md",
+      "filePath": "openspec/specs/qsargs-private-attrs/spec.md",
+      "summary": "__QS_Args__ 私有属性规格文档，定义 Owner/Logger 使用 Pydantic PrivateAttr、移除 arbitrary_types_allowed、__setattr__ 失效 QSID 缓存、FactorUtils 显式参数等需求。",
+      "tags": ["specification", "pydantic", "qs-args", "core-design"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:openspec/specs/qsargs-secret-serialization/spec.md",
+      "type": "document",
+      "name": "spec.md",
+      "filePath": "openspec/specs/qsargs-secret-serialization/spec.md",
+      "summary": "__QS_Args__ 密钥序列化规格文档，定义 secret Field 标志、serialize/deserialize 方法、Fernet 加密/解密、密钥管理（环境变量/文件/自动生成）等需求。",
+      "tags": ["specification", "encryption", "serialization", "security"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:setup.py",
+      "type": "file",
+      "name": "setup.py",
+      "filePath": "setup.py",
+      "summary": "QuantStudio 包的 setuptools 安装脚本，声明 v2.0.0 版本、GPLv3 许可证、Python 3.12+ 要求及全部核心依赖（pydantic、numpy、pandas、cvxpy 等）。",
+      "tags": ["build-system", "package-config", "entry-point"],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:skills/quantstudio/SKILL.md",
+      "type": "document",
+      "name": "SKILL.md",
+      "filePath": "skills/quantstudio/SKILL.md",
+      "summary": "Claude Code 的 QuantStudio 框架 Skill 文件，提供核心概念（QS_Object、Panel、计算图引擎）、因子框架快速入门、内置算子速查和模块总览。",
+      "tags": ["documentation", "skill", "reference", "onboarding"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:tests/test_Core_QSObject.py",
+      "type": "file",
+      "name": "test_Core_QSObject.py",
+      "filePath": "tests/test_Core_QSObject.py",
+      "summary": "QSObject 核心功能测试脚本，包含 FileLock 并发锁测试和 QSQueue 多进程队列测试两个实验性场景。",
+      "tags": ["test", "concurrency", "file-lock", "multiprocess"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:tests/test_FactorOperation.py",
+      "type": "file",
+      "name": "test_FactorOperation.py",
+      "filePath": "tests/test_FactorOperation.py",
+      "summary": "因子运算综合测试，覆盖 PointOperation、TimeOperation（滚动窗口/迭代）、SectionOperation（单一/不同截面）和 PanelOperation 四种运算类型在单时点/多时点、单ID/多ID 模式下的正确性。",
+      "tags": ["test", "factor-operation", "unit-test", "comprehensive"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:tests/test_FactorOperation.py:TestFactorOperation",
+      "type": "class",
+      "name": "TestFactorOperation",
+      "filePath": "tests/test_FactorOperation.py",
+      "lineRange": [92, 245],
+      "summary": "因子运算测试类，包含 6 个测试方法分别验证单点运算、滚动窗口非迭代/迭代时序运算、单一/不同截面运算和面板运算的正确性。",
+      "tags": ["test", "unittest", "factor-operation"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:tests/test_file_io.py",
+      "type": "file",
+      "name": "test_file_io.py",
+      "filePath": "tests/test_file_io.py",
+      "summary": "文件 IO 性能基准测试脚本，对比 Feather、Parquet 和 HDF5 三种格式对大型 DataFrame（10000x10000）的读写速度。",
+      "tags": ["test", "benchmark", "file-io", "performance"],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:examples/core_pregel_engine.py",
+      "target": "class:examples/core_pregel_engine.py:SumAggregator",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:examples/core_pregel_engine.py",
+      "target": "class:examples/core_pregel_engine.py:MaxAggregator",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:examples/core_pregel_engine.py",
+      "target": "class:examples/core_pregel_engine.py:CountAggregator",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:examples/core_pregel_engine.py",
+      "target": "class:examples/core_pregel_engine.py:MaxValueVertex",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:tests/test_FactorOperation.py",
+      "target": "class:tests/test_FactorOperation.py:TestFactorOperation",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "document:openspec/specs/qsargs-private-attrs/spec.md",
+      "target": "file:examples/update_risk_data.py",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:openspec/specs/qsargs-secret-serialization/spec.md",
+      "target": "file:examples/update_risk_data.py",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "config:openspec/config.yaml",
+      "target": "document:openspec/specs/qsargs-private-attrs/spec.md",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:openspec/config.yaml",
+      "target": "document:openspec/specs/qsargs-secret-serialization/spec.md",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "document:skills/quantstudio/SKILL.md",
+      "target": "file:setup.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    }
+  ]
+}

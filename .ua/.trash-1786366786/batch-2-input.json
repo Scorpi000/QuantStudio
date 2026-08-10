@@ -1,0 +1,1201 @@
+{
+  "batchIndex": 2,
+  "files": [
+    {
+      "path": "QuantStudio/BackTest/BackTestModel.py",
+      "language": "python",
+      "sizeLines": 93,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/PerformanceAnalysis/BrinsonModel.py",
+      "language": "python",
+      "sizeLines": 206,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/PerformanceAnalysis/api.py",
+      "language": "python",
+      "sizeLines": 3,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/Risk/BiasTest.py",
+      "language": "python",
+      "sizeLines": 280,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/Risk/api.py",
+      "language": "python",
+      "sizeLines": 3,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/SectionFactor/Correlation.py",
+      "language": "python",
+      "sizeLines": 335,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/SectionFactor/IC.py",
+      "language": "python",
+      "sizeLines": 490,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/SectionFactor/QuantilePortfolio.py",
+      "language": "python",
+      "sizeLines": 270,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/SectionFactor/ReturnDecomposition.py",
+      "language": "python",
+      "sizeLines": 299,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/SectionFactor/api.py",
+      "language": "python",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Core/Node.py",
+      "language": "python",
+      "sizeLines": 186,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Factor/BasicOperator.py",
+      "language": "python",
+      "sizeLines": 389,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Factor/Factor.py",
+      "language": "python",
+      "sizeLines": 634,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Factor/FactorOperation.py",
+      "language": "python",
+      "sizeLines": 1490,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Factor/FactorOperator.py",
+      "language": "python",
+      "sizeLines": 990,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Factor/FactorStorer.py",
+      "language": "python",
+      "sizeLines": 58,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "examples/bt_node_basic.py",
+      "language": "python",
+      "sizeLines": 208,
+      "fileCategory": "code"
+    },
+    {
+      "path": "examples/core_node_factor.py",
+      "language": "python",
+      "sizeLines": 236,
+      "fileCategory": "code"
+    },
+    {
+      "path": "mcp/factor_backtest.py",
+      "language": "python",
+      "sizeLines": 255,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_Factor_FactorOperator.py",
+      "language": "python",
+      "sizeLines": 375,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "QuantStudio/BackTest/BackTestModel.py": [
+      "QuantStudio/Core/Node.py"
+    ],
+    "QuantStudio/BackTest/PerformanceAnalysis/BrinsonModel.py": [
+      "QuantStudio/BackTest/BackTestModel.py",
+      "QuantStudio/BackTest/SectionFactor/IC.py",
+      "QuantStudio/Core/Node.py",
+      "QuantStudio/Core/QSObject.py",
+      "QuantStudio/Core/__init__.py",
+      "QuantStudio/Factor/Factor.py",
+      "QuantStudio/Factor/FactorOperation.py"
+    ],
+    "QuantStudio/BackTest/PerformanceAnalysis/api.py": [
+      "QuantStudio/BackTest/PerformanceAnalysis/BrinsonModel.py"
+    ],
+    "QuantStudio/BackTest/Risk/BiasTest.py": [
+      "QuantStudio/BackTest/BackTestModel.py",
+      "QuantStudio/BackTest/SectionFactor/IC.py",
+      "QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+      "QuantStudio/Core/Node.py",
+      "QuantStudio/Core/__init__.py",
+      "QuantStudio/Factor/BasicOperator.py",
+      "QuantStudio/Factor/Factor.py",
+      "QuantStudio/Factor/FactorOperation.py",
+      "QuantStudio/Factor/FactorOperator.py",
+      "QuantStudio/Risk/RiskTable.py"
+    ],
+    "QuantStudio/BackTest/Risk/api.py": [
+      "QuantStudio/BackTest/Risk/BiasTest.py"
+    ],
+    "QuantStudio/BackTest/SectionFactor/Correlation.py": [
+      "QuantStudio/BackTest/BackTestModel.py",
+      "QuantStudio/BackTest/SectionFactor/IC.py",
+      "QuantStudio/Core/Node.py",
+      "QuantStudio/Core/__init__.py",
+      "QuantStudio/Factor/Factor.py",
+      "QuantStudio/Factor/FactorOperation.py"
+    ],
+    "QuantStudio/BackTest/SectionFactor/IC.py": [
+      "QuantStudio/BackTest/BackTestModel.py",
+      "QuantStudio/Core/Node.py",
+      "QuantStudio/Core/QSObject.py",
+      "QuantStudio/Core/__init__.py",
+      "QuantStudio/Factor/Factor.py",
+      "QuantStudio/Factor/FactorOperation.py",
+      "QuantStudio/Tools/DataPreprocessingFun.py"
+    ],
+    "QuantStudio/BackTest/SectionFactor/QuantilePortfolio.py": [
+      "QuantStudio/BackTest/BackTestModel.py",
+      "QuantStudio/BackTest/SectionFactor/IC.py",
+      "QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+      "QuantStudio/Core/Node.py",
+      "QuantStudio/Core/__init__.py",
+      "QuantStudio/Factor/Factor.py",
+      "QuantStudio/Factor/FactorOperation.py",
+      "QuantStudio/Factor/FactorOperator.py",
+      "QuantStudio/Tools/StrategyTestFun.py"
+    ],
+    "QuantStudio/BackTest/SectionFactor/ReturnDecomposition.py": [
+      "QuantStudio/BackTest/BackTestModel.py",
+      "QuantStudio/BackTest/SectionFactor/IC.py",
+      "QuantStudio/Core/Node.py",
+      "QuantStudio/Core/__init__.py",
+      "QuantStudio/Factor/Factor.py",
+      "QuantStudio/Factor/FactorOperation.py",
+      "QuantStudio/Tools/DataTypeConversionFun.py"
+    ],
+    "QuantStudio/BackTest/SectionFactor/api.py": [
+      "QuantStudio/BackTest/SectionFactor/Correlation.py",
+      "QuantStudio/BackTest/SectionFactor/IC.py",
+      "QuantStudio/BackTest/SectionFactor/QuantilePortfolio.py",
+      "QuantStudio/BackTest/SectionFactor/ReturnDecomposition.py"
+    ],
+    "QuantStudio/Core/Node.py": [
+      "QuantStudio/Core/Cache.py",
+      "QuantStudio/Core/__init__.py"
+    ],
+    "QuantStudio/Factor/BasicOperator.py": [
+      "QuantStudio/Factor/Factor.py",
+      "QuantStudio/Factor/FactorOperation.py"
+    ],
+    "QuantStudio/Factor/Factor.py": [
+      "QuantStudio/Core/CalcEngine.py",
+      "QuantStudio/Core/Node.py",
+      "QuantStudio/Core/__init__.py",
+      "QuantStudio/Factor/FactorCache.py",
+      "QuantStudio/Tools/AuxiliaryFun.py",
+      "QuantStudio/Tools/DataPreprocessingFun.py"
+    ],
+    "QuantStudio/Factor/FactorOperation.py": [
+      "QuantStudio/Core/Node.py",
+      "QuantStudio/Core/QSObject.py",
+      "QuantStudio/Core/__init__.py",
+      "QuantStudio/Factor/Factor.py",
+      "QuantStudio/Tools/AuxiliaryFun.py",
+      "QuantStudio/Tools/DataTypeConversionFun.py"
+    ],
+    "QuantStudio/Factor/FactorOperator.py": [
+      "QuantStudio/Core/QSObject.py",
+      "QuantStudio/Core/__init__.py",
+      "QuantStudio/Factor/Factor.py",
+      "QuantStudio/Factor/FactorOperation.py",
+      "QuantStudio/Tools/DataPreprocessingFun.py",
+      "QuantStudio/Tools/DataTypeConversionFun.py",
+      "QuantStudio/Tools/__init__.py"
+    ],
+    "QuantStudio/Factor/FactorStorer.py": [
+      "QuantStudio/Core/Node.py",
+      "QuantStudio/Core/QSObject.py",
+      "QuantStudio/Factor/Factor.py",
+      "QuantStudio/Factor/FactorDB.py"
+    ],
+    "QuantStudio/Tools/__init__.py": [],
+    "examples/bt_node_basic.py": [
+      "QuantStudio/BackTest/BackTestModel.py",
+      "QuantStudio/BackTest/SectionFactor/Correlation.py",
+      "QuantStudio/BackTest/SectionFactor/IC.py",
+      "QuantStudio/BackTest/SectionFactor/ReturnDecomposition.py",
+      "QuantStudio/Core/CalcEngine.py",
+      "QuantStudio/Core/Node.py",
+      "QuantStudio/Core/ParallelEngine.py",
+      "QuantStudio/Factor/Factor.py",
+      "QuantStudio/Factor/FactorCache.py",
+      "QuantStudio/Tools/DateTimeFun.py"
+    ],
+    "examples/core_node_factor.py": [
+      "QuantStudio/Core/CalcEngine.py",
+      "QuantStudio/Core/Node.py",
+      "QuantStudio/Core/ParallelEngine.py",
+      "QuantStudio/Factor/BaoStockDB.py",
+      "QuantStudio/Factor/BasicOperator.py",
+      "QuantStudio/Factor/Factor.py",
+      "QuantStudio/Factor/FactorCache.py",
+      "QuantStudio/Factor/FactorOperation.py",
+      "QuantStudio/Factor/FactorOperator.py",
+      "QuantStudio/Factor/FactorStorer.py",
+      "QuantStudio/Factor/HDF5DB.py"
+    ],
+    "mcp/factor_backtest.py": [
+      "QuantStudio/BackTest/SectionFactor/IC.py",
+      "QuantStudio/Factor/Factor.py"
+    ],
+    "tests/test_Factor_FactorOperator.py": [
+      "QuantStudio/Factor/Factor.py",
+      "QuantStudio/Factor/FactorOperator.py"
+    ]
+  },
+  "neighborMap": {
+    "QuantStudio/BackTest/BackTestModel.py": [
+      {
+        "path": "QuantStudio/BackTest/Strategy/Strategy.py",
+        "batchIndex": 4,
+        "symbols": [
+          "_QS_formatMatplotlibPercentage",
+          "MakeAccount",
+          "genAccountOutput",
+          "AccountReport",
+          "Strategy",
+          "MakeStrategy"
+        ]
+      },
+      {
+        "path": "QuantStudio/BackTest/api.py",
+        "batchIndex": 4,
+        "symbols": []
+      },
+      {
+        "path": "QuantStudio/Tools/Visualization.py",
+        "batchIndex": 3,
+        "symbols": [
+          "qs_help",
+          "_get_doc_with_inheritance",
+          "_get_method_doc_from_parents",
+          "_get_method_doc_from_class",
+          "_get_class_doc_from_parents",
+          "_format_help",
+          "node2dict",
+          "dict2mermaid"
+        ]
+      },
+      {
+        "path": "examples/bt_node_strategy.py",
+        "batchIndex": 5,
+        "symbols": []
+      }
+    ],
+    "QuantStudio/BackTest/PerformanceAnalysis/BrinsonModel.py": [
+      {
+        "path": "QuantStudio/Core/QSObject.py",
+        "batchIndex": 1,
+        "symbols": [
+          "QSSQLObject",
+          "QSQueue",
+          "_initArray",
+          "_LocIndexer",
+          "_iLocIndexer",
+          "Panel"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/__init__.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_is_secret_field",
+          "setDefaultLogLevel",
+          "setDefaultLogger",
+          "__QS_Error__",
+          "__QS_Args__",
+          "__QS_Object__"
+        ]
+      }
+    ],
+    "QuantStudio/BackTest/Risk/BiasTest.py": [
+      {
+        "path": "QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+        "batchIndex": 4,
+        "symbols": [
+          "CalcMaskPortfolio",
+          "CalcPortfolioNV",
+          "CalcPortfolioReturn"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/__init__.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_is_secret_field",
+          "setDefaultLogLevel",
+          "setDefaultLogger",
+          "__QS_Error__",
+          "__QS_Args__",
+          "__QS_Object__"
+        ]
+      },
+      {
+        "path": "QuantStudio/Risk/RiskTable.py",
+        "batchIndex": 3,
+        "symbols": [
+          "RiskTable",
+          "FactorRT"
+        ]
+      }
+    ],
+    "QuantStudio/BackTest/SectionFactor/Correlation.py": [
+      {
+        "path": "QuantStudio/Core/__init__.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_is_secret_field",
+          "setDefaultLogLevel",
+          "setDefaultLogger",
+          "__QS_Error__",
+          "__QS_Args__",
+          "__QS_Object__"
+        ]
+      }
+    ],
+    "QuantStudio/BackTest/SectionFactor/IC.py": [
+      {
+        "path": "QuantStudio/Core/QSObject.py",
+        "batchIndex": 1,
+        "symbols": [
+          "QSSQLObject",
+          "QSQueue",
+          "_initArray",
+          "_LocIndexer",
+          "_iLocIndexer",
+          "Panel"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/__init__.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_is_secret_field",
+          "setDefaultLogLevel",
+          "setDefaultLogger",
+          "__QS_Error__",
+          "__QS_Args__",
+          "__QS_Object__"
+        ]
+      },
+      {
+        "path": "QuantStudio/Tools/DataPreprocessingFun.py",
+        "batchIndex": 4,
+        "symbols": [
+          "numpy_ffill",
+          "maskCategary",
+          "prepareRegressData",
+          "standardizeZScore",
+          "standardizeMinMax",
+          "standardizeRank",
+          "standardizeQuantile",
+          "standardizeDynamicPeer",
+          "fillNaByLookback",
+          "fillNaNByVal",
+          "fillNaNByFun",
+          "fillNaNByRegress",
+          "winsorize",
+          "orthogonalize",
+          "neutralize",
+          "merge"
+        ]
+      }
+    ],
+    "QuantStudio/BackTest/SectionFactor/QuantilePortfolio.py": [
+      {
+        "path": "QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+        "batchIndex": 4,
+        "symbols": [
+          "CalcMaskPortfolio",
+          "CalcPortfolioNV",
+          "CalcPortfolioReturn"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/__init__.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_is_secret_field",
+          "setDefaultLogLevel",
+          "setDefaultLogger",
+          "__QS_Error__",
+          "__QS_Args__",
+          "__QS_Object__"
+        ]
+      },
+      {
+        "path": "QuantStudio/Tools/StrategyTestFun.py",
+        "batchIndex": 4,
+        "symbols": [
+          "calcWealthAfterTrade",
+          "calcTurnover",
+          "calcPortfolioReturn",
+          "calcYieldSeq",
+          "calcWealthSeq",
+          "calcLSYield",
+          "calcAnnualYield",
+          "calcAnnualVolatility",
+          "calcRollingAnnualYieldSeq",
+          "calcRollingAnnualVolatilitySeq",
+          "calcExpandingAnnualYieldSeq",
+          "calcExpandingAnnualVolatilitySeq",
+          "calcBeta",
+          "calcLPM",
+          "calcHPM",
+          "calcSharpeRatio",
+          "calcTreynorRatio",
+          "calcAdjustedSharpeRatio",
+          "calcInformationRatio",
+          "calcModiglianiRatio",
+          "calcSortinoRatio",
+          "calcOmegaRatio",
+          "calcKappaThreeRatio",
+          "calcGainLossRatio",
+          "calcUpsidePotentialRatio",
+          "calcVaR",
+          "calcUpPeriod",
+          "calcDownPeriod",
+          "calcDrawdown",
+          "calcMD",
+          "calcMaxDrawdownRate",
+          "calcMaxDrawdownDuration",
+          "calcPeriodDrawdown",
+          "calcAverageDrawdown",
+          "calcAverageDrawdownSquared",
+          "calcCalmarRatio",
+          "calcSterlingRatio",
+          "calcBurkeRatio",
+          "calcReturnPerYear",
+          "calcVolatilityPerYear",
+          "calcMaxDrawdownPerYear",
+          "calcReturnPerYearMonth",
+          "calcVolatilityPerYearMonth",
+          "calcMaxDrawdownPerYearMonth",
+          "calcAvgReturnPerMonth",
+          "calcAvgReturnPerWeekday",
+          "calcAvgReturnPerMonthday",
+          "calcAvgReturnPerYearday",
+          "calcTMModel",
+          "calcHMModel",
+          "calcCLModel",
+          "loadCSVFilePortfolioSignal",
+          "writePortfolioSignal2CSV",
+          "loadCSVFileTimingSignal",
+          "genRandomPortfolio",
+          "genPortfolioByFiltration",
+          "genContinuousContractPrice",
+          "backtestNumStrategy",
+          "backtestPortfolioStrategyWithMargin",
+          "backtestPortfolioStrategy",
+          "backtestPortfolioStrategy_pd",
+          "backtestTimingStrategy",
+          "_densifyWealthSeq",
+          "summaryStrategy",
+          "formatStrategySummary",
+          "summaryTrade",
+          "formatTradeSummary",
+          "summarySingleTiming",
+          "summaryTimingStrategy",
+          "formatTimingStrategySummary",
+          "backtestAIPStrategy"
+        ]
+      }
+    ],
+    "QuantStudio/BackTest/SectionFactor/ReturnDecomposition.py": [
+      {
+        "path": "QuantStudio/Core/__init__.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_is_secret_field",
+          "setDefaultLogLevel",
+          "setDefaultLogger",
+          "__QS_Error__",
+          "__QS_Args__",
+          "__QS_Object__"
+        ]
+      },
+      {
+        "path": "QuantStudio/Tools/DataTypeConversionFun.py",
+        "batchIndex": 6,
+        "symbols": [
+          "DictKeyValueTurn",
+          "DictKeyValueTurn_List",
+          "DummyVarTo01Var",
+          "expandListElementDataFrame",
+          "strQ2B",
+          "strB2Q",
+          "formatValue2MD",
+          "dict2html",
+          "dict2markdown"
+        ]
+      }
+    ],
+    "QuantStudio/Core/Node.py": [
+      {
+        "path": "QuantStudio/Core/Cache.py",
+        "batchIndex": 1,
+        "symbols": [
+          "Cache",
+          "DTCache"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/__init__.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_is_secret_field",
+          "setDefaultLogLevel",
+          "setDefaultLogger",
+          "__QS_Error__",
+          "__QS_Args__",
+          "__QS_Object__"
+        ]
+      },
+      {
+        "path": "QuantStudio/BackTest/Strategy/Strategy.py",
+        "batchIndex": 4,
+        "symbols": [
+          "_QS_formatMatplotlibPercentage",
+          "MakeAccount",
+          "genAccountOutput",
+          "AccountReport",
+          "Strategy",
+          "MakeStrategy"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/CalcEngine.py",
+        "batchIndex": 5,
+        "symbols": [
+          "Engine",
+          "StackEngine"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/ParallelEngine.py",
+        "batchIndex": 5,
+        "symbols": [
+          "_execute_task",
+          "ParallelEngine"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/TreeEngine.py",
+        "batchIndex": 5,
+        "symbols": [
+          "NodeStatus",
+          "_executeNodeBwdComputeThread",
+          "_initProcess",
+          "_executeNodeBwdComputeProcess",
+          "TreeEngine"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/api.py",
+        "batchIndex": 5,
+        "symbols": []
+      },
+      {
+        "path": "QuantStudio/Factor/FactorTable.py",
+        "batchIndex": 1,
+        "symbols": [
+          "FactorTable"
+        ]
+      },
+      {
+        "path": "QuantStudio/Risk/RiskTable.py",
+        "batchIndex": 3,
+        "symbols": [
+          "RiskTable",
+          "FactorRT"
+        ]
+      },
+      {
+        "path": "QuantStudio/Tools/Visualization.py",
+        "batchIndex": 3,
+        "symbols": [
+          "qs_help",
+          "_get_doc_with_inheritance",
+          "_get_method_doc_from_parents",
+          "_get_method_doc_from_class",
+          "_get_class_doc_from_parents",
+          "_format_help",
+          "node2dict",
+          "dict2mermaid"
+        ]
+      },
+      {
+        "path": "examples/bt_node_strategy.py",
+        "batchIndex": 5,
+        "symbols": []
+      },
+      {
+        "path": "examples/core_node_basic.py",
+        "batchIndex": 5,
+        "symbols": [
+          "Add",
+          "Prod",
+          "Float"
+        ]
+      },
+      {
+        "path": "tests/test_Core_Engine.py",
+        "batchIndex": 5,
+        "symbols": [
+          "_TestNode",
+          "_TestNodeWithoutPrepare",
+          "TestEngineInit",
+          "TestEnginePrepare",
+          "TestEngineCompute",
+          "TestEngineRun",
+          "TestEngineContextManager",
+          "TestStackEngine"
+        ]
+      }
+    ],
+    "QuantStudio/Factor/BasicOperator.py": [
+      {
+        "path": "QuantStudio/Factor/api.py",
+        "batchIndex": 1,
+        "symbols": []
+      },
+      {
+        "path": "examples/factor_operation.py",
+        "batchIndex": 5,
+        "symbols": [
+          "test_point",
+          "test_time",
+          "test_section",
+          "test_panel"
+        ]
+      }
+    ],
+    "QuantStudio/Factor/Factor.py": [
+      {
+        "path": "QuantStudio/Core/CalcEngine.py",
+        "batchIndex": 5,
+        "symbols": [
+          "Engine",
+          "StackEngine"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/__init__.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_is_secret_field",
+          "setDefaultLogLevel",
+          "setDefaultLogger",
+          "__QS_Error__",
+          "__QS_Args__",
+          "__QS_Object__"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/FactorCache.py",
+        "batchIndex": 1,
+        "symbols": [
+          "FactorCache",
+          "FileFactorCache",
+          "FeatherFactorCache"
+        ]
+      },
+      {
+        "path": "QuantStudio/Tools/AuxiliaryFun.py",
+        "batchIndex": 6,
+        "symbols": [
+          "getLogger",
+          "genAvailableName",
+          "getExpWeight",
+          "distributeEqual",
+          "partitionList",
+          "partitionListMovingSampling",
+          "getFactorList",
+          "searchNameInStrList",
+          "changeMultiClass2SingleClass",
+          "getClassMask",
+          "match2Series",
+          "getListIndex",
+          "joinList",
+          "allocateDim",
+          "startMultiProcess",
+          "runMultiProcess",
+          "findRightPair"
+        ]
+      },
+      {
+        "path": "QuantStudio/Tools/DataPreprocessingFun.py",
+        "batchIndex": 4,
+        "symbols": [
+          "numpy_ffill",
+          "maskCategary",
+          "prepareRegressData",
+          "standardizeZScore",
+          "standardizeMinMax",
+          "standardizeRank",
+          "standardizeQuantile",
+          "standardizeDynamicPeer",
+          "fillNaByLookback",
+          "fillNaNByVal",
+          "fillNaNByFun",
+          "fillNaNByRegress",
+          "winsorize",
+          "orthogonalize",
+          "neutralize",
+          "merge"
+        ]
+      },
+      {
+        "path": "QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+        "batchIndex": 4,
+        "symbols": [
+          "CalcMaskPortfolio",
+          "CalcPortfolioNV",
+          "CalcPortfolioReturn"
+        ]
+      },
+      {
+        "path": "QuantStudio/BackTest/Strategy/Strategy.py",
+        "batchIndex": 4,
+        "symbols": [
+          "_QS_formatMatplotlibPercentage",
+          "MakeAccount",
+          "genAccountOutput",
+          "AccountReport",
+          "Strategy",
+          "MakeStrategy"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/FactorTable.py",
+        "batchIndex": 1,
+        "symbols": [
+          "FactorTable"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/api.py",
+        "batchIndex": 1,
+        "symbols": []
+      },
+      {
+        "path": "QuantStudio/Risk/RiskTable.py",
+        "batchIndex": 3,
+        "symbols": [
+          "RiskTable",
+          "FactorRT"
+        ]
+      },
+      {
+        "path": "QuantStudio/Tools/Visualization.py",
+        "batchIndex": 3,
+        "symbols": [
+          "qs_help",
+          "_get_doc_with_inheritance",
+          "_get_method_doc_from_parents",
+          "_get_method_doc_from_class",
+          "_get_class_doc_from_parents",
+          "_format_help",
+          "node2dict",
+          "dict2mermaid"
+        ]
+      },
+      {
+        "path": "examples/bt_node_strategy.py",
+        "batchIndex": 5,
+        "symbols": []
+      },
+      {
+        "path": "examples/factor_basic_api.py",
+        "batchIndex": 1,
+        "symbols": []
+      },
+      {
+        "path": "examples/factor_operation.py",
+        "batchIndex": 5,
+        "symbols": [
+          "test_point",
+          "test_time",
+          "test_section",
+          "test_panel"
+        ]
+      },
+      {
+        "path": "tests/test_Factor_Operation_LookBackMode.py",
+        "batchIndex": 5,
+        "symbols": [
+          "PanelFunc"
+        ]
+      },
+      {
+        "path": "tests/test_Strategy_Backtest.py",
+        "batchIndex": 5,
+        "symbols": []
+      }
+    ],
+    "QuantStudio/Factor/FactorOperation.py": [
+      {
+        "path": "QuantStudio/Core/QSObject.py",
+        "batchIndex": 1,
+        "symbols": [
+          "QSSQLObject",
+          "QSQueue",
+          "_initArray",
+          "_LocIndexer",
+          "_iLocIndexer",
+          "Panel"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/__init__.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_is_secret_field",
+          "setDefaultLogLevel",
+          "setDefaultLogger",
+          "__QS_Error__",
+          "__QS_Args__",
+          "__QS_Object__"
+        ]
+      },
+      {
+        "path": "QuantStudio/Tools/AuxiliaryFun.py",
+        "batchIndex": 6,
+        "symbols": [
+          "getLogger",
+          "genAvailableName",
+          "getExpWeight",
+          "distributeEqual",
+          "partitionList",
+          "partitionListMovingSampling",
+          "getFactorList",
+          "searchNameInStrList",
+          "changeMultiClass2SingleClass",
+          "getClassMask",
+          "match2Series",
+          "getListIndex",
+          "joinList",
+          "allocateDim",
+          "startMultiProcess",
+          "runMultiProcess",
+          "findRightPair"
+        ]
+      },
+      {
+        "path": "QuantStudio/Tools/DataTypeConversionFun.py",
+        "batchIndex": 6,
+        "symbols": [
+          "DictKeyValueTurn",
+          "DictKeyValueTurn_List",
+          "DummyVarTo01Var",
+          "expandListElementDataFrame",
+          "strQ2B",
+          "strB2Q",
+          "formatValue2MD",
+          "dict2html",
+          "dict2markdown"
+        ]
+      },
+      {
+        "path": "QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+        "batchIndex": 4,
+        "symbols": [
+          "CalcMaskPortfolio",
+          "CalcPortfolioNV",
+          "CalcPortfolioReturn"
+        ]
+      },
+      {
+        "path": "QuantStudio/BackTest/Strategy/Strategy.py",
+        "batchIndex": 4,
+        "symbols": [
+          "_QS_formatMatplotlibPercentage",
+          "MakeAccount",
+          "genAccountOutput",
+          "AccountReport",
+          "Strategy",
+          "MakeStrategy"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/api.py",
+        "batchIndex": 1,
+        "symbols": []
+      },
+      {
+        "path": "QuantStudio/Tools/Visualization.py",
+        "batchIndex": 3,
+        "symbols": [
+          "qs_help",
+          "_get_doc_with_inheritance",
+          "_get_method_doc_from_parents",
+          "_get_method_doc_from_class",
+          "_get_class_doc_from_parents",
+          "_format_help",
+          "node2dict",
+          "dict2mermaid"
+        ]
+      },
+      {
+        "path": "examples/factor_operation.py",
+        "batchIndex": 5,
+        "symbols": [
+          "test_point",
+          "test_time",
+          "test_section",
+          "test_panel"
+        ]
+      },
+      {
+        "path": "tests/test_Factor_Operation_LookBackMode.py",
+        "batchIndex": 5,
+        "symbols": [
+          "PanelFunc"
+        ]
+      }
+    ],
+    "QuantStudio/Factor/FactorOperator.py": [
+      {
+        "path": "QuantStudio/Core/QSObject.py",
+        "batchIndex": 1,
+        "symbols": [
+          "QSSQLObject",
+          "QSQueue",
+          "_initArray",
+          "_LocIndexer",
+          "_iLocIndexer",
+          "Panel"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/__init__.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_is_secret_field",
+          "setDefaultLogLevel",
+          "setDefaultLogger",
+          "__QS_Error__",
+          "__QS_Args__",
+          "__QS_Object__"
+        ]
+      },
+      {
+        "path": "QuantStudio/Tools/DataPreprocessingFun.py",
+        "batchIndex": 4,
+        "symbols": [
+          "numpy_ffill",
+          "maskCategary",
+          "prepareRegressData",
+          "standardizeZScore",
+          "standardizeMinMax",
+          "standardizeRank",
+          "standardizeQuantile",
+          "standardizeDynamicPeer",
+          "fillNaByLookback",
+          "fillNaNByVal",
+          "fillNaNByFun",
+          "fillNaNByRegress",
+          "winsorize",
+          "orthogonalize",
+          "neutralize",
+          "merge"
+        ]
+      },
+      {
+        "path": "QuantStudio/Tools/DataTypeConversionFun.py",
+        "batchIndex": 6,
+        "symbols": [
+          "DictKeyValueTurn",
+          "DictKeyValueTurn_List",
+          "DummyVarTo01Var",
+          "expandListElementDataFrame",
+          "strQ2B",
+          "strB2Q",
+          "formatValue2MD",
+          "dict2html",
+          "dict2markdown"
+        ]
+      },
+      {
+        "path": "examples/bt_node_strategy.py",
+        "batchIndex": 5,
+        "symbols": []
+      },
+      {
+        "path": "tests/test_Strategy_Backtest.py",
+        "batchIndex": 5,
+        "symbols": []
+      }
+    ],
+    "QuantStudio/Factor/FactorStorer.py": [
+      {
+        "path": "QuantStudio/Core/QSObject.py",
+        "batchIndex": 1,
+        "symbols": [
+          "QSSQLObject",
+          "QSQueue",
+          "_initArray",
+          "_LocIndexer",
+          "_iLocIndexer",
+          "Panel"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/FactorDB.py",
+        "batchIndex": 1,
+        "symbols": [
+          "FactorDB",
+          "WritableFactorDB"
+        ]
+      }
+    ],
+    "examples/bt_node_basic.py": [
+      {
+        "path": "QuantStudio/Core/CalcEngine.py",
+        "batchIndex": 5,
+        "symbols": [
+          "Engine",
+          "StackEngine"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/ParallelEngine.py",
+        "batchIndex": 5,
+        "symbols": [
+          "_execute_task",
+          "ParallelEngine"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/FactorCache.py",
+        "batchIndex": 1,
+        "symbols": [
+          "FactorCache",
+          "FileFactorCache",
+          "FeatherFactorCache"
+        ]
+      },
+      {
+        "path": "QuantStudio/Tools/DateTimeFun.py",
+        "batchIndex": 3,
+        "symbols": [
+          "cutDate",
+          "cutDateTime",
+          "getNaturalDay",
+          "lookbackDateTime",
+          "combineDateTime",
+          "getDateStartEndIndex",
+          "getMonthDateTime",
+          "getMonthFirstDateTime",
+          "getMonthMiddleDateTime",
+          "getMonthLastDateTime",
+          "getWeekDateTime",
+          "getWeekFirstDateTime",
+          "getWeekLastDateTime",
+          "getYearFirstDateTime",
+          "getYearLastDateTime",
+          "getQuarterFirstDateTime",
+          "getQuarterLastDateTime",
+          "_getQuanterNum",
+          "getFinancialQuarterFirstDateTime",
+          "getFinancialQuarterLastDateTime",
+          "getDateSeries",
+          "getTimeSeries",
+          "getDateTimeSeries",
+          "groupbyYear",
+          "transformDateTime",
+          "_is_same_period",
+          "_get_period_key",
+          "_get_target_value",
+          "_transform_by_period",
+          "_build_natural_week_targets",
+          "_build_natural_month_targets",
+          "_build_natural_quarter_targets",
+          "_build_natural_year_targets"
+        ]
+      }
+    ],
+    "examples/core_node_factor.py": [
+      {
+        "path": "QuantStudio/Core/CalcEngine.py",
+        "batchIndex": 5,
+        "symbols": [
+          "Engine",
+          "StackEngine"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/ParallelEngine.py",
+        "batchIndex": 5,
+        "symbols": [
+          "_execute_task",
+          "ParallelEngine"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/BaoStockDB.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_importInfo",
+          "_updateInfo",
+          "_BSTable",
+          "_DTTable",
+          "_DTRangeTable",
+          "BaoStockDB"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/FactorCache.py",
+        "batchIndex": 1,
+        "symbols": [
+          "FactorCache",
+          "FileFactorCache",
+          "FeatherFactorCache"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/HDF5DB.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_identifyDataType",
+          "_adjustData",
+          "HDF5FactorTable",
+          "HDF5DB"
+        ]
+      }
+    ]
+  }
+}

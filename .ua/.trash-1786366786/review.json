@@ -1,0 +1,57 @@
+{
+  "issues": [],
+  "warnings": [
+    "Node 'document:CLAUDE.local.example.md' has no edges (orphan)",
+    "Node 'config:.claude/settings.json' has no edges (orphan)",
+    "Node 'document:.claude/skills/openspec-apply-change/SKILL.md' has no edges (orphan)",
+    "Node 'document:.claude/skills/openspec-archive-change/SKILL.md' has no edges (orphan)",
+    "Node 'document:.claude/skills/openspec-bulk-archive-change/SKILL.md' has no edges (orphan)",
+    "Node 'document:.claude/skills/openspec-continue-change/SKILL.md' has no edges (orphan)",
+    "Node 'document:.claude/skills/openspec-explore/SKILL.md' has no edges (orphan)",
+    "Node 'document:.claude/skills/openspec-ff-change/SKILL.md' has no edges (orphan)",
+    "Node 'document:.claude/skills/openspec-new-change/SKILL.md' has no edges (orphan)",
+    "Node 'document:.claude/skills/openspec-onboard/SKILL.md' has no edges (orphan)",
+    "Node 'document:.claude/skills/openspec-propose/SKILL.md' has no edges (orphan)",
+    "Node 'document:.claude/skills/openspec-sync-specs/SKILL.md' has no edges (orphan)",
+    "Node 'document:.claude/skills/openspec-update-change/SKILL.md' has no edges (orphan)",
+    "Node 'document:.claude/skills/openspec-verify-change/SKILL.md' has no edges (orphan)",
+    "Node 'file:.codegraph/daemon.pid' has no edges (orphan)",
+    "Node 'file:.ua/.understandignore' has no edges (orphan)",
+    "Node 'file:QuantStudio/BackTest/__init__.py' has no edges (orphan)",
+    "Node 'file:QuantStudio/PortfolioConstructor/__init__.py' has no edges (orphan)",
+    "Node 'file:QuantStudio/Resource/BaoStockDBInfo.xlsx' has no edges (orphan)",
+    "Node 'file:QuantStudio/Resource/JYDBInfo.xlsx' has no edges (orphan)",
+    "Node 'file:QuantStudio/Risk/RiskModel/__init__.py' has no edges (orphan)",
+    "Node 'file:QuantStudio/Risk/__init__.py' has no edges (orphan)",
+    "Node 'file:examples/convert_notebook_to_markdown.sh' has no edges (orphan)",
+    "Node 'document:openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/specs/qsargs-private-attrs/spec.md' has no edges (orphan)",
+    "Node 'document:openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/specs/qsargs-secret-serialization/spec.md' has no edges (orphan)",
+    "Node 'file:tests/test_Core_QSObject.py' has no edges (orphan)",
+    "Node 'file:tests/test_file_io.py' has no edges (orphan)"
+  ],
+  "stats": {
+    "totalNodes": 423,
+    "totalEdges": 775,
+    "totalLayers": 8,
+    "tourSteps": 12,
+    "nodeTypes": {
+      "file": 138,
+      "class": 99,
+      "function": 139,
+      "document": 44,
+      "config": 3
+    },
+    "edgeTypes": {
+      "imports": 322,
+      "contains": 234,
+      "inherits": 17,
+      "exports": 33,
+      "tested_by": 7,
+      "calls": 20,
+      "depends_on": 10,
+      "related": 88,
+      "documents": 39,
+      "configures": 5
+    }
+  }
+}

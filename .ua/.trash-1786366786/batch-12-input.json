@@ -1,0 +1,183 @@
+{
+  "batchIndex": 12,
+  "files": [
+    {
+      "path": ".claude/settings.json",
+      "language": "json",
+      "sizeLines": 10,
+      "fileCategory": "config"
+    },
+    {
+      "path": ".claude/skills/openspec-apply-change/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 160,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-archive-change/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 118,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-bulk-archive-change/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 249,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-continue-change/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 122,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-explore/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 290,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-ff-change/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 105,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-new-change/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 77,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-onboard/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 555,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-propose/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 114,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-sync-specs/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 148,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-update-change/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 86,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/openspec-verify-change/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 172,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".codegraph/daemon.pid",
+      "language": "pid",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": ".ua/.understandignore",
+      "language": "unknown",
+      "sizeLines": 94,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/PortfolioConstructor/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Resource/BaoStockDBInfo.xlsx",
+      "language": "xlsx",
+      "sizeLines": 56,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Resource/JYDBInfo.xlsx",
+      "language": "xlsx",
+      "sizeLines": 2536,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Risk/RiskModel/BarraModelConfig.py",
+      "language": "python",
+      "sizeLines": 67,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Risk/RiskModel/__init__.py",
+      "language": "python",
+      "sizeLines": 1,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Risk/__init__.py",
+      "language": "python",
+      "sizeLines": 1,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/CashFlowCalculator.py",
+      "language": "python",
+      "sizeLines": 270,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/MatplotlibFun.py",
+      "language": "python",
+      "sizeLines": 64,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/TradeFun.py",
+      "language": "python",
+      "sizeLines": 93,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    ".claude/settings.json": [],
+    ".claude/skills/openspec-apply-change/SKILL.md": [],
+    ".claude/skills/openspec-archive-change/SKILL.md": [],
+    ".claude/skills/openspec-bulk-archive-change/SKILL.md": [],
+    ".claude/skills/openspec-continue-change/SKILL.md": [],
+    ".claude/skills/openspec-explore/SKILL.md": [],
+    ".claude/skills/openspec-ff-change/SKILL.md": [],
+    ".claude/skills/openspec-new-change/SKILL.md": [],
+    ".claude/skills/openspec-onboard/SKILL.md": [],
+    ".claude/skills/openspec-propose/SKILL.md": [],
+    ".claude/skills/openspec-sync-specs/SKILL.md": [],
+    ".claude/skills/openspec-update-change/SKILL.md": [],
+    ".claude/skills/openspec-verify-change/SKILL.md": [],
+    ".codegraph/daemon.pid": [],
+    ".ua/.understandignore": [],
+    "QuantStudio/BackTest/__init__.py": [],
+    "QuantStudio/PortfolioConstructor/__init__.py": [],
+    "QuantStudio/Resource/BaoStockDBInfo.xlsx": [],
+    "QuantStudio/Resource/JYDBInfo.xlsx": [],
+    "QuantStudio/Risk/RiskModel/BarraModelConfig.py": [],
+    "QuantStudio/Risk/RiskModel/__init__.py": [],
+    "QuantStudio/Risk/__init__.py": [],
+    "QuantStudio/Tools/CashFlowCalculator.py": [],
+    "QuantStudio/Tools/MatplotlibFun.py": [],
+    "QuantStudio/Tools/TradeFun.py": []
+  },
+  "neighborMap": {}
+}

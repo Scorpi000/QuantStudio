@@ -1,0 +1,264 @@
+{
+  "nodes": [
+    {
+      "id": "file:QuantStudio/Tools/MathFun.py",
+      "type": "file",
+      "name": "MathFun.py",
+      "filePath": "QuantStudio/Tools/MathFun.py",
+      "summary": "提供量化研究所需的数学工具函数集合，包括 Hermite 插值、广义 Hurst 指数计算、分布函数（Logistic、广义 Pareto）、相关系数计算以及基于 cvxpy 的带约束加权回归。",
+      "tags": ["utility", "math", "interpolation", "distribution", "regression"],
+      "complexity": "complex",
+      "languageNotes": "使用 cvxpy 凸优化库实现带约束的加权最小二乘回归，支持 Box 约束、线性等式和不等式约束。"
+    },
+    {
+      "id": "file:QuantStudio/Tools/PerformanceAnalysisFun.py",
+      "type": "file",
+      "name": "PerformanceAnalysisFun.py",
+      "filePath": "QuantStudio/Tools/PerformanceAnalysisFun.py",
+      "summary": "提供业绩分析函数，实现单期 Brinson 业绩归因模型和单期 Campisi 债券收益分解模型。",
+      "tags": ["utility", "performance-attribution", "brinson", "bond-analysis"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:QuantStudio/Tools/RiskMeasureFun.py",
+      "type": "file",
+      "name": "RiskMeasureFun.py",
+      "filePath": "QuantStudio/Tools/RiskMeasureFun.py",
+      "summary": "提供风险测度方法，包括基于极值理论（EVT）的 VaR 和 ES 估计，以及历史模拟、正态分布和 Cornish-Fisher 三种 VaR/CVaR 计算方法。",
+      "tags": ["utility", "risk", "var", "extreme-value-theory", "distribution"],
+      "complexity": "moderate",
+      "languageNotes": "EVT 部分使用最大似然估计拟合广义 Pareto 分布参数，并通过 BFGS 优化器求解。"
+    },
+    {
+      "id": "function:QuantStudio/Tools/MathFun.py:interpolateHermite",
+      "type": "function",
+      "name": "interpolateHermite",
+      "filePath": "QuantStudio/Tools/MathFun.py",
+      "lineRange": [10, 21],
+      "summary": "实现分段三次 Hermite 插值，根据已知数据点 (x, y) 对目标点 target 进行插值计算。",
+      "tags": ["interpolation", "math", "numerical"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Tools/MathFun.py:genHurstExp",
+      "type": "function",
+      "name": "genHurstExp",
+      "filePath": "QuantStudio/Tools/MathFun.py",
+      "lineRange": [24, 100],
+      "summary": "计算广义 Hurst 指数 H(q)，基于重归一化 q 阶矩的标度关系，用于分析时间序列的长程相关性。支持任意 q 值向量输入。",
+      "tags": ["math", "fractal", "time-series", "hurst-exponent"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:QuantStudio/Tools/MathFun.py:GeneralisedParetoCDF",
+      "type": "function",
+      "name": "GeneralisedParetoCDF",
+      "filePath": "QuantStudio/Tools/MathFun.py",
+      "lineRange": [110, 132],
+      "summary": "计算广义 Pareto 分布函数（GPD CDF），支持标量和 numpy 数组输入，处理 xi<0、xi=0、xi>0 三种参数情况。",
+      "tags": ["distribution", "math", "extreme-value-theory"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/MathFun.py:CartesianProduct",
+      "type": "function",
+      "name": "CartesianProduct",
+      "filePath": "QuantStudio/Tools/MathFun.py",
+      "lineRange": [152, 164],
+      "summary": "递归计算若干向量的笛卡尔积，已标记为 deprecated，建议使用 itertools.product 替代。",
+      "tags": ["utility", "math", "deprecated"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Tools/MathFun.py:calcCorr",
+      "type": "function",
+      "name": "calcCorr",
+      "filePath": "QuantStudio/Tools/MathFun.py",
+      "lineRange": [171, 185],
+      "summary": "计算两个 DataFrame 或 Series 之间的相关系数，支持 spearman/pearson/kendall 方法及滞后期设置。",
+      "tags": ["statistics", "correlation", "math"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/MathFun.py:regressByCVX",
+      "type": "function",
+      "name": "regressByCVX",
+      "filePath": "QuantStudio/Tools/MathFun.py",
+      "lineRange": [187, 210],
+      "summary": "使用 cvxpy 优化器求解带约束的加权多元回归，支持 Box、线性等式和线性不等式约束条件。",
+      "tags": ["regression", "optimization", "constrained", "cvxpy"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/PerformanceAnalysisFun.py:calcBrinsonSinglePeriod",
+      "type": "function",
+      "name": "calcBrinsonSinglePeriod",
+      "filePath": "QuantStudio/Tools/PerformanceAnalysisFun.py",
+      "lineRange": [15, 26],
+      "summary": "实现单期 Brinson 业绩归因模型，将投资组合超额收益分解为资产配置效应、选股效应和交互效应。",
+      "tags": ["performance-attribution", "brinson", "portfolio"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/PerformanceAnalysisFun.py:calcCampisiSinglePeriod",
+      "type": "function",
+      "name": "calcCampisiSinglePeriod",
+      "filePath": "QuantStudio/Tools/PerformanceAnalysisFun.py",
+      "lineRange": [36, 49],
+      "summary": "实现单期 Campisi 债券收益分解模型，将债券收益分解为收入效应、票息效应、收敛效应、收益率曲线效应和信用利差效应。使用 Hermite 插值计算对应期限国债收益率。",
+      "tags": ["bond-analysis", "performance-attribution", "campisi", "yield-curve"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/RiskMeasureFun.py:estimate_u",
+      "type": "function",
+      "name": "estimate_u",
+      "filePath": "QuantStudio/Tools/RiskMeasureFun.py",
+      "lineRange": [11, 20],
+      "summary": "估计极值理论中 POT 模型的阈值 u，通过逐步剔除峰度大于 3 的极值点来确定合适的阈值。",
+      "tags": ["risk", "extreme-value-theory", "threshold-estimation"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Tools/RiskMeasureFun.py:estimateArg",
+      "type": "function",
+      "name": "estimateArg",
+      "filePath": "QuantStudio/Tools/RiskMeasureFun.py",
+      "lineRange": [45, 53],
+      "summary": "使用最大似然估计法拟合广义 Pareto 分布的 beta 和 xi 参数，通过 BFGS 优化器求解。",
+      "tags": ["risk", "extreme-value-theory", "maximum-likelihood", "optimization"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/RiskMeasureFun.py:estimateVaR",
+      "type": "function",
+      "name": "estimateVaR",
+      "filePath": "QuantStudio/Tools/RiskMeasureFun.py",
+      "lineRange": [69, 89],
+      "summary": "计算 VaR（在险价值）和 CVaR（条件在险价值），支持历史模拟、正态分布和 Cornish-Fisher 三种方法。",
+      "tags": ["risk", "var", "cvar", "distribution"],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:QuantStudio/Tools/PerformanceAnalysisFun.py",
+      "target": "file:QuantStudio/Tools/MathFun.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/Tools/PerformanceAnalysisFun.py",
+      "target": "file:QuantStudio/__init__.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/Tools/RiskMeasureFun.py",
+      "target": "file:QuantStudio/Tools/MathFun.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/Tools/MathFun.py",
+      "target": "function:QuantStudio/Tools/MathFun.py:interpolateHermite",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/MathFun.py",
+      "target": "function:QuantStudio/Tools/MathFun.py:genHurstExp",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/MathFun.py",
+      "target": "function:QuantStudio/Tools/MathFun.py:GeneralisedParetoCDF",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/MathFun.py",
+      "target": "function:QuantStudio/Tools/MathFun.py:CartesianProduct",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/MathFun.py",
+      "target": "function:QuantStudio/Tools/MathFun.py:calcCorr",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/MathFun.py",
+      "target": "function:QuantStudio/Tools/MathFun.py:regressByCVX",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/PerformanceAnalysisFun.py",
+      "target": "function:QuantStudio/Tools/PerformanceAnalysisFun.py:calcBrinsonSinglePeriod",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/PerformanceAnalysisFun.py",
+      "target": "function:QuantStudio/Tools/PerformanceAnalysisFun.py:calcCampisiSinglePeriod",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/RiskMeasureFun.py",
+      "target": "function:QuantStudio/Tools/RiskMeasureFun.py:estimate_u",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/RiskMeasureFun.py",
+      "target": "function:QuantStudio/Tools/RiskMeasureFun.py:estimateArg",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/RiskMeasureFun.py",
+      "target": "function:QuantStudio/Tools/RiskMeasureFun.py:estimateVaR",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/MathFun.py",
+      "target": "function:QuantStudio/Tools/MathFun.py:interpolateHermite",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:QuantStudio/Tools/MathFun.py",
+      "target": "function:QuantStudio/Tools/MathFun.py:GeneralisedParetoCDF",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:QuantStudio/Tools/PerformanceAnalysisFun.py:calcCampisiSinglePeriod",
+      "target": "function:QuantStudio/Tools/MathFun.py:interpolateHermite",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    }
+  ]
+}

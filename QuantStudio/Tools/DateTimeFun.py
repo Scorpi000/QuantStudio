@@ -332,6 +332,9 @@ def transformDateTime(dts: List[dt.datetime], freq:str="1m", target_day:Union[Li
         exact: 是否要精确的取目标时点，True 表示 dts 中如果不存在目标时点则该周期不取时点
         postpone: 当 exact 为 False 时是否向后顺延，True 向后顺延, 取每个周期大于等于 target_day 的第一个时点，False 向前顺延, 取每个周期小于等于 target_day 的最后一个时点
         over_period: 表示是否允许跨周期顺延
+    
+    Returns:
+        转换后的时点序列
     """
     freq = freq.lower()
     n = int(freq[:-1])

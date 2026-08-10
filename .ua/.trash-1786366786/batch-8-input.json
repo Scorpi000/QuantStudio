@@ -1,0 +1,92 @@
+{
+  "batchIndex": 8,
+  "files": [
+    {
+      "path": ".claude/commands/opsx/apply.md",
+      "language": "markdown",
+      "sizeLines": 156,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/archive.md",
+      "language": "markdown",
+      "sizeLines": 161,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/bulk-archive.md",
+      "language": "markdown",
+      "sizeLines": 245,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/continue.md",
+      "language": "markdown",
+      "sizeLines": 118,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/explore.md",
+      "language": "markdown",
+      "sizeLines": 175,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/ff.md",
+      "language": "markdown",
+      "sizeLines": 101,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/new.md",
+      "language": "markdown",
+      "sizeLines": 72,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/onboard.md",
+      "language": "markdown",
+      "sizeLines": 551,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/propose.md",
+      "language": "markdown",
+      "sizeLines": 110,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/sync.md",
+      "language": "markdown",
+      "sizeLines": 144,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/update.md",
+      "language": "markdown",
+      "sizeLines": 82,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/commands/opsx/verify.md",
+      "language": "markdown",
+      "sizeLines": 168,
+      "fileCategory": "docs"
+    }
+  ],
+  "batchImportData": {
+    ".claude/commands/opsx/apply.md": [],
+    ".claude/commands/opsx/archive.md": [],
+    ".claude/commands/opsx/bulk-archive.md": [],
+    ".claude/commands/opsx/continue.md": [],
+    ".claude/commands/opsx/explore.md": [],
+    ".claude/commands/opsx/ff.md": [],
+    ".claude/commands/opsx/new.md": [],
+    ".claude/commands/opsx/onboard.md": [],
+    ".claude/commands/opsx/propose.md": [],
+    ".claude/commands/opsx/sync.md": [],
+    ".claude/commands/opsx/update.md": [],
+    ".claude/commands/opsx/verify.md": []
+  },
+  "neighborMap": {}
+}

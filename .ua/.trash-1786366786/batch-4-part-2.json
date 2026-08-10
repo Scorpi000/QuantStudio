@@ -1,0 +1,923 @@
+{
+  "nodes": [
+    {
+      "id": "file:QuantStudio/Tools/DataPreprocessingFun.py",
+      "type": "file",
+      "name": "DataPreprocessingFun.py",
+      "filePath": "QuantStudio/Tools/DataPreprocessingFun.py",
+      "summary": "数据预处理工具模块，提供 Z-Score/Min-Max/Rank/分位数标准化、前向填充、缺失值处理（按回溯/固定值/回归）、异常值截断（Winsorize）、正交化、中性化和因子合并等核心数据处理函数，被回测和因子计算模块广泛使用。",
+      "tags": ["utility", "data-preprocessing", "normalization", "missing-data"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:QuantStudio/Tools/FileFun.py",
+      "type": "file",
+      "name": "FileFun.py",
+      "filePath": "QuantStudio/Tools/FileFun.py",
+      "summary": "文件系统操作和文件读写工具模块，提供文件生成、目录遍历、CSV 读写（支持中文路径和自动编码检测）、Excel 写入、JSON 读写、文件锁和 shelve 文件后缀检测等功能。",
+      "tags": ["utility", "file-io", "csv", "excel"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "type": "file",
+      "name": "StrategyTestFun.py",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "summary": "策略回测核心工具模块，提供完整的投资组合向量化回测引擎（numpy 和 pandas 两种实现）、丰富的绩效统计指标计算（Sharpe/Sortino/VaR/最大回撤等 30+ 指标）、策略摘要报告生成、交易记录统计和择时策略分析功能，是整个回测框架的底层计算基础。",
+      "tags": ["utility", "backtest", "performance-metrics", "risk-metrics", "vectorization"],
+      "complexity": "complex",
+      "languageNotes": "大量使用 NumPy 向量化运算实现高性能回测计算，避免逐行循环；backtestPortfolioStrategy 通过 np.maximum.accumulate 实现向量化的高水位线计算。"
+    },
+    {
+      "id": "function:QuantStudio/Tools/DataPreprocessingFun.py:numpy_ffill",
+      "type": "function",
+      "name": "numpy_ffill",
+      "filePath": "QuantStudio/Tools/DataPreprocessingFun.py",
+      "lineRange": [12, 67],
+      "summary": "NumPy 实现的前向填充方法，模拟 pandas ffill 行为，支持 1D/2D 数组、指定轴和最大连续填充限制，是框架中最基础的数据填充工具。",
+      "tags": ["utility", "data-preprocessing", "numpy", "fill-missing"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/DataPreprocessingFun.py:standardizeZScore",
+      "type": "function",
+      "name": "standardizeZScore",
+      "filePath": "QuantStudio/Tools/DataPreprocessingFun.py",
+      "lineRange": [156, 196],
+      "summary": "Z-Score 标准化函数，支持按类别分组、加权均值/中位数、标准差/MAD 等多种统计量选择。",
+      "tags": ["utility", "normalization", "z-score"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/DataPreprocessingFun.py:standardizeMinMax",
+      "type": "function",
+      "name": "standardizeMinMax",
+      "filePath": "QuantStudio/Tools/DataPreprocessingFun.py",
+      "lineRange": [201, 213],
+      "summary": "Min-Max 标准化函数，将数据缩放到 [0,1] 区间，支持按类别分组计算。",
+      "tags": ["utility", "normalization", "min-max"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/DataPreprocessingFun.py:standardizeRank",
+      "type": "function",
+      "name": "standardizeRank",
+      "filePath": "QuantStudio/Tools/DataPreprocessingFun.py",
+      "lineRange": [218, 246],
+      "summary": "Rank 标准化函数，将数据转换为排名值，支持升/降序、归一化和扰动选项。",
+      "tags": ["utility", "normalization", "rank"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/DataPreprocessingFun.py:standardizeQuantile",
+      "type": "function",
+      "name": "standardizeQuantile",
+      "filePath": "QuantStudio/Tools/DataPreprocessingFun.py",
+      "lineRange": [251, 259],
+      "summary": "分位数变换标准化函数，将数据转换为正态分布分位数。",
+      "tags": ["utility", "normalization", "quantile-transform"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Tools/DataPreprocessingFun.py:standardizeDynamicPeer",
+      "type": "function",
+      "name": "standardizeDynamicPeer",
+      "filePath": "QuantStudio/Tools/DataPreprocessingFun.py",
+      "lineRange": [264, 299],
+      "summary": "动态分组标准化函数，基于相关系数矩阵为每个样本选择同组样本后进行 Z-Score 标准化。",
+      "tags": ["utility", "normalization", "dynamic-peer"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/DataPreprocessingFun.py:fillNaByLookback",
+      "type": "function",
+      "name": "fillNaByLookback",
+      "filePath": "QuantStudio/Tools/DataPreprocessingFun.py",
+      "lineRange": [303, 317],
+      "summary": "基于回溯时间的缺失值填充函数，在指定时间窗口内用前值填充 NaN。",
+      "tags": ["utility", "fill-missing", "time-series"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/DataPreprocessingFun.py:fillNaNByRegress",
+      "type": "function",
+      "name": "fillNaNByRegress",
+      "filePath": "QuantStudio/Tools/DataPreprocessingFun.py",
+      "lineRange": [342, 367],
+      "summary": "基于线性回归的缺失值填充函数，使用 OLS 回归预测缺失值，支持分类分组和哑变量。",
+      "tags": ["utility", "fill-missing", "regression"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/DataPreprocessingFun.py:winsorize",
+      "type": "function",
+      "name": "winsorize",
+      "filePath": "QuantStudio/Tools/DataPreprocessingFun.py",
+      "lineRange": [372, 408],
+      "summary": "异常值处理函数（Winsorize），支持截断、丢弃和变换三种处理方式，可选标准差或 MAD 作为离散度度量。",
+      "tags": ["utility", "outlier-handling", "winsorize"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/DataPreprocessingFun.py:orthogonalize",
+      "type": "function",
+      "name": "orthogonalize",
+      "filePath": "QuantStudio/Tools/DataPreprocessingFun.py",
+      "lineRange": [413, 425],
+      "summary": "正交化函数，通过线性回归取残差消除因子间的线性相关性。",
+      "tags": ["utility", "factor-processing", "orthogonalization"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/DataPreprocessingFun.py:neutralize",
+      "type": "function",
+      "name": "neutralize",
+      "filePath": "QuantStudio/Tools/DataPreprocessingFun.py",
+      "lineRange": [430, 448],
+      "summary": "中性化函数，使用协方差矩阵进行加权正交化，消除因子对风险因子的暴露。",
+      "tags": ["utility", "factor-processing", "neutralization"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/DataPreprocessingFun.py:merge",
+      "type": "function",
+      "name": "merge",
+      "filePath": "QuantStudio/Tools/DataPreprocessingFun.py",
+      "lineRange": [452, 473],
+      "summary": "因子数据合并函数，支持直接合成和归一合成两种方式，以及剩余合成和填充 None 两种缺失值处理策略。",
+      "tags": ["utility", "factor-processing", "merge"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/FileFun.py:genAvailableFile",
+      "type": "function",
+      "name": "genAvailableFile",
+      "filePath": "QuantStudio/Tools/FileFun.py",
+      "lineRange": [20, 47],
+      "summary": "在指定目录下生成不重名的可用文件路径，支持文件锁保护以避免并发冲突。",
+      "tags": ["utility", "file-io", "file-generation"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/FileFun.py:copyDir",
+      "type": "function",
+      "name": "copyDir",
+      "filePath": "QuantStudio/Tools/FileFun.py",
+      "lineRange": [50, 62],
+      "summary": "递归复制文件夹，支持覆盖和跳过两种已存在处理模式。",
+      "tags": ["utility", "file-io", "directory"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/FileFun.py:traverseDir",
+      "type": "function",
+      "name": "traverseDir",
+      "filePath": "QuantStudio/Tools/FileFun.py",
+      "lineRange": [103, 128],
+      "summary": "递归遍历目录的生成器函数，支持按后缀名过滤和子目录递归。",
+      "tags": ["utility", "file-io", "directory-traversal"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/FileFun.py:writeFun2File",
+      "type": "function",
+      "name": "writeFun2File",
+      "filePath": "QuantStudio/Tools/FileFun.py",
+      "lineRange": [144, 175],
+      "summary": "将算子函数定义写入 Python 文件，自动生成导入语句和函数头。",
+      "tags": ["utility", "file-io", "code-generation"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/FileFun.py:readCSV2Pandas",
+      "type": "function",
+      "name": "readCSV2Pandas",
+      "filePath": "QuantStudio/Tools/FileFun.py",
+      "lineRange": [177, 187],
+      "summary": "支持中文路径的 CSV 读取函数，先以二进制读入再用 BytesIO 包装，可选自动编码检测。",
+      "tags": ["utility", "file-io", "csv", "encoding"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/FileFun.py:detectFileEncoding",
+      "type": "function",
+      "name": "detectFileEncoding",
+      "filePath": "QuantStudio/Tools/FileFun.py",
+      "lineRange": [194, 218],
+      "summary": "文件编码检测函数，支持大文件分块检测和小文件一次性检测。",
+      "tags": ["utility", "file-io", "encoding-detection"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/FileFun.py:loadCSVFactorData",
+      "type": "function",
+      "name": "loadCSVFactorData",
+      "filePath": "QuantStudio/Tools/FileFun.py",
+      "lineRange": [239, 269],
+      "summary": "加载 CSV 格式的因子数据为 DataFrame，支持横向和纵向两种排列格式，自动解析时间序列和 ID 列。",
+      "tags": ["utility", "file-io", "csv", "data-loading"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/FileFun.py:readJSONFile",
+      "type": "function",
+      "name": "readJSONFile",
+      "filePath": "QuantStudio/Tools/FileFun.py",
+      "lineRange": [279, 284],
+      "summary": "安全读取 JSON 文件，文件不存在时返回空字典。",
+      "tags": ["utility", "file-io", "json"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Tools/FileFun.py:getShelveFileSuffix",
+      "type": "function",
+      "name": "getShelveFileSuffix",
+      "filePath": "QuantStudio/Tools/FileFun.py",
+      "lineRange": [291, 302],
+      "summary": "检测当前 Python 环境下 shelve 文件的后缀名，结果带 LRU 缓存。",
+      "tags": ["utility", "file-io", "shelve", "platform"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Tools/FileFun.py:writeDataFrame2Excel",
+      "type": "function",
+      "name": "writeDataFrame2Excel",
+      "filePath": "QuantStudio/Tools/FileFun.py",
+      "lineRange": [329, 350],
+      "summary": "将 DataFrame 写入 Excel 文件，支持追加到已有工作簿和自定义起始行列。",
+      "tags": ["utility", "file-io", "excel"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:calcWealthAfterTrade",
+      "type": "function",
+      "name": "calcWealthAfterTrade",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [28, 34],
+      "summary": "迭代法求解在考虑交易费且无交易限制假设下执行交易后的财富值。",
+      "tags": ["utility", "backtest", "wealth-calculation"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:calcTurnover",
+      "type": "function",
+      "name": "calcTurnover",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [37, 47],
+      "summary": "计算投资组合的换手率，支持字典形式的持仓权重输入。",
+      "tags": ["utility", "backtest", "turnover"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:calcYieldSeq",
+      "type": "function",
+      "name": "calcYieldSeq",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [60, 65],
+      "summary": "从净值序列计算收益率序列，是最基础的收益率转换函数，被大量其他统计函数依赖。",
+      "tags": ["utility", "backtest", "return-calculation"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:calcLSYield",
+      "type": "function",
+      "name": "calcLSYield",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [74, 88],
+      "summary": "计算多空组合收益率序列，支持指定再平衡位置索引。",
+      "tags": ["utility", "backtest", "long-short"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:calcAnnualYield",
+      "type": "function",
+      "name": "calcAnnualYield",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [90, 95],
+      "summary": "计算年化收益率，支持自定义起止日期或按交易日推算年数。",
+      "tags": ["utility", "performance-metrics", "annualized"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:calcAnnualVolatility",
+      "type": "function",
+      "name": "calcAnnualVolatility",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [97, 101],
+      "summary": "计算年化波动率，支持自定义起止日期。",
+      "tags": ["utility", "performance-metrics", "volatility"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:calcSharpeRatio",
+      "type": "function",
+      "name": "calcSharpeRatio",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [182, 187],
+      "summary": "计算夏普比率，支持自定义无风险利率和预期收益率。",
+      "tags": ["utility", "performance-metrics", "risk-adjusted", "sharpe"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:calcVaR",
+      "type": "function",
+      "name": "calcVaR",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [246, 270],
+      "summary": "计算 VaR 和 CVaR，支持历史模拟法、正态分布法和 Cornish-Fisher 修正法。",
+      "tags": ["utility", "risk-metrics", "var", "cvar"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:calcDrawdown",
+      "type": "function",
+      "name": "calcDrawdown",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [314, 322],
+      "summary": "计算完整的回撤序列和回撤期序列，基于高水位线跟踪算法。",
+      "tags": ["utility", "risk-metrics", "drawdown"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:calcMD",
+      "type": "function",
+      "name": "calcMD",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [324, 325],
+      "summary": "向量化计算最大回撤率，使用 np.maximum.accumulate 实现高效的高水位线计算。",
+      "tags": ["utility", "risk-metrics", "max-drawdown", "vectorization"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:calcMaxDrawdownRate",
+      "type": "function",
+      "name": "calcMaxDrawdownRate",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [327, 342],
+      "summary": "计算最大回撤率及其起止位置索引，用于详细的最大回撤分析。",
+      "tags": ["utility", "risk-metrics", "max-drawdown"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:calcCalmarRatio",
+      "type": "function",
+      "name": "calcCalmarRatio",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [393, 400],
+      "summary": "计算 Calmar 比率（年化收益/最大回撤），衡量收益风险比。",
+      "tags": ["utility", "performance-metrics", "calmar"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:calcReturnPerYear",
+      "type": "function",
+      "name": "calcReturnPerYear",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [422, 434],
+      "summary": "计算每年的收益率，支持通过 dt_ruler 进行净值序列稠密化。",
+      "tags": ["utility", "performance-metrics", "yearly"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:calcMaxDrawdownPerYear",
+      "type": "function",
+      "name": "calcMaxDrawdownPerYear",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [452, 472],
+      "summary": "计算每年的最大回撤率，支持多列批量计算。",
+      "tags": ["utility", "risk-metrics", "yearly", "max-drawdown"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:calcReturnPerYearMonth",
+      "type": "function",
+      "name": "calcReturnPerYearMonth",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [474, 486],
+      "summary": "计算每年每月的收益率，生成年月维度的收益分析。",
+      "tags": ["utility", "performance-metrics", "monthly"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:loadCSVFilePortfolioSignal",
+      "type": "function",
+      "name": "loadCSVFilePortfolioSignal",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [610, 634],
+      "summary": "从 CSV 文件加载投资组合信号，支持横向和纵向两种排列格式。",
+      "tags": ["utility", "file-io", "signal-loading"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:genPortfolioByFiltration",
+      "type": "function",
+      "name": "genPortfolioByFiltration",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [680, 696],
+      "summary": "以筛选方式生成投资组合，支持按排名数量和分位数筛选。",
+      "tags": ["utility", "portfolio-construction", "filtration"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:genContinuousContractPrice",
+      "type": "function",
+      "name": "genContinuousContractPrice",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [704, 741],
+      "summary": "生成期货连续合约价格序列，支持前复权/后复权和收益率不变/价差不变/价格不变三种调整方式。",
+      "tags": ["utility", "futures", "contract-rollover"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:backtestNumStrategy",
+      "type": "function",
+      "name": "backtestNumStrategy",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [744, 772],
+      "summary": "基于目标持仓数量的非自融资策略向量化回测，支持多空保证金率和手续费率设置。",
+      "tags": ["utility", "backtest", "vectorization", "margin"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:backtestPortfolioStrategyWithMargin",
+      "type": "function",
+      "name": "backtestPortfolioStrategyWithMargin",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [775, 801],
+      "summary": "支持保证金的自融资投资组合向量化回测，返回收益率和换手率，支持借贷利率和多空保证金率。",
+      "tags": ["utility", "backtest", "vectorization", "margin"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:backtestPortfolioStrategy",
+      "type": "function",
+      "name": "backtestPortfolioStrategy",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [804, 839],
+      "summary": "自融资投资组合的向量化回测主函数，处理非连续持仓（含 NaN 行）场景，返回净值序列和换手率。",
+      "tags": ["utility", "backtest", "vectorization", "core"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:backtestPortfolioStrategy_pd",
+      "type": "function",
+      "name": "backtestPortfolioStrategy_pd",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [842, 863],
+      "summary": "基于 pandas 的投资组合向量化回测实现，使用 DataFrame/Series 接口，适合交互式分析。",
+      "tags": ["utility", "backtest", "pandas"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:backtestTimingStrategy",
+      "type": "function",
+      "name": "backtestTimingStrategy",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [866, 892],
+      "summary": "择时策略回测函数，基于目标仓位水平逐期计算持仓金额和换手率。",
+      "tags": ["utility", "backtest", "timing-strategy"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:summaryStrategy",
+      "type": "function",
+      "name": "summaryStrategy",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [915, 951],
+      "summary": "生成策略的综合统计摘要，包含总收益率、年化收益率/波动率、Sharpe 比率、胜率、最大回撤等指标。",
+      "tags": ["utility", "backtest", "reporting", "summary"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:summaryTrade",
+      "type": "function",
+      "name": "summaryTrade",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [969, 994],
+      "summary": "生成交易记录的统计摘要，包含交易次数、盈亏比、胜率、平均持仓天数等指标。",
+      "tags": ["utility", "backtest", "trade-analysis"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:summaryTimingStrategy",
+      "type": "function",
+      "name": "summaryTimingStrategy",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [1033, 1083],
+      "summary": "生成择时策略的详细统计摘要，分别统计多头和空头的择时次数、正确率、收益和回撤等指标。",
+      "tags": ["utility", "backtest", "timing-analysis"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:QuantStudio/Tools/StrategyTestFun.py:backtestAIPStrategy",
+      "type": "function",
+      "name": "backtestAIPStrategy",
+      "filePath": "QuantStudio/Tools/StrategyTestFun.py",
+      "lineRange": [1101, 1123],
+      "summary": "定投策略（AIP）向量化回测，给定每期定投金额计算累积收益率、持仓金额、累计投入和平均单位成本。",
+      "tags": ["utility", "backtest", "aip", "dollar-cost-averaging"],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:QuantStudio/Tools/FileFun.py",
+      "target": "file:QuantStudio/Core/__init__.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "file:QuantStudio/Core/__init__.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "file:QuantStudio/Tools/DataPreprocessingFun.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "file:QuantStudio/Tools/DateTimeFun.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "file:QuantStudio/Tools/FileFun.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:QuantStudio/Tools/DataPreprocessingFun.py",
+      "target": "function:QuantStudio/Tools/DataPreprocessingFun.py:numpy_ffill",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/DataPreprocessingFun.py",
+      "target": "function:QuantStudio/Tools/DataPreprocessingFun.py:standardizeZScore",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/DataPreprocessingFun.py",
+      "target": "function:QuantStudio/Tools/DataPreprocessingFun.py:standardizeMinMax",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/DataPreprocessingFun.py",
+      "target": "function:QuantStudio/Tools/DataPreprocessingFun.py:standardizeRank",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/DataPreprocessingFun.py",
+      "target": "function:QuantStudio/Tools/DataPreprocessingFun.py:standardizeQuantile",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/DataPreprocessingFun.py",
+      "target": "function:QuantStudio/Tools/DataPreprocessingFun.py:standardizeDynamicPeer",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/DataPreprocessingFun.py",
+      "target": "function:QuantStudio/Tools/DataPreprocessingFun.py:fillNaByLookback",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/DataPreprocessingFun.py",
+      "target": "function:QuantStudio/Tools/DataPreprocessingFun.py:fillNaNByRegress",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/DataPreprocessingFun.py",
+      "target": "function:QuantStudio/Tools/DataPreprocessingFun.py:winsorize",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/DataPreprocessingFun.py",
+      "target": "function:QuantStudio/Tools/DataPreprocessingFun.py:orthogonalize",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/DataPreprocessingFun.py",
+      "target": "function:QuantStudio/Tools/DataPreprocessingFun.py:neutralize",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/DataPreprocessingFun.py",
+      "target": "function:QuantStudio/Tools/DataPreprocessingFun.py:merge",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/FileFun.py",
+      "target": "function:QuantStudio/Tools/FileFun.py:genAvailableFile",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/FileFun.py",
+      "target": "function:QuantStudio/Tools/FileFun.py:copyDir",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/FileFun.py",
+      "target": "function:QuantStudio/Tools/FileFun.py:traverseDir",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/FileFun.py",
+      "target": "function:QuantStudio/Tools/FileFun.py:writeFun2File",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/FileFun.py",
+      "target": "function:QuantStudio/Tools/FileFun.py:readCSV2Pandas",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/FileFun.py",
+      "target": "function:QuantStudio/Tools/FileFun.py:detectFileEncoding",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/FileFun.py",
+      "target": "function:QuantStudio/Tools/FileFun.py:loadCSVFactorData",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/FileFun.py",
+      "target": "function:QuantStudio/Tools/FileFun.py:readJSONFile",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/FileFun.py",
+      "target": "function:QuantStudio/Tools/FileFun.py:getShelveFileSuffix",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/FileFun.py",
+      "target": "function:QuantStudio/Tools/FileFun.py:writeDataFrame2Excel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:calcWealthAfterTrade",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:calcTurnover",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:calcYieldSeq",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:calcLSYield",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:calcAnnualYield",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:calcAnnualVolatility",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:calcSharpeRatio",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:calcVaR",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:calcDrawdown",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:calcMD",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:calcMaxDrawdownRate",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:calcCalmarRatio",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:calcReturnPerYear",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:calcMaxDrawdownPerYear",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:calcReturnPerYearMonth",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:loadCSVFilePortfolioSignal",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:genPortfolioByFiltration",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:genContinuousContractPrice",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:backtestNumStrategy",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:backtestPortfolioStrategyWithMargin",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:backtestPortfolioStrategy",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:backtestPortfolioStrategy_pd",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:backtestTimingStrategy",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:summaryStrategy",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:summaryTrade",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:summaryTimingStrategy",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:backtestAIPStrategy",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:QuantStudio/Tools/StrategyTestFun.py",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:_densifyWealthSeq",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "function:QuantStudio/Tools/StrategyTestFun.py:backtestPortfolioStrategy",
+      "target": "function:QuantStudio/Tools/StrategyTestFun.py:backtestPortfolioStrategyWithMargin",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:QuantStudio/Tools/StrategyTestFun.py:backtestPortfolioStrategy",
+      "target": "function:QuantStudio/Tools/DataPreprocessingFun.py:numpy_ffill",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    }
+  ]
+}

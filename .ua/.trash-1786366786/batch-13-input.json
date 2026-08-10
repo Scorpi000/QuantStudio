@@ -1,0 +1,183 @@
+{
+  "batchIndex": 13,
+  "files": [
+    {
+      "path": "docs/.ipynb_checkpoints/基本框架-checkpoint.ipynb",
+      "language": "ipynb",
+      "sizeLines": 876,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/Core/缓存.ipynb",
+      "language": "ipynb",
+      "sizeLines": 1210,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/Core/计算图框架.ipynb",
+      "language": "ipynb",
+      "sizeLines": 587,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/Core/计算引擎.ipynb",
+      "language": "ipynb",
+      "sizeLines": 802,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/回测框架/业绩归因.ipynb",
+      "language": "ipynb",
+      "sizeLines": 506,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/回测框架/基本框架.ipynb",
+      "language": "ipynb",
+      "sizeLines": 539,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/回测框架/截面因子测试.ipynb",
+      "language": "ipynb",
+      "sizeLines": 796,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/回测框架/策略回测.ipynb",
+      "language": "ipynb",
+      "sizeLines": 923,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/回测框架/风险模型测试.ipynb",
+      "language": "ipynb",
+      "sizeLines": 230,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/因子框架/BaoStockDB.ipynb",
+      "language": "ipynb",
+      "sizeLines": 194,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/因子框架/HDF5DB.ipynb",
+      "language": "ipynb",
+      "sizeLines": 578,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/因子框架/JYDB.ipynb",
+      "language": "ipynb",
+      "sizeLines": 620,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/因子框架/QuickStart.ipynb",
+      "language": "ipynb",
+      "sizeLines": 553,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/因子框架/SQLDB.ipynb",
+      "language": "ipynb",
+      "sizeLines": 1932,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/因子框架/因子开发.ipynb",
+      "language": "ipynb",
+      "sizeLines": 840,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/因子框架/基本框架.ipynb",
+      "language": "ipynb",
+      "sizeLines": 257,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/组合优化/均值方差模型.ipynb",
+      "language": "ipynb",
+      "sizeLines": 407,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/组合优化/基本框架.ipynb",
+      "language": "ipynb",
+      "sizeLines": 507,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/组合优化/组合优化策略.ipynb",
+      "language": "ipynb",
+      "sizeLines": 561,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/组合优化/风险预算模型.ipynb",
+      "language": "ipynb",
+      "sizeLines": 408,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/通则和约定.ipynb",
+      "language": "ipynb",
+      "sizeLines": 730,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/风险模型/基本框架.ipynb",
+      "language": "ipynb",
+      "sizeLines": 99,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/风险模型/数据读写.ipynb",
+      "language": "ipynb",
+      "sizeLines": 1566,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/风险模型/风险模型.ipynb",
+      "language": "ipynb",
+      "sizeLines": 710,
+      "fileCategory": "code"
+    },
+    {
+      "path": "examples/convert_notebook_to_markdown.sh",
+      "language": "shell",
+      "sizeLines": 0,
+      "fileCategory": "script"
+    }
+  ],
+  "batchImportData": {
+    "docs/.ipynb_checkpoints/基本框架-checkpoint.ipynb": [],
+    "docs/Core/缓存.ipynb": [],
+    "docs/Core/计算图框架.ipynb": [],
+    "docs/Core/计算引擎.ipynb": [],
+    "docs/回测框架/业绩归因.ipynb": [],
+    "docs/回测框架/基本框架.ipynb": [],
+    "docs/回测框架/截面因子测试.ipynb": [],
+    "docs/回测框架/策略回测.ipynb": [],
+    "docs/回测框架/风险模型测试.ipynb": [],
+    "docs/因子框架/BaoStockDB.ipynb": [],
+    "docs/因子框架/HDF5DB.ipynb": [],
+    "docs/因子框架/JYDB.ipynb": [],
+    "docs/因子框架/QuickStart.ipynb": [],
+    "docs/因子框架/SQLDB.ipynb": [],
+    "docs/因子框架/因子开发.ipynb": [],
+    "docs/因子框架/基本框架.ipynb": [],
+    "docs/组合优化/均值方差模型.ipynb": [],
+    "docs/组合优化/基本框架.ipynb": [],
+    "docs/组合优化/组合优化策略.ipynb": [],
+    "docs/组合优化/风险预算模型.ipynb": [],
+    "docs/通则和约定.ipynb": [],
+    "docs/风险模型/基本框架.ipynb": [],
+    "docs/风险模型/数据读写.ipynb": [],
+    "docs/风险模型/风险模型.ipynb": [],
+    "examples/convert_notebook_to_markdown.sh": []
+  },
+  "neighborMap": {}
+}

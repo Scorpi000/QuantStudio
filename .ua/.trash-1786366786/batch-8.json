@@ -1,0 +1,427 @@
+{
+  "nodes": [
+    {
+      "id": "document:.claude/commands/opsx/apply.md",
+      "type": "document",
+      "name": "apply.md",
+      "filePath": ".claude/commands/opsx/apply.md",
+      "summary": "定义 OPSX 工作流的「应用」命令，用于按任务清单逐步实现 OpenSpec 变更中的编码任务，支持状态检查、上下文读取和任务完成标记。",
+      "tags": ["documentation", "workflow-command", "implementation", "task-management"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:.claude/commands/opsx/archive.md",
+      "type": "document",
+      "name": "archive.md",
+      "filePath": ".claude/commands/opsx/archive.md",
+      "summary": "定义 OPSX 工作流的「归档」命令，用于将已完成的变更归档到日期命名的目录中，支持增量规格同步和完成状态检查。",
+      "tags": ["documentation", "workflow-command", "archive", "lifecycle"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:.claude/commands/opsx/bulk-archive.md",
+      "type": "document",
+      "name": "bulk-archive.md",
+      "filePath": ".claude/commands/opsx/bulk-archive.md",
+      "summary": "定义 OPSX 工作流的「批量归档」命令，支持一次性归档多个已完成变更，包含规格冲突检测和基于代码库的智能冲突解决机制。",
+      "tags": ["documentation", "workflow-command", "batch-operation", "conflict-resolution"],
+      "complexity": "complex",
+      "languageNotes": "该文件在所有 OPSX 命令中最复杂，包含多步冲突解决算法和详细的 ASCII 输出格式模板。"
+    },
+    {
+      "id": "document:.claude/commands/opsx/continue.md",
+      "type": "document",
+      "name": "continue.md",
+      "filePath": ".claude/commands/opsx/continue.md",
+      "summary": "定义 OPSX 工作流的「继续」命令，用于逐步创建变更的下一个制品（如 proposal、specs、design、tasks），每次调用只创建一个制品。",
+      "tags": ["documentation", "workflow-command", "artifact-creation", "incremental"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:.claude/commands/opsx/explore.md",
+      "type": "document",
+      "name": "explore.md",
+      "filePath": ".claude/commands/opsx/explore.md",
+      "summary": "定义 OPSX 工作流的「探索」命令，提供开放式思考模式，允许用户在不编写代码的情况下调查问题、比较方案、可视化架构，是最灵活的命令。",
+      "tags": ["documentation", "workflow-command", "exploration", "thinking-partner"],
+      "complexity": "moderate",
+      "languageNotes": "与其他命令不同，探索模式强调「立场」而非固定步骤，鼓励 ASCII 图表可视化和开放式对话。"
+    },
+    {
+      "id": "document:.claude/commands/opsx/ff.md",
+      "type": "document",
+      "name": "ff.md",
+      "filePath": ".claude/commands/opsx/ff.md",
+      "summary": "定义 OPSX 工作流的「快进」命令，一键创建变更并按依赖顺序自动生成所有实施所需的制品（proposal、specs、design、tasks）。",
+      "tags": ["documentation", "workflow-command", "fast-forward", "automation"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:.claude/commands/opsx/new.md",
+      "type": "document",
+      "name": "new.md",
+      "filePath": ".claude/commands/opsx/new.md",
+      "summary": "定义 OPSX 工作流的「新建」命令，创建一个新的变更目录并显示第一个制品的模板，然后等待用户指示，不自动创建任何制品。",
+      "tags": ["documentation", "workflow-command", "scaffolding", "init"],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:.claude/commands/opsx/onboard.md",
+      "type": "document",
+      "name": "onboard.md",
+      "filePath": ".claude/commands/opsx/onboard.md",
+      "summary": "定义 OPSX 工作流的「引导」命令，提供完整的交互式入门教程，引导新用户在真实代码库中完成一次从探索到归档的完整 OpenSpec 工作流周期，共 11 个阶段。",
+      "tags": ["documentation", "workflow-command", "tutorial", "onboarding", "interactive"],
+      "complexity": "complex",
+      "languageNotes": "这是最长的 OPSX 命令文件（551 行），包含完整的 EXPLAIN-DO-SHOW-PAUSE 教学模式和优雅退出处理。"
+    },
+    {
+      "id": "document:.claude/commands/opsx/propose.md",
+      "type": "document",
+      "name": "propose.md",
+      "filePath": ".claude/commands/opsx/propose.md",
+      "summary": "定义 OPSX 工作流的「提议」命令，创建变更并按依赖顺序自动生成所有制品（proposal、design、tasks），是快速提案的快捷方式。",
+      "tags": ["documentation", "workflow-command", "proposal", "one-step"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:.claude/commands/opsx/sync.md",
+      "type": "document",
+      "name": "sync.md",
+      "filePath": ".claude/commands/opsx/sync.md",
+      "summary": "定义 OPSX 工作流的「同步」命令，将变更中的增量规格（delta specs）智能合并到主规格文件中，支持添加、修改、删除和重命名需求的增量更新。",
+      "tags": ["documentation", "workflow-command", "spec-sync", "intelligent-merge"],
+      "complexity": "moderate",
+      "languageNotes": "采用 agent-driven 智能合并模式，支持部分更新（如仅添加一个场景而无需复制整个需求）。"
+    },
+    {
+      "id": "document:.claude/commands/opsx/update.md",
+      "type": "document",
+      "name": "update.md",
+      "filePath": ".claude/commands/opsx/update.md",
+      "summary": "定义 OPSX 工作流的「更新」命令，用于修订变更的已有规划制品并保持各制品之间的一致性，明确禁止编辑实现代码。",
+      "tags": ["documentation", "workflow-command", "revision", "coherence"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:.claude/commands/opsx/verify.md",
+      "type": "document",
+      "name": "verify.md",
+      "filePath": ".claude/commands/opsx/verify.md",
+      "summary": "定义 OPSX 工作流的「验证」命令，从完整性、正确性和一致性三个维度验证实现是否与变更制品（specs、tasks、design）匹配，输出分级验证报告。",
+      "tags": ["documentation", "workflow-command", "verification", "quality-assurance"],
+      "complexity": "complex",
+      "languageNotes": "包含三维度验证框架（完整性/正确性/一致性）和 CRITICAL/WARNING/SUGGESTION 三级问题分级体系。"
+    }
+  ],
+  "edges": [
+    {
+      "source": "document:.claude/commands/opsx/apply.md",
+      "target": "document:.claude/commands/opsx/continue.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/apply.md",
+      "target": "document:.claude/commands/opsx/archive.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/apply.md",
+      "target": "document:.claude/commands/opsx/verify.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/apply.md",
+      "target": "document:.claude/commands/opsx/new.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/apply.md",
+      "target": "document:.claude/commands/opsx/ff.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/apply.md",
+      "target": "document:.claude/commands/opsx/propose.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/archive.md",
+      "target": "document:.claude/commands/opsx/apply.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/archive.md",
+      "target": "document:.claude/commands/opsx/sync.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/archive.md",
+      "target": "document:.claude/commands/opsx/bulk-archive.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/archive.md",
+      "target": "document:.claude/commands/opsx/verify.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/bulk-archive.md",
+      "target": "document:.claude/commands/opsx/archive.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/bulk-archive.md",
+      "target": "document:.claude/commands/opsx/sync.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/continue.md",
+      "target": "document:.claude/commands/opsx/new.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/continue.md",
+      "target": "document:.claude/commands/opsx/ff.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/continue.md",
+      "target": "document:.claude/commands/opsx/propose.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/explore.md",
+      "target": "document:.claude/commands/opsx/new.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/explore.md",
+      "target": "document:.claude/commands/opsx/propose.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/explore.md",
+      "target": "document:.claude/commands/opsx/apply.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/ff.md",
+      "target": "document:.claude/commands/opsx/new.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/ff.md",
+      "target": "document:.claude/commands/opsx/propose.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/ff.md",
+      "target": "document:.claude/commands/opsx/continue.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/ff.md",
+      "target": "document:.claude/commands/opsx/apply.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/new.md",
+      "target": "document:.claude/commands/opsx/continue.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/new.md",
+      "target": "document:.claude/commands/opsx/ff.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/new.md",
+      "target": "document:.claude/commands/opsx/propose.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/onboard.md",
+      "target": "document:.claude/commands/opsx/explore.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/onboard.md",
+      "target": "document:.claude/commands/opsx/new.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/onboard.md",
+      "target": "document:.claude/commands/opsx/continue.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/onboard.md",
+      "target": "document:.claude/commands/opsx/apply.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/onboard.md",
+      "target": "document:.claude/commands/opsx/archive.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/onboard.md",
+      "target": "document:.claude/commands/opsx/propose.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/propose.md",
+      "target": "document:.claude/commands/opsx/new.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/propose.md",
+      "target": "document:.claude/commands/opsx/ff.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/propose.md",
+      "target": "document:.claude/commands/opsx/apply.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/propose.md",
+      "target": "document:.claude/commands/opsx/continue.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/sync.md",
+      "target": "document:.claude/commands/opsx/archive.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/sync.md",
+      "target": "document:.claude/commands/opsx/bulk-archive.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/update.md",
+      "target": "document:.claude/commands/opsx/continue.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/update.md",
+      "target": "document:.claude/commands/opsx/apply.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/update.md",
+      "target": "document:.claude/commands/opsx/archive.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/update.md",
+      "target": "document:.claude/commands/opsx/new.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/verify.md",
+      "target": "document:.claude/commands/opsx/archive.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/verify.md",
+      "target": "document:.claude/commands/opsx/apply.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/verify.md",
+      "target": "document:.claude/commands/opsx/bulk-archive.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    }
+  ]
+}

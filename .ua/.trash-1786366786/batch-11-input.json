@@ -1,0 +1,57 @@
+{
+  "batchIndex": 11,
+  "files": [
+    {
+      "path": "skills/quantstudio/references/backtest.md",
+      "language": "markdown",
+      "sizeLines": 131,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "skills/quantstudio/references/core-engine.md",
+      "language": "markdown",
+      "sizeLines": 107,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "skills/quantstudio/references/factor-datasources.md",
+      "language": "markdown",
+      "sizeLines": 88,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "skills/quantstudio/references/factor-development.md",
+      "language": "markdown",
+      "sizeLines": 133,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "skills/quantstudio/references/factor-framework.md",
+      "language": "markdown",
+      "sizeLines": 93,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "skills/quantstudio/references/portfolio-optimization.md",
+      "language": "markdown",
+      "sizeLines": 161,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "skills/quantstudio/references/risk-model.md",
+      "language": "markdown",
+      "sizeLines": 91,
+      "fileCategory": "docs"
+    }
+  ],
+  "batchImportData": {
+    "skills/quantstudio/references/backtest.md": [],
+    "skills/quantstudio/references/core-engine.md": [],
+    "skills/quantstudio/references/factor-datasources.md": [],
+    "skills/quantstudio/references/factor-development.md": [],
+    "skills/quantstudio/references/factor-framework.md": [],
+    "skills/quantstudio/references/portfolio-optimization.md": [],
+    "skills/quantstudio/references/risk-model.md": []
+  },
+  "neighborMap": {}
+}

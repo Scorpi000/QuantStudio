@@ -1,0 +1,480 @@
+{
+  "batchIndex": 4,
+  "files": [
+    {
+      "path": "QuantStudio/BackTest/PerformanceAnalysis/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/Risk/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/SectionFactor/__init__.py",
+      "language": "python",
+      "sizeLines": 1,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+      "language": "python",
+      "sizeLines": 233,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/Strategy/Strategy.py",
+      "language": "python",
+      "sizeLines": 574,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/Strategy/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/Strategy/api.py",
+      "language": "python",
+      "sizeLines": 4,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/BackTest/api.py",
+      "language": "python",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/DataPreprocessingFun.py",
+      "language": "python",
+      "sizeLines": 473,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/FileFun.py",
+      "language": "python",
+      "sizeLines": 350,
+      "fileCategory": "code"
+    },
+    {
+      "path": "QuantStudio/Tools/StrategyTestFun.py",
+      "language": "python",
+      "sizeLines": 1123,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_Tools_StrategyTestFun.py",
+      "language": "python",
+      "sizeLines": 23,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_Tools_StrategyTestFun_backtest.py",
+      "language": "python",
+      "sizeLines": 93,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "QuantStudio/BackTest/PerformanceAnalysis/__init__.py": [],
+    "QuantStudio/BackTest/Risk/__init__.py": [],
+    "QuantStudio/BackTest/SectionFactor/__init__.py": [],
+    "QuantStudio/BackTest/Strategy/AllocationStrategy.py": [
+      "QuantStudio/Core/__init__.py",
+      "QuantStudio/Factor/Factor.py",
+      "QuantStudio/Factor/FactorOperation.py",
+      "QuantStudio/Tools/DataPreprocessingFun.py",
+      "QuantStudio/Tools/StrategyTestFun.py"
+    ],
+    "QuantStudio/BackTest/Strategy/Strategy.py": [
+      "QuantStudio/BackTest/BackTestModel.py",
+      "QuantStudio/Core/Node.py",
+      "QuantStudio/Core/__init__.py",
+      "QuantStudio/Factor/Factor.py",
+      "QuantStudio/Factor/FactorOperation.py",
+      "QuantStudio/Risk/RiskTable.py",
+      "QuantStudio/Tools/StrategyTestFun.py"
+    ],
+    "QuantStudio/BackTest/Strategy/__init__.py": [],
+    "QuantStudio/BackTest/Strategy/api.py": [
+      "QuantStudio/BackTest/Strategy/AllocationStrategy.py",
+      "QuantStudio/BackTest/Strategy/Strategy.py"
+    ],
+    "QuantStudio/BackTest/api.py": [
+      "QuantStudio/BackTest/BackTestModel.py",
+      "QuantStudio/BackTest/PerformanceAnalysis/__init__.py",
+      "QuantStudio/BackTest/Risk/__init__.py",
+      "QuantStudio/BackTest/SectionFactor/__init__.py",
+      "QuantStudio/BackTest/Strategy/Strategy.py",
+      "QuantStudio/BackTest/Strategy/__init__.py"
+    ],
+    "QuantStudio/Tools/DataPreprocessingFun.py": [],
+    "QuantStudio/Tools/FileFun.py": [
+      "QuantStudio/Core/__init__.py"
+    ],
+    "QuantStudio/Tools/StrategyTestFun.py": [
+      "QuantStudio/Core/__init__.py",
+      "QuantStudio/Tools/DataPreprocessingFun.py",
+      "QuantStudio/Tools/DateTimeFun.py",
+      "QuantStudio/Tools/FileFun.py"
+    ],
+    "tests/test_Tools_StrategyTestFun.py": [
+      "QuantStudio/Tools/StrategyTestFun.py"
+    ],
+    "tests/test_Tools_StrategyTestFun_backtest.py": [
+      "QuantStudio/Tools/DataPreprocessingFun.py",
+      "QuantStudio/Tools/StrategyTestFun.py"
+    ]
+  },
+  "neighborMap": {
+    "QuantStudio/BackTest/Strategy/AllocationStrategy.py": [
+      {
+        "path": "QuantStudio/Core/__init__.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_is_secret_field",
+          "setDefaultLogLevel",
+          "setDefaultLogger",
+          "__QS_Error__",
+          "__QS_Args__",
+          "__QS_Object__"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/Factor.py",
+        "batchIndex": 2,
+        "symbols": [
+          "FactorContext",
+          "FactorLocalContext",
+          "FactorInitData",
+          "Factor",
+          "DataFactor"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/FactorOperation.py",
+        "batchIndex": 2,
+        "symbols": [
+          "FactorOperator",
+          "PointOperator",
+          "TimeOperator",
+          "SectionOperator",
+          "PanelOperator",
+          "makeFactorOperator",
+          "FactorOperatorized",
+          "DerivativeFactor",
+          "PointOperation",
+          "TimeOperation",
+          "SectionOperation",
+          "PanelOperation"
+        ]
+      },
+      {
+        "path": "QuantStudio/BackTest/Risk/BiasTest.py",
+        "batchIndex": 2,
+        "symbols": [
+          "PortfolioVolatility",
+          "CalcPortfolioVolatility",
+          "CalcRandomPortfolio",
+          "BiasTest"
+        ]
+      },
+      {
+        "path": "QuantStudio/BackTest/SectionFactor/QuantilePortfolio.py",
+        "batchIndex": 2,
+        "symbols": [
+          "_QS_plotStatistics",
+          "makeQuantilePortfolio",
+          "MultiPortfolio"
+        ]
+      }
+    ],
+    "QuantStudio/BackTest/Strategy/Strategy.py": [
+      {
+        "path": "QuantStudio/BackTest/BackTestModel.py",
+        "batchIndex": 2,
+        "symbols": [
+          "BTNode",
+          "BTReport"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/Node.py",
+        "batchIndex": 2,
+        "symbols": [
+          "Context",
+          "LocalContext",
+          "DTLocalContext",
+          "DTInitData",
+          "Node"
+        ]
+      },
+      {
+        "path": "QuantStudio/Core/__init__.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_is_secret_field",
+          "setDefaultLogLevel",
+          "setDefaultLogger",
+          "__QS_Error__",
+          "__QS_Args__",
+          "__QS_Object__"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/Factor.py",
+        "batchIndex": 2,
+        "symbols": [
+          "FactorContext",
+          "FactorLocalContext",
+          "FactorInitData",
+          "Factor",
+          "DataFactor"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/FactorOperation.py",
+        "batchIndex": 2,
+        "symbols": [
+          "FactorOperator",
+          "PointOperator",
+          "TimeOperator",
+          "SectionOperator",
+          "PanelOperator",
+          "makeFactorOperator",
+          "FactorOperatorized",
+          "DerivativeFactor",
+          "PointOperation",
+          "TimeOperation",
+          "SectionOperation",
+          "PanelOperation"
+        ]
+      },
+      {
+        "path": "QuantStudio/Risk/RiskTable.py",
+        "batchIndex": 3,
+        "symbols": [
+          "RiskTable",
+          "FactorRT"
+        ]
+      },
+      {
+        "path": "examples/bt_node_strategy.py",
+        "batchIndex": 5,
+        "symbols": []
+      },
+      {
+        "path": "tests/test_Strategy_Backtest.py",
+        "batchIndex": 5,
+        "symbols": []
+      }
+    ],
+    "QuantStudio/BackTest/api.py": [
+      {
+        "path": "QuantStudio/BackTest/BackTestModel.py",
+        "batchIndex": 2,
+        "symbols": [
+          "BTNode",
+          "BTReport"
+        ]
+      },
+      {
+        "path": "QuantStudio/api.py",
+        "batchIndex": 3,
+        "symbols": []
+      }
+    ],
+    "QuantStudio/Tools/DataPreprocessingFun.py": [
+      {
+        "path": "QuantStudio/BackTest/SectionFactor/IC.py",
+        "batchIndex": 2,
+        "symbols": [
+          "_QS_formatMatplotlibPercentage",
+          "_QS_formatPandasPercentage",
+          "CalcIC",
+          "CalcRiskAdjustedIC",
+          "IC",
+          "ICDecay"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/Factor.py",
+        "batchIndex": 2,
+        "symbols": [
+          "FactorContext",
+          "FactorLocalContext",
+          "FactorInitData",
+          "Factor",
+          "DataFactor"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/FactorOperator.py",
+        "batchIndex": 2,
+        "symbols": [
+          "AsType",
+          "Log",
+          "NotNull",
+          "IsIn",
+          "ApplyArrayFunc",
+          "Applymap",
+          "Where",
+          "Fetch",
+          "Sum",
+          "Max",
+          "Min",
+          "Rank",
+          "Mean",
+          "Std",
+          "Regress",
+          "RegressChangeRate",
+          "ToList",
+          "ToCompound",
+          "Lag",
+          "RollingRank",
+          "RollingMean",
+          "RollingApply",
+          "RollingChangeRate",
+          "RollingRegress",
+          "SectionRank",
+          "Aggregate",
+          "Disaggregate",
+          "ConcatSection",
+          "ChgSection",
+          "SectionRegress",
+          "AggregateComponent",
+          "PanelRegress",
+          "AggregatePanel",
+          "AggregateComponentPanel"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/FactorUtils.py",
+        "batchIndex": 1,
+        "symbols": [
+          "getInfoFile",
+          "__QS_Error_DuplicatedIndex__",
+          "importInfo",
+          "updateInfo",
+          "adjustDateTime",
+          "adjustDataDTID",
+          "_QS_calcListData_WideTable",
+          "_QS_calcData_WideTable",
+          "_QS_calcListData_NarrowTable",
+          "_QS_calcData_NarrowTable",
+          "SQLQueryTable",
+          "SQL_Table",
+          "SQL_WideTable",
+          "SQL_NarrowTable",
+          "SQL_FeatureTable",
+          "SQL_TimeSeriesTable",
+          "SQL_MappingTable",
+          "SQL_ConstituentTable",
+          "RollBackNPeriod",
+          "SQL_FinancialTable"
+        ]
+      }
+    ],
+    "QuantStudio/Tools/FileFun.py": [
+      {
+        "path": "QuantStudio/Core/__init__.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_is_secret_field",
+          "setDefaultLogLevel",
+          "setDefaultLogger",
+          "__QS_Error__",
+          "__QS_Args__",
+          "__QS_Object__"
+        ]
+      },
+      {
+        "path": "QuantStudio/Factor/HDF5DB.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_identifyDataType",
+          "_adjustData",
+          "HDF5FactorTable",
+          "HDF5DB"
+        ]
+      },
+      {
+        "path": "QuantStudio/Risk/HDF5RDB.py",
+        "batchIndex": 3,
+        "symbols": [
+          "HDF5RiskTable",
+          "HDF5RDB",
+          "HDF5FactorRiskTable",
+          "HDF5FRDB"
+        ]
+      }
+    ],
+    "QuantStudio/Tools/StrategyTestFun.py": [
+      {
+        "path": "QuantStudio/Core/__init__.py",
+        "batchIndex": 1,
+        "symbols": [
+          "_is_secret_field",
+          "setDefaultLogLevel",
+          "setDefaultLogger",
+          "__QS_Error__",
+          "__QS_Args__",
+          "__QS_Object__"
+        ]
+      },
+      {
+        "path": "QuantStudio/Tools/DateTimeFun.py",
+        "batchIndex": 3,
+        "symbols": [
+          "cutDate",
+          "cutDateTime",
+          "getNaturalDay",
+          "lookbackDateTime",
+          "combineDateTime",
+          "getDateStartEndIndex",
+          "getMonthDateTime",
+          "getMonthFirstDateTime",
+          "getMonthMiddleDateTime",
+          "getMonthLastDateTime",
+          "getWeekDateTime",
+          "getWeekFirstDateTime",
+          "getWeekLastDateTime",
+          "getYearFirstDateTime",
+          "getYearLastDateTime",
+          "getQuarterFirstDateTime",
+          "getQuarterLastDateTime",
+          "_getQuanterNum",
+          "getFinancialQuarterFirstDateTime",
+          "getFinancialQuarterLastDateTime",
+          "getDateSeries",
+          "getTimeSeries",
+          "getDateTimeSeries",
+          "groupbyYear",
+          "transformDateTime",
+          "_is_same_period",
+          "_get_period_key",
+          "_get_target_value",
+          "_transform_by_period",
+          "_build_natural_week_targets",
+          "_build_natural_month_targets",
+          "_build_natural_quarter_targets",
+          "_build_natural_year_targets"
+        ]
+      },
+      {
+        "path": "QuantStudio/BackTest/SectionFactor/QuantilePortfolio.py",
+        "batchIndex": 2,
+        "symbols": [
+          "_QS_plotStatistics",
+          "makeQuantilePortfolio",
+          "MultiPortfolio"
+        ]
+      }
+    ]
+  }
+}

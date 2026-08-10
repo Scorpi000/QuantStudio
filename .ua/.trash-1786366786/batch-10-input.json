@@ -1,0 +1,36 @@
+{
+  "batchIndex": 10,
+  "files": [
+    {
+      "path": "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/.openspec.yaml",
+      "language": "yaml",
+      "sizeLines": 2,
+      "fileCategory": "config"
+    },
+    {
+      "path": "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/design.md",
+      "language": "markdown",
+      "sizeLines": 113,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/proposal.md",
+      "language": "markdown",
+      "sizeLines": 31,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/tasks.md",
+      "language": "markdown",
+      "sizeLines": 31,
+      "fileCategory": "docs"
+    }
+  ],
+  "batchImportData": {
+    "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/.openspec.yaml": [],
+    "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/design.md": [],
+    "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/proposal.md": [],
+    "openspec/changes/archive/2026-07-29-qs-args-serialize-encrypt/tasks.md": []
+  },
+  "neighborMap": {}
+}

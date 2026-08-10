@@ -1,0 +1,93 @@
+{
+  "nodes": [
+    {
+      "id": "file:examples/bt_node_basic.py",
+      "type": "file",
+      "name": "bt_node_basic.py",
+      "filePath": "examples/bt_node_basic.py",
+      "summary": "回测节点基础示例脚本，演示如何使用 QuantStudio 框架进行完整的因子回测流程：构建 DataFactor、创建分位数组合、计算 IC/IC 衰减/因子换手率/截面相关性/Fama-MacBeth 回归，并通过 BTReport 生成 HTML 报告。",
+      "tags": ["example", "backtest", "demo", "factor-analysis"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:examples/core_node_factor.py",
+      "type": "file",
+      "name": "core_node_factor.py",
+      "filePath": "examples/core_node_factor.py",
+      "summary": "因子计算核心示例脚本，演示因子框架的基本用法：创建 DataFactor、使用 makeFactorOperator 自定义算子构建 PointOperation、通过 BasicOperator 进行算术运算、使用 SectionRank 截面排名算子，以及通过 Engine 和 FactorCache 运行计算图。",
+      "tags": ["example", "factor", "demo", "computation-graph"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:mcp/factor_backtest.py",
+      "type": "file",
+      "name": "factor_backtest.py",
+      "filePath": "mcp/factor_backtest.py",
+      "summary": "因子回测 MCP Server，基于 FastMCP 框架提供 IC 回测工具。从聚源 JYDB 加载因子和价格数据，使用 CalcIC 算子计算因子 IC 序列，输出 IC 均值、ICIR、t 统计量、胜率等统计指标，支持 stdio 模式运行供 Claude Code 调用。",
+      "tags": ["mcp-server", "api-handler", "factor-analysis", "integration"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:tests/test_Factor_FactorOperator.py",
+      "type": "file",
+      "name": "test_Factor_FactorOperator.py",
+      "filePath": "tests/test_Factor_FactorOperator.py",
+      "summary": "因子算子单元测试模块，使用 unittest 框架测试 RollingApply、Aggregate、AggregateComponent、AggregatePanel、AggregateComponentPanel 五类算子的基本功能、mask 筛选、分类聚合和加权计算。使用随机生成的数据，不依赖外部数据库。",
+      "tags": ["test", "factor-operator", "unittest"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:examples/bt_node_basic.py:main_bt_node_basic",
+      "type": "function",
+      "name": "bt_node_basic (main)",
+      "filePath": "examples/bt_node_basic.py",
+      "lineRange": [24, 67],
+      "summary": "示例主函数，构建完整的截面因子回测流程：创建随机因子数据、构建分位数组合、计算组合净值、使用 Engine 执行计算图并输出结果。",
+      "tags": ["example", "entry-point", "backtest"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:mcp/factor_backtest.py:backtest_factor_ic",
+      "type": "function",
+      "name": "backtest_factor_ic",
+      "filePath": "mcp/factor_backtest.py",
+      "lineRange": [96, 245],
+      "summary": "MCP 工具函数，回测指定因子的 IC 表现。连接 JYDB 加载数据，构建 DataFactor 和 CalcIC 算子，计算 IC 序列并返回 IC 均值、ICIR、t 统计量、胜率等 JSON 统计结果。",
+      "tags": ["api-handler", "mcp-tool", "ic-test"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:tests/test_Factor_FactorOperator.py:TestFactorOperator",
+      "type": "class",
+      "name": "TestFactorOperator",
+      "filePath": "tests/test_Factor_FactorOperator.py",
+      "lineRange": [42, 376],
+      "summary": "因子算子测试类，包含 13 个测试方法覆盖 RollingApply、Aggregate、AggregateComponent、AggregatePanel、AggregateComponentPanel 算子的各种场景：基本功能、窗口大小、mask 筛选、分类聚合和加权计算。",
+      "tags": ["test", "factor-operator", "unittest"],
+      "complexity": "complex"
+    }
+  ],
+  "edges": [
+    {"source": "file:examples/bt_node_basic.py", "target": "file:QuantStudio/BackTest/BackTestModel.py", "type": "imports", "direction": "forward", "weight": 0.7},
+    {"source": "file:examples/bt_node_basic.py", "target": "file:QuantStudio/BackTest/SectionFactor/Correlation.py", "type": "imports", "direction": "forward", "weight": 0.7},
+    {"source": "file:examples/bt_node_basic.py", "target": "file:QuantStudio/BackTest/SectionFactor/IC.py", "type": "imports", "direction": "forward", "weight": 0.7},
+    {"source": "file:examples/bt_node_basic.py", "target": "file:QuantStudio/BackTest/SectionFactor/ReturnDecomposition.py", "type": "imports", "direction": "forward", "weight": 0.7},
+    {"source": "file:examples/bt_node_basic.py", "target": "file:QuantStudio/Core/Node.py", "type": "imports", "direction": "forward", "weight": 0.7},
+    {"source": "file:examples/bt_node_basic.py", "target": "file:QuantStudio/Factor/Factor.py", "type": "imports", "direction": "forward", "weight": 0.7},
+    {"source": "file:examples/bt_node_basic.py", "target": "file:QuantStudio/Factor/FactorOperator.py", "type": "imports", "direction": "forward", "weight": 0.7},
+    {"source": "file:examples/core_node_factor.py", "target": "file:QuantStudio/Core/Node.py", "type": "imports", "direction": "forward", "weight": 0.7},
+    {"source": "file:examples/core_node_factor.py", "target": "file:QuantStudio/Factor/BasicOperator.py", "type": "imports", "direction": "forward", "weight": 0.7},
+    {"source": "file:examples/core_node_factor.py", "target": "file:QuantStudio/Factor/Factor.py", "type": "imports", "direction": "forward", "weight": 0.7},
+    {"source": "file:examples/core_node_factor.py", "target": "file:QuantStudio/Factor/FactorOperation.py", "type": "imports", "direction": "forward", "weight": 0.7},
+    {"source": "file:examples/core_node_factor.py", "target": "file:QuantStudio/Factor/FactorOperator.py", "type": "imports", "direction": "forward", "weight": 0.7},
+    {"source": "file:examples/core_node_factor.py", "target": "file:QuantStudio/Factor/FactorStorer.py", "type": "imports", "direction": "forward", "weight": 0.7},
+    {"source": "file:mcp/factor_backtest.py", "target": "file:QuantStudio/BackTest/SectionFactor/IC.py", "type": "imports", "direction": "forward", "weight": 0.7},
+    {"source": "file:mcp/factor_backtest.py", "target": "file:QuantStudio/Factor/Factor.py", "type": "imports", "direction": "forward", "weight": 0.7},
+    {"source": "file:tests/test_Factor_FactorOperator.py", "target": "file:QuantStudio/Factor/Factor.py", "type": "imports", "direction": "forward", "weight": 0.7},
+    {"source": "file:tests/test_Factor_FactorOperator.py", "target": "file:QuantStudio/Factor/FactorOperator.py", "type": "imports", "direction": "forward", "weight": 0.7},
+    {"source": "file:examples/bt_node_basic.py", "target": "function:examples/bt_node_basic.py:main_bt_node_basic", "type": "contains", "direction": "forward", "weight": 1.0},
+    {"source": "file:mcp/factor_backtest.py", "target": "function:mcp/factor_backtest.py:backtest_factor_ic", "type": "contains", "direction": "forward", "weight": 1.0},
+    {"source": "file:tests/test_Factor_FactorOperator.py", "target": "class:tests/test_Factor_FactorOperator.py:TestFactorOperator", "type": "contains", "direction": "forward", "weight": 1.0},
+    {"source": "file:tests/test_Factor_FactorOperator.py", "target": "file:QuantStudio/Factor/FactorOperator.py", "type": "tested_by", "direction": "forward", "weight": 0.5}
+  ]
+}
