@@ -15,6 +15,8 @@ from QuantStudio.Core import __QS_Error__
 from QuantStudio.Core.Node import DTLocalContext, DTInitData, Node
 from QuantStudio.Factor.Factor import Factor, FactorInitData, FactorContext, DataFactor, FactorLocalContext
 from QuantStudio.Factor.FactorOperation import PanelOperation, PanelOperator
+from QuantStudio.Factor import FactorOperator as fo
+from QuantStudio.Factor.BasicOperator import rename
 from QuantStudio.Risk.RiskTable import RiskTable
 from QuantStudio.BackTest.BackTestModel import BTNode
 from QuantStudio.Tools.StrategyTestFun import summaryStrategy, calcYieldSeq, calcLSYield, formatStrategySummary
@@ -573,3 +575,22 @@ class MakeStrategy(MakeAccount):
         Operator = self._QS_validate(*Factors, start_dt=self._QSArgs.StartDT[0], x_lookback=self._QSArgs.LookBack[2:len(x)+2], x_section_ids=self._QSArgs.DescriptorSection[2:len(x)+2])
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for iFactor in Factors]
         return Strategy(descriptors=Descriptors, extra_deps=extra_deps, args={"Operator": Operator, **factor_args}, **kwargs)
+
+
+def calcAccountNV(account: Factor, init_cash: float=1e6, descriptor_ids:Optional[List[str]]=None, factor_args:dict={}) -> Factor:
+    """从账户因子中计算净值因子"""
+    Amount = fo.Fetch(pos="Amount")(account)
+    Cash = fo.Fetch(pos="Cash")(account)
+    NV = (fo.Aggregate(aggr_func=np.nansum, descriptor_ids=descriptor_ids, dtype="double")(Amount) + fo.Aggregate(aggr_func=np.nanmean, descriptor_ids=descriptor_ids, dtype="double")(Cash)) / init_cash
+    factor_args = factor_args.copy()
+    FactorName = factor_args.pop("Name", "strategy_nv")
+    return rename(NV, factor_name=FactorName, factor_args=factor_args)
+
+def calcAccountPortfolio(account: Factor, factor_args:dict={}) -> Factor:
+    """从账户因子中计算投资组合因子"""
+    Amount = fo.Fetch(pos="Amount")(account)
+    Cash = fo.Fetch(pos="Cash")(account)
+    AccountValue = fo.Aggregate(aggr_func=np.nansum, descriptor_ids=descriptor_ids, dtype="double")(Amount) + fo.Aggregate(aggr_func=np.nanmean, descriptor_ids=descriptor_ids, dtype="double")(Cash)
+    factor_args = factor_args.copy()
+    FactorName = factor_args.pop("Name", "strategy_nv")
+    return rename(Amount / AccountValue, factor_name=FactorName, factor_args=factor_args)
