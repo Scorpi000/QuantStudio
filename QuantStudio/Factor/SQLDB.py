@@ -32,7 +32,7 @@ class SQLDB(QSSQLObject, WritableFactorDB):
 
     class __QS_ArgClass__(QSSQLObject.__QS_ArgClass__, WritableFactorDB.__QS_ArgClass__):
         Name: str = Field(default="SQLDB", title="名称", frozen=True)
-        FTArgs: dict = Field(default={}, title="因子表参数", frozen=True)
+        FTArgs: dict = Field(default={}, title="因子表参数", frozen=True, exclude=True)
         InnerPrefix: str = Field(default="qs_", title="内部前缀", frozen=True)
         DTField: str = Field(default="datetime", title="时点字段", frozen=True)
         IDField: str = Field(default="code", title="ID字段", frozen=True)

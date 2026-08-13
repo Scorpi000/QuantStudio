@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-"""测试 QuantStudio.Tools.DateTimeFun 中的 transformDateTime 函数"""
 import datetime as dt
 import unittest
 
@@ -9,6 +8,7 @@ import QuantStudio.Tools.DateTimeFun as DTF
 
 
 class TestTransformDateTime(unittest.TestCase):
+    """测试 QuantStudio.Tools.DateTimeFun 中的 transformDateTime 函数"""
     @classmethod
     def setUpClass(cls):
         """生成 2024 年全年日频时点序列和带时间的时点序列"""

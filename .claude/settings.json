@@ -6,5 +6,8 @@
       "Bash(C:/Users/hst/Project/PythonEnv/QS/Scripts/python.exe tests/test_Tools_DateTimeFun.py)",
       "Bash(C:/Users/hst/Project/PythonEnv/QS/Scripts/python.exe -c ' *)"
     ]
+  },
+  "enabledPlugins": {
+    "understand-anything@understand-anything": true
   }
 }

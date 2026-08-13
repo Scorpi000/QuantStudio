@@ -590,7 +590,7 @@ def calcAccountPortfolio(account: Factor, factor_args:dict={}) -> Factor:
     """从账户因子中计算投资组合因子"""
     Amount = fo.Fetch(pos="Amount")(account)
     Cash = fo.Fetch(pos="Cash")(account)
-    AccountValue = fo.Aggregate(aggr_func=np.nansum, descriptor_ids=descriptor_ids, dtype="double")(Amount) + fo.Aggregate(aggr_func=np.nanmean, descriptor_ids=descriptor_ids, dtype="double")(Cash)
+    AccountValue = fo.Aggregate(aggr_func=np.nansum, descriptor_ids=None, dtype="double")(Amount) + fo.Aggregate(aggr_func=np.nanmean, descriptor_ids=None, dtype="double")(Cash)
     factor_args = factor_args.copy()
     FactorName = factor_args.pop("Name", "strategy_nv")
     return rename(Amount / AccountValue, factor_name=FactorName, factor_args=factor_args)

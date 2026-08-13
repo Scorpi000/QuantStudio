@@ -1,7 +1,6 @@
 # coding=utf-8
 """基于 HDF5 文件的因子库"""
 import os
-import stat
 import shutil
 import pickle
 import time
@@ -588,43 +587,3 @@ class HDF5DB(WritableFactorDB):
                     if np.any(FixMask):
                         self._QS_Logger.info("因子 '%s' : '%s' 数据修复完成!" % (table_name, iFactorName))
         return 0
-
-
-if __name__ == "__main__":
-    HDB = HDF5DB().connect()
-    print(HDB.Args)
-    print(HDB.TableNames)
-    
-    FT = HDB.getTable("stock_cn_day_bar")
-    DataType = FT.getFactorMetaData(key="DataType")
-
-    df = pd.DataFrame(
-        [(None, "aha"), ("中文", "aaa")],
-        index=[dt.datetime(2022, 1, 1), dt.datetime(2022, 1, 2)],
-        columns=["000001.SZ", "000002.SZ"],
-        dtype="O"
-    )
-    HDB.writeFactorData(df, "test_table", "factor1", data_type="string")
-
-    # FT = HDB.getTable("test_table")
-    FT = HDB["test_table"]
-    # Data = FT.readData(FT.FactorNames, ids=None, dts=None)
-    F = FT["factor1"]
-    print(F)
-    Data = FT[FT.FactorNames]
-    print(Data)
-    Data = FT[FT.FactorNames, [dt.datetime(2022, 1, 1)]]
-    print(Data)
-    Data = FT[FT.FactorNames, dt.datetime(2022, 1, 1)]
-    print(Data)
-
-    Data = F[[dt.datetime(2022, 1, 1)]]
-    print(Data)
-    Data = F[:, "000001.SZ"]
-    print(Data)
-    Data = F[dt.datetime(2022, 1, 1), "000002.SZ"]
-    print(Data)
-
-    HDB.deleteTable("test_table")
-
-    print("===")

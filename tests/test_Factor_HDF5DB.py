@@ -2,8 +2,8 @@
 """QuantStudio HDF5DB 因子库测试模块
 
 使用方法:
-    * 运行全部测试: python tests/test_HDF5DB.py
-    * 运行指定测试: python -m unittest tests.test_HDF5DB.TestHDF5DB.test_DataIO
+    * 运行全部测试: python tests/test_Factor_HDF5DB.py
+    * 运行指定测试: python -m unittest tests.test_Factor_HDF5DB.TestHDF5DB.test_DataIO
     * 通过 TestSuite 指定测试 (取消文件末尾的注释并修改):
 
         Suite = unittest.TestSuite()

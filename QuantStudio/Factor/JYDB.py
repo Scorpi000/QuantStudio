@@ -4,7 +4,7 @@ import re
 import os
 import json
 import datetime as dt
-from typing import Optional, Literal, Callable, List, Union, Tuple, Set, Dict
+from typing import Optional, Literal, Callable, List, Union, Tuple, Set
 
 import numpy as np
 import pandas as pd
@@ -928,7 +928,7 @@ class JYDB(QSSQLObject, FactorDB):
     class __QS_ArgClass__(QSSQLObject.__QS_ArgClass__, FactorDB.__QS_ArgClass__):
         Name: str = Field(default="JYDB", title="名称", frozen=True)
         DBInfoFile: Optional[FilePath] = Field(default=None, title="库信息文件", frozen=True, repr=False)
-        FTArgs: dict = Field(default={}, title="因子表参数", frozen=True)
+        FTArgs: dict = Field(default={}, title="因子表参数", frozen=True, exclude=True)
 
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
         super().__init__(args=args, config_file=(__QS_ConfigPath__ + os.sep + "JYDBConfig.json" if config_file is None else config_file), **kwargs)

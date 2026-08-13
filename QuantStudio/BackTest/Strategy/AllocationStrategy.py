@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """配置策略"""
 import datetime as dt
-from typing import Optional, Literal, List, Union
+from typing import Optional, Literal, List, Union, Dict
 
 import numpy as np
 import pandas as pd
 
 from QuantStudio.Core import __QS_Error__
+from QuantStudio.Core.QSObject import Panel
 from QuantStudio.Factor.Factor import Factor
 from QuantStudio.Factor.FactorOperation import PanelOperation, PanelOperator, SectionOperator, SectionOperation
 from QuantStudio.Tools.StrategyTestFun import backtestPortfolioStrategy, backtestPortfolioStrategy_pd
@@ -231,3 +232,47 @@ class CalcPortfolioReturn(PanelOperator):
         factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"portfolio_name_list": portfolio_name_list}
         kwargs["operator_kwargs"] =  {"descriptor_ids": self._QSArgs.DescriptorSection[0], "lookback": self._QSArgs.LookBack[0]} | kwargs.get("operator_kwargs", {})
         return super().__call__(price, *portfolio, factor_args=factor_args, **kwargs)
+
+
+class MergeTopDownSignal(SectionOperator):
+    """合并自上而下投资组合信号的算子"""
+    
+    def __init__(self, top_id_to_down_section:Dict[str, Optional[List[str]]], top_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        """初始化自上而下投资组合信号合并算子
+
+        Args:
+            top_id_to_down_section: 顶层信号的截面 ID 到底层信号截面的映射
+            top_ids: 顶层信号截面，为 None 时从 top_id_to_down_section 中推导
+            args: 参数集
+            config_file: 配置文件地址
+        """
+        if "DescriptorSection" not in args:
+            top_ids = sorted(top_ids or top_id_to_down_section)
+            DescriptorSection = [top_ids] + [top_id_to_down_section[iID] for iID in top_ids if iID in top_id_to_down_section]
+        else:
+            DescriptorSection = args["DescriptorSection"]
+        Arity = args.get("Arity", None) or len(DescriptorSection)
+        if Arity != len(DescriptorSection):
+            raise __QS_Error__(f"传入的入参数(Arity) {Arity} 和从 top_id_to_down_section 推导出的入参数 {len(DescriptorSection)} 不一致!")
+        Args = {"Name": "mergeTopDownSignal"} | args | {"DTMode": "多时点", "DataType": "double", "Arity": Arity, "DescriptorSection": DescriptorSection}
+        Args["ModelArgs"] = {"merged_top_id": sorted(set(top_id_to_down_section).intersection(top_ids))} | Args.get("ModelArgs", {})
+        return super().__init__(args=Args, config_file=config_file, **kwargs)
+
+    def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
+        Signal = pd.DataFrame(x[0], index=idt, columns=self.Args.DescriptorSection[0])
+        for iID in self.Args.DescriptorSection[0]:
+            if iID not in args["merged_top_id"]: continue
+            iIdx = args["merged_top_id"].index(iID)
+            iDownSignal = pd.DataFrame(x[iIdx+1], index=idt, columns=self.Args.DescriptorSection[iIdx+1])
+            iDownSignal = (Signal.pop(iID) * iDownSignal.T).T
+            Signal = Signal.add(iDownSignal, fill_value=0)
+        return Signal.reindex(columns=iid).values
+    
+    def __call__(self, top_signal:Factor, top_id_to_down_signal:Dict[str, Factor], factor_args:dict={}, **kwargs) -> SectionOperation:
+        factor_args = factor_args.copy()
+        Factors = [top_signal]
+        signal_top_ids = sorted(top_id_to_down_signal)
+        if not set(self.Args.ModelArgs["merged_top_id"]).issubset(signal_top_ids):
+            raise __QS_Error__(f"传入的顶层信号截面 {signal_top_ids} 不能完全覆盖算子定义时传入的顶层信号截面 {self.Args.ModelArgs['merged_top_id']}!")
+        Factors += [top_id_to_down_signal[iID] for iID in self.Args.ModelArgs['merged_top_id']]
+        return super().__call__(*Factors, factor_args=factor_args, **kwargs)

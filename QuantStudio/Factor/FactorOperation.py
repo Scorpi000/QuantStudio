@@ -42,7 +42,7 @@ class FactorOperator(__QS_Object__):
             if ("DataType" not in data) and (data.get("CompoundType", []) or data.get("MultiMapping", False)):
                 data["DataType"] = "object"
             return super().__init__(**data)
-
+    
     def __getstate__(self):
         state = self.__dict__.copy()
         if "calculate" in self.__dict__:
@@ -69,8 +69,7 @@ class FactorOperator(__QS_Object__):
             NewOperator.calculate = self.calculate
         return NewOperator
 
-    # ─── 序列化 / 反序列化 ───────────────────────────────────
-
+    # region 序列化 / 反序列化
     def _is_custom_calculate(self) -> bool:
         """判断 calculate 是否在实例上被替换过（非类继承）"""
         calculate = getattr(self, "calculate", None)
@@ -136,6 +135,7 @@ class FactorOperator(__QS_Object__):
         op = super().deserialize(data)
         cls._deserialize_calculate(op, data.get("calculate_ref"))
         return op
+    # endregion
     
     def _QS_validate(self, *x, **kwargs):
         Arity = len(x)

@@ -6,9 +6,8 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from QuantStudio.FactorDataBase.FactorOperation import PointOperation, TimeOperation, SectionOperation, PanelOperation
-from QuantStudio.FactorDataBase.FactorDB import DataFactor, Factorize
-from QuantStudio.FactorDataBase import FactorTools as fd
+from QuantStudio.Factor.FactorOperation import PointOperation, TimeOperation, SectionOperation, PanelOperation
+from QuantStudio.Factor.FactorDB import DataFactor, Factorize
 
 # 单点运算测试算子
 def TestPointOperationSingleDTSingleIDFun(f, idt, iid, x, args):

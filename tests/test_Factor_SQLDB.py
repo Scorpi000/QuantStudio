@@ -6,8 +6,8 @@
     * 元数据: 侧表元数据读写、级联操作、列注释
 
 使用方法:
-    * 运行全部测试: python tests/test_SQLDB.py
-    * 运行指定测试: python -m unittest tests.test_SQLDB.TestSQLDB.test_connect
+    * 运行全部测试: python tests/test_Factor_SQLDB.py
+    * 运行指定测试: python -m unittest tests.test_Factor_SQLDB.TestSQLDB.test_connect
     * 通过 TestSuite 指定测试 (取消文件末尾的注释并修改):
 
         Suite = unittest.TestSuite()
