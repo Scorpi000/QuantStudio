@@ -1,7 +1,7 @@
 # coding=utf-8
 """日期和时间的操作函数"""
 import datetime as dt
-from typing import List, Literal, Union
+from typing import List, Literal, Union, Optional
 
 import numpy as np
 import pandas as pd
@@ -322,6 +322,7 @@ def groupbyYear(s):
         MonthDay.append(iDT.strftime("%m-%d"))
     return pd.DataFrame({"Year": Year, "MonthDay": MonthDay, "Data": s.values}).set_index(["MonthDay", "Year"]).unstack()
 
+# region: 统一的时点序列变换
 def transformDateTime(dts: List[dt.datetime], freq:str="1m", target_day:Union[Literal["last", "first"], int]="last", exact:bool=False, postpone:bool=True, over_period:bool=True) -> List[dt.datetime]:
     """从给定的时点序列根据规则转换为特定的时点序列
 
@@ -395,7 +396,6 @@ def transformDateTime(dts: List[dt.datetime], freq:str="1m", target_day:Union[Li
         else:
             return _transform_by_period(dts, "y", n, target_day, exact, postpone, over_period)
 
-
 def _is_same_period(iDT: dt.datetime, refDT: dt.datetime, unit: str, n: int) -> bool:
     """判断两个时点是否属于同一个周期"""
     if unit == "w":
@@ -403,7 +403,6 @@ def _is_same_period(iDT: dt.datetime, refDT: dt.datetime, unit: str, n: int) -> 
         return (iDT.date() - refDT.date()).days == iDT.weekday() - refDT.weekday()
     else:
         return _get_period_key(iDT, unit, n) == _get_period_key(refDT, unit, n)
-
 
 def _get_period_key(iDT: dt.datetime, unit: str, n: int) -> int:
     """计算时点所属的周期序号（从 0 开始）"""
@@ -416,7 +415,6 @@ def _get_period_key(iDT: dt.datetime, unit: str, n: int) -> int:
     elif unit == "y":
         return iDT.year // n
 
-
 def _get_target_value(iDT: dt.datetime, unit: str, target: int) -> int:
     """获取时点在指定周期内的目标属性值"""
     if unit == "w":
@@ -425,7 +423,6 @@ def _get_target_value(iDT: dt.datetime, unit: str, target: int) -> int:
         return iDT.day
     elif unit == "y":
         return iDT.month * 100 + iDT.day
-
 
 def _transform_by_period(dts: List[dt.datetime], unit: str, n: int,
                           target: Union[int, None], exact: bool, postpone: bool,
@@ -507,7 +504,6 @@ def _transform_by_period(dts: List[dt.datetime], unit: str, n: int,
                     TargetDTs[-1] = iDT
     return TargetDTs
 
-
 def _build_natural_week_targets(dts_arr, n, target_weekday, postpone):
     """构建周频自然目标日期字符串列表（over_period=True）
 
@@ -526,7 +522,6 @@ def _build_natural_week_targets(dts_arr, n, target_weekday, postpone):
     step = dt.timedelta(7 * n)
     NaturalDTs = getDateTimeSeries(StartDT, EndDT, timedelta=step)
     return [iDT.strftime("%Y%m%d") for iDT in NaturalDTs]
-
 
 def _build_natural_month_targets(dts_arr, n, target_day):
     """构建月频自然目标日期字符串列表（over_period=True）"""
@@ -552,7 +547,6 @@ def _build_natural_month_targets(dts_arr, n, target_day):
         NaturalDTStrs.append(iDate.strftime("%Y%m%d"))
     return NaturalDTStrs
 
-
 def _build_natural_quarter_targets(dts_arr, n, target_day):
     """构建季频自然目标日期字符串列表（over_period=True）"""
     StartYear, StartMonth = dts_arr[0].year, dts_arr[0].month
@@ -577,7 +571,6 @@ def _build_natural_quarter_targets(dts_arr, n, target_day):
             iMonth -= 12
     return NaturalDTStrs
 
-
 def _build_natural_year_targets(dts_arr, n, target_day):
     """构建年频自然目标日期字符串列表（over_period=True）"""
     StartYear = dts_arr[0].year
@@ -598,6 +591,115 @@ def _build_natural_year_targets(dts_arr, n, target_day):
             iDate = dt.date(iYear, 12, 31)
         NaturalDTStrs.append(iDate.strftime("%Y%m%d"))
     return NaturalDTStrs
+# endregion
+
+# 回溯时点
+def _monthrange(year: int, month: int) -> int:
+    """返回指定年月的天数"""
+    if month == 12:
+        return (dt.date(year + 1, 1, 1) - dt.date(year, month, 1)).days
+    return (dt.date(year, month + 1, 1) - dt.date(year, month, 1)).days
+
+def lookbackDateTime(idt:Optional[dt.datetime], lookback:Union[Literal["today", "yesterday", "last_friday", "last_month_end"], str]="today", target_day:Union[Literal["exact", "last", "first"], int]="last") -> dt.datetime:
+    """给定时点 idt, 返回按照 lookback 和 target_day 规则回溯的时点
+
+    Args:
+        idt: 给定的起始时点
+        lookback: 回溯期, 预定义值："today", "yesterday", "last_friday", "last_month_end"；
+            或用数字+单位表示，比如："1d", "2w", "1m", "3q", "4y"。
+            预定义值和天("d")单位会忽略 target_day 参数。
+        target_day: 回溯后对具体的时点如何选择，比如 idt:2025-03-05, lookback:"1m",
+            * target_day="exact" 表示取 2025-02-05，如果该天不存在，则向前找第一个存在的日子
+            * target_day="first" 表示取 2025-02-01
+            * target_day="last" 表示取 2025-02-28
+            * target_day: int 表示取 2025-02-{target_day}，如果该天不存在，则向前找第一个存在的日子
+
+    Returns:
+        回溯后的时点
+    """
+    iDate = idt.date()
+    iTime = idt.time()
+    if lookback == "today":
+        return dt.datetime.combine(iDate, iTime)
+    elif lookback == "yesterday":
+        return dt.datetime.combine(iDate - dt.timedelta(days=1), iTime)
+    elif lookback == "last_friday":
+        days_since_fri = (iDate.weekday() - 4) % 7
+        return dt.datetime.combine(iDate - dt.timedelta(days=days_since_fri or 7), iTime)
+    elif lookback == "last_month_end":
+        first_of_month = iDate.replace(day=1)
+        return dt.datetime.combine(first_of_month - dt.timedelta(days=1), iTime)
+    import re
+    m = re.fullmatch(r"(\d+)([a-zA-Z]+)", lookback)
+    if not m:
+        raise ValueError(f"无法解析 lookback: {lookback}")
+    num = int(m.group(1))
+    unit = m.group(2).lower()
+    if unit in ("d", "day", "days"):
+        iDate -= dt.timedelta(days=num)
+    elif unit in ("w", "week", "weeks"):
+        iDate -= dt.timedelta(weeks=num)
+        if target_day == "first":
+            iDate -= dt.timedelta(days=iDate.weekday())
+        elif target_day == "last":
+            iDate += dt.timedelta(days=6 - iDate.weekday())
+        elif target_day != "exact" and not isinstance(target_day, int):
+            raise ValueError(f"无效的 target_day: {target_day}")
+    elif unit in ("m", "month", "months") or unit in ("q", "quarter", "quarters") or unit in ("y", "year", "years"):
+        if unit in ("m", "month", "months"):
+            delta_months = num
+        elif unit in ("q", "quarter", "quarters"):
+            delta_months = num * 3
+        else:
+            delta_months = num * 12
+        iYear, iMonth = idt.year, idt.month
+        iYear -= delta_months // 12
+        iMonth -= delta_months % 12
+        if iMonth < 1:
+            iYear -= 1
+            iMonth += 12
+        if unit in ("q", "quarter", "quarters"):
+            if target_day == "first":
+                iMonth = ((iMonth - 1) // 3) * 3 + 1
+                iDay = 1
+            elif target_day == "last":
+                iMonth = ((iMonth - 1) // 3) * 3 + 3
+                iDay = _monthrange(iYear, iMonth)
+            elif target_day == "exact":
+                iDay = min(idt.day, _monthrange(iYear, iMonth))
+            elif isinstance(target_day, int):
+                iDay = min(target_day, _monthrange(iYear, iMonth))
+            else:
+                raise ValueError(f"无效的 target_day: {target_day}")
+        elif unit in ("y", "year", "years"):
+            if target_day == "first":
+                iMonth = 1
+                iDay = 1
+            elif target_day == "last":
+                iMonth = 12
+                iDay = 31
+            elif target_day == "exact":
+                iDay = min(idt.day, _monthrange(iYear, iMonth))
+            elif isinstance(target_day, int):
+                iDay = min(target_day, _monthrange(iYear, iMonth))
+            else:
+                raise ValueError(f"无效的 target_day: {target_day}")
+        else:
+            iMaxDay = _monthrange(iYear, iMonth)
+            if target_day == "first":
+                iDay = 1
+            elif target_day == "last":
+                iDay = iMaxDay
+            elif target_day == "exact":
+                iDay = min(idt.day, iMaxDay)
+            elif isinstance(target_day, int):
+                iDay = min(target_day, iMaxDay)
+            else:
+                raise ValueError(f"无效的 target_day: {target_day}")
+        iDate = dt.date(iYear, iMonth, iDay)
+    else:
+        raise ValueError(f"不支持的 lookback 单位: {unit}")
+    return dt.datetime.combine(iDate, iTime)
 
 
 if __name__=="__main__":
