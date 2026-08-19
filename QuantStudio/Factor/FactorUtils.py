@@ -1,10 +1,10 @@
 # coding=utf-8
 import os
-import re
 import datetime as dt
 import requests
 import tempfile
-from typing import Literal, Optional, Callable, Any, List, Tuple
+from functools import partial
+from typing import Literal, Optional, Callable, Any, List, Tuple, Dict
 
 import numpy as np
 import pandas as pd
@@ -17,6 +17,7 @@ from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 from QuantStudio.Tools.DataTypeFun import IntOrInf
+from QuantStudio.Tools.MacroFun import cleanMacroPublDate
 
 
 # 给定 URL 获取库信息文件
@@ -290,7 +291,6 @@ def _QS_calcData_NarrowTable(raw_data, factor_names, ids, dts, data_type, args={
     if not Data: return Panel(items=factor_names, major_axis=dts, minor_axis=ids)
     Data = Panel(Data, items=factor_names)
     return adjustDataDTID(Data, args.get("LookBack", 0), factor_names, ids, dts, args.get("OnlyStartLookBack", False), args.get("OnlyLookBackNontarget", False), args.get("OnlyLookBackDT", False), logger=kwargs.get("logger", None))
-
 
 class SQLQueryTable(FactorTable):
     """基于 SQL 查询的因子表"""
@@ -2421,3 +2421,79 @@ class SQL_FinancialTable(SQL_Table):
         for iFactorName in factor_names:
             Data[iFactorName] = self._calcData(raw_data.loc[:, ["QS_ID", "AnnDate", "ReportDate", "AdjustType", "ReportPeriod", iFactorName]], Periods, iFactorName, ids, dts, CalcType, ReportDate, IgnoreMissing, args=args)
         return Panel(Data, items=factor_names, major_axis=dts, minor_axis=ids)
+
+
+class SQL_MacroTable(SQL_Table):
+    """基于 SQL 数据库表的宏观因子表
+    一个字段标识 ID, 一个字段标识截止日期字段, 一个字段标识公告日期字段, 表示数据发布的日期, 其余字段为因子
+    """
+    class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
+        TableType: Literal["MacroTable"] = Field(default="MacroTable", title="因子表类型", frozen=True, description="""只能在 getTable 时传入，因子表创建后不可改变, 用于指明形成的因子表的类型""")
+        PublDTField: Optional[str] = Field(default=None, title="公告时点字段", frozen=True)
+        PublDTCleanFunc: Optional[Callable] = Field(default=partial(cleanMacroPublDate, detect_lag_outlier=False), title="公告时点修正算子", frozen=True, description="清洗宏观数据的发布日并修正的函数，输入参数为：df: 包含 ID, EndDate, PublDate 的 DataFrame；cutoff_date: {指标ID: datetime}, 截止日早于此日期的记录直接视为不可靠")
+        CutOffDate: Dict[str, dt.datetime] = Field(default={}, title="可靠公告时点", frozen=True, description="作为 PublDTCleanFunc 的第二个入参")
+        LookBack: IntOrInf = Field(default=0, title="回溯天数", frozen=True, ge=0, description="缺失填充回溯的天数, 0 表示不回溯填充")
+        OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True, repr=False, description="如果为 True, 表示只对提取数据的第一个时点进行缺失填充, 之后的时点不填充")
+        OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True, repr=False, description="如果为 True, 表示只用不在提取时点序列中的数据进行缺失填充")
+        OnlyLookBackDT: bool = Field(default=False, title="只回溯时点", frozen=True, repr=False, description="如果为 True, 表示所有因子统一沿着时点字段进行回溯填充, 不单独填充")
+        MultiMapping: bool = Field(default=False, title="多重映射", frozen=True, description="是否为高维数据, 即时点和 ID 两个维度无法唯一索引单个数据, 默认形成的数据在单个时点单个 ID 处以 list 形式表达")
+        Operator: Optional[Callable] = Field(default=None, title="算子", frozen=True, description="对于单个时点单个 ID 处的数据 apply 的函数 f(x), 其中 x 为 Series, 默认值 None 表示使用 lambda x: x.tolist()")
+        OperatorDataType: Literal["object", "double", "string"] = Field(default="object", title="算子数据类型", frozen=True, description="Operator 参数指定的函数输出值的数据类型")
+        
+        def __init__(self, /, _owner=None, _logger=None, **data: Any) -> None:
+            Owner = _owner
+            FactorInfo = Owner._FactorInfo
+            # 解析公告时点字段
+            Fields = [None] + FactorInfo[FactorInfo["FieldType"].str.lower().str.contains("date")].index.tolist()# 所有的时点字段列表
+            if "PublDTField" not in data:
+                PublDTField = FactorInfo["DBFieldName"][FactorInfo["FieldType"]=="AnnDate"]
+                if PublDTField.shape[0]==0: data["PublDTField"] = None
+                else: data["PublDTField"] = PublDTField.index[0]
+            elif data["PublDTField"] not in Fields:
+                raise __QS_Error__(f"字段 {data['PublDTField']} 不能设置为公告时点字段，可选项为：{Fields}")
+            return super().__init__(_owner=_owner, _logger=_logger, **data)
+
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        EndDT = dts[-1] if dts else None
+        EndDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("DTField", self._QSArgs.DTField), "DBFieldName"]
+        AnnDTField = args.get("PublDTField", self._QSArgs.PublDTField)
+        if AnnDTField is not None: AnnDTField = self._DBTableName+"."+self._FactorInfo.loc[AnnDTField, "DBFieldName"]
+        IgnoreTime = args.get("IgnoreTime", self._QSArgs.IgnoreTime)
+        PublDTCleanFunc = args.get("PublDTCleanFunc", self._QSArgs.PublDTCleanFunc)
+        # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
+        SQLStr = "SELECT "+self._getIDField()+" AS ID, "
+        SQLStr += (AnnDTField if AnnDTField else EndDTField) + " AS PublDate, "
+        SQLStr += EndDTField+" AS EndDate, "
+        FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
+        SQLStr += FieldSQLStr+" "
+        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
+        SQLStr += "WHERE "+EndDTField+" IS NOT NULL "
+        if (EndDT is not None) and (PublDTCleanFunc is None):
+            DTFormat = self._DTFormat if IgnoreTime else self._DTFormat_WithTime
+            SQLStr += "AND "+EndDTField+"<="+EndDT.strftime(DTFormat)+" "
+        SQLStr += self._genIDSQLStr(ids)+" "
+        SQLStr += self._genConditionSQLStr(use_main_table=True)+" "
+        SQLStr += "ORDER BY ID, "+EndDTField+", "+AnnDTField
+        RawData = self._FactorDB.fetchall(SQLStr)
+        if not RawData: return pd.DataFrame(columns=["QS_DT", "QS_ID"]+factor_names)
+        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "PublDate", "EndDate"]+factor_names)
+        RawData["PublDate"] = self.__QS_adjustDT__(RawData["PublDate"])
+        RawData["EndDate"] = self.__QS_adjustDT__(RawData["EndDate"])
+        RawData["ID"] = self.__QS_restoreID__(RawData["ID"])
+        RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
+        for iFactorName in factor_names:
+            if self.__QS_identifyDataType__(self._FactorInfo.loc[iFactorName, "DataType"])=="double":
+                RawData[iFactorName] = RawData[iFactorName].astype(float)
+        if PublDTCleanFunc:
+            RawData = PublDTCleanFunc(RawData, cutoff_date=args.get("CutOffDate", self._QSArgs.CutOffDate))
+            RawData["QS_DT"] = RawData.loc[:, ["final_PublDate", "EndDate"]].max(axis=1)
+        else:
+            RawData["QS_DT"] = RawData.loc[:, ["PublDate", "EndDate"]].max(axis=1)
+        return RawData.rename(columns={"ID": "QS_ID"}).loc[:, ["QS_DT", "QS_ID"]+factor_names]
+
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts, args={}):
+        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
+        Args = self._QSArgs.to_dict(repr=False)
+        Args.update(args)
+        ErrorFmt = {"DuplicatedIndex":  "%s 的表 %s 无法保证唯一性 : {Error}, 可以尝试将 '多重映射' 参数取值调整为 True" % (self._FactorDB.Name, self.Name)}
+        return _QS_calcData_WideTable(raw_data, factor_names, ids, dts, DataType, args=Args, logger=self._QS_Logger, error_fmt=ErrorFmt)

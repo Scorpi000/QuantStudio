@@ -578,7 +578,17 @@ class MakeStrategy(MakeAccount):
 
 
 def calcAccountNV(account: Factor, init_cash: float=1e6, descriptor_ids:Optional[List[str]]=None, factor_args:dict={}) -> Factor:
-    """从账户因子中计算净值因子"""
+    """从账户因子中计算净值因子
+    
+    Args:
+        account: 策略账户因子
+        init_cash: 初始资金
+        descriptor_ids: 策略账户因子的截面 ID 序列
+        factor_args: 构建净值因子的其他参数
+
+    Returns:
+        策略账户净值因子
+    """
     Amount = fo.Fetch(pos="Amount")(account)
     Cash = fo.Fetch(pos="Cash")(account)
     NV = (fo.Aggregate(aggr_func=np.nansum, descriptor_ids=descriptor_ids, dtype="double")(Amount) + fo.Aggregate(aggr_func=np.nanmean, descriptor_ids=descriptor_ids, dtype="double")(Cash)) / init_cash
@@ -587,7 +597,15 @@ def calcAccountNV(account: Factor, init_cash: float=1e6, descriptor_ids:Optional
     return rename(NV, factor_name=FactorName, factor_args=factor_args)
 
 def calcAccountPortfolio(account: Factor, factor_args:dict={}) -> Factor:
-    """从账户因子中计算投资组合因子"""
+    """从账户因子中计算投资组合因子
+    
+    Args:
+        account: 策略账户因子
+        factor_args: 构建投资组合因子的其他参数
+
+    Returns:
+        策略账户投资组合因子
+    """
     Amount = fo.Fetch(pos="Amount")(account)
     Cash = fo.Fetch(pos="Cash")(account)
     AccountValue = fo.Aggregate(aggr_func=np.nansum, descriptor_ids=None, dtype="double")(Amount) + fo.Aggregate(aggr_func=np.nanmean, descriptor_ids=None, dtype="double")(Cash)

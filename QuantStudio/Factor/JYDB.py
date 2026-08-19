@@ -14,7 +14,7 @@ from QuantStudio import __QS_MainPath__, __QS_ConfigPath__
 from QuantStudio.Core import __QS_Error__
 from QuantStudio.Core.QSObject import Panel, QSSQLObject
 from QuantStudio.Factor.FactorDB import FactorDB
-from QuantStudio.Factor.FactorUtils import getInfoFile, adjustDataDTID, SQL_Table, SQL_FeatureTable, SQL_WideTable, SQL_MappingTable, SQL_NarrowTable, SQL_TimeSeriesTable, SQL_ConstituentTable, SQL_FinancialTable
+from QuantStudio.Factor.FactorUtils import getInfoFile, adjustDataDTID, SQL_Table, SQL_FeatureTable, SQL_WideTable, SQL_MappingTable, SQL_NarrowTable, SQL_TimeSeriesTable, SQL_ConstituentTable, SQL_FinancialTable, SQL_MacroTable
 from QuantStudio.Tools.DataTypeFun import dict2id
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 
@@ -286,6 +286,13 @@ class _ConstituentTable(_JY_SQL_Table, SQL_ConstituentTable):
         return self._GroupMapping
 
 class _FinancialTable(_JY_SQL_Table, SQL_FinancialTable):
+    __doc__ = SQL_FinancialTable.__doc__
+
+    def __init__(self, fdb, args={}, **kwargs):
+        Name = args["Name"]
+        return super().__init__(fdb=fdb, args=args, table_info=fdb._TableInfo.loc[Name], factor_info=fdb._FactorInfo.loc[Name], security_info=fdb._SecurityInfo, exchange_info=fdb._ExchangeInfo, **kwargs)
+
+class _MacroTable(_JY_SQL_Table, SQL_MacroTable):
     __doc__ = SQL_FinancialTable.__doc__
 
     def __init__(self, fdb, args={}, **kwargs):
