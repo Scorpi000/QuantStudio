@@ -240,13 +240,18 @@ class FactorTable(Node):
             Cache.writeRawData(iKey, {"RawData": iRawData}, pid_ids, id_col="QS_ID", if_exists="replace")
 
     def init_compute(self, path: List[str], init_data: FactorInitData, context: FactorContext) -> List[Any]:
-        PrepareData = {
-            "FactorNames": [],
-            "DTRange": init_data.DTRange,
-            "SectionIDs": init_data.SectionIDs,
-            "Args": self._QSArgs.to_dict(repr=False)
-        }
-        _, PrepareData = context.PrepareNodeDict.setdefault(self.PrepareID, (self.QSID, PrepareData))
+        if self.PrepareID in context.PrepareNodeDict:
+            _, PrepareData = context.PrepareNodeDict[self.PrepareID]
+            if PrepareData["SectionIDs"] is not init_data.SectionIDs:
+                PrepareData["SectionIDs"] = sorted(set(PrepareData["SectionIDs"] + init_data.SectionIDs))
+        else:
+            PrepareData = {
+                "FactorNames": [],
+                "DTRange": init_data.DTRange,
+                "SectionIDs": init_data.SectionIDs,
+                "Args": self._QSArgs.to_dict(repr=False)
+            }
+            context.PrepareNodeDict[self.PrepareID] = (self.QSID, PrepareData)
         if init_data.SubFactorName not in PrepareData["FactorNames"]:
             PrepareData["FactorNames"].append(init_data.SubFactorName)
         PrepareData["DTRange"] = (min(init_data.DTRange[0], PrepareData["DTRange"][0]), max(init_data.DTRange[1], PrepareData["DTRange"][1]))
