@@ -16,7 +16,7 @@ from QuantStudio.Factor.FactorTable import FactorTable
 from QuantStudio.Tools.DateTimeFun import getDateTimeSeries, getDateSeries
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.SQLDBFun import genSQLInCondition
-from QuantStudio.Tools.DataTypeFun import IntOrInf
+from QuantStudio.Tools.DataTypeFun import IntOrInf, shiftDataFrame
 from QuantStudio.Tools.MacroFun import cleanMacroPublDate
 
 
@@ -2432,6 +2432,7 @@ class SQL_MacroTable(SQL_Table):
         PublDTField: Optional[str] = Field(default=None, title="公告时点字段", frozen=True)
         PublDTCleanFunc: Optional[Callable] = Field(default=partial(cleanMacroPublDate, detect_lag_outlier=False), title="公告时点修正算子", frozen=True, description="清洗宏观数据的发布日并修正的函数，输入参数为：df: 包含 ID, EndDate, PublDate 的 DataFrame；cutoff_date: {指标ID: datetime}, 截止日早于此日期的记录直接视为不可靠")
         CutOffDate: Dict[str, dt.datetime] = Field(default={}, title="可靠公告时点", frozen=True, description="作为 PublDTCleanFunc 的第二个入参")
+        LagPeriod: Optional[int] = Field(default=None, title="滞后期数", frozen=True, description="强制滞后的期数，如果该值不为 None，则将忽略发布日信息，直接按照滞后期填充数据")
         LookBack: IntOrInf = Field(default=0, title="回溯天数", frozen=True, ge=0, description="缺失填充回溯的天数, 0 表示不回溯填充")
         OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True, repr=False, description="如果为 True, 表示只对提取数据的第一个时点进行缺失填充, 之后的时点不填充")
         OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True, repr=False, description="如果为 True, 表示只用不在提取时点序列中的数据进行缺失填充")
@@ -2453,14 +2454,49 @@ class SQL_MacroTable(SQL_Table):
                 raise __QS_Error__(f"字段 {data['PublDTField']} 不能设置为公告时点字段，可选项为：{Fields}")
             return super().__init__(_owner=_owner, _logger=_logger, **data)
 
+    def __init__(self, fdb, args={}, table_info=None, factor_info=None, security_info=None, exchange_info=None, **kwargs):
+        super().__init__(fdb=fdb, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, args=args, **kwargs)
+        self._QS_PrepareIgnoredArgs += ("LookBack", "OnlyStartLookBack", "OnlyLookBackNontarget", "OnlyLookBackDT", "Operator", "OperatorDataType", "MultiMapping")
+
+    def _prepareRawData_WithLagPeriod(self, factor_names, ids, dts, args={}):
+        EndDT = dts[-1] if dts else None
+        EndDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("DTField", self._QSArgs.DTField), "DBFieldName"]
+        # 形成 SQL 语句, ID, 公告日期, 截止期, 因子
+        SQLStr = "SELECT "+self._getIDField()+" AS ID, "
+        SQLStr += EndDTField+" AS QS_DT, "
+        FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
+        SQLStr += FieldSQLStr+" "
+        SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
+        SQLStr += "WHERE "+EndDTField+" IS NOT NULL "
+        if EndDT is not None:
+            DTFormat = self._DTFormat if args.get("IgnoreTime", self._QSArgs.IgnoreTime) else self._DTFormat_WithTime
+            SQLStr += "AND "+EndDTField+"<="+EndDT.strftime(DTFormat)+" "
+        SQLStr += self._genIDSQLStr(ids)+" "
+        SQLStr += self._genConditionSQLStr(use_main_table=True)+" "
+        SQLStr += "ORDER BY ID, "+EndDTField
+        RawData = self._FactorDB.fetchall(SQLStr)
+        if not RawData: return pd.DataFrame(columns=["QS_DT", "QS_ID"]+factor_names)
+        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["QS_ID", "QS_DT"]+factor_names)
+        RawData["QS_DT"] = self.__QS_adjustDT__(RawData["QS_DT"])
+        RawData["QS_ID"] = self.__QS_restoreID__(RawData["QS_ID"])
+        RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
+        for iFactorName in factor_names:
+            if self.__QS_identifyDataType__(self._FactorInfo.loc[iFactorName, "DataType"])=="double":
+                RawData[iFactorName] = RawData[iFactorName].astype(float)
+        # 调整滞后期
+        LagPeriod = args.get("LagPeriod", self._QSArgs.LagPeriod)
+        RawData = RawData.groupby(by=["QS_ID"])[RawData.columns].apply(lambda df: shiftDataFrame(df, target_col="QS_DT", periods=LagPeriod))
+        return RawData.loc[:, ["QS_DT", "QS_ID"]+factor_names]
+
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        if args.get("LagPeriod", self._QSArgs.LagPeriod) is not None: return self._prepareRawData_WithLagPeriod(factor_names=factor_names, ids=ids, dts=dts, args=args)
         EndDT = dts[-1] if dts else None
         EndDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("DTField", self._QSArgs.DTField), "DBFieldName"]
         AnnDTField = args.get("PublDTField", self._QSArgs.PublDTField)
         if AnnDTField is not None: AnnDTField = self._DBTableName+"."+self._FactorInfo.loc[AnnDTField, "DBFieldName"]
         IgnoreTime = args.get("IgnoreTime", self._QSArgs.IgnoreTime)
         PublDTCleanFunc = args.get("PublDTCleanFunc", self._QSArgs.PublDTCleanFunc)
-        # 形成 SQL 语句, ID, 公告日期, 报告期, 报表类型, 财务因子
+        # 形成 SQL 语句, ID, 公告日期, 截止期, 因子
         SQLStr = "SELECT "+self._getIDField()+" AS ID, "
         SQLStr += (AnnDTField if AnnDTField else EndDTField) + " AS PublDate, "
         SQLStr += EndDTField+" AS EndDate, "
@@ -2473,7 +2509,8 @@ class SQL_MacroTable(SQL_Table):
             SQLStr += "AND "+EndDTField+"<="+EndDT.strftime(DTFormat)+" "
         SQLStr += self._genIDSQLStr(ids)+" "
         SQLStr += self._genConditionSQLStr(use_main_table=True)+" "
-        SQLStr += "ORDER BY ID, "+EndDTField+", "+AnnDTField
+        SQLStr += "ORDER BY ID, "+EndDTField
+        if AnnDTField is not None: SQLStr += ", "+AnnDTField
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["QS_DT", "QS_ID"]+factor_names)
         RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "PublDate", "EndDate"]+factor_names)

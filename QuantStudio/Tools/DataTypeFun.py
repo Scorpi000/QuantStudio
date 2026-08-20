@@ -14,7 +14,7 @@ import h5py
 from pydantic import BeforeValidator
 
 
-# ---------------------特殊类型--------------------------
+# region: 特殊类型
 def validate_int_or_inf(v):
     if isinstance(v, bool):# 排除 bool（bool 是 int 子类）
         raise ValueError('bool 不被允许')
@@ -24,9 +24,10 @@ def validate_int_or_inf(v):
         return np.inf
     raise ValueError(f'必须是 int 或 inf, 得到 {v}')
 IntOrInf = Annotated[Union[int, float], BeforeValidator(validate_int_or_inf)]
+# endregion
 
-# ---------------------嵌套字典--------------------------
-# 拷贝嵌套字典, 
+# region: 嵌套字典
+# 拷贝嵌套字典
 def copyNestedDict(nested_dict):
     Copy = {}
     for iKey in nested_dict:
@@ -169,8 +170,9 @@ def swapaxesNestedDictDataFrame(nested_dict, axis1, axis2):
         for iKeyList, iVal in traverseNestedDict(NewDict, axis=Depth-3):
             NewDict = setNestedDictValue(NewDict, iKeyList, pd.DataFrame(iVal).T.sort_index(axis=0))
     return NewDict
+# endregion
 
-# ---------------------对象唯一ID--------------------------
+# region: 对象唯一ID
 def serialize_function(func: Callable, visited: Set[int]) -> Dict[str, Any]:
     """
     序列化函数的核心特征：
@@ -331,8 +333,9 @@ def dict2id(d):
         separators=(',', ':')
     )
     return hashlib.sha256(json_str.encode('utf-8')).hexdigest()
+# endregion
 
-# ------------ 字符串处理 ------------------
+# region: 字符串处理
 def formatPartial(text: str, values: dict) -> str:
     """
     部分格式化, 只替换 text 中 values key 指定的占位符，其他占位符保持原样。
@@ -364,6 +367,26 @@ def formatPartial(text: str, values: dict) -> str:
     # 正则匹配 {name} 或 {name:格式}
     pattern = r'\{([a-zA-Z_][a-zA-Z0-9_]*)(:[^\}]+)?\}'
     return re.sub(pattern, replacer, text)
+# endregion
+
+# region: DataFrame 相关
+def shiftDataFrame(df, target_col, periods=1, dropna=True, ascending=True, ruler=None):
+    if not ruler:
+        Vals = sorted(set(df[target_col].dropna().tolist()), reverse=(not ascending))
+    else:
+        Vals = sorted(ruler, reverse=(not ascending))
+    if periods>=0:
+        Mapping = {Vals[i]: Vals[i+periods] for i in range(len(Vals)-periods)}
+    else:
+        Mapping = {Vals[i]: Vals[i+periods] for i in range(abs(periods), len(Vals))}
+    df[target_col] = df[target_col].replace(Mapping).where(df[target_col].isin(Mapping), None)
+    if dropna:
+        return df[df[target_col].notnull()]
+    else:
+        df[df[target_col].isnull()] = None
+        return df
+# endregion
+
 
 if __name__ == "__main__1":
     Bar2 = pd.DataFrame(np.random.randn(3,2), index=["中文", "b2", "b3"], columns=["中文", "我是个例子"])
@@ -445,4 +468,3 @@ if __name__ == "__main__":
     df2 = df1.copy()
     print(serialize_object(df1, visited=set()))
     print(serialize_object(df2, visited=set()))
-
