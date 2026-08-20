@@ -4,7 +4,7 @@ import datetime as dt
 import requests
 import tempfile
 from functools import partial
-from typing import Literal, Optional, Callable, Any, List, Tuple, Dict
+from typing import Literal, Optional, Callable, Any, List, Tuple, Dict, Union
 
 import numpy as np
 import pandas as pd
@@ -778,7 +778,7 @@ class SQL_WideTable(SQL_Table):
         MultiMapping: bool = Field(default=False, title="多重映射", frozen=True, description="是否为高维数据, 即时点和 ID 两个维度无法唯一索引单个数据, 默认形成的数据在单个时点单个 ID 处以 list 形式表达")
         Operator: Optional[Callable] = Field(default=None, title="算子", frozen=True, description="对于单个时点单个 ID 处的数据 apply 的函数 f(x), 其中 x 为 Series, 默认值 None 表示使用 lambda x: x.tolist()")
         OperatorDataType: Literal["object", "double", "string"] = Field(default="object", title="算子数据类型", frozen=True, description="Operator 参数指定的函数输出值的数据类型")
-        AdditionalFields: list[str] = Field(default=[], title="附加字段", frozen=True, repr=False, description="传递个 Operator 指定的函数的额外字段数据, 如果非空, 则上述算子为 f(x), 其中 x 为 DataFrame, 其中第一个 column 为目标因子, 其余 column 为附加字段")
+        AdditionalFields: List[str] = Field(default=[], title="附加字段", frozen=True, repr=False, description="传递给 Operator 指定的函数的额外字段数据, 如果非空, 则上述算子为 f(x), 其中 x 为 DataFrame, 其中第一个 column 为目标因子, 其余 column 为附加字段")
         PeriodLookBack: Optional[int] = Field(default=None, title="回溯期数", repr=False, frozen=True)
         RawLookBack: float = Field(default=0, title="原始值回溯天数", repr=False, frozen=True)
     
@@ -2423,6 +2423,25 @@ class SQL_FinancialTable(SQL_Table):
         return Panel(Data, items=factor_names, major_axis=dts, minor_axis=ids)
 
 
+def _MacroPeriodOperator_Diff(df):
+    TargetFactor = df.columns[2]
+    df[TargetFactor] = df[TargetFactor].diff()
+    return df
+
+def _MacroPeriodOperator_YoY(df):
+    TargetFactor = df.columns[2]
+    s = df.set_index(["EndDate"])[TargetFactor]
+    # 用去年同期日期去原序列中取值，若缺失则用前一个有效值填充（按日期顺序）
+    PrevValues = s.reindex(s.index - pd.DateOffset(years=1), method='ffill')
+    # 计算同比变化率
+    df[TargetFactor] = (s - PrevValues) / PrevValues.abs()
+    return df
+
+def _MacroPeriodOperator_PoP(df):
+    TargetFactor = df.columns[2]
+    df[TargetFactor] = df[TargetFactor].diff() / df[TargetFactor].shift(1).abs()
+    return df
+
 class SQL_MacroTable(SQL_Table):
     """基于 SQL 数据库表的宏观因子表
     一个字段标识 ID, 一个字段标识截止日期字段, 一个字段标识公告日期字段, 表示数据发布的日期, 其余字段为因子
@@ -2430,9 +2449,11 @@ class SQL_MacroTable(SQL_Table):
     class __QS_ArgClass__(SQL_Table.__QS_ArgClass__):
         TableType: Literal["MacroTable"] = Field(default="MacroTable", title="因子表类型", frozen=True, description="""只能在 getTable 时传入，因子表创建后不可改变, 用于指明形成的因子表的类型""")
         PublDTField: Optional[str] = Field(default=None, title="公告时点字段", frozen=True)
-        PublDTCleanFunc: Optional[Callable] = Field(default=partial(cleanMacroPublDate, detect_lag_outlier=False), title="公告时点修正算子", frozen=True, description="清洗宏观数据的发布日并修正的函数，输入参数为：df: 包含 ID, EndDate, PublDate 的 DataFrame；cutoff_date: {指标ID: datetime}, 截止日早于此日期的记录直接视为不可靠")
+        PublDTCleanFunc: Optional[Callable] = Field(default=partial(cleanMacroPublDate, detect_lag_outlier=False), title="公告时点修正算子", frozen=True, description="清洗宏观数据的发布日并修正的函数，输入参数为：df: 包含 ID, EndDate, PublDate 的 DataFrame；cutoff_date: {指标ID: datetime}, 截止日早于此日期的记录直接视为不可靠。该函数返回的 DataFrame 须增加 final_PublDate 列作为最终修正的发布日")
         CutOffDate: Dict[str, dt.datetime] = Field(default={}, title="可靠公告时点", frozen=True, description="作为 PublDTCleanFunc 的第二个入参")
         LagPeriod: Optional[int] = Field(default=None, title="滞后期数", frozen=True, description="强制滞后的期数，如果该值不为 None，则将忽略发布日信息，直接按照滞后期填充数据")
+        PeriodOperator: Optional[Union[Literal["Diff", "YoY", "PoP"], Callable]] = Field(default=None, title="多期调整算子", frozen=True, description="""对于单个 ID 处的数据 apply 的函数 f(x), 其中 x 为 DataFrame(columns=["ID", "EndDate", 目标因子, ...]), 返回 DataFrame(columns=["ID", "EndDate", 目标因子]), 用于实现前后两期的变化率，同比等计算""")
+        AdditionalFields: List[str] = Field(default=[], title="附加字段", frozen=True, repr=False, description="传递给 PeriodOperator 指定的函数的额外字段数据")
         LookBack: IntOrInf = Field(default=0, title="回溯天数", frozen=True, ge=0, description="缺失填充回溯的天数, 0 表示不回溯填充")
         OnlyStartLookBack: bool = Field(default=False, title="只起始日回溯", frozen=True, repr=False, description="如果为 True, 表示只对提取数据的第一个时点进行缺失填充, 之后的时点不填充")
         OnlyLookBackNontarget: bool = Field(default=False, title="只回溯非目标日", frozen=True, repr=False, description="如果为 True, 表示只用不在提取时点序列中的数据进行缺失填充")
@@ -2458,13 +2479,29 @@ class SQL_MacroTable(SQL_Table):
         super().__init__(fdb=fdb, table_info=table_info, factor_info=factor_info, security_info=security_info, exchange_info=exchange_info, args=args, **kwargs)
         self._QS_PrepareIgnoredArgs += ("LookBack", "OnlyStartLookBack", "OnlyLookBackNontarget", "OnlyLookBackDT", "Operator", "OperatorDataType", "MultiMapping")
 
+    def _adjustRawData(self, raw_data, factor_names, args={}):
+        AdditionalFields = args.get("AdditionalFields", self._QSArgs.AdditionalFields)
+        PeriodOperator = args.get("PeriodOperator", self._QSArgs.PeriodOperator)
+        if isinstance(PeriodOperator, str):
+            if PeriodOperator=="Diff": PeriodOperator = _MacroPeriodOperator_Diff
+            elif PeriodOperator=="YoY": PeriodOperator = _MacroPeriodOperator_YoY
+            elif PeriodOperator=="PoP": PeriodOperator = _MacroPeriodOperator_PoP
+            else: raise __QS_Error__(f"不支持的多期调整算子: {PeriodOperator}")
+        if PeriodOperator is not None:
+            for iFactorName in factor_names:
+                iAdjustedData = raw_data.groupby(by=["ID"])[["ID", "EndDate", iFactorName] + AdditionalFields].apply(PeriodOperator).reset_index(drop=True)
+                raw_data = pd.merge(raw_data, iAdjustedData, how="left", left_on=["ID", "EndDate"], right_on=["ID", "EndDate"], suffixes=("_raw", ""))
+                raw_data.pop(iFactorName + "_raw")
+        return raw_data
+
     def _prepareRawData_WithLagPeriod(self, factor_names, ids, dts, args={}):
+        FactorNames = list(set(factor_names).union(args.get("AdditionalFields", self._QSArgs.AdditionalFields)))
         EndDT = dts[-1] if dts else None
         EndDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("DTField", self._QSArgs.DTField), "DBFieldName"]
         # 形成 SQL 语句, ID, 公告日期, 截止期, 因子
         SQLStr = "SELECT "+self._getIDField()+" AS ID, "
-        SQLStr += EndDTField+" AS QS_DT, "
-        FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
+        SQLStr += EndDTField+" AS EndDate, "
+        FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(FactorNames)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
         SQLStr += "WHERE "+EndDTField+" IS NOT NULL "
@@ -2476,20 +2513,23 @@ class SQL_MacroTable(SQL_Table):
         SQLStr += "ORDER BY ID, "+EndDTField
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["QS_DT", "QS_ID"]+factor_names)
-        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["QS_ID", "QS_DT"]+factor_names)
-        RawData["QS_DT"] = self.__QS_adjustDT__(RawData["QS_DT"])
-        RawData["QS_ID"] = self.__QS_restoreID__(RawData["QS_ID"])
-        RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
-        for iFactorName in factor_names:
+        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "EndDate"]+FactorNames)
+        RawData["EndDate"] = self.__QS_adjustDT__(RawData["EndDate"])
+        RawData["ID"] = self.__QS_restoreID__(RawData["ID"])
+        RawData = self._adjustRawDataByRelatedField(RawData, FactorNames)
+        for iFactorName in FactorNames:
             if self.__QS_identifyDataType__(self._FactorInfo.loc[iFactorName, "DataType"])=="double":
                 RawData[iFactorName] = RawData[iFactorName].astype(float)
+        # 调整数据
+        RawData = self._adjustRawData(RawData, factor_names=factor_names, args=args)
         # 调整滞后期
         LagPeriod = args.get("LagPeriod", self._QSArgs.LagPeriod)
-        RawData = RawData.groupby(by=["QS_ID"])[RawData.columns].apply(lambda df: shiftDataFrame(df, target_col="QS_DT", periods=LagPeriod))
-        return RawData.loc[:, ["QS_DT", "QS_ID"]+factor_names]
+        RawData = RawData.groupby(by=["ID"])[RawData.columns].apply(lambda df: shiftDataFrame(df, target_col="EndDate", periods=LagPeriod))
+        return RawData.rename(columns={"ID": "QS_ID", "EndDate": "QS_DT"}).loc[:, ["QS_DT", "QS_ID"]+factor_names]
 
     def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
         if args.get("LagPeriod", self._QSArgs.LagPeriod) is not None: return self._prepareRawData_WithLagPeriod(factor_names=factor_names, ids=ids, dts=dts, args=args)
+        FactorNames = list(set(factor_names).union(args.get("AdditionalFields", self._QSArgs.AdditionalFields)))
         EndDT = dts[-1] if dts else None
         EndDTField = self._DBTableName+"."+self._FactorInfo.loc[args.get("DTField", self._QSArgs.DTField), "DBFieldName"]
         AnnDTField = args.get("PublDTField", self._QSArgs.PublDTField)
@@ -2500,7 +2540,7 @@ class SQL_MacroTable(SQL_Table):
         SQLStr = "SELECT "+self._getIDField()+" AS ID, "
         SQLStr += (AnnDTField if AnnDTField else EndDTField) + " AS PublDate, "
         SQLStr += EndDTField+" AS EndDate, "
-        FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(factor_names)
+        FieldSQLStr, SETableJoinStr = self._genFieldSQLStr(FactorNames)
         SQLStr += FieldSQLStr+" "
         SQLStr += self._genFromSQLStr(setable_join_str=SETableJoinStr)+" "
         SQLStr += "WHERE "+EndDTField+" IS NOT NULL "
@@ -2513,14 +2553,17 @@ class SQL_MacroTable(SQL_Table):
         if AnnDTField is not None: SQLStr += ", "+AnnDTField
         RawData = self._FactorDB.fetchall(SQLStr)
         if not RawData: return pd.DataFrame(columns=["QS_DT", "QS_ID"]+factor_names)
-        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "PublDate", "EndDate"]+factor_names)
+        RawData = pd.DataFrame(np.array(RawData, dtype="O"), columns=["ID", "PublDate", "EndDate"]+FactorNames)
         RawData["PublDate"] = self.__QS_adjustDT__(RawData["PublDate"])
         RawData["EndDate"] = self.__QS_adjustDT__(RawData["EndDate"])
         RawData["ID"] = self.__QS_restoreID__(RawData["ID"])
-        RawData = self._adjustRawDataByRelatedField(RawData, factor_names)
-        for iFactorName in factor_names:
+        RawData = self._adjustRawDataByRelatedField(RawData, FactorNames)
+        for iFactorName in FactorNames:
             if self.__QS_identifyDataType__(self._FactorInfo.loc[iFactorName, "DataType"])=="double":
                 RawData[iFactorName] = RawData[iFactorName].astype(float)
+        # 调整数据
+        RawData = self._adjustRawData(RawData, factor_names=factor_names, args=args)
+        # 修正公告日期
         if PublDTCleanFunc:
             RawData = PublDTCleanFunc(RawData, cutoff_date=args.get("CutOffDate", self._QSArgs.CutOffDate))
             RawData["QS_DT"] = RawData.loc[:, ["final_PublDate", "EndDate"]].max(axis=1)

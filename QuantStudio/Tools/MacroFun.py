@@ -70,6 +70,7 @@ def cleanMacroPublDate(
 
     # ---- 修正不可靠记录：EndDate + 保守滞后 ----
     unreliable = result[is_unreliable].copy()
+    unreliable["final_PublDate"] = unreliable["PublDate"]
     if not unreliable.empty:
         id_lag = unreliable["ID"].map(typical_lag)
         # 无可靠记录时回退到 0
@@ -178,6 +179,7 @@ def cleanMacroPublDateDynamic(
 
     # ---- 修正不可靠记录：EndDate + 动态滞后 ----
     unreliable = result[is_unreliable].copy()
+    unreliable["final_PublDate"] = unreliable["PublDate"]
     if not unreliable.empty:
         estimated_lag = unreliable.apply(
             lambda r: _estimate_lag(r["ID"], r["EndDate"]), axis=1

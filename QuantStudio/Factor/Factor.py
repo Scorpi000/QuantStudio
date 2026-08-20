@@ -239,6 +239,7 @@ class Factor(Node):
         return Data.loc[key]
     
     def _QS_getCalcDTs(self, dts:list[dt.datetime], mask:bool=False):
+        if isinstance(dts, pd.DatetimeIndex): dts = dts.astype("O")
         CalcDTs = self._QSArgs.CalcDTRuler
         if CalcDTs:
             StartIdx, EndIdx = np.searchsorted(CalcDTs, dts[0], side="left"), np.searchsorted(CalcDTs, dts[-1], side="right")
