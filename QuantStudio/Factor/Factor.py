@@ -328,7 +328,22 @@ class Factor(Node):
         elif self._QSArgs.SectionIDs: SectionIDs = self._QSArgs.SectionIDs
         else: SectionIDs = InitSectionIDs
         if InitSectionIDs != SectionIDs:
-            raise __QS_Error__(f"因子 {self._QSArgs.Name}({self.QSID}) 指定了不同的截面!")
+            # 取所有指定截面的并集作为最终的截面ID
+            MergedSectionIDs = sorted(set(SectionIDs + InitSectionIDs))
+            if MergedSectionIDs != SectionIDs:
+                self.Logger.warning(f"因子 {self._QSArgs.Name}({self.QSID}) 指定了不同的截面, 取并集: {len(SectionIDs)} + {len(InitSectionIDs)} -> {len(MergedSectionIDs)}")
+                FactorState["section_ids"] = MergedSectionIDs
+                SectionIDs = MergedSectionIDs
+                # SectionIDs 变化后需要重新生成 pid_ids
+                if SectionIDs == context.SectionIDs:
+                    FactorState["pid_ids"] = context.DefaultPIDIDs
+                else:
+                    FactorState["pid_ids"] = context.splitID(SectionIDs)
+                # SectionIDs 变化导致缓存数据维度不一致, 需要清除因子缓存和原始数据缓存
+                if context.DataCache and self._QSArgs.CacheEnabled:
+                    context.DataCache.clearFactorData(key=self.QSID)
+                    if self._FactorTable and self._FactorTable.PrepareID is not None:
+                        context.DataCache.clearRawData(key=self._FactorTable.PrepareID + "-" + self._QSArgs.Name)
         if "section_ids" not in FactorState:
             FactorState["section_ids"] = SectionIDs
             if SectionIDs == context.SectionIDs:
