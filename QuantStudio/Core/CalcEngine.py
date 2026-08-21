@@ -88,7 +88,7 @@ class Engine(__QS_Object__):
                 Path = VariantInfo["path"]
                 InitData = VariantInfo["init_data"]
                 # 创建变体因子
-                VariantFactor = Factor._createSectionIDVariant(NewSectionIDs)
+                VariantFactor = Factor.new(args={"SectionIDs": NewSectionIDs})
                 VariantQSID = VariantFactor.QSID
                 # 如果变体已经存在, 跳过
                 if VariantQSID in context.NodeDict:
@@ -137,8 +137,8 @@ class Engine(__QS_Object__):
                 DepSectionIDs = DepState.get("section_ids")
                 if DepSectionIDs != section_ids:
                     # SectionIDs 不一致, 需要为依赖创建变体
-                    if hasattr(iDep, '_createSectionIDVariant'):
-                        VariantDep = iDep._createSectionIDVariant(section_ids)
+                    if hasattr(iDep, 'new'):
+                        VariantDep = iDep.new(args={"SectionIDs": section_ids})
                         if VariantDep.QSID not in context.NodeDict:
                             context.NodeDict[VariantDep.QSID] = VariantDep
                             # 递归初始化变体依赖的依赖

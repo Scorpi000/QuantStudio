@@ -355,22 +355,6 @@ class Factor(Node):
         else:
             return [FactorInitData(DTRange=FactorState["dt_range"], SectionIDs=SectionIDs)] * len(self._Descriptors) + DefaultInitData[len(self._Descriptors):]
 
-    def _createSectionIDVariant(self, new_section_ids: List[str]) -> "Factor":
-        """创建一个具有不同 SectionIDs 的因子变体
-
-        Args:
-            new_section_ids: 新的截面ID列表
-
-        Returns:
-            新的因子对象, 具有不同的 QSID
-        """
-        # 获取当前因子的参数
-        args = self._QSArgs.to_dict(repr=False)
-        # 修改 SectionIDs
-        args["SectionIDs"] = new_section_ids
-        # 创建新实例
-        return type(self)(ft=self._FactorTable, descriptors=self._Descriptors, extra_deps=self._ExtraDeps, args=args)
-
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
         if self._FactorTable:
             return [], fwd_data
