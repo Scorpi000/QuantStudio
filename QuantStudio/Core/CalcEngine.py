@@ -45,6 +45,8 @@ class Engine(__QS_Object__):
         NodeDict 中, 并调用每个节点的 init_compute 方法。若某节点的 init_compute 返回了
         初始化数据列表, 则将其依赖节点加入遍历队列, 实现递归初始化。
 
+        当因子检测到不同的 SectionIDs 时, 会创建因子变体 (具有不同的 QSID) 并注册到计算图中。
+
         Args:
             node_list: 待初始化的节点列表 (计算目标)
             context: 全局上下文, 初始化后的节点将注册到 context.NodeDict 中
@@ -60,6 +62,101 @@ class Engine(__QS_Object__):
                 NodeQ += iNode.Deps
                 InitDataQ += iInitDataList
                 PathQ += [iPath + [iDep.QSID] for iDep in iNode.Deps]
+        # 处理因子 SectionIDs 变体
+        self._processSectionIDVariants(context)
+
+    def _processSectionIDVariants(self, context: Context):
+        """处理因子 SectionIDs 变体: 为每个变体创建新的因子对象并初始化.
+
+        当因子的 init_compute 检测到不同的 SectionIDs 时, 会将变体信息存储在
+        context._QS_FactorSectionIDVariants 中。本方法处理这些变体, 创建新的因子对象,
+        初始化它们的依赖, 并注册到计算图中。
+
+        变体处理会循环执行, 直到没有新的变体产生 (因为变体的依赖可能也需要创建变体)。
+
+        Args:
+            context: 全局上下文
+        """
+        while True:
+            Variants = context.pop("_QS_FactorSectionIDVariants", [])
+            if not Variants:
+                break
+            for VariantKey, VariantInfo in Variants:
+                Factor = VariantInfo["factor"]
+                NewSectionIDs = VariantInfo["section_ids"]
+                DTRange = VariantInfo["dt_range"]
+                Path = VariantInfo["path"]
+                InitData = VariantInfo["init_data"]
+                # 创建变体因子
+                VariantFactor = Factor._createSectionIDVariant(NewSectionIDs)
+                VariantQSID = VariantFactor.QSID
+                # 如果变体已经存在, 跳过
+                if VariantQSID in context.NodeDict:
+                    continue
+                # 注册变体因子
+                context.NodeDict[VariantQSID] = VariantFactor
+                # 初始化变体因子的依赖
+                # 变体因子与原因子共享相同的依赖结构, 但需要使用新的 SectionIDs 初始化
+                self._initVariantDeps(VariantFactor, NewSectionIDs, DTRange, Path, context)
+                # 初始化变体因子本身
+                VariantFactorState = context.NodeState.setdefault(VariantQSID, {})
+                VariantFactorState["dt_range"] = DTRange
+                VariantFactorState["section_ids"] = NewSectionIDs
+                if NewSectionIDs == context.SectionIDs:
+                    VariantFactorState["pid_ids"] = context.DefaultPIDIDs
+                else:
+                    VariantFactorState["pid_ids"] = context.splitID(NewSectionIDs)
+                # 处理变体因子的因子表
+                if VariantFactor._FactorTable:
+                    FactorTable = VariantFactor._FactorTable
+                    PrepareID = FactorTable.PrepareID
+                    if PrepareID and PrepareID in context.PrepareNodeDict:
+                        _, PrepareData = context.PrepareNodeDict[PrepareID]
+                        PrepareData["SectionIDs"] = sorted(set(PrepareData["SectionIDs"] + NewSectionIDs))
+
+    def _initVariantDeps(self, factor: "Node", section_ids: List[str], dt_range: tuple, path: List[str], context: Context):
+        """初始化变体因子的依赖节点.
+
+        为变体因子的每个依赖创建对应的变体 (如果需要), 并递归初始化。
+
+        Args:
+            factor: 变体因子
+            section_ids: 新的截面ID列表
+            dt_range: 时点范围
+            path: 初始化路径
+            context: 全局上下文
+        """
+        from QuantStudio.Factor.Factor import FactorInitData
+        # 创建用于初始化依赖的 InitData
+        DepInitData = FactorInitData(DTRange=dt_range, SectionIDs=section_ids)
+        # 递归初始化依赖
+        for iDep in factor.Deps:
+            if iDep.QSID in context.NodeState:
+                # 依赖已经初始化过, 检查 SectionIDs 是否一致
+                DepState = context.NodeState[iDep.QSID]
+                DepSectionIDs = DepState.get("section_ids")
+                if DepSectionIDs != section_ids:
+                    # SectionIDs 不一致, 需要为依赖创建变体
+                    if hasattr(iDep, '_createSectionIDVariant'):
+                        VariantDep = iDep._createSectionIDVariant(section_ids)
+                        if VariantDep.QSID not in context.NodeDict:
+                            context.NodeDict[VariantDep.QSID] = VariantDep
+                            # 递归初始化变体依赖的依赖
+                            self._initVariantDeps(VariantDep, section_ids, dt_range, path + [VariantDep.QSID], context)
+                            # 初始化变体依赖本身
+                            VariantDepState = context.NodeState.setdefault(VariantDep.QSID, {})
+                            VariantDepState["dt_range"] = dt_range
+                            VariantDepState["section_ids"] = section_ids
+                            if section_ids == context.SectionIDs:
+                                VariantDepState["pid_ids"] = context.DefaultPIDIDs
+                            else:
+                                VariantDepState["pid_ids"] = context.splitID(section_ids)
+            else:
+                # 依赖未初始化, 直接初始化
+                context.NodeDict[iDep.QSID] = iDep
+                iDepInitDataList = iDep.init_compute(path=path + [iDep.QSID], init_data=DepInitData, context=context)
+                if iDepInitDataList:
+                    self._initVariantDeps(iDep, section_ids, dt_range, path + [iDep.QSID], context)
 
     def prepare(self, node_list: List[Node], context: Context):
         """准备计算数据: 对上下文中已注册的节点执行 prepare_compute.

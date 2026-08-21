@@ -328,22 +328,19 @@ class Factor(Node):
         elif self._QSArgs.SectionIDs: SectionIDs = self._QSArgs.SectionIDs
         else: SectionIDs = InitSectionIDs
         if InitSectionIDs != SectionIDs:
-            # 取所有指定截面的并集作为最终的截面ID
-            MergedSectionIDs = sorted(set(SectionIDs + InitSectionIDs))
-            if MergedSectionIDs != SectionIDs:
-                self.Logger.warning(f"因子 {self._QSArgs.Name}({self.QSID}) 指定了不同的截面, 取并集: {len(SectionIDs)} + {len(InitSectionIDs)} -> {len(MergedSectionIDs)}")
-                FactorState["section_ids"] = MergedSectionIDs
-                SectionIDs = MergedSectionIDs
-                # SectionIDs 变化后需要重新生成 pid_ids
-                if SectionIDs == context.SectionIDs:
-                    FactorState["pid_ids"] = context.DefaultPIDIDs
-                else:
-                    FactorState["pid_ids"] = context.splitID(SectionIDs)
-                # SectionIDs 变化导致缓存数据维度不一致, 需要清除因子缓存和原始数据缓存
-                if context.DataCache and self._QSArgs.CacheEnabled:
-                    context.DataCache.clearFactorData(key=self.QSID)
-                    if self._FactorTable and self._FactorTable.PrepareID is not None:
-                        context.DataCache.clearRawData(key=self._FactorTable.PrepareID + "-" + self._QSArgs.Name)
+            # 检测到不同的 SectionIDs, 记录变体信息, 由 Engine 后续处理
+            Variants = context.setdefault("_QS_FactorSectionIDVariants", [])
+            VariantKey = (self.QSID, tuple(sorted(InitSectionIDs)))
+            if not any(k == VariantKey for k, _ in Variants):
+                Variants.append((VariantKey, {
+                    "factor": self,
+                    "section_ids": InitSectionIDs,
+                    "dt_range": init_data.DTRange,
+                    "path": path,
+                    "init_data": init_data
+                }))
+                self.Logger.info(f"因子 {self._QSArgs.Name}({self.QSID}) 检测到不同的截面ID, 记录变体: {len(SectionIDs)} -> {len(InitSectionIDs)}")
+            return []
         if "section_ids" not in FactorState:
             FactorState["section_ids"] = SectionIDs
             if SectionIDs == context.SectionIDs:
@@ -357,6 +354,22 @@ class Factor(Node):
             return [FactorInitData(DTRange=FactorState["dt_range"], SectionIDs=SectionIDs, SubFactorName=self._QSArgs.Name)] + DefaultInitData[1:]
         else:
             return [FactorInitData(DTRange=FactorState["dt_range"], SectionIDs=SectionIDs)] * len(self._Descriptors) + DefaultInitData[len(self._Descriptors):]
+
+    def _createSectionIDVariant(self, new_section_ids: List[str]) -> "Factor":
+        """创建一个具有不同 SectionIDs 的因子变体
+
+        Args:
+            new_section_ids: 新的截面ID列表
+
+        Returns:
+            新的因子对象, 具有不同的 QSID
+        """
+        # 获取当前因子的参数
+        args = self._QSArgs.to_dict(repr=False)
+        # 修改 SectionIDs
+        args["SectionIDs"] = new_section_ids
+        # 创建新实例
+        return type(self)(ft=self._FactorTable, descriptors=self._Descriptors, extra_deps=self._ExtraDeps, args=args)
 
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
         if self._FactorTable:
