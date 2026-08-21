@@ -329,7 +329,7 @@ class Factor(Node):
         else: SectionIDs = InitSectionIDs
         if InitSectionIDs != SectionIDs:
             # 检测到不同的 SectionIDs, 记录变体信息, 由 Engine 后续处理
-            Variants = context.setdefault("_QS_FactorSectionIDVariants", [])
+            Variants = context.ExtraData.setdefault("_QS_FactorSectionIDVariants", [])
             VariantKey = (self.QSID, tuple(sorted(InitSectionIDs)))
             if not any(k == VariantKey for k, _ in Variants):
                 Variants.append((VariantKey, {

@@ -78,7 +78,7 @@ class Engine(__QS_Object__):
             context: 全局上下文
         """
         while True:
-            Variants = context.pop("_QS_FactorSectionIDVariants", [])
+            Variants = context.ExtraData.pop("_QS_FactorSectionIDVariants", [])
             if not Variants:
                 break
             for VariantKey, VariantInfo in Variants:
