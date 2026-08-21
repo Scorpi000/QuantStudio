@@ -2486,7 +2486,7 @@ class SQL_MacroTable(SQL_WideTable):
             RawData["QS_DT"] = RawData["EndDate"]
         # 调整滞后期
         PeriodLookBack = args.get("PeriodLookBack", self._QSArgs.PeriodLookBack)
-        if PeriodLookBack != 0:
+        if (PeriodLookBack is not None) and (PeriodLookBack != 0):
             PublData = RawData.loc[:, ["ID", "EndDate", "QS_DT"]].copy()
             RawData = RawData.groupby(by=["ID"])[RawData.columns].apply(lambda df: shiftDataFrame(df, target_col="EndDate", periods=PeriodLookBack)).reset_index(drop=True)
             RawData = pd.merge(RawData, PublData, how="left", left_on=["ID", "EndDate"], right_on=["ID", "EndDate"], suffixes=("_raw", ""))
