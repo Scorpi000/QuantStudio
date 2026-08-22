@@ -28,3 +28,4 @@ TestCoverage.bat
 CLAUDE.local.md
 .claude/settings.local.json
 .mcp.json
+.codegraph/daemon.pid
