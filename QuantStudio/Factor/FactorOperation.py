@@ -433,15 +433,25 @@ class TimeOperator(FactorOperator):
         # LookBackMode: List[Literal["滚动窗口", "扩张窗口"]] = Field(default=[], title="回溯模式", description="描述子的回溯模式", frozen=True)
         StartDT: List[Optional[dt.datetime]] = Field(default=[], title="起始时点", frozen=True, description="扩张窗口模式下描述子的起始时点, 如果为 None, 则使用回溯期数参数")
         iInitFactor: int = Field(default=-1, title="起始因子", ge=-1, frozen=True)
-        
+        DescriptorDTRuler: List[Optional[List[dt.datetime]]] = Field(
+            default=[], title="描述子时点标尺", frozen=True,
+            description="每个描述子的时点标尺, None 表示使用因子的时点标尺. "
+                        "决定回溯的频率: 日度标尺回溯N天, 月度标尺回溯N个月."
+        )
+
         def __init__(self, /, **data):
             Arity = data.get("Arity", 0)
             if Arity is None: Arity = 0
             if not data.get("LookBack", []): data["LookBack"] = [0] * Arity
             # if not data.get("LookBackMode", []): data["LookBackMode"] = ["滚动窗口"] * Arity
             if not data.get("StartDT", []): data["StartDT"] = [None] * Arity
+            DescriptorDTRuler = data.get("DescriptorDTRuler", [])
+            if not DescriptorDTRuler:
+                data["DescriptorDTRuler"] = [None] * Arity
+            elif len(DescriptorDTRuler) < Arity:
+                data["DescriptorDTRuler"] = list(DescriptorDTRuler) + [None] * (Arity - len(DescriptorDTRuler))
             return super().__init__(**data)
-        
+
         def model_post_init(self, context: Any, /) -> None:
             if self.Arity is not None:
                 if self.Arity != len(self.LookBack):
@@ -450,10 +460,13 @@ class TimeOperator(FactorOperator):
                 #     raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 LookBackMode({self.__pydantic_fields__['LookBackMode'].title}): {self.LookBackMode} 的长度不一致!")
                 if self.Arity != len(self.StartDT):
                     raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 StartDT({self.__pydantic_fields__['StartDT'].title}): {self.StartDT} 的长度不一致!")
+                # 自动填充 DescriptorDTRuler（兼容旧数据）
+                if len(self.DescriptorDTRuler) < self.Arity:
+                    object.__setattr__(self, "DescriptorDTRuler", list(self.DescriptorDTRuler) + [None] * (self.Arity - len(self.DescriptorDTRuler)))
                 if self.iInitFactor >= self.Arity:
                     raise __QS_Error__(f"算子{self.Name}的 iInitFactor({self.__pydantic_fields__['iInitFactor'].title}): {self.iInitFactor} 超出了 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity}!")
             return super().model_post_init(context)
-    
+
     def calculate(self, f: Factor, idt: dt.datetime | List[dt.datetime], iid: str | List[str], x: list, args: dict):
         """算子的运算逻辑实现
 
@@ -467,7 +480,7 @@ class TimeOperator(FactorOperator):
                 * 如果 DTMode 为多时点, IDMode 为单ID, 那么 x 的第 i 个元素为 array(shape=(LookBack[i]+len(idt), )), 同时方法需返回返回 array(shape=(nDate,))
                 * 如果 DTMode 为多时点, IDMode 为多ID, 那么 x 的第 i 个元素为 array(shape=(LookBack[i]+len(idt), len(iid))), 同时方法需返回 array(shape=(len(idt), len(iid)))
             args: 计算需要附加的模型参数, 来自于算子和因子对象的 ModelArgs, {参数名: 参数值}
-        
+
         Returns:
             在时点 idt, ID 为 iid 的因子值
         """
@@ -811,7 +824,12 @@ class PanelOperator(FactorOperator):
         # LookBackMode: List[Literal["滚动窗口", "扩张窗口"]] = Field(default=[], title="回溯模式", description="描述子的回溯模式", frozen=True)
         StartDT: List[Optional[dt.datetime]] = Field(default=[], title="起始时点", frozen=True, description="如果描述子对应的该参数非 None 表示为扩张窗口模式, 该参数为描述子数据的起始时点")
         iInitFactor: int = Field(default=-1, title="起始因子", ge=-1, frozen=True)
-        
+        DescriptorDTRuler: List[Optional[List[dt.datetime]]] = Field(
+            default=[], title="描述子时点标尺", frozen=True,
+            description="每个描述子的时点标尺, None 表示使用因子的时点标尺. "
+                        "决定回溯的频率: 日度标尺回溯N天, 月度标尺回溯N个月."
+        )
+
         def __init__(self, /, **data):
             Arity = data.get("Arity", 0)
             if Arity is None: Arity = 0
@@ -819,18 +837,26 @@ class PanelOperator(FactorOperator):
             if not data.get("LookBack", []): data["LookBack"] = [0] * Arity
             # if not data.get("LookBackMode", []): data["LookBackMode"] = ["滚动窗口"] * Arity
             if not data.get("StartDT", []): data["StartDT"] = [None] * Arity
+            DescriptorDTRuler = data.get("DescriptorDTRuler", [])
+            if not DescriptorDTRuler:
+                data["DescriptorDTRuler"] = [None] * Arity
+            elif len(DescriptorDTRuler) < Arity:
+                data["DescriptorDTRuler"] = list(DescriptorDTRuler) + [None] * (Arity - len(DescriptorDTRuler))
             return super().__init__(**data)
-         
+
         def model_post_init(self, context: Any, /) -> None:
             if self.Arity is not None:
                 if self.Arity != len(self.DescriptorSection):
-                    raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 DescriptorSection({self.__pydantic_fields__['DescriptorSection'].title}): {self.DescriptorSection} 的长度不一致!")            
+                    raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 DescriptorSection({self.__pydantic_fields__['DescriptorSection'].title}): {self.DescriptorSection} 的长度不一致!")
                 if self.Arity != len(self.LookBack):
                     raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 LookBack({self.__pydantic_fields__['LookBack'].title}): {self.LookBack} 的长度不一致!")
                 # if self.Arity != len(self.LookBackMode):
                 #     raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 LookBackMode({self.__pydantic_fields__['LookBackMode'].title}): {self.LookBackMode} 的长度不一致!")
                 if self.Arity != len(self.StartDT):
                     raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 StartDT({self.__pydantic_fields__['StartDT'].title}): {self.StartDT} 的长度不一致!")
+                # 自动填充 DescriptorDTRuler（兼容旧数据）
+                if len(self.DescriptorDTRuler) < self.Arity:
+                    object.__setattr__(self, "DescriptorDTRuler", list(self.DescriptorDTRuler) + [None] * (self.Arity - len(self.DescriptorDTRuler)))
                 if self.iInitFactor >= self.Arity:
                     raise __QS_Error__(f"算子{self.Name}的 iInitFactor({self.__pydantic_fields__['iInitFactor'].title}): {self.iInitFactor} 超出了 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity}!")
             return super().model_post_init(context)
@@ -1136,7 +1162,25 @@ class TimeOperation(DerivativeFactor):
             Operator.Logger.warning(f"算子 {Operator.Name}(QSID: {Operator.QSID}) 为自身迭代且滚动窗口模式，在缓存的不同状态下产生的数据会不一致，所以该算子作用的因子将强制不使用缓存!")
             args["CacheEnabled"] = False
         return super().__init__(descriptors=descriptors, extra_deps=extra_deps, args=args, config_file=config_file, **kwargs)
-    
+
+    def _get_descriptor_dtruler(self, i: int, default: List[dt.datetime]) -> List[dt.datetime]:
+        """获取描述子的时点标尺
+
+        优先从算子的 DescriptorDTRuler 获取（描述子的频率），
+        如果算子未配置，则使用默认值（因子的时点标尺）。
+
+        Args:
+            i: 描述子索引
+            default: 默认时点标尺（因子的时点标尺）
+
+        Returns:
+            描述子的时点标尺
+        """
+        if (i < len(self._Operator._QSArgs.DescriptorDTRuler) and
+            self._Operator._QSArgs.DescriptorDTRuler[i] is not None):
+            return self._Operator._QSArgs.DescriptorDTRuler[i]
+        return default
+
     def init_compute(self, path: List[str], init_data: FactorInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
         FactorState = context.NodeState.setdefault(self.QSID, {})
@@ -1146,7 +1190,11 @@ class TimeOperation(DerivativeFactor):
         DTRuler = context.DTRuler
         StartIdx = np.searchsorted(DTRuler, StartDT, side="left")
         for i, iDescriptor in enumerate(self._Descriptors):
+            # 获取描述子的时点标尺（决定回溯频率）
+            iDescDTRuler = self._get_descriptor_dtruler(i, DTRuler)
             if self._Operator._QSArgs.StartDT[i] is None:# 指定起始时点, 滚动窗口模式，从当前时点回溯 LookBack[i] 期
+                # 使用描述子的时点标尺计算回溯索引
+                iDescStartIdx = np.searchsorted(iDescDTRuler, StartDT, side="left")
                 iStartIdx = StartIdx - self._Operator._QSArgs.LookBack[i]
                 if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
                     iEndDT = DTRuler[max(StartIdx - 1, iStartIdx)]
@@ -1181,6 +1229,8 @@ class TimeOperation(DerivativeFactor):
         SectionIDs = context.getID(self.QSID, ([context.PID] if Cached else (fwd_data.PIDs or [context.PID])))
         FwdData = []
         for i in range(len(self._Descriptors)):
+            # 获取描述子的时点标尺
+            iDescDTRuler = self._get_descriptor_dtruler(i, DTRuler)
             if self._Operator._QSArgs.StartDT[i] is None:# 滚动窗口模式
                 iStartIdx, iEndIdx = StartIdx - self._Operator._QSArgs.LookBack[i], EndIdx
                 if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
@@ -1192,7 +1242,7 @@ class TimeOperation(DerivativeFactor):
                     iEndIdx = min(EndIdx, iStartDTIdx - 1)
                 else:
                     iStartIdx, iEndIdx = min(StartIdx, iStartDTIdx) - self._Operator._QSArgs.LookBack[i], EndIdx
-            iDTs = DTRuler[iStartIdx:iEndIdx+1]
+            iDTs = iDescDTRuler[iStartIdx:iEndIdx+1] if iDescDTRuler is not DTRuler else DTRuler[iStartIdx:iEndIdx+1]
             FwdData.append(FactorLocalContext(IDs=SectionIDs, DTs=iDTs, PIDs=fwd_data.PIDs))
         if self._ExtraDeps:
             DefaultFwdData, _ = super().forward_compute(path=path, fwd_data=fwd_data, context=context)
@@ -1343,6 +1393,24 @@ class PanelOperation(DerivativeFactor):
             args["CacheEnabled"] = False
         return super().__init__(descriptors=descriptors, extra_deps=extra_deps, args=args, config_file=config_file, **kwargs)
 
+    def _get_descriptor_dtruler(self, i: int, default: List[dt.datetime]) -> List[dt.datetime]:
+        """获取描述子的时点标尺
+
+        优先从算子的 DescriptorDTRuler 获取（描述子的频率），
+        如果算子未配置，则使用默认值（因子的时点标尺）。
+
+        Args:
+            i: 描述子索引
+            default: 默认时点标尺（因子的时点标尺）
+
+        Returns:
+            描述子的时点标尺
+        """
+        if (i < len(self._Operator._QSArgs.DescriptorDTRuler) and
+            self._Operator._QSArgs.DescriptorDTRuler[i] is not None):
+            return self._Operator._QSArgs.DescriptorDTRuler[i]
+        return default
+
     def init_compute(self, path: List[str], init_data: FactorInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
         FactorState = context.NodeState.setdefault(self.QSID, {})
@@ -1352,6 +1420,8 @@ class PanelOperation(DerivativeFactor):
         DTRuler = context.DTRuler
         StartIdx = np.searchsorted(DTRuler, StartDT, side="left")
         for i, iDescriptor in enumerate(self._Descriptors):
+            # 获取描述子的时点标尺
+            iDescDTRuler = self._get_descriptor_dtruler(i, DTRuler)
             if self._Operator._QSArgs.StartDT[i] is None:# 未指定起始时点, 滚动窗口模式，从当前时点回溯 LookBack[i] 期
                 iStartIdx = StartIdx - self._Operator._QSArgs.LookBack[i]
                 if i==self._Operator._QSArgs.iInitFactor:# 当前描述子为自身初始值因子, 以当前时点的上一个时点为结束时点
@@ -1401,6 +1471,8 @@ class PanelOperation(DerivativeFactor):
         else: ResponsibleStartIdx = ResponsibleEndIdx = StartIdx
         FwdData, DescriptorDTs = [], []
         for i, iDescriptor in enumerate(self._Descriptors):
+            # 获取描述子的时点标尺
+            iDescDTRuler = self._get_descriptor_dtruler(i, DTRuler)
             if self._Operator._QSArgs.StartDT[i] is None:# 滚动窗口模式
                 iStartIdx, iEndIdx = StartIdx - self._Operator._QSArgs.LookBack[i], EndIdx
                 iResponsibleStartIdx, iResponsibleEndIdx = ResponsibleStartIdx - self._Operator._QSArgs.LookBack[i], ResponsibleEndIdx
@@ -1416,9 +1488,9 @@ class PanelOperation(DerivativeFactor):
                 else:
                     iStartIdx, iEndIdx = min(StartIdx, iStartDTIdx) - self._Operator._QSArgs.LookBack[i], EndIdx
                 iResponsibleStartIdx, iResponsibleEndIdx = iStartIdx, iEndIdx
-            iDTs = DTRuler[iStartIdx:iEndIdx+1]
+            iDTs = iDescDTRuler[iStartIdx:iEndIdx+1] if iDescDTRuler is not DTRuler else DTRuler[iStartIdx:iEndIdx+1]
             FwdData.append(FactorLocalContext(IDs=self._QS_getDescriptorSectionIDs(i, context), DTs=iDTs, PIDs=context.PIDList))
-            DescriptorDTs.append(DTRuler[iResponsibleStartIdx:iResponsibleEndIdx+1])
+            DescriptorDTs.append(iDescDTRuler[iResponsibleStartIdx:iResponsibleEndIdx+1] if iDescDTRuler is not DTRuler else DTRuler[iResponsibleStartIdx:iResponsibleEndIdx+1])
         if self._ExtraDeps:
             DefaultFwdData, _ = super().forward_compute(path=path, fwd_data=fwd_data, context=context)
             return FwdData + DefaultFwdData[len(self._Descriptors):], FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, ExtraData={"CalcDTs": ResponsibleCalcDTs, "TotalCalcDTs": CalcDTs, "DescriptorDTs": DescriptorDTs})

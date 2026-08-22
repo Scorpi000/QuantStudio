@@ -9,7 +9,7 @@ from pydantic import Field
 from QuantStudio.Core import __QS_Error__
 from QuantStudio.Core.Node import Node, Context, DTLocalContext, DTInitData, __QS_Context__
 from QuantStudio.Core.CalcEngine import __QS_Engine__, Engine
-from QuantStudio.Factor.FactorCache import FactorCache
+from QuantStudio.Factor.FactorCache import FactorCache, make_cache_key
 from QuantStudio.Tools.DataPreprocessingFun import fillNaByLookback
 from QuantStudio.Tools.AuxiliaryFun import partitionListMovingSampling, partitionList
 
@@ -200,29 +200,69 @@ class Factor(Node):
         if self._FactorTable is not None:
             return self._FactorTable.getDateTime(ifactor_name=self._QSArgs.Name, iid=iid, start_dt=start_dt, end_dt=end_dt, **kwargs)
         return []
-    
-    def readData(self, ids:List[str], dts:List[dt.datetime], **kwargs) -> pd.DataFrame:
+
+    def _resolve_calc_params(
+        self,
+        ids: List[str],
+        dts: List[dt.datetime],
+        section_ids: Optional[List[str]] = None,
+        dt_ruler: Optional[List[dt.datetime]] = None
+    ) -> Tuple[List[str], List[dt.datetime]]:
+        """解析计算参数
+
+        计算维度（截面、时点）在调用时指定，而非初始化时绑定。
+        优先级：调用者参数 > 因子配置 > 请求参数（ids/dts）
+
+        Args:
+            ids: 请求返回的证券列表
+            dts: 请求返回的时点列表
+            section_ids: 调用者指定的计算截面（覆盖因子配置）
+            dt_ruler: 调用者指定的计算时点标尺（覆盖因子配置）
+
+        Returns:
+            (计算截面, 计算时点标尺)
+        """
+        if section_ids is not None:
+            actual_section = section_ids
+        elif self._QSArgs.SectionIDs is not None:
+            actual_section = self._QSArgs.SectionIDs
+        else:
+            actual_section = ids
+
+        if dt_ruler is not None:
+            actual_dtruler = dt_ruler
+        elif self._QSArgs.CalcDTRuler is not None:
+            actual_dtruler = self._QSArgs.CalcDTRuler
+        else:
+            actual_dtruler = dts
+
+        return actual_section, actual_dtruler
+
+    def readData(self, ids:List[str], dts:List[dt.datetime], section_ids:Optional[List[str]]=None, dt_ruler:Optional[List[dt.datetime]]=None, **kwargs) -> pd.DataFrame:
         """读取因子数据
 
         Args:
-            ids: ID 序列
-            dts: 时点序列
-            kwargs: 可传入的参数有
-                dt_ruler: 时点标尺序列, 如果没有传入则为 dts
-                section_ids: 截面 ID 序列，如果没有传入则为因子参数集中指定的 SectionIDs, 如果参数集中未指定则为 ids
+            ids: 返回的证券列表
+            dts: 返回的时点列表
+            section_ids: 计算截面（覆盖因子配置），None 表示使用 ids 或因子的 SectionIDs
+            dt_ruler: 计算时点标尺（覆盖因子配置），None 表示使用 dts 或因子的 CalcDTRuler
 
         Returns:
             DataFrame(index=dts, columns=ids)
         """
-        if (not __QS_Context__) and (self._FactorTable is not None): return self._FactorTable.readData(factor_names=[self._QSArgs.Name], ids=ids, dts=dts, **kwargs).iloc[0]
-        SectionIDs = kwargs.get("section_ids", self._QSArgs.SectionIDs)
-        if not SectionIDs: SectionIDs = ids
-        if not __QS_Context__: Context = FactorContext(DTRuler=kwargs.get("dt_ruler", dts), SectionIDs=SectionIDs)
+        if (not __QS_Context__) and (self._FactorTable is not None):
+            return self._FactorTable.readData(
+                factor_names=[self._QSArgs.Name], ids=ids, dts=dts,
+                section_ids=section_ids, dt_ruler=dt_ruler, **kwargs
+            ).iloc[0]
+        # 解析计算参数
+        actual_section, actual_dtruler = self._resolve_calc_params(ids, dts, section_ids, dt_ruler)
+        if not __QS_Context__: Context = FactorContext(DTRuler=actual_dtruler, SectionIDs=actual_section)
         else: Context = __QS_Context__[-1]
         if not __QS_Engine__: ExecEngine = Engine()
         else: ExecEngine = __QS_Engine__[-1]
         LocalContext = FactorLocalContext(DTs=dts, IDs=ids)
-        InitData = FactorInitData(DTRange=(dts[0], dts[-1]), SectionIDs=SectionIDs)
+        InitData = FactorInitData(DTRange=(dts[0], dts[-1]), SectionIDs=actual_section)
         Rslt = ExecEngine.run([self], Context, fwd_data_list=[LocalContext], init_data_list=[InitData])
         return Rslt[0]
 
@@ -324,13 +364,17 @@ class Factor(Node):
             InitSectionIDs = self._QSArgs.SectionIDs
         else:
             InitSectionIDs = context.SectionIDs
-        if "section_ids" in FactorState: SectionIDs = FactorState["section_ids"]
-        elif self._QSArgs.SectionIDs: SectionIDs = self._QSArgs.SectionIDs
-        else: SectionIDs = InitSectionIDs
-        if InitSectionIDs != SectionIDs:
-            raise __QS_Error__(f"因子 {self._QSArgs.Name}({self.QSID}) 指定了不同的截面!")
-        if "section_ids" not in FactorState:
+        if "section_ids" in FactorState:
+            # 合并截面（不同调用者可能请求不同截面）
+            SectionIDs = sorted(set(FactorState["section_ids"] + InitSectionIDs))
             FactorState["section_ids"] = SectionIDs
+        elif self._QSArgs.SectionIDs:
+            SectionIDs = self._QSArgs.SectionIDs
+            FactorState["section_ids"] = SectionIDs
+        else:
+            SectionIDs = InitSectionIDs
+            FactorState["section_ids"] = SectionIDs
+        if "pid_ids" not in FactorState:
             if SectionIDs == context.SectionIDs:
                 FactorState["pid_ids"] = context.DefaultPIDIDs
             else:

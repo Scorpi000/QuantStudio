@@ -169,24 +169,28 @@ class FactorTable(Node):
     def __QS_calcData__(self, raw_data, factor_names, ids, dts):
         return None
     
-    def readData(self, factor_names:List[str], ids:List[str], dts:List[dt.datetime], **kwargs) -> Panel:
+    def readData(self, factor_names:List[str], ids:List[str], dts:List[dt.datetime], section_ids:Optional[List[str]]=None, dt_ruler:Optional[List[dt.datetime]]=None, **kwargs) -> Panel:
         """读取因子表数据
 
         Args:
             factor_names: 因子名称列表
-            ids: ID 序列
-            dts: 时点序列
+            ids: 返回的 ID 序列
+            dts: 返回的时点序列
+            section_ids: 计算截面（可选），None 表示使用 ids
+            dt_ruler: 计算时点标尺（可选），None 表示使用 dts
 
         Returns:
             Panel(item=factor_names, major_axis=dts, minor_axis=ids)
         """
+        actual_section = section_ids if section_ids is not None else ids
+        actual_dts = dt_ruler if dt_ruler is not None else dts
         if not __QS_Context__:
-            return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts), factor_names=factor_names, ids=ids, dts=dts)
+            return self.__QS_calcData__(raw_data=self.__QS_prepareRawData__(factor_names=factor_names, ids=actual_section, dts=actual_dts), factor_names=factor_names, ids=ids, dts=dts)
         else: Context = __QS_Context__[-1]
         if not __QS_Engine__: ExecEngine = Engine()
         else: ExecEngine = __QS_Engine__[-1]
         LocalContext = FactorLocalContext(DTs=dts, IDs=ids)
-        Rslt = ExecEngine.run([self.getFactor(iFactorName) for iFactorName in factor_names], Context, fwd_data_list=[LocalContext], init_data_list=[{"dt_range": (dts[0], dts[-1]), "section_ids": kwargs.get("section_ids", ids)}])
+        Rslt = ExecEngine.run([self.getFactor(iFactorName) for iFactorName in factor_names], Context, fwd_data_list=[LocalContext], init_data_list=[{"dt_range": (dts[0], dts[-1]), "section_ids": actual_section}])
         return Panel({iFactorName: Rslt[i] for i, iFactorName in enumerate(factor_names)})
     
     def __getitem__(self, key):

@@ -4,6 +4,7 @@ import stat
 import time
 import shutil
 import tempfile
+import hashlib
 import datetime as dt
 from typing import Optional, List, Literal, Dict
 
@@ -16,6 +17,33 @@ from QuantStudio import __QS_ConfigPath__
 from QuantStudio.Core import __QS_Object__, __QS_Error__
 from QuantStudio.Core.Cache import DTCache
 from QuantStudio.Core.FileCache import FileDTCache, FeatherDTCache
+
+
+def make_cache_key(
+    qsid: str,
+    section_ids: Optional[List[str]] = None,
+    dtruler: Optional[List[dt.datetime]] = None
+) -> str:
+    """生成缓存键 = 因子QSID + 维度哈希
+
+    缓存键由因子的 QSID 和计算维度（截面、时点）共同决定，
+    不同的计算维度自动隔离缓存。
+
+    Args:
+        qsid: 因子的 QSID
+        section_ids: 计算截面 ID 列表, None 表示不参与哈希
+        dtruler: 计算时点标尺, None 表示不参与哈希
+
+    Returns:
+        缓存键字符串（16位十六进制）
+    """
+    parts = [qsid]
+    if section_ids:
+        # 截面排序后哈希，确保顺序无关
+        parts.append(f"s:{','.join(sorted(section_ids))}")
+    if dtruler:
+        parts.append(f"d:{','.join(str(d) for d in dtruler)}")
+    return hashlib.md5("|".join(parts).encode()).hexdigest()[:16]
 
 
 class FactorCache(DTCache):
