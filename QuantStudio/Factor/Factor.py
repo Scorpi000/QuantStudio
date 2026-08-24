@@ -130,6 +130,7 @@ class Factor(Node):
     class __QS_ArgClass__(Node.__QS_ArgClass__):
         Name: str = Field(default="Factor", frozen=True, title="名称")
         Meta: dict = Field(default={}, title="元信息", frozen=False, exclude=True)
+        SectionIDs: Optional[List[str]] = Field(default=None, title="默认截面", frozen=True)
         CalcDTRuler: Optional[List[dt.datetime]] = Field(default=None, title="计算时点标尺", frozen=True)
         CacheEnabled: bool = Field(default=True, frozen=True, title="启用缓存", repr=False)
 
@@ -270,7 +271,7 @@ class Factor(Node):
     # 准备缓存数据
     def _prepareCacheData(self, context: FactorContext, local_context: FactorLocalContext):
         if not self._FactorTable: return 0
-        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=local_context.SectionIDs, context=context)
+        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=local_context.SectionIDs or self._QSArgs.SectionIDs, context=context)
         DTRange = context.NodeState.get(self.QSID, {}).get(RunningKey, {}).get("dt_range", None)
         if DTRange is None: return 0
         DTRange = context.DataCache.getDTRange(key=RunningKey, dt_range=DTRange)
@@ -322,7 +323,7 @@ class Factor(Node):
 
     # NodeState: {"dt_range", "section_ids", "pid_ids"}
     def init_compute(self, path: List[str], init_data: FactorInitData, context: FactorContext) -> List[FactorInitData]:
-        InitSectionIDs = init_data.SectionIDs
+        InitSectionIDs = init_data.SectionIDs or self._QSArgs.SectionIDs
         FactorState = context.NodeState.setdefault(self.QSID, {}).setdefault(makeFactorRunningKey(qsid=self.QSID, section_ids=InitSectionIDs, context=context), {})
         # 处理时点
         DTRange = FactorState.get("dt_range", None)
@@ -354,7 +355,7 @@ class Factor(Node):
             return super().forward_compute(path=path, fwd_data=fwd_data, context=context)
 
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
-        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=local_context.SectionIDs, context=context)
+        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=local_context.SectionIDs or self._QSArgs.SectionIDs, context=context)
         if context.DataCache and self._QSArgs.CacheEnabled:
             self._prepareCacheData(context=context, local_context=local_context)
             StdData = context.DataCache.readFactorData(key=RunningKey, ipid=context.PID, target_field="StdData", pids=local_context.PIDs, data_type=self.getMetaData(key="DataType"))
@@ -589,7 +590,7 @@ class DataFactor(Factor):
             return []
 
     def readData(self, ids:List[str], dts:List[dt.datetime], section_ids:Optional[List[str]]=None, dt_ruler:Optional[List[dt.datetime]]=None, **kwargs) -> pd.DataFrame:
-        if section_ids is None: section_ids = ids
+        if section_ids is None: section_ids = self._QSArgs.SectionIDs or ids
         if dt_ruler is None: dt_ruler = dts
         if self._DataContent == "Value":
             Data = pd.DataFrame([(self._Data,) * len(section_ids)] * len(dt_ruler), index=dt_ruler, columns=section_ids)

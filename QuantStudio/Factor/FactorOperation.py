@@ -769,7 +769,7 @@ class PointOperation(DerivativeFactor):
         Operator: PointOperator = Field(title="算子", frozen=True)
 
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
-        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=fwd_data.SectionIDs, context=context)
+        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=fwd_data.SectionIDs or self._QSArgs.SectionIDs, context=context)
         DTRange = context.NodeState.get(self.QSID, {}).get(RunningKey, {}).get("dt_range", None)
         if DTRange is None: 
             return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
@@ -781,7 +781,7 @@ class PointOperation(DerivativeFactor):
         CalcDTs = context.getDateTime(DTRange)
         if not CalcDTs: 
             return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, SectionIDs=fwd_data.SectionIDs)
-        FwdData = [FactorLocalContext(IDs=context.getID(self.QSID, running_key=RunningKey, pids=([context.PID] if Cached else (fwd_data.PIDs or [context.PID]))), DTs=CalcDTs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)] * len(self._Descriptors)
+        FwdData = [FactorLocalContext(IDs=context.getID(self.QSID, running_key=RunningKey, pids=([context.PID] if Cached else (fwd_data.PIDs or [context.PID]))), DTs=CalcDTs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs or self._QSArgs.SectionIDs)] * len(self._Descriptors)
         if self._ExtraDeps:
             DefaultFwdData, _ = super().forward_compute(path=path, fwd_data=fwd_data, context=context)
             return FwdData + DefaultFwdData[len(self._Descriptors):], FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs, ExtraData={"CalcDTs": CalcDTs})
@@ -789,7 +789,7 @@ class PointOperation(DerivativeFactor):
             return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs, ExtraData={"CalcDTs": CalcDTs})
 
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
-        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=local_context.SectionIDs, context=context)
+        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=local_context.SectionIDs or self._QSArgs.SectionIDs, context=context)
         Cached = (context.DataCache and self._QSArgs.CacheEnabled)
         if bwd_data_list:
             SectionIDs = context.getID(self.QSID, running_key=RunningKey, pids=[context.PID] if Cached else (local_context.PIDs or [context.PID]))
@@ -827,7 +827,7 @@ class TimeOperation(DerivativeFactor):
     
     def init_compute(self, path: List[str], init_data: FactorInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
-        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=init_data.SectionIDs, context=context)
+        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=init_data.SectionIDs or self._QSArgs.SectionIDs, context=context)
         FactorState = context.NodeState.setdefault(self.QSID, {}).setdefault(RunningKey, {})
         StartDT, EndDT = FactorState["dt_range"]
         if (self._Operator._QSArgs.iInitFactor >= 0) and (self._Operator._QSArgs.StartDT[self._Operator._QSArgs.iInitFactor] is not None): # 自身迭代且为扩张窗口，修改自身的起始日为 StartDT[i]
@@ -857,7 +857,7 @@ class TimeOperation(DerivativeFactor):
         return InitData
     
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
-        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=fwd_data.SectionIDs, context=context)
+        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=fwd_data.SectionIDs or self._QSArgs.SectionIDs, context=context)
         DTRange = context.NodeState.get(self.QSID, {}).get(RunningKey, {}).get("dt_range", None)
         if DTRange is None: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
         Cached = (context.DataCache and self._QSArgs.CacheEnabled)
@@ -883,7 +883,7 @@ class TimeOperation(DerivativeFactor):
                 else:
                     iStartIdx, iEndIdx = min(StartIdx, iStartDTIdx) - self._Operator._QSArgs.LookBack[i], EndIdx
             iDTs = DTRuler[iStartIdx:iEndIdx+1]
-            FwdData.append(FactorLocalContext(IDs=SectionIDs, DTs=iDTs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs))
+            FwdData.append(FactorLocalContext(IDs=SectionIDs, DTs=iDTs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs or self._QSArgs.SectionIDs))
         if self._ExtraDeps:
             DefaultFwdData, _ = super().forward_compute(path=path, fwd_data=fwd_data, context=context)
             return FwdData + DefaultFwdData[len(self._Descriptors):], FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, SectionIDs=fwd_data.SectionIDs, PIDs=fwd_data.PIDs, ExtraData={"CalcDTs": CalcDTs})
@@ -891,7 +891,7 @@ class TimeOperation(DerivativeFactor):
             return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs, ExtraData={"CalcDTs": CalcDTs})
 
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
-        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=local_context.SectionIDs, context=context)
+        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=local_context.SectionIDs or self._QSArgs.SectionIDs, context=context)
         Cached = (context.DataCache and self._QSArgs.CacheEnabled)
         if bwd_data_list:
             SectionIDs = context.getID(self.QSID, running_key=RunningKey, pids=[context.PID] if Cached else (local_context.PIDs or [context.PID]))
@@ -953,15 +953,15 @@ class SectionOperation(DerivativeFactor):
     def init_compute(self, path: List[str], init_data: FactorInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
         for i, iDescriptor in enumerate(self._Descriptors):
-            InitData[i] = InitData[i].__class__(**(InitData[i].model_dump() | {"SectionIDs": self._Operator._QSArgs.DescriptorSection[i] or InitData[i].SectionIDs}))
-        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=init_data.SectionIDs, context=context)
+            InitData[i] = InitData[i].__class__(**(InitData[i].model_dump() | {"SectionIDs": self._Operator._QSArgs.DescriptorSection[i] or InitData[i].SectionIDs or self._QSArgs.SectionIDs}))
+        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=init_data.SectionIDs or self._QSArgs.SectionIDs, context=context)
         if (len(context.PIDList) > 1) and (RunningKey not in context.Event):
             # context.Event[RunningKey] = context.ExtraData["mp_manager"].Event()
             context.Event[RunningKey] = Event()
         return InitData
     
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
-        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=fwd_data.SectionIDs, context=context)
+        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=fwd_data.SectionIDs or self._QSArgs.SectionIDs, context=context)
         NodeState = context.NodeState.get(self.QSID, {}).get(RunningKey, {})
         DTRange = NodeState.get("dt_range", None)
         if DTRange is None: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
@@ -976,7 +976,7 @@ class SectionOperation(DerivativeFactor):
             iCalcDTs = DTPartition[context.PIDList.index(PID)]
         else:
             iCalcDTs = CalcDTs
-        SectionIDs = fwd_data.SectionIDs or context.SectionIDs
+        SectionIDs = fwd_data.SectionIDs or self._QSArgs.SectionIDs or context.SectionIDs
         FwdData = [FactorLocalContext(IDs=self._Operator._QSArgs.DescriptorSection[i] or SectionIDs, DTs=CalcDTs, PIDs=context.PIDList, SectionIDs=self._Operator._QSArgs.DescriptorSection[i] or SectionIDs) for i, iDescriptor in enumerate(self.Descriptors)]
         if self._ExtraDeps:
             DefaultFwdData, _ = super().forward_compute(path=path, fwd_data=fwd_data, context=context)
@@ -985,7 +985,7 @@ class SectionOperation(DerivativeFactor):
             return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs, ExtraData={"CalcDTs": iCalcDTs, "TotalCalcDTs": CalcDTs})
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
-        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=local_context.SectionIDs, context=context)
+        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=local_context.SectionIDs or self._QSArgs.SectionIDs, context=context)
         if bwd_data_list:
             iSectionIDs = context.getID(self.QSID, running_key=RunningKey, pids=None)
             CalcDTs = local_context.ExtraData["CalcDTs"]
@@ -1031,7 +1031,7 @@ class PanelOperation(DerivativeFactor):
 
     def init_compute(self, path: List[str], init_data: FactorInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
-        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=init_data.SectionIDs, context=context)
+        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=init_data.SectionIDs or self._QSArgs.SectionIDs, context=context)
         FactorState = context.NodeState.setdefault(self.QSID, {}).setdefault(RunningKey, {})
         StartDT, EndDT = FactorState["dt_range"]
         if (self._Operator._QSArgs.iInitFactor >= 0) and (self._Operator._QSArgs.StartDT[self._Operator._QSArgs.iInitFactor] is not None): # 自身迭代且为扩张窗口，修改自身的起始日为 StartDT[i]
@@ -1057,14 +1057,14 @@ class PanelOperation(DerivativeFactor):
                     iEndDT = EndDT
             if iStartIdx < 0:
                 raise __QS_Error__(f"对于因子 {self.Name}(QSID: {self.QSID}) 的描述子 '{iDescriptor.Name}'(QSID: {iDescriptor.QSID}), 参数 StartDT 为 {self._Operator._QSArgs.StartDT[i]}, 参数 LookBack 为 {self._Operator._QSArgs.LookBack[i]}, 时点标尺长度不足, 超出了 {abs(iStartIdx)} 个时点")
-            InitData[i] = InitData[i].__class__(**(InitData[i].model_dump() | {"DTRange": (DTRuler[iStartIdx], iEndDT), "SectionIDs": self._Operator._QSArgs.DescriptorSection[i] or InitData[i].SectionIDs}))
+            InitData[i] = InitData[i].__class__(**(InitData[i].model_dump() | {"DTRange": (DTRuler[iStartIdx], iEndDT), "SectionIDs": self._Operator._QSArgs.DescriptorSection[i] or InitData[i].SectionIDs or self._QSArgs.SectionIDs}))
         if (len(context.PIDList) > 1) and (RunningKey not in context.Event):
             # context.Event[RunningKey] = context.ExtraData["mp_manager"].Event()
             context.Event[RunningKey] = Event()
         return InitData
     
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
-        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=fwd_data.SectionIDs, context=context)
+        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=fwd_data.SectionIDs or self._QSArgs.SectionIDs, context=context)
         NodeState = context.NodeState.get(self.QSID, {}).get(RunningKey, {})
         DTRange = NodeState.get("dt_range", None)
         if DTRange is None: 
@@ -1092,7 +1092,7 @@ class PanelOperation(DerivativeFactor):
         if ResponsibleCalcDTs: ResponsibleStartIdx, ResponsibleEndIdx = DTRuler.index(ResponsibleCalcDTs[0]), DTRuler.index(ResponsibleCalcDTs[-1])
         else: ResponsibleStartIdx = ResponsibleEndIdx = StartIdx
         FwdData, DescriptorDTs = [], []
-        SectionIDs = fwd_data.SectionIDs or context.SectionIDs
+        SectionIDs = fwd_data.SectionIDs or self._QSArgs.SectionIDs or context.SectionIDs
         for i, iDescriptor in enumerate(self._Descriptors):
             if self._Operator._QSArgs.StartDT[i] is None:# 滚动窗口模式
                 iStartIdx, iEndIdx = StartIdx - self._Operator._QSArgs.LookBack[i], EndIdx
@@ -1119,7 +1119,7 @@ class PanelOperation(DerivativeFactor):
             return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs, ExtraData={"CalcDTs": ResponsibleCalcDTs, "TotalCalcDTs": CalcDTs, "DescriptorDTs": DescriptorDTs})
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
-        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=local_context.SectionIDs, context=context)
+        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=local_context.SectionIDs or self._QSArgs.SectionIDs, context=context)
         Cached = (context.DataCache and self._QSArgs.CacheEnabled)
         if bwd_data_list:
             SectionIDs = context.getID(self.QSID, running_key=RunningKey, pids=None)

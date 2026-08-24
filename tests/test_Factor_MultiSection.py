@@ -156,13 +156,14 @@ class TestMultiSection(unittest.TestCase):
     def testMultiSectionSource(self):
         """测试不同截面来源下的多截面时运行"""
         FT = self.FDB.getTable(self.TestTable)
-        TestFactor1 = FT.getFactor(self.TestFactor1)
+        TestFactor1 = FT.getFactor(self.TestFactor1, args={"SectionIDs": self.SectionIDs[1:4]})
         Factor = fo.Aggregate(func=np.nansum, descriptor_ids=self.SectionIDs[:3])(TestFactor1)
         DTs = self.DTRuler[-5:]
-        FactorList = [Factor, TestFactor1]
+        FactorList = [Factor, TestFactor1, TestFactor1]
         FwdDataList = [
             FactorLocalContext(DTs=DTs, IDs=["000000.HST"], SectionIDs=["000000.HST"]),
-            FactorLocalContext(DTs=DTs, IDs=self.SectionIDs[1:4], SectionIDs=self.SectionIDs[-3:])
+            FactorLocalContext(DTs=DTs, IDs=self.SectionIDs[1:4], SectionIDs=self.SectionIDs[-3:]),
+            FactorLocalContext(DTs=DTs, IDs=self.SectionIDs[1:4])
         ]
         with self.Cache:
             with self.Context:
@@ -176,6 +177,8 @@ class TestMultiSection(unittest.TestCase):
         pd.testing.assert_series_equal(TestData, Rslt[0].iloc[:, 0], check_names=False)
         TestData = self.TestData[self.TestFactor1].reindex(columns=self.SectionIDs[-3:]).reindex(index=DTs, columns=self.SectionIDs[1:4])
         pd.testing.assert_frame_equal(TestData, Rslt[1])
+        TestData = self.TestData[self.TestFactor1].reindex(columns=self.SectionIDs[1:4]).reindex(index=DTs, columns=self.SectionIDs[1:4])
+        pd.testing.assert_frame_equal(TestData, Rslt[2])
 
     def testPointOperation(self):
         """测试单点运算因子在多截面时运行"""
@@ -279,6 +282,6 @@ class TestMultiSection(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
     # Suite = unittest.TestSuite()
-    # Suite.addTest(TestMultiSection("testContext"))
+    # Suite.addTest(TestMultiSection("testMultiSectionSource"))
     # Runner = unittest.TextTestRunner()
     # Runner.run(Suite)
