@@ -78,8 +78,13 @@ class FactorContext(Context):
         else:
             return self.NodeState[factor_id][running_key]["section_ids"] or self.SectionIDs
 
+class FactorInitData(DTInitData):
+    """因子节点初始化数据对象"""
+    
+    SectionIDs: Optional[List[str]] = Field(default=None, title="截面ID")
+    SubFactorName: Optional[str] = Field(default=None, title="因子名称", description="传递给因子表用于准备原始数据的因子名称")
 
-class FactorLocalContext(DTLocalContext):
+class FactorLocalContext(DTLocalContext, FactorInitData):
     """因子节点运算时局部上下文对象"""
 
     IDs: List[str] = Field(title="ID 序列")
@@ -91,13 +96,6 @@ class FactorLocalContext(DTLocalContext):
         PIDIDs = context.splitID(self.IDs)
         Args = self.model_dump()
         return [self.__class__(**(Args | {"IDs": PIDIDs[iPID]})) for iPID in context.PIDList]
-
-
-class FactorInitData(DTInitData):
-    """因子节点初始化数据对象"""
-    
-    SectionIDs: Optional[List[str]] = Field(default=None, title="截面ID")
-    SubFactorName: Optional[str] = Field(default=None, title="因子名称", description="传递给因子表用于准备原始数据的因子名称")
 
 
 def makeFactorRunningKey(qsid: str, section_ids: Optional[List[str]] = None, dt_ruler: Optional[List[dt.datetime]] = None, context: Optional[FactorContext]=None) -> str:
@@ -241,8 +239,7 @@ class Factor(Node):
         if not __QS_Engine__: ExecEngine = Engine()
         else: ExecEngine = __QS_Engine__[-1]
         LocalContext = FactorLocalContext(DTs=dts, IDs=ids, SectionIDs=section_ids)
-        InitData = FactorInitData(DTRange=(dts[0], dts[-1]), SectionIDs=section_ids)
-        Rslt = ExecEngine.run([self], Context, fwd_data_list=[LocalContext], init_data_list=[InitData])
+        Rslt = ExecEngine.run([self], Context, fwd_data_list=[LocalContext])
         return Rslt[0]
 
     def __getitem__(self, key):

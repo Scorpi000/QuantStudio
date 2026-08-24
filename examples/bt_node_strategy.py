@@ -8,13 +8,12 @@ plt.rcParams['axes.unicode_minus'] = False# 正确显示负号
 
 from QuantStudio.Core.CalcEngine import Engine
 from QuantStudio.Core.ParallelEngine import ParallelEngine
-from QuantStudio.Core.Node import DTLocalContext, DTInitData
-from QuantStudio.Factor.Factor import DataFactor, FactorContext, FactorLocalContext, FactorInitData
+from QuantStudio.Factor.Factor import DataFactor, FactorContext, FactorLocalContext
 from QuantStudio.Factor.FactorCache import FeatherFactorCache
 import QuantStudio.Factor.FactorOperator as fo
 from QuantStudio.BackTest.BackTestModel import BTReport
 from QuantStudio.BackTest.Strategy.Strategy import MakeAccount, AccountReport
-from QuantStudio.BackTest.SectionFactor.Portfolio import CalcPortfolioNV
+from QuantStudio.BackTest.Strategy.AllocationStrategy import CalcPortfolioNV
 from QuantStudio.Tools.DateTimeFun import getNaturalDay, getMonthLastDateTime
 
 
@@ -61,8 +60,7 @@ if __name__=="__main__":
     )
     NodeList = [PortfolioSignal, Account, StrategyAmt, StrategyNV, StrategyReport]
     FwdDataList = [FactorLocalContext(DTs=DTs, IDs=IDs)] * len(NodeList)
-    InitDataList = [FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=SectionIDs)] * len(NodeList)
-    Rslt = ExecEngine.run(NodeList, Context, fwd_data_list=FwdDataList, init_data_list=InitDataList)
+    Rslt = ExecEngine.run(NodeList, Context, fwd_data_list=FwdDataList)
 
     print(Rslt[0])
     print("===")

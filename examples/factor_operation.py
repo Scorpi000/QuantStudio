@@ -9,7 +9,7 @@ import pandas as pd
 
 from QuantStudio.Core.CalcEngine import Engine
 from QuantStudio.Core.ParallelEngine import ParallelEngine
-from QuantStudio.Factor.Factor import DataFactor, FactorContext, FactorLocalContext, FactorInitData
+from QuantStudio.Factor.Factor import DataFactor, FactorContext, FactorLocalContext
 from QuantStudio.Factor.BasicOperator import rename
 from QuantStudio.Factor.FactorCache import FeatherFactorCache
 from QuantStudio.Factor.FactorOperation import SectionOperation, PanelOperation, makeFactorOperator, FactorOperatorized
@@ -77,8 +77,7 @@ if __name__ == "__main__":
                     Rslt = ExecEngine.run(
                         [Factor4], 
                         Context, 
-                        fwd_data_list=[FactorLocalContext(DTs=DTs, IDs=SectionIDs)], 
-                        init_data_list=[FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=SectionIDs)]
+                        fwd_data_list=[FactorLocalContext(DTs=DTs, IDs=SectionIDs)]
                     )
         print(time.perf_counter() - StartT)
     # print(Rslt[0])
@@ -90,8 +89,7 @@ if __name__ == "__main__":
                 Rslt = ExecEngine.run(
                     [Factor4], 
                     Context, 
-                    fwd_data_list=[FactorLocalContext(DTs=DTs, IDs=SectionIDs)], 
-                    init_data_list=[FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=SectionIDs)]
+                    fwd_data_list=[FactorLocalContext(DTs=DTs, IDs=SectionIDs)]
                 )
     print(time.perf_counter() - StartT)
     # print(Rslt[0])

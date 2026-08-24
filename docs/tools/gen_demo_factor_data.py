@@ -2,18 +2,20 @@
 """生成 Demo 因子数据"""
 import os
 import datetime as dt
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from QuantStudio.Core.QSObject import Panel
 from QuantStudio.Factor.HDF5DB import HDF5DB
+from QuantStudio import __QS_MainPath__
 
 
 # 导入 HDF5DB 数据
-TargetDir = "../data/HDF5"
+TargetDir = Path(__QS_MainPath__).parent / "docs/data/HDF5"
 if not os.path.isdir(TargetDir): os.makedirs(TargetDir, exist_ok=True)
-CacheDir = "../data/Cache"
+CacheDir = Path(__QS_MainPath__).parent / "docs/data/Cache"
 if not os.path.isdir(CacheDir): os.makedirs(CacheDir, exist_ok=True)
 
 HDB = HDF5DB(args={"MainDir": TargetDir}).connect()

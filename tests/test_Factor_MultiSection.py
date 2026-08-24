@@ -20,7 +20,7 @@ import pandas as pd
 
 from QuantStudio.Core.QSObject import Panel
 from QuantStudio.Core.CalcEngine import Engine
-from QuantStudio.Factor.Factor import DataFactor, FactorInitData, FactorLocalContext, FactorContext, makeFactorRunningKey
+from QuantStudio.Factor.Factor import DataFactor, FactorLocalContext, FactorContext, makeFactorRunningKey
 from QuantStudio.Factor.FactorCache import FeatherFactorCache
 from QuantStudio.Factor import FactorOperator as fo
 from QuantStudio.Factor.HDF5DB import HDF5DB
@@ -65,10 +65,6 @@ class TestMultiSection(unittest.TestCase):
         Factor = FT.getFactor(self.TestFactor1)
         DTs = self.DTRuler[-5:]
         FactorList = [Factor, Factor]
-        InitDataList = [
-            FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=self.SectionIDs[:3]),
-            FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=self.SectionIDs[-3:]),
-        ]
         FwdDataList = [
             FactorLocalContext(DTs=DTs, IDs=self.SectionIDs[1:4], SectionIDs=self.SectionIDs[:3]),
             FactorLocalContext(DTs=DTs, IDs=self.SectionIDs[1:4], SectionIDs=self.SectionIDs[-3:])
@@ -79,7 +75,6 @@ class TestMultiSection(unittest.TestCase):
                     Rslt = self.Engine.run(
                         node_list=FactorList, 
                         context=self.Context,
-                        init_data_list=InitDataList,
                         fwd_data_list=FwdDataList
                     )
         self.assertListEqual(list(self.Context.NodeState), [Factor.QSID])
@@ -95,10 +90,6 @@ class TestMultiSection(unittest.TestCase):
         Factor = FT.getFactor(self.TestFactor1)
         DTs = self.DTRuler[-5:]
         FactorList = [Factor, Factor]
-        InitDataList = [
-            FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=self.SectionIDs[:3]),
-            FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=self.SectionIDs[-3:]),
-        ]
         FwdDataList = [
             FactorLocalContext(DTs=DTs, IDs=self.SectionIDs[1:4], SectionIDs=self.SectionIDs[:3]),
             FactorLocalContext(DTs=DTs, IDs=self.SectionIDs[1:4], SectionIDs=self.SectionIDs[-3:])
@@ -109,7 +100,6 @@ class TestMultiSection(unittest.TestCase):
                     Rslt = self.Engine.run(
                         node_list=FactorList, 
                         context=self.Context,
-                        init_data_list=InitDataList,
                         fwd_data_list=FwdDataList
                     )
         RunningKey1 = makeFactorRunningKey(qsid=Factor.QSID, section_ids=self.SectionIDs[:3], context=self.Context)
@@ -123,10 +113,6 @@ class TestMultiSection(unittest.TestCase):
         Factor = DataFactor(data=TestData, args={"Name": "TestFactor"})
         DTs = self.DTRuler[-5:]
         FactorList = [Factor, Factor]
-        InitDataList = [
-            FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=self.SectionIDs[:3]),
-            FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=self.SectionIDs[-3:]),
-        ]
         FwdDataList = [
             FactorLocalContext(DTs=DTs, IDs=self.SectionIDs[1:4], SectionIDs=self.SectionIDs[:3]),
             FactorLocalContext(DTs=DTs, IDs=self.SectionIDs[1:4], SectionIDs=self.SectionIDs[-3:])
@@ -137,7 +123,6 @@ class TestMultiSection(unittest.TestCase):
                     Rslt = self.Engine.run(
                         node_list=FactorList, 
                         context=self.Context,
-                        init_data_list=InitDataList,
                         fwd_data_list=FwdDataList
                     )
         TestData1 = TestData.reindex(columns=self.SectionIDs[:3]).reindex(index=DTs, columns=self.SectionIDs[1:4])
@@ -151,10 +136,6 @@ class TestMultiSection(unittest.TestCase):
         Factor = FT.getFactor(self.TestFactor1)
         DTs = self.DTRuler[-5:]
         FactorList = [Factor, Factor]
-        InitDataList = [
-            FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=self.SectionIDs[:3]),
-            FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=self.SectionIDs[-3:]),
-        ]
         FwdDataList = [
             FactorLocalContext(DTs=DTs, IDs=self.SectionIDs[1:4], SectionIDs=self.SectionIDs[:3]),
             FactorLocalContext(DTs=DTs, IDs=self.SectionIDs[1:4], SectionIDs=self.SectionIDs[-3:])
@@ -165,7 +146,6 @@ class TestMultiSection(unittest.TestCase):
                     Rslt = self.Engine.run(
                         node_list=FactorList, 
                         context=self.Context,
-                        init_data_list=InitDataList,
                         fwd_data_list=FwdDataList
                     )
         TestData1 = self.TestData[self.TestFactor1].reindex(columns=self.SectionIDs[:3]).reindex(index=DTs, columns=self.SectionIDs[1:4])
@@ -180,10 +160,6 @@ class TestMultiSection(unittest.TestCase):
         Factor = fo.Aggregate(func=np.nansum, descriptor_ids=self.SectionIDs[:3])(TestFactor1)
         DTs = self.DTRuler[-5:]
         FactorList = [Factor, TestFactor1]
-        InitDataList = [
-            FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=["000000.HST"]),
-            FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=self.SectionIDs[-3:]),
-        ]
         FwdDataList = [
             FactorLocalContext(DTs=DTs, IDs=["000000.HST"], SectionIDs=["000000.HST"]),
             FactorLocalContext(DTs=DTs, IDs=self.SectionIDs[1:4], SectionIDs=self.SectionIDs[-3:])
@@ -194,7 +170,6 @@ class TestMultiSection(unittest.TestCase):
                     Rslt = self.Engine.run(
                         node_list=FactorList, 
                         context=self.Context,
-                        init_data_list=InitDataList,
                         fwd_data_list=FwdDataList
                     )
         TestData = self.TestData[self.TestFactor1].reindex(columns=self.SectionIDs[:3]).sum(axis=1).reindex(index=DTs)
@@ -210,10 +185,6 @@ class TestMultiSection(unittest.TestCase):
         Factor = TestFactor1 + TestFactor2
         DTs = self.DTRuler[-5:]
         FactorList = [Factor, Factor]
-        InitDataList = [
-            FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=self.SectionIDs[:3]),
-            FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=self.SectionIDs[-3:]),
-        ]
         FwdDataList = [
             FactorLocalContext(DTs=DTs, IDs=self.SectionIDs[1:4], SectionIDs=self.SectionIDs[:3]),
             FactorLocalContext(DTs=DTs, IDs=self.SectionIDs[1:4], SectionIDs=self.SectionIDs[-3:])
@@ -224,7 +195,6 @@ class TestMultiSection(unittest.TestCase):
                     Rslt = self.Engine.run(
                         node_list=FactorList, 
                         context=self.Context,
-                        init_data_list=InitDataList,
                         fwd_data_list=FwdDataList
                     )
         TestData1 = self.TestData[self.TestFactor1].reindex(columns=self.SectionIDs[:3]).reindex(index=DTs, columns=self.SectionIDs[1:4])
@@ -241,10 +211,6 @@ class TestMultiSection(unittest.TestCase):
         Factor = fo.RollingApply(func=np.nansum, window=2, min_periods=2)(TestFactor1)
         DTs = self.DTRuler[-5:]
         FactorList = [Factor, Factor]
-        InitDataList = [
-            FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=self.SectionIDs[:3]),
-            FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=self.SectionIDs[-3:]),
-        ]
         FwdDataList = [
             FactorLocalContext(DTs=DTs, IDs=self.SectionIDs[1:4], SectionIDs=self.SectionIDs[:3]),
             FactorLocalContext(DTs=DTs, IDs=self.SectionIDs[1:4], SectionIDs=self.SectionIDs[-3:])
@@ -255,7 +221,6 @@ class TestMultiSection(unittest.TestCase):
                     Rslt = self.Engine.run(
                         node_list=FactorList, 
                         context=self.Context,
-                        init_data_list=InitDataList,
                         fwd_data_list=FwdDataList
                     )
         TestData = self.TestData[self.TestFactor1].reindex(columns=self.SectionIDs[:3]).rolling(window=2, min_periods=2).sum().reindex(index=DTs, columns=self.SectionIDs[1:4])
@@ -270,10 +235,6 @@ class TestMultiSection(unittest.TestCase):
         TestFactor2 = fo.Aggregate(func=np.nansum, descriptor_ids=self.SectionIDs[-3:])(FT.getFactor(self.TestFactor1))
         DTs = self.DTRuler[-5:]
         FactorList = [TestFactor1, TestFactor2]
-        InitDataList = [
-            FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=["000001.HST"]),
-            FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=["000002.HST"]),
-        ]
         FwdDataList = [
             FactorLocalContext(DTs=DTs, IDs=["000001.HST"], SectionIDs=["000001.HST"]),
             FactorLocalContext(DTs=DTs, IDs=["000002.HST"], SectionIDs=["000002.HST"])
@@ -284,7 +245,6 @@ class TestMultiSection(unittest.TestCase):
                     Rslt = self.Engine.run(
                         node_list=FactorList, 
                         context=self.Context,
-                        init_data_list=InitDataList,
                         fwd_data_list=FwdDataList
                     )
         TestData = self.TestData[self.TestFactor1].reindex(columns=self.SectionIDs[:3]).sum(axis=1).reindex(index=DTs)
@@ -299,10 +259,6 @@ class TestMultiSection(unittest.TestCase):
         TestFactor2 = fo.AggregatePanel(func=np.nansum, window=2, descriptor_ids=self.SectionIDs[-3:])(FT.getFactor(self.TestFactor1))
         DTs = self.DTRuler[-5:]
         FactorList = [TestFactor1, TestFactor2]
-        InitDataList = [
-            FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=["000001.HST"]),
-            FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=["000002.HST"]),
-        ]
         FwdDataList = [
             FactorLocalContext(DTs=DTs, IDs=["000001.HST"], SectionIDs=["000001.HST"]),
             FactorLocalContext(DTs=DTs, IDs=["000002.HST"], SectionIDs=["000002.HST"])
@@ -313,7 +269,6 @@ class TestMultiSection(unittest.TestCase):
                     Rslt = self.Engine.run(
                         node_list=FactorList, 
                         context=self.Context,
-                        init_data_list=InitDataList,
                         fwd_data_list=FwdDataList
                     )
         TestData = self.TestData[self.TestFactor1].reindex(columns=self.SectionIDs[:3]).sum(axis=1).rolling(window=2).sum().reindex(index=DTs)
@@ -324,6 +279,6 @@ class TestMultiSection(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
     # Suite = unittest.TestSuite()
-    # Suite.addTest(TestMultiSection("testPanelOperation"))
+    # Suite.addTest(TestMultiSection("testContext"))
     # Runner = unittest.TextTestRunner()
     # Runner.run(Suite)

@@ -44,7 +44,7 @@ class TreeEngine(Engine):
     def init(self, node_list: List[Node], context: Context, init_data_list: Optional[List[Any]]=None):
         if init_data_list is None: init_data_list = [None] * len(node_list)
         Path2Node = {}# {节点路径: Node}
-        NodeQ, InitDataQ, PathQ = node_list.copy(), init_data_list, [[iNode.QSID] for iNode in node_list]
+        NodeQ, InitDataQ, PathQ = node_list.copy(), init_data_list.copy(), [[iNode.QSID] for iNode in node_list]
         while NodeQ:
             iNode, iPath = NodeQ.pop(0), PathQ.pop(0)
             context.NodeDict[iNode.QSID] = iNode
