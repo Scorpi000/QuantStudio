@@ -151,6 +151,7 @@ class FamaMacBethRegression(BTNode):
         Name: str = Field(default="Fama-MacBeth 回归", frozen=True, title="名称")
         FactorNameList: Optional[List[str]] = Field(default=None, frozen=True, title="因子列表")
         RollingAvgPeriod: int = Field(default=12, frozen=True, title="移动平均期数")
+        SectionIDs: Optional[List[str]] = Field(default=None, frozen=True, title="截面ID")
         
     def __init__(self, fmr: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
         super().__init__(deps=[fmr], args=args, config_file=config_file, **kwargs)
@@ -234,10 +235,11 @@ class FamaMacBethRegression(BTNode):
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
-        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=None) for i, iInitData in enumerate(InitData)]
+        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self._QSArgs.SectionIDs) for i, iInitData in enumerate(InitData)]
     
     def forward_compute(self, path: List[str], fwd_data: DTLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], DTLocalContext]:
-        return [FactorLocalContext(DTs=fwd_data.DTs, IDs=context.NodeState[iDep.QSID]["section_ids"], PIDs=context.PIDList) for iDep in self.Deps], DTLocalContext(DTs=fwd_data.DTs)
+        SectionIDs = self._QSArgs.SectionIDs or self.Deps[0].Args.SectionIDs or context.SectionIDs
+        return [FactorLocalContext(DTs=fwd_data.DTs, IDs=SectionIDs, PIDs=context.PIDList, SectionIDs=SectionIDs) for _ in self.Deps], DTLocalContext(DTs=fwd_data.DTs)
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
         BwdData = bwd_data_list[0].dropna(how="all", axis=0)
