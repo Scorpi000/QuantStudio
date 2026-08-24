@@ -323,7 +323,8 @@ class FileFactorCache(FileDTCache, FactorCache):
             if not os.path.exists(iPath):# 该进程的数据没有准备好
                 if wait:
                     pids.add(iPID)
-                    if wait_seconds > 0: time.sleep(wait_seconds)
+                    if wait_seconds > 0:
+                        time.sleep(wait_seconds)
                 continue
             elif wait:
                 DataLock = FileLock(self._FactorDataDir + os.sep + iPID + os.sep + key + ".lock")

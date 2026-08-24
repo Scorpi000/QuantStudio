@@ -823,7 +823,8 @@ class AggregatePanel(PanelOperator):
 
     Args:
         aggr_func: 聚合函数, 接收 2D ndarray, shape=(window, nID_filtered)。
-            当无 mask/cat_data 时为 (window, nID); 当带 mask 时列维度为掩码为 1 的 ID;
+            当无 mask/cat_data 时为 (window, nID); 
+            当带 mask 时列维度为掩码为 1 的 ID;
             当带 cat_data 时为当前类别的截面值。
         window: 回溯窗口大小, 1 表示仅当期
         descriptor_ids: 聚合的截面 ID 列表, None 表示使用因子自身截面

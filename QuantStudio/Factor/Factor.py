@@ -76,14 +76,14 @@ class FactorContext(Context):
             PIDIDs = self.NodeState[factor_id][running_key]["pid_ids"]
             return sorted(sum((PIDIDs[iPID] for iPID in pids), []))
         else:
-            return self.NodeState[factor_id][running_key]["section_ids"]
+            return self.NodeState[factor_id][running_key]["section_ids"] or self.SectionIDs
 
 
 class FactorLocalContext(DTLocalContext):
     """因子节点运算时局部上下文对象"""
 
     IDs: List[str] = Field(title="ID 序列")
-    SectionIDs: Optional[List[str]] = Field(title="截面 ID")
+    SectionIDs: Optional[List[str]] = Field(default=None, title="截面 ID")
     PIDs: Optional[List[str]] = Field(default=None)
     
     # 并发运行时切分自身成 n 份
@@ -100,7 +100,7 @@ class FactorInitData(DTInitData):
     SubFactorName: Optional[str] = Field(default=None, title="因子名称", description="传递给因子表用于准备原始数据的因子名称")
 
 
-def makeFactorRunningKey(qsid: str, section_ids: Optional[List[str]] = None, dt_ruler: Optional[List[dt.datetime]] = None) -> str:
+def makeFactorRunningKey(qsid: str, section_ids: Optional[List[str]] = None, dt_ruler: Optional[List[dt.datetime]] = None, context: Optional[FactorContext]=None) -> str:
     """生成运行时键 = 因子对象的 QSID + 维度哈希
 
     运行时键由因子的 QSID 和计算维度（截面、时点）共同决定，
@@ -115,10 +115,10 @@ def makeFactorRunningKey(qsid: str, section_ids: Optional[List[str]] = None, dt_
         运行时键字符串（16位十六进制）
     """
     parts = [qsid]
-    if section_ids:
+    if section_ids and ((context is None) or (section_ids != context.SectionIDs)):
         # 截面排序后哈希，确保顺序无关
         parts.append(f"s:{','.join(sorted(section_ids))}")
-    if dt_ruler:
+    if dt_ruler and ((context is None) or (dt_ruler != context.DTRuler)):
         parts.append(f"d:{','.join(str(d) for d in dt_ruler)}")
     return hashlib.md5("|".join(parts).encode()).hexdigest()[:16]
 
@@ -273,7 +273,7 @@ class Factor(Node):
     # 准备缓存数据
     def _prepareCacheData(self, context: FactorContext, local_context: FactorLocalContext):
         if not self._FactorTable: return 0
-        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=local_context.SectionIDs)
+        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=local_context.SectionIDs, context=context)
         DTRange = context.NodeState.get(self.QSID, {}).get(RunningKey, {}).get("dt_range", None)
         if DTRange is None: return 0
         DTRange = context.DataCache.getDTRange(key=RunningKey, dt_range=DTRange)
@@ -326,7 +326,7 @@ class Factor(Node):
     # NodeState: {"dt_range", "section_ids", "pid_ids"}
     def init_compute(self, path: List[str], init_data: FactorInitData, context: FactorContext) -> List[FactorInitData]:
         InitSectionIDs = init_data.SectionIDs
-        FactorState = context.NodeState.setdefault(self.QSID, {}).setdefault(makeFactorRunningKey(self.QSID, InitSectionIDs, None), {})
+        FactorState = context.NodeState.setdefault(self.QSID, {}).setdefault(makeFactorRunningKey(qsid=self.QSID, section_ids=InitSectionIDs, context=context), {})
         # 处理时点
         DTRange = FactorState.get("dt_range", None)
         if DTRange is None:
@@ -357,7 +357,7 @@ class Factor(Node):
             return super().forward_compute(path=path, fwd_data=fwd_data, context=context)
 
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
-        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=local_context.SectionIDs)
+        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=local_context.SectionIDs, context=context)
         if context.DataCache and self._QSArgs.CacheEnabled:
             self._prepareCacheData(context=context, local_context=local_context)
             StdData = context.DataCache.readFactorData(key=RunningKey, ipid=context.PID, target_field="StdData", pids=local_context.PIDs, data_type=self.getMetaData(key="DataType"))
@@ -591,15 +591,20 @@ class DataFactor(Factor):
         else:
             return []
 
-    def readData(self, ids:List[str], dts:List[dt.datetime], **kwargs) -> pd.DataFrame:
+    def readData(self, ids:List[str], dts:List[dt.datetime], section_ids:Optional[List[str]]=None, dt_ruler:Optional[List[dt.datetime]]=None, **kwargs) -> pd.DataFrame:
+        if section_ids is None: section_ids = ids
+        if dt_ruler is None: dt_ruler = dts
         if self._DataContent == "Value":
-            return pd.DataFrame([(self._Data,) * len(ids)] * len(dts), index=dts, columns=ids)
+            Data = pd.DataFrame([(self._Data,) * len(section_ids)] * len(dt_ruler), index=dt_ruler, columns=section_ids)
         elif self._DataContent == "ID":
-            Data = pd.DataFrame(self._Data.values.reshape((1, self._Data.shape[0])).repeat(len(dts), axis=0), index=dts, columns=self._Data.index)
+            Data = pd.DataFrame(self._Data.values.reshape((1, self._Data.shape[0])).repeat(len(dt_ruler), axis=0), index=dt_ruler, columns=self._Data.index)
+            if Data.columns.intersection(ids).shape[0] == 0: return pd.DataFrame(index=dts, columns=ids, dtype=("O" if self._QSArgs.DataType != "double" else float))
+            else: Data = Data.reindex(columns=section_ids)
         elif self._DataContent == "DateTime":
-            Data = pd.DataFrame(self._Data.values.reshape((self._Data.shape[0], 1)).repeat(len(ids), axis=1), index=self._Data.index, columns=ids)
+            Data = pd.DataFrame(self._Data.values.reshape((self._Data.shape[0], 1)).repeat(len(section_ids), axis=1), index=self._Data.index, columns=section_ids).reindex(index=dt_ruler)
         else:
-            Data = self._Data
+            if self._Data.columns.intersection(ids).shape[0] == 0: return pd.DataFrame(index=dts, columns=ids, dtype=("O" if self._QSArgs.DataType != "double" else float))
+            else: Data = self._Data.reindex(index=dt_ruler, columns=section_ids)
         if Data.columns.intersection(ids).shape[0] == 0:
             return pd.DataFrame(index=dts, columns=ids, dtype=("O" if self._QSArgs.DataType != "double" else float))
         if self._QSArgs.LookBack == 0:
@@ -611,7 +616,7 @@ class DataFactor(Factor):
         return []
 
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
-        return self.readData(ids=local_context.IDs, dts=local_context.DTs)
+        return self.readData(ids=local_context.IDs, dts=local_context.DTs, section_ids=local_context.SectionIDs, dt_ruler=context.DTRuler)
 
 
 if __name__=="__main__":
