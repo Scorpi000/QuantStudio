@@ -772,14 +772,17 @@ class PointOperation(DerivativeFactor):
         RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=fwd_data.SectionIDs or self._QSArgs.SectionIDs, context=context)
         DTRange = context.NodeState.get(self.QSID, {}).get(RunningKey, {}).get("dt_range", None)
         if DTRange is None: 
+            self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 的 DTRange is None, 返回空的 forward 数据, 终止前向传递")
             return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
         Cached = (context.DataCache and self._QSArgs.CacheEnabled)
         if Cached:
             DTRange = context.DataCache.getDTRange(self.QSID, DTRange)
             if DTRange is None: 
+                self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 的缓存数据已覆盖所需的时点, 返回空的 forward 数据, 终止前向传递")
                 return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
         CalcDTs = context.getDateTime(DTRange)
-        if not CalcDTs: 
+        if not CalcDTs:
+            self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 需要计算的时点序列为空, 返回空的 forward 数据, 终止前向传递")
             return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, SectionIDs=fwd_data.SectionIDs)
         FwdData = [FactorLocalContext(IDs=context.getID(self.QSID, running_key=RunningKey, pids=([context.PID] if Cached else (fwd_data.PIDs or [context.PID]))), DTs=CalcDTs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs or self._QSArgs.SectionIDs)] * len(self._Descriptors)
         if self._ExtraDeps:
@@ -859,13 +862,19 @@ class TimeOperation(DerivativeFactor):
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
         RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=fwd_data.SectionIDs or self._QSArgs.SectionIDs, context=context)
         DTRange = context.NodeState.get(self.QSID, {}).get(RunningKey, {}).get("dt_range", None)
-        if DTRange is None: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
+        if DTRange is None: 
+            self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 的 DTRange is None, 返回空的 forward 数据, 终止前向传递")
+            return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
         Cached = (context.DataCache and self._QSArgs.CacheEnabled)
         if Cached:
             DTRange = context.DataCache.getDTRange(self.QSID, DTRange)
-            if DTRange is None: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
+            if DTRange is None: 
+                self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 的缓存数据已覆盖所需的时点, 返回空的 forward 数据, 终止前向传递")
+                return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
         CalcDTs = context.getDateTime(DTRange)
-        if not CalcDTs: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
+        if not CalcDTs: 
+            self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 需要计算的时点序列为空, 返回空的 forward 数据, 终止前向传递")
+            return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
         DTRuler = context.DTRuler
         StartIdx, EndIdx = DTRuler.index(CalcDTs[0]), DTRuler.index(CalcDTs[-1])
         SectionIDs = context.getID(self.QSID, running_key=RunningKey, pids=([context.PID] if Cached else (fwd_data.PIDs or [context.PID])))
@@ -964,12 +973,18 @@ class SectionOperation(DerivativeFactor):
         RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=fwd_data.SectionIDs or self._QSArgs.SectionIDs, context=context)
         NodeState = context.NodeState.get(self.QSID, {}).get(RunningKey, {})
         DTRange = NodeState.get("dt_range", None)
-        if DTRange is None: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
+        if DTRange is None: 
+            self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 的 DTRange is None, 返回空的 forward 数据, 终止前向传递")
+            return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
         if context.DataCache and self._QSArgs.CacheEnabled:
             DTRange = context.DataCache.getDTRange(self.QSID, DTRange)
-            if DTRange is None: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
+            if DTRange is None: 
+                self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 的缓存数据已覆盖所需的时点, 返回空的 forward 数据, 终止前向传递")
+                return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
         CalcDTs = context.getDateTime(DTRange)
-        if not CalcDTs: return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
+        if not CalcDTs: 
+            self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 的需要计算的时点序列为空, 返回空的 forward 数据, 终止前向传递")
+            return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
         if context.DataCache and self._QSArgs.CacheEnabled and (len(context.PIDList) > 1):
             PID = context.PID
             DTPartition = partitionList(CalcDTs, len(context.PIDList))
@@ -1068,14 +1083,17 @@ class PanelOperation(DerivativeFactor):
         NodeState = context.NodeState.get(self.QSID, {}).get(RunningKey, {})
         DTRange = NodeState.get("dt_range", None)
         if DTRange is None: 
+            self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 的 DTRange is None, 返回空的 forward 数据, 终止前向传递")
             return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)# 该因子没有要计算的数据, 理论上不应该走到
         Cached = (context.DataCache and self._QSArgs.CacheEnabled)
         if Cached:
             DTRange = context.DataCache.getDTRange(RunningKey, DTRange)
             if DTRange is None: 
+                self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 的缓存数据已覆盖所需的时点, 返回空的 forward 数据, 终止前向传递")
                 return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)# 当前缓存已经覆盖所有数据
         CalcDTs = context.getDateTime(DTRange)
         if not CalcDTs: 
+            self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 的需要计算的时点序列为空, 返回空的 forward 数据, 终止前向传递")
             return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
         if Cached and (len(context.PIDList) > 1):
             PID = context.PID

@@ -324,7 +324,11 @@ class Factor(Node):
     # NodeState: {"dt_range", "section_ids", "pid_ids"}
     def init_compute(self, path: List[str], init_data: FactorInitData, context: FactorContext) -> List[FactorInitData]:
         InitSectionIDs = init_data.SectionIDs or self._QSArgs.SectionIDs
-        FactorState = context.NodeState.setdefault(self.QSID, {}).setdefault(makeFactorRunningKey(qsid=self.QSID, section_ids=InitSectionIDs, context=context), {})
+        RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=InitSectionIDs, context=context)
+        FactorState = context.NodeState.setdefault(self.QSID, {})
+        if FactorState and RunningKey not in FactorState:
+            self._QS_Logger.debug(f"因子 {self.Name}(QSID: {self.QSID}) 设置了不同的截面")
+        FactorState = FactorState.setdefault(RunningKey, {})
         # 处理时点
         DTRange = FactorState.get("dt_range", None)
         if DTRange is None:
