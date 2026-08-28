@@ -24,27 +24,23 @@
 """
 
 import os
-import sys
 import atexit
 import logging
 import logging.handlers
 import multiprocessing
-from typing import Optional, Union
+import multiprocess
+from typing import Optional
 
 __all__ = ["logger", "init_logger", "shutdown", "get_queue"]
 
 
 # ========== 全局状态 ==========
 
-# 全局队列（模块级变量，fork 模式下子进程会自动继承）
-_queue: Optional[multiprocessing.Queue] = None
+# 全局队列（使用 multiprocess.Queue 以支持跨进程传递）
+_queue: Optional[multiprocess.Queue] = None
 _listener: Optional[logging.handlers.QueueListener] = None
 _main_pid: int = os.getpid()
 _initialized: bool = False
-
-# 用于 spawn 模式下传递队列和级别的模块级变量
-_child_queue: Optional[multiprocessing.Queue] = None
-_child_level: int = logging.INFO
 
 
 class _MultiProcessLogger(logging.Logger):
@@ -108,10 +104,10 @@ def _create_handler(level: int) -> logging.StreamHandler:
 
 
 def _ensure_queue():
-    """确保队列已创建"""
+    """确保队列已创建（使用 multiprocess.Queue 以支持跨进程传递）"""
     global _queue
     if _queue is None:
-        _queue = multiprocessing.Queue()
+        _queue = multiprocess.Queue()
     return _queue
 
 
@@ -119,10 +115,13 @@ def _ensure_listener(level: int = logging.INFO):
     """确保 QueueListener 已启动"""
     global _listener, _initialized
 
-    if _listener is not None:
-        return
-
     queue = _ensure_queue()
+
+    if _listener is not None:
+        # 如果 listener 已存在，更新 handler 的级别
+        for handler in _listener.handlers:
+            handler.setLevel(level)
+        return
 
     # 创建 QueueListener，将日志输出到控制台
     console_handler = _create_handler(level)
@@ -149,13 +148,8 @@ def _wrapped_target(original_target, queue, level, args, kwargs):
     return original_target(*args, **kwargs)
 
 
-def _patch_process_start():
-    """Monkey-patch multiprocessing.Process.start 方法
-
-    在子进程启动前，自动将日志队列注入到进程参数中
-    """
-    original_start = multiprocessing.Process.start
-
+def _create_patched_start(original_start):
+    """创建 patch 后的 start 方法"""
     def patched_start(self, *args, **kwargs):
         # 获取当前的队列和日志级别
         queue = get_queue()
@@ -174,8 +168,19 @@ def _patch_process_start():
             self._kwargs = {}
 
         return original_start(self, *args, **kwargs)
+    return patched_start
 
-    multiprocessing.Process.start = patched_start
+
+def _patch_process_start():
+    """Monkey-patch multiprocessing.Process.start 和 multiprocess.Process.start 方法
+
+    在子进程启动前，自动将日志队列注入到进程参数中
+    """
+    # Patch 标准库的 multiprocessing.Process.start
+    multiprocessing.Process.start = _create_patched_start(multiprocessing.Process.start)
+
+    # Patch multiprocess 包的 Process.start
+    multiprocess.Process.start = _create_patched_start(multiprocess.Process.start)
 
 
 # ========== 公共 API ==========
@@ -192,7 +197,7 @@ if not isinstance(logger, _MultiProcessLogger):
 
 def init_logger(
     level: int = logging.INFO,
-    queue: Optional[multiprocessing.Queue] = None
+    queue: Optional[multiprocess.Queue] = None
 ) -> None:
     """初始化多进程日志系统
 
@@ -232,7 +237,7 @@ def init_logger(
         logger._child_initialized = True
 
 
-def get_queue() -> Optional[multiprocessing.Queue]:
+def get_queue() -> Optional[multiprocess.Queue]:
     """获取日志队列（用于传递给子进程）"""
     _ensure_queue()
     return _queue
@@ -245,10 +250,3 @@ def shutdown() -> None:
         _listener.stop()
         _listener = None
     _initialized = False
-
-
-# ========== 模块初始化 ==========
-
-# 在主进程中自动创建队列
-if os.getpid() == _main_pid:
-    _ensure_queue()
