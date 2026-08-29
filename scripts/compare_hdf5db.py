@@ -125,15 +125,16 @@ def main():
     total_inconsistent = 0
 
     for table_name in args.tables:
-        for fdb, dir_path, tag in ((fdb1, args.dir1, "库1"), (fdb2, args.dir2, "库2")):
-            if table_name not in fdb.TableNames:
-                print(f"[跳过] 表 '{table_name}' 不存在于 {tag} ({dir_path})")
-                continue
+        missing1 = table_name not in fdb1.TableNames
+        missing2 = table_name not in fdb2.TableNames
+        if missing1 or missing2:
+            if missing1:
+                print(f"[跳过] 表 '{table_name}' 不存在于 库1 ({args.dir1})")
+            if missing2:
+                print(f"[跳过] 表 '{table_name}' 不存在于 库2 ({args.dir2})")
+            continue
 
         print(f"\n=== 表: {table_name} ===")
-
-        if table_name not in fdb1.TableNames or table_name not in fdb2.TableNames:
-            continue
 
         table1 = fdb1.getTable(table_name)
         table2 = fdb2.getTable(table_name)
