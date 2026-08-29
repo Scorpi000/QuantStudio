@@ -57,17 +57,20 @@ class LocalContext(__QS_Args__):
     def split(self, n: int, context: Context, **kwargs):
         return [self] * n
 
-
-class DTLocalContext(LocalContext):
-    """时序运算类节点运算时局部上下文对象"""
-
-    DTs: List[dt.datetime] = Field(title="时点序列")
-
-
 class DTInitData(__QS_Args__):
     """时序运算类节点初始化数据对象"""
     
     DTRange: Tuple[dt.datetime, dt.datetime] = Field(title="时点区间")
+
+class DTLocalContext(LocalContext, DTInitData):
+    """时序运算类节点运算时局部上下文对象"""
+
+    DTs: List[dt.datetime] = Field(title="时点序列")
+
+    def __init__(self, /, _owner=None, _logger=None, **data: Any) -> None:
+        if "DTRange" not in data:
+            data["DTRange"] = (data["DTs"][0], data["DTs"][-1])
+        return super().__init__(_owner=_owner, _logger=_logger, **data)
 
 
 class Node(__QS_Object__):

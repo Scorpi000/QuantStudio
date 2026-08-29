@@ -15,6 +15,7 @@ from QuantStudio import __QS_ConfigPath__
 from QuantStudio.Tools.DataTypeConversionFun import dict2html, dict2markdown, formatValue2MD
 from QuantStudio.Tools.DataTypeFun import dict2id
 from QuantStudio.Core._encryption import encrypt_value, decrypt_value, is_encrypted
+from QuantStudio.Core.MPLogger import logger as _MPLogger, init_logger as _initMPLogger
 
 
 def _is_secret_field(field_info: FieldInfo) -> bool:
@@ -24,22 +25,27 @@ def _is_secret_field(field_info: FieldInfo) -> bool:
 
 
 def setDefaultLogLevel(level=logging.INFO):
+    """设置默认日志级别（使用多进程日志系统）
+
+    Args:
+        level: 日志级别，默认 INFO
+    """
     global __QS_Logger__
-    __QS_Logger__ = logging.getLogger('QS')
-    __QS_Logger__.setLevel(level)
-    for iHandler in __QS_Logger__.handlers:
-        __QS_Logger__.removeHandler(iHandler)
-    _QSLogHandler = logging.StreamHandler()
-    _QSLogHandler.setLevel(level)
-    _QSLogHandler.setFormatter(logging.Formatter('%(asctime)s | %(name)s | %(levelname)s : %(message)s'))
-    __QS_Logger__.addHandler(_QSLogHandler)
+    _initMPLogger(level=level)
+    __QS_Logger__ = _MPLogger
 
 def setDefaultLogger(logger):
+    """设置默认日志器（兼容旧接口，但不推荐使用）
+
+    Args:
+        logger: 日志器实例
+    """
     global __QS_Logger__
     __QS_Logger__ = logger
 
-__QS_Logger__ = None
-setDefaultLogLevel()
+# 使用多进程日志系统
+__QS_Logger__ = _MPLogger
+_initMPLogger(level=logging.INFO)
 
 class __QS_Error__(Exception):
     """Quant Studio 系统错误"""

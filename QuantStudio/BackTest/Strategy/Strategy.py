@@ -258,9 +258,12 @@ class AccountReport(BTNode):
         Name: str = Field(default="账户报告", frozen=True, title="名称")
         RiskFreeRate: float = Field(default=0, frozen=True, title="无风险利率")
         RebalanceDTs: Optional[List[dt.datetime]] = Field(default=None, title="再平衡时点", frozen=True)
+        AccountSection: Optional[List[str]] = Field(default=None, title="账户截面", frozen=True)
+        BmkID = Optional[str] = Field(default=None, title="基准ID", frozen=True)
     
     def __init__(self, account: Factor, bmk_nv:Optional[Factor]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        super().__init__(deps=[account] + ([bmk_nv] if bmk_nv else []), args=args, config_file=config_file, **kwargs)
+        self._HasBmk = bmk_nv is not None
+        return super().__init__(deps=[account] + ([bmk_nv] if self._HasBmk else []), args=args, config_file=config_file, **kwargs)
     
     @staticmethod
     def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:
@@ -355,13 +358,19 @@ class AccountReport(BTNode):
         NodeState = context.NodeState.setdefault(self.QSID, {})
         StartDT, EndDT = NodeState["dt_range"]
         StartIdx = np.searchsorted(DTRuler, StartDT, side="left") - 1
-        return [FactorInitData(DTRange=(DTRuler[StartIdx], EndDT), SectionIDs=None)] + [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=None) for iInitData in InitData[1:]]
+        NewInitData = [FactorInitData(DTRange=(DTRuler[StartIdx], EndDT), SectionIDs=self._QSArgs.AccountSection)]
+        if self._HasBmk: NewInitData.append(FactorInitData(DTRange=InitData[1].DTRange, SectionIDs=([self._QSArgs.BmkID] if self._QSArgs.BmkID is not None else None)))
+        return NewInitData + [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=None) for iInitData in InitData[len(NewInitData):]]
     
     def forward_compute(self, path: List[str], fwd_data: DTLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], DTLocalContext]:
         DTRuler = context.DTRuler
         StartIdx, EndIdx = max(0, DTRuler.index(fwd_data.DTs[0]) - 1), DTRuler.index(fwd_data.DTs[-1])
-        FwdData =  [FactorLocalContext(DTs=DTRuler[StartIdx: EndIdx + 1], IDs=context.NodeState[self.Deps[0].QSID]["section_ids"], PIDs=context.PIDList)]
-        FwdData += [FactorLocalContext(DTs=fwd_data.DTs, IDs=context.NodeState[iDep.QSID]["section_ids"], PIDs=context.PIDList) for iDep in self.Deps[1:]]
+        AccountSection = self._QSArgs.AccountSection or self.Deps[0].SectionIDs or context.SectionIDs
+        FwdData = [FactorLocalContext(DTs=DTRuler[StartIdx: EndIdx + 1], IDs=AccountSection, SectionIDs=AccountSection, PIDs=context.PIDList)]
+        if self._HasBmk:
+            BmkSection = ([self._QSArgs.BmkID] if self._QSArgs.BmkID else (self.Deps[1].SectionIDs or context.SectionIDs))
+            FwdData.append(FactorLocalContext(DTs=fwd_data.DTs, IDs=BmkSection, SectionIDs=BmkSection, PIDs=context.PIDList))
+        FwdData += [FactorLocalContext(DTs=fwd_data.DTs, IDs=iDep.Args.SectionIDs or context.SectionIDs, PIDs=context.PIDList, SectionIDs=iDep.Args.SectionIDs or context.SectionIDs) for iDep in self.Deps[len(FwdData):]]
         return FwdData, DTLocalContext(DTs=fwd_data.DTs)
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
@@ -413,7 +422,7 @@ class AccountReport(BTNode):
 class Strategy(PanelOperation):
     def init_compute(self, path: List[str], init_data: FactorInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path, init_data, context)
-        SectioinIDs = context.NodeState[self.QSID]["section_ids"]
+        SectioinIDs = init_data.SectionIDs or self._QSArgs.SectionIDs or context.SectionIDs
         ExtraSectionIDs = self._QSArgs.ModelArgs["extra_section_ids"]
         ExtraLookBack = self._QSArgs.ModelArgs["extra_lookback"]
         nDescriptor = len(InitData) - len(self._ExtraDeps)
@@ -428,7 +437,7 @@ class Strategy(PanelOperation):
     
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
         FwdData, LocalContext = super().forward_compute(path, fwd_data, context)
-        SectioinIDs = context.NodeState[self.QSID]["section_ids"]
+        SectioinIDs = fwd_data.SectionIDs or self._QSArgs.SectionIDs or context.SectionIDs
         ExtraSectionIDs = self._QSArgs.ModelArgs["extra_section_ids"]
         ExtraLookBack = self._QSArgs.ModelArgs["extra_lookback"]
         nDescriptor = len(FwdData) - len(self._ExtraDeps)

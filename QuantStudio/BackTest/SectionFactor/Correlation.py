@@ -111,8 +111,9 @@ class SectionCorrelation(BTNode):
         Name: str = Field(default="因子截面相关性", frozen=True, title="名称")
         FactorNameList: Optional[List[str]] = Field(default=None, frozen=True, title="因子列表")
         
-    def __init__(self, section_corr: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        return super().__init__(deps=[section_corr], args=args, config_file=config_file, **kwargs)
+    def __init__(self, section_corr: Factor, section_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        super().__init__(deps=[section_corr], args=args, config_file=config_file, **kwargs)
+        self._SectionIDs = section_ids
     
     @staticmethod
     def genOutputReport(output:dict) -> str:
@@ -135,10 +136,11 @@ class SectionCorrelation(BTNode):
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
-        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=None) for i, iInitData in enumerate(InitData)]
+        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self._SectionIDs) for i, iInitData in enumerate(InitData)]
     
     def forward_compute(self, path: List[str], fwd_data: DTLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], DTLocalContext]:
-        return [FactorLocalContext(DTs=fwd_data.DTs, IDs=context.NodeState[iDep.QSID]["section_ids"], PIDs=context.PIDList) for iDep in self.Deps], DTLocalContext(DTs=fwd_data.DTs)
+        SectionIDs = self._SectionIDs or self.Deps[0].Args.SectionIDs or context.SectionIDs
+        return [FactorLocalContext(DTs=fwd_data.DTs, IDs=SectionIDs, PIDs=context.PIDList, SectionIDs=SectionIDs) for _ in self.Deps], DTLocalContext(DTs=fwd_data.DTs)
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
         Corr = bwd_data_list[0]
@@ -261,8 +263,9 @@ class FactorTurnover(BTNode):
         Name: str = Field(default="因子换手率", frozen=True, title="名称")
         FactorNameList: Optional[List[str]] = Field(default=None, frozen=True, title="因子列表")
         
-    def __init__(self, factor_turnover: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        return super().__init__(deps=[factor_turnover], args=args, config_file=config_file, **kwargs)
+    def __init__(self, factor_turnover: Factor, section_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        super().__init__(deps=[factor_turnover], args=args, config_file=config_file, **kwargs)
+        self._SectionIDs = section_ids
     
     @staticmethod
     def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:
@@ -312,10 +315,11 @@ class FactorTurnover(BTNode):
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
-        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=None) for i, iInitData in enumerate(InitData)]
+        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self._SectionIDs) for i, iInitData in enumerate(InitData)]
     
     def forward_compute(self, path: List[str], fwd_data: DTLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], DTLocalContext]:
-        return [FactorLocalContext(DTs=fwd_data.DTs, IDs=context.NodeState[iDep.QSID]["section_ids"], PIDs=context.PIDList) for iDep in self.Deps], DTLocalContext(DTs=fwd_data.DTs)
+        SectionIDs = self._SectionIDs or self.Deps[0].Args.SectionIDs or context.SectionIDs
+        return [FactorLocalContext(DTs=fwd_data.DTs, IDs=SectionIDs, PIDs=context.PIDList, SectionIDs=SectionIDs) for _ in self.Deps], DTLocalContext(DTs=fwd_data.DTs)
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
         FactorTurnover = bwd_data_list[0]

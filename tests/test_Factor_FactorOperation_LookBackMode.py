@@ -11,7 +11,7 @@ import pandas as pd
 
 from QuantStudio.Core.CalcEngine import Engine
 from QuantStudio.Core.ParallelEngine import ParallelEngine
-from QuantStudio.Factor.Factor import FactorContext, DataFactor, FactorLocalContext, FactorInitData
+from QuantStudio.Factor.Factor import FactorContext, DataFactor, FactorLocalContext
 from QuantStudio.Factor.FactorOperation import FactorOperatorized
 from QuantStudio.Factor.FactorCache import FeatherFactorCache
 
@@ -122,16 +122,14 @@ with FeatherFactorCache(args={"DTRuler": DTRuler, "CacheDir": "/mnt/d/Data/Cache
             Rslt = ExecEngine.run(
                 NodeList, 
                 Context, 
-                fwd_data_list=[FactorLocalContext(DTs=DTs, IDs=IDs)] * len(NodeList), 
-                init_data_list=[FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=IDs)] * len(NodeList)
+                fwd_data_list=[FactorLocalContext(DTs=DTs, IDs=IDs)] * len(NodeList)
             )
             # 测试在有缓存的情况下能否接续计算
             DTs = DTRuler[-3:]
             Rslt1 = ExecEngine.run(
                 NodeList, 
                 Context, 
-                fwd_data_list=[FactorLocalContext(DTs=DTs, IDs=IDs)] * len(NodeList), 
-                init_data_list=[FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=IDs)] * len(NodeList)
+                fwd_data_list=[FactorLocalContext(DTs=DTs, IDs=IDs)] * len(NodeList)
             )
 
 

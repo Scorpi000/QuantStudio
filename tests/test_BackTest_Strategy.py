@@ -7,7 +7,7 @@ import datetime as dt
 import numpy as np
 import pandas as pd
 
-from QuantStudio.Factor.Factor import DataFactor, FactorContext, FactorLocalContext, FactorInitData
+from QuantStudio.Factor.Factor import DataFactor, FactorContext, FactorLocalContext
 from QuantStudio.Factor.FactorCache import FeatherFactorCache
 from QuantStudio.Core.CalcEngine import Engine
 import QuantStudio.Factor.FactorOperator as fo
@@ -119,14 +119,9 @@ class TestMergeTopDownSignal(unittest.TestCase):
             ) as Context:
                 with Engine() as ExecEngine:
                     fwd_data = FactorLocalContext(DTs=self.DTs, IDs=self.AllDownIDs)
-                    init_data = FactorInitData(
-                        DTRange=(self.DTs[0], self.DTs[-1]),
-                        SectionIDs=self.AllDownIDs,
-                    )
                     Rslt = ExecEngine.run(
                         [result_factor], Context,
-                        fwd_data_list=[fwd_data],
-                        init_data_list=[init_data],
+                        fwd_data_list=[fwd_data]
                     )
 
         result = Rslt[0].values
@@ -207,14 +202,9 @@ class TestMergeTopDownSignal(unittest.TestCase):
             ) as Context:
                 with Engine() as ExecEngine:
                     fwd_data = FactorLocalContext(DTs=self.DTs, IDs=self.AllDownIDs)
-                    init_data = FactorInitData(
-                        DTRange=(self.DTs[0], self.DTs[-1]),
-                        SectionIDs=self.AllDownIDs,
-                    )
                     Rslt = ExecEngine.run(
                         [result_factor], Context,
-                        fwd_data_list=[fwd_data],
-                        init_data_list=[init_data],
+                        fwd_data_list=[fwd_data]
                     )
 
         result = Rslt[0].values
@@ -300,14 +290,9 @@ class TestMergeTopDownSignal(unittest.TestCase):
             ) as Context:
                 with Engine() as ExecEngine:
                     fwd_data = FactorLocalContext(DTs=self.DTs, IDs=all_ids)
-                    init_data = FactorInitData(
-                        DTRange=(self.DTs[0], self.DTs[-1]),
-                        SectionIDs=all_ids,
-                    )
                     Rslt = ExecEngine.run(
                         [result_factor], Context,
-                        fwd_data_list=[fwd_data],
-                        init_data_list=[init_data],
+                        fwd_data_list=[fwd_data]
                     )
 
         result = Rslt[0].values
@@ -418,13 +403,12 @@ class TestBacktestConsistency(unittest.TestCase):
         )
         return Portfolio
 
-    def _run_backtest(self, node_list, fwd_data_list, init_data_list):
+    def _run_backtest(self, node_list, fwd_data_list):
         """运行单次回测并返回结果和耗时
 
         Args:
             node_list: 节点列表
             fwd_data_list: 前向数据列表
-            init_data_list: 初始化数据列表
 
         Returns:
             tuple: (results, elapsed_seconds)
@@ -435,8 +419,7 @@ class TestBacktestConsistency(unittest.TestCase):
                     start = time.perf_counter()
                     Rslt = ExecEngine.run(
                         node_list, Context,
-                        fwd_data_list=fwd_data_list,
-                        init_data_list=init_data_list,
+                        fwd_data_list=fwd_data_list
                     )
                     elapsed = time.perf_counter() - start
         return Rslt, elapsed
@@ -463,17 +446,12 @@ class TestBacktestConsistency(unittest.TestCase):
 
         NodeList = [Account, PortfolioNV1, PortfolioNV2]
         FwdDataList = [
-            FactorLocalContext(DTs=self.TestDTs, IDs=self.SectionIDs),
-            FactorLocalContext(DTs=self.TestDTs, IDs=["Portfolio"]),
-            FactorLocalContext(DTs=self.TestDTs, IDs=["Portfolio"]),
+            FactorLocalContext(DTs=self.TestDTs, IDs=self.SectionIDs, SectionIDs=self.SectionIDs),
+            FactorLocalContext(DTs=self.TestDTs, IDs=["Portfolio"], SectionIDs=["Portfolio"]),
+            FactorLocalContext(DTs=self.TestDTs, IDs=["Portfolio"], SectionIDs=["Portfolio"]),
         ]
-        InitDataList = [
-            FactorInitData(DTRange=(self.TestDTs[0], self.TestDTs[-1]), SectionIDs=self.SectionIDs),
-            FactorInitData(DTRange=(self.TestDTs[0], self.TestDTs[-1]), SectionIDs=["Portfolio"]),
-            FactorInitData(DTRange=(self.TestDTs[0], self.TestDTs[-1]), SectionIDs=["Portfolio"]),
-        ]
-
-        Rslt, _ = self._run_backtest(NodeList, FwdDataList, InitDataList)
+        
+        Rslt, _ = self._run_backtest(NodeList, FwdDataList)
 
         # 计算归一化净值
         NV = {}
@@ -507,8 +485,7 @@ class TestBacktestConsistency(unittest.TestCase):
         for _ in range(n_runs):
             _, elapsed = self._run_backtest(
                 [Account],
-                [FactorLocalContext(DTs=self.TestDTs, IDs=self.SectionIDs)],
-                [FactorInitData(DTRange=(self.TestDTs[0], self.TestDTs[-1]), SectionIDs=self.SectionIDs)],
+                [FactorLocalContext(DTs=self.TestDTs, IDs=self.SectionIDs, SectionIDs=self.SectionIDs)]
             )
             times_iter.append(elapsed)
 
@@ -521,8 +498,7 @@ class TestBacktestConsistency(unittest.TestCase):
         for _ in range(n_runs):
             _, elapsed = self._run_backtest(
                 [PortfolioNV_numpy],
-                [FactorLocalContext(DTs=self.TestDTs, IDs=["Portfolio"])],
-                [FactorInitData(DTRange=(self.TestDTs[0], self.TestDTs[-1]), SectionIDs=["Portfolio"])],
+                [FactorLocalContext(DTs=self.TestDTs, IDs=["Portfolio"], SectionIDs=["Portfolio"])]
             )
             times_numpy.append(elapsed)
 
@@ -535,8 +511,7 @@ class TestBacktestConsistency(unittest.TestCase):
         for _ in range(n_runs):
             _, elapsed = self._run_backtest(
                 [PortfolioNV_pandas],
-                [FactorLocalContext(DTs=self.TestDTs, IDs=["Portfolio"])],
-                [FactorInitData(DTRange=(self.TestDTs[0], self.TestDTs[-1]), SectionIDs=["Portfolio"])],
+                [FactorLocalContext(DTs=self.TestDTs, IDs=["Portfolio"], SectionIDs=["Portfolio"])]
             )
             times_pandas.append(elapsed)
 
@@ -567,10 +542,10 @@ class TestBacktestConsistency(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    # unittest.main()
-    Suite = unittest.TestSuite()
-    Suite.addTest(TestMergeTopDownSignal("test_partial_top_ids"))
-    Suite.addTest(TestBacktestConsistency("test_backtest_comparison"))
-    Suite.addTest(TestBacktestConsistency("test_backtest_speed"))
-    Runner = unittest.TextTestRunner()
-    Runner.run(Suite)
+    unittest.main()
+    # Suite = unittest.TestSuite()
+    # Suite.addTest(TestMergeTopDownSignal("test_partial_top_ids"))
+    # Suite.addTest(TestBacktestConsistency("test_backtest_comparison"))
+    # Suite.addTest(TestBacktestConsistency("test_backtest_speed"))
+    # Runner = unittest.TextTestRunner()
+    # Runner.run(Suite)
