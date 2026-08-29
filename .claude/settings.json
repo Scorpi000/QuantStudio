@@ -4,7 +4,10 @@
       "Bash(D:/PythonEnv/QS312/Scripts/python.exe tests/test_SQLDB.py)",
       "Bash(C:/Users/hst/Project/PythonEnv/QS/Scripts/python.exe -m unittest tests.test_Tools_DateTimeFun -v)",
       "Bash(C:/Users/hst/Project/PythonEnv/QS/Scripts/python.exe tests/test_Tools_DateTimeFun.py)",
-      "Bash(C:/Users/hst/Project/PythonEnv/QS/Scripts/python.exe -c ' *)"
+      "Bash(C:/Users/hst/Project/PythonEnv/QS/Scripts/python.exe -c ' *)",
+      "Bash(\"C:/Users/hst/Project/PythonEnv/QS/Scripts/python.exe\" -c \"import ast; ast.parse\\(open\\('scripts/compare_hdf5db.py', encoding='utf-8'\\).read\\(\\)\\); print\\('语法 OK'\\)\")",
+      "Bash(\"C:/Users/hst/Project/PythonEnv/QS/Scripts/python.exe\" scripts/compare_hdf5db.py --dir1 \"D:/Data/HDF5DB\" --dir2 \"D:/Data/HDF5DB_Test\" --tables stock_cn_status)",
+      "Bash(\"C:/Users/hst/Project/PythonEnv/QS/Scripts/python.exe\" scripts/compare_hdf5db.py --dir1 \"D:/Data/HDF5DB\" --dir2 \"D:/Data/HDF5DB_Test\" --all-tables-of-dir1)"
     ]
   },
   "enabledPlugins": {
