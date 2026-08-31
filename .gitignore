@@ -1,5 +1,7 @@
 build/
 dist/
+docs_md/
+site/
 .idea/
 .vscode/
 QuantStudio.egg-info/

@@ -1,6 +1,39 @@
 QuantStudio 基本使用说明和约定参见: [通则和约定](./docs/通则和约定.ipynb), 建议在使用下面具体模块前先浏览此文档。
 
 
+# 文档站点
+
+项目使用 MkDocs + Material 主题将 notebook 文档构建为静态站点。
+
+## 安装依赖
+
+```bash
+pip install mkdocs mkdocs-material
+```
+
+## 构建与预览
+
+```bash
+# 构建静态站点（输出到 site/ 目录）
+python scripts/build_docs.py
+
+# 本地预览（http://127.0.0.1:8000，支持热更新）
+python scripts/build_docs.py --serve
+
+# 清理生成的文件
+python scripts/build_docs.py --clean
+```
+
+构建流程：`docs/*.ipynb` → `docs_md/*.md`（nbconvert） → `site/`（mkdocs build）。
+
+## 部署
+
+`site/` 目录为纯静态文件，可直接部署：
+
+* **GitHub Pages**：推送到 `gh-pages` 分支，或通过 GitHub Actions 自动构建
+* **Nginx**：直接托管 `site/` 目录
+
+
 # 因子框架
 
 * 因子框架参见: [因子框架](./docs/因子框架/基本框架.ipynb)

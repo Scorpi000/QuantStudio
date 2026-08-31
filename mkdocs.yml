@@ -1,0 +1,75 @@
+site_name: QuantStudio 文档
+site_description: QuantStudio 量化金融研究框架文档
+repo_url: https://github.com/Scorpi000/QuantStudio/
+repo_name: Scorpi000/QuantStudio
+
+docs_dir: docs_md
+
+theme:
+  name: material
+  language: zh
+  custom_dir: docs/overrides
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: 切换至暗色模式
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: 切换至亮色模式
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+nav:
+  - 首页: index.md
+  - Core:
+    - 计算图框架: Core/计算图框架.md
+    - 计算引擎: Core/计算引擎.md
+    - 缓存: Core/缓存.md
+  - 因子框架:
+    - 快速入门: 因子框架/QuickStart.md
+    - 基本框架: 因子框架/基本框架.md
+    - 因子开发: 因子框架/因子开发.md
+    - HDF5DB: 因子框架/HDF5DB.md
+    - JYDB: 因子框架/JYDB.md
+    - SQLDB: 因子框架/SQLDB.md
+    - BaoStockDB: 因子框架/BaoStockDB.md
+  - 回测框架:
+    - 基本框架: 回测框架/基本框架.md
+    - 截面因子测试: 回测框架/截面因子测试.md
+    - 策略回测: 回测框架/策略回测.md
+    - 业绩归因: 回测框架/业绩归因.md
+    - 风险模型测试: 回测框架/风险模型测试.md
+  - 风险模型:
+    - 基本框架: 风险模型/基本框架.md
+    - 数据读写: 风险模型/数据读写.md
+    - 风险模型: 风险模型/风险模型.md
+  - 组合优化:
+    - 基本框架: 组合优化/基本框架.md
+    - 均值方差模型: 组合优化/均值方差模型.md
+    - 风险预算模型: 组合优化/风险预算模型.md
+    - 组合优化策略: 组合优化/组合优化策略.md
