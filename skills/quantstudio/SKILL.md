@@ -170,15 +170,14 @@ Close_ZScore = calcZScore(Close, factor_args={"Name": "Close_ZScore"})
 
 ```python
 from QuantStudio.Core.CalcEngine import Engine
-from QuantStudio.Factor.Factor import FactorContext, FactorLocalContext, FactorInitData
+from QuantStudio.Factor.Factor import FactorContext, FactorLocalContext
 
 Factors = [Close, Mid, MA5, Close_ZScore]
 Context = FactorContext(DTRuler=DTRuler, SectionIDs=SectionIDs)
 
 Rslt = Engine().run(
     Factors, Context,
-    fwd_data_list=[FactorLocalContext(DTs=DTs, IDs=IDs)] * len(Factors),
-    init_data_list=[FactorInitData(DTRange=(DTs[0], DTs[-1]), SectionIDs=SectionIDs)] * len(Factors)
+    fwd_data_list=[FactorLocalContext(DTs=DTs, IDs=IDs, SectionIDs=SectionIDs)] * len(Factors)
 )
 ```
 
@@ -218,12 +217,11 @@ HDB.writeData(data=Data, table_name="my_factors", if_exists="update",
 ## 因子上下文类型
 
 ```python
-from QuantStudio.Factor.Factor import FactorContext, FactorLocalContext, FactorInitData
+from QuantStudio.Factor.Factor import FactorContext, FactorLocalContext
 ```
 
 - **FactorContext(Context)**：新增 `DTRuler`（时点标尺）、`SectionIDs`（默认截面 ID 序列）、`DataCache`
-- **FactorLocalContext(DTLocalContext)**：携带当前计算的 `DTs` 和 `IDs`
-- **FactorInitData(DTInitData)**：携带 `DTRange`（时点区间）、`SectionIDs`、`SubFactorNames`
+- **FactorLocalContext(DTLocalContext)**：携带当前计算的 `DTs`、`IDs` 和 `SectionIDs`
 
 ## 相关文档
 

@@ -83,11 +83,10 @@ class FactorStorer(Node):
 ## FactorContext 上下文类型
 
 ```python
-from QuantStudio.Factor.Factor import FactorContext, FactorLocalContext, FactorInitData
+from QuantStudio.Factor.Factor import FactorContext, FactorLocalContext
 ```
 
 | 类型 | 基类 | 关键字段 | 用途 |
 |------|------|----------|------|
 | `FactorContext` | `Context` | `DTRuler`, `SectionIDs`, `DataCache` | 全局上下文 |
-| `FactorLocalContext` | `DTLocalContext` | `DTs`, `IDs` | 局部上下文 |
-| `FactorInitData` | `DTInitData` | `DTRange`, `SectionIDs`, `SubFactorNames` | 初始化数据 |
+| `FactorLocalContext` | `DTLocalContext` | `DTs`, `IDs`, `SectionIDs` | 局部上下文 |

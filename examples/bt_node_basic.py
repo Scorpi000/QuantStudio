@@ -11,13 +11,14 @@ plt.rcParams['axes.unicode_minus'] = False# 正确显示负号
 from QuantStudio.Core.CalcEngine import Engine
 from QuantStudio.Core.ParallelEngine import ParallelEngine
 from QuantStudio.Core.Node import DTInitData, DTLocalContext
-from QuantStudio.Factor.Factor import DataFactor, FactorContext, FactorLocalContext, FactorInitData
+from QuantStudio.Factor.Factor import DataFactor, FactorContext
 from QuantStudio.Factor.FactorCache import FeatherFactorCache
 from QuantStudio.BackTest.BackTestModel import BTReport
 from QuantStudio.BackTest.SectionFactor.IC import CalcIC, IC, ICDecay
-from QuantStudio.BackTest.SectionFactor.Portfolio import makeQuantilePortfolio, MultiPortfolio, CalcPortfolioNV
+from QuantStudio.BackTest.SectionFactor.QuantilePortfolio import makeQuantilePortfolio, MultiPortfolio
 from QuantStudio.BackTest.SectionFactor.Correlation import CalcFactorTurnover, FactorTurnover, CalcSectionCorrelation, SectionCorrelation
 from QuantStudio.BackTest.SectionFactor.ReturnDecomposition import CalcFamaMacBethRegression, FamaMacBethRegression
+from QuantStudio.BackTest.Strategy.AllocationStrategy import CalcPortfolioNV
 from QuantStudio.Tools.DateTimeFun import getNaturalDay, getMonthLastDateTime
 
 

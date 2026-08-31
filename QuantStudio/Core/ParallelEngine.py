@@ -22,10 +22,21 @@ def _execute_task(task):
 
 class ParallelEngine(Engine):
 
-    def run(self, node_list: List[Node], context: Context, init_data_list: Optional[List[Any]]=None, fwd_data_list: Optional[List[Any]]=None) -> List[Any]:
+    def run(self, node_list: List[Node], context: Context, fwd_data_list: Optional[List[Any]]=None, init_data_list: Optional[List[Any]]=None) -> List[Any]:
+        """执行并行计算: init (DFS) → prepare → forward (DFS) → backward.
+        
+        Args:
+            node_list: 待计算的节点列表
+            context: 全局上下文
+            fwd_data_list: 与 node_list 一一对应的前向计算输入数据列表
+            init_data_list: 与 node_list 一一对应的初始化数据列表, 如果为 None 则使用 fwd_data_list
+        
+        Returns:
+            List[Any]: 每个节点的 backward_compute 返回值列表, 顺序与 node_list 一致
+        """
         # self._MP_Manager = context.ExtraData["mp_manager"] = Manager()
         if context.Sub2MainQueue is None: context.Sub2MainQueue = Queue()
-        Rslt = super().run(node_list, context, init_data_list, fwd_data_list)
+        Rslt = super().run(node_list, context, fwd_data_list, init_data_list)
         # self._MP_Manager.shutdown()
         return Rslt
 

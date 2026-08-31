@@ -51,7 +51,7 @@ class Engine(__QS_Object__):
             init_data_list: 与 node_list 一一对应的初始化数据列表, None 时使用默认值
         """
         if init_data_list is None: init_data_list = [None] * len(node_list)
-        NodeQ, InitDataQ, PathQ = node_list.copy(), init_data_list, [[iNode.QSID] for iNode in node_list]
+        NodeQ, InitDataQ, PathQ = node_list.copy(), init_data_list.copy(), [[iNode.QSID] for iNode in node_list]
         while NodeQ:
             iNode, iPath = NodeQ.pop(0), PathQ.pop(0)
             context.NodeDict[iNode.QSID] = iNode
@@ -104,20 +104,20 @@ class Engine(__QS_Object__):
         if not fwd_data_list: fwd_data_list = [None] * len(node_list)
         return [iNode.compute([iNode.QSID], fwd_data_list[i], context) for i, iNode in enumerate(node_list)]
 
-    def run(self, node_list: List[Node], context: Context, init_data_list: Optional[List[Any]]=None, fwd_data_list: Optional[List[Any]]=None) -> List[Any]:
+    def run(self, node_list: List[Node], context: Context, fwd_data_list: Optional[List[Any]]=None, init_data_list: Optional[List[Any]]=None) -> List[Any]:
         """给定节点列表, 执行所有节点的计算, 返回每个节点的计算结果
 
         Args:
             node_list: 待计算的节点列表
             context: 全局上下文对象
-            init_data_list: 初始化数据列表
-            fwd_data_list: 前向计算输入数据列表
+            fwd_data_list: 与 node_list 一一对应的前向计算输入数据列表
+            init_data_list: 与 node_list 一一对应的初始化数据列表, 如果为 None 则使用 fwd_data_list
 
         Returns:
             节点计算的结果列表
         """
-        if init_data_list is None: init_data_list = [None] * len(node_list)
         if fwd_data_list is None: fwd_data_list = [None] * len(node_list)
+        if init_data_list is None: init_data_list = fwd_data_list
         self._QS_Logger.info("开始初始化计算...")
         StartT = time.perf_counter()
         self.init(node_list=node_list, context=context, init_data_list=init_data_list)
@@ -188,18 +188,20 @@ class StackEngine(Engine):
                 InitDataStack += iInitDataList[::-1]
                 PathStack += [iPath + [iDep.QSID] for iDep in iNode.Deps][::-1]
 
-    def run(self, node_list: List[Node], context: Context, init_data_list: Optional[List[Any]]=None, fwd_data_list: Optional[List[Any]]=None) -> List[Any]:
+    def run(self, node_list: List[Node], context: Context, fwd_data_list: Optional[List[Any]]=None, init_data_list: Optional[List[Any]]=None) -> List[Any]:
         """执行栈式计算: init (DFS) → prepare → forward (DFS) → backward.
 
         Args:
             node_list: 待计算的节点列表
             context: 全局上下文
-            init_data_list: 与 node_list 一一对应的初始化数据列表
             fwd_data_list: 与 node_list 一一对应的前向计算输入数据列表
-
+            init_data_list: 与 node_list 一一对应的初始化数据列表, 如果为 None 则使用 fwd_data_list
+        
         Returns:
             List[Any]: 每个节点的 backward_compute 返回值列表, 顺序与 node_list 一致
         """
+        if fwd_data_list is None: fwd_data_list = [None] * len(node_list)
+        if init_data_list is None: init_data_list = fwd_data_list
         self._QS_Logger.info("开始初始化计算...")
         StartT = time.perf_counter()
         self.init(node_list=node_list, context=context, init_data_list=init_data_list)

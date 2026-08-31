@@ -15,7 +15,7 @@ from QuantStudio import __QS_ConfigPath__
 from QuantStudio.Tools.DataTypeConversionFun import dict2html, dict2markdown, formatValue2MD
 from QuantStudio.Tools.DataTypeFun import dict2id
 from QuantStudio.Core._encryption import encrypt_value, decrypt_value, is_encrypted
-from QuantStudio.Core.MPLogger import logger as _MPLogger, init_logger as _initMPLogger, shutdown as _shutdownMPLogger
+from QuantStudio.Core.MPLogger import logger as _MPLogger, init_logger as _initMPLogger
 
 
 def _is_secret_field(field_info: FieldInfo) -> bool:

@@ -80,8 +80,24 @@ class MultiPortfolio(BTNode):
         Name: str = Field(default="多组合对比", frozen=True, title="名称")
         LSPairs: List[Tuple[str, str]] = Field(default=[], title="多空组合对", frozen=True, description="构造多空组合的投资组合对, 比如 [('P0', 'P1')] 表示 P0 组合和 P1 组合构成一个多空组合, 将考察它的表现")
         RebalanceDTs: Optional[List[dt.datetime]] = Field(default=None, title="再平衡时点", frozen=True)
+        PortfolioSection: Optional[List[List[str]]] = Field(default=None, frozen=True, title="多组合截面ID")
+        BmkSection: Optional[List[str]] = Field(default=None, frozen=True, title="基准组合截面ID")
 
-    def __init__(self, nv:Factor, bmk_nv:Optional[Factor]=None, portfolio_list:Optional[List[Factor]]=None, bmk_portfolio:Optional[Factor]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
+    def __init__(self, 
+        nv:Factor, 
+        bmk_nv:Optional[Factor]=None, 
+        portfolio_list:Optional[List[Factor]]=None, 
+        bmk_portfolio:Optional[Factor]=None, 
+        args:dict={}, config_file:Optional[str]=None, **kwargs
+    ):
+        """初始化多组合对比回测模块
+
+        Args:
+            nv: 多组合策略净值因子对象
+            bmk_nv: 基准策略净值因子对象
+            portfolio_list: 各组合策略对应的投资组合因子对象
+            bmk_portfolio: 基准策略的投资组合因子对象
+        """
         self._NV = nv
         self._BmkNV = bmk_nv
         self._PortfolioList = portfolio_list
@@ -232,10 +248,19 @@ class MultiPortfolio(BTNode):
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
-        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=None) for iInitData in InitData]
+        InitDataList = [FactorInitData(DTRange=InitData[0].DTRange, SectionIDs=None)]
+        if self._BmkNV is not None: InitDataList.append(FactorInitData(DTRange=InitData[1].DTRange, SectionIDs=None))
+        if self._PortfolioList is not None: SectionList = self._QSArgs.PortfolioSection if self._QSArgs.PortfolioSection is not None else [None] * len(self._PortfolioList)
+        if self._BmkPortfolio is not None: SectionList.append(self._QSArgs.BmkSection)
+        InitDataList += [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=SectionList[i]) for i, iInitData in enumerate(InitData[len(InitDataList):])]
+        return InitDataList
     
     def forward_compute(self, path: List[str], fwd_data: DTLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], DTLocalContext]:
-        return [FactorLocalContext(DTs=fwd_data.DTs, IDs=context.NodeState[iDep.QSID]["section_ids"], PIDs=context.PIDList) for iDep in self.Deps], DTLocalContext(DTs=fwd_data.DTs)
+        SectionList = [None]
+        if self._BmkNV is not None: SectionList.append(None)
+        if self._PortfolioList is not None: SectionList += (self._QSArgs.PortfolioSection if self._QSArgs.PortfolioSection is not None else [None] * len(self._PortfolioList))
+        if self._BmkPortfolio is not None: SectionList.append(self._QSArgs.BmkSection)
+        return [FactorLocalContext(DTs=fwd_data.DTs, IDs=SectionList[i] or iDep.Args.SectionIDs or context.SectionIDs, PIDs=context.PIDList, SectionIDs=SectionList[i] or iDep.Args.SectionIDs or context.SectionIDs) for i, iDep in enumerate(self.Deps)], DTLocalContext(DTs=fwd_data.DTs)
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
         PortfolioNV = bwd_data_list[0].astype(float)
