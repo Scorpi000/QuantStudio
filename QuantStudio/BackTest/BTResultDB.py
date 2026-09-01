@@ -1,0 +1,214 @@
+# -*- coding: utf-8 -*-
+"""回测结果库: 存储和管理回测结果"""
+import os
+import glob as _glob
+from typing import Any, Optional, List
+
+import h5py
+from pydantic import Field
+
+from QuantStudio.Core import __QS_Object__
+from QuantStudio.Tools.DataTypeFun import writeNestedDict2HDF5, readNestedDictFromHDF5
+
+
+class BTResultDB(__QS_Object__):
+    """回测结果库"""
+
+    class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
+        Name: str = Field(default="BTResultDB", frozen=True, title="名称")
+
+    @property
+    def Name(self) -> str:
+        """结果库名称"""
+        return self._QSArgs.Name
+
+    def writeResult(self, result: dict, group_name: str, metadata: Optional[dict] = None):
+        """写入一组回测结果
+
+        Args:
+            result: 嵌套 dict, 叶节点为 DataFrame/Series/str/float 等
+            group_name: 结果组名称, 支持路径层级 (如 "A股/IC/沪深300")
+            metadata: 可选的元信息标签, 用于后续查询筛选 (如 {"资产": "A股", "策略": "IC"})
+        """
+        raise NotImplementedError
+
+    def readResult(self, group_name: str) -> Optional[dict]:
+        """读取一组回测结果
+
+        Args:
+            group_name: 结果组名称
+
+        Returns:
+            嵌套 dict, None 表示不存在
+        """
+        raise NotImplementedError
+
+    def listResults(self, metadata: Optional[dict] = None) -> List[str]:
+        """列出已存储的结果组名称
+
+        Args:
+            metadata: 按元信息标签筛选, None 表示返回所有。传入的 dict 是子集匹配 (AND 逻辑)
+
+        Returns:
+            匹配的结果组名称列表
+        """
+        raise NotImplementedError
+
+    def readMetaData(self, group_name: str, key: Optional[str] = None) -> Any:
+        """读取结果组的元信息
+
+        Args:
+            group_name: 结果组名称
+            key: 元信息键, None 表示返回所有元信息的 dict
+
+        Returns:
+            指定键的值, 或所有元信息的 dict, None 表示不存在
+        """
+        raise NotImplementedError
+
+    def setMetaData(self, group_name: str, key: Optional[str] = None, value: Any = None, metadata: Optional[dict] = None):
+        """设置结果组的元信息
+
+        Args:
+            group_name: 结果组名称
+            key: 元信息键
+            value: 元信息值
+            metadata: 若干组键值对元信息, 与 key/value 互斥
+        """
+        raise NotImplementedError
+
+
+class HDF5BTResultDB(BTResultDB):
+    """基于 HDF5 文件的回测结果库"""
+
+    class __QS_ArgClass__(BTResultDB.__QS_ArgClass__):
+        Name: str = Field(default="HDF5BTResultDB", frozen=True, title="名称")
+        FilePath: str = Field(title="文件路径", description="HDF5 文件路径")
+
+    def writeResult(self, result: dict, group_name: str, metadata: Optional[dict] = None):
+        writeNestedDict2HDF5(result, self._QSArgs.FilePath, group_name, mode="a")
+        if metadata:
+            with h5py.File(self._QSArgs.FilePath, mode="a") as f:
+                if group_name in f:
+                    for k, v in metadata.items():
+                        f[group_name].attrs[k] = v
+
+    def readResult(self, group_name: str) -> Optional[dict]:
+        if not os.path.isfile(self._QSArgs.FilePath):
+            return None
+        return readNestedDictFromHDF5(self._QSArgs.FilePath, group_name)
+
+    def listResults(self, metadata: Optional[dict] = None) -> List[str]:
+        if not os.path.isfile(self._QSArgs.FilePath):
+            return []
+        result_groups = []
+        with h5py.File(self._QSArgs.FilePath, mode="r") as f:
+            def _visit(path, obj):
+                if isinstance(obj, h5py.Group) and len(obj.attrs) > 0:
+                    if metadata is None or all(obj.attrs.get(k) == v for k, v in metadata.items()):
+                        result_groups.append(path)
+            f.visititems(_visit)
+        return sorted(result_groups)
+
+    @property
+    def GroupNames(self) -> List[str]:
+        """已存储的结果组名称列表"""
+        return self.listResults(metadata=None)
+
+    def readMetaData(self, group_name: str, key: Optional[str] = None) -> Any:
+        if not os.path.isfile(self._QSArgs.FilePath):
+            return None
+        with h5py.File(self._QSArgs.FilePath, mode="r") as f:
+            if group_name not in f:
+                return None
+            attrs = dict(f[group_name].attrs)
+            if not attrs:
+                return None
+            if key is None:
+                return attrs
+            return attrs.get(key, None)
+
+    def setMetaData(self, group_name: str, key: Optional[str] = None, value: Any = None, metadata: Optional[dict] = None):
+        if not os.path.isfile(self._QSArgs.FilePath):
+            return
+        with h5py.File(self._QSArgs.FilePath, mode="a") as f:
+            if group_name not in f:
+                return
+            if metadata:
+                for k, v in metadata.items():
+                    f[group_name].attrs[k] = v
+            elif key is not None:
+                f[group_name].attrs[key] = value
+
+
+class HDF5DirBTResultDB(BTResultDB):
+    """基于目录的回测结果库, 每个结果组一个 HDF5 文件, 目录层级对应 group_name 路径层级"""
+
+    class __QS_ArgClass__(BTResultDB.__QS_ArgClass__):
+        Name: str = Field(default="HDF5DirBTResultDB", frozen=True, title="名称")
+        FilePath: str = Field(title="目录路径", description="存放结果文件的根目录")
+
+    def _group_to_path(self, group_name: str) -> str:
+        """group_name → HDF5 文件路径, 如 'A股/IC/沪深300' → '<dir>/A股/IC/沪深300.h5'"""
+        return os.path.join(self._QSArgs.FilePath, group_name + ".h5")
+
+    def _path_to_group(self, file_path: str) -> str:
+        """HDF5 文件路径 → group_name, 逆向还原 _group_to_path"""
+        rel = os.path.relpath(file_path, self._QSArgs.FilePath)
+        if rel.endswith(".h5"):
+            rel = rel[:-3]
+        return rel.replace(os.sep, "/")
+
+    def writeResult(self, result: dict, group_name: str, metadata: Optional[dict] = None):
+        file_path = self._group_to_path(group_name)
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        writeNestedDict2HDF5(result, file_path, "/", mode="w")
+        if metadata:
+            with h5py.File(file_path, mode="a") as f:
+                for k, v in metadata.items():
+                    f.attrs[k] = v
+
+    def readResult(self, group_name: str) -> Optional[dict]:
+        file_path = self._group_to_path(group_name)
+        if not os.path.isfile(file_path):
+            return None
+        return readNestedDictFromHDF5(file_path, "/")
+
+    def listResults(self, metadata: Optional[dict] = None) -> List[str]:
+        if not os.path.isdir(self._QSArgs.FilePath):
+            return []
+        results = []
+        for fpath in _glob.glob(os.path.join(self._QSArgs.FilePath, "**", "*.h5"), recursive=True):
+            with h5py.File(fpath, mode="r") as f:
+                if len(f.attrs) > 0:
+                    if metadata is None or all(f.attrs.get(k) == v for k, v in metadata.items()):
+                        results.append(self._path_to_group(fpath))
+        return sorted(results)
+
+    @property
+    def GroupNames(self) -> List[str]:
+        """已存储的结果组名称列表"""
+        return self.listResults(metadata=None)
+
+    def readMetaData(self, group_name: str, key: Optional[str] = None) -> Any:
+        file_path = self._group_to_path(group_name)
+        if not os.path.isfile(file_path):
+            return None
+        with h5py.File(file_path, mode="r") as f:
+            attrs = dict(f.attrs)
+            if not attrs:
+                return None
+            if key is None:
+                return attrs
+            return attrs.get(key, None)
+
+    def setMetaData(self, group_name: str, key: Optional[str] = None, value: Any = None, metadata: Optional[dict] = None):
+        file_path = self._group_to_path(group_name)
+        if not os.path.isfile(file_path):
+            return
+        with h5py.File(file_path, mode="a") as f:
+            if metadata:
+                for k, v in metadata.items():
+                    f.attrs[k] = v
+            elif key is not None:
+                f.attrs[key] = value
