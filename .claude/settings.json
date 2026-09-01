@@ -12,7 +12,8 @@
       "Bash(\"C:/Users/hst/Project/PythonEnv/QS/Scripts/python.exe\" -c \"import nbconvert; print\\('nbconvert', nbconvert.__version__\\)\")",
       "Bash(\"C:/Users/hst/Project/PythonEnv/QS/Scripts/python.exe\" -m nbconvert --to notebook --execute --stdout scripts/compare_hdf5db.ipynb)",
       "Bash(\"C:/Users/hst/Project/PythonEnv/QS/Scripts/python.exe\" -m nbconvert --to notebook --execute scripts/compare_hdf5db.ipynb --output /tmp/cmp_out.ipynb)",
-      "Bash(\"C:/Users/hst/Project/PythonEnv/QS/Scripts/python.exe\")"
+      "Bash(\"C:/Users/hst/Project/PythonEnv/QS/Scripts/python.exe\")",
+      "Bash(D:/PythonEnv/QS312/Scripts/python.exe -m unittest discover -s tests -p \"test_*.py\")"
     ]
   },
   "enabledPlugins": {

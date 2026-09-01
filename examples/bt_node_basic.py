@@ -116,7 +116,7 @@ if __name__ == "__main__1":
         DataCache=Cache
     )
     NodeList = [ICModule, ICDecayModule, QuantilePortfolioModule, FactorTurnoverModule, SectionCorrelationModule, FamaMacBethModule]
-    Report = BTReport(bt_node_list=NodeList)
+    Report = BTReport(result_nodes=NodeList)
     FwdDataList = [DTLocalContext(DTs=DTs)]
     InitDataList = [DTInitData(DTRange=(DTs[0], DTs[-1]))]
     Rslt = ExecEngine.run([Report], Context, fwd_data_list=FwdDataList, init_data_list=InitDataList)
@@ -196,7 +196,7 @@ if __name__=="__main__1":
     FamaMacBethModule = FamaMacBethRegression(FamaMacBethFactor, args={"GenReport": True})
     NodeList.append(FamaMacBethModule)
 
-    Report = BTReport(bt_node_list=NodeList)
+    Report = BTReport(result_nodes=NodeList)
 
     with FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "PIDs": ["0"], "CacheDir": r"D:\Data\DevCache", "StartMode": "new"}) as Cache:
         with FactorContext(

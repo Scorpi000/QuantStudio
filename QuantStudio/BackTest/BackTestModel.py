@@ -39,14 +39,14 @@ class BTNode(Node):
         return result_list[0]
 
 
-class BTReport(Node):
-    """回测报告节点"""
+class BTResultNode(Node):
+    """回测结果处理节点, 接收一组回测结果, 输出新的结果集"""
 
     class __QS_ArgClass__(Node.__QS_ArgClass__):
-        Name: str = Field(default="BTReport", frozen=True, title="名称")
-    
-    def __init__(self, bt_node_list:List[BTNode], args:dict = {}, config_file:Optional[str] = None, **kwargs):
-        return super().__init__(deps=bt_node_list, args=args, config_file=config_file, **kwargs)
+        Name: str = Field(default="BTResultNode", frozen=True, title="名称")
+
+    def __init__(self, result_nodes: List[Node] = [], args: dict = {}, config_file: Optional[str] = None, **kwargs):
+        return super().__init__(deps=result_nodes, args=args, config_file=config_file, **kwargs)
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: Context) -> List[DTInitData]:
         NodeState = context.NodeState.setdefault(self.QSID, {})
@@ -59,10 +59,23 @@ class BTReport(Node):
         # 默认
         if self.QSID in path[:-1]: return []
         return [DTInitData(DTRange=NodeState["dt_range"])] * len(self.Deps)
-    
+
     def forward_compute(self, path: List[str], fwd_data: DTLocalContext, context: Context) -> Tuple[List[DTLocalContext], DTLocalContext]:
         return [DTLocalContext(DTs=fwd_data.DTs)] * len(self.Deps), DTLocalContext(DTs=fwd_data.DTs)
-    
+
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: Context, local_context: Optional[DTLocalContext]=None) -> dict:
+        raise NotImplementedError("子类必须实现 backward_compute 方法")
+
+    def merge_result(self, result_list: List[dict], context: Context):
+        return result_list[0]
+
+
+class BTReport(BTResultNode):
+    """回测报告节点"""
+
+    class __QS_ArgClass__(BTResultNode.__QS_ArgClass__):
+        Name: str = Field(default="BTReport", frozen=True, title="名称")
+
     def backward_compute(self, path: List[str], bwd_data_list: List[dict], context: Context, local_context: Optional[DTLocalContext]=None) -> dict:
         HTML = ''
         SepStr = '<HR style="FILTER: alpha(opacity=100,finishopacity=0,style=3)" width="90%" color=#987cb9 SIZE=5><div align="center" style="font-size:1.17em"><strong>{Module}</strong></div>'
@@ -89,6 +102,3 @@ class BTReport(Node):
                 iHTML = "暂无报告"
             HTML += SepStr.format(Module=str(i)+". "+name_list[i]) + "\n" + iHTML + "\n"
         return HTML
-
-    def merge_result(self, result_list: List[dict], context: Context):
-        return result_list[0]

@@ -1,11 +1,11 @@
 # 回测框架
 
-回测框架建立在计算图引擎之上，核心由 BTNode 和 BTReport 组成，按功能分为四个子模块。
+回测框架建立在计算图引擎之上，核心由 BTNode、BTResultNode 和 BTReport 组成，按功能分为四个子模块。
 
 ## 整体架构
 
 ```
-BTReport（报告容器）
+BTReport（报告容器, BTResultNode 的具体实现）
   └── BTNode（回测计算节点）× N
         └── 因子节点（数据源）
 ```
@@ -39,11 +39,26 @@ class BTNode(Node):
 2. `forward_compute`：将时点列表传递给子节点
 3. `backward_compute`：收集子节点结果，执行分析逻辑；若 GenReport=True 则调用 genReport
 
-## BTReport — 报告容器
+## BTResultNode — 回测结果处理节点
+
+回测结果处理的抽象基类，接收一组回测结果节点作为依赖，输出新的结果集。
 
 ```python
-class BTReport(Node):
-    def __init__(self, bt_node_list: List[BTNode], args={}, ...)
+class BTResultNode(Node):
+    def __init__(self, result_nodes: List[Node] = [], args={}, ...)
+    # init_compute: 合并依赖节点的 DTRange
+    # forward_compute: 透传 DTs 到所有依赖
+    # backward_compute: 子类必须实现
+    # merge_result: 默认返回第一个结果
+```
+
+## BTReport — 报告容器
+
+继承自 `BTResultNode`，将多个 BTNode 的结果汇总成 HTML 报告。
+
+```python
+class BTReport(BTResultNode):
+    # 参数：Name
 
     @staticmethod
     def genOutputReport(output_list, name_list=None) -> str  # 手动合并多个报告

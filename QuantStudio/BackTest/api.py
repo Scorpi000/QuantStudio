@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from .BackTestModel import BTReport
+from .BackTestModel import BTResultNode, BTReport
 from .BTResultDB import BTResultDB, HDF5BTResultDB, HDF5DirBTResultDB
 from .BTStorer import BTStorer, readBTResult
 from .SectionFactor import api as SectionFactor
