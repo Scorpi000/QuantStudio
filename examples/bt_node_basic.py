@@ -14,10 +14,10 @@ from QuantStudio.Core.Node import DTInitData, DTLocalContext
 from QuantStudio.Factor.Factor import DataFactor, FactorContext
 from QuantStudio.Factor.FactorCache import FeatherFactorCache
 from QuantStudio.BackTest.BackTestModel import BTReport
-from QuantStudio.BackTest.SectionFactor.IC import CalcIC, IC, ICDecay
-from QuantStudio.BackTest.SectionFactor.QuantilePortfolio import makeQuantilePortfolio, MultiPortfolio
-from QuantStudio.BackTest.SectionFactor.Correlation import CalcFactorTurnover, FactorTurnover, CalcSectionCorrelation, SectionCorrelation
-from QuantStudio.BackTest.SectionFactor.ReturnDecomposition import CalcFamaMacBethRegression, FamaMacBethRegression
+from QuantStudio.BackTest.SectionFactor.IC import CalcIC, IC, ICDecay, ICReport, ICDecayReport
+from QuantStudio.BackTest.SectionFactor.QuantilePortfolio import makeQuantilePortfolio, MultiPortfolio, MultiPortfolioReport
+from QuantStudio.BackTest.SectionFactor.Correlation import CalcFactorTurnover, FactorTurnover, CalcSectionCorrelation, SectionCorrelation, FactorTurnoverReport, SectionCorrelationReport
+from QuantStudio.BackTest.SectionFactor.ReturnDecomposition import CalcFamaMacBethRegression, FamaMacBethRegression, FamaMacBethRegressionReport
 from QuantStudio.BackTest.Strategy.AllocationStrategy import CalcPortfolioNV
 from QuantStudio.Tools.DateTimeFun import getNaturalDay, getMonthLastDateTime
 
@@ -43,7 +43,7 @@ if __name__=="__main__":
     calcPortfolioNV = CalcPortfolioNV(start_dt=DTs[0], descriptor_ids=SectionIDs)
     PNameList = [f"P{i}" for i in range(3)]
     PortfolioNVList = [calcPortfolioNV(iPortfolio, price=Price, init_nv=1, factor_args={"Name": f"P{i}"}) for i, iPortfolio in enumerate(QuantilePortfolioList)]
-    QuantilePortfolioNode = MultiPortfolio(nv_list=PortfolioNVList, portfolio_list=QuantilePortfolioList, args={"LSPairs": [(0, -1)], "RebalanceDTs": DTRuler, "GenReport": True, "Name": "分位数组合"})
+    QuantilePortfolioNode = MultiPortfolio(nv_list=PortfolioNVList, portfolio_list=QuantilePortfolioList, args={"LSPairs": [(0, -1)], "RebalanceDTs": DTRuler, "Name": "分位数组合"})
 
     PIDList = ["0"]
     ExecEngine = Engine()
@@ -85,24 +85,24 @@ if __name__ == "__main__1":
     Weight = DataFactor(data=pd.DataFrame(np.random.rand(len(DTRuler), len(SectionIDs)), index=DTRuler, columns=SectionIDs), args={"Name": "Weight"})
 
     FactorIC = CalcIC(lookback=1, period_lookback=1, descriptor_ids=SectionIDs)(Factor1, price=Price)
-    ICModule = IC(FactorIC, args={"RollingAvgPeriod": 2, "GenReport": True})
+    ICModule = IC(FactorIC, args={"RollingAvgPeriod": 2})
 
-    ICDecayModule = ICDecay(ic_list=[CalcIC(lookback=i, period_lookback=i, descriptor_ids=SectionIDs)(Factor1, price=Price) for i in range(1, 4)], args={"GenReport": True})
+    ICDecayModule = ICDecay(ic_list=[CalcIC(lookback=i, period_lookback=i, descriptor_ids=SectionIDs)(Factor1, price=Price) for i in range(1, 4)])
 
     Mask = (Factor1 > 0)
     QuantilePortfolioList = makeQuantilePortfolio(Factor1, mask=Mask, cat_data=Industry, weight=Weight, descriptor_ids=SectionIDs, rebalance_dts=MonthDTRuler, group_num=3)
     calcPortfolioNV = CalcPortfolioNV(descriptor_ids=SectionIDs)
     PortfolioNVList = [calcPortfolioNV(iPortfolio, price=Price, init_nv=1) for iPortfolio in QuantilePortfolioList]
-    QuantilePortfolioModule = MultiPortfolio(PortfolioNVList, portfolio_list=QuantilePortfolioList, args={"RebalanceDTs": MonthDTRuler, "GenReport": True})
+    QuantilePortfolioModule = MultiPortfolio(PortfolioNVList, portfolio_list=QuantilePortfolioList, args={"RebalanceDTs": MonthDTRuler})
 
     TurnoverFactor = CalcFactorTurnover(lookback=1, period_lookback=1, descriptor_ids=SectionIDs)(Factor1)
-    FactorTurnoverModule = FactorTurnover(TurnoverFactor, args={"GenReport": True})
+    FactorTurnoverModule = FactorTurnover(TurnoverFactor)
 
     SectionCorrelationFactor = CalcSectionCorrelation(descriptor_ids=SectionIDs)(Factor1, Factor2)
-    SectionCorrelationModule = SectionCorrelation(SectionCorrelationFactor, args={"GenReport": True})
+    SectionCorrelationModule = SectionCorrelation(SectionCorrelationFactor)
 
     FamaMacBethFactor = CalcFamaMacBethRegression(descriptor_ids=SectionIDs)(Factor1, Factor2, price=Price)
-    FamaMacBethModule = FamaMacBethRegression(FamaMacBethFactor, args={"GenReport": True})
+    FamaMacBethModule = FamaMacBethRegression(FamaMacBethFactor)
     
     ExecEngine = Engine()
     Cache = FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "PIDs": ["0"], "CacheDir": r"D:\Data\DevCache", "StartMode": "new"})
@@ -115,8 +115,15 @@ if __name__ == "__main__1":
         IDSplit="连续切分",
         DataCache=Cache
     )
-    NodeList = [ICModule, ICDecayModule, QuantilePortfolioModule, FactorTurnoverModule, SectionCorrelationModule, FamaMacBethModule]
-    Report = BTReport(result_nodes=NodeList)
+    ReportNodeList = [
+        ICReport(ICModule),
+        ICDecayReport(ICDecayModule),
+        MultiPortfolioReport(QuantilePortfolioModule),
+        FactorTurnoverReport(FactorTurnoverModule),
+        SectionCorrelationReport(SectionCorrelationModule),
+        FamaMacBethRegressionReport(FamaMacBethModule),
+    ]
+    Report = BTReport(report_nodes=ReportNodeList)
     FwdDataList = [DTLocalContext(DTs=DTs)]
     InitDataList = [DTInitData(DTRange=(DTs[0], DTs[-1]))]
     Rslt = ExecEngine.run([Report], Context, fwd_data_list=FwdDataList, init_data_list=InitDataList)
@@ -166,37 +173,39 @@ if __name__=="__main__1":
 
     # Rank IC
     FactorIC = CalcIC(lookback=31, period_lookback=1, corr_method="spearman", descriptor_ids=SectionIDs)(*FactorList, price=Price, mask=Mask, cat_data=Industry, factor_args={"CalcDTRuler": BalanceDTs})
-    ICNode = IC(FactorIC, args={"RollingAvgPeriod": 2, "GenReport": True})
-    NodeList.append(ICNode)
+    ICNode = IC(FactorIC, args={"RollingAvgPeriod": 2})
+    ICReportNode = ICReport(ICNode)
+    NodeList.append(ICReportNode)
 
     # IC 衰减
-    ICDecayNode = ICDecay(ic_list=[CalcIC(lookback=31*i, period_lookback=i, descriptor_ids=SectionIDs)(*FactorList, price=Price, mask=Mask, cat_data=Industry, factor_args={"CalcDTRuler": BalanceDTs}) for i in range(1, 13)], args={"GenReport": True})
-    NodeList.append(ICDecayNode)
+    ICDecayNode = ICDecay(ic_list=[CalcIC(lookback=31*i, period_lookback=i, descriptor_ids=SectionIDs)(*FactorList, price=Price, mask=Mask, cat_data=Industry, factor_args={"CalcDTRuler": BalanceDTs}) for i in range(1, 13)])
+    ICDecayReportNode = ICDecayReport(ICDecayNode)
+    NodeList.append(ICDecayReportNode)
 
     # 分位数组合
     calcPortfolioNV = CalcPortfolioNV(descriptor_ids=SectionIDs)
     for iFactor in FactorList:
         iQuantilePortfolioList = makeQuantilePortfolio(iFactor, mask=Mask, cat_data=Industry, weight=None, descriptor_ids=SectionIDs, rebalance_dts=BalanceDTs, group_num=5)
         iPortfolioNVList = [calcPortfolioNV(iPortfolio, price=Price, init_nv=1, factor_args={"Name": f"P{i}"}) for i, iPortfolio in enumerate(iQuantilePortfolioList)]
-        iQuantilePortfolioNode = MultiPortfolio(nv_list=iPortfolioNVList, portfolio_list=iQuantilePortfolioList, args={"RebalanceDTs": BalanceDTs, "GenReport": True, "Name": f"{iFactor.Name}-分位数组合"})
-        NodeList.append(iQuantilePortfolioNode)
+        iQuantilePortfolioNode = MultiPortfolio(nv_list=iPortfolioNVList, portfolio_list=iQuantilePortfolioList, args={"RebalanceDTs": BalanceDTs, "Name": f"{iFactor.Name}-分位数组合"})
+        NodeList.append(MultiPortfolioReport(iQuantilePortfolioNode))
 
     # 因子换手率
     TurnoverFactor = CalcFactorTurnover(lookback=31, period_lookback=1, descriptor_ids=SectionIDs)(*FactorList, mask=Mask)
-    FactorTurnoverNode = FactorTurnover(TurnoverFactor, args={"GenReport": True})
-    NodeList.append(FactorTurnoverNode)
+    FactorTurnoverNode = FactorTurnover(TurnoverFactor)
+    NodeList.append(FactorTurnoverReport(FactorTurnoverNode))
 
     # 截面相关性
     SectionCorrelationFactor = CalcSectionCorrelation(descriptor_ids=SectionIDs)(*FactorList, mask=Mask)
-    SectionCorrelationNode = SectionCorrelation(SectionCorrelationFactor, args={"GenReport": True})
-    NodeList.append(SectionCorrelationNode)
+    SectionCorrelationNode = SectionCorrelation(SectionCorrelationFactor)
+    NodeList.append(SectionCorrelationReport(SectionCorrelationNode))
 
     # Fama-MacBeth 回归
     FamaMacBethFactor = CalcFamaMacBethRegression(descriptor_ids=SectionIDs)(*FactorList, price=Price, mask=Mask, cat_data=Industry)
-    FamaMacBethModule = FamaMacBethRegression(FamaMacBethFactor, args={"GenReport": True})
-    NodeList.append(FamaMacBethModule)
+    FamaMacBethModule = FamaMacBethRegression(FamaMacBethFactor)
+    NodeList.append(FamaMacBethRegressionReport(FamaMacBethModule))
 
-    Report = BTReport(result_nodes=NodeList)
+    Report = BTReport(report_nodes=NodeList)
 
     with FeatherFactorCache(args={"DTRuler": DTRuler, "MinDTUnit": dt.timedelta(1), "PIDs": ["0"], "CacheDir": r"D:\Data\DevCache", "StartMode": "new"}) as Cache:
         with FactorContext(

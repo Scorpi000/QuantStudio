@@ -13,7 +13,19 @@
       "Bash(\"C:/Users/hst/Project/PythonEnv/QS/Scripts/python.exe\" -m nbconvert --to notebook --execute --stdout scripts/compare_hdf5db.ipynb)",
       "Bash(\"C:/Users/hst/Project/PythonEnv/QS/Scripts/python.exe\" -m nbconvert --to notebook --execute scripts/compare_hdf5db.ipynb --output /tmp/cmp_out.ipynb)",
       "Bash(\"C:/Users/hst/Project/PythonEnv/QS/Scripts/python.exe\")",
-      "Bash(D:/PythonEnv/QS312/Scripts/python.exe -m unittest discover -s tests -p \"test_*.py\")"
+      "Bash(D:/PythonEnv/QS312/Scripts/python.exe -m unittest discover -s tests -p \"test_*.py\")",
+      "Bash(D:/PythonEnv/QS312/Scripts/python.exe -c \"from QuantStudio.BackTest.BackTestModel import BTNode, ReportNode, BTReport; print\\('BackTestModel OK'\\); from QuantStudio.BackTest.SectionFactor.IC import IC, ICReport, ICDecayReport; print\\('IC OK'\\); from QuantStudio.BackTest.SectionFactor.QuantilePortfolio import MultiPortfolio, MultiPortfolioReport; print\\('QuantilePortfolio OK'\\); from QuantStudio.BackTest.SectionFactor.Correlation import SectionCorrelation, FactorTurnover, SectionCorrelationReport, FactorTurnoverReport; print\\('Correlation OK'\\); from QuantStudio.BackTest.SectionFactor.ReturnDecomposition import FamaMacBethRegression, FamaMacBethRegressionReport; print\\('ReturnDecomposition OK'\\); from QuantStudio.BackTest.Strategy.Strategy import AccountStats, AccountReport; print\\('Strategy OK'\\); from QuantStudio.BackTest.PerformanceAnalysis.BrinsonModel import BrinsonModel, BrinsonModelReport; print\\('BrinsonModel OK'\\); from QuantStudio.BackTest.Risk.BiasTest import BiasTest, BiasTestReport; print\\('BiasTest OK'\\)\")",
+      "Bash(D:/PythonEnv/QS312/Scripts/python.exe -c \"from QuantStudio.BackTest.BackTestModel import BTNode, ReportNode, BTReport; print\\('BackTestModel OK'\\); from QuantStudio.BackTest.SectionFactor.IC import IC, ICReport, ICDecayReport; print\\('IC OK'\\); from QuantStudio.BackTest.SectionFactor.QuantilePortfolio import MultiPortfolio, MultiPortfolioReport; print\\('QuantilePortfolio OK'\\); from QuantStudio.BackTest.SectionFactor.Correlation import SectionCorrelation, FactorTurnover, SectionCorrelationReport, FactorTurnoverReport; print\\('Correlation OK'\\); from QuantStudio.BackTest.SectionFactor.ReturnDecomposition import FamaMacBethRegression, FamaMacBethRegressionReport; print\\('ReturnDecomposition OK'\\); from QuantStudio.BackTest.Strategy.Strategy import AccountStats, AccountReport; print\\('Strategy OK'\\); from QuantStudio.BackTest.PerformanceAnalysis.BrinsonModel import BrinsonModel, BrinsonModelReport; print\\('BrinsonModel OK'\\); from QuantStudio.BackTest.Risk.BiasTest import BiasTest, BiasTestReport; print\\('BiasTest OK'\\); from QuantStudio.BackTest.api import BTNode, ReportNode, BTReport; print\\('API OK'\\)\")",
+      "Bash(D:/PythonEnv/QS312/Scripts/python.exe -m unittest tests.test_BackTest_BTStorer tests.test_BackTest_Strategy)",
+      "Bash(D:/PythonEnv/QS312/Scripts/python.exe -c \"from QuantStudio.BackTest.BackTestModel import BTNode, ReportNode, BTReport; print\\(f'BTReport bases: {[c.__name__ for c in BTReport.__mro__]}'\\); print\\(f'BTReport has ReportKey: {\\\\\"ReportKey\\\\\" in BTReport.__QS_ArgClass__.model_fields}'\\)\")",
+      "Bash(D:/PythonEnv/QS312/Scripts/python.exe -c \"from QuantStudio.BackTest.BackTestModel import BTReport, ReportNode; print\\(f'BTReport.__init__ params: {BTReport.__init__.__code__.co_varnames[:3]}'\\)\")",
+      "Bash(python -c ' *)",
+      "Bash(python3 -c ' *)",
+      "Bash(D:/PythonEnv/QS312/Scripts/python.exe -c ' *)",
+      "Bash(python scripts/edit_nb.py)",
+      "Bash(D:\\\\PythonEnv\\\\QS312\\\\Scripts\\\\python.exe -m unittest discover -s tests -p \"test_BackTest_*.py\")",
+      "Bash(/d/PythonEnv/QS312/Scripts/python.exe -m unittest discover -s tests -p \"test_BackTest_*.py\")",
+      "Bash(D:/PythonEnv/QS312/Scripts/python.exe -c \"import json; json.load\\(open\\('docs/回测框架/截面因子测试.ipynb', encoding='utf-8'\\)\\); print\\('Valid JSON'\\)\")"
     ]
   },
   "enabledPlugins": {

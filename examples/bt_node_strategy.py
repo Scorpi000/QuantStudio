@@ -12,7 +12,7 @@ from QuantStudio.Factor.Factor import DataFactor, FactorContext, FactorLocalCont
 from QuantStudio.Factor.FactorCache import FeatherFactorCache
 import QuantStudio.Factor.FactorOperator as fo
 from QuantStudio.BackTest.BackTestModel import BTReport
-from QuantStudio.BackTest.Strategy.Strategy import MakeAccount, AccountReport
+from QuantStudio.BackTest.Strategy.Strategy import MakeAccount, AccountStats, AccountReport
 from QuantStudio.BackTest.Strategy.AllocationStrategy import CalcPortfolioNV
 from QuantStudio.Tools.DateTimeFun import getNaturalDay, getMonthLastDateTime
 
@@ -43,7 +43,8 @@ if __name__=="__main__":
 
     StrategyNV = CalcPortfolioNV(start_dt=DTs[0], descriptor_ids=SectionIDs)(PortfolioSignal, price=Price, init_nv=InitCash)
 
-    StrategyReport = AccountReport(account=Account, bmk_nv=StrategyNV, args={"GenReport": True})
+    AccountStatsNode = AccountStats(account=Account, bmk_nv=StrategyNV)
+    StrategyReport = AccountReport(AccountStatsNode)
 
     PIDList = ["0"]
     ExecEngine = Engine()

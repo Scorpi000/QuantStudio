@@ -18,7 +18,7 @@ from QuantStudio.Core.Node import DTInitData, DTLocalContext
 from QuantStudio.Core.QSObject import Panel
 from QuantStudio.Factor.Factor import Factor, FactorContext, FactorInitData, FactorLocalContext
 from QuantStudio.Factor.FactorOperation import PanelOperator, PanelOperation
-from QuantStudio.BackTest.BackTestModel import BTNode
+from QuantStudio.BackTest.BackTestModel import BTNode, ReportNode
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatPandasPercentage, _QS_formatMatplotlibPercentage
 
 
@@ -124,26 +124,6 @@ class BrinsonModel(BTNode):
     def __init__(self, brinson: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
         return super().__init__(deps=[brinson], args=args, config_file=config_file, **kwargs)
     
-    @staticmethod
-    def genOutputReport(output:dict) -> str:
-        HTML = ""
-        Formatters = [_QS_formatPandasPercentage] * 8
-        iHTML = output["多期综合"].to_html(formatters=Formatters)
-        Pos = iHTML.find(">")
-        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-        return HTML
-    
-    def genReport(self, output:dict) -> str:
-        HTML = "参数设置: "
-        HTML += '<ul align="left">'
-        if self.Deps[0]._QSArgs.CalcDTRuler:
-            HTML += "<li>计算时点: 自定义时点</li>"
-        else:
-            HTML += "<li>计算时点: 所有时点</li>"
-        HTML += "</ul>"
-        HTML += "\n" + BrinsonModel.genOutputReport(output=output)
-        return HTML
-
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
         return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self._QSArgs.SectionIDs) for iInitData in InitData]
@@ -204,5 +184,37 @@ class BrinsonModel(BTNode):
         Output["多期综合"].loc["总计", "主动个券选择超额收益"] = (Output["总计"]["主动个券选择超额收益"] * k_t).sum() / k
         Output["多期综合"].loc["总计", "交互作用超额收益"] = (Output["总计"]["交互作用超额收益"] * k_t).sum() / k
         Output["多期综合"].loc["总计", "总超额收益"] = Output["多期综合"].loc["总计", "策略组合收益"] - Output["多期综合"].loc["总计", "基准组合收益"]
-        if self._QSArgs.GenReport: Output["Report"] = self.genReport(Output)
+        return Output
+
+
+class BrinsonModelReport(ReportNode):
+    """Brinson 绩效分析报告生成节点"""
+
+    class __QS_ArgClass__(ReportNode.__QS_ArgClass__):
+        Name: str = Field(default="Brinson绩效分析报告", frozen=True, title="名称")
+
+    def __init__(self, brinson_node: BrinsonModel, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        return super().__init__(deps=[brinson_node], args=args, config_file=config_file, **kwargs)
+
+    @staticmethod
+    def genOutputReport(output:dict) -> str:
+        HTML = ""
+        Formatters = [_QS_formatPandasPercentage] * 8
+        iHTML = output["多期综合"].to_html(formatters=Formatters)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        return HTML
+
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
+        Output = bwd_data_list[0]
+        brinson_node = self.Deps[0]
+        HTML = "参数设置: "
+        HTML += '<ul align="left">'
+        if brinson_node.Deps[0]._QSArgs.CalcDTRuler:
+            HTML += "<li>计算时点: 自定义时点</li>"
+        else:
+            HTML += "<li>计算时点: 所有时点</li>"
+        HTML += "</ul>"
+        HTML += "\n" + BrinsonModelReport.genOutputReport(output=Output)
+        Output[self._QSArgs.ReportKey] = HTML
         return Output

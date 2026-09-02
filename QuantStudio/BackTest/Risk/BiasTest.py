@@ -18,7 +18,7 @@ from QuantStudio.Factor.Factor import Factor, FactorContext, FactorInitData, Fac
 from QuantStudio.Factor.BasicOperator import rename
 import QuantStudio.Factor.FactorOperator as fo
 from QuantStudio.Factor.FactorOperation import SectionOperation, SectionOperator
-from QuantStudio.BackTest.BackTestModel import BTNode
+from QuantStudio.BackTest.BackTestModel import BTNode, ReportNode
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatPandasPercentage
 from QuantStudio.Risk.RiskTable import RiskTable
 from QuantStudio.BackTest.Strategy.AllocationStrategy import CalcPortfolioReturn
@@ -223,29 +223,6 @@ class BiasTest(BTNode):
         ZScore = PortfolioReturn / fo.Lag(lag_period=1, window=LookBack)(PortfolioVolatility, factor_args={"CalcDTRuler": CalcDTRuler})
         super().__init__(deps=[ZScore], args=args, config_file=config_file, **kwargs)
 
-    @staticmethod
-    def genOutputReport(output:dict) -> str:
-        HTML = ""
-        Formatters = [lambda x:'{0:.4f}'.format(x)] * 2 + [_QS_formatPandasPercentage] * 6
-        iHTML = output["汇总统计量"].to_html(formatters=Formatters)
-        Pos = iHTML.find(">")
-        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-        return HTML
-
-    def genReport(self, output:dict) -> str:
-        HTML = "参数设置: "
-        HTML += '<ul align="left">'
-        HTML += f"<li>行业列表: {self._QSArgs.IndustryList}</li>"
-        HTML += f"<li>随机组合持仓数量: {self._QSArgs.RandomNums}</li>"
-        if self._QSArgs.RebalanceDTs:
-            HTML += "<li>再平衡时点: 自定义时点</li>"
-        else:
-            HTML += "<li>再平衡时点: 所有时点</li>"
-        HTML += f"<li>移动平均期数: {self._QSArgs.RollingAvgPeriod}</li>"
-        HTML += "</ul>"
-        HTML += "\n" + BiasTest.genOutputReport(output=output)
-        return HTML
-
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
         return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self._PortfolioNameList) for iInitData in InitData]
@@ -276,5 +253,40 @@ class BiasTest(BTNode):
         Output["汇总统计量"]["Robust Bias 统计量高估比例"] = (Stats.T<Output["Robust Bias 统计量"]["95%置信下界"]).sum(axis=1) / SampleNum
         Output["汇总统计量"]["Robust Bias 统计量低估比例"] = (Stats.T>Output["Robust Bias 统计量"]["95%置信上界"]).sum(axis=1) / SampleNum
         Output["汇总统计量"]["Robust Bias 统计量准确度"] = 1 - Output["汇总统计量"]["Robust Bias 统计量高估比例"]  - Output["汇总统计量"]["Robust Bias 统计量低估比例"]
-        if self._QSArgs.GenReport: Output["Report"] = self.genReport(Output)
+        return Output
+
+
+class BiasTestReport(ReportNode):
+    """Bias Test 报告生成节点"""
+
+    class __QS_ArgClass__(ReportNode.__QS_ArgClass__):
+        Name: str = Field(default="Bias Test报告", frozen=True, title="名称")
+
+    def __init__(self, bias_node: BiasTest, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        return super().__init__(deps=[bias_node], args=args, config_file=config_file, **kwargs)
+
+    @staticmethod
+    def genOutputReport(output:dict) -> str:
+        HTML = ""
+        Formatters = [lambda x:'{0:.4f}'.format(x)] * 2 + [_QS_formatPandasPercentage] * 6
+        iHTML = output["汇总统计量"].to_html(formatters=Formatters)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        return HTML
+
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
+        Output = bwd_data_list[0]
+        bias_node = self.Deps[0]
+        HTML = "参数设置: "
+        HTML += '<ul align="left">'
+        HTML += f"<li>行业列表: {bias_node._QSArgs.IndustryList}</li>"
+        HTML += f"<li>随机组合持仓数量: {bias_node._QSArgs.RandomNums}</li>"
+        if bias_node._QSArgs.RebalanceDTs:
+            HTML += "<li>再平衡时点: 自定义时点</li>"
+        else:
+            HTML += "<li>再平衡时点: 所有时点</li>"
+        HTML += f"<li>移动平均期数: {bias_node._QSArgs.RollingAvgPeriod}</li>"
+        HTML += "</ul>"
+        HTML += "\n" + BiasTestReport.genOutputReport(output=Output)
+        Output[self._QSArgs.ReportKey] = HTML
         return Output

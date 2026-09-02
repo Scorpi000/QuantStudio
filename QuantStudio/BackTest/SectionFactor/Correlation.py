@@ -16,7 +16,7 @@ from QuantStudio.Core import __QS_Error__
 from QuantStudio.Core.Node import DTLocalContext, DTInitData
 from QuantStudio.Factor.Factor import Factor, FactorContext, FactorInitData, FactorLocalContext
 from QuantStudio.Factor.FactorOperation import PanelOperator, SectionOperator, PanelOperation, SectionOperation
-from QuantStudio.BackTest.BackTestModel import BTNode
+from QuantStudio.BackTest.BackTestModel import BTNode, ReportNode
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 
 
@@ -115,25 +115,6 @@ class SectionCorrelation(BTNode):
         super().__init__(deps=[section_corr], args=args, config_file=config_file, **kwargs)
         self._SectionIDs = section_ids
     
-    @staticmethod
-    def genOutputReport(output:dict) -> str:
-        iHTML = output["平均值"].style.background_gradient(cmap="Reds").set_properties(precision=2).to_html()
-        return '<div align="left" style="font-size:1em"><strong>平均相关性</strong></div>' + iHTML
-
-    def genReport(self, output:dict) -> str:
-        HTML = "参数设置: "
-        HTML += '<ul align="left">'
-        if isinstance(getattr(self.Deps[0], "Operator", None), CalcSectionCorrelation):
-            ModelArgs = self.Deps[0].Operator._QSArgs.ModelArgs
-            HTML += f"<li>相关性方法: {ModelArgs['corr_method']}</li>"
-        if self.Deps[0]._QSArgs.CalcDTRuler:
-            HTML += "<li>计算时点: 自定义时点</li>"
-        else:
-            HTML += "<li>计算时点: 所有时点</li>"
-        HTML += "</ul>"
-        HTML += "\n" + SectionCorrelation.genOutputReport(output=output)
-        return HTML
-
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
         return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self._SectionIDs) for i, iInitData in enumerate(InitData)]
@@ -169,7 +150,6 @@ class SectionCorrelation(BTNode):
                     Output["平均值"].loc[iFactor, jFactor] = Output["平均值"].loc[jFactor, iFactor]
                 else:
                     Output["平均值"].loc[iFactor, jFactor] = 1
-        if self._QSArgs.GenReport: Output["Report"] = self.genReport(Output)
         return Output
 
 class CalcFactorTurnover(PanelOperator):
@@ -267,52 +247,6 @@ class FactorTurnover(BTNode):
         super().__init__(deps=[factor_turnover], args=args, config_file=config_file, **kwargs)
         self._SectionIDs = section_ids
     
-    @staticmethod
-    def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:
-        nRow, nCol = output["因子换手率"].shape[1] // 3 + (output["因子换手率"].shape[1]%3 != 0), min(3, output["因子换手率"].shape[1])
-        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
-        yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
-        for i in range(output["因子换手率"].shape[1]):
-            iAxes = Fig.add_subplot(nRow, nCol, i+1)
-            iAxes.yaxis.set_major_formatter(yMajorFormatter)
-            iAxes.xaxis_date()
-            iAxes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
-            iAxes.stackplot(output["因子换手率"].index, output["因子换手率"].iloc[:, i].values, color="steelblue")
-            iAxes.set_title(output["因子换手率"].columns[i])
-        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
-        return Fig
-    
-    @staticmethod
-    def genOutputReport(output:dict) -> str:
-        HTML = ""
-        iHTML = output["统计数据"].to_html(formatters=[_QS_formatPandasPercentage]*5)
-        Pos = iHTML.find(">")
-        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-        Fig = FactorTurnover.genMatplotlibFig(output=output)
-        # figure 保存为二进制文件
-        Buffer = BytesIO()
-        Fig.savefig(Buffer, bbox_inches='tight')
-        PlotData = Buffer.getvalue()
-        # 图像数据转化为 HTML 格式
-        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
-        HTML += ('<img src="%s">' % ImgStr)
-        return HTML
-
-    def genReport(self, output:dict) -> str:
-        HTML = "参数设置: "
-        HTML += '<ul align="left">'
-        if isinstance(getattr(self.Deps[0], "Operator", None), CalcFactorTurnover):
-            ModelArgs = self.Deps[0].Operator._QSArgs.ModelArgs
-            HTML += f"<li>相关性方法: {ModelArgs['corr_method']}</li>"
-            HTML += f"<li>回溯期数: {ModelArgs['period_lookback']}</li>"
-        if self.Deps[0]._QSArgs.CalcDTRuler:
-            HTML += "<li>计算时点: 自定义时点</li>"
-        else:
-            HTML += "<li>计算时点: 所有时点</li>"
-        HTML += "</ul>"
-        HTML += "\n" + FactorTurnover.genOutputReport(output=output)
-        return HTML
-
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
         return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self._SectionIDs) for i, iInitData in enumerate(InitData)]
@@ -335,5 +269,93 @@ class FactorTurnover(BTNode):
         Output["统计数据"]["最小值"] = FactorTurnover.min()
         Output["统计数据"]["最大值"] = FactorTurnover.max()
         Output["统计数据"]["中位数"] = FactorTurnover.median()
-        if self._QSArgs.GenReport: Output["Report"] = self.genReport(Output)
+        return Output
+
+
+class SectionCorrelationReport(ReportNode):
+    """因子截面相关性报告生成节点"""
+
+    class __QS_ArgClass__(ReportNode.__QS_ArgClass__):
+        Name: str = Field(default="截面相关性报告", frozen=True, title="名称")
+
+    def __init__(self, corr_node: SectionCorrelation, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        return super().__init__(deps=[corr_node], args=args, config_file=config_file, **kwargs)
+
+    @staticmethod
+    def genOutputReport(output:dict) -> str:
+        iHTML = output["平均值"].style.background_gradient(cmap="Reds").set_properties(precision=2).to_html()
+        return '<div align="left" style="font-size:1em"><strong>平均相关性</strong></div>' + iHTML
+
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
+        Output = bwd_data_list[0]
+        corr_node = self.Deps[0]
+        HTML = "参数设置: "
+        HTML += '<ul align="left">'
+        if isinstance(getattr(corr_node.Deps[0], "Operator", None), CalcSectionCorrelation):
+            ModelArgs = corr_node.Deps[0].Operator._QSArgs.ModelArgs
+            HTML += f"<li>相关性方法: {ModelArgs['corr_method']}</li>"
+        if corr_node.Deps[0]._QSArgs.CalcDTRuler:
+            HTML += "<li>计算时点: 自定义时点</li>"
+        else:
+            HTML += "<li>计算时点: 所有时点</li>"
+        HTML += "</ul>"
+        HTML += "\n" + SectionCorrelationReport.genOutputReport(output=Output)
+        Output[self._QSArgs.ReportKey] = HTML
+        return Output
+
+
+class FactorTurnoverReport(ReportNode):
+    """因子换手率报告生成节点"""
+
+    class __QS_ArgClass__(ReportNode.__QS_ArgClass__):
+        Name: str = Field(default="因子换手率报告", frozen=True, title="名称")
+
+    def __init__(self, turnover_node: FactorTurnover, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        return super().__init__(deps=[turnover_node], args=args, config_file=config_file, **kwargs)
+
+    @staticmethod
+    def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:
+        nRow, nCol = output["因子换手率"].shape[1] // 3 + (output["因子换手率"].shape[1]%3 != 0), min(3, output["因子换手率"].shape[1])
+        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
+        yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
+        for i in range(output["因子换手率"].shape[1]):
+            iAxes = Fig.add_subplot(nRow, nCol, i+1)
+            iAxes.yaxis.set_major_formatter(yMajorFormatter)
+            iAxes.xaxis_date()
+            iAxes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
+            iAxes.stackplot(output["因子换手率"].index, output["因子换手率"].iloc[:, i].values, color="steelblue")
+            iAxes.set_title(output["因子换手率"].columns[i])
+        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
+        return Fig
+
+    @staticmethod
+    def genOutputReport(output:dict) -> str:
+        HTML = ""
+        iHTML = output["统计数据"].to_html(formatters=[_QS_formatPandasPercentage]*5)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        Fig = FactorTurnoverReport.genMatplotlibFig(output=output)
+        Buffer = BytesIO()
+        Fig.savefig(Buffer, bbox_inches='tight')
+        PlotData = Buffer.getvalue()
+        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+        HTML += ('<img src="%s">' % ImgStr)
+        return HTML
+
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
+        Output = bwd_data_list[0]
+        turnover_node = self.Deps[0]
+        HTML = "参数设置: "
+        HTML += '<ul align="left">'
+        if isinstance(getattr(turnover_node.Deps[0], "Operator", None), CalcFactorTurnover):
+            ModelArgs = turnover_node.Deps[0].Operator._QSArgs.ModelArgs
+            HTML += f"<li>相关性方法: {ModelArgs['corr_method']}</li>"
+            HTML += f"<li>回溯期数: {ModelArgs['period_lookback']}</li>"
+        if turnover_node.Deps[0]._QSArgs.CalcDTRuler:
+            HTML += "<li>计算时点: 自定义时点</li>"
+        else:
+            HTML += "<li>计算时点: 所有时点</li>"
+        HTML += "</ul>"
+        HTML += "\n" + FactorTurnoverReport.genOutputReport(output=Output)
+        Output[self._QSArgs.ReportKey] = HTML
         return Output

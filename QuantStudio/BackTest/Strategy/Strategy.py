@@ -18,7 +18,7 @@ from QuantStudio.Factor.FactorOperation import PanelOperation, PanelOperator
 from QuantStudio.Factor import FactorOperator as fo
 from QuantStudio.Factor.BasicOperator import rename
 from QuantStudio.Risk.RiskTable import RiskTable
-from QuantStudio.BackTest.BackTestModel import BTNode
+from QuantStudio.BackTest.BackTestModel import BTNode, ReportNode
 from QuantStudio.Tools.StrategyTestFun import summaryStrategy, calcYieldSeq, calcLSYield, formatStrategySummary
 
 
@@ -251,106 +251,19 @@ def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, 
     return Output
 
 
-class AccountReport(BTNode):
-    """账户报告"""
-    
+class AccountStats(BTNode):
+    """账户统计"""
+
     class __QS_ArgClass__(BTNode.__QS_ArgClass__):
-        Name: str = Field(default="账户报告", frozen=True, title="名称")
+        Name: str = Field(default="账户统计", frozen=True, title="名称")
         RiskFreeRate: float = Field(default=0, frozen=True, title="无风险利率")
         RebalanceDTs: Optional[List[dt.datetime]] = Field(default=None, title="再平衡时点", frozen=True)
         AccountSection: Optional[List[str]] = Field(default=None, title="账户截面", frozen=True)
-        BmkID = Optional[str] = Field(default=None, title="基准ID", frozen=True)
-    
+        BmkID: Optional[str] = Field(default=None, title="基准ID", frozen=True)
+
     def __init__(self, account: Factor, bmk_nv:Optional[Factor]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         self._HasBmk = bmk_nv is not None
         return super().__init__(deps=[account] + ([bmk_nv] if self._HasBmk else []), args=args, config_file=config_file, **kwargs)
-    
-    @staticmethod
-    def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:
-        hasCapitalInvest = ("考虑资金投入的表现" in output["统计数据"])
-        hasBenchmark = ("相对表现" in output["统计数据"])
-        nRow, nCol = 1, 2+hasCapitalInvest+hasBenchmark
-        Fig = Figure(figsize=(min(40, 16+(nCol-1)*8), 8*nRow))
-        xData = np.arange(0, output["时间序列"].shape[0])
-        xTicks = np.arange(0, output["时间序列"].shape[0], int(output["时间序列"].shape[0]/10))
-        xTickLabels = [output["时间序列"].index[i].strftime("%Y-%m-%d") for i in xTicks]
-        yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
-        iAxes = Fig.add_subplot(nRow, nCol, 1)
-        iAxes.plot(xData, output["时间序列"]["账户价值"].values, label="账户价值", color="indianred", lw=2.5)
-        iRAxes = iAxes.twinx()
-        iRAxes.bar(xData, output["时间序列"]["收益"].values, label="账户收益", color="steelblue")
-        iRAxes.legend(loc="upper right")
-        iAxes.set_xticks(xTicks)
-        iAxes.set_xticklabels(xTickLabels)
-        iAxes.legend(loc="upper left")
-        iAxes.set_title("账户表现")
-        iAxes = Fig.add_subplot(nRow, nCol, 2)
-        iRAxes = iAxes.twinx()
-        iRAxes.yaxis.set_major_formatter(yMajorFormatter)
-        if "无杠杆净值" in output["时间序列"]:
-            iAxes.plot(xData, output["时间序列"]["无杠杆净值"].values, label="无杠杆净值", color="indianred", lw=2.5)
-            iRAxes.bar(xData, output["时间序列"]["无杠杆收益率"].values, label="无杠杆收益率", color="steelblue")
-        else:
-            iAxes.plot(xData, output["时间序列"]["净值"].values, label="净值", color="indianred", lw=2.5)
-            iRAxes.bar(xData, output["时间序列"]["收益率"].values, label="收益率", color="steelblue")
-        if hasBenchmark: iAxes.plot(xData, output["时间序列"]["基准净值"].values, label="基准净值", color="forestgreen", lw=2.5)
-        iRAxes.legend(loc="upper right")
-        iAxes.set_xticks(xTicks)
-        iAxes.set_xticklabels(xTickLabels)
-        iAxes.legend(loc="upper left")
-        iAxes.set_title("净值表现")
-        if hasCapitalInvest:
-            iAxes = Fig.add_subplot(nRow, nCol, 3)
-            iAxes.plot(xData, output["时间序列"]["累计资金投入"].values, label="累计资金投入", color="indianred", lw=2.5)
-            iRAxes = iAxes.twinx()
-            iRAxes.yaxis.set_major_formatter(yMajorFormatter)
-            iRAxes.plot(xData, output["时间序列"]["考虑资金投入的累计收益率"].values, label="考虑资金投入的累计收益率", color="steelblue", lw=2.5)
-            iRAxes.legend(loc="upper right")
-            iAxes.set_xticks(xTicks)
-            iAxes.set_xticklabels(xTickLabels)
-            iAxes.legend(loc="upper left")
-            iAxes.set_title("考虑资金投入的表现")
-        if hasBenchmark:
-            iAxes = Fig.add_subplot(nRow, nCol, 3+hasCapitalInvest)
-            iAxes.plot(xData, output["时间序列"]["相对净值"].values, label="相对净值", color="indianred", lw=2.5)
-            iRAxes = iAxes.twinx()
-            iRAxes.yaxis.set_major_formatter(yMajorFormatter)
-            iRAxes.bar(xData, output["时间序列"]["相对收益率"].values, label="相对收益率", color="steelblue")
-            iRAxes.legend(loc="upper right")
-            iAxes.set_xticks(xTicks)
-            iAxes.set_xticklabels(xTickLabels)
-            iAxes.legend(loc="upper left")
-            iAxes.set_title("相对表现")
-        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
-        return Fig
-    
-    @staticmethod
-    def genOutputReport(output:dict) -> str:
-        HTML = formatStrategySummary(output["统计数据"]).to_html()
-        Pos = HTML.find(">")
-        HTML = HTML[:Pos]+' align="center"'+HTML[Pos:]
-        Fig = AccountReport.genMatplotlibFig(output)
-        # figure 保存为二进制文件
-        Buffer = BytesIO()
-        Fig.savefig(Buffer)
-        PlotData = Buffer.getvalue()
-        # 图像数据转化为 HTML 格式
-        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
-        HTML += ('<img src="%s">' % ImgStr)
-        return HTML
-
-    def genReport(self, output:dict) -> str:
-        HTML = "参数设置: "
-        HTML += '<ul align="left">'
-        HTML += f"<li>初始资金: {output['初始资金']}</li>"
-        if isinstance(getattr(self.Deps[0], "Operator", None), MakeAccount):
-            ModelArgs = self.Deps[0].Operator._QSArgs.ModelArgs
-            HTML += f"<li>信号类型: {ModelArgs['signal_type']}</li>"
-            HTML += f"<li>允许卖空: {ModelArgs['short_allowed']}</li>"
-        HTML += f"<li>无风险利率: {self._QSArgs.RiskFreeRate}</li>"
-        HTML += "</ul>"
-        HTML += "\n" + AccountReport.genOutputReport(output=output)
-        return HTML
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
@@ -361,7 +274,7 @@ class AccountReport(BTNode):
         NewInitData = [FactorInitData(DTRange=(DTRuler[StartIdx], EndDT), SectionIDs=self._QSArgs.AccountSection)]
         if self._HasBmk: NewInitData.append(FactorInitData(DTRange=InitData[1].DTRange, SectionIDs=([self._QSArgs.BmkID] if self._QSArgs.BmkID is not None else None)))
         return NewInitData + [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=None) for iInitData in InitData[len(NewInitData):]]
-    
+
     def forward_compute(self, path: List[str], fwd_data: DTLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], DTLocalContext]:
         DTRuler = context.DTRuler
         StartIdx, EndIdx = max(0, DTRuler.index(fwd_data.DTs[0]) - 1), DTRuler.index(fwd_data.DTs[-1])
@@ -372,7 +285,7 @@ class AccountReport(BTNode):
             FwdData.append(FactorLocalContext(DTs=fwd_data.DTs, IDs=BmkSection, SectionIDs=BmkSection, PIDs=context.PIDList))
         FwdData += [FactorLocalContext(DTs=fwd_data.DTs, IDs=iDep.Args.SectionIDs or context.SectionIDs, PIDs=context.PIDList, SectionIDs=iDep.Args.SectionIDs or context.SectionIDs) for iDep in self.Deps[len(FwdData):]]
         return FwdData, DTLocalContext(DTs=fwd_data.DTs)
-    
+
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
         InitCash = bwd_data_list[0].iloc[0, 0][0] + bwd_data_list[0].iloc[0].apply(lambda x: x[2] if pd.notnull(x) else 0).sum()
         Account = bwd_data_list[0].reindex(index=local_context.DTs)
@@ -415,7 +328,6 @@ class AccountReport(BTNode):
             BenchmarkStatistics = summaryStrategy(BenchmarkOutput[["基准净值", "相对净值"]].values, list(BenchmarkOutput.index), init_wealth=[1, 1], risk_free_rate=self._QSArgs.RiskFreeRate)
             BenchmarkStatistics.columns = ["基准表现", "相对表现"]
             Output["统计数据"] = pd.merge(Output["统计数据"], BenchmarkStatistics, left_index=True, right_index=True)
-        if self._QSArgs.GenReport: Output["Report"] = self.genReport(Output)
         return Output
 
 
@@ -621,3 +533,101 @@ def calcAccountPortfolio(account: Factor, factor_args:dict={}) -> Factor:
     factor_args = factor_args.copy()
     FactorName = factor_args.pop("Name", "strategy_nv")
     return rename(Amount / AccountValue, factor_name=FactorName, factor_args=factor_args)
+
+
+class AccountReport(ReportNode):
+    """账户报告生成节点"""
+
+    class __QS_ArgClass__(ReportNode.__QS_ArgClass__):
+        Name: str = Field(default="账户报告", frozen=True, title="名称")
+
+    def __init__(self, account_node: AccountStats, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        return super().__init__(deps=[account_node], args=args, config_file=config_file, **kwargs)
+
+    @staticmethod
+    def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:
+        hasCapitalInvest = ("考虑资金投入的表现" in output["统计数据"])
+        hasBenchmark = ("相对表现" in output["统计数据"])
+        nRow, nCol = 1, 2+hasCapitalInvest+hasBenchmark
+        Fig = Figure(figsize=(min(40, 16+(nCol-1)*8), 8*nRow))
+        xData = np.arange(0, output["时间序列"].shape[0])
+        xTicks = np.arange(0, output["时间序列"].shape[0], int(output["时间序列"].shape[0]/10))
+        xTickLabels = [output["时间序列"].index[i].strftime("%Y-%m-%d") for i in xTicks]
+        yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
+        iAxes = Fig.add_subplot(nRow, nCol, 1)
+        iAxes.plot(xData, output["时间序列"]["账户价值"].values, label="账户价值", color="indianred", lw=2.5)
+        iRAxes = iAxes.twinx()
+        iRAxes.bar(xData, output["时间序列"]["收益"].values, label="账户收益", color="steelblue")
+        iRAxes.legend(loc="upper right")
+        iAxes.set_xticks(xTicks)
+        iAxes.set_xticklabels(xTickLabels)
+        iAxes.legend(loc="upper left")
+        iAxes.set_title("账户表现")
+        iAxes = Fig.add_subplot(nRow, nCol, 2)
+        iRAxes = iAxes.twinx()
+        iRAxes.yaxis.set_major_formatter(yMajorFormatter)
+        if "无杠杆净值" in output["时间序列"]:
+            iAxes.plot(xData, output["时间序列"]["无杠杆净值"].values, label="无杠杆净值", color="indianred", lw=2.5)
+            iRAxes.bar(xData, output["时间序列"]["无杠杆收益率"].values, label="无杠杆收益率", color="steelblue")
+        else:
+            iAxes.plot(xData, output["时间序列"]["净值"].values, label="净值", color="indianred", lw=2.5)
+            iRAxes.bar(xData, output["时间序列"]["收益率"].values, label="收益率", color="steelblue")
+        if hasBenchmark: iAxes.plot(xData, output["时间序列"]["基准净值"].values, label="基准净值", color="forestgreen", lw=2.5)
+        iRAxes.legend(loc="upper right")
+        iAxes.set_xticks(xTicks)
+        iAxes.set_xticklabels(xTickLabels)
+        iAxes.legend(loc="upper left")
+        iAxes.set_title("净值表现")
+        if hasCapitalInvest:
+            iAxes = Fig.add_subplot(nRow, nCol, 3)
+            iAxes.plot(xData, output["时间序列"]["累计资金投入"].values, label="累计资金投入", color="indianred", lw=2.5)
+            iRAxes = iAxes.twinx()
+            iRAxes.yaxis.set_major_formatter(yMajorFormatter)
+            iRAxes.plot(xData, output["时间序列"]["考虑资金投入的累计收益率"].values, label="考虑资金投入的累计收益率", color="steelblue", lw=2.5)
+            iRAxes.legend(loc="upper right")
+            iAxes.set_xticks(xTicks)
+            iAxes.set_xticklabels(xTickLabels)
+            iAxes.legend(loc="upper left")
+            iAxes.set_title("考虑资金投入的表现")
+        if hasBenchmark:
+            iAxes = Fig.add_subplot(nRow, nCol, 3+hasCapitalInvest)
+            iAxes.plot(xData, output["时间序列"]["相对净值"].values, label="相对净值", color="indianred", lw=2.5)
+            iRAxes = iAxes.twinx()
+            iRAxes.yaxis.set_major_formatter(yMajorFormatter)
+            iRAxes.bar(xData, output["时间序列"]["相对收益率"].values, label="相对收益率", color="steelblue")
+            iRAxes.legend(loc="upper right")
+            iAxes.set_xticks(xTicks)
+            iAxes.set_xticklabels(xTickLabels)
+            iAxes.legend(loc="upper left")
+            iAxes.set_title("相对表现")
+        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
+        return Fig
+
+    @staticmethod
+    def genOutputReport(output:dict) -> str:
+        HTML = formatStrategySummary(output["统计数据"]).to_html()
+        Pos = HTML.find(">")
+        HTML = HTML[:Pos]+' align="center"'+HTML[Pos:]
+        Fig = AccountReport.genMatplotlibFig(output)
+        Buffer = BytesIO()
+        Fig.savefig(Buffer)
+        PlotData = Buffer.getvalue()
+        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+        HTML += ('<img src="%s">' % ImgStr)
+        return HTML
+
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
+        Output = bwd_data_list[0]
+        account_node = self.Deps[0]
+        HTML = "参数设置: "
+        HTML += '<ul align="left">'
+        HTML += f"<li>初始资金: {Output['初始资金']}</li>"
+        if isinstance(getattr(account_node.Deps[0], "Operator", None), MakeAccount):
+            ModelArgs = account_node.Deps[0].Operator._QSArgs.ModelArgs
+            HTML += f"<li>信号类型: {ModelArgs['signal_type']}</li>"
+            HTML += f"<li>允许卖空: {ModelArgs['short_allowed']}</li>"
+        HTML += f"<li>无风险利率: {account_node._QSArgs.RiskFreeRate}</li>"
+        HTML += "</ul>"
+        HTML += "\n" + AccountReport.genOutputReport(output=Output)
+        Output[self._QSArgs.ReportKey] = HTML
+        return Output

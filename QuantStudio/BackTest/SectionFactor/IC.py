@@ -18,7 +18,7 @@ from QuantStudio.Core.Node import DTInitData, DTLocalContext
 from QuantStudio.Core.QSObject import Panel
 from QuantStudio.Factor.Factor import Factor, FactorContext, FactorInitData, FactorLocalContext
 from QuantStudio.Factor.FactorOperation import PanelOperator, PanelOperation
-from QuantStudio.BackTest.BackTestModel import BTNode
+from QuantStudio.BackTest.BackTestModel import BTNode, ReportNode
 from QuantStudio.Tools.DataPreprocessingFun import prepareRegressData
 
 
@@ -286,64 +286,6 @@ class IC(BTNode):
         
     def __init__(self, ic: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
         return super().__init__(deps=[ic], args=args, config_file=config_file, **kwargs)
-    
-    @staticmethod
-    def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:
-        nRow, nCol = output["IC"].shape[1]//3+(output["IC"].shape[1]%3!=0), min(3, output["IC"].shape[1])
-        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
-        xData = np.arange(0, output["IC"].shape[0])
-        xTicks = np.arange(0, output["IC"].shape[0], max(1, int(output["IC"].shape[0]/10)))
-        xTickLabels = [output["IC"].index[i].strftime("%Y-%m-%d") for i in xTicks]
-        yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
-        for i in range(output["IC"].shape[1]):
-            iAxes = Fig.add_subplot(nRow, nCol, i+1)
-            iAxes.yaxis.set_major_formatter(yMajorFormatter)
-            iAxes.plot(xData, output["IC的移动平均"].iloc[:, i].values, label="IC的移动平均", color="indianred", lw=2.5)
-            iAxes.bar(xData, output["IC"].iloc[:, i].values, label="IC", color="steelblue")
-            iRightAxes = iAxes.twinx()
-            iRightAxes.plot(xData, output["截面宽度"].iloc[:, i].values, label="截面宽度", color="k", lw=1.5)
-            iAxes.set_xticks(xTicks)
-            iAxes.set_xticklabels(xTickLabels)
-            iAxes.legend(loc="upper left")
-            iRightAxes.legend(loc="upper right")
-            iAxes.set_title(output["IC"].columns[i])
-        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
-        return Fig
-    
-    @staticmethod
-    def genOutputReport(output:dict) -> str:
-        HTML = ""
-        Formatters = [_QS_formatPandasPercentage] * 4 + [lambda x:'{0:.4f}'.format(x)] + [lambda x:'{0:.2f}'.format(x)] * 3 + [lambda x:'{0:.0f}'.format(x)]
-        iHTML = output["统计数据"].to_html(formatters=Formatters)
-        Pos = iHTML.find(">")
-        HTML += iHTML[:Pos] + ' align="center"' + iHTML[Pos:]
-        Fig = IC.genMatplotlibFig(output)
-        # figure 保存为二进制文件
-        Buffer = BytesIO()
-        Fig.savefig(Buffer, bbox_inches='tight')
-        PlotData = Buffer.getvalue()
-        # 图像数据转化为 HTML 格式
-        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
-        HTML += ('<img src="%s">' % ImgStr)
-        return HTML
-    
-    def genReport(self, output:dict) -> str:
-        HTML = "参数设置: "
-        HTML += '<ul align="left">'
-        if isinstance(getattr(self.Deps[0], "Operator", None), (CalcIC, CalcRiskAdjustedIC)):
-            ModelArgs = self.Deps[0].Operator._QSArgs.ModelArgs
-            HTML += f"<li>相关性方法: {ModelArgs['corr_method']}</li>"
-            HTML += f"<li>回溯期数: {ModelArgs['period_lookback']}</li>"
-        if isinstance(getattr(self.Deps[0], "Operator", None), CalcRiskAdjustedIC):
-            HTML += f"<li>风险因子: {self.Deps[0]._QSArgs.ModelArgs['risk_factor_list']}</li>"
-        if self.Deps[0]._QSArgs.CalcDTRuler:
-            HTML += "<li>计算时点: 自定义时点</li>"
-        else:
-            HTML += "<li>计算时点: 所有时点</li>"
-        HTML += f"<li>移动平均期数: {self._QSArgs.RollingAvgPeriod}</li>"
-        HTML += "</ul>"
-        HTML += "\n" + IC.genOutputReport(output=output)
-        return HTML
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
@@ -379,7 +321,6 @@ class IC(BTNode):
         Output["统计数据"]["有效期数"] = 0.0
         for iFactor in Output["IC"]: Output["统计数据"].loc[iFactor, "有效期数"] = pd.notnull(Output["IC"][iFactor]).sum()
         Output["统计数据"]["t统计量"] = Output["统计数据"]["有效期数"]**0.5 * Output["统计数据"]["IC_IR"]
-        if self._QSArgs.GenReport: Output["Report"] = self.genReport(Output)
         return Output
 
 
@@ -397,54 +338,6 @@ class ICDecay(BTNode):
         if self._QSArgs.PeriodList:
             if len(self._QSArgs.PeriodList) != ic_list:
                 raise __QS_Error__(f"指定的 PeriodList 的长度 {len(self._QSArgs.PeriodList)} 不等于 IC 因子的数量 {len(ic_list)}")
-    
-    @staticmethod
-    def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:
-        Fig = Figure(figsize=(16, 8))
-        xData = np.arange(0, output["统计数据"].shape[0])
-        xTickLabels = [str(i) for i in output["统计数据"].index]
-        yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
-        Axes = Fig.add_subplot(1, 1, 1)
-        Axes.yaxis.set_major_formatter(yMajorFormatter)
-        Axes.bar(xData, output["统计数据"]["IC平均值"].values, label="IC", color="steelblue")
-        Axes.set_xticks(xData)
-        Axes.set_xticklabels(xTickLabels)
-        Axes.legend(loc='upper left')
-        RAxes = Axes.twinx()
-        RAxes.yaxis.set_major_formatter(yMajorFormatter)
-        RAxes.plot(xData, output["统计数据"]["胜率"].values, label="胜率", color="indianred", lw=2.5)
-        RAxes.legend(loc="upper right")
-        plt.setp(Axes.get_xticklabels(), visible=True, rotation=0, ha='center')
-        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
-        return Fig
-    
-    @staticmethod
-    def genOutputReport(output:dict) -> str:
-        HTML = ""
-        Formatters = [_QS_formatPandasPercentage] * 2 + [lambda x:'{0:.4f}'.format(x), lambda x:'{0:.2f}'.format(x), _QS_formatPandasPercentage]
-        for iFactorName in output.keys():
-            iHTML = f"<br>因子: {iFactorName}<br>"
-            iHTML += output[iFactorName]["统计数据"].to_html(formatters=Formatters)
-            Pos = iHTML.find(">")
-            HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-            Fig = ICDecay.genMatplotlibFig(output=output[iFactorName])
-            # figure 保存为二进制文件
-            Buffer = BytesIO()
-            Fig.savefig(Buffer, bbox_inches='tight')
-            PlotData = Buffer.getvalue()
-            # 图像数据转化为 HTML 格式
-            ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
-            HTML += ('<img src="%s">' % ImgStr)
-        return HTML
-
-    def genReport(self, output:dict) -> str:
-        HTML = "参数设置: "
-        HTML += '<ul align="left">'
-        HTML += f"<li>回溯期列表: {self._QSArgs.PeriodList}</li>"
-        if self._QSArgs.FactorNameList: HTML += f"<li>因子列表: {self._QSArgs.FactorNameList}</li>"
-        HTML += "</ul>"
-        HTML += "\n" + ICDecay.genOutputReport(output=output)
-        return HTML
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
@@ -489,5 +382,134 @@ class ICDecay(BTNode):
             iOutput["统计数据"]["t统计量"] = iOutput["统计数据"]["IC_IR"] * nDT ** 0.5
             iOutput["统计数据"]["胜率"] = (iIC > 0).sum() / nDT
             Output[iFactorName] = iOutput
-        if self._QSArgs.GenReport: Output["Report"] = self.genReport(Output)
+        return Output
+
+
+class ICReport(ReportNode):
+    """IC 报告生成节点"""
+
+    class __QS_ArgClass__(ReportNode.__QS_ArgClass__):
+        Name: str = Field(default="IC报告", frozen=True, title="名称")
+
+    def __init__(self, ic_node: IC, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        return super().__init__(deps=[ic_node], args=args, config_file=config_file, **kwargs)
+
+    @staticmethod
+    def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:
+        nRow, nCol = output["IC"].shape[1]//3+(output["IC"].shape[1]%3!=0), min(3, output["IC"].shape[1])
+        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
+        xData = np.arange(0, output["IC"].shape[0])
+        xTicks = np.arange(0, output["IC"].shape[0], max(1, int(output["IC"].shape[0]/10)))
+        xTickLabels = [output["IC"].index[i].strftime("%Y-%m-%d") for i in xTicks]
+        yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
+        for i in range(output["IC"].shape[1]):
+            iAxes = Fig.add_subplot(nRow, nCol, i+1)
+            iAxes.yaxis.set_major_formatter(yMajorFormatter)
+            iAxes.plot(xData, output["IC的移动平均"].iloc[:, i].values, label="IC的移动平均", color="indianred", lw=2.5)
+            iAxes.bar(xData, output["IC"].iloc[:, i].values, label="IC", color="steelblue")
+            iRightAxes = iAxes.twinx()
+            iRightAxes.plot(xData, output["截面宽度"].iloc[:, i].values, label="截面宽度", color="k", lw=1.5)
+            iAxes.set_xticks(xTicks)
+            iAxes.set_xticklabels(xTickLabels)
+            iAxes.legend(loc="upper left")
+            iRightAxes.legend(loc="upper right")
+            iAxes.set_title(output["IC"].columns[i])
+        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
+        return Fig
+
+    @staticmethod
+    def genOutputReport(output:dict) -> str:
+        HTML = ""
+        Formatters = [_QS_formatPandasPercentage] * 4 + [lambda x:'{0:.4f}'.format(x)] + [lambda x:'{0:.2f}'.format(x)] * 3 + [lambda x:'{0:.0f}'.format(x)]
+        iHTML = output["统计数据"].to_html(formatters=Formatters)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos] + ' align="center"' + iHTML[Pos:]
+        Fig = ICReport.genMatplotlibFig(output)
+        Buffer = BytesIO()
+        Fig.savefig(Buffer, bbox_inches='tight')
+        PlotData = Buffer.getvalue()
+        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+        HTML += ('<img src="%s">' % ImgStr)
+        return HTML
+
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
+        Output = bwd_data_list[0]
+        HTML = "参数设置: "
+        HTML += '<ul align="left">'
+        ic_node = self.Deps[0]
+        if isinstance(getattr(ic_node.Deps[0], "Operator", None), (CalcIC, CalcRiskAdjustedIC)):
+            ModelArgs = ic_node.Deps[0].Operator._QSArgs.ModelArgs
+            HTML += f"<li>相关性方法: {ModelArgs['corr_method']}</li>"
+            HTML += f"<li>回溯期数: {ModelArgs['period_lookback']}</li>"
+        if isinstance(getattr(ic_node.Deps[0], "Operator", None), CalcRiskAdjustedIC):
+            HTML += f"<li>风险因子: {ic_node.Deps[0]._QSArgs.ModelArgs['risk_factor_list']}</li>"
+        if ic_node.Deps[0]._QSArgs.CalcDTRuler:
+            HTML += "<li>计算时点: 自定义时点</li>"
+        else:
+            HTML += "<li>计算时点: 所有时点</li>"
+        HTML += f"<li>移动平均期数: {ic_node._QSArgs.RollingAvgPeriod}</li>"
+        HTML += "</ul>"
+        HTML += "\n" + ICReport.genOutputReport(output=Output)
+        Output[self._QSArgs.ReportKey] = HTML
+        return Output
+
+
+class ICDecayReport(ReportNode):
+    """IC 衰减报告生成节点"""
+
+    class __QS_ArgClass__(ReportNode.__QS_ArgClass__):
+        Name: str = Field(default="IC衰减报告", frozen=True, title="名称")
+
+    def __init__(self, ic_decay_node: ICDecay, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        return super().__init__(deps=[ic_decay_node], args=args, config_file=config_file, **kwargs)
+
+    @staticmethod
+    def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:
+        Fig = Figure(figsize=(16, 8))
+        xData = np.arange(0, output["统计数据"].shape[0])
+        xTickLabels = [str(i) for i in output["统计数据"].index]
+        yMajorFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
+        Axes = Fig.add_subplot(1, 1, 1)
+        Axes.yaxis.set_major_formatter(yMajorFormatter)
+        Axes.bar(xData, output["统计数据"]["IC平均值"].values, label="IC", color="steelblue")
+        Axes.set_xticks(xData)
+        Axes.set_xticklabels(xTickLabels)
+        Axes.legend(loc='upper left')
+        RAxes = Axes.twinx()
+        RAxes.yaxis.set_major_formatter(yMajorFormatter)
+        RAxes.plot(xData, output["统计数据"]["胜率"].values, label="胜率", color="indianred", lw=2.5)
+        RAxes.legend(loc="upper right")
+        plt.setp(Axes.get_xticklabels(), visible=True, rotation=0, ha='center')
+        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
+        return Fig
+
+    @staticmethod
+    def genOutputReport(output:dict) -> str:
+        HTML = ""
+        Formatters = [_QS_formatPandasPercentage] * 2 + [lambda x:'{0:.4f}'.format(x), lambda x:'{0:.2f}'.format(x), _QS_formatPandasPercentage]
+        for iFactorName in output.keys():
+            if not isinstance(output[iFactorName], dict) or "统计数据" not in output[iFactorName]:
+                continue
+            iHTML = f"<br>因子: {iFactorName}<br>"
+            iHTML += output[iFactorName]["统计数据"].to_html(formatters=Formatters)
+            Pos = iHTML.find(">")
+            HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+            Fig = ICDecayReport.genMatplotlibFig(output=output[iFactorName])
+            Buffer = BytesIO()
+            Fig.savefig(Buffer, bbox_inches='tight')
+            PlotData = Buffer.getvalue()
+            ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+            HTML += ('<img src="%s">' % ImgStr)
+        return HTML
+
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
+        Output = bwd_data_list[0]
+        ic_decay_node = self.Deps[0]
+        HTML = "参数设置: "
+        HTML += '<ul align="left">'
+        HTML += f"<li>回溯期列表: {ic_decay_node._QSArgs.PeriodList}</li>"
+        if ic_decay_node._QSArgs.FactorNameList: HTML += f"<li>因子列表: {ic_decay_node._QSArgs.FactorNameList}</li>"
+        HTML += "</ul>"
+        HTML += "\n" + ICDecayReport.genOutputReport(output=Output)
+        Output[self._QSArgs.ReportKey] = HTML
         return Output

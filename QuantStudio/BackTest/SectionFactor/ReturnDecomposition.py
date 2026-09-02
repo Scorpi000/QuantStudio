@@ -16,7 +16,7 @@ from QuantStudio.Core import __QS_Error__
 from QuantStudio.Core.Node import DTInitData, DTLocalContext
 from QuantStudio.Factor.Factor import Factor, FactorContext, FactorInitData, FactorLocalContext
 from QuantStudio.Factor.FactorOperation import PanelOperator, PanelOperation
-from QuantStudio.BackTest.BackTestModel import BTNode
+from QuantStudio.BackTest.BackTestModel import BTNode, ReportNode
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 from QuantStudio.Tools.DataTypeConversionFun import DummyVarTo01Var
 
@@ -156,83 +156,6 @@ class FamaMacBethRegression(BTNode):
     def __init__(self, fmr: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
         super().__init__(deps=[fmr], args=args, config_file=config_file, **kwargs)
     
-    @staticmethod
-    def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:
-        nRow, nCol = 1, 3
-        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
-        PercentageFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
-        FloatFormatter = FuncFormatter(lambda x, pos: '%.2f' % (x, ))
-        xData = np.arange(0, output["统计数据"].shape[0])
-        xTickLabels = [str(iInd) for iInd in output["统计数据"].index]
-        iAxes = Fig.add_subplot(nRow, nCol, 1)
-        iAxes.yaxis.set_major_formatter(PercentageFormatter)
-        iAxes.bar(xData, output["统计数据"]["年化收益率(Raw)"].values, width=-0.25, align="edge", color="indianred", label="年化收益率(Raw)")
-        iAxes.bar(xData, output["统计数据"]["年化收益率(Pure)"].values, width=0.25, align="edge", color="steelblue", label="年化收益率(Pure)")
-        iAxes.set_xticks(xData)
-        iAxes.set_xticklabels(xTickLabels)
-        iAxes.legend(loc='best')
-        iAxes.set_title("年化收益率")
-        iAxes = Fig.add_subplot(nRow, nCol, 2)
-        iAxes.yaxis.set_major_formatter(FloatFormatter)
-        iAxes.bar(xData, output["统计数据"]["t统计量(Raw)"].values, width=-0.25, align="edge", color="indianred", label="t统计量(Raw)")
-        iAxes.bar(xData, output["统计数据"]["t统计量(Pure)"].values, width=0.25, align="edge", color="steelblue", label="t统计量(Pure)")
-        iAxes.set_xticks(xData)
-        iAxes.set_xticklabels(xTickLabels)
-        iAxes.legend(loc='best')
-        iAxes.set_title("t统计量")
-        iAxes = Fig.add_subplot(nRow, nCol, 3)
-        iAxes.yaxis.set_major_formatter(PercentageFormatter)
-        iAxes.bar(xData, output["统计数据"]["年化收益率(Pure-Raw)"].values, color="steelblue", label="年化收益率(Pure-Raw)")
-        iAxes.set_xticks(xData)
-        iAxes.set_xticklabels(xTickLabels)
-        iAxes.legend(loc='upper left')
-        iAxes.set_title("Pure-Raw")
-        RAxes = iAxes.twinx()
-        RAxes.yaxis.set_major_formatter(FloatFormatter)
-        RAxes.plot(xData, output["统计数据"]["t统计量(Pure-Raw)"].values, color="indianred", lw=2.5, label="t统计量(Pure-Raw)")
-        RAxes.legend(loc='upper right')
-        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
-        return Fig
-
-    @staticmethod
-    def genOutputReport(output:dict) -> str:
-        HTML = ""
-        FloatFormatFun = lambda x:'{0:.2f}'.format(x)
-        Formatters = [_QS_formatPandasPercentage] * 2 + [FloatFormatFun, _QS_formatPandasPercentage, FloatFormatFun]
-        Formatters += [_QS_formatPandasPercentage] * 2 + [FloatFormatFun, _QS_formatPandasPercentage, FloatFormatFun]
-        Formatters += [_QS_formatPandasPercentage] * 2 + [FloatFormatFun, _QS_formatPandasPercentage, FloatFormatFun]
-        iHTML = output["统计数据"].to_html(formatters=Formatters)
-        Pos = iHTML.find(">")
-        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-        HTML += '<div align="left" style="font-size:1em"><strong>回归统计量</strong></div>'
-        iHTML = output["回归统计量均值"].to_html(formatters=[FloatFormatFun] * 8)
-        Pos = iHTML.find(">")
-        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-        Fig = FamaMacBethRegression.genMatplotlibFig(output=output)
-        # figure 保存为二进制文件
-        Buffer = BytesIO()
-        Fig.savefig(Buffer, bbox_inches='tight')
-        PlotData = Buffer.getvalue()
-        # 图像数据转化为 HTML 格式
-        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
-        HTML += ('<img src="%s">' % ImgStr)
-        return HTML
-
-    def genReport(self, output:dict) -> str:
-        HTML = "参数设置: "
-        HTML += '<ul align="left">'
-        if isinstance(getattr(self.Deps[0], "Operator", None), CalcFamaMacBethRegression):
-            ModelArgs = self.Deps[0].Operator._QSArgs.ModelArgs
-            HTML += f"<li>回溯期数: {ModelArgs['period_lookback']}</li>"
-        if self.Deps[0]._QSArgs.CalcDTRuler:
-            HTML += "<li>计算时点: 自定义时点</li>"
-        else:
-            HTML += "<li>计算时点: 所有时点</li>"
-        HTML += f"<li>移动平均期数: {self._QSArgs.RollingAvgPeriod}</li>"
-        HTML += "</ul>"
-        HTML += "\n" + FamaMacBethRegression.genOutputReport(output=output)
-        return HTML
-
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
         return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self._QSArgs.SectionIDs) for i, iInitData in enumerate(InitData)]
@@ -297,5 +220,91 @@ class FamaMacBethRegression(BTNode):
         Output["回归统计量均值"]["R平方(Pure)"] = Output["回归R平方(Pure)"].mean()
         Output["回归统计量均值"]["调整R平方(Raw)"] = Output["回归调整R平方(Raw)"].mean()
         Output["回归统计量均值"]["调整R平方(Pure)"] = Output["回归调整R平方(Pure)"].mean()
-        if self._QSArgs.GenReport: Output["Report"] = self.genReport(Output)
+        return Output
+
+class FamaMacBethRegressionReport(ReportNode):
+    """Fama-MacBeth 回归报告生成节点"""
+
+    class __QS_ArgClass__(ReportNode.__QS_ArgClass__):
+        Name: str = Field(default="Fama-MacBeth回归报告", frozen=True, title="名称")
+
+    def __init__(self, fmr_node: FamaMacBethRegression, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        return super().__init__(deps=[fmr_node], args=args, config_file=config_file, **kwargs)
+
+    @staticmethod
+    def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:
+        nRow, nCol = 1, 3
+        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
+        PercentageFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
+        FloatFormatter = FuncFormatter(lambda x, pos: '%.2f' % (x, ))
+        xData = np.arange(0, output["统计数据"].shape[0])
+        xTickLabels = [str(iInd) for iInd in output["统计数据"].index]
+        iAxes = Fig.add_subplot(nRow, nCol, 1)
+        iAxes.yaxis.set_major_formatter(PercentageFormatter)
+        iAxes.bar(xData, output["统计数据"]["年化收益率(Raw)"].values, width=-0.25, align="edge", color="indianred", label="年化收益率(Raw)")
+        iAxes.bar(xData, output["统计数据"]["年化收益率(Pure)"].values, width=0.25, align="edge", color="steelblue", label="年化收益率(Pure)")
+        iAxes.set_xticks(xData)
+        iAxes.set_xticklabels(xTickLabels)
+        iAxes.legend(loc='best')
+        iAxes.set_title("年化收益率")
+        iAxes = Fig.add_subplot(nRow, nCol, 2)
+        iAxes.yaxis.set_major_formatter(FloatFormatter)
+        iAxes.bar(xData, output["统计数据"]["t统计量(Raw)"].values, width=-0.25, align="edge", color="indianred", label="t统计量(Raw)")
+        iAxes.bar(xData, output["统计数据"]["t统计量(Pure)"].values, width=0.25, align="edge", color="steelblue", label="t统计量(Pure)")
+        iAxes.set_xticks(xData)
+        iAxes.set_xticklabels(xTickLabels)
+        iAxes.legend(loc='best')
+        iAxes.set_title("t统计量")
+        iAxes = Fig.add_subplot(nRow, nCol, 3)
+        iAxes.yaxis.set_major_formatter(PercentageFormatter)
+        iAxes.bar(xData, output["统计数据"]["年化收益率(Pure-Raw)"].values, color="steelblue", label="年化收益率(Pure-Raw)")
+        iAxes.set_xticks(xData)
+        iAxes.set_xticklabels(xTickLabels)
+        iAxes.legend(loc='upper left')
+        iAxes.set_title("Pure-Raw")
+        RAxes = iAxes.twinx()
+        RAxes.yaxis.set_major_formatter(FloatFormatter)
+        RAxes.plot(xData, output["统计数据"]["t统计量(Pure-Raw)"].values, color="indianred", lw=2.5, label="t统计量(Pure-Raw)")
+        RAxes.legend(loc='upper right')
+        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
+        return Fig
+
+    @staticmethod
+    def genOutputReport(output:dict) -> str:
+        HTML = ""
+        FloatFormatFun = lambda x:'{0:.2f}'.format(x)
+        Formatters = [_QS_formatPandasPercentage] * 2 + [FloatFormatFun, _QS_formatPandasPercentage, FloatFormatFun]
+        Formatters += [_QS_formatPandasPercentage] * 2 + [FloatFormatFun, _QS_formatPandasPercentage, FloatFormatFun]
+        Formatters += [_QS_formatPandasPercentage] * 2 + [FloatFormatFun, _QS_formatPandasPercentage, FloatFormatFun]
+        iHTML = output["统计数据"].to_html(formatters=Formatters)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        HTML += '<div align="left" style="font-size:1em"><strong>回归统计量</strong></div>'
+        iHTML = output["回归统计量均值"].to_html(formatters=[FloatFormatFun] * 8)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        Fig = FamaMacBethRegressionReport.genMatplotlibFig(output=output)
+        Buffer = BytesIO()
+        Fig.savefig(Buffer, bbox_inches='tight')
+        PlotData = Buffer.getvalue()
+        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+        HTML += ('<img src="%s">' % ImgStr)
+        return HTML
+
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
+        Output = bwd_data_list[0]
+        fmr_node = self.Deps[0]
+        HTML = "参数设置: "
+        HTML += '<ul align="left">'
+        if isinstance(getattr(fmr_node.Deps[0], "Operator", None), CalcFamaMacBethRegression):
+            ModelArgs = fmr_node.Deps[0].Operator._QSArgs.ModelArgs
+            HTML += f"<li>回溯期数: {ModelArgs['period_lookback']}</li>"
+        if fmr_node.Deps[0]._QSArgs.CalcDTRuler:
+            HTML += "<li>计算时点: 自定义时点</li>"
+        else:
+            HTML += "<li>计算时点: 所有时点</li>"
+        HTML += f"<li>移动平均期数: {fmr_node._QSArgs.RollingAvgPeriod}</li>"
+        HTML += "</ul>"
+        HTML += "\n" + FamaMacBethRegressionReport.genOutputReport(output=Output)
+        Output[self._QSArgs.ReportKey] = HTML
         return Output

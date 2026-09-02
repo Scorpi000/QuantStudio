@@ -17,7 +17,7 @@ from QuantStudio.Core.Node import DTLocalContext, DTInitData
 import QuantStudio.Factor.FactorOperator as fo
 from QuantStudio.Factor.FactorOperation import SectionOperation
 from QuantStudio.Factor.Factor import Factor, FactorInitData, FactorContext, FactorLocalContext
-from QuantStudio.BackTest.BackTestModel import BTNode
+from QuantStudio.BackTest.BackTestModel import BTNode, ReportNode
 from QuantStudio.BackTest.Strategy.AllocationStrategy import CalcMaskPortfolio
 from QuantStudio.BackTest.SectionFactor.IC import _QS_formatMatplotlibPercentage, _QS_formatPandasPercentage
 from QuantStudio.Tools.StrategyTestFun import calcMaxDrawdownRate, calcLSYield
@@ -111,94 +111,6 @@ class MultiPortfolio(BTNode):
         if (bmk_nv is not None) and (bmk_portfolio is not None): Deps.append(bmk_portfolio)
         super().__init__(deps=Deps, args=args, config_file=config_file, **kwargs)
     
-    @staticmethod
-    def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:
-        GroupNum = output["超额净值"].shape[1]
-        nLS = output["净值"].shape[1] - 1 - GroupNum
-        nRow, nCol = 3 + int(0 if nLS <= 0 else (nLS - 1) // 3 + 1), 3
-        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
-        xData = np.arange(1, GroupNum + 1)
-        xTickLabels = [str(iInd) for iInd in output["统计数据"].index[:GroupNum]]
-        PercentageFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
-        FloatFormatter = FuncFormatter(lambda x, pos: '%.2f' % (x, ))
-        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 1), xData, xTickLabels, output["统计数据"]["年化超额收益率"].iloc[:GroupNum], PercentageFormatter, output["统计数据"]["胜率"].iloc[:GroupNum], PercentageFormatter)
-        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 2), xData, xTickLabels, output["统计数据"]["信息比率"].iloc[:GroupNum], PercentageFormatter, None)
-        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 3), xData, xTickLabels, output["统计数据"]["超额最大回撤率"].iloc[:GroupNum], PercentageFormatter, None)
-        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 4), xData, xTickLabels, output["统计数据"]["年化收益率"].iloc[:GroupNum], PercentageFormatter, pd.Series(output["统计数据"].loc["基准", "年化收益率"], index=output["统计数据"].index[:GroupNum], name="基准"), PercentageFormatter, False)
-        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 5), xData, xTickLabels, output["统计数据"]["Sharpe比率"].iloc[:GroupNum], FloatFormatter, pd.Series(output["统计数据"].loc["基准", "Sharpe比率"], index=output["统计数据"].index[:GroupNum], name="基准"), FloatFormatter, False)
-        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 6), xData, xTickLabels, output["统计数据"]["平均换手率"].iloc[:GroupNum], PercentageFormatter, None)
-        Axes = Fig.add_subplot(nRow, nCol, 7)
-        Axes.xaxis_date()
-        Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
-        for i in range(GroupNum):
-            Axes.plot(output["超额净值"].index, output["超额净值"].iloc[:, i].values, label=str(output["超额净值"].columns[i]), lw=2.5)
-        Axes.legend(loc='best')
-        Axes.set_title("超额净值")
-        Axes = Fig.add_subplot(nRow, nCol, 8)
-        Axes.xaxis_date()
-        Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
-        for i in range(GroupNum+1):
-            Axes.plot(output["净值"].index, output["净值"].iloc[:, i].values, label=str(output["净值"].columns[i]), lw=2.5)
-        Axes.legend(loc='best')
-        Axes.set_title("多头净值")
-        Axes = Fig.add_subplot(nRow, nCol, 9)
-        Axes.xaxis_date()
-        Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
-        for i in range(GroupNum):
-            iName = str(output["净值"].columns[i])
-            iNum = (output["投资组合"][iName]>0).sum(axis=1)
-            Axes.plot(iNum.index, iNum.values, label=f"{iName}: {round(iNum.mean(),2)}", lw=2.5)
-        Axes.legend(loc='best')
-        Axes.set_title("持仓数量")
-        for i in range(nLS):
-            Axes = Fig.add_subplot(nRow, nCol, 10+i)
-            xData = np.arange(0, output["净值"].shape[0])
-            xTicks = np.arange(0, output["净值"].shape[0], max(1, int(output["净值"].shape[0]/8)))
-            xTickLabels = [output["净值"].index[i].strftime("%Y-%m-%d") for i in xTicks]
-            iLSName = output["净值"].columns[GroupNum+1+i]
-            Axes.plot(xData, output["净值"][iLSName].values, label="多空净值", color="indianred", lw=2.5)
-            Axes.legend(loc='upper left')
-            RAxes = Axes.twinx()
-            RAxes.yaxis.set_major_formatter(PercentageFormatter)
-            RAxes.bar(xData, output["收益率"][iLSName].values, label="多空收益率", color="steelblue")
-            RAxes.legend(loc="upper right")
-            Axes.set_xticks(xTicks)
-            Axes.set_xticklabels(xTickLabels)
-            Axes.set_title(iLSName)
-        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
-        return Fig
-
-    @staticmethod
-    def genOutputReport(output:dict) -> str:
-        HTML = ""
-        Formatters = [_QS_formatPandasPercentage] * 3 + [lambda x:'{0:.2f}'.format(x)] * 2 + [_QS_formatPandasPercentage] * 2 + [lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else "NaT"] * 2
-        Formatters += [_QS_formatPandasPercentage] * 3 + [lambda x:'{0:.2f}'.format(x)] * 2 + [_QS_formatPandasPercentage] * 2 + [lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else "NaT"]*2
-        Formatters += [lambda x:'{0:.2f}'.format(x)] * 2
-        iHTML = output["统计数据"].to_html(formatters=Formatters)
-        Pos = iHTML.find(">")
-        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
-        Fig = MultiPortfolio.genMatplotlibFig(output)
-        # figure 保存为二进制文件
-        Buffer = BytesIO()
-        Fig.savefig(Buffer, bbox_inches='tight')
-        PlotData = Buffer.getvalue()
-        # 图像数据转化为 HTML 格式
-        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
-        HTML += ('<img src="%s">' % ImgStr)
-        return HTML
-
-    def genReport(self, output:dict) -> str:
-        HTML = "参数设置: "
-        HTML += '<ul align="left">'
-        HTML += f"<li>多空组合对: {self._QSArgs.LSPairs}</li>"
-        if self._QSArgs.RebalanceDTs is not None:
-            HTML += "<li>再平衡时点: 自定义时点</li>"
-        else:
-            HTML += "<li>再平衡时点: 所有时点</li>"
-        HTML += "</ul>"
-        HTML += "\n" + MultiPortfolio.genOutputReport(output=output)
-        return HTML
-
     def _QS_calcStats(self, output):
         nDT = output["净值"].shape[0] - 1
         nDays = (output["净值"].index[-1] - output["净值"].index[0]).days
@@ -291,5 +203,103 @@ class MultiPortfolio(BTNode):
             Output["收益率"][f"{iLName}-{iSName}"] = calcLSYield(Output["收益率"].loc[:, iLName].values, Output["收益率"].loc[:, iSName].values, rebalance_index=RebalanceIdx)
             Output["净值"][f"{iLName}-{iSName}"] = (1 + Output["收益率"][f"{iLName}-{iSName}"]).cumprod()
         Output = self._QS_calcStats(Output)
-        if self._QSArgs.GenReport: Output["Report"] = self.genReport(Output)
+        return Output
+
+
+class MultiPortfolioReport(ReportNode):
+    """多组合对比报告生成节点"""
+
+    class __QS_ArgClass__(ReportNode.__QS_ArgClass__):
+        Name: str = Field(default="多组合对比报告", frozen=True, title="名称")
+
+    def __init__(self, portfolio_node: MultiPortfolio, args:dict={}, config_file:Optional[str]=None, **kwargs):
+        return super().__init__(deps=[portfolio_node], args=args, config_file=config_file, **kwargs)
+
+    @staticmethod
+    def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:
+        GroupNum = output["超额净值"].shape[1]
+        nLS = output["净值"].shape[1] - 1 - GroupNum
+        nRow, nCol = 3 + int(0 if nLS <= 0 else (nLS - 1) // 3 + 1), 3
+        Fig = Figure(figsize=(min(32, 16+(nCol-1)*8), 8*nRow))
+        xData = np.arange(1, GroupNum + 1)
+        xTickLabels = [str(iInd) for iInd in output["统计数据"].index[:GroupNum]]
+        PercentageFormatter = FuncFormatter(_QS_formatMatplotlibPercentage)
+        FloatFormatter = FuncFormatter(lambda x, pos: '%.2f' % (x, ))
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 1), xData, xTickLabels, output["统计数据"]["年化超额收益率"].iloc[:GroupNum], PercentageFormatter, output["统计数据"]["胜率"].iloc[:GroupNum], PercentageFormatter)
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 2), xData, xTickLabels, output["统计数据"]["信息比率"].iloc[:GroupNum], PercentageFormatter, None)
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 3), xData, xTickLabels, output["统计数据"]["超额最大回撤率"].iloc[:GroupNum], PercentageFormatter, None)
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 4), xData, xTickLabels, output["统计数据"]["年化收益率"].iloc[:GroupNum], PercentageFormatter, pd.Series(output["统计数据"].loc["基准", "年化收益率"], index=output["统计数据"].index[:GroupNum], name="基准"), PercentageFormatter, False)
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 5), xData, xTickLabels, output["统计数据"]["Sharpe比率"].iloc[:GroupNum], FloatFormatter, pd.Series(output["统计数据"].loc["基准", "Sharpe比率"], index=output["统计数据"].index[:GroupNum], name="基准"), FloatFormatter, False)
+        _QS_plotStatistics(Fig.add_subplot(nRow, nCol, 6), xData, xTickLabels, output["统计数据"]["平均换手率"].iloc[:GroupNum], PercentageFormatter, None)
+        Axes = Fig.add_subplot(nRow, nCol, 7)
+        Axes.xaxis_date()
+        Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
+        for i in range(GroupNum):
+            Axes.plot(output["超额净值"].index, output["超额净值"].iloc[:, i].values, label=str(output["超额净值"].columns[i]), lw=2.5)
+        Axes.legend(loc='best')
+        Axes.set_title("超额净值")
+        Axes = Fig.add_subplot(nRow, nCol, 8)
+        Axes.xaxis_date()
+        Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
+        for i in range(GroupNum+1):
+            Axes.plot(output["净值"].index, output["净值"].iloc[:, i].values, label=str(output["净值"].columns[i]), lw=2.5)
+        Axes.legend(loc='best')
+        Axes.set_title("多头净值")
+        Axes = Fig.add_subplot(nRow, nCol, 9)
+        Axes.xaxis_date()
+        Axes.xaxis.set_major_formatter(mdate.DateFormatter('%Y-%m-%d'))
+        for i in range(GroupNum):
+            iName = str(output["净值"].columns[i])
+            iNum = (output["投资组合"][iName]>0).sum(axis=1)
+            Axes.plot(iNum.index, iNum.values, label=f"{iName}: {round(iNum.mean(),2)}", lw=2.5)
+        Axes.legend(loc='best')
+        Axes.set_title("持仓数量")
+        for i in range(nLS):
+            Axes = Fig.add_subplot(nRow, nCol, 10+i)
+            xData = np.arange(0, output["净值"].shape[0])
+            xTicks = np.arange(0, output["净值"].shape[0], max(1, int(output["净值"].shape[0]/8)))
+            xTickLabels = [output["净值"].index[i].strftime("%Y-%m-%d") for i in xTicks]
+            iLSName = output["净值"].columns[GroupNum+1+i]
+            Axes.plot(xData, output["净值"][iLSName].values, label="多空净值", color="indianred", lw=2.5)
+            Axes.legend(loc='upper left')
+            RAxes = Axes.twinx()
+            RAxes.yaxis.set_major_formatter(PercentageFormatter)
+            RAxes.bar(xData, output["收益率"][iLSName].values, label="多空收益率", color="steelblue")
+            RAxes.legend(loc="upper right")
+            Axes.set_xticks(xTicks)
+            Axes.set_xticklabels(xTickLabels)
+            Axes.set_title(iLSName)
+        if file_path is not None: Fig.savefig(file_path, dpi=150, bbox_inches='tight')
+        return Fig
+
+    @staticmethod
+    def genOutputReport(output:dict) -> str:
+        HTML = ""
+        Formatters = [_QS_formatPandasPercentage] * 3 + [lambda x:'{0:.2f}'.format(x)] * 2 + [_QS_formatPandasPercentage] * 2 + [lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else "NaT"] * 2
+        Formatters += [_QS_formatPandasPercentage] * 3 + [lambda x:'{0:.2f}'.format(x)] * 2 + [_QS_formatPandasPercentage] * 2 + [lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else "NaT"]*2
+        Formatters += [lambda x:'{0:.2f}'.format(x)] * 2
+        iHTML = output["统计数据"].to_html(formatters=Formatters)
+        Pos = iHTML.find(">")
+        HTML += iHTML[:Pos]+' align="center"'+iHTML[Pos:]
+        Fig = MultiPortfolioReport.genMatplotlibFig(output)
+        Buffer = BytesIO()
+        Fig.savefig(Buffer, bbox_inches='tight')
+        PlotData = Buffer.getvalue()
+        ImgStr = "data:image/png;base64,"+base64.b64encode(PlotData).decode()
+        HTML += ('<img src="%s">' % ImgStr)
+        return HTML
+
+    def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
+        Output = bwd_data_list[0]
+        mp_node = self.Deps[0]
+        HTML = "参数设置: "
+        HTML += '<ul align="left">'
+        HTML += f"<li>多空组合对: {mp_node._QSArgs.LSPairs}</li>"
+        if mp_node._QSArgs.RebalanceDTs is not None:
+            HTML += "<li>再平衡时点: 自定义时点</li>"
+        else:
+            HTML += "<li>再平衡时点: 所有时点</li>"
+        HTML += "</ul>"
+        HTML += "\n" + MultiPortfolioReport.genOutputReport(output=Output)
+        Output[self._QSArgs.ReportKey] = HTML
         return Output
