@@ -3,7 +3,7 @@
 
 测试覆盖:
     - HDF5BTResultDB: 写入、读取、路径层级、metadata 查询
-    - BTStorer: 单节点存储、split 模式、readBTResult
+    - BTStorer: 单节点存储、split 模式
 """
 
 import os
@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from QuantStudio.BackTest.BTResultDB import BTResultDB, _HDF5BTResultDB, HDF5BTResultDB
-from QuantStudio.BackTest.BTStorer import BTStorer, readBTResult
+from QuantStudio.BackTest.BTStorer import BTStorer
 
 
 class Test_HDF5BTResultDB(unittest.TestCase):
@@ -313,33 +313,6 @@ class TestBTStorer(unittest.TestCase):
 
         matches = self.db.listResults(metadata={"资产": "A股"})
         self.assertEqual(matches, ["IC测试"])
-
-
-class TestReadBTResult(unittest.TestCase):
-    """readBTResult 便捷函数测试."""
-
-    def setUp(self):
-        self._tmp_dir = tempfile.mkdtemp()
-        self._results_dir = os.path.join(self._tmp_dir, "results")
-        os.makedirs(self._results_dir, exist_ok=True)
-        self.db = HDF5BTResultDB(args={"MainDir": self._results_dir})
-
-    def tearDown(self):
-        shutil.rmtree(self._tmp_dir, ignore_errors=True)
-
-    def test_read_existing(self):
-        """读取已存在的结果."""
-        result = {"初始资金": 100.0, "IC": pd.DataFrame({"a": [1, 2]})}
-        self.db.writeResult(result, "test")
-
-        loaded = readBTResult(self.db, "test")
-        self.assertIsNotNone(loaded)
-        self.assertEqual(loaded["初始资金"], 100.0)
-
-    def test_read_nonexistent(self):
-        """读取不存在的结果应返回 None."""
-        loaded = readBTResult(self.db, "nonexistent")
-        self.assertIsNone(loaded)
 
 
 class TestHDF5BTResultDB(unittest.TestCase):

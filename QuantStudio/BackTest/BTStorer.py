@@ -26,6 +26,10 @@ class BTStorer(Node):
             Deps = deps
             self._Splited = False
         super().__init__(Deps, args, config_file, **kwargs)
+        if len(deps) > 1:
+            DepNames = [iDep.Name for iDep in deps]
+            if len(set(DepNames)) < len(DepNames):
+                self._QS_Logger.warning(f"BTStorer 存在同名依赖节点, 后写入的结果将覆盖先写入的: {DepNames}")
 
     @property
     def ResultDB(self) -> BTResultDB:
@@ -35,22 +39,13 @@ class BTStorer(Node):
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: Context, local_context: Any = None) -> Any:
         if self._Splited:
             return
-        GroupName = self._QSArgs.GroupName or self.Deps[0].Name
-        self._QSArgs.TargetDB.writeResult(bwd_data_list[0], GroupName, self._QSArgs.Metadata)
-        self._QS_Logger.debug(f"{context.PID} 写入 {self._QSArgs.TargetDB.Name}/{GroupName}")
-
-
-def readBTResult(bt_result_db: BTResultDB, group_name: str) -> Optional[dict]:
-    """从结果库读取回测结果
-
-    Args:
-        bt_result_db: 回测结果库对象
-        group_name: 结果组名称
-
-    Returns:
-        嵌套 dict, None 表示不存在
-    """
-    return bt_result_db.readResult(group_name)
+        for i, iDep in enumerate(self.Deps):
+            if self._QSArgs.GroupName:
+                GroupName = self._QSArgs.GroupName + "/" + iDep.Name
+            else:
+                GroupName = iDep.Name
+            self._QSArgs.TargetDB.writeResult(bwd_data_list[i], GroupName, self._QSArgs.Metadata)
+            self._QS_Logger.debug(f"{context.PID} 写入 {self._QSArgs.TargetDB.Name}/{GroupName}")
 
 
 if __name__ == "__main__":

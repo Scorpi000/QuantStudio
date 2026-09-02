@@ -243,7 +243,7 @@ class FactorTable(Node):
         if self.PrepareID in context.PrepareNodeDict:
             _, PrepareData = context.PrepareNodeDict[self.PrepareID]
             if PrepareData["SectionIDs"] is not init_data.SectionIDs:
-                PrepareData["SectionIDs"] = sorted(set(PrepareData["SectionIDs"] + init_data.SectionIDs or context.SectionIDs))
+                PrepareData["SectionIDs"] = sorted(set(PrepareData["SectionIDs"] + (init_data.SectionIDs or context.SectionIDs)))
         else:
             PrepareData = {
                 "FactorNames": [],

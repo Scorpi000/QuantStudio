@@ -278,10 +278,10 @@ class AccountStats(BTNode):
     def forward_compute(self, path: List[str], fwd_data: DTLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], DTLocalContext]:
         DTRuler = context.DTRuler
         StartIdx, EndIdx = max(0, DTRuler.index(fwd_data.DTs[0]) - 1), DTRuler.index(fwd_data.DTs[-1])
-        AccountSection = self._QSArgs.AccountSection or self.Deps[0].SectionIDs or context.SectionIDs
+        AccountSection = self._QSArgs.AccountSection or self.Deps[0].Args.SectionIDs or context.SectionIDs
         FwdData = [FactorLocalContext(DTs=DTRuler[StartIdx: EndIdx + 1], IDs=AccountSection, SectionIDs=AccountSection, PIDs=context.PIDList)]
         if self._HasBmk:
-            BmkSection = ([self._QSArgs.BmkID] if self._QSArgs.BmkID else (self.Deps[1].SectionIDs or context.SectionIDs))
+            BmkSection = ([self._QSArgs.BmkID] if self._QSArgs.BmkID else (self.Deps[1].Args.SectionIDs or context.SectionIDs))
             FwdData.append(FactorLocalContext(DTs=fwd_data.DTs, IDs=BmkSection, SectionIDs=BmkSection, PIDs=context.PIDList))
         FwdData += [FactorLocalContext(DTs=fwd_data.DTs, IDs=iDep.Args.SectionIDs or context.SectionIDs, PIDs=context.PIDList, SectionIDs=iDep.Args.SectionIDs or context.SectionIDs) for iDep in self.Deps[len(FwdData):]]
         return FwdData, DTLocalContext(DTs=fwd_data.DTs)
