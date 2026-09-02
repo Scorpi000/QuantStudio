@@ -278,7 +278,6 @@ class HDF5DB(WritableFactorDB):
         """初始化 HDF5DB
 
         Args:
-            proc_lock: 访问该因子库资源的进程锁, 防止并发访问冲突, None 表示不创建进程锁
             args: 指定的对象参数集
             config_file: 配置文件路径, 默认配置文件为 "~/QuantStudioConfig/HDF5DBConfig.json"
         """

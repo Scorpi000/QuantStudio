@@ -3,7 +3,6 @@
 
 测试覆盖:
     - HDF5BTResultDB: 写入、读取、路径层级、metadata 查询
-    - HDF5DirBTResultDB: 目录模式写入、读取、路径层级、metadata 查询
     - BTStorer: 单节点存储、split 模式、readBTResult
 """
 
@@ -15,17 +14,17 @@ import tempfile
 import numpy as np
 import pandas as pd
 
-from QuantStudio.BackTest.BTResultDB import BTResultDB, HDF5BTResultDB, HDF5DirBTResultDB
+from QuantStudio.BackTest.BTResultDB import BTResultDB, _HDF5BTResultDB, HDF5BTResultDB
 from QuantStudio.BackTest.BTStorer import BTStorer, readBTResult
 
 
-class TestHDF5BTResultDB(unittest.TestCase):
-    """HDF5BTResultDB 基本功能测试."""
+class Test_HDF5BTResultDB(unittest.TestCase):
+    """_HDF5BTResultDB 基本功能测试."""
 
     def setUp(self):
         self._tmp_dir = tempfile.mkdtemp()
         self._file_path = os.path.join(self._tmp_dir, "test_btresult.h5")
-        self.db = HDF5BTResultDB(args={"FilePath": self._file_path})
+        self.db = _HDF5BTResultDB(args={"FilePath": self._file_path})
 
     def tearDown(self):
         if os.path.isfile(self._file_path):
@@ -144,10 +143,10 @@ class TestHDF5BTResultDB(unittest.TestCase):
         self.assertEqual(v2, ["grp"])
 
     def test_group_names_property(self):
-        """GroupNames 应返回所有结果组."""
+        """ResultNames 应返回所有结果组."""
         self.db.writeResult({"初始资金": 100.0}, "grp1", metadata={"a": 1})
         self.db.writeResult({"初始资金": 200.0}, "grp2", metadata={"b": 2})
-        self.assertEqual(sorted(self.db.GroupNames), ["grp1", "grp2"])
+        self.assertEqual(sorted(self.db.ResultNames), ["grp1", "grp2"])
 
     def test_read_metadata_all(self):
         """readMetaData(key=None) 应返回所有元信息."""
@@ -207,13 +206,12 @@ class TestBTStorer(unittest.TestCase):
 
     def setUp(self):
         self._tmp_dir = tempfile.mkdtemp()
-        self._file_path = os.path.join(self._tmp_dir, "test_storer.h5")
-        self.db = HDF5BTResultDB(args={"FilePath": self._file_path})
+        self._results_dir = os.path.join(self._tmp_dir, "results")
+        os.makedirs(self._results_dir, exist_ok=True)
+        self.db = HDF5BTResultDB(args={"MainDir": self._results_dir})
 
     def tearDown(self):
-        if os.path.isfile(self._file_path):
-            os.remove(self._file_path)
-        os.rmdir(self._tmp_dir)
+        shutil.rmtree(self._tmp_dir, ignore_errors=True)
 
     def _make_bt_node(self, name, result):
         """创建一个返回固定结果的 BTNode 用于测试."""
@@ -322,13 +320,12 @@ class TestReadBTResult(unittest.TestCase):
 
     def setUp(self):
         self._tmp_dir = tempfile.mkdtemp()
-        self._file_path = os.path.join(self._tmp_dir, "test_read.h5")
-        self.db = HDF5BTResultDB(args={"FilePath": self._file_path})
+        self._results_dir = os.path.join(self._tmp_dir, "results")
+        os.makedirs(self._results_dir, exist_ok=True)
+        self.db = HDF5BTResultDB(args={"MainDir": self._results_dir})
 
     def tearDown(self):
-        if os.path.isfile(self._file_path):
-            os.remove(self._file_path)
-        os.rmdir(self._tmp_dir)
+        shutil.rmtree(self._tmp_dir, ignore_errors=True)
 
     def test_read_existing(self):
         """读取已存在的结果."""
@@ -345,13 +342,14 @@ class TestReadBTResult(unittest.TestCase):
         self.assertIsNone(loaded)
 
 
-class TestHDF5DirBTResultDB(unittest.TestCase):
-    """HDF5DirBTResultDB 目录模式测试."""
+class TestHDF5BTResultDB(unittest.TestCase):
+    """HDF5BTResultDB 目录模式测试."""
 
     def setUp(self):
         self._tmp_dir = tempfile.mkdtemp()
         self._results_dir = os.path.join(self._tmp_dir, "results")
-        self.db = HDF5DirBTResultDB(args={"FilePath": self._results_dir})
+        os.makedirs(self._results_dir, exist_ok=True)
+        self.db = HDF5BTResultDB(args={"MainDir": self._results_dir})
 
     def tearDown(self):
         shutil.rmtree(self._tmp_dir, ignore_errors=True)
@@ -458,10 +456,10 @@ class TestHDF5DirBTResultDB(unittest.TestCase):
         self.assertNotIn("without_meta", results)
 
     def test_group_names_property(self):
-        """GroupNames 应返回所有结果组."""
+        """ResultNames 应返回所有结果组."""
         self.db.writeResult({"初始资金": 1.0}, "grp1", metadata={"a": 1})
         self.db.writeResult({"初始资金": 2.0}, "grp2", metadata={"b": 2})
-        self.assertEqual(sorted(self.db.GroupNames), ["grp1", "grp2"])
+        self.assertEqual(sorted(self.db.ResultNames), ["grp1", "grp2"])
 
 
 if __name__ == "__main__":
