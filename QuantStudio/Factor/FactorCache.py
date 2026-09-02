@@ -378,7 +378,9 @@ class FeatherFactorCache(FileFactorCache, FeatherDTCache):
         Suffix: str = Field(default=".feather", title="后缀", frozen=True)
     
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        super().__init__(args=args, config_file=(__QS_ConfigPath__ + os.sep + "FeatherFactorCacheConfig.json" if config_file is None else config_file), **kwargs)
+        if (not config_file) and os.path.isfile(__QS_ConfigPath__ + os.sep + "FeatherFactorCacheConfig.json"):
+            config_file = __QS_ConfigPath__ + os.sep + "FeatherFactorCacheConfig.json"
+        super().__init__(args=args, config_file=config_file, **kwargs)
 
 
 if __name__ == "__main__":

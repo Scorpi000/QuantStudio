@@ -938,7 +938,9 @@ class JYDB(QSSQLObject, FactorDB):
         FTArgs: dict = Field(default={}, title="因子表参数", frozen=True, exclude=True)
 
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        super().__init__(args=args, config_file=(__QS_ConfigPath__ + os.sep + "JYDBConfig.json" if config_file is None else config_file), **kwargs)
+        if (not config_file) and os.path.isfile(__QS_ConfigPath__ + os.sep + "JYDBConfig.json"):
+            config_file = __QS_ConfigPath__ + os.sep + "JYDBConfig.json"
+        super().__init__(args=args, config_file=config_file, **kwargs)
         self._InfoFilePath = __QS_MainPath__ + os.sep + "Resource" + os.sep + "JYDBInfo.hdf5"# 数据库信息文件路径
         self._initInfo()
 

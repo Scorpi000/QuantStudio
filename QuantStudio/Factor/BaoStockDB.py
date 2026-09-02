@@ -268,7 +268,9 @@ class BaoStockDB(FactorDB):
             args: 指定的对象参数集
             config_file: 配置文件路径, 默认配置文件为 "~/QuantStudioConfig/BaoStockDBConfig.json"
         """
-        super().__init__(args=args, config_file=(__QS_ConfigPath__ + os.sep + "BaoStockDBConfig.json" if config_file is None else config_file), **kwargs)
+        if (not config_file) and os.path.isfile(__QS_ConfigPath__ + os.sep + "BaoStockDBConfig.json"):
+            config_file = __QS_ConfigPath__ + os.sep + "BaoStockDBConfig.json"
+        super().__init__(args=args, config_file=config_file, **kwargs)
         self._InfoFilePath = __QS_MainPath__ + os.sep + "Resource" + os.sep + "BaoStockDBInfo.hdf5"  # 数据库信息文件路径
         if (not self._QSArgs.DBInfoFile) or (not os.path.isfile(self._QSArgs.DBInfoFile)):
             if self._QSArgs.DBInfoFile: self._QS_Logger.warning("找不到指定的库信息文件 : '%s'" % self._QSArgs.DBInfoFile)

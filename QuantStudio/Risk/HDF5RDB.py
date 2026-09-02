@@ -63,7 +63,9 @@ class HDF5RDB(RiskDB):
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
         self._TableDT = {}# {表名：[时点]}
         self._Suffix = "hdf5"
-        return super().__init__(args=args, config_file=(__QS_ConfigPath__+os.sep+"HDF5RDBConfig.json" if config_file is None else config_file), **kwargs)
+        if (not config_file) and os.path.isfile(__QS_ConfigPath__ + os.sep + "HDF5RDBConfig.json"):
+            config_file = __QS_ConfigPath__ + os.sep + "HDF5RDBConfig.json"
+        return super().__init__(args=args, config_file=config_file, **kwargs)
 
     def connect(self):
         if not os.path.isdir(self._QSArgs.MainDir): raise __QS_Error__("不存在 HDF5RDB 的主目录: %s!" % self._QSArgs.MainDir)
@@ -326,7 +328,9 @@ class HDF5FRDB(FactorRDB):
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
         self._TableDT = {}#{表名：[时点]}
         self._Suffix = "h5"
-        super().__init__(args=args, config_file=(__QS_ConfigPath__+os.sep+"HDF5FRDBConfig.json" if config_file is None else config_file), **kwargs)
+        if (not config_file) and os.path.isfile(__QS_ConfigPath__ + os.sep + "HDF5FRDBConfig.json"):
+            config_file = __QS_ConfigPath__ + os.sep + "HDF5FRDBConfig.json"
+        super().__init__(args=args, config_file=config_file, **kwargs)
 
     def connect(self):
         if not os.path.isdir(self._QSArgs.MainDir): raise __QS_Error__("不存在 HDF5FRDB 的主目录: %s!" % self._QSArgs.MainDir)

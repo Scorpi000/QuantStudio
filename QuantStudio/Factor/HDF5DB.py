@@ -283,7 +283,9 @@ class HDF5DB(WritableFactorDB):
             config_file: 配置文件路径, 默认配置文件为 "~/QuantStudioConfig/HDF5DBConfig.json"
         """
         self._Suffix = "hdf5"  # 文件的后缀名
-        return super().__init__(args=args, config_file=(__QS_ConfigPath__ + os.sep + "HDF5DBConfig.json" if config_file is None else config_file), **kwargs)
+        if (not config_file) and os.path.isfile(__QS_ConfigPath__ + os.sep + "HDF5DBConfig.json"):
+            config_file = __QS_ConfigPath__ + os.sep + "HDF5DBConfig.json"
+        return super().__init__(args=args, config_file=config_file, **kwargs)
 
     def connect(self):
         if not os.path.isdir(self._QSArgs.MainDir):

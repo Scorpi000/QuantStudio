@@ -185,7 +185,7 @@ class __QS_Args__(BaseModel):
 
     def __setitem__(self, key, value):
         if not hasattr(self, key):
-            self.Logger.warning(f"参数 '{key}' 不存在, 全体参数为: {list(self.__pydantic_fields__.keys())}")
+            self._QS_Logger.warning(f"参数 '{key}' 不存在, 全体参数为: {list(self.__pydantic_fields__.keys())}")
             return
         setattr(self, key, value)
 

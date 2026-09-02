@@ -92,7 +92,7 @@ class FileDTCache(DTCache):
     def start(self):
         if self._isStarted: return
         CacheDir = self._QSArgs.CacheDir
-        if not os.path.isdir(CacheDir):
+        if (not CacheDir) or (not os.path.isdir(CacheDir)):
             if CacheDir: self._QS_Logger.warning(f"缓存目录 '{CacheDir}' 不存在, 将使用系统的临时文件夹")
             self._CacheDirObj = tempfile.TemporaryDirectory()
             self._CacheDir = self._CacheDirObj.name
@@ -192,7 +192,9 @@ class FeatherDTCache(FileDTCache):
         Suffix: str = Field(default=".feather", title="后缀", frozen=True)
     
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        super().__init__(args=args, config_file=(__QS_ConfigPath__ + os.sep + "FeatherDTCacheConfig.json" if config_file is None else config_file), **kwargs)
+        if (not config_file) and os.path.isfile(__QS_ConfigPath__ + os.sep + "FeatherDTCacheConfig.json"):
+            config_file = __QS_ConfigPath__ + os.sep + "FeatherDTCacheConfig.json"
+        super().__init__(args=args, config_file=config_file, **kwargs)
     
     def writeDataFrame(self, path: str, data: pd.DataFrame, if_exists: Literal["append", "replace"]="replace", ignore_index: bool=True, data_type: Optional[Literal["double", "string", "object"]]=None):
         if data_type=="object": return self.writeDataFramePickle(path=path[:len(path)-len(self._QSArgs.Suffix)]+".pkl", data=data, if_exists=if_exists, ignore_index=ignore_index)

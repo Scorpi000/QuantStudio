@@ -46,7 +46,9 @@ class SQLDB(QSSQLObject, WritableFactorDB):
         #self._TableFieldDataType = {}# {表名: pd.Series(数据库数据类型, index=[因子名])}
         self._TableInfo = pd.DataFrame()# DataFrame(index=[表名], columns=["DBTableName", "TableClass"])
         self._FactorInfo = pd.DataFrame()# DataFrame(index=[(表名,因子名)], columns=["DBFieldName", "DataType", "FieldType", "Supplementary", "Description"])
-        super().__init__(args=args, config_file=(__QS_ConfigPath__+os.sep+"SQLDBConfig.json" if config_file is None else config_file), **kwargs)
+        if (not config_file) and os.path.isfile(__QS_ConfigPath__ + os.sep + "SQLDBConfig.json"):
+            config_file = __QS_ConfigPath__ + os.sep + "SQLDBConfig.json"
+        super().__init__(args=args, config_file=config_file, **kwargs)
         return
     
     # factor_info: DataFrame(columns=["TableName", "DBFieldName", "FieldType", "Supplementary", "DataType", "Nullable", "FieldKey", "Description"])
