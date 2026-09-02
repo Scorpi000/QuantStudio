@@ -10,12 +10,6 @@
 - MultiPortfolio.backward_compute: 多组合统计（收益率、波动率、Sharpe、最大回撤）
 - makeQuantilePortfolio: 分位数组合工厂函数
 """
-import sys
-_src = r"D:\HST\QuantStudio"
-if _src not in sys.path:
-    sys.path.insert(0, _src)
-sys.path = [p for p in sys.path if not (p != _src and p.endswith("QuantStudio") and "QuantStudio" in p)]
-
 import unittest
 import datetime as dt
 
@@ -49,17 +43,11 @@ def _run_factor_engine(factor, dt_ruler, section_ids, lookback=0):
     full_dtruler = extra_dts + list(dt_ruler)
     # init_data.DTRange 从 dt_ruler[0] 开始 (不含额外时点), DTRuler 含额外时点
     # 这样 init_compute 中 StartIdx = lookback, StartIdx - LookBack >= 0
-    init_data = FactorInitData(DTRange=(dt_ruler[0], dt_ruler[-1]), SectionIDs=section_ids)
-    fwd_data = FactorLocalContext(DTs=dt_ruler, IDs=section_ids)
+    fwd_data = FactorLocalContext(DTs=dt_ruler, IDs=section_ids, SectionIDs=section_ids)
     with FeatherFactorCache(args={"DTRuler": full_dtruler, "StartMode": "new", "CacheDir": None}) as Cache:
-        with FactorContext(PID="0", PIDList=["0"], DTRuler=full_dtruler,
-                          SectionIDs=section_ids, DataCache=Cache) as Context:
+        with FactorContext(PID="0", PIDList=["0"], DTRuler=full_dtruler, SectionIDs=section_ids, DataCache=Cache) as Context:
             with Engine() as ExecEngine:
-                Output = ExecEngine.run(
-                    [factor], Context,
-                    fwd_data_list=[fwd_data],
-                    init_data_list=[init_data]
-                )
+                Output = ExecEngine.run([factor], Context, fwd_data_list=[fwd_data])
     return Output[0]
 
 

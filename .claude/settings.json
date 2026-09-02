@@ -28,7 +28,8 @@
       "Bash(D:/PythonEnv/QS312/Scripts/python.exe -c \"import json; json.load\\(open\\('docs/回测框架/截面因子测试.ipynb', encoding='utf-8'\\)\\); print\\('Valid JSON'\\)\")",
       "Bash(D:/PythonEnv/QS312/Scripts/python.exe tests/test_BackTest_SectionFactor.py)",
       "Bash(D:/PythonEnv/QS312/Scripts/python.exe -c \"import QuantStudio.BackTest.SectionFactor.IC as m; print\\(m.__file__\\)\")",
-      "Bash(D:/PythonEnv/QS312/Scripts/python.exe tests/test_BackTest_SectionFactor.py -v)"
+      "Bash(D:/PythonEnv/QS312/Scripts/python.exe tests/test_BackTest_SectionFactor.py -v)",
+      "Bash(D:/PythonEnv/QS312/Scripts/python.exe -m pytest tests/test_BackTest_PerformanceAnalysis.py -v)"
     ]
   },
   "enabledPlugins": {
