@@ -58,7 +58,7 @@ class CalcIC(PanelOperator):
             Price = Price.reindex(columns=DTs)
         else:
             DTs = Price.columns
-        Return = Price.T.pct_change().T
+        Return = Price.T.pct_change(fill_method=None).T
         if f._QSArgs.ModelArgs["mask"]: 
             Mask, x = pd.DataFrame(x[0].T==1, columns=idt, index=SectionIDs).reindex(columns=DTs).astype(float).fillna(0).astype(bool), x[1:]
             Mask = (Mask & Price.notnull())
@@ -173,7 +173,7 @@ class CalcRiskAdjustedIC(PanelOperator):
             Price = Price.reindex(index=DTs)
         else:
             DTs = Price.index
-        Return = Price.pct_change().iloc[-1]
+        Return = Price.pct_change(fill_method=None).iloc[-1]
         if f._QSArgs.ModelArgs["mask"]: 
             Mask, x = pd.DataFrame(x[0]==1, index=idt, columns=SectionIDs), x[1:]
             Mask = (Mask.reindex(index=DTs).astype(float).fillna(0).astype(bool) & Price.notnull())
