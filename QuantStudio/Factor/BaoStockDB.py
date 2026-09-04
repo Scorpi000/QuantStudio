@@ -58,6 +58,13 @@ def _updateInfo(info_file, info_resource, logger, out_info=False):
     return _importInfo(info_file, info_resource, logger, out_info=out_info)
 
 
+_DATATYPE_MAPPING = {
+    "string": "string",
+    "float": "double",
+    "datetime": "object"
+}
+
+
 class _BSTable(FactorTable):
     """BaoStockDB 库中因子表"""
 
@@ -142,12 +149,14 @@ class _BSTable(FactorTable):
         if factor_names is None: factor_names = self.FactorNames
         if key == "DataType":
             iDataType = self._FactorInfo.loc[factor_names, "DataType"].str.lower()
-            iDataType = pd.Series(np.where(iDataType.str.find("str")!=-1, "string", "double"), index=iDataType.index)
+            iDataType = iDataType.replace(_DATATYPE_MAPPING).where(iDataType.isin(_DATATYPE_MAPPING), "object")
             return iDataType
         elif key == "Description":
             return self._FactorInfo.loc[factor_names, "Description"]
         elif key is None:
-            return self._FactorInfo.loc[factor_names, ["DataType", "Description"]]
+            MetaData = self._FactorInfo.loc[factor_names, ["DataType", "Description"]]
+            MetaData["DataType"] = MetaData["DataType"].replace(_DATATYPE_MAPPING).where(MetaData["DataType"].isin(_DATATYPE_MAPPING), "object")
+            return MetaData
         else:
             return None
 
