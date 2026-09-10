@@ -1022,11 +1022,7 @@ class JYDB(QSSQLObject, FactorDB):
         SQLStr = SQLStr.format(Prefix=self._QSArgs.TablePrefix, ExchangeCode=ExchangeCode, StartDate=start_date.strftime("%Y-%m-%d %H:%M:%S"), EndDate=end_date.strftime("%Y-%m-%d %H:%M:%S"))
         Rslt = self.fetchall(SQLStr)
         return [iRslt[0] for iRslt in Rslt]
-
-    # 获取指定日 date 的全体 A 股 ID
-    # date: 指定日, datetime.date
-    # is_current: False 表示上市日在指定日之前的股票, True 表示上市日在指定日之前且尚未退市的股票
-    # start_date: 起始日, 如果非 None, is_current=False 表示提取在 start_date 至 date 之间上市过的股票 ID, is_current=True 表示提取在 start_date 至 date 之间均保持上市的股票
+    
     def _getAllAStock(self, date, is_current=True, start_date=None, exchange=("SSE", "SZSE", "BSE")):
         if start_date is not None: start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
         SQLStr = "SELECT CASE {Prefix}SecuMain.SecuMarket WHEN 83 THEN CONCAT({Prefix}SecuMain.SecuCode, '.SH') "
@@ -1050,10 +1046,6 @@ class JYDB(QSSQLObject, FactorDB):
         SQLStr += "ORDER BY {Prefix}SecuMain.SecuCode"
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date))]
 
-    # 获取指定日 date 的全体港股 ID
-    # date: 指定日, datetime.date
-    # is_current: False 表示上市日在指定日之前的港股, True 表示上市日在指定日之前且尚未退市的港股
-    # start_date: 起始日, 如果非 None, is_current=False 表示提取在 start_date 至 date 之间上市过的股票 ID, is_current=True 表示提取在 start_date 至 date 之间均保持上市的股票
     def _getAllHKStock(self, date, is_current=True, start_date=None):
         if start_date is not None: start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
         SQLStr = "SELECT CONCAT({Prefix}HK_SecuMain.SecuCode, '.HK') "
@@ -1071,10 +1063,6 @@ class JYDB(QSSQLObject, FactorDB):
         SQLStr += "ORDER BY {Prefix}HK_SecuMain.SecuCode"
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date))]
 
-    # 获取指定日 date 的全体美股 ID
-    # date: 指定日, datetime.date
-    # is_current: False 表示上市日在指定日之前的美股, True 表示上市日在指定日之前且尚未退市的美股
-    # start_date: 起始日, 如果非 None, is_current=False 表示提取在 start_date 至 date 之间上市过的股票 ID, is_current=True 表示提取在 start_date 至 date 之间均保持上市的股票
     def _getAllUSStock(self, date, is_current=True, start_date=None, exchange=("AMEX", "NASDAQ", "NYSE")):
         if start_date is not None: start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
         SQLStr = "SELECT CASE {Prefix}US_SecuMain.SecuMarket WHEN 76 THEN CONCAT({Prefix}US_SecuMain.SecuCode, '.A') "
@@ -1096,10 +1084,6 @@ class JYDB(QSSQLObject, FactorDB):
         SQLStr += "ORDER BY {Prefix}US_SecuMain.SecuCode"
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date))]
 
-    # 获取指定日 date 的全体三板股票 ID
-    # date: 指定日, datetime.date
-    # is_current: False 表示上市日在指定日之前的三板股票, True 表示上市日在指定日之前且尚未退市的三板股票
-    # start_date: 起始日, 如果非 None, is_current=False 表示提取在 start_date 至 date 之间上市过的股票 ID, is_current=True 表示提取在 start_date 至 date 之间均保持上市的股票
     def _getAllNQStock(self, date, is_current=True, start_date=None):
         if start_date is not None: start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
         SQLStr = "SELECT CONCAT({Prefix}NQ_SecuMain.SecuCode, '.NQ') "
@@ -1131,7 +1115,7 @@ class JYDB(QSSQLObject, FactorDB):
         Returns:
             股票证券 ID 序列
         """
-        if date is None: date = dt.date.today()
+        if date is None: date = dt.datetime.combine(dt.date.today(), dt.time(0))
         if isinstance(exchange, str):
             exchange = {exchange}
         else:
@@ -1144,14 +1128,12 @@ class JYDB(QSSQLObject, FactorDB):
         # A 股
         iExchange = {"SSE", "SZSE", "BSE"}
         if not exchange.isdisjoint(iExchange):
-            IDs += self._getAllAStock(exchange=exchange.intersection(iExchange), date=date, is_current=is_current,
-                                      start_date=start_date)
+            IDs += self._getAllAStock(exchange=exchange.intersection(iExchange), date=date, is_current=is_current, start_date=start_date)
             exchange = exchange.difference(iExchange)
         # 美股
         iExchange = {"AMEX", "NASDAQ", "NYSE"}
         if not exchange.isdisjoint(iExchange):
-            IDs += self._getAllUSStock(exchange=exchange.intersection(iExchange), date=date, is_current=is_current,
-                                       start_date=start_date)
+            IDs += self._getAllUSStock(exchange=exchange.intersection(iExchange), date=date, is_current=is_current, start_date=start_date)
             exchange = exchange.difference(iExchange)
         # 三板
         if "NEEQ" in exchange:
@@ -1389,6 +1371,7 @@ class JYDB(QSSQLObject, FactorDB):
             exchange: 交易所(str)或者交易所列表(tuple), 如果非 None 表示只考虑在这些指定的交易所上市的基金, None 表示包括非上市基金
             date: 指定日, 默认值 None 表示当前日期
             is_current: False 表示成立日在指定日之前的基金, True 表示成立日在指定日之前且尚未清盘的基金
+            start_date: 起始日, 如果非 None 并且 is_current=False 表示提取在 start_date 至 date 之间存续过的基金, 如果 is_current=True 表示提取在 start_date 至 date 之间均保持存续的基金
         
         Returns:
             公募基金证券 ID 序列
@@ -1560,6 +1543,161 @@ class JYDB(QSSQLObject, FactorDB):
         SQLStr += f"ORDER BY IndustryID, {Prefix}CT_IndustryType.EffectiveDate"
         IndustryInfo = pd.DataFrame(self.fetchall(SQLStr), columns=["IndustryID", "IndustryName", "IndexID"])
         return IndustryInfo.groupby(["IndustryID"], as_index=False).last()
+
+    def getMutualFundInfo(self, type:Optional[Literal["ETF", "LOF", "FOF", "QDII", "封闭基金", "ETF联接基金", "指数基金", "指数增强基金"]]=None, exchange:Optional[Union[str, Tuple[str]]]=None, date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, ignore_trans:bool=True, **kwargs) -> pd.DataFrame:
+        """给定日期, 获取公募基金的基本信息
+        
+        Args:
+            type: 基金类型, None 表示取所有的基金
+            exchange: 交易所(str)或者交易所列表(tuple), 如果非 None 表示只考虑在这些指定的交易所上市的基金, None 表示包括非上市基金
+            date: 指定日, 默认值 None 表示当前日期
+            is_current: False 表示成立日在指定日之前的基金, True 表示成立日在指定日之前且尚未清盘的基金
+            start_date: 起始日, 如果非 None 并且 is_current=False 表示提取在 start_date 至 date 之间存续过的基金, 如果 is_current=True 表示提取在 start_date 至 date 之间均保持存续的基金
+            ignore_trans: 是否忽略转型，True 表示忽略则成立日为转型前成立日，False 则成立日为转型后的成立日
+            
+        Returns:
+            DataFrame(columns=["ID", "Name", "Type", "FoF", "QDII", "EstablishmentDate", "ExpireDate", "ListedDate", "Org", "Manager", "MainCode", "TrackIndexID"])
+        """
+        MFIDs = self.getMutualFundID(type=type, exchange=exchange, date=date, is_current=is_current, start_date=start_date, **kwargs)
+        if date is None: date = dt.datetime.combine(dt.date.today(), dt.time())
+
+        FT = self.getTable("公募基金证券主表")
+        MFInfo = FT.readData(factor_names=["中文名称", "上市日期"], ids=MFIDs, dts=[date]).iloc[:, -1]
+        MFInfo = MFInfo.rename(columns={"中文名称": "Name", "上市日期": "ListedDate"})
+        MFInfo["ListedDate"] = pd.to_datetime(MFInfo["ListedDate"])
+        
+        FT = self.getTable("公募基金概况")
+        if ignore_trans:
+            iMFInfo = FT.readData(factor_names=["设立日期", "转型前设立日期", "存续期截止日", "基金经理", "基金管理人_R", "基金主代码", "基金运作方式_R", "是否FOF", "基金性质_R"], ids=MFIDs, dts=[date]).iloc[:, -1]
+            iMFInfo["设立日期"] = iMFInfo["转型前设立日期"].where(iMFInfo["转型前设立日期"].notnull(), iMFInfo["设立日期"])
+        else:
+            iMFInfo = FT.readData(factor_names=["设立日期", "存续期截止日", "基金经理", "基金管理人_R", "基金主代码", "基金运作方式_R", "是否FOF", "基金性质_R"], ids=MFIDs, dts=[date]).iloc[:, -1]
+        iMFInfo["FoF"] = iMFInfo.pop("是否FOF") == 1
+        iMFInfo["QDII"] = iMFInfo["基金性质_R"].where(iMFInfo.pop("基金性质_R")!="常规基金", None)
+        iMFInfo = iMFInfo.rename(columns={"基金管理人_R": "Org", "设立日期": "EstablishmentDate", "存续期截止日": "ExpireDate", "基金经理": "Manager", "基金主代码": "MainCode", "基金运作方式_R": "Type"})
+        MFInfo = pd.merge(MFInfo, iMFInfo, how="left", left_index=True, right_index=True)
+        MFInfo["EstablishmentDate"] = pd.to_datetime(MFInfo["EstablishmentDate"])
+        MFInfo["ExpireDate"] = pd.to_datetime(MFInfo["ExpireDate"])
+        MFInfo["MainCode"] = MFInfo["MainCode"] + ".OF"
+
+        FT = self.getTable("公募基金投资目标比例", args={"AdditionalCondition": {"投资标的": "7"}, "MultiMapping": False})
+        iMFInfo = FT.readData(factor_names=["参照基准指数内部编码_R"], ids=MFIDs, dts=[date]).iloc[:, -1]
+        iMFInfo = iMFInfo.rename(columns={"参照基准指数内部编码_R": "TrackIndexID"})
+        MFInfo = pd.merge(MFInfo, iMFInfo, how="left", left_index=True, right_index=True)
+
+        MFInfo = MFInfo.reindex(columns=["Name", "Type", "FoF", "QDII", "EstablishmentDate", "ExpireDate", "ListedDate", "Org", "Manager", "MainCode", "TrackIndexID"]).reset_index()
+        MFInfo.columns = ["ID"] + MFInfo.columns[1:].tolist()
+        return MFInfo
+
+    def _getAStockInfo(self, date, is_current=True, start_date=None, exchange=("SSE", "SZSE", "BSE")):
+        IDs = self._getAllAStock(date=date, is_current=is_current, start_date=start_date, exchange=exchange)
+        if date is None: date = dt.datetime.combine(dt.date.today(), dt.time())
+
+        FT = self.getTable("A股证券主表")
+        Info = FT.readData(factor_names=["证券简称", "上市日期"], ids=IDs, dts=[date]).iloc[:, -1]
+        Info = Info.rename(columns={"证券简称": "Name", "上市日期": "ListedDate"})
+        Info["ListedDate"] = pd.to_datetime(Info["ListedDate"])
+
+        FT = self.getTable("上市状态更改", args={"AdditionalCondition": {"变更类型": "4"}, "LookBack": np.inf})
+        iInfo = FT.readData(factor_names=["变更日期"], ids=IDs, dts=[date]).iloc[:, -1]
+        iInfo = iInfo.rename(columns={"变更日期": "DelistingDate"})
+        iInfo["DelistingDate"] = pd.to_datetime(iInfo["DelistingDate"])
+        Info = pd.merge(Info, iInfo, how="left", left_index=True, right_index=True)
+
+        Info = Info.reindex(columns=["Name", "ListedDate", "DelistingDate"]).reset_index()
+        Info.columns = ["ID"] + Info.columns[1:].tolist()
+        return Info
+
+    def _getHKStockInfo(self, date, is_current=True, start_date=None):
+        IDs = self._getAllHKStock(date=date, is_current=is_current, start_date=start_date)
+        if date is None: date = dt.datetime.combine(dt.date.today(), dt.time())
+
+        FT = self.getTable("港股证券主表")
+        Info = FT.readData(factor_names=["证券简称", "上市日期", "退市日期"], ids=IDs, dts=[date]).iloc[:, -1]
+        Info = Info.rename(columns={"证券简称": "Name", "上市日期": "ListedDate", "退市日期": "DelistingDate"})
+        Info["ListedDate"] = pd.to_datetime(Info["ListedDate"])
+        Info["DelistingDate"] = pd.to_datetime(Info["DelistingDate"])
+
+        Info = Info.reindex(columns=["Name", "ListedDate", "DelistingDate"]).reset_index()
+        Info.columns = ["ID"] + Info.columns[1:].tolist()
+        return Info
+
+    def _getUSStockInfo(self, date, is_current=True, start_date=None, exchange=("AMEX", "NASDAQ", "NYSE")):
+        IDs = self._getAllUSStock(date=date, is_current=is_current, start_date=start_date, exchange=exchange)
+        if date is None: date = dt.datetime.combine(dt.date.today(), dt.time())
+
+        FT = self.getTable("美股证券主表")
+        Info = FT.readData(factor_names=["证券简称", "上市日期", "退市日期"], ids=IDs, dts=[date]).iloc[:, -1]
+        Info = Info.rename(columns={"证券简称": "Name", "上市日期": "ListedDate", "退市日期": "DelistingDate"})
+        Info["ListedDate"] = pd.to_datetime(Info["ListedDate"])
+        Info["DelistingDate"] = pd.to_datetime(Info["DelistingDate"])
+
+        Info = Info.reindex(columns=["Name", "ListedDate", "DelistingDate"]).reset_index()
+        Info.columns = ["ID"] + Info.columns[1:].tolist()
+        return Info
+
+    def _getNQStockInfo(self, date, is_current=True, start_date=None):
+        IDs = self._getAllNQStock(date=date, is_current=is_current, start_date=start_date)
+        if date is None: date = dt.datetime.combine(dt.date.today(), dt.time())
+
+        FT = self.getTable("三板证券主表")
+        Info = FT.readData(factor_names=["证券简称", "上市日期"], ids=IDs, dts=[date]).iloc[:, -1]
+        Info = Info.rename(columns={"证券简称": "Name", "上市日期": "ListedDate"})
+        Info["ListedDate"] = pd.to_datetime(Info["ListedDate"])
+
+        FT = self.getTable("三板挂牌状态变动", args={"AdditionalCondition": {"变动状态": "4"}, "LookBack": np.inf})
+        iInfo = FT.readData(factor_names=["变动日期"], ids=IDs, dts=[date]).iloc[:, -1]
+        iInfo = iInfo.rename(columns={"变动日期": "DelistingDate"})
+        iInfo["DelistingDate"] = pd.to_datetime(iInfo["DelistingDate"])
+        Info = pd.merge(Info, iInfo, how="left", left_index=True, right_index=True)
+
+        Info = Info.reindex(columns=["Name", "ListedDate", "DelistingDate"]).reset_index()
+        Info.columns = ["ID"] + Info.columns[1:].tolist()
+        return Info
+    
+    def getStockInfo(self, exchange:Union[Literal["SSE", "SZSE", "BSE", "HKEX", "AMEX", "NASDAQ", "NYSE", "NEEQ"], Tuple[Literal["SSE", "SZSE", "BSE", "HKEX", "AMEX", "NASDAQ", "NYSE", "NEEQ"]]]=("SSE", "SZSE", "BSE"), date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> pd.DataFrame:
+        """给定交易所和日期, 获取股票基本信息
+
+        Args:
+            exchange: 交易所(str)或者交易所列表(tuple), 默认 ("SSE", "SZSE", "BSE") 表示上交所、深交所、北交所
+            date: 指定日, 默认值 None 表示当前日期
+            is_current: False 表示上市日期在指定日之前的股票, True 表示上市日期在指定日之前且尚未退市的股票
+            start_date: 起始日, 如果非 None 并且 is_current=False 表示提取在 start_date 至 date 之间上市过的股票, 如果 is_current=True 表示提取在 start_date 至 date 之间均保持上市的股票
+        
+        Returns:
+            DataFrame(columns=["ID", "Name", "ListedDate", "DelistedDate"])
+        """
+        if date is None: date = dt.datetime.combine(dt.date.today(), dt.time(0))
+        if isinstance(exchange, str):
+            exchange = {exchange}
+        else:
+            exchange = set(exchange)
+        StockInfo = []
+        # 港股
+        if "HKEX" in exchange:
+            StockInfo.append(self._getHKStockInfo(date=date, is_current=is_current, start_date=start_date))
+            exchange.remove("HKEX")
+        # A 股
+        iExchange = {"SSE", "SZSE", "BSE"}
+        if not exchange.isdisjoint(iExchange):
+            StockInfo.append(self._getAStockInfo(exchange=exchange.intersection(iExchange), date=date, is_current=is_current, start_date=start_date))
+            exchange = exchange.difference(iExchange)
+        # 美股
+        iExchange = {"AMEX", "NASDAQ", "NYSE"}
+        if not exchange.isdisjoint(iExchange):
+            StockInfo.append(self._getUSStockInfo(exchange=exchange.intersection(iExchange), date=date, is_current=is_current, start_date=start_date))
+            exchange = exchange.difference(iExchange)
+        # 三板
+        if "NEEQ" in exchange:
+            StockInfo.append(self._getNQStockInfo(date=date, is_current=is_current, start_date=start_date))
+            exchange.remove("NEEQ")
+        if exchange:
+            Msg = f"外部因子库 '{self._QSArgs.Name}' 调用 getStockInfo 时错误: 尚不支持交易所 {str(exchange)}"
+            self._QS_Logger.error(Msg)
+            raise __QS_Error__(Msg)
+        return pd.concat(StockInfo, axis=0, ignore_index=True)
+
+
 
 if __name__=="__main__":
     TDB = JYDB().connect()

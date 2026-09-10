@@ -811,13 +811,16 @@ class SQL_WideTable(SQL_Table):
         else:
             return super().getFactorMetaData(factor_names=factor_names, key=key)
     
-    # 返回在给定时点 idt 的有数据记录的 ID
-    # 如果 idt 为 None, 将返回所有有历史数据记录的 ID
-    # 忽略 ifactor_name
-    # 返回在给定时点 idt 的有数据记录的 ID
-    # 如果 idt 为 None, 将返回所有有历史数据记录的 ID
-    # 忽略 ifactor_name
-    def getID(self, ifactor_name=None, idt=None):
+    def getID(self, ifactor_name:Optional[str]=None, idt:Optional[dt.datetime]=None) -> List[str]:
+        """获取因子表的 ID 序列
+        
+        Args:
+            ifactor_name: 给定的因子，如果为 None，将不检查字段数据是否缺失
+            idt: 给定的时点，如果为 None, 将返回所有有历史数据记录的 ID
+        
+        Returns:
+            返回在给定时点 idt 的字段 ifactor_name 有数据记录的 ID
+        """
         DTField = self._DBTableName+"."+self._FactorInfo.loc[self._QSArgs.DTField, "DBFieldName"]
         IDField = self._QSArgs.IDField
         IDField = self._DBTableName+"."+self._FactorInfo.loc[(IDField if IDField is not None else self._IDField), "DBFieldName"]
@@ -825,15 +828,26 @@ class SQL_WideTable(SQL_Table):
         SQLStr += self._genFromSQLStr()+" "
         if idt is not None: SQLStr += "WHERE "+DTField+"="+idt.strftime(self._DTFormat_WithTime)+" "
         else: SQLStr += "WHERE "+DTField+" IS NOT NULL "
+        if ifactor_name is not None:
+            FactorField = self._DBTableName+"."+self._FactorInfo.loc[ifactor_name, "DBFieldName"]
+            SQLStr += "AND "+FactorField+" IS NOT NULL "
         SQLStr += "AND "+IDField+" IS NOT NULL "
         SQLStr += self._genConditionSQLStr(use_main_table=True)+" "
         SQLStr += "ORDER BY ID"
         return self.__QS_restoreID__([iRslt[0] for iRslt in self._FactorDB.fetchall(SQLStr)])
     
-    # 返回在给定 ID iid 的有数据记录的时间点 如果 iid 为
-    # None, 将返回所有有历史数据记录的时间点 忽略
-    # ifactor_name
-    def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None):
+    def getDateTime(self, ifactor_name:Optional[str]=None, iid:Optional[str]=None, start_dt:Optional[dt.datetime]=None, end_dt:Optional[dt.datetime]=None) -> List[dt.datetime]:
+        """获取因子表的时点序列
+        
+        Args:
+            ifactor_name: 给定的因子，如果为 None，将不检查字段数据是否缺失
+            iid: 给定的ID，如果为 None, 将返回所有有历史数据记录的时间点
+            start_dt: 起始时点
+            end_dt: 截止时点
+        
+        Returns:
+            返回在给定给定 ID iid 的字段 ifactor_name 有数据记录的给定起止时点的时点序列
+        """
         DTField = self._DBTableName+"."+self._FactorInfo.loc[self._QSArgs.DTField, "DBFieldName"]
         SQLStr = "SELECT DISTINCT "+DTField+" "
         SQLStr += self._genFromSQLStr()+" "
@@ -842,6 +856,9 @@ class SQL_WideTable(SQL_Table):
         if end_dt is not None: SQLStr += "AND "+DTField+"<="+end_dt.strftime(self._DTFormat_WithTime)+" "
         if iid is not None: iid = [iid]
         SQLStr += self._genIDSQLStr(iid)+" "
+        if ifactor_name is not None:
+            FactorField = self._DBTableName+"."+self._FactorInfo.loc[ifactor_name, "DBFieldName"]
+            SQLStr += "AND "+FactorField+" IS NOT NULL "
         SQLStr += self._genConditionSQLStr(use_main_table=True)+" "
         SQLStr += "ORDER BY "+DTField
         Rslt = pd.DataFrame(self._FactorDB.fetchall(SQLStr), dtype="O")
