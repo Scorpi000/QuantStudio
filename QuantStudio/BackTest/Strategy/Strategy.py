@@ -123,6 +123,7 @@ class MakeAccount(PanelOperator):
         ModelArgs = f._QSArgs.ModelArgs
         LastAccount = x[0].astype(self._QSArgs.CompoundType)[-2]
         Cash, PositionNum = LastAccount["Cash"][0], LastAccount["Position"]
+        PositionNum[pd.isnull(PositionNum)] = 0.0
         LastPrice, Signal = x[1][0], x[2][0]
         if np.all(pd.isnull(Signal)):# 没有交易信号
             Rslt = np.array([np.full_like(PositionNum, Cash), PositionNum, PositionNum * LastPrice, Signal, np.zeros_like(PositionNum), np.full_like(PositionNum, np.nan), np.zeros_like(PositionNum)]).T
