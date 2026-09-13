@@ -15,6 +15,7 @@ class Context(__QS_Args__):
     Mode: Literal["PRD", "DEBUG"] = Field(default="PRD", title="运行模式")
     NodeDict: Dict[str, "Node"] = Field(default={}, title="节点集", description="{节点ID: Node}, 本次运算的所有 Node, 由计算引擎生成")
     NodeState: Dict[str, Any] = Field(default={}, title="节点状态", description="{节点ID: Any}, 运算中用于存储节点的临时数据，由节点生成和维护")
+    NodeErrors: Dict[str, Exception] = Field(default={}, title="节点错误", description="{节点ID: Exception}, 记录失败节点的异常信息, 由计算引擎在 FailMode='skip' 时填充")
     PrepareNodeDict: Dict[str, Tuple[str, Any]] = Field(default={}, title="准备节点列表", description="{准备ID: (节点ID, Any)}, 需要执行准备操作的节点列表")
     # ----- 多进程相关 -----
     PID: str = Field(default="0", title="当前进程ID", description="当前的运行进程 ID, 默认为 '0'")
@@ -116,12 +117,26 @@ class Node(__QS_Object__):
         return d
 
     def compute(self, path: List[str], fwd_data: Any, context: Context) -> Any:
+        SkipMode = context.ExtraData.get("_QS_FailSkip", False)
         FwdDataList, LocalContext = self.forward_compute(path, fwd_data, context)
         if FwdDataList:
-            BwdDataList = [iNode.compute(path + [iNode.QSID], FwdDataList[i], context) for i, iNode in enumerate(self.Deps)]
+            BwdDataList = []
+            for i, iNode in enumerate(self.Deps):
+                iResult = iNode.compute(path + [iNode.QSID], FwdDataList[i], context)
+                if context.NodeState.get(iNode.QSID, {}).get("__status__") in ("FAILED", "SKIPPED"):
+                    context.NodeState.setdefault(self.QSID, {})["__status__"] = "SKIPPED"
+                    return None
+                BwdDataList.append(iResult)
         else:
             BwdDataList = []
-        return self.backward_compute(path, BwdDataList, context=context, local_context=LocalContext)
+        try:
+            return self.backward_compute(path, BwdDataList, context=context, local_context=LocalContext)
+        except Exception as e:
+            if not SkipMode: raise
+            context.NodeState.setdefault(self.QSID, {})["__status__"] = "FAILED"
+            context.NodeErrors[self.QSID] = e
+            self._QS_Logger.error(f"节点 {self.Name}({self.QSID[:8]}) 计算失败: {e}")
+            return None
 
     def init_compute(self, path: List[str], init_data: Any, context: Context) -> List[Any]:
         """按照边的方向传递数据执行初始化，可以修改 context 中的全局变量，最好不要有耗时的计算

@@ -14,9 +14,19 @@ def _execute_task(task):
     NodeList, Context, FwdDataList = task["NodeList"], task["Context"], task["FwdDataList"]
     Context.Logger.debug(f'子任务进程 {task["PID"]} start, PID: {os.getpid()}')
     Context.PID = task["PID"]
+    SkipMode = task.get("SkipMode", False)
     for i, iNode in enumerate(NodeList):
-        iRslt = iNode.compute([iNode.QSID], FwdDataList[i], Context)
-        Context.Sub2MainQueue.put(("Calc", task["PID"], (1, iNode.QSID, iRslt)))
+        try:
+            iRslt = iNode.compute([iNode.QSID], FwdDataList[i], Context)
+            Context.Sub2MainQueue.put(("Calc", task["PID"], (1, iNode.QSID, iRslt)))
+        except Exception as e:
+            if SkipMode:
+                Context.NodeState.setdefault(iNode.QSID, {})["__status__"] = "FAILED"
+                Context.NodeErrors[iNode.QSID] = e
+                Context.Logger.error(f"节点 {iNode.Name}({iNode.QSID[:8]}) 计算失败: {e}")
+                Context.Sub2MainQueue.put(("CalcError", task["PID"], (1, iNode.QSID, e)))
+            else:
+                raise
     Context.Sub2MainQueue.put(("Done", task["PID"], Context.getUpdateData()))
     Context.Logger.debug(f'子任务进程 {task["PID"]} finish')
 
@@ -43,16 +53,17 @@ class ParallelEngine(Engine):
     def compute(self, node_list: List[Node], context: Context, fwd_data_list: Optional[List[Any]]=None):
         if len(node_list) != len(fwd_data_list): raise __QS_Error__("node_list 和 fwd_data_list 长度不一致!")
         # context.ExtraData.pop("mp_manager")
+        SkipMode = self._QSArgs.FailMode == "skip"
         nTask = len(context.PIDList)
         SplitedContext = context.split(nTask)
         SplitedFwdDataList = zip(*[(FwdData.split(nTask, context) if hasattr(FwdData, "split") else [FwdData] * nTask) for FwdData in fwd_data_list])
         Procs = {}
         for i, iFwdDataList in enumerate(SplitedFwdDataList):
             iPID = context.PIDList[i]
-            iTask = {"PID": iPID, "NodeList": node_list, "Context": SplitedContext[i], "FwdDataList": iFwdDataList}
+            iTask = {"PID": iPID, "NodeList": node_list, "Context": SplitedContext[i], "FwdDataList": iFwdDataList, "SkipMode": SkipMode}
             Procs[iPID] = Process(target=_execute_task, args=(iTask,))
             Procs[iPID].start()
-        
+
         Sub2MainQueue = context.Sub2MainQueue
         nProg = len(node_list) * nTask
         EventState = {iNodeID: 0 for iNodeID in context.Event}
@@ -71,6 +82,12 @@ class ParallelEngine(Engine):
                     iProg += iSubProg
                     ProgBar.update(iProg)
                     Data.setdefault(iNodeID, []).append(iRslt)
+                elif iMsgType == "CalcError":# 单个节点计算失败 (skip 模式)
+                    iSubProg, iNodeID, iErr = iMsg
+                    iProg += iSubProg
+                    ProgBar.update(iProg)
+                    context.NodeErrors.setdefault(iNodeID, iErr)
+                    Data.setdefault(iNodeID, []).append(None)
                 elif iMsgType == "Done":# 子进程结束
                     if not ContextUpdated:
                         context.updateContext(iMsg)

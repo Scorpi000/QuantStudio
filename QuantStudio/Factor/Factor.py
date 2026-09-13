@@ -19,7 +19,7 @@ class FactorContext(Context):
     """因子节点运算时全局上下文对象"""
 
     # NodeDict: {节点ID: Factor}
-    # NodeState: {节点ID: {"start_dt", "section_ids"}}
+    # NodeState: {节点ID: {RunningKey: {"dt_range", "section_ids", "pid_ids"}}
     # PID: str = Field(default="0", title="运行ID", description="当前的运行 ID, 默认为 '0'")
     # PIDList: List[str] = Field(default=["0"], title="所有运行ID")
     # SplitType: Literal["连续切分", "间隔切分"] = Field(default="连续切分", title="切分方式", frozen=True)
