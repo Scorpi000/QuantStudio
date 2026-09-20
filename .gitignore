@@ -4,6 +4,7 @@ docs_md/
 site/
 .idea/
 .vscode/
+.claude/
 QuantStudio.egg-info/
 Backup/
 backup/

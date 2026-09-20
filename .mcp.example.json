@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "jy_base_doc": {
+      "type": "stdio",
+      "command": "C:\\Users\\hst\\Project\\PythonEnv\\QS\\Scripts\\python.exe",
+      "args": ["C:\\Users\\hst\\Project\\QSAgent\\mcp\\jy_base_doc_pg.py"],
+      "env": {
+        "PYTHONPATH": "C:\\Users\\hst\\Project\\QSAgent;C:\\Users\\hst\\Project\\QuantStudio;C:\\Users\\hst\\Project\\QSExt"
+      }
+    },
+    "jy_doc": {
+      "command": "C:\\Users\\hst\\Project\\PythonEnv\\QS\\Scripts\\python.exe",
+      "args": ["mcp/jy_doc.py", "--cache-dir", "D:\\Data\\JYDBDoc", "--rebuild-cache"],
+      "cwd": "C:\\Users\\hst\\Project\\QSAgent",
+      "env": {
+        "PYTHONPATH": "C:\\Users\\hst\\Project\\QuantStudio;C:\\Users\\hst\\Project\\QSExt;C:\\Users\\hst\\Project\\QSAgent"
+      }
+    }
+  }
+}
