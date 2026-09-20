@@ -234,3 +234,7 @@ from QuantStudio.Factor.Factor import FactorContext, FactorLocalContext
 - [风险模型](references/risk-model.md) — RiskDB / HDF5FRDB、BarraModel 多因子风险模型
 - [组合优化](references/portfolio-optimization.md) — 优化目标、约束条件、CVXPC 求解器
 - [计算图引擎](references/core-engine.md) — Node 生命周期、Context、引擎类型选择、缓存
+
+## 相关 Skill
+
+- `jydb-add-table` — 向聚源数据库配置（`JYDBInfo.xlsx`）添加新表，或排查已配置表的字段类型、ID 映射、表类型问题
