@@ -929,6 +929,9 @@ class _AnalystRatingDetailTable(_JY_SQL_Table):
         return Panel(Data, items=factor_names, major_axis=Dates, minor_axis=ids).loc[:, dts]
 
 
+StockExchangeType = Literal["SSE", "SZSE", "BSE", "HKEX", "AMEX", "NASDAQ", "NYSE", "NEEQ"]
+MFTypeType = Literal["ETF", "LOF", "FOF", "QDII", "封闭基金", "ETF联接基金", "指数基金", "指数增强基金"]
+
 class JYDB(QSSQLObject, FactorDB):
     """聚源数据库"""
 
@@ -1103,7 +1106,7 @@ class JYDB(QSSQLObject, FactorDB):
         SQLStr += "ORDER BY {Prefix}NQ_SecuMain.SecuCode"
         return [iRslt[0] for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date))]
 
-    def getStockID(self, exchange:Union[Literal["SSE", "SZSE", "BSE", "HKEX", "AMEX", "NASDAQ", "NYSE", "NEEQ"], Tuple[Literal["SSE", "SZSE", "BSE", "HKEX", "AMEX", "NASDAQ", "NYSE", "NEEQ"]]]=("SSE", "SZSE", "BSE"), date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> List[str]:
+    def getStockID(self, exchange:Union[StockExchangeType, Tuple[StockExchangeType, ...]]=("SSE", "SZSE", "BSE"), date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> List[str]:
         """给定交易所和日期, 获取股票证券 ID 序列
 
         Args:
@@ -1363,7 +1366,7 @@ class JYDB(QSSQLObject, FactorDB):
         SQLStr += "ORDER BY {CodeField}"
         return [str(iRslt[0]) for iRslt in self.fetchall(SQLStr.format(Prefix=self._QSArgs.TablePrefix, CodeField=CodeField, Date=date.strftime("%Y-%m-%d %H:%M:%S"), StartDate=start_date, OptionCode=option_code))]
 
-    def getMutualFundID(self, type:Optional[Literal["ETF", "LOF", "FOF", "QDII", "封闭基金", "ETF联接基金", "指数基金", "指数增强基金"]]=None, exchange:Optional[Union[str, Tuple[str]]]=None, date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> List[str]:
+    def getMutualFundID(self, type:Optional[MFTypeType]=None, exchange:Optional[Union[str, Tuple[str]]]=None, date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> List[str]:
         """给定日期, 获取公募基金 ID 序列
 
         Args:
@@ -1544,7 +1547,7 @@ class JYDB(QSSQLObject, FactorDB):
         IndustryInfo = pd.DataFrame(self.fetchall(SQLStr), columns=["IndustryID", "IndustryName", "IndexID"])
         return IndustryInfo.groupby(["IndustryID"], as_index=False).last()
 
-    def getMutualFundInfo(self, type:Optional[Literal["ETF", "LOF", "FOF", "QDII", "封闭基金", "ETF联接基金", "指数基金", "指数增强基金"]]=None, exchange:Optional[Union[str, Tuple[str]]]=None, date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, ignore_trans:bool=True, **kwargs) -> pd.DataFrame:
+    def getMutualFundInfo(self, type:Optional[MFTypeType]=None, exchange:Optional[Union[str, Tuple[str]]]=None, date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, ignore_trans:bool=True, **kwargs) -> pd.DataFrame:
         """给定日期, 获取公募基金的基本信息
         
         Args:
@@ -1655,7 +1658,7 @@ class JYDB(QSSQLObject, FactorDB):
         Info.columns = ["ID"] + Info.columns[1:].tolist()
         return Info
     
-    def getStockInfo(self, exchange:Union[Literal["SSE", "SZSE", "BSE", "HKEX", "AMEX", "NASDAQ", "NYSE", "NEEQ"], Tuple[Literal["SSE", "SZSE", "BSE", "HKEX", "AMEX", "NASDAQ", "NYSE", "NEEQ"]]]=("SSE", "SZSE", "BSE"), date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> pd.DataFrame:
+    def getStockInfo(self, exchange:Union[StockExchangeType, Tuple[StockExchangeType, ...]]=("SSE", "SZSE", "BSE"), date:Optional[dt.datetime]=None, is_current:bool=True, start_date:Optional[dt.datetime]=None, **kwargs) -> pd.DataFrame:
         """给定交易所和日期, 获取股票基本信息
 
         Args:
@@ -1669,30 +1672,30 @@ class JYDB(QSSQLObject, FactorDB):
         """
         if date is None: date = dt.datetime.combine(dt.date.today(), dt.time(0))
         if isinstance(exchange, str):
-            exchange = {exchange}
+            Exchange = {exchange}
         else:
-            exchange = set(exchange)
+            Exchange = set(exchange)
         StockInfo = []
         # 港股
-        if "HKEX" in exchange:
+        if "HKEX" in Exchange:
             StockInfo.append(self._getHKStockInfo(date=date, is_current=is_current, start_date=start_date))
-            exchange.remove("HKEX")
+            Exchange.remove("HKEX")
         # A 股
         iExchange = {"SSE", "SZSE", "BSE"}
-        if not exchange.isdisjoint(iExchange):
-            StockInfo.append(self._getAStockInfo(exchange=exchange.intersection(iExchange), date=date, is_current=is_current, start_date=start_date))
-            exchange = exchange.difference(iExchange)
+        if not Exchange.isdisjoint(iExchange):
+            StockInfo.append(self._getAStockInfo(exchange=Exchange.intersection(iExchange), date=date, is_current=is_current, start_date=start_date))
+            Exchange = Exchange.difference(iExchange)
         # 美股
         iExchange = {"AMEX", "NASDAQ", "NYSE"}
-        if not exchange.isdisjoint(iExchange):
-            StockInfo.append(self._getUSStockInfo(exchange=exchange.intersection(iExchange), date=date, is_current=is_current, start_date=start_date))
-            exchange = exchange.difference(iExchange)
+        if not Exchange.isdisjoint(iExchange):
+            StockInfo.append(self._getUSStockInfo(exchange=Exchange.intersection(iExchange), date=date, is_current=is_current, start_date=start_date))
+            Exchange = Exchange.difference(iExchange)
         # 三板
-        if "NEEQ" in exchange:
+        if "NEEQ" in Exchange:
             StockInfo.append(self._getNQStockInfo(date=date, is_current=is_current, start_date=start_date))
-            exchange.remove("NEEQ")
-        if exchange:
-            Msg = f"外部因子库 '{self._QSArgs.Name}' 调用 getStockInfo 时错误: 尚不支持交易所 {str(exchange)}"
+            Exchange.remove("NEEQ")
+        if Exchange:
+            Msg = f"外部因子库 '{self._QSArgs.Name}' 调用 getStockInfo 时错误: 尚不支持交易所 {str(Exchange)}"
             self._QS_Logger.error(Msg)
             raise __QS_Error__(Msg)
         return pd.concat(StockInfo, axis=0, ignore_index=True)

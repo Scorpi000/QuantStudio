@@ -10,17 +10,26 @@ from QuantStudio.Core import __QS_Error__
 # 给A股ID添加后缀
 def suffixAShareID(ids):
     if isinstance(ids, str):
-        if ids[0] in ('6', 'T', '9'):
-            return ids+'.SH'
+        if ids[0] in ('6', 'T'):
+            return ids + '.SH'
         elif ids[0] in ('0', '3'):
-            return ids+'.SZ'
+            return ids + '.SZ'
         else:
-            return ids+'.BJ'
-        return ids
+            return ids + '.BJ'
     else:
         NewIDs = []
         for iID in ids:
             NewIDs.append(suffixAShareID(iID))
+        return NewIDs
+
+# 给港股ID添加后缀
+def suffixHKShareID(ids):
+    if isinstance(ids, str):
+        return ids + ".HK"
+    else:
+        NewIDs = []
+        for iID in ids:
+            NewIDs.append(suffixHKShareID(iID))
         return NewIDs
 
 # 给ID去后缀
