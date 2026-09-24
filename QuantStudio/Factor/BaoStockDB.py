@@ -225,12 +225,13 @@ class _DTRangeTable(_BSTable):
         StartDTArg = ArgInfo.index[ArgInfo["FieldType"] == "StartDate"][0]
         EndDTArg = ArgInfo.index[ArgInfo["FieldType"] == "EndDate"][0]
         IDArg = ArgInfo.index[ArgInfo["FieldType"] == "ID"][0]
-        FieldArg = ArgInfo.index[ArgInfo["FieldType"] == "Field"][0]
+        FieldArgs = ArgInfo.index[ArgInfo["FieldType"] == "Field"]
         APIArgs = {
             StartDTArg: StartDate.strftime("%Y-%m-%d"),
             EndDTArg: EndDate.strftime("%Y-%m-%d"),
-            FieldArg: DTField+","+",".join(factor_names)
         }
+        if len(FieldArgs) > 0:
+            APIArgs[FieldArgs[0]] = DTField + "," + ",".join(factor_names)
         APIArgs.update(self._getAPIArgs())
         AdjustedIDs = self.__QS_adjustID__(ids)
         RawData = []
@@ -240,12 +241,208 @@ class _DTRangeTable(_BSTable):
                 iRawData = getattr(bs, APIName)(**APIArgs).get_data()
             except:
                 continue
-            iRawData["QS_ID"] = ids[i]
-            RawData.append(iRawData)
+            if not iRawData.empty:
+                iRawData["QS_ID"] = ids[i]
+                RawData.append(iRawData)
         if RawData:
             RawData = pd.concat(RawData, axis=0, ignore_index=True)
             RawData = RawData.rename(columns={DTField: "QS_DT"}).reindex(columns=["QS_ID", "QS_DT"] + factor_names)
             RawData["QS_DT"] = self.__QS_adjustDT__(RawData["QS_DT"])
+            return RawData.sort_values(by=["QS_ID", "QS_DT"])
+        else:
+            return pd.DataFrame(columns=["QS_ID", "QS_DT"] + factor_names)
+
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts):
+        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
+        Args = self._QSArgs.to_dict(repr=False)
+        ErrorFmt = {"DuplicatedIndex": "%s 的表 %s 无法保证唯一性 : {Error}, 可以尝试将 '多重映射' 参数取值调整为 True" % (self._FactorDB.Name, self.Name)}
+        return _QS_calcData_WideTable(raw_data, factor_names, ids, dts, DataType, args=Args, logger=self._QS_Logger, error_fmt=ErrorFmt)
+
+
+class _QuarterTable(_BSTable):
+    """BaoStockDB 库中基于取季度数据 API 的因子表"""
+
+    class __QS_ArgClass__(_BSTable.__QS_ArgClass__):
+        TableType: Literal["QuarterTable"] = Field(default="QuarterTable", title="因子表类型", frozen=True)
+
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        APIName = self._TableInfo.loc["DBTableName"]
+        ArgInfo = self._ArgInfo
+        IDArg = ArgInfo.index[ArgInfo["FieldType"] == "ID"][0]
+        YearArg = ArgInfo.index[ArgInfo["FieldType"] == "Year"][0]
+        QuarterArg = ArgInfo.index[ArgInfo["FieldType"] == "Quarter"][0]
+        # 从 dts 提取年份和季度组合
+        YearQuarters = set()
+        for iDT in dts:
+            YearQuarters.add((iDT.year, (iDT.month - 1) // 3 + 1))
+        AdjustedIDs = self.__QS_adjustID__(ids)
+        RawData = []
+        for iYear, iQuarter in sorted(YearQuarters):
+            APIArgs = {YearArg: iYear, QuarterArg: iQuarter}
+            APIArgs.update(self._getAPIArgs())
+            for i, iID in enumerate(AdjustedIDs):
+                APIArgs[IDArg] = iID
+                try:
+                    iRawData = getattr(bs, APIName)(**APIArgs).get_data()
+                except:
+                    continue
+                if not iRawData.empty:
+                    iRawData["QS_ID"] = ids[i]
+                    RawData.append(iRawData)
+        if RawData:
+            RawData = pd.concat(RawData, axis=0, ignore_index=True)
+            DTField = self._FactorInfo.index[self._FactorInfo["FieldType"] == "Date"][0]
+            RawData = RawData.rename(columns={DTField: "QS_DT"}).reindex(columns=["QS_ID", "QS_DT"] + factor_names)
+            RawData["QS_DT"] = self.__QS_adjustDT__(RawData["QS_DT"])
+            return RawData.sort_values(by=["QS_ID", "QS_DT"])
+        else:
+            return pd.DataFrame(columns=["QS_ID", "QS_DT"] + factor_names)
+
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts):
+        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
+        Args = self._QSArgs.to_dict(repr=False)
+        ErrorFmt = {"DuplicatedIndex": "%s 的表 %s 无法保证唯一性 : {Error}, 可以尝试将 '多重映射' 参数取值调整为 True" % (self._FactorDB.Name, self.Name)}
+        return _QS_calcData_WideTable(raw_data, factor_names, ids, dts, DataType, args=Args, logger=self._QS_Logger, error_fmt=ErrorFmt)
+
+
+class _YearTable(_BSTable):
+    """BaoStockDB 库中基于取年度数据 API 的因子表"""
+
+    class __QS_ArgClass__(_BSTable.__QS_ArgClass__):
+        TableType: Literal["YearTable"] = Field(default="YearTable", title="因子表类型", frozen=True)
+
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        APIName = self._TableInfo.loc["DBTableName"]
+        ArgInfo = self._ArgInfo
+        IDArg = ArgInfo.index[ArgInfo["FieldType"] == "ID"][0]
+        YearArg = ArgInfo.index[ArgInfo["FieldType"] == "Year"][0]
+        # 从 dts 提取年份集合
+        Years = set()
+        for iDT in dts:
+            Years.add(iDT.year)
+        AdjustedIDs = self.__QS_adjustID__(ids)
+        RawData = []
+        for iYear in sorted(Years):
+            APIArgs = {YearArg: iYear}
+            APIArgs.update(self._getAPIArgs())
+            for i, iID in enumerate(AdjustedIDs):
+                APIArgs[IDArg] = iID
+                try:
+                    iRawData = getattr(bs, APIName)(**APIArgs).get_data()
+                except:
+                    continue
+                if not iRawData.empty:
+                    iRawData["QS_ID"] = ids[i]
+                    RawData.append(iRawData)
+        if RawData:
+            RawData = pd.concat(RawData, axis=0, ignore_index=True)
+            DTField = self._FactorInfo.index[self._FactorInfo["FieldType"] == "Date"][0]
+            RawData = RawData.rename(columns={DTField: "QS_DT"}).reindex(columns=["QS_ID", "QS_DT"] + factor_names)
+            RawData["QS_DT"] = self.__QS_adjustDT__(RawData["QS_DT"])
+            return RawData.sort_values(by=["QS_ID", "QS_DT"])
+        else:
+            return pd.DataFrame(columns=["QS_ID", "QS_DT"] + factor_names)
+
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts):
+        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
+        Args = self._QSArgs.to_dict(repr=False)
+        ErrorFmt = {"DuplicatedIndex": "%s 的表 %s 无法保证唯一性 : {Error}, 可以尝试将 '多重映射' 参数取值调整为 True" % (self._FactorDB.Name, self.Name)}
+        return _QS_calcData_WideTable(raw_data, factor_names, ids, dts, DataType, args=Args, logger=self._QS_Logger, error_fmt=ErrorFmt)
+
+
+class _MacroDataTable(_BSTable):
+    """BaoStockDB 库中无证券代码的宏观数据表"""
+
+    class __QS_ArgClass__(_BSTable.__QS_ArgClass__):
+        TableType: Literal["MacroDataTable"] = Field(default="MacroDataTable", title="因子表类型", frozen=True)
+        LookBack: int = Field(default=0, title="回溯天数", frozen=True, ge=0)
+        DateAlign: Literal["年初", "年底", "月初", "月底"] = Field(default="月初", title="日期对齐", frozen=True, description="当因子表没有 Date 字段、使用 statYear(+statMonth) 构造日期时的对齐方式：年初/年底用于仅有 statYear 的情况，月初/月底用于有 statMonth 的情况")
+
+    def __init__(self, fdb: "BaoStockDB", args:dict={}, **kwargs):
+        super().__init__(fdb=fdb, args=args, **kwargs)
+        self._QS_PrepareIgnoredArgs += ("LookBack",)
+
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        StartDate, EndDate = dts[0].date(), dts[-1].date()
+        StartDate -= dt.timedelta(args.get("LookBack", self._QSArgs.LookBack))
+        APIName = self._TableInfo.loc["DBTableName"]
+        ArgInfo = self._ArgInfo
+        DTFmt = self._QSArgs.DTFmt
+        DTFields = self._FactorInfo.index[self._FactorInfo["FieldType"] == "Date"]
+        StartDTArg = ArgInfo.index[ArgInfo["FieldType"] == "StartDate"][0]
+        EndDTArg = ArgInfo.index[ArgInfo["FieldType"] == "EndDate"][0]
+        APIArgs = {
+            StartDTArg: StartDate.strftime(DTFmt if DTFmt else "%Y-%m-%d"),
+            EndDTArg: EndDate.strftime(DTFmt if DTFmt else "%Y-%m-%d"),
+        }
+        APIArgs.update(self._getAPIArgs())
+        try:
+            RawData = getattr(bs, APIName)(**APIArgs).get_data()
+        except:
+            RawData = pd.DataFrame()
+        if not RawData.empty:
+            if len(DTFields) > 0:
+                RawData = RawData.rename(columns={DTFields[0]: "QS_DT"})
+                RawData["QS_DT"] = self.__QS_adjustDT__(RawData["QS_DT"])
+            else:
+                DateAlign = self._QSArgs.DateAlign
+                if "statMonth" in RawData.columns:
+                    RawData["QS_DT"] = pd.to_datetime(
+                        RawData["statYear"].astype(str) + "-" + RawData["statMonth"].astype(str) + "-01"
+                    )
+                    if DateAlign == "月底":
+                        RawData["QS_DT"] = RawData["QS_DT"] + pd.tseries.offsets.MonthEnd(0)
+                else:
+                    if DateAlign in ("年底", "月底"):
+                        RawData["QS_DT"] = pd.to_datetime(RawData["statYear"].astype(str) + "-12-31")
+                    else:
+                        RawData["QS_DT"] = pd.to_datetime(RawData["statYear"].astype(str) + "-01-01")
+            AllData = []
+            for iID in ids:
+                iRawData = RawData.copy()
+                iRawData["QS_ID"] = iID
+                AllData.append(iRawData)
+            RawData = pd.concat(AllData, axis=0, ignore_index=True)
+            RawData = RawData.reindex(columns=["QS_ID", "QS_DT"] + factor_names)
+            return RawData.sort_values(by=["QS_ID", "QS_DT"])
+        else:
+            return pd.DataFrame(columns=["QS_ID", "QS_DT"] + factor_names)
+
+    def __QS_calcData__(self, raw_data, factor_names, ids, dts):
+        DataType = self.getFactorMetaData(factor_names=factor_names, key="DataType")
+        Args = self._QSArgs.to_dict(repr=False)
+        ErrorFmt = {"DuplicatedIndex": "%s 的表 %s 无法保证唯一性 : {Error}, 可以尝试将 '多重映射' 参数取值调整为 True" % (self._FactorDB.Name, self.Name)}
+        return _QS_calcData_WideTable(raw_data, factor_names, ids, dts, DataType, args=Args, logger=self._QS_Logger, error_fmt=ErrorFmt)
+
+
+class _StockBasicTable(_BSTable):
+    """BaoStockDB 库中无日期参数的基本信息表"""
+
+    class __QS_ArgClass__(_BSTable.__QS_ArgClass__):
+        TableType: Literal["StockBasicTable"] = Field(default="StockBasicTable", title="因子表类型", frozen=True)
+
+    def __QS_prepareRawData__(self, factor_names, ids, dts, args={}):
+        APIName = self._TableInfo.loc["DBTableName"]
+        ArgInfo = self._ArgInfo
+        IDField = self._FactorInfo.index[self._FactorInfo["FieldType"] == "ID"][0]
+        APIArgs = {}
+        APIArgs.update(self._getAPIArgs())
+        AdjustedIDs = self.__QS_adjustID__(ids)
+        RawData = []
+        for i, iID in enumerate(AdjustedIDs):
+            iAPIArgs = APIArgs.copy()
+            iAPIArgs["code"] = iID
+            try:
+                iRawData = getattr(bs, APIName)(**iAPIArgs).get_data()
+            except:
+                continue
+            if not iRawData.empty:
+                RawData.append(iRawData)
+        if RawData:
+            RawData = pd.concat(RawData, axis=0, ignore_index=True)
+            RawData = RawData.rename(columns={IDField: "QS_ID"})
+            RawData["QS_DT"] = dts[0]
+            RawData = RawData.reindex(columns=["QS_ID", "QS_DT"] + factor_names)
             return RawData.sort_values(by=["QS_ID", "QS_DT"])
         else:
             return pd.DataFrame(columns=["QS_ID", "QS_DT"] + factor_names)
