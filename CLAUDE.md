@@ -159,23 +159,75 @@ python -m unittest discover -s tests -p "test_*.py"
 
 ## 文档
 
-`docs/` 目录下的 16 个 Jupyter Notebook 涵盖了完整的 API 接口（均为中文）。建议从 `docs/通则和约定.ipynb` 开始了解约定规范。Notebook 按模块组织：Core（计算图）、Factor、BackTest、Risk、Portfolio。
+`docs/` 目录下的 23 个 Jupyter Notebook 涵盖了完整的 API 接口（均为中文）。建议从 `docs/通则和约定.ipynb` 开始了解约定规范。Notebook 按模块组织：Core（计算图）、因子框架、回测框架、风险模型、组合优化。
+
+### 文档构建
+
+```bash
+python scripts/build_docs.py           # notebook → markdown → 静态站点（site/）
+python scripts/build_docs.py --serve   # 本地预览 http://127.0.0.1:8000
+python scripts/build_docs.py --clean   # 清理生成物
+```
+
+流程：`docs/*.ipynb` → `docs_md/*.md`（nbconvert） → `site/`（mkdocs build）。文档站点的目录结构由 `mkdocs.yml` 的 `nav` 定义。`docs_md/` 与 `site/` 均已 gitignore。
 
 ## Skill 维护
 
-项目 Skill 位于 `.claude/skills/quantstudio/`，为 Claude Code 提供 QuantStudio 框架的上下文知识。维护 Skill 时遵循以下规则：
+项目 Skill 分为两类，维护方式不同。
 
-### 内容边界
+### `jydb-add-table` / `baostock-add-table`
+
+自包含 Skill：`SKILL.md` 携带完整逻辑，`references/` 由手工维护。规则如下：
 
 - **Skill 只包含框架级知识**：QS API 用法、参数说明、算子类型、代码模板等——这些跨环境稳定不变
 - **不硬编码环境相关细节**：数据库连接默认值、表名、字段名、目录路径等一律不写入 Skill。这些通过 MCP 工具动态查询，或由用户在当前任务中指定
 - **代码存放位置遵循用户指示**：不同任务的输出目录约定可能不同，Skill 不预设固定路径
 
-### 文件组织
+### `quantstudio`（文档派生）
 
-- **SKILL.md 保持精简**（~400 行）：包含核心约定 + 最高频使用的模块（因子框架），作为每次 Skill 加载时直接注入上下文的内容
-- **低频模块拆分为独立文件**：如回测、风险、组合优化等，仅在 SKILL.md 末尾以链接形式引用（`[回测框架](backtest.md)`）。Claude 在用户请求相关功能时按需读取
-- 拆分粒度：一个独立文件覆盖一个功能领域，100 行以内为宜
+**`docs/` 是唯一事实来源。** `skills/quantstudio/` 只保留手工维护的 `SKILL.md`（路由层），`references/` 由 `docs/*.ipynb` 生成，**不入库**（已 gitignore）。
+
+```bash
+# 生成完整 Skill 到指定目录
+python scripts/build_skill.py --output-dir .claude/skills
+python scripts/build_skill.py --output-dir .claude/skills --clean
+```
+
+生成逻辑：按 `mkdocs.yml` 的 `nav` 组织目录 → 转换 notebook（skill 模式）→ 拷贝 `SKILL.md`，产出 `<output_dir>/quantstudio/` 下平级的 `SKILL.md` + `references/`。**平级结构保证文档内的相对链接无需重写，`--output-dir` 可任意指定。**
+
+**因为 `references/` 是生成物，所以直接软链接 `skills/quantstudio/` 会得到一个空壳 Skill。** 必须用 `build_skill.py` 生成到 `.claude/skills/`（该目录已 gitignore）。
+
+### cell tag 约定
+
+Skill 参考文档的内容由 notebook 的 cell tag 控制。**只有打了 `skill` tag 的代码 cell 才会进入 references**：
+
+```json
+{"metadata": {"tags": ["skill"]}, ...}
+```
+
+打标规则——**由 notebook 的编辑者在改文档时自行维护**：
+
+- **打**：真实 API 调用示例 + 展示预期返回值的输出
+- **打**：`print(qs_help(类))` 后紧跟真实用法（读者能看到接口全貌）
+- **不打**：import / 环境设置 / logging 配置 cell（对话式文档需要，Skill 不需要）
+- **不打**：`print(qs_help(某方法))`——只打印签名，文档正文已说明
+- **不打**：输出体积巨大且无信息量的 cell（如图表报告）
+
+转换时的自动处理（由 `docs/tools/gen_doc.py` 的 skill 模式完成，**无需手工干预**）：
+
+- **图片剥离**：`image/*` 键 + `text/html` 内联的 `<img>`（报告类输出常把图 base64 嵌进 HTML，单文件可达数百 KB）
+- **噪声清除**：QuantStudio 日志行（含时间戳）、本机绝对路径
+- **执行计数**：清空 `execution_count`
+
+### 维护流程
+
+改动 `docs/` 的 notebook 后：
+
+1. 新增的代码 cell 按上述规则打 `skill` tag
+2. 运行 `python scripts/build_skill.py --output-dir .claude/skills` 重新生成
+3. 确认 SKILL.md 中的 `references/` 链接指向真实存在的文件
+
+**`SKILL.md` 保持精简**（当前 ~230 行）：只放核心概念、最高频模块（因子框架）的速查、以及按使用频率排序的 references 索引。低频模块一律靠索引按需读取，不展开。
 
 ### 优化时机
 

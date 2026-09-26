@@ -2,6 +2,7 @@ build/
 dist/
 docs_md/
 site/
+skills/quantstudio/references/
 .idea/
 .vscode/
 .claude/

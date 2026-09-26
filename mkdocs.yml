@@ -47,6 +47,7 @@ markdown_extensions:
 nav:
   - 首页: index.md
   - Core:
+    - 通则和约定: 通则和约定.md
     - 计算图框架: Core/计算图框架.md
     - 计算引擎: Core/计算引擎.md
     - 缓存: Core/缓存.md
@@ -73,3 +74,5 @@ nav:
     - 均值方差模型: 组合优化/均值方差模型.md
     - 风险预算模型: 组合优化/风险预算模型.md
     - 组合优化策略: 组合优化/组合优化策略.md
+  - MCP 服务:
+    - 聚源数据库文档 (jy_doc): MCP/jy_doc_mcp.md

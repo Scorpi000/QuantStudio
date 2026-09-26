@@ -9,7 +9,7 @@
 
 # 运行环境
 
-Python：使用 QS312 环境，位置是：D:\PythonEnv\QS312\Scripts\python.exe
+Python：使用 QS 环境，解释器位置是：{{PYTHON}}
 
 # 数据库
 

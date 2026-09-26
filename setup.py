@@ -16,7 +16,7 @@ setuptools.setup(
     long_description_content_type="text/x-rst",
     url="https://github.com/Scorpi000/QuantStudio/",
     license="GPLv3",
-    platforms=["Windows"],
+    platforms=["Windows", "Linux"],
     python_requires=">=3.12",
     scripts=[],
     packages=setuptools.find_packages(),
@@ -27,6 +27,7 @@ setuptools.setup(
         'Topic :: Office/Business :: Financial :: Investment'
     ],
     install_requires=[
+        "cryptography",
         "pydantic",
         "numpy",# 矩阵运算
         "pandas",# 数据分析
@@ -43,7 +44,12 @@ setuptools.setup(
         "openpyxl",# 读写 Excel 文件
         "dill",# 序列化
         "multiprocess",# 多进程
-        "requests"
+        "requests",
+        "fastmcp",# MCP 服务
+        "tenacity",# MCP 服务
+        "ddddocr",# MCP 服务（验证码识别）
+        "mkdocs",# 文档构建
+        "mkdocs-material"# 文档构建（主题）
     ],
     package_data={"QuantStudio": ["Matlab/*", "Resource/*"]}
 )

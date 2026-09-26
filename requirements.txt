@@ -16,3 +16,12 @@ h5py
 openpyxl
 requests
 baostock
+
+# MCP 服务（mcp/）- jy_doc、factor_backtest
+fastmcp
+tenacity
+ddddocr
+
+# 文档构建（scripts/build_docs.py、scripts/build_skill.py）
+mkdocs
+mkdocs-material

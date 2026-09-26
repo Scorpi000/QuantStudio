@@ -44,15 +44,32 @@ mcp__jy_doc__browse_categories()                          # 先看有哪些库
 mcp__jy_doc__search_tables(keyword="日行情", category="聚源新版数据库")
 mcp__jy_doc__get_table_detail(table_id=5, format="markdown")
 mcp__jy_doc__get_database_page(database="接口数据库")      # 已知库、想浏览全部表时用
+mcp__jy_doc__query_qs_get_factor_help(table_id=5)         # 该表当前怎么取因子
+mcp__jy_doc__query_qs_read_data_help(table_id=5)          # 该表当前怎么读数据
 ```
 
 | 工具 | 返回 | 用途 |
 |------|------|------|
 | `browse_categories` | 有哪些库、各库表数量 | 不知道目标表在哪个库时先看全景 |
-| `search_tables` | `table_id`、中文表名、物理表名、文档路径 | 按中文业务词定位表 |
+| `search_tables` | `table_id`、中文表名、**物理表名**、文档路径 | 按中文业务词定位表；也可直接搜物理表名 |
 | `get_table_detail` | 表说明、**字段列表**（字段名/中文名/数据类型/可空/说明）、唯一索引 | 步骤 3、4 填 `DBFieldName` 与 `FieldName` 的依据 |
 | `get_database_page` | 某库下所有表的名称与 `table_id` | 浏览整库 |
 | `search_online` | 同 `search_tables`，更实时 | `search_tables` 结果不足时补充 |
+| `query_qs_get_factor_help` | 该表在 QuantStudio 中的**内部表名**、**因子名**（`FieldName`）、args 参数 | 查该表在 QS 里实际注册成什么样 |
+| `query_qs_read_data_help` | 同上，附 `readData` 示例 | 查该表在 QS 里的读取方式 |
+
+#### 用 `query_qs_*` 核对已注册表（强烈建议）
+
+`get_table_detail` 给的是**聚源侧**的字段中文名，而 QuantStudio 的因子名可能与
+它不一致（实测约 26% 的字段有差异：加 `_R` 后缀、去前缀、`/`→`-` 等）。
+`query_qs_get_factor_help` 直接返回 **JYDBInfo 里注册的因子名**，是最可靠的对照来源。
+
+特别地，**若该表已在 `JYDBInfo.xlsx` 注册过**，`query_qs_*` 会返回现成的
+QuantStudio 内部表名与 `TableClass` 推断出的参数集合——先查一次可以避免重复注册
+或配出与既有配置冲突的 `TableName`。
+
+返回「QuantStudio 不支持使用该表 X」表示该物理表名不在 `JYDBInfo.xlsx` 中，
+即尚未注册——这正是本 Skill 要做的事。
 
 `get_table_detail` 是最关键的一个：**只有它给出字段级信息**，且其"唯一索引"一节
 正是步骤 2 判断 `TableClass` 的直接依据。`format` 取 `markdown`（表格，字段多时更易读）
@@ -325,6 +342,9 @@ print(FT.readData(factor_names=FT.FactorNames[:2], ids=FT.getID()[:3], dts=FT.ge
 `FieldName`（中文名）和 `DataType`（原始类型）必须来自 `get_table_detail` 或用户确认。
 凭空编造的字段名会让 `getFactor()` 找不到因子，而错误的 `DataType` 会导致
 数值被当成字符串（或反之），这类错误不会报错，只会静默产出错误数据。
+
+**若该表已注册过**，以 `query_qs_get_factor_help` 返回的因子名为准——那是
+`JYDBInfo.xlsx` 里实际生效的名字，可能与 `get_table_detail` 的聚源中文名不同。
 
 ### 环境无关性
 
