@@ -644,11 +644,16 @@ def run_self_check(target_dir: Path, python: str, db_specs: list[tuple[str, Path
         "import sys; sys.path.insert(0, %r); import QuantStudio; "
         "print('QS', QuantStudio.__file__)" % REPO_ROOT.as_posix()
     )
-    result = subprocess.run([python, "-c", probe], capture_output=True, text=True, cwd=str(target_dir))
-    if result.returncode == 0:
-        _log(f"QuantStudio 可导入: {result.stdout.strip()}")
+    try:
+        result = subprocess.run([python, "-c", probe], capture_output=True, text=True,
+                                cwd=str(target_dir), timeout=120)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        _log(f"QuantStudio 导入检查失败: {e}", level="WARN")
     else:
-        _log(f"QuantStudio 导入失败: {result.stderr.strip().splitlines()[-1] if result.stderr else '未知错误'}", level="WARN")
+        if result.returncode == 0:
+            _log(f"QuantStudio 可导入: {result.stdout.strip()}")
+        else:
+            _log(f"QuantStudio 导入失败: {result.stderr.strip().splitlines()[-1] if result.stderr else '未知错误'}", level="WARN")
 
     # 2) 各因子库可连接。SQLDB 未被 Factor.api 导出，需从其自身模块取
     for db_type, config_path in db_specs:
@@ -663,7 +668,14 @@ def run_self_check(target_dir: Path, python: str, db_specs: list[tuple[str, Path
             "db = %s(config_file=%r); db.connect(); "
             "print(len(db.TableNames))" % (REPO_ROOT.as_posix(), import_stmt, cls_expr, config_path.as_posix())
         )
-        result = subprocess.run([python, "-c", probe], capture_output=True, text=True, cwd=str(target_dir), timeout=120)
+        # 超时或进程起不来按连接失败处理：因子库不可达是常见状态，
+        # 不能让它中断自检（否则整个环境配置都会失败）
+        try:
+            result = subprocess.run([python, "-c", probe], capture_output=True, text=True,
+                                    cwd=str(target_dir), timeout=120)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            _log(f"{db_type} 连接失败（{config_path}）: {e}", level="WARN")
+            continue
         if result.returncode == 0:
             _log(f"{db_type} 连接成功，{result.stdout.strip().splitlines()[-1]} 张表")
         else:
