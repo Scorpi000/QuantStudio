@@ -691,8 +691,8 @@ def copy_examples(target_dir: Path, force: bool, dry_run: bool) -> None:
 
 
 # 拷贝 docs/ 时排除的目录：data/ 是 notebook 的运行产物（已 gitignore），
-# 检查点与字节码缓存属于编辑/运行残留，均非文档内容。
-DOCS_EXCLUDE_DIRS = {"data", ".ipynb_checkpoints", "__pycache__"}
+# 检查点与字节码缓存属于编辑/运行残留，overrides/ 仅用于 mkdocs 构建，均非文档内容。
+DOCS_EXCLUDE_DIRS = {"data", ".ipynb_checkpoints", "__pycache__", "overrides"}
 
 
 def copy_docs(target_dir: Path, force: bool, dry_run: bool) -> None:
