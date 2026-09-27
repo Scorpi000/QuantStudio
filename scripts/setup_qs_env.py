@@ -10,17 +10,17 @@
 
     .mcp.json                     MCP 服务配置
     CLAUDE.md                     QS 框架概述（各项目共用）
-    CLAUDE.local.md               本地约定 + 可用因子库说明（个人文件，通常不入库）
+    CLAUDE.local.md               本地约定 + 可用因子库/风险库说明（个人文件，通常不入库）
     .claude/skills/*              各 SKILL 的完整拷贝（非链接，可脱离本仓库使用）
     tests/ scripts/               目录约定（已在 CLAUDE.local.md 中声明）
     requirements.txt              依赖清单（拷自本仓库）
     examples/*.py                 可运行示例（拷自本仓库）
     docs/                         Notebook 文档（拷贝时排除 data/ 等运行产物）
 
-配置完成后默认执行自检：QS 可导入、各因子库可连接、MCP 服务可启动。自检失败只告警
+配置完成后默认执行自检：QS 可导入、各因子库与风险库可连接、MCP 服务可启动。失败只告警
 不中断——因子库不可达是常见状态，不应阻断环境配置（--no-check 可跳过）。
 
-脚本还会检查 ~/QuantStudioConfig/ 下各因子库配置文件是否齐备，缺失时列出所需字段。
+脚本还会检查 ~/QuantStudioConfig/ 下各因子库、风险库配置是否齐备，缺失时列出所需字段。
 该目录中的连接信息含凭据，脚本只提示不代写。
 
 使用方法:
@@ -51,15 +51,19 @@
     # 指定 pip 使用的镜像源
     python scripts/setup_qs_env.py --pip-index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
-    # 指定因子库配置（TYPE 取 JYDB/HDF5DB/SQLDB，可重复；同类型可传多份配置）
+    # 指定因子库配置（TYPE 取 JYDB/HDF5DB/SQLDB/BaoStockDB，可重复；同类型可传多份配置）
     python scripts/setup_qs_env.py --factor-db HDF5DB=D:/MyData/HDF5DBConfig.json
     python scripts/setup_qs_env.py \
         --factor-db JYDB=D:/Conf/JYDBConfig.json \
         --factor-db HDF5DB=D:/MyData/HDF5DBConfig.json
 
-因子库配置会写入 CLAUDE.local.md 的「可用因子库」章节。未通过 --factor-db 指定的
-类型，脚本会在 ~/QuantStudioConfig/ 下查找其默认配置（如 JYDBConfig.json），
-存在则一并写入；显式传入的配置与默认配置会各占一节。
+    # 指定风险库配置（TYPE 取 HDF5FRDB/HDF5RDB，规则同上）
+    python scripts/setup_qs_env.py --risk-db HDF5FRDB=D:/MyRisk/HDF5FRDBConfig.json
+
+因子库配置会写入 CLAUDE.local.md 的「可用因子库」章节，风险库配置写入「可用风险库」
+章节。未通过 --factor-db / --risk-db 指定的类型，脚本会在 ~/QuantStudioConfig/ 下
+查找其默认配置（如 JYDBConfig.json），存在则一并写入；显式传入的配置与默认配置会
+各占一节。
 
 前置要求:
     - 建议使用 QS 环境的解释器执行本脚本（依赖安装的目标即该解释器）；
@@ -106,6 +110,20 @@ CONFIG_TEMPLATE_HINTS = {
     "HDF5DB": ("HDF5DBConfig.json", "MainDir（存放因子数据的本地目录）"),
     "SQLDB": ("SQLDBConfig.json", "DBType / DBName / IPAddr / Port / User / Pwd"),
     "BaoStockDB": ("BaoStockDBConfig.json", "通常只需 {\"Name\": \"BaoStockDB\"}，登录走匿名 API"),
+}
+
+# 已知风险库类型 -> (默认配置文件名, 章节标题, 内容描述)
+RISK_DB_TYPES = {
+    "HDF5FRDB": ("HDF5FRDBConfig.json", "HDF5FRDB（多因子风险库）",
+                 "结构化多因子风险数据：因子暴露、因子协方差、特异性风险与收益率"),
+    "HDF5RDB": ("HDF5RDBConfig.json", "HDF5RDB（本地风险库）",
+                "直接的协方差矩阵，不分解为因子模型"),
+}
+
+# 各风险库的默认配置文件名与需要的字段，用于在 ~/QuantStudioConfig/ 缺失时给出提示
+RISK_CONFIG_TEMPLATE_HINTS = {
+    "HDF5FRDB": ("HDF5FRDBConfig.json", "MainDir（存放风险数据的本地目录）"),
+    "HDF5RDB": ("HDF5RDBConfig.json", "MainDir（存放风险数据的本地目录）"),
 }
 
 # 目标目录 CLAUDE.md 的正文。项目约定、运行环境与数据库由 CLAUDE.local.md 承担，
@@ -300,11 +318,12 @@ def _secret_fields(db_type: str) -> set:
 
 def _default_config_path(db_type: str) -> Path:
     """该类型在 ~/QuantStudioConfig/ 下的默认配置文件路径。"""
-    return Path(os.path.expanduser("~")) / "QuantStudioConfig" / FACTOR_DB_TYPES[db_type][0]
+    table = FACTOR_DB_TYPES if db_type in FACTOR_DB_TYPES else RISK_DB_TYPES
+    return Path(os.path.expanduser("~")) / "QuantStudioConfig" / table[db_type][0]
 
 
 def _ctor(db_type: str, config_path: Path, cls: str) -> str:
-    """构造该因子库的调用表达式。
+    """构造该库的调用表达式。
 
     配置文件不是默认路径时必须显式传入，否则对象会按默认配置创建，连到别的库。
     """
@@ -448,12 +467,106 @@ def resolve_factor_db_specs(raw_specs: list[str] | None) -> list[tuple[str, Path
     return specs
 
 
+def _risk_db_example(db_type: str, config_path: Path) -> str:
+    """返回该风险库在指定配置文件下的读取示例代码块。"""
+    if db_type == "HDF5FRDB":
+        ctor = _ctor(db_type, config_path, "HDF5FRDB")
+        return f'''\
+```python
+import datetime as dt
+from QuantStudio.Risk.HDF5RDB import HDF5FRDB
+
+RDB = {ctor}
+RDB.connect()
+RDB.TableNames                          # 风险表名列表
+
+RT = RDB.getTable("<表名>")
+RT.FactorNames                          # 因子名
+DTs = RT.getDateTime()                  # 时点序列
+IDs = RT.getID(idt=DTs[-1])             # 某时点的证券 ID
+
+RT.readFactorData(dts=DTs, ids=IDs)     # 因子暴露 -> Panel（因子 x 时点 x 证券）
+RT.readFactorCov(dts=DTs)               # 因子协方差 -> Panel（因子 x 因子 x 时点）
+RT.readSpecificRisk(dts=DTs, ids=IDs)   # 特异性风险 -> DataFrame（时点 x 证券）
+RT.readFactorReturn(dts=DTs)            # 因子收益率 -> DataFrame（时点 x 因子）
+```
+'''
+    ctor = _ctor(db_type, config_path, "HDF5RDB")
+    return f'''\
+```python
+import datetime as dt
+from QuantStudio.Risk.HDF5RDB import HDF5RDB
+
+RDB = {ctor}
+RDB.connect()
+RDB.TableNames                          # 风险表名列表
+
+RT = RDB.getTable("<表名>")
+DTs = RT.getDateTime()                  # 时点序列
+IDs = RT.getID(idt=DTs[-1])             # 某时点的证券 ID
+RT.readCov(dts=DTs, ids=IDs)            # 协方差矩阵 -> Panel（证券 x 证券 x 时点）
+```
+'''
+
+
+def render_risk_db_sections(specs: list[tuple[str, Path]]) -> str:
+    """渲染「可用风险库」章节。specs 为 (类型, 配置文件路径) 列表，按传入顺序渲染。"""
+    if not specs:
+        return ""
+
+    blocks = ["# 可用风险库"]
+    for db_type, config_path in specs:
+        _, title, description = RISK_DB_TYPES[db_type]
+        try:
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as e:
+            raise ValueError(f"解析风险库配置失败 {config_path}: {e}")
+
+        secret = _secret_fields(db_type)
+        info = {k: v for k, v in config.items() if k not in secret}
+
+        blocks.append(f"\n## {title}\n")
+        blocks.append(f"- 配置文件：{config_path}")
+        blocks.append(f"- 主目录：{info.get('MainDir', '')}")
+        blocks.append(f"- 内容：{description}")
+        blocks.append("\n" + _risk_db_example(db_type, config_path))
+
+    return "\n".join(blocks) + "\n"
+
+
+def resolve_risk_db_specs(raw_specs: list[str] | None) -> list[tuple[str, Path]]:
+    """解析 --risk-db 参数，并在末尾追加各类型的默认配置（文件存在才加）。"""
+    specs: list[tuple[str, Path]] = []
+    for raw in raw_specs or []:
+        if "=" not in raw:
+            raise ValueError(f"--risk-db 需要 TYPE=PATH 形式，收到: {raw}")
+        db_type, _, path = raw.partition("=")
+        db_type = db_type.strip()
+        if db_type not in RISK_DB_TYPES:
+            raise ValueError(f"未知风险库类型 '{db_type}'，已知类型: {', '.join(sorted(RISK_DB_TYPES))}")
+        config_path = _resolve_dir(path.strip())
+        if not config_path.is_file():
+            _log(f"未找到 {db_type} 的配置 {config_path}，跳过", level="SKIP")
+            continue
+        specs.append((db_type, config_path))
+
+    config_dir = Path(os.path.expanduser("~")) / "QuantStudioConfig"
+    for db_type, (filename, _, _) in RISK_DB_TYPES.items():
+        default = config_dir / filename
+        if default.is_file():
+            specs.append((db_type, default))
+        else:
+            _log(f"未找到 {db_type} 的默认配置 {default}，跳过", level="SKIP")
+    return specs
+
+
 def write_claude_local(
-    target_dir: Path, python: str, db_specs: list[tuple[str, Path]], force: bool, dry_run: bool
+    target_dir: Path, python: str, db_specs: list[tuple[str, Path]],
+    risk_specs: list[tuple[str, Path]], force: bool, dry_run: bool
 ) -> None:
     """渲染 CLAUDE.local.example.md 生成目标目录下的 CLAUDE.local.md。
 
-    可用因子库章节由 db_specs 渲染后追加在模板内容之后。
+    可用因子库、可用风险库章节分别由 db_specs、risk_specs 渲染后追加在模板内容之后。
     """
     target = target_dir / "CLAUDE.local.md"
     if target.exists() and not force:
@@ -475,9 +588,9 @@ def write_claude_local(
         lines = [text]
 
     rendered = "".join(lines)
-    sections = render_factor_db_sections(db_specs)
-    if sections:
-        rendered = rendered.rstrip("\n") + "\n\n" + sections
+    for sections in (render_factor_db_sections(db_specs), render_risk_db_sections(risk_specs)):
+        if sections:
+            rendered = rendered.rstrip("\n") + "\n\n" + sections
 
     if dry_run:
         _log(f"将写入 {target}", level="DRY")
@@ -609,32 +722,53 @@ def copy_docs(target_dir: Path, force: bool, dry_run: bool) -> None:
 
 
 def check_config_dir(dry_run: bool) -> None:
-    """检查 ~/QuantStudioConfig/ 下各因子库配置文件，缺失时给出建立提示。"""
+    """检查 ~/QuantStudioConfig/ 下各因子库、风险库配置文件，缺失时给出建立提示。"""
     config_dir = Path(os.path.expanduser("~")) / "QuantStudioConfig"
+    hints = {**CONFIG_TEMPLATE_HINTS, **RISK_CONFIG_TEMPLATE_HINTS}
     missing = [
         (db_type, filename, hint)
-        for db_type, (filename, hint) in CONFIG_TEMPLATE_HINTS.items()
+        for db_type, (filename, hint) in hints.items()
         if not (config_dir / filename).is_file()
     ]
     if not missing:
-        _log(f"{config_dir} 下的因子库配置齐备", level="SKIP")
+        _log(f"{config_dir} 下的因子库、风险库配置齐备", level="SKIP")
         return
 
     if dry_run:
         _log(f"将检查配置目录 {config_dir}（当前缺失 {len(missing)} 个文件）", level="DRY")
         return
 
-    _log(f"{config_dir} 下缺失 {len(missing)} 个因子库配置：", level="WARN")
+    _log(f"{config_dir} 下缺失 {len(missing)} 个配置文件：", level="WARN")
     for db_type, filename, hint in missing:
         print(f"        {config_dir / filename}")
         print(f"            ({db_type} 需要字段：{hint})")
     print("        连接信息请向数据提供方索取后手动创建，脚本不会代写。")
 
 
-def run_self_check(target_dir: Path, python: str, db_specs: list[tuple[str, Path]]) -> None:
-    """配置完成后自检：QS 可导入、因子库可连接、MCP 可启动。
+# 各库的导入路径。未被 Factor.api / Risk.api 导出的类需从其自身模块取
+_DB_IMPORT_OVERRIDES = {
+    "SQLDB": "from QuantStudio.Factor.SQLDB import SQLDB as _Cls",
+    "HDF5RDB": "from QuantStudio.Risk.HDF5RDB import HDF5RDB as _Cls",
+    "HDF5FRDB": "from QuantStudio.Risk.HDF5RDB import HDF5FRDB as _Cls",
+}
+_DB_MODULE_ROOT = {"HDF5RDB": "Risk", "HDF5FRDB": "Risk"}
 
-    任一检查失败只告警不中断——因子库不可达是常见状态，不应阻断环境配置。
+
+def _db_probe(db_type: str, config_path: Path) -> tuple[str, Path, str, str]:
+    """返回 (类型, 配置, import 语句, 类表达式)，供自检构造子进程探针。"""
+    if db_type in _DB_IMPORT_OVERRIDES:
+        return db_type, config_path, _DB_IMPORT_OVERRIDES[db_type], "_Cls"
+    root = _DB_MODULE_ROOT.get(db_type, "Factor")
+    return db_type, config_path, f"from QuantStudio.{root} import api as _api", f"_api.{db_type}"
+
+
+def run_self_check(
+    target_dir: Path, python: str,
+    db_specs: list[tuple[str, Path]], risk_specs: list[tuple[str, Path]]
+) -> None:
+    """配置完成后自检：QS 可导入、各因子库/风险库可连接、MCP 可启动。
+
+    任一检查失败只告警不中断——数据源不可达是常见状态，不应阻断环境配置。
     """
     print("-" * 60)
     _log("开始自检")
@@ -655,20 +789,15 @@ def run_self_check(target_dir: Path, python: str, db_specs: list[tuple[str, Path
         else:
             _log(f"QuantStudio 导入失败: {result.stderr.strip().splitlines()[-1] if result.stderr else '未知错误'}", level="WARN")
 
-    # 2) 各因子库可连接。SQLDB 未被 Factor.api 导出，需从其自身模块取
-    for db_type, config_path in db_specs:
-        if db_type == "SQLDB":
-            import_stmt = "from QuantStudio.Factor.SQLDB import SQLDB as _Cls"
-            cls_expr = "_Cls"
-        else:
-            import_stmt = "from QuantStudio.Factor import api as _api"
-            cls_expr = f"_api.{db_type}"
+    # 2) 各库可连接。Factor.api / Risk.api 未导出全部类，需按类型指定导入路径
+    probes = [(_db_probe(t, p)) for t, p in db_specs] + [_db_probe(t, p) for t, p in risk_specs]
+    for db_type, config_path, import_stmt, cls_expr in probes:
         probe = (
             "import sys; sys.path.insert(0, %r); %s; "
             "db = %s(config_file=%r); db.connect(); "
             "print(len(db.TableNames))" % (REPO_ROOT.as_posix(), import_stmt, cls_expr, config_path.as_posix())
         )
-        # 超时或进程起不来按连接失败处理：因子库不可达是常见状态，
+        # 超时或进程起不来按连接失败处理：数据源不可达是常见状态，
         # 不能让它中断自检（否则整个环境配置都会失败）
         try:
             result = subprocess.run([python, "-c", probe], capture_output=True, text=True,
@@ -738,6 +867,14 @@ def main() -> int:
         help=f"因子库配置，可重复。TYPE 取 {'/'.join(sorted(FACTOR_DB_TYPES))}；"
              "未指定的类型会在 ~/QuantStudioConfig/ 下查找默认配置",
     )
+    parser.add_argument(
+        "--risk-db",
+        action="append",
+        default=None,
+        metavar="TYPE=PATH",
+        help=f"风险库配置，可重复。TYPE 取 {'/'.join(sorted(RISK_DB_TYPES))}；"
+             "未指定的类型会在 ~/QuantStudioConfig/ 下查找默认配置",
+    )
     args = parser.parse_args()
 
     python = sys.executable
@@ -777,7 +914,8 @@ def main() -> int:
     build_generated_skills(target_dir, args.force, args.dry_run)
     write_claude_md(target_dir, args.force, args.dry_run)
     db_specs = resolve_factor_db_specs(args.factor_db)
-    write_claude_local(target_dir, python, db_specs, args.force, args.dry_run)
+    risk_specs = resolve_risk_db_specs(args.risk_db)
+    write_claude_local(target_dir, python, db_specs, risk_specs, args.force, args.dry_run)
 
     if args.skip_skeleton:
         _log("按参数跳过工程骨架生成", level="SKIP")
@@ -795,7 +933,7 @@ def main() -> int:
         print("配置完成。（已跳过自检）")
     else:
         print("配置完成。")
-        run_self_check(target_dir, python, db_specs)
+        run_self_check(target_dir, python, db_specs, risk_specs)
     return 0
 
 
