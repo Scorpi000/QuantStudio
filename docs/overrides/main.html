@@ -1,4 +1,18 @@
 {% extends "base.html" %}
 {% block extrahead %}
 <meta name="referrer" content="no-referrer">
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [["\\(", "\\)"]],
+      displayMath: [["\\[", "\\]"]],
+      processEscapes: true,
+      processEnvironments: true
+    },
+    options: {
+      ignoreHtmlClass: ".*|",
+      processHtmlClass: "arithmatex"
+    }
+  };
+</script>
 {% endblock %}

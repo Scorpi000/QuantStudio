@@ -42,7 +42,7 @@ SKILL_NAME = "quantstudio"
 EXCLUDED_DOCS = {
     "index.md",               # 站点首页，是 通则和约定.md 的副本
     "MCP/jy_doc_mcp.md",      # 手写文档，未纳入 Skill
-    "设计文档/BTStorer.md",    # 手写文档，未纳入 Skill
+    "回测框架/BTStorer.md",    # 手写文档，未纳入 Skill
 }
 
 

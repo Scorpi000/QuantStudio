@@ -5,6 +5,11 @@ repo_name: Scorpi000/QuantStudio
 
 docs_dir: docs_md
 
+# 数学公式渲染：arithmatex 输出 \（...\）占位标记，由 MathJax 在前端排版。
+# MathJax 配置写在 docs/overrides/main.html 中（docs_md/ 每次构建会被清空，不宜存放静态资源）
+extra_javascript:
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+
 theme:
   name: material
   language: zh
@@ -35,14 +40,24 @@ theme:
 markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid_custom
   - pymdownx.tabbed:
       alternate_style: true
+  - pymdownx.arithmatex:
+      generic: true
   - tables
   - attr_list
   - md_in_html
   - toc:
       permalink: true
+
+plugins:
+  - search
+  - mermaid2
 
 nav:
   - 首页: index.md
@@ -65,6 +80,7 @@ nav:
     - 策略回测: 回测框架/策略回测.md
     - 业绩归因: 回测框架/业绩归因.md
     - 风险模型测试: 回测框架/风险模型测试.md
+    - BTStorer: 回测框架/BTStorer.md
   - 风险模型:
     - 基本框架: 风险模型/基本框架.md
     - 数据读写: 风险模型/数据读写.md

@@ -25,3 +25,12 @@ ddddocr
 # 文档构建（scripts/build_docs.py、scripts/build_skill.py）
 mkdocs
 mkdocs-material
+nbconvert
+nbformat
+traitlets
+pymdown-extensions
+mkdocs-mermaid2-plugin
+PyYAML
+# 中文搜索分词：jieba 是 mkdocs-material search 插件的可选依赖，
+# 缺失时构建不报错，但中文搜索会退化为整串匹配（召回率显著下降）
+jieba

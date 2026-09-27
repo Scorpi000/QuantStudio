@@ -1,6 +1,6 @@
 """一键构建 QuantStudio 文档站点。
 
-流程：notebook → markdown（gen_doc） → mkdocs build → 静态站点
+流程：清空 docs_md/ → notebook → markdown（gen_doc） → 复制 markdown → mkdocs build → 静态站点
 
 用法：
     python scripts/build_docs.py          # 构建到 site/ 目录
@@ -22,6 +22,10 @@ SITE_DIR = ROOT / "site"
 
 def convert_notebooks():
     """将 docs/ 下的 notebook 转换为 docs_md/ 下的 markdown。"""
+    # 先清空 docs_md/：源文件被移动或删除后，旧产物会残留并被 MkDocs 继续构建
+    if DOCS_MD.exists():
+        shutil.rmtree(DOCS_MD)
+
     # 动态导入 gen_doc，避免循环依赖
     sys.path.insert(0, str(DOCS_SRC / "tools"))
     from gen_doc import main as gen_doc_main
@@ -31,11 +35,30 @@ def convert_notebooks():
     print("=" * 50)
     gen_doc_main(target_dir=str(DOCS_MD), source_dir=str(DOCS_SRC))
 
+    copy_markdown()
+
     # 将根目录的 通则和约定.md 复制为 index.md（MkDocs 首页）
     src_index = DOCS_MD / "通则和约定.md"
     if src_index.exists():
         shutil.copy2(src_index, DOCS_MD / "index.md")
         print(f"首页: {src_index} → {DOCS_MD / 'index.md'}")
+
+
+def copy_markdown():
+    """将 docs/ 下非 notebook 的 markdown 文件原样复制到 docs_md/。"""
+    print()
+    print("=" * 50)
+    print("步骤 1.5/3：复制 markdown 文件")
+    print("=" * 50)
+    for iFile in DOCS_SRC.rglob("*.md"):
+        if not iFile.is_file():
+            continue
+        if any(p in iFile.parts for p in (".ipynb_checkpoints", "tools", "overrides")):
+            continue
+        iTargetFile = DOCS_MD / iFile.relative_to(DOCS_SRC)
+        iTargetFile.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(iFile, iTargetFile)
+        print(f"{iFile} -> {iTargetFile} 复制完毕")
 
 
 def build_site():
