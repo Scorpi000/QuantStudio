@@ -34,3 +34,4 @@ CLAUDE.local.md
 .mcp.json
 .codegraph/daemon.pid
 graphify-out/
+.ua/
