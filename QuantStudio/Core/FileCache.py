@@ -80,7 +80,7 @@ class FileDTCache(DTCache):
         if os.path.isfile(self._QSArgs.StateFile):
             StateFilePath = self._QSArgs.StateFile
         else:
-            StateFilePath = os.path.join(self._QSArgs.CacheDir, self._QSArgs.StateFile)
+            StateFilePath = os.path.join(self._CacheDir, self._QSArgs.StateFile)
         if not os.path.isfile(StateFilePath):
             self._QS_Logger.warning(f"缓存状态文件 {StateFilePath} 不存在, 将以 new 模式运行")
             return False

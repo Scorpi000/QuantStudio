@@ -5,6 +5,7 @@ import json
 import logging
 from typing import Any, Optional, Literal, Union, Dict, List
 
+import yaml
 import numpy as np
 import pandas as pd
 from pydantic_core import PydanticUndefinedType
@@ -295,7 +296,11 @@ class __QS_Object__:
                 self._ConfigFile = config_file
                 with open(self._ConfigFile, "r", encoding="utf-8") as File:
                     FileStr = File.read()
-                    if FileStr: Config = json.loads(FileStr)
+                    if FileStr:
+                        if config_file.endswith(('.yaml', '.yml')):
+                            Config = yaml.safe_load(FileStr) or {}
+                        else:
+                            Config = json.loads(FileStr)
             else:
                 self._ConfigFile = None
                 self._QS_Logger.warning(f"找不到配置文件: {config_file}")
