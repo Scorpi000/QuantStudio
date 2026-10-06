@@ -3,8 +3,8 @@
 
 覆盖 _load_index 索引加载、search_tables 加权评分、get_table_detail 详情格式化、
 browse_categories / get_database_page 目录浏览、search_online 在线搜索，
-以及 init_server 初始化与缓存重建流程；query_qs_* 的离线用法说明生成。
-共 102 个测试（mock 模式 88 个）。
+以及 init_server 初始化（含索引缺失自动构建）与缓存重建流程；
+query_qs_* 的离线用法说明生成。共 108 个测试（mock 模式 94 个）。
 
 使用方法:
     * 运行全部 mock 测试: python tests/test_jy_doc_mcp.py
@@ -887,13 +887,41 @@ class TestServerInit(_BaseTestCase):
             self.assertEqual(_mod.fetcher.cache_dir, tmpdir)
             self.assertEqual(len(_mod.flat_index), 4)
 
-    def test_init_server_without_index(self):
-        """缓存目录无索引文件时仍能完成初始化。"""
+    def test_init_server_without_index_auto_builds(self):
+        """缓存目录无索引文件时自动构建索引。"""
         with tempfile.TemporaryDirectory() as tmpdir:
-            _mod.init_server(tmpdir)
+            def fake_scrape(cache_dir, user="", pwd=""):
+                with open(os.path.join(cache_dir, "tree_index.json"), "w", encoding="utf-8") as f:
+                    json.dump(SAMPLE_INDEX_PAYLOAD, f, ensure_ascii=False)
+                return SAMPLE_INDEX_PAYLOAD
 
-            self.assertIsNotNone(_mod.fetcher)
-            self.assertEqual(_mod.flat_index, [])
+            with patch.object(_mod, "scrape_and_save", side_effect=fake_scrape) as mock_scrape:
+                _mod.init_server(tmpdir, user="u", pwd="p")
+
+            self.assertEqual(len(_mod.flat_index), 4)
+            _, kwargs = mock_scrape.call_args
+            self.assertEqual(kwargs["user"], "u")
+            self.assertEqual(kwargs["pwd"], "p")
+
+    def test_init_server_auto_build_failure_raises(self):
+        """索引自动构建失败时抛出异常，中止启动。"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(_mod, "scrape_and_save") as mock_scrape:
+                mock_scrape.side_effect = RuntimeError("登录凭据未配置")
+                with self.assertRaisesRegex(RuntimeError, "索引自动构建失败"):
+                    _mod.init_server(tmpdir)
+
+    def test_init_server_with_existing_index_skips_build(self):
+        """已存在索引时不触发自动构建。"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with open(os.path.join(tmpdir, "tree_index.json"), "w", encoding="utf-8") as f:
+                json.dump(SAMPLE_INDEX_PAYLOAD, f, ensure_ascii=False)
+
+            with patch.object(_mod, "scrape_and_save") as mock_scrape:
+                _mod.init_server(tmpdir, user="u", pwd="p")
+
+            mock_scrape.assert_not_called()
+            self.assertEqual(len(_mod.flat_index), 4)
 
 
 # ── 缓存重建测试 ─────────────────────────────────────────────────────

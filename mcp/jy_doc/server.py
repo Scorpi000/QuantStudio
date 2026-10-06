@@ -26,12 +26,13 @@
     python mcp/jy_doc/server.py --rebuild-cache --user xxx --pwd xxx
 
 缓存说明:
-    本服务本身不会自动更新缓存。tree_index.json 在服务启动时加载一次，
-    tables/<id>.json 一旦写入便永久复用。若聚源平台的表结构有更新，
-    需重启服务并加上 --rebuild-cache 才会刷新。
+    本服务启动时加载 tree_index.json；若索引缺失或为空，会自动抓取构建一次
+    （构建失败则中止启动，不会让客户端误判为连接成功）。本服务不会自动更新
+    缓存：tree_index.json 在服务启动时加载一次，tables/<id>.json 一旦写入便
+    永久复用。若聚源平台的表结构有更新，需重启服务并加上 --rebuild-cache 才会刷新。
 
-    重建过程需要网络与聚源平台登录凭据（验证码自动识别），耗时约 1 分钟，
-    期间服务不响应。可通过 --user/--pwd 参数或 JY_DOC_USER/JY_DOC_PWD
+    重建/首次构建过程需要网络与聚源平台登录凭据（验证码自动识别），耗时约
+    1 分钟，期间服务不响应。可通过 --user/--pwd 参数或 JY_DOC_USER/JY_DOC_PWD
     环境变量提供凭据。
 """
 
@@ -98,10 +99,7 @@ def _load_index(cache_dir: str) -> None:
 
     index_path = os.path.join(cache_dir, "tree_index.json")
     if not os.path.exists(index_path):
-        logger.warning(
-            "索引文件不存在: %s，请先运行爬虫脚本 python scripts/scrape_jy_doc.py",
-            index_path,
-        )
+        logger.info("索引文件不存在: %s", index_path)
         flat_index = []
         databases_data = []
         categories_data = {}
@@ -610,11 +608,17 @@ def init_server(
 ) -> None:
     """初始化 MCP 服务。
 
+    若本地索引未建立（tree_index.json 缺失或为空），会自动抓取构建索引；
+    构建失败则抛出异常中止启动，避免 MCP 在无索引状态下被客户端判定为连接成功。
+
     Args:
         cache_dir: 缓存目录路径
         user: 聚源平台用户名
         pwd: 聚源平台密码
         rebuild: 是否在启动前重建缓存（清除旧缓存并重新抓取）
+
+    Raises:
+        RuntimeError: 索引缺失且自动构建失败时抛出
     """
     _preimport_native_deps()
 
@@ -625,6 +629,19 @@ def init_server(
         rebuild_cache(cache_dir, user=user, pwd=pwd)
 
     _load_index(cache_dir)
+
+    # 索引未建立时自动构建（首次启动或缓存被清空时）
+    if not flat_index:
+        logger.info("未检测到本地索引，开始自动构建索引...")
+        try:
+            scrape_and_save(cache_dir=cache_dir, user=user, pwd=pwd)
+        except Exception as e:
+            # 构建失败则中止启动，避免 MCP 在无索引状态下被判定为连接成功
+            raise RuntimeError(
+                f"索引自动构建失败，MCP 服务中止启动: {type(e).__name__}: {e}"
+            ) from e
+        _load_index(cache_dir)
+
     logger.info("聚源数据库文档 MCP 服务初始化完成, cache_dir=%s", cache_dir)
 
 

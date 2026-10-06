@@ -1,0 +1,12 @@
+{
+	"Name": "JYDB",
+	"DBType": "PostgreSQL",
+    "DBName": "JYDB",
+    "IPAddr": "localhost",
+    "Port": 5432,
+    "User": "postgres",
+    "Pwd": "postgres",
+    "TablePrefix": "",
+    "CharSet": "utf8",
+    "Connector": "default"
+}

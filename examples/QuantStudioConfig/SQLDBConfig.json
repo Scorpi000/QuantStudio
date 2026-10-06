@@ -1,0 +1,15 @@
+{
+	"Name": "SQLDB",
+	"DBType": "PostgreSQL",
+    "DBName": "QSData",
+    "IPAddr": "localhost",
+    "Port": 5432,
+    "User": "postgres",
+    "Pwd": "postgres",
+    "InnerPrefix": "qs_",
+    "CharSet": "utf8",
+    "Connector": "default",
+	"IDField": "code",
+	"DTField": "datetime",
+	"IgnoreFields": ["info", "id"]
+}
