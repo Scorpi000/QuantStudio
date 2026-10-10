@@ -238,6 +238,18 @@ def  serialize_qs_args(q: "__QS_Args__", visited: Set[int]):
         'qs_id': q.QSID
     } 
 
+def serialize_dict_key(k: Any, visited: Set[int]) -> str:
+    """将字典的键序列化为可哈希且确定性的字符串, 用于 dict 的递归序列化。
+
+    基本类型转换为字符串; 其他类型(如 datetime)先经 ``serialize_value`` 再转为 JSON 字符串,
+    避免以 dict 作为字典键导致 ``unhashable`` 错误。
+    """
+    if isinstance(k, str):
+        return k
+    elif isinstance(k, (int, float, bool, type(None))):
+        return str(k)
+    return json.dumps(serialize_value(k, visited), sort_keys=True, ensure_ascii=False, separators=(',', ':'), default=str)
+
 def serialize_value(value: Any, visited: Set[int] = None) -> Any:
     """
     将任意值序列化为可哈希的字典/列表/基本类型结构
@@ -261,7 +273,7 @@ def serialize_value(value: Any, visited: Set[int] = None) -> Any:
         elif isinstance(value, (list, tuple)):
             return [serialize_value(v, visited) for v in value]
         elif isinstance(value, dict):
-            return {serialize_value(k, visited): serialize_value(v, visited) for k, v in sorted(value.items())}
+            return {serialize_dict_key(k, visited): serialize_value(v, visited) for k, v in value.items()}
         # 函数和方法
         elif inspect.isfunction(value):
             return serialize_function(value, visited)

@@ -35,3 +35,4 @@ CLAUDE.local.md
 .codegraph/daemon.pid
 graphify-out/
 .ua/
+docs/plans/

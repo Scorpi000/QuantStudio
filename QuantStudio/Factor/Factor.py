@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import hashlib
 import datetime as dt
-from typing import List, Optional, Any, Literal, Tuple, Union
+from typing import List, Optional, Any, Literal, Tuple, Union, Dict
 
 import numpy as np
 import pandas as pd
@@ -541,6 +541,10 @@ class DataFactor(Factor):
             if not isinstance(data, (pd.Series, pd.DataFrame)):
                 args.setdefault("Name", str(data))
                 data = str(data)
+        # DataFactor 是叶子因子, 不接受 ft/descriptors/extra_deps;
+        # 基类 new() 会注入这三个参数, 此处剔除以免与下面的显式实参冲突
+        for iKey in ("ft", "descriptors", "extra_deps"):
+            kwargs.pop(iKey, None)
         super().__init__(ft=None, descriptors=[], args=args, config_file=config_file, **kwargs)
         if isinstance(data, pd.Series):
             if pd.api.types.is_datetime64_any_dtype(data.index):
@@ -570,7 +574,24 @@ class DataFactor(Factor):
     def new(self, args:dict={}, **kwargs) -> "DataFactor":
         kwargs = {"data": self._Data} | kwargs
         return super().new(args=args, **kwargs)
-    
+
+    def model_dump(self) -> Dict[str, Any]:
+        DumpedModel = super().model_dump()
+        DumpedModel["DataContent"] = self._DataContent
+        DumpedModel["Data"] = self._Data
+        return DumpedModel
+
+    def serialize(self) -> Dict[str, Any]:
+        Result = super().serialize()
+        Result["DataContent"] = self._DataContent
+        Result["Data"] = self._Data
+        return Result
+
+    @classmethod
+    def deserialize(cls, data: Dict[str, Any]) -> "DataFactor":
+        Args = dict(data.get("__qsargs__", {}))
+        return cls(data=data.get("Data"), args=Args)
+
     def getMetaData(self, key:Optional[str]=None) -> Union[Any, pd.Series]:
         DataType = self._QSArgs.DataType
         if key is None:
