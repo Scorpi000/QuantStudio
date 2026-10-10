@@ -31,6 +31,7 @@ TestCoverage.bat
 *.env
 ~$*.xlsx
 CLAUDE.local.md
+AGENTS.override.md
 .mcp.json
 .codex/config.toml
 .codegraph/daemon.pid
