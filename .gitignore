@@ -6,6 +6,7 @@ skills/quantstudio/references/
 .idea/
 .vscode/
 .claude/
+.agents/
 QuantStudio.egg-info/
 Backup/
 backup/
@@ -30,8 +31,8 @@ TestCoverage.bat
 *.env
 ~$*.xlsx
 CLAUDE.local.md
-.claude/settings.local.json
 .mcp.json
+.codex/config.toml
 .codegraph/daemon.pid
 graphify-out/
 .ua/

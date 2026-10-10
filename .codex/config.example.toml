@@ -1,0 +1,6 @@
+[mcp_servers.jy_doc]
+command = "{{PYTHON}}"
+args = ["{{SERVER_PY}}", "--cache-dir", "{{CACHE_DIR}}"]
+
+[mcp_servers.jy_doc.env]
+PYTHONPATH = "{{PYTHONPATH}}"
