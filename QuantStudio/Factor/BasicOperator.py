@@ -7,14 +7,14 @@ import numpy as np
 import pandas as pd
 
 from QuantStudio.Factor.Factor import Factor
-from QuantStudio.Factor.FactorOperation import PointOperator, PointOperation
+from QuantStudio.Factor.FactorOperation import PointOperator, PointOperation, OperandSpec
 
 # ----------------------单点运算--------------------------------
 class Rename(PointOperator):
     """重命名因子"""
 
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        Args = {"Name": "rename", "DataType": "object"} | args | {"Arity": 1, "DTMode": "多时点", "IDMode": "多ID"}
+        Args = {"Name": "rename", "DataType": "object"} | args | {"OperandInfo": (OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
         return super().__init__(args=Args, config_file=config_file, **kwargs)
     
     def calculate(self, f, idt, iid, x, args):
@@ -37,7 +37,7 @@ class Neg(PointOperator):
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "neg", "Arity": 1, "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "neg", "OperandInfo": (OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -53,7 +53,7 @@ class Abs(PointOperator):
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "abs", "Arity": 1, "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "abs", "OperandInfo": (OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -69,7 +69,7 @@ class Not(PointOperator):
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "not", "Arity": 1, "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "not", "OperandInfo": (OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -85,7 +85,7 @@ class Add(PointOperator):
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "add", "Arity": 2, "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "add", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -101,7 +101,7 @@ class Sub(PointOperator):
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "sub", "Arity": 2, "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "sub", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -117,7 +117,7 @@ class Mul(PointOperator):
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "mul", "Arity": 2, "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "mul", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -133,7 +133,7 @@ class Div(PointOperator):
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "div", "Arity": 2, "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "div", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -149,7 +149,7 @@ class FloorDiv(PointOperator):
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "floordiv", "Arity": 2, "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "floordiv", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -165,7 +165,7 @@ class Mod(PointOperator):
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "mod", "Arity": 2, "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "mod", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -181,7 +181,7 @@ class Pow(PointOperator):
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "pow", "Arity": 2, "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "pow", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -199,7 +199,7 @@ class And(PointOperator):
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "and", "Arity": 2, "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "and", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -215,7 +215,7 @@ class Or(PointOperator):
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "or", "Arity": 2, "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "or", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -231,7 +231,7 @@ class Xor(PointOperator):
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "xor", "Arity": 2, "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "xor", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -247,7 +247,7 @@ class LT(PointOperator):
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "lt", "Arity": 2, "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "lt", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -263,7 +263,7 @@ class LE(PointOperator):
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "le", "Arity": 2, "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "le", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -279,7 +279,7 @@ class GT(PointOperator):
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "gt", "Arity": 2, "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "gt", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -295,7 +295,7 @@ class GE(PointOperator):
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "ge", "Arity": 2, "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "ge", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -311,7 +311,7 @@ class Eq(PointOperator):
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "eq", "Arity": 2, "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "eq", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -327,7 +327,7 @@ class Neq(PointOperator):
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "neq", "Arity": 2, "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "neq", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -359,31 +359,3 @@ ge = GE()
 eq = Eq()
 neq = Neq()
 
-
-if __name__=="__main__":
-    from QuantStudio.Factor.Factor import DataFactor
-    
-    np.random.seed(0)
-    IDs = [f"00000{i}.SZ" for i in range(1, 6)]
-    DTs = [dt.datetime(2020, 1, 1) + dt.timedelta(i) for i in range(4)]
-    Factor1 = DataFactor(data=1, args={"Name": "Factor1"})
-    Factor2 = DataFactor(data=pd.DataFrame(np.random.randn(len(DTs), len(IDs)), index=DTs, columns=IDs), args={"Name": "Factor2"})
-    
-    Factor3 = rename(Factor1 + Factor2, factor_name="Factor3")
-    Factor4 = sub(Factor1, Factor2, factor_name="Factor4")
-    print(Factor4.model_dump())
-    print(Factor4.QSID)
-    Factor5 = Sub()(Factor1, Factor2, factor_name="Factor5")
-    print(Factor5.model_dump())
-    print(Factor5.QSID)
-    Factor6 = rename(1 - Factor2, factor_name="Factor6")
-    
-    print(Factor1.readData(ids=IDs, dts=DTs))
-    print(Factor2.readData(ids=IDs, dts=DTs))
-    print(Factor3.readData(ids=IDs, dts=DTs))
-    print(Factor4.readData(ids=IDs, dts=DTs))
-    print(Factor5.readData(ids=IDs, dts=DTs))
-    print(Factor6.readData(ids=IDs, dts=DTs))
-    
-
-    print("===")

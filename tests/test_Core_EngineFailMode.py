@@ -14,6 +14,7 @@ from typing import List, Any
 
 from pydantic import Field
 
+from QuantStudio.Core import __QS_Error__
 from QuantStudio.Core.CalcEngine import Engine, StackEngine
 from QuantStudio.Core.TreeEngine import TreeEngine
 from QuantStudio.Core.ParallelEngine import ParallelEngine
@@ -42,6 +43,10 @@ class _TestNode(Node):
     def backward_compute(self, path, bwd_data_list, context, local_context=None):
         return self._result
 
+    def merge_result(self, result_list, context):
+        """各进程返回相同的预设结果，合并时取一个结果。"""
+        return result_list[0]
+
 
 class _FailingNode(Node):
     """测试用失败节点, 可在 init/prepare/backward 阶段抛出异常."""
@@ -69,6 +74,13 @@ class _FailingNode(Node):
         if self._fail_in == "backward":
             raise RuntimeError(f"compute 失败: {self.Name}")
         return f"result_{self.Name}"
+
+
+class _ExitingNode(_TestNode):
+    """模拟没有机会发送异常消息就退出的子进程。"""
+
+    def backward_compute(self, path, bwd_data_list, context, local_context=None):
+        os._exit(7)
 
 
 class TestEngineFailMode(unittest.TestCase):
@@ -303,8 +315,7 @@ class TestTreeEngineFailMode(unittest.TestCase):
 class TestParallelEngineFailMode(unittest.TestCase):
     """ParallelEngine FailMode 容错测试.
 
-    注意: ParallelEngine 使用多进程, 在 Windows 上可能因 fork+Queue 兼容性问题导致卡死.
-    如遇此情况, 可通过设置环境变量 SKIP_PARALLEL_TESTS=1 跳过.
+    可通过设置环境变量 SKIP_PARALLEL_TESTS=1 跳过多进程测试。
     """
 
     def _make_context(self, n_pids=2):
@@ -358,6 +369,36 @@ class TestParallelEngineFailMode(unittest.TestCase):
         """ParallelEngine FailMode 默认应为 raise."""
         engine = ParallelEngine()
         self.assertEqual(engine._QSArgs.FailMode, "raise")
+
+    @unittest.skipIf(os.environ.get("SKIP_PARALLEL_TESTS"), "跳过多进程测试")
+    def test_skip_propagates_dependency_failure(self):
+        """回传失败依赖的错误及下游跳过状态，独立分支继续计算。"""
+        leaf = _FailingNode(name="leaf", qs_id="leaf")
+        root = _TestNode(name="root", deps=[leaf], qs_id="root")
+        good = _TestNode(name="good", qs_id="good", result="ok")
+        context = self._make_context()
+        result = ParallelEngine(args={"FailMode": "skip"}).run([root, good], context)
+        self.assertEqual(result, [None, "ok"])
+        self.assertIn("leaf", context.NodeErrors)
+        self.assertEqual(context.NodeState["root"]["__status__"], "SKIPPED")
+
+    @unittest.skipIf(os.environ.get("SKIP_PARALLEL_TESTS"), "跳过多进程测试")
+    def test_unexpected_worker_exit_raises(self):
+        """子进程直接退出时主进程报错并清理消息队列。"""
+        context = self._make_context()
+        with self.assertRaises(__QS_Error__):
+            ParallelEngine().run([_ExitingNode(qs_id="exit")], context)
+        self.assertIsNone(context.Sub2MainQueue)
+
+    @unittest.skipIf(os.environ.get("SKIP_PARALLEL_TESTS"), "跳过多进程测试")
+    def test_context_reuse_after_raise(self):
+        """失败运行遗留的子进程消息不会影响下一次运行。"""
+        context = self._make_context()
+        engine = ParallelEngine()
+        with self.assertRaises(RuntimeError):
+            engine.run([_FailingNode(name="bad", qs_id="bad")], context)
+        good = _TestNode(name="good", qs_id="good", result="ok")
+        self.assertEqual(engine.run([good], context), ["ok"])
 
 
 if __name__ == "__main__":

@@ -71,9 +71,7 @@ class TestMPLogger(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """测试类初始化"""
-        # 确保使用 D:\HST\QuantStudio 目录
-        if r'D:\HST\QuantStudio' not in sys.path:
-            sys.path.insert(0, r'D:\HST\QuantStudio')
+        pass
 
     def setUp(self):
         """每个测试前重置 Logger 状态"""

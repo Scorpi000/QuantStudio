@@ -30,10 +30,10 @@ class CalcSectionCorrelation(SectionOperator):
             descriptor_ids: 依赖因子的截面 ID 序列
             corr_method: 相关性的计算方法
         """
-        Arity = args.get("Arity", None) or 1
+        operand_count = 1
         Args = {"Name": "calcSectionCorrelation"} | args | {"DTMode": "多时点", "DataType": "double"}
         Args["ModelArgs"] = {"corr_method": corr_method} | Args.get("ModelArgs", {})
-        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
+        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * operand_count
         return super().__init__(args=Args, config_file=config_file, **kwargs)
     
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
@@ -166,11 +166,11 @@ class CalcFactorTurnover(PanelOperator):
             period_lookback: 在计算标尺上的回溯期数, 数据的时间序列是日度的，但相关性的计算时间序列是月度的，该参数表示用回溯多少个月的因子值来和当前因子值计算相关性
             corr_method: 相关性的计算方法
         """
-        Arity = args.get("Arity", None) or 1
+        operand_count = 1
         Args = {"Name": "calcIC"} | args | {"DTMode": "多时点", "DataType": "double"}
         Args["ModelArgs"] = {"corr_method": corr_method, "period_lookback": period_lookback, "corr_method": corr_method} | Args.get("ModelArgs", {})
-        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
-        Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * Arity
+        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * operand_count
+        Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * operand_count
         return super().__init__(args=Args, config_file=config_file, **kwargs)
     
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:

@@ -44,10 +44,10 @@ class CalcPortfolioVolatility(SectionOperator):
             args: 参数集
             config_file: 配置文件地址
         """
-        Arity = args.get("Arity", None) or 1
+        operand_count = 1
         Args = {"Name": "calcPortfolioVolatility"} | args | {"DTMode": "单时点", "DataType": "double"}
         Args["ModelArgs"] = {} | Args.get("ModelArgs", {})
-        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
+        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * operand_count
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
     def calculate(self, f: Factor, idt: dt.datetime, iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
@@ -113,10 +113,10 @@ class CalcRandomPortfolio(SectionOperator):
         Args:
             target_num: 每一期的目标持仓数量
         """
-        Arity = args.get("Arity", None) or 1
+        operand_count = 1
         Args = {"Name": "calcRandomPortfolio"} | args | {"DTMode": "单时点", "DataType": "double"}
         Args["ModelArgs"] = {"target_num": target_num} | Args.get("ModelArgs", {})
-        Args["DescriptorSection"] = [Args.get("DescriptorSection", [None])[0]] * Arity
+        Args["DescriptorSection"] = [Args.get("DescriptorSection", [None])[0]] * operand_count
         return super().__init__(args=Args, config_file=config_file, **kwargs)
     
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:

@@ -14,7 +14,7 @@ from matplotlib.ticker import FuncFormatter
 from QuantStudio.Core import __QS_Error__
 from QuantStudio.Core.Node import DTLocalContext, DTInitData, Node
 from QuantStudio.Factor.Factor import Factor, FactorInitData, FactorContext, DataFactor, FactorLocalContext
-from QuantStudio.Factor.FactorOperation import PanelOperation, PanelOperator
+from QuantStudio.Factor.FactorOperation import PanelOperation, PanelOperator, OperandSpec
 from QuantStudio.Factor import FactorOperator as fo
 from QuantStudio.Factor.BasicOperator import rename
 from QuantStudio.Risk.RiskTable import RiskTable
@@ -41,7 +41,7 @@ class MakeAccount(PanelOperator):
     """
 
     class __QS_ArgClass__(PanelOperator.__QS_ArgClass__):
-        Arity: Optional[int] = Field(default=None, ge=3, title="入参数", frozen=True)
+        OperandInfo: tuple[OperandSpec, ...] = Field(default=(OperandSpec(Variadic=True, MinNum=3),), frozen=True, exclude=True)
 
     def __init__(self, signal_type:Literal["买卖数量", "目标权重"]="目标权重", init_cash:float=1e6, short_allowed:bool=False, start_dt:Optional[dt.datetime]=None, args:dict = {}, config_file:Optional[str] = None, **kwargs):
         """初始化账户创建算子
@@ -52,12 +52,12 @@ class MakeAccount(PanelOperator):
             short_allowed: 是否允许卖空
             start_dt: 净值开始日, 如果为 None, 表示从计算的第一个时点开始
         """
-        Arity = args.get("Arity", None) or 3
+        operand_count = 3
         Args = {"Name": "makeAccount"} | args | {"DTMode": "单时点", "DataType": "object", "iInitFactor": 0}
         Args["ModelArgs"] = {"init_cash": init_cash, "short_allowed": short_allowed, "signal_type": signal_type} | Args.get("ModelArgs", {})
-        Args["DescriptorSection"] = [Args.get("DescriptorSection", [None])[0]] * Arity
-        Args["LookBack"] = [1, 0, 0] + [0] * max(0, Arity - 3)
-        Args["StartDT"] = [start_dt] + [None] * max(0, Arity - 1)
+        Args["DescriptorSection"] = [Args.get("DescriptorSection", [None])[0]] * operand_count
+        Args["LookBack"] = [1, 0, 0] + [0] * max(0, operand_count - 3)
+        Args["StartDT"] = [start_dt] + [None] * max(0, operand_count - 1)
         Args["CompoundType"] = [("Cash", "double"), ("Position", "double"), ("Amount", "double"), ("Signal", "double"), ("TradeNum", "double"), ("TradePrice", "double"), ("Fee", "double")]
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
@@ -379,7 +379,7 @@ class MakeStrategy(MakeAccount):
     """
 
     class __QS_ArgClass__(MakeAccount.__QS_ArgClass__):
-        Arity: Optional[int] = Field(default=None, ge=2, title="入参数", frozen=True)
+        OperandInfo: tuple[OperandSpec, ...] = Field(default=(OperandSpec(Variadic=True, MinNum=2),), frozen=True, exclude=True)
 
     def __init__(self, signal_type:Literal["买卖数量", "目标权重"]="目标权重", init_cash:float=1e6, short_allowed:bool=False, start_dt:Optional[dt.datetime]=None, x_lookback:List[int]=[], x_section_ids:List[Optional[List[str]]]=[], signal_dts:Optional[List[dt.datetime]]=None, args:dict = {}, config_file:Optional[str] = None, **kwargs):
         """初始化策略创建算子
@@ -394,12 +394,12 @@ class MakeStrategy(MakeAccount):
         """
         if len(x_lookback) != len(x_section_ids):
             raise __QS_Error__("x_lookback 的长度不等于 x_section_ids")
-        Arity = args.get("Arity", None) or (2 + len(x_lookback))
+        operand_count = 2 + len(x_lookback)
         Args = {"Name": "makeStrategy"} | args | {"DTMode": "单时点", "DataType": "object", "iInitFactor": 0}
         Args["ModelArgs"] = {"x_len": len(x_lookback), "init_cash": init_cash, "short_allowed": short_allowed, "signal_type": signal_type, "signal_dts": signal_dts} | Args.get("ModelArgs", {})
-        Args["DescriptorSection"] = [Args.get("DescriptorSection", [None])[0]] * 2 + x_section_ids + [Args.get("DescriptorSection", [None])[0]] * (Arity - 2 - len(x_section_ids))
-        Args["LookBack"] = [1, 0] + x_lookback + [0] * (Arity - 2 - len(x_lookback))
-        Args["StartDT"] = [start_dt] + [None] * (Arity - 1)
+        Args["DescriptorSection"] = [Args.get("DescriptorSection", [None])[0]] * 2 + x_section_ids + [Args.get("DescriptorSection", [None])[0]] * (operand_count - 2 - len(x_section_ids))
+        Args["LookBack"] = [1, 0] + x_lookback + [0] * (operand_count - 2 - len(x_lookback))
+        Args["StartDT"] = [start_dt] + [None] * (operand_count - 1)
         Args["CompoundType"] = [("Cash", "double"), ("Position", "double"), ("Amount", "double"), ("Signal", "double"), ("TradeNum", "double"), ("TradePrice", "double"), ("Fee", "double")]
         return super(MakeAccount, self).__init__(args=Args, config_file=config_file, **kwargs)
 

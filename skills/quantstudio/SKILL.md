@@ -130,7 +130,7 @@ class MAArgs(OperatorModelArgs):
     window: int = Field(default=5, ge=1, title="窗口", description="移动平均窗口期数")
 
 @FactorOperatorized(operator_type="Time",
-    args={"Arity": 1, "DTMode": "多时点", "IDMode": "多ID", "LookBack": [4]},
+    args={"DTMode": "多时点", "IDMode": "多ID", "LookBack": [4]},
     model_args=MAArgs,
     operand_info=(OperandSpec(Name="x", Title="输入因子", Required=True),))
 def calcMA(f, idt, iid, x, args: MAArgs):

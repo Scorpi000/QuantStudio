@@ -69,11 +69,9 @@ class TestOperatorArgs(unittest.TestCase):
         """按完整时间尺读取因子，start 指定预留的回溯期数。"""
         return factor.readData(ids=self.ids, dts=self.dts[start:], dt_ruler=self.dts)
 
-    def scale_operator(self, scale=2.0, arity=None):
+    def scale_operator(self, scale=2.0):
         """构建显式声明参数与操作数的函数式算子。"""
         args = {"DTMode": "多时点", "IDMode": "多ID", "ModelArgs": {"scale": scale}}
-        if arity is not None:
-            args["Arity"] = arity
         return makeFactorOperator(
             scale_data, "Point", args=args, model_args=ScaleArgs,
             operand_info=(OperandSpec(Name="x", Title="输入因子"),),
@@ -125,7 +123,7 @@ class TestOperatorArgs(unittest.TestCase):
     def test_parameter_assignment_is_frozen(self):
         """内置及自定义参数拒绝属性和下标赋值，保持参数与 QSID 稳定。"""
         for op, name, value in ((fo.Log(base=2), "base", 10),
-                                (self.scale_operator(arity=1), "scale", 3)):
+                                (self.scale_operator(), "scale", 3)):
             for access in ("attribute", "item"):
                 with self.subTest(operator=type(op).__name__, access=access):
                     original_id = op.QSID
@@ -148,11 +146,11 @@ class TestOperatorArgs(unittest.TestCase):
 
     def test_factory_parameters_participate_in_qsid(self):
         """函数式算子的子模型字段必须参与算子和因子的身份计算。"""
-        first = self.scale_operator(scale=2, arity=1)
-        second = self.scale_operator(scale=5, arity=1)
+        first = self.scale_operator(scale=2)
+        second = self.scale_operator(scale=5)
         self.assertNotEqual(first.QSID, second.QSID)
         self.assertNotEqual(first(self.factor).QSID, second(self.factor).QSID)
-        self.assertEqual(first.QSID, self.scale_operator(scale=2, arity=1).QSID)
+        self.assertEqual(first.QSID, self.scale_operator(scale=2).QSID)
 
     def test_factory_auto_arity_preserves_parameter_type_and_result(self):
         """首次调用确定元数时保留参数子类和数值。"""
@@ -165,13 +163,13 @@ class TestOperatorArgs(unittest.TestCase):
     def test_factory_clone_preserves_operand_declarations(self):
         """操作数声明不参与 QSID，但在复制时仍需保留供下游自省。"""
         op = self.scale_operator()
-        copied = op.new(args={"Arity": 1})
+        copied = op.new()
         self.assertEqual(copied.Args.OperandInfo, op.Args.OperandInfo)
         self.assertEqual(op(self.factor).Operator.Args.OperandInfo, op.Args.OperandInfo)
 
     def test_factory_new_parameter_dictionary_preserves_type(self):
         """函数式算子通过字典改参仍保留原参数模型的类型和校验。"""
-        op = self.scale_operator(scale=2, arity=1)
+        op = self.scale_operator(scale=2)
         changed = op.new(args={"ModelArgs": {"scale": 3}})
         self.assertIsInstance(changed.Args.ModelArgs, ScaleArgs)
         self.assertEqual(op.Args.ModelArgs.scale, 2)
@@ -183,7 +181,7 @@ class TestOperatorArgs(unittest.TestCase):
     def test_factory_clone_parameter_models_are_independent(self):
         """复制后的模型及其可变参数不与模板共享。"""
         op = makeFactorOperator(sum_data, "Point", args={"ModelArgs": {"weights": [1, 2]}})
-        copied = op.new(args={"Arity": 2})
+        copied = op.new()
         self.assertIsNot(copied.Args.ModelArgs, op.Args.ModelArgs)
         self.assertIsNot(copied.Args.ModelArgs.weights, op.Args.ModelArgs.weights)
         copied.Args.ModelArgs.weights.append(3)
@@ -204,7 +202,7 @@ class TestOperatorArgs(unittest.TestCase):
     def test_new_preserves_module_parameter(self):
         """复制容器时保留模块对象引用，不能对模块执行 deepcopy。"""
         op = makeFactorOperator(sum_data, "Point", args={"ModelArgs": {"module": math}})
-        copied = op.new(args={"Arity": 1})
+        copied = op.new()
         self.assertIs(copied.Args.ModelArgs.module, math)
 
     def test_new_updates_window_and_preserves_other_model_values(self):
@@ -327,7 +325,7 @@ class TestOperatorArgs(unittest.TestCase):
     def test_factory_explicit_arity_computation(self):
         """显式元数下，模型实例也必须传入真实计算过程。"""
         np.testing.assert_allclose(
-            self.read(self.scale_operator(scale=3, arity=1)(self.factor)), self.data * 3
+            self.read(self.scale_operator(scale=3)(self.factor)), self.data * 3
         )
 
     def test_decorator_with_declared_parameters(self):
@@ -341,8 +339,9 @@ class TestOperatorArgs(unittest.TestCase):
     def test_legacy_factory_dictionary(self):
         """未声明模型类的旧工厂写法仍可读取任意字典参数。"""
         op = makeFactorOperator(
-            sum_data, "Point", args={"Arity": 1, "DTMode": "多时点", "IDMode": "多ID",
+            sum_data, "Point", args={"DTMode": "多时点", "IDMode": "多ID",
                                      "ModelArgs": {"scale": 3}},
+            operand_info=(OperandSpec(Name="x"),),
         )
         np.testing.assert_allclose(self.read(op(self.factor)), self.data * 3)
 
@@ -356,9 +355,9 @@ class TestOperatorArgs(unittest.TestCase):
         for count in (2, 3):
             with self.subTest(count=count):
                 factor = op(*([self.factor] * count))
-                self.assertEqual(factor.Operator.Args.Arity, count)
+                self.assertEqual(len(factor.Descriptors), count)
                 np.testing.assert_allclose(self.read(factor), self.data * count)
-        self.assertIsNone(op.Args.Arity)
+        self.assertNotIn("Arity", type(op.Args).model_fields)
         self.assertEqual(op.QSID, original_id)
         with self.assertRaises((__QS_Error__, ValidationError)):
             op(self.factor)
@@ -378,25 +377,6 @@ class TestOperatorArgs(unittest.TestCase):
                 with self.assertRaises((__QS_Error__, ValidationError)):
                     op(*([self.factor] * count))
 
-    def test_fixed_operand_arity_mismatch_is_rejected(self):
-        """显式元数与固定槽位声明不一致时应拒绝构造。"""
-        with self.assertRaises((__QS_Error__, ValidationError)):
-            makeFactorOperator(sum_data, "Point", args={"Arity": 3},
-                               operand_info=(OperandSpec(Name="x"), OperandSpec(Name="y")))
-
-    def test_explicit_variadic_arity_obeys_bounds(self):
-        """显式元数在构造阶段也需满足固定前缀与尾部数量约束。"""
-        operands = (OperandSpec(Name="head"),
-                    OperandSpec(Name="tail", Variadic=True, MinNum=2, MaxNum=3))
-        for count in (1, 2, 5):
-            with self.subTest(arity=count):
-                with self.assertRaises((__QS_Error__, ValidationError)):
-                    makeFactorOperator(sum_data, "Point", args={"Arity": count}, operand_info=operands)
-        for count in (3, 4):
-            with self.subTest(arity=count):
-                op = makeFactorOperator(sum_data, "Point", args={"Arity": count}, operand_info=operands)
-                self.assertEqual(op.Args.Arity, count)
-
     def test_tolist_mask_filters_and_does_not_become_list_item(self):
         """掩码为零的位置为空，为一的位置仅包含输入数据。"""
         mask = self.mask
@@ -404,6 +384,93 @@ class TestOperatorArgs(unittest.TestCase):
         self.assertEqual(result.iloc[0, 0], [1.0])
         self.assertTrue(result.iloc[:, 1].isna().all())
         self.assertEqual(result.iloc[-1, 2], [18.0])
+
+    def test_operand_declarations_replace_arity(self):
+        """参数及序列化结果不保存 Arity，固定和可变输入均由声明校验。"""
+        op = self.scale_operator()
+        self.assertNotIn("Arity", type(op.Args).model_fields)
+        self.assertNotIn("Arity", op.serialize()["__qsargs__"])
+        with self.assertRaises(__QS_Error__):
+            op(self.factor, self.factor)
+        specs = (OperandSpec(Name="head"),
+                 OperandSpec(Name="tail", Variadic=True, MinNum=2, MaxNum=3))
+        op = makeFactorOperator(sum_data, "Point", operand_info=specs)
+        for count in (1, 2, 5):
+            with self.subTest(count=count), self.assertRaises(__QS_Error__):
+                op(*([self.factor] * count))
+        for count in (3, 4):
+            with self.subTest(count=count):
+                self.assertEqual(len(op(*([self.factor] * count)).Descriptors), count)
+
+    def test_binding_resizes_configs_and_regression_fields(self):
+        """每次调用独立生成描述子配置及回归字段，模板保持可复用。"""
+        for cls in (fo.RollingRegress, fo.SectionRegress, fo.PanelRegress):
+            op = cls()
+            original_id = op.QSID
+            for count in (2, 3, 2):
+                with self.subTest(operator=cls.__name__, count=count):
+                    factor = op(*([self.factor] * count))
+                    args = factor.Operator.Args
+                    for field in ("LookBack", "StartDT", "DescriptorSection"):
+                        if hasattr(args, field):
+                            self.assertEqual(len(getattr(args, field)), count)
+                    beta = [name for name, _ in args.CompoundType if name.startswith("beta")]
+                    self.assertEqual(beta, [f"beta{i}" for i in range(count - 1)])
+            self.assertEqual(op.QSID, original_id)
+
+    def test_removed_arity_is_rejected(self):
+        """已移除的数量参数按未知字段处理，不再转换为操作数声明。"""
+        with self.assertRaises(ValidationError):
+            makeFactorOperator(sum_data, "Point", args={"Arity": 2})
+        data = fo.Log().serialize()
+        data["__qsargs__"]["Arity"] = 1
+        with self.assertRaises(ValidationError):
+            FactorOperator.deserialize(data)
+
+    def test_arity_property_is_read_only_and_derived_from_operands(self):
+        """只读元数由声明推导，可变、分组和可选输入返回 None。"""
+        cases = ((fo.Log(), 1), (fo.Where(), 3), (fo.Sum(), None),
+                 (fo.Disaggregate(aggr_ids=self.ids), None),
+                 (fo.AggregateComponent(), None),
+                 (makeFactorOperator(sum_data, "Point"), None))
+        for op, expected in cases:
+            with self.subTest(operator=type(op).__name__):
+                self.assertEqual(op.Arity, expected)
+                with self.assertRaises(AttributeError):
+                    op.Arity = 2
+                self.assertEqual(op.Arity, expected)
+        self.assertIsNone(fo.Sum()(self.factor, self.factor).Operator.Arity)
+        self.assertEqual(fo.Log()(self.factor).Operator.Arity, 1)
+
+    def test_bound_config_validation_uses_actual_operand_count(self):
+        """绑定后的配置长度和自身迭代索引仍按实际输入数量校验。"""
+        bound = fo.RollingMean(window=2)(self.factor).Operator
+        for field, values in (("LookBack", [1, 1]), ("StartDT", [None, None])):
+            with self.subTest(field=field), self.assertRaises(__QS_Error__):
+                bound.new(args={field: values})(self.factor)
+        with self.assertRaises(__QS_Error__):
+            bound.new(args={"iInitFactor": 1})(self.factor)
+
+    def test_bound_regression_json_preserves_custom_output_fields(self):
+        """已绑定回归算子经 JSON 恢复后保留显式配置的复合字段。"""
+        op = fo.RollingRegress()(self.factor, self.factor).Operator
+        fields = [("custom_alpha", "double"), ("custom_beta", "double"), ("custom_r2", "double")]
+        op = op.new(args={"CompoundType": fields})
+        restored = FactorOperator.deserialize(json.loads(json.dumps(op.serialize())))
+        self.assertEqual(restored.QSID, op.QSID)
+        self.assertEqual(restored(self.factor, self.factor).Operator.Args.CompoundType, fields)
+
+    def test_disaggregate_keeps_optional_category_operand(self):
+        """反聚合绑定分组因子时保留第二个描述子及其截面。"""
+        values = pd.DataFrame([[10., 20.]] * len(self.dts),
+                              index=self.dts, columns=["x", "y"])
+        categories = pd.DataFrame([["x", "y", "x"]] * len(self.dts),
+                                  index=self.dts, columns=self.ids)
+        op = fo.Disaggregate(aggr_ids=["x", "y"], disaggr_ids=self.ids)
+        factor = op(DataFactor(data=values), cat_data=DataFactor(data=categories), factor_args={})
+        self.assertEqual(len(factor.Descriptors), 2)
+        self.assertEqual(factor.Operator.Args.DescriptorSection, [["x", "y"], self.ids])
+        np.testing.assert_allclose(self.read(factor), [[10., 20., 10.]] * len(self.dts))
 
     def test_tolist_mask_changes_factor_qsid(self):
         """同一描述子序列在掩码和普通输入两种语义下必须具有不同身份。"""
@@ -463,7 +530,7 @@ class TestOperatorArgs(unittest.TestCase):
         """JSON 往返保留内置、函数式及函数参数算子的类型、声明和计算。"""
         cases = (
             (fo.Log(base=2), np.log2(self.data), 0),
-            (self.scale_operator(scale=3, arity=1), self.data * 3, 0),
+            (self.scale_operator(scale=3), self.data * 3, 0),
             (fo.ApplyArrayFunc(func=np.floor), np.floor(self.data).iloc[2:], 2),
             (fo.RollingApply(func=np.nanmean, window=3, min_periods=3),
              self.data.rolling(3).mean().iloc[2:], 2),
@@ -497,7 +564,7 @@ class TestOperatorArgs(unittest.TestCase):
         self.assertEqual(factor_args, {"ModelArgs": {"note": "保留"}})
         self.assertNotIn("mask", op.Args.ModelArgs | {})
         self.assertEqual(op.QSID, original_id)
-        self.assertIsNone(op.Args.Arity)
+        self.assertNotIn("Arity", type(op.Args).model_fields)
         self.assertTrue(any(spec.Name == "mask" and not spec.Required for spec in op.Args.OperandInfo))
 
     def test_tolist_requires_data_operand_even_with_mask(self):
@@ -519,7 +586,7 @@ class TestOperatorArgs(unittest.TestCase):
 
     def test_dill_roundtrip(self):
         """多进程传输用的 dill 保留参数、身份和计算结果。"""
-        for op in (fo.Log(base=2), self.scale_operator(scale=3, arity=1)):
+        for op in (fo.Log(base=2), self.scale_operator(scale=3)):
             with self.subTest(operator=type(op).__name__):
                 restored = dill.loads(dill.dumps(op))
                 self.assertEqual(type(restored.Args.ModelArgs), type(op.Args.ModelArgs))

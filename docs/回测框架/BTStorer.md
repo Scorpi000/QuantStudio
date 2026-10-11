@@ -89,7 +89,7 @@ IC ─→ BTStorer (单独存 IC 结果)
 |---|---|---|---|
 | `Name` | `str` | `"BTStorer"` | 节点名称 |
 | `TargetDB` | `BTResultDB` | 必填 | 目标结果库对象 |
-| `GroupName` | `Optional[str]` | `None` | 结果组名称，支持路径层级。None 时按依赖节点 Name 自动生成 |
+| `GroupName` | `Optional[str]` | `None` | 父分组路径，支持路径层级。最终结果组为 `GroupName/依赖节点.Name`；None 或空字符串时直接使用依赖节点 Name |
 | `Metadata` | `Optional[dict]` | `None` | 元信息标签，透传给 BTResultDB.writeResult |
 
 ### split 模式
@@ -97,9 +97,19 @@ IC ─→ BTStorer (单独存 IC 结果)
 参考 FactorStorer，当 BTStorer 有多个依赖时，`__init__` 自动拆分为每个依赖一个子 Storer 实例，解决并行 Engine 的写入冲突：
 
 ```
-BTNode1(IC) ─┐                          ├─→ BTStorer (GroupName="IC")         → ResultDB
-BTNode2(账户)─┼─→ BTStorer(拆分前) ──────┼─→ BTStorer (GroupName="账户报告")   → ResultDB
-BTNode3(相关)─┘                          └─→ BTStorer (GroupName="相关性")     → ResultDB
+BTNode1(IC) ─┐                          ├─→ BTStorer → ResultDB: A股/IC
+BTNode2(账户)─┼─→ BTStorer(GroupName="A股")─┼─→ BTStorer → ResultDB: A股/账户
+BTNode3(相关)─┘                          └─→ BTStorer → ResultDB: A股/相关
+```
+
+子 Storer 继承同一个 `GroupName`，追加各自依赖节点的名称。设置 `split=False` 时由一个 Storer 逐个写入，结果组路径遵循相同规则。
+
+例如，依赖节点 `Report.Name == "报告"`，且 `GroupName="A股/IC测试"`，写入后的完整路径为 `"A股/IC测试/报告"`。读取结果及元信息时均使用完整路径：
+
+```python
+group_name = f"{Storer.Args.GroupName}/{Report.Name}"
+result = db.readResult(group_name)
+metadata = db.readMetaData(group_name)
 ```
 
 ## 未来扩展路径

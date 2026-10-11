@@ -9,7 +9,7 @@ import pandas as pd
 from QuantStudio.Core import __QS_Error__
 from QuantStudio.Core.QSObject import Panel
 from QuantStudio.Factor.Factor import Factor
-from QuantStudio.Factor.FactorOperation import PanelOperation, PanelOperator, SectionOperator, SectionOperation
+from QuantStudio.Factor.FactorOperation import PanelOperation, PanelOperator, SectionOperator, SectionOperation, OperandSpec
 from QuantStudio.Tools.StrategyTestFun import backtestPortfolioStrategy, backtestPortfolioStrategy_pd
 from QuantStudio.Tools.DataPreprocessingFun import numpy_ffill
 
@@ -25,9 +25,9 @@ class CalcMaskPortfolio(SectionOperator):
             args: 参数集
             config_file: 配置文件地址
         """
-        Arity = args.get("Arity", None) or 1
+        operand_count = 1
         Args = {"Name": "calcMaskPortfolio"} | args | {"DTMode": "多时点", "DataType": "double"}
-        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
+        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * operand_count
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
@@ -94,12 +94,12 @@ class CalcPortfolioNV(PanelOperator):
             args: 参数集
             config_file: 配置文件地址
         """
-        Arity = args.get("Arity", None) or 4
+        operand_count = 4
         Args = {"Name": "calcPortfolioNV"} | args | {"DTMode": "多时点", "DataType": "double", "iInitFactor": 0}
         Args["ModelArgs"] = {"calc_type": calc_type} | Args.get("ModelArgs", {})
-        Args["DescriptorSection"] = [None] + [descriptor_ids] * (Arity - 1)
-        Args["StartDT"] = [start_dt] * Arity
-        Args["LookBack"] = [1] + [0] * (Arity - 1)
+        Args["DescriptorSection"] = [None] + [descriptor_ids] * (operand_count - 1)
+        Args["StartDT"] = [start_dt] * operand_count
+        Args["LookBack"] = [1] + [0] * (operand_count - 1)
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
@@ -169,11 +169,11 @@ class CalcPortfolioReturn(PanelOperator):
             args: 参数集
             config_file: 配置文件地址
         """
-        Arity = args.get("Arity", None) or 2
+        operand_count = 2
         Args = {"Name": "calcPortfolioReturn"} | args | {"DTMode": "多时点", "DataType": "double"}
         Args["ModelArgs"] = {} | Args.get("ModelArgs", {})
-        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
-        Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * Arity
+        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * operand_count
+        Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * operand_count
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
@@ -251,10 +251,8 @@ class MergeTopDownSignal(SectionOperator):
             DescriptorSection = [top_ids] + [top_id_to_down_section[iID] for iID in top_ids if iID in top_id_to_down_section]
         else:
             DescriptorSection = args["DescriptorSection"]
-        Arity = args.get("Arity", None) or len(DescriptorSection)
-        if Arity != len(DescriptorSection):
-            raise __QS_Error__(f"传入的入参数(Arity) {Arity} 和从 top_id_to_down_section 推导出的入参数 {len(DescriptorSection)} 不一致!")
-        Args = {"Name": "mergeTopDownSignal"} | args | {"DTMode": "多时点", "DataType": "double", "Arity": Arity, "DescriptorSection": DescriptorSection}
+        operand_count = len(DescriptorSection)
+        Args = {"Name": "mergeTopDownSignal"} | args | {"DTMode": "多时点", "DataType": "double", "OperandInfo": tuple(OperandSpec() for _ in range(operand_count)), "DescriptorSection": DescriptorSection}
         Args["ModelArgs"] = {"merged_top_id": sorted(set(top_id_to_down_section).intersection(top_ids))} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 

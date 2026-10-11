@@ -12,7 +12,7 @@ from QuantStudio.Core.ParallelEngine import ParallelEngine
 from QuantStudio.Factor.Factor import DataFactor, FactorContext, FactorLocalContext
 from QuantStudio.Factor.BasicOperator import rename
 from QuantStudio.Factor.FactorCache import FeatherFactorCache
-from QuantStudio.Factor.FactorOperation import SectionOperation, PanelOperation, makeFactorOperator, FactorOperatorized
+from QuantStudio.Factor.FactorOperation import SectionOperation, PanelOperation, makeFactorOperator, FactorOperatorized, OperandSpec
 
 np.random.seed(0)
 nDT, nID = 10, 10
@@ -35,12 +35,12 @@ def test_point(f, idt, iid, x, args):
         return fib(n-1) + fib(n-2)
     fib(35)
     return (x[0] + x[1]) ** (1/3)
-test_point = makeFactorOperator(test_point, operator_type="Point", args={"Arity": 2, "DTMode": "单时点", "IDMode": "单ID"})
+test_point = makeFactorOperator(test_point, operator_type="Point", args={"OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "单时点", "IDMode": "单ID"})
 Factor4 = test_point(Factor1, Factor2, factor_args={"Name": "Factor4"})
 
 
 # 装饰器方式
-@FactorOperatorized(operator_type="Time", args={"Arity": 1, "IDMode": "多ID", "LookBack": [3 - 1]})
+@FactorOperatorized(operator_type="Time", args={"OperandInfo": (OperandSpec(),), "IDMode": "多ID", "LookBack": [3 - 1]})
 def test_time(f, idt, iid, x, args):
     return np.nansum(x[0], axis=0)
 Factor5 = test_time(Factor1, factor_args={"Name": "Factor5", "Meta": {"Description": "我是 Factor5!"}})
@@ -50,7 +50,7 @@ print(Factor5.getMetaData(key="Description"))
 # 直接实例化方式, 不推荐
 def test_section(f, idt, iid, x, args):
     return np.argsort(np.argsort(x[0]))
-test_section = makeFactorOperator(test_section, operator_type="Section", args={"Arity": 1, "DTMode": "单时点", "DescriptorSection": [SectionIDs]})
+test_section = makeFactorOperator(test_section, operator_type="Section", args={"OperandInfo": (OperandSpec(),), "DTMode": "单时点", "DescriptorSection": [SectionIDs]})
 Factor6 = SectionOperation(descriptors=[Factor2], args={"Name": "Factor6", "Operator": test_section})
 
 

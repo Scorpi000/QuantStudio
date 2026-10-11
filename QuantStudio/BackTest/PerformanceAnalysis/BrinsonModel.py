@@ -37,11 +37,11 @@ class CalcBrinsonModel(PanelOperator):
             descriptor_ids: 依赖因子的截面 ID 序列
             lookback: 在时间标尺上的回溯期数, 即回溯多久的数据来完成计算
         """
-        Arity = args.get("Arity", None) or 1
+        operand_count = 1
         Args = {"Name": "calcBrinsonModel"} | args | {"DTMode": "多时点", "DataType": "object"}
         Args["ModelArgs"] = {"section_ids": section_ids} | Args.get("ModelArgs", {})
-        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
-        Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * Arity
+        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * operand_count
+        Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * operand_count
         Args["CompoundType"] = [("BMK", "double"), ("BMKR", "double"), ("TP", "double"), ("TPR", "double"), ("AA", "double"), ("SS", "double"), ("IN", "double"), ("AAA", "double")]
         return super().__init__(args=Args, config_file=config_file, **kwargs)
     

@@ -250,7 +250,7 @@ class TestBTStorer(unittest.TestCase):
         pd.testing.assert_frame_equal(loaded["IC"], result["IC"])
 
     def test_custom_group_name(self):
-        """指定 GroupName 时应使用自定义名称."""
+        """指定 GroupName 时将依赖节点名称追加到父分组路径。"""
         result = {"初始资金": 50.0}
         node = self._make_bt_node("IC测试", result)
         storer = BTStorer(deps=[node], args={"TargetDB": self.db, "GroupName": "自定义组名"})
@@ -261,9 +261,27 @@ class TestBTStorer(unittest.TestCase):
             context=type("Ctx", (), {"PID": "0"})(),
         )
 
-        loaded = self.db.readResult("自定义组名")
+        loaded = self.db.readResult("自定义组名/IC测试")
         self.assertIsNotNone(loaded)
         self.assertEqual(loaded["初始资金"], 50.0)
+
+    def test_custom_group_name_with_multiple_deps(self):
+        """拆分和不拆分模式均按父路径与节点名称分别存储结果。"""
+        nodes = [self._make_bt_node("IC节点", {"值": 1}),
+                 self._make_bt_node("账户节点", {"值": 2})]
+        ctx = type("Ctx", (), {"PID": "0"})()
+        for split in (True, False):
+            with self.subTest(split=split):
+                prefix = f"自定义组名/模式_{split}"
+                storer = BTStorer(deps=nodes, args={"TargetDB": self.db, "GroupName": prefix},
+                                  split=split)
+                if split:
+                    for child, node in zip(storer.Deps, nodes):
+                        child.backward_compute([child.QSID], [node._result], ctx)
+                else:
+                    storer.backward_compute([storer.QSID], [node._result for node in nodes], ctx)
+                for node in nodes:
+                    self.assertEqual(self.db.readResult(f"{prefix}/{node.Name}"), node._result)
 
     def test_split_mode_multiple_deps(self):
         """多个依赖: 自动拆分为子 Storer, 各自写入."""

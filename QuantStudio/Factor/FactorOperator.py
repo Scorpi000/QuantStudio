@@ -34,7 +34,7 @@ class AsType(PointOperator):
         Args:
             dtype: 新的数据类型
         """
-        Args = {"Name": "astype", "DataType": dtype} | args | {"Arity": 1, "DTMode": "多时点", "IDMode": "多ID"}
+        Args = {"Name": "astype", "DataType": dtype} | args | {"DTMode": "多时点", "IDMode": "多ID"}
         Args["ModelArgs"] = {"dtype": dtype} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
@@ -64,7 +64,7 @@ class Log(PointOperator):
         Args:
             base: 底数
         """
-        Args = {"Name": "log"} | args | {"Arity": 1, "DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
+        Args = {"Name": "log"} | args | {"DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
         Args["ModelArgs"] = {"base": base} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
@@ -80,7 +80,7 @@ class NotNull(PointOperator):
 
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
         """初始化非NULL检测算子"""
-        Args = {"Name": "notnull"} | args | {"Arity": 1, "DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
+        Args = {"Name": "notnull"} | args | {"DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
@@ -102,7 +102,7 @@ class IsIn(PointOperator):
         Args:
             test_elements: 给定的检测集合
         """
-        Args = {"Name": "isin"} | args | {"Arity": 1, "DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
+        Args = {"Name": "isin"} | args | {"DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
         Args["ModelArgs"] = {"test_elements": test_elements} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
@@ -127,7 +127,7 @@ class ApplyArrayFunc(PointOperator):
             func: 施加到每个因子值的函数
             dtype: func 函数返回值的数据类型
         """
-        Args = {"Name": "applyArrayFunc", "DataType": dtype} | args | {"Arity": 1, "DTMode": "多时点", "IDMode": "多ID"}
+        Args = {"Name": "applyArrayFunc", "DataType": dtype} | args | {"DTMode": "多时点", "IDMode": "多ID"}
         Args["ModelArgs"] = {"func": func, "dtype": dtype} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
@@ -152,7 +152,7 @@ class Applymap(PointOperator):
             func: 施加到每个因子值的函数
             dtype: func 函数返回值的数据类型
         """
-        Args = {"Name": "applymap", "DataType": dtype} | args | {"Arity": 1, "DTMode": "多时点", "IDMode": "多ID"}
+        Args = {"Name": "applymap", "DataType": dtype} | args | {"DTMode": "多时点", "IDMode": "多ID"}
         Args["ModelArgs"] = {"func": func, "dtype": dtype} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
@@ -179,7 +179,7 @@ class Where(PointOperator):
         Args:
             dtype: where 操作返回值的数据类型
         """
-        Args = {"Name": "where", "DataType": dtype} | args | {"Arity": 3, "DTMode": "多时点", "IDMode": "多ID"}
+        Args = {"Name": "where", "DataType": dtype} | args | {"DTMode": "多时点", "IDMode": "多ID"}
         Args["ModelArgs"] = {"dtype": dtype} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
@@ -202,7 +202,7 @@ class Fetch(PointOperator):
         OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="x", Title="复合因子", Required=True, Description="待提取的复合因子"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, pos:Union[int, str]=0, dtype:Literal["double", "string", "object"]="double", compound_type:List[Tuple[str, Literal["double", "string", "object"]]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        Args = {"Name": "fetch", "DataType": dtype} | args | {"Arity": 1, "DTMode": "多时点", "IDMode": "多ID"}
+        Args = {"Name": "fetch", "DataType": dtype} | args | {"DTMode": "多时点", "IDMode": "多ID"}
         Args["ModelArgs"] = {"pos": pos, "dtype": dtype, "compound_type": compound_type} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
@@ -396,7 +396,6 @@ class Regress(PointOperator):
     """OLS 回归"""
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
-        Arity: Optional[int] = Field(default=None, ge=2, title="入参数", frozen=True)
         ModelArgs: RegressArgs = Field(default_factory=RegressArgs, title="模型参数")
         OperandInfo: Tuple[OperandSpec, ...] = Field(default=(
             OperandSpec(Name="x", Title="观测序列", Required=True, Variadic=True, MinNum=2,
@@ -430,8 +429,8 @@ class Regress(PointOperator):
         if args.output=="alpha": return Alpha
         return rfn.unstructured_to_structured(np.array([Alpha, Beta]).swapaxes(0, -1)).T
 
-    def _QS_updateArgs(self, args, updates):
-        args = super()._QS_updateArgs(args, updates)
+    def _QS_updateArgs(self, args, updates, operand_count=None):
+        args = super()._QS_updateArgs(args, updates, operand_count)
         if args["ModelArgs"].output == self.Args.ModelArgs.output:
             return args
         if "CompoundType" not in updates:
@@ -444,7 +443,6 @@ class RegressChangeRate(PointOperator):
     """以回归方式计算增长率"""
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
-        Arity: Optional[int] = Field(default=None, ge=2, title="入参数", frozen=True)
         OperandInfo: Tuple[OperandSpec, ...] = Field(default=(
             OperandSpec(Name="x", Title="观测序列", Required=True, Variadic=True, MinNum=2,
                         Description="按输入顺序组成观测序列，以序号为自变量回归"),
@@ -538,7 +536,7 @@ class Lag(TimeOperator):
 
     def __init__(self, lag_period:int=1, window:Optional[int]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         if window is None: window = lag_period
-        Args = {"Name": "lag", "LookBack": [window], "DataType": "double"} | args | {"Arity": 1, "DTMode": "多时点", "IDMode": "多ID"}
+        Args = {"Name": "lag", "LookBack": [window], "DataType": "double"} | args | {"DTMode": "多时点", "IDMode": "多ID"}
         Args["ModelArgs"] = {"window": window, "lag_period": lag_period} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
@@ -563,8 +561,8 @@ class Lag(TimeOperator):
         else:
             return super().__call__(f, factor_args=factor_args, **kwargs)
 
-    def _QS_updateArgs(self, args, updates):
-        args = super()._QS_updateArgs(args, updates)
+    def _QS_updateArgs(self, args, updates, operand_count=None):
+        args = super()._QS_updateArgs(args, updates, operand_count)
         if "LookBack" not in updates and args["ModelArgs"].window != self.Args.ModelArgs.window:
             args["LookBack"] = [args["ModelArgs"].window]
         return args
@@ -583,7 +581,7 @@ class RollingRank(TimeOperator):
         OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="x", Title="输入因子", Required=True, Description="待滚动排名的因子"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, window:int=1, min_periods:int=1, ascending:bool=True, uniformization:bool=True, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        Args = {"Name": "rollingRank", "LookBack": [window - 1]} | args | {"Arity": 1, "DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
+        Args = {"Name": "rollingRank", "LookBack": [window - 1]} | args | {"DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
         Args["ModelArgs"] = {"window": window, "min_periods": min_periods, "ascending": ascending, "uniformization": uniformization} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
@@ -612,7 +610,7 @@ class RollingMean(TimeOperator):
 
     def __init__(self, window:int=1, min_periods:int=1, weights:Optional[List[float]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         if weights is not None: window = len(weights)
-        Args = {"Name": "rollingMean", "LookBack": [window - 1]} | args | {"Arity": 1, "DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
+        Args = {"Name": "rollingMean", "LookBack": [window - 1]} | args | {"DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
         Args["ModelArgs"] =  {"window": window, "min_periods": min_periods, "weights": weights} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
@@ -640,7 +638,7 @@ class RollingApply(TimeOperator):
         OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="x", Title="输入因子", Required=True, Description="待滚动运算的因子"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, func:Callable[[np.ndarray], Any]=np.nansum, dtype:Literal["double", "string", "object"]="double", window:int=1, min_periods:int=1, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        Args = {"Name": "rollingApply", "LookBack": [window - 1], "DataType": dtype} | args | {"Arity": 1, "DTMode": "多时点", "IDMode": "多ID"}
+        Args = {"Name": "rollingApply", "LookBack": [window - 1], "DataType": dtype} | args | {"DTMode": "多时点", "IDMode": "多ID"}
         Args["ModelArgs"] = {"func": func, "dtype": dtype, "window": window, "min_periods": min_periods} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
@@ -668,7 +666,7 @@ class RollingChangeRate(TimeOperator):
         OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="x", Title="输入因子", Required=True, Description="待计算增长率的因子"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, window:int=1, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        Args = {"Name": "rollingChangeRate", "LookBack": [window - 1]} | args | {"Arity": 1, "DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
+        Args = {"Name": "rollingChangeRate", "LookBack": [window - 1]} | args | {"DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
         Args["ModelArgs"] = {"window": window} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
@@ -701,13 +699,13 @@ class RollingRegress(TimeOperator):
         ), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, window:int=1, min_periods:int=1, intercept:bool=True, output:Optional[str]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        Arity = args.get("Arity", None) or 1
+        operand_count = 1
         Args = {"Name": "rollingRegress"} | args | {"DataType": "double", "DTMode": "单时点", "IDMode": "单ID"}
         Args["ModelArgs"] = {"window": window, "min_periods": min_periods, "intercept": intercept, "output": output} | Args.get("ModelArgs", {})
-        Args["LookBack"] = [Args["ModelArgs"]["window"] - 1] * Arity
+        Args["LookBack"] = [Args["ModelArgs"]["window"] - 1] * operand_count
         if Args["ModelArgs"]["output"] is None:
             Args["DataType"] = "object"
-            Args["CompoundType"] = [("alpha", "double")] + [(f"beta{i}", "double") for i in range(max(1, Arity - 1))] + [("r2", "double")]
+            Args["CompoundType"] = [("alpha", "double")] + [(f"beta{i}", "double") for i in range(max(1, operand_count - 1))] + [("r2", "double")]
         else:
             Args["DataType"] = "double"
         return super().__init__(args=Args, config_file=config_file, **kwargs)
@@ -727,12 +725,12 @@ class RollingRegress(TimeOperator):
     def __call__(self, endog:Factor, *exog:Factor, factor_args:dict={}, **kwargs) -> TimeOperation:
         return super().__call__(endog, *exog, factor_args=factor_args, **kwargs)
 
-    def _QS_updateArgs(self, args, updates):
-        args = super()._QS_updateArgs(args, updates)
-        if args.get("Arity") == self.Args.Arity and args["ModelArgs"].output == self.Args.ModelArgs.output:
+    def _QS_updateArgs(self, args, updates, operand_count=None):
+        args = super()._QS_updateArgs(args, updates, operand_count)
+        if (operand_count is None or operand_count == getattr(self, "_OperandCount", None)) and args["ModelArgs"].output == self.Args.ModelArgs.output:
             return args
         if "CompoundType" not in updates:
-            arity = args.get("Arity") or 1
+            arity = operand_count or getattr(self, "_OperandCount", None) or 1
             args["CompoundType"] = ([("alpha", "double")] +
                 [(f"beta{i}", "double") for i in range(max(1, arity - 1))] + [("r2", "double")]
                 if args["ModelArgs"].output is None else [])
@@ -756,11 +754,11 @@ class SectionRank(SectionOperator):
         ), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, ascending:bool=True, uniformization:bool=True, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        Arity = args.get("Arity", None) or 1
+        operand_count = 1
         Args = {"Name": "rankSection"} | args | {"DataType": "double", "DTMode": "多时点"}
         Args["ModelArgs"] = {"uniformization": uniformization, "ascending": ascending} | Args.get("ModelArgs", {})
         descriptor_ids = Args.get("DescriptorSection", [None])[0]
-        Args["DescriptorSection"] = [descriptor_ids] * Arity
+        Args["DescriptorSection"] = [descriptor_ids] * operand_count
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
@@ -807,11 +805,11 @@ class Aggregate(SectionOperator):
         ), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, aggr_func:Callable[[np.ndarray], Any]=np.nansum, descriptor_ids:Optional[List[str]]=None, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
-        Arity = args.get("Arity", None) or 1
+        operand_count = 1
         Args = {"Name": "aggregate"} | args | {"DataType": dtype, "DTMode": "单时点"}
         Args["ModelArgs"] = {"aggr_func": aggr_func, "dtype": dtype} | Args.get("ModelArgs", {})
         descriptor_ids = Args.get("DescriptorSection", [descriptor_ids])[0]
-        Args["DescriptorSection"] = [descriptor_ids] * Arity
+        Args["DescriptorSection"] = [descriptor_ids] * operand_count
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
     def calculate(self, f: Factor, idt: dt.datetime, iid: List[str], x: List[np.ndarray], args: AggregateArgs) -> np.ndarray:
@@ -854,18 +852,14 @@ class Disaggregate(SectionOperator):
     """截面反聚合"""
 
     class __QS_ArgClass__(SectionOperator.__QS_ArgClass__):
-        Arity: Optional[int] = Field(default=None, ge=1, le=2, title="入参数", frozen=True)
         OperandInfo: Tuple[OperandSpec, ...] = Field(default=(
             OperandSpec(Name="f", Title="待反聚合因子", Required=True, Description="待反聚合的因子"),
             OperandSpec(Name="cat_data", Title="分组因子", Required=False, Description="分组因子, 按聚合 ID 反聚合"),
         ), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, aggr_ids:List[str], disaggr_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        Arity = args.get("Arity", None) or 1
         Args = {"Name": "disaggregate", "DataType": "double"} | args | {"DTMode": "多时点"}
         DescriptorSection = Args.get("DescriptorSection", [aggr_ids, disaggr_ids])
-        if len(DescriptorSection) < Arity: DescriptorSection.append(disaggr_ids)
-        elif len(DescriptorSection) > Arity: DescriptorSection = DescriptorSection[:Arity]
         Args["DescriptorSection"] = DescriptorSection
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
@@ -893,7 +887,7 @@ class Disaggregate(SectionOperator):
         if DataType != self._QSArgs.DataType:
             return super(Disaggregate, self.new(args={"DataType": DataType}, **kwargs["operator_kwargs"])).__call__(*Factors, factor_args=factor_args, **kwargs)
         else:
-            return super().__call__(f, factor_args=factor_args, **kwargs)
+            return super().__call__(*Factors, factor_args=factor_args, **kwargs)
 
 class ConcatSectionArgs(OperatorModelArgs):
     dtype: Literal["double", "string", "object"] = Field(default="double", title="数据类型", description="拼接结果的数据类型")
@@ -908,11 +902,11 @@ class ConcatSection(SectionOperator):
         ), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, descriptor_sections:List[List[str]]=[], dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
-        Arity = args.get("Arity", None) or max(1, len(descriptor_sections))
+        operand_count = max(1, len(descriptor_sections))
         Args = {"Name": "concatSection", "DataType": dtype} | args | {"DTMode": "多时点"}
         Args["ModelArgs"] = {"dtype": dtype} | Args.get("ModelArgs", {})
         DescriptorSection = Args.get("DescriptorSection", descriptor_sections)
-        Args["DescriptorSection"] = DescriptorSection[:Arity] + [None] * max(0, Arity - len(DescriptorSection))
+        Args["DescriptorSection"] = DescriptorSection[:operand_count] + [None] * max(0, operand_count - len(DescriptorSection))
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: ConcatSectionArgs) -> np.ndarray:
@@ -930,7 +924,7 @@ class ChgSection(SectionOperator):
         OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="f", Title="输入因子", Required=True, Description="待修改截面的因子"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, old_ids:List[str], id_map:Dict[str, str]={}, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        Args = {"Name": "chgSection", "DataType": "double"} | args | {"Arity": 1, "DTMode": "多时点"}
+        Args = {"Name": "chgSection", "DataType": "double"} | args | {"DTMode": "多时点"}
         Args["ModelArgs"] = {"id_map": id_map} | Args.get("ModelArgs", {})
         if "DescriptorSection" not in Args: Args["DescriptorSection"] = [old_ids]
         return super().__init__(args=Args, config_file=config_file, **kwargs)
@@ -970,14 +964,14 @@ class SectionRegress(SectionOperator):
         ), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, intercept:bool=True, output:Optional[str]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        Arity = args.get("Arity", None) or 1
+        operand_count = 1
         Args = {"Name": "regressSection"} | args | {"DTMode": "单时点"}
         Args["ModelArgs"] = {"intercept": intercept, "output": output} | Args.get("ModelArgs", {})
         descriptor_ids = Args.get("DescriptorSection", [None])[0]
-        Args["DescriptorSection"] = [descriptor_ids] * Arity
+        Args["DescriptorSection"] = [descriptor_ids] * operand_count
         if Args["ModelArgs"]["output"] is None:
             Args["DataType"] = "object"
-            Args["CompoundType"] = [("alpha", "double")] + [(f"beta{i}", "double") for i in range(max(1, Arity - 1))] + [("resid", "double")]
+            Args["CompoundType"] = [("alpha", "double")] + [(f"beta{i}", "double") for i in range(max(1, operand_count - 1))] + [("resid", "double")]
         else:
             Args["DataType"] = "double"
         return super().__init__(args=Args, config_file=config_file, **kwargs)
@@ -1000,12 +994,12 @@ class SectionRegress(SectionOperator):
     def __call__(self, endog:Factor, *exog:Factor, factor_args:dict={}, **kwargs) -> SectionOperation:
         return super().__call__(endog, *exog, factor_args=factor_args, **kwargs)
 
-    def _QS_updateArgs(self, args, updates):
-        args = super()._QS_updateArgs(args, updates)
-        if args.get("Arity") == self.Args.Arity and args["ModelArgs"].output == self.Args.ModelArgs.output:
+    def _QS_updateArgs(self, args, updates, operand_count=None):
+        args = super()._QS_updateArgs(args, updates, operand_count)
+        if (operand_count is None or operand_count == getattr(self, "_OperandCount", None)) and args["ModelArgs"].output == self.Args.ModelArgs.output:
             return args
         if "CompoundType" not in updates:
-            arity = args.get("Arity") or 1
+            arity = operand_count or getattr(self, "_OperandCount", None) or 1
             args["CompoundType"] = ([("alpha", "double")] +
                 [(f"beta{i}", "double") for i in range(max(1, arity - 1))] + [("resid", "double")]
                 if args["ModelArgs"].output is None else [])
@@ -1043,7 +1037,7 @@ class AggregateComponent(SectionOperator):
         ModelArgs = args.get("ModelArgs", {})
         Args = {"Name": "aggregateComponent"} | args | {"DataType": dtype, "DTMode": "单时点"}
         Args["ModelArgs"] = {"aggr_func": aggr_func, "dtype": dtype, "include_component_code": include_component_code} | ModelArgs
-        Args.setdefault("DescriptorSection", [descriptor_ids] * (Args.get("Arity") or 1))
+        Args.setdefault("DescriptorSection", [descriptor_ids] * (1))
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
     def calculate(self, f: Factor, idt: dt.datetime, iid: List[str], x: List[np.ndarray], args: AggregateComponentArgs) -> np.ndarray:
@@ -1073,7 +1067,6 @@ class AggregateComponent(SectionOperator):
         operator_kwargs = dict(kwargs.pop("operator_kwargs", {}))
         descriptor_ids = operator_kwargs.pop("descriptor_ids", self.Args.DescriptorSection[-1])
         args = operator_kwargs.pop("args", {}) | {
-            "Arity": 1 + len(component_data) + len(exog),
             "DescriptorSection": [None] * (1 + len(component_data)) + [descriptor_ids] * len(exog),
         }
         factor_args = factor_args | {"ModelArgs": factor_args.get("ModelArgs", {}) | {
@@ -1100,15 +1093,15 @@ class PanelRegress(PanelOperator):
         ), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, window:int=1, intercept:bool=True, output:Optional[str]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        Arity = args.get("Arity", None) or 1
+        operand_count = 1
         Args = {"Name": "regressPanel"} | args | {"DTMode": "单时点"}
         Args["ModelArgs"] = {"window": window, "intercept": intercept, "output": output} | Args.get("ModelArgs", {})
         descriptor_ids = Args.get("DescriptorSection", [None])[0]
-        Args["DescriptorSection"] = [descriptor_ids] * Arity
-        Args["LookBack"] = [Args["ModelArgs"]["window"] - 1] * Arity
+        Args["DescriptorSection"] = [descriptor_ids] * operand_count
+        Args["LookBack"] = [Args["ModelArgs"]["window"] - 1] * operand_count
         if Args["ModelArgs"]["output"] is None:
             Args["DataType"] = "object"
-            Args["CompoundType"] = [("alpha", "double")] + [(f"beta{i}", "double") for i in range(max(1, Arity - 1))] + [("resid", "double")]
+            Args["CompoundType"] = [("alpha", "double")] + [(f"beta{i}", "double") for i in range(max(1, operand_count - 1))] + [("resid", "double")]
         else:
             Args["DataType"] = "double"
         return super().__init__(args=Args, config_file=config_file, **kwargs)
@@ -1133,12 +1126,12 @@ class PanelRegress(PanelOperator):
     def __call__(self, endog:Factor, *exog:Factor, factor_args:dict={}, **kwargs) -> PanelOperation:
         return super().__call__(endog, *exog, factor_args=factor_args, **kwargs)
 
-    def _QS_updateArgs(self, args, updates):
-        args = super()._QS_updateArgs(args, updates)
-        if args.get("Arity") == self.Args.Arity and args["ModelArgs"].output == self.Args.ModelArgs.output:
+    def _QS_updateArgs(self, args, updates, operand_count=None):
+        args = super()._QS_updateArgs(args, updates, operand_count)
+        if (operand_count is None or operand_count == getattr(self, "_OperandCount", None)) and args["ModelArgs"].output == self.Args.ModelArgs.output:
             return args
         if "CompoundType" not in updates:
-            arity = args.get("Arity") or 1
+            arity = operand_count or getattr(self, "_OperandCount", None) or 1
             args["CompoundType"] = ([("alpha", "double")] +
                 [(f"beta{i}", "double") for i in range(max(1, arity - 1))] + [("resid", "double")]
                 if args["ModelArgs"].output is None else [])
@@ -1176,12 +1169,12 @@ class AggregatePanel(PanelOperator):
         ), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, aggr_func:Callable[[np.ndarray], Any]=np.nansum, window:int=1, descriptor_ids:Optional[List[str]]=None, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
-        Arity = args.get("Arity", None) or 1
+        operand_count = 1
         Args = {"Name": "aggregatePanel"} | args | {"DataType": dtype, "DTMode": "单时点"}
         Args["ModelArgs"] = {"aggr_func": aggr_func, "dtype": dtype, "window": window} | Args.get("ModelArgs", {})
         descriptor_ids = Args.get("DescriptorSection", [descriptor_ids])[0]
-        Args["DescriptorSection"] = [descriptor_ids] * Arity
-        Args["LookBack"] = [Args["ModelArgs"]["window"] - 1] + [0] * (Arity - 1)
+        Args["DescriptorSection"] = [descriptor_ids] * operand_count
+        Args["LookBack"] = [Args["ModelArgs"]["window"] - 1] + [0] * (operand_count - 1)
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
     def calculate(self, f: Factor, idt: dt.datetime, iid: List[str], x: List[np.ndarray], args: AggregatePanelArgs) -> np.ndarray:
@@ -1255,8 +1248,8 @@ class AggregateComponentPanel(PanelOperator):
         ModelArgs = args.get("ModelArgs", {})
         Args = {"Name": "aggregateComponentPanel"} | args | {"DataType": dtype, "DTMode": "单时点"}
         Args["ModelArgs"] = {"aggr_func": aggr_func, "dtype": dtype, "window": window} | ModelArgs
-        Args.setdefault("DescriptorSection", [descriptor_ids] * (Args.get("Arity") or 1))
-        Args.setdefault("LookBack", [Args["ModelArgs"]["window"] - 1] * (Args.get("Arity") or 1))
+        Args.setdefault("DescriptorSection", [descriptor_ids] * (1))
+        Args.setdefault("LookBack", [Args["ModelArgs"]["window"] - 1] * (1))
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: AggregateComponentPanelArgs) -> np.ndarray:
@@ -1299,15 +1292,14 @@ class AggregateComponentPanel(PanelOperator):
         kwargs["_qs_bound"] = True
         operator_kwargs = dict(kwargs.pop("operator_kwargs", {}))
         descriptor_ids = operator_kwargs.pop("descriptor_ids", self.Args.DescriptorSection[-1])
-        nArity = 1 + len(component_data) + len(exog)
+        operand_count = 1 + len(component_data) + len(exog)
         window = operator_kwargs.get("window", self.Args.ModelArgs.window)
         model = operator_kwargs.get("args", {}).get("ModelArgs", {})
         window = model.get("window", window)
         args = operator_kwargs.pop("args", {}) | {
-            "Arity": nArity,
             "DescriptorSection": [None] * (1 + len(component_data)) + [descriptor_ids] * len(exog),
             "LookBack": [0] * (1 + len(component_data)) + [window - 1] * len(exog),
-            "StartDT": [None] * nArity,
+            "StartDT": [None] * operand_count,
         }
         factor_args = factor_args | {"ModelArgs": factor_args.get("ModelArgs", {}) | {
             "endog_num": len(component_data), "exog_num": len(exog),

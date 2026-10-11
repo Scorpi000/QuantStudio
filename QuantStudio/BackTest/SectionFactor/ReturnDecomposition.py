@@ -32,11 +32,11 @@ class CalcFamaMacBethRegression(PanelOperator):
             lookback: 在时间标尺上的回溯期数, 即回溯多久的数据来完成计算
             period_lookback: 在计算标尺上的回溯期数, 数据的时间序列是日度的，但回归的计算时间序列是月度的，该参数表示用回溯多少个月的因子值来和当前收益率来回归
         """
-        Arity = args.get("Arity", None) or 1
+        operand_count = 1
         Args = {"Name": "calcFamaMacBethRegression"} | args | {"DTMode": "单时点", "DataType": "object"}
         Args["ModelArgs"] = {"period_lookback": period_lookback} | Args.get("ModelArgs", {})
-        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * Arity
-        Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * Arity
+        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * operand_count
+        Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * operand_count
         Args["CompoundType"] = [
             ("PureReturn", "double"), ("PureT", "double"), ("PureF", "double"), ("PureR", "double"), ("PureRAdj", "double"),
             ("RawReturn", "double"), ("RawT", "double"), ("RawF", "double"), ("RawR", "double"), ("RawRAdj", "double")

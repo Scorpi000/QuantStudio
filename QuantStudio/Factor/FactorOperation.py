@@ -136,8 +136,7 @@ class FactorOperator(__QS_Object__):
         OperatorType: Literal["Point", "Time", "Section", "Panel"] = Field(title="算子类型", frozen=True)
         Name: str = Field(default="FactorOperator", title="名称", frozen=True, exclude=True)
         ModelArgs: SerializeAsAny[OperatorModelArgs] = Field(default_factory=OperatorModelArgs, title="模型参数", frozen=True)
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(), title="操作数声明", frozen=True, exclude=True)
-        Arity: Optional[int] = Field(default=None, ge=1, title="入参数量", frozen=True)
+        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Variadic=True, MinNum=1),), title="操作数声明", frozen=True, exclude=True)
         DataType: Literal["double", "string", "object"] = Field(default="double",title="数据类型", frozen=True)
         Description: str = Field(default="", title="描述信息", frozen=False, exclude=True)
         Meta: Dict[str, Any] = Field(default={}, title="元信息", frozen=False, exclude=True)
@@ -149,9 +148,6 @@ class FactorOperator(__QS_Object__):
             return super().__init__(**data)
 
         def model_post_init(self, context: Any, /) -> None:
-            # 校验 Arity 与 OperandInfo 的一致性:
-            # 可变元数算子的 Arity 由实际调用确定, 只校验上下界;
-            # 必填槽位数 <= Arity <= 槽位总数
             OperandInfo = self.OperandInfo
             names = [spec.Name for spec in OperandInfo if spec.Name]
             if len(names) != len(set(names)):
@@ -160,10 +156,6 @@ class FactorOperator(__QS_Object__):
             tails = [i for i, spec in enumerate(positional) if spec.Variadic and not spec.Grouped]
             if tails and (len(tails) > 1 or tails[0] != len(positional) - 1):
                 raise __QS_Error__("展开式可变操作数必须是最后一个位置参数!")
-            if self.Arity is not None and OperandInfo:
-                MinArity, MaxArity = _operand_bounds(OperandInfo)
-                if (self.Arity < MinArity) or ((MaxArity is not None) and (self.Arity > MaxArity)):
-                    raise __QS_Error__(f"算子 {self.Name} 的 Arity({self.Arity}) 超出了 OperandInfo 声明的范围 [{MinArity}, {MaxArity if MaxArity is not None else '不限'}]!")
             return super().model_post_init(context)
     
     def __getstate__(self):
@@ -180,6 +172,14 @@ class FactorOperator(__QS_Object__):
     def Name(self) -> str:
         """算子名称"""
         return self._QSArgs.Name
+
+    @property
+    def Arity(self) -> Optional[int]:
+        """声明的固定输入数量；含可变或可选操作数时返回 None。"""
+        specs = self._QSArgs.OperandInfo
+        if any(spec.Variadic or not spec.Required for spec in specs):
+            return None
+        return len(specs)
     
     def model_dump(self):
         DumpedModel = super().model_dump()
@@ -201,11 +201,11 @@ class FactorOperator(__QS_Object__):
         __QS_Object__.__init__(op, args=args, config_file=None, **kwargs)
         return op
 
-    def _QS_updateArgs(self, args, updates):
+    def _QS_updateArgs(self, args, updates, operand_count=None):
         """更新与元数、窗口和输出类型有关的派生配置。"""
         old_model = self.Args.ModelArgs
         model = args["ModelArgs"]
-        arity = args.get("Arity")
+        arity = operand_count
         for field in ("LookBack", "StartDT", "DescriptorSection"):
             if arity is not None and field in args and field not in updates:
                 values = args[field]
@@ -221,6 +221,7 @@ class FactorOperator(__QS_Object__):
         return args
 
     def new(self, args={}, **kwargs):
+        operand_count = kwargs.pop("_qs_operand_count", getattr(self, "_OperandCount", None))
         Args = _copy_operator_value(self._QSArgs | {}) | args
         model_values = _copy_operator_value(self.Args.ModelArgs | {})
         # 兼容原 operator_kwargs 中直接传入的模型构造形参。
@@ -230,11 +231,12 @@ class FactorOperator(__QS_Object__):
             Args["ModelArgs"] = _copy_operator_value(supplied)
         else:
             Args["ModelArgs"] = type(self.Args.ModelArgs)(**(model_values | model_updates | supplied))
-        Args = self._QS_updateArgs(Args, args)
+        Args = self._QS_updateArgs(Args, args, operand_count)
         # 重建不再读取配置文件，防止本地配置覆盖保存的完整参数。
         kwargs.pop("config_file", None)
         NewOperator = self._QS_fromArgs(Args, **({"logger": self._QS_Logger} | kwargs))
         NewOperator._ConfigFile = self._ConfigFile
+        NewOperator._OperandCount = operand_count
         if getattr(self.calculate, "__self__", None) != self:
             NewOperator.calculate = self.calculate
         return NewOperator
@@ -312,26 +314,35 @@ class FactorOperator(__QS_Object__):
         # 参数已完整恢复并校验，直接初始化对象，避免内置构造函数要求
         # func/aggr_ids 等位置参数，或重新推导并覆盖保存的配置。
         op = cls._QS_fromArgs(Args | {})
+        # 已绑定的配置列表记录了实际数量，恢复后可保留自定义输出字段。
+        counts = [len(getattr(op.Args, field)) for field in
+                  ("LookBack", "StartDT", "DescriptorSection") if hasattr(op.Args, field)]
+        if counts and counts[0] > 0 and len(set(counts)) == 1:
+            op._OperandCount = counts[0]
         cls._deserialize_calculate(op, data.get("calculate_ref"))
         return op
     # endregion
     
     def _QS_validate(self, *x, **kwargs):
-        Arity = len(x)
+        operand_count = len(x)
         OperandInfo = self._QSArgs.OperandInfo
         # 可变元数算子: 校验实参个数是否落在 OperandInfo 声明的范围内
         if OperandInfo:
-            MinArity, MaxArity = _operand_bounds(OperandInfo)
-            if Arity < MinArity:
-                raise __QS_Error__(f"因子算子 {self._QSArgs.Name} 至少需要 {MinArity} 个操作数, 实际传入 {Arity} 个!")
-            if (MaxArity is not None) and (Arity > MaxArity):
-                raise __QS_Error__(f"因子算子 {self._QSArgs.Name} 最多接受 {MaxArity} 个操作数, 实际传入 {Arity} 个!")
-        if self._QSArgs.Arity is None:
-            return self.new(args={"Arity": Arity}, **kwargs)
-        elif Arity != self._QSArgs.Arity:
-            raise __QS_Error__(f"因子算子 {self._QSArgs.Name} 实际传入的因子数量 {Arity} 和指定的入参数 {self._QSArgs.Arity} 不符!")
-        else:
-            return self
+            minimum, maximum = _operand_bounds(OperandInfo)
+            if operand_count < minimum:
+                raise __QS_Error__(f"因子算子 {self.Name} 至少需要 {minimum} 个操作数, 实际传入 {operand_count} 个!")
+            if maximum is not None and operand_count > maximum:
+                raise __QS_Error__(f"因子算子 {self.Name} 最多接受 {maximum} 个操作数, 实际传入 {operand_count} 个!")
+        if operand_count < 1:
+            raise __QS_Error__("因子算子至少需要一个操作数!")
+        operator = (self if getattr(self, "_OperandCount", None) == operand_count else
+                    self.new(_qs_operand_count=operand_count, **kwargs))
+        for field in ("LookBack", "StartDT", "DescriptorSection"):
+            if hasattr(operator.Args, field) and len(getattr(operator.Args, field)) != operand_count:
+                raise __QS_Error__(f"算子 {self.Name} 的 {field} 长度必须等于实际操作数数量 {operand_count}!")
+        if getattr(operator.Args, "iInitFactor", -1) >= operand_count:
+            raise __QS_Error__(f"算子 {self.Name} 的起始因子索引超出实际操作数范围!")
+        return operator
 
     def _QS_validateOperands(self, *operands, **named):
         """按公开接口绑定并校验各操作数，展开前分别检查参数组。"""
@@ -558,27 +569,7 @@ class TimeOperator(FactorOperator):
         # LookBackMode: List[Literal["滚动窗口", "扩张窗口"]] = Field(default=[], title="回溯模式", description="描述子的回溯模式", frozen=True)
         StartDT: List[Optional[dt.datetime]] = Field(default=[], title="起始时点", frozen=True, description="扩张窗口模式下描述子的起始时点, 如果为 None, 则使用回溯期数参数")
         iInitFactor: int = Field(default=-1, title="起始因子", ge=-1, frozen=True)
-        
-        def __init__(self, /, **data):
-            Arity = data.get("Arity", 0)
-            if Arity is None: Arity = 0
-            if not data.get("LookBack", []): data["LookBack"] = [0] * Arity
-            # if not data.get("LookBackMode", []): data["LookBackMode"] = ["滚动窗口"] * Arity
-            if not data.get("StartDT", []): data["StartDT"] = [None] * Arity
-            return super().__init__(**data)
-        
-        def model_post_init(self, context: Any, /) -> None:
-            if self.Arity is not None:
-                if self.Arity != len(self.LookBack):
-                    raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 LookBack({self.__pydantic_fields__['LookBack'].title}): {self.LookBack} 的长度不一致!")
-                # if self.Arity != len(self.LookBackMode):
-                #     raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 LookBackMode({self.__pydantic_fields__['LookBackMode'].title}): {self.LookBackMode} 的长度不一致!")
-                if self.Arity != len(self.StartDT):
-                    raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 StartDT({self.__pydantic_fields__['StartDT'].title}): {self.StartDT} 的长度不一致!")
-                if self.iInitFactor >= self.Arity:
-                    raise __QS_Error__(f"算子{self.Name}的 iInitFactor({self.__pydantic_fields__['iInitFactor'].title}): {self.iInitFactor} 超出了 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity}!")
-            return super().model_post_init(context)
-    
+
     def calculate(self, f: Factor, idt: dt.datetime | List[dt.datetime], iid: str | List[str], x: list, args: dict):
         """算子的运算逻辑实现
 
@@ -711,18 +702,7 @@ class SectionOperator(FactorOperator):
         Name: str = Field(default="SectionOperator", title="名称", frozen=True, exclude=True)
         DTMode: Literal["单时点", "多时点"] = Field(default="单时点", title="运算时点", frozen=True)
         DescriptorSection: List[Optional[List[str]]] = Field(default=[], title="描述子截面", frozen=True, description="None 表示该描述子和当前因子的截面一致")
-        
-        def __init__(self, /, **data):
-            Arity = data.get("Arity", 0)
-            if Arity is None: Arity = 0
-            if not data.get("DescriptorSection", []): data["DescriptorSection"] = [None] * Arity
-            return super().__init__(**data)
-        
-        def model_post_init(self, context: Any, /) -> None:
-            if (self.Arity is not None) and (self.Arity != len(self.DescriptorSection)):
-                raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 DescriptorSection({self.__pydantic_fields__['DescriptorSection'].title}): {self.DescriptorSection} 的长度不一致!")
-            return super().model_post_init(context)
-    
+
     def calculate(self, f: Factor, idt: dt.datetime | List[dt.datetime], iid: str | List[str], x: list, args: dict):
         """算子的运算逻辑实现
 
@@ -807,30 +787,7 @@ class PanelOperator(FactorOperator):
         # LookBackMode: List[Literal["滚动窗口", "扩张窗口"]] = Field(default=[], title="回溯模式", description="描述子的回溯模式", frozen=True)
         StartDT: List[Optional[dt.datetime]] = Field(default=[], title="起始时点", frozen=True, description="如果描述子对应的该参数非 None 表示为扩张窗口模式, 该参数为描述子数据的起始时点")
         iInitFactor: int = Field(default=-1, title="起始因子", ge=-1, frozen=True)
-        
-        def __init__(self, /, **data):
-            Arity = data.get("Arity", 0)
-            if Arity is None: Arity = 0
-            if not data.get("DescriptorSection", []): data["DescriptorSection"] = [None] * Arity
-            if not data.get("LookBack", []): data["LookBack"] = [0] * Arity
-            # if not data.get("LookBackMode", []): data["LookBackMode"] = ["滚动窗口"] * Arity
-            if not data.get("StartDT", []): data["StartDT"] = [None] * Arity
-            return super().__init__(**data)
-         
-        def model_post_init(self, context: Any, /) -> None:
-            if self.Arity is not None:
-                if self.Arity != len(self.DescriptorSection):
-                    raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 DescriptorSection({self.__pydantic_fields__['DescriptorSection'].title}): {self.DescriptorSection} 的长度不一致!")            
-                if self.Arity != len(self.LookBack):
-                    raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 LookBack({self.__pydantic_fields__['LookBack'].title}): {self.LookBack} 的长度不一致!")
-                # if self.Arity != len(self.LookBackMode):
-                #     raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 LookBackMode({self.__pydantic_fields__['LookBackMode'].title}): {self.LookBackMode} 的长度不一致!")
-                if self.Arity != len(self.StartDT):
-                    raise __QS_Error__(f"算子{self.Name}的 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity} 和 StartDT({self.__pydantic_fields__['StartDT'].title}): {self.StartDT} 的长度不一致!")
-                if self.iInitFactor >= self.Arity:
-                    raise __QS_Error__(f"算子{self.Name}的 iInitFactor({self.__pydantic_fields__['iInitFactor'].title}): {self.iInitFactor} 超出了 Arity({self.__pydantic_fields__['Arity'].title}): {self.Arity}!")
-            return super().model_post_init(context)
-    
+
     def calculate(self, f: Factor, idt: dt.datetime | List[dt.datetime], iid: str | List[str], x: list, args: dict):
         """算子的运算逻辑实现
 

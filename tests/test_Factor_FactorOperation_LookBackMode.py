@@ -12,7 +12,7 @@ import pandas as pd
 from QuantStudio.Core.CalcEngine import Engine
 from QuantStudio.Core.ParallelEngine import ParallelEngine
 from QuantStudio.Factor.Factor import FactorContext, DataFactor, FactorLocalContext
-from QuantStudio.Factor.FactorOperation import FactorOperatorized
+from QuantStudio.Factor.FactorOperation import FactorOperatorized, OperandSpec
 from QuantStudio.Factor.FactorCache import FeatherFactorCache
 
 
@@ -31,7 +31,7 @@ Close = DataFactor(data=3, args={"Name": "close"})
 # ------------------------------ PanelOperation -------------------------------------
 # # 无自身迭代
 # @FactorOperatorized(operator_type="Panel", args={
-#     "Arity": 3, "DTMode": "单时点"
+#     "OperandInfo": (OperandSpec(), OperandSpec(), OperandSpec(),), "DTMode": "单时点"
 #     "LookBack": [0, 2, 2], 
 #     "StartDT": [dt.datetime(2025, 1, 5), dt.datetime(2025, 1, 4), None], 
 #     "iInitFactor": -1
@@ -44,7 +44,7 @@ Close = DataFactor(data=3, args={"Name": "close"})
 
 # 自身迭代且为扩展窗口
 @FactorOperatorized(operator_type="Panel", args={
-    "Arity": 3, "DTMode": "单时点",
+    "OperandInfo": (OperandSpec(), OperandSpec(), OperandSpec(),), "DTMode": "单时点",
     "LookBack": [1, 2, 2], 
     "StartDT": [dt.datetime(2025, 1, 5), dt.datetime(2025, 1, 4), None], 
     "iInitFactor": 0
@@ -57,7 +57,7 @@ def PanelFunc(f, idt, iid, x, args):
 
 # # 自身迭代且为滚动窗口
 # @FactorOperatorized(operator_type="Panel", args={
-#     "Arity": 3, "DTMode": "单时点",
+#     "OperandInfo": (OperandSpec(), OperandSpec(), OperandSpec(),), "DTMode": "单时点",
 #     "LookBack": [1, 2, 3], 
 #     "StartDT": [None, dt.datetime(2025, 1, 4), None], 
 #     "iInitFactor": 0
@@ -74,7 +74,7 @@ NodeList = [PanelFactor]
 # ------------------------------ TimeOperation -------------------------------------
 # # 无自身迭代
 # @FactorOperatorized(operator_type="Time", args={
-#     "Arity": 3, "DTMode": "单时点", "IDMode": "多ID",
+#     "OperandInfo": (OperandSpec(), OperandSpec(), OperandSpec(),), "DTMode": "单时点", "IDMode": "多ID",
 #     "LookBack": [0, 2, 3], 
 #     "StartDT": [dt.datetime(2025, 1, 5), dt.datetime(2025, 1, 4), None], 
 #     "iInitFactor": -1
@@ -87,7 +87,7 @@ NodeList = [PanelFactor]
 
 # # 自身迭代且为扩展窗口
 # @FactorOperatorized(operator_type="Time", args={
-#     "Arity": 3, "DTMode": "单时点", "IDMode": "多ID",
+#     "OperandInfo": (OperandSpec(), OperandSpec(), OperandSpec(),), "DTMode": "单时点", "IDMode": "多ID",
 #     "LookBack": [1, 2, 2], 
 #     "StartDT": [dt.datetime(2025, 1, 5), dt.datetime(2025, 1, 4), None], 
 #     "iInitFactor": 0
@@ -100,7 +100,7 @@ NodeList = [PanelFactor]
 
 # # 自身迭代且为滚动窗口
 # @FactorOperatorized(operator_type="Time", args={
-#     "Arity": 3, "DTMode": "单时点", "IDMode": "多ID",
+#     "OperandInfo": (OperandSpec(), OperandSpec(), OperandSpec(),), "DTMode": "单时点", "IDMode": "多ID",
 #     "LookBack": [1, 2, 2], 
 #     "StartDT": [None, dt.datetime(2025, 1, 4), None], 
 #     "iInitFactor": 0
