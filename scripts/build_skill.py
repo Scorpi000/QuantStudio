@@ -35,6 +35,15 @@ DOCS_TOOLS = DOCS_SRC / "tools"
 SKILL_SRC = ROOT / "skills" / "quantstudio"
 MKDOCS_YML = ROOT / "mkdocs.yml"
 
+
+class _PermissiveLoader(yaml.SafeLoader):
+    """忽略未知 tag(如 !!python/name:) 的 YAML loader, 用于读取 mkdocs.yml 的 nav。"""
+
+_PermissiveLoader.add_multi_constructor(
+    "tag:yaml.org,2002:python/name:", lambda loader, suffix, node: suffix
+)
+_PermissiveLoader.add_multi_constructor("", lambda loader, suffix, node: None)
+
 # Skill 目录名
 SKILL_NAME = "quantstudio"
 
@@ -53,7 +62,9 @@ def collect_reference_docs():
         set[str]: 相对 docs 目录的 markdown 路径集合，如 ``{"Core/缓存.md", ...}``
     """
     with open(MKDOCS_YML, mode="r", encoding="utf-8") as f:
-        iConfig = yaml.safe_load(f)
+        # mkdocs.yml 含 !!python/name: 等 tag, safe_load 会报错;
+        # 本函数只需要 nav, 因此用宽松 loader 忽略无法识别的 tag
+        iConfig = yaml.load(f, Loader=_PermissiveLoader)
 
     iDocs = set()
 

@@ -134,6 +134,8 @@ class __QS_Args__(BaseModel):
             如果 key 非 None 则返回该 key 对应的元信息, Series(index=[参数名])
         """
         if key is not None:
+            if key == "required":
+                return pd.Series({field: info.is_required() for field, info in self.__pydantic_fields__.items() if (not repr) or info.repr}, dtype="O")
             return pd.Series({field: getattr(info, key) for field, info in self.__pydantic_fields__.items() if (not repr) or info.repr}, dtype="O")
         else:
             return pd.DataFrame({key: self.meta(key=key, repr=repr) for key in ["annotation", "title", "description", "default", "required", "frozen", "exclude", "repr"]})
@@ -193,6 +195,35 @@ class __QS_Args__(BaseModel):
     def __eq__(self, other):
         if not isinstance(other, __QS_Args__): return False
         return self.QSID == other.QSID
+
+    def __or__(self, other):
+        """浅合并参数集与字典或参数集，返回右侧值优先的新字典。
+
+        Args:
+            other: 右侧字典或参数集。
+
+        Returns:
+            包含全部参数（含隐藏、排除和额外字段）的新字典，保留原始值对象。
+            不支持的操作数类型返回 NotImplemented。
+        """
+        if isinstance(other, __QS_Args__):
+            other = other.to_dict(repr=False) | (other.__pydantic_extra__ or {})
+        if not isinstance(other, dict):
+            return NotImplemented
+        return self.to_dict(repr=False) | (self.__pydantic_extra__ or {}) | other
+
+    def __ror__(self, other):
+        """浅合并左侧字典与参数集，返回参数集值优先的新字典。
+
+        Args:
+            other: 左侧字典。
+
+        Returns:
+            合并后的新字典；不支持的操作数类型返回 NotImplemented。
+        """
+        if not isinstance(other, dict):
+            return NotImplemented
+        return other | self.to_dict(repr=False) | (self.__pydantic_extra__ or {})
 
     def get(self, key:str, value:Any=None) -> Any:
         if hasattr(self, key):

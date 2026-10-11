@@ -119,19 +119,29 @@ from QuantStudio.Core.Node import Context, LocalContext, DTLocalContext, DTInitD
 
 ```python
 from QuantStudio.Factor.BasicOperator import rename
-from QuantStudio.Factor.FactorOperation import makeFactorOperator, FactorOperatorized
+from QuantStudio.Factor.FactorOperation import makeFactorOperator, FactorOperatorized, OperatorModelArgs, OperandSpec
+from pydantic import Field
 
 # 表达式方式（单点运算，最简便）
 Mid = rename((High + Low) / 2, factor_name="Mid")
 
-# 装饰器方式（时序运算）
+# 装饰器方式（时序运算），声明模型参数与操作数
+class MAArgs(OperatorModelArgs):
+    window: int = Field(default=5, ge=1, title="窗口", description="移动平均窗口期数")
+
 @FactorOperatorized(operator_type="Time",
-    args={"Arity": 1, "DTMode": "多时点", "IDMode": "多ID", "LookBack": [4]})
-def calcMA(f, idt, iid, x, args):
-    return pd.DataFrame(x[0]).rolling(window=5).mean().values[4:]
+    args={"Arity": 1, "DTMode": "多时点", "IDMode": "多ID", "LookBack": [4]},
+    model_args=MAArgs,
+    operand_info=(OperandSpec(Name="x", Title="输入因子", Required=True),))
+def calcMA(f, idt, iid, x, args: MAArgs):
+    return pd.DataFrame(x[0]).rolling(window=args.window).mean().values[4:]
 
 MA5 = calcMA(Close, factor_args={"Name": "MA5"})
 ```
+
+`model_args`（`OperatorModelArgs` 子类）声明模型参数的类型/默认值/描述，`operand_info`
+（`OperandSpec` 元组）声明算子可作用的因子槽位（含必填性、可变元数个数），供下游 GUI 渲染与校验。
+两者均可省略，省略时退化为旧的 `args` 字典写法。
 
 ### 内置算子速查
 

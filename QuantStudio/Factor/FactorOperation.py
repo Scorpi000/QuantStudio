@@ -2,6 +2,8 @@
 """因子运算"""
 import base64
 import importlib
+import copy
+import types
 import datetime as dt
 from functools import partial
 from typing import Optional, Literal, List, Any, Tuple, Callable, Union, Dict
@@ -9,13 +11,122 @@ from typing import Optional, Literal, List, Any, Tuple, Callable, Union, Dict
 import dill
 import pandas as pd
 import numpy as np
-from pydantic import Field
+from pydantic import Field, ConfigDict, SerializeAsAny
 from multiprocess import Event
 
-from QuantStudio.Core import __QS_Error__, __QS_Object__
+from QuantStudio.Core import __QS_Error__, __QS_Object__, __QS_Args__
 from QuantStudio.Core.Node import Node
 from QuantStudio.Factor.Factor import Factor, DataFactor, FactorContext, FactorLocalContext, FactorInitData, makeFactorRunningKey
 from QuantStudio.Tools.AuxiliaryFun import partitionList
+
+
+def _serialize_operator_value(value):
+    """将算子参数递归转换为 JSON 值，保留模型类型和非 JSON 值。"""
+    if isinstance(value, __QS_Args__):
+        model_type = type(value)
+        return {"__qs_model__": base64.b64encode(dill.dumps(model_type)).decode("ascii"),
+                "values": _serialize_operator_value(value.serialize() | (value.__pydantic_extra__ or {}))}
+    if isinstance(value, dict):
+        if all(isinstance(key, str) for key in value):
+            return {key: _serialize_operator_value(item) for key, item in value.items()}
+    elif isinstance(value, list):
+        return [_serialize_operator_value(item) for item in value]
+    elif value is None or isinstance(value, (str, bool, int, float)):
+        return value
+    # tuple、函数及其他 Python 值使用已有的 dill 传输机制保留类型。
+    return {"__qs_dill__": base64.b64encode(dill.dumps(value)).decode("ascii")}
+
+
+def _deserialize_operator_value(value):
+    """恢复 serialize 生成的可信算子参数及嵌套模型。"""
+    if isinstance(value, list):
+        return [_deserialize_operator_value(item) for item in value]
+    if isinstance(value, dict):
+        if set(value) == {"__qs_model__", "values"}:
+            model_type = dill.loads(base64.b64decode(value["__qs_model__"]))
+            return model_type.deserialize(_deserialize_operator_value(value["values"]))
+        if set(value) == {"__qs_dill__"}:
+            return dill.loads(base64.b64decode(value["__qs_dill__"]))
+        return {key: _deserialize_operator_value(item) for key, item in value.items()}
+    return value
+
+
+class OperatorModelArgs(__QS_Args__):
+    """算子模型参数基类
+
+    各算子声明自己的子类以描述其模型参数的元信息(类型/默认值/描述/取值范围等),
+    下游(GUI 等)据此渲染参数表单。详见 docs/plans/factor_operator_args.md。
+
+    子类继承 ``extra='forbid'``, 未知参数会报错; 而函数式算子(工厂创建)在未声明
+    模型类时直接传入任意 dict, 因此基类放开 ``extra='allow'`` 以兼容旧用法。
+    """
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True, frozen=True)
+
+    def __init_subclass__(cls, **kwargs):
+        # 声明的具体模型参数子类恢复严格校验(未知参数报错)
+        super().__init_subclass__(**kwargs)
+        cls.model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True, frozen=True)
+
+
+class OperandSpec(__QS_Args__):
+    """算子可作用因子(操作数)的声明
+
+    描述算子 ``__call__`` 接受的一个操作数槽位。若干 ``OperandSpec`` 组成算子
+    argclass 上的 ``OperandInfo`` 字段。
+
+    Args:
+        Name: 该操作数的语义名, 如 f/mask/endog/exog
+        Title: 面向用户的显示名
+        Description: 该操作数的含义说明
+        Required: True 为必填槽位, False 为可选槽位(如 mask/cat_data)
+        Variadic: True 表示该参数接受多个因子
+        KeywordOnly: True 表示只能通过关键字传入
+        Grouped: True 表示多个因子以一个 list/tuple 参数传入，而非 *args
+        MinNum: Variadic=True 时生效, 当前参数组的最少数量
+        MaxNum: Variadic=True 时生效, None 表示不限
+    """
+    Name: str = Field(default="", title="名称")
+    Title: str = Field(default="", title="标题")
+    Description: str = Field(default="", title="描述")
+    Required: bool = Field(default=True, title="必填")
+    Variadic: bool = Field(default=False, title="可变元数")
+    KeywordOnly: bool = Field(default=False, title="仅关键字")
+    Grouped: bool = Field(default=False, title="因子列表")
+    MinNum: int = Field(default=0, ge=0, title="最少个数")
+    MaxNum: Optional[int] = Field(default=None, ge=1, title="最多个数")
+
+    def model_post_init(self, context: Any, /) -> None:
+        if self.Grouped and not self.Variadic:
+            raise __QS_Error__("Grouped 只能用于 Variadic 操作数!")
+        if self.Variadic and self.MaxNum is not None and self.MinNum > self.MaxNum:
+            raise __QS_Error__("操作数 MinNum 不能大于 MaxNum!")
+        return super().model_post_init(context)
+
+
+def _operand_bounds(specs):
+    """根据公开接口声明计算展开后的描述子总数范围。"""
+    minimum, maximum = 0, 0
+    for spec in specs:
+        minimum += spec.MinNum if spec.Variadic else int(spec.Required)
+        if maximum is not None:
+            maximum = (None if spec.Variadic and spec.MaxNum is None else
+                       maximum + (spec.MaxNum if spec.Variadic else 1))
+    return minimum, maximum
+
+
+def _copy_operator_value(value):
+    """复制参数容器，保留模块和函数等不可深复制的计算对象。"""
+    if isinstance(value, __QS_Args__):
+        return type(value)(**{key: _copy_operator_value(item) for key, item in (value | {}).items()})
+    if isinstance(value, dict):
+        return {key: _copy_operator_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_copy_operator_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_copy_operator_value(item) for item in value)
+    if isinstance(value, types.ModuleType) or callable(value):
+        return value
+    return copy.deepcopy(value)
 
 
 class FactorOperator(__QS_Object__):
@@ -24,17 +135,36 @@ class FactorOperator(__QS_Object__):
     class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
         OperatorType: Literal["Point", "Time", "Section", "Panel"] = Field(title="算子类型", frozen=True)
         Name: str = Field(default="FactorOperator", title="名称", frozen=True, exclude=True)
-        ModelArgs: Dict[str, Any] = Field(default={}, title="模型参数", frozen=True)
+        ModelArgs: SerializeAsAny[OperatorModelArgs] = Field(default_factory=OperatorModelArgs, title="模型参数", frozen=True)
+        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(), title="操作数声明", frozen=True, exclude=True)
         Arity: Optional[int] = Field(default=None, ge=1, title="入参数量", frozen=True)
         DataType: Literal["double", "string", "object"] = Field(default="double",title="数据类型", frozen=True)
         Description: str = Field(default="", title="描述信息", frozen=False, exclude=True)
         Meta: Dict[str, Any] = Field(default={}, title="元信息", frozen=False, exclude=True)
         CompoundType: List[Tuple[str, Literal["double", "string", "object"]]] = Field(default=[], title="复合类型", repr=False, frozen=True)
-        
+
         def __init__(self, /, **data: Any) -> None:
             if ("DataType" not in data) and data.get("CompoundType", []):
                 data["DataType"] = "object"
             return super().__init__(**data)
+
+        def model_post_init(self, context: Any, /) -> None:
+            # 校验 Arity 与 OperandInfo 的一致性:
+            # 可变元数算子的 Arity 由实际调用确定, 只校验上下界;
+            # 必填槽位数 <= Arity <= 槽位总数
+            OperandInfo = self.OperandInfo
+            names = [spec.Name for spec in OperandInfo if spec.Name]
+            if len(names) != len(set(names)):
+                raise __QS_Error__("操作数声明的名称不能重复!")
+            positional = [spec for spec in OperandInfo if not spec.KeywordOnly]
+            tails = [i for i, spec in enumerate(positional) if spec.Variadic and not spec.Grouped]
+            if tails and (len(tails) > 1 or tails[0] != len(positional) - 1):
+                raise __QS_Error__("展开式可变操作数必须是最后一个位置参数!")
+            if self.Arity is not None and OperandInfo:
+                MinArity, MaxArity = _operand_bounds(OperandInfo)
+                if (self.Arity < MinArity) or ((MaxArity is not None) and (self.Arity > MaxArity)):
+                    raise __QS_Error__(f"算子 {self.Name} 的 Arity({self.Arity}) 超出了 OperandInfo 声明的范围 [{MinArity}, {MaxArity if MaxArity is not None else '不限'}]!")
+            return super().model_post_init(context)
     
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -56,8 +186,55 @@ class FactorOperator(__QS_Object__):
         DumpedModel["__func__"] = self.calculate
         return DumpedModel
 
+    @classmethod
+    def _QS_fromArgs(cls, args, **kwargs):
+        """从完整配置统一重建对象，不调用便捷构造函数。
+
+        Args:
+            args: 已包含默认值和派生配置的完整参数。
+            kwargs: 日志等对象初始化参数。
+
+        Returns:
+            经过参数模型校验的新算子。
+        """
+        op = cls.__new__(cls)
+        __QS_Object__.__init__(op, args=args, config_file=None, **kwargs)
+        return op
+
+    def _QS_updateArgs(self, args, updates):
+        """更新与元数、窗口和输出类型有关的派生配置。"""
+        old_model = self.Args.ModelArgs
+        model = args["ModelArgs"]
+        arity = args.get("Arity")
+        for field in ("LookBack", "StartDT", "DescriptorSection"):
+            if arity is not None and field in args and field not in updates:
+                values = args[field]
+                if len(values) != arity:
+                    fill = values[0] if len(values) == 1 else (0 if field == "LookBack" else None)
+                    args[field] = (values[:arity] + [fill] * max(0, arity - len(values)))
+        if model.get("window") != old_model.get("window") and "LookBack" in args and "LookBack" not in updates:
+            window = model.get("window")
+            if window is not None:
+                args["LookBack"] = [window - 1] * (arity or len(args["LookBack"]))
+        if model.get("dtype") != old_model.get("dtype") and "DataType" not in updates:
+            args["DataType"] = model.dtype
+        return args
+
     def new(self, args={}, **kwargs):
-        NewOperator = super().new(args=args, **kwargs)
+        Args = _copy_operator_value(self._QSArgs | {}) | args
+        model_values = _copy_operator_value(self.Args.ModelArgs | {})
+        # 兼容原 operator_kwargs 中直接传入的模型构造形参。
+        model_updates = {key: kwargs.pop(key) for key in list(kwargs) if key in model_values}
+        supplied = args.get("ModelArgs", {})
+        if isinstance(supplied, OperatorModelArgs):
+            Args["ModelArgs"] = _copy_operator_value(supplied)
+        else:
+            Args["ModelArgs"] = type(self.Args.ModelArgs)(**(model_values | model_updates | supplied))
+        Args = self._QS_updateArgs(Args, args)
+        # 重建不再读取配置文件，防止本地配置覆盖保存的完整参数。
+        kwargs.pop("config_file", None)
+        NewOperator = self._QS_fromArgs(Args, **({"logger": self._QS_Logger} | kwargs))
+        NewOperator._ConfigFile = self._ConfigFile
         if getattr(self.calculate, "__self__", None) != self:
             NewOperator.calculate = self.calculate
         return NewOperator
@@ -118,6 +295,7 @@ class FactorOperator(__QS_Object__):
     def serialize(self) -> Dict[str, Any]:
         """序列化算子为 dict，包含 calculate_ref 和完整类路径"""
         result = super().serialize()
+        result["__qsargs__"] = _serialize_operator_value(result["__qsargs__"])
         result["__class__"] = type(self).__module__ + "." + type(self).__qualname__
         result["calculate_ref"] = self._serialize_calculate()
         return result
@@ -125,19 +303,69 @@ class FactorOperator(__QS_Object__):
     @classmethod
     def deserialize(cls, data: Dict[str, Any]) -> "FactorOperator":
         """从序列化 dict 重建算子实例，恢复 calculate"""
-        op = super().deserialize(data)
+        class_path = data.get("__class__", "")
+        if "." in class_path:
+            module_path, class_name = class_path.rsplit(".", 1)
+            cls = getattr(importlib.import_module(module_path), class_name)
+        Args = cls.__QS_ArgClass__.deserialize(_deserialize_operator_value(data.get("__qsargs__", {})))
+        # 不经 model_dump，避免恢复后的模型类型与 exclude 字段再次丢失。
+        # 参数已完整恢复并校验，直接初始化对象，避免内置构造函数要求
+        # func/aggr_ids 等位置参数，或重新推导并覆盖保存的配置。
+        op = cls._QS_fromArgs(Args | {})
         cls._deserialize_calculate(op, data.get("calculate_ref"))
         return op
     # endregion
     
     def _QS_validate(self, *x, **kwargs):
         Arity = len(x)
+        OperandInfo = self._QSArgs.OperandInfo
+        # 可变元数算子: 校验实参个数是否落在 OperandInfo 声明的范围内
+        if OperandInfo:
+            MinArity, MaxArity = _operand_bounds(OperandInfo)
+            if Arity < MinArity:
+                raise __QS_Error__(f"因子算子 {self._QSArgs.Name} 至少需要 {MinArity} 个操作数, 实际传入 {Arity} 个!")
+            if (MaxArity is not None) and (Arity > MaxArity):
+                raise __QS_Error__(f"因子算子 {self._QSArgs.Name} 最多接受 {MaxArity} 个操作数, 实际传入 {Arity} 个!")
         if self._QSArgs.Arity is None:
             return self.new(args={"Arity": Arity}, **kwargs)
         elif Arity != self._QSArgs.Arity:
             raise __QS_Error__(f"因子算子 {self._QSArgs.Name} 实际传入的因子数量 {Arity} 和指定的入参数 {self._QSArgs.Arity} 不符!")
         else:
             return self
+
+    def _QS_validateOperands(self, *operands, **named):
+        """按公开接口绑定并校验各操作数，展开前分别检查参数组。"""
+        position = 0
+        flattened = []
+        for spec in self.Args.OperandInfo:
+            if spec.KeywordOnly:
+                value = named.pop(spec.Name, None)
+            elif spec.Name in named:
+                if position < len(operands):
+                    raise __QS_Error__(f"操作数 {spec.Name} 重复传入!")
+                value = named.pop(spec.Name)
+            elif spec.Variadic and not spec.Grouped:
+                value = operands[position:]
+                position = len(operands)
+            else:
+                value = operands[position] if position < len(operands) else None
+                position += int(position < len(operands))
+            if spec.Variadic:
+                if value is None:
+                    value = ()
+                if not isinstance(value, (list, tuple)):
+                    raise __QS_Error__(f"操作数 {spec.Name} 必须是因子列表或元组!")
+                count = len(value)
+                if count < spec.MinNum or (spec.MaxNum is not None and count > spec.MaxNum):
+                    raise __QS_Error__(f"操作数 {spec.Name} 的数量 {count} 超出声明范围!")
+                flattened.extend(value)
+            elif spec.Required and value is None:
+                raise __QS_Error__(f"缺少必填操作数 {spec.Name}!")
+            elif value is not None:
+                flattened.append(value)
+        if position < len(operands) or named:
+            raise __QS_Error__("传入了未声明的操作数!")
+        return tuple(flattened)
 
     def _QS_partitionSectionIDs(self, section_ids):
         SectionIdx = []  # [([ID], [idx])]
@@ -231,6 +459,10 @@ class PointOperator(FactorOperator):
         raise NotImplementedError
 
     def __call__(self, *x: Factor, factor_args: dict = {}, **kwargs) -> "PointOperation":
+        bound = kwargs.pop("_qs_bound", False)
+        if self.Args.OperandInfo and not bound:
+            named = {spec.Name: kwargs.pop(spec.Name) for spec in self.Args.OperandInfo if spec.Name in kwargs}
+            x = self._QS_validateOperands(*x, **named)
         Operator = self._QS_validate(*x, **kwargs.pop("operator_kwargs", {}))
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for i, iFactor in enumerate(x)]
         return PointOperation(descriptors=Descriptors, args={"Operator": Operator, **factor_args}, **kwargs)
@@ -367,6 +599,10 @@ class TimeOperator(FactorOperator):
         raise NotImplementedError
 
     def __call__(self, *x:Factor, factor_args:dict={}, **kwargs) -> "TimeOperation":
+        bound = kwargs.pop("_qs_bound", False)
+        if self.Args.OperandInfo and not bound:
+            named = {spec.Name: kwargs.pop(spec.Name) for spec in self.Args.OperandInfo if spec.Name in kwargs}
+            x = self._QS_validateOperands(*x, **named)
         Operator = self._QS_validate(*x, **kwargs.pop("operator_kwargs", {}))
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for i, iFactor in enumerate(x)]
         return TimeOperation(descriptors=Descriptors, args={"Operator": Operator, **factor_args}, **kwargs)
@@ -505,6 +741,10 @@ class SectionOperator(FactorOperator):
         raise NotImplementedError
 
     def __call__(self, *x:Factor, factor_args:dict={}, **kwargs) -> "SectionOperation":
+        bound = kwargs.pop("_qs_bound", False)
+        if self.Args.OperandInfo and not bound:
+            named = {spec.Name: kwargs.pop(spec.Name) for spec in self.Args.OperandInfo if spec.Name in kwargs}
+            x = self._QS_validateOperands(*x, **named)
         Operator = self._QS_validate(*x, **kwargs.pop("operator_kwargs", {}))
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for i, iFactor in enumerate(x)]
         return SectionOperation(descriptors=Descriptors, args={"Operator": Operator, **factor_args}, **kwargs)
@@ -609,6 +849,10 @@ class PanelOperator(FactorOperator):
         raise NotImplementedError
 
     def __call__(self, *x:Factor, factor_args:dict={}, **kwargs) -> "PanelOperation":
+        bound = kwargs.pop("_qs_bound", False)
+        if self.Args.OperandInfo and not bound:
+            named = {spec.Name: kwargs.pop(spec.Name) for spec in self.Args.OperandInfo if spec.Name in kwargs}
+            x = self._QS_validateOperands(*x, **named)
         Operator = self._QS_validate(*x, **kwargs.pop("operator_kwargs", {}))
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for i, iFactor in enumerate(x)]
         return PanelOperation(descriptors=Descriptors, args={"Operator": Operator, **factor_args}, **kwargs)
@@ -685,20 +929,31 @@ class PanelOperator(FactorOperator):
 
 FactorOperatorFunc = Callable[[Factor, dt.datetime | List[dt.datetime], str | List[str], list, dict], Any]
 
-def makeFactorOperator(func: FactorOperatorFunc, operator_type: Literal['Point', 'Time', 'Section', 'Panel'], args:dict={}, **kwargs) -> FactorOperator:
+def makeFactorOperator(func: FactorOperatorFunc, operator_type: Literal['Point', 'Time', 'Section', 'Panel'], args:dict={},
+                       operand_info:Optional[Tuple[OperandSpec, ...]]=None, model_args:Optional[type]=None, **kwargs) -> FactorOperator:
     """算子工厂函数, 给定一个函数创建一个因子算子对象
-    
+
     Args:
         func: 定义了算子运算逻辑的函数
         operator_type: 算子类型
         args: 创建算子对象时传递给它的参数集
+        operand_info: 操作数声明 ``Tuple[OperandSpec, ...]``, 描述算子可作用的因子槽位
+        model_args: 模型参数类(``OperatorModelArgs`` 子类), 用于描述算子的模型参数元信息
         kwargs: 创建算子对象时传递给它的其他入参
-    
+
     Returns:
         创建的因子算子对象
     """
     if not callable(func): raise __QS_Error__("func 必须是可调用对象!")
     if "Name" not in args: args = args | {"Name": func.__qualname__}
+    if operand_info is not None:
+        args = args | {"OperandInfo": tuple(operand_info)}
+    # ModelArgs 双形态兼容: 已知模型类时, dict -> 模型实例; 否则 dict 交由 pydantic 校验
+    MA = args.get("ModelArgs")
+    if (model_args is not None) and isinstance(MA, dict):
+        args = args | {"ModelArgs": model_args(**MA)}
+    elif (model_args is not None) and (MA is None):
+        args = args | {"ModelArgs": model_args()}
     if operator_type == "Point":
         FactorOperator = PointOperator(args=args, config_file=None, **kwargs)
     elif operator_type == "Time":
@@ -712,18 +967,21 @@ def makeFactorOperator(func: FactorOperatorFunc, operator_type: Literal['Point',
     FactorOperator.calculate = func
     return FactorOperator
 
-def FactorOperatorized(operator_type: Literal['Point', 'Time', 'Section', 'Panel'], args:dict={}, **kwargs) -> Callable[[FactorOperatorFunc], FactorOperator]:
+def FactorOperatorized(operator_type: Literal['Point', 'Time', 'Section', 'Panel'], args:dict={},
+                       operand_info:Optional[Tuple[OperandSpec, ...]]=None, model_args:Optional[type]=None, **kwargs) -> Callable[[FactorOperatorFunc], FactorOperator]:
     """将函数转换成因子算子对象的装饰器
-    
+
     Args:
         operator_type: 算子类型
         args: 创建算子对象时传递给它的参数集
+        operand_info: 操作数声明 ``Tuple[OperandSpec, ...]``
+        model_args: 模型参数类(``OperatorModelArgs`` 子类)
         kwargs: 创建算子对象时传递给它的其他入参
-    
+
     Returns:
         算子装饰器
     """
-    return partial(makeFactorOperator, operator_type=operator_type, args=args, **kwargs)
+    return partial(makeFactorOperator, operator_type=operator_type, args=args, operand_info=operand_info, model_args=model_args, **kwargs)
 
 
 class DerivativeFactor(Factor):
