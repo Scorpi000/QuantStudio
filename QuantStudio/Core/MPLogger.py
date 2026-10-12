@@ -41,6 +41,7 @@ _queue: Optional[multiprocess.Queue] = None
 _listener: Optional[logging.handlers.QueueListener] = None
 _main_pid: int = os.getpid()
 _initialized: bool = False
+_owns_queue: bool = False
 
 
 class _MultiProcessLogger(logging.Logger):
@@ -105,9 +106,10 @@ def _create_handler(level: int) -> logging.StreamHandler:
 
 def _ensure_queue():
     """确保队列已创建（使用 multiprocess.Queue 以支持跨进程传递）"""
-    global _queue
+    global _queue, _owns_queue
     if _queue is None:
         _queue = multiprocess.Queue()
+        _owns_queue = True
     return _queue
 
 
@@ -137,12 +139,16 @@ def _ensure_listener(level: int = logging.INFO):
     atexit.register(shutdown)
 
 
-def _wrapped_target(original_target, queue, level, args, kwargs):
+def _wrapped_target(original_target, queue, level, main_pid, args, kwargs):
     """包装的 target 函数，在子进程中自动初始化 Logger
 
     这是模块级函数，可以被 pickle
     """
-    # 子进程中初始化 Logger
+    global _main_pid
+    # spawn 导入模块时可能创建本地监听器；接入父进程队列前先释放它。
+    shutdown()
+    _main_pid = main_pid
+    # 子进程只发送日志，不为父进程队列启动监听器。
     init_logger(level=level, queue=queue)
     # 调用原始 target
     return original_target(*args, **kwargs)
@@ -152,7 +158,7 @@ def _create_patched_start(original_start):
     """创建 patch 后的 start 方法"""
     def patched_start(self, *args, **kwargs):
         # 获取当前的队列和日志级别
-        queue = get_queue()
+        queue = _queue if _initialized else None
         level = logger.level
 
         # 将队列和级别存储在进程对象中
@@ -164,10 +170,11 @@ def _create_patched_start(original_start):
 
             # 使用模块级包装函数
             self._target = _wrapped_target
-            self._args = (original_target, queue, level, original_args, original_kwargs)
+            self._args = (original_target, queue, level, _main_pid, original_args, original_kwargs)
             self._kwargs = {}
 
         return original_start(self, *args, **kwargs)
+    patched_start._qs_logger_patched = True
     return patched_start
 
 
@@ -177,10 +184,12 @@ def _patch_process_start():
     在子进程启动前，自动将日志队列注入到进程参数中
     """
     # Patch 标准库的 multiprocessing.Process.start
-    multiprocessing.Process.start = _create_patched_start(multiprocessing.Process.start)
+    if not getattr(multiprocessing.Process.start, "_qs_logger_patched", False):
+        multiprocessing.Process.start = _create_patched_start(multiprocessing.Process.start)
 
     # Patch multiprocess 包的 Process.start
-    multiprocess.Process.start = _create_patched_start(multiprocess.Process.start)
+    if not getattr(multiprocess.Process.start, "_qs_logger_patched", False):
+        multiprocess.Process.start = _create_patched_start(multiprocess.Process.start)
 
 
 # ========== 公共 API ==========
@@ -205,14 +214,18 @@ def init_logger(
         level: 日志级别，默认 INFO
         queue: 外部传入的队列，如果为 None 则自动创建
     """
-    global _queue, _main_pid, _initialized
+    global _queue, _main_pid, _initialized, _owns_queue
 
     logger.setLevel(level)
 
     current_pid = os.getpid()
     if current_pid == _main_pid:
         # 主进程
-        _queue = queue or _ensure_queue()
+        if queue is not None and queue is not _queue:
+            shutdown()
+            _queue = queue
+            _owns_queue = False
+        _ensure_queue()
         _ensure_listener(level)
 
         # 清除已有的 handler
@@ -227,6 +240,7 @@ def init_logger(
     else:
         # 子进程（用户显式调用或自动调用）
         _queue = queue if queue is not None else _queue
+        _owns_queue = False
         if _queue is not None:
             # 清除已有的 handler
             for h in logger.handlers[:]:
@@ -235,6 +249,7 @@ def init_logger(
             queue_handler = logging.handlers.QueueHandler(_queue)
             logger.addHandler(queue_handler)
         logger._child_initialized = True
+        _initialized = True
 
 
 def get_queue() -> Optional[multiprocess.Queue]:
@@ -244,9 +259,27 @@ def get_queue() -> Optional[multiprocess.Queue]:
 
 
 def shutdown() -> None:
-    """关闭日志系统"""
-    global _listener, _initialized
+    """排空日志并释放本进程创建的队列，后续日志改为直接输出。
+
+    调用前应等待输出日志的子进程结束。外部传入的队列由调用方管理，
+    本函数不会关闭它。关闭后可以再次调用 init_logger 初始化。
+    """
+    global _queue, _listener, _initialized, _owns_queue
+    # 先移除生产端，避免监听器停止后继续向队列写入。
+    for handler in logger.handlers[:]:
+        if isinstance(handler, logging.handlers.QueueHandler):
+            logger.removeHandler(handler)
+            handler.close()
     if _listener is not None:
-        _listener.stop()
+        # fork 继承的监听线程不在子进程中运行，不能等待它。
+        if os.getpid() == _main_pid:
+            _listener.stop()
         _listener = None
+    if _queue is not None and _owns_queue and os.getpid() == _main_pid:
+        _queue.close()
+        _queue.join_thread()
+    _queue = None
+    _owns_queue = False
     _initialized = False
+    if not logger.handlers:
+        logger.addHandler(_create_handler(logger.level))

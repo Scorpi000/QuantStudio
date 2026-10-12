@@ -24,6 +24,7 @@
 import os
 import sys
 import logging
+import subprocess
 import unittest
 import multiprocess
 
@@ -50,6 +51,8 @@ def _worker_task_with_queue(worker_id: int, queue, level):
 
 def _worker_task_debug_level(worker_id: int):
     """测试子进程 DEBUG 级别日志任务"""
+    from QuantStudio.Core.MPLogger import _listener
+    assert _listener is None, "子进程不应启动日志监听器"
     # 验证子进程的 Logger 配置
     assert logger.level == logging.DEBUG, f"子进程 Logger 级别错误: {logger.level}"
     assert len(logger.handlers) > 0, "子进程 Logger 没有 handler"
@@ -70,8 +73,21 @@ class TestMPLogger(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        """测试类初始化"""
-        pass
+        """保存全局日志级别和初始化状态。"""
+        import QuantStudio.Core.MPLogger as MPLogger
+        cls._original_level = logger.level
+        cls._original_initialized = MPLogger._initialized
+
+    @classmethod
+    def tearDownClass(cls):
+        """恢复全局日志状态，避免影响后续测试。"""
+        shutdown()
+        logger.setLevel(cls._original_level)
+        if cls._original_initialized:
+            init_logger(level=cls._original_level)
+        else:
+            for handler in logger.handlers:
+                handler.setLevel(cls._original_level)
 
     def setUp(self):
         """每个测试前重置 Logger 状态"""
@@ -185,8 +201,54 @@ class TestMPLogger(unittest.TestCase):
         shutdown()
 
         # 验证清理
-        from QuantStudio.Core.MPLogger import _listener
+        from QuantStudio.Core.MPLogger import _listener, _queue
         self.assertIsNone(_listener, "Listener 未清理")
+        self.assertIsNone(_queue, "队列引用未清理")
+        self.assertFalse(any(isinstance(h, logging.handlers.QueueHandler) for h in logger.handlers))
+
+    def test_shutdown_then_logging_exits(self):
+        """关闭后大量输出日志，解释器也应正常退出。"""
+        Code = """
+from QuantStudio.Core.MPLogger import init_logger, logger, shutdown
+init_logger()
+logger.info("关闭前日志")
+shutdown()
+for i in range(200):
+    logger.info("关闭后日志 %s %s", i, "x" * 1000)
+"""
+        Result = subprocess.run(
+            [sys.executable, "-c", Code],
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            capture_output=True,
+            timeout=15,
+        )
+        self.assertEqual(Result.returncode, 0, Result.stderr.decode(errors="replace"))
+        self.assertEqual(Result.stderr.count(b"x" * 1000), 200)
+
+    def test_reinitialize(self):
+        """关闭后可创建新队列，重复初始化不会叠加进程包装。"""
+        init_logger()
+        OldQueue = get_queue()
+        PatchedStart = multiprocess.Process.start
+        shutdown()
+        init_logger()
+        self.assertIsNot(get_queue(), OldQueue)
+        self.assertIs(multiprocess.Process.start, PatchedStart)
+        logger.info("重新初始化后的日志")
+
+    def test_shutdown_external_queue(self):
+        """关闭日志时不关闭调用方传入的队列。"""
+        Queue = multiprocess.Queue()
+        try:
+            init_logger(queue=Queue)
+            logger.info("外部队列日志")
+            shutdown()
+            Queue.put("仍然可用")
+            self.assertEqual(Queue.get(timeout=5), "仍然可用")
+        finally:
+            shutdown()
+            Queue.close()
+            Queue.join_thread()
 
 
 if __name__ == "__main__":

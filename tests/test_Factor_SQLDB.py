@@ -16,8 +16,10 @@
         Runner.run(Suite)
 
     注意: SQLDB 需要连接到 PostgreSQL 数据库, 测试依赖数据库可用。
+    测试使用独立的随机表名前缀，创建自己的数据并在结束后清理。
 """
 import unittest
+import uuid
 import pandas as pd
 
 from QuantStudio.Factor.SQLDB import SQLDB
@@ -28,15 +30,53 @@ _TEST_TABLE = "_qstest_meta_demo"
 _TEST_TABLE_2 = "_qstest_meta_demo_renamed"
 
 
+def _connect_test_db(test_case):
+    """连接数据库并注册测试专用表及连接的清理操作。
+
+    Args:
+        test_case: 注册类级清理操作的测试类。
+
+    Returns:
+        SQLDB: 已连接且使用独立表名前缀的因子库。
+    """
+    FDB = SQLDB(args={
+        "DBType": "PostgreSQL",
+        "InnerPrefix": f"qstest_{uuid.uuid4().hex[:12]}_",
+        "MetaTableName": "meta",
+        "DTField": "datetime",
+        "IDField": "code",
+        "FTArgs": {},
+        "IgnoreFields": [],
+    })
+    test_case.addClassCleanup(FDB.disconnect)
+    FDB.connect()
+    for TableName in ["meta", "daily", _TEST_TABLE, _TEST_TABLE_2]:
+        DBTableName = FDB._QSArgs.TablePrefix + FDB._QSArgs.InnerPrefix + TableName
+        test_case.addClassCleanup(FDB.execute, f"DROP TABLE IF EXISTS {DBTableName}")
+    return FDB
+
+
 class TestSQLDB(unittest.TestCase):
     """SQLDB 关系数据库因子库基本功能测试"""
 
     @classmethod
     def setUpClass(cls):
-        """创建 SQLDB 实例并连接数据库"""
-        cls.FDB = SQLDB(
-            args={"DBType": "PostgreSQL", "InnerPrefix": "qsd_"}
-        ).connect()
+        """创建测试表并写入固定的日期、ID 和因子值。"""
+        cls.FDB = _connect_test_db(cls)
+        cls.DTs = pd.date_range("2024-01-02", periods=3).to_pydatetime().tolist()
+        cls.FDB.createTable("daily", {"test_factor": "DOUBLE PRECISION"})
+        DBTableName = cls.FDB._QSArgs.TablePrefix + cls.FDB._QSArgs.InnerPrefix + "daily"
+        Rows = [(DT, "000001", float(i)) for i, DT in enumerate(cls.DTs)]
+        Rows.append((cls.DTs[-1], "000002", 10.0))
+        Cursor = cls.FDB.cursor()
+        try:
+            Cursor.executemany(
+                f"INSERT INTO {DBTableName} (datetime, code, test_factor) VALUES (%s, %s, %s)",
+                Rows,
+            )
+            cls.FDB.Connection.commit()
+        finally:
+            Cursor.close()
 
     # ==================== 连接测试 ====================
 
@@ -46,6 +86,7 @@ class TestSQLDB(unittest.TestCase):
         self.assertEqual(self.FDB.Name, "SQLDB")
         # 连接后可再次调用 connect (幂等)
         self.FDB.connect()
+        self.assertIn("daily", self.FDB.TableNames)
 
     # ==================== 因子表测试 ====================
 
@@ -53,18 +94,18 @@ class TestSQLDB(unittest.TestCase):
         """测试 TableNames 返回表名列表"""
         TableNames = self.FDB.TableNames
         self.assertIsInstance(TableNames, list)
-        self.assertGreater(len(TableNames), 0)
+        self.assertIn("daily", TableNames)
 
     def test_getTable(self):
         """测试 getTable 获取因子表对象, 验证 FactorNames 和 getFactor"""
-        TableName = self.FDB.TableNames[0]
+        TableName = "daily"
         FT = self.FDB.getTable(TableName, args={"MultiMapping": False})
         self.assertIsNotNone(FT)
         self.assertEqual(FT.Name, TableName)
         FactorNames = FT.FactorNames
-        self.assertGreater(len(FactorNames), 0)
+        self.assertIn("test_factor", FactorNames)
         # 通过 getFactor 获取单个因子
-        FirstFactor = FactorNames[0]
+        FirstFactor = "test_factor"
         F = FT.getFactor(FirstFactor)
         self.assertEqual(F.Name, FirstFactor)
         # 通过 __getitem__ 语法糖获取
@@ -72,29 +113,30 @@ class TestSQLDB(unittest.TestCase):
 
     # ==================== ID 和时点测试 ====================
 
+    def test_getID(self):
+        """测试获取固定数据中的 ID 列表。"""
+        FT = self.FDB.getTable("daily", args={"MultiMapping": False})
+        self.assertEqual(FT.getID(), ["000001", "000002"])
+
     def test_getDateTime(self):
         """测试获取表中时点序列"""
-        TableName = self.FDB.TableNames[0]
-        FT = self.FDB.getTable(TableName, args={"MultiMapping": False})
+        FT = self.FDB.getTable("daily", args={"MultiMapping": False})
         DTs = FT.getDateTime()
         self.assertIsInstance(DTs, list)
-        self.assertGreater(len(DTs), 0)
-        # 时点应递增
-        self.assertTrue(all(DTs[i] < DTs[i + 1] for i in range(len(DTs) - 1)))
+        self.assertEqual(DTs, self.DTs)
 
     def test_getDateTime_range(self):
-        """测试通过 start_dt 过滤时点序列"""
-        TableName = self.FDB.TableNames[0]
-        FT = self.FDB.getTable(TableName, args={"MultiMapping": False})
-        AllDTs = FT.getDateTime()
-        if len(AllDTs) < 3:
-            self.skipTest("时点数量不足，跳过范围过滤测试")
-        # 过滤后的时点列表应为全集的子集
-        FilteredDTs = FT.getDateTime(start_dt=AllDTs[0])
-        self.assertIsInstance(FilteredDTs, list)
-        self.assertGreater(len(FilteredDTs), 0)
-        self.assertLessEqual(len(FilteredDTs), len(AllDTs))
-        self.assertTrue(all(d in AllDTs for d in FilteredDTs))
+        """测试日期范围过滤及起止日期的闭区间边界。"""
+        FT = self.FDB.getTable("daily", args={"MultiMapping": False})
+        Cases = [
+            ({"start_dt": self.DTs[1]}, self.DTs[1:]),
+            ({"end_dt": self.DTs[1]}, self.DTs[:2]),
+            ({"start_dt": self.DTs[1], "end_dt": self.DTs[1]}, self.DTs[1:2]),
+            ({"start_dt": self.DTs[-1] + pd.Timedelta(days=1)}, []),
+        ]
+        for Args, Expected in Cases:
+            with self.subTest(**Args):
+                self.assertEqual(FT.getDateTime(**Args), Expected)
 
 
 class TestSQLDBMeta(unittest.TestCase):
@@ -103,34 +145,13 @@ class TestSQLDBMeta(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """创建 SQLDB 实例并连接数据库，使用独立侧表名隔离测试"""
-        cls.FDB = SQLDB(
-            args={
-                "DBType": "PostgreSQL",
-                "InnerPrefix": "qsd_",
-                "MetaTableName": "_qstest_meta",
-                "IgnoreFields": [],
-            }
-        ).connect()
-
-    @classmethod
-    def tearDownClass(cls):
-        """清理测试产生的元数据和临时表"""
-        try:
-            DBMetaTableName = cls.FDB._QSArgs.TablePrefix + "qsd__qstest_meta"
-            cls.FDB.execute(f"DROP TABLE IF EXISTS {DBMetaTableName}")
-        except Exception:
-            pass
-        try:
-            for t in [_TEST_TABLE, _TEST_TABLE_2]:
-                cls.FDB.execute(f"DROP TABLE IF EXISTS qsd_{t}")
-        except Exception:
-            pass
+        cls.FDB = _connect_test_db(cls)
 
     # ==================== 侧表创建与加载 ====================
 
     def test_meta_01_createMetaTable(self):
         """connect() 自动创建元数据侧表"""
-        DBMetaTableName = self.FDB._QSArgs.TablePrefix + "qsd__qstest_meta"
+        DBMetaTableName = self.FDB._QSArgs.TablePrefix + self.FDB._QSArgs.InnerPrefix + self.FDB._QSArgs.MetaTableName
         SQLStr = f"""
         SELECT table_name FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = '{DBMetaTableName}'
@@ -247,7 +268,8 @@ class TestSQLDBMeta(unittest.TestCase):
     def test_meta_10_descriptionFromColumnComment(self):
         """Description 从 SQL 列注释中读取"""
         self.FDB.createTable(_TEST_TABLE, {"factor_a": "DOUBLE PRECISION"})
-        self.FDB.execute(f"COMMENT ON COLUMN qsd_{_TEST_TABLE}.factor_a IS '这是因子A的描述'")
+        DBTableName = self.FDB._QSArgs.TablePrefix + self.FDB._QSArgs.InnerPrefix + _TEST_TABLE
+        self.FDB.execute(f"COMMENT ON COLUMN {DBTableName}.factor_a IS '这是因子A的描述'")
         self.FDB.connect()
 
         FT = self.FDB.getTable(_TEST_TABLE, args={"MultiMapping": False})

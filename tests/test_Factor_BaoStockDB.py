@@ -10,8 +10,6 @@
 import datetime as dt
 import unittest
 
-import numpy as np
-
 from QuantStudio.Factor.BaoStockDB import BaoStockDB
 
 
@@ -35,14 +33,14 @@ class TestBaoStockDB(unittest.TestCase):
         Args:
             table_name: 表名
             factor_names: 因子名列表
-            ids: 证券代码列表，默认 ["sh.600000"]
+            ids: QuantStudio 格式的证券代码列表，默认 ["600000.SH"]
             dts: 时点列表，默认 [2024-12-31]
 
         Returns:
             Panel 对象
         """
         if ids is None:
-            ids = ["sh.600000"]
+            ids = ["600000.SH"]
         if dts is None:
             dts = [dt.datetime(2024, 12, 31)]
         FT = self.BSDB.getTable(table_name)
@@ -78,13 +76,13 @@ class TestBaoStockDB(unittest.TestCase):
 
     def test_每日A股K线(self):
         Data = self._readTable("每日A股K线", ["close", "volume"],
-                               ids=["sh.600000", "sz.000001"],
+                               ids=["600000.SH", "000001.SZ"],
                                dts=[dt.datetime(2024, 6, 28)])
         self.assertGreaterEqual(Data.shape[2], 1)
 
     def test_每日ETFK线(self):
         Data = self._readTable("每日ETF K线", ["close", "volume"],
-                               ids=["sh.510050"],
+                               ids=["510050.SH"],
                                dts=[dt.datetime(2024, 6, 28)])
         self.assertGreaterEqual(Data.shape[2], 1)
 
@@ -94,10 +92,12 @@ class TestBaoStockDB(unittest.TestCase):
                                dts=[dt.datetime(2024, 6, 28)])
         self.assertEqual(Data.shape[0], 2)
 
-    def test_某日全部证券(self):
-        Data = self._readTable("某日全部证券", ["code_name", "tradeStatus"],
-                               dts=[dt.datetime(2024, 6, 28)])
+    def test_每日全部A股(self):
+        """使用已注册的表名，并校验返回的股票名称及交易状态。"""
+        Data = self._readTable("每日全部A股", ["code_name", "tradeStatus"], dts=[dt.datetime(2024, 6, 28)])
         self.assertEqual(Data.shape[0], 2)
+        self.assertTrue(Data.iloc[0].notna().all().all(), "股票名称不应为空")
+        self.assertTrue(Data.iloc[1].notna().all().all(), "交易状态不应为空")
 
     def test_上证50成分股(self):
         Data = self._readTable("上证50成分股", ["code_name"],
@@ -199,8 +199,4 @@ class TestBaoStockDB(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    # unittest.main()
-    Suite = unittest.TestSuite()
-    Suite.addTest(TestBaoStockDB("test_货币供应量年底余额"))
-    Runner = unittest.TextTestRunner()
-    Runner.run(Suite)
+    unittest.main()

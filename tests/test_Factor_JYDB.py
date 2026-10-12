@@ -11,7 +11,7 @@
         Runner = unittest.TextTestRunner()
         Runner.run(Suite)
 
-    注意: JYDB 需要连接到聚源 PostgreSQL 数据库, 测试依赖数据库可用。
+    注意: JYDB 需要连接到聚源 PostgreSQL 数据库，目前数据库不可用，暂时跳过本模块测试。
 
 测试方法:
     test_connect      — JYDB 对象构造和数据库连接
@@ -28,6 +28,7 @@ import pandas as pd
 from QuantStudio.Factor.JYDB import JYDB
 
 
+@unittest.skip("聚源数据库当前不可用，暂时跳过 JYDB 集成测试")
 class TestJYDB(unittest.TestCase):
     """JYDB 聚源数据库基本功能测试"""
 

@@ -1082,7 +1082,7 @@ class TimeOperation(DerivativeFactor):
             return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
         Cached = (context.DataCache and self._QSArgs.CacheEnabled)
         if Cached:
-            DTRange = context.DataCache.getDTRange(self.QSID, DTRange)
+            DTRange = context.DataCache.getDTRange(RunningKey, DTRange)
             if DTRange is None: 
                 self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 的缓存数据已覆盖所需的时点, 返回空的 forward 数据, 终止前向传递")
                 return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
