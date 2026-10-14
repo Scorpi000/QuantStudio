@@ -95,17 +95,16 @@ class TestOperatorArgs(unittest.TestCase):
                 continue
             with self.subTest(operator=cls.__name__):
                 self.assertNotIn("OperandInfo", cls.__dict__)
-                field = cls.__QS_ArgClass__.model_fields["OperandInfo"]
-                self.assertTrue(field.default)
-                self.assertTrue(field.frozen)
-                self.assertTrue(field.exclude)
+                self.assertNotIn("OperandInfo", cls.__QS_ArgClass__.model_fields)
+                self.assertTrue(cls.__QS_InputClass__.model_fields)
+                self.assertTrue(cls.__QS_InputClass__.model_config["frozen"])
 
     def test_builtin_operand_override_survives_copy(self):
         """显式操作数声明覆盖默认值，复制后仍保持实例声明。"""
         specs = (OperandSpec(Name="custom", Title="自定义输入"),)
         op = fo.Log(args={"OperandInfo": specs})
-        self.assertEqual(op.Args.OperandInfo, specs)
-        self.assertEqual(op.new().Args.OperandInfo, specs)
+        self.assertEqual(op.input_specs[0].Name, specs[0].Name)
+        self.assertEqual(op.new().input_specs, op.input_specs)
         self.assertEqual(op.QSID, fo.Log().QSID)
 
     def test_parameter_validation(self):
@@ -164,8 +163,8 @@ class TestOperatorArgs(unittest.TestCase):
         """操作数声明不参与 QSID，但在复制时仍需保留供下游自省。"""
         op = self.scale_operator()
         copied = op.new()
-        self.assertEqual(copied.Args.OperandInfo, op.Args.OperandInfo)
-        self.assertEqual(op(self.factor).Operator.Args.OperandInfo, op.Args.OperandInfo)
+        self.assertEqual(copied.input_specs, op.input_specs)
+        self.assertEqual(op(self.factor).Operator.input_specs, op.input_specs)
 
     def test_factory_new_parameter_dictionary_preserves_type(self):
         """函数式算子通过字典改参仍保留原参数模型的类型和校验。"""
@@ -218,7 +217,7 @@ class TestOperatorArgs(unittest.TestCase):
     def test_public_where_operand_order(self):
         """Where 的声明与公开 f/mask/other 顺序一致，而非内部条件优先。"""
         op = fo.Where()
-        self.assertEqual([spec.Name for spec in op.Args.OperandInfo], ["f", "mask", "other"])
+        self.assertEqual([spec.Name for spec in op.input_specs], ["f", "mask", "other"])
         mask = self.mask
         np.testing.assert_allclose(self.read(op(self.factor, mask, 0)),
                                    np.where(mask.readData(ids=self.ids, dts=self.dts), self.data, 0))
@@ -285,10 +284,10 @@ class TestOperatorArgs(unittest.TestCase):
                 factor_args = {"ModelArgs": {"note": "保留"}}
                 first = op(self.factor, [self.factor], [self.factor], factor_args=factor_args)
                 second = op(self.factor, [self.factor, self.factor], [], factor_args=factor_args)
-                self.assertEqual(first.Args.ModelArgs["endog_num"], 1)
-                self.assertEqual(first.Args.ModelArgs["exog_num"], 1)
-                self.assertEqual(second.Args.ModelArgs["endog_num"], 2)
-                self.assertEqual(second.Args.ModelArgs["exog_num"], 0)
+                self.assertEqual(len(first.Dependencies.component_data), 1)
+                self.assertEqual(len(first.Dependencies.exog), 1)
+                self.assertEqual(len(second.Dependencies.component_data), 2)
+                self.assertEqual(len(second.Dependencies.exog), 0)
                 self.assertEqual(first.Args.ModelArgs["note"], "保留")
                 self.assertEqual(factor_args, {"ModelArgs": {"note": "保留"}})
                 self.assertNotIn("endog_num", op.Args.ModelArgs | {})
@@ -512,8 +511,8 @@ class TestOperatorArgs(unittest.TestCase):
         original_id = op.QSID
         factor = op(self.factor, mask=mask, cat_data=categories, factor_args={})
         self.assertIsInstance(factor.Args.ModelArgs, dict)
-        self.assertTrue(factor.Args.ModelArgs["mask"])
-        self.assertTrue(factor.Args.ModelArgs["cat_data"])
+        self.assertTrue(factor.Dependencies.mask is not None)
+        self.assertTrue(factor.Dependencies.cat_data is not None)
         result = self.read(factor)
         np.testing.assert_allclose(result.iloc[:, 0], self.data.iloc[:, 0] + self.data.iloc[:, 2])
         self.assertTrue(result.iloc[:, 1].isna().all())
@@ -540,7 +539,7 @@ class TestOperatorArgs(unittest.TestCase):
                 restored = FactorOperator.deserialize(json.loads(json.dumps(op.serialize())))
                 self.assertIs(type(restored), type(op))
                 self.assertIs(type(restored.Args.ModelArgs), type(op.Args.ModelArgs))
-                self.assertEqual(restored.Args.OperandInfo, op.Args.OperandInfo)
+                self.assertEqual(restored.input_specs, op.input_specs)
                 self.assertEqual(restored.QSID, op.QSID)
                 np.testing.assert_allclose(self.read(restored(self.factor), start), expected)
 
@@ -549,7 +548,7 @@ class TestOperatorArgs(unittest.TestCase):
         op = fo.ToList()(self.factor, mask=DataFactor(data=1)).Operator
         restored = FactorOperator.deserialize(json.loads(json.dumps(op.serialize())))
         self.assertNotIn("mask", restored.Args.ModelArgs | {})
-        self.assertEqual(restored.Args.OperandInfo, op.Args.OperandInfo)
+        self.assertEqual(restored.input_specs, op.input_specs)
 
     def test_tolist_mask_is_call_level_and_template_is_reusable(self):
         """调用期标记位于因子侧，不改变模板身份或调用方的参数字典。"""
@@ -558,14 +557,14 @@ class TestOperatorArgs(unittest.TestCase):
         factor_args = {"ModelArgs": {"note": "保留"}}
         masked = op(self.factor, mask=DataFactor(data=1), factor_args=factor_args)
         plain = op(self.factor)
-        self.assertTrue(masked.Args.ModelArgs["mask"])
-        self.assertFalse(plain.Args.ModelArgs["mask"])
+        self.assertTrue(masked.Dependencies.mask is not None)
+        self.assertFalse(plain.Dependencies.mask is not None)
         self.assertEqual(masked.Args.ModelArgs["note"], "保留")
         self.assertEqual(factor_args, {"ModelArgs": {"note": "保留"}})
         self.assertNotIn("mask", op.Args.ModelArgs | {})
         self.assertEqual(op.QSID, original_id)
         self.assertNotIn("Arity", type(op.Args).model_fields)
-        self.assertTrue(any(spec.Name == "mask" and not spec.Required for spec in op.Args.OperandInfo))
+        self.assertTrue(any(spec.Name == "mask" and not spec.Required for spec in op.input_specs))
 
     def test_tolist_requires_data_operand_even_with_mask(self):
         """掩码不能充当必需的待合并因子。"""
@@ -574,12 +573,11 @@ class TestOperatorArgs(unittest.TestCase):
                 with self.assertRaises(__QS_Error__):
                     fo.ToList()(mask=mask)
 
-    def test_deserialize_legacy_operator_dictionary(self):
-        """兼容旧协议中的普通参数字典，不要求新增类型标记。"""
+    def test_deserialize_plain_operator_parameters(self):
+        """普通模型参数字典恢复为声明的模型类型。"""
         op = fo.Log(base=2)
         data = op.serialize()
         data["__qsargs__"]["ModelArgs"] = {"base": 2}
-        data["__qsargs__"]["OperandInfo"] = []
         restored = FactorOperator.deserialize(json.loads(json.dumps(data)))
         self.assertEqual(restored.Args.ModelArgs.base, 2)
         np.testing.assert_allclose(self.read(restored(self.factor)), np.log2(self.data))

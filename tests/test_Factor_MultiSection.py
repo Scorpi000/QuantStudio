@@ -77,12 +77,12 @@ class TestMultiSection(unittest.TestCase):
                         context=self.Context,
                         fwd_data_list=FwdDataList
                     )
-        self.assertListEqual(list(self.Context.NodeState), [Factor.QSID])
+        self.assertListEqual(list(self.Context.NodeState), [Factor.InstanceID])
         RunningKey1 = makeFactorRunningKey(qsid=Factor.QSID, section_ids=self.SectionIDs[:3], context=self.Context)
         RunningKey2 = makeFactorRunningKey(qsid=Factor.QSID, section_ids=self.SectionIDs[-3:], context=self.Context)
-        self.assertListEqual(sorted(self.Context.NodeState[Factor.QSID]), sorted([RunningKey1, RunningKey2]))
-        self.assertListEqual(self.Context.NodeState[Factor.QSID][RunningKey1]["section_ids"], self.SectionIDs[:3])
-        self.assertListEqual(self.Context.NodeState[Factor.QSID][RunningKey2]["section_ids"], self.SectionIDs[-3:])
+        self.assertListEqual(sorted(self.Context.NodeState[Factor.InstanceID]), sorted([RunningKey1, RunningKey2]))
+        self.assertListEqual(self.Context.NodeState[Factor.InstanceID][RunningKey1]["section_ids"], self.SectionIDs[:3])
+        self.assertListEqual(self.Context.NodeState[Factor.InstanceID][RunningKey2]["section_ids"], self.SectionIDs[-3:])
 
     def testCache(self):
         """测试在多截面时运行时缓存的状态"""

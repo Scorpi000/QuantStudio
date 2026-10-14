@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+from QuantStudio.Factor.FactorOperation import FactorInputModel
+from QuantStudio.Core.Input import DependencyModel
+from QuantStudio.Core.Identity import ExecutionEffect
 import base64
 from io import BytesIO
 import datetime as dt
@@ -40,8 +43,26 @@ class MakeAccount(PanelOperator):
         * Fee: 交易费用
     """
 
+    __QS_ExecutionEffect__ = ExecutionEffect.STATEFUL
+
+    class __QS_InputClass__(FactorInputModel):
+        """MakeAccount 的公开输入声明。"""
+
+        last_price: Factor = Field(title="最新价")
+        signal: Factor = Field(title="交易信号")
+        target_price: Factor | None = Field(default=None, title="目标价")
+        init_account: Factor | None = Field(default=None, title="初始账户")
+        buy_price: Factor | None = Field(default=None, title="买入价")
+        buy_limit: Factor | None = Field(default=None, title="买入限制")
+        buy_fee: float | Factor = Field(default=0, title="买入费率")
+        buy_amt_limit: Factor | None = Field(default=None, title="买入金额限制")
+        sell_price: Factor | None = Field(default=None, title="卖出价")
+        sell_limit: Factor | None = Field(default=None, title="卖出限制")
+        sell_fee: float | Factor = Field(default=0, title="卖出费率")
+        sell_amt_limit: Factor | None = Field(default=None, title="卖出金额限制")
+
     class __QS_ArgClass__(PanelOperator.__QS_ArgClass__):
-        OperandInfo: tuple[OperandSpec, ...] = Field(default=(OperandSpec(Variadic=True, MinNum=3),), frozen=True, exclude=True)
+        pass
 
     def __init__(self, signal_type:Literal["买卖数量", "目标权重"]="目标权重", init_cash:float=1e6, short_allowed:bool=False, start_dt:Optional[dt.datetime]=None, args:dict = {}, config_file:Optional[str] = None, **kwargs):
         """初始化账户创建算子
@@ -255,6 +276,14 @@ def genAccountOutput(init_cash, cash_series, debt_series, account_value_series, 
 class AccountStats(BTNode):
     """账户统计"""
 
+    class __QS_DepClass__(DependencyModel):
+        account: Factor = Field(title="账户")
+        bmk_nv: Factor | None = Field(default=None, title="基准净值")
+
+    @property
+    def _HasBmk(self):
+        return self.Dependencies.bmk_nv is not None
+
     class __QS_ArgClass__(BTNode.__QS_ArgClass__):
         Name: str = Field(default="账户统计", frozen=True, title="名称")
         RiskFreeRate: float = Field(default=0, frozen=True, title="无风险利率")
@@ -263,13 +292,12 @@ class AccountStats(BTNode):
         BmkID: Optional[str] = Field(default=None, title="基准ID", frozen=True)
 
     def __init__(self, account: Factor, bmk_nv:Optional[Factor]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        self._HasBmk = bmk_nv is not None
-        return super().__init__(deps=[account] + ([bmk_nv] if self._HasBmk else []), args=args, config_file=config_file, **kwargs)
+        return super().__init__(deps={"account": account, "bmk_nv": bmk_nv}, args=args, config_file=config_file, **kwargs)
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
         DTRuler = context.DTRuler
-        NodeState = context.NodeState.setdefault(self.QSID, {})
+        NodeState = context.NodeState.setdefault(self.InstanceID, {})
         StartDT, EndDT = NodeState["dt_range"]
         StartIdx = np.searchsorted(DTRuler, StartDT, side="left") - 1
         NewInitData = [FactorInitData(DTRange=(DTRuler[StartIdx], EndDT), SectionIDs=self._QSArgs.AccountSection)]
@@ -378,8 +406,26 @@ class MakeStrategy(MakeAccount):
         * Fee: 交易费用
     """
 
+    class __QS_InputClass__(FactorInputModel):
+        """策略的价格、交易条件与策略因子。"""
+
+        x: tuple[Factor, ...] = Field(default=(), title="策略因子")
+        last_price: Factor = Field(title="最新价")
+        init_account: Factor | None = Field(default=None, title="初始账户")
+        buy_price: Factor | None = Field(default=None, title="买入价")
+        buy_limit: Factor | None = Field(default=None, title="买入限制")
+        buy_fee: float | Factor = Field(default=0, title="买入费率")
+        buy_amt_limit: Factor | None = Field(default=None, title="买入金额限制")
+        sell_price: Factor | None = Field(default=None, title="卖出价")
+        sell_limit: Factor | None = Field(default=None, title="卖出限制")
+        sell_fee: float | Factor = Field(default=0, title="卖出费率")
+        sell_amt_limit: Factor | None = Field(default=None, title="卖出金额限制")
+
+    __QS_CallLayout__ = {name: {"keyword_only": True}
+                        for name in MakeAccount.__QS_InputClass__.model_fields}
+
     class __QS_ArgClass__(MakeAccount.__QS_ArgClass__):
-        OperandInfo: tuple[OperandSpec, ...] = Field(default=(OperandSpec(Variadic=True, MinNum=2),), frozen=True, exclude=True)
+        pass
 
     def __init__(self, signal_type:Literal["买卖数量", "目标权重"]="目标权重", init_cash:float=1e6, short_allowed:bool=False, start_dt:Optional[dt.datetime]=None, x_lookback:List[int]=[], x_section_ids:List[Optional[List[str]]]=[], signal_dts:Optional[List[dt.datetime]]=None, args:dict = {}, config_file:Optional[str] = None, **kwargs):
         """初始化策略创建算子

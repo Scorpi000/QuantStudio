@@ -48,8 +48,8 @@ class _TestNode(Node):
         self.init_called = True
         if self._order_list is not None:
             self._order_list.append(self.Name)
-        context.NodeState.setdefault(self.QSID, {})["initialized"] = True
-        context.PrepareNodeDict[self.QSID] = (self.QSID, f"prepare_{self.Name}")
+        context.NodeState.setdefault(self.InstanceID, {})["initialized"] = True
+        context.PrepareNodeDict[self.InstanceID] = (self.InstanceID, f"prepare_{self.Name}")
         return [init_data] * len(self.Deps)
 
     def prepare_compute(self, prepare_data: Any, context: Context):
@@ -82,7 +82,7 @@ class _TestNodeWithoutPrepare(Node):
 
     def init_compute(self, path, init_data, context):
         self.init_called = True
-        context.NodeState.setdefault(self.QSID, {})["initialized"] = True
+        context.NodeState.setdefault(self.InstanceID, {})["initialized"] = True
         return [init_data] * len(self.Deps)
 
     def prepare_compute(self, prepare_data, context):
@@ -107,8 +107,8 @@ class TestEngineInit(unittest.TestCase):
 
         self.engine.init([node1, node2], context)
 
-        self.assertIn("n1", context.NodeDict)
-        self.assertIn("n2", context.NodeDict)
+        self.assertIn(node1.InstanceID, context.NodeDict)
+        self.assertIn(node2.InstanceID, context.NodeDict)
         self.assertEqual(len(context.NodeDict), 2)
 
     def test_init_compute_called(self):
@@ -127,8 +127,8 @@ class TestEngineInit(unittest.TestCase):
 
         self.engine.init([node], context)
 
-        self.assertIn("n1", context.NodeState)
-        self.assertTrue(context.NodeState["n1"]["initialized"])
+        self.assertIn(node.InstanceID, context.NodeState)
+        self.assertTrue(context.NodeState[node.InstanceID]["initialized"])
 
     def test_prepare_node_dict_populated(self):
         """init_compute 应填充 context.PrepareNodeDict."""
@@ -137,9 +137,9 @@ class TestEngineInit(unittest.TestCase):
 
         self.engine.init([node], context)
 
-        self.assertIn("n1", context.PrepareNodeDict)
-        self.assertEqual(context.PrepareNodeDict["n1"][0], "n1")
-        self.assertEqual(context.PrepareNodeDict["n1"][1], "prepare_n1")
+        self.assertIn(node.InstanceID, context.PrepareNodeDict)
+        self.assertEqual(context.PrepareNodeDict[node.InstanceID][0], node.InstanceID)
+        self.assertEqual(context.PrepareNodeDict[node.InstanceID][1], "prepare_n1")
 
     def test_bfs_traverses_dependencies(self):
         """应从目标节点出发 BFS 遍历依赖树."""
@@ -150,9 +150,9 @@ class TestEngineInit(unittest.TestCase):
 
         self.engine.init([root], context)
 
-        self.assertIn("root", context.NodeDict)
-        self.assertIn("mid", context.NodeDict)
-        self.assertIn("leaf", context.NodeDict)
+        self.assertIn(root.InstanceID, context.NodeDict)
+        self.assertIn(mid.InstanceID, context.NodeDict)
+        self.assertIn(leaf.InstanceID, context.NodeDict)
         self.assertTrue(root.init_called)
         self.assertTrue(mid.init_called)
         self.assertTrue(leaf.init_called)
@@ -185,10 +185,10 @@ class TestEngineInit(unittest.TestCase):
 
         self.engine.init([root], context)
 
-        self.assertIn("leaf", context.NodeDict)
-        self.assertIn("left", context.NodeDict)
-        self.assertIn("right", context.NodeDict)
-        self.assertIn("root", context.NodeDict)
+        self.assertIn(leaf.InstanceID, context.NodeDict)
+        self.assertIn(left.InstanceID, context.NodeDict)
+        self.assertIn(right.InstanceID, context.NodeDict)
+        self.assertIn(root.InstanceID, context.NodeDict)
 
 
 class TestEnginePrepare(unittest.TestCase):
@@ -479,9 +479,9 @@ class TestStackEngine(unittest.TestCase):
 
         self.engine.run([root], context)
 
-        self.assertIn("leaf", context.NodeDict)
-        self.assertIn("root", context.NodeDict)
-        self.assertIn("leaf", context.NodeState)
+        self.assertIn(leaf.InstanceID, context.NodeDict)
+        self.assertIn(root.InstanceID, context.NodeDict)
+        self.assertIn(leaf.InstanceID, context.NodeState)
 
     def test_shared_dependency(self):
         """共享依赖: 两个目标节点共享同一叶子依赖, 各自独立计算."""

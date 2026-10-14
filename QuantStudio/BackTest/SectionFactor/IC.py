@@ -1,4 +1,6 @@
 # coding=utf-8
+from QuantStudio.Factor.FactorOperation import FactorInputModel
+from QuantStudio.Core.Input import DependencyModel
 import datetime as dt
 import base64
 from io import BytesIO
@@ -95,6 +97,17 @@ class CalcIC(PanelOperator):
         Rslt = np.array([IC.reindex(index=idt).values[self._QSArgs.LookBack[0]:], Breadth.reindex(index=idt).values[self._QSArgs.LookBack[0]:]])
         return unstructured_to_structured(Rslt.swapaxes(0, -1), dtype=np.dtype([("IC", float), ("Breadth", float)])).T.astype("O")
     
+    class __QS_InputClass__(FactorInputModel):
+        """公开因子及计算节点输入。"""
+
+        x: tuple[Factor, ...] = Field(min_length=1, title="输入因子")
+        price: Factor = Field(title='price')
+        mask: Optional[Factor] = Field(default=None, title='mask')
+        cat_data: Optional[Factor] = Field(default=None, title='cat_data')
+        weight: Optional[Factor] = Field(default=None, title='weight')
+
+    __QS_CallLayout__ = {'price': {'grouped': False, 'keyword_only': True}, 'mask': {'grouped': False, 'keyword_only': True}, 'cat_data': {'grouped': False, 'keyword_only': True}, 'weight': {'grouped': False, 'keyword_only': True}}
+
     def __call__(self, *x:Factor, price:Factor, mask: Optional[Factor]=None, cat_data: Optional[Factor]=None, weight: Optional[Factor]=None, factor_name_list: Optional[List[str]]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
         """将算子作用在若干个因子对象上以产生 IC 因子
 
@@ -228,6 +241,17 @@ class CalcRiskAdjustedIC(PanelOperator):
             Rslt[i, 1] = pd.notnull(iFactorExpose).sum()
         return unstructured_to_structured(Rslt).tolist()
         
+    class __QS_InputClass__(FactorInputModel):
+        """公开因子及计算节点输入。"""
+
+        x: tuple[Factor, ...] = Field(min_length=1, title="输入因子")
+        price: Factor = Field(title='price')
+        risk_factors: tuple[Factor, ...] = Field(title='risk_factors')
+        mask: Optional[Factor] = Field(default=None, title='mask')
+        cat_data: Optional[Factor] = Field(default=None, title='cat_data')
+
+    __QS_CallLayout__ = {'price': {'grouped': False, 'keyword_only': True}, 'risk_factors': {'grouped': True, 'keyword_only': True}, 'mask': {'grouped': False, 'keyword_only': True}, 'cat_data': {'grouped': False, 'keyword_only': True}}
+
     def __call__(self, *x:Factor, price:Factor, risk_factors:List[Factor], mask: Optional[Factor]=None, cat_data: Optional[Factor]=None, factor_name_list: Optional[List[str]]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
         """将算子作用在若干个因子对象上以产生风险调整的 IC 因子
 
@@ -278,6 +302,9 @@ class CalcRiskAdjustedIC(PanelOperator):
 
 class IC(BTNode):
     """IC: 往期因子值和当期收益率的秩相关性。通常采用的相关系数为 Spearman 相关系数。"""
+    class __QS_DepClass__(DependencyModel):
+        ic: Factor = Field(title='ic')
+
     class __QS_ArgClass__(BTNode.__QS_ArgClass__):
         Name: str = Field(default="IC", frozen=True, title="名称")
         FactorNameList: Optional[List[str]] = Field(default=None, frozen=True, title="因子列表")
@@ -285,7 +312,7 @@ class IC(BTNode):
         SectionIDs: Optional[List[str]] = Field(default=None, frozen=True, title="截面ID")
         
     def __init__(self, ic: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        return super().__init__(deps=[ic], args=args, config_file=config_file, **kwargs)
+        return super().__init__(deps={'ic': ic}, args=args, config_file=config_file, **kwargs)
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
@@ -327,6 +354,9 @@ class IC(BTNode):
 class ICDecay(BTNode):
     """IC 衰减: 因子值和收益率关于日期间隔的 IC 衰减情况"""
 
+    class __QS_DepClass__(DependencyModel):
+        ic_list: tuple[Factor, ...] = Field(default=(), title='ic_list')
+
     class __QS_ArgClass__(BTNode.__QS_ArgClass__):
         Name: str = Field(default="IC 衰减", frozen=True, title="名称")
         PeriodList: Optional[List[str]] = Field(default=None, frozen=True, title="回溯期列表")
@@ -334,10 +364,14 @@ class ICDecay(BTNode):
         SectionIDs: Optional[List[str]] = Field(default=None, frozen=True, title="截面ID")
         
     def __init__(self, ic_list: List[Factor], args:dict={}, config_file:Optional[str]=None, **kwargs):
-        super().__init__(deps=ic_list, args=args, config_file=config_file, **kwargs)
+        super().__init__(deps={'ic_list': tuple(ic_list)}, args=args, config_file=config_file, **kwargs)
+        self._QS_post_bind()
+
+    def _QS_post_bind(self):
         if self._QSArgs.PeriodList:
-            if len(self._QSArgs.PeriodList) != ic_list:
-                raise __QS_Error__(f"指定的 PeriodList 的长度 {len(self._QSArgs.PeriodList)} 不等于 IC 因子的数量 {len(ic_list)}")
+            count = len(self.Dependencies.ic_list)
+            if len(self._QSArgs.PeriodList) != count:
+                raise __QS_Error__(f"指定的 PeriodList 的长度 {len(self._QSArgs.PeriodList)} 不等于 IC 因子的数量 {count}")
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
@@ -388,11 +422,14 @@ class ICDecay(BTNode):
 class ICReport(ReportNode):
     """IC 报告生成节点"""
 
+    class __QS_DepClass__(DependencyModel):
+        ic_node: IC = Field(title='ic_node')
+
     class __QS_ArgClass__(ReportNode.__QS_ArgClass__):
         Name: str = Field(default="IC报告", frozen=True, title="名称")
 
     def __init__(self, ic_node: IC, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        return super().__init__(deps=[ic_node], args=args, config_file=config_file, **kwargs)
+        return super().__init__(deps={'ic_node': ic_node}, args=args, config_file=config_file, **kwargs)
 
     @staticmethod
     def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:
@@ -457,11 +494,14 @@ class ICReport(ReportNode):
 class ICDecayReport(ReportNode):
     """IC 衰减报告生成节点"""
 
+    class __QS_DepClass__(DependencyModel):
+        ic_decay_node: ICDecay = Field(title='ic_decay_node')
+
     class __QS_ArgClass__(ReportNode.__QS_ArgClass__):
         Name: str = Field(default="IC衰减报告", frozen=True, title="名称")
 
     def __init__(self, ic_decay_node: ICDecay, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        return super().__init__(deps=[ic_decay_node], args=args, config_file=config_file, **kwargs)
+        return super().__init__(deps={'ic_decay_node': ic_decay_node}, args=args, config_file=config_file, **kwargs)
 
     @staticmethod
     def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:

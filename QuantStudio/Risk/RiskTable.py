@@ -1,5 +1,6 @@
 # coding=utf-8
 import datetime as dt
+import inspect
 from typing import Optional, List, Union, Any
 
 import numpy as np
@@ -9,6 +10,8 @@ from pydantic import Field
 from QuantStudio.Core import __QS_Object__, __QS_Error__
 from QuantStudio.Core.QSObject import Panel
 from QuantStudio.Core.Node import Node
+from QuantStudio.Core.Input import EmptyDependencies
+from QuantStudio.Core.Identity import ExecutionEffect
 from QuantStudio.Factor.Factor import FactorInitData, FactorContext, FactorLocalContext
 from QuantStudio.Risk.RiskDB import RiskDB, FactorRDB
 from QuantStudio.Tools.DateTimeFun import cutDateTime
@@ -18,7 +21,11 @@ from QuantStudio.Tools.DataTypeFun import dict2id
 class RiskTable(Node):
     """风险表"""
 
+    __QS_DepClass__ = EmptyDependencies
+    __QS_ExecutionEffect__ = ExecutionEffect.READ
+
     class __QS_ArgClass__(Node.__QS_ArgClass__):
+        SourceRDB: RiskDB | None = Field(default=None, title="来源风险库", frozen=True, repr=False)
         Name: str = Field(default="风险表", frozen=True) 
     
     def __init__(self, rdb: FactorRDB, args:dict={}, config_file:Optional[str]=None, **kwargs):
@@ -31,10 +38,22 @@ class RiskTable(Node):
             kwargs:
                 logger: 日志对象, 用于内部打印日志, 如果没有指定则使用默认的 __QS_Logger__ 对象
         """
-        self._RiskDB = rdb
         self._QS_PrepareIgnoredArgs: tuple = tuple()# 决定 PrepareID 不需要的参数集，如果为空，表示所有参数都需要
-        return super().__init__(deps=[], args=args, config_file=config_file, **kwargs)
+        return super().__init__(deps=[], args=args | {"SourceRDB": rdb}, config_file=config_file, **kwargs)
+
+    @classmethod
+    def from_dependencies(cls, deps, args=None, **kwargs):
+        """用声明的来源资源构造风险表。"""
+        values = args.to_dict(repr=False) if hasattr(args, "to_dict") else dict(args or {})
+        source = values.pop("SourceRDB", None)
+        if "name" in inspect.signature(cls.__init__).parameters:
+            kwargs["name"] = values["Name"]
+        return cls(rdb=source, args=values, **kwargs)
     
+    @property
+    def _RiskDB(self):
+        return self.Args.SourceRDB
+
     @property
     def RiskDB(self) -> RiskDB:
         """风险表所属的风险库"""
@@ -117,7 +136,7 @@ class RiskTable(Node):
             "SectionIDs": init_data.SectionIDs,
             "Args": self._QSArgs.to_dict(repr=False)
         }
-        _, PrepareData = context.PrepareNodeDict.setdefault(self.PrepareID, (self.QSID, PrepareData))
+        _, PrepareData = context.PrepareNodeDict.setdefault(self.PrepareID, (self.InstanceID, PrepareData))
         PrepareData["DTRange"] = (min(init_data.DTRange[0], PrepareData["DTRange"][0]), max(init_data.DTRange[1], PrepareData["DTRange"][1]))
         return super().init_compute(path=path, init_data=init_data, context=context)
     

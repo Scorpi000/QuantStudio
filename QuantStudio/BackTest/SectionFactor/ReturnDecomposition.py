@@ -1,4 +1,6 @@
 # coding=utf-8
+from QuantStudio.Factor.FactorOperation import FactorInputModel
+from QuantStudio.Core.Input import DependencyModel
 import datetime as dt
 import base64
 from io import BytesIO
@@ -100,6 +102,16 @@ class CalcFamaMacBethRegression(PanelOperator):
                 pass
         return unstructured_to_structured(Rslt.T).tolist()
         
+    class __QS_InputClass__(FactorInputModel):
+        """公开因子及计算节点输入。"""
+
+        x: tuple[Factor, ...] = Field(min_length=1, title="输入因子")
+        price: Factor = Field(title='price')
+        mask: Optional[Factor] = Field(default=None, title='mask')
+        cat_data: Optional[Factor] = Field(default=None, title='cat_data')
+
+    __QS_CallLayout__ = {'price': {'grouped': False, 'keyword_only': True}, 'mask': {'grouped': False, 'keyword_only': True}, 'cat_data': {'grouped': False, 'keyword_only': True}}
+
     def __call__(self, *x:Factor, price:Factor, mask: Optional[Factor]=None, cat_data: Optional[Factor]=None, factor_name_list:Optional[List[str]]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
         """将算子作用在若干个因子对象上以产生 Fama-MacBeth 回归因子
 
@@ -147,6 +159,9 @@ class CalcFamaMacBethRegression(PanelOperator):
 
 class FamaMacBethRegression(BTNode):
     """Fama-MacBeth 回归"""
+    class __QS_DepClass__(DependencyModel):
+        fmr: Factor = Field(title='fmr')
+
     class __QS_ArgClass__(BTNode.__QS_ArgClass__):
         Name: str = Field(default="Fama-MacBeth 回归", frozen=True, title="名称")
         FactorNameList: Optional[List[str]] = Field(default=None, frozen=True, title="因子列表")
@@ -154,7 +169,7 @@ class FamaMacBethRegression(BTNode):
         SectionIDs: Optional[List[str]] = Field(default=None, frozen=True, title="截面ID")
         
     def __init__(self, fmr: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        super().__init__(deps=[fmr], args=args, config_file=config_file, **kwargs)
+        super().__init__(deps={'fmr': fmr}, args=args, config_file=config_file, **kwargs)
     
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
@@ -225,11 +240,14 @@ class FamaMacBethRegression(BTNode):
 class FamaMacBethRegressionReport(ReportNode):
     """Fama-MacBeth 回归报告生成节点"""
 
+    class __QS_DepClass__(DependencyModel):
+        fmr_node: FamaMacBethRegression = Field(title='fmr_node')
+
     class __QS_ArgClass__(ReportNode.__QS_ArgClass__):
         Name: str = Field(default="Fama-MacBeth回归报告", frozen=True, title="名称")
 
     def __init__(self, fmr_node: FamaMacBethRegression, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        return super().__init__(deps=[fmr_node], args=args, config_file=config_file, **kwargs)
+        return super().__init__(deps={'fmr_node': fmr_node}, args=args, config_file=config_file, **kwargs)
 
     @staticmethod
     def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:

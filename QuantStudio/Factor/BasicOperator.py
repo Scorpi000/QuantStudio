@@ -5,6 +5,8 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
+from pydantic import Field
+from QuantStudio.Factor.FactorOperation import FactorInputModel
 
 from QuantStudio.Factor.Factor import Factor
 from QuantStudio.Factor.FactorOperation import PointOperator, PointOperation, OperandSpec
@@ -13,8 +15,12 @@ from QuantStudio.Factor.FactorOperation import PointOperator, PointOperation, Op
 class Rename(PointOperator):
     """重命名因子"""
 
+    class __QS_InputClass__(FactorInputModel):
+        f: Factor = Field(title='f')
+
+
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        Args = {"Name": "rename", "DataType": "object"} | args | {"OperandInfo": (OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
+        Args = {"Name": "rename", "DataType": "object"} | args | { "DTMode": "多时点", "IDMode": "多ID"}
         return super().__init__(args=Args, config_file=config_file, **kwargs)
     
     def calculate(self, f, idt, iid, x, args):
@@ -35,9 +41,13 @@ class Rename(PointOperator):
 class Neg(PointOperator):
     """取负值"""
 
+    class __QS_InputClass__(FactorInputModel):
+        x0: Factor = Field(title='x0')
+
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "neg", "OperandInfo": (OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "neg",  "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -51,9 +61,13 @@ class Neg(PointOperator):
 class Abs(PointOperator):
     """绝对值"""
 
+    class __QS_InputClass__(FactorInputModel):
+        x0: Factor = Field(title='x0')
+
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "abs", "OperandInfo": (OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "abs",  "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -67,9 +81,13 @@ class Abs(PointOperator):
 class Not(PointOperator):
     """非"""
 
+    class __QS_InputClass__(FactorInputModel):
+        x0: Factor = Field(title='x0')
+
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "not", "OperandInfo": (OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "not",  "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -83,9 +101,14 @@ class Not(PointOperator):
 class Add(PointOperator):
     """加法"""
 
+    class __QS_InputClass__(FactorInputModel):
+        x0: Factor = Field(title='x0')
+        x1: Factor = Field(title='x1')
+
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "add", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "add",  "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -99,9 +122,14 @@ class Add(PointOperator):
 class Sub(PointOperator):
     """减法"""
 
+    class __QS_InputClass__(FactorInputModel):
+        x0: Factor = Field(title='x0')
+        x1: Factor = Field(title='x1')
+
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "sub", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "sub",  "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -115,9 +143,14 @@ class Sub(PointOperator):
 class Mul(PointOperator):
     """乘法"""
 
+    class __QS_InputClass__(FactorInputModel):
+        x0: Factor = Field(title='x0')
+        x1: Factor = Field(title='x1')
+
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "mul", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "mul",  "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -131,9 +164,14 @@ class Mul(PointOperator):
 class Div(PointOperator):
     """除法"""
 
+    class __QS_InputClass__(FactorInputModel):
+        x0: Factor = Field(title='x0')
+        x1: Factor = Field(title='x1')
+
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "div", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "div",  "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -147,9 +185,14 @@ class Div(PointOperator):
 class FloorDiv(PointOperator):
     """整除"""
 
+    class __QS_InputClass__(FactorInputModel):
+        x0: Factor = Field(title='x0')
+        x1: Factor = Field(title='x1')
+
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "floordiv", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "floordiv",  "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -163,9 +206,14 @@ class FloorDiv(PointOperator):
 class Mod(PointOperator):
     """取余"""
 
+    class __QS_InputClass__(FactorInputModel):
+        x0: Factor = Field(title='x0')
+        x1: Factor = Field(title='x1')
+
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "mod", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "mod",  "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -179,9 +227,14 @@ class Mod(PointOperator):
 class Pow(PointOperator):
     """乘方"""
 
+    class __QS_InputClass__(FactorInputModel):
+        x0: Factor = Field(title='x0')
+        x1: Factor = Field(title='x1')
+
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "pow", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "pow",  "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -197,9 +250,14 @@ class Pow(PointOperator):
 class And(PointOperator):
     """与"""
 
+    class __QS_InputClass__(FactorInputModel):
+        x0: Factor = Field(title='x0')
+        x1: Factor = Field(title='x1')
+
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "and", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "and",  "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -213,9 +271,14 @@ class And(PointOperator):
 class Or(PointOperator):
     """或"""
 
+    class __QS_InputClass__(FactorInputModel):
+        x0: Factor = Field(title='x0')
+        x1: Factor = Field(title='x1')
+
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "or", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "or",  "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -229,9 +292,14 @@ class Or(PointOperator):
 class Xor(PointOperator):
     """异或"""
 
+    class __QS_InputClass__(FactorInputModel):
+        x0: Factor = Field(title='x0')
+        x1: Factor = Field(title='x1')
+
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "xor", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "xor",  "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -245,9 +313,14 @@ class Xor(PointOperator):
 class LT(PointOperator):
     """小于"""
 
+    class __QS_InputClass__(FactorInputModel):
+        x0: Factor = Field(title='x0')
+        x1: Factor = Field(title='x1')
+
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "lt", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "lt",  "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -261,9 +334,14 @@ class LT(PointOperator):
 class LE(PointOperator):
     """小于等于"""
 
+    class __QS_InputClass__(FactorInputModel):
+        x0: Factor = Field(title='x0')
+        x1: Factor = Field(title='x1')
+
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "le", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "le",  "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -277,9 +355,14 @@ class LE(PointOperator):
 class GT(PointOperator):
     """大于"""
 
+    class __QS_InputClass__(FactorInputModel):
+        x0: Factor = Field(title='x0')
+        x1: Factor = Field(title='x1')
+
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "gt", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "gt",  "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -293,9 +376,14 @@ class GT(PointOperator):
 class GE(PointOperator):
     """大于等于"""
 
+    class __QS_InputClass__(FactorInputModel):
+        x0: Factor = Field(title='x0')
+        x1: Factor = Field(title='x1')
+
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "ge", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "ge",  "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -309,9 +397,14 @@ class GE(PointOperator):
 class Eq(PointOperator):
     """等于"""
 
+    class __QS_InputClass__(FactorInputModel):
+        x0: Factor = Field(title='x0')
+        x1: Factor = Field(title='x1')
+
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "eq", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "eq",  "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     
@@ -325,9 +418,14 @@ class Eq(PointOperator):
 class Neq(PointOperator):
     """不等于"""
 
+    class __QS_InputClass__(FactorInputModel):
+        x0: Factor = Field(title='x0')
+        x1: Factor = Field(title='x1')
+
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         def __init__(self, /, **data):
-            Args = {"Name": "neq", "OperandInfo": (OperandSpec(), OperandSpec(),), "DTMode": "多时点", "IDMode": "多ID"}
+            Args = {"Name": "neq",  "DTMode": "多时点", "IDMode": "多ID"}
             Args.update(data)
             return super().__init__(**Args)
     

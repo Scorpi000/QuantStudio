@@ -5,9 +5,11 @@ from typing import List, Optional, Any, Literal, Tuple, Union, Dict
 
 import numpy as np
 import pandas as pd
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from QuantStudio.Core import __QS_Error__
+from QuantStudio.Core.Input import DependencyModel, EmptyDependencies, Binding, dependency_edges
+from QuantStudio.Core.Identity import ExecutionEffect
 from QuantStudio.Core.Node import Node, Context, DTLocalContext, DTInitData, __QS_Context__
 from QuantStudio.Core.CalcEngine import __QS_Engine__, Engine
 from QuantStudio.Factor.FactorCache import FactorCache
@@ -112,13 +114,35 @@ def makeFactorRunningKey(qsid: str, section_ids: Optional[List[str]] = None, dt_
     Returns:
         运行时键字符串（16位十六进制）
     """
+    if context is not None:
+        section_ids = context.SectionIDs if section_ids is None else section_ids
+        dt_ruler = context.DTRuler if dt_ruler is None else dt_ruler
     parts = [qsid]
-    if section_ids and ((context is None) or (section_ids != context.SectionIDs)):
-        # 截面排序后哈希，确保顺序无关
-        parts.append(f"s:{','.join(sorted(section_ids))}")
-    if dt_ruler and ((context is None) or (dt_ruler != context.DTRuler)):
+    if section_ids is not None:
+        parts.append(f"s:{','.join(section_ids)}")
+    if dt_ruler is not None:
         parts.append(f"d:{','.join(str(d) for d in dt_ruler)}")
+    if context is not None:
+        parts.append(f"v:{context.DataVersion or context.RunID}")
     return hashlib.md5("|".join(parts).encode()).hexdigest()[:16]
+
+
+class FactorDependencies(DependencyModel):
+    """因子的因子表、描述子和额外计算依赖。"""
+
+    factor_table: Node | None = Field(default=None, title="所属因子表")
+    descriptors: tuple["Factor", ...] = Field(default=(), title="描述子")
+    extra_deps: tuple[Node, ...] = Field(default=(), title="额外依赖")
+
+    @model_validator(mode="after")
+    def _validate_table(self):
+        if self.factor_table is not None:
+            from QuantStudio.Factor.FactorTable import FactorTable
+            if not isinstance(self.factor_table, FactorTable):
+                raise ValueError("所属因子表必须是 FactorTable")
+            if self.descriptors:
+                raise ValueError("因子表与描述子不能同时存在")
+        return self
 
 
 class Factor(Node):
@@ -127,6 +151,8 @@ class Factor(Node):
     因子可看做 DataFrame(index=[时点], columns=[ID])
     时点数据类型是 datetime, ID 的数据类型是 str
     """
+    __QS_DepClass__ = FactorDependencies
+    __QS_ExecutionEffect__ = ExecutionEffect.READ
     class __QS_ArgClass__(Node.__QS_ArgClass__):
         Name: str = Field(default="Factor", frozen=True, title="名称")
         Meta: dict = Field(default={}, title="元信息", frozen=False, exclude=True)
@@ -146,17 +172,27 @@ class Factor(Node):
         """
         if ft and descriptors:
             raise __QS_Error__("因子表和描述子列表不能都存在!")
-        self._FactorTable = ft
-        self._Descriptors = descriptors
-        self._ExtraDeps = extra_deps
-        kwargs.pop("deps", [])
-        if ft:
-            return super().__init__(deps=[ft] + extra_deps, args=args, config_file=config_file, **kwargs)
-        else:
-            return super().__init__(deps=descriptors + extra_deps, args=args, config_file=config_file, **kwargs)
+        dependencies = kwargs.pop("deps", None)
+        if dependencies is None:
+            dependencies = ({"factor_table": ft, "descriptors": tuple(descriptors), "extra_deps": tuple(extra_deps)}
+                            if self.__QS_DepClass__.model_fields else {})
+        return super().__init__(deps=dependencies, args=args, config_file=config_file, **kwargs)
+
+    @property
+    def _FactorTable(self):
+        return getattr(self.Dependencies, "factor_table", None)
+
+    @property
+    def _Descriptors(self):
+        if hasattr(self.Dependencies, "descriptors"):
+            return list(self.Dependencies.descriptors)
+        return [edge.node for edge in dependency_edges(self.Dependencies) if edge.name not in ("extra_deps", "factor_table")]
+
+    @property
+    def _ExtraDeps(self):
+        return list(getattr(self.Dependencies, "extra_deps", ()))
     
     def new(self, args:dict={}, **kwargs) -> "Factor":
-        kwargs = {"ft": self._FactorTable, "descriptors": self._Descriptors, "extra_deps": self._ExtraDeps} | kwargs
         return super().new(args=args, **kwargs)
     
     @property
@@ -272,13 +308,13 @@ class Factor(Node):
     def _prepareCacheData(self, context: FactorContext, local_context: FactorLocalContext):
         if not self._FactorTable: return 0
         RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=local_context.SectionIDs or self._QSArgs.SectionIDs, context=context)
-        DTRange = context.NodeState.get(self.QSID, {}).get(RunningKey, {}).get("dt_range", None)
+        DTRange = context.NodeState.get(self.InstanceID, {}).get(RunningKey, {}).get("dt_range", None)
         if DTRange is None: return 0
         DTRange = context.DataCache.getDTRange(key=RunningKey, dt_range=DTRange)
         if DTRange is None: return 0
         DTs = context.getDateTime(DTRange)
         if not DTs: return 0
-        PIDIDs = context.NodeState[self.QSID][RunningKey]["pid_ids"]
+        PIDIDs = context.NodeState[self.InstanceID][RunningKey]["pid_ids"]
         SectionIDs = PIDIDs[context.PID]
         CalcDTs = self._QS_getCalcDTs(DTs, mask=False)
         if (CalcDTs is not None) and (not CalcDTs): 
@@ -325,7 +361,7 @@ class Factor(Node):
     def init_compute(self, path: List[str], init_data: FactorInitData, context: FactorContext) -> List[FactorInitData]:
         InitSectionIDs = init_data.SectionIDs or self._QSArgs.SectionIDs
         RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=InitSectionIDs, context=context)
-        FactorState = context.NodeState.setdefault(self.QSID, {})
+        FactorState = context.NodeState.setdefault(self.InstanceID, {})
         if FactorState and RunningKey not in FactorState:
             self._QS_Logger.debug(f"因子 {self.Name}(QSID: {self.QSID}) 设置了不同的截面")
         FactorState = FactorState.setdefault(RunningKey, {})
@@ -346,7 +382,7 @@ class Factor(Node):
             FactorState["pid_ids"] = context.DefaultPIDIDs if InitSectionIDs is None else context.splitID(InitSectionIDs)
         # 默认
         DefaultInitData = super().init_compute(path=path, init_data=init_data, context=context)
-        if self.QSID in path[:-1]: return []
+        if self.InstanceID in path[:-1]: return []
         if self._FactorTable:
             return [FactorInitData(DTRange=FactorState["dt_range"], SectionIDs=InitSectionIDs, SubFactorName=self._QSArgs.Name)] + DefaultInitData[1:]
         else:
@@ -495,10 +531,17 @@ class Factor(Node):
         return qs_not(self)
 
 
+FactorDependencies.model_rebuild(_types_namespace={"Factor": Factor})
+
+
 class DataFactor(Factor):
     """数据因子: 直接赋予数据产生的因子"""
+
+    __QS_DepClass__ = EmptyDependencies
+    __QS_ExecutionEffect__ = ExecutionEffect.PURE
     
     class __QS_ArgClass__(Factor.__QS_ArgClass__):
+        Data: Any = Field(frozen=True, exclude=True, repr=False, title="因子数据")
         Name: str = Field(default="DataFactor", frozen=True, title="名称")
         DataType: Literal["double", "string", "object"] = Field(default="double", frozen=True, title="数据类型")
         LookBack: int = Field(default=0, title="回溯天数", frozen=True)
@@ -545,6 +588,7 @@ class DataFactor(Factor):
         # 基类 new() 会注入这三个参数, 此处剔除以免与下面的显式实参冲突
         for iKey in ("ft", "descriptors", "extra_deps"):
             kwargs.pop(iKey, None)
+        args["Data"] = data
         super().__init__(ft=None, descriptors=[], args=args, config_file=config_file, **kwargs)
         if isinstance(data, pd.Series):
             if pd.api.types.is_datetime64_any_dtype(data.index):
@@ -572,8 +616,15 @@ class DataFactor(Factor):
         self._Data = data
     
     def new(self, args:dict={}, **kwargs) -> "DataFactor":
-        kwargs = {"data": self._Data} | kwargs
-        return super().new(args=args, **kwargs)
+        data = kwargs.pop("data", self._Data)
+        return type(self)(data=data, args=(self.Args | {}) | args, **({"logger": self.Logger} | kwargs))
+
+    @classmethod
+    def from_dependencies(cls, deps, args=None, **kwargs):
+        """根据数据参数构造无依赖的数据因子。"""
+        values = ({name: getattr(args, name) for name in args.model_fields_set}
+                  if hasattr(args, "model_fields_set") else dict(args or {}))
+        return cls(data=values.pop("Data"), args=values, **kwargs)
 
     def model_dump(self) -> Dict[str, Any]:
         DumpedModel = super().model_dump()

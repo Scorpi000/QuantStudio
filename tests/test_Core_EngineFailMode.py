@@ -34,7 +34,7 @@ class _TestNode(Node):
         self._result = result if result is not None else f"result_{self.Name}"
 
     def init_compute(self, path, init_data, context):
-        context.PrepareNodeDict[self.QSID] = (self.QSID, f"prepare_{self.Name}")
+        context.PrepareNodeDict[self.InstanceID] = (self.InstanceID, f"prepare_{self.Name}")
         return [init_data] * len(self.Deps)
 
     def prepare_compute(self, prepare_data, context):
@@ -63,7 +63,7 @@ class _FailingNode(Node):
     def init_compute(self, path, init_data, context):
         if self._fail_in == "init":
             raise RuntimeError(f"init 失败: {self.Name}")
-        context.PrepareNodeDict[self.QSID] = (self.QSID, f"prepare_{self.Name}")
+        context.PrepareNodeDict[self.InstanceID] = (self.InstanceID, f"prepare_{self.Name}")
         return [init_data] * len(self.Deps)
 
     def prepare_compute(self, prepare_data, context):
@@ -107,7 +107,7 @@ class TestEngineFailMode(unittest.TestCase):
 
         self.assertIsNone(rslt[0])
         self.assertEqual(rslt[1], "ok")
-        self.assertIn("bad", context.NodeErrors)
+        self.assertIn(bad.InstanceID, context.NodeErrors)
 
     def test_fail_mode_skip_downstream_skipped(self):
         """skip 模式下, 依赖失败节点的下游应被标记为 SKIPPED."""
@@ -119,8 +119,8 @@ class TestEngineFailMode(unittest.TestCase):
         rslt = engine.run([root], context)
 
         self.assertIsNone(rslt[0])
-        self.assertIn("leaf", context.NodeErrors)
-        self.assertEqual(context.NodeState.get("root", {}).get("__status__"), "SKIPPED")
+        self.assertIn(leaf.InstanceID, context.NodeErrors)
+        self.assertEqual(context.NodeState.get(root.InstanceID, {}).get("__status__"), "SKIPPED")
 
     def test_fail_mode_skip_init_failure(self):
         """skip 模式下, init 阶段失败的容错."""
@@ -133,7 +133,7 @@ class TestEngineFailMode(unittest.TestCase):
 
         self.assertIsNone(rslt[0])
         self.assertEqual(rslt[1], "ok")
-        self.assertIn("bad", context.NodeErrors)
+        self.assertIn(bad.InstanceID, context.NodeErrors)
 
     def test_fail_mode_skip_prepare_failure(self):
         """skip 模式下, prepare 阶段失败的容错."""
@@ -146,7 +146,7 @@ class TestEngineFailMode(unittest.TestCase):
 
         self.assertIsNone(rslt[0])
         self.assertEqual(rslt[1], "ok")
-        self.assertIn("bad", context.NodeErrors)
+        self.assertIn(bad.InstanceID, context.NodeErrors)
 
     def test_fail_mode_skip_diamond_deps(self):
         """skip 模式下, 菱形依赖场景: 共享依赖失败, 两个下游都被跳过."""
@@ -160,7 +160,7 @@ class TestEngineFailMode(unittest.TestCase):
         rslt = engine.run([root], context)
 
         self.assertIsNone(rslt[0])
-        self.assertIn("leaf", context.NodeErrors)
+        self.assertIn(leaf.InstanceID, context.NodeErrors)
 
     def test_fail_mode_skip_error_message(self):
         """skip 模式下, NodeErrors 记录正确的异常信息."""
@@ -170,8 +170,8 @@ class TestEngineFailMode(unittest.TestCase):
 
         engine.run([bad], context)
 
-        self.assertIn("bad", context.NodeErrors)
-        self.assertIn("compute 失败", str(context.NodeErrors["bad"]))
+        self.assertIn(bad.InstanceID, context.NodeErrors)
+        self.assertIn("compute 失败", str(context.NodeErrors[bad.InstanceID]))
 
     def test_fail_mode_default_is_raise(self):
         """FailMode 默认应为 raise."""
@@ -193,7 +193,7 @@ class TestStackEngineFailMode(unittest.TestCase):
 
         self.assertIsNone(rslt[0])
         self.assertEqual(rslt[1], "ok")
-        self.assertIn("bad", context.NodeErrors)
+        self.assertIn(bad.InstanceID, context.NodeErrors)
 
     def test_fail_mode_skip_with_deps(self):
         """StackEngine skip 模式下, 依赖失败节点的下游被跳过."""
@@ -205,7 +205,7 @@ class TestStackEngineFailMode(unittest.TestCase):
         rslt = engine.run([root], context)
 
         self.assertIsNone(rslt[0])
-        self.assertIn("leaf", context.NodeErrors)
+        self.assertIn(leaf.InstanceID, context.NodeErrors)
 
     def test_fail_mode_skip_init_failure(self):
         """StackEngine skip 模式下, init 阶段失败的容错."""
@@ -243,7 +243,7 @@ class TestTreeEngineFailMode(unittest.TestCase):
 
         self.assertIsNone(rslt[0])
         self.assertEqual(rslt[1], "ok")
-        self.assertIn("bad", context.NodeErrors)
+        self.assertIn(bad.InstanceID, context.NodeErrors)
 
     def test_fail_mode_skip_downstream_skipped(self):
         """TreeEngine skip 模式下, 依赖失败节点的下游被跳过."""
@@ -255,7 +255,7 @@ class TestTreeEngineFailMode(unittest.TestCase):
         rslt = engine.run([root], context)
 
         self.assertIsNone(rslt[0])
-        self.assertIn("leaf", context.NodeErrors)
+        self.assertIn(leaf.InstanceID, context.NodeErrors)
 
     def test_fail_mode_skip_multi_branch(self):
         """TreeEngine skip 模式下, 多分支依赖: 失败分支被跳过, 成功分支正常."""
@@ -269,7 +269,7 @@ class TestTreeEngineFailMode(unittest.TestCase):
 
         # root 依赖 bad_leaf (失败), 所以 root 也被跳过
         self.assertIsNone(rslt[0])
-        self.assertIn("bad_leaf", context.NodeErrors)
+        self.assertIn(bad_leaf.InstanceID, context.NodeErrors)
 
     def test_fail_mode_skip_init_failure(self):
         """TreeEngine skip 模式下, init 阶段失败的容错."""
@@ -282,7 +282,7 @@ class TestTreeEngineFailMode(unittest.TestCase):
 
         self.assertIsNone(rslt[0])
         self.assertEqual(rslt[1], "ok")
-        self.assertIn("bad", context.NodeErrors)
+        self.assertIn(bad.InstanceID, context.NodeErrors)
 
     def test_fail_mode_skip_prepare_failure(self):
         """TreeEngine skip 模式下, prepare 阶段失败的容错."""
@@ -295,7 +295,7 @@ class TestTreeEngineFailMode(unittest.TestCase):
 
         self.assertIsNone(rslt[0])
         self.assertEqual(rslt[1], "ok")
-        self.assertIn("bad", context.NodeErrors)
+        self.assertIn(bad.InstanceID, context.NodeErrors)
 
     def test_fail_mode_raise_raises(self):
         """TreeEngine 默认模式下失败节点应导致报错."""
@@ -337,7 +337,7 @@ class TestParallelEngineFailMode(unittest.TestCase):
 
         self.assertIsNone(rslt[0])
         self.assertEqual(rslt[1], "ok")
-        self.assertIn("bad", context.NodeErrors)
+        self.assertIn(bad.InstanceID, context.NodeErrors)
 
     @unittest.skipIf(os.environ.get("SKIP_PARALLEL_TESTS"), "跳过多进程测试")
     def test_fail_mode_skip_multiple_nodes(self):
@@ -353,7 +353,7 @@ class TestParallelEngineFailMode(unittest.TestCase):
         self.assertEqual(rslt[0], 1)
         self.assertIsNone(rslt[1])
         self.assertEqual(rslt[2], 3)
-        self.assertIn("bad", context.NodeErrors)
+        self.assertIn(bad.InstanceID, context.NodeErrors)
 
     @unittest.skipIf(os.environ.get("SKIP_PARALLEL_TESTS"), "跳过多进程测试")
     def test_fail_mode_raise_raises(self):
@@ -379,8 +379,8 @@ class TestParallelEngineFailMode(unittest.TestCase):
         context = self._make_context()
         result = ParallelEngine(args={"FailMode": "skip"}).run([root, good], context)
         self.assertEqual(result, [None, "ok"])
-        self.assertIn("leaf", context.NodeErrors)
-        self.assertEqual(context.NodeState["root"]["__status__"], "SKIPPED")
+        self.assertIn(leaf.InstanceID, context.NodeErrors)
+        self.assertEqual(context.NodeState[root.InstanceID]["__status__"], "SKIPPED")
 
     @unittest.skipIf(os.environ.get("SKIP_PARALLEL_TESTS"), "跳过多进程测试")
     def test_unexpected_worker_exit_raises(self):

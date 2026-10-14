@@ -3,7 +3,7 @@ from .Factor import DataFactor, FactorContext, FactorInitData, FactorLocalContex
 from .HDF5DB import HDF5DB
 from .JYDB import JYDB
 from .BaoStockDB import BaoStockDB
-from .FactorOperation import makeFactorOperator, FactorOperatorized, PointOperation, SectionOperation, TimeOperation, PanelOperation
+from .FactorOperation import makeFactorOperator, FactorOperatorized, PointOperation, SectionOperation, TimeOperation, PanelOperation, FactorInputModel, BoundFactorOperator
 from .BasicOperator import rename
 from . import FactorOperator as fo
 from .FactorCache import FeatherDTCache, FeatherFactorCache

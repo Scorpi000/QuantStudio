@@ -144,7 +144,7 @@ class TestFactorOperationLookBackMode(unittest.TestCase):
                     with FeatherFactorCache(args={
                         "DTRuler": self.dts, "CacheDir": cache_dir, "StartMode": "new",
                     }) as cache:
-                        context = FactorContext(DTRuler=self.dts, SectionIDs=self.ids, DataCache=cache)
+                        context = FactorContext(DTRuler=self.dts, SectionIDs=self.ids, DataCache=cache, DataVersion="fixture-v1")
                         engine = Engine()
                         first = engine.run([factor], context, fwd_data_list=[
                             FactorLocalContext(DTs=self.dts[6:-3], IDs=self.ids),

@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from QuantStudio.Factor.FactorOperation import FactorInputModel
+from pydantic import Field
 """配置策略"""
 import datetime as dt
 from typing import Optional, Literal, List, Union, Dict
@@ -70,6 +72,16 @@ class CalcMaskPortfolio(SectionOperator):
             Rslt["weight"] = Rslt["weight"] / Rslt["weight_total"] * Rslt["cat_weight_total"]
             return Rslt.set_index(["dt", "id"])["weight"].unstack().reindex(index=idt, columns=iid).values
     
+    class __QS_InputClass__(FactorInputModel):
+        """公开因子及计算节点输入。"""
+
+        mask: Factor = Field(title='mask')
+        weight: Optional[Factor] = Field(default=None, title='weight')
+        cat_data: Optional[Factor] = Field(default=None, title='cat_data')
+        cat_weight: Optional[Factor] = Field(default=None, title='cat_weight')
+
+    __QS_CallLayout__ = {'mask': {'grouped': False, 'keyword_only': False}, 'weight': {'grouped': False, 'keyword_only': False}, 'cat_data': {'grouped': False, 'keyword_only': False}, 'cat_weight': {'grouped': False, 'keyword_only': False}}
+
     def __call__(self, mask:Factor, weight:Optional[Factor]=None, cat_data:Optional[Factor]=None, cat_weight:Optional[Factor]=None, factor_args:dict={}, **kwargs) -> SectionOperation:
         factor_args = factor_args.copy()
         Factors = [mask]
@@ -112,6 +124,16 @@ class CalcPortfolioNV(PanelOperator):
             else:
                 NV[:, i] = backtestPortfolioStrategy_pd(portfolio=pd.DataFrame(iPortfolio, index=idt[1:]).dropna(how="all", axis=0), price=pd.DataFrame(Price, index=idt[1:])).values
         return NV * x[0][0]
+
+    class __QS_InputClass__(FactorInputModel):
+        """公开因子及计算节点输入。"""
+
+        portfolio: tuple[Factor, ...] = Field(min_length=1, title="输入因子")
+        price: Factor = Field(title='price')
+        init_nv: Union[float, Factor] = Field(default=1, title='init_nv')
+        fee_rate: Union[float, Factor] = Field(default=0, title='fee_rate')
+
+    __QS_CallLayout__ = {'price': {'grouped': False, 'keyword_only': True}, 'init_nv': {'grouped': False, 'keyword_only': True}, 'fee_rate': {'grouped': False, 'keyword_only': True}}
 
     def __call__(self, *portfolio:Factor, price:Factor, init_nv:Union[float, Factor]=1, fee_rate:Union[float, Factor]=0, portfolio_name_list:Optional[List[str]]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
         """将算子作用在若干个投资组合因子对象上以产生净值因子
@@ -192,6 +214,14 @@ class CalcPortfolioReturn(PanelOperator):
             PortfolioReturn[iPortfolioName] = (PortfolioList[i] * Return).sum(axis=1)
         return PortfolioReturn.reindex(index=idt).values[self._QSArgs.LookBack[0]:]
 
+    class __QS_InputClass__(FactorInputModel):
+        """公开因子及计算节点输入。"""
+
+        portfolio: tuple[Factor, ...] = Field(min_length=1, title="输入因子")
+        price: Factor = Field(title='price')
+
+    __QS_CallLayout__ = {'price': {'grouped': False, 'keyword_only': True}}
+
     def __call__(self, *portfolio:Factor, price:Factor, portfolio_name_list:Optional[List[str]]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
         """将算子作用在若干个投资组合因子对象上以产生收益率因子
 
@@ -252,7 +282,7 @@ class MergeTopDownSignal(SectionOperator):
         else:
             DescriptorSection = args["DescriptorSection"]
         operand_count = len(DescriptorSection)
-        Args = {"Name": "mergeTopDownSignal"} | args | {"DTMode": "多时点", "DataType": "double", "OperandInfo": tuple(OperandSpec() for _ in range(operand_count)), "DescriptorSection": DescriptorSection}
+        Args = {"Name": "mergeTopDownSignal"} | args | {"DTMode": "多时点", "DataType": "double", "DescriptorSection": DescriptorSection}
         Args["ModelArgs"] = {"merged_top_id": sorted(set(top_id_to_down_section).intersection(top_ids))} | Args.get("ModelArgs", {})
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
@@ -266,6 +296,14 @@ class MergeTopDownSignal(SectionOperator):
             Signal = Signal.add(iDownSignal, fill_value=0)
         return Signal.reindex(columns=iid).values
     
+    class __QS_InputClass__(FactorInputModel):
+        """公开因子及计算节点输入。"""
+
+        top_signal: Factor = Field(title='top_signal')
+        top_id_to_down_signal: Dict[str, Factor] = Field(title='top_id_to_down_signal')
+
+    __QS_CallLayout__ = {'top_signal': {'grouped': False, 'keyword_only': False}, 'top_id_to_down_signal': {'grouped': False, 'keyword_only': False}}
+
     def __call__(self, top_signal:Factor, top_id_to_down_signal:Dict[str, Factor], factor_args:dict={}, **kwargs) -> SectionOperation:
         factor_args = factor_args.copy()
         Factors = [top_signal]

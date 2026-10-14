@@ -1,4 +1,6 @@
 # coding=utf-8
+from QuantStudio.Factor.FactorOperation import FactorInputModel
+from QuantStudio.Core.Input import DependencyModel
 import base64
 from io import BytesIO
 import datetime as dt
@@ -65,6 +67,14 @@ class CalcSectionCorrelation(SectionOperator):
             Corr[ijFactorName] = iFactorData.where(ijMask, np.nan).corrwith(jFactorData.where(ijMask, np.nan), method=args["corr_method"])
         return Corr.reindex(index=idt).values
         
+    class __QS_InputClass__(FactorInputModel):
+        """公开因子及计算节点输入。"""
+
+        x: tuple[Factor, ...] = Field(min_length=1, title="输入因子")
+        mask: Optional[Factor] = Field(default=None, title='mask')
+
+    __QS_CallLayout__ = {'mask': {'grouped': False, 'keyword_only': True}}
+
     def __call__(self, *x:Factor, mask:Optional[Factor]=None, factor_name_list: Optional[List[str]]=None, factor_args:dict={}, **kwargs) -> SectionOperation:
         """将算子作用在若干个测试因子对象上以产生截面相关性因子
 
@@ -107,20 +117,23 @@ class CalcSectionCorrelation(SectionOperator):
 
 class SectionCorrelation(BTNode):
     """因子截面相关性"""
+    class __QS_DepClass__(DependencyModel):
+        section_corr: Factor = Field(title='section_corr')
+
     class __QS_ArgClass__(BTNode.__QS_ArgClass__):
         Name: str = Field(default="因子截面相关性", frozen=True, title="名称")
         FactorNameList: Optional[List[str]] = Field(default=None, frozen=True, title="因子列表")
+        SectionIDs: Optional[List[str]] = Field(default=None, frozen=True, title="截面 ID")
         
     def __init__(self, section_corr: Factor, section_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        super().__init__(deps=[section_corr], args=args, config_file=config_file, **kwargs)
-        self._SectionIDs = section_ids
+        super().__init__(deps={'section_corr': section_corr}, args=args | {"SectionIDs": section_ids}, config_file=config_file, **kwargs)
     
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
-        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self._SectionIDs) for i, iInitData in enumerate(InitData)]
+        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self.Args.SectionIDs) for i, iInitData in enumerate(InitData)]
     
     def forward_compute(self, path: List[str], fwd_data: DTLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], DTLocalContext]:
-        SectionIDs = self._SectionIDs or self.Deps[0].Args.SectionIDs or context.SectionIDs
+        SectionIDs = self.Args.SectionIDs or self.Deps[0].Args.SectionIDs or context.SectionIDs
         return [FactorLocalContext(DTs=fwd_data.DTs, IDs=SectionIDs, PIDs=context.PIDList, SectionIDs=SectionIDs) for _ in self.Deps], DTLocalContext(DTs=fwd_data.DTs)
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
@@ -196,6 +209,14 @@ class CalcFactorTurnover(PanelOperator):
             FactorTurnover[iFactorName] = iData.where(iMask, np.nan).corrwith(iPreData, method=args["corr_method"])
         return FactorTurnover.reindex(index=idt).values[self._QSArgs.LookBack[0]:]
     
+    class __QS_InputClass__(FactorInputModel):
+        """公开因子及计算节点输入。"""
+
+        x: tuple[Factor, ...] = Field(min_length=1, title="输入因子")
+        mask: Optional[Factor] = Field(default=None, title='mask')
+
+    __QS_CallLayout__ = {'mask': {'grouped': False, 'keyword_only': True}}
+
     def __call__(self, *x:Factor, mask: Optional[Factor]=None, factor_name_list:Optional[List[str]]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
         """将算子作用在若干个因子对象上以产生因子换手率因子
 
@@ -239,20 +260,23 @@ class CalcFactorTurnover(PanelOperator):
 
 class FactorTurnover(BTNode):
     """因子换手率: 当期因子值和往期因子值横截面上的线性相关系数"""
+    class __QS_DepClass__(DependencyModel):
+        factor_turnover: Factor = Field(title='factor_turnover')
+
     class __QS_ArgClass__(BTNode.__QS_ArgClass__):
         Name: str = Field(default="因子换手率", frozen=True, title="名称")
         FactorNameList: Optional[List[str]] = Field(default=None, frozen=True, title="因子列表")
+        SectionIDs: Optional[List[str]] = Field(default=None, frozen=True, title="截面 ID")
         
     def __init__(self, factor_turnover: Factor, section_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        super().__init__(deps=[factor_turnover], args=args, config_file=config_file, **kwargs)
-        self._SectionIDs = section_ids
+        super().__init__(deps={'factor_turnover': factor_turnover}, args=args | {"SectionIDs": section_ids}, config_file=config_file, **kwargs)
     
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
-        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self._SectionIDs) for i, iInitData in enumerate(InitData)]
+        return [FactorInitData(DTRange=iInitData.DTRange, SectionIDs=self.Args.SectionIDs) for i, iInitData in enumerate(InitData)]
     
     def forward_compute(self, path: List[str], fwd_data: DTLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], DTLocalContext]:
-        SectionIDs = self._SectionIDs or self.Deps[0].Args.SectionIDs or context.SectionIDs
+        SectionIDs = self.Args.SectionIDs or self.Deps[0].Args.SectionIDs or context.SectionIDs
         return [FactorLocalContext(DTs=fwd_data.DTs, IDs=SectionIDs, PIDs=context.PIDList, SectionIDs=SectionIDs) for _ in self.Deps], DTLocalContext(DTs=fwd_data.DTs)
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[DTLocalContext]=None) -> dict:
@@ -275,11 +299,14 @@ class FactorTurnover(BTNode):
 class SectionCorrelationReport(ReportNode):
     """因子截面相关性报告生成节点"""
 
+    class __QS_DepClass__(DependencyModel):
+        corr_node: SectionCorrelation = Field(title='corr_node')
+
     class __QS_ArgClass__(ReportNode.__QS_ArgClass__):
         Name: str = Field(default="截面相关性报告", frozen=True, title="名称")
 
     def __init__(self, corr_node: SectionCorrelation, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        return super().__init__(deps=[corr_node], args=args, config_file=config_file, **kwargs)
+        return super().__init__(deps={'corr_node': corr_node}, args=args, config_file=config_file, **kwargs)
 
     @staticmethod
     def genOutputReport(output:dict) -> str:
@@ -307,11 +334,14 @@ class SectionCorrelationReport(ReportNode):
 class FactorTurnoverReport(ReportNode):
     """因子换手率报告生成节点"""
 
+    class __QS_DepClass__(DependencyModel):
+        turnover_node: FactorTurnover = Field(title='turnover_node')
+
     class __QS_ArgClass__(ReportNode.__QS_ArgClass__):
         Name: str = Field(default="因子换手率报告", frozen=True, title="名称")
 
     def __init__(self, turnover_node: FactorTurnover, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        return super().__init__(deps=[turnover_node], args=args, config_file=config_file, **kwargs)
+        return super().__init__(deps={'turnover_node': turnover_node}, args=args, config_file=config_file, **kwargs)
 
     @staticmethod
     def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:

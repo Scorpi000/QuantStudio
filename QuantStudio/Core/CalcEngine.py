@@ -30,6 +30,28 @@ class Engine(__QS_Object__):
     支持作为上下文管理器使用, 进入时自动压入全局引擎栈.
     """
 
+    @staticmethod
+    def validate_nodes(node_list):
+        """验证执行目标及其依赖，不访问数据或计算 QSID。"""
+        visited, active = set(), set()
+
+        def visit(node):
+            if not isinstance(node, Node):
+                raise TypeError("执行目标必须是完整 Node，不能是模板或算子")
+            identity = node.InstanceID
+            if identity in active:
+                raise __QS_Error__("计算依赖存在循环")
+            if identity in visited:
+                return
+            active.add(identity)
+            for edge in node.iter_dependency_edges():
+                visit(edge.node)
+            active.remove(identity)
+            visited.add(identity)
+
+        for node in node_list:
+            visit(node)
+
     class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
         """Engine 的参数配置类.
 
@@ -53,23 +75,37 @@ class Engine(__QS_Object__):
             init_data_list: 与 node_list 一一对应的初始化数据列表, None 时使用默认值
         """
         if init_data_list is None: init_data_list = [None] * len(node_list)
-        NodeQ, InitDataQ, PathQ = node_list.copy(), init_data_list.copy(), [[iNode.QSID] for iNode in node_list]
+        NodeQ, InitDataQ, PathQ = node_list.copy(), init_data_list.copy(), [[iNode.InstanceID] for iNode in node_list]
         SkipMode = self._QSArgs.FailMode == "skip"
         while NodeQ:
             iNode, iPath = NodeQ.pop(0), PathQ.pop(0)
-            context.NodeDict[iNode.QSID] = iNode
+            context.NodeDict[iNode.InstanceID] = iNode
             try:
+                context.emit(iNode, "init", "running")
                 iInitDataList = iNode.init_compute(path=iPath, init_data=InitDataQ.pop(0), context=context)
+                context.emit(iNode, "init", "done")
             except Exception as e:
+                context.emit(iNode, "init", "failed", error=str(e))
                 if not SkipMode: raise
-                context.NodeState.setdefault(iNode.QSID, {})["__status__"] = "FAILED"
-                context.NodeErrors[iNode.QSID] = e
-                self._QS_Logger.error(f"节点 {iNode.Name}({iNode.QSID[:8]}) 初始化失败: {e}")
+                context.NodeState.setdefault(iNode.InstanceID, {})["__status__"] = "FAILED"
+                context.NodeErrors[iNode.InstanceID] = e
+                self._QS_Logger.error(f"节点 {iNode.Name}({iNode.InstanceID[:8]}) 初始化失败: {e}")
                 continue
             if iInitDataList:
                 NodeQ += iNode.Deps
                 InitDataQ += iInitDataList
-                PathQ += [iPath + [iDep.QSID] for iDep in iNode.Deps]
+                PathQ += [iPath + [iDep.InstanceID] for iDep in iNode.Deps]
+
+    @staticmethod
+    def _prepare_node(node, prepare_data, context):
+        """为准备阶段提供通用执行事件。"""
+        context.emit(node, "prepare", "running")
+        try:
+            node.prepare_compute(prepare_data, context)
+        except Exception as error:
+            context.emit(node, "prepare", "failed", error=str(error))
+            raise
+        context.emit(node, "prepare", "done")
 
     def prepare(self, node_list: List[Node], context: Context):
         """准备计算数据: 对上下文中已注册的节点执行 prepare_compute.
@@ -90,7 +126,7 @@ class Engine(__QS_Object__):
                 iNodeID, iPrepareData = iPrepareData
                 if context.NodeState.get(iNodeID, {}).get("__status__") in ("FAILED", "SKIPPED"): continue
                 try:
-                    context.NodeDict[iNodeID].prepare_compute(iPrepareData, context)
+                    self._prepare_node(context.NodeDict[iNodeID], iPrepareData, context)
                 except Exception as e:
                     if not SkipMode: raise
                     context.NodeState.setdefault(iNodeID, {})["__status__"] = "FAILED"
@@ -102,7 +138,7 @@ class Engine(__QS_Object__):
                 for _, iPrepareData in context.PrepareNodeDict.items():
                     iNodeID, iPrepareData = iPrepareData
                     if context.NodeState.get(iNodeID, {}).get("__status__") in ("FAILED", "SKIPPED"): continue
-                    iFuture = Executor.submit(context.NodeDict[iNodeID].prepare_compute, iPrepareData, context)
+                    iFuture = Executor.submit(self._prepare_node, context.NodeDict[iNodeID], iPrepareData, context)
                     Futures.append((iNodeID, iFuture))
                 with ProgressBar(max_value=len(Futures)) as ProgBar:
                     for iNodeID, iFuture in Futures:
@@ -131,16 +167,16 @@ class Engine(__QS_Object__):
         if SkipMode: context.ExtraData["_QS_FailSkip"] = True
         Rslt = []
         for i, iNode in enumerate(node_list):
-            if context.NodeState.get(iNode.QSID, {}).get("__status__") in ("FAILED", "SKIPPED"):
+            if context.NodeState.get(iNode.InstanceID, {}).get("__status__") in ("FAILED", "SKIPPED"):
                 Rslt.append(None)
                 continue
             try:
-                Rslt.append(iNode.compute([iNode.QSID], fwd_data_list[i], context))
+                Rslt.append(iNode.compute([iNode.InstanceID], fwd_data_list[i], context))
             except Exception as e:
                 if not SkipMode: raise
-                context.NodeState.setdefault(iNode.QSID, {})["__status__"] = "FAILED"
-                context.NodeErrors[iNode.QSID] = e
-                self._QS_Logger.error(f"节点 {iNode.Name}({iNode.QSID[:8]}) 计算失败: {e}")
+                context.NodeState.setdefault(iNode.InstanceID, {})["__status__"] = "FAILED"
+                context.NodeErrors[iNode.InstanceID] = e
+                self._QS_Logger.error(f"节点 {iNode.Name}({iNode.InstanceID[:8]}) 计算失败: {e}")
                 Rslt.append(None)
         if SkipMode: context.ExtraData.pop("_QS_FailSkip", None)
         return Rslt
@@ -157,6 +193,8 @@ class Engine(__QS_Object__):
         Returns:
             节点计算的结果列表
         """
+        self.validate_nodes(node_list)
+        context.begin_run()
         if fwd_data_list is None: fwd_data_list = [None] * len(node_list)
         if init_data_list is None: init_data_list = fwd_data_list
         self._QS_Logger.info("开始初始化计算...")
@@ -220,24 +258,27 @@ class StackEngine(Engine):
         # 反转初始列表, 使得 node_list[0] 优先出栈处理
         NodeStack = node_list.copy()[::-1]
         InitDataStack = init_data_list[::-1]
-        PathStack = [[iNode.QSID] for iNode in node_list][::-1]
+        PathStack = [[iNode.InstanceID] for iNode in node_list][::-1]
         while NodeStack:
             iNode = NodeStack.pop()
             iPath = PathStack.pop()
-            context.NodeDict[iNode.QSID] = iNode
+            context.NodeDict[iNode.InstanceID] = iNode
             try:
+                context.emit(iNode, "init", "running")
                 iInitDataList = iNode.init_compute(path=iPath, init_data=InitDataStack.pop(), context=context)
+                context.emit(iNode, "init", "done")
             except Exception as e:
+                context.emit(iNode, "init", "failed", error=str(e))
                 if not SkipMode: raise
-                context.NodeState.setdefault(iNode.QSID, {})["__status__"] = "FAILED"
-                context.NodeErrors[iNode.QSID] = e
-                self._QS_Logger.error(f"节点 {iNode.Name}({iNode.QSID[:8]}) 初始化失败: {e}")
+                context.NodeState.setdefault(iNode.InstanceID, {})["__status__"] = "FAILED"
+                context.NodeErrors[iNode.InstanceID] = e
+                self._QS_Logger.error(f"节点 {iNode.Name}({iNode.InstanceID[:8]}) 初始化失败: {e}")
                 continue
             if iInitDataList:
                 # 反转 Deps 入栈: 第一个依赖最后压入 → 最先弹出 → 优先深探
                 NodeStack += iNode.Deps[::-1]
                 InitDataStack += iInitDataList[::-1]
-                PathStack += [iPath + [iDep.QSID] for iDep in iNode.Deps][::-1]
+                PathStack += [iPath + [iDep.InstanceID] for iDep in iNode.Deps][::-1]
 
     def run(self, node_list: List[Node], context: Context, fwd_data_list: Optional[List[Any]]=None, init_data_list: Optional[List[Any]]=None) -> List[Any]:
         """执行栈式计算: init (DFS) → prepare → forward (DFS) → backward.
@@ -251,6 +292,8 @@ class StackEngine(Engine):
         Returns:
             List[Any]: 每个节点的 backward_compute 返回值列表, 顺序与 node_list 一致
         """
+        self.validate_nodes(node_list)
+        context.begin_run()
         if fwd_data_list is None: fwd_data_list = [None] * len(node_list)
         if init_data_list is None: init_data_list = fwd_data_list
         self._QS_Logger.info("开始初始化计算...")
@@ -268,11 +311,11 @@ class StackEngine(Engine):
         if not fwd_data_list: fwd_data_list = [None] * len(node_list)
         Rslt = []
         for i, iNode in enumerate(node_list):
-            if context.NodeState.get(iNode.QSID, {}).get("__status__") in ("FAILED", "SKIPPED"):
+            if context.NodeState.get(iNode.InstanceID, {}).get("__status__") in ("FAILED", "SKIPPED"):
                 Rslt.append(None)
                 continue
             NodeStack, PathStack, LocalContextStack, DataStack = [], [], [], []
-            iNodeList, iPathList, iFwdDataList = [iNode], [[]], [fwd_data_list[i]]
+            iNodeList, iPathList, iFwdDataList = [iNode], [[iNode.InstanceID]], [fwd_data_list[i]]
             FwdFailed = False
             # 前向计算: 从目标节点 DFS 遍历依赖树, 收集每层的局部上下文
             while iNodeList:
@@ -282,9 +325,9 @@ class StackEngine(Engine):
                     ijFwdDataList, ijContext = ijNode.forward_compute(path=ijPath, fwd_data=iFwdDataList.pop(0), context=context)
                 except Exception as e:
                     if not SkipMode: raise
-                    context.NodeState.setdefault(ijNode.QSID, {})["__status__"] = "FAILED"
-                    context.NodeErrors[ijNode.QSID] = e
-                    self._QS_Logger.error(f"节点 {ijNode.Name}({ijNode.QSID[:8]}) 前向计算失败: {e}")
+                    context.NodeState.setdefault(ijNode.InstanceID, {})["__status__"] = "FAILED"
+                    context.NodeErrors[ijNode.InstanceID] = e
+                    self._QS_Logger.error(f"节点 {ijNode.Name}({ijNode.InstanceID[:8]}) 前向计算失败: {e}")
                     FwdFailed = True
                     break
                 NodeStack.append(ijNode)
@@ -297,9 +340,9 @@ class StackEngine(Engine):
                 assert len(ijFwdDataList) == len(ijNode.Deps), f"节点 {ijNode.Name} 的 forward_compute 返回数据数量 ({len(ijFwdDataList)}) 与依赖数量 ({len(ijNode.Deps)}) 不一致"
                 iNodeList = ijNode.Deps + iNodeList
                 iFwdDataList = ijFwdDataList + iFwdDataList
-                iPathList = [iDepNode.QSID for iDepNode in ijNode.Deps] + iPathList
+                iPathList = [ijPath + [iDepNode.InstanceID] for iDepNode in ijNode.Deps] + iPathList
             if FwdFailed:
-                context.NodeState.setdefault(iNode.QSID, {})["__status__"] = "SKIPPED"
+                context.NodeState.setdefault(iNode.InstanceID, {})["__status__"] = "SKIPPED"
                 Rslt.append(None)
                 continue
             assert (len(iFwdDataList) == 0) and (len(iPathList) == 0), "前向计算结束时应无剩余未处理数据"
@@ -308,7 +351,7 @@ class StackEngine(Engine):
             for j in range(len(NodeStack) - 1, -1, -1):
                 ijNode, ijPath = NodeStack[j], PathStack[j]
                 ijContext, ijTerminated = LocalContextStack[j]
-                if context.NodeState.get(ijNode.QSID, {}).get("__status__") in ("FAILED", "SKIPPED"):
+                if context.NodeState.get(ijNode.InstanceID, {}).get("__status__") in ("FAILED", "SKIPPED"):
                     BwdFailed = True
                     DataStack.append(None)
                     continue
@@ -317,23 +360,25 @@ class StackEngine(Engine):
                 else:
                     nDeps = len(ijNode.Deps)
                     ijDepData, DataStack = DataStack[len(DataStack) - nDeps:][::-1], DataStack[:len(DataStack) - nDeps]
-                    if any(d is None for d in ijDepData):
-                        context.NodeState.setdefault(ijNode.QSID, {})["__status__"] = "SKIPPED"
+                    if any(context.NodeState.get(dep.InstanceID, {}).get("__status__") in ("FAILED", "SKIPPED") for dep in ijNode.Deps):
+                        context.NodeState.setdefault(ijNode.InstanceID, {})["__status__"] = "SKIPPED"
                         DataStack.append(None)
                         BwdFailed = True
                         continue
                 try:
+                    context.emit(ijNode, "compute", "running", request_id=tuple(ijPath))
                     ijBwdData = ijNode.backward_compute(path=ijPath, bwd_data_list=ijDepData, context=context, local_context=ijContext)
+                    context.emit(ijNode, "compute", "done", request_id=tuple(ijPath))
                 except Exception as e:
                     if not SkipMode: raise
-                    context.NodeState.setdefault(ijNode.QSID, {})["__status__"] = "FAILED"
-                    context.NodeErrors[ijNode.QSID] = e
-                    self._QS_Logger.error(f"节点 {ijNode.Name}({ijNode.QSID[:8]}) 后向计算失败: {e}")
+                    context.NodeState.setdefault(ijNode.InstanceID, {})["__status__"] = "FAILED"
+                    context.NodeErrors[ijNode.InstanceID] = e
+                    self._QS_Logger.error(f"节点 {ijNode.Name}({ijNode.InstanceID[:8]}) 后向计算失败: {e}")
                     ijBwdData = None
                     BwdFailed = True
                 DataStack.append(ijBwdData)
             if BwdFailed:
-                context.NodeState.setdefault(iNode.QSID, {})["__status__"] = "SKIPPED"
+                context.NodeState.setdefault(iNode.InstanceID, {})["__status__"] = "SKIPPED"
                 Rslt.append(None)
                 continue
             assert len(DataStack) == 1, f"后向计算结束后 DataStack 长度应为 1, 实际为 {len(DataStack)}"

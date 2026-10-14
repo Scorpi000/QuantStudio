@@ -1,12 +1,16 @@
 import html
+import inspect
 import datetime as dt
 from typing import List, Any, Optional, Union, Tuple
 
 import numpy as np
 import pandas as pd
+from pydantic import Field
 
 from QuantStudio.Core import __QS_Error__
 from QuantStudio.Core.Node import Node, __QS_Context__
+from QuantStudio.Core.Input import EmptyDependencies
+from QuantStudio.Core.Identity import ExecutionEffect
 from QuantStudio.Core.CalcEngine import __QS_Engine__, Engine
 from QuantStudio.Core.QSObject import Panel
 from QuantStudio.Factor.FactorDB import FactorDB
@@ -24,17 +28,36 @@ class FactorTable(Node):
     时点数据类型是 datetime, ID 和因子名称的数据类型是 str
     """
 
+    __QS_DepClass__ = EmptyDependencies
+    __QS_ExecutionEffect__ = ExecutionEffect.READ
+
+    class __QS_ArgClass__(Node.__QS_ArgClass__):
+        Name: str = Field(default="FactorTable", title="因子表名称", frozen=True)
+        SourceFDB: FactorDB | None = Field(default=None, title="来源因子库", frozen=True, repr=False)
+
     def __init__(self, fdb: Optional[FactorDB], args: dict={}, config_file: Optional[str]=None, **kwargs):
         """初始化因子表
 
         Args:
             fdb: 因子表所属的因子库
         """
-        self._FactorDB = fdb
         self._QS_PrepareIgnoredArgs: Tuple[str] = tuple()# 决定 PrepareID 不需要的参数集，如果为空，表示所有参数都需要
         self._QS_LookbackArgs: Tuple[str] = ("LookBack",)
         self._QS_RawDataMaskCols: List[str] = ["QS_ID", "QS_DT"]
-        return super().__init__(args=args, config_file=config_file, **kwargs)
+        return super().__init__(args=args | {"SourceFDB": fdb}, config_file=config_file, **kwargs)
+
+    @classmethod
+    def from_dependencies(cls, deps, args=None, **kwargs):
+        """用声明的来源资源构造因子表。"""
+        values = args.to_dict(repr=False) if hasattr(args, "to_dict") else dict(args or {})
+        source = values.pop("SourceFDB", None)
+        if "name" in inspect.signature(cls.__init__).parameters:
+            kwargs["name"] = values["Name"]
+        return cls(fdb=source, args=values, **kwargs)
+
+    @property
+    def _FactorDB(self):
+        return self.Args.SourceFDB
 
     @property
     def FactorDB(self) -> FactorDB | None:
@@ -251,7 +274,7 @@ class FactorTable(Node):
                 "SectionIDs": init_data.SectionIDs or context.SectionIDs,
                 "Args": self._QSArgs.to_dict(repr=False)
             }
-            context.PrepareNodeDict[self.PrepareID] = (self.QSID, PrepareData)
+            context.PrepareNodeDict[self.PrepareID] = (self.InstanceID, PrepareData)
         if init_data.SubFactorName not in PrepareData["FactorNames"]:
             PrepareData["FactorNames"].append(init_data.SubFactorName)
         PrepareData["DTRange"] = (min(init_data.DTRange[0], PrepareData["DTRange"][0]), max(init_data.DTRange[1], PrepareData["DTRange"][1]))

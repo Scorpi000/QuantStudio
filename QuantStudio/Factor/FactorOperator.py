@@ -1,4 +1,5 @@
 # coding=utf-8
+from QuantStudio.Factor.FactorOperation import FactorInputModel
 """内置的因子运算"""
 import datetime as dt
 from typing import Optional, Dict, Union, List, Any, Callable, Tuple, Literal
@@ -24,9 +25,13 @@ class AsTypeArgs(OperatorModelArgs):
 class AsType(PointOperator):
     """数据类型转换"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """AsType 的公开输入声明。"""
+
+        x: Factor = Field(title='输入因子', description='待转换数据类型的因子')
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         ModelArgs: AsTypeArgs = Field(default_factory=AsTypeArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="x", Title="输入因子", Required=True, Description="待转换数据类型的因子"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
         """初始化数据类型转换算子
@@ -54,9 +59,13 @@ class LogArgs(OperatorModelArgs):
 class Log(PointOperator):
     """对数"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """Log 的公开输入声明。"""
+
+        x: Factor = Field(title='输入因子', description='取对数的因子')
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         ModelArgs: LogArgs = Field(default_factory=LogArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="x", Title="输入因子", Required=True, Description="取对数的因子"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, base:float=np.e, args:dict={}, config_file:Optional[str]=None, **kwargs):
         """初始化对数算子
@@ -75,8 +84,13 @@ class Log(PointOperator):
 class NotNull(PointOperator):
     """非NULL检测算子"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """NotNull 的公开输入声明。"""
+
+        x: Factor = Field(title='输入因子', description='待检测的因子')
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="x", Title="输入因子", Required=True, Description="待检测的因子"),), title="操作数声明", frozen=True, exclude=True)
+        pass
 
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
         """初始化非NULL检测算子"""
@@ -92,9 +106,13 @@ class IsInArgs(OperatorModelArgs):
 class IsIn(PointOperator):
     """是否属于给定集合的检测算子"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """IsIn 的公开输入声明。"""
+
+        x: Factor = Field(title='输入因子', description='待检测的因子')
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         ModelArgs: IsInArgs = Field(default_factory=IsInArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="x", Title="输入因子", Required=True, Description="待检测的因子"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, test_elements:List[Any]=[], args:dict={}, config_file:Optional[str]=None, **kwargs):
         """初始化检测因子值是否属于给定集合的算子
@@ -116,9 +134,13 @@ class ApplyArrayFuncArgs(OperatorModelArgs):
 class ApplyArrayFunc(PointOperator):
     """施加对 array 整体运算的函数, 比如 numpy.floor"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """ApplyArrayFunc 的公开输入声明。"""
+
+        x: Factor = Field(title='输入因子', description='待运算的因子')
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         ModelArgs: ApplyArrayFuncArgs = Field(default_factory=ApplyArrayFuncArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="x", Title="输入因子", Required=True, Description="待运算的因子"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, func:Callable, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
         """初始化 array 整体运算算子
@@ -141,9 +163,13 @@ class ApplymapArgs(OperatorModelArgs):
 class Applymap(PointOperator):
     """map 操作"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """Applymap 的公开输入声明。"""
+
+        x: Factor = Field(title='输入因子', description='待映射的因子')
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         ModelArgs: ApplymapArgs = Field(default_factory=ApplymapArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="x", Title="输入因子", Required=True, Description="待映射的因子"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, func:Callable[[Any], Any]=id, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
         """初始化 map 操作算子
@@ -165,13 +191,15 @@ class WhereArgs(OperatorModelArgs):
 class Where(PointOperator):
     """where 操作"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """Where 的公开输入声明。"""
+
+        f: Factor = Field(title='真值', description='mask 为 True 时的取值')
+        mask: Factor = Field(title='条件', description='布尔因子, True 处取 f')
+        other: Factor = Field(title='假值', description='condition 为 False 时的取值')
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         ModelArgs: WhereArgs = Field(default_factory=WhereArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(
-            OperandSpec(Name="f", Title="真值", Required=True, Description="mask 为 True 时的取值"),
-            OperandSpec(Name="mask", Title="条件", Required=True, Description="布尔因子, True 处取 f"),
-            OperandSpec(Name="other", Title="假值", Required=True, Description="condition 为 False 时的取值"),
-        ), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
         """初始化 where 操作算子
@@ -197,9 +225,13 @@ class FetchArgs(OperatorModelArgs):
 class Fetch(PointOperator):
     """从复合因子中取出简单因子的操作算子"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """Fetch 的公开输入声明。"""
+
+        x: Factor = Field(title='复合因子', description='待提取的复合因子')
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         ModelArgs: FetchArgs = Field(default_factory=FetchArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="x", Title="复合因子", Required=True, Description="待提取的复合因子"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, pos:Union[int, str]=0, dtype:Literal["double", "string", "object"]="double", compound_type:List[Tuple[str, Literal["double", "string", "object"]]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Args = {"Name": "fetch", "DataType": dtype} | args | {"DTMode": "多时点", "IDMode": "多ID"}
@@ -238,9 +270,13 @@ class SumArgs(OperatorModelArgs):
 class Sum(PointOperator):
     """求和"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """Sum 的公开输入声明。"""
+
+        x: tuple[Factor, ...] = Field(title='操作数', description='参与求和的操作数, 至少两个', min_length=2)
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         ModelArgs: SumArgs = Field(default_factory=SumArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="x", Title="操作数", Required=True, Variadic=True, MinNum=2, Description="参与求和的操作数, 至少两个"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, all_nan:Any=0, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
         Args = {"Name": "sum", "DataType": dtype} | args | {"DTMode": "多时点", "IDMode": "多ID"}
@@ -262,9 +298,13 @@ class MaxArgs(OperatorModelArgs):
 class Max(PointOperator):
     """最大值"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """Max 的公开输入声明。"""
+
+        x: tuple[Factor, ...] = Field(title='操作数', description='参与取最大值操作数, 至少两个', min_length=2)
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         ModelArgs: MaxArgs = Field(default_factory=MaxArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="x", Title="操作数", Required=True, Variadic=True, MinNum=2, Description="参与取最大值操作数, 至少两个"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, all_nan:Any=np.nan, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
         Args = {"Name": "max", "DataType": dtype} | args | {"DTMode": "多时点", "IDMode": "多ID"}
@@ -286,9 +326,13 @@ class MinArgs(OperatorModelArgs):
 class Min(PointOperator):
     """最小值"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """Min 的公开输入声明。"""
+
+        x: tuple[Factor, ...] = Field(title='操作数', description='参与取最小值操作数, 至少两个', min_length=2)
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         ModelArgs: MinArgs = Field(default_factory=MinArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="x", Title="操作数", Required=True, Variadic=True, MinNum=2, Description="参与取最小值操作数, 至少两个"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, all_nan:Any=np.nan, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
         Args = {"Name": "min", "DataType": dtype} | args | {"DTMode": "多时点", "IDMode": "多ID"}
@@ -310,9 +354,13 @@ class RankArgs(OperatorModelArgs):
 class Rank(PointOperator):
     """排名"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """Rank 的公开输入声明。"""
+
+        x: tuple[Factor, ...] = Field(title='操作数', description='参与排名操作数, 至少两个', min_length=2)
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         ModelArgs: RankArgs = Field(default_factory=RankArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="x", Title="操作数", Required=True, Variadic=True, MinNum=2, Description="参与排名操作数, 至少两个"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, ascending:bool=True, uniformization:bool=True, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Args = {"Name": "rank"} | args | {"DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
@@ -335,9 +383,13 @@ class MeanArgs(OperatorModelArgs):
 class Mean(PointOperator):
     """平均值"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """Mean 的公开输入声明。"""
+
+        x: tuple[Factor, ...] = Field(title='操作数', description='参与求平均的操作数, 至少两个', min_length=2)
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         ModelArgs: MeanArgs = Field(default_factory=MeanArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="x", Title="操作数", Required=True, Variadic=True, MinNum=2, Description="参与求平均的操作数, 至少两个"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, weights:Optional[List[float]]=None, ignore_nan_weight:bool=True, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Args = {"Name": "mean"} | args | {"DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
@@ -372,9 +424,13 @@ class StdArgs(OperatorModelArgs):
 class Std(PointOperator):
     """标准差"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """Std 的公开输入声明。"""
+
+        x: tuple[Factor, ...] = Field(title='操作数', description='参与求标准差的操作数, 至少两个', min_length=2)
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         ModelArgs: StdArgs = Field(default_factory=StdArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="x", Title="操作数", Required=True, Variadic=True, MinNum=2, Description="参与求标准差的操作数, 至少两个"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, ddof:int=1, all_nan:float=np.nan, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Args = {"Name": "std"} | args | {"DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
@@ -395,12 +451,13 @@ class RegressArgs(OperatorModelArgs):
 class Regress(PointOperator):
     """OLS 回归"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """Regress 的公开输入声明。"""
+
+        x: tuple[Factor, ...] = Field(title='观测序列', description='按输入顺序组成观测序列，以序号为自变量回归', min_length=2)
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         ModelArgs: RegressArgs = Field(default_factory=RegressArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(
-            OperandSpec(Name="x", Title="观测序列", Required=True, Variadic=True, MinNum=2,
-                        Description="按输入顺序组成观测序列，以序号为自变量回归"),
-        ), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, intercept:bool=True, output:Optional[Literal["alpha", "beta"]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         if output not in ("alpha", "beta", None):
@@ -442,11 +499,13 @@ class Regress(PointOperator):
 class RegressChangeRate(PointOperator):
     """以回归方式计算增长率"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """RegressChangeRate 的公开输入声明。"""
+
+        x: tuple[Factor, ...] = Field(title='观测序列', description='按输入顺序组成观测序列，以序号为自变量回归', min_length=2)
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(
-            OperandSpec(Name="x", Title="观测序列", Required=True, Variadic=True, MinNum=2,
-                        Description="按输入顺序组成观测序列，以序号为自变量回归"),
-        ), title="操作数声明", frozen=True, exclude=True)
+        pass
 
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Args = {"Name": "regressChangeRate"} | args | {"DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
@@ -469,11 +528,16 @@ class RegressChangeRate(PointOperator):
 class ToList(PointOperator):
     """将多个因子转成值为 list 的单个因子"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """ToList 的公开输入声明。"""
+
+        x: tuple[Factor, ...] = Field(title='输入因子', description='待合并的因子, 至少一个', min_length=1)
+        mask: Factor | None = Field(default=None, title='掩码因子', description='值为 1 的位置保留')
+
+    __QS_CallLayout__ = {'mask': {'grouped': False, 'keyword_only': True}}
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(
-            OperandSpec(Name="x", Title="输入因子", Required=True, Variadic=True, MinNum=1, Description="待合并的因子, 至少一个"),
-            OperandSpec(Name="mask", Title="掩码因子", Required=False, KeywordOnly=True, Description="值为 1 的位置保留"),
-        ), title="操作数声明", frozen=True, exclude=True)
+        pass
 
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Args = {"Name": "tolist"} | args | {"DataType": "object", "DTMode": "多时点", "IDMode": "多ID"}
@@ -481,9 +545,9 @@ class ToList(PointOperator):
 
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: OperatorModelArgs) -> np.ndarray:
         Data = {i: iData for i, iData in enumerate(x)}
-        if f.Args.ModelArgs["mask"]:
+        if (f.Dependencies.mask is not None):
             Rslt = Panel(Data, major_axis=idt, minor_axis=iid).sort_index(axis=0).to_frame(filter_observations=False)
-            Rslt = Rslt[Rslt.pop(0)==1]
+            Rslt = Rslt[Rslt.pop(len(x) - 1)==1]
             return Rslt.apply(lambda s: s.tolist(), axis=1).unstack().reindex(index=idt, columns=iid).values
         else:
             return Panel(Data).sort_index(axis=0).to_frame(filter_observations=False).apply(lambda s: s.tolist(), axis=1).unstack().values
@@ -493,19 +557,21 @@ class ToList(PointOperator):
         kwargs["_qs_bound"] = True
         if not x:
             raise __QS_Error__("ToList 至少需要一个待合并的因子!")
-        factor_args = factor_args | {"ModelArgs": factor_args.get("ModelArgs", {}) | {"mask": mask is not None}}
         if mask is None:
             return super().__call__(*x, factor_args=factor_args, **kwargs)
         else:
-            return super().__call__(mask, *x, factor_args=factor_args, **kwargs)
+            return super().__call__(*x, mask, factor_args=factor_args, **kwargs)
 
 class ToCompound(PointOperator):
     """将多个因子转成单个复合因子"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """ToCompound 的公开输入声明。"""
+
+        x: tuple[Factor, ...] = Field(title='输入因子', description='待合成的因子, 至少一个', min_length=1)
+
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(
-            OperandSpec(Name="x", Title="输入因子", Required=True, Variadic=True, MinNum=1, Description="待合成的因子, 至少一个"),
-        ), title="操作数声明", frozen=True, exclude=True)
+        pass
 
     def __init__(self, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Args = {"Name": "toCompound"} | args | {"DataType": "object", "DTMode": "多时点", "IDMode": "多ID"}
@@ -530,9 +596,13 @@ class LagArgs(OperatorModelArgs):
 class Lag(TimeOperator):
     """按照时间回溯数据"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """Lag 的公开输入声明。"""
+
+        f: Factor = Field(title='输入因子', description='待回溯的因子')
+
     class __QS_ArgClass__(TimeOperator.__QS_ArgClass__):
         ModelArgs: LagArgs = Field(default_factory=LagArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="f", Title="输入因子", Required=True, Description="待回溯的因子"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, lag_period:int=1, window:Optional[int]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         if window is None: window = lag_period
@@ -576,9 +646,13 @@ class RollingRankArgs(OperatorModelArgs):
 class RollingRank(TimeOperator):
     """滚动排名"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """RollingRank 的公开输入声明。"""
+
+        x: Factor = Field(title='输入因子', description='待滚动排名的因子')
+
     class __QS_ArgClass__(TimeOperator.__QS_ArgClass__):
         ModelArgs: RollingRankArgs = Field(default_factory=RollingRankArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="x", Title="输入因子", Required=True, Description="待滚动排名的因子"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, window:int=1, min_periods:int=1, ascending:bool=True, uniformization:bool=True, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Args = {"Name": "rollingRank", "LookBack": [window - 1]} | args | {"DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
@@ -604,9 +678,13 @@ class RollingMeanArgs(OperatorModelArgs):
 class RollingMean(TimeOperator):
     """滚动平均"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """RollingMean 的公开输入声明。"""
+
+        x: Factor = Field(title='输入因子', description='待滚动平均的因子')
+
     class __QS_ArgClass__(TimeOperator.__QS_ArgClass__):
         ModelArgs: RollingMeanArgs = Field(default_factory=RollingMeanArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="x", Title="输入因子", Required=True, Description="待滚动平均的因子"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, window:int=1, min_periods:int=1, weights:Optional[List[float]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         if weights is not None: window = len(weights)
@@ -633,9 +711,13 @@ class RollingApplyArgs(OperatorModelArgs):
 class RollingApply(TimeOperator):
     """滚动操作"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """RollingApply 的公开输入声明。"""
+
+        x: Factor = Field(title='输入因子', description='待滚动运算的因子')
+
     class __QS_ArgClass__(TimeOperator.__QS_ArgClass__):
         ModelArgs: RollingApplyArgs = Field(default_factory=RollingApplyArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="x", Title="输入因子", Required=True, Description="待滚动运算的因子"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, func:Callable[[np.ndarray], Any]=np.nansum, dtype:Literal["double", "string", "object"]="double", window:int=1, min_periods:int=1, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Args = {"Name": "rollingApply", "LookBack": [window - 1], "DataType": dtype} | args | {"DTMode": "多时点", "IDMode": "多ID"}
@@ -661,9 +743,13 @@ class RollingChangeRateArgs(OperatorModelArgs):
 class RollingChangeRate(TimeOperator):
     """滚动增长率"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """RollingChangeRate 的公开输入声明。"""
+
+        x: Factor = Field(title='输入因子', description='待计算增长率的因子')
+
     class __QS_ArgClass__(TimeOperator.__QS_ArgClass__):
         ModelArgs: RollingChangeRateArgs = Field(default_factory=RollingChangeRateArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="x", Title="输入因子", Required=True, Description="待计算增长率的因子"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, window:int=1, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Args = {"Name": "rollingChangeRate", "LookBack": [window - 1]} | args | {"DataType": "double", "DTMode": "多时点", "IDMode": "多ID"}
@@ -691,12 +777,14 @@ class RollingRegressArgs(OperatorModelArgs):
 class RollingRegress(TimeOperator):
     """滚动回归"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """RollingRegress 的公开输入声明。"""
+
+        endog: Factor = Field(title='被解释变量', description='回归的因变量')
+        exog: tuple[Factor, ...] = Field(default=(), title='解释变量', description='回归的自变量, 可多个', min_length=0)
+
     class __QS_ArgClass__(TimeOperator.__QS_ArgClass__):
         ModelArgs: RollingRegressArgs = Field(default_factory=RollingRegressArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(
-            OperandSpec(Name="endog", Title="被解释变量", Required=True, Description="回归的因变量"),
-            OperandSpec(Name="exog", Title="解释变量", Required=False, Variadic=True, MinNum=0, Description="回归的自变量, 可多个"),
-        ), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, window:int=1, min_periods:int=1, intercept:bool=True, output:Optional[str]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         operand_count = 1
@@ -745,13 +833,15 @@ class SectionRankArgs(OperatorModelArgs):
 class SectionRank(SectionOperator):
     """截面排名"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """SectionRank 的公开输入声明。"""
+
+        f: Factor = Field(title='待排名因子', description='待排名的因子')
+        mask: Factor | None = Field(default=None, title='掩码因子', description='掩码因子, 值为 1 的位置参与排名')
+        cat_data: Factor | None = Field(default=None, title='分组因子', description='分组因子, 按其取值分组分别排名')
+
     class __QS_ArgClass__(SectionOperator.__QS_ArgClass__):
         ModelArgs: SectionRankArgs = Field(default_factory=SectionRankArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(
-            OperandSpec(Name="f", Title="待排名因子", Required=True, Description="待排名的因子"),
-            OperandSpec(Name="mask", Title="掩码因子", Required=False, Description="掩码因子, 值为 1 的位置参与排名"),
-            OperandSpec(Name="cat_data", Title="分组因子", Required=False, Description="分组因子, 按其取值分组分别排名"),
-        ), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, ascending:bool=True, uniformization:bool=True, args:dict={}, config_file:Optional[str]=None, **kwargs):
         operand_count = 1
@@ -763,8 +853,8 @@ class SectionRank(SectionOperator):
 
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
         FactorData = x[0]
-        Mask = (x[1].astype(bool) if f._QSArgs.ModelArgs["mask"] else [None] * FactorData.shape[0])
-        CatData = (x[-1] if f._QSArgs.ModelArgs["cat_data"] else [None] * FactorData.shape[0])
+        Mask = (x[1].astype(bool) if (f.Dependencies.mask is not None) else [None] * FactorData.shape[0])
+        CatData = (x[-1] if (f.Dependencies.cat_data is not None) else [None] * FactorData.shape[0])
         Rslt = np.full_like(FactorData, fill_value=np.nan)
         for i in range(FactorData.shape[0]):
             Rslt[i] = DataPreprocessingFun.standardizeRank(FactorData[i], mask=Mask[i], cat_data=CatData[i], perturbation=False, offset=0, **args)
@@ -776,7 +866,6 @@ class SectionRank(SectionOperator):
         Factors = [f]
         if mask is not None: Factors.append(mask)
         if cat_data is not None: Factors.append(cat_data)
-        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"mask": (mask is not None), "cat_data": (cat_data is not None)}
         return super().__call__(*Factors, factor_args=factor_args, **kwargs)
 
 class AggregateArgs(OperatorModelArgs):
@@ -796,13 +885,15 @@ class Aggregate(SectionOperator):
         dtype: 输出数据类型
     """
 
+    class __QS_InputClass__(FactorInputModel):
+        """Aggregate 的公开输入声明。"""
+
+        f: Factor = Field(title='待聚合因子', description='待聚合的因子')
+        mask: Factor | None = Field(default=None, title='掩码因子', description='掩码因子, 值为 1 的位置参与聚合')
+        cat_data: Factor | None = Field(default=None, title='分组因子', description='分组因子, 按其取值分组分别聚合')
+
     class __QS_ArgClass__(SectionOperator.__QS_ArgClass__):
         ModelArgs: AggregateArgs = Field(default_factory=AggregateArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(
-            OperandSpec(Name="f", Title="待聚合因子", Required=True, Description="待聚合的因子"),
-            OperandSpec(Name="mask", Title="掩码因子", Required=False, Description="掩码因子, 值为 1 的位置参与聚合"),
-            OperandSpec(Name="cat_data", Title="分组因子", Required=False, Description="分组因子, 按其取值分组分别聚合"),
-        ), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, aggr_func:Callable[[np.ndarray], Any]=np.nansum, descriptor_ids:Optional[List[str]]=None, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
         operand_count = 1
@@ -815,15 +906,15 @@ class Aggregate(SectionOperator):
     def calculate(self, f: Factor, idt: dt.datetime, iid: List[str], x: List[np.ndarray], args: AggregateArgs) -> np.ndarray:
         nID = len(iid)
         FactorData = x[0]
-        if f._QSArgs.ModelArgs["mask"]:
+        if (f.Dependencies.mask is not None):
             Mask = (x[1]==1)
         else:
             Mask = np.full(FactorData.shape, fill_value=True)
         AggrFunc = args.aggr_func
-        if f._QSArgs.ModelArgs["cat_data"]:
+        if (f.Dependencies.cat_data is not None):
             CatData = x[-1]
             Rslt = np.full(shape=(nID, ), fill_value=np.nan)
-            if f._QSArgs.ModelArgs["section_chged"]:
+            if (f.Operator.Args.DescriptorSection[0] is not None):
                 for i, iID in enumerate(iid):
                     iMask = ((CatData==iID) & Mask)
                     Rslt[i] = AggrFunc(FactorData[iMask])
@@ -845,17 +936,19 @@ class Aggregate(SectionOperator):
         Factors = [f]
         if mask is not None: Factors.append(mask)
         if cat_data is not None: Factors.append(cat_data)
-        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"mask": (mask is not None), "cat_data": (cat_data is not None), "section_chged": (self._QSArgs.DescriptorSection[0] is not None)}
         return super().__call__(*Factors, factor_args=factor_args, **kwargs)
 
 class Disaggregate(SectionOperator):
     """截面反聚合"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """Disaggregate 的公开输入声明。"""
+
+        f: Factor = Field(title='待反聚合因子', description='待反聚合的因子')
+        cat_data: Factor | None = Field(default=None, title='分组因子', description='分组因子, 按聚合 ID 反聚合')
+
     class __QS_ArgClass__(SectionOperator.__QS_ArgClass__):
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(
-            OperandSpec(Name="f", Title="待反聚合因子", Required=True, Description="待反聚合的因子"),
-            OperandSpec(Name="cat_data", Title="分组因子", Required=False, Description="分组因子, 按聚合 ID 反聚合"),
-        ), title="操作数声明", frozen=True, exclude=True)
+        pass
 
     def __init__(self, aggr_ids:List[str], disaggr_ids:Optional[List[str]]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Args = {"Name": "disaggregate", "DataType": "double"} | args | {"DTMode": "多时点"}
@@ -866,7 +959,7 @@ class Disaggregate(SectionOperator):
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
         nDT, nID = len(idt), len(iid)
         FactorData = x[0]
-        if f._QSArgs.ModelArgs["cat_data"]:
+        if (f.Dependencies.cat_data is not None):
             CatData = x[-1]
             Rslt = np.full(shape=(nDT, nID), fill_value=np.nan)
             for i, iID in enumerate(self.Args.DescriptorSection[0]):
@@ -882,7 +975,6 @@ class Disaggregate(SectionOperator):
         Factors = [f]
         if cat_data is not None: Factors.append(cat_data)
         kwargs["operator_kwargs"] =  {"aggr_ids": self._QSArgs.DescriptorSection[0]} | kwargs.get("operator_kwargs", {})
-        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"cat_data": (cat_data is not None)}
         DataType = f.getMetaData(key="DataType")
         if DataType != self._QSArgs.DataType:
             return super(Disaggregate, self.new(args={"DataType": DataType}, **kwargs["operator_kwargs"])).__call__(*Factors, factor_args=factor_args, **kwargs)
@@ -895,11 +987,13 @@ class ConcatSectionArgs(OperatorModelArgs):
 class ConcatSection(SectionOperator):
     """截面拼接"""
 
+    class __QS_InputClass__(FactorInputModel):
+        """ConcatSection 的公开输入声明。"""
+
+        x: tuple[Factor, ...] = Field(title='输入因子', description='待拼接的因子, 至少一个', min_length=1)
+
     class __QS_ArgClass__(SectionOperator.__QS_ArgClass__):
         ModelArgs: ConcatSectionArgs = Field(default_factory=ConcatSectionArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(
-            OperandSpec(Name="x", Title="输入因子", Required=True, Variadic=True, MinNum=1, Description="待拼接的因子, 至少一个"),
-        ), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, descriptor_sections:List[List[str]]=[], dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
         operand_count = max(1, len(descriptor_sections))
@@ -919,9 +1013,13 @@ class ChgSection(SectionOperator):
     """修改截面"""
 
     # id_map: {新ID: 旧ID}
+    class __QS_InputClass__(FactorInputModel):
+        """ChgSection 的公开输入声明。"""
+
+        f: Factor = Field(title='输入因子', description='待修改截面的因子')
+
     class __QS_ArgClass__(SectionOperator.__QS_ArgClass__):
         ModelArgs: ChgSectionArgs = Field(default_factory=ChgSectionArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Name="f", Title="输入因子", Required=True, Description="待修改截面的因子"),), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, old_ids:List[str], id_map:Dict[str, str]={}, args:dict={}, config_file:Optional[str]=None, **kwargs):
         Args = {"Name": "chgSection", "DataType": "double"} | args | {"DTMode": "多时点"}
@@ -956,12 +1054,14 @@ class SectionRegress(SectionOperator):
     """截面回归"""
 
     # output: alpha, beta{i}, resid
+    class __QS_InputClass__(FactorInputModel):
+        """SectionRegress 的公开输入声明。"""
+
+        endog: Factor = Field(title='被解释变量', description='回归的因变量')
+        exog: tuple[Factor, ...] = Field(default=(), title='解释变量', description='回归的自变量, 可多个', min_length=0)
+
     class __QS_ArgClass__(SectionOperator.__QS_ArgClass__):
         ModelArgs: SectionRegressArgs = Field(default_factory=SectionRegressArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(
-            OperandSpec(Name="endog", Title="被解释变量", Required=True, Description="回归的因变量"),
-            OperandSpec(Name="exog", Title="解释变量", Required=False, Variadic=True, MinNum=0, Description="回归的自变量, 可多个"),
-        ), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, intercept:bool=True, output:Optional[str]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         operand_count = 1
@@ -1025,13 +1125,17 @@ class AggregateComponent(SectionOperator):
         dtype: 输出数据类型
     """
 
+    class __QS_InputClass__(FactorInputModel):
+        """AggregateComponent 的公开输入声明。"""
+
+        component: Factor = Field(title='成分因子', description='每个 ID 对应一个成分 ID 列表的因子')
+        component_data: tuple[Factor, ...] = Field(default=(), title='成分数据', description='成分对应的数据因子, 可多个', min_length=0)
+        exog: tuple[Factor, ...] = Field(default=(), title='外生数据', description='外生数据因子, 可多个', min_length=0)
+
+    __QS_CallLayout__ = {'component_data': {'grouped': True, 'keyword_only': False}, 'exog': {'grouped': True, 'keyword_only': False}}
+
     class __QS_ArgClass__(SectionOperator.__QS_ArgClass__):
         ModelArgs: AggregateComponentArgs = Field(default_factory=AggregateComponentArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(
-            OperandSpec(Name="component", Title="成分因子", Required=True, Description="每个 ID 对应一个成分 ID 列表的因子"),
-            OperandSpec(Name="component_data", Title="成分数据", Required=False, Variadic=True, Grouped=True, MinNum=0, Description="成分对应的数据因子, 可多个"),
-            OperandSpec(Name="exog", Title="外生数据", Required=False, Variadic=True, Grouped=True, MinNum=0, Description="外生数据因子, 可多个"),
-        ), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, aggr_func:Callable[[np.ndarray], Any]=np.nanmean, include_component_code:bool=False, descriptor_ids:Optional[List[str]]=None, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
         ModelArgs = args.get("ModelArgs", {})
@@ -1041,13 +1145,13 @@ class AggregateComponent(SectionOperator):
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
     def calculate(self, f: Factor, idt: dt.datetime, iid: List[str], x: List[np.ndarray], args: AggregateComponentArgs) -> np.ndarray:
-        Data = x[0:1+f.Args.ModelArgs["endog_num"]]
+        Data = x[0:1+len(f.Dependencies.component_data)]
         Data = pd.DataFrame(Data, columns=iid).T
         Data = expandListElementDataFrame(Data, expand_index=True, dropna=True)
         Data.columns = ["code", "component_code"] + Data.columns[2:].tolist()
         if Data.empty:
             return np.full((len(iid), ), np.nan, dtype=float) if args.dtype=="double" else np.full_like((len(iid), ), None, dtype="O")
-        Exog = x[1+f.Args.ModelArgs["endog_num"]:1+f.Args.ModelArgs["endog_num"]+f.Args.ModelArgs["exog_num"]]
+        Exog = x[1+len(f.Dependencies.component_data):1+len(f.Dependencies.component_data)+len(f.Dependencies.exog)]
         if Exog:
             Exog = pd.DataFrame(Exog, columns=f.Operator.Args.DescriptorSection[-1]).T
             Data = pd.merge(Data, Exog, how="left", left_on=["component_code"], right_index=True)
@@ -1069,9 +1173,6 @@ class AggregateComponent(SectionOperator):
         args = operator_kwargs.pop("args", {}) | {
             "DescriptorSection": [None] * (1 + len(component_data)) + [descriptor_ids] * len(exog),
         }
-        factor_args = factor_args | {"ModelArgs": factor_args.get("ModelArgs", {}) | {
-            "endog_num": len(component_data), "exog_num": len(exog),
-        }}
         return super(AggregateComponent, self.new(args=args, **operator_kwargs)).__call__(
             component, *component_data, *exog, factor_args=factor_args, **kwargs)
 
@@ -1085,12 +1186,14 @@ class PanelRegress(PanelOperator):
     """面板回归"""
 
     # output: alpha, beta{i}, resid
+    class __QS_InputClass__(FactorInputModel):
+        """PanelRegress 的公开输入声明。"""
+
+        endog: Factor = Field(title='被解释变量', description='回归的因变量')
+        exog: tuple[Factor, ...] = Field(default=(), title='解释变量', description='回归的自变量, 可多个', min_length=0)
+
     class __QS_ArgClass__(PanelOperator.__QS_ArgClass__):
         ModelArgs: PanelRegressArgs = Field(default_factory=PanelRegressArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(
-            OperandSpec(Name="endog", Title="被解释变量", Required=True, Description="回归的因变量"),
-            OperandSpec(Name="exog", Title="解释变量", Required=False, Variadic=True, MinNum=0, Description="回归的自变量, 可多个"),
-        ), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, window:int=1, intercept:bool=True, output:Optional[str]=None, args:dict={}, config_file:Optional[str]=None, **kwargs):
         operand_count = 1
@@ -1160,13 +1263,15 @@ class AggregatePanel(PanelOperator):
         dtype: 输出数据类型
     """
 
+    class __QS_InputClass__(FactorInputModel):
+        """AggregatePanel 的公开输入声明。"""
+
+        f: Factor = Field(title='待聚合因子', description='待聚合的因子')
+        mask: Factor | None = Field(default=None, title='掩码因子', description='掩码因子, 值为 1 的位置参与聚合')
+        cat_data: Factor | None = Field(default=None, title='分组因子', description='分组因子, 按其取值分组分别聚合')
+
     class __QS_ArgClass__(PanelOperator.__QS_ArgClass__):
         ModelArgs: AggregatePanelArgs = Field(default_factory=AggregatePanelArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(
-            OperandSpec(Name="f", Title="待聚合因子", Required=True, Description="待聚合的因子"),
-            OperandSpec(Name="mask", Title="掩码因子", Required=False, Description="掩码因子, 值为 1 的位置参与聚合"),
-            OperandSpec(Name="cat_data", Title="分组因子", Required=False, Description="分组因子, 按其取值分组分别聚合"),
-        ), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, aggr_func:Callable[[np.ndarray], Any]=np.nansum, window:int=1, descriptor_ids:Optional[List[str]]=None, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
         operand_count = 1
@@ -1180,15 +1285,15 @@ class AggregatePanel(PanelOperator):
     def calculate(self, f: Factor, idt: dt.datetime, iid: List[str], x: List[np.ndarray], args: AggregatePanelArgs) -> np.ndarray:
         nID = len(iid)
         FactorData = x[0]
-        if f._QSArgs.ModelArgs["mask"]:
+        if (f.Dependencies.mask is not None):
             Mask = (x[1][0]==1)
         else:
             Mask = np.full((FactorData.shape[1], ), fill_value=True)
         AggrFunc = args.aggr_func
-        if f._QSArgs.ModelArgs["cat_data"]:
+        if (f.Dependencies.cat_data is not None):
             CatData = x[-1][0]
             Rslt = np.full(shape=(nID, ), fill_value=np.nan)
-            if f._QSArgs.ModelArgs["section_chged"]:
+            if (f.Operator.Args.DescriptorSection[0] is not None):
                 for i, iID in enumerate(iid):
                     iMask = ((CatData==iID) & Mask)
                     Rslt[i] = AggrFunc(FactorData[:, iMask])
@@ -1210,7 +1315,6 @@ class AggregatePanel(PanelOperator):
         Factors = [f]
         if mask is not None: Factors.append(mask)
         if cat_data is not None: Factors.append(cat_data)
-        factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"mask": (mask is not None), "cat_data": (cat_data is not None), "section_chged": (self._QSArgs.DescriptorSection[0] is not None)}
         return super().__call__(*Factors, factor_args=factor_args, **kwargs)
 
 class AggregateComponentPanelArgs(OperatorModelArgs):
@@ -1236,13 +1340,17 @@ class AggregateComponentPanel(PanelOperator):
         dtype: 输出数据类型
     """
 
+    class __QS_InputClass__(FactorInputModel):
+        """AggregateComponentPanel 的公开输入声明。"""
+
+        component: Factor = Field(title='成分因子', description='每个 ID 对应一个成分 ID 列表的因子')
+        component_data: tuple[Factor, ...] = Field(default=(), title='成分数据', description='成分对应的数据因子, 可多个', min_length=0)
+        exog: tuple[Factor, ...] = Field(default=(), title='外生数据', description='外生数据因子, 可多个', min_length=0)
+
+    __QS_CallLayout__ = {'component_data': {'grouped': True, 'keyword_only': False}, 'exog': {'grouped': True, 'keyword_only': False}}
+
     class __QS_ArgClass__(PanelOperator.__QS_ArgClass__):
         ModelArgs: AggregateComponentPanelArgs = Field(default_factory=AggregateComponentPanelArgs, title="模型参数")
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(
-            OperandSpec(Name="component", Title="成分因子", Required=True, Description="每个 ID 对应一个成分 ID 列表的因子"),
-            OperandSpec(Name="component_data", Title="成分数据", Required=False, Variadic=True, Grouped=True, MinNum=0, Description="成分对应的数据因子, 可多个"),
-            OperandSpec(Name="exog", Title="外生数据", Required=False, Variadic=True, Grouped=True, MinNum=0, Description="外生数据因子, 可多个"),
-        ), title="操作数声明", frozen=True, exclude=True)
 
     def __init__(self, aggr_func:Callable[[np.ndarray], Any]=np.nanmean, window:int=1, descriptor_ids:Optional[List[str]]=None, dtype:Literal["double", "string", "object"]="double", args:dict={}, config_file:Optional[str]=None, **kwargs):
         ModelArgs = args.get("ModelArgs", {})
@@ -1255,8 +1363,8 @@ class AggregateComponentPanel(PanelOperator):
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: AggregateComponentPanelArgs) -> np.ndarray:
         nID = len(iid)
         AggrFunc = args.aggr_func
-        EndogNum = f.Args.ModelArgs["endog_num"]
-        ExogNum = f.Args.ModelArgs["exog_num"]
+        EndogNum = len(f.Dependencies.component_data)
+        ExogNum = len(f.Dependencies.exog)
         DesIDs = f.Operator.Args.DescriptorSection[-1]
         Exog = x[1+EndogNum:1+EndogNum+ExogNum]
         ComponentData = x[0][0]
@@ -1301,9 +1409,6 @@ class AggregateComponentPanel(PanelOperator):
             "LookBack": [0] * (1 + len(component_data)) + [window - 1] * len(exog),
             "StartDT": [None] * operand_count,
         }
-        factor_args = factor_args | {"ModelArgs": factor_args.get("ModelArgs", {}) | {
-            "endog_num": len(component_data), "exog_num": len(exog),
-        }}
         return super(AggregateComponentPanel, self.new(args=args, **operator_kwargs)).__call__(
             component, *component_data, *exog, factor_args=factor_args, **kwargs)
 

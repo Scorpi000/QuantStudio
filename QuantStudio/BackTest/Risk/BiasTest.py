@@ -1,4 +1,6 @@
 # coding=utf-8
+from QuantStudio.Factor.FactorOperation import FactorInputModel
+from QuantStudio.Core.Input import DependencyModel
 """Bias Test"""
 import datetime as dt
 import base64
@@ -60,6 +62,14 @@ class CalcPortfolioVolatility(SectionOperator):
             iPortfolio = np.where(pd.notnull(ix), ix, 0.0)
             Rslt[i] = np.dot(np.dot(iPortfolio, CovMatrix), iPortfolio) ** 0.5
         return Rslt
+
+    class __QS_InputClass__(FactorInputModel):
+        """公开因子及计算节点输入。"""
+
+        portfolio: tuple[Factor, ...] = Field(min_length=1, title="输入因子")
+        risk_table: RiskTable = Field(title='risk_table')
+
+    __QS_CallLayout__ = {'risk_table': {'grouped': False, 'keyword_only': True}}
 
     def __call__(self, *portfolio:Factor, risk_table:RiskTable, portfolio_name_list:Optional[List[str]]=None, factor_args:dict={}, **kwargs) -> PortfolioVolatility:
         """将算子作用在若干个投资组合因子对象上以产生波动率因子
@@ -132,6 +142,14 @@ class CalcRandomPortfolio(SectionOperator):
         Rslt[Mask] = Portfolio
         return Rslt
 
+    class __QS_InputClass__(FactorInputModel):
+        """公开因子及计算节点输入。"""
+
+        weight: Factor = Field(title='weight')
+        mask: Optional[Factor] = Field(default=None, title='mask')
+
+    __QS_CallLayout__ = {'weight': {'grouped': False, 'keyword_only': False}, 'mask': {'grouped': False, 'keyword_only': False}}
+
     def __call__(self, weight: Factor, mask: Optional[Factor]=None, factor_args:dict={}, **kwargs) -> SectionOperation:
         Factors = [weight]
         if mask is not None: Factors.append(mask)
@@ -143,12 +161,20 @@ class CalcRandomPortfolio(SectionOperator):
 class BiasTest(BTNode):
     """Bias Test"""
 
+    class __QS_DepClass__(DependencyModel):
+        zscore: Factor = Field(title='zscore')
+
     class __QS_ArgClass__(BTNode.__QS_ArgClass__):
         Name: str = Field(default="Bias Test", frozen=True, title="名称")
         IndustryList: List[str] = Field(default=[], frozen=True, title="行业列表")
         RandomNums: List[int] = Field(default=[20, 50, 100, 200], frozen=True, title="随机组合持仓数量")
         RebalanceDTs: Optional[List[dt.datetime]] = Field(default=None, title="再平衡时点", frozen=True)
         RollingAvgPeriod: int = Field(default=12, frozen=True, title="移动平均期数")
+        PortfolioNameList: tuple[str, ...] = Field(default=(), title="投资组合名称", frozen=True)
+
+    @property
+    def _PortfolioNameList(self):
+        return list(self.Args.PortfolioNameList)
     
     def _genPortfolio(self, descriptor_ids, industry_list, random_nums, mask, weight_dict, style_dict, industry, industry_neutral_factor_dict, extra_portfolio_dict):
         if industry is not None:
@@ -213,7 +239,7 @@ class BiasTest(BTNode):
         if len(set(ExtraPortfolioDict)) != len(extra_portfolio_list): raise __QS_Error__(f"额外指定的投资组合因子列表有重名: {[iFactor.Name for iFactor in extra_portfolio_list]}")
         PortfolioList = self._genPortfolio(descriptor_ids, args.get("IndustryList", []), args.get("RandomNums", [20, 50, 100, 200]), mask, WeightDict, StyleDict, industry, IndustryNeutralFactorDict, ExtraPortfolioDict)
         if not PortfolioList: raise __QS_Error__("在给定的因子条件下生成的投资组合为空!")
-        self._PortfolioNameList = [iFactor.Name for iFactor in PortfolioList]
+        args = args | {"PortfolioNameList": tuple(iFactor.Name for iFactor in PortfolioList)}
 
         CalcDTRuler = args.get("RebalanceDTs", None)
         if not CalcDTRuler: LookBack = 1
@@ -221,7 +247,7 @@ class BiasTest(BTNode):
         PortfolioReturn = CalcPortfolioReturn(descriptor_ids=descriptor_ids, lookback=LookBack)(*PortfolioList, price=price, factor_args={"CalcDTRuler": CalcDTRuler})
         PortfolioVolatility = CalcPortfolioVolatility(descriptor_ids=descriptor_ids)(*PortfolioList, risk_table=risk_table, factor_args={"CalcDTRuler": CalcDTRuler})
         ZScore = PortfolioReturn / fo.Lag(lag_period=1, window=LookBack)(PortfolioVolatility, factor_args={"CalcDTRuler": CalcDTRuler})
-        super().__init__(deps=[ZScore], args=args, config_file=config_file, **kwargs)
+        super().__init__(deps={'zscore': ZScore}, args=args, config_file=config_file, **kwargs)
 
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
@@ -259,11 +285,14 @@ class BiasTest(BTNode):
 class BiasTestReport(ReportNode):
     """Bias Test 报告生成节点"""
 
+    class __QS_DepClass__(DependencyModel):
+        bias_node: BiasTest = Field(title='bias_node')
+
     class __QS_ArgClass__(ReportNode.__QS_ArgClass__):
         Name: str = Field(default="Bias Test报告", frozen=True, title="名称")
 
     def __init__(self, bias_node: BiasTest, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        return super().__init__(deps=[bias_node], args=args, config_file=config_file, **kwargs)
+        return super().__init__(deps={'bias_node': bias_node}, args=args, config_file=config_file, **kwargs)
 
     @staticmethod
     def genOutputReport(output:dict) -> str:

@@ -229,18 +229,9 @@ class TestBrinsonModelNode(unittest.TestCase):
     """测试 BrinsonModel 回测节点的 backward_compute 方法"""
 
     def _make_brinson_node(self, section_ids=None):
-        """创建 BrinsonModel 节点实例 (绕过 __init__)"""
-        node = BrinsonModel.__new__(BrinsonModel)
+        """构造具有真实命名依赖的归因节点。"""
         cats = section_ids or ["行业A", "行业B"]
-        node._QSArgs = type('Args', (), {
-            'Name': 'Brinson 绩效分析模型',
-            'SectionIDs': cats,
-        })()
-        node.Deps = [type('Dep', (), {
-            'Args': type('Args', (), {'SectionIDs': cats})(),
-            '_QSArgs': type('Args', (), {'CalcDTRuler': None})(),
-        })()]
-        return node
+        return BrinsonModel(DataFactor(0, args={"SectionIDs": cats}), args={"SectionIDs": cats})
 
     def test_backward_compute_output_keys(self):
         """验证 backward_compute 输出包含所有必需的键"""
@@ -345,33 +336,14 @@ class TestBrinsonModelReport(unittest.TestCase):
     """测试 BrinsonModelReport 报告生成节点"""
 
     def _make_report_output(self, dts, cats):
-        """构造 BrinsonModel.backward_compute 的输出字典用于报告测试"""
-        BwdData = _make_brinson_backward_data(dts, cats)
-        node = BrinsonModel.__new__(BrinsonModel)
-        node._QSArgs = type('Args', (), {
-            'Name': 'Brinson 绩效分析模型',
-            'SectionIDs': cats,
-        })()
-        node.Deps = [type('Dep', (), {
-            'Args': type('Args', (), {'SectionIDs': cats})(),
-            '_QSArgs': type('Args', (), {'CalcDTRuler': None})(),
-        })()]
-        return node.backward_compute(path=[], bwd_data_list=[BwdData], context=None)
+        """构造归因分析输出。"""
+        data = _make_brinson_backward_data(dts, cats)
+        node = BrinsonModel(DataFactor(0, args={"SectionIDs": cats}), args={"SectionIDs": cats})
+        return node.backward_compute(path=[], bwd_data_list=[data], context=None)
 
     def _make_report_node(self):
-        """创建 BrinsonModelReport 节点实例 (绕过 __init__)"""
-        report_node = BrinsonModelReport.__new__(BrinsonModelReport)
-        report_node._QSArgs = type('Args', (), {
-            'Name': 'Brinson绩效分析报告',
-            'ReportKey': 'Report',
-        })()
-        # Deps[0] 是 BrinsonModel, 其 Deps[0] 是 Brinson 因子
-        report_node.Deps = [type('BrinsonNode', (), {
-            'Deps': [type('BrinsonFactor', (), {
-                '_QSArgs': type('Args', (), {'CalcDTRuler': None})(),
-            })()],
-        })()]
-        return report_node
+        """构造真实报告依赖。"""
+        return BrinsonModelReport(BrinsonModel(DataFactor(0)))
 
     def test_gen_output_report_html(self):
         """验证 genOutputReport 生成有效的 HTML 表格"""
@@ -407,12 +379,7 @@ class TestBrinsonModelReport(unittest.TestCase):
         cats = ["消费", "科技", "金融"]
         BwdData = _make_brinson_backward_data(dts, cats)
 
-        node = BrinsonModel.__new__(BrinsonModel)
-        node._QSArgs = type('Args', (), {'Name': '', 'SectionIDs': cats})()
-        node.Deps = [type('Dep', (), {
-            'Args': type('Args', (), {'SectionIDs': cats})(),
-            '_QSArgs': type('Args', (), {'CalcDTRuler': None})(),
-        })()]
+        node = BrinsonModel(DataFactor(0, args={"SectionIDs": cats}), args={"SectionIDs": cats})
         Output = node.backward_compute(path=[], bwd_data_list=[BwdData], context=None)
 
         report_node = self._make_report_node()

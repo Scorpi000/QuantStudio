@@ -19,20 +19,20 @@ def _execute_task(task):
         Context.ExtraData["_QS_FailSkip"] = True
     for i, iNode in enumerate(NodeList):
         try:
-            if Context.NodeState.get(iNode.QSID, {}).get("__status__") in ("FAILED", "SKIPPED"):
+            if Context.NodeState.get(iNode.InstanceID, {}).get("__status__") in ("FAILED", "SKIPPED"):
                 iRslt = None
             else:
-                iRslt = iNode.compute([iNode.QSID], FwdDataList[i], Context)
-            if iNode.QSID in Context.NodeErrors:
-                Context.Sub2MainQueue.put(("CalcError", task["PID"], (1, iNode.QSID, Context.NodeErrors[iNode.QSID])))
+                iRslt = iNode.compute([iNode.InstanceID], FwdDataList[i], Context)
+            if iNode.InstanceID in Context.NodeErrors:
+                Context.Sub2MainQueue.put(("CalcError", task["PID"], (1, iNode.InstanceID, Context.NodeErrors[iNode.InstanceID])))
             else:
-                Context.Sub2MainQueue.put(("Calc", task["PID"], (1, iNode.QSID, iRslt)))
+                Context.Sub2MainQueue.put(("Calc", task["PID"], (1, iNode.InstanceID, iRslt)))
         except Exception as e:
             if SkipMode:
-                Context.NodeState.setdefault(iNode.QSID, {})["__status__"] = "FAILED"
-                Context.NodeErrors[iNode.QSID] = e
-                Context.Logger.error(f"节点 {iNode.Name}({iNode.QSID[:8]}) 计算失败: {e}")
-                Context.Sub2MainQueue.put(("CalcError", task["PID"], (1, iNode.QSID, e)))
+                Context.NodeState.setdefault(iNode.InstanceID, {})["__status__"] = "FAILED"
+                Context.NodeErrors[iNode.InstanceID] = e
+                Context.Logger.error(f"节点 {iNode.Name}({iNode.InstanceID[:8]}) 计算失败: {e}")
+                Context.Sub2MainQueue.put(("CalcError", task["PID"], (1, iNode.InstanceID, e)))
             else:
                 Context.Sub2MainQueue.put(("TaskError", task["PID"], e))
                 return
@@ -135,5 +135,5 @@ class ParallelEngine(Engine):
                 # 异常退出后丢弃未消费的消息，避免污染下一次运行。
                 context.Sub2MainQueue.close()
                 context.Sub2MainQueue = None
-        return [(None if context.NodeState.get(iNode.QSID, {}).get("__status__") in ("FAILED", "SKIPPED") else
-                 iNode.merge_result(result_list=Data[iNode.QSID], context=context)) for iNode in node_list]
+        return [(None if context.NodeState.get(iNode.InstanceID, {}).get("__status__") in ("FAILED", "SKIPPED") else
+                 iNode.merge_result(result_list=Data[iNode.InstanceID], context=context)) for iNode in node_list]

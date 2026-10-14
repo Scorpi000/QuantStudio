@@ -326,17 +326,8 @@ class TestICNode(unittest.TestCase):
         return pd.DataFrame(data, columns=[f"F{i}" for i in range(n_factors)])
 
     def _make_ic_node(self, factor_name_list=None, rolling_avg_period=3):
-        """创建 IC 节点实例 (绕过 __init__)"""
-        ic_node = IC.__new__(IC)
-        ic_node._QSArgs = type('Args', (), {
-            'FactorNameList': factor_name_list,
-            'RollingAvgPeriod': rolling_avg_period,
-            'SectionIDs': None,
-        })()
-        ic_node.Deps = [type('Dep', (), {
-            'Args': type('Args', (), {'SectionIDs': None})()
-        })()]
-        return ic_node
+        """构造具有真实依赖的 IC 节点。"""
+        return IC(DataFactor(0), args={"FactorNameList": factor_name_list, "RollingAvgPeriod": rolling_avg_period})
 
     def test_backward_compute_basic(self):
         """验证 IC 统计聚合: 均值、标准差、IR、t 统计量"""
@@ -406,19 +397,8 @@ class TestMultiPortfolioNode(unittest.TestCase):
     """测试 MultiPortfolio 回测节点的 backward_compute 方法"""
 
     def _make_mp_node(self, ls_pairs=None, rebalance_dts=None):
-        """创建 MultiPortfolio 节点实例 (绕过 __init__)"""
-        mp_node = MultiPortfolio.__new__(MultiPortfolio)
-        mp_node._QSArgs = type('Args', (), {
-            'LSPairs': ls_pairs or [],
-            'RebalanceDTs': rebalance_dts,
-            'PortfolioSection': None,
-            'BmkSection': None,
-        })()
-        mp_node._NV = type('NV', (), {
-            '_QSArgs': type('Args', (), {'ModelArgs': {}, 'SectionIDs': None})()
-        })()
-        mp_node._BmkNV = None
-        return mp_node
+        """构造真实多组合节点。"""
+        return MultiPortfolio(DataFactor(1), args={"LSPairs": ls_pairs or [], "RebalanceDTs": rebalance_dts})
 
     def test_backward_compute_stats(self):
         """验证净值统计: 收益率、波动率、Sharpe、最大回撤"""

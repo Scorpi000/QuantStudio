@@ -4,6 +4,8 @@ from typing import List, Any, Literal, Optional
 from pydantic import Field
 
 from QuantStudio.Core.Node import Node, Context
+from QuantStudio.Core.Input import DependencyModel
+from QuantStudio.Core.Identity import ExecutionEffect
 from QuantStudio.Core.QSObject import Panel
 from QuantStudio.Factor.Factor import Factor
 from QuantStudio.Factor.FactorDB import WritableFactorDB
@@ -11,6 +13,16 @@ from QuantStudio.Factor.FactorDB import WritableFactorDB
 
 class FactorStorer(Node):
     """因子数据存储器"""
+
+    __QS_ExecutionEffect__ = ExecutionEffect.WRITE
+
+    class __QS_DepClass__(DependencyModel):
+        factors: tuple[Factor, ...] = Field(default=(), title="写入因子")
+        writers: tuple[Node, ...] = Field(default=(), title="子存储节点")
+
+    @property
+    def _Splited(self):
+        return bool(self.Dependencies.writers)
 
     class __QS_ArgClass__(Node.__QS_ArgClass__):
         Name: str = Field(default="FactorStorer", frozen=True, title="名称")
@@ -23,16 +35,16 @@ class FactorStorer(Node):
     def __init__(self, deps:List[Factor]=[], args:dict={}, config_file:Optional[str]=None, **kwargs):
         if kwargs.get("split", True) and hasattr(args["TargetFDB"], "writeFactorData"):
             Deps = [FactorStorer(deps=[iFactor], args=args, config_file=config_file, **(kwargs | {"split": False})) for iFactor in deps]
-            self._Splited = True
+            dependencies = {"writers": tuple(Deps)}
         else:
             Deps = deps
-            self._Splited = False
-        super().__init__(Deps, args, config_file, **kwargs)
+            dependencies = {"factors": tuple(Deps)}
+        super().__init__(dependencies, args, config_file, **kwargs)
 
     @property
     def FactorDB(self) -> WritableFactorDB:
         """目标因子库"""
-        return self._QSArgs._TargetFDB
+        return self._QSArgs.TargetFDB
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: Context, local_context: Any=None) -> Any:
         if self._Splited: return

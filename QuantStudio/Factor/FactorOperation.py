@@ -4,6 +4,9 @@ import base64
 import importlib
 import copy
 import types
+import inspect
+from contextvars import ContextVar
+from functools import wraps
 import datetime as dt
 from functools import partial
 from typing import Optional, Literal, List, Any, Tuple, Callable, Union, Dict
@@ -11,11 +14,13 @@ from typing import Optional, Literal, List, Any, Tuple, Callable, Union, Dict
 import dill
 import pandas as pd
 import numpy as np
-from pydantic import Field, ConfigDict, SerializeAsAny
+from pydantic import Field, ConfigDict, SerializeAsAny, create_model
 from multiprocess import Event
 
 from QuantStudio.Core import __QS_Error__, __QS_Object__, __QS_Args__
 from QuantStudio.Core.Node import Node
+from QuantStudio.Core.Input import InputModel, DependencyModel, Binding, collection_type, dump_input_model, restore_input_model
+from QuantStudio.Core.Identity import ExecutionEffect
 from QuantStudio.Factor.Factor import Factor, DataFactor, FactorContext, FactorLocalContext, FactorInitData, makeFactorRunningKey
 from QuantStudio.Tools.AuxiliaryFun import partitionList
 
@@ -103,6 +108,85 @@ class OperandSpec(__QS_Args__):
         return super().model_post_init(context)
 
 
+class FactorInputModel(InputModel):
+    """因子算子的有类型输入模型。"""
+
+
+class VariadicFactorInputs(FactorInputModel):
+    """通用函数算子接受的因子集合。"""
+
+    x: tuple[Factor, ...] = Field(min_length=1, title="输入因子")
+
+
+_ActiveInputs = ContextVar("quantstudio_factor_inputs", default=None)
+
+
+def make_input_model(specs, name="FactorInputs"):
+    """将工厂传入的槽位描述归一化为输入模型。"""
+    fields = {}
+    for index, spec in enumerate(specs):
+        field_name = spec.Name or ("x" if spec.Variadic else f"x{index}")
+        annotation = tuple[Factor, ...] if spec.Variadic else (Factor if spec.Required else Factor | None)
+        default = ... if spec.Required else (() if spec.Variadic else None)
+        options = {"title": spec.Title or field_name, "description": spec.Description}
+        if spec.Variadic:
+            options["min_length"] = spec.MinNum
+            if spec.MaxNum is not None:
+                options["max_length"] = spec.MaxNum
+        fields[field_name] = (annotation, Field(default=default, **options))
+    model = create_model(name, __base__=FactorInputModel, **fields)
+    model.__QS_DynamicInputs__ = True
+    return model
+
+
+def _operator_call(method):
+    """在公开调用边界保存命名输入，内部数值构造可以展开。"""
+    signature = inspect.signature(method)
+
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        if _ActiveInputs.get() is not None:
+            return method(self, *args, **kwargs)
+        supplied = signature.bind_partial(self, *args, **kwargs)
+        fields = self.InputClass.model_fields
+        positional = []
+        named = {}
+        for name, parameter in signature.parameters.items():
+            if name == "self":
+                continue
+            value = supplied.arguments.get(name)
+            if parameter.kind == inspect.Parameter.VAR_POSITIONAL:
+                positional.extend(value or ())
+            elif name in fields and name in supplied.arguments:
+                named[name] = value
+            elif parameter.kind == inspect.Parameter.VAR_KEYWORD:
+                named.update({key: item for key, item in (value or {}).items() if key in fields})
+        inputs = self._QS_bindInputs(positional, named).build()
+        values = {name: getattr(inputs, name) for name in fields}
+        arguments = dict(supplied.arguments)
+        for name, parameter in signature.parameters.items():
+            if name in values and parameter.kind != inspect.Parameter.VAR_POSITIONAL:
+                arguments[name] = values[name]
+            elif parameter.kind == inspect.Parameter.VAR_POSITIONAL:
+                if name in values and any(field in signature.parameters and signature.parameters[field].kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD) for field in fields):
+                    value = values[name]
+                    arguments[name] = value if isinstance(value, tuple) else (() if value is None else (value,))
+                else:
+                    arguments[name] = tuple(item for field, value in values.items() if field not in signature.parameters or signature.parameters[field].kind == inspect.Parameter.VAR_POSITIONAL
+                                            for item in (value if isinstance(value, tuple) else (() if value is None else (value,))))
+            elif parameter.kind == inspect.Parameter.VAR_KEYWORD:
+                arguments[name] = {key: value for key, value in arguments.get(name, {}).items() if key not in fields}
+                if any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in signature.parameters.values()):
+                    arguments[name]["_qs_bound"] = True
+        token = _ActiveInputs.set(inputs)
+        try:
+            bound = inspect.BoundArguments(signature, arguments)
+            return method(*bound.args, **bound.kwargs)
+        finally:
+            _ActiveInputs.reset(token)
+    return wrapped
+
+
 def _operand_bounds(specs):
     """根据公开接口声明计算展开后的描述子总数范围。"""
     minimum, maximum = 0, 0
@@ -132,11 +216,95 @@ def _copy_operator_value(value):
 class FactorOperator(__QS_Object__):
     """因子算子"""
 
+    __QS_InputClass__ = VariadicFactorInputs
+    __QS_CallLayout__ = {}
+    __QS_BehaviorVersion__ = 1
+    __QS_ExecutionEffect__ = ExecutionEffect.PURE
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if "__call__" in cls.__dict__ and not cls.__dict__.get("__QS_Bound__", False):
+            cls.__call__ = _operator_call(cls.__call__)
+
+    def __init__(self, args=None, config_file=None, **kwargs):
+        args = dict(args or {})
+        specs = args.pop("OperandInfo", None)
+        self._InputClass = make_input_model(specs) if specs is not None else self.__QS_InputClass__
+        self._CallLayout = ({spec.Name or ("x" if spec.Variadic else f"x{i}"):
+                            {"grouped": spec.Grouped, "keyword_only": spec.KeywordOnly}
+                            for i, spec in enumerate(specs)} if specs is not None else self.__QS_CallLayout__)
+        super().__init__(args=args, config_file=config_file, **kwargs)
+
+    @property
+    def InputClass(self):
+        """当前算子的输入模型。"""
+        return getattr(self, "_InputClass", self.__QS_InputClass__)
+
+    @property
+    def input_specs(self):
+        """由模型生成数值构造所需的槽位视图。"""
+        info = self.InputClass.input_info()
+        return tuple(OperandSpec(Name=name, Title=item["title"], Description=item["description"],
+                                 Required=item["required"], Variadic=item["collection"],
+                                 MinNum=item["min_length"] or 0, MaxNum=item["max_length"],
+                                 Grouped=self._CallLayout.get(name, {}).get("grouped", False),
+                                 KeywordOnly=self._CallLayout.get(name, {}).get("keyword_only", False))
+                     for name, item in info.items())
+
+    def input_info(self):
+        """返回算子输入声明。"""
+        return self.InputClass.input_info()
+
+    def _QS_bindInputs(self, operands=(), named=None, initial=None):
+        """按照输入槽位解析位置参数并归一化常量。"""
+        named = dict(named or {})
+        values = dict(initial or {})
+        position = 0
+        for spec in self.input_specs:
+            if spec.Name in named:
+                value = named.pop(spec.Name)
+                if spec.Name in values and not spec.Variadic:
+                    raise __QS_Error__(f"已绑定操作数 {spec.Name} 不能在调用中覆盖")
+            elif spec.KeywordOnly or (spec.Name in values and not spec.Variadic):
+                continue
+            elif spec.Variadic and not spec.Grouped:
+                value = operands[position:]
+                position = len(operands)
+                if not value:
+                    continue
+            elif position < len(operands):
+                value = operands[position]
+                position += 1
+            else:
+                continue
+            if spec.Variadic:
+                if not isinstance(value, (list, tuple)):
+                    raise __QS_Error__(f"操作数 {spec.Name} 必须是因子集合")
+                value = tuple(item if isinstance(item, Factor) else DataFactor(item) for item in value)
+                values[spec.Name] = tuple(values.get(spec.Name, ())) + value
+            else:
+                annotation = self.InputClass.model_fields[spec.Name].annotation
+                if isinstance(value, dict) and "dict" in str(annotation).lower():
+                    values[spec.Name] = value
+                else:
+                    values[spec.Name] = value if value is None or isinstance(value, Node) else DataFactor(value)
+        if position < len(operands) or named:
+            raise __QS_Error__("传入了未声明或重复的操作数")
+        return Binding(self.InputClass, values)
+
+    def bind(self, **inputs):
+        """部分指定输入并返回新算子，不构造因子。"""
+        normalized = self._QS_bindInputs(named=inputs)
+        return BoundFactorOperator(self.new(), normalized)
+
+    def unbind(self, *names):
+        """返回没有指定预绑定槽位的算子。"""
+        return BoundFactorOperator(self, Binding(self.InputClass).unbind(*names))
+
     class __QS_ArgClass__(__QS_Object__.__QS_ArgClass__):
         OperatorType: Literal["Point", "Time", "Section", "Panel"] = Field(title="算子类型", frozen=True)
         Name: str = Field(default="FactorOperator", title="名称", frozen=True, exclude=True)
         ModelArgs: SerializeAsAny[OperatorModelArgs] = Field(default_factory=OperatorModelArgs, title="模型参数", frozen=True)
-        OperandInfo: Tuple[OperandSpec, ...] = Field(default=(OperandSpec(Variadic=True, MinNum=1),), title="操作数声明", frozen=True, exclude=True)
         DataType: Literal["double", "string", "object"] = Field(default="double",title="数据类型", frozen=True)
         Description: str = Field(default="", title="描述信息", frozen=False, exclude=True)
         Meta: Dict[str, Any] = Field(default={}, title="元信息", frozen=False, exclude=True)
@@ -148,23 +316,17 @@ class FactorOperator(__QS_Object__):
             return super().__init__(**data)
 
         def model_post_init(self, context: Any, /) -> None:
-            OperandInfo = self.OperandInfo
-            names = [spec.Name for spec in OperandInfo if spec.Name]
-            if len(names) != len(set(names)):
-                raise __QS_Error__("操作数声明的名称不能重复!")
-            positional = [spec for spec in OperandInfo if not spec.KeywordOnly]
-            tails = [i for i, spec in enumerate(positional) if spec.Variadic and not spec.Grouped]
-            if tails and (len(tails) > 1 or tails[0] != len(positional) - 1):
-                raise __QS_Error__("展开式可变操作数必须是最后一个位置参数!")
             return super().model_post_init(context)
     
     def __getstate__(self):
         state = self.__dict__.copy()
+        state["_InputDefinition"] = dump_input_model(state.pop("_InputClass", self.InputClass))
         if "calculate" in self.__dict__:
             state["calculate"] = dill.dumps(self.calculate)
         return state
     
     def __setstate__(self, state):
+        state["_InputClass"] = restore_input_model(state.pop("_InputDefinition"))
         if "calculate" in state: state["calculate"] = dill.loads(state["calculate"])
         self.__dict__.update(state)
 
@@ -176,13 +338,14 @@ class FactorOperator(__QS_Object__):
     @property
     def Arity(self) -> Optional[int]:
         """声明的固定输入数量；含可变或可选操作数时返回 None。"""
-        specs = self._QSArgs.OperandInfo
+        specs = self.input_specs
         if any(spec.Variadic or not spec.Required for spec in specs):
             return None
         return len(specs)
     
     def model_dump(self):
         DumpedModel = super().model_dump()
+        DumpedModel["behavior_version"] = self.__QS_BehaviorVersion__
         DumpedModel["__func__"] = self.calculate
         return DumpedModel
 
@@ -199,6 +362,8 @@ class FactorOperator(__QS_Object__):
         """
         op = cls.__new__(cls)
         __QS_Object__.__init__(op, args=args, config_file=None, **kwargs)
+        op._InputClass = cls.__QS_InputClass__
+        op._CallLayout = cls.__QS_CallLayout__
         return op
 
     def _QS_updateArgs(self, args, updates, operand_count=None):
@@ -237,6 +402,8 @@ class FactorOperator(__QS_Object__):
         NewOperator = self._QS_fromArgs(Args, **({"logger": self._QS_Logger} | kwargs))
         NewOperator._ConfigFile = self._ConfigFile
         NewOperator._OperandCount = operand_count
+        NewOperator._InputClass = self.InputClass
+        NewOperator._CallLayout = self._CallLayout
         if getattr(self.calculate, "__self__", None) != self:
             NewOperator.calculate = self.calculate
         return NewOperator
@@ -300,6 +467,8 @@ class FactorOperator(__QS_Object__):
         result["__qsargs__"] = _serialize_operator_value(result["__qsargs__"])
         result["__class__"] = type(self).__module__ + "." + type(self).__qualname__
         result["calculate_ref"] = self._serialize_calculate()
+        result["input_model"] = base64.b64encode(dill.dumps(dump_input_model(self.InputClass))).decode("ascii")
+        result["call_layout"] = self._CallLayout
         return result
 
     @classmethod
@@ -314,6 +483,9 @@ class FactorOperator(__QS_Object__):
         # 参数已完整恢复并校验，直接初始化对象，避免内置构造函数要求
         # func/aggr_ids 等位置参数，或重新推导并覆盖保存的配置。
         op = cls._QS_fromArgs(Args | {})
+        if "input_model" in data:
+            op._InputClass = restore_input_model(dill.loads(base64.b64decode(data["input_model"])))
+        op._CallLayout = data.get("call_layout", cls.__QS_CallLayout__)
         # 已绑定的配置列表记录了实际数量，恢复后可保留自定义输出字段。
         counts = [len(getattr(op.Args, field)) for field in
                   ("LookBack", "StartDT", "DescriptorSection") if hasattr(op.Args, field)]
@@ -325,9 +497,9 @@ class FactorOperator(__QS_Object__):
     
     def _QS_validate(self, *x, **kwargs):
         operand_count = len(x)
-        OperandInfo = self._QSArgs.OperandInfo
+        OperandInfo = self.input_specs
         # 可变元数算子: 校验实参个数是否落在 OperandInfo 声明的范围内
-        if OperandInfo:
+        if OperandInfo and _ActiveInputs.get() is None:
             minimum, maximum = _operand_bounds(OperandInfo)
             if operand_count < minimum:
                 raise __QS_Error__(f"因子算子 {self.Name} 至少需要 {minimum} 个操作数, 实际传入 {operand_count} 个!")
@@ -348,7 +520,7 @@ class FactorOperator(__QS_Object__):
         """按公开接口绑定并校验各操作数，展开前分别检查参数组。"""
         position = 0
         flattened = []
-        for spec in self.Args.OperandInfo:
+        for spec in self.input_specs:
             if spec.KeywordOnly:
                 value = named.pop(spec.Name, None)
             elif spec.Name in named:
@@ -441,6 +613,72 @@ class FactorOperator(__QS_Object__):
         raise NotImplementedError
 
 
+
+class BoundFactorOperator(FactorOperator):
+    """保存部分因子绑定的算子，直接调用始终构造完整因子。"""
+
+    __QS_Bound__ = True
+
+    def __init__(self, operator, binding):
+        self._BaseOperator = operator
+        self._Binding = binding
+        self._QSArgs = operator.Args
+        self._QS_Logger = operator.Logger
+        self._ConfigFile = operator.ConfigFile
+        self._InputClass = operator.InputClass
+        self._CallLayout = operator._CallLayout
+
+    def input_info(self):
+        """读取声明、已绑定槽位和剩余输入。"""
+        return self._Binding.input_info()
+
+    def bind(self, **inputs):
+        """替换指定槽位，保留已有绑定并返回新算子。"""
+        values = self._Binding.values | self._BaseOperator._QS_bindInputs(named=inputs).values
+        return type(self)(self._BaseOperator, Binding(self.InputClass, values))
+
+    def unbind(self, *names):
+        """重新开放指定槽位。"""
+        return type(self)(self._BaseOperator, self._Binding.unbind(*names))
+
+    def new(self, args=None, **kwargs):
+        """更新模型配置而保留因子绑定。"""
+        return type(self)(self._BaseOperator.new(args=args or {}, **kwargs), self._Binding)
+
+    def __call__(self, *operands, **kwargs):
+        named = {name: kwargs.pop(name) for name in list(kwargs) if name in self.InputClass.model_fields}
+        inputs = self._BaseOperator._QS_bindInputs(operands, named, self._Binding.values).build()
+        values = {name: getattr(inputs, name) for name in self.InputClass.model_fields}
+        signature = inspect.signature(type(self._BaseOperator).__call__)
+        arguments = {"self": self._BaseOperator}
+        for name, parameter in signature.parameters.items():
+            if name in values and parameter.kind != inspect.Parameter.VAR_POSITIONAL:
+                arguments[name] = values[name]
+            elif parameter.kind == inspect.Parameter.VAR_POSITIONAL:
+                arguments[name] = ((values[name] if isinstance(values[name], tuple) else (() if values[name] is None else (values[name],))) if name in values else
+                    tuple(item for field, value in values.items() if field not in signature.parameters or signature.parameters[field].kind == inspect.Parameter.VAR_POSITIONAL
+                          for item in (value if isinstance(value, tuple) else (() if value is None else (value,)))))
+            elif parameter.kind == inspect.Parameter.VAR_KEYWORD:
+                arguments[name] = {key: value for key, value in kwargs.items() if key not in signature.parameters}
+            elif name in kwargs:
+                arguments[name] = kwargs[name]
+        bound = inspect.BoundArguments(signature, arguments)
+        return self._BaseOperator(*bound.args[1:], **bound.kwargs)
+
+    def serialize(self):
+        """保存可信 Python 环境中的绑定算子。"""
+        return {"__class__": type(self).__module__ + "." + type(self).__qualname__,
+                "operator": self._BaseOperator.serialize(),
+                "bindings": base64.b64encode(dill.dumps(self._Binding.values)).decode("ascii")}
+
+    @classmethod
+    def deserialize(cls, data):
+        """恢复可信 Python 环境中的绑定算子。"""
+        operator = FactorOperator.deserialize(data["operator"])
+        values = dill.loads(base64.b64decode(data["bindings"]))
+        return cls(operator, Binding(operator.InputClass, values))
+
+
 class PointOperator(FactorOperator):
     """单点算子, 运算只依赖于被依赖因子在单个时点和单个ID的因子值"""
     
@@ -471,8 +709,8 @@ class PointOperator(FactorOperator):
 
     def __call__(self, *x: Factor, factor_args: dict = {}, **kwargs) -> "PointOperation":
         bound = kwargs.pop("_qs_bound", False)
-        if self.Args.OperandInfo and not bound:
-            named = {spec.Name: kwargs.pop(spec.Name) for spec in self.Args.OperandInfo if spec.Name in kwargs}
+        if self.input_specs and not bound and _ActiveInputs.get() is None:
+            named = {spec.Name: kwargs.pop(spec.Name) for spec in self.input_specs if spec.Name in kwargs}
             x = self._QS_validateOperands(*x, **named)
         Operator = self._QS_validate(*x, **kwargs.pop("operator_kwargs", {}))
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for i, iFactor in enumerate(x)]
@@ -591,8 +829,8 @@ class TimeOperator(FactorOperator):
 
     def __call__(self, *x:Factor, factor_args:dict={}, **kwargs) -> "TimeOperation":
         bound = kwargs.pop("_qs_bound", False)
-        if self.Args.OperandInfo and not bound:
-            named = {spec.Name: kwargs.pop(spec.Name) for spec in self.Args.OperandInfo if spec.Name in kwargs}
+        if self.input_specs and not bound and _ActiveInputs.get() is None:
+            named = {spec.Name: kwargs.pop(spec.Name) for spec in self.input_specs if spec.Name in kwargs}
             x = self._QS_validateOperands(*x, **named)
         Operator = self._QS_validate(*x, **kwargs.pop("operator_kwargs", {}))
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for i, iFactor in enumerate(x)]
@@ -722,8 +960,8 @@ class SectionOperator(FactorOperator):
 
     def __call__(self, *x:Factor, factor_args:dict={}, **kwargs) -> "SectionOperation":
         bound = kwargs.pop("_qs_bound", False)
-        if self.Args.OperandInfo and not bound:
-            named = {spec.Name: kwargs.pop(spec.Name) for spec in self.Args.OperandInfo if spec.Name in kwargs}
+        if self.input_specs and not bound and _ActiveInputs.get() is None:
+            named = {spec.Name: kwargs.pop(spec.Name) for spec in self.input_specs if spec.Name in kwargs}
             x = self._QS_validateOperands(*x, **named)
         Operator = self._QS_validate(*x, **kwargs.pop("operator_kwargs", {}))
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for i, iFactor in enumerate(x)]
@@ -807,8 +1045,8 @@ class PanelOperator(FactorOperator):
 
     def __call__(self, *x:Factor, factor_args:dict={}, **kwargs) -> "PanelOperation":
         bound = kwargs.pop("_qs_bound", False)
-        if self.Args.OperandInfo and not bound:
-            named = {spec.Name: kwargs.pop(spec.Name) for spec in self.Args.OperandInfo if spec.Name in kwargs}
+        if self.input_specs and not bound and _ActiveInputs.get() is None:
+            named = {spec.Name: kwargs.pop(spec.Name) for spec in self.input_specs if spec.Name in kwargs}
             x = self._QS_validateOperands(*x, **named)
         Operator = self._QS_validate(*x, **kwargs.pop("operator_kwargs", {}))
         Descriptors = [(iFactor if isinstance(iFactor, Factor) else DataFactor(data=iFactor, logger=self._QS_Logger)) for i, iFactor in enumerate(x)]
@@ -887,7 +1125,8 @@ class PanelOperator(FactorOperator):
 FactorOperatorFunc = Callable[[Factor, dt.datetime | List[dt.datetime], str | List[str], list, dict], Any]
 
 def makeFactorOperator(func: FactorOperatorFunc, operator_type: Literal['Point', 'Time', 'Section', 'Panel'], args:dict={},
-                       operand_info:Optional[Tuple[OperandSpec, ...]]=None, model_args:Optional[type]=None, **kwargs) -> FactorOperator:
+                       operand_info:Optional[Tuple[OperandSpec, ...]]=None, model_args:Optional[type]=None,
+                       input_model:Optional[type[InputModel]]=None, **kwargs) -> FactorOperator:
     """算子工厂函数, 给定一个函数创建一个因子算子对象
 
     Args:
@@ -896,6 +1135,7 @@ def makeFactorOperator(func: FactorOperatorFunc, operator_type: Literal['Point',
         args: 创建算子对象时传递给它的参数集
         operand_info: 操作数声明 ``Tuple[OperandSpec, ...]``, 描述算子可作用的因子槽位
         model_args: 模型参数类(``OperatorModelArgs`` 子类), 用于描述算子的模型参数元信息
+        input_model: 公开输入模型，字段是输入声明的唯一来源。
         kwargs: 创建算子对象时传递给它的其他入参
 
     Returns:
@@ -922,10 +1162,17 @@ def makeFactorOperator(func: FactorOperatorFunc, operator_type: Literal['Point',
     else:
         raise __QS_Error__(f"错误的因子算子类型: '{operator_type}', 必须为 'Point', 'Time', 'Section' 或者 'Panel'")
     FactorOperator.calculate = func
+    if input_model is not None:
+        if not issubclass(input_model, InputModel):
+            raise TypeError("input_model 必须继承 InputModel")
+        FactorOperator._InputClass = input_model
+        collections = [name for name, field in input_model.model_fields.items() if collection_type(field.annotation)]
+        FactorOperator._CallLayout = {name: {"grouped": len(collections) > 1} for name in collections}
     return FactorOperator
 
 def FactorOperatorized(operator_type: Literal['Point', 'Time', 'Section', 'Panel'], args:dict={},
-                       operand_info:Optional[Tuple[OperandSpec, ...]]=None, model_args:Optional[type]=None, **kwargs) -> Callable[[FactorOperatorFunc], FactorOperator]:
+                       operand_info:Optional[Tuple[OperandSpec, ...]]=None, model_args:Optional[type]=None,
+                       input_model:Optional[type[InputModel]]=None, **kwargs) -> Callable[[FactorOperatorFunc], FactorOperator]:
     """将函数转换成因子算子对象的装饰器
 
     Args:
@@ -933,16 +1180,21 @@ def FactorOperatorized(operator_type: Literal['Point', 'Time', 'Section', 'Panel
         args: 创建算子对象时传递给它的参数集
         operand_info: 操作数声明 ``Tuple[OperandSpec, ...]``
         model_args: 模型参数类(``OperatorModelArgs`` 子类)
+        input_model: 公开输入模型。
         kwargs: 创建算子对象时传递给它的其他入参
 
     Returns:
         算子装饰器
     """
-    return partial(makeFactorOperator, operator_type=operator_type, args=args, operand_info=operand_info, model_args=model_args, **kwargs)
+    return partial(makeFactorOperator, operator_type=operator_type, args=args, operand_info=operand_info,
+                   model_args=model_args, input_model=input_model, **kwargs)
 
 
 class DerivativeFactor(Factor):
     """衍生因子"""
+
+    __QS_ExecutionEffect__ = ExecutionEffect.PURE
+    __QS_DynamicDependencies__ = True
 
     class __QS_ArgClass__(Factor.__QS_ArgClass__):
         Name: str = Field(default="DerivativeFactor", frozen=True, title="名称", exclude=True)
@@ -952,10 +1204,38 @@ class DerivativeFactor(Factor):
     def __init__(self, descriptors: List[Factor], extra_deps: List[Node] = [], args: dict={}, config_file: Optional[str]=None, **kwargs):
         Operator = args["Operator"]._QS_validate(*descriptors, **kwargs.pop("operator_kwargs", {}))
         args = {"Name": Operator._QSArgs.Name} | args | {"Operator": Operator}
-        super().__init__(descriptors=descriptors, extra_deps=extra_deps, args=args, config_file=config_file, **kwargs)
+        inputs = _ActiveInputs.get()
+        values = None if inputs is None else {name: getattr(inputs, name) for name in type(inputs).model_fields}
+        flattened = [] if values is None else [item for value in values.values()
+            for item in (value if isinstance(value, tuple) else (() if value is None else (value,)))]
+        if values is not None and len(flattened) == len(descriptors) and all(a is b for a, b in zip(flattened, descriptors)):
+            fields = {name: (field.annotation, field) for name, field in type(inputs).model_fields.items()}
+        else:
+            fields = {"descriptors": (tuple[Factor, ...], Field(title="计算描述子"))}
+            values = {"descriptors": tuple(descriptors)}
+        fields["extra_deps"] = (tuple[Node, ...], Field(default=(), title="额外计算依赖"))
+        model = create_model(type(Operator).__name__ + "Dependencies", __base__=DependencyModel, **fields)
+        model.__QS_DynamicInputs__ = True
+        dependencies = Binding(model, values | {"extra_deps": tuple(extra_deps)}).build()
+        kwargs.pop("deps", None)
+        super().__init__(deps=dependencies, args=args, config_file=config_file, **kwargs)
         self._Operator = self._QSArgs.Operator
         self._QS_checkConsistency()
         self.UserData = {}
+
+    def _QS_post_bind(self):
+        """统一构造入口的衍生因子初始化。"""
+        operator = self.Args.Operator._QS_validate(*self._Descriptors)
+        values = (self.Args | {}) | {"Operator": operator}
+        self._QSArgs = self.__QS_ArgClass__(**values, _owner=self, _logger=self.Logger)
+        self._Operator = operator
+        self.UserData = {}
+        self._QS_checkConsistency()
+
+    @property
+    def ExecutionEffect(self):
+        """衍生因子的执行特征由算子决定。"""
+        return self.Operator.__QS_ExecutionEffect__
 
     # 检查因子定义的相容性
     def _QS_checkConsistency(self):
@@ -985,7 +1265,7 @@ class PointOperation(DerivativeFactor):
 
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
         RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=fwd_data.SectionIDs or self._QSArgs.SectionIDs, context=context)
-        DTRange = context.NodeState.get(self.QSID, {}).get(RunningKey, {}).get("dt_range", None)
+        DTRange = context.NodeState.get(self.InstanceID, {}).get(RunningKey, {}).get("dt_range", None)
         if DTRange is None: 
             self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 的 DTRange is None, 返回空的 forward 数据, 终止前向传递")
             return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
@@ -999,7 +1279,7 @@ class PointOperation(DerivativeFactor):
         if not CalcDTs:
             self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 需要计算的时点序列为空, 返回空的 forward 数据, 终止前向传递")
             return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, SectionIDs=fwd_data.SectionIDs)
-        FwdData = [FactorLocalContext(IDs=context.getID(self.QSID, running_key=RunningKey, pids=([context.PID] if Cached else (fwd_data.PIDs or [context.PID]))), DTs=CalcDTs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs or self._QSArgs.SectionIDs)] * len(self._Descriptors)
+        FwdData = [FactorLocalContext(IDs=context.getID(self.InstanceID, running_key=RunningKey, pids=([context.PID] if Cached else (fwd_data.PIDs or [context.PID]))), DTs=CalcDTs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs or self._QSArgs.SectionIDs)] * len(self._Descriptors)
         if self._ExtraDeps:
             DefaultFwdData, _ = super().forward_compute(path=path, fwd_data=fwd_data, context=context)
             return FwdData + DefaultFwdData[len(self._Descriptors):], FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs, ExtraData={"CalcDTs": CalcDTs})
@@ -1007,10 +1287,11 @@ class PointOperation(DerivativeFactor):
             return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs, ExtraData={"CalcDTs": CalcDTs})
 
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
+        bwd_data_list = list(bwd_data_list)
         RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=local_context.SectionIDs or self._QSArgs.SectionIDs, context=context)
         Cached = (context.DataCache and self._QSArgs.CacheEnabled)
         if bwd_data_list:
-            SectionIDs = context.getID(self.QSID, running_key=RunningKey, pids=[context.PID] if Cached else (local_context.PIDs or [context.PID]))
+            SectionIDs = context.getID(self.InstanceID, running_key=RunningKey, pids=[context.PID] if Cached else (local_context.PIDs or [context.PID]))
             CalcDTs = local_context.ExtraData["CalcDTs"]
             if (not SectionIDs) or (not CalcDTs):
                 StdData = pd.DataFrame(index=CalcDTs, columns=SectionIDs, dtype=("float" if self._Operator._QSArgs.DataType == "double" else "O"))
@@ -1044,9 +1325,9 @@ class TimeOperation(DerivativeFactor):
         return super().__init__(descriptors=descriptors, extra_deps=extra_deps, args=args, config_file=config_file, **kwargs)
     
     def init_compute(self, path: List[str], init_data: FactorInitData, context: FactorContext) -> List[FactorInitData]:
-        InitData = super().init_compute(path=path, init_data=init_data, context=context)
+        InitData = list(super().init_compute(path=path, init_data=init_data, context=context))
         RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=init_data.SectionIDs or self._QSArgs.SectionIDs, context=context)
-        FactorState = context.NodeState.setdefault(self.QSID, {}).setdefault(RunningKey, {})
+        FactorState = context.NodeState.setdefault(self.InstanceID, {}).setdefault(RunningKey, {})
         StartDT, EndDT = FactorState["dt_range"]
         if (self._Operator._QSArgs.iInitFactor >= 0) and (self._Operator._QSArgs.StartDT[self._Operator._QSArgs.iInitFactor] is not None): # 自身迭代且为扩张窗口，修改自身的起始日为 StartDT[i]
             FactorState["dt_range"] = (self._Operator._QSArgs.StartDT[self._Operator._QSArgs.iInitFactor], EndDT)
@@ -1076,7 +1357,7 @@ class TimeOperation(DerivativeFactor):
     
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
         RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=fwd_data.SectionIDs or self._QSArgs.SectionIDs, context=context)
-        DTRange = context.NodeState.get(self.QSID, {}).get(RunningKey, {}).get("dt_range", None)
+        DTRange = context.NodeState.get(self.InstanceID, {}).get(RunningKey, {}).get("dt_range", None)
         if DTRange is None: 
             self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 的 DTRange is None, 返回空的 forward 数据, 终止前向传递")
             return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
@@ -1092,7 +1373,7 @@ class TimeOperation(DerivativeFactor):
             return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
         DTRuler = context.DTRuler
         StartIdx, EndIdx = DTRuler.index(CalcDTs[0]), DTRuler.index(CalcDTs[-1])
-        SectionIDs = context.getID(self.QSID, running_key=RunningKey, pids=([context.PID] if Cached else (fwd_data.PIDs or [context.PID])))
+        SectionIDs = context.getID(self.InstanceID, running_key=RunningKey, pids=([context.PID] if Cached else (fwd_data.PIDs or [context.PID])))
         FwdData = []
         for i in range(len(self._Descriptors)):
             if self._Operator._QSArgs.StartDT[i] is None:# 滚动窗口模式
@@ -1115,10 +1396,11 @@ class TimeOperation(DerivativeFactor):
             return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs, ExtraData={"CalcDTs": CalcDTs})
 
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
+        bwd_data_list = list(bwd_data_list)
         RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=local_context.SectionIDs or self._QSArgs.SectionIDs, context=context)
         Cached = (context.DataCache and self._QSArgs.CacheEnabled)
         if bwd_data_list:
-            SectionIDs = context.getID(self.QSID, running_key=RunningKey, pids=[context.PID] if Cached else (local_context.PIDs or [context.PID]))
+            SectionIDs = context.getID(self.InstanceID, running_key=RunningKey, pids=[context.PID] if Cached else (local_context.PIDs or [context.PID]))
             CalcDTs = local_context.ExtraData["CalcDTs"]
             if (not SectionIDs) or (not CalcDTs):
                 StdData = pd.DataFrame(index=CalcDTs, columns=SectionIDs, dtype=("float" if self._Operator._QSArgs.DataType == "double" else "O"))
@@ -1175,7 +1457,7 @@ class SectionOperation(DerivativeFactor):
         Operator: SectionOperator = Field(title="算子", frozen=True)
     
     def init_compute(self, path: List[str], init_data: FactorInitData, context: FactorContext) -> List[FactorInitData]:
-        InitData = super().init_compute(path=path, init_data=init_data, context=context)
+        InitData = list(super().init_compute(path=path, init_data=init_data, context=context))
         for i, iDescriptor in enumerate(self._Descriptors):
             InitData[i] = InitData[i].__class__(**(InitData[i].model_dump() | {"SectionIDs": self._Operator._QSArgs.DescriptorSection[i] or InitData[i].SectionIDs or self._QSArgs.SectionIDs}))
         RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=init_data.SectionIDs or self._QSArgs.SectionIDs, context=context)
@@ -1186,7 +1468,7 @@ class SectionOperation(DerivativeFactor):
     
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
         RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=fwd_data.SectionIDs or self._QSArgs.SectionIDs, context=context)
-        NodeState = context.NodeState.get(self.QSID, {}).get(RunningKey, {})
+        NodeState = context.NodeState.get(self.InstanceID, {}).get(RunningKey, {})
         DTRange = NodeState.get("dt_range", None)
         if DTRange is None: 
             self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 的 DTRange is None, 返回空的 forward 数据, 终止前向传递")
@@ -1215,9 +1497,10 @@ class SectionOperation(DerivativeFactor):
             return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs, ExtraData={"CalcDTs": iCalcDTs, "TotalCalcDTs": CalcDTs})
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
+        bwd_data_list = list(bwd_data_list)
         RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=local_context.SectionIDs or self._QSArgs.SectionIDs, context=context)
         if bwd_data_list:
-            iSectionIDs = context.getID(self.QSID, running_key=RunningKey, pids=None)
+            iSectionIDs = context.getID(self.InstanceID, running_key=RunningKey, pids=None)
             CalcDTs = local_context.ExtraData["CalcDTs"]
             if (not iSectionIDs) or (not CalcDTs):
                 StdData = pd.DataFrame(index=CalcDTs, columns=iSectionIDs, dtype=("float" if self._Operator._QSArgs.DataType == "double" else "O"))
@@ -1226,7 +1509,7 @@ class SectionOperation(DerivativeFactor):
                 StdData = self._Operator.calcData(context=context, factor=self, ids=iSectionIDs, dts=CalcDTs, descriptor_data=DescriptorData, dt_ruler=context.DTRuler, section_ids=iSectionIDs, extra_dep_data=bwd_data_list[len(self._Descriptors):])
                 StdData = pd.DataFrame(StdData, index=CalcDTs, columns=iSectionIDs)
             if context.DataCache and self._QSArgs.CacheEnabled and (not StdData.empty):
-                PIDIDs = context.NodeState[self.QSID][RunningKey]["pid_ids"]
+                PIDIDs = context.NodeState[self.InstanceID][RunningKey]["pid_ids"]
                 if context.Mode == "DEBUG": Meta = {"FactorName": self.Name, "DepName": [iDep.Name for iDep in self.Deps], "DepQSID": [iDep.QSID for iDep in self.Deps]}
                 else: Meta = {}
                 context.DataCache.writeFactorData(key=RunningKey, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=None, if_exists="append", data_type=self._Operator._QSArgs.DataType, meta=Meta)
@@ -1260,9 +1543,9 @@ class PanelOperation(DerivativeFactor):
         return super().__init__(descriptors=descriptors, extra_deps=extra_deps, args=args, config_file=config_file, **kwargs)
 
     def init_compute(self, path: List[str], init_data: FactorInitData, context: FactorContext) -> List[FactorInitData]:
-        InitData = super().init_compute(path=path, init_data=init_data, context=context)
+        InitData = list(super().init_compute(path=path, init_data=init_data, context=context))
         RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=init_data.SectionIDs or self._QSArgs.SectionIDs, context=context)
-        FactorState = context.NodeState.setdefault(self.QSID, {}).setdefault(RunningKey, {})
+        FactorState = context.NodeState.setdefault(self.InstanceID, {}).setdefault(RunningKey, {})
         StartDT, EndDT = FactorState["dt_range"]
         if (self._Operator._QSArgs.iInitFactor >= 0) and (self._Operator._QSArgs.StartDT[self._Operator._QSArgs.iInitFactor] is not None): # 自身迭代且为扩张窗口，修改自身的起始日为 StartDT[i]
             FactorState["dt_range"] = (self._Operator._QSArgs.StartDT[self._Operator._QSArgs.iInitFactor], EndDT)
@@ -1295,7 +1578,7 @@ class PanelOperation(DerivativeFactor):
     
     def forward_compute(self, path: List[str], fwd_data: FactorLocalContext, context: FactorContext) -> Tuple[List[FactorLocalContext], FactorLocalContext]:
         RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=fwd_data.SectionIDs or self._QSArgs.SectionIDs, context=context)
-        NodeState = context.NodeState.get(self.QSID, {}).get(RunningKey, {})
+        NodeState = context.NodeState.get(self.InstanceID, {}).get(RunningKey, {})
         DTRange = NodeState.get("dt_range", None)
         if DTRange is None: 
             self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 的 DTRange is None, 返回空的 forward 数据, 终止前向传递")
@@ -1352,10 +1635,11 @@ class PanelOperation(DerivativeFactor):
             return FwdData, FactorLocalContext(IDs=fwd_data.IDs, DTs=fwd_data.DTs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs, ExtraData={"CalcDTs": ResponsibleCalcDTs, "TotalCalcDTs": CalcDTs, "DescriptorDTs": DescriptorDTs})
     
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Any:
+        bwd_data_list = list(bwd_data_list)
         RunningKey = makeFactorRunningKey(qsid=self.QSID, section_ids=local_context.SectionIDs or self._QSArgs.SectionIDs, context=context)
         Cached = (context.DataCache and self._QSArgs.CacheEnabled)
         if bwd_data_list:
-            SectionIDs = context.getID(self.QSID, running_key=RunningKey, pids=None)
+            SectionIDs = context.getID(self.InstanceID, running_key=RunningKey, pids=None)
             CalcDTs = local_context.ExtraData["CalcDTs"]
             if (not SectionIDs) or (not CalcDTs):
                 StdData = pd.DataFrame(index=CalcDTs, columns=SectionIDs, dtype=("float" if self._Operator._QSArgs.DataType == "double" else "O"))
@@ -1394,7 +1678,7 @@ class PanelOperation(DerivativeFactor):
                     else:
                         StdData = CalcStdData
             if Cached and (not StdData.empty):
-                PIDIDs = context.NodeState[self.QSID][RunningKey]["pid_ids"]
+                PIDIDs = context.NodeState[self.InstanceID][RunningKey]["pid_ids"]
                 if context.Mode == "DEBUG": Meta = {"FactorName": self.Name, "DepName": [iDep.Name for iDep in self.Deps], "DepQSID": [iDep.QSID for iDep in self.Deps]}
                 else: Meta = {}
                 context.DataCache.writeFactorData(key=RunningKey, target_field="StdData", factor_data=StdData, pid_ids=PIDIDs, pid=None, if_exists="append", data_type=self._Operator._QSArgs.DataType, meta=Meta)

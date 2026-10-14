@@ -5,12 +5,24 @@ from typing import List, Optional, Any
 from pydantic import Field
 
 from QuantStudio.Core.Node import Node, Context
+from QuantStudio.Core.Input import DependencyModel
+from QuantStudio.Core.Identity import ExecutionEffect
 from QuantStudio.BackTest.BackTestModel import BTNode
 from QuantStudio.BackTest.BTResultDB import BTResultDB
 
 
 class BTStorer(Node):
     """回测结果存储器"""
+
+    __QS_ExecutionEffect__ = ExecutionEffect.WRITE
+
+    class __QS_DepClass__(DependencyModel):
+        results: tuple[BTNode, ...] = Field(default=(), title="回测结果")
+        writers: tuple[Node, ...] = Field(default=(), title="子存储节点")
+
+    @property
+    def _Splited(self):
+        return bool(self.Dependencies.writers)
 
     class __QS_ArgClass__(Node.__QS_ArgClass__):
         Name: str = Field(default="BTStorer", frozen=True, title="名称")
@@ -21,11 +33,11 @@ class BTStorer(Node):
     def __init__(self, deps: List[BTNode] = [], args: dict = {}, config_file: Optional[str] = None, **kwargs):
         if kwargs.get("split", True) and len(deps) > 1:
             Deps = [BTStorer(deps=[iDep], args=args, config_file=config_file, **(kwargs | {"split": False})) for iDep in deps]
-            self._Splited = True
+            dependencies = {"writers": tuple(Deps)}
         else:
             Deps = deps
-            self._Splited = False
-        super().__init__(Deps, args, config_file, **kwargs)
+            dependencies = {"results": tuple(Deps)}
+        super().__init__(dependencies, args, config_file, **kwargs)
         if len(deps) > 1:
             DepNames = [iDep.Name for iDep in deps]
             if len(set(DepNames)) < len(DepNames):

@@ -1,4 +1,5 @@
 # coding=utf-8
+from QuantStudio.Core.Input import DependencyModel
 import datetime as dt
 import base64
 from io import BytesIO
@@ -6,7 +7,7 @@ from typing import Optional, List, Any, Tuple
 
 import numpy as np
 import pandas as pd
-from pydantic import Field
+from pydantic import Field, model_validator
 import statsmodels.api as sm
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
@@ -76,6 +77,37 @@ def makeQuantilePortfolio(factor:Factor, mask:Optional[Factor]=None, cat_data:Op
 class MultiPortfolio(BTNode):
     """多组合对比"""
 
+    class __QS_DepClass__(DependencyModel):
+        nv: Factor = Field(title="组合净值")
+        bmk_nv: Factor | None = Field(default=None, title="基准净值")
+        portfolio_list: tuple[Factor, ...] = Field(default=(), title="投资组合")
+        bmk_portfolio: Factor | None = Field(default=None, title="基准组合")
+
+        @model_validator(mode="after")
+        def _check_portfolios(self):
+            if self.bmk_portfolio is not None and self.bmk_nv is None:
+                raise ValueError("基准组合需要基准净值")
+            section = self.nv.Args.SectionIDs
+            if self.portfolio_list and section is not None and len(section) != len(self.portfolio_list):
+                raise ValueError("净值截面数量与投资组合数量不一致")
+            return self
+
+    @property
+    def _NV(self):
+        return self.Dependencies.nv
+
+    @property
+    def _BmkNV(self):
+        return self.Dependencies.bmk_nv
+
+    @property
+    def _PortfolioList(self):
+        return list(self.Dependencies.portfolio_list)
+
+    @property
+    def _BmkPortfolio(self):
+        return self.Dependencies.bmk_portfolio
+
     class __QS_ArgClass__(BTNode.__QS_ArgClass__):
         Name: str = Field(default="多组合对比", frozen=True, title="名称")
         LSPairs: List[Tuple[str, str]] = Field(default=[], title="多空组合对", frozen=True, description="构造多空组合的投资组合对, 比如 [('P0', 'P1')] 表示 P0 组合和 P1 组合构成一个多空组合, 将考察它的表现")
@@ -98,10 +130,6 @@ class MultiPortfolio(BTNode):
             portfolio_list: 各组合策略对应的投资组合因子对象
             bmk_portfolio: 基准策略的投资组合因子对象
         """
-        self._NV = nv
-        self._BmkNV = bmk_nv
-        self._PortfolioList = portfolio_list
-        self._BmkPortfolio = bmk_portfolio
         Deps = [nv]
         if bmk_nv is not None: Deps.append(bmk_nv)
         if portfolio_list:
@@ -109,7 +137,9 @@ class MultiPortfolio(BTNode):
                 raise __QS_Error__("净值因子的截面 ID 长度与传入的投资组合列表(portfolio_list)长度不一致!")
             Deps += portfolio_list
         if (bmk_nv is not None) and (bmk_portfolio is not None): Deps.append(bmk_portfolio)
-        super().__init__(deps=Deps, args=args, config_file=config_file, **kwargs)
+        super().__init__(deps={"nv": nv, "bmk_nv": bmk_nv, "portfolio_list": tuple(portfolio_list or ()),
+                              "bmk_portfolio": bmk_portfolio if bmk_nv is not None else None},
+                         args=args, config_file=config_file, **kwargs)
     
     def _QS_calcStats(self, output):
         nDT = output["净值"].shape[0] - 1
@@ -180,7 +210,7 @@ class MultiPortfolio(BTNode):
         BmkNV = BmkNV.ffill().bfill()
         StartIdx = 1 + int(self._BmkNV is not None)
         Portfolio = {PortfolioNV.columns[i]: iBwdData for i, iBwdData in enumerate(bwd_data_list[StartIdx:StartIdx+PortfolioNV.shape[1]])}
-        if "portfolio_name_list" in self._NV._QSArgs.ModelArgs:
+        if "portfolio_name_list" in getattr(self._NV.Args, "ModelArgs", {}):
             PortfolioNV = PortfolioNV.reindex(columns=self._NV._QSArgs.ModelArgs["portfolio_name_list"])
         if self._QSArgs.RebalanceDTs is None:
             RebalanceIdx = None
@@ -209,11 +239,14 @@ class MultiPortfolio(BTNode):
 class MultiPortfolioReport(ReportNode):
     """多组合对比报告生成节点"""
 
+    class __QS_DepClass__(DependencyModel):
+        portfolio_node: MultiPortfolio = Field(title='portfolio_node')
+
     class __QS_ArgClass__(ReportNode.__QS_ArgClass__):
         Name: str = Field(default="多组合对比报告", frozen=True, title="名称")
 
     def __init__(self, portfolio_node: MultiPortfolio, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        return super().__init__(deps=[portfolio_node], args=args, config_file=config_file, **kwargs)
+        return super().__init__(deps={'portfolio_node': portfolio_node}, args=args, config_file=config_file, **kwargs)
 
     @staticmethod
     def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:

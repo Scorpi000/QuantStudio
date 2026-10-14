@@ -4,3 +4,6 @@ from QuantStudio.Core.CalcEngine import Engine
 from QuantStudio.Core.ParallelEngine import ParallelEngine
 from QuantStudio.Core.TreeEngine import TreeEngine
 from QuantStudio.Core.QSObject import Panel
+from QuantStudio.Core.Input import InputModel, DependencyModel, Binding, InputError, DependencyValues, DependencyEdge
+from QuantStudio.Core.NodeTemplate import NodeTemplate
+from QuantStudio.Core.Identity import ExecutionEffect, execution_key

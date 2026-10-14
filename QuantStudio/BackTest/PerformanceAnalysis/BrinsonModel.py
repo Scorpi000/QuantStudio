@@ -1,4 +1,6 @@
 # coding=utf-8
+from QuantStudio.Factor.FactorOperation import FactorInputModel
+from QuantStudio.Core.Input import DependencyModel
 """Brinson 绩效分析模型"""
 import datetime as dt
 import base64
@@ -82,6 +84,16 @@ class CalcBrinsonModel(PanelOperator):
         Rslt = pd.DataFrame(Rslt, index=DTs, columns=AllCats).reindex(index=idt, columns=iid)
         return Rslt.values[self._QSArgs.LookBack[0]:]
     
+    class __QS_InputClass__(FactorInputModel):
+        """公开因子及计算节点输入。"""
+
+        p: Factor = Field(title='p')
+        price: Factor = Field(title='price')
+        cat_data: Factor = Field(title='cat_data')
+        bmk: Optional[Factor] = Field(default=None, title='bmk')
+
+    __QS_CallLayout__ = {'p': {'grouped': False, 'keyword_only': False}, 'price': {'grouped': False, 'keyword_only': False}, 'cat_data': {'grouped': False, 'keyword_only': False}, 'bmk': {'grouped': False, 'keyword_only': False}}
+
     def __call__(self, p:Factor, price: Factor, cat_data: Factor, bmk:Optional[Factor]=None, factor_args:dict={}, **kwargs) -> PanelOperation:
         """将算子作用在若干个因子对象上以产生 Brinson 绩效分析因子
 
@@ -117,12 +129,15 @@ class CalcBrinsonModel(PanelOperator):
 class BrinsonModel(BTNode):
     """Brinson 绩效分析模型"""
 
+    class __QS_DepClass__(DependencyModel):
+        brinson: Factor = Field(title='brinson')
+
     class __QS_ArgClass__(BTNode.__QS_ArgClass__):
         Name: str = Field(default="Brinson 绩效分析模型", frozen=True, title="名称")
         SectionIDs: Optional[List[str]] = Field(default=None, frozen=True, title="截面ID")
         
     def __init__(self, brinson: Factor, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        return super().__init__(deps=[brinson], args=args, config_file=config_file, **kwargs)
+        return super().__init__(deps={'brinson': brinson}, args=args, config_file=config_file, **kwargs)
     
     def init_compute(self, path: List[str], init_data: DTInitData, context: FactorContext) -> List[FactorInitData]:
         InitData = super().init_compute(path=path, init_data=init_data, context=context)
@@ -190,11 +205,14 @@ class BrinsonModel(BTNode):
 class BrinsonModelReport(ReportNode):
     """Brinson 绩效分析报告生成节点"""
 
+    class __QS_DepClass__(DependencyModel):
+        brinson_node: BrinsonModel = Field(title='brinson_node')
+
     class __QS_ArgClass__(ReportNode.__QS_ArgClass__):
         Name: str = Field(default="Brinson绩效分析报告", frozen=True, title="名称")
 
     def __init__(self, brinson_node: BrinsonModel, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        return super().__init__(deps=[brinson_node], args=args, config_file=config_file, **kwargs)
+        return super().__init__(deps={'brinson_node': brinson_node}, args=args, config_file=config_file, **kwargs)
 
     @staticmethod
     def genOutputReport(output:dict) -> str:
