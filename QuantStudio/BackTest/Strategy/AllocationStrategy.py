@@ -114,6 +114,27 @@ class CalcPortfolioNV(PanelOperator):
         Args["LookBack"] = [1] + [0] * (operand_count - 1)
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
+    def _QS_updateArgs(self, args, updates, operand_count=None):
+        """按展开后的集合长度配置证券截面与净值初始化回溯。
+
+        Args:
+            args: 待构造的新算子参数。
+            updates: 调用方显式修改的参数。
+            operand_count: 初始净值、组合成员、价格和费用的实际总数。
+
+        Returns:
+            保留显式设置并补齐派生配置的新参数。
+        """
+        args = super()._QS_updateArgs(args, updates, operand_count)
+        if operand_count is not None:
+            if "DescriptorSection" not in updates and len(self.Args.DescriptorSection) != operand_count:
+                args["DescriptorSection"] = [None] + [self.Args.DescriptorSection[1]] * (operand_count - 1)
+            if "StartDT" not in updates and len(self.Args.StartDT) != operand_count:
+                args["StartDT"] = [self.Args.StartDT[0]] * operand_count
+            if "LookBack" not in updates and len(self.Args.LookBack) != operand_count:
+                args["LookBack"] = [1] + [0] * (operand_count - 1)
+        return args
+
     def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
         PortfolioList, Price, FeeRate = x[1:-2], x[-2], x[-1]
         Price = numpy_ffill(Price, axis=0, limit=None)

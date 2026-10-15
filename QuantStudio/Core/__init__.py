@@ -322,7 +322,9 @@ class __QS_Object__:
         if self._QS_Logger is None: self._QS_Logger = __QS_Logger__
         Config = {}
         if config_file:
-            if not os.path.isfile(config_file) and (not config_file.startswith(__QS_ConfigPath__)): config_file = __QS_ConfigPath__ + os.sep + config_file
+            config_file = os.path.normpath(os.path.expanduser(config_file))
+            if not os.path.isabs(config_file) and not os.path.isfile(config_file):
+                config_file = os.path.join(__QS_ConfigPath__, config_file)
             if os.path.isfile(config_file):
                 self._ConfigFile = config_file
                 with open(self._ConfigFile, "r", encoding="utf-8") as File:
