@@ -582,10 +582,10 @@ class TurnoverConstraint(Constraint):
             return [{"type": "L1", "c": self._P0[self._Mask], "l": aAdj}]
         elif self._QSArgs.ConstraintType=="总买入限制":
             aAdj = self._QSArgs.UpLimit + np.sum(np.clip(self._P0[~self._Mask], -np.inf, 0))
-            return [{"type": "Pos", "c_pos": self._P0[self._Mask], "l": aAdj}]
+            return [{"type": "Pos", "c_pos": self._P0[self._Mask], "l_pos": aAdj}]
         elif self._QSArgs.ConstraintType=="总卖出限制":
             aAdj = self._QSArgs.UpLimit - np.sum(np.clip(self._P0[~self._Mask], 0, np.inf))
-            return [{"type": "Neg", "c_neg": self._P0[self._Mask], "l": aAdj}]
+            return [{"type": "Neg", "c_neg": self._P0[self._Mask], "l_neg": aAdj}]
         if self._QSArgs.AmtMultiple == 0.0:
             aAdj = np.zeros((np.sum(self._Mask), )) + self._QSArgs.UpLimit
         else:
@@ -653,7 +653,7 @@ class VolatilityConstraint(Constraint):
             Mu = np.zeros((np.sum(self._Mask), ))
             q = self._QSArgs.UpLimit ** 2
         Constraint = {"type": "Quadratic", "Mu": Mu, "q": q}
-        if self.FactorCov is not None:
+        if (self._FactorCov is not None) and (self._FactorData is not None) and (self._SpecificRisk is not None):
             Constraint["X"] = self._FactorData[self._Mask]
             Constraint["F"] = self._FactorCov
             Constraint["Delta"] = self._SpecificRisk[self._Mask] ** 2
@@ -758,12 +758,12 @@ class PortfolioConstructor(__QS_Object__):
             iPriority = iConstraint._QSArgs.DropPriority
             if (iEndInd - iStartInd != 0) and (iPriority > -1):
                 DropedConstraintInds[iPriority] = DropedConstraintInds.get(iPriority, []) + [i for i in range(iStartInd+1, iEndInd+1)]
-                DropedConstraints[iPriority] = DropedConstraints.get(iPriority,[]) + [str(i)+'-'+iConstraint.Type]
+                DropedConstraints[iPriority] = DropedConstraints.get(iPriority,[]) + [str(i)+'-'+type(iConstraint).__name__]
             iStartInd = iEndInd
         ResultInfo = {}
         ReleasedConstraint = []
         Priority = sorted(DropedConstraintInds)
-        while (ResultInfo.get("Status", 0) != 1) and (Priority != []):
+        while (ResultInfo.get("status", 0) != 1) and (Priority != []):
             iPriority = Priority.pop(0)
             for j in DropedConstraintInds[iPriority]: MathConstraints[j] = None
             PreparedConstraints = self._prepareConstrants(MathConstraints)
@@ -790,11 +790,11 @@ class PortfolioConstructor(__QS_Object__):
             elif iConstraint['type'] == "LinearIn":
                 PreparedConstraints["LinearIn"] = PreparedConstraints.get("LinearIn", {"A": np.zeros((0, nVar)), "b": np.zeros((0, 1)), "type": "LinearIn"})
                 PreparedConstraints["LinearIn"]["A"] = np.vstack((PreparedConstraints["LinearIn"]["A"],iConstraint["A"]))
-                PreparedConstraints["LinearIn"]["b"] = np.vstack((PreparedConstraints["LinearIn"]["b"],iConstraint["b"]))
+                PreparedConstraints["LinearIn"]["b"] = np.vstack((PreparedConstraints["LinearIn"]["b"], np.asarray(iConstraint["b"]).reshape(-1, 1)))
             elif iConstraint["type"] == "LinearEq":
                 PreparedConstraints["LinearEq"] = PreparedConstraints.get("LinearEq", {"Aeq":np.zeros((0, nVar)), "beq":np.zeros((0, 1)), "type": "LinearEq"})
                 PreparedConstraints["LinearEq"]["Aeq"] = np.vstack((PreparedConstraints["LinearEq"]["Aeq"], iConstraint["Aeq"]))
-                PreparedConstraints["LinearEq"]["beq"] = np.vstack((PreparedConstraints["LinearEq"]["beq"], iConstraint["beq"]))
+                PreparedConstraints["LinearEq"]["beq"] = np.vstack((PreparedConstraints["LinearEq"]["beq"], np.asarray(iConstraint["beq"]).reshape(-1, 1)))
             else:
                 PreparedConstraints[iConstraint["type"]] = PreparedConstraints.get(iConstraint["type"], [])
                 PreparedConstraints[iConstraint["type"]].append(iConstraint)

@@ -3,5 +3,8 @@ from .BasePC import MeanVarianceObjective, MaxDiversificationObjective, RiskBudg
 from .BasePC import BudgetConstraint, WeightConstraint, FactorExposeConstraint, VolatilityConstraint, ExpectedReturnConstraint, TurnoverConstraint, NonZeroNumConstraint
 try:
     from .CVXPC import CVXPC
+    from .PortfolioOperator import MakeMeanVariancePortfolio, MeanVariancePortfolio
+    from .PortfolioOperator import MakeOptimizedPortfolio, OptimizedPortfolio
+    from .OptimizationModel import OptimizationModel, ObjectiveSpec, ConstraintSpec
 except:
     pass

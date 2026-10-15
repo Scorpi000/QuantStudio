@@ -11,6 +11,14 @@ from .BasePC import PortfolioConstructor, MeanVarianceObjective, RiskBudgetObjec
 
 class CVXPC(PortfolioConstructor):
     """基于 CVXPY 模块的投资组合构造器"""
+
+    @classmethod
+    def validate_model(cls, objective, constraints):
+        """声明组合模型支持范围，拒绝会被现有专用算法忽略的约束。"""
+        if not issubclass(objective, (MeanVarianceObjective, RiskBudgetObjective, MaxDiversificationObjective)):
+            raise __QS_Error__(f"CVXPC 不支持优化目标 {objective.__name__}，请提供相应的求解后端")
+        if constraints and not issubclass(objective, MeanVarianceObjective):
+            raise __QS_Error__(f"CVXPC 的 {objective.__name__} 专用算法暂不支持外部约束")
     
     def _genModelConstraints(self, x, prepared_constraints, prepared_option):
         CVXConstraints = []
@@ -18,9 +26,9 @@ class CVXPC(PortfolioConstructor):
             if iType=="Box":
                 CVXConstraints.extend([x<=iConstraint["ub"], x>=iConstraint["lb"]])
             elif iType=="LinearIn":
-                CVXConstraints.append(iConstraint["A"] @ x <= iConstraint["b"])
+                CVXConstraints.append(iConstraint["A"] @ x <= iConstraint["b"].reshape(-1))
             elif iType=="LinearEq":
-                CVXConstraints.append(iConstraint["Aeq"] @ x == iConstraint["beq"])
+                CVXConstraints.append(iConstraint["Aeq"] @ x == iConstraint["beq"].reshape(-1))
             elif iType=="Quadratic":
                 for jSubConstraint in iConstraint:
                     if "X" in jSubConstraint:
@@ -43,6 +51,8 @@ class CVXPC(PortfolioConstructor):
                     jz = cvx.Variable(x.shape[0], boolean=True)
                     CVXConstraints.append(cvx.abs((x - jSubConstraint["b"])) <= jz)
                     CVXConstraints.append(cvx.sum(jz) <= jSubConstraint["N"])
+            else:
+                raise __QS_Error__(f"CVXPC 不支持约束数学形式 {iType}")
         return CVXConstraints
     
     # 均值方差模型
@@ -57,12 +67,13 @@ class CVXPC(PortfolioConstructor):
         elif "Sigma" in prepared_objective:
             Obj += cvx.quad_form(x, prepared_objective["Sigma"])
         if "Mu" in prepared_objective: Obj += prepared_objective["Mu"].T @ x
+        PenaltySign = -1 if prepared_objective["minmax"] == "max" else 1
         if "lambda1" in prepared_objective:
-            Obj += prepared_objective["lambda1"] * cvx.norm(x - prepared_objective["c"].flatten(), p=1)
+            Obj += PenaltySign * prepared_objective["lambda1"] * cvx.norm(x - prepared_objective["c"].flatten(), p=1)
         if "lambda2" in prepared_objective:
-            Obj += prepared_objective["lambda2"] * cvx.sum(cvx.pos(x - prepared_objective["c_pos"].flatten()))
+            Obj += PenaltySign * prepared_objective["lambda2"] * cvx.sum(cvx.pos(x - prepared_objective["c_pos"].flatten()))
         if "lambda3" in prepared_objective:
-            Obj += prepared_objective["lambda3"] * cvx.sum(cvx.neg(x - prepared_objective["c_neg"].flatten()))
+            Obj += PenaltySign * prepared_objective["lambda3"] * cvx.sum(cvx.neg(x - prepared_objective["c_neg"].flatten()))
         CVXConstraints = self._genModelConstraints(x, prepared_constraints, prepared_option)
         if prepared_objective["minmax"]=="min":
             Model = cvx.Problem(cvx.Minimize(Obj), CVXConstraints)
