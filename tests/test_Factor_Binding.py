@@ -102,6 +102,26 @@ class TestFactorBinding(unittest.TestCase):
         self.assertIs(factor.Dependencies.left, self.factor)
         np.testing.assert_allclose(self.read(factor), self.data)
 
+    def test_factory_preserves_multiple_collection_groups_after_binding(self):
+        """函数式算子预绑定后保留各集合边界，再在计算入口展开。"""
+        class Inputs(FactorInputModel):
+            left: tuple[Factor, ...] = Field(min_length=2, max_length=2, title="左输入组")
+            right: tuple[Factor, ...] = Field(min_length=1, max_length=1, title="右输入组")
+
+        op = makeFactorOperator(lambda f, idt, iid, x, args: x[0] + x[1] - x[2], "Point",
+                                input_model=Inputs, args={"DTMode": "多时点", "IDMode": "多ID"})
+        left, right = (self.factor, self.other), (self.mask,)
+        direct = op(left=left, right=right)
+        partial = op.bind(left=left)
+        complete = partial.bind(right=right)
+        for factor in (partial(right=right), complete(), complete.new()()):
+            self.assertEqual(factor.QSID, direct.QSID)
+            self.assertEqual(factor.Dependencies.left, left)
+            self.assertEqual(factor.Dependencies.right, right)
+            pd.testing.assert_frame_equal(self.read(factor), self.data - self.read(self.mask))
+        with self.assertRaises(InputError):
+            partial(right=())
+
     def test_data_factor_template_and_empty_dependencies(self):
         template = DataFactor.template(args={"Data": self.data})
         factor = template.build()

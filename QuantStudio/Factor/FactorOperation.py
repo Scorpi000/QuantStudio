@@ -657,7 +657,8 @@ class BoundFactorOperator(FactorOperator):
             elif parameter.kind == inspect.Parameter.VAR_POSITIONAL:
                 arguments[name] = ((values[name] if isinstance(values[name], tuple) else (() if values[name] is None else (values[name],))) if name in values else
                     tuple(item for field, value in values.items() if field not in signature.parameters or signature.parameters[field].kind == inspect.Parameter.VAR_POSITIONAL
-                          for item in (value if isinstance(value, tuple) else (() if value is None else (value,)))))
+                          for item in ((value,) if self._BaseOperator._CallLayout.get(field, {}).get("grouped", False)
+                                       else value if isinstance(value, tuple) else (() if value is None else (value,)))))
             elif parameter.kind == inspect.Parameter.VAR_KEYWORD:
                 arguments[name] = {key: value for key, value in kwargs.items() if key not in signature.parameters}
             elif name in kwargs:
