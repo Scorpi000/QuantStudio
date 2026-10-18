@@ -208,8 +208,11 @@ class FactorTable(Node):
         else: Context = __QS_Context__[-1]
         if not __QS_Engine__: ExecEngine = Engine()
         else: ExecEngine = __QS_Engine__[-1]
-        LocalContext = FactorLocalContext(DTs=dts, IDs=ids)
-        Rslt = ExecEngine.run([self.getFactor(iFactorName) for iFactorName in factor_names], Context, fwd_data_list=[LocalContext], init_data_list=[{"dt_range": (dts[0], dts[-1]), "section_ids": kwargs.get("section_ids", ids)}])
+        LocalContext = FactorLocalContext(DTs=dts, IDs=ids, SectionIDs=kwargs.get("section_ids", ids))
+        Factors = [self.getFactor(iFactorName) for iFactorName in factor_names]
+        InitData = FactorInitData(DTRange=(dts[0], dts[-1]), SectionIDs=LocalContext.SectionIDs)
+        Rslt = ExecEngine.run(Factors, Context, fwd_data_list=[LocalContext] * len(Factors),
+                              init_data_list=[InitData] * len(Factors))
         return Panel({iFactorName: Rslt[i] for i, iFactorName in enumerate(factor_names)})
     
     def __getitem__(self, key):

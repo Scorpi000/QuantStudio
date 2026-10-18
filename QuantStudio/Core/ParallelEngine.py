@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import traceback
 from typing import Any, List, Optional
 
 from progressbar import ProgressBar
@@ -14,6 +15,8 @@ def _execute_task(task):
     NodeList, Context, FwdDataList = task["NodeList"], task["Context"], task["FwdDataList"]
     Context.Logger.debug(f'子任务进程 {task["PID"]} start, PID: {os.getpid()}')
     Context.PID = task["PID"]
+    if task.get("ForwardEvents"):
+        Context.EventHandler = lambda event: Context.Sub2MainQueue.put(("NodeEvent", task["PID"], event))
     SkipMode = task.get("SkipMode", False)
     if SkipMode:
         Context.ExtraData["_QS_FailSkip"] = True
@@ -34,6 +37,7 @@ def _execute_task(task):
                 Context.Logger.error(f"节点 {iNode.Name}({iNode.InstanceID[:8]}) 计算失败: {e}")
                 Context.Sub2MainQueue.put(("CalcError", task["PID"], (1, iNode.InstanceID, e)))
             else:
+                e.add_note(f'子进程 {task["PID"]}, 节点 {iNode.Name}({iNode.InstanceID[:8]}):\n{traceback.format_exc()}')
                 Context.Sub2MainQueue.put(("TaskError", task["PID"], e))
                 return
     statuses = {qsid: state["__status__"] for qsid, state in Context.NodeState.items()
@@ -75,7 +79,9 @@ class ParallelEngine(Engine):
         try:
             for i, iFwdDataList in enumerate(SplitedFwdDataList):
                 iPID = context.PIDList[i]
-                iTask = {"PID": iPID, "NodeList": node_list, "Context": SplitedContext[i], "FwdDataList": iFwdDataList, "SkipMode": SkipMode}
+                worker_context = SplitedContext[i].model_copy(update={"EventHandler": None})
+                iTask = {"PID": iPID, "NodeList": node_list, "Context": worker_context, "FwdDataList": iFwdDataList,
+                         "SkipMode": SkipMode, "ForwardEvents": context.EventHandler is not None}
                 Procs[iPID] = Process(target=_execute_task, args=(iTask,))
                 Procs[iPID].start()
 
@@ -95,7 +101,9 @@ class ParallelEngine(Engine):
                                 raise __QS_Error__(f"子进程 {pid} 未发送结束消息即退出，退出码为 {proc.exitcode}")
                         continue
                     iMsgType, iPID, iMsg = Sub2MainQueue.get()
-                    if iMsgType == "Event":# 同步事件
+                    if iMsgType == "NodeEvent":
+                        context.EventHandler(iMsg)
+                    elif iMsgType == "Event":# 同步事件
                         iNodeID, iInc = iMsg
                         EventState[iNodeID] += iInc
                         if EventState[iNodeID] >= nTask:

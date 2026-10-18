@@ -126,6 +126,8 @@ class MakeAccount(PanelOperator):
         else:
             CashAllocated = BuyNums = np.zeros(shape=BuyAmounts.shape)
         # 更新持仓数量和现金
+        BuyNums[np.isnan(BuyNums)] = 0
+        SellNums[np.isnan(SellNums)] = 0
         PositionNum = position_num.copy()
         # TotalAmount = np.nansum(buy_price * np.clip(PositionNum, a_min=None, a_max=0) + sell_price * np.clip(PositionNum, a_min=0, a_max=None))
         # Turnover = (np.nansum(SellAmounts) + np.nansum(BuyAmounts)) / (TotalAmount + available_cash)
@@ -585,11 +587,16 @@ def calcAccountPortfolio(account: Factor, factor_args:dict={}) -> Factor:
 class AccountReport(ReportNode):
     """账户报告生成节点"""
 
+    class __QS_DepClass__(DependencyModel):
+        """账户报告只接受账户统计节点。"""
+
+        account_node: AccountStats = Field(title="账户统计")
+
     class __QS_ArgClass__(ReportNode.__QS_ArgClass__):
         Name: str = Field(default="账户报告", frozen=True, title="名称")
 
     def __init__(self, account_node: AccountStats, args:dict={}, config_file:Optional[str]=None, **kwargs):
-        return super().__init__(deps=[account_node], args=args, config_file=config_file, **kwargs)
+        return super().__init__(deps={"account_node": account_node}, args=args, config_file=config_file, **kwargs)
 
     @staticmethod
     def genMatplotlibFig(output:dict, file_path:Optional[str]=None) -> Figure:

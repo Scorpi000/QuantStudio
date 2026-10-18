@@ -386,7 +386,7 @@ class Mean(PointOperator):
     class __QS_InputClass__(FactorInputModel):
         """Mean 的公开输入声明。"""
 
-        x: tuple[Factor, ...] = Field(title='操作数', description='参与求平均的操作数, 至少两个', min_length=2)
+        x: tuple[Factor, ...] = Field(title='操作数', description='参与求平均的操作数', min_length=1)
 
     class __QS_ArgClass__(PointOperator.__QS_ArgClass__):
         ModelArgs: MeanArgs = Field(default_factory=MeanArgs, title="模型参数")

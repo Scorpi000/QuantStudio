@@ -362,8 +362,13 @@ class TestParallelEngineFailMode(unittest.TestCase):
         context = self._make_context()
         bad = _FailingNode(name="bad", qs_id="bad")
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(RuntimeError) as caught:
             engine.run([bad], context)
+
+        notes = "\n".join(caught.exception.__notes__)
+        self.assertIn("bad", notes)
+        self.assertIn("test_Core_EngineFailMode.py", notes)
+        self.assertIn("backward_compute", notes)
 
     def test_fail_mode_default_is_raise(self):
         """ParallelEngine FailMode 默认应为 raise."""

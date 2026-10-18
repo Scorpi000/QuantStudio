@@ -11,9 +11,22 @@ from QuantStudio.Factor.Factor import DataFactor, FactorContext, FactorLocalCont
 from QuantStudio.Factor.FactorCache import FeatherFactorCache
 from QuantStudio.Core.CalcEngine import Engine
 import QuantStudio.Factor.FactorOperator as fo
-from QuantStudio.BackTest.Strategy.Strategy import MakeAccount
+from QuantStudio.BackTest.Strategy.Strategy import MakeAccount, AccountStats, AccountReport
 from QuantStudio.BackTest.Strategy.AllocationStrategy import CalcPortfolioNV, CalcMaskPortfolio, MergeTopDownSignal
 from QuantStudio.Tools.DateTimeFun import getMonthLastDateTime, getNaturalDay
+
+
+class TestAccountReport(unittest.TestCase):
+    def test_constructor_binds_account_stats_by_name(self):
+        """报告通过命名依赖绑定统计节点，兼容有无基准的账户。"""
+        for benchmark in (None, DataFactor(1.0)):
+            with self.subTest(has_benchmark=benchmark is not None):
+                stats = AccountStats(DataFactor(1.0), bmk_nv=benchmark)
+                report = AccountReport(account_node=stats, args={"Name": "测试报告"}, config_file=None)
+                self.assertIs(report.Dependencies.account_node, stats)
+                self.assertEqual(report.Deps, [stats])
+                self.assertEqual(report.Name, "测试报告")
+                Engine.validate_nodes([report])
 
 
 class TestMergeTopDownSignal(unittest.TestCase):
