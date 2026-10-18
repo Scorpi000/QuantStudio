@@ -60,7 +60,9 @@ def expandListElementDataFrame(df, expand_index=True, dropna=False, empty_list_m
         # for i in range(data.shape[1] - nCol):
         #     data[Cols[i]] = data.pop(Cols[i]).apply(lambda x: [x]) * (ElementLen[Mask].values - 1)
         # data = data.loc[:, Cols]
-        data.iloc[:, :data.shape[1] - nCol] = (data.iloc[:, :data.shape[1] - nCol].map(lambda x: [x]).T * (ElementLen[Mask].values - 1)).T
+        # 索引列将暂存列表，整列替换以允许字符串、数值等索引列转换为 object。
+        IndexCols = data.columns[:data.shape[1] - nCol]
+        data[IndexCols] = (data[IndexCols].map(lambda x: [x]).T * (ElementLen[Mask].values - 1)).T
     data = pd.DataFrame(data.sum(axis=0).tolist(), index=data.columns).T
     if dropna:
         TailRslt = df[(~Mask) & EmptyListMask].copy()

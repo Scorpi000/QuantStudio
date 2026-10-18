@@ -6,6 +6,7 @@ import copy
 import types
 import inspect
 from contextvars import ContextVar
+from contextlib import contextmanager
 from functools import wraps
 import datetime as dt
 from functools import partial
@@ -119,6 +120,18 @@ class VariadicFactorInputs(FactorInputModel):
 
 
 _ActiveInputs = ContextVar("quantstudio_factor_inputs", default=None)
+_ConstructionRecorder = ContextVar("quantstudio_factor_construction_recorder", default=None)
+
+
+@contextmanager
+def record_factor_construction():
+    """收集本次构图的公开算子输入；不改变运行依赖或持久化对象。"""
+    records = {}
+    token = _ConstructionRecorder.set(records)
+    try:
+        yield records
+    finally:
+        _ConstructionRecorder.reset(token)
 
 
 def make_input_model(specs, name="FactorInputs"):
@@ -181,7 +194,14 @@ def _operator_call(method):
         token = _ActiveInputs.set(inputs)
         try:
             bound = inspect.BoundArguments(signature, arguments)
-            return method(*bound.args, **bound.kwargs)
+            result = method(*bound.args, **bound.kwargs)
+            recorder = _ConstructionRecorder.get()
+            if (recorder is not None and isinstance(result, Factor)
+                    and type(getattr(result, "_Operator", None)) is type(self)):
+                recorder[result.InstanceID] = inputs
+                # new()/rename 保留依赖模型，可据此找回组合算子的公开端口。
+                recorder[(id(result.Dependencies), type(self))] = (result.Dependencies, inputs)
+            return result
         finally:
             _ActiveInputs.reset(token)
     return wrapped
