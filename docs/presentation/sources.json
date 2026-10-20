@@ -1,0 +1,530 @@
+{
+  "date": "2026-10-20",
+  "scope": "本地工作区，包含未提交改动；文件哈希标识本次引用内容。",
+  "git_heads": {
+    "QSExt": "894c41ba95b6b6817729376757dde52246941a60",
+    "QSResearch": "a93d837a0dada2e84b752e42b75337319de22422",
+    "QSWeb": "3f0be92e4f98a757009f9acef25fea6e18caeb52",
+    "QuantStudio": "e1f9b5d5531789a51c0a2519a6681562e8581a46"
+  },
+  "sources": {
+    "Q01": {
+      "project": "QuantStudio",
+      "path": "docs/通则和约定.ipynb",
+      "sha256": "6d6536bdae2ceb99ddd1df1a3d2b822b4f11db87fe98e554b34b57f960781715",
+      "slides": [
+        21
+      ]
+    },
+    "Q02": {
+      "project": "QuantStudio",
+      "path": "docs/Core/计算图框架.ipynb",
+      "sha256": "725416f7ca4b8f8445da3c0a47476d6ea4156851dd6f3357919c020496406407",
+      "slides": [
+        1,
+        2,
+        4,
+        7,
+        19,
+        21
+      ]
+    },
+    "Q03": {
+      "project": "QuantStudio",
+      "path": "QuantStudio/Core/Node.py",
+      "sha256": "8660d1a3adc9f2ae000f81bc0f03fc3fdd9cbe46133a4d9dccf4a6b520e5b042",
+      "slides": [
+        7
+      ]
+    },
+    "Q04": {
+      "project": "QuantStudio",
+      "path": "QuantStudio/Core/CalcEngine.py",
+      "sha256": "2a02865d4fd658750b3977df8d279b42aa3b62e86cbe556fb5389782a87dddf5",
+      "slides": [
+        7
+      ]
+    },
+    "Q05": {
+      "project": "QuantStudio",
+      "path": "QuantStudio/Core/ParallelEngine.py",
+      "sha256": "c297abec4bbaf5e13d48b5c9025110626ed84c273a2ae7b4df27926ea2449393",
+      "slides": [
+        7
+      ]
+    },
+    "Q06": {
+      "project": "QuantStudio",
+      "path": "docs/因子框架/基本框架.ipynb",
+      "sha256": "362b44d62acd1b9dc1eb682e23676266661d4c6d7e3c8ca4e5d20f52803f678b",
+      "slides": [
+        2,
+        3,
+        5,
+        6,
+        9
+      ]
+    },
+    "Q07": {
+      "project": "QuantStudio",
+      "path": "QuantStudio/Factor/api.py",
+      "sha256": "a26eae0f4e8f9d3f0367f18a2a13d0edd43bd1618e02daacf71e6271d96cf0d9",
+      "slides": [
+        6,
+        9
+      ]
+    },
+    "Q08": {
+      "project": "QuantStudio",
+      "path": "QuantStudio/BackTest/SectionFactor/api.py",
+      "sha256": "6306617d2ea4506d8dd51af92b4fbbe61f87448cd21adffdfaf11dc96e284957",
+      "slides": [
+        5,
+        10
+      ]
+    },
+    "Q09": {
+      "project": "QuantStudio",
+      "path": "docs/回测框架/策略回测.ipynb",
+      "sha256": "e585126b0995113240bcafbb7c6e325a9cbe1bd60e341355bbfe8caf28b651b8",
+      "slides": [
+        5,
+        10,
+        11
+      ]
+    },
+    "Q10": {
+      "project": "QuantStudio",
+      "path": "QuantStudio/BackTest/Strategy/Strategy.py",
+      "sha256": "5959c3049994eb1e00120e6dacfe090b580ed7016af5340b0fd061cb4c9b6612",
+      "slides": [
+        11
+      ]
+    },
+    "Q11": {
+      "project": "QuantStudio",
+      "path": "docs/风险模型/基本框架.ipynb",
+      "sha256": "dabff9c91319605cd1215946f687b9d95c704883799cc741d8bf8637637b5c07",
+      "slides": [
+        12
+      ]
+    },
+    "Q12": {
+      "project": "QuantStudio",
+      "path": "QuantStudio/Risk/RiskModel/BarraModel.py",
+      "sha256": "5e623a3780463a543efb0d2886575f6960d188cac2f18269cea2b6284100d005",
+      "slides": [
+        12,
+        20
+      ]
+    },
+    "Q13": {
+      "project": "QuantStudio",
+      "path": "docs/组合优化/基本框架.ipynb",
+      "sha256": "6b49fc8ca8c2131253c2b5a6441444c4921f532274d444cb916e176aeb2b9d0d",
+      "slides": [
+        5,
+        12
+      ]
+    },
+    "Q14": {
+      "project": "QuantStudio",
+      "path": "QuantStudio/PortfolioConstructor/api.py",
+      "sha256": "aae21e19d8ac3639959d57c83e3de48cd5b44fbf6ee69e46359767515be63e19",
+      "slides": [
+        12,
+        20
+      ]
+    },
+    "Q15": {
+      "project": "QuantStudio",
+      "path": "QuantStudio/BackTest/PerformanceAnalysis/BrinsonModel.py",
+      "sha256": "c69c6c6000767462bc08bc92593fded9f4ac7e8379879604f84d9d2677da9809",
+      "slides": [
+        10
+      ]
+    },
+    "Q16": {
+      "project": "QuantStudio",
+      "path": "setup.py",
+      "sha256": "ce975949467a8e83955049bae6638d2e14b9934f859fb3ebaf8d945b2dee334a",
+      "slides": []
+    },
+    "Q17": {
+      "project": "QuantStudio",
+      "path": "QuantStudio/Factor/FactorOperator.py",
+      "sha256": "5eeddb35c2fb7319569c30dd36318f73f0269d5d8b5d1a0a9128cd0865f56391",
+      "slides": []
+    },
+    "E01": {
+      "project": "QSExt",
+      "path": "docs/Graph/README.md",
+      "sha256": "09503ffbdd54eb27bcbb6336e5ffd2a36a466bb8fe31d41743ba636033c0c756",
+      "slides": [
+        1,
+        4,
+        15,
+        19,
+        21
+      ]
+    },
+    "E02": {
+      "project": "QSExt",
+      "path": "QSExt/Graph/Compiler.py",
+      "sha256": "127bc2582479f57bbd17f80f9585f22ff87740ad0e941ff5d3ed18617289b289",
+      "slides": [
+        15
+      ]
+    },
+    "E03": {
+      "project": "QSExt",
+      "path": "QSExt/Graph/api.py",
+      "sha256": "f34dd43d0672819df73532b5fbb16a745e7462119da5e21de46d88d2579fb49f",
+      "slides": []
+    },
+    "E04": {
+      "project": "QSExt",
+      "path": "docs/DefModule/DefModule.md",
+      "sha256": "be0499323949c623efe767a47b583c8c7a3f88a595c77601ca41d65606dd20ae",
+      "slides": [
+        3,
+        9,
+        13,
+        21
+      ]
+    },
+    "E05": {
+      "project": "QSExt",
+      "path": "QSExt/DefModule/DefContent.py",
+      "sha256": "5961e5e1e0e82b90b2d72e6cf0a35d8e055dadb4ff58a672fbb0a5f7f78902e1",
+      "slides": [
+        13
+      ]
+    },
+    "E06": {
+      "project": "QSExt",
+      "path": "QSExt/RuntimeConfig/config.py",
+      "sha256": "48b184e86809b9636606a6f15ee27a166aa8ff1cd481c2affaf4eb7365657582",
+      "slides": [
+        13
+      ]
+    },
+    "E07": {
+      "project": "QSExt",
+      "path": "QSExt/QSRegistry/QSGraphDB.py",
+      "sha256": "3759176a6aa39e7b9cad3f5dc8397212a437bb5eef63f3dc86ca60bbc7cfea91",
+      "slides": [
+        2,
+        3,
+        13,
+        16,
+        19,
+        21
+      ]
+    },
+    "E08": {
+      "project": "QSExt",
+      "path": "QSExt/ReportGenerator/__init__.py",
+      "sha256": "71d39738b5cef6656469dd9ec004f798eab75114c6061cb14fc96ef94d2777e1",
+      "slides": [
+        5,
+        16
+      ]
+    },
+    "E09": {
+      "project": "QSExt",
+      "path": "QSExt/ReportGenerator/scenarios/__init__.py",
+      "sha256": "131f1c2c4ec1f577e852c5ee8faa825ce9048c8062c1f24e138b38385bfc3857",
+      "slides": [
+        16
+      ]
+    },
+    "E10": {
+      "project": "QSExt",
+      "path": "QSExt/GPFactor/GPLearn.py",
+      "sha256": "ea864b007701e87cc1eabe14fb1f88a9a63fb73dc327b88269ad62445d2a1d42",
+      "slides": [
+        17
+      ]
+    },
+    "E11": {
+      "project": "QSExt",
+      "path": "QSExt/GPFactor/fitness.py",
+      "sha256": "a1ba31ea69ed41dfff5369f451a4a0342bc1b13c2a0aac711ab8b19180792f81",
+      "slides": [
+        17
+      ]
+    },
+    "E12": {
+      "project": "QSExt",
+      "path": "QSExt/LLMFactor/loop/round_runner.py",
+      "sha256": "693238a4046f3a6542c91e2ce12c1cf97f61db4397d0e4d411e0c50a1d1c8734",
+      "slides": [
+        17
+      ]
+    },
+    "E13": {
+      "project": "QSExt",
+      "path": "mcp/qs_registry.py",
+      "sha256": "ea9a5271ecccc5f5b88070ec9a129eaea4781d3e10fa045a658a8c66eab8da73",
+      "slides": [
+        13,
+        17
+      ]
+    },
+    "E14": {
+      "project": "QSExt",
+      "path": "QSExt/Factor/AKShareDB.py",
+      "sha256": "f561a523f01ab86ba9d3df568e99fc4e484d5aef58acb40c9b0a073dfb334f12",
+      "slides": [
+        6
+      ]
+    },
+    "E15": {
+      "project": "QSExt",
+      "path": "QSExt/Factor/ClickHouseDB.py",
+      "sha256": "9bdf4896335c424f4a96d31847c5f8e95d31978a60e3273df4a56d136309e565",
+      "slides": [
+        6
+      ]
+    },
+    "E16": {
+      "project": "QSExt",
+      "path": "QSExt/Factor/DuckDB.py",
+      "sha256": "d2c653dc7152f41c1c555cd2912a21420fa493e59eefd7663fdef599f87f7b33",
+      "slides": [
+        6
+      ]
+    },
+    "E17": {
+      "project": "QSExt",
+      "path": "QSExt/Factor/MongoDB.py",
+      "sha256": "44a5e125f0483b146730a3860f1b34b7e7c15fd708a181f8a94e213d7e7ffd3f",
+      "slides": [
+        6
+      ]
+    },
+    "E18": {
+      "project": "QSExt",
+      "path": "QSExt/Factor/Neo4jDB.py",
+      "sha256": "fd0f5c8cd5c7ef05061a4931e362dc670a40e648f17e82e3e337da72b5de6b9c",
+      "slides": [
+        6
+      ]
+    },
+    "E19": {
+      "project": "QSExt",
+      "path": "QSExt/Factor/ZarrDB.py",
+      "sha256": "d4ee10ca870e281defc582b03968f38e75cd83de8d6274120c98ea3d7a1c25fd",
+      "slides": [
+        6
+      ]
+    },
+    "E20": {
+      "project": "QSExt",
+      "path": "QSExt/Graph/Subgraphs.py",
+      "sha256": "d2a14c0a7c22099eaf7a07df60b91c2bb646a742e912f74f956b846efab45de9",
+      "slides": []
+    },
+    "W01": {
+      "project": "QSWeb",
+      "path": "docs/13-统一计算图工作台.md",
+      "sha256": "9acd3caeca9db43905d4b114163e9c0538c4af05e3bf787dbe7a0e088f14e344",
+      "slides": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        10,
+        11,
+        14,
+        19,
+        20,
+        21
+      ]
+    },
+    "W02": {
+      "project": "QSWeb",
+      "path": "frontend/src/App.tsx",
+      "sha256": "c5f33d2d1662062053ee98c98e920a39914cd3d6e23ccc2a180b1812793a971a",
+      "slides": []
+    },
+    "W03": {
+      "project": "QSWeb",
+      "path": "backend/app/services/graph_service.py",
+      "sha256": "4d0454ee83d94d3442a0af537443fcf3906dc3a268cada7c2c7b1a48f8b27e70",
+      "slides": [
+        4,
+        15,
+        21
+      ]
+    },
+    "W04": {
+      "project": "QSWeb",
+      "path": "backend/app/services/graph_runtime.py",
+      "sha256": "d353c37b4187909eb2567b6247a5d79eba1f31ea5d06bfc06efa383312b3695f",
+      "slides": [
+        15
+      ]
+    },
+    "W05": {
+      "project": "QSWeb",
+      "path": "backend/app/services/graph_repository.py",
+      "sha256": "ed3b6d3fa82ed25c7a4533c96dab7bbe4f26f27fcfd517a377cbada57fc0693f",
+      "slides": [
+        15
+      ]
+    },
+    "W06": {
+      "project": "QSWeb",
+      "path": "backend/app/tasks/manager.py",
+      "sha256": "f413a1d982c52e2b74213b97fe24bd7e12a090b6da860c3cb827f1f9ac693be8",
+      "slides": [
+        15,
+        20
+      ]
+    },
+    "W07": {
+      "project": "QSWeb",
+      "path": "backend/app/services/risk_service.py",
+      "sha256": "ed4367bc45242e8083f41ed295dc01eabbeedd8143b7173228364fac8db16c01",
+      "slides": [
+        12,
+        20
+      ]
+    },
+    "W08": {
+      "project": "QSWeb",
+      "path": "backend/app/services/portfolio_service.py",
+      "sha256": "157291144c6f14087346f218a4e60a9528905bb219b99016c0b0f7db3ec2fe2f",
+      "slides": [
+        12,
+        20
+      ]
+    },
+    "W09": {
+      "project": "QSWeb",
+      "path": "backend/app/services/report_service.py",
+      "sha256": "03c66258efb4c62cf957256bc8cdefa39f27de5509a652c1c68423e627369ac8",
+      "slides": [
+        16
+      ]
+    },
+    "W10": {
+      "project": "QSWeb",
+      "path": "backend/app/services/mining_service.py",
+      "sha256": "9e4edd8975664848ab256012bcbd99ea7a0158aad01341b436573ed68e71c4ec",
+      "slides": [
+        17,
+        20
+      ]
+    },
+    "W11": {
+      "project": "QSWeb",
+      "path": "backend/app/services/ai_service.py",
+      "sha256": "8c406c588f4234e2ffd273fe8c701a831d54517eacaa45aa8e74bcb3aa3a87f3",
+      "slides": [
+        17
+      ]
+    },
+    "W12": {
+      "project": "QSWeb",
+      "path": "backend/app/core/security.py",
+      "sha256": "b33e6618e56eb067574f8b89b37702dec68b3c1fe97195926609baf9bc58e2d9",
+      "slides": [
+        18
+      ]
+    },
+    "W13": {
+      "project": "QSWeb",
+      "path": "backend/app/core/user_workspace.py",
+      "sha256": "41ae9ecb1f176f40f676882f0b3a544bbfca25b32011e9b85812d91002744e9c",
+      "slides": [
+        18
+      ]
+    },
+    "W14": {
+      "project": "QSWeb",
+      "path": "docker-compose.yml",
+      "sha256": "13662a9ec28e29584a80adb47bb8643e03c7928b3a24f9e7b896099a3094427f",
+      "slides": [
+        18,
+        20
+      ]
+    },
+    "W15": {
+      "project": "QSWeb",
+      "path": "frontend/src/components/Layout/MainLayout.tsx",
+      "sha256": "8fb322841e69a81edf0e64d8ee5ca33aa3dd4464abdaf7ccae672781a76ee396",
+      "slides": [
+        14
+      ]
+    },
+    "W16": {
+      "project": "QSWeb",
+      "path": "frontend/src/components/GraphEditor/index.tsx",
+      "sha256": "7c7ccc7454b8ae7b855a3a497ffe7592c493b870b095285fb359a70dfed9067f",
+      "slides": [
+        14
+      ]
+    },
+    "W17": {
+      "project": "QSWeb",
+      "path": "tests/graph_editor.mount.tsx",
+      "sha256": "9234e9bd3ed86a9c1f2bee56aa6439bfa911ae1ee58057875c6dc496be2e23c3",
+      "slides": [
+        14
+      ]
+    },
+    "W18": {
+      "project": "QSWeb",
+      "path": "frontend/src/pages/MiningStudio/index.tsx",
+      "sha256": "e785ed9e9f121b5baee1d2d0a748e5eec3d7d30722ca8a2456dda7f6f0be1e2b",
+      "slides": [
+        17
+      ]
+    },
+    "W19": {
+      "project": "QSWeb",
+      "path": "frontend/src/pages/Notebook/index.tsx",
+      "sha256": "f67a0b029ad43a79e146b0e86f3b76e40dae5e4c6305cfbd1862403b1602269d",
+      "slides": [
+        18
+      ]
+    },
+    "W20": {
+      "project": "QSWeb",
+      "path": "docs/12-服务启动目录与初始化.md",
+      "sha256": "013e3aadf7b317563034df0880eb54c87326bd40cb72700e823cdc0050597ecb",
+      "slides": [
+        18
+      ]
+    },
+    "W21": {
+      "project": "QSWeb",
+      "path": "frontend/src/pages/PortfolioOptimizer/ObjectiveConfig.tsx",
+      "sha256": "476c9043feffa87c81b933c35bb39473bb6cf07705028c2c2df19cb772e0eca8",
+      "slides": [
+        12,
+        20
+      ]
+    },
+    "R01": {
+      "project": "QSResearch",
+      "path": "QSResearch/FactorDef/JY/stock_cn_factor_barra.py",
+      "sha256": "2ef92d3e5e7a6ca720577717c8d27ccc182848346ea7afda889fa2d4fc873679",
+      "slides": [
+        8
+      ]
+    },
+    "R02": {
+      "project": "QSResearch",
+      "path": "QSResearch/FactorDef/JY/stock_cn_factor_barra_descriptor.py",
+      "sha256": "edadff02ffb0891d20bff06cf939278533d5c348360bdae0c7be71bb3330de91",
+      "slides": [
+        8
+      ]
+    }
+  }
+}

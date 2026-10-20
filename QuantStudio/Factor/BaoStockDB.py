@@ -19,6 +19,7 @@ from QuantStudio.Tools.DateTimeFun import getDateTimeSeries
 
 # 将信息源文件中的表和字段信息导入信息文件
 def _importInfo(info_file, info_resource, logger, out_info=False):
+    info_resource = os.fspath(info_resource)
     Suffix = info_resource.split(".")[-1]
     if Suffix in ("xlsx", "xls"):
         TableInfo = pd.read_excel(info_resource, "TableInfo").set_index(["TableName"])

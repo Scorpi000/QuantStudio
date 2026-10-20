@@ -1,0 +1,382 @@
+{
+  "definitions": [
+    {
+      "definition": {
+        "id": "price",
+        "version": 1
+      },
+      "title": "行情与价格",
+      "description": "系统介绍演示组件",
+      "source_path": "research/price.py",
+      "source_category": "研究组件",
+      "operations": [
+        "build"
+      ],
+      "args": [],
+      "inputs": [],
+      "outputs": {
+        "result": {
+          "kind": "node"
+        }
+      },
+      "args_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "result_args_schema": null
+    },
+    {
+      "definition": {
+        "id": "momentum",
+        "version": 1
+      },
+      "title": "时序动量",
+      "description": "系统介绍演示组件",
+      "source_path": "research/momentum.py",
+      "source_category": "研究组件",
+      "operations": [
+        "build"
+      ],
+      "args": [],
+      "inputs": [
+        {
+          "name": "price",
+          "title": "价格",
+          "type": {
+            "kind": "node"
+          }
+        }
+      ],
+      "outputs": {
+        "result": {
+          "kind": "node"
+        }
+      },
+      "args_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "result_args_schema": null
+    },
+    {
+      "definition": {
+        "id": "score",
+        "version": 1
+      },
+      "title": "截面标准化",
+      "description": "系统介绍演示组件",
+      "source_path": "research/score.py",
+      "source_category": "研究组件",
+      "operations": [
+        "build"
+      ],
+      "args": [],
+      "inputs": [
+        {
+          "name": "momentum",
+          "title": "动量",
+          "type": {
+            "kind": "node"
+          }
+        }
+      ],
+      "outputs": {
+        "result": {
+          "kind": "node"
+        }
+      },
+      "args_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "result_args_schema": null
+    },
+    {
+      "definition": {
+        "id": "account",
+        "version": 1
+      },
+      "title": "策略账户",
+      "description": "系统介绍演示组件",
+      "source_path": "research/account.py",
+      "source_category": "研究组件",
+      "operations": [
+        "build"
+      ],
+      "args": [],
+      "inputs": [
+        {
+          "name": "score",
+          "title": "因子得分",
+          "type": {
+            "kind": "node"
+          }
+        },
+        {
+          "name": "price",
+          "title": "价格",
+          "type": {
+            "kind": "node"
+          }
+        }
+      ],
+      "outputs": {
+        "result": {
+          "kind": "node"
+        }
+      },
+      "args_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "result_args_schema": null
+    },
+    {
+      "definition": {
+        "id": "ic",
+        "version": 1
+      },
+      "title": "IC 分析",
+      "description": "系统介绍演示组件",
+      "source_path": "research/ic.py",
+      "source_category": "研究组件",
+      "operations": [
+        "build"
+      ],
+      "args": [],
+      "inputs": [
+        {
+          "name": "score",
+          "title": "因子得分",
+          "type": {
+            "kind": "node"
+          }
+        },
+        {
+          "name": "price",
+          "title": "价格",
+          "type": {
+            "kind": "node"
+          }
+        }
+      ],
+      "outputs": {
+        "result": {
+          "kind": "node"
+        }
+      },
+      "args_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "result_args_schema": null
+    },
+    {
+      "definition": {
+        "id": "report",
+        "version": 1
+      },
+      "title": "综合研究报告",
+      "description": "系统介绍演示组件",
+      "source_path": "research/report.py",
+      "source_category": "研究组件",
+      "operations": [
+        "build"
+      ],
+      "args": [],
+      "inputs": [
+        {
+          "name": "account",
+          "title": "账户统计",
+          "type": {
+            "kind": "node"
+          }
+        },
+        {
+          "name": "ic",
+          "title": "IC 结果",
+          "type": {
+            "kind": "node"
+          }
+        }
+      ],
+      "outputs": {
+        "result": {
+          "kind": "node"
+        }
+      },
+      "args_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "result_args_schema": null
+    }
+  ],
+  "document": {
+    "schema_version": 1,
+    "blocks": [
+      {
+        "id": "price",
+        "definition": {
+          "id": "price",
+          "version": 1
+        },
+        "operation": "build",
+        "args": {
+          "Name": "行情与价格"
+        },
+        "inputs": {}
+      },
+      {
+        "id": "momentum",
+        "definition": {
+          "id": "momentum",
+          "version": 1
+        },
+        "operation": "build",
+        "args": {
+          "Name": "时序动量"
+        },
+        "inputs": {
+          "price": {
+            "kind": "reference",
+            "block": "price",
+            "port": "result"
+          }
+        }
+      },
+      {
+        "id": "score",
+        "definition": {
+          "id": "score",
+          "version": 1
+        },
+        "operation": "build",
+        "args": {
+          "Name": "截面标准化"
+        },
+        "inputs": {
+          "momentum": {
+            "kind": "reference",
+            "block": "momentum",
+            "port": "result"
+          }
+        }
+      },
+      {
+        "id": "account",
+        "definition": {
+          "id": "account",
+          "version": 1
+        },
+        "operation": "build",
+        "args": {
+          "Name": "策略账户"
+        },
+        "inputs": {
+          "score": {
+            "kind": "reference",
+            "block": "score",
+            "port": "result"
+          },
+          "price": {
+            "kind": "reference",
+            "block": "price",
+            "port": "result"
+          }
+        }
+      },
+      {
+        "id": "ic",
+        "definition": {
+          "id": "ic",
+          "version": 1
+        },
+        "operation": "build",
+        "args": {
+          "Name": "IC 分析"
+        },
+        "inputs": {
+          "score": {
+            "kind": "reference",
+            "block": "score",
+            "port": "result"
+          },
+          "price": {
+            "kind": "reference",
+            "block": "price",
+            "port": "result"
+          }
+        }
+      },
+      {
+        "id": "report",
+        "definition": {
+          "id": "report",
+          "version": 1
+        },
+        "operation": "build",
+        "args": {
+          "Name": "综合研究报告"
+        },
+        "inputs": {
+          "account": {
+            "kind": "reference",
+            "block": "account",
+            "port": "result"
+          },
+          "ic": {
+            "kind": "reference",
+            "block": "ic",
+            "port": "result"
+          }
+        }
+      }
+    ],
+    "outputs": {
+      "研究报告": {
+        "kind": "reference",
+        "block": "report",
+        "port": "result"
+      }
+    },
+    "extensions": {
+      "qsweb": {
+        "layout": {
+          "positions": {
+            "price": {
+              "x": 50,
+              "y": 150
+            },
+            "momentum": {
+              "x": 390,
+              "y": 100
+            },
+            "score": {
+              "x": 730,
+              "y": 100
+            },
+            "account": {
+              "x": 1070,
+              "y": 160
+            },
+            "ic": {
+              "x": 1070,
+              "y": 440
+            },
+            "report": {
+              "x": 1410,
+              "y": 260
+            }
+          },
+          "collapsed": [],
+          "viewport": {
+            "x": 35,
+            "y": 70,
+            "zoom": 0.86
+          }
+        }
+      }
+    }
+  }
+}

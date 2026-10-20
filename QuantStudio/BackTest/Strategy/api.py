@@ -3,3 +3,4 @@
 
 from .Strategy import MakeAccount, MakeStrategy, AccountStats, AccountReport
 from . import AllocationStrategy
+from . import TimingStrategy
