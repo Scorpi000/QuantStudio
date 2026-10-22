@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
 """择时策略：等权目标组合，以及按标的独立出入金的固定本金账户。"""
+import base64
 import datetime as dt
+from html import escape
+from io import BytesIO
 from typing import List, Literal, Optional
 
 import numpy as np
 import pandas as pd
 from numpy.lib.recfunctions import unstructured_to_structured
 from pydantic import Field
+from matplotlib.figure import Figure
 
 from QuantStudio.Core import __QS_Error__
 from QuantStudio.Core.Node import DTLocalContext
@@ -386,6 +390,14 @@ class TimingAccountStats(_BaseAccountStats):
         capital = previous + deposit
         returns = np.divide(earnings, capital, out=np.zeros_like(earnings), where=capital > _QS_MinCash)
         nv = np.cumprod(1 + returns)
+        equity = fields["Cash"] + fields["Amount"]
+        initial_equity = (np.array([record[0] + record[2] for record in before.iloc[-1]])
+                          if len(before) else np.zeros(account.shape[1]))
+        previous_equity = np.vstack((initial_equity, equity[:-1]))
+        subaccount_capital = previous_equity + fields["Deposit"]
+        subaccount_earnings = equity - previous_equity - fields["Deposit"] + fields["Withdrawal"]
+        subaccount_returns = np.divide(subaccount_earnings, subaccount_capital,
+                                       out=np.zeros_like(equity), where=subaccount_capital > _QS_MinCash)
         timeseries = pd.DataFrame({
             "现金": cash, "负债": 0.0, "证券": amount, "账户价值": value,
             "入金": deposit, "出金": withdrawal, "现金流": deposit - withdrawal,
@@ -414,7 +426,9 @@ class TimingAccountStats(_BaseAccountStats):
                   "交易信号": pd.DataFrame(fields["Signal"], index=account.index, columns=account.columns),
                   "持仓数量": pd.DataFrame(fields["Position"], index=account.index, columns=account.columns),
                   "子账户现金": pd.DataFrame(fields["Cash"], index=account.index, columns=account.columns),
-                  "子账户权益": pd.DataFrame(fields["Cash"] + fields["Amount"], index=account.index, columns=account.columns),
+                  "子账户权益": pd.DataFrame(equity, index=account.index, columns=account.columns),
+                  "子账户净值": pd.DataFrame(np.cumprod(1 + subaccount_returns, axis=0), index=account.index, columns=account.columns),
+                  "标的价格": pd.DataFrame(fields["LastPrice"], index=account.index, columns=account.columns),
                   "交易记录": pd.DataFrame(trades, columns=["交易时点", "ID", "交易量", "成交价", "交易费"]),
                   "择时交易": closed, "未平仓交易": opened,
                   "择时统计": _timing_statistics(closed, account.columns.tolist())}
@@ -427,7 +441,93 @@ class TimingAccountStats(_BaseAccountStats):
 
 
 class TimingAccountReport(_BaseAccountReport):
-    """展示择时账户收益、出入金流水和按实际交易计算的择时指标。"""
+    """展示账户净值、汇总现金流及可选的分标的统计、净值和实际交易图。"""
+
+    class __QS_ArgClass__(_BaseAccountReport.__QS_ArgClass__):
+        """择时账户报告的展示参数。"""
+
+        ShowDetails: bool = Field(default=False, title="是否展示明细",
+                                  description="开启后展示分标的择时统计、独立净值及实际交易标记图，默认仅展示汇总。")
+
+    @staticmethod
+    def genMatplotlibFig(output: dict, file_path: Optional[str] = None) -> Figure:
+        """绘制资金流调整后的账户净值与逐时点净现金流。
+
+        Args:
+            output: 择时账户统计结果。
+            file_path: 可选的图像保存路径。
+
+        Returns:
+            包含净值曲线和汇总现金流柱状图的图像。
+        """
+        series = output["时间序列"]
+        figure = Figure(figsize=(12, 8), layout="constrained")
+        nv_axis, flow_axis = figure.subplots(2, 1)
+        positions = np.arange(len(series))
+        ticks = positions[::max(1, len(series) // 10)]
+        labels = [series.index[i].strftime("%Y-%m-%d") for i in ticks]
+
+        nv_axis.plot(positions, series["净值"].to_numpy(), label="账户净值", color="indianred")
+        if "基准净值" in series:
+            nv_axis.plot(positions, series["基准净值"].to_numpy(), label="基准净值", color="forestgreen")
+        nv_axis.set_title("账户净值")
+        nv_axis.set_ylabel("净值")
+        nv_axis.legend()
+
+        cashflow = series["现金流"].to_numpy()
+        flow_axis.bar(positions, cashflow, label="净现金流", color=np.where(cashflow >= 0, "steelblue", "indianred"))
+        flow_axis.axhline(0, color="grey", linewidth=.8)
+        flow_axis.set_title("资金流水（每时点总计）")
+        flow_axis.set_ylabel("金额")
+        flow_axis.legend()
+        for axis in (nv_axis, flow_axis):
+            axis.set_xticks(ticks)
+            axis.set_xticklabels(labels, rotation=30, ha="right")
+            axis.grid(axis="y", alpha=.2)
+        if file_path is not None:
+            figure.savefig(file_path, dpi=150, bbox_inches="tight")
+        return figure
+
+    @staticmethod
+    def genDetailMatplotlibFig(output: dict, identifier: str, file_path: Optional[str] = None) -> Figure:
+        """绘制单个标的的独立净值与实际成交标记。
+
+        Args:
+            output: 包含子账户净值、标的价格与交易记录的择时账户统计。
+            identifier: 待展示的标的 ID。
+            file_path: 可选的图像保存路径。
+
+        Returns:
+            上方为资金流调整净值、下方为估值价及实际买卖成交的图像。
+        """
+        nv = output["子账户净值"][identifier]
+        price = output["标的价格"][identifier].reindex(nv.index)
+        trades = output["交易记录"].loc[output["交易记录"]["ID"] == identifier]
+        figure = Figure(figsize=(12, 8), layout="constrained")
+        nv_axis, price_axis = figure.subplots(2, 1)
+        positions = np.arange(len(nv))
+        ticks = positions[::max(1, len(nv) // 10)]
+        labels = [nv.index[i].strftime("%Y-%m-%d") for i in ticks]
+        nv_axis.plot(positions, nv.to_numpy(), label="子账户净值", color="indianred")
+        nv_axis.set_title(f"{identifier} · 独立净值")
+        nv_axis.set_ylabel("净值")
+        price_axis.plot(positions, price.to_numpy(), label="估值价", color="steelblue")
+        for buy, marker, color, label in ((True, "^", "indianred", "实际买入"),
+                                          (False, "v", "forestgreen", "实际卖出")):
+            selected = trades.loc[trades["交易量"] > 0 if buy else trades["交易量"] < 0]
+            if not selected.empty:
+                price_axis.scatter(nv.index.get_indexer(selected["交易时点"]), selected["成交价"],
+                                   marker=marker, color=color, label=label, s=45, zorder=3)
+        price_axis.set_title(f"{identifier} · 价格与交易标记")
+        price_axis.set_ylabel("价格")
+        for axis in (nv_axis, price_axis):
+            axis.set_xticks(ticks)
+            axis.set_xticklabels(labels, rotation=30, ha="right")
+            axis.grid(axis="y", alpha=.2)
+            axis.legend()
+        if file_path is not None:
+            figure.savefig(file_path, dpi=150, bbox_inches="tight")
+        return figure
 
     def backward_compute(self, path, bwd_data_list, context, local_context=None) -> dict:
         """将择时统计输出为 HTML 报告。
@@ -443,7 +543,21 @@ class TimingAccountReport(_BaseAccountReport):
         """
         output = dict(bwd_data_list[0])
         html = "<h3>账户绩效</h3>" + formatStrategySummary(output["统计数据"]).to_html()
-        for title in ("择时统计", "资金流水", "择时交易", "未平仓交易"):
-            html += f"<h3>{title}</h3>" + output[title].to_html()
+        statistics = output["择时统计"] if self._QSArgs.ShowDetails else output["择时统计"][["总计"]]
+        html += "<h3>择时统计</h3>" + statistics.to_html()
+        figure = self.genMatplotlibFig(output)
+        with BytesIO() as buffer:
+            figure.savefig(buffer, format="png")
+            image = base64.b64encode(buffer.getvalue()).decode("ascii")
+        html += '<h3>账户净值与资金流水</h3><img alt="账户净值与每时点总现金流" src="data:image/png;base64,' + image + '">'
+        if self._QSArgs.ShowDetails:
+            html += "<h3>分标的净值与交易标记</h3>"
+            for identifier in output["子账户净值"].columns:
+                figure = self.genDetailMatplotlibFig(output, identifier)
+                with BytesIO() as buffer:
+                    figure.savefig(buffer, format="png")
+                    image = base64.b64encode(buffer.getvalue()).decode("ascii")
+                title = escape(str(identifier))
+                html += f'<h4>{title}</h4><img alt="{title} 独立净值与交易标记" src="data:image/png;base64,{image}">'
         output[self._QSArgs.ReportKey] = html
         return output

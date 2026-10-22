@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """验证固定本金择时账户的独立交易、现金流与交易统计。"""
+import base64
 import datetime as dt
 import unittest
 
@@ -191,6 +192,93 @@ class TestTimingAccount(unittest.TestCase):
         for cash in (0, -1, np.nan, np.inf):
             with self.subTest(cash=cash), self.assertRaises(__QS_Error__):
                 ts.MakeTimingAccount(init_cash=cash)
+
+    def test_report_defaults_to_totals_and_keeps_raw_details(self):
+        """默认报告仅展示总计与图像，原始交易和逐标的资金流水仍可读取。"""
+        node = ts.TimingAccountReport(ts.TimingAccountStats(self._account()))
+        self.assertFalse(node.Args.ShowDetails)
+        output = self._run(node, statistics=True)
+        html = output["Report"]
+        self.assertEqual(html.count("<table"), 2)
+        self.assertIn("<th>总计</th>", html)
+        self.assertNotIn("<th>A</th>", html)
+        self.assertNotIn("<th>B</th>", html)
+        self.assertNotIn("<h3>分标的净值与交易标记</h3>", html)
+        self.assertEqual(html.count("data:image/png;base64,"), 1)
+        self.assertIn("账户净值与资金流水", html)
+        for title in ("资金流水", "择时交易", "未平仓交易"):
+            self.assertNotIn(f"<h3>{title}</h3>", html)
+        image = html.split("data:image/png;base64,", 1)[1].split('"', 1)[0]
+        self.assertTrue(base64.b64decode(image).startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertEqual(output["择时统计"].columns.tolist(), ["总计", "A", "B"])
+        self.assertIn("ID", output["资金流水"].columns)
+        self.assertEqual(len(output["择时交易"]), 4)
+        self.assertEqual(len(output["未平仓交易"]), 1)
+
+    def test_report_details_and_custom_report_key(self):
+        """开启明细后展示各标的统计，仍不添加交易明细表并支持自定义报告键。"""
+        node = ts.TimingAccountReport(ts.TimingAccountStats(self._account()),
+                                      args={"ShowDetails": True, "ReportKey": "TimingHTML"})
+        output = self._run(node, statistics=True)
+        html = output["TimingHTML"]
+        self.assertNotIn("Report", output)
+        self.assertEqual(html.count("<table"), 2)
+        self.assertIn("<th>A</th>", html)
+        self.assertIn("<th>B</th>", html)
+        self.assertIn("<h3>分标的净值与交易标记</h3>", html)
+        self.assertEqual(html.count("data:image/png;base64,"), 3)
+        self.assertIn('<img alt="A 独立净值与交易标记"', html)
+        self.assertIn('<img alt="B 独立净值与交易标记"', html)
+        self.assertNotIn("<h3>择时交易</h3>", html)
+        self.assertNotIn("<h3>未平仓交易</h3>", html)
+
+    def test_report_charts_use_account_nv_and_aggregated_cashflow(self):
+        """图像使用资金流调整净值，资金柱只按时点汇总且可叠加基准。"""
+        output = self._run(ts.TimingAccountStats(self._account(), bmk_nv=DataFactor(1)), statistics=True)
+        figure = ts.TimingAccountReport.genMatplotlibFig(output)
+        nv_axis, flow_axis = figure.axes
+        self.assertEqual(len(nv_axis.lines), 2)
+        np.testing.assert_allclose(nv_axis.lines[0].get_ydata(), output["时间序列"]["净值"])
+        np.testing.assert_allclose(nv_axis.lines[1].get_ydata(), 1)
+        np.testing.assert_allclose([bar.get_height() for bar in flow_axis.patches],
+                                   [1000, 1000, 0, 0, -1540, -880, 1000])
+
+    def test_cashflow_chart_nets_simultaneous_deposit_and_withdrawal(self):
+        """同一时点等额出入金在资金图中相抵，资金流不影响账户净值。"""
+        mask = self._factor([[0, 0], [1, 0], [0, 1], [0, 1],
+                             [0, 1], [0, 1], [0, 1], [0, 1]])
+        account = ts.MakeTimingAccount(init_cash=1000, start_dt=self.dates[1])(
+            last_price=self.price, signal=DataFactor(0), mask=mask)
+        output = self._run(ts.TimingAccountStats(account), statistics=True)
+        figure = ts.TimingAccountReport.genMatplotlibFig(output)
+        self.assertEqual(figure.axes[1].patches[1].get_height(), 0)
+        np.testing.assert_allclose(figure.axes[0].lines[0].get_ydata(), 1)
+
+    def test_subaccount_nv_adjusts_flows_and_preserves_reentry_history(self):
+        """各标的净值独立扣除出入金，出池后持平且再入池不重置。"""
+        output = self._run(ts.TimingAccountStats(self._account()), statistics=True)
+        expected = [[1, 1], [1.2, 1], [1.4, .9], [1.4, .8],
+                    [1.54, .8], [1.54, .88], [1.54, .88]]
+        np.testing.assert_allclose(output["子账户净值"], expected)
+        late = self._run(ts.TimingAccountStats(self._account()), statistics=True, start=3)
+        np.testing.assert_allclose(late["子账户净值"], np.array(expected)[2:] / [1.2, 1])
+
+    def test_detail_chart_marks_actual_fill_dates_and_prices(self):
+        """每个买卖标记使用实际成交时点和价格，并与对应标的净值匹配。"""
+        output = self._run(ts.TimingAccountStats(self._account()), statistics=True)
+        figure = ts.TimingAccountReport.genDetailMatplotlibFig(output, "A")
+        nv_axis, price_axis = figure.axes
+        np.testing.assert_allclose(nv_axis.lines[0].get_ydata(), output["子账户净值"]["A"])
+        np.testing.assert_allclose(price_axis.lines[0].get_ydata(), [10, 12, 14, 10, 11, 11, 20])
+        np.testing.assert_allclose(price_axis.collections[0].get_offsets(), [[0, 10], [3, 10], [6, 20]])
+        np.testing.assert_allclose(price_axis.collections[1].get_offsets(), [[2, 14], [4, 11]])
+
+    def test_detail_chart_has_no_markers_for_blocked_orders(self):
+        """有看多信号但禁止买入时净值持平，图像不标注未成交信号。"""
+        output = self._run(ts.TimingAccountStats(self._account(buy_limit=DataFactor(1))), statistics=True)
+        figure = ts.TimingAccountReport.genDetailMatplotlibFig(output, "A")
+        np.testing.assert_allclose(figure.axes[0].lines[0].get_ydata(), 1)
+        self.assertEqual(len(figure.axes[1].collections), 0)
 
 
 if __name__ == "__main__":
