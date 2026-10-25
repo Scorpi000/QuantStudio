@@ -1292,7 +1292,7 @@ class PointOperation(DerivativeFactor):
             return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
         Cached = (context.DataCache and self._QSArgs.CacheEnabled)
         if Cached:
-            DTRange = context.DataCache.getDTRange(self.QSID, DTRange)
+            DTRange = context.DataCache.getDTRange(key=RunningKey, dt_range=DTRange)
             if DTRange is None: 
                 self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 的缓存数据已覆盖所需的时点, 返回空的 forward 数据, 终止前向传递")
                 return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
@@ -1384,7 +1384,7 @@ class TimeOperation(DerivativeFactor):
             return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
         Cached = (context.DataCache and self._QSArgs.CacheEnabled)
         if Cached:
-            DTRange = context.DataCache.getDTRange(RunningKey, DTRange)
+            DTRange = context.DataCache.getDTRange(key=RunningKey, dt_range=DTRange)
             if DTRange is None: 
                 self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 的缓存数据已覆盖所需的时点, 返回空的 forward 数据, 终止前向传递")
                 return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
@@ -1495,7 +1495,7 @@ class SectionOperation(DerivativeFactor):
             self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 的 DTRange is None, 返回空的 forward 数据, 终止前向传递")
             return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
         if context.DataCache and self._QSArgs.CacheEnabled:
-            DTRange = context.DataCache.getDTRange(self.QSID, DTRange)
+            DTRange = context.DataCache.getDTRange(key=RunningKey, dt_range=DTRange)
             if DTRange is None: 
                 self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 的缓存数据已覆盖所需的时点, 返回空的 forward 数据, 终止前向传递")
                 return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)
@@ -1606,7 +1606,7 @@ class PanelOperation(DerivativeFactor):
             return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)# 该因子没有要计算的数据, 理论上不应该走到
         Cached = (context.DataCache and self._QSArgs.CacheEnabled)
         if Cached:
-            DTRange = context.DataCache.getDTRange(RunningKey, DTRange)
+            DTRange = context.DataCache.getDTRange(key=RunningKey, dt_range=DTRange)
             if DTRange is None: 
                 self._QS_Logger.debug(f"因子 {self.Name}(QSID:{self.QSID}) 的缓存数据已覆盖所需的时点, 返回空的 forward 数据, 终止前向传递")
                 return [], FactorLocalContext(DTs=fwd_data.DTs, IDs=fwd_data.IDs, PIDs=fwd_data.PIDs, SectionIDs=fwd_data.SectionIDs)# 当前缓存已经覆盖所有数据

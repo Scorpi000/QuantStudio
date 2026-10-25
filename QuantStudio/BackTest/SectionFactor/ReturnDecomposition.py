@@ -59,14 +59,14 @@ class CalcFamaMacBethRegression(PanelOperator):
             Mask = (Mask.reindex(index=DTs).astype(float).fillna(0).astype(bool) & Price.notnull())
         else:
             Mask = Price.notnull()
-        Mask = Mask.shift(args["period_lookback"], axis=1).iloc[-1].astype(float).fillna(0).astype(bool)
+        Mask = Mask.shift(args["period_lookback"]).iloc[-1].astype(float).fillna(0).astype(bool)
         if f._QSArgs.ModelArgs["cat_data"]:
             CatData, x = pd.DataFrame(x[0], index=idt, columns=SectionIDs), x[1:]
             CatData = CatData.reindex(index=DTs)
-            CatData = CatData.shift(args["period_lookback"], axis=1).iloc[-1]
+            CatData = CatData.shift(args["period_lookback"]).iloc[-1]
             CatMask = pd.notnull(CatData)
             DummyFactorData = DummyVarTo01Var(CatData[CatMask], ignore_na=True)
-        FactorData = {i: pd.DataFrame(ix, index=idt, columns=SectionIDs).reindex(index=DTs).shift(args["period_lookback"], axis=1).iloc[-1] for i, ix in enumerate(x)}
+        FactorData = {i: pd.DataFrame(ix, index=idt, columns=SectionIDs).reindex(index=DTs).shift(args["period_lookback"]).iloc[-1] for i, ix in enumerate(x)}
         FactorData = pd.DataFrame(FactorData).sort_index(axis=1)
         nFactor = FactorData.shape[1]
         if f._QSArgs.ModelArgs["cat_data"]:
