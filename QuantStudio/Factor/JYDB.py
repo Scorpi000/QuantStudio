@@ -21,6 +21,7 @@ from QuantStudio.Tools.SQLDBFun import genSQLInCondition
 
 # 将信息源文件中的表和字段信息导入信息文件
 def _importInfo(info_file, info_resource, logger, out_info=False):
+    info_resource = os.fspath(info_resource)
     Suffix = info_resource.split(".")[-1]
     if Suffix in ("xlsx", "xls"):
         TableInfo = pd.read_excel(info_resource, "TableInfo", engine="openpyxl").set_index(["TableName"])
@@ -30,7 +31,8 @@ def _importInfo(info_file, info_resource, logger, out_info=False):
         SecurityInfo = pd.read_excel(info_resource, "SecurityInfo", dtype={"SecurityCategoryCode": "O"},
                                      engine="openpyxl").set_index(["SecurityCategoryCode"])
     elif Suffix == "json":
-        Info = json.load(open(info_resource, "r"))
+        with open(info_resource, "r", encoding="utf-8") as source_file:
+            Info = json.load(source_file)
         TableInfo = pd.DataFrame(Info["TableInfo"]).T
         ExchangeInfo = pd.DataFrame(Info["ExchangeInfo"]).T
         SecurityInfo = pd.DataFrame(Info["SecurityInfo"]).T
