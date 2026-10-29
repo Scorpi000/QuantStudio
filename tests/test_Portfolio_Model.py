@@ -71,6 +71,27 @@ class TestOptimizationModel(unittest.TestCase):
         self.cov = pd.DataFrame(np.diag([1., 4.]), index=self.ids, columns=self.ids)
         self.mu = DataFactor(pd.DataFrame([[.1, .2], [.3, .1]], index=self.dts, columns=self.ids))
 
+    def test_covariance_nan_outside_mask_is_preserved_and_unused(self):
+        covariance = pd.DataFrame([[1., np.nan], [np.nan, np.nan]], index=self.ids, columns=self.ids)
+        spec = ObjectiveSpec(MeanVarianceObjective, inputs={"cov": covariance})
+        objective = spec.build(np.array([True, False]), self.ids, lambda value: value)
+        self.assertTrue(np.isnan(objective._Cov[1]).all())
+        self.assertTrue(np.isfinite(objective.genObjective()['Sigma']).all())
+        self.assertTrue(np.isnan(covariance.loc['B']).all())
+
+    def test_covariance_nan_on_active_or_benchmark_assets_is_rejected(self):
+        covariance = np.array([[1., np.nan], [np.nan, np.nan]])
+        spec = ObjectiveSpec(MeanVarianceObjective, inputs={"cov": covariance})
+        with self.assertRaisesRegex(ValueError, '协方差'):
+            spec.build(np.array([True, True]), self.ids, lambda value: value)
+        invalid = ObjectiveSpec(MeanVarianceObjective, inputs={"cov": [[1., 0.], [0., np.inf]]})
+        with self.assertRaisesRegex(ValueError, '协方差'):
+            invalid.build(np.array([True, False]), self.ids, lambda value: value)
+        spec = ObjectiveSpec(MeanVarianceObjective, args={'Benchmark': True},
+                             inputs={"cov": covariance, "bmk": pd.Series([0., 1.], index=self.ids)})
+        with self.assertRaisesRegex(ValueError, '协方差'):
+            spec.build(np.array([True, False]), self.ids, lambda value: value)
+
     def constraints(self):
         return [ConstraintSpec(BudgetConstraint),
                 ConstraintSpec(WeightConstraint, inputs={"up_limit": 1., "down_limit": 0.})]

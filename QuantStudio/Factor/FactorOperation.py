@@ -1537,7 +1537,7 @@ class SectionOperation(DerivativeFactor):
                 context.DataCache.updateDTRange(key=RunningKey, dt_range=(CalcDTs[0], CalcDTs[-1]))
         if len(context.PIDList) > 1:
             context.Sub2MainQueue.put(("Event", context.PID, (RunningKey, 1)))
-            context.Event[RunningKey].wait()
+            context.wait_for_event(RunningKey, self)
             if "TotalCalcDTs" in local_context.ExtraData:
                 TotalCalcDTs = local_context.ExtraData["TotalCalcDTs"]
                 if context.DataCache:
@@ -1706,7 +1706,7 @@ class PanelOperation(DerivativeFactor):
                 context.DataCache.updateDTRange(key=RunningKey, dt_range=(StdData.index[0], StdData.index[-1]))
         if len(context.PIDList) > 1:
             context.Sub2MainQueue.put(("Event", context.PID, (RunningKey, 1)))
-            context.Event[RunningKey].wait()
+            context.wait_for_event(RunningKey, self)
             if "TotalCalcDTs" in local_context.ExtraData:
                 TotalCalcDTs = local_context.ExtraData["TotalCalcDTs"]
                 if Cached:

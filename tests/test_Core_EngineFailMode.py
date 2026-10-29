@@ -325,6 +325,23 @@ class TestParallelEngineFailMode(unittest.TestCase):
         ctx.Sub2MainQueue = SimpleQueue()
         return ctx
 
+    def test_barrier_reports_related_failure_even_if_event_is_set(self):
+        """相关依赖失败时报告同步异常，独立分支失败不影响已完成同步。"""
+        from multiprocess import Event
+        leaf = _TestNode(name="leaf")
+        root = _TestNode(name="root", deps=[leaf])
+        unrelated = _TestNode(name="unrelated")
+        context = Context()
+        context.Event["barrier"] = Event()
+        context.Event["barrier"].set()
+        context.ExtraData["_QS_ParallelFailures"] = {
+            node.InstanceID: Event() for node in (root, leaf, unrelated)}
+        context.emit(unrelated, "compute", "failed")
+        context.wait_for_event("barrier", root)
+        context.emit(leaf, "compute", "failed")
+        with self.assertRaisesRegex(__QS_Error__, "同步已中止"):
+            context.wait_for_event("barrier", root)
+
     @unittest.skipIf(os.environ.get("SKIP_PARALLEL_TESTS"), "跳过多进程测试")
     def test_fail_mode_skip_single_node(self):
         """ParallelEngine skip 模式下, 失败节点结果为 None, 其他节点正常."""

@@ -7,7 +7,7 @@ from typing import Any, List, Optional, Dict, Tuple, Literal
 
 from pydantic import Field, ConfigDict
 
-from QuantStudio.Core import __QS_Object__, __QS_Args__
+from QuantStudio.Core import __QS_Object__, __QS_Args__, __QS_Error__
 from QuantStudio.Core.Cache import Cache
 from QuantStudio.Core.Input import DependencyModel, DependencyValues, Binding, dependency_edges
 from QuantStudio.Core.Identity import ExecutionEffect, new_instance_id, execution_key
@@ -51,9 +51,33 @@ class Context(__QS_Args__):
 
     def emit(self, node, stage, status, **details):
         """发送与应用传输方式无关的执行事件。"""
+        if status in ("failed", "skipped"):
+            signal = self.ExtraData.get("_QS_ParallelFailures", {}).get(node.InstanceID)
+            if signal is not None:
+                signal.set()
         if self.EventHandler is not None:
             self.EventHandler({"run_id": self.RunID, "instance_id": node.InstanceID,
                                "qsid": node.QSID, "stage": stage, "status": status, **details})
+
+    def wait_for_event(self, key, node):
+        """等待截面结果同步；相关依赖失败时退出，避免其他进程永久等待。"""
+        signals = self.ExtraData.get("_QS_ParallelFailures", {})
+        pending, seen, required = [node], set(), []
+        while pending:
+            current = pending.pop()
+            if current.InstanceID in seen:
+                continue
+            seen.add(current.InstanceID)
+            if current.InstanceID in signals:
+                required.append(signals[current.InstanceID])
+            pending.extend(current.Deps)
+        while True:
+            if any(signal.is_set() for signal in required):
+                raise __QS_Error__(f"节点 {node.Name} 或其依赖在其他进程中失败，同步已中止")
+            if self.Event[key].wait(timeout=0.1):
+                if any(signal.is_set() for signal in required):
+                    raise __QS_Error__(f"节点 {node.Name} 或其依赖在其他进程中失败，同步已中止")
+                return
 
     def begin_run(self):
         """隔离连续运行的状态，保留显式资源和数据缓存。"""
@@ -64,6 +88,7 @@ class Context(__QS_Args__):
         self.PrepareNodeDict.clear()
         self.Event.clear()
         self.ExtraData.pop("_QS_FailSkip", None)
+        self.ExtraData.pop("_QS_ParallelFailures", None)
     
     def __enter__(self):
         __QS_Context__.append(self)
@@ -141,6 +166,9 @@ def _lifecycle(method, stage):
 
 class Node(__QS_Object__):
     """计算图中的节点, 独立的计算单元"""
+
+    # 完整截面节点广播根请求，在节点内部安排日期任务。
+    __QS_ParallelBroadcast__ = False
 
     __QS_DepClass__ = NodeDependencies
     __QS_BehaviorVersion__ = 1
@@ -263,19 +291,17 @@ class Node(__QS_Object__):
     def compute(self, path: List[str], fwd_data: Any, context: Context) -> Any:
         SkipMode = context.ExtraData.get("_QS_FailSkip", False)
         context.emit(self, "compute", "running")
-        FwdDataList, LocalContext = self.forward_compute(path, fwd_data, context)
-        if FwdDataList:
-            BwdDataList = []
-            for i, iNode in enumerate(self.Deps):
-                iResult = iNode.compute(path + [iNode.InstanceID], FwdDataList[i], context)
-                if context.NodeState.get(iNode.InstanceID, {}).get("__status__") in ("FAILED", "SKIPPED"):
-                    context.NodeState.setdefault(self.InstanceID, {})["__status__"] = "SKIPPED"
-                    context.emit(self, "compute", "skipped")
-                    return None
-                BwdDataList.append(iResult)
-        else:
-            BwdDataList = []
         try:
+            FwdDataList, LocalContext = self.forward_compute(path, fwd_data, context)
+            BwdDataList = []
+            if FwdDataList:
+                for i, iNode in enumerate(self.Deps):
+                    iResult = iNode.compute(path + [iNode.InstanceID], FwdDataList[i], context)
+                    if context.NodeState.get(iNode.InstanceID, {}).get("__status__") in ("FAILED", "SKIPPED"):
+                        context.NodeState.setdefault(self.InstanceID, {})["__status__"] = "SKIPPED"
+                        context.emit(self, "compute", "skipped")
+                        return None
+                    BwdDataList.append(iResult)
             result = self.backward_compute(path, BwdDataList, context=context, local_context=LocalContext)
             context.emit(self, "compute", "done")
             return result

@@ -21,6 +21,8 @@ from QuantStudio.Tools.DataTypeFun import dict2id
 class RiskTable(Node):
     """风险表"""
 
+    __QS_ParallelBroadcast__ = True
+
     __QS_DepClass__ = EmptyDependencies
     __QS_ExecutionEffect__ = ExecutionEffect.READ
 
@@ -145,6 +147,10 @@ class RiskTable(Node):
 
     def backward_compute(self, path: List[str], bwd_data_list: List[Any], context: FactorContext, local_context: Optional[FactorLocalContext]=None) -> Panel:
         return self.readCov(dts=local_context.DTs, ids=local_context.IDs)
+
+    def merge_result(self, result_list, context):
+        """根请求保留完整矩阵，各进程返回相同的完整结果。"""
+        return result_list[0]
 
 
 class FactorRT(RiskTable):

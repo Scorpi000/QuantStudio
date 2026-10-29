@@ -4,7 +4,7 @@ import traceback
 from typing import Any, List, Optional
 
 from progressbar import ProgressBar
-from multiprocess import Process
+from multiprocess import Process, Event
 
 from QuantStudio.Core import __QS_Object__, __QS_Error__
 from QuantStudio.Core.Node import Node, Context
@@ -72,8 +72,11 @@ class ParallelEngine(Engine):
             return []
         SkipMode = self._QSArgs.FailMode == "skip"
         nTask = len(context.PIDList)
+        context.ExtraData["_QS_ParallelFailures"] = {id_: Event() for id_ in context.NodeDict}
         SplitedContext = context.split(nTask)
-        SplitedFwdDataList = zip(*[(FwdData.split(nTask, context) if hasattr(FwdData, "split") else [FwdData] * nTask) for FwdData in fwd_data_list])
+        SplitedFwdDataList = zip(*[
+            ([data] * nTask if node.__QS_ParallelBroadcast__ or not hasattr(data, "split")
+             else data.split(nTask, context)) for node, data in zip(node_list, fwd_data_list)])
         Procs = {}
         completed = False
         try:
@@ -143,5 +146,6 @@ class ParallelEngine(Engine):
                 # 异常退出后丢弃未消费的消息，避免污染下一次运行。
                 context.Sub2MainQueue.close()
                 context.Sub2MainQueue = None
+            context.ExtraData.pop("_QS_ParallelFailures", None)
         return [(None if context.NodeState.get(iNode.InstanceID, {}).get("__status__") in ("FAILED", "SKIPPED") else
                  iNode.merge_result(result_list=Data[iNode.InstanceID], context=context)) for iNode in node_list]

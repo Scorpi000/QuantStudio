@@ -56,7 +56,10 @@ class _ComponentSpec(__QS_Args__):
         if isinstance(exposure, pd.DataFrame) and isinstance(factor_cov, pd.DataFrame):
             values["factor_data"] = exposure.reindex(columns=factor_cov.index)
             values["factor_cov"] = factor_cov.reindex(columns=factor_cov.index)
-        values = {name: _align_input(name, value, ids) for name, value in values.items()}
+        if "bmk" in values:
+            values["bmk"] = _align_input("bmk", values["bmk"], ids)
+        risk_mask = _covariance_mask(mask, values.get("bmk"))
+        values = {name: _align_input(name, value, ids, risk_mask) for name, value in values.items()}
         exposure = values.get("factor_data")
         if exposure is not None and np.ndim(exposure) == 1:
             values["factor_data"] = np.asarray(exposure).reshape(len(ids), 1)
@@ -164,7 +167,15 @@ def resolve_sources(value, factors, risks, idt):
     return value
 
 
-def _align_input(name, value, ids):
+def _covariance_mask(mask, benchmark=None):
+    """风险数据须覆盖可选资产及基准中具有非零权重的资产。"""
+    required = np.asarray(mask, dtype=bool).copy()
+    if benchmark is not None:
+        required |= np.isfinite(benchmark) & (np.asarray(benchmark) != 0)
+    return required
+
+
+def _align_input(name, value, ids, risk_mask=None):
     """将带标签输入对齐到证券截面，数值数组按当前截面顺序解释。"""
     if value is None:
         return None
@@ -193,8 +204,11 @@ def _align_input(name, value, ids):
     if name in ("cov", "factor_cov"):
         value = np.asarray(value, dtype=float)
         shape = (len(ids), len(ids)) if name == "cov" else (value.shape[0], value.shape[0]) if value.ndim == 2 else ()
-        if value.ndim != 2 or value.shape != shape or not np.isfinite(value).all() or not np.allclose(value, value.T):
-            raise ValueError(f"{name} 必须是覆盖完整截面、有限且对称的协方差矩阵")
+        if value.ndim != 2 or value.shape != shape:
+            raise ValueError(f"{name} 的协方差矩阵形状不匹配")
+        checked = value[np.ix_(risk_mask, risk_mask)] if name == "cov" and risk_mask is not None else value
+        if np.isinf(value).any() or not np.isfinite(checked).all() or not np.allclose(checked, checked.T):
+            raise ValueError(f"{name} 必须是覆盖所需资产、有限且对称的协方差矩阵")
     if name == "wealth" and np.ndim(value):
         if not np.all(value == value[0]):
             raise ValueError("wealth 因子在同一期必须是相同的账户总金额")
