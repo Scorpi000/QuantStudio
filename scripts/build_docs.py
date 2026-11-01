@@ -1,6 +1,7 @@
 """一键构建 QuantStudio 文档站点。
 
 流程：清空 docs_md/ → notebook → markdown（gen_doc） → 复制 markdown → mkdocs build → 静态站点
+转换默认保留所有单元格，仅排除标记 md-excluded 的单元格及其输出。
 
 用法：
     python scripts/build_docs.py          # 构建到 site/ 目录

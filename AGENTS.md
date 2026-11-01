@@ -29,7 +29,7 @@ python scripts/build_docs.py --serve              # 本地预览文档
 ## 文档与 Skill 维护
 `docs/` 中的 Notebook 是文档和 `quantstudio` Skill 参考资料的唯一事实来源；先阅读 `docs/通则和约定.ipynb`。不要直接修改生成的 `docs_md/`、`site/` 或 `skills/quantstudio/references/`。
 
-修改 Notebook 时，为真实 API 示例的代码单元维护 `skill` 标签；运行 `python scripts/build_skill.py --output-dir .claude/skills` 重新生成参考资料，并检查链接。Skill 仅保留框架知识，环境相关的表名、字段和路径通过 MCP 查询或由用户指定。
+Notebook 单元默认进入 Markdown 文档和 Skill；不适合 Markdown 的单元标记 `md-excluded`，不适合 Skill 的单元标记 `skill-excluded`，两者独立生效，可同时标记。排除适用于所有单元类型及其输出，不影响 Notebook 直接运行；不再使用 `skill` 标签。修改 Notebook 后运行 `python scripts/build_skill.py --output-dir .claude/skills` 重新生成参考资料，并检查链接。Skill 仅保留框架知识，环境相关的表名、字段和路径通过 MCP 查询或由用户指定。
 
 ## 提交与拉取请求
 历史提交混用简短描述及 `fix(scripts):`、`feat(scripts):` 等前缀；建议使用明确的作用域和变更说明，每次提交聚焦一个目的。拉取请求说明问题、修改后的行为、验证结果及配置前提；关联已有 issue，涉及可视化变更时附截图。

@@ -35,6 +35,11 @@ import numpy as np
 import pandas as pd
 
 from QuantStudio.Core.QSObject import Panel
+from QuantStudio.Core.CalcEngine import Engine
+from QuantStudio.Core.ParallelEngine import ParallelEngine
+from QuantStudio.Factor.Factor import DataFactor, FactorContext, FactorLocalContext
+from QuantStudio.Factor.FactorCache import FeatherFactorCache
+from QuantStudio.Factor import FactorOperator as fo
 from QuantStudio.Factor.HDF5DB import HDF5DB
 
 
@@ -177,6 +182,54 @@ class TestHDF5DB(unittest.TestCase):
         TestData = FT.readFactorData(ifactor_name=TestFactor, ids=IDs, dts=DTs)
         Err = compareDataFrame(TestData, NewData)
         self.assertAlmostEqual(Err.max().max(), 0)
+
+    def test_missing_numeric_data_keeps_float_dtype_through_cache(self):
+        """日期或 ID 全不匹配时，数值缺失经过 Feather 缓存后仍为 NaN。"""
+        stored = dt.datetime(2026, 9, 18)
+        missing = dt.datetime(2026, 9, 21)
+        ids = ["A", "B"]
+        self.FDB.writeFactorData(pd.DataFrame([[1.0, 2.0]], index=[stored], columns=ids),
+                                 "missing_numeric", "value")
+        table = self.FDB.getTable("missing_numeric")
+        cache = FeatherFactorCache(args={"DTRuler": [stored, missing]})
+        cases = [(ids, [missing]), (None, [missing]), (["absent"], [stored]),
+                 (["absent"], None)]
+        for requested_ids, requested_dates in cases:
+            with self.subTest(ids=requested_ids, dates=requested_dates):
+                data = table.readFactorData("value", ids=requested_ids, dts=requested_dates)
+                expected = pd.DataFrame(np.nan, index=requested_dates or [stored],
+                                        columns=ids if requested_ids is None else requested_ids)
+                pd.testing.assert_frame_equal(data, expected)
+                with tempfile.TemporaryDirectory() as directory:
+                    path = directory + "/data.feather"
+                    cache.writeDataFrame(path, data, data_type="double")
+                    cached = cache.readDataFrame(path, data_type="double")
+                pd.testing.assert_frame_equal(cached, expected)
+
+    def test_grouped_mean_with_missing_source_dates_and_feather_cache(self):
+        """串行及多进程行业均值在源数据日期缺失时返回 NaN。"""
+        dates = [dt.datetime(2026, 9, 18), dt.datetime(2026, 9, 21)]
+        stocks = ["A", "B", "C", "D"]
+        industries = ["industry_a", "industry_b"]
+        self.FDB.writeFactorData(pd.DataFrame([[1.0, 3.0, 5.0, 7.0]], index=dates[:1], columns=stocks),
+                                 "missing_aggregate", "value")
+        for engine_class, pids in [(Engine, ["0"]), (ParallelEngine, ["0", "1"])]:
+            for requested_dates in [dates[1:], dates]:
+                with self.subTest(engine=engine_class.__name__, dates=requested_dates):
+                    source = self.FDB.getTable("missing_aggregate").getFactor("value")
+                    category = DataFactor(pd.DataFrame([industries[:1] * 2 + industries[1:] * 2] * 2,
+                                                       index=dates, columns=stocks))
+                    factor = fo.Aggregate(aggr_func=np.nanmean, descriptor_ids=stocks)(
+                        source, mask=DataFactor(1), cat_data=category)
+                    with FeatherFactorCache(args={"DTRuler": dates, "PIDs": pids}) as cache:
+                        with FactorContext(DTRuler=dates, SectionIDs=industries, PIDList=pids,
+                                           DataCache=cache) as context:
+                            with engine_class() as engine:
+                                result = engine.run([factor], context, fwd_data_list=[
+                                    FactorLocalContext(DTs=requested_dates, IDs=industries)])[0]
+                    expected = pd.DataFrame([[2.0, 6.0], [np.nan, np.nan]],
+                                            index=dates, columns=industries).loc[requested_dates]
+                    pd.testing.assert_frame_equal(result, expected)
 
     # ==================== ID 和时点读取测试 ====================
 

@@ -1,0 +1,3 @@
+interface:
+  display_name: "QS Notebook 文档"
+  short_description: "撰写与维护 QS 相关项目的 Notebook，兼顾 Markdown 和 Skill 导出"

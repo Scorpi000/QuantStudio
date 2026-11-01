@@ -150,6 +150,8 @@ class HDF5FactorTable(FactorTable):
         with self._FactorDB._getLock(table_name=self._QSArgs.Name, factor_name=ifactor_name) as DataLock:
             with self._FactorDB._openHDF5File(FilePath, mode="r") as DataFile:
                 DataType = DataFile.attrs["DataType"]
+                # 数值空结果保持浮点类型，避免 Feather 将整列缺失还原为 None。
+                MissingDType = (float if DataType == "double" else object)
                 DateTimes = DataFile["DateTime"][...]
                 if h5py.version.version >= "3.0.0":
                     IDs = DataFile["ID"].asstr(encoding="utf-8")[...]
@@ -162,7 +164,7 @@ class HDF5FactorTable(FactorTable):
                         else:
                             Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).sort_index(axis=1)
                     elif set(ids).isdisjoint(IDs):
-                        Rslt = pd.DataFrame(index=DateTimes, columns=ids)
+                        Rslt = pd.DataFrame(index=DateTimes, columns=ids, dtype=MissingDType)
                     else:
                         if (h5py.version.version >= "3.0.0") and (DataType == "string"):
                             Rslt = pd.DataFrame(DataFile["Data"].asstr(encoding="utf-8")[...], index=DateTimes, columns=IDs).reindex(columns=ids)
@@ -170,7 +172,7 @@ class HDF5FactorTable(FactorTable):
                             Rslt = pd.DataFrame(DataFile["Data"][...], index=DateTimes, columns=IDs).reindex(columns=ids)
                     Rslt.index = [dt.datetime.fromtimestamp(itms) for itms in Rslt.index]
                 elif (ids is not None) and set(ids).isdisjoint(IDs):
-                    Rslt = pd.DataFrame(index=dts, columns=ids)
+                    Rslt = pd.DataFrame(index=dts, columns=ids, dtype=MissingDType)
                 else:
                     if dts and isinstance(dts[0], pd.Timestamp) and (pd.__version__ >= "0.20.0"):
                         dts = [idt.to_pydatetime().timestamp() for idt in dts]
@@ -181,9 +183,9 @@ class HDF5FactorTable(FactorTable):
                     nDT = DateTimes.shape[0]
                     if nDT == 0:
                         if ids is None:
-                            Rslt = pd.DataFrame(index=dts, columns=IDs).sort_index(axis=1)
+                            Rslt = pd.DataFrame(index=dts, columns=IDs, dtype=MissingDType).sort_index(axis=1)
                         else:
-                            Rslt = pd.DataFrame(index=dts, columns=ids)
+                            Rslt = pd.DataFrame(index=dts, columns=ids, dtype=MissingDType)
                     elif nDT < 1000:
                         DateTimes = DateTimes.sort_values()
                         Mask = DateTimes.tolist()

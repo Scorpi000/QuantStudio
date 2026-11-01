@@ -26,7 +26,7 @@ obj = SomeClass(args={"param1": value1}, config_file="path/to/config.json")
 ```
 
 每个对象有三个基本属性：
-- **QSID**：参数的确定性哈希值。QSID 相同的对象行为一致，用于缓存去重
+- **QSID**：计算语义描述的确定性哈希值；节点描述还包含行为版本和依赖。结果缓存还需考虑请求维度和数据版本
 - **Args**：参数集对象（Pydantic v2 BaseModel），支持 `__getitem__` / `__setitem__` / `to_dict()` / `meta()` / `info()`
 - **Logger**：日志对象
 
@@ -79,7 +79,7 @@ from QuantStudio.Core.CalcEngine import Engine, StackEngine
 from QuantStudio.Core.ParallelEngine import ParallelEngine
 from QuantStudio.Core.TreeEngine import TreeEngine
 
-result_list = engine.run(node_list, context, init_data_list, fwd_data_list)
+result_list = engine.run(node_list, context, fwd_data_list=requests, init_data_list=initialization)
 ```
 
 引擎按 `init → prepare → compute` 三个阶段顺序执行。选型与差异见 [计算引擎](references/Core/计算引擎.md)。
@@ -88,8 +88,8 @@ result_list = engine.run(node_list, context, init_data_list, fwd_data_list)
 
 - **Context**：全局上下文，包含 NodeDict、NodeState、PrepareNodeDict、DataCache、PID 等字段
 - **LocalContext**：节点局部上下文，在 forward/backward 间传递
-- **DTLocalContext(LocalContext)**：时序类节点的局部上下文，带 DTs 字段
-- **DTInitData**：时序类节点的初始化数据，带 DTRange 和 SectionIDs 字段
+- **DTLocalContext(LocalContext, DTInitData)**：时序类节点的局部上下文，带 DTs 和 DTRange 字段
+- **DTInitData**：时序类节点的初始化数据，带 DTRange 字段；SectionIDs 由因子模块的子类扩展
 
 ```python
 from QuantStudio.Core.Node import Context, LocalContext, DTLocalContext, DTInitData
@@ -207,13 +207,15 @@ Data = FT.readData(factor_names=["close", "high"], ids=IDs, dts=DTs)  # 因子�
 - [QuickStart](references/因子框架/QuickStart.md) — 端到端示例：连接数据 → 获取因子 → 衍生计算 → 读取结果
 - [因子开发](references/因子框架/因子开发.md) — 四类运算详解、算子创建方式、DTMode/IDMode/LookBack 组合
 - [HDF5DB](references/因子框架/HDF5DB.md) / [JYDB](references/因子框架/JYDB.md) / [SQLDB](references/因子框架/SQLDB.md) / [BaoStockDB](references/因子框架/BaoStockDB.md) — 各因子库的配置与表类型
+- [原理和细节](references/因子框架/原理和细节.md) — HDF5 存储布局、SQL 元信息、算子绑定与构造
 
 ### Core 计算图
 
 - [通则和约定](references/通则和约定.md) — QS_Object 参数系统、QSID、Panel 完整用法
-- [计算图框架](references/Core/计算图框架.md) — Node 生命周期、Context、自定义节点
-- [计算引擎](references/Core/计算引擎.md) — Engine / StackEngine / ParallelEngine / TreeEngine 选型
-- [缓存](references/Core/缓存.md) — Cache / DTCache / FileDTCache / FeatherDTCache / FactorCache
+- [计算图框架](references/Core/计算图框架.md) — 创建与连接节点、模板构造、运行请求与可视化
+- [计算引擎](references/Core/计算引擎.md) — 引擎选型、并行配置、失败处理和执行进度
+- [缓存](references/Core/缓存.md) — 数据读写、因子缓存接入、DataVersion 与跨运行恢复
+- [原理和细节](references/Core/原理和细节.md) — 生命周期、依赖构造、身份、调度、状态同步与缓存存储
 
 ### 回测框架
 
@@ -222,6 +224,8 @@ Data = FT.readData(factor_names=["close", "high"], ids=IDs, dts=DTs)  # 因子�
 - [策略回测](references/回测框架/策略回测.md) — MakeAccount / MakeStrategy / AccountStats / AccountReport
 - [业绩归因](references/回测框架/业绩归因.md) — Brinson 归因模型
 - [风险模型测试](references/回测框架/风险模型测试.md) — 回测偏差检验
+- [BTStorer](references/回测框架/BTStorer.md) — 回测结果库、分组路径、元信息与持久化节点
+- [原理和细节](references/回测框架/原理和细节.md) — 节点生命周期、计算与报告分离、结果汇总协议
 
 ### 风险模型
 
@@ -235,6 +239,7 @@ Data = FT.readData(factor_names=["close", "high"], ids=IDs, dts=DTs)  # 因子�
 - [均值方差模型](references/组合优化/均值方差模型.md) — MeanVarianceObjective 及各类约束
 - [风险预算模型](references/组合优化/风险预算模型.md) — RiskBudgetObjective 风险平价
 - [组合优化策略](references/组合优化/组合优化策略.md) — 将优化器接入策略回测
+- [原理和细节](references/组合优化/原理和细节.md) — 目标、约束与求解后端的数学协议
 
 ## 相关 Skill
 

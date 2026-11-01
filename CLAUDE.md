@@ -199,19 +199,24 @@ python scripts/build_skill.py --output-dir .claude/skills --clean
 
 ### cell tag 约定
 
-Skill 参考文档的内容由 notebook 的 cell tag 控制。**只有打了 `skill` tag 的代码 cell 才会进入 references**：
+Notebook 同时用于直接运行、生成 Markdown 文档和生成 Skill。**转换默认保留单元，使用排除标签控制收录范围**：
 
-```json
-{"metadata": {"tags": ["skill"]}, ...}
-```
+| 标签 | Notebook 直接运行 | Markdown 文档 | Skill 参考文档 |
+|---|---|---|---|
+| 无标签 | 保留 | 保留 | 保留 |
+| `md-excluded` | 保留 | 排除 | 保留 |
+| `skill-excluded` | 保留 | 保留 | 排除 |
+| 同时标记两个标签 | 保留 | 排除 | 排除 |
+
+标签适用于所有单元类型；排除整个单元及其输出。两个标签独立生效，生成 Skill 不会同时应用 `md-excluded`。不再使用旧的 `skill` 标签。
 
 打标规则——**由 notebook 的编辑者在改文档时自行维护**：
 
-- **打**：真实 API 调用示例 + 展示预期返回值的输出
-- **打**：`print(qs_help(类))` 后紧跟真实用法（读者能看到接口全貌）
-- **不打**：import / 环境设置 / logging 配置 cell（对话式文档需要，Skill 不需要）
-- **不打**：`print(qs_help(某方法))`——只打印签名，文档正文已说明
-- **不打**：输出体积巨大且无信息量的 cell（如图表报告）
+- 真实 API 调用及有用的返回结果默认保留，无需标签。
+- 仅供 Notebook 使用的环境设置、日志配置、通用导入和交互渲染，通常同时标记两个排除标签。
+- 仅打印方法签名、正文已说明的帮助单元，可保留在 Markdown 中，但标记 `skill-excluded`。
+- 环境专属配置、巨大的低信息量报告等，根据各输出用途标记相应排除标签。
+- 需要保留 API 示例而排除交互显示时，将计算与显示拆为独立单元。
 
 转换时的自动处理（由 `docs/tools/gen_doc.py` 的 skill 模式完成，**无需手工干预**）：
 
@@ -223,7 +228,7 @@ Skill 参考文档的内容由 notebook 的 cell tag 控制。**只有打了 `sk
 
 改动 `docs/` 的 notebook 后：
 
-1. 新增的代码 cell 按上述规则打 `skill` tag
+1. 按上述规则维护 `md-excluded` 和 `skill-excluded`，未标记的单元默认保留
 2. 运行 `python scripts/build_skill.py --output-dir .claude/skills` 重新生成
 3. 确认 SKILL.md 中的 `references/` 链接指向真实存在的文件
 

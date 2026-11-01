@@ -5,7 +5,12 @@
 * 移除空单元格
 * 从首个 markdown 标题提取 frontmatter title
 * 将 .ipynb 内部链接转换为 .md 链接
-* 生成 Skill 参考文档时，按 cell tag 过滤代码单元格、剥离输出中的图片
+* 默认保留所有类型的单元格，普通文档排除 md-excluded，Skill 排除 skill-excluded
+* 生成 Skill 参考文档时清除环境输出噪声，可另行剥离图片和执行计数
+
+用法：
+    python scripts/build_docs.py
+    python scripts/build_skill.py --output-dir .claude/skills
 """
 import re
 from pathlib import Path
@@ -13,16 +18,13 @@ from typing import Literal
 
 from traitlets.config import Config
 from nbconvert import MarkdownExporter, RSTExporter
-from nbconvert.preprocessors import Preprocessor
+from nbconvert.preprocessors import Preprocessor, TagRemovePreprocessor
 import nbformat
 
 from QuantStudio import __QS_MainPath__
 
 
 __NB_PATH__ = str(Path(__QS_MainPath__).parent / "docs")
-
-# 生成 Skill 参考文档时，保留代码单元格的标记
-SKILL_TAG = "skill"
 
 # 图片剥离后留下的占位文本
 IMAGE_PLACEHOLDER = "[图片已省略]"
@@ -42,21 +44,6 @@ class RemoveEmptyCellsPreprocessor(Preprocessor):
 
     def preprocess(self, nb, resources):
         nb.cells = [c for c in nb.cells if c['source'].strip()]
-        return nb, resources
-
-
-class SkillCellFilterPreprocessor(Preprocessor):
-    """仅保留标记了 skill tag 的代码单元格，供生成 Skill 参考文档使用。
-
-    未标记的代码单元格通常是与文档叙事无关的胶水代码（导入、初始化、环境设置），
-    对 Skill 无价值。markdown 单元格一律保留。
-    """
-
-    def preprocess(self, nb, resources):
-        nb.cells = [
-            c for c in nb.cells
-            if c['cell_type'] != 'code' or SKILL_TAG in c.get('metadata', {}).get('tags', [])
-        ]
         return nb, resources
 
 
@@ -149,19 +136,18 @@ def main(
         source_dir: notebook 源目录
         doc_fmt: 输出格式，Markdown 或 reStructuredText
         postprocess: 是否进行后处理（添加 frontmatter、转换链接），仅 Markdown 格式有效
-        skill_mode: 是否生成 Skill 参考文档。启用后仅保留标记了 skill tag 的代码单元格，
-            并清除输出中的日志行与本机路径
+        skill_mode: 是否生成 Skill 参考文档。启用时排除 skill-excluded 单元格，
+            并清除输出中的日志行与本机路径；否则排除 md-excluded 单元格。
+            两种模式均默认保留未标记的单元格，过滤适用于所有单元格类型及其输出。
         strip_images: 是否剥离输出中的图片（含 HTML 输出内联的图片标签）
         drop_exec_count: 是否清空执行计数
     """
     c = Config()
+    c.TagRemovePreprocessor.remove_cell_tags = {"skill-excluded" if skill_mode else "md-excluded"}
 
-    Preprocessors = [RemoveEmptyCellsPreprocessor]
+    Preprocessors = [TagRemovePreprocessor, RemoveEmptyCellsPreprocessor]
     if skill_mode:
-        Preprocessors.extend([
-            SkillCellFilterPreprocessor,
-            ScrubEnvironmentNoisePreprocessor,
-        ])
+        Preprocessors.append(ScrubEnvironmentNoisePreprocessor)
     if strip_images:
         Preprocessors.append(ImageStripPreprocessor)
     if drop_exec_count:

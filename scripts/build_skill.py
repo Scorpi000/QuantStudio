@@ -4,6 +4,7 @@
 Skill 由两部分组合而成：``skills/quantstudio/SKILL.md``（路由层，手工维护）
 与 ``docs/*.ipynb`` 派生出的参考文档（生成物）。本脚本将二者组装到指定目录，
 使 Skill 具备完整的 ``SKILL.md`` + ``references/`` 结构。
+转换默认保留所有单元格，仅排除标记 ``skill-excluded`` 的单元格及其输出。
 
 参考文档的目录结构以 ``mkdocs.yml`` 的 ``nav`` 为准，避免与文档站点漂移。
 ``SKILL.md`` 与 ``references/`` 始终保持平级，因此文档内部的相对链接无需重写。
@@ -51,7 +52,6 @@ SKILL_NAME = "quantstudio"
 EXCLUDED_DOCS = {
     "index.md",               # 站点首页，是 通则和约定.md 的副本
     "MCP/jy_doc_mcp.md",      # 手写文档，未纳入 Skill
-    "回测框架/BTStorer.md",    # 手写文档，未纳入 Skill
 }
 
 
