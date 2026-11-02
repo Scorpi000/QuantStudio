@@ -1194,6 +1194,8 @@ class SQL_NarrowTable(SQL_Table):
     @property
     def FactorNames(self):
         if not hasattr(self, "_QSArgs"): return []
+        FactorNames = self.getMetaData(key="FactorNames")
+        if isinstance(FactorNames, list): return FactorNames
         if self._QSArgs._FactorNames is None:
             self._QSArgs._FactorNames = self._getFactorNames(self._QSArgs.FactorNameField)
         if isinstance(self._QSArgs._FactorNames, dict):
