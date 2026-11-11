@@ -7,14 +7,17 @@
 """
 
 import os
+import sys
 import struct
+import types
 import unittest
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from unittest.mock import MagicMock, patch
 
 from filelock import FileLock
 from multiprocess import Process, Pool
 
-from QuantStudio.Core.QSObject import QSQueue
+from QuantStudio.Core.QSObject import QSSQLObject, QSQueue
 
 
 # ========== 辅助函数 ==========
@@ -236,6 +239,43 @@ class TestQSQueue(unittest.TestCase):
         restored = pickle.loads(data)
         self.assertEqual(restored.size, self.queue.size)
         self.assertEqual(restored._MaxBatchNum, self.queue._MaxBatchNum)
+
+
+class TestQSSQLObjectPostgreSQL(unittest.TestCase):
+    def _connect(self, cursor=None):
+        connection = MagicMock()
+        if cursor is not None:
+            connection.cursor.return_value = cursor
+        psycopg2 = types.SimpleNamespace(connect=MagicMock(return_value=connection))
+        db = QSSQLObject(args={
+            "DBType": "PostgreSQL",
+            "Connector": "psycopg2",
+            "ConnRetryNum": 1,
+            "ConnIntervalSeconds": 0,
+        })
+        with patch.dict(sys.modules, {"psycopg2": psycopg2}):
+            db.connect()
+        return db, connection
+
+    def test_psycopg2_connection_enables_autocommit(self):
+        db, connection = self._connect()
+
+        self.assertTrue(connection.autocommit)
+        db.disconnect()
+
+    def test_postgresql_execute_failure_rolls_back_and_reraises(self):
+        cursor = MagicMock()
+        cursor.execute.side_effect = RuntimeError("original SQL failure")
+        db, connection = self._connect(cursor=cursor)
+
+        with patch.object(db._QS_Logger, "error") as log_error:
+            with self.assertRaisesRegex(RuntimeError, "original SQL failure"):
+                db.cursor("SELECT broken")
+
+        connection.rollback.assert_called_once_with()
+        cursor.close.assert_called_once_with()
+        self.assertTrue(any("original SQL failure" in call.args[0] for call in log_error.call_args_list))
+        db.disconnect()
 
 
 if __name__ == "__main__":

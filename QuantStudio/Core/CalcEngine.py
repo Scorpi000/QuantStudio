@@ -133,23 +133,33 @@ class Engine(__QS_Object__):
                     context.NodeErrors[iNodeID] = e
                     self._QS_Logger.error(f"节点 {context.NodeDict[iNodeID].Name}({iNodeID[:8]}) 准备计算失败: {e}")
         else:
-            Futures = []
-            with concurrent.futures.ThreadPoolExecutor(max_workers=IOConcurrentNum) as Executor:
+            Futures = {}
+            Executor = concurrent.futures.ThreadPoolExecutor(max_workers=IOConcurrentNum)
+            try:
                 for _, iPrepareData in context.PrepareNodeDict.items():
                     iNodeID, iPrepareData = iPrepareData
                     if context.NodeState.get(iNodeID, {}).get("__status__") in ("FAILED", "SKIPPED"): continue
                     iFuture = Executor.submit(self._prepare_node, context.NodeDict[iNodeID], iPrepareData, context)
-                    Futures.append((iNodeID, iFuture))
+                    Futures[iFuture] = iNodeID
                 with ProgressBar(max_value=len(Futures)) as ProgBar:
-                    for iNodeID, iFuture in Futures:
+                    for iFuture in concurrent.futures.as_completed(Futures):
+                        iNodeID = Futures[iFuture]
                         try:
                             iFuture.result()
                         except Exception as e:
-                            if not SkipMode: raise
+                            self._QS_Logger.error(f"节点 {context.NodeDict[iNodeID].Name}({iNodeID[:8]}) 准备计算失败: {e}")
+                            if not SkipMode:
+                                for iPendingFuture in Futures:
+                                    iPendingFuture.cancel()
+                                Executor.shutdown(wait=False, cancel_futures=True)
+                                Executor = None
+                                raise
                             context.NodeState.setdefault(iNodeID, {})["__status__"] = "FAILED"
                             context.NodeErrors[iNodeID] = e
-                            self._QS_Logger.error(f"节点 {context.NodeDict[iNodeID].Name}({iNodeID[:8]}) 准备计算失败: {e}")
                         ProgBar.update(ProgBar.value + 1)
+            finally:
+                if Executor is not None:
+                    Executor.shutdown(wait=True)
 
     def compute(self, node_list: List[Node], context: Context, fwd_data_list: Optional[List[Any]]=None):
         """执行正式计算: 对每个目标节点调用 compute 方法并收集结果.

@@ -11,7 +11,10 @@
 """
 
 import unittest
+import threading
+import time
 from typing import List, Any
+from unittest.mock import patch
 
 from pydantic import Field
 
@@ -242,6 +245,37 @@ class TestEnginePrepare(unittest.TestCase):
 
         for node in nodes:
             self.assertTrue(node.prepare_called, f"{node.Name} 的 prepare_compute 未被调用")
+
+
+    def test_prepare_concurrent_raise_mode_stops_waiting_after_first_error(self):
+        """Raise mode cancels pending work and does not wait for running prepare tasks."""
+        engine = Engine(args={"IOConcurrentNum": 2})
+        context = Context()
+        late = _TestNode(name="late", qs_id="late")
+        early = _TestNode(name="early", qs_id="early")
+        engine.init([late, early], context)
+        release_late = threading.Event()
+
+        def prepare(node, prepare_data, prepare_context):
+            if node.Name == "late":
+                release_late.wait(timeout=5)
+                raise RuntimeError("late failure")
+            raise ValueError("early failure")
+
+        start_time = time.perf_counter()
+        with patch.object(engine, "_prepare_node", side_effect=prepare), \
+             patch.object(engine._QS_Logger, "error") as log_error:
+            try:
+                with self.assertRaisesRegex(ValueError, "early failure"):
+                    engine.prepare([late, early], context)
+            finally:
+                elapsed = time.perf_counter() - start_time
+                release_late.set()
+
+        messages = [call.args[0] for call in log_error.call_args_list]
+        self.assertLess(elapsed, 1)
+        self.assertTrue(any("early" in message and "early failure" in message for message in messages))
+        self.assertFalse(any("late" in message for message in messages))
 
 
 class TestEngineCompute(unittest.TestCase):

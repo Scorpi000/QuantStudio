@@ -116,6 +116,7 @@ class QSSQLObject(__QS_Object__):
                 try:
                     import psycopg2
                     self._Connection = psycopg2.connect(host=IPAddr, port=int(Port), user=User, password=Pwd, database=DBName, **self._QSArgs.AdditionalConnArgs)
+                    self._Connection.autocommit = True
                 except Exception as e:
                     Msg = ("'%s' 第 %d 次尝试使用 psycopg2 连接(%s@%s:%d)数据库 '%s' 失败: %s" % (self.Name, i+1, User, IPAddr, Port, DBName, str(e)))
                     self._QS_Logger.error(Msg)
@@ -230,7 +231,20 @@ class QSSQLObject(__QS_Object__):
             for iTable in self._AllTables:
                 sql_str = re.sub(iTable, iTable, sql_str, flags=re.IGNORECASE)
         self._QS_Logger.debug(f"'{self._QSArgs.Name}' 执行 SQL 命令: {sql_str}")
-        Cursor.execute(sql_str)
+        try:
+            Cursor.execute(sql_str)
+        except Exception as e:
+            if self._QSArgs.DBType == "PostgreSQL":
+                try:
+                    self._Connection.rollback()
+                except Exception as rollback_error:
+                    self._QS_Logger.error("'%s' SQL rollback failed: %s" % (self.Name, str(rollback_error)))
+            self._QS_Logger.error("'%s' SQL execution failed: %s" % (self.Name, str(e)))
+            try:
+                Cursor.close()
+            except Exception:
+                pass
+            raise
         return Cursor
 
     def fetchall(self, sql_str, header=False):
