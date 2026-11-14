@@ -1561,14 +1561,14 @@ class JYDB(QSSQLObject, FactorDB):
             ignore_trans: 是否忽略转型，True 表示忽略则成立日为转型前成立日，False 则成立日为转型后的成立日
             
         Returns:
-            DataFrame(columns=["ID", "Name", "Type", "FoF", "QDII", "EstablishmentDate", "ExpireDate", "ListedDate", "Org", "Manager", "MainCode", "TrackIndexID"])
+            DataFrame(columns=["ID", "Name", "Type", "FoF", "QDII", "EstablishmentDate", "ExpireDate", "ListedDate", "Exchange", "Org", "Manager", "MainCode", "TrackIndexID"])
         """
         MFIDs = self.getMutualFundID(type=type, exchange=exchange, date=date, is_current=is_current, start_date=start_date, **kwargs)
         if date is None: date = dt.datetime.combine(dt.date.today(), dt.time())
 
         FT = self.getTable("公募基金证券主表")
-        MFInfo = FT.readData(factor_names=["中文名称", "上市日期"], ids=MFIDs, dts=[date]).iloc[:, -1]
-        MFInfo = MFInfo.rename(columns={"中文名称": "Name", "上市日期": "ListedDate"})
+        MFInfo = FT.readData(factor_names=["中文名称", "上市日期", "证券市场_R"], ids=MFIDs, dts=[date]).iloc[:, -1]
+        MFInfo = MFInfo.rename(columns={"中文名称": "Name", "上市日期": "ListedDate", "证券市场_R": "Exchange"})
         MFInfo["ListedDate"] = pd.to_datetime(MFInfo["ListedDate"])
         
         FT = self.getTable("公募基金概况")
@@ -1590,7 +1590,7 @@ class JYDB(QSSQLObject, FactorDB):
         iMFInfo = iMFInfo.rename(columns={"参照基准指数内部编码_R": "TrackIndexID"})
         MFInfo = pd.merge(MFInfo, iMFInfo, how="left", left_index=True, right_index=True)
 
-        MFInfo = MFInfo.reindex(columns=["Name", "Type", "FoF", "QDII", "EstablishmentDate", "ExpireDate", "ListedDate", "Org", "Manager", "MainCode", "TrackIndexID"]).reset_index()
+        MFInfo = MFInfo.reindex(columns=["Name", "Type", "FoF", "QDII", "EstablishmentDate", "ExpireDate", "ListedDate", "Exchange", "Org", "Manager", "MainCode", "TrackIndexID"]).reset_index()
         MFInfo.columns = ["ID"] + MFInfo.columns[1:].tolist()
         return MFInfo
 
