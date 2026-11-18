@@ -54,7 +54,10 @@ class Context(__QS_Args__):
         if status in ("failed", "skipped"):
             signal = self.ExtraData.get("_QS_ParallelFailures", {}).get(node.InstanceID)
             if signal is not None:
-                signal.set()
+                if isinstance(signal, int):
+                    self.ExtraData["_QS_ParallelFailureFlags"][signal] = 1
+                else:
+                    signal.set()
         if self.EventHandler is not None:
             self.EventHandler({"run_id": self.RunID, "instance_id": node.InstanceID,
                                "qsid": node.QSID, "stage": stage, "status": status, **details})
@@ -62,6 +65,7 @@ class Context(__QS_Args__):
     def wait_for_event(self, key, node):
         """等待截面结果同步；相关依赖失败时退出，避免其他进程永久等待。"""
         signals = self.ExtraData.get("_QS_ParallelFailures", {})
+        flags = self.ExtraData.get("_QS_ParallelFailureFlags")
         pending, seen, required = [node], set(), []
         while pending:
             current = pending.pop()
@@ -72,10 +76,12 @@ class Context(__QS_Args__):
                 required.append(signals[current.InstanceID])
             pending.extend(current.Deps)
         while True:
-            if any(signal.is_set() for signal in required):
+            if any(flags[signal] if isinstance(signal, int) else signal.is_set()
+                   for signal in required):
                 raise __QS_Error__(f"节点 {node.Name} 或其依赖在其他进程中失败，同步已中止")
             if self.Event[key].wait(timeout=0.1):
-                if any(signal.is_set() for signal in required):
+                if any(flags[signal] if isinstance(signal, int) else signal.is_set()
+                       for signal in required):
                     raise __QS_Error__(f"节点 {node.Name} 或其依赖在其他进程中失败，同步已中止")
                 return
 
@@ -89,6 +95,7 @@ class Context(__QS_Args__):
         self.Event.clear()
         self.ExtraData.pop("_QS_FailSkip", None)
         self.ExtraData.pop("_QS_ParallelFailures", None)
+        self.ExtraData.pop("_QS_ParallelFailureFlags", None)
     
     def __enter__(self):
         __QS_Context__.append(self)

@@ -342,6 +342,27 @@ class TestParallelEngineFailMode(unittest.TestCase):
         with self.assertRaisesRegex(__QS_Error__, "同步已中止"):
             context.wait_for_event("barrier", root)
 
+    def test_barrier_uses_shared_failure_flags(self):
+        """共享数组只因相关依赖失败而中止同步。"""
+        from multiprocess import Event, RawArray
+        leaf = _TestNode(name="leaf")
+        root = _TestNode(name="root", deps=[leaf])
+        unrelated = _TestNode(name="unrelated")
+        context = Context()
+        context.Event["barrier"] = Event()
+        context.Event["barrier"].set()
+        context.ExtraData["_QS_ParallelFailures"] = {
+            node.InstanceID: index for index, node in enumerate((root, leaf, unrelated))
+        }
+        flags = context.ExtraData["_QS_ParallelFailureFlags"] = RawArray('b', 3)
+        context.emit(unrelated, "compute", "failed")
+        self.assertEqual(list(flags), [0, 0, 1])
+        context.wait_for_event("barrier", root)
+        context.emit(leaf, "compute", "failed")
+        self.assertEqual(list(flags), [0, 1, 1])
+        with self.assertRaisesRegex(__QS_Error__, "同步已中止"):
+            context.wait_for_event("barrier", root)
+
     @unittest.skipIf(os.environ.get("SKIP_PARALLEL_TESTS"), "跳过多进程测试")
     def test_fail_mode_skip_single_node(self):
         """ParallelEngine skip 模式下, 失败节点结果为 None, 其他节点正常."""

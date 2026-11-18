@@ -4,7 +4,7 @@ import traceback
 from typing import Any, List, Optional
 
 from progressbar import ProgressBar
-from multiprocess import Process, Event
+from multiprocess import Process, RawArray
 
 from QuantStudio.Core import __QS_Object__, __QS_Error__
 from QuantStudio.Core.Node import Node, Context
@@ -72,7 +72,10 @@ class ParallelEngine(Engine):
             return []
         SkipMode = self._QSArgs.FailMode == "skip"
         nTask = len(context.PIDList)
-        context.ExtraData["_QS_ParallelFailures"] = {id_: Event() for id_ in context.NodeDict}
+        context.ExtraData["_QS_ParallelFailures"] = {
+            id_: index for index, id_ in enumerate(context.NodeDict)
+        }
+        context.ExtraData["_QS_ParallelFailureFlags"] = RawArray('b', len(context.NodeDict))
         SplitedContext = context.split(nTask)
         SplitedFwdDataList = zip(*[
             ([data] * nTask if node.__QS_ParallelBroadcast__ or not hasattr(data, "split")
@@ -147,5 +150,6 @@ class ParallelEngine(Engine):
                 context.Sub2MainQueue.close()
                 context.Sub2MainQueue = None
             context.ExtraData.pop("_QS_ParallelFailures", None)
+            context.ExtraData.pop("_QS_ParallelFailureFlags", None)
         return [(None if context.NodeState.get(iNode.InstanceID, {}).get("__status__") in ("FAILED", "SKIPPED") else
                  iNode.merge_result(result_list=Data[iNode.InstanceID], context=context)) for iNode in node_list]
