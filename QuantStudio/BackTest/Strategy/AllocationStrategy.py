@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-from QuantStudio.Factor.FactorOperation import FactorInputModel
-from pydantic import Field
 """配置策略"""
 import datetime as dt
 from typing import Optional, Literal, List, Union, Dict
 
 import numpy as np
 import pandas as pd
+from pydantic import Field
 
 from QuantStudio.Core import __QS_Error__
 from QuantStudio.Core.QSObject import Panel
@@ -14,6 +13,7 @@ from QuantStudio.Factor.Factor import Factor
 from QuantStudio.Factor.FactorOperation import PanelOperation, PanelOperator, SectionOperator, SectionOperation, OperandSpec
 from QuantStudio.Tools.StrategyTestFun import backtestPortfolioStrategy, backtestPortfolioStrategy_pd
 from QuantStudio.Tools.DataPreprocessingFun import numpy_ffill
+from QuantStudio.Factor.FactorOperation import FactorInputModel
 
 
 class CalcMaskPortfolio(SectionOperator):

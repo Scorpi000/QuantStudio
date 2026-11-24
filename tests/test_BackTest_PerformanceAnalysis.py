@@ -2,7 +2,7 @@
 """测试 BackTest.PerformanceAnalysis 模块中的算子和回测节点
 
 测试覆盖:
-- CalcBrinsonModel: 构造参数、__call__ 返回类型、calculate 核心计算
+- CalcBrinsonModel、CalcBrinsonModelExt、CalcCategoryReturn: 因子构造与计算
 - BrinsonModel: backward_compute 输出结构和统计逻辑
 - BrinsonModelReport: 报告生成和 HTML 输出
 """
@@ -14,11 +14,12 @@ import pandas as pd
 
 from QuantStudio.Factor.Factor import DataFactor, FactorContext, FactorLocalContext, FactorInitData
 from QuantStudio.Factor.FactorCache import FeatherFactorCache
-from QuantStudio.Factor.FactorOperation import PanelOperation
+from QuantStudio.Factor.FactorOperation import PanelOperation, SectionOperation
 from QuantStudio.Core.CalcEngine import Engine
 from QuantStudio.BackTest.PerformanceAnalysis.BrinsonModel import (
-    CalcBrinsonModel, BrinsonModel, BrinsonModelReport
+    CalcBrinsonModel, CalcBrinsonModelExt, CalcCategoryReturn, BrinsonModel, BrinsonModelReport
 )
+from QuantStudio.Tools.PerformanceAnalysisFun import calcBrinsonSignlePeriodExt
 
 
 def _run_factor_engine(factor, dt_ruler, section_ids, lookback=0):
@@ -387,6 +388,65 @@ class TestBrinsonModelReport(unittest.TestCase):
 
         for cat in cats:
             self.assertIn(cat, Result["Report"], f"报告中缺少类别: {cat}")
+
+
+class TestCalcBrinsonModelExt(unittest.TestCase):
+    """验证四项归因与工具函数一致。"""
+
+    def test_engine_output_matches_single_period_function(self):
+        """引擎输出按日期和资产逐项匹配 Brinson 工具函数。"""
+        dates = [dt.datetime(2026, 1, 2), dt.datetime(2026, 1, 5)]
+        assets = ["股票", "债券"]
+        values = {
+            "p_weight": [[0.6, 0.4], [0.55, 0.45]],
+            "bmk_weight": [[0.5, 0.5], [0.5, 0.5]],
+            "p_return": [[0.1, 0.02], [-0.04, 0.01]],
+            "bmk_return": [[0.04, 0.03], [-0.02, 0.01]],
+        }
+        factors = [DataFactor(pd.DataFrame(values[name], index=dates, columns=assets)) for name in values]
+        operator = CalcBrinsonModelExt()
+        factor = operator(*factors, factor_args={"SectionIDs": assets})
+
+        self.assertIsInstance(factor, SectionOperation)
+        self.assertEqual([name for name, _ in operator.Args.CompoundType], ["AA", "SS", "IN", "AAA"])
+        result = _run_factor_engine(factor, dates, assets)
+
+        for i, date in enumerate(dates):
+            data = pd.DataFrame({name: row[i] for name, row in values.items()}, index=assets)
+            expected = calcBrinsonSignlePeriodExt(data)
+            for asset in assets:
+                np.testing.assert_allclose(result.loc[date, asset], expected.loc[
+                    asset, ["allocation", "selection", "interaction", "allocation_adj"]].to_numpy())
+
+
+class TestCalcCategoryReturn(unittest.TestCase):
+    """验证前一期权重及类别对当期价格收益的加权。"""
+
+    def test_engine_returns_weighted_category_returns(self):
+        """跨类别变更、零权重类别和时点对齐均符合预期。"""
+        dates = [dt.datetime(2026, 1, i) for i in range(1, 4)]
+        securities = ["A", "B", "C"]
+        categories = ["股票", "债券", "黄金"]
+        portfolio = pd.DataFrame([[0.2, 0.3, 0.5], [0.1, 0.4, 0.5], [0.1, 0.4, 0.5]],
+                                 index=dates, columns=securities)
+        cat_data = pd.DataFrame([["股票", "股票", "债券"], ["股票", "债券", "债券"],
+                                 ["股票", "债券", "债券"]], index=dates, columns=securities)
+        price = pd.DataFrame([[100, 100, 100], [110, 90, 102], [121, 99, 104.04]],
+                             index=dates, columns=securities)
+        factors = [DataFactor(data=value) for value in (portfolio, cat_data, price)]
+        operator = CalcCategoryReturn(section_ids=categories, descriptor_ids=securities)
+        factor = operator(*factors)
+
+        self.assertIsInstance(factor, PanelOperation)
+        self.assertEqual(factor.Args.SectionIDs, categories)
+        result = _run_factor_engine(factor, dates[1:], categories, lookback=1)
+
+        self.assertEqual(result.columns.tolist(), categories)
+        self.assertAlmostEqual(result.loc[dates[1], "股票"], (0.2 * 0.1 + 0.3 * -0.1) / 0.5)
+        self.assertAlmostEqual(result.loc[dates[1], "债券"], 0.02)
+        self.assertAlmostEqual(result.loc[dates[2], "股票"], 0.1)
+        self.assertAlmostEqual(result.loc[dates[2], "债券"], (0.4 * 0.1 + 0.5 * 0.02) / 0.9)
+        np.testing.assert_allclose(result["黄金"], 0)
 
 
 if __name__ == "__main__":

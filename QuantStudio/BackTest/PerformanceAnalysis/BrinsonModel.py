@@ -1,27 +1,21 @@
 # coding=utf-8
-from QuantStudio.Factor.FactorOperation import FactorInputModel
-from QuantStudio.Core.Input import DependencyModel
 """Brinson 绩效分析模型"""
 import datetime as dt
-import base64
-from io import BytesIO
 from typing import Optional, List, Any, Tuple
 
 import pandas as pd
 import numpy as np
 from numpy.lib.recfunctions import unstructured_to_structured
-import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
-from matplotlib.ticker import FuncFormatter
 from pydantic import Field
 
 from QuantStudio.Core import __QS_Error__
+from QuantStudio.Core.Input import DependencyModel
 from QuantStudio.Core.Node import DTInitData, DTLocalContext
-from QuantStudio.Core.QSObject import Panel
 from QuantStudio.Factor.Factor import Factor, FactorContext, FactorInitData, FactorLocalContext
-from QuantStudio.Factor.FactorOperation import PanelOperator, PanelOperation
+from QuantStudio.Factor.FactorOperation import PanelOperator, PanelOperation, SectionOperator, SectionOperation, FactorInputModel
 from QuantStudio.BackTest.BackTestModel import BTNode, ReportNode
-from QuantStudio.BackTest.SectionFactor.IC import _QS_formatPandasPercentage, _QS_formatMatplotlibPercentage
+from QuantStudio.BackTest.SectionFactor.IC import _QS_formatPandasPercentage
+from QuantStudio.Tools.PerformanceAnalysisFun import calcBrinsonSignlePeriodExt
 
 
 class CalcBrinsonModel(PanelOperator):
@@ -124,6 +118,118 @@ class CalcBrinsonModel(PanelOperator):
         factor_args["ModelArgs"] = factor_args.get("ModelArgs", {}) | {"bmk": (bmk is not None)}
         kwargs["operator_kwargs"] =  {"descriptor_ids": self._QSArgs.DescriptorSection[0], "lookback": self._QSArgs.LookBack[0], "section_ids": factor_args["SectionIDs"]} | kwargs.get("operator_kwargs", {})
         return super().__call__(*Factors, factor_args=factor_args, **kwargs)
+
+
+class CalcCategoryReturn(PanelOperator):
+    """按期初投资组合权重计算各类别的单期收益率。"""
+
+    def __init__(self, section_ids: List[str], descriptor_ids: List[str], lookback: int = 1,
+                 args: dict = {}, config_file: Optional[str] = None, **kwargs):
+        """初始化类别收益算子。
+
+        Args:
+            section_ids: 输出的类别 ID 序列。
+            descriptor_ids: 输入的证券 ID 序列。
+            lookback: 计算首期收益所需的历史时点数。
+            args: 算子参数。
+            config_file: 配置文件路径。
+        """
+        Args = {"Name": "calcCategoryReturn"} | args | {"DTMode": "多时点", "DataType": "double"}
+        Args["ModelArgs"] = {"section_ids": section_ids} | Args.get("ModelArgs", {})
+        Args["DescriptorSection"] = [Args.get("DescriptorSection", [descriptor_ids])[0]] * 3
+        Args["LookBack"] = [Args.get("LookBack", [lookback])[0]] * 3
+        return super().__init__(args=Args, config_file=config_file, **kwargs)
+
+    def calculate(self, f: Factor, idt: List[dt.datetime], iid: List[str],
+                  x: List[np.ndarray], args: dict) -> np.ndarray:
+        SectionIDs = self._QSArgs.DescriptorSection[0] or iid
+        Portfolio = pd.DataFrame(x[0], index=idt, columns=SectionIDs)
+        CatData = pd.DataFrame(x[1], index=idt, columns=SectionIDs)
+        Price = pd.DataFrame(x[2], index=idt, columns=SectionIDs)
+        DTs = sorted(set(idt).intersection(f._QSArgs.CalcDTRuler)) if f._QSArgs.CalcDTRuler else idt
+        Portfolio, CatData, Price = Portfolio.reindex(DTs), CatData.reindex(DTs), Price.reindex(DTs)
+        Return = Price.pct_change(fill_method=None)
+        Portfolio, CatData = Portfolio.shift(1), CatData.shift(1)
+        Result = pd.DataFrame(index=DTs, columns=iid, dtype=float)
+        for iCat in iid:
+            CatWeight = Portfolio.where(CatData == iCat)
+            WeightSum = CatWeight.sum(axis=1)
+            CatReturn = (CatWeight * Return).sum(axis=1) / WeightSum.where(WeightSum > 0)
+            CatReturn = CatReturn.fillna(0.0)
+            MissingReturn = (CatWeight.notna() & (CatWeight != 0) & Return.isna()).any(axis=1)
+            Result[iCat] = CatReturn.mask(MissingReturn)
+        return Result.reindex(index=idt).values[self._QSArgs.LookBack[0]:]
+
+    class __QS_InputClass__(FactorInputModel):
+        """公开投资组合、类别和价格因子输入。"""
+
+        p: Factor = Field(title="p")
+        cat_data: Factor = Field(title="cat_data")
+        price: Factor = Field(title="price")
+
+    __QS_CallLayout__ = {
+        "p": {"grouped": False, "keyword_only": False},
+        "cat_data": {"grouped": False, "keyword_only": False},
+        "price": {"grouped": False, "keyword_only": False},
+    }
+
+    def __call__(self, p: Factor, cat_data: Factor, price: Factor,
+                 factor_args: dict = {}, **kwargs) -> PanelOperation:
+        """创建按资产类别输出单期收益率的因子。"""
+        factor_args = factor_args.copy()
+        factor_args.setdefault("SectionIDs", self._QSArgs.ModelArgs["section_ids"])
+        kwargs["operator_kwargs"] = {
+            "section_ids": factor_args["SectionIDs"],
+            "descriptor_ids": self._QSArgs.DescriptorSection[0],
+            "lookback": self._QSArgs.LookBack[0],
+        } | kwargs.get("operator_kwargs", {})
+        return super().__call__(p, cat_data, price, factor_args=factor_args, **kwargs)
+
+
+class CalcBrinsonModelExt(SectionOperator):
+    """基于资产权重和资产收益率计算单期 Brinson 归因。"""
+
+    def __init__(self, args: dict = {}, config_file: Optional[str] = None, **kwargs):
+        """初始化资产层 Brinson 算子。
+
+        Args:
+            args: 算子参数。
+            config_file: 配置文件路径。
+        """
+        Args = {"Name": "calcBrinsonModelExt"} | args | {
+            "DataType": "object",
+            "CompoundType": [("AA", "double"), ("SS", "double"), ("IN", "double"), ("AAA", "double")],
+        }
+        return super().__init__(args=Args, config_file=config_file, **kwargs)
+
+    def calculate(self, f: Factor, idt: dt.datetime, iid: List[str], x: List[np.ndarray], args: dict) -> np.ndarray:
+        Data = pd.DataFrame({
+            "p_weight": x[0], "bmk_weight": x[1],
+            "p_return": x[2], "bmk_return": x[3],
+        }, index=iid)
+        Result = calcBrinsonSignlePeriodExt(Data)
+        Result = Result.loc[:, ["allocation", "selection", "interaction", "allocation_adj"]]
+        return Result.to_records(index=False).astype("O")
+
+    class __QS_InputClass__(FactorInputModel):
+        """公开资产权重和收益率因子输入。"""
+
+        p: Factor = Field(title="p")
+        bmk: Factor = Field(title="bmk")
+        p_return: Factor = Field(title="p_return")
+        bmk_return: Factor = Field(title="bmk_return")
+
+    __QS_CallLayout__ = {
+        "p": {"grouped": False, "keyword_only": False},
+        "bmk": {"grouped": False, "keyword_only": False},
+        "p_return": {"grouped": False, "keyword_only": False},
+        "bmk_return": {"grouped": False, "keyword_only": False},
+    }
+
+    def __call__(self, p: Factor, bmk: Factor, p_return: Factor, bmk_return: Factor,
+                 factor_args: dict = {}, **kwargs) -> SectionOperation:
+        """由四个资产层因子创建 AA、SS、IN、AAA 复合因子。"""
+        return super().__call__(p, bmk, p_return, bmk_return, factor_args=factor_args, **kwargs)
 
 
 class BrinsonModel(BTNode):
