@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from unittest.mock import MagicMock, patch
 
 from filelock import FileLock
-from multiprocess import Process, Pool
+from multiprocess import Process, Pool, get_context
 
 from QuantStudio.Core.QSObject import QSSQLObject, QSQueue
 
@@ -181,6 +181,11 @@ class TestQSQueue(unittest.TestCase):
         """size 属性应返回 cache_size (MB)."""
         self.assertEqual(self.queue.size, 1)
 
+    def test_get_timeout(self):
+        """空队列超时后应结束等待。"""
+        with self.assertRaises(TimeoutError):
+            self.queue.get(timeout=0.02)
+
     def test_multiprocess_put_get(self):
         """多进程并发 put, 主进程逐个 get."""
         n_procs = 4
@@ -193,7 +198,7 @@ class TestQSQueue(unittest.TestCase):
 
         results = []
         for _ in range(n_procs):
-            results.append(self.queue.get())
+            results.append(self.queue.get(timeout=10))
 
         for p in procs:
             p.join(timeout=10)
@@ -213,7 +218,7 @@ class TestQSQueue(unittest.TestCase):
 
         results = []
         for _ in range(n_procs):
-            results.append(self.queue.get())
+            results.append(self.queue.get(timeout=30))
 
         for p in procs:
             p.join(timeout=30)
@@ -232,13 +237,43 @@ class TestQSQueue(unittest.TestCase):
             q.put("hello")
             self.assertEqual(q.get(), "hello")
 
+    @unittest.skipIf(os.name == "nt", "Windows 使用命名共享内存")
+    def test_close_removes_mapping_file(self):
+        """创建队列的进程关闭后应清理映射文件。"""
+        path = self.queue._MMapPath
+        self.assertTrue(os.path.exists(path))
+        self.queue.close()
+        self.assertFalse(os.path.exists(path))
+
     def test_pickle_roundtrip_state(self):
-        """队列的 pickle 序列化/反序列化应保持一致性."""
+        """反序列化的队列应共享同一数据映射。"""
         import pickle
         data = pickle.dumps(self.queue)
         restored = pickle.loads(data)
-        self.assertEqual(restored.size, self.queue.size)
-        self.assertEqual(restored._MaxBatchNum, self.queue._MaxBatchNum)
+        try:
+            self.assertEqual(restored.size, self.queue.size)
+            self.assertEqual(restored._MaxBatchNum, self.queue._MaxBatchNum)
+            self.queue.put("原实例写入")
+            self.assertEqual(restored.get(timeout=1), "原实例写入")
+            restored.put("恢复实例写入")
+            self.assertEqual(self.queue.get(timeout=1), "恢复实例写入")
+        finally:
+            restored.close()
+
+    def test_spawn_process_shares_mmap(self):
+        """spawn 子进程反序列化队列后可向父进程写入。"""
+        process = get_context("spawn").Process(
+            target=_qs_queue_put_worker, args=(1, self.queue, "spawn")
+        )
+        process.start()
+        try:
+            self.assertEqual(self.queue.get(timeout=10), (1, "spawn"))
+            process.join(timeout=10)
+            self.assertEqual(process.exitcode, 0)
+        finally:
+            if process.is_alive():
+                process.terminate()
+                process.join()
 
 
 class TestQSSQLObjectPostgreSQL(unittest.TestCase):

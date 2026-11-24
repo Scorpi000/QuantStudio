@@ -485,6 +485,7 @@ class QSQueue(object):
         self._BatchDataSize = self._BatchSize - self._BatchHeadSize
 
         self._TmpDir = tempfile.TemporaryDirectory()
+        self._OwnerPID = os.getpid()
 
         if (put_lock is None) and (mp is None):
             self._PutLock = FileLock(self._TmpDir.name + os.sep + "Put.lock")
@@ -506,20 +507,25 @@ class QSQueue(object):
             self._GlobalLock = global_lock
         else:
             self._GlobalLock = mp.Lock()
+        self._LockPID = os.getpid()
         
         if os.name=="nt":
             self._TagName = str(uuid.uuid1())# 共享内存的 tag
+            self._MMapPath = None
             self._MMAPCacheData = mmap.mmap(-1, self._CacheSize, tagname=self._TagName)# 当前共享内存缓冲区
         else:
             self._TagName = None# 共享内存的 tag
-            self._MMAPCacheData = mmap.mmap(-1, self._CacheSize)# 当前共享内存缓冲区
+            self._MMapPath = os.path.join(self._TmpDir.name, "Queue.data")
+            with open(self._MMapPath, "w+b") as DataFile:
+                DataFile.truncate(self._CacheSize)
+                self._MMAPCacheData = mmap.mmap(DataFile.fileno(), self._CacheSize)# 当前共享内存缓冲区
         self._MMAPCacheData.seek(0)
         self._MMAPCacheData.write(struct.pack("II", 0, 0))
 
     def __getstate__(self):
         state = self.__dict__.copy()
-        if os.name=="nt": state["_MMAPCacheData"] = None
-        state["_TmpDir"] = state["_TmpDir"].name
+        state["_MMAPCacheData"] = None
+        state["_TmpDir"] = state["_TmpDir"].name if hasattr(state["_TmpDir"], "name") else state["_TmpDir"]
         if isinstance(self._PutLock, FileLock):
             state["_PutLock"] = None
         if isinstance(self._GetLock, FileLock):
@@ -530,19 +536,35 @@ class QSQueue(object):
     
     def __setstate__(self, state):
         self.__dict__.update(state)
-        if os.name=="nt": self._MMAPCacheData = mmap.mmap(-1, self._CacheSize, tagname=self._TagName)
+        if os.name=="nt":
+            self._MMAPCacheData = mmap.mmap(-1, self._CacheSize, tagname=self._TagName)
+        else:
+            with open(self._MMapPath, "r+b") as DataFile:
+                self._MMAPCacheData = mmap.mmap(DataFile.fileno(), self._CacheSize)
         if self._PutLock is None:
             self._PutLock = FileLock(self._TmpDir + os.sep + "Put.lock")
         if self._GetLock is None:
             self._GetLock = FileLock(self._TmpDir + os.sep + "Get.lock")
         if self._GlobalLock is None:
             self._GlobalLock = FileLock(self._TmpDir + os.sep + "Global.lock")
+        self._LockPID = os.getpid()
+
+    def _ensure_process_local_locks(self):
+        """在 fork 后为当前进程重新创建文件锁。"""
+        PID = os.getpid()
+        if self._LockPID == PID: return
+        for Attr in ("_PutLock", "_GetLock", "_GlobalLock"):
+            Lock = getattr(self, Attr)
+            if isinstance(Lock, FileLock):
+                setattr(self, Attr, FileLock(Lock.lock_file))
+        self._LockPID = PID
 
     @property
     def size(self):
         return self._CacheSize / 2**20
     
     def empty(self):
+        self._ensure_process_local_locks()
         with self._GlobalLock:
             self._MMAPCacheData.seek(4)
             return (struct.unpack("I", self._MMAPCacheData.read(4))[0] == 0)
@@ -568,6 +590,7 @@ class QSQueue(object):
     
     def put(self, obj):
         """阻塞的方式写入对象"""
+        self._ensure_process_local_locks()
         DataByte = pickle.dumps(obj)
         DataLen = len(DataByte)
         TotalBatchNum = RemainderBatchNum = DataLen // self._BatchDataSize + int(DataLen % self._BatchDataSize > 0)
@@ -594,12 +617,16 @@ class QSQueue(object):
                     self._MMAPCacheData.write(struct.pack("I", BatchNum + i + 1))
         return 0
     
-    def get(self):
-        """阻塞的方式获取对象"""
+    def get(self, timeout:Optional[float]=None):
+        """获取对象；超时仍无数据时抛出 TimeoutError。"""
+        self._ensure_process_local_locks()
+        Deadline = None if timeout is None else time.monotonic() + timeout
         DataByte = b""
         TotalBatchNum, CurrentBatchNum = None, 0
         with self._GetLock:
             while (TotalBatchNum is None) or (CurrentBatchNum < TotalBatchNum):
+                if (Deadline is not None) and (time.monotonic() >= Deadline):
+                    raise TimeoutError("QSQueue.get 等待数据超时")
                 time.sleep(0.01)
                 with self._GlobalLock:
                     StartReadIdx = self._get_read_idx()
@@ -621,9 +648,12 @@ class QSQueue(object):
         return pickle.loads(DataByte)
 
     def close(self):
-        """关闭共享内存"""
-        if hasattr(self, '_MMAPCacheData') and self._MMAPCacheData:
+        """关闭映射，并由创建进程清理临时文件。"""
+        if getattr(self, '_MMAPCacheData', None) is not None:
             self._MMAPCacheData.close()
+            self._MMAPCacheData = None
+        if (os.getpid() == self._OwnerPID) and isinstance(self._TmpDir, tempfile.TemporaryDirectory):
+            self._TmpDir.cleanup()
     
     def __enter__(self):
         return self

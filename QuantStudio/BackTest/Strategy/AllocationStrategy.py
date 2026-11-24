@@ -14,6 +14,22 @@ from QuantStudio.Factor.FactorOperation import PanelOperation, PanelOperator, Se
 from QuantStudio.Tools.StrategyTestFun import backtestPortfolioStrategy, backtestPortfolioStrategy_pd
 from QuantStudio.Tools.DataPreprocessingFun import numpy_ffill
 from QuantStudio.Factor.FactorOperation import FactorInputModel
+from .Strategy import MakeAccount, calcAccountPortfolio
+
+
+def fillPortfolioSignal(signal: Factor, price: Factor, start_dt: Optional[dt.datetime]=None) -> Factor:
+    """按目标权重信号模拟账户并填充实际投资组合权重。
+
+    Args:
+        signal: 目标权重因子；全部为 NaN 的时点不调仓。
+        price: 证券价格因子，用于成交和持仓估值。
+        start_dt: 账户起始时点。计算时的时点标尺需包含输出起点的前一个时点。
+
+    Returns:
+        包含持仓期间权重漂移的实际投资组合因子。
+    """
+    account = MakeAccount(signal_type="目标权重", start_dt=start_dt)(last_price=price, signal=signal)
+    return calcAccountPortfolio(account, factor_args={"Name": "filled_portfolio_signal"})
 
 
 class CalcMaskPortfolio(SectionOperator):

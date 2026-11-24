@@ -391,7 +391,7 @@ class TestBrinsonModelReport(unittest.TestCase):
 
 
 class TestCalcBrinsonModelExt(unittest.TestCase):
-    """验证四项归因与工具函数一致。"""
+    """验证八项复合输出与 BrinsonModel 节点的衔接。"""
 
     def test_engine_output_matches_single_period_function(self):
         """引擎输出按日期和资产逐项匹配 Brinson 工具函数。"""
@@ -408,15 +408,29 @@ class TestCalcBrinsonModelExt(unittest.TestCase):
         factor = operator(*factors, factor_args={"SectionIDs": assets})
 
         self.assertIsInstance(factor, SectionOperation)
-        self.assertEqual([name for name, _ in operator.Args.CompoundType], ["AA", "SS", "IN", "AAA"])
+        self.assertEqual([name for name, _ in operator.Args.CompoundType],
+                         ["BMK", "BMKR", "TP", "TPR", "AA", "SS", "IN", "AAA"])
         result = _run_factor_engine(factor, dates, assets)
 
         for i, date in enumerate(dates):
             data = pd.DataFrame({name: row[i] for name, row in values.items()}, index=assets)
             expected = calcBrinsonSignlePeriodExt(data)
             for asset in assets:
-                np.testing.assert_allclose(result.loc[date, asset], expected.loc[
-                    asset, ["allocation", "selection", "interaction", "allocation_adj"]].to_numpy())
+                np.testing.assert_allclose(result.loc[date, asset], [
+                    data.loc[asset, "bmk_weight"], expected.loc[asset, "benchmark"],
+                    data.loc[asset, "p_weight"], expected.loc[asset, "portfolio"],
+                    expected.loc[asset, "allocation"], expected.loc[asset, "selection"],
+                    expected.loc[asset, "interaction"], expected.loc[asset, "allocation_adj"],
+                ])
+
+        node = BrinsonModel(factor, args={"SectionIDs": assets})
+        output = node.backward_compute(path=[], bwd_data_list=[result], context=None)
+        for i, date in enumerate(dates):
+            data = pd.DataFrame({name: row[i] for name, row in values.items()}, index=assets)
+            self.assertAlmostEqual(output["总计"].loc[date, "策略组合收益"],
+                                   (data["p_weight"] * data["p_return"]).sum())
+            self.assertAlmostEqual(output["总计"].loc[date, "基准组合收益"],
+                                   (data["bmk_weight"] * data["bmk_return"]).sum())
 
 
 class TestCalcCategoryReturn(unittest.TestCase):

@@ -187,7 +187,11 @@ class CalcCategoryReturn(PanelOperator):
 
 
 class CalcBrinsonModelExt(SectionOperator):
-    """基于资产权重和资产收益率计算单期 Brinson 归因。"""
+    """基于资产权重和收益率计算可供 BrinsonModel 使用的单期归因。
+
+    BMK、TP 为资产权重；BMKR、TPR 为资产对基准和组合收益的加权贡献；
+    AA、SS、IN、AAA 为 Brinson 归因分项。
+    """
 
     def __init__(self, args: dict = {}, config_file: Optional[str] = None, **kwargs):
         """初始化资产层 Brinson 算子。
@@ -198,7 +202,8 @@ class CalcBrinsonModelExt(SectionOperator):
         """
         Args = {"Name": "calcBrinsonModelExt"} | args | {
             "DataType": "object",
-            "CompoundType": [("AA", "double"), ("SS", "double"), ("IN", "double"), ("AAA", "double")],
+            "CompoundType": [(name, "double") for name in
+                             ("BMK", "BMKR", "TP", "TPR", "AA", "SS", "IN", "AAA")],
         }
         return super().__init__(args=Args, config_file=config_file, **kwargs)
 
@@ -208,8 +213,17 @@ class CalcBrinsonModelExt(SectionOperator):
             "p_return": x[2], "bmk_return": x[3],
         }, index=iid)
         Result = calcBrinsonSignlePeriodExt(Data)
-        Result = Result.loc[:, ["allocation", "selection", "interaction", "allocation_adj"]]
-        return Result.to_records(index=False).astype("O")
+        Output = pd.DataFrame({
+            "BMK": Data["bmk_weight"],
+            "BMKR": Result["benchmark"],
+            "TP": Data["p_weight"],
+            "TPR": Result["portfolio"],
+            "AA": Result["allocation"],
+            "SS": Result["selection"],
+            "IN": Result["interaction"],
+            "AAA": Result["allocation_adj"],
+        })
+        return Output.to_records(index=False).astype("O")
 
     class __QS_InputClass__(FactorInputModel):
         """公开资产权重和收益率因子输入。"""
@@ -228,7 +242,7 @@ class CalcBrinsonModelExt(SectionOperator):
 
     def __call__(self, p: Factor, bmk: Factor, p_return: Factor, bmk_return: Factor,
                  factor_args: dict = {}, **kwargs) -> SectionOperation:
-        """由四个资产层因子创建 AA、SS、IN、AAA 复合因子。"""
+        """由四个资产层因子创建八项 Brinson 复合因子。"""
         return super().__call__(p, bmk, p_return, bmk_return, factor_args=factor_args, **kwargs)
 
 
